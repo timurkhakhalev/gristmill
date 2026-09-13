@@ -1,0 +1,9 @@
+document_id,user_email,document_title,workspace_name,document_created,summary,notes,transcript
+11111111-2222-4333-8444-555555555555,owner@example.com,Fixture Import Test,Example Workspace,2026-08-20T17:46:57.650Z,"# Synthetic Import Fixture
+
+- This note is fictional test data.
+- It checks multiline CSV fields and Markdown formatting.
+
+Chat with meeting transcript: [https://notes.example.com/t/00000000-0000-4000-8000-000000000000](https://notes.example.com/t/00000000-0000-4000-8000-000000000000)",,"First fictional sentence for the import test.
+Second fictional sentence for the import test.
+Third fictional sentence for the import test."

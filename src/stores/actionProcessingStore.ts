@@ -1,0 +1,259 @@
+import { create } from "zustand";
+import { STANDALONE_PROMPT_KEYS } from "../helpers/builtinActions";
+import reasoningService from "../services/ReasoningService";
+import { getSettings, selectResolvedNoteFormatting } from "./settingsStore";
+import { appendDictionarySuffix } from "../config/prompts";
+import { generateNoteTitle } from "../utils/generateTitle";
+import { buildNoteFormattingOverrides } from "../helpers/noteFormattingOverrides";
+import { tagActionItemOwners, type MentionPerson } from "../utils/mentionMarkdown";
+import type { ActionItem } from "../types/electron";
+
+/**
+ * Output budget for a formatted note.
+ *
+ * Without an explicit value this inherited the generic 2048-token default from
+ * calculateMaxTokens — roughly 1,500 words — so summaries of long meetings were
+ * cut off and saved anyway, with nothing to say they were incomplete (#2142).
+ *
+ * Deliberately not paired with requireCompleteOutput: unlike a selection edit,
+ * where a partial replacement corrupts the user's own text, a clipped summary
+ * is still worth keeping. The context preflight counts this reservation, so
+ * asking for more output room can grow the window rather than squeeze it.
+ */
+export const NOTE_OUTPUT_MAX_TOKENS = 4096;
+
+export type ActionProcessingStatus = "idle" | "processing" | "success";
+
+export interface NoteActionState {
+  status: ActionProcessingStatus;
+  actionName: string | null;
+}
+
+export interface ActionErrorEvent {
+  noteId: number;
+  message: string;
+  /** Set when the failure has a translatable form; the toast prefers it. */
+  messageKey?: string;
+  messageParams?: Record<string, string | number>;
+}
+
+interface ActionProcessingStoreState {
+  noteStates: Record<number, NoteActionState>;
+  errorEvents: ActionErrorEvent[];
+}
+
+const cancelledFlags = new Map<number, boolean>();
+const processingFlags = new Map<number, boolean>();
+const successTimers = new Map<number, NodeJS.Timeout>();
+
+const IDLE_STATE: NoteActionState = { status: "idle", actionName: null };
+
+function setNoteState(noteId: number, patch: Partial<NoteActionState>) {
+  const { noteStates } = useActionProcessingStore.getState();
+  const prev = noteStates[noteId] ?? IDLE_STATE;
+  useActionProcessingStore.setState({
+    noteStates: { ...noteStates, [noteId]: { ...prev, ...patch } },
+  });
+}
+
+function clearNoteState(noteId: number) {
+  const { noteStates } = useActionProcessingStore.getState();
+  const next = { ...noteStates };
+  delete next[noteId];
+  useActionProcessingStore.setState({ noteStates: next });
+}
+
+function pushErrorEvent(event: ActionErrorEvent) {
+  const { errorEvents } = useActionProcessingStore.getState();
+  useActionProcessingStore.setState({ errorEvents: [...errorEvents, event] });
+}
+
+export const useActionProcessingStore = create<ActionProcessingStoreState>()(() => ({
+  noteStates: {},
+  errorEvents: [],
+}));
+
+const BASE_SYSTEM_PROMPT = `You are a note enhancement assistant. The user will provide raw notes — possibly voice-transcribed, rough, or unstructured. Your job is to clean them up according to the instructions below while preserving all original meaning and information. Output clean markdown.
+
+FORMAT RULES (strict):
+- Do NOT include any preamble: no title, no date/time/location, no attendee list, no topic header. Start directly with the content.
+- Do NOT use tables, horizontal rules, or block quotes.
+- Do NOT list or guess participant names/roles.
+- Keep the tone professional and concise. Bias toward brevity.
+
+Instructions: `;
+
+const MEETING_SYSTEM_PROMPT = `You are a professional meeting notes assistant. You will receive a meeting transcript where each line is prefixed with the speaker's label — a real name when known, otherwise "You" (the note owner), "Them", or "Speaker N". A "## Meeting Context" block may identify the note owner and the invited participants. Manual notes the user took may be included as well.
+
+Your job is to produce clean, actionable meeting notes in markdown. Follow these rules:
+
+FORMAT RULES (strict):
+- Do NOT include any preamble: no title, no "# Meeting Notes", no date/time/location, no attendee list, no topic header. Start directly with the summary.
+- Do NOT reproduce the Meeting Context block in the output.
+- Do NOT use tables, horizontal rules, or block quotes.
+- Refer to people only by the speaker labels used in the transcript. NEVER guess or invent an identity: the note owner is who the Meeting Context says they are — never a name mentioned in conversation. Keep unnamed speakers as "Them" or "Speaker N".
+- Start with a concise 1–2 sentence summary of what the meeting was about.
+- Use clear section headings: ## Key Discussion Points, ## Decisions Made, ## Action Items, ## Follow-ups (omit any section that has no content).
+- Under Action Items, use checkboxes in the format \`- [ ] Action — Owner\`, attributing each item to its owner by speaker label where clear.
+
+CONTENT RULES:
+- Preserve important quotes or specific commitments verbatim when they carry meaning.
+- Remove filler, small talk, false starts, and repeated/redundant content.
+- Where speakers refer to the same topic across multiple turns, consolidate into a coherent point rather than listing every utterance.
+- If the user included manual notes alongside the transcript, integrate them — they represent the user's emphasis on what matters most.
+- Keep the tone professional and concise. Bias toward brevity.
+
+Instructions: `;
+
+// Standalone built-in prompts are complete instructions, so they only get told
+// how the material is laid out instead of being wrapped in the generic prompts.
+const MEETING_INPUT_PREAMBLE = `The material is laid out as follows. Transcript lines are prefixed with the speaker's label: a real name when known, otherwise "You" (the note owner), "Them", or "Speaker N". A "## Meeting Context" block may identify the note owner and the invited participants; it is reference material, never something to reproduce. Manual notes the user took may precede the transcript.
+
+`;
+const NOTE_INPUT_PREAMBLE = `The material is the user's own notes, possibly voice-transcribed, rough, or unstructured. There is no transcript.
+
+`;
+
+export interface RunActionOptions {
+  isCloudMode: boolean;
+  modelId: string;
+  isMeetingNote?: boolean;
+  /** Opt-in so enhancement never renames a note the user has titled. */
+  allowTitleGeneration?: boolean;
+  /** People whose names in generated action-item owners become mention tags. */
+  knownPeople?: MentionPerson[];
+}
+
+export interface RunActionLabels {
+  noModel: string;
+  noEndpoint: string;
+  actionFailed: string;
+}
+
+/**
+ * Start processing an action on a note. Runs in the background — survives
+ * component unmounts and navigation so the user can switch notes mid-action.
+ */
+export function runBackgroundAction(
+  noteId: number,
+  noteContent: string,
+  contentHash: string,
+  action: ActionItem,
+  options: RunActionOptions,
+  labels: RunActionLabels
+): void {
+  if (processingFlags.get(noteId)) return;
+
+  const modelId = options.modelId;
+  if (!modelId && !options.isCloudMode) {
+    pushErrorEvent({ noteId, message: labels.noModel });
+    return;
+  }
+
+  const settings = getSettings();
+  const noteFormatting = selectResolvedNoteFormatting(settings);
+  // A self-hosted config without a URL would fall through to a cloud provider.
+  if (!options.isCloudMode && noteFormatting.mode === "self-hosted" && !noteFormatting.remoteUrl) {
+    pushErrorEvent({ noteId, message: labels.noEndpoint });
+    return;
+  }
+
+  cancelledFlags.set(noteId, false);
+  processingFlags.set(noteId, true);
+  setNoteState(noteId, { status: "processing", actionName: action.name });
+
+  (async () => {
+    try {
+      const standalone =
+        !!action.translation_key && STANDALONE_PROMPT_KEYS.has(action.translation_key);
+      const basePrompt = standalone
+        ? options.isMeetingNote
+          ? MEETING_INPUT_PREAMBLE
+          : NOTE_INPUT_PREAMBLE
+        : options.isMeetingNote
+          ? MEETING_SYSTEM_PROMPT
+          : BASE_SYSTEM_PROMPT;
+      const providerOverrides = buildNoteFormattingOverrides(noteFormatting, options.isCloudMode);
+      const systemPrompt = appendDictionarySuffix(
+        basePrompt + action.prompt,
+        options.isMeetingNote ? settings.customDictionary : undefined,
+        settings.uiLanguage
+      );
+      const enhanced = await reasoningService.processText(noteContent, modelId, null, {
+        systemPrompt,
+        maxTokens: NOTE_OUTPUT_MAX_TOKENS,
+        temperature: 0.3,
+        disableThinking: settings.noteFormattingDisableThinking,
+        ...providerOverrides,
+      });
+
+      if (cancelledFlags.get(noteId)) return;
+
+      let title: string | undefined;
+      if (options.allowTitleGeneration && getSettings().autoGenerateNoteTitle) {
+        const generated = await generateNoteTitle(enhanced, modelId, providerOverrides);
+        if (generated) title = generated;
+      }
+
+      if (cancelledFlags.get(noteId)) return;
+
+      const updates: Record<string, string> = {
+        enhanced_content: options.knownPeople?.length
+          ? tagActionItemOwners(enhanced, options.knownPeople)
+          : enhanced,
+        enhancement_prompt: action.prompt,
+        enhanced_at_content_hash: contentHash,
+      };
+      if (title) updates.title = title;
+      await window.electronAPI.updateNote(noteId, updates);
+
+      setNoteState(noteId, { status: "success", actionName: action.name });
+
+      const timer = setTimeout(() => {
+        processingFlags.set(noteId, false);
+        clearNoteState(noteId);
+        successTimers.delete(noteId);
+      }, 600);
+      successTimers.set(noteId, timer);
+    } catch (err) {
+      if (cancelledFlags.get(noteId)) return;
+      processingFlags.set(noteId, false);
+      clearNoteState(noteId);
+      const message = err instanceof Error ? err.message : labels.actionFailed;
+      const { messageKey, messageParams } = (err ?? {}) as {
+        messageKey?: string;
+        messageParams?: Record<string, string | number>;
+      };
+      pushErrorEvent({ noteId, message, messageKey, messageParams });
+    } finally {
+      cancelledFlags.delete(noteId);
+    }
+  })();
+}
+
+/** Soft cancel: the HTTP request continues but the result is discarded. */
+export function cancelAction(noteId: number): void {
+  cancelledFlags.set(noteId, true);
+  processingFlags.set(noteId, false);
+  const timer = successTimers.get(noteId);
+  if (timer) {
+    clearTimeout(timer);
+    successTimers.delete(noteId);
+  }
+  clearNoteState(noteId);
+}
+
+export function consumeErrorEvents(): ActionErrorEvent[] {
+  const { errorEvents } = useActionProcessingStore.getState();
+  if (errorEvents.length === 0) return [];
+  useActionProcessingStore.setState({ errorEvents: [] });
+  return errorEvents;
+}
+
+export function selectNoteActionState(
+  state: ActionProcessingStoreState,
+  noteId: number | null
+): NoteActionState {
+  if (noteId == null) return IDLE_STATE;
+  return state.noteStates[noteId] ?? IDLE_STATE;
+}

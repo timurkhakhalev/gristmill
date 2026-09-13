@@ -1,0 +1,2347 @@
+const { clipboard, systemPreferences } = require("electron");
+const { spawn, spawnSync } = require("child_process");
+const { killProcess } = require("../utils/process");
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
+const debugLogger = require("./debugLogger");
+const { getLinuxSessionInfo } = require("./linuxSession");
+
+const CACHE_TTL_MS = 30000;
+
+// isTrustedAccessibilityClient() is a cheap synchronous syscall, so the cache
+// only exists to debounce the dialog shown on denial.
+const ACCESSIBILITY_CHECK_TTL_MS = 5000;
+
+const PASTE_DELAYS = {
+  darwin: 120,
+  win32_fast: 10,
+  win32_nircmd: 30,
+  win32_pwsh: 40,
+  linux: 50,
+};
+
+const RESTORE_DELAYS = {
+  darwin: 450,
+  win32_nircmd: 500,
+  win32_pwsh: 500,
+  linux: 800,
+  linux_kde_wayland: 1200,
+};
+
+// Window classes that identify terminal emulators, which expect
+// Ctrl+Shift+V/C instead of Ctrl+V/C. Mirrors terminal_classes in
+// resources/linux-fast-paste.c — keep the two lists in sync.
+const LINUX_TERMINAL_CLASSES = [
+  "konsole",
+  "gnome-terminal",
+  "terminal",
+  "kitty",
+  "alacritty",
+  "terminator",
+  "xterm",
+  "urxvt",
+  "rxvt",
+  "tilix",
+  "terminology",
+  "wezterm",
+  "foot",
+  "st",
+  "yakuake",
+  "ghostty",
+  "guake",
+  "tilda",
+  "hyper",
+  "tabby",
+  "sakura",
+  "warp",
+  "termius",
+  "waveterm",
+  "ptyxis",
+  "kgx",
+  "org.gnome.console",
+];
+
+// macOS reports localized app names rather than window classes, and iTerm2 has
+// no entry above because it has no Linux window class. Matching it on Linux too
+// is harmless — no such window class exists there.
+const TERMINAL_SIGNATURES = [...LINUX_TERMINAL_CLASSES, "iterm"];
+
+function writeClipboardInRenderer(webContents, text) {
+  if (!webContents || !webContents.executeJavaScript) {
+    return Promise.reject(new Error("Invalid webContents for clipboard write"));
+  }
+  const escaped = JSON.stringify(text);
+  return webContents.executeJavaScript(`navigator.clipboard.writeText(${escaped})`);
+}
+
+class ClipboardManager {
+  constructor() {
+    this.accessibilityCache = { value: null, expiresAt: 0 };
+    this.commandAvailabilityCache = new Map();
+    this.nircmdPath = null;
+    this.nircmdChecked = false;
+    this.fastPastePath = null;
+    this.fastPasteChecked = false;
+    this.winFastPastePath = null;
+    this.winFastPasteChecked = false;
+    this.linuxFastPastePath = null;
+    this.linuxFastPasteChecked = false;
+    this.portalDenied = false;
+    this.portalUnavailable = false;
+    this.portalTokenPasteFailed = false;
+    this.portalKeysymChecked = false;
+    this.portalKeysymAvailable = false;
+    this.portalFailed = false;
+    this.uinputTimedOut = false;
+    this.xtestTimedOut = false;
+    this._kwinScriptPath = null;
+    this.pasteQueue = Promise.resolve();
+
+    process.on("exit", () => {
+      if (this._kwinScriptPath) {
+        try {
+          fs.unlinkSync(this._kwinScriptPath);
+        } catch {}
+      }
+    });
+  }
+
+  _isWayland() {
+    if (process.platform !== "linux") return false;
+    const { isWayland } = getLinuxSessionInfo();
+    return isWayland;
+  }
+
+  _writeClipboardWayland(text, webContents) {
+    const { isKde } = getLinuxSessionInfo();
+
+    // On KDE with XWayland, write to X11 clipboard directly because
+    // wl-copy targets the Wayland clipboard which is desynced from X11
+    if (isKde) {
+      if (this.commandExists("xclip")) {
+        try {
+          const result = spawnSync("xclip", ["-selection", "clipboard"], {
+            input: text,
+            timeout: 200,
+          });
+          if (result.status === 0) {
+            clipboard.writeText(text);
+            return;
+          }
+        } catch {}
+      }
+      if (this.commandExists("xsel")) {
+        try {
+          const result = spawnSync("xsel", ["--clipboard", "--input"], {
+            input: text,
+            timeout: 200,
+          });
+          if (result.status === 0) {
+            clipboard.writeText(text);
+            return;
+          }
+        } catch {}
+      }
+      // Last resort: Electron's clipboard.writeText should work on XWayland
+      clipboard.writeText(text);
+      return;
+    }
+
+    if (this.commandExists("wl-copy")) {
+      try {
+        const result = spawnSync("wl-copy", ["--", text], { timeout: 50 });
+        if (result.status === 0) {
+          clipboard.writeText(text);
+          return;
+        }
+      } catch {}
+    }
+
+    if (webContents && !webContents.isDestroyed()) {
+      writeClipboardInRenderer(webContents, text).catch(() => {});
+    }
+
+    clipboard.writeText(text);
+  }
+
+  // PRIMARY selection (X11's "highlight to copy") is what terminals like alacritty,
+  // foot, konsole, xterm, and st bind Shift+Insert to. Mirror the transcription
+  // there so Shift+Insert pastes reliably regardless of which selection the
+  // terminal uses. Falls through wl-copy → xclip → xsel → Electron's selection
+  // target so we cover Wayland, X11, and XWayland setups.
+  _writePrimarySelection(text) {
+    if (process.platform !== "linux") return;
+
+    const { isWayland } = getLinuxSessionInfo();
+
+    if (isWayland && this.commandExists("wl-copy")) {
+      try {
+        const result = spawnSync("wl-copy", ["--primary", "--", text], { timeout: 50 });
+        if (result.status === 0) return;
+      } catch {}
+    }
+
+    if (this.commandExists("xclip")) {
+      try {
+        const result = spawnSync("xclip", ["-selection", "primary"], {
+          input: text,
+          timeout: 200,
+        });
+        if (result.status === 0) return;
+      } catch {}
+    }
+
+    if (this.commandExists("xsel")) {
+      try {
+        const result = spawnSync("xsel", ["--primary", "--input"], {
+          input: text,
+          timeout: 200,
+        });
+        if (result.status === 0) return;
+      } catch {}
+    }
+
+    try {
+      clipboard.writeText(text, "selection");
+    } catch {}
+  }
+
+  _readPrimarySelection() {
+    if (process.platform !== "linux") return null;
+
+    const { isWayland } = getLinuxSessionInfo();
+
+    if (isWayland && this.commandExists("wl-paste")) {
+      try {
+        const result = spawnSync("wl-paste", ["--primary", "--no-newline"], { timeout: 200 });
+        if (result.status === 0) return result.stdout.toString();
+      } catch {}
+    }
+
+    if (this.commandExists("xclip")) {
+      try {
+        const result = spawnSync("xclip", ["-selection", "primary", "-o"], { timeout: 200 });
+        if (result.status === 0) return result.stdout.toString();
+      } catch {}
+    }
+
+    if (this.commandExists("xsel")) {
+      try {
+        const result = spawnSync("xsel", ["--primary", "--output"], { timeout: 200 });
+        if (result.status === 0) return result.stdout.toString();
+      } catch {}
+    }
+
+    try {
+      return clipboard.readText("selection") || "";
+    } catch {}
+    return null;
+  }
+
+  // Accepts a Linux window class or a macOS app name.
+  isTerminalSignature(signature) {
+    if (!signature) return false;
+    const normalized = String(signature).toLowerCase();
+    return TERMINAL_SIGNATURES.some((term) => normalized.includes(term));
+  }
+
+  isLinuxTerminalWindowClass(windowClass) {
+    return this.isTerminalSignature(windowClass);
+  }
+
+  // Selection capture (SelectionManager) seeds a sentinel and polls until a
+  // synthetic copy replaces it. On Wayland — KDE especially — the X11 and
+  // Wayland clipboards can be desynced, so write and read BOTH sides; a value
+  // appearing on either side counts.
+  _writeClipboardTextAll(text) {
+    if (this._isWayland() && this.commandExists("wl-copy")) {
+      try {
+        spawnSync("wl-copy", ["--", text], { timeout: 200 });
+      } catch {}
+    }
+    if (process.platform === "linux" && this.commandExists("xclip")) {
+      try {
+        spawnSync("xclip", ["-selection", "clipboard"], { input: text, timeout: 200 });
+      } catch {}
+    }
+    if (process.platform === "linux" && this.commandExists("xsel")) {
+      try {
+        spawnSync("xsel", ["--clipboard", "--input"], { input: text, timeout: 200 });
+      } catch {}
+    }
+    clipboard.writeText(text);
+  }
+
+  _readClipboardTextAll() {
+    const texts = [];
+    if (this._isWayland() && this.commandExists("wl-paste")) {
+      try {
+        const result = spawnSync("wl-paste", ["--no-newline"], { timeout: 200 });
+        if (result.status === 0) texts.push(result.stdout.toString());
+      } catch {}
+    }
+    if (process.platform === "linux" && this.commandExists("xclip")) {
+      try {
+        const result = spawnSync("xclip", ["-selection", "clipboard", "-o"], { timeout: 200 });
+        if (result.status === 0) texts.push(result.stdout.toString());
+      } catch {}
+    }
+    if (process.platform === "linux" && this.commandExists("xsel")) {
+      try {
+        const result = spawnSync("xsel", ["--clipboard", "--output"], { timeout: 200 });
+        if (result.status === 0) texts.push(result.stdout.toString());
+      } catch {}
+    }
+    try {
+      texts.push(clipboard.readText());
+    } catch {}
+    return [...new Set(texts.filter((text) => typeof text === "string"))];
+  }
+
+  getNircmdPath() {
+    if (this.nircmdChecked) {
+      return this.nircmdPath;
+    }
+
+    this.nircmdChecked = true;
+
+    if (process.platform !== "win32") {
+      return null;
+    }
+
+    const possiblePaths = [
+      ...(process.resourcesPath ? [path.join(process.resourcesPath, "bin", "nircmd.exe")] : []),
+      path.join(__dirname, "..", "..", "resources", "bin", "nircmd.exe"),
+      path.join(process.cwd(), "resources", "bin", "nircmd.exe"),
+    ];
+
+    for (const nircmdPath of possiblePaths) {
+      try {
+        if (fs.existsSync(nircmdPath)) {
+          this.safeLog(`✅ Found nircmd.exe at: ${nircmdPath}`);
+          this.nircmdPath = nircmdPath;
+          return nircmdPath;
+        }
+      } catch {}
+    }
+
+    this.safeLog("⚠️ nircmd.exe not found, will use PowerShell fallback");
+    return null;
+  }
+
+  getNircmdStatus() {
+    if (process.platform !== "win32") {
+      return { available: false, reason: "Not Windows" };
+    }
+    const nircmdPath = this.getNircmdPath();
+    return {
+      available: !!nircmdPath,
+      path: nircmdPath,
+    };
+  }
+
+  _resolveNativeBinary(binaryName, platform, cacheKeyChecked, cacheKeyPath) {
+    if (this[cacheKeyChecked]) {
+      return this[cacheKeyPath];
+    }
+    this[cacheKeyChecked] = true;
+
+    if (process.platform !== platform) {
+      return null;
+    }
+
+    const candidates = new Set([
+      path.join(__dirname, "..", "..", "resources", "bin", binaryName),
+      path.join(__dirname, "..", "..", "resources", binaryName),
+    ]);
+
+    if (process.resourcesPath) {
+      [
+        path.join(process.resourcesPath, binaryName),
+        path.join(process.resourcesPath, "bin", binaryName),
+        path.join(process.resourcesPath, "resources", binaryName),
+        path.join(process.resourcesPath, "resources", "bin", binaryName),
+        path.join(process.resourcesPath, "app.asar.unpacked", "resources", binaryName),
+        path.join(process.resourcesPath, "app.asar.unpacked", "resources", "bin", binaryName),
+      ].forEach((candidate) => candidates.add(candidate));
+    }
+
+    for (const candidate of candidates) {
+      try {
+        const stats = fs.statSync(candidate);
+        if (stats.isFile()) {
+          try {
+            fs.accessSync(candidate, fs.constants.X_OK);
+          } catch {
+            fs.chmodSync(candidate, 0o755);
+          }
+          this[cacheKeyPath] = candidate;
+          return candidate;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  resolveFastPasteBinary() {
+    return this._resolveNativeBinary(
+      "macos-fast-paste",
+      "darwin",
+      "fastPasteChecked",
+      "fastPastePath"
+    );
+  }
+
+  resolveWindowsFastPasteBinary() {
+    return this._resolveNativeBinary(
+      "windows-fast-paste.exe",
+      "win32",
+      "winFastPasteChecked",
+      "winFastPastePath"
+    );
+  }
+
+  resolveLinuxFastPasteBinary() {
+    return this._resolveNativeBinary(
+      "linux-fast-paste",
+      "linux",
+      "linuxFastPasteChecked",
+      "linuxFastPastePath"
+    );
+  }
+
+  _isYdotoolDaemonRunning() {
+    const uid = process.getuid?.();
+    const socketPaths = [
+      process.env.YDOTOOL_SOCKET,
+      uid != null ? `/run/user/${uid}/.ydotool_socket` : null,
+      "/tmp/.ydotool_socket",
+    ].filter(Boolean);
+
+    for (const socketPath of socketPaths) {
+      try {
+        fs.accessSync(socketPath, fs.constants.W_OK);
+        // Export so spawned ydotool clients inherit this socket instead of their own default.
+        process.env.YDOTOOL_SOCKET = socketPath;
+        return true;
+      } catch {}
+    }
+
+    try {
+      return spawnSync("pidof", ["ydotoold"], { timeout: 1000 }).status === 0;
+    } catch {
+      return false;
+    }
+  }
+
+  _isYdotoolLegacy() {
+    if (this._ydotoolLegacyChecked !== undefined) return this._ydotoolLegacyChecked;
+    try {
+      const result = spawnSync("ydotool", ["help"], { stdio: "pipe", timeout: 2000 });
+      const output = (result.stdout?.toString() || "") + (result.stderr?.toString() || "");
+      // ydotool 1.0.x has 'bakers' subcommand that 0.1.x doesn't
+      this._ydotoolLegacyChecked = !output.includes("bakers");
+    } catch {
+      this._ydotoolLegacyChecked = false;
+    }
+    debugLogger.debug(
+      "ydotool version detection",
+      { legacy: this._ydotoolLegacyChecked },
+      "clipboard"
+    );
+    return this._ydotoolLegacyChecked;
+  }
+
+  _canAccessUinput() {
+    if (process.platform !== "linux") return false;
+    const now = Date.now();
+    if (this._uinputCache && now < this._uinputCache.expiresAt) {
+      return this._uinputCache.accessible;
+    }
+    let accessible = false;
+    try {
+      fs.accessSync("/dev/uinput", fs.constants.W_OK);
+      accessible = true;
+    } catch {}
+    this._uinputCache = { accessible, expiresAt: now + 30000 };
+    return accessible;
+  }
+
+  _getPortalTokenPath() {
+    const cacheDir = path.join(
+      process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"),
+      "openwhispr"
+    );
+    return path.join(cacheDir, "portal-paste-token");
+  }
+
+  _readPortalToken() {
+    try {
+      return fs.readFileSync(this._getPortalTokenPath(), "utf8").trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  _savePortalToken(token) {
+    try {
+      const tokenPath = this._getPortalTokenPath();
+      const dir = path.dirname(tokenPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(tokenPath, token);
+    } catch (err) {
+      debugLogger.warn("Failed to save portal-paste token", { error: err.message }, "clipboard");
+    }
+  }
+
+  _runPortalPaste(fastPasteBinary, { shiftInsert = false, terminal = false, copy = false } = {}) {
+    return new Promise((resolve, reject) => {
+      const args = ["--portal"];
+      if (copy) args.push("--copy");
+      if (shiftInsert) args.push("--shift-insert");
+      else if (terminal) args.push("--terminal");
+
+      const restoreToken = this._readPortalToken();
+      if (restoreToken) {
+        args.push("--restore-token", restoreToken);
+      }
+
+      debugLogger.debug(
+        "Attempting linux-fast-paste --portal (RemoteDesktop D-Bus)",
+        { binary: fastPasteBinary, hasToken: !!restoreToken },
+        "clipboard"
+      );
+
+      const proc = spawn(fastPasteBinary, args);
+      let stdout = "";
+      let stderr = "";
+
+      proc.stdout?.on("data", (data) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr?.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      let timedOut = false;
+      // 15s only for the first grant (no token yet) so the permission dialog has
+      // time. With a saved token the session is pre-approved, so fail fast instead
+      // of hanging on a stale RemoteDesktop session that no longer responds (#1614).
+      const timeoutMs = restoreToken ? 2500 : 15000;
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        killProcess(proc, "SIGKILL");
+      }, timeoutMs);
+
+      proc.on("close", (code) => {
+        if (timedOut) return reject(new Error("linux-fast-paste --portal timed out"));
+        clearTimeout(timeoutId);
+        const newToken = stdout.trim();
+        if (newToken) {
+          this._savePortalToken(newToken);
+        }
+        if (code === 0) {
+          resolve(newToken || null);
+        } else if (code === 3) {
+          // User explicitly clicked "Deny" in the portal dialog.
+          reject(new Error("portal-denied"));
+        } else if (code === 5) {
+          reject(new Error("portal support not compiled in"));
+        } else if (code === 6) {
+          reject(new Error("portal symbolic keyboard input unavailable"));
+        } else {
+          reject(
+            new Error(
+              `linux-fast-paste --portal exited with code ${code}${stderr ? `: ${stderr.trim()}` : ""}`
+            )
+          );
+        }
+      });
+
+      proc.on("error", (error) => {
+        if (timedOut) return;
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+    });
+  }
+
+  _detectKdeWindowClass() {
+    if (this.commandExists("kdotool")) {
+      try {
+        const idResult = spawnSync("kdotool", ["getactivewindow"], { timeout: 1000 });
+        if (idResult.status === 0) {
+          const winId = idResult.stdout.toString().trim();
+          const classResult = spawnSync("kdotool", ["getwindowclassname", winId], {
+            timeout: 1000,
+          });
+          if (classResult.status === 0) {
+            const cls = classResult.stdout.toString().toLowerCase().trim();
+            if (cls) return cls;
+          }
+        }
+      } catch {}
+    }
+
+    // Fallback (KDE 5 and 6): load a tiny script into KWin via D-Bus that
+    // prints the active window's resourceClass to the journal, read it back.
+    const qdbus = ["qdbus6", "qdbus"].find((cmd) => this.commandExists(cmd));
+    if (qdbus) {
+      const journalMarker = `OW_CLASS_${process.pid}`;
+      try {
+        if (!this._kwinScriptPath) {
+          this._kwinScriptPath = path.join(os.tmpdir(), `kwin-active-class-${process.pid}.js`);
+          fs.writeFileSync(
+            this._kwinScriptPath,
+            `print("${journalMarker}:" + (workspace.activeWindow ? workspace.activeWindow.resourceClass : ""))`
+          );
+        }
+        const loadResult = spawnSync(
+          qdbus,
+          ["org.kde.KWin", "/Scripting", "loadScript", this._kwinScriptPath],
+          { timeout: 1000, stdio: "pipe" }
+        );
+        if (loadResult.status === 0) {
+          const scriptId = loadResult.stdout.toString().trim();
+          spawnSync(qdbus, ["org.kde.KWin", `/Scripting/Script${scriptId}`, "run"], {
+            timeout: 1000,
+            stdio: "pipe",
+          });
+          // KWin script executes in the compositor; brief pause lets the journal flush.
+          spawnSync("sleep", ["0.03"], { timeout: 100 });
+
+          const baseJournalArgs = [
+            // KDE 6 logs KWin output under this identifier
+            "--identifier=kwin_wayland_wrapper",
+            "--since=3 seconds ago",
+            "-n",
+            "5",
+            "--no-pager",
+            "-o",
+            "cat",
+          ];
+
+          let windowClass = null;
+          // Try user journal first; fall back to system journal when
+          // /var/log/journal/ is missing and entries land there instead.
+          for (const prefix of [["--user"], []]) {
+            const journalResult = spawnSync("journalctl", [...prefix, ...baseJournalArgs], {
+              timeout: 1000,
+              stdio: "pipe",
+            });
+            if (journalResult.status === 0) {
+              const lines = journalResult.stdout.toString().split("\n");
+              for (let i = lines.length - 1; i >= 0; i--) {
+                const idx = lines[i].indexOf(`${journalMarker}:`);
+                if (idx !== -1) {
+                  const cls = lines[i]
+                    .slice(idx + journalMarker.length + 1)
+                    .trim()
+                    .toLowerCase();
+                  if (cls) {
+                    windowClass = cls;
+                    break;
+                  }
+                }
+              }
+              if (windowClass) break;
+            }
+          }
+
+          spawnSync(qdbus, ["org.kde.KWin", `/Scripting/Script${scriptId}`, "stop"], {
+            timeout: 1000,
+            stdio: "pipe",
+          });
+
+          if (windowClass) return windowClass;
+        }
+      } catch (err) {
+        debugLogger.warn("KWin script fallback failed", { error: err?.message }, "clipboard");
+      }
+    }
+
+    return null;
+  }
+
+  _detectHyprlandWindowClass() {
+    if (!this.commandExists("hyprctl")) return null;
+    try {
+      const result = spawnSync("hyprctl", ["activewindow", "-j"], { timeout: 1000 });
+      if (result.status !== 0) return null;
+      const win = JSON.parse(result.stdout.toString());
+      return win.class?.toLowerCase() || null;
+    } catch (err) {
+      debugLogger.warn("hyprctl window detection failed", { error: err?.message }, "clipboard");
+      return null;
+    }
+  }
+
+  _runLinuxPasteCommand(command, args, label, { expectedOutput } = {}) {
+    return new Promise((resolve, reject) => {
+      debugLogger.debug("Attempting Linux paste command", { command, args, label }, "clipboard");
+      const proc = spawn(command, args);
+      let stdout = "";
+      let stderr = "";
+      let timedOut = false;
+
+      proc.stdout?.on("data", (data) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr?.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        killProcess(proc, "SIGKILL");
+        reject(new Error(`${label} timed out`));
+      }, 2000);
+
+      proc.on("close", (code) => {
+        if (timedOut) return;
+        clearTimeout(timeoutId);
+        const output = stdout.trim();
+        if (code === 0 && (expectedOutput === undefined || output === expectedOutput)) {
+          resolve();
+        } else {
+          const errorOutput = stderr.trim() || output;
+          reject(
+            new Error(`${label} exited with code ${code}${errorOutput ? `: ${errorOutput}` : ""}`)
+          );
+        }
+      });
+
+      proc.on("error", (error) => {
+        if (timedOut) return;
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+    });
+  }
+
+  _saveClipboard() {
+    const formats = clipboard.availableFormats();
+    const data = {};
+
+    const text = clipboard.readText();
+    if (text) data.text = text;
+
+    if (formats.includes("text/html")) {
+      const html = clipboard.readHTML();
+      if (html) data.html = html;
+    }
+
+    if (formats.includes("text/rtf") || formats.includes("public.rtf")) {
+      const rtf = clipboard.readRTF();
+      if (rtf) data.rtf = rtf;
+    }
+
+    if (formats.some((f) => f.startsWith("image/"))) {
+      const image = clipboard.readImage();
+      if (image && !image.isEmpty()) data.image = image;
+    }
+
+    const keys = Object.keys(data);
+    if (keys.length === 1 && keys[0] === "image") {
+      return { type: "image", data: data.image };
+    }
+    if (keys.length === 1 && keys[0] === "text") {
+      return { type: "text", data: data.text };
+    }
+    if (keys.length > 0) return { type: "formats", data };
+
+    return { type: "text", data: text };
+  }
+
+  _restoreClipboard(original) {
+    if (!original) return;
+    if (original.type === "formats") {
+      clipboard.write(original.data);
+    } else if (original.type === "image") {
+      clipboard.writeImage(original.data);
+    } else {
+      clipboard.writeText(original.data);
+    }
+    this.safeLog("🔄 Clipboard restored");
+  }
+
+  async _restoreClipboardAfterDelay(original, { delayMs, expectedText, restore } = {}) {
+    if (!original) return;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+    if (typeof expectedText === "string") {
+      let currentText = null;
+      try {
+        currentText = clipboard.readText();
+      } catch {}
+
+      if (currentText !== expectedText) {
+        debugLogger.debug(
+          "Skipping clipboard restore because clipboard changed",
+          {
+            expectedLength: expectedText.length,
+            currentLength: typeof currentText === "string" ? currentText.length : null,
+          },
+          "clipboard"
+        );
+        return;
+      }
+    }
+
+    if (restore) {
+      restore();
+      return;
+    }
+
+    this._restoreClipboard(original);
+  }
+
+  safeLog(...args) {
+    if (process.env.NODE_ENV === "development") {
+      try {
+        console.log(...args);
+      } catch (error) {
+        // Silently ignore EPIPE errors in logging
+        if (error.code !== "EPIPE") {
+          process.stderr.write(`Log error: ${error.message}\n`);
+        }
+      }
+    }
+  }
+
+  commandExists(cmd) {
+    const now = Date.now();
+    const cached = this.commandAvailabilityCache.get(cmd);
+    if (cached && now < cached.expiresAt) {
+      return cached.exists;
+    }
+    try {
+      const res = spawnSync("sh", ["-c", `command -v ${cmd}`], {
+        stdio: "ignore",
+      });
+      const exists = res.status === 0;
+      this.commandAvailabilityCache.set(cmd, {
+        exists,
+        expiresAt: now + CACHE_TTL_MS,
+      });
+      return exists;
+    } catch {
+      this.commandAvailabilityCache.set(cmd, {
+        exists: false,
+        expiresAt: now + CACHE_TTL_MS,
+      });
+      return false;
+    }
+  }
+
+  async pasteText(text, options = {}) {
+    return this._runClipboardOperation(
+      () => this._pasteText(text, options),
+      (result) => result?.restoreComplete
+    );
+  }
+
+  async runClipboardOperation(operation) {
+    return this._runClipboardOperation(operation);
+  }
+
+  async _runClipboardOperation(operation, completionForResult = null) {
+    const previousPaste = this.pasteQueue.catch(() => {});
+    let markRestoreComplete;
+    const restoreGate = new Promise((resolve) => {
+      markRestoreComplete = resolve;
+    });
+
+    this.pasteQueue = previousPaste.then(() => restoreGate).catch(() => {});
+    await previousPaste;
+
+    try {
+      const result = await operation();
+      const completion = completionForResult ? completionForResult(result) : null;
+      Promise.resolve(completion).then(markRestoreComplete, markRestoreComplete);
+      return result;
+    } catch (error) {
+      markRestoreComplete();
+      throw error;
+    }
+  }
+
+  async _pasteText(text, options = {}) {
+    const startTime = Date.now();
+    const platform = process.platform;
+    let method = "unknown";
+    const webContents = options.webContents;
+    const allowClipboardFallback = options.allowClipboardFallback === true;
+
+    try {
+      const shouldRestore = options.restoreClipboard !== false;
+      const originalClipboard = shouldRestore ? this._saveClipboard() : null;
+      const originalPrimary =
+        platform === "linux" && shouldRestore ? this._readPrimarySelection() : null;
+      if (shouldRestore) {
+        this.safeLog("💾 Saved original clipboard:", originalClipboard.type);
+      }
+
+      if (platform === "linux") {
+        if (this._isWayland()) {
+          this._writeClipboardWayland(text, webContents);
+        } else {
+          clipboard.writeText(text);
+        }
+        this._writePrimarySelection(text);
+      } else {
+        clipboard.writeText(text);
+      }
+      this.safeLog("📋 Text copied to clipboard:", text.substring(0, 50) + "...");
+
+      let pasteResult = { restoreComplete: Promise.resolve() };
+
+      if (platform === "darwin") {
+        method = this.resolveFastPasteBinary() ? "cgevent" : "applescript";
+        this.safeLog("🔍 Checking accessibility permissions for paste operation...");
+        const hasPermissions = await this.checkAccessibilityPermissions(allowClipboardFallback);
+
+        if (!hasPermissions) {
+          this.safeLog("⚠️ No accessibility permissions - text copied to clipboard only");
+          if (allowClipboardFallback) {
+            this.safeLog("✅ Clipboard fallback used (manual paste required)");
+            return { restoreComplete: Promise.resolve(), pasted: false };
+          }
+          const errorMsg =
+            "Accessibility permissions required for automatic pasting. Text has been copied to clipboard - please paste manually with Cmd+V.";
+          throw new Error(errorMsg);
+        }
+
+        this.safeLog("✅ Permissions granted, attempting to paste...");
+        try {
+          pasteResult = await this.pasteMacOS(originalClipboard, {
+            ...options,
+            expectedClipboardText: text,
+          });
+        } catch (firstError) {
+          this.safeLog("⚠️ First paste attempt failed, retrying...", firstError?.message);
+          clipboard.writeText(text);
+          await new Promise((r) => setTimeout(r, 200));
+          pasteResult = await this.pasteMacOS(originalClipboard, {
+            ...options,
+            expectedClipboardText: text,
+          });
+        }
+      } else if (platform === "win32") {
+        const winFastPaste = this.resolveWindowsFastPasteBinary();
+        if (winFastPaste) {
+          method = "sendinput";
+        } else {
+          const nircmdPath = this.getNircmdPath();
+          method = nircmdPath ? "nircmd" : "powershell";
+        }
+        pasteResult = await this.pasteWindows(originalClipboard, {
+          expectedClipboardText: text,
+          targetWindow: options.targetWindow,
+        });
+      } else {
+        pasteResult = await this.pasteLinux(originalClipboard, {
+          ...options,
+          originalPrimary,
+          expectedClipboardText: text,
+        });
+        method = pasteResult?.method || "linux-tools";
+      }
+
+      this.safeLog("✅ Paste operation complete", {
+        platform,
+        method,
+        elapsedMs: Date.now() - startTime,
+        textLength: text.length,
+      });
+      return pasteResult || { restoreComplete: Promise.resolve() };
+    } catch (error) {
+      this.safeLog("❌ Paste operation failed", {
+        platform,
+        method,
+        elapsedMs: Date.now() - startTime,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  async pasteMacOS(originalClipboard, options = {}) {
+    const fastPasteBinary = this.resolveFastPasteBinary();
+    const useFastPaste = !!fastPasteBinary;
+    const pasteDelay = options.fromStreaming ? (useFastPaste ? 15 : 50) : PASTE_DELAYS.darwin;
+
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        const pasteProcess = useFastPaste
+          ? spawn(fastPasteBinary)
+          : spawn("osascript", [
+              "-e",
+              'tell application "System Events" to key code 9 using command down',
+            ]);
+
+        let errorOutput = "";
+        let hasTimedOut = false;
+
+        pasteProcess.stderr.on("data", (data) => {
+          errorOutput += data.toString();
+        });
+
+        pasteProcess.on("close", (code) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+          pasteProcess.removeAllListeners();
+
+          if (code === 0) {
+            this.safeLog(`Text pasted successfully via ${useFastPaste ? "CGEvent" : "osascript"}`);
+            if (originalClipboard != null) {
+              resolve({
+                restoreComplete: this._restoreClipboardAfterDelay(originalClipboard, {
+                  delayMs: RESTORE_DELAYS.darwin,
+                  expectedText: options.expectedClipboardText,
+                }),
+              });
+            } else {
+              resolve({ restoreComplete: Promise.resolve() });
+            }
+          } else if (useFastPaste) {
+            this.safeLog(
+              code === 2
+                ? "CGEvent binary lacks accessibility trust, falling back to osascript"
+                : `CGEvent paste failed (code ${code}), falling back to osascript`,
+              { stderr: errorOutput.trim() }
+            );
+            this.fastPasteChecked = true;
+            this.fastPastePath = null;
+            this.pasteMacOSWithOsascript(originalClipboard, options).then(resolve).catch(reject);
+          } else {
+            this.accessibilityCache = { value: null, expiresAt: 0 };
+            const stderr = errorOutput.trim();
+            const errorMsg = `Paste failed (code ${code}${stderr ? `: ${stderr}` : ""}). Text is copied to clipboard - please paste manually with Cmd+V.`;
+            reject(new Error(errorMsg));
+          }
+        });
+
+        pasteProcess.on("error", (error) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+          pasteProcess.removeAllListeners();
+
+          if (useFastPaste) {
+            this.safeLog("CGEvent paste error, falling back to osascript");
+            this.fastPasteChecked = true;
+            this.fastPastePath = null;
+            this.pasteMacOSWithOsascript(originalClipboard, options).then(resolve).catch(reject);
+          } else {
+            const errorMsg = `Paste command failed: ${error.message}. Text is copied to clipboard - please paste manually with Cmd+V.`;
+            reject(new Error(errorMsg));
+          }
+        });
+
+        const timeoutId = setTimeout(() => {
+          hasTimedOut = true;
+          killProcess(pasteProcess, "SIGKILL");
+          pasteProcess.removeAllListeners();
+          const errorMsg =
+            "Paste operation timed out. Text is copied to clipboard - please paste manually with Cmd+V.";
+          reject(new Error(errorMsg));
+        }, 3000);
+      }, pasteDelay);
+    });
+  }
+
+  async pasteMacOSWithOsascript(originalClipboard, options = {}) {
+    return new Promise((resolve, reject) => {
+      const pasteProcess = spawn("osascript", [
+        "-e",
+        'tell application "System Events" to key code 9 using command down',
+      ]);
+
+      let hasTimedOut = false;
+
+      pasteProcess.on("close", (code) => {
+        if (hasTimedOut) return;
+        clearTimeout(timeoutId);
+        pasteProcess.removeAllListeners();
+
+        if (code === 0) {
+          this.safeLog("Text pasted successfully via osascript fallback");
+          if (originalClipboard != null) {
+            resolve({
+              restoreComplete: this._restoreClipboardAfterDelay(originalClipboard, {
+                delayMs: RESTORE_DELAYS.darwin,
+                expectedText: options.expectedClipboardText,
+              }),
+            });
+          } else {
+            resolve({ restoreComplete: Promise.resolve() });
+          }
+        } else {
+          this.accessibilityCache = { value: null, expiresAt: 0 };
+          const errorMsg = `Paste failed (code ${code}). Text is copied to clipboard - please paste manually with Cmd+V.`;
+          reject(new Error(errorMsg));
+        }
+      });
+
+      pasteProcess.on("error", (error) => {
+        if (hasTimedOut) return;
+        clearTimeout(timeoutId);
+        pasteProcess.removeAllListeners();
+        const errorMsg = `Paste command failed: ${error.message}. Text is copied to clipboard - please paste manually with Cmd+V.`;
+        reject(new Error(errorMsg));
+      });
+
+      const timeoutId = setTimeout(() => {
+        hasTimedOut = true;
+        killProcess(pasteProcess, "SIGKILL");
+        pasteProcess.removeAllListeners();
+        reject(
+          new Error(
+            "Paste operation timed out. Text is copied to clipboard - please paste manually with Cmd+V."
+          )
+        );
+      }, 3000);
+    });
+  }
+
+  async pasteWindows(originalClipboard, options = {}) {
+    const fastPastePath = this.resolveWindowsFastPasteBinary();
+
+    if (fastPastePath) {
+      return this.pasteWithFastPaste(fastPastePath, originalClipboard, options);
+    }
+
+    return this.pasteWithNircmdOrPowerShell(originalClipboard, options);
+  }
+
+  async pasteWithFastPaste(fastPastePath, originalClipboard, options = {}) {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        let hasTimedOut = false;
+        const startTime = Date.now();
+
+        // Restore the window captured at record start (#859) so the paste lands
+        // where the user was dictating even if focus drifted during
+        // transcription. The hex handle comes from --detect-only's TARGET line
+        // via selectionManager. An older cached binary ignores the unknown flag
+        // and pastes into the current foreground — the pre-fix behavior.
+        const args =
+          options.targetWindow != null ? ["--restore-window", String(options.targetWindow)] : [];
+
+        this.safeLog("⚡ Windows fast-paste starting", { targetWindow: options.targetWindow });
+
+        const pasteProcess = spawn(fastPastePath, args, {
+          stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
+        });
+
+        let stdoutData = "";
+        let stderrData = "";
+
+        pasteProcess.stdout.on("data", (data) => {
+          stdoutData += data.toString();
+        });
+
+        pasteProcess.stderr.on("data", (data) => {
+          stderrData += data.toString();
+        });
+
+        pasteProcess.on("close", (code) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+
+          const elapsed = Date.now() - startTime;
+          const output = stdoutData.trim();
+
+          if (code === 0) {
+            this.safeLog("✅ Windows fast-paste success", {
+              elapsedMs: elapsed,
+              output,
+            });
+            if (originalClipboard != null) {
+              resolve({
+                restoreComplete: this._restoreClipboardAfterDelay(originalClipboard, {
+                  delayMs: RESTORE_DELAYS.win32_nircmd,
+                  expectedText: options.expectedClipboardText,
+                }),
+              });
+            } else {
+              resolve({ restoreComplete: Promise.resolve() });
+            }
+          } else {
+            this.safeLog(
+              `❌ Windows fast-paste failed (code ${code}), falling back to nircmd/PowerShell`,
+              { elapsedMs: elapsed, stderr: stderrData.trim() }
+            );
+            this.pasteWithNircmdOrPowerShell(originalClipboard, options)
+              .then(resolve)
+              .catch(reject);
+          }
+        });
+
+        pasteProcess.on("error", (error) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+          this.safeLog("❌ Windows fast-paste error, falling back to nircmd/PowerShell", {
+            elapsedMs: Date.now() - startTime,
+            error: error.message,
+          });
+          this.pasteWithNircmdOrPowerShell(originalClipboard, options).then(resolve).catch(reject);
+        });
+
+        const timeoutId = setTimeout(() => {
+          hasTimedOut = true;
+          this.safeLog("⏱️ Windows fast-paste timeout, falling back to nircmd/PowerShell");
+          killProcess(pasteProcess, "SIGKILL");
+          pasteProcess.removeAllListeners();
+          this.pasteWithNircmdOrPowerShell(originalClipboard, options).then(resolve).catch(reject);
+        }, 2000);
+      }, PASTE_DELAYS.win32_fast);
+    });
+  }
+
+  async pasteWithNircmdOrPowerShell(originalClipboard, options = {}) {
+    const nircmdPath = this.getNircmdPath();
+    if (nircmdPath) {
+      return this.pasteWithNircmd(nircmdPath, originalClipboard, options);
+    }
+    return this.pasteWithPowerShell(originalClipboard, options);
+  }
+
+  async pasteWithNircmd(nircmdPath, originalClipboard, options = {}) {
+    return new Promise((resolve, reject) => {
+      const pasteDelay = PASTE_DELAYS.win32_nircmd;
+      const restoreDelay = RESTORE_DELAYS.win32_nircmd;
+
+      setTimeout(() => {
+        let hasTimedOut = false;
+        const startTime = Date.now();
+
+        this.safeLog(`⚡ nircmd paste starting (delay: ${pasteDelay}ms)`);
+
+        const pasteProcess = spawn(nircmdPath, ["sendkeypress", "ctrl+v"], {
+          windowsHide: true,
+        });
+
+        let errorOutput = "";
+
+        pasteProcess.stderr.on("data", (data) => {
+          errorOutput += data.toString();
+        });
+
+        pasteProcess.on("close", (code) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+
+          const elapsed = Date.now() - startTime;
+
+          if (code === 0) {
+            this.safeLog(`✅ nircmd paste success`, {
+              elapsedMs: elapsed,
+              restoreDelayMs: restoreDelay,
+            });
+            if (originalClipboard != null) {
+              resolve({
+                restoreComplete: this._restoreClipboardAfterDelay(originalClipboard, {
+                  delayMs: restoreDelay,
+                  expectedText: options.expectedClipboardText,
+                }),
+              });
+            } else {
+              resolve({ restoreComplete: Promise.resolve() });
+            }
+          } else {
+            this.safeLog(`❌ nircmd failed (code ${code}), falling back to PowerShell`, {
+              elapsedMs: elapsed,
+              stderr: errorOutput,
+            });
+            this.pasteWithPowerShell(originalClipboard, options).then(resolve).catch(reject);
+          }
+        });
+
+        pasteProcess.on("error", (error) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+          const elapsed = Date.now() - startTime;
+          this.safeLog(`❌ nircmd error, falling back to PowerShell`, {
+            elapsedMs: elapsed,
+            error: error.message,
+          });
+          this.pasteWithPowerShell(originalClipboard, options).then(resolve).catch(reject);
+        });
+
+        const timeoutId = setTimeout(() => {
+          hasTimedOut = true;
+          const elapsed = Date.now() - startTime;
+          this.safeLog(`⏱️ nircmd timeout, falling back to PowerShell`, { elapsedMs: elapsed });
+          killProcess(pasteProcess, "SIGKILL");
+          pasteProcess.removeAllListeners();
+          this.pasteWithPowerShell(originalClipboard, options).then(resolve).catch(reject);
+        }, 2000);
+      }, pasteDelay);
+    });
+  }
+
+  async pasteWithPowerShell(originalClipboard, options = {}) {
+    return new Promise((resolve, reject) => {
+      const pasteDelay = PASTE_DELAYS.win32_pwsh;
+      const restoreDelay = RESTORE_DELAYS.win32_pwsh;
+
+      setTimeout(() => {
+        let hasTimedOut = false;
+        const startTime = Date.now();
+
+        this.safeLog(`🪟 PowerShell paste starting (delay: ${pasteDelay}ms)`);
+
+        const pasteProcess = spawn(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');[System.Windows.Forms.SendKeys]::SendWait('^v')",
+          ],
+          { windowsHide: true }
+        );
+
+        let errorOutput = "";
+
+        pasteProcess.stderr.on("data", (data) => {
+          errorOutput += data.toString();
+        });
+
+        pasteProcess.on("close", (code) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+
+          const elapsed = Date.now() - startTime;
+
+          if (code === 0) {
+            this.safeLog(`✅ PowerShell paste success`, {
+              elapsedMs: elapsed,
+              restoreDelayMs: restoreDelay,
+            });
+            if (originalClipboard != null) {
+              resolve({
+                restoreComplete: this._restoreClipboardAfterDelay(originalClipboard, {
+                  delayMs: restoreDelay,
+                  expectedText: options.expectedClipboardText,
+                }),
+              });
+            } else {
+              resolve({ restoreComplete: Promise.resolve() });
+            }
+          } else {
+            this.safeLog(`❌ PowerShell paste failed`, {
+              code,
+              elapsedMs: elapsed,
+              stderr: errorOutput,
+            });
+            reject(
+              new Error(
+                `Windows paste failed with code ${code}. Text is copied to clipboard - please paste manually with Ctrl+V.`
+              )
+            );
+          }
+        });
+
+        pasteProcess.on("error", (error) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+          const elapsed = Date.now() - startTime;
+          this.safeLog(`❌ PowerShell paste error`, {
+            elapsedMs: elapsed,
+            error: error.message,
+          });
+          reject(
+            new Error(
+              `Windows paste failed: ${error.message}. Text is copied to clipboard - please paste manually with Ctrl+V.`
+            )
+          );
+        });
+
+        const timeoutId = setTimeout(() => {
+          hasTimedOut = true;
+          const elapsed = Date.now() - startTime;
+          this.safeLog(`⏱️ PowerShell paste timeout`, { elapsedMs: elapsed });
+          killProcess(pasteProcess, "SIGKILL");
+          pasteProcess.removeAllListeners();
+          reject(
+            new Error(
+              "Paste operation timed out. Text is copied to clipboard - please paste manually with Ctrl+V."
+            )
+          );
+        }, 5000);
+      }, pasteDelay);
+    });
+  }
+
+  async pasteLinux(originalClipboard, options = {}) {
+    const { isWayland, xwaylandAvailable, isGnome, isKde, isWlroots, isHyprland } =
+      getLinuxSessionInfo();
+    const webContents = options.webContents;
+    const originalPrimary = options.originalPrimary ?? null;
+    const expectedText = options.expectedClipboardText;
+    const xdotoolExists = this.commandExists("xdotool");
+    const wtypeExists = this.commandExists("wtype");
+    const ydotoolExists = this.commandExists("ydotool");
+    const ydotoolDaemonRunning = ydotoolExists && this._isYdotoolDaemonRunning();
+    const linuxFastPaste = this.resolveLinuxFastPasteBinary();
+
+    debugLogger.debug(
+      "Linux paste environment",
+      {
+        isWayland,
+        xwaylandAvailable,
+        isGnome,
+        isKde,
+        isWlroots,
+        linuxFastPaste: !!linuxFastPaste,
+        canAccessUinput: this._canAccessUinput(),
+        xdotoolExists,
+        wtypeExists,
+        ydotoolExists,
+        ydotoolDaemonRunning,
+        display: process.env.DISPLAY,
+        waylandDisplay: process.env.WAYLAND_DISPLAY,
+        xdgSessionType: process.env.XDG_SESSION_TYPE,
+        xdgCurrentDesktop: process.env.XDG_CURRENT_DESKTOP,
+      },
+      "clipboard"
+    );
+
+    const restoreClipboard = () => {
+      const delay = isKde && isWayland ? RESTORE_DELAYS.linux_kde_wayland : RESTORE_DELAYS.linux;
+      if (originalClipboard != null) {
+        return this._restoreClipboardAfterDelay(originalClipboard, {
+          delayMs: delay,
+          expectedText,
+          restore: () => {
+            if (isWayland && originalClipboard.type === "text") {
+              this._writeClipboardWayland(originalClipboard.data, webContents);
+            } else {
+              this._restoreClipboard(originalClipboard);
+            }
+            if (originalPrimary != null) {
+              this._writePrimarySelection(originalPrimary);
+            }
+          },
+        });
+      }
+      if (originalPrimary != null) {
+        return this._restoreClipboardAfterDelay(
+          { type: "text", data: "" },
+          {
+            delayMs: delay,
+            expectedText,
+            restore: () => this._writePrimarySelection(originalPrimary),
+          }
+        );
+      }
+      return Promise.resolve();
+    };
+
+    // Pre-detect the target window BEFORE our window takes focus or blurs,
+    // so the fast-paste binary and fallback tools know where to send keystrokes.
+    const preDetectTargetWindow = () => {
+      if (!xdotoolExists || (isWayland && !xwaylandAvailable)) return null;
+      try {
+        const result = spawnSync("xdotool", ["getactivewindow"]);
+        return result.status === 0 ? result.stdout.toString().trim() || null : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const preDetectWindowClass = (windowId) => {
+      if (!xdotoolExists || (isWayland && !xwaylandAvailable)) return null;
+      try {
+        const args = windowId
+          ? ["getwindowclassname", windowId]
+          : ["getactivewindow", "getwindowclassname"];
+        const result = spawnSync("xdotool", args);
+        return result.status === 0 ? result.stdout.toString().toLowerCase().trim() || null : null;
+      } catch {
+        return null;
+      }
+    };
+
+    // Some terminals (notably Konsole on X11) intermittently report no WM_CLASS via
+    // xdotool, leaving WM_CLASS detection blind. Fall back to the owning process
+    // name from /proc/<pid>/comm so terminal-aware paste keys still get chosen.
+    const preDetectWindowPid = (windowId) => {
+      if (!xdotoolExists || (isWayland && !xwaylandAvailable)) return null;
+      try {
+        const args = windowId ? ["getwindowpid", windowId] : ["getactivewindow", "getwindowpid"];
+        const result = spawnSync("xdotool", args, { timeout: 1000 });
+        if (result.status !== 0) return null;
+        const pid = parseInt(result.stdout.toString().trim(), 10);
+        return Number.isFinite(pid) && pid > 0 ? pid : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const preDetectWindowComm = (pid) => {
+      if (!pid) return null;
+      try {
+        return fs.readFileSync(`/proc/${pid}/comm`, "utf8").toLowerCase().trim() || null;
+      } catch {
+        return null;
+      }
+    };
+
+    // Electron apps bundle their runtime next to the executable (resources/app.asar
+    // or resources/app). Resolving the window PID to its exe via /proc spots them
+    // independent of window class, so this works on KDE and X11, not just on the
+    // blind-Wayland case where no class is reported at all.
+    const preDetectIsElectron = (pid) => {
+      if (!pid) return false;
+      try {
+        const dir = path.dirname(fs.readlinkSync(`/proc/${pid}/exe`));
+        return (
+          fs.existsSync(path.join(dir, "resources", "app.asar")) ||
+          fs.existsSync(path.join(dir, "resources", "app"))
+        );
+      } catch {
+        return false;
+      }
+    };
+
+    const targetWindowId = preDetectTargetWindow();
+    let detectedWindowClass = preDetectWindowClass(targetWindowId);
+
+    if (!detectedWindowClass && isKde) {
+      detectedWindowClass = this._detectKdeWindowClass();
+      if (detectedWindowClass) {
+        debugLogger.debug("KDE window class detected", { detectedWindowClass }, "clipboard");
+      }
+    }
+
+    if (!detectedWindowClass && isHyprland) {
+      detectedWindowClass = this._detectHyprlandWindowClass();
+      if (detectedWindowClass) {
+        debugLogger.debug("Hyprland window class detected", { detectedWindowClass }, "clipboard");
+      }
+    }
+
+    const detectedWindowPid = preDetectWindowPid(targetWindowId);
+    const detectedWindowComm = preDetectWindowComm(detectedWindowPid);
+    const detectedIsElectron = preDetectIsElectron(detectedWindowPid);
+    if (detectedIsElectron) {
+      this.safeLog("🪟 Electron window detected, using Shift+Insert paste", {
+        pid: detectedWindowPid,
+        windowClass: detectedWindowClass,
+      });
+    }
+    const windowSignals = [detectedWindowClass, detectedWindowComm].filter(Boolean);
+    const signalsMatch = (needle) => windowSignals.some((signal) => signal.includes(needle));
+    const detectedIsKonsole = signalsMatch("konsole");
+
+    // Shift+Insert is the universal Linux paste shortcut — works in terminals and
+    // GUI apps, and (unlike Ctrl+V) is not intercepted by TUI agents like Codex,
+    // Claude Code, or OpenCode as "paste image". Use it whenever the target window
+    // can't be classified, or for Konsole which silently drops simulated Ctrl+Shift+V.
+    // Electron apps (VS Code, Cursor) host TUI terminals too, so route them to
+    // Shift+Insert on any desktop environment, even when their class is detected.
+    const useShiftInsert =
+      detectedIsKonsole || detectedIsElectron || (isWayland && windowSignals.length === 0);
+    const isTerminalTarget =
+      windowSignals.length > 0 && LINUX_TERMINAL_CLASSES.some((term) => signalsMatch(term));
+    const hyprlandShortcut = useShiftInsert
+      ? { modifiers: "SHIFT", key: "Insert" }
+      : isTerminalTarget
+        ? { modifiers: "CTRL SHIFT", key: "V" }
+        : { modifiers: "CTRL", key: "V" };
+    const wtypeArgs = useShiftInsert
+      ? ["-M", "shift", "-k", "Insert", "-m", "shift"]
+      : isTerminalTarget
+        ? ["-M", "ctrl", "-M", "shift", "-k", "v", "-m", "shift", "-m", "ctrl"]
+        : ["-M", "ctrl", "-k", "v", "-m", "ctrl"];
+
+    // ydotool 0.1.x (Ubuntu 24.04) uses key names; 1.0.x uses raw keycodes.
+    // Wayland's physical fallback is always Shift+Insert to avoid KEY_V's layout-sensitive position.
+    const buildYdotoolArgs = () => {
+      const legacyYdotool = this._isYdotoolLegacy();
+      if (isWayland || useShiftInsert) {
+        return legacyYdotool ? ["key", "shift+Insert"] : ["key", "42:1", "110:1", "110:0", "42:0"];
+      }
+      if (isTerminalTarget) {
+        return legacyYdotool
+          ? ["key", "ctrl+shift+v"]
+          : ["key", "29:1", "42:1", "47:1", "47:0", "42:0", "29:0"];
+      }
+      return legacyYdotool ? ["key", "ctrl+v"] : ["key", "29:1", "47:1", "47:0", "29:0"];
+    };
+    let ydotoolAttempted = false;
+
+    // Konsole on X11 silently drops simulated Ctrl+Shift+V via XTest (a long-standing
+    // focus/grab quirk), and the native fast-paste binary uses XTest. Route Konsole+X11
+    // through the xdotool fallback instead, which sends shift+Insert with
+    // windowactivate --sync and reliably reaches the target window.
+    const skipFastPasteForKonsole = detectedIsKonsole && !isWayland;
+
+    const appendModeFlag = (args) => {
+      if (useShiftInsert) args.push("--shift-insert");
+      else if (isTerminalTarget) args.push("--terminal");
+    };
+
+    if (isWayland && isWlroots && wtypeExists) {
+      try {
+        await this._runLinuxPasteCommand("wtype", wtypeArgs, "wtype");
+        this.safeLog("✅ Paste successful using wtype");
+        return { method: "wtype", restoreComplete: restoreClipboard() };
+      } catch (error) {
+        debugLogger.warn(
+          "wtype paste failed, falling back",
+          { error: error?.message },
+          "clipboard"
+        );
+      }
+    }
+
+    // sendshortcut resolves keys through the compositor's keymap, so it is
+    // layout-independent — but it has a known stuck-modifier bug (synthetic
+    // modifiers stay latched in XKB: hyprwm/Hyprland#14099, unresolved as of
+    // 0.56). wtype above is equally layout-independent and unaffected, so
+    // sendshortcut is only the zero-dependency fallback. The explicit
+    // "activewindow" target is the community-reported mitigation for #14099.
+    if (isWayland && isHyprland && this.commandExists("hyprctl")) {
+      const currentDispatcher = `hl.dsp.send_shortcut({ mods = "${hyprlandShortcut.modifiers}", key = "${hyprlandShortcut.key}", window = "activewindow" })`;
+      const legacyDispatcher = `${hyprlandShortcut.modifiers}, ${hyprlandShortcut.key}, activewindow`;
+      const dispatchers = [
+        { args: ["dispatch", currentDispatcher], label: "hyprctl send_shortcut" },
+        {
+          args: ["dispatch", "sendshortcut", legacyDispatcher],
+          label: "hyprctl legacy sendshortcut",
+        },
+      ];
+      let lastDispatcherError;
+
+      for (const dispatcher of dispatchers) {
+        try {
+          await this._runLinuxPasteCommand("hyprctl", dispatcher.args, dispatcher.label, {
+            expectedOutput: "ok",
+          });
+          this.safeLog("✅ Paste shortcut dispatched by Hyprland", {
+            dispatcher: dispatcher.label,
+            shortcut: dispatcher.args.at(-1),
+          });
+          return { method: "hyprland-sendshortcut", restoreComplete: restoreClipboard() };
+        } catch (error) {
+          lastDispatcherError = error;
+          debugLogger.debug(
+            "Hyprland dispatcher failed",
+            { dispatcher: dispatcher.label, error: error?.message },
+            "clipboard"
+          );
+        }
+      }
+
+      debugLogger.warn(
+        "Hyprland symbolic paste failed, falling back",
+        { error: lastDispatcherError?.message },
+        "clipboard"
+      );
+    }
+
+    if (linuxFastPaste && !skipFastPasteForKonsole) {
+      const spawnFastPaste = (args, label) =>
+        this._runLinuxPasteCommand(linuxFastPaste, args, `linux-fast-paste ${label}`);
+
+      if (isWayland) {
+        const tryUinputPaste = async () => {
+          if (this.uinputTimedOut) {
+            throw new Error("uinput timed out earlier this session, skipping");
+          }
+          const args = ["--uinput", "--shift-insert"];
+          try {
+            await spawnFastPaste(args, "uinput");
+          } catch (error) {
+            // A timeout means uinput hangs in this environment (unlike a fast
+            // error, which can be transient) — don't re-pay 2s on every paste.
+            if (error?.message?.endsWith(" timed out")) {
+              this.uinputTimedOut = true;
+            }
+            throw error;
+          }
+          this.safeLog("✅ Paste successful using native linux-fast-paste (uinput)");
+          debugLogger.info(
+            "Paste successful",
+            { tool: "linux-fast-paste", method: "uinput", detectedWindowClass },
+            "clipboard"
+          );
+          return { restoreComplete: restoreClipboard() };
+        };
+
+        const tryPortalPaste = async () => {
+          try {
+            await this._runPortalPaste(linuxFastPaste, {
+              shiftInsert: useShiftInsert,
+              terminal: isTerminalTarget,
+            });
+            this.safeLog("✅ Paste successful using linux-fast-paste --portal (RemoteDesktop)");
+            return { restoreComplete: restoreClipboard() };
+          } catch (portalError) {
+            if (portalError?.message === "portal-denied") {
+              this.portalDenied = true;
+            } else if (
+              portalError?.message === "portal support not compiled in" ||
+              portalError?.message === "portal symbolic keyboard input unavailable"
+            ) {
+              this.portalUnavailable = true;
+            } else {
+              // Timeout or service error: the session stays broken until app
+              // restart, so skip the portal from now on (#1614).
+              this.portalFailed = true;
+            }
+            debugLogger.warn(
+              "linux-fast-paste --portal failed, falling back",
+              { error: portalError?.message },
+              "clipboard"
+            );
+            return false;
+          }
+        };
+
+        // KDE with XWayland: portal first because clipboard and input are both
+        // on X11; uinput causes clipboard desync (X11 clipboard vs Wayland input).
+        if (isKde && !this.portalDenied && !this.portalUnavailable && !this.portalFailed) {
+          const portalPaste = await tryPortalPaste();
+          if (portalPaste) return { method: "portal", ...portalPaste };
+        }
+
+        // GNOME: only lead with the portal when a saved token lets it run
+        // silently — a tokenless portal can stall 10s+ on a permission dialog
+        // (issue #494), so first-time pastes try uinput and only fall back to
+        // the portal (and its dialog) when uinput is unavailable.
+        const shouldPreferGnomePortal =
+          isGnome &&
+          !this.portalDenied &&
+          !this.portalUnavailable &&
+          !this.portalFailed &&
+          !this.portalTokenPasteFailed &&
+          !!this._readPortalToken();
+        if (shouldPreferGnomePortal) {
+          const portalPaste = await tryPortalPaste();
+          if (portalPaste) return { method: "portal", ...portalPaste };
+          this.portalTokenPasteFailed = true;
+        }
+
+        // GNOME: a running ydotoold already owns a persistent uinput device, so
+        // paste through it instead of the throwaway device the binary creates per
+        // paste. Mutter can take 150–500 ms to pick up a hotplugged device, but the
+        // binary destroys its device ~100 ms after creation and exits 0 regardless,
+        // so the keystrokes are dropped and the fallbacks never run (#956).
+        if (isGnome && ydotoolDaemonRunning) {
+          ydotoolAttempted = true;
+          try {
+            await this._runLinuxPasteCommand("ydotool", buildYdotoolArgs(), "ydotool");
+            this.safeLog("✅ Paste successful using ydotool");
+            debugLogger.info("Paste successful", { tool: "ydotool" }, "clipboard");
+            return { method: "ydotool", restoreComplete: restoreClipboard() };
+          } catch (error) {
+            debugLogger.warn(
+              "ydotool paste failed on GNOME, trying uinput",
+              { error: error?.message },
+              "clipboard"
+            );
+          }
+        }
+
+        try {
+          const uinputPaste = await tryUinputPaste();
+          return { method: "uinput", ...uinputPaste };
+        } catch (uinputError) {
+          debugLogger.warn("uinput paste failed", { error: uinputError?.message }, "clipboard");
+        }
+
+        if (
+          isGnome &&
+          !shouldPreferGnomePortal &&
+          !this.portalDenied &&
+          !this.portalUnavailable &&
+          !this.portalFailed
+        ) {
+          const portalPaste = await tryPortalPaste();
+          if (portalPaste) return { method: "portal", ...portalPaste };
+        }
+
+        // XTest/XWayland fallback: works for XWayland apps on any Wayland compositor
+        if (xwaylandAvailable && !this.xtestTimedOut) {
+          const xtestArgs = [];
+          if (targetWindowId) xtestArgs.push("--window", targetWindowId);
+          appendModeFlag(xtestArgs);
+
+          try {
+            await spawnFastPaste(xtestArgs, "XTest/XWayland fallback");
+            this.safeLog("✅ Paste successful using native linux-fast-paste (XTest/XWayland)");
+            debugLogger.info(
+              "Paste successful",
+              { tool: "linux-fast-paste", method: "xtest-xwayland" },
+              "clipboard"
+            );
+            return {
+              method: "xtest-xwayland",
+              restoreComplete: restoreClipboard(),
+            };
+          } catch (xtestError) {
+            if (xtestError?.message?.endsWith(" timed out")) {
+              this.xtestTimedOut = true;
+            }
+            debugLogger.warn(
+              "XTest/XWayland fallback also failed",
+              { error: xtestError?.message },
+              "clipboard"
+            );
+          }
+        }
+
+        this.safeLog("⚠️ Native linux-fast-paste failed, falling back to system tools");
+      } else {
+        const xtestArgs = [];
+        if (targetWindowId) xtestArgs.push("--window", targetWindowId);
+        appendModeFlag(xtestArgs);
+
+        try {
+          await spawnFastPaste(xtestArgs, "XTest");
+          this.safeLog("✅ Paste successful using native linux-fast-paste (XTest)");
+          debugLogger.info(
+            "Paste successful",
+            { tool: "linux-fast-paste", method: "xtest" },
+            "clipboard"
+          );
+          return {
+            method: "xtest",
+            restoreComplete: restoreClipboard(),
+          };
+        } catch (error) {
+          this.safeLog(
+            `⚠️ Native linux-fast-paste failed: ${error?.message || error}, falling back to system tools`
+          );
+          debugLogger.warn(
+            "Native linux-fast-paste failed, falling back",
+            { error: error?.message },
+            "clipboard"
+          );
+        }
+      }
+    }
+
+    if (isTerminalTarget) {
+      this.safeLog(`🖥️ Terminal detected: ${windowSignals.join(" | ")}`);
+    }
+    const pasteKeys = useShiftInsert
+      ? "shift+Insert"
+      : isTerminalTarget
+        ? "ctrl+shift+v"
+        : "ctrl+v";
+
+    const canUseYdotool = ydotoolDaemonRunning;
+    const canUseXdotool = isWayland ? xwaylandAvailable && xdotoolExists : xdotoolExists;
+
+    // windowactivate ensures the target window (not ours) receives the keystroke
+    const xdotoolArgs = targetWindowId
+      ? ["windowactivate", "--sync", targetWindowId, "key", pasteKeys]
+      : ["key", pasteKeys];
+
+    if (targetWindowId) {
+      this.safeLog(
+        `🎯 Targeting window ID ${targetWindowId} for paste (signals: ${windowSignals.join(" | ") || "none"})`
+      );
+    }
+
+    const xdotoolEntry = canUseXdotool ? [{ cmd: "xdotool", args: xdotoolArgs }] : [];
+    const ydotoolEntry =
+      canUseYdotool && !ydotoolAttempted ? [{ cmd: "ydotool", args: buildYdotoolArgs() }] : [];
+
+    // Compositor-aware priority ordering. X11 and wlroots (where wtype already
+    // ran): xdotool first — native on X11, no daemon needed. GNOME, KDE, or
+    // unknown Wayland: ydotool (uinput) first because it reaches every window,
+    // while xdotool exits 0 even when the focused window is native Wayland and
+    // never receives the keystroke; its Wayland args are layout-safe Shift+Insert.
+    const candidates =
+      !isWayland || isWlroots
+        ? [...xdotoolEntry, ...ydotoolEntry]
+        : [...ydotoolEntry, ...xdotoolEntry];
+
+    const available = candidates.filter((c) => this.commandExists(c.cmd));
+
+    debugLogger.debug(
+      "Available paste tools",
+      {
+        candidateTools: candidates.map((c) => c.cmd),
+        availableTools: available.map((c) => c.cmd),
+        targetWindowId,
+        detectedWindowClass,
+        detectedWindowComm,
+        inTerminal: isTerminalTarget,
+        useShiftInsert,
+        pasteKeys,
+      },
+      "clipboard"
+    );
+
+    const pasteWith = (tool) =>
+      new Promise((resolve, reject) => {
+        const delay = isWayland ? 0 : PASTE_DELAYS.linux;
+
+        setTimeout(() => {
+          debugLogger.debug(
+            "Attempting paste",
+            {
+              cmd: tool.cmd,
+              args: tool.args,
+              delay,
+              isWayland,
+            },
+            "clipboard"
+          );
+
+          const proc = spawn(tool.cmd, tool.args);
+          let stderr = "";
+          let stdout = "";
+
+          proc.stderr?.on("data", (data) => {
+            stderr += data.toString();
+          });
+
+          proc.stdout?.on("data", (data) => {
+            stdout += data.toString();
+          });
+
+          let timedOut = false;
+          const timeoutId = setTimeout(() => {
+            timedOut = true;
+            killProcess(proc, "SIGKILL");
+            debugLogger.warn(
+              "Paste tool timed out",
+              {
+                cmd: tool.cmd,
+                timeoutMs: 2000,
+              },
+              "clipboard"
+            );
+          }, 2000);
+
+          proc.on("close", (code) => {
+            if (timedOut) return reject(new Error(`Paste with ${tool.cmd} timed out`));
+            clearTimeout(timeoutId);
+
+            if (code === 0) {
+              debugLogger.debug("Paste successful", { cmd: tool.cmd }, "clipboard");
+              resolve({ restoreComplete: restoreClipboard() });
+            } else {
+              debugLogger.error(
+                "Paste command failed",
+                {
+                  cmd: tool.cmd,
+                  args: tool.args,
+                  exitCode: code,
+                  stderr: stderr.trim(),
+                  stdout: stdout.trim(),
+                },
+                "clipboard"
+              );
+              reject(
+                new Error(
+                  `${tool.cmd} exited with code ${code}${stderr ? `: ${stderr.trim()}` : ""}`
+                )
+              );
+            }
+          });
+
+          proc.on("error", (error) => {
+            if (timedOut) return;
+            clearTimeout(timeoutId);
+            debugLogger.error(
+              "Paste command spawn error",
+              {
+                cmd: tool.cmd,
+                error: error.message,
+                code: error.code,
+              },
+              "clipboard"
+            );
+            reject(error);
+          });
+        }, delay);
+      });
+
+    const failedAttempts = [];
+    for (const tool of available) {
+      try {
+        const pasteResult = await pasteWith(tool);
+        this.safeLog(`✅ Paste successful using ${tool.cmd}`);
+        debugLogger.info("Paste successful", { tool: tool.cmd }, "clipboard");
+        return { method: tool.cmd, ...pasteResult };
+      } catch (error) {
+        const failureInfo = {
+          tool: tool.cmd,
+          args: tool.args,
+          error: error?.message || String(error),
+        };
+        failedAttempts.push(failureInfo);
+        this.safeLog(`⚠️ Paste with ${tool.cmd} failed:`, error?.message || error);
+        debugLogger.warn("Paste tool failed, trying next", failureInfo, "clipboard");
+      }
+    }
+
+    debugLogger.error("All paste tools failed", { failedAttempts }, "clipboard");
+
+    // xdotool type fallback for terminals where Ctrl+Shift+V simulation fails
+    if (isTerminalTarget && xdotoolExists && !isWayland) {
+      debugLogger.debug(
+        "Trying xdotool type fallback for terminal",
+        {
+          textLength: clipboard.readText().length,
+          targetWindowId,
+        },
+        "clipboard"
+      );
+      this.safeLog("🔄 Trying xdotool type fallback for terminal...");
+      const textToType = clipboard.readText();
+      const typeArgs = targetWindowId
+        ? ["windowactivate", "--sync", targetWindowId, "type", "--clearmodifiers", "--", textToType]
+        : ["type", "--clearmodifiers", "--", textToType];
+
+      try {
+        const pasteResult = await pasteWith({ cmd: "xdotool", args: typeArgs });
+        this.safeLog("✅ Paste successful using xdotool type fallback");
+        debugLogger.info("Terminal paste successful via xdotool type", {}, "clipboard");
+        return { method: "xdotool-type", ...pasteResult };
+      } catch (error) {
+        const fallbackFailure = {
+          tool: "xdotool type",
+          args: typeArgs,
+          error: error?.message || String(error),
+        };
+        failedAttempts.push(fallbackFailure);
+        this.safeLog(`⚠️ xdotool type fallback failed:`, error?.message || error);
+        debugLogger.warn("xdotool type fallback failed", fallbackFailure, "clipboard");
+      }
+    }
+
+    const failureSummary =
+      failedAttempts.length > 0
+        ? `\n\nAttempted tools: ${failedAttempts.map((f) => `${f.tool} (${f.error})`).join(", ")}`
+        : "";
+
+    let errorMsg;
+    if (isWayland) {
+      if (isGnome || isKde) {
+        if (!xwaylandAvailable && !ydotoolDaemonRunning) {
+          errorMsg =
+            "Clipboard copied, but automatic pasting on Wayland requires xdotool (with XWayland) or ydotool (with ydotoold daemon running). Please paste manually with Ctrl+V.";
+        } else if (!xdotoolExists && !ydotoolDaemonRunning) {
+          errorMsg =
+            "Clipboard copied, but automatic pasting requires xdotool (recommended) or ydotool. Please install xdotool or paste manually with Ctrl+V.";
+        } else {
+          errorMsg =
+            "Clipboard copied, but paste simulation failed. Please paste manually with Ctrl+V.";
+        }
+      } else if (isWlroots) {
+        if (!wtypeExists && !xdotoolExists && !ydotoolDaemonRunning) {
+          errorMsg =
+            "Clipboard copied, but automatic pasting requires wtype (recommended for your compositor) or xdotool. Please install one or paste manually with Ctrl+V.";
+        } else {
+          errorMsg =
+            "Clipboard copied, but paste simulation failed. Please paste manually with Ctrl+V.";
+        }
+      } else {
+        errorMsg =
+          "Clipboard copied, but paste simulation failed on Wayland. Please install xdotool or paste manually with Ctrl+V.";
+      }
+    } else {
+      errorMsg =
+        "Clipboard copied, but paste simulation failed on X11. Please install xdotool or paste manually with Ctrl+V.";
+    }
+
+    if (ydotoolExists && !ydotoolDaemonRunning) {
+      errorMsg +=
+        "\n\nNote: ydotool is installed but the ydotoold daemon is not running. Start it with: systemctl --user enable --now ydotoold";
+    }
+
+    const err = new Error(errorMsg + failureSummary);
+    err.code = "PASTE_SIMULATION_FAILED";
+    err.failedAttempts = failedAttempts;
+    debugLogger.error(
+      "Throwing paste simulation failed error",
+      {
+        errorMsg,
+        failedAttempts,
+        isWayland,
+        isGnome,
+        isKde,
+        isWlroots,
+      },
+      "clipboard"
+    );
+    throw err;
+  }
+
+  async checkAccessibilityPermissions(silent = false) {
+    if (process.platform !== "darwin") return true;
+
+    if (!silent) {
+      const now = Date.now();
+      if (now < this.accessibilityCache.expiresAt && this.accessibilityCache.value !== null) {
+        return this.accessibilityCache.value;
+      }
+    }
+
+    const allowed = systemPreferences.isTrustedAccessibilityClient(false);
+
+    if (!silent) {
+      this.accessibilityCache = {
+        value: allowed,
+        expiresAt: Date.now() + ACCESSIBILITY_CHECK_TTL_MS,
+      };
+
+      if (!allowed) {
+        this.showAccessibilityDialog("not allowed assistive access");
+      }
+    }
+
+    return allowed;
+  }
+
+  showAccessibilityDialog(testError) {
+    const isStuckPermission =
+      testError.includes("not allowed assistive access") ||
+      testError.includes("(-1719)") ||
+      testError.includes("(-25006)");
+
+    let dialogMessage;
+    if (isStuckPermission) {
+      dialogMessage = `🔒 OpenWhispr needs Accessibility permissions, but it looks like you may have OLD PERMISSIONS from a previous version.
+
+❗ COMMON ISSUE: If you've rebuilt/reinstalled OpenWhispr, the old permissions may be "stuck" and preventing new ones.
+
+🔧 To fix this:
+1. Open System Settings → Privacy & Security → Accessibility
+2. Look for ANY old "OpenWhispr" entries and REMOVE them (click the - button)
+3. Also remove any entries that say "Electron" or have unclear names
+4. Click the + button and manually add the NEW OpenWhispr app
+5. Make sure the checkbox is enabled
+6. Restart OpenWhispr
+
+⚠️ This is especially common during development when rebuilding the app.
+
+📝 Without this permission, text will only copy to clipboard (no automatic pasting).
+
+Would you like to open System Settings now?`;
+    } else {
+      dialogMessage = `🔒 OpenWhispr needs Accessibility permissions to paste text into other applications.
+
+📋 Current status: Clipboard copy works, but pasting (Cmd+V simulation) fails.
+
+🔧 To fix this:
+1. Open System Settings (or System Preferences on older macOS)
+2. Go to Privacy & Security → Accessibility
+3. Click the lock icon and enter your password
+4. Add OpenWhispr to the list and check the box
+5. Restart OpenWhispr
+
+⚠️ Without this permission, dictated text will only be copied to clipboard but won't paste automatically.
+
+💡 In production builds, this permission is required for full functionality.
+
+Would you like to open System Settings now?`;
+    }
+
+    const permissionDialog = spawn("osascript", [
+      "-e",
+      `display dialog "${dialogMessage}" buttons {"Cancel", "Open System Settings"} default button "Open System Settings"`,
+    ]);
+
+    permissionDialog.on("close", (dialogCode) => {
+      if (dialogCode === 0) {
+        this.openSystemSettings();
+      }
+    });
+
+    permissionDialog.on("error", () => {});
+  }
+
+  openSystemSettings() {
+    const settingsCommands = [
+      ["open", ["x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]],
+      ["open", ["-b", "com.apple.systempreferences"]],
+      ["open", ["/System/Library/PreferencePanes/Security.prefPane"]],
+    ];
+
+    let commandIndex = 0;
+    const tryNextCommand = () => {
+      if (commandIndex < settingsCommands.length) {
+        const [cmd, args] = settingsCommands[commandIndex];
+        const settingsProcess = spawn(cmd, args);
+
+        settingsProcess.on("error", (error) => {
+          commandIndex++;
+          tryNextCommand();
+        });
+
+        settingsProcess.on("close", (settingsCode) => {
+          if (settingsCode !== 0) {
+            commandIndex++;
+            tryNextCommand();
+          }
+        });
+      } else {
+        spawn("open", ["-a", "System Preferences"]).on("error", () => {
+          spawn("open", ["-a", "System Settings"]).on("error", () => {});
+        });
+      }
+    };
+
+    tryNextCommand();
+  }
+
+  preWarmAccessibility() {
+    if (process.platform === "linux") {
+      this.resolveLinuxFastPasteBinary();
+      return;
+    }
+    if (process.platform !== "darwin") return;
+    this.checkAccessibilityPermissions(true).catch(() => {});
+    this.resolveFastPasteBinary();
+  }
+
+  async readClipboard() {
+    return clipboard.readText();
+  }
+
+  async writeClipboard(text, webContents = null) {
+    if (process.platform === "linux" && this._isWayland()) {
+      this._writeClipboardWayland(text, webContents);
+    } else {
+      clipboard.writeText(text);
+    }
+    return { success: true };
+  }
+
+  checkPasteTools() {
+    const platform = process.platform;
+
+    if (platform === "darwin") {
+      const fastPaste = this.resolveFastPasteBinary();
+      return {
+        platform: "darwin",
+        available: true,
+        method: fastPaste ? "cgevent" : "applescript",
+        requiresPermission: true,
+        tools: [],
+      };
+    }
+
+    if (platform === "win32") {
+      const winFastPaste = this.resolveWindowsFastPasteBinary();
+      return {
+        platform: "win32",
+        available: true,
+        method: winFastPaste ? "sendinput" : "powershell",
+        requiresPermission: false,
+        terminalAware: !!winFastPaste,
+        tools: [],
+      };
+    }
+
+    const { isWayland, xwaylandAvailable, isGnome, isKde, isWlroots, isHyprland } =
+      getLinuxSessionInfo();
+    const linuxFastPaste = this.resolveLinuxFastPasteBinary();
+    const hasNativeBinary = !!linuxFastPaste;
+    let portalKeysymAvailable = false;
+    if (linuxFastPaste && isWayland && (isGnome || isKde)) {
+      // spawnSync blocks the main process, so probe the binary only once.
+      if (!this.portalKeysymChecked) {
+        this.portalKeysymChecked = true;
+        try {
+          const result = spawnSync(linuxFastPaste, ["--capabilities"], { timeout: 1000 });
+          this.portalKeysymAvailable =
+            result.status === 0 &&
+            result.stdout.toString().split(/\s+/).includes("portal-keysym-v1");
+        } catch {}
+      }
+      portalKeysymAvailable = this.portalKeysymAvailable;
+    }
+
+    const tools = [];
+    const hasHyprlandShortcut = isWayland && isHyprland && this.commandExists("hyprctl");
+    const hasWtype = isWayland && isWlroots && this.commandExists("wtype");
+    const canUseYdotool = this.commandExists("ydotool") && this._isYdotoolDaemonRunning();
+    const canUseXdotool = !isWayland || xwaylandAvailable;
+
+    if (!isWayland) {
+      if (canUseXdotool && this.commandExists("xdotool")) tools.push("xdotool");
+      if (canUseYdotool) tools.push("ydotool");
+    } else if (isWlroots) {
+      if (hasWtype) tools.push("wtype");
+      if (hasHyprlandShortcut) tools.push("hyprland-sendshortcut");
+      if (canUseXdotool && this.commandExists("xdotool")) tools.push("xdotool");
+      if (canUseYdotool) tools.push("ydotool");
+    } else {
+      if (portalKeysymAvailable) tools.push("portal");
+      if (canUseXdotool && this.commandExists("xdotool")) tools.push("xdotool");
+      if (canUseYdotool) tools.push("ydotool");
+    }
+
+    const hasUinput = this._canAccessUinput();
+    const nativeBinaryUsable = hasNativeBinary && (!isWayland || hasUinput || xwaylandAvailable);
+    const available = nativeBinaryUsable || tools.length > 0;
+    let recommendedInstall;
+    if (!nativeBinaryUsable && tools.length === 0) {
+      if (!isWayland) {
+        recommendedInstall = "xdotool";
+      } else if (isWlroots) {
+        recommendedInstall = "wtype";
+      } else {
+        recommendedInstall = "xdotool";
+      }
+    }
+
+    let method = null;
+    if (!isWayland) {
+      method = nativeBinaryUsable ? "xtest" : tools[0] || null;
+    } else if (hasWtype) {
+      method = "wtype";
+    } else if (hasHyprlandShortcut) {
+      method = "hyprland-sendshortcut";
+    } else if ((isGnome || isKde) && portalKeysymAvailable) {
+      method = "portal";
+    } else if (nativeBinaryUsable) {
+      method = "uinput";
+    } else {
+      method = tools[0] || null;
+    }
+
+    return {
+      platform: "linux",
+      available,
+      method,
+      requiresPermission: method === "portal",
+      isWayland,
+      xwaylandAvailable,
+      hasNativeBinary,
+      hasUinput,
+      hasWtype,
+      isWlroots,
+      tools,
+      recommendedInstall,
+    };
+  }
+}
+
+module.exports = ClipboardManager;

@@ -1,0 +1,86 @@
+import type { InferenceProvider } from "./types";
+import {
+  getOpenAiApiConfig,
+  isEnterpriseProvider,
+  type EnterpriseProvider as EnterpriseProviderId,
+} from "../../../models/ModelRegistry";
+import { getSettings } from "../../../stores/settingsStore";
+import { getEnterpriseCallSettings } from "../enterpriseSettings";
+import { wrapCleanupTranscript } from "../../../config/prompts";
+import logger from "../../../utils/logger";
+
+export const enterpriseProvider: InferenceProvider = {
+  id: "enterprise",
+  async call({ text, model, agentName, config, ctx }) {
+    if (typeof window === "undefined" || !window.electronAPI) {
+      throw new Error("Enterprise reasoning is not available in this environment");
+    }
+
+    const provider = config.provider || getSettings().cleanupProvider;
+    if (!isEnterpriseProvider(provider)) {
+      throw new Error(`Unsupported enterprise provider: ${provider}`);
+    }
+    const enterpriseId = provider as EnterpriseProviderId;
+
+    logger.logReasoning("ENTERPRISE_START", { provider: enterpriseId, model, agentName });
+
+    const systemPrompt = config.systemPrompt || ctx.getSystemPrompt(agentName);
+    const userContent = config.systemPrompt ? text : wrapCleanupTranscript(text);
+    const { supportsTemperature } = getOpenAiApiConfig(model);
+
+    const startTime = Date.now();
+    const result = await window.electronAPI.processEnterpriseReasoning(
+      userContent,
+      model,
+      agentName,
+      {
+        ...config,
+        systemPrompt,
+        provider: enterpriseId,
+        supportsTemperature,
+        ...getEnterpriseCallSettings(enterpriseId, config.inferenceScope || "dictationCleanup"),
+      }
+    );
+
+    const processingTimeMs = Date.now() - startTime;
+
+    if (!result.success) {
+      logger.logReasoning("ENTERPRISE_ERROR", {
+        provider: enterpriseId,
+        model,
+        processingTimeMs,
+        error: result.error,
+      });
+      const enhanced = new Error(result.error || `${enterpriseId} reasoning failed`) as Error & {
+        messageKey?: string;
+        messageParams?: Record<string, string | number>;
+        action?: string;
+        actionKey?: string;
+        copyCommand?: string;
+        retryable?: boolean;
+        technicalDetails?: {
+          status?: number;
+          exceptionType?: string;
+          requestId?: string;
+          underlyingError?: string;
+        };
+      };
+      enhanced.messageKey = result.messageKey;
+      enhanced.messageParams = result.messageParams;
+      enhanced.action = result.action;
+      enhanced.actionKey = result.actionKey;
+      enhanced.copyCommand = result.copyCommand;
+      enhanced.retryable = result.retryable ?? false;
+      enhanced.technicalDetails = result.technicalDetails;
+      throw enhanced;
+    }
+
+    logger.logReasoning("ENTERPRISE_SUCCESS", {
+      provider: enterpriseId,
+      model,
+      processingTimeMs,
+      resultLength: result.text?.length || 0,
+    });
+    return result.text || "";
+  },
+};

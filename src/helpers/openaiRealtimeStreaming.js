@@ -1,0 +1,668 @@
+const WebSocket = require("ws");
+const debugLogger = require("./debugLogger");
+
+const WEBSOCKET_TIMEOUT_MS = 15000;
+const DISCONNECT_TIMEOUT_MS = 3000;
+// gpt-live-transcribe acks a commit only once every appended byte is
+// transcribed, and it ran at 0.3–0.8x real time in testing, so its final trails
+// the stop by a large fraction of the dictation length (partials keep streaming
+// meanwhile).
+const LIVE_TRANSCRIBE_COMMIT_TIMEOUT_MS = 30000;
+const SAMPLE_RATE = 24000;
+const COLD_START_BUFFER_MAX = 3 * SAMPLE_RATE * 2; // 3 seconds of 16-bit PCM
+const KEEPALIVE_INTERVAL_MS = 15000;
+// OpenAI Realtime sessions die at 60 minutes; reconnect proactively before that.
+const SESSION_PREEMPT_MS = 55 * 60 * 1000;
+// Raised from 0.3 to keep mic ambient noise from opening turns (#630); callers
+// on a cleaner channel pass their own vadThreshold.
+const DEFAULT_VAD_THRESHOLD = 0.6;
+
+// Matches the server's check, which may pin a snapshot id.
+const isLiveTranscribe = (model) => model.startsWith("gpt-live-transcribe");
+
+// gpt-live-transcribe rejects every turn_detection config ("Turn detection is
+// not supported for this transcription model"), so it never emits
+// speech_started/speech_stopped and a turn only completes once the client
+// commits — which disconnect() does on stop. Legacy models keep server VAD.
+const turnDetectionFor = (model, vadThreshold) =>
+  isLiveTranscribe(model)
+    ? null
+    : {
+        type: "server_vad",
+        threshold: vadThreshold,
+        silence_duration_ms: 600,
+        prefix_padding_ms: 500,
+      };
+
+// A socket factory does network work before the socket exists, so the dial
+// must be bounded; a socket resolving after the deadline is closed, not leaked.
+async function createSocketWithTimeout(createSocket, timeoutMs) {
+  const socketPromise = createSocket();
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      socketPromise.then((socket) => socket?.close?.()).catch(() => {});
+      reject(new Error("Realtime socket setup timeout"));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([socketPromise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+class OpenAIRealtimeStreaming {
+  constructor() {
+    this.ws = null;
+    this.isConnected = false;
+    this.isConnecting = false;
+    this.completedSegments = [];
+    this.currentPartial = "";
+    this.onPartialTranscript = null;
+    this.onFinalTranscript = null;
+    this.onError = null;
+    this.onSessionEnd = null;
+    this.onSessionExpired = null;
+    this.onConnectionLost = null;
+    this._sessionExpired = false;
+    this._connectionLossNotified = false;
+    this._sessionTimer = null;
+    this.pendingResolve = null;
+    this.pendingReject = null;
+    this.connectionTimeout = null;
+    this.isDisconnecting = false;
+    this.audioBytesSent = 0;
+    // Subclasses (Tinfoil) override this so logs name the provider actually
+    // carrying the audio — a Tinfoil session must never log as OpenAI.
+    this.providerLabel = "OpenAI Realtime";
+    // Meetings run two instances of this class at once (mic + system); the
+    // label is the only way field logs can tell the sockets apart.
+    this.streamLabel = null;
+    this.vadThreshold = DEFAULT_VAD_THRESHOLD;
+    this.speechStartedCount = 0;
+    this._vadEventCount = 0;
+    this.model = "gpt-4o-mini-transcribe";
+    this.inputRate = SAMPLE_RATE;
+    this.captureRate = SAMPLE_RATE;
+    this.coldStartBuffer = [];
+    this.coldStartBufferSize = 0;
+    this.speechStartedAt = null;
+    this.bufferingAudio = false;
+    this.keepAliveInterval = null;
+    this._onTurnSettled = null;
+  }
+
+  // Starts buffering audio immediately, before the WebSocket even exists —
+  // covers the token-fetch + handshake window so sendAudio() doesn't drop
+  // frames while a connection is still being established.
+  beginConnecting() {
+    this.bufferingAudio = true;
+    this.coldStartBuffer = [];
+    this.coldStartBufferSize = 0;
+  }
+
+  getFullTranscript() {
+    return this.completedSegments.join(" ");
+  }
+
+  async connect(options = {}) {
+    const {
+      apiKey,
+      model,
+      preconfigured,
+      inputRate,
+      captureRate,
+      createSocket,
+      streamLabel,
+      vadThreshold,
+    } = options;
+    if (!apiKey) throw new Error(`${this.providerLabel} API key is required`);
+
+    if (this.isConnected || this.isConnecting) {
+      debugLogger.debug(`${this.providerLabel} already connected/connecting`, this._logContext());
+      return;
+    }
+
+    // Callers may already be buffering (beginConnecting() called before the
+    // apiKey was fetched) — don't wipe audio collected during that window.
+    if (!this.bufferingAudio) this.beginConnecting();
+
+    this.isConnecting = true;
+    this.model = model || "gpt-4o-mini-transcribe";
+    this.preconfigured = !!preconfigured;
+    this.inputRate = inputRate || SAMPLE_RATE;
+    this.captureRate = captureRate || this.inputRate;
+    this.streamLabel = streamLabel || null;
+    this.vadThreshold = vadThreshold ?? DEFAULT_VAD_THRESHOLD;
+    this.completedSegments = [];
+    this.currentPartial = "";
+    this.audioBytesSent = 0;
+    this.speechStartedAt = null;
+    this.speechStartedCount = 0;
+    this._vadEventCount = 0;
+    this._sessionExpired = false;
+    this._connectionLossNotified = false;
+
+    const url = "wss://api.openai.com/v1/realtime?intent=transcription";
+    debugLogger.debug(`${this.providerLabel} connecting`, this._logContext({ model: this.model }));
+
+    // Attested providers (Tinfoil) supply their socket via an async factory.
+    let ws;
+    try {
+      ws = createSocket
+        ? await createSocketWithTimeout(createSocket, WEBSOCKET_TIMEOUT_MS)
+        : new WebSocket(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+    } catch (err) {
+      this.isConnecting = false;
+      this.cleanup();
+      throw err;
+    }
+
+    return new Promise((resolve, reject) => {
+      this.pendingResolve = resolve;
+      this.pendingReject = reject;
+
+      this.connectionTimeout = setTimeout(() => {
+        this.isConnecting = false;
+        this.cleanup();
+        reject(new Error(`${this.providerLabel} connection timeout`));
+      }, WEBSOCKET_TIMEOUT_MS);
+
+      this.ws = ws;
+
+      this.ws.on("open", () => {
+        debugLogger.debug(`${this.providerLabel} WebSocket opened`, this._logContext());
+      });
+
+      this.ws.on("message", (data) => {
+        this.handleMessage(data);
+      });
+
+      this.ws.on("error", (error) => {
+        const wasActive = this.isConnected;
+        debugLogger.error(
+          `${this.providerLabel} WebSocket error`,
+          this._logContext({ error: error.message })
+        );
+        this.isConnecting = false;
+        this.cleanup();
+        if (this.pendingReject) {
+          this.pendingReject(error);
+          this.pendingReject = null;
+          this.pendingResolve = null;
+        }
+        if (wasActive && !this.isDisconnecting) {
+          this._notifyConnectionLost(error);
+        } else if (!this.isDisconnecting) {
+          this.onError?.(error);
+        }
+      });
+
+      this.ws.on("close", (code, reason) => {
+        const wasActive = this.isConnected;
+        this.isConnecting = false;
+        debugLogger.debug(
+          `${this.providerLabel} WebSocket closed`,
+          this._logContext({
+            code,
+            reason: reason?.toString(),
+            wasActive,
+          })
+        );
+        if (this.pendingReject) {
+          this.pendingReject(new Error(`WebSocket closed before ready (code: ${code})`));
+          this.pendingReject = null;
+          this.pendingResolve = null;
+        }
+        this.cleanup();
+        if (wasActive && !this.isDisconnecting && !this._sessionExpired) {
+          this.onSessionEnd?.({ text: this.getFullTranscript() });
+          this._notifyConnectionLost(new Error(`Connection lost (code: ${code})`));
+        }
+      });
+    });
+  }
+
+  handleMessage(data) {
+    try {
+      const event = JSON.parse(data.toString());
+
+      switch (event.type) {
+        case "session.created": {
+          if (this.preconfigured) {
+            // Server-side ephemeral token already configured the session;
+            // sending an update would strip language and noise-reduction.
+            // Echo the server's VAD + format — the only place preconfigured
+            // (cloud) session settings ever appear in field logs.
+            const sessionInput = event.session?.audio?.input;
+            // The server picks the managed model when it mints the secret; the
+            // session echo is where the client learns which one it got.
+            this.model = sessionInput?.transcription?.model ?? this.model;
+            debugLogger.debug(
+              `${this.providerLabel} session created (preconfigured)`,
+              this._logContext({
+                model: this.model,
+                turnDetection:
+                  sessionInput?.turn_detection ?? event.session?.turn_detection ?? null,
+                inputFormat: sessionInput?.format ?? event.session?.input_audio_format ?? null,
+              })
+            );
+            this._markConnected();
+          } else {
+            debugLogger.debug(
+              `${this.providerLabel} session created, sending configuration`,
+              this._logContext({
+                model: this.model,
+                vadThreshold: this.vadThreshold,
+              })
+            );
+            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) break;
+            this.ws.send(
+              JSON.stringify({
+                type: "session.update",
+                session: {
+                  type: "transcription",
+                  audio: {
+                    input: {
+                      format: { type: "audio/pcm", rate: this.inputRate },
+                      transcription: { model: this.model },
+                      turn_detection: turnDetectionFor(this.model, this.vadThreshold),
+                    },
+                  },
+                },
+              })
+            );
+          }
+          break;
+        }
+
+        case "session.updated": {
+          if (this.pendingResolve) {
+            debugLogger.debug(
+              `${this.providerLabel} session configured`,
+              this._logContext({
+                model: this.model,
+              })
+            );
+            this._markConnected();
+          }
+          break;
+        }
+
+        case "conversation.item.input_audio_transcription.delta": {
+          const delta = event.delta || "";
+          if (delta) {
+            this.currentPartial += delta;
+            this.onPartialTranscript?.(this.currentPartial);
+          }
+          break;
+        }
+
+        case "conversation.item.input_audio_transcription.completed": {
+          const transcript = (event.transcript || "").trim();
+          if (transcript) {
+            this.completedSegments.push(transcript);
+          }
+          this.currentPartial = "";
+          const speechTimestamp = this.speechStartedAt || Date.now();
+          this.speechStartedAt = null;
+          if (transcript) {
+            const fullText = this.getFullTranscript();
+            this.onFinalTranscript?.(fullText, speechTimestamp);
+            debugLogger.debug(
+              `${this.providerLabel} turn completed`,
+              this._logContext({
+                turnText: transcript.slice(0, 100),
+                totalLength: fullText.length,
+                segments: this.completedSegments.length,
+              })
+            );
+          } else {
+            debugLogger.debug(
+              `${this.providerLabel} turn completed with empty transcript`,
+              this._logContext({
+                itemId: event.item_id,
+                audioBytesSent: this.audioBytesSent,
+              })
+            );
+          }
+          this._onTurnSettled?.();
+          break;
+        }
+
+        // Log-only by convention: completedSegments holds only server-confirmed
+        // transcripts and onError is reserved for `error` events, so a failed
+        // turn counts toward nothing and must not look like a connection problem.
+        case "conversation.item.input_audio_transcription.failed": {
+          debugLogger.debug(
+            `${this.providerLabel} turn transcription failed`,
+            this._logContext({
+              itemId: event.item_id,
+              error: event.error?.message || event.error?.code || null,
+            })
+          );
+          this._onTurnSettled?.();
+          break;
+        }
+
+        case "input_audio_buffer.speech_started":
+          this.speechStartedAt = Date.now();
+          this.speechStartedCount++;
+          this._logVadEvent(event.type);
+          break;
+        case "input_audio_buffer.speech_stopped":
+        case "input_audio_buffer.committed":
+          this._logVadEvent(event.type);
+          break;
+
+        case "error": {
+          const errCode = event.error?.code;
+          const errMsg = event.error?.message || `${this.providerLabel} error`;
+          // Only consumers that attach onSessionExpired (meetings) get the
+          // reconnect path; others (dictation) keep the onError/onSessionEnd flow.
+          if (errCode === "session_expired" && this.onSessionExpired) {
+            debugLogger.warn(
+              `${this.providerLabel} session expired`,
+              this._logContext({ message: errMsg })
+            );
+            this._sessionExpired = true;
+            this.onSessionExpired({ proactive: false });
+            break;
+          }
+          const isEmptyBuffer =
+            errCode === "input_audio_buffer_commit_empty" ||
+            errMsg.includes("buffer too small") ||
+            errMsg.includes("commit_empty");
+          if (isEmptyBuffer) {
+            debugLogger.debug(
+              `${this.providerLabel} empty buffer (server VAD already committed)`,
+              this._logContext({
+                code: errCode,
+              })
+            );
+          } else {
+            debugLogger.error(
+              `${this.providerLabel} error event`,
+              this._logContext({
+                code: errCode,
+                message: errMsg,
+              })
+            );
+          }
+          this.onError?.(new Error(errMsg));
+          break;
+        }
+
+        default:
+          break;
+      }
+    } catch (err) {
+      debugLogger.error(
+        `${this.providerLabel} message parse error`,
+        this._logContext({ error: err.message })
+      );
+    }
+  }
+
+  // Unlabelled sockets (dictation) keep their pre-label log shape exactly.
+  _logContext(extra) {
+    if (this.streamLabel == null) return extra;
+    return { stream: this.streamLabel, ...extra };
+  }
+
+  // Throttled to first-3-then-every-50th: a normal meeting produces hundreds of
+  // these, so ZERO over a whole meeting means server VAD never fired.
+  _logVadEvent(type) {
+    this._vadEventCount++;
+    if (this._vadEventCount <= 3 || this._vadEventCount % 50 === 0) {
+      debugLogger.debug(
+        `${this.providerLabel} VAD event`,
+        this._logContext({
+          event: type,
+          count: this._vadEventCount,
+          audioBytesSent: this.audioBytesSent,
+        })
+      );
+    }
+  }
+
+  _markConnected() {
+    this.isConnected = true;
+    this.isConnecting = false;
+    clearTimeout(this.connectionTimeout);
+    this.startKeepAlive();
+    this._startSessionTimer();
+    if (this.pendingResolve) {
+      this.pendingResolve();
+      this.pendingResolve = null;
+      this.pendingReject = null;
+    }
+  }
+
+  _notifyConnectionLost(error) {
+    if (this._connectionLossNotified) return;
+    this._connectionLossNotified = true;
+    if (this.onConnectionLost) {
+      this.onConnectionLost(error);
+    } else {
+      this.onError?.(error);
+    }
+  }
+
+  _startSessionTimer() {
+    clearTimeout(this._sessionTimer);
+    this._sessionTimer = setTimeout(() => {
+      if (!this.isConnected) return;
+      debugLogger.debug(
+        `${this.providerLabel} session approaching 60min limit, requesting reconnect`,
+        this._logContext()
+      );
+      this.onSessionExpired?.({ proactive: true });
+    }, SESSION_PREEMPT_MS);
+  }
+
+  // A warm connection sits idle between dictations for up to 5 minutes and is
+  // reused with no other liveness check; a network path that dies silently
+  // (NAT/firewall drop, sleep/wake, VPN toggle) leaves isConnected stuck true
+  // and the next recording gets sent into a dead socket.
+  startKeepAlive() {
+    this.stopKeepAlive();
+    const socket = this.ws;
+    if (!socket) return;
+
+    socket.isAlive = true;
+    socket.on("pong", () => {
+      socket.isAlive = true;
+    });
+
+    this.keepAliveInterval = setInterval(() => {
+      if (socket !== this.ws || socket.readyState !== WebSocket.OPEN) {
+        this.stopKeepAlive();
+        return;
+      }
+      if (socket.isAlive === false) {
+        debugLogger.debug(
+          `${this.providerLabel} keep-alive missed pong, terminating stale connection`,
+          this._logContext()
+        );
+        socket.terminate();
+        return;
+      }
+      socket.isAlive = false;
+      try {
+        socket.ping();
+      } catch (err) {
+        debugLogger.debug(
+          `${this.providerLabel} keep-alive ping failed`,
+          this._logContext({ error: err.message })
+        );
+        socket.terminate();
+      }
+    }, KEEPALIVE_INTERVAL_MS);
+  }
+
+  stopKeepAlive() {
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+    }
+  }
+
+  // OpenAI rejects PCM session rates below 24kHz, so 16kHz capture can't be
+  // declared as-is; it is upsampled to the declared rate before sending.
+  _resampleToInputRate(pcmBuffer) {
+    if (this.captureRate === this.inputRate) return pcmBuffer;
+    const src = new Int16Array(pcmBuffer.buffer, pcmBuffer.byteOffset, pcmBuffer.length / 2);
+    const ratio = this.inputRate / this.captureRate;
+    const out = new Int16Array(Math.floor(src.length * ratio));
+    for (let i = 0; i < out.length; i++) {
+      const pos = i / ratio;
+      const low = Math.floor(pos);
+      const high = Math.min(low + 1, src.length - 1);
+      out[i] = Math.round(src[low] + (src[high] - src[low]) * (pos - low));
+    }
+    return Buffer.from(out.buffer);
+  }
+
+  sendAudio(pcmBuffer) {
+    const isOpen = this.ws?.readyState === WebSocket.OPEN;
+
+    if (!isOpen) {
+      if (this.bufferingAudio && this.coldStartBufferSize < COLD_START_BUFFER_MAX) {
+        const copy = Buffer.from(pcmBuffer);
+        this.coldStartBuffer.push(copy);
+        this.coldStartBufferSize += copy.length;
+      }
+      return false;
+    }
+
+    if (this.coldStartBuffer.length > 0) {
+      debugLogger.debug(
+        `${this.providerLabel} flushing cold-start buffer`,
+        this._logContext({
+          chunks: this.coldStartBuffer.length,
+          bytes: this.coldStartBufferSize,
+        })
+      );
+      for (const buf of this.coldStartBuffer) {
+        const audio = this._resampleToInputRate(buf);
+        this.ws.send(
+          JSON.stringify({ type: "input_audio_buffer.append", audio: audio.toString("base64") })
+        );
+        this.audioBytesSent += audio.length;
+      }
+      this.coldStartBuffer = [];
+      this.coldStartBufferSize = 0;
+    }
+
+    const audio = this._resampleToInputRate(Buffer.from(pcmBuffer));
+    this.ws.send(
+      JSON.stringify({ type: "input_audio_buffer.append", audio: audio.toString("base64") })
+    );
+    this.audioBytesSent += audio.length;
+    return true;
+  }
+
+  async disconnect({ commit = true } = {}) {
+    debugLogger.debug(
+      `${this.providerLabel} disconnect`,
+      this._logContext({
+        audioBytesSent: this.audioBytesSent,
+        segments: this.completedSegments.length,
+        textLength: this.getFullTranscript().length,
+        // Discriminates "VAD never fired" from "turns fired but empty/failed".
+        speechStartedCount: this.speechStartedCount,
+        readyState: this.ws?.readyState,
+      })
+    );
+
+    if (!this.ws) return { text: this.getFullTranscript() };
+
+    this.isDisconnecting = true;
+
+    if (this.ws.readyState === WebSocket.CONNECTING) {
+      this.ws.once("open", () => this.ws?.close());
+      const result = { text: this.getFullTranscript() };
+      this.isDisconnecting = false;
+      return result;
+    }
+
+    if (this.ws.readyState === WebSocket.OPEN) {
+      if (commit && this.audioBytesSent > 0) {
+        const prevOnError = this.onError;
+        const timeoutMs = isLiveTranscribe(this.model)
+          ? LIVE_TRANSCRIBE_COMMIT_TIMEOUT_MS
+          : DISCONNECT_TIMEOUT_MS;
+
+        await new Promise((resolve) => {
+          const done = () => {
+            clearTimeout(tid);
+            this._onTurnSettled = null;
+            this.onError = prevOnError;
+            resolve();
+          };
+
+          const tid = setTimeout(() => {
+            debugLogger.debug(
+              `${this.providerLabel} commit timeout, using accumulated text`,
+              this._logContext()
+            );
+            done();
+          }, timeoutMs);
+
+          // Any terminal event for the committed turn ends the wait; an empty
+          // or failed turn must not stall for the whole budget.
+          this._onTurnSettled = done;
+
+          this.onError = (err) => {
+            if (
+              err?.message?.includes("buffer too small") ||
+              err?.message?.includes("commit_empty")
+            ) {
+              done();
+            } else {
+              prevOnError?.(err);
+            }
+          };
+
+          try {
+            this.ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+          } catch {
+            done();
+          }
+        });
+      }
+
+      this.ws?.close();
+    }
+
+    const result = { text: this.getFullTranscript() };
+    this.cleanup();
+    this.isDisconnecting = false;
+    return result;
+  }
+
+  cleanup() {
+    clearTimeout(this.connectionTimeout);
+    this.connectionTimeout = null;
+    clearTimeout(this._sessionTimer);
+    this._sessionTimer = null;
+    this.stopKeepAlive();
+    // A socket that dies mid-commit can never deliver the turn.
+    this._onTurnSettled?.();
+
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {}
+      this.ws = null;
+    }
+
+    this.isConnected = false;
+    this.isConnecting = false;
+    this.bufferingAudio = false;
+  }
+}
+
+module.exports = OpenAIRealtimeStreaming;

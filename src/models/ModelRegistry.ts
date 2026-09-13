@@ -1,0 +1,574 @@
+import modelDataRaw from "./modelRegistryData.json";
+import { isCloudCleanupMode, getSettings } from "../stores/settingsStore";
+import { readCachedTinfoilModels } from "./tinfoilModelCache";
+import { filterMeetingStreamingProviders } from "../helpers/meetingTranscriptionRouting";
+import type { InferenceMode } from "../types/electron";
+
+export interface ModelDefinition {
+  id: string;
+  name: string;
+  size: string;
+  sizeBytes: number;
+  description: string;
+  descriptionKey?: string;
+  fileName: string;
+  quantization: string;
+  contextLength: number;
+  hfRepo: string;
+  recommended?: boolean;
+  supportsThinking?: boolean;
+  // Optional MTP speculative-decoding drafter downloaded alongside the main GGUF.
+  draftHfRepo?: string;
+  draftFileName?: string;
+  draftSizeBytes?: number;
+}
+
+export interface LocalProviderData {
+  id: string;
+  name: string;
+  baseUrl: string;
+  models: ModelDefinition[];
+}
+
+export interface ModelProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  models: ModelDefinition[];
+  getDownloadUrl(model: ModelDefinition): string;
+}
+
+export interface CloudModelDefinition {
+  id: string;
+  name: string;
+  description: string;
+  descriptionKey?: string;
+  disableThinking?: boolean;
+  supportsThinking?: boolean;
+  supportsVision?: boolean;
+  tokenParam?: "max_tokens" | "max_completion_tokens";
+  supportsTemperature?: boolean;
+}
+
+export interface CloudProviderData {
+  id: string;
+  name: string;
+  /** Named default for providers whose list order isn't ours — see pickProviderDefaultModel. */
+  defaultModel?: string;
+  models: CloudModelDefinition[];
+}
+
+export interface EnterpriseProviderData extends CloudProviderData {
+  allowCustomModelId: boolean;
+}
+
+export interface TranscriptionModelDefinition {
+  id: string;
+  name: string;
+  description: string;
+  descriptionKey?: string;
+  streaming?: boolean;
+}
+
+export interface TranscriptionProviderData {
+  id: string;
+  name: string;
+  baseUrl: string;
+  models: TranscriptionModelDefinition[];
+  /** Allows for a stream/batch split */
+  batchModel?: string;
+}
+
+export interface WhisperModelInfo {
+  name: string;
+  description: string;
+  descriptionKey?: string;
+  size: string;
+  sizeMb: number;
+  fileName: string;
+  downloadUrl: string;
+  recommended?: boolean;
+}
+
+export interface WhisperModelConfig {
+  url: string;
+  size: number;
+  fileName: string;
+}
+
+export type WhisperModelsMap = Record<string, WhisperModelInfo>;
+
+export interface ParakeetModelInfo {
+  name: string;
+  description: string;
+  descriptionKey?: string;
+  size: string;
+  sizeMb: number;
+  expectedSizeBytes?: number;
+  manifestUrl?: string;
+  language: string;
+  supportedLanguages: string[];
+  runtime?: "offline" | "online";
+  modelType?: "transducer" | "cohere-transcribe";
+  /** Verified sherpa decoder type; skips redundant encoder loading during detection. */
+  sherpaModelType?: "nemo_transducer";
+  organization?: { id: string; name: string };
+  license?: string;
+  modelCardUrl?: string;
+  recommended?: boolean;
+  downloadUrl: string;
+  extractDir: string;
+}
+
+export type ParakeetModelsMap = Record<string, ParakeetModelInfo>;
+
+interface ModelRegistryData {
+  parakeetModels: ParakeetModelsMap;
+  whisperModels: WhisperModelsMap;
+  transcriptionProviders: TranscriptionProviderData[];
+  cloudProviders: CloudProviderData[];
+  enterpriseProviders: EnterpriseProviderData[];
+  localProviders: LocalProviderData[];
+}
+
+const modelData: ModelRegistryData = modelDataRaw as ModelRegistryData;
+
+function getTinfoilCloudProvider(): CloudProviderData | undefined {
+  return modelData.cloudProviders.find((provider) => provider.id === "tinfoil");
+}
+
+const cachedTinfoilModels = readCachedTinfoilModels().models;
+if (cachedTinfoilModels.length > 0) {
+  const tinfoilProvider = getTinfoilCloudProvider();
+  if (tinfoilProvider) {
+    tinfoilProvider.models = cachedTinfoilModels;
+  }
+}
+
+class ModelRegistry {
+  private static instance: ModelRegistry;
+  private providers = new Map<string, ModelProvider>();
+
+  private constructor() {
+    this.registerProvidersFromData();
+  }
+
+  static getInstance(): ModelRegistry {
+    if (!ModelRegistry.instance) {
+      ModelRegistry.instance = new ModelRegistry();
+    }
+    return ModelRegistry.instance;
+  }
+
+  registerProvider(provider: ModelProvider) {
+    this.providers.set(provider.id, provider);
+  }
+
+  getProvider(providerId: string): ModelProvider | undefined {
+    return this.providers.get(providerId);
+  }
+
+  getAllProviders(): ModelProvider[] {
+    return Array.from(this.providers.values());
+  }
+
+  getModel(modelId: string): { model: ModelDefinition; provider: ModelProvider } | undefined {
+    for (const provider of this.providers.values()) {
+      const model = provider.models.find((m) => m.id === modelId);
+      if (model) {
+        return { model, provider };
+      }
+    }
+    return undefined;
+  }
+
+  getAllModels(): Array<ModelDefinition & { providerId: string }> {
+    const models: Array<ModelDefinition & { providerId: string }> = [];
+    for (const provider of this.providers.values()) {
+      for (const model of provider.models) {
+        models.push({ ...model, providerId: provider.id });
+      }
+    }
+    return models;
+  }
+
+  getCloudProviders(): CloudProviderData[] {
+    return modelData.cloudProviders;
+  }
+
+  getEnterpriseProviders(): EnterpriseProviderData[] {
+    return modelData.enterpriseProviders;
+  }
+
+  getTranscriptionProviders(): TranscriptionProviderData[] {
+    return modelData.transcriptionProviders;
+  }
+
+  private registerProvidersFromData() {
+    const localProviders = modelData.localProviders;
+
+    for (const providerData of localProviders) {
+      this.registerProvider({
+        id: providerData.id,
+        name: providerData.name,
+        baseUrl: providerData.baseUrl,
+        models: providerData.models,
+        getDownloadUrl(model: ModelDefinition): string {
+          return `${providerData.baseUrl}/${model.hfRepo}/resolve/main/${model.fileName}`;
+        },
+      });
+    }
+  }
+}
+
+export const modelRegistry = ModelRegistry.getInstance();
+
+export interface ReasoningModel {
+  value: string;
+  label: string;
+  description: string;
+  descriptionKey?: string;
+}
+
+export interface ReasoningProvider {
+  name: string;
+  models: ReasoningModel[];
+}
+
+export type ReasoningProviders = Record<string, ReasoningProvider>;
+
+export type EnterpriseProvider = "bedrock" | "azure" | "vertex";
+export const ENTERPRISE_PROVIDERS: readonly EnterpriseProvider[] = ["bedrock", "azure", "vertex"];
+export function isEnterpriseProvider(value: unknown): value is EnterpriseProvider {
+  return typeof value === "string" && (ENTERPRISE_PROVIDERS as readonly string[]).includes(value);
+}
+
+export function enterpriseProviderName(provider: EnterpriseProvider): string {
+  return modelRegistry.getEnterpriseProviders().find((p) => p.id === provider)?.name ?? provider;
+}
+
+export function toReasoningModel(m: CloudModelDefinition): ReasoningModel {
+  return {
+    value: m.id,
+    label: m.name,
+    description: m.description,
+    descriptionKey: m.descriptionKey,
+  };
+}
+
+export function isProviderValidForMode(provider: string, mode: InferenceMode): boolean {
+  switch (mode) {
+    case "providers":
+      return (
+        provider === "custom" ||
+        provider === "openrouter" ||
+        modelRegistry.getCloudProviders().some((p) => p.id === provider)
+      );
+    case "local":
+      return modelRegistry.getAllProviders().some((p) => p.id === provider);
+    case "enterprise":
+      return isEnterpriseProvider(provider);
+    default:
+      return true;
+  }
+}
+
+function buildReasoningProviders(): ReasoningProviders {
+  const providers: ReasoningProviders = {};
+
+  for (const cloudProvider of modelRegistry.getCloudProviders()) {
+    providers[cloudProvider.id] = {
+      name: cloudProvider.name,
+      models: cloudProvider.models.map(toReasoningModel),
+    };
+  }
+
+  for (const ep of modelRegistry.getEnterpriseProviders()) {
+    providers[ep.id] = {
+      name: ep.name,
+      models: ep.models.map((m) => ({
+        value: m.id,
+        label: m.name,
+        description: m.description,
+        descriptionKey: m.descriptionKey,
+      })),
+    };
+  }
+
+  providers.local = {
+    name: "Local AI",
+    models: modelRegistry.getAllModels().map((model) => ({
+      value: model.id,
+      label: model.name,
+      description: `${model.description} (${model.size})`,
+      descriptionKey: model.descriptionKey,
+    })),
+  };
+
+  return providers;
+}
+
+export const REASONING_PROVIDERS = buildReasoningProviders();
+
+export function getTinfoilModels(): CloudModelDefinition[] {
+  return getTinfoilCloudProvider()?.models ?? [];
+}
+
+export function getCloudProviderDefaultModelId(providerId: string): string | undefined {
+  return modelData.cloudProviders.find((provider) => provider.id === providerId)?.defaultModel;
+}
+
+export function applyTinfoilModels(models: CloudModelDefinition[]): void {
+  const provider = getTinfoilCloudProvider();
+  if (provider) {
+    provider.models = models;
+  }
+  const reasoningProvider = REASONING_PROVIDERS.tinfoil;
+  if (reasoningProvider) {
+    reasoningProvider.models = models.map(toReasoningModel);
+  }
+}
+
+export interface ReasoningModelWithProvider extends ReasoningModel {
+  provider: string;
+  fullLabel: string;
+}
+
+export function getAllReasoningModels(): ReasoningModelWithProvider[] {
+  return Object.entries(REASONING_PROVIDERS).flatMap(([providerId, provider]) =>
+    provider.models.map((model) => ({
+      ...model,
+      provider: providerId,
+      fullLabel: `${provider.name} ${model.label}`,
+    }))
+  );
+}
+
+export function getReasoningModelLabel(modelId: string): string {
+  const model = getAllReasoningModels().find((m) => m.value === modelId);
+  return model?.fullLabel || modelId;
+}
+
+const NON_REGISTRY_PROVIDER_NAMES: Record<string, string> = {
+  openrouter: "OpenRouter",
+  custom: "Custom",
+};
+
+export function getProviderDisplayName(provider: string): string {
+  return (
+    REASONING_PROVIDERS[provider as keyof typeof REASONING_PROVIDERS]?.name ??
+    NON_REGISTRY_PROVIDER_NAMES[provider] ??
+    provider
+  );
+}
+
+export function getModelProvider(modelId: string): string {
+  if (isCloudCleanupMode()) {
+    return "openwhispr";
+  }
+
+  const storedProvider = getSettings().cleanupProvider;
+
+  if (storedProvider === "custom") {
+    return "custom";
+  }
+
+  if (storedProvider === "openrouter") {
+    return "openrouter";
+  }
+
+  if (isEnterpriseProvider(storedProvider)) {
+    return storedProvider;
+  }
+
+  const model = getAllReasoningModels().find((m) => m.value === modelId);
+
+  if (!model) {
+    // An unknown model here is one Tinfoil retired or added since our last
+    // sync — don't let the id heuristics misroute it.
+    if (storedProvider === "tinfoil") return "tinfoil";
+    if (modelId.includes("claude")) return "anthropic";
+    if (modelId.includes("gemini") && !modelId.includes("gemma")) return "gemini";
+    if ((modelId.includes("gpt-4") || modelId.includes("gpt-5")) && !modelId.includes("gpt-oss"))
+      return "openai";
+    if (
+      modelId.includes("qwen/") ||
+      modelId.includes("openai/") ||
+      modelId.includes("llama-3.1-8b-instant") ||
+      modelId.includes("llama-3.3-") ||
+      modelId.includes("meta-llama/llama-4-") ||
+      modelId.includes("groq/compound") ||
+      modelId.includes("moonshotai/kimi-k2-")
+    )
+      return "groq";
+    if (
+      modelId.includes("qwen") ||
+      modelId.includes("llama") ||
+      modelId.includes("mistral") ||
+      modelId.includes("lfm2") ||
+      modelId.includes("gemma") ||
+      modelId.includes("gpt-oss-20b-mxfp4")
+    )
+      return "local";
+  }
+
+  // No default: an unrecognized model must fail closed at dispatch instead of
+  // being routed to OpenAI with whatever key that attaches.
+  return model?.provider || "";
+}
+
+// Local catalog IDs group models for selection and downloads, but all execute
+// through the single local llama.cpp inference provider.
+export function resolveInferenceProvider(
+  configuredProvider: string | undefined,
+  modelId: string
+): string {
+  const provider = configuredProvider?.trim();
+  if (provider && modelRegistry.getProvider(provider)) return "local";
+  return provider || getModelProvider(modelId);
+}
+
+export function getTranscriptionProviders(): TranscriptionProviderData[] {
+  return modelRegistry.getTranscriptionProviders();
+}
+
+export function getStreamingTranscriptionProviders(): TranscriptionProviderData[] {
+  return modelRegistry
+    .getTranscriptionProviders()
+    .map((p) => ({ ...p, models: p.models.filter((m) => m.streaming) }))
+    .filter((p) => p.models.length > 0);
+}
+
+// Streaming providers note recording can actually run (see
+// meetingTranscriptionRouting.MEETING_STREAMING_PROVIDER_IDS).
+export function getMeetingStreamingTranscriptionProviders(): TranscriptionProviderData[] {
+  return filterMeetingStreamingProviders(getStreamingTranscriptionProviders());
+}
+
+export function getTranscriptionProvider(
+  providerId: string
+): TranscriptionProviderData | undefined {
+  return getTranscriptionProviders().find((p) => p.id === providerId);
+}
+
+export function getTranscriptionModels(providerId: string): TranscriptionModelDefinition[] {
+  const provider = getTranscriptionProvider(providerId);
+  return provider?.models || [];
+}
+
+export function getBatchTranscriptionModel(providerId: string): string | undefined {
+  return getTranscriptionProvider(providerId)?.batchModel;
+}
+
+export function getDefaultTranscriptionModel(providerId: string): string {
+  const models = getTranscriptionModels(providerId);
+  return models[0]?.id || "gpt-transcribe";
+}
+
+export function getWhisperModels(): WhisperModelsMap {
+  return modelData.whisperModels;
+}
+
+export function getWhisperModelInfo(modelId: string): WhisperModelInfo | undefined {
+  return modelData.whisperModels[modelId];
+}
+
+export const WHISPER_MODEL_INFO = modelData.whisperModels;
+
+export function getCloudModel(modelId: string): CloudModelDefinition | undefined {
+  for (const provider of modelData.cloudProviders) {
+    const model = provider.models.find((m) => m.id === modelId);
+    if (model) return model;
+  }
+  for (const provider of modelData.enterpriseProviders) {
+    const model = provider.models.find((m) => m.id === modelId);
+    if (model) return model;
+  }
+  return undefined;
+}
+
+export function getLocalModel(modelId: string): ModelDefinition | undefined {
+  return modelRegistry.getModel(modelId)?.model;
+}
+
+export interface OpenAiApiConfig {
+  tokenParam: "max_tokens" | "max_completion_tokens";
+  supportsTemperature: boolean;
+}
+
+export function getOpenAiApiConfig(modelId: string, provider?: string): OpenAiApiConfig {
+  const model = getCloudModel(modelId);
+  if (model?.tokenParam) {
+    return {
+      tokenParam: model.tokenParam,
+      supportsTemperature: model.supportsTemperature ?? true,
+    };
+  }
+
+  // OpenRouter's vendor-prefixed ids (openai/gpt-4o, anthropic/claude-…) speak
+  // standard Chat Completions. Scoped to the provider so vendor-prefixed ids on
+  // custom endpoints keep the request shape they had before OpenRouter landed.
+  // Sampling params pass through to the upstream vendor, so a model the
+  // registry knows rejects temperature (Claude Opus 4.7+, #1417) must keep it
+  // omitted here too — OpenRouter forwards the 400 rather than stripping it.
+  if (provider === "openrouter" && modelId.includes("/")) {
+    const upstream = getCloudModel(modelId.slice(modelId.lastIndexOf("/") + 1));
+    return { tokenParam: "max_tokens", supportsTemperature: upstream?.supportsTemperature ?? true };
+  }
+
+  // Fallback for models not in the registry (custom model IDs, etc.)
+  const isLegacy =
+    modelId.startsWith("gpt-3") ||
+    modelId.startsWith("gpt-4o") ||
+    modelId.startsWith("gpt-4-") ||
+    modelId === "gpt-4";
+
+  if (isLegacy) {
+    return { tokenParam: "max_tokens", supportsTemperature: true };
+  }
+
+  // gpt-4.1* supports temperature but uses max_completion_tokens
+  if (modelId.startsWith("gpt-4.1")) {
+    return { tokenParam: "max_completion_tokens", supportsTemperature: true };
+  }
+
+  // gpt-5* reasoning models: no temperature
+  return { tokenParam: "max_completion_tokens", supportsTemperature: false };
+}
+
+export function getParakeetModels(): ParakeetModelsMap {
+  return modelData.parakeetModels;
+}
+
+export function getParakeetModelInfo(modelId: string): ParakeetModelInfo | undefined {
+  return modelData.parakeetModels[modelId];
+}
+
+export function isOnlineParakeetModel(modelId: string): boolean {
+  return modelData.parakeetModels[modelId]?.runtime === "online";
+}
+
+export function isCohereTranscribeModel(modelId: string): boolean {
+  return modelData.parakeetModels[modelId]?.modelType === "cohere-transcribe";
+}
+
+// Both providers run on the parakeet/sherpa-onnx stack; only whisper differs.
+export function isSherpaLocalProvider(provider: string): boolean {
+  return provider === "nvidia" || provider === "cohere";
+}
+
+export const PARAKEET_MODEL_INFO = modelData.parakeetModels;
+
+export function getWhisperModelConfig(modelId: string): WhisperModelConfig | null {
+  const modelInfo = modelData.whisperModels[modelId];
+  if (!modelInfo) return null;
+  return {
+    url: modelInfo.downloadUrl,
+    size: modelInfo.sizeMb * 1_000_000,
+    fileName: modelInfo.fileName,
+  };
+}
+
+export function getValidWhisperModelNames(): string[] {
+  return Object.keys(modelData.whisperModels);
+}

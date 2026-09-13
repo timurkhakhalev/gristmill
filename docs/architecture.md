@@ -1,8 +1,14 @@
 # Target architecture
 
+Status: future batch proposal, not implemented or required for cleanup.
+Use `removal-plan.md` and `cleanup-m0.md` for the current milestone. Module names,
+schema and contracts below require a later design pass, not cleanup refactoring.
+
 ## Architectural unit
 
-The root entity is a **Meeting**, not a note or transcription. A meeting owns an immutable recording and a history of replaceable processing artifacts.
+The existing **Note** remains the product root, including notes without audio.
+A future recording session attaches audio and processing artifacts to a note.
+References to a meeting below describe that session, not a mandatory new root.
 
 ```text
 Calendar / manual start
@@ -218,7 +224,9 @@ If speaker labels or the transcript change, existing notes remain available but 
 
 ## Chat
 
-The initial chat is scoped to one meeting. Ordinary meetings can be sent to the model as a full transcript. Longer meetings use timestamped chunks and SQLite full-text search before a model call.
+Preserve the full embedded chat, including tools for finding, creating and editing
+other notes. The current note supplies initial context, not an access restriction.
+Future grounding can use timestamped chunks and SQLite full-text search.
 
 Answers should cite transcript intervals. Cross-meeting vector search is explicitly deferred; Qdrant is not required for the first version.
 
@@ -232,4 +240,3 @@ The revision and processing-run model makes evaluation a natural extension:
 - attach a manually corrected reference transcript;
 - calculate WER/CER for Russian and mixed Russian/English speech;
 - evaluate speaker attribution and summary facts separately.
-

@@ -1,6 +1,6 @@
 # План сокращения OpenWhispr до OpenHercules
 
-Статус: план для реализации. Исходный код пока не изменён.
+Статус: план cleanup для реализации. Код cleanup пока не изменён.
 Основание: обсуждение OpenHercules и импорт OpenWhispr
 `4335972b96a62caab0c822b3b9549a1a4fdbb351`.
 
@@ -12,14 +12,32 @@ backend и без зависимости от backend OpenWhispr. Записи, 
 
 В этом плане удаление Cloud означает удаление OpenWhispr Cloud и серверных
 функций продукта. Прямые запросы к ASR/LLM по пользовательским API-ключам
-сохраняются согласно прежнему обсуждению. Если требуется полностью offline
-обработка, это отдельное изменение: тогда локальные ASR/LLM становятся
-обязательными и пункт об удалении этих runtime неприменим.
+сохраняются. Сохраняем всех существующих прямых ASR/LLM-провайдеров,
+их модели, настройки ключей и custom endpoints; не сужаем список до одного.
+Целевая платформа подтверждена: только macOS Apple Silicon.
+
+Сохраняются все три режима: Cloud Providers (BYOK), Local и Self-Hosted.
+Удаляется только OpenWhispr Cloud. Local runtime, загрузка моделей и их
+настройки остаются. Существующая продуктовая модель notes, включая заметки
+без аудио, редактор и папки, сохраняется и не требует будущей замены на Meeting.
+Batch processing можно добавить к существующей модели заметок.
+
+Активные product/architecture/cutover docs синхронизированы с этим scope.
+Матрица делегирования, inventory и результаты baseline: `cleanup-m0.md`.
 
 Сохраняем meeting library/detail, ручные заметки, шаблоны, участников,
 исправление speaker labels, теги/категории, локальный импорт записей встреч,
-экспорт, запись mic/system, capture health, календари, batch processing,
-автоматический summary и chat по одной встрече.
+экспорт, текущую realtime-запись mic/system, существующую диаризацию,
+capture health, календари, существующий Audio Upload, генерацию notes
+и полноценный встроенный chat, включая локальные cross-note tools.
+Возможности сохраняются в текущем объёме.
+
+Cleanup не реализует новую архитектуру записи и обработки. Durable audio,
+переход meeting flow с realtime на batch, очередь, revisions, автоматический
+summary и новые модели относятся к следующему этапу. Требования из
+`architecture.md` и `product.md` остаются целевыми, но не являются критериями
+готовности этого cleanup. До следующего этапа сохраняются известные ограничения
+upstream, включая зависимость realtime от сети и временное хранение аудио.
 
 Будущий backend остаётся возможностью, а не частью текущего runtime.
 Удалённые реализации сохраняются в истории Git. Не оставляем закомментированные
@@ -27,18 +45,16 @@ backend и без зависимости от backend OpenWhispr. Записи, 
 
 ## 0. Зафиксировать исходную точку
 
-- До удаления создать отдельный baseline commit текущего импорта и постоянный
-  tag `openwhispr-baseline`. Сейчас `main` не содержит коммитов; одного
-  перемещаемого `upstream/main` недостаточно как ссылки на локальную baseline.
-- Проверить состав коммита: исходники, lockfile, LICENSE, документация;
-  исключить секреты, runtime-данные и скачанные build artifacts.
+- Baseline уже сохранена: commit `49cd2b3` содержит импорт и документы.
+  Для возврата удалённых функций использовать этот commit; дополнительный
+  архив в рабочем дереве не нужен.
 - Сохранить upstream SHA и особенности импорта из `openwhispr-upstream/IMPORT.md`.
 - Проверить исходную сборку и зафиксировать имеющиеся ошибки. Smoke-проверку
   приложения проводить только после изоляции его identity/storage на этапе 1.
 - Дальнейшие удаления разбивать на осмысленные коммиты по этапам ниже.
   Для возврата функции использовать историю; копия `legacy-cloud/` не нужна.
 
-Это план будущих коммитов, а не утверждение, что они уже созданы.
+Коммит baseline создан; коммиты cleanup ещё не созданы.
 
 ## 1. Отделить приложение от инфраструктуры OpenWhispr
 
@@ -82,51 +98,59 @@ calendar OAuth, сетевые ошибки и правила audio capture ну
 Готово: чтение, редактирование и запись встреч не зависят от аккаунта,
 подписки, workspace или ответа удалённой policy-службы.
 
-## 3. Заменить зависимые meeting-пути до удаления общего кода
+## 3. Сохранить meeting-пути при удалении общих зависимостей
 
-- Выделить capture из `src/stores/meetingRecordingStore.ts` и meeting IPC.
-  Start должен работать без API-ключей и сети; stop сначала финализирует
-  локальные mic/system tracks и manifest, затем ставит обработку в очередь.
-- Заменить временные diarization PCM и их удаление на durable chunks.
-  Сбой renderer/app оставляет завершённые чанки и явное состояние gaps.
-- Ввести SQLite processing runs и сохраняемые revisions. ASR каждого трека,
-  optional diarization, merge и summary имеют отдельный retry; пропуск
-  diarization должен быть явным допустимым состоянием.
-- Перенести полезные direct-provider adapters из `src/services/fileTranscription.ts`
-  и `src/services/ai/inferenceProviders/` за stage contracts.
-- Удалить тарифные ограничения из `UploadAudioView.tsx`. Технические лимиты
-  запроса провайдера обрабатывать chunking и проверкой полноты результата.
-- Сделать summary автоматическим после готовой transcript revision; сохранять
-  историю и помечать notes stale после изменения исходного transcript/speakers.
-- Отделить `useEmbeddedChat` от глобального agent runtime: оставить контекст
-  одной встречи, локальную историю и timestamp citations. Исключить инструменты
-  поиска чужих встреч, web search, screen context и компьютерные действия.
-- После переключения удалить старую обязательную realtime-цепочку,
-  managed streaming config и `Coming soon` self-hosted meeting mode.
-  Новый batch provider не должен зависеть от старого списка streaming providers.
+- Сохранить существующие start/stop, realtime transports, mic/system capture,
+  reconnect/watchdog и текущую диаризацию в `meetingRecordingStore.ts` и meeting IPC.
+  Удалить только OW Cloud route и его token/config bootstrap.
+- Сохранить прямые адаптеры в `src/services/fileTranscription.ts`,
+  `src/services/ai/inferenceProviders/` и realtime provider modules.
+  Списки для Note Recording и Audio Upload остаются разными по фактическим
+  возможностям; новые batch-адаптеры сейчас не добавлять.
+- Удалить тарифные проверки и предложения перейти в OW Cloud из Audio Upload.
+  Сохранить технические ограничения существующих direct-provider запросов.
+  Универсальный chunking длинных файлов относится к следующему этапу.
+- Сохранить существующую генерацию notes и шаблоны, без добавления автоматической
+  стадии после stop и без нового формата revisions.
+- Сохранить полноценный встроенный chat и его существующие действия, включая
+  изменение заметок; не превращать его в read-only Q&A. Общие streaming,
+  persistence и tool modules сохранять, пока они нужны встроенному chat.
+  Отдельный общий ассистент означает самостоятельный экран ChatView и голосовой
+  assistant вне заметки. Не переносить его удаление автоматически на инструменты
+  встроенного чата. Если инструмент требует OW backend, явно перечислить его
+  и согласовать замену/исключение до удаления; скрыто урезать chat нельзя.
+- Сохранить custom/self-hosted пути там, где они уже работают. Не открывать
+  неподдерживаемый realtime self-hosted mode простым снятием disabled.
+- В общих файлах выполнять только выделение кода, необходимое для удаления
+  зависимостей. Полный перенос на stage contracts отложить.
 
-Завершённый этап не содержит двух meeting pipelines. Выделение общих частей
-и переключение пользователей входят в один законченный срез изменения.
-
-Готово: capture переживает отключённую сеть; обработка ждёт провайдера;
-повторный запуск стадии сохраняет исходное аудио и предыдущие результаты.
+Готово: существующие direct-provider meeting, upload, notes и chat работают
+без аккаунта OpenWhispr; cleanup не подменяет realtime новым pipeline.
 
 ## 4. Удалить остальные продукты и лишнюю модельную инфраструктуру
 
-- Dictation, paste-at-cursor, translation, snippets, wake words, global voice
-  assistant, screen capture context, selection editing и их overlays/hotkeys.
+- Dictation, paste-at-cursor, dictation translation, dictation-specific применение snippets,
+  wake words, global voice assistant, screen capture context, selection editing
+  вне заметок и их overlays/hotkeys. Данные snippets/dictionary и их локальные
+  инструменты встроенного chat и экран ручного управления Dictionary/Snippets
+  сохранить — решение подтверждено пользователем.
+  Обычное выделение текста и редактирование в NoteEditor не удалять.
 - Глобальный chat, cross-note semantic search, Qdrant и embedding index.
-- Самостоятельную общую библиотеку notes свести к meeting library;
-  сохранить note editor и шаблоны внутри встречи.
-- Voice fingerprinting между встречами и live speaker recognition удалить;
-  ручные контакты/участники и исправления speakers сохранить.
-- Bundled Whisper/Parakeet/Cohere ASR и llama runtime, UI загрузки моделей,
-  GPU-рекламу и авто-download scripts убрать из первой версии с direct API.
-- Локальную diarization не удалять вместе с ASR/LLM автоматически: сначала
-  выбрать рабочую diarization стадию. Если она остаётся ONNX-based, сохранить
-  требуемые ONNX runtime/models. AEC/VAD оценивать по потребителям capture.
-- Локальный импорт audio/video встреч и FFmpeg сохранить. URL/YouTube downloader
-  и yt-dlp предлагается удалить как расширение за пределами meeting-only среза.
+- Сохранить библиотеку notes без изменения её продуктовой модели: заметки
+  без записи, папки, редактор, prompts и AI Actions над заметками.
+- Сохранить распознавание спикеров полностью: live speaker recognition,
+  voice fingerprinting между встречами, контакты и ручные исправления.
+- Сохранить bundled local ASR/LLM runtime, UI и загрузку моделей для arm64.
+- Существующую локальную диаризацию meeting flow и её ONNX runtime/models
+  сохранить. Встроенную OpenAI/Mistral диаризацию Audio Upload также сохранить.
+  Выбор и сравнение новых способов diarization не блокируют cleanup.
+  AEC/VAD и speaker embeddings удалять только при отсутствии оставшихся
+  потребителей; межвстречное распознавание и внутривстречная кластеризация различны.
+- Сохранить импорт локальных audio/video файлов, прямых media URL и FFmpeg.
+  Удалить только YouTube import и его UI/обработчики; yt-dlp удалить после
+  проверки, что сохранённый импорт прямых URL не зависит от него.
+- Сохранить Note Recording, Audio Upload, LLM settings для notes/chat,
+  meeting hotkey, recording pill, tray и уведомления.
 - Hosted API/MCP убрать; новый локальный API сейчас не реализовывать.
 
 Точки входа: `src/helpers/audioManager.js`, `src/hooks/useAudioRecording.js`,
@@ -140,6 +164,7 @@ calendar OAuth, сетевые ошибки и правила audio capture ну
   находятся в `googleCalendarOAuth.js`, `microsoftCalendarOAuth.js` и managers.
 - Для OpenHercules нужны собственные OAuth app registrations и проверенные callback
   settings. Не опираться на upstream credentials или hosted callback.
+- OAuth registrations добавляются позже и не входят в cleanup.
 - До настройки OAuth явным образом показывать недоступность конкретного
   подключения; ручная запись и Apple Calendar работают независимо.
 - Сохранить call detection, reminders, calendar vocabulary и участников.
@@ -147,44 +172,103 @@ calendar OAuth, сетевые ошибки и правила audio capture ну
 
 ## 6. Сократить сборку, зависимости и документацию
 
-- Удалить Windows/Linux native helpers, Nix, platform installers и CI jobs.
+- Удалить Windows/Linux и macOS Intel targets, native artifacts и CI jobs, Nix.
   Сохранить macOS audio tap, mic/call detection, calendar helper и нужный AEC.
 - Пересобрать `compile:native`, prestart/predev/prebuild/pack: сейчас они
-  скачивают Qdrant, local ASR/LLM, embeddings, yt-dlp и другие ненужные компоненты.
+  скачивают компоненты нескольких продуктов. Удалить Qdrant, search embeddings,
+  YouTube-only dependencies и ненужные platform artifacts. Local ASR/LLM,
+  diarization и speaker recognition dependencies для arm64 сохранить.
 - Удалить зависимости после проверки оставшихся imports: Better Auth/SSO,
-  Qdrant client, enterprise AWS/Azure/Vertex SDK, Linux DBus и прочие ставшие
-  неиспользуемыми пакеты. Сохранить keychain, SQLite, FFmpeg и нужные AI SDK.
+  Qdrant client, Linux DBus и прочие ставшие неиспользуемыми пакеты.
+  Enterprise policies/managed routing удалить, но прямые провайдеры с собственными
+  credentials сохранить, включая AWS/Azure/Vertex, если у них есть такой путь.
+  Их SDK удалять только при отсутствии сохранённых потребителей.
+  Сохранить keychain, SQLite, FFmpeg и нужные AI SDK.
 - Убрать загрузку брендовых шрифтов OpenWhispr; использовать имеющийся свободный
   шрифт. Заменить брендовые assets, сохранив MIT license и attribution.
 - Обновить lockfile штатным package manager; не менять его параллельно с cutover.
 - Удалить старые workflows, troubleshooting/setup docs и agent instructions,
-  относящиеся к вырезанным продуктам; архив доступен из baseline Git tag.
-- Актуализировать README (сейчас ошибочно говорит, что импорта ещё нет),
-  product/architecture/cutover/delivery docs. Этот порядок заменяет позднюю
-  очистку из прежнего Phase 4: backend удаляется в начале перехода.
+  относящиеся к вырезанным продуктам; архив доступен из baseline commit.
+- Актуализировать README и ссылки на планы. Разделить завершённый cleanup
+  и будущий переход обработки: новая архитектура не считается реализованной
+  после удаления серверных функций.
 
 ## Проверка результата
 
-- Сборка и запуск macOS на чистом профиле OpenHercules без auth/backend env.
+- Сборка и запуск macOS arm64 на чистом профиле OpenHercules без auth/backend env.
 - Startup и idle не обращаются к OpenWhispr API/auth/MCP/update endpoints;
   это проверяется наблюдением сетевых запросов, дополнительно к поиску строк.
-- Без сети и без провайдера можно начать/остановить запись и открыть библиотеку.
-- Mic/system сохраняются раздельно; пропажа трека видна после перезапуска.
-- Crash, повторный stop и retry не удаляют аудио и предыдущие артефакты.
-- Direct ASR → diarization/skip → merge → summary → meeting chat работает
-  без OpenWhispr account; длинная запись обрабатывается полностью.
-- Экспорт аудио/транскрипта/notes и правка speakers работают локально.
-- Chat не извлекает данные другой встречи. Ошибка ASR/summary не блокирует capture.
+- Библиотека и локальные заметки открываются без сети и аккаунта.
+- С настроенным direct realtime provider запись стартует/останавливается,
+  mic/system и существующая диаризация работают как до cleanup.
+- Проверены повторный stop, interruption/device change и renderer loss:
+  регрессий относительно baseline нет; исходные ограничения задокументированы.
+- Direct Audio Upload, notes generation, правка speakers, существующий экспорт
+  и meeting chat работают без OW Cloud. Лимиты провайдеров отображаются честно.
+- Каждый сохранённый провайдер остаётся в registry/settings и имеет рабочий
+  dispatch; целевые тесты проверяют routing без реальных платных запросов.
+- Встроенный chat сохраняет существующие действия и локальную историю;
+  инструменты не теряются из-за удаления отдельного assistant UI или backend.
+- Создание заметок без аудио, папки и AI Actions работают как прежде.
+- Local, BYOK и поддерживаемые Self-Hosted пути сохранены.
+- Импорт файла и прямого media URL работает; YouTube import удалён.
+- Обычный локальный поиск по заголовкам и тексту работает без Qdrant.
+- Live и межвстречное распознавание спикеров не урезаны.
 - Typecheck, lint, renderer build и целевые тесты сохранённых путей проходят;
-  финальная macOS smoke-проверка подтверждает permissions, capture и recovery.
+  финальная macOS arm64 smoke-проверка подтверждает permissions и текущий capture.
 
 ## Что требуется определить перед соответствующим этапом
 
-- Первые direct ASR/summary/chat providers и способ diarization — перед этапом 3.
+- Удаление самостоятельного ChatView и голосового ассистента вне заметок
+  подтверждено пользователем. Общие модули встроенного chat сохранить.
+- Проверка `src/services/tools/index.ts` показала: чтение/создание/изменение
+  notes, папки, clipboard и vocabulary tools работают локально; calendar tools
+  используют существующие календарные интеграции. `search_notes` содержит
+  cloud/semantic/FTS пути: оставить FTS согласно принятому решению о поиске.
+- Удаление `web_search` подтверждено пользователем: убрать инструмент из
+  registry, его реализацию, IPC/preload/type declarations и связанные UI/settings.
+  Удалить вызов `/api/agent/web-search`; замену или BYOK web-search provider
+  сейчас не добавлять. Остальные инструменты встроенного chat сохранить.
+- Snippet/dictionary: подтверждено сохранение данных, инструментов встроенного
+  chat и экрана ручного управления; удаляется только dictation-specific применение.
+- Home/Insights: подтверждено удаление истории диктовок и их статистики целиком.
+  Открывать Notes по умолчанию; новый dashboard в cleanup не добавлять.
+- Screen/selection context проверен по цепочке вызовов: `useEmbeddedChat`
+  передаёт `noteContext` и вызывает `sendMessageWithResult(text)` без
+  `attachment`/`selectedContext`. Эти параметры общего `useChatStreaming`
+  используются голосовым AssistantPanel и onboarding assistant demo, а не
+  встроенным chat заметки. Их удаление вместе с отдельным ассистентом не
+  сокращает текущие возможности embedded chat. Контекст заметки/транскрипта,
+  обычное выделение и редактирование текста сохранить.
+
 - Собственные Google/Microsoft OAuth registrations — перед включением этих
   интеграций; они не блокируют остальной cutover.
-- Поддержка Intel Macs и конкретные native dependencies — перед финальной упаковкой.
+- Перед удалением native dependencies проверить потребителей оставшейся
+  realtime-записи и диаризации. Новую ASR-модель для cleanup выбирать не требуется.
+
+## Следующий этап: batch processing и эксперименты (вне cleanup)
+
+После cleanup отдельно планируются durable раздельные записи, restart recovery,
+переход meeting flow на batch, processing runs/revisions, автоматические notes,
+timestamp citations и обработка длинных файлов. ASR и diarization могут
+возвращаться одним вызовом провайдера; отдельный запрос diarization не обязателен.
+
+Список пользователя для будущего сравнения, перенесённый со скриншота:
+
+- Groq Whisper Large v3 Turbo.
+- ElevenLabs Scribe v2.
+- Deepgram Nova-2 batch.
+- Deepgram Nova-3, один язык.
+- OpenAI `gpt-transcribe` (название со скриншота; точный API model ID уточнить).
+- Deepgram Nova-3 Multilingual.
+- OpenAI `gpt-4o-transcribe`.
+
+Также ранее обсуждалась `gpt-4o-transcribe-diarize`, уже используемая OW
+в Audio Upload. Список кандидатов не означает, что все они поддерживают
+диаризацию или уже имеют batch-адаптер в импортированном коде. Цены и доступность
+из скриншота здесь не подтверждаются; проверяются перед экспериментами.
+Добавление адаптеров, выбор победителей и запуск сравнений в cleanup не входят.
 
 Наличие будущего backend не требует сейчас auth, sync schema, billing framework
 или plugin SDK. Для возвращения возможностей достаточно baseline истории,
-локальных stage contracts и явных требований будущей версии.
+явных требований будущей версии. Stage contracts относятся к будущему batch-этапу.

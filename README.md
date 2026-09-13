@@ -1,10 +1,13 @@
 # OpenHercules
 
-OpenHercules is a local-first macOS meeting client that records microphone and system audio without joining the call as a bot. It keeps the original audio under the user's control, then runs replaceable cloud or local processing stages to produce a transcript, speaker labels, meeting notes, and a meeting-scoped chat.
+OpenHercules is a macOS Apple Silicon meeting and notes client based on an imported OpenWhispr baseline. The current task is cleanup: remove OpenWhispr Cloud and unrelated products while preserving existing realtime recording, notes, full embedded chat, all direct providers, Local and supported Self-Hosted modes.
 
 The product is intended to use OpenWhispr as a one-time source for its Granola-like interface, macOS capture code, calendar integration, and selected provider adapters. OpenHercules is not planned as a long-lived rebrand that continuously merges all upstream OpenWhispr features.
 
 ## Core promise
+
+The promise and product shape below describe the future batch stage, not
+guarantees of the imported application or requirements for cleanup.
 
 The recording is the source of truth. A transcript, diarization result, summary, or chat index is a reproducible artifact that can be regenerated with another provider or model.
 
@@ -25,9 +28,14 @@ Realtime transcription is optional. Reliable post-meeting processing is the prim
 
 ## Current status
 
-OpenWhispr source has been imported as a baseline. The OpenHercules product cutover is planned in [the removal plan](docs/removal-plan.md).
+OpenWhispr source is imported as baseline commit `49cd2b3`. No application cleanup is implemented. Notes remain the product root, including blank notes and cross-note chat tools. Scope is in [the removal plan](docs/removal-plan.md); ownership, inventories and verification results are in [M0](docs/cleanup-m0.md).
 
 ## Documents
+
+Install with `pnpm install --frozen-lockfile` (pnpm 10.19.0, Node >=24).
+Use `pnpm run build:renderer`, `pnpm run typecheck`, `pnpm run lint` and
+`pnpm test` for checks. The canonical lockfile is `pnpm-lock.yaml`.
+Do not start Electron before the identity/storage isolation in M1.
 
 - [Product requirements](docs/product.md)
 - [Target architecture](docs/architecture.md)

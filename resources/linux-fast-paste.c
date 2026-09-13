@@ -1,0 +1,928 @@
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <X11/Xutil.h>
+#include <X11/extensions/XTest.h>
+#include <X11/keysym.h>
+#include <unistd.h>
+
+#ifdef HAVE_UINPUT
+#include <linux/uinput.h>
+#include <linux/input.h>
+#include <fcntl.h>
+#include <errno.h>
+#endif
+
+#ifdef HAVE_ATSPI
+#include <atspi/atspi.h>
+#endif
+
+/* Paste key sequence. SHIFT_INSERT is the universal Linux paste shortcut —
+ * works in terminals and GUI apps, and (unlike Ctrl+V) isn't intercepted by
+ * TUI agents as "paste image". Used when window class is unknown on Wayland
+ * or when targeting Konsole (which silently drops simulated Ctrl+Shift+V). */
+typedef enum {
+    PASTE_MODE_CTRL_V        = 0,
+    PASTE_MODE_CTRL_SHIFT_V  = 1,
+    PASTE_MODE_SHIFT_INSERT  = 2,
+} paste_mode_t;
+
+#ifdef HAVE_GIO
+#include <gio/gio.h>
+
+#define PORTAL_BUS   "org.freedesktop.portal.Desktop"
+#define PORTAL_PATH  "/org/freedesktop/portal/desktop"
+#define PORTAL_IFACE "org.freedesktop.portal.RemoteDesktop"
+#define REQUEST_IFACE "org.freedesktop.portal.Request"
+
+/* Method replies are immediate on a healthy portal (user interaction arrives via
+ * Response signals, not the call reply). A stale RemoteDesktop session can leave
+ * a sync call hanging inside a signal callback, which blocks the main loop and
+ * defeats the 10s watchdog below — so bound every call instead of using the
+ * default (25s) D-Bus timeout. */
+#define PORTAL_CALL_TIMEOUT_MS 3000
+static int portal_exit_code = 0;
+
+typedef struct {
+    GDBusConnection *conn;
+    GMainLoop       *loop;
+    char            *session_handle;
+    char            *restore_token;
+    guint            signal_id;
+    paste_mode_t     mode;
+    int              copy_mode;
+} PortalData;
+
+static char *get_sender_path(GDBusConnection *conn)
+{
+    const char *name = g_dbus_connection_get_unique_name(conn);
+    char *path = g_strdup(name + 1);
+    for (char *p = path; *p; p++) {
+        if (*p == '.') *p = '_';
+    }
+    return path;
+}
+
+static guint subscribe_response(PortalData *app, const char *request_path,
+                                GDBusSignalCallback callback)
+{
+    return g_dbus_connection_signal_subscribe(
+        app->conn, PORTAL_BUS, REQUEST_IFACE, "Response",
+        request_path, NULL, G_DBUS_SIGNAL_FLAGS_NO_MATCH_RULE,
+        callback, app, NULL);
+}
+
+static int portal_emit_keysym(PortalData *app, gint32 keysym, guint32 pressed,
+                              const char *label)
+{
+    GError *err = NULL;
+    GVariant *opts = g_variant_new("a{sv}", NULL);
+    GVariant *result = g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
+        PORTAL_IFACE, "NotifyKeyboardKeysym",
+        g_variant_new("(o@a{sv}iu)", app->session_handle, opts, keysym, pressed),
+        NULL, G_DBUS_CALL_FLAGS_NONE, PORTAL_CALL_TIMEOUT_MS, NULL, &err);
+    if (err) {
+        fprintf(stderr, "%s: %s\n", label, err->message);
+        g_clear_error(&err);
+        return 0;
+    }
+    if (result) g_variant_unref(result);
+    return 1;
+}
+
+static void portal_send_paste(PortalData *app)
+{
+    int ok = 1;
+    if (app->copy_mode) {
+        const int use_shift = (app->mode == PASTE_MODE_CTRL_SHIFT_V);
+        ok &= portal_emit_keysym(app, XK_Control_L, 1, "Ctrl press");
+        if (use_shift)
+            ok &= portal_emit_keysym(app, XK_Shift_L, 1, "Shift press");
+        ok &= portal_emit_keysym(app, XK_c, 1, "C press");
+        usleep(20000);
+        ok &= portal_emit_keysym(app, XK_c, 0, "C release");
+        if (use_shift)
+            ok &= portal_emit_keysym(app, XK_Shift_L, 0, "Shift release");
+        ok &= portal_emit_keysym(app, XK_Control_L, 0, "Ctrl release");
+    } else if (app->mode == PASTE_MODE_SHIFT_INSERT) {
+        ok &= portal_emit_keysym(app, XK_Shift_L, 1, "Shift press");
+        /* let the compositor register the modifier before the key arrives */
+        usleep(20000);
+        ok &= portal_emit_keysym(app, XK_Insert, 1, "Insert press");
+        usleep(20000);
+        ok &= portal_emit_keysym(app, XK_Insert, 0, "Insert release");
+        ok &= portal_emit_keysym(app, XK_Shift_L, 0, "Shift release");
+    } else {
+        const int use_shift = (app->mode == PASTE_MODE_CTRL_SHIFT_V);
+
+        ok &= portal_emit_keysym(app, XK_Control_L, 1, "Ctrl press");
+        if (use_shift)
+            ok &= portal_emit_keysym(app, XK_Shift_L, 1, "Shift press");
+        usleep(20000);
+        ok &= portal_emit_keysym(app, XK_v, 1, "V press");
+        usleep(20000);
+        ok &= portal_emit_keysym(app, XK_v, 0, "V release");
+        if (use_shift)
+            ok &= portal_emit_keysym(app, XK_Shift_L, 0, "Shift release");
+        ok &= portal_emit_keysym(app, XK_Control_L, 0, "Ctrl release");
+    }
+
+    if (!ok) portal_exit_code = 6;
+    g_main_loop_quit(app->loop);
+}
+
+static void on_start_response(GDBusConnection *conn, const char *sender,
+    const char *object_path, const char *interface_name,
+    const char *signal_name, GVariant *parameters, gpointer user_data)
+{
+    PortalData *app = user_data;
+    guint32 response;
+    GVariant *results;
+
+    g_variant_get(parameters, "(u@a{sv})", &response, &results);
+    g_dbus_connection_signal_unsubscribe(app->conn, app->signal_id);
+
+    if (response != 0) {
+        fprintf(stderr, "Start cancelled (response=%u)\n", response);
+        portal_exit_code = 3;
+        g_variant_unref(results);
+        g_main_loop_quit(app->loop);
+        return;
+    }
+
+    GVariant *token_v = g_variant_lookup_value(results, "restore_token",
+                                                G_VARIANT_TYPE_STRING);
+    if (token_v) {
+        const char *token = g_variant_get_string(token_v, NULL);
+        printf("%s\n", token);
+        fflush(stdout);
+        g_variant_unref(token_v);
+    }
+
+    g_variant_unref(results);
+    portal_send_paste(app);
+}
+
+static void on_select_devices_response(GDBusConnection *conn, const char *sender,
+    const char *object_path, const char *interface_name,
+    const char *signal_name, GVariant *parameters, gpointer user_data)
+{
+    PortalData *app = user_data;
+    guint32 response;
+    GVariant *results;
+
+    g_variant_get(parameters, "(u@a{sv})", &response, &results);
+    g_dbus_connection_signal_unsubscribe(app->conn, app->signal_id);
+    g_variant_unref(results);
+
+    if (response != 0) {
+        fprintf(stderr, "SelectDevices denied (response=%u)\n", response);
+        portal_exit_code = 2;
+        g_main_loop_quit(app->loop);
+        return;
+    }
+
+    char *sender_path = get_sender_path(app->conn);
+    char *request_path = g_strdup_printf(
+        "/org/freedesktop/portal/desktop/request/%s/start", sender_path);
+    g_free(sender_path);
+
+    app->signal_id = subscribe_response(app, request_path, on_start_response);
+
+    GVariantBuilder opts;
+    g_variant_builder_init(&opts, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&opts, "{sv}", "handle_token",
+                          g_variant_new_string("start"));
+
+    GError *err = NULL;
+    g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
+        PORTAL_IFACE, "Start",
+        g_variant_new("(os@a{sv})", app->session_handle, "",
+                       g_variant_builder_end(&opts)),
+        NULL, G_DBUS_CALL_FLAGS_NONE, PORTAL_CALL_TIMEOUT_MS, NULL, &err);
+
+    g_free(request_path);
+    if (err) {
+        fprintf(stderr, "Start call failed: %s\n", err->message);
+        g_error_free(err);
+        portal_exit_code = 1;
+        g_main_loop_quit(app->loop);
+    }
+}
+
+static void on_create_session_response(GDBusConnection *conn, const char *sender,
+    const char *object_path, const char *interface_name,
+    const char *signal_name, GVariant *parameters, gpointer user_data)
+{
+    PortalData *app = user_data;
+    guint32 response;
+    GVariant *results;
+
+    g_variant_get(parameters, "(u@a{sv})", &response, &results);
+    g_dbus_connection_signal_unsubscribe(app->conn, app->signal_id);
+
+    if (response != 0) {
+        fprintf(stderr, "CreateSession denied (response=%u)\n", response);
+        portal_exit_code = 2;
+        g_variant_unref(results);
+        g_main_loop_quit(app->loop);
+        return;
+    }
+
+    GVariant *handle_v = g_variant_lookup_value(results, "session_handle",
+                                                 G_VARIANT_TYPE_STRING);
+    app->session_handle = g_variant_dup_string(handle_v, NULL);
+    g_variant_unref(handle_v);
+    g_variant_unref(results);
+
+    char *sender_path = get_sender_path(app->conn);
+    char *request_path = g_strdup_printf(
+        "/org/freedesktop/portal/desktop/request/%s/selectdevices",
+        sender_path);
+    g_free(sender_path);
+
+    app->signal_id = subscribe_response(app, request_path,
+                                        on_select_devices_response);
+
+    GVariantBuilder opts;
+    g_variant_builder_init(&opts, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&opts, "{sv}", "handle_token",
+                          g_variant_new_string("selectdevices"));
+    g_variant_builder_add(&opts, "{sv}", "types",
+                          g_variant_new_uint32(1)); /* KEYBOARD only */
+    g_variant_builder_add(&opts, "{sv}", "persist_mode",
+                          g_variant_new_uint32(2)); /* persistent */
+
+    if (app->restore_token) {
+        g_variant_builder_add(&opts, "{sv}", "restore_token",
+                              g_variant_new_string(app->restore_token));
+    }
+
+    GError *err = NULL;
+    g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
+        PORTAL_IFACE, "SelectDevices",
+        g_variant_new("(o@a{sv})", app->session_handle,
+                       g_variant_builder_end(&opts)),
+        NULL, G_DBUS_CALL_FLAGS_NONE, PORTAL_CALL_TIMEOUT_MS, NULL, &err);
+
+    g_free(request_path);
+    if (err) {
+        fprintf(stderr, "SelectDevices call failed: %s\n", err->message);
+        g_error_free(err);
+        portal_exit_code = 1;
+        g_main_loop_quit(app->loop);
+    }
+}
+
+static gboolean on_portal_timeout(gpointer user_data)
+{
+    PortalData *app = user_data;
+    fprintf(stderr, "Timeout waiting for portal response\n");
+    portal_exit_code = 1;
+    g_main_loop_quit(app->loop);
+    return G_SOURCE_REMOVE;
+}
+
+static int paste_via_portal(paste_mode_t mode, const char *restore_token, int copy_mode)
+{
+    PortalData app = { 0 };
+    app.mode = mode;
+    app.copy_mode = copy_mode;
+    if (restore_token) app.restore_token = g_strdup(restore_token);
+
+    GError *err = NULL;
+    app.conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    if (!app.conn) {
+        fprintf(stderr, "D-Bus connection failed: %s\n", err->message);
+        g_error_free(err);
+        g_free(app.restore_token);
+        return 1;
+    }
+
+    app.loop = g_main_loop_new(NULL, FALSE);
+    g_timeout_add_seconds(10, on_portal_timeout, &app);
+
+    char *sender_path = get_sender_path(app.conn);
+    char *request_path = g_strdup_printf(
+        "/org/freedesktop/portal/desktop/request/%s/createsession",
+        sender_path);
+    g_free(sender_path);
+
+    app.signal_id = subscribe_response(&app, request_path,
+                                       on_create_session_response);
+
+    GVariantBuilder opts;
+    g_variant_builder_init(&opts, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&opts, "{sv}", "handle_token",
+                          g_variant_new_string("createsession"));
+    g_variant_builder_add(&opts, "{sv}", "session_handle_token",
+                          g_variant_new_string("openwhispr"));
+
+    g_dbus_connection_call_sync(app.conn, PORTAL_BUS, PORTAL_PATH,
+        PORTAL_IFACE, "CreateSession",
+        g_variant_new("(@a{sv})", g_variant_builder_end(&opts)),
+        NULL, G_DBUS_CALL_FLAGS_NONE, PORTAL_CALL_TIMEOUT_MS, NULL, &err);
+
+    g_free(request_path);
+    if (err) {
+        fprintf(stderr, "CreateSession failed: %s\n", err->message);
+        g_error_free(err);
+        g_main_loop_unref(app.loop);
+        g_free(app.restore_token);
+        g_object_unref(app.conn);
+        return 1;
+    }
+
+    g_main_loop_run(app.loop);
+
+    g_main_loop_unref(app.loop);
+    g_free(app.session_handle);
+    g_free(app.restore_token);
+    g_object_unref(app.conn);
+
+    return portal_exit_code;
+}
+#endif /* HAVE_GIO */
+
+static const char *terminal_classes[] = {
+    "konsole", "gnome-terminal", "terminal", "kitty", "alacritty",
+    "terminator", "xterm", "urxvt", "rxvt", "tilix", "terminology",
+    "wezterm", "foot", "st", "yakuake", "ghostty", "guake", "tilda",
+    "hyper", "tabby", "sakura", "warp", "termius", "waveterm",
+    "ptyxis", "kgx", "org.gnome.console", NULL
+};
+
+static int is_terminal(const char *wm_class) {
+    if (!wm_class) return 0;
+    for (int i = 0; terminal_classes[i]; i++) {
+        if (strcasestr(wm_class, terminal_classes[i]))
+            return 1;
+    }
+    return 0;
+}
+
+static int check_parent_terminal(Display *dpy, Window win) {
+    Window current = win;
+    Window root = DefaultRootWindow(dpy);
+
+    for (int depth = 0; depth < 20; depth++) {
+        Window parent, dummy_root;
+        Window *children = NULL;
+        unsigned int nchildren;
+
+        if (!XQueryTree(dpy, current, &dummy_root, &parent, &children, &nchildren)) {
+            if (children) XFree(children);
+            break;
+        }
+        if (children) XFree(children);
+        if (parent == 0 || parent == root) break;
+
+        XClassHint hint;
+        if (XGetClassHint(dpy, parent, &hint)) {
+            int terminal = is_terminal(hint.res_class) || is_terminal(hint.res_name);
+            XFree(hint.res_name);
+            XFree(hint.res_class);
+            return terminal;
+        }
+
+        current = parent;
+    }
+
+    return 0;
+}
+
+#ifdef HAVE_ATSPI
+static int detect_terminal_atspi(void) {
+    atspi_init();
+    AtspiAccessible *desktop = atspi_get_desktop(0);
+    if (!desktop) return -1;
+
+    int n = atspi_accessible_get_child_count(desktop, NULL);
+    for (int i = 0; i < n; i++) {
+        AtspiAccessible *app = atspi_accessible_get_child_at_index(desktop, i, NULL);
+        if (!app) continue;
+        int nw = atspi_accessible_get_child_count(app, NULL);
+        for (int j = 0; j < nw; j++) {
+            AtspiAccessible *win = atspi_accessible_get_child_at_index(app, j, NULL);
+            if (!win) continue;
+            AtspiStateSet *states = atspi_accessible_get_state_set(win);
+            gboolean active = atspi_state_set_contains(states, ATSPI_STATE_ACTIVE);
+            g_object_unref(states);
+            if (active) {
+                char *name = atspi_accessible_get_name(app, NULL);
+                int result = name ? is_terminal(name) : 0;
+                g_free(name);
+                g_object_unref(win);
+                g_object_unref(app);
+                return result;
+            }
+            g_object_unref(win);
+        }
+        g_object_unref(app);
+    }
+    return -1;
+}
+
+/* Native Wayland compositors do not expose an X11 window id.  AT-SPI gives us
+ * both the active application's PID (a stable paste target) and the focused
+ * text object's selection without synthesising Ctrl+C. */
+static AtspiAccessible *find_active_atspi_window(AtspiAccessible **app_out) {
+    AtspiAccessible *desktop = atspi_get_desktop(0);
+    if (!desktop) return NULL;
+
+    int app_count = atspi_accessible_get_child_count(desktop, NULL);
+    for (int i = 0; i < app_count; i++) {
+        AtspiAccessible *app = atspi_accessible_get_child_at_index(desktop, i, NULL);
+        if (!app) continue;
+        int window_count = atspi_accessible_get_child_count(app, NULL);
+        for (int j = 0; j < window_count; j++) {
+            AtspiAccessible *win = atspi_accessible_get_child_at_index(app, j, NULL);
+            if (!win) continue;
+            AtspiStateSet *states = atspi_accessible_get_state_set(win);
+            gboolean active = states && atspi_state_set_contains(states, ATSPI_STATE_ACTIVE);
+            if (states) g_object_unref(states);
+            if (active) {
+                if (app_out) *app_out = g_object_ref(app);
+                g_object_unref(app);
+                g_object_unref(desktop);
+                return win;
+            }
+            g_object_unref(win);
+        }
+        g_object_unref(app);
+    }
+    g_object_unref(desktop);
+    return NULL;
+}
+
+static AtspiAccessible *find_focused_text(AtspiAccessible *node, int depth) {
+    if (!node || depth > 32) return NULL;
+
+    AtspiStateSet *states = atspi_accessible_get_state_set(node);
+    gboolean focused = states && atspi_state_set_contains(states, ATSPI_STATE_FOCUSED);
+    if (states) g_object_unref(states);
+    if (focused && atspi_accessible_is_text(node)) return g_object_ref(node);
+
+    int child_count = atspi_accessible_get_child_count(node, NULL);
+    for (int i = 0; i < child_count; i++) {
+        AtspiAccessible *child = atspi_accessible_get_child_at_index(node, i, NULL);
+        AtspiAccessible *focused_child = find_focused_text(child, depth + 1);
+        if (child) g_object_unref(child);
+        if (focused_child) return focused_child;
+    }
+    return NULL;
+}
+
+static int atspi_active_pid(AtspiAccessible *app) {
+    GError *error = NULL;
+    gint pid = atspi_accessible_get_process_id(app, &error);
+    if (error) {
+        g_error_free(error);
+        return 0;
+    }
+    return pid > 0 ? pid : 0;
+}
+
+static int print_atspi_target(void) {
+    AtspiAccessible *app = NULL;
+    AtspiAccessible *win = find_active_atspi_window(&app);
+    int pid = app ? atspi_active_pid(app) : 0;
+    if (win) g_object_unref(win);
+    if (app) g_object_unref(app);
+    if (!pid) return 1;
+    printf("TARGET ATSPI %d\n", pid);
+    return 0;
+}
+
+static int print_atspi_selection(void) {
+    AtspiAccessible *app = NULL;
+    AtspiAccessible *win = find_active_atspi_window(&app);
+    int pid = app ? atspi_active_pid(app) : 0;
+
+    /* Replacement text typed back into a shell executes on its embedded
+     * newlines, so a terminal's selection is reported as no selection and the
+     * command falls back to standalone dictation. */
+    if (pid && app) {
+        char *app_name = atspi_accessible_get_name(app, NULL);
+        int terminal = app_name ? is_terminal(app_name) : 0;
+        g_free(app_name);
+        if (terminal) {
+            if (win) g_object_unref(win);
+            g_object_unref(app);
+            printf("ATSPI_NONE %d\n", pid);
+            return 0;
+        }
+    }
+
+    AtspiAccessible *focused = win ? find_focused_text(win, 0) : NULL;
+    if (win) g_object_unref(win);
+    if (app) g_object_unref(app);
+    if (!pid || !focused) {
+        if (focused) g_object_unref(focused);
+        return 1;
+    }
+
+    AtspiText *text = atspi_accessible_get_text_iface(focused);
+    g_object_unref(focused);
+    if (!text) return 1;
+
+    GError *error = NULL;
+    int selection_count = atspi_text_get_n_selections(text, &error);
+    if (error || selection_count < 1) {
+        if (error) g_error_free(error);
+        g_object_unref(text);
+        printf("ATSPI_NONE %d\n", pid);
+        return 0;
+    }
+
+    AtspiRange *range = atspi_text_get_selection(text, 0, &error);
+    if (error || !range) {
+        if (error) g_error_free(error);
+        g_object_unref(text);
+        return 1;
+    }
+    gchar *selected = atspi_text_get_text(text, range->start_offset, range->end_offset, &error);
+    g_free(range);
+    g_object_unref(text);
+    if (error || !selected) {
+        if (error) g_error_free(error);
+        g_free(selected);
+        return 1;
+    }
+
+    gchar *encoded = g_base64_encode((const guchar *)selected, strlen(selected));
+    g_free(selected);
+    printf("ATSPI_SELECTED %d %s\n", pid, encoded);
+    g_free(encoded);
+    return 0;
+}
+#endif
+
+static Window get_active_window(Display *dpy) {
+    Atom prop = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", True);
+    if (prop != None) {
+        Atom actual_type;
+        int actual_format;
+        unsigned long nitems, bytes_after;
+        unsigned char *data = NULL;
+
+        if (XGetWindowProperty(dpy, DefaultRootWindow(dpy), prop, 0, 1, False,
+                               XA_WINDOW, &actual_type, &actual_format,
+                               &nitems, &bytes_after, &data) == Success && data) {
+            Window win = nitems > 0 ? *(Window *)data : None;
+            XFree(data);
+            if (win != None) return win;
+        }
+    }
+
+    Window focused;
+    int revert;
+    XGetInputFocus(dpy, &focused, &revert);
+    return focused;
+}
+
+static void activate_window(Display *dpy, Window win) {
+    Atom net_active = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+    XEvent ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.xclient.type         = ClientMessage;
+    ev.xclient.window       = win;
+    ev.xclient.message_type = net_active;
+    ev.xclient.format       = 32;
+    ev.xclient.data.l[0]    = 2; /* source: pager */
+    ev.xclient.data.l[1]    = CurrentTime;
+    ev.xclient.data.l[2]    = 0;
+
+    XSendEvent(dpy, DefaultRootWindow(dpy), False,
+               SubstructureNotifyMask | SubstructureRedirectMask, &ev);
+    XFlush(dpy);
+
+    usleep(50000);
+
+    XSetInputFocus(dpy, win, RevertToParent, CurrentTime);
+    XFlush(dpy);
+    usleep(20000);
+}
+
+#ifdef HAVE_UINPUT
+static void emit(int fd, int type, int code, int val) {
+    struct input_event ie;
+    memset(&ie, 0, sizeof(ie));
+    ie.type = type;
+    ie.code = code;
+    ie.value = val;
+    if (write(fd, &ie, sizeof(ie)) < 0) {
+        /* best-effort */
+    }
+}
+
+static void emit_key(int fd, int code, int val) {
+    emit(fd, EV_KEY, code, val);
+    emit(fd, EV_SYN, SYN_REPORT, 0);
+}
+
+static int paste_via_uinput(paste_mode_t mode, int copy_mode) {
+    int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+    if (fd < 0) {
+        fprintf(stderr, "Cannot open /dev/uinput: %s\n", strerror(errno));
+        return 3;
+    }
+
+    if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0 ||
+        ioctl(fd, UI_SET_KEYBIT, KEY_LEFTCTRL) < 0 ||
+        ioctl(fd, UI_SET_KEYBIT, KEY_LEFTSHIFT) < 0 ||
+        ioctl(fd, UI_SET_KEYBIT, KEY_C) < 0 ||
+        ioctl(fd, UI_SET_KEYBIT, KEY_V) < 0 ||
+        ioctl(fd, UI_SET_KEYBIT, KEY_INSERT) < 0) {
+        close(fd);
+        return 4;
+    }
+
+    struct uinput_setup usetup;
+    memset(&usetup, 0, sizeof(usetup));
+    usetup.id.bustype = BUS_USB;
+    usetup.id.vendor  = 0x1234;
+    usetup.id.product = 0x5678;
+    snprintf(usetup.name, UINPUT_MAX_NAME_SIZE, "openwhispr-paste");
+
+    if (ioctl(fd, UI_DEV_SETUP, &usetup) < 0 ||
+        ioctl(fd, UI_DEV_CREATE) < 0) {
+        close(fd);
+        return 4;
+    }
+
+    usleep(50000);
+
+    if (!copy_mode && mode == PASTE_MODE_SHIFT_INSERT) {
+        emit_key(fd, KEY_LEFTSHIFT, 1);
+        usleep(8000);
+        emit_key(fd, KEY_INSERT, 1);
+        usleep(8000);
+        emit_key(fd, KEY_INSERT, 0);
+        usleep(8000);
+        emit_key(fd, KEY_LEFTSHIFT, 0);
+    } else {
+        const int use_shift = (mode == PASTE_MODE_CTRL_SHIFT_V);
+
+        emit_key(fd, KEY_LEFTCTRL, 1);
+        if (use_shift) emit_key(fd, KEY_LEFTSHIFT, 1);
+        usleep(8000);
+        const int key = copy_mode ? KEY_C : KEY_V;
+        emit_key(fd, key, 1);
+        usleep(8000);
+        emit_key(fd, key, 0);
+        usleep(8000);
+        if (use_shift) emit_key(fd, KEY_LEFTSHIFT, 0);
+        emit_key(fd, KEY_LEFTCTRL, 0);
+    }
+
+    usleep(20000);
+
+    ioctl(fd, UI_DEV_DESTROY);
+    close(fd);
+    return 0;
+}
+#endif
+
+static int send_media_play_pause(void) {
+#ifdef HAVE_UINPUT
+    /* KEY_PLAYPAUSE = 164 (evdev) — works without X11 display */
+    int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+    if (fd >= 0) {
+        if (ioctl(fd, UI_SET_EVBIT, EV_KEY) >= 0 &&
+            ioctl(fd, UI_SET_KEYBIT, KEY_PLAYPAUSE) >= 0) {
+
+            struct uinput_setup usetup;
+            memset(&usetup, 0, sizeof(usetup));
+            usetup.id.bustype = BUS_USB;
+            usetup.id.vendor  = 0x1234;
+            usetup.id.product = 0x5678;
+            snprintf(usetup.name, UINPUT_MAX_NAME_SIZE, "openwhispr-media");
+
+            if (ioctl(fd, UI_DEV_SETUP, &usetup) >= 0 &&
+                ioctl(fd, UI_DEV_CREATE) >= 0) {
+
+                usleep(50000);
+
+                emit(fd, EV_KEY, KEY_PLAYPAUSE, 1);
+                emit(fd, EV_SYN, SYN_REPORT, 0);
+                usleep(8000);
+                emit(fd, EV_KEY, KEY_PLAYPAUSE, 0);
+                emit(fd, EV_SYN, SYN_REPORT, 0);
+                usleep(20000);
+
+                ioctl(fd, UI_DEV_DESTROY);
+                close(fd);
+                return 0;
+            }
+        }
+        close(fd);
+    }
+#endif
+
+    /* Fallback to XTest */
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) return 1;
+
+    int event_base, error_base, major, minor;
+    if (!XTestQueryExtension(dpy, &event_base, &error_base, &major, &minor)) {
+        XCloseDisplay(dpy);
+        return 2;
+    }
+
+    /* XF86AudioPlay keysym = 0x1008FF14 */
+    KeyCode play = XKeysymToKeycode(dpy, 0x1008FF14);
+    if (play == 0) {
+        XCloseDisplay(dpy);
+        return 2;
+    }
+
+    XTestFakeKeyEvent(dpy, play, True, CurrentTime);
+    usleep(8000);
+    XTestFakeKeyEvent(dpy, play, False, CurrentTime);
+
+    XFlush(dpy);
+    usleep(20000);
+    XCloseDisplay(dpy);
+    return 0;
+}
+
+/* Resolve the paste key sequence. --shift-insert wins outright (used when the
+ * caller already knows context is unknown or Konsole). Otherwise: terminal
+ * detection via atspi, then X11 class, then parent class — same fallback
+ * chain the binary used before this enum existed. */
+static paste_mode_t resolve_paste_mode(int force_terminal, int force_shift_insert,
+                                       Window target_window)
+{
+    if (force_shift_insert) return PASTE_MODE_SHIFT_INSERT;
+
+    int is_term = force_terminal;
+#ifdef HAVE_ATSPI
+    if (!is_term) { int r = detect_terminal_atspi(); if (r >= 0) is_term = r; }
+#endif
+    if (!is_term) {
+        Display *dpy = XOpenDisplay(NULL);
+        if (dpy) {
+            Window win = (target_window != None) ? target_window : get_active_window(dpy);
+            if (win != None) {
+                XClassHint hint;
+                if (XGetClassHint(dpy, win, &hint)) {
+                    is_term = is_terminal(hint.res_class) || is_terminal(hint.res_name);
+                    XFree(hint.res_name);
+                    XFree(hint.res_class);
+                } else {
+                    is_term = check_parent_terminal(dpy, win);
+                }
+            }
+            XCloseDisplay(dpy);
+        }
+    }
+    return is_term ? PASTE_MODE_CTRL_SHIFT_V : PASTE_MODE_CTRL_V;
+}
+
+int main(int argc, char *argv[]) {
+    int force_terminal = 0;
+    int force_shift_insert = 0;
+    int use_uinput = 0;
+    int use_portal = 0;
+    int media_play_pause = 0;
+    int copy_mode = 0;
+    int capabilities_only = 0;
+    int atspi_target_only = 0;
+    int atspi_selection = 0;
+    const char *restore_token = NULL;
+    Window target_window = None;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--terminal") == 0) {
+            force_terminal = 1;
+        } else if (strcmp(argv[i], "--shift-insert") == 0) {
+            force_shift_insert = 1;
+        } else if (strcmp(argv[i], "--uinput") == 0) {
+            use_uinput = 1;
+        } else if (strcmp(argv[i], "--portal") == 0) {
+            use_portal = 1;
+        } else if (strcmp(argv[i], "--media-play-pause") == 0) {
+            media_play_pause = 1;
+        } else if (strcmp(argv[i], "--copy") == 0) {
+            copy_mode = 1;
+        } else if (strcmp(argv[i], "--capabilities") == 0) {
+            capabilities_only = 1;
+        } else if (strcmp(argv[i], "--atspi-target") == 0) {
+            atspi_target_only = 1;
+        } else if (strcmp(argv[i], "--atspi-selection") == 0) {
+            atspi_selection = 1;
+        } else if (strcmp(argv[i], "--restore-token") == 0 && i + 1 < argc) {
+            restore_token = argv[++i];
+        } else if (strcmp(argv[i], "--window") == 0 && i + 1 < argc) {
+            target_window = (Window)strtoul(argv[++i], NULL, 0);
+        }
+    }
+
+    if (capabilities_only) {
+        printf("paste-v1 selection-copy-v1 target-window-v1");
+#ifdef HAVE_GIO
+        printf(" portal-keysym-v1");
+#endif
+#ifdef HAVE_ATSPI
+        printf(" atspi-selection-v1");
+#endif
+        printf("\n");
+        return 0;
+    }
+
+    if (atspi_target_only) {
+#ifdef HAVE_ATSPI
+        return print_atspi_target();
+#else
+        return 5;
+#endif
+    }
+
+    if (atspi_selection) {
+#ifdef HAVE_ATSPI
+        return print_atspi_selection();
+#else
+        return 5;
+#endif
+    }
+
+    if (media_play_pause) {
+        return send_media_play_pause();
+    }
+
+    if (use_portal) {
+#ifdef HAVE_GIO
+        paste_mode_t mode = resolve_paste_mode(force_terminal, force_shift_insert, target_window);
+        return paste_via_portal(mode, restore_token, copy_mode);
+#else
+        fprintf(stderr, "portal support not compiled in\n");
+        return 5;
+#endif
+    }
+
+    if (use_uinput) {
+#ifdef HAVE_UINPUT
+        paste_mode_t mode = resolve_paste_mode(force_terminal, force_shift_insert, target_window);
+        return paste_via_uinput(mode, copy_mode);
+#else
+        fprintf(stderr, "uinput support not compiled in\n");
+        return 3;
+#endif
+    }
+
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) return 1;
+
+    int event_base, error_base, major, minor;
+    if (!XTestQueryExtension(dpy, &event_base, &error_base, &major, &minor)) {
+        XCloseDisplay(dpy);
+        return 2;
+    }
+
+    if (target_window != None) {
+        activate_window(dpy, target_window);
+    }
+
+    paste_mode_t mode = resolve_paste_mode(force_terminal, force_shift_insert, target_window);
+
+    if (!copy_mode && mode == PASTE_MODE_SHIFT_INSERT) {
+        KeyCode shift  = XKeysymToKeycode(dpy, XK_Shift_L);
+        KeyCode insert = XKeysymToKeycode(dpy, XK_Insert);
+
+        XTestFakeKeyEvent(dpy, shift, True, CurrentTime);
+        usleep(8000);
+        XTestFakeKeyEvent(dpy, insert, True, CurrentTime);
+        usleep(8000);
+        XTestFakeKeyEvent(dpy, insert, False, CurrentTime);
+        usleep(8000);
+        XTestFakeKeyEvent(dpy, shift, False, CurrentTime);
+    } else {
+        const int use_shift = (mode == PASTE_MODE_CTRL_SHIFT_V);
+        KeyCode ctrl = XKeysymToKeycode(dpy, XK_Control_L);
+        KeyCode shift = XKeysymToKeycode(dpy, XK_Shift_L);
+        KeyCode key = XKeysymToKeycode(dpy, copy_mode ? XK_c : XK_v);
+
+        XTestFakeKeyEvent(dpy, ctrl, True, CurrentTime);
+        if (use_shift)
+            XTestFakeKeyEvent(dpy, shift, True, CurrentTime);
+        usleep(8000);
+        XTestFakeKeyEvent(dpy, key, True, CurrentTime);
+        usleep(8000);
+        XTestFakeKeyEvent(dpy, key, False, CurrentTime);
+        usleep(8000);
+        if (use_shift)
+            XTestFakeKeyEvent(dpy, shift, False, CurrentTime);
+        XTestFakeKeyEvent(dpy, ctrl, False, CurrentTime);
+    }
+
+    XFlush(dpy);
+    usleep(20000);
+    XCloseDisplay(dpy);
+    if (copy_mode) printf("COPY_OK\n");
+    return 0;
+}

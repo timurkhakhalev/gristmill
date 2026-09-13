@@ -1,0 +1,486 @@
+const { spawn } = require("child_process");
+const path = require("path");
+const EventEmitter = require("events");
+const fs = require("fs");
+const debugLogger = require("./debugLogger");
+
+// Mach-O CPU type constants for architecture verification
+const ARCH_CPU_TYPE = {
+  arm64: 0x0100000c, // CPU_TYPE_ARM64
+  x64: 0x01000007, // CPU_TYPE_X86_64
+};
+
+// Maximum number of rapid automatic restarts before giving up
+const MAX_RESTART_ATTEMPTS = 3;
+// Delay between restart attempts (ms)
+const RESTART_DELAY_MS = 1000;
+// After this much sustained uptime, reset restart counter (allows future restarts after sleep/wake)
+const RESTART_RESET_MS = 10000;
+// Crash recovery is best-effort and must never hold the rest of app startup.
+const PREFERENCE_RECOVERY_TIMEOUT_MS = 2000;
+const PREFERENCE_RECOVERY_TERMINATION_TIMEOUT_MS = 1000;
+
+class GlobeKeyManager extends EventEmitter {
+  constructor({ preferenceStatePath = null } = {}) {
+    super();
+    this.process = null;
+    this.isSupported = process.platform === "darwin";
+    this.hasReportedError = false;
+    this._isStopping = false;
+    this._restartCount = 0;
+    this._restartResetTimer = null;
+    this._preferenceRecoveryBlocked = false;
+    this.preferenceStatePath = preferenceStatePath;
+    this.config = { mouseButtons: [], suppressGlobeAction: false };
+  }
+
+  // Replaces the listener's whole state, so every call has to pass all of it.
+  setConfiguration({ mouseButtons = [], suppressGlobeAction = false } = {}) {
+    const next = {
+      mouseButtons: [
+        ...new Set(mouseButtons.filter((button) => /^MouseButton[45]$/i.test(button))),
+      ].sort(),
+      suppressGlobeAction: Boolean(suppressGlobeAction),
+    };
+
+    if (JSON.stringify(next) === JSON.stringify(this.config)) {
+      return;
+    }
+
+    this.config = next;
+
+    if (!this.process) {
+      return;
+    }
+
+    // Reconfigure the running listener rather than restarting it: a restart
+    // drops events and briefly hands the Globe key back to macOS.
+    if (!this._sendConfiguration()) {
+      this.stop();
+      this.start();
+    }
+  }
+
+  _sendConfiguration() {
+    const child = this.process;
+    if (!child?.stdin?.writable) {
+      return false;
+    }
+    try {
+      // write() returning false is backpressure, not failure.
+      child.stdin.write(`${JSON.stringify(this.config)}\n`);
+      return true;
+    } catch (error) {
+      debugLogger.warn("[GlobeKeyManager] Failed to send configuration", { error: error.message });
+      return false;
+    }
+  }
+
+  _listenerArgs() {
+    const args = [];
+    if (this.config.mouseButtons.length > 0) {
+      args.push(this.config.mouseButtons.join(","));
+    }
+    if (this.preferenceStatePath) {
+      args.push("--globe-preference-state", this.preferenceStatePath);
+    }
+    if (this.config.suppressGlobeAction) {
+      args.push("--suppress-system-globe-action");
+    }
+    return args;
+  }
+
+  restoreLeftoverSystemPreference() {
+    if (!this.isSupported || !this.preferenceStatePath) {
+      return Promise.resolve();
+    }
+    if (!fs.existsSync(this.preferenceStatePath)) {
+      return Promise.resolve();
+    }
+
+    const listenerPath = this.resolveListenerBinary();
+    if (!listenerPath) {
+      debugLogger.warn("[GlobeKeyManager] Preference recovery skipped — binary not found");
+      return Promise.resolve();
+    }
+
+    const archMismatch = this._checkArchMismatch(listenerPath);
+    if (archMismatch) {
+      debugLogger.warn("[GlobeKeyManager] Preference recovery skipped", { error: archMismatch });
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let recoveryTimeout = null;
+      let terminationTimeout = null;
+      let terminationRequested = false;
+      const finish = (error, code) => {
+        if (settled) return;
+        settled = true;
+        if (recoveryTimeout) clearTimeout(recoveryTimeout);
+        if (terminationTimeout) clearTimeout(terminationTimeout);
+        if (error || code !== 0) {
+          debugLogger.warn("[GlobeKeyManager] Preference recovery failed", {
+            error: error?.message,
+            code,
+          });
+        }
+        resolve();
+      };
+      const blockListenerStart = (error) => {
+        this._preferenceRecoveryBlocked = true;
+        finish(error);
+      };
+
+      try {
+        const child = spawn(
+          listenerPath,
+          [
+            "--globe-preference-state",
+            this.preferenceStatePath,
+            "--restore-leftover-globe-preference",
+          ],
+          { stdio: "ignore" }
+        );
+        child.once("error", (error) => {
+          if (terminationRequested) {
+            blockListenerStart(error);
+          } else {
+            finish(error);
+          }
+        });
+        child.once("exit", (code) =>
+          finish(
+            terminationRequested
+              ? new Error("Preference recovery helper was terminated after timing out")
+              : null,
+            code
+          )
+        );
+        recoveryTimeout = setTimeout(() => {
+          terminationRequested = true;
+          try {
+            child.kill("SIGKILL");
+          } catch (error) {
+            blockListenerStart(error);
+            return;
+          }
+          if (!settled) {
+            terminationTimeout = setTimeout(
+              () =>
+                blockListenerStart(
+                  new Error(
+                    `Preference recovery helper did not exit within ${PREFERENCE_RECOVERY_TERMINATION_TIMEOUT_MS}ms after SIGKILL`
+                  )
+                ),
+              PREFERENCE_RECOVERY_TERMINATION_TIMEOUT_MS
+            );
+          }
+        }, PREFERENCE_RECOVERY_TIMEOUT_MS);
+      } catch (error) {
+        finish(error);
+      }
+    });
+  }
+
+  start() {
+    if (!this.isSupported) {
+      debugLogger.info("[GlobeKeyManager] Skipped — not macOS");
+      return;
+    }
+    if (this._preferenceRecoveryBlocked) {
+      this.reportError(
+        new Error("Globe listener blocked because preference recovery could not be terminated")
+      );
+      return;
+    }
+    if (this.process) {
+      debugLogger.info("[GlobeKeyManager] Skipped — already running");
+      return;
+    }
+
+    this._isStopping = false;
+
+    const listenerPath = this.resolveListenerBinary();
+    if (!listenerPath) {
+      debugLogger.info("[GlobeKeyManager] Binary not found in any candidate path");
+      this.reportError(
+        new Error(
+          "macOS Globe listener binary not found. Run `npm run compile:globe` before packaging."
+        )
+      );
+      return;
+    }
+
+    debugLogger.info("[GlobeKeyManager] Binary found", { path: listenerPath });
+
+    // Verify binary architecture matches the running process
+    const archMismatch = this._checkArchMismatch(listenerPath);
+    if (archMismatch) {
+      this.reportError(new Error(archMismatch));
+      return;
+    }
+
+    try {
+      fs.accessSync(listenerPath, fs.constants.X_OK);
+    } catch {
+      debugLogger.info("[GlobeKeyManager] Binary not executable, attempting chmod");
+      try {
+        fs.chmodSync(listenerPath, 0o755);
+      } catch {
+        this.reportError(
+          new Error(`macOS Globe listener is not executable and chmod failed: ${listenerPath}`)
+        );
+        return;
+      }
+    }
+
+    this.hasReportedError = false;
+    const child = spawn(listenerPath, this._listenerArgs());
+    this.process = child;
+    debugLogger.info("[GlobeKeyManager] Process spawned", {
+      pid: child.pid,
+      config: this.config,
+    });
+
+    // A write racing the listener's shutdown can raise EPIPE, and an unhandled
+    // stream "error" event throws.
+    child.stdin.on("error", (error) => {
+      debugLogger.warn("[GlobeKeyManager] Listener stdin error", { error: error.message });
+    });
+
+    // After sustained uptime, reset the restart counter so future sleep/wake
+    // cycles get a fresh set of restart attempts
+    if (this._restartResetTimer) clearTimeout(this._restartResetTimer);
+    this._restartResetTimer = setTimeout(() => {
+      this._restartResetTimer = null;
+      if (this._restartCount > 0) {
+        debugLogger.info("[GlobeKeyManager] Sustained uptime — restart counter reset");
+        this._restartCount = 0;
+      }
+    }, RESTART_RESET_MS);
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      chunk
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .forEach((line) => {
+          if (line === "FN_DOWN") {
+            this.emit("globe-down");
+          } else if (line === "FN_UP") {
+            this.emit("globe-up");
+          } else if (line === "FN_INTERRUPTED") {
+            this.emit("globe-interrupted");
+          } else if (line.startsWith("RIGHT_MOD_DOWN:")) {
+            const modifier = line.replace("RIGHT_MOD_DOWN:", "").trim();
+            if (modifier) {
+              this.emit("right-modifier-down", modifier);
+            }
+          } else if (line.startsWith("RIGHT_MOD_UP:")) {
+            const modifier = line.replace("RIGHT_MOD_UP:", "").trim();
+            if (modifier) {
+              this.emit("right-modifier-up", modifier);
+            }
+          } else if (line.startsWith("MODIFIER_UP:")) {
+            const modifier = line.replace("MODIFIER_UP:", "").trim().toLowerCase();
+            if (modifier) {
+              this.emit("modifier-up", modifier);
+            }
+          } else if (line.startsWith("MOUSE_BUTTON_DOWN:")) {
+            const button = line.replace("MOUSE_BUTTON_DOWN:", "").trim();
+            if (button) {
+              this.emit("mouse-button-down", button);
+            }
+          } else if (line.startsWith("MOUSE_BUTTON_UP:")) {
+            const button = line.replace("MOUSE_BUTTON_UP:", "").trim();
+            if (button) {
+              this.emit("mouse-button-up", button);
+            }
+          }
+        });
+    });
+
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (data) => {
+      const message = data.toString().trim();
+      if (message.length > 0) {
+        if (message.includes("Failed to create event monitor")) {
+          this.reportError(new Error(message));
+        } else {
+          debugLogger.warn("[GlobeKeyManager] Non-fatal stderr output", { message });
+        }
+      }
+    });
+
+    child.on("error", (error) => {
+      debugLogger.info("[GlobeKeyManager] Process error", { error: error.message });
+      this.reportError(error);
+      if (this.process === child) this.process = null;
+    });
+
+    child.on("exit", (code, signal) => {
+      debugLogger.info("[GlobeKeyManager] Process exited", { code, signal });
+      // Only clear instance state if this is still the current process — a prior
+      // stop()+start() (e.g. a setConfiguration fallback) may have already replaced it.
+      if (this.process !== child) {
+        return;
+      }
+      this.process = null;
+      if (this._restartResetTimer) {
+        clearTimeout(this._restartResetTimer);
+        this._restartResetTimer = null;
+      }
+
+      // Intentional stop — don't restart or report
+      if (this._isStopping || signal === "SIGINT" || signal === "SIGTERM") {
+        return;
+      }
+
+      if (code !== 0) {
+        const error = new Error(
+          `Globe key listener exited with code ${code ?? "null"} signal ${signal ?? "null"}`
+        );
+        this.reportError(error);
+        return;
+      }
+
+      // Exit code 0 but we didn't request stop — the event tap was likely
+      // invalidated (e.g. after sleep/wake). Attempt automatic restart.
+      if (this._restartCount < MAX_RESTART_ATTEMPTS) {
+        this._restartCount++;
+        debugLogger.warn(
+          `[GlobeKeyManager] Unexpected exit (code 0), restarting (attempt ${this._restartCount}/${MAX_RESTART_ATTEMPTS})`
+        );
+        setTimeout(() => {
+          if (!this._isStopping && !this.process) {
+            this.start();
+          }
+        }, RESTART_DELAY_MS);
+      } else {
+        debugLogger.error(
+          "GlobeKeyManager exhausted restart attempts",
+          { attempts: MAX_RESTART_ATTEMPTS },
+          "hotkey"
+        );
+        this.reportError(
+          new Error(
+            `Globe key listener keeps exiting unexpectedly (${MAX_RESTART_ATTEMPTS} restarts failed). ` +
+              "Try restarting OpenWhispr."
+          )
+        );
+      }
+    });
+  }
+
+  stop() {
+    this._isStopping = true;
+    if (this._restartResetTimer) {
+      clearTimeout(this._restartResetTimer);
+      this._restartResetTimer = null;
+    }
+    if (this.process) {
+      this.process.kill();
+      this.process = null;
+    }
+  }
+
+  reportError(error) {
+    if (this.hasReportedError) {
+      return;
+    }
+    this.hasReportedError = true;
+    if (this.process) {
+      try {
+        this.process.kill();
+      } catch {
+        // ignore
+      } finally {
+        this.process = null;
+      }
+    }
+    debugLogger.error("GlobeKeyManager error", { error: error.message }, "hotkey");
+    this.emit("error", error);
+  }
+
+  _checkArchMismatch(binaryPath) {
+    try {
+      const fd = fs.openSync(binaryPath, "r");
+      const header = Buffer.alloc(8);
+      fs.readSync(fd, header, 0, 8, 0);
+      fs.closeSync(fd);
+
+      const magic = header.readUInt32LE(0);
+      if (magic !== 0xfeedfacf) {
+        return `Globe listener binary is not a valid 64-bit Mach-O file (magic: 0x${magic.toString(16)})`;
+      }
+
+      const cpuType = header.readInt32LE(4);
+      const expectedCpu = ARCH_CPU_TYPE[process.arch];
+      if (expectedCpu && cpuType !== expectedCpu) {
+        const archNames = { [ARCH_CPU_TYPE.arm64]: "arm64", [ARCH_CPU_TYPE.x64]: "x86_64" };
+        const binaryArch = archNames[cpuType] || `unknown(0x${cpuType.toString(16)})`;
+        return (
+          `Globe listener binary architecture mismatch: binary is ${binaryArch} ` +
+          `but this Mac requires ${process.arch}. The app may have been built incorrectly. ` +
+          `Try reinstalling or run \`TARGET_ARCH=${process.arch} npm run compile:globe\`.`
+        );
+      }
+
+      debugLogger.info("[GlobeKeyManager] Binary architecture verified", {
+        arch: process.arch,
+        cpuType: `0x${cpuType.toString(16)}`,
+      });
+      return null;
+    } catch (err) {
+      debugLogger.warn("[GlobeKeyManager] Could not verify binary architecture", {
+        error: err.message,
+      });
+      // Don't block startup on verification failure — let spawn attempt proceed
+      return null;
+    }
+  }
+
+  resolveListenerBinary() {
+    const candidates = new Set([
+      path.join(__dirname, "..", "..", "resources", "bin", "macos-globe-listener"),
+      path.join(__dirname, "..", "..", "resources", "macos-globe-listener"),
+    ]);
+
+    if (process.resourcesPath) {
+      [
+        path.join(process.resourcesPath, "macos-globe-listener"),
+        path.join(process.resourcesPath, "bin", "macos-globe-listener"),
+        path.join(process.resourcesPath, "resources", "macos-globe-listener"),
+        path.join(process.resourcesPath, "resources", "bin", "macos-globe-listener"),
+        path.join(process.resourcesPath, "app.asar.unpacked", "resources", "macos-globe-listener"),
+        path.join(
+          process.resourcesPath,
+          "app.asar.unpacked",
+          "resources",
+          "bin",
+          "macos-globe-listener"
+        ),
+      ].forEach((candidate) => candidates.add(candidate));
+    }
+
+    const candidatePaths = [...candidates];
+
+    for (const candidate of candidatePaths) {
+      try {
+        const stats = fs.statSync(candidate);
+        if (stats.isFile()) {
+          return candidate;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  }
+}
+
+module.exports = GlobeKeyManager;

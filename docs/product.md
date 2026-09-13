@@ -1,5 +1,16 @@
 # Product requirements
 
+## Current delivery contract
+
+Cleanup comes first: `removal-plan.md` and `cleanup-m0.md`. Preserve current
+realtime recording, blank notes, folders/editor, full embedded chat, AI Actions,
+all BYOK/Local/supported Self-Hosted providers, all speaker recognition,
+Dictionary/Snippets data/tools/management UI, file/direct URL import and calendars.
+Google/Microsoft OAuth registrations and batch processing come later.
+
+Recording principles and failure scenarios below describe the future batch
+stage, not implemented capabilities or acceptance gates for cleanup.
+
 ## Problem
 
 Existing meeting assistants can produce useful notes while still failing at the most important responsibility: preserving the conversation. If system audio disappears during a connection or device transition and the application does not retain the original recording, the meeting cannot be recovered or reprocessed.
@@ -16,7 +27,7 @@ A technical individual user who:
 
 - joins calls from a Mac;
 - does not want a bot visible in the meeting;
-- prefers cloud models but may use local models later;
+- uses direct cloud providers, Local or supported Self-Hosted models;
 - cares more about the final result than a realtime transcript;
 - wants control over recordings and the ability to retry processing;
 - expects integrations and prompts to be customizable.
@@ -79,18 +90,18 @@ A technical individual user who:
 
 ### Chat
 
-- Ask questions about one meeting.
+- Preserve full embedded note chat, including note creation and editing tools.
 - Use transcript, manual notes, generated notes, and meeting metadata as context.
 - Link factual answers to transcript timestamps.
 - Keep chat history per meeting.
-- Do not silently answer from unrelated meetings.
+- Preserve explicit local cross-note search and access; do not add a single-note restriction.
 
 ### Integrations and customization
 
 - Google, Microsoft, and Apple Calendar integration.
 - User-defined meeting categories, tags, and note templates.
 - Separate provider and model settings for transcription, diarization, summary, and chat.
-- Cloud-first provider support without preventing future local implementations.
+- Preserve all existing direct cloud, bundled Local and supported Self-Hosted implementations.
 
 ## Initial non-goals
 
@@ -102,14 +113,13 @@ A technical individual user who:
 - Hosted OpenHercules sync or subscription accounts.
 - Enterprise SSO, SCIM, or organization policies.
 - Windows and Linux clients.
-- Voice fingerprinting across meetings.
 - Cross-meeting semantic search.
-- Mandatory realtime transcription.
+- A new realtime architecture (current realtime remains during cleanup).
 - A marketplace or dynamically installed plugin SDK.
 
 ## Required failure scenarios
 
-The first useful release is not complete until these scenarios work:
+The future batch milestone, not cleanup, targets these scenarios:
 
 1. Switching Wi-Fi, hotspot, and VPN during a meeting does not interrupt either local track.
 2. A cloud provider outage leaves the meeting queued and retryable.
@@ -123,9 +133,8 @@ The first useful release is not complete until these scenarios work:
 ## Later candidates
 
 - Optional live transcript preview.
-- Local ASR, diarization, and LLM providers.
-- Cross-meeting questions and semantic search.
+- New ASR/diarization/LLM models beyond the preserved local and direct providers.
+- Semantic search (existing local cross-note tools remain).
 - MCP or a public local API.
 - Action-item integrations.
 - Sharing and collaboration, if a real requirement appears.
-

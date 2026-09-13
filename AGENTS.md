@@ -2,7 +2,22 @@
 
 Read `README.md` and the documents under `docs/` before making architectural or product changes.
 
-## Invariants
+## Current milestone: cleanup
+
+The current contract is `docs/removal-plan.md`; delegation and verification are
+in `docs/cleanup-m0.md`. Complete cleanup before implementing batch processing.
+Preserve existing notes (including blank notes), full embedded chat except
+web_search, all BYOK/Local/supported Self-Hosted routes, realtime recording,
+all speaker recognition, and Dictionary/Snippets data, tools and management UI.
+Remove Home (dictation history) and Insights entirely; open Notes by default.
+Do not build a replacement dashboard during cleanup.
+Isolate identity and storage in M1 before runtime smoke tests; never use the
+original OpenWhispr profile. Do not add compatibility shims.
+
+## Future batch invariants (not cleanup acceptance criteria)
+
+These describe the next stage, not guarantees of the imported baseline.
+Do not implement new capture, queues or stage contracts during cleanup.
 
 - The original microphone and system tracks are the source of truth.
 - Capture must not depend on network access or a model provider.
@@ -10,7 +25,7 @@ Read `README.md` and the documents under `docs/` before making architectural or 
 - Do not delete or overwrite raw audio or previous processing artifacts during retry.
 - Keep provider-specific payloads behind canonical stage contracts.
 - Persist long-running processing state so it can resume after restart.
-- Keep the first product macOS-only and meeting-only unless the scope is explicitly changed.
+- Keep the product macOS Apple Silicon only; preserve the existing notes model.
 - Prefer a static TypeScript provider registry over a plugin framework until dynamic plugins are required.
 - Do not preserve old OpenWhispr product paths through compatibility shims after cutover.
 
@@ -19,4 +34,3 @@ Read `README.md` and the documents under `docs/` before making architectural or 
 Do not reintroduce dictation, a general voice assistant, team collaboration, hosted sync, enterprise controls, or cross-platform support without an explicit product decision.
 
 When importing OpenWhispr code, preserve its MIT license and attribution. Import only the code and assets needed by the documented product surface.
-

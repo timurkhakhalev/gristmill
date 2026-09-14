@@ -404,7 +404,7 @@ test("restart seeds from the note's persisted transcript, not the stale live seg
 
   const result = resolveMeetingAutoEndRestartSeed(
     7,
-    { transcript: JSON.stringify(diarized), deleted_at: null },
+    { transcript: JSON.stringify(diarized) },
     parseSegments,
     stale
   );
@@ -415,13 +415,9 @@ test("restart seeds from the note's persisted transcript, not the stale live seg
 test("restart refuses a note that was deleted during the restart window", async () => {
   const { resolveMeetingAutoEndRestartSeed } = await load();
 
+  // A deleted note reads back as null — there is no tombstone row anymore.
   assert.deepEqual(
-    resolveMeetingAutoEndRestartSeed(
-      7,
-      { transcript: "[]", deleted_at: "2026-08-27T00:00:00Z" },
-      parseSegments,
-      []
-    ),
+    resolveMeetingAutoEndRestartSeed(7, null, parseSegments, []),
     { ok: false, reason: "note-missing" }
   );
 });
@@ -449,7 +445,7 @@ test("restart starts empty when the note has no transcript yet", async () => {
   const { resolveMeetingAutoEndRestartSeed } = await load();
 
   assert.deepEqual(
-    resolveMeetingAutoEndRestartSeed(7, { transcript: "", deleted_at: null }, parseSegments, [
+    resolveMeetingAutoEndRestartSeed(7, { transcript: "" }, parseSegments, [
       { id: "a", text: "stale" },
     ]),
     { ok: true, seedSegments: [] }
@@ -465,7 +461,7 @@ function createRestartDeps(overrides = {}) {
     deps: {
       getActiveSessionId: () => null,
       getLatestSegments: () => [],
-      getNote: async () => ({ transcript: "[]", deleted_at: null }),
+      getNote: async () => ({ transcript: "[]" }),
       parseSegments,
       startRecording: async (args) => {
         started.push(args);
@@ -486,7 +482,6 @@ test("a delivered restart starts a recording seeded from the note", async () => 
   const { deps, started } = createRestartDeps({
     getNote: async () => ({
       transcript: JSON.stringify([{ id: "a", text: "hi" }]),
-      deleted_at: null,
     }),
   });
 
@@ -542,7 +537,7 @@ test("a recording that starts while the note is being read cancels the restart",
 
   const outcome = runMeetingAutoEndRestart({ sessionId: "meeting-1" }, restartContext(), deps);
   activeSessionId = "meeting-manual";
-  noteRead.resolve({ transcript: "[]", deleted_at: null });
+  noteRead.resolve({ transcript: "[]" });
 
   assert.deepEqual(await outcome, { status: "aborted", reason: "already-recording" });
   assert.equal(started.length, 0);

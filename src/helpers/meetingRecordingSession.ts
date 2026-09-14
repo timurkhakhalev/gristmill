@@ -1,5 +1,6 @@
 import type { StartRecordingArgs, TranscriptSegment } from "../stores/meetingRecordingStore";
-import type { MeetingAutoEndRestartRequest, NoteItem } from "../types/electron";
+import type { MeetingAutoEndRestartRequest } from "../types/electron";
+import type { NoteItem } from "../contracts/notes";
 
 export function createMeetingRecordingSessionId(
   randomUUID: () => string = () => crypto.randomUUID()
@@ -69,7 +70,7 @@ export function createMeetingAutoEndRestartContext(
   };
 }
 
-type MeetingAutoEndRestartNote = Pick<NoteItem, "transcript" | "deleted_at">;
+type MeetingAutoEndRestartNote = Pick<NoteItem, "transcript">;
 
 export type MeetingAutoEndRestartSeed =
   { ok: true; seedSegments: TranscriptSegment[] } | { ok: false; reason: "note-missing" };
@@ -86,7 +87,8 @@ export function resolveMeetingAutoEndRestartSeed(
   liveSegments: TranscriptSegment[]
 ): MeetingAutoEndRestartSeed {
   if (noteId == null) return { ok: true, seedSegments: liveSegments };
-  if (!note || note.deleted_at) return { ok: false, reason: "note-missing" };
+  // A deleted note is just absent: getNote returns null for it.
+  if (!note) return { ok: false, reason: "note-missing" };
   return { ok: true, seedSegments: note.transcript ? parseSegments(note.transcript) : [] };
 }
 

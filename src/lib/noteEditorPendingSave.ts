@@ -35,7 +35,7 @@ interface NoteDraftSource {
   readonly id: number;
   readonly title: string;
   readonly content: string;
-  readonly enhanced_content: string | null;
+  readonly enhanced_content?: string | null;
 }
 
 export interface NoteTransitionPlan {

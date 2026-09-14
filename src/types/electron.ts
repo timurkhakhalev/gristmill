@@ -8,12 +8,6 @@ import type {
   SelfHostedType,
 } from "../contracts/inferenceSettings";
 
-export type {
-  LocalTranscriptionProvider,
-  InferenceMode,
-  SelfHostedType,
-} from "../contracts/inferenceSettings";
-
 export type ChineseScriptPreference = "simplified" | "traditional" | "as-transcribed";
 
 export type TranscriptionStatus = "completed" | "failed" | "pending" | "discarded";

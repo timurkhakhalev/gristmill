@@ -1,6 +1,6 @@
 import { resolveTranscriptionRoute, type TranscriptionRoute } from "../helpers/transcriptionRoute";
 import { getTranscriptionProviders } from "../models/ModelRegistry";
-import type { LocalTranscriptionProvider } from "../types/electron";
+import type { LocalTranscriptionProvider } from "../contracts/inferenceSettings";
 
 export interface FileTranscriptionResult {
   success: boolean;

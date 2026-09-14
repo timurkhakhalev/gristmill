@@ -9,7 +9,7 @@ import type { InferenceModeOption } from "../ui/SettingsSection";
 import ReasoningModelSelector from "../ReasoningModelSelector";
 import OpenAICompatiblePanel from "../OpenAICompatiblePanel";
 import { Toggle } from "../ui/toggle";
-import type { InferenceMode } from "../../types/electron";
+import type { InferenceMode } from "../../contracts/inferenceSettings";
 import type { InferenceScope } from "../../config/inferenceScopes";
 import { getCloudModel, getLocalModel } from "../../models/ModelRegistry";
 

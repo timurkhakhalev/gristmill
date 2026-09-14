@@ -2,7 +2,6 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
-import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,26 +23,13 @@ const parseDevServerPort = (rawPort) => {
 export default defineConfig(({ mode }) => {
   const envDir = path.resolve(__dirname, "..");
   const env = loadEnv(mode, envDir, "");
-  const rawPort = env.VITE_DEV_SERVER_PORT || env.OPENWHISPR_DEV_SERVER_PORT;
+  const rawPort = env.VITE_DEV_SERVER_PORT;
   const devServerPort = parseDevServerPort(rawPort);
 
   return {
     plugins: [
       react(),
       tailwindcss(),
-      {
-        name: "write-runtime-env",
-        writeBundle() {
-          const runtimeEnv = {
-            VITE_OPENWHISPR_API_URL: env.VITE_OPENWHISPR_API_URL || "",
-            VITE_AUTH_URL: env.VITE_AUTH_URL || "",
-          };
-          fs.writeFileSync(
-            path.resolve(__dirname, "dist", "runtime-env.json"),
-            JSON.stringify(runtimeEnv)
-          );
-        },
-      },
     ],
     base: "./", // Use relative paths for file:// protocol in Electron
     envDir, // Load .env from project root

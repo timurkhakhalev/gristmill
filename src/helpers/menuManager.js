@@ -3,8 +3,7 @@ const { i18nMain } = require("./i18nMain");
 
 class MenuManager {
   static setupMainMenu(onOpenSettings) {
-    if (process.platform === "darwin") {
-      const template = [
+    const template = [
         {
           label: i18nMain.t("menu.appLabel"),
           submenu: [
@@ -25,16 +24,14 @@ class MenuManager {
             { role: "quit", label: i18nMain.t("menu.quit") },
           ],
         },
-      ];
-      const menu = Menu.buildFromTemplate(template);
-      Menu.setApplicationMenu(menu);
-    }
+    ];
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
   }
 
   static setupControlPanelMenu(controlPanelWindow, onOpenSettings) {
-    if (process.platform === "darwin") {
-      // On macOS, create a proper application menu
-      const template = [
+    // OpenHercules targets macOS only, so the application menu is always used.
+    const template = [
         {
           label: i18nMain.t("menu.appLabel"),
           submenu: [
@@ -99,69 +96,10 @@ class MenuManager {
             { role: "window" },
           ],
         },
-        {
-          label: i18nMain.t("menu.help"),
-          submenu: [
-            {
-              label: i18nMain.t("menu.learnMore"),
-              click: async () => {
-                const { openExternalUrl } = require("./externalUrlOpener");
-                await openExternalUrl("https://github.com/OpenWhispr/openwhispr");
-              },
-            },
-          ],
-        },
       ];
 
-      const menu = Menu.buildFromTemplate(template);
-      Menu.setApplicationMenu(menu);
-    } else {
-      // For Windows/Linux, keep the window-specific menu
-      const template = [
-        {
-          label: i18nMain.t("menu.file"),
-          submenu: [
-            {
-              label: i18nMain.t("menu.settings"),
-              accelerator: "Ctrl+,",
-              click: () => onOpenSettings?.(),
-            },
-            { type: "separator" },
-            { role: "close", label: i18nMain.t("menu.closeWindow") },
-          ],
-        },
-        {
-          label: "Edit",
-          submenu: [
-            { role: "undo" },
-            { role: "redo" },
-            { type: "separator" },
-            { role: "cut" },
-            { role: "copy" },
-            { role: "paste" },
-            { type: "separator" },
-            { role: "selectAll" },
-          ],
-        },
-        {
-          label: "View",
-          submenu: [
-            { role: "reload" },
-            { role: "forceReload" },
-            { role: "toggleDevTools" },
-            { type: "separator" },
-            { role: "resetZoom" },
-            { role: "zoomIn" },
-            { role: "zoomOut" },
-            { type: "separator" },
-            { role: "togglefullscreen" },
-          ],
-        },
-      ];
-
-      const menu = Menu.buildFromTemplate(template);
-      controlPanelWindow.setMenu(menu);
-    }
+    const menu = Menu.buildFromTemplate(template);
+    controlPanelWindow.setMenu(menu);
   }
 }
 

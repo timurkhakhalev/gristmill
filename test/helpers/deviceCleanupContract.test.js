@@ -9,7 +9,7 @@ const ipcHandlersSource = fs.readFileSync(
 );
 
 const cleanupHandler = ipcHandlersSource.match(
-  /ipcMain\.handle\("cleanup-app", async \(event\) => \{([\s\S]*?)ipcMain\.handle\("update-hotkey"/
+  /ipcMain\.handle\("cleanup-app", async \(event\) => \{([\s\S]*?)ipcMain\.handle\("set-hotkey-listening-mode"/
 );
 
 test("explicit device cleanup covers models, credentials, caches, and browser settings", () => {
@@ -21,7 +21,6 @@ test("explicit device cleanup covers models, credentials, caches, and browser se
     "diarizationManager?.deleteModels",
     "modelManager.deleteAllModels",
     "environmentManager?.clearAllPersistedData",
-    "tokenStore.clear",
     "clearStorageData",
     "clearCache",
     "setAutoStartEnabled(false)",
@@ -29,12 +28,5 @@ test("explicit device cleanup covers models, credentials, caches, and browser se
     assert.ok(source.includes(operation), `device cleanup includes ${operation}`);
   }
 
-  for (const cacheName of ["embedding-models", "qdrant-data", "qdrant-data-dev", "yt-dlp"]) {
-    assert.ok(source.includes(`"${cacheName}"`), `device cleanup removes ${cacheName}`);
-  }
 
-  assert.ok(
-    source.includes('"account-scope-binding.json"'),
-    "device cleanup removes the account scope binding"
-  );
 });

@@ -4,6 +4,7 @@
 
 Scope: [removal-plan.md](removal-plan.md).
 Inventories, ownership, baseline and gates: [cleanup-m0.md](cleanup-m0.md).
+Implementation and verification results: [cleanup-log.md](cleanup-log.md).
 
 Order: M0 contract/baseline → M1 identity/storage → parallel M2–M6 →
 M7 integration → M8 build/dependencies → M9 acceptance.

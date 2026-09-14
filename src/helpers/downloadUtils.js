@@ -7,7 +7,7 @@ const { pipeline } = require("stream");
 const debugLogger = require("./debugLogger");
 const { runSystemTar } = require("./systemTar");
 
-const USER_AGENT = "OpenWhispr/1.0";
+const USER_AGENT = "OpenHercules/1.0";
 const PROGRESS_THROTTLE_MS = 100;
 const DEFAULT_MAX_RETRIES = 3;
 const MAX_BACKOFF_MS = 30000;

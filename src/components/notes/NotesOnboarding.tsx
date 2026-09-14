@@ -4,11 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Sparkles, Plus, ChevronRight, Zap, Loader2, Check, Monitor } from "../icons";
 import { Button } from "../ui/button";
 import { cn } from "../lib/utils";
-import {
-  selectPolicyEffectiveSettings,
-  selectResolvedLLMConfig,
-  useSettingsStore,
-} from "../../stores/settingsStore";
+import { selectResolvedLLMConfig, useSettingsStore } from "../../stores/settingsStore";
 import { useNotesOnboarding } from "../../hooks/useNotesOnboarding";
 import {
   useActions,
@@ -22,7 +18,6 @@ import { AlertDialog } from "../ui/dialog";
 import ReasoningModelSelector from "../ReasoningModelSelector";
 import { useSystemAudioPermission } from "../../hooks/useSystemAudioPermission";
 import { canManageSystemAudioInApp } from "../../utils/systemAudioAccess";
-import { usePolicySnapshot } from "../../hooks/usePolicy";
 
 interface NotesOnboardingProps {
   onComplete: () => void;
@@ -30,9 +25,9 @@ interface NotesOnboardingProps {
 
 export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
   const { t } = useTranslation();
-  const { isProUser, isProLoading, isLLMConfigured, complete } = useNotesOnboarding();
+  const { isLLMConfigured, complete } = useNotesOnboarding();
   const actions = useActions();
-  const [llmExpanded, setLlmExpanded] = useState(!isLLMConfigured && !isProUser);
+  const [llmExpanded, setLlmExpanded] = useState(!isLLMConfigured);
   const [createExpanded, setCreateExpanded] = useState(false);
   const [actionName, setActionName] = useState("");
   const [actionDescription, setActionDescription] = useState("");
@@ -40,20 +35,14 @@ export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [justCreated, setJustCreated] = useState(false);
 
-  const policyState = usePolicySnapshot();
-  const cleanupConfig = useSettingsStore(
-    useShallow((settings) =>
-      selectResolvedLLMConfig(
-        selectPolicyEffectiveSettings(settings, policyState),
-        "dictationCleanup"
-      )
-    )
-  );
-  const setCleanupModel = useSettingsStore((s) => s.setCleanupModel);
-  const setCleanupProvider = useSettingsStore((s) => s.setCleanupProvider);
-  const setCleanupMode = useSettingsStore((s) => s.setCleanupMode);
-  const setCleanupCloudBaseUrl = useSettingsStore((s) => s.setCleanupCloudBaseUrl);
-  const setCleanupCustomApiKey = useSettingsStore((s) => s.setCleanupCustomApiKey);
+  const cleanupConfig = useSettingsStore(useShallow((settings) =>
+    selectResolvedLLMConfig(settings, "noteFormatting")
+  ));
+  const setCleanupModel = useSettingsStore((s) => s.setNoteFormattingModel);
+  const setCleanupProvider = useSettingsStore((s) => s.setNoteFormattingProvider);
+  const setCleanupMode = useSettingsStore((s) => s.setNoteFormattingMode);
+  const setCleanupCloudBaseUrl = useSettingsStore((s) => s.setNoteFormattingCloudBaseUrl);
+  const setCleanupCustomApiKey = useSettingsStore((s) => s.setNoteFormattingCustomApiKey);
 
   const { alertDialog, hideAlertDialog } = useDialogs();
   const {
@@ -124,8 +113,6 @@ export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
           </p>
         </div>
 
-        {/* LLM Configuration — non-Pro only, deferred until pro status is known */}
-        {!isProLoading && !isProUser && (
           <div
             className={cn(
               "rounded-lg border transition-colors duration-200",
@@ -183,7 +170,6 @@ export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
               </div>
             )}
           </div>
-        )}
 
         {/* System Audio Permission */}
         {shouldShowSystemAudioPermission && (

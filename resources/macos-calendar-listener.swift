@@ -8,7 +8,7 @@
  *
  * Pass --request to prompt for calendar access when it is not determined.
  * macOS reads the usage strings from the TCC "responsible process": the
- * OpenWhispr app bundle in packaged builds, or this binary's embedded
+ * OpenHercules app bundle in packaged builds, or this binary's embedded
  * __info_plist in dev, where the manager spawns it via macos-disclaim-exec
  * (see build-macos-calendar-listener.js).
  *

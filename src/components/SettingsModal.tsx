@@ -1,32 +1,25 @@
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { usePolicyStore } from "../stores/policyStore";
 import {
   Sliders,
   Mic,
   Brain,
-  UserCircle,
   Wrench,
   Keyboard,
-  CreditCard,
   Shield,
-  Users,
 } from "./icons";
 import SidebarModal, { type SidebarItem } from "./ui/SidebarModal";
-import SettingsPage, { AccountAvatar, SettingsSectionType } from "./SettingsPage";
-import { useAuth } from "../hooks/useAuth";
+import SettingsPage, { SettingsSectionType } from "./SettingsPage";
 
 export type { SettingsSectionType };
 
 // The old AI Models sidebar had four items (transcription, meetings,
 // intelligence, agentMode) — they now collapse into two: speechToText + llms.
 // Legacy deep-links land on the matching sub-tab via LEGACY_SUB_TAB.
-// "dictationAgent" is a live deep-link (the Home GPU banner), not a legacy alias.
 const SECTION_ALIASES: Record<string, SettingsSectionType> = {
   aiModels: "llms",
   agentConfig: "llms",
   agentMode: "llms",
-  dictationAgent: "llms",
   intelligence: "llms",
   meetings: "llms",
   prompts: "llms",
@@ -39,15 +32,13 @@ const SECTION_ALIASES: Record<string, SettingsSectionType> = {
 };
 
 const LEGACY_SUB_TAB: Record<string, string> = {
-  transcription: "dictation",
   uploadTranscription: "upload",
-  dictationAgent: "dictationAgent",
   meetings: "noteFormatting",
-  intelligence: "dictationCleanup",
+  intelligence: "chatIntelligence",
   agentMode: "chatIntelligence",
   agentConfig: "chatIntelligence",
-  aiModels: "dictationCleanup",
-  prompts: "dictationCleanup",
+  aiModels: "noteFormatting",
+  prompts: "noteFormatting",
 };
 
 interface SettingsModalProps {
@@ -58,31 +49,8 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ open, onOpenChange, initialSection }: SettingsModalProps) {
   const { t } = useTranslation();
-  const { isSignedIn, user } = useAuth();
-  const policyManaged = usePolicyStore((s) => s.managed);
   const sidebarItems: SidebarItem<SettingsSectionType>[] = useMemo(() => {
     const items: SidebarItem<SettingsSectionType>[] = [
-      {
-        id: "account",
-        label: t("settingsModal.sections.account.label"),
-        icon: UserCircle,
-        description: t("settingsModal.sections.account.description"),
-        group: t("settingsModal.groups.account"),
-      },
-      {
-        id: "plansBilling",
-        label: t("settingsModal.sections.plansBilling.label"),
-        icon: CreditCard,
-        description: t("settingsModal.sections.plansBilling.description"),
-        group: t("settingsModal.groups.account"),
-      },
-      {
-        id: "workspace" as const,
-        label: t("settingsModal.sections.workspace.label"),
-        icon: Users,
-        description: t("settingsModal.sections.workspace.description"),
-        group: t("settingsModal.groups.account"),
-      },
       {
         id: "general",
         label: t("settingsModal.sections.general.label"),
@@ -126,11 +94,11 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
         group: t("settingsModal.groups.system"),
       },
     ];
-    return isSignedIn ? items : items.filter((item) => item.id !== "workspace");
-  }, [t, isSignedIn]);
+    return items;
+  }, [t]);
 
   const resolveSection = (section: string | undefined): SettingsSectionType => {
-    if (!section) return "account";
+    if (!section) return "general";
     return (SECTION_ALIASES[section] ?? section) as SettingsSectionType;
   };
 
@@ -164,27 +132,8 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
       sidebarItems={sidebarItems}
       activeSection={activeSection}
       onSectionChange={handleSectionChange}
-      header={
-        isSignedIn && user ? (
-          <div className="flex flex-col items-center gap-2 pb-2 text-center">
-            <AccountAvatar image={user.image} name={user.name || t("settingsPage.account.user")} />
-            <div className="min-w-0 w-full">
-              <p dir="auto" className="text-[13px] font-semibold text-foreground truncate">
-                {user.name || t("settingsPage.account.user")}
-              </p>
-              <p className="text-xs text-muted-foreground truncate">
-                <bdi dir="ltr">{user.email}</bdi>
-              </p>
-            </div>
-          </div>
-        ) : undefined
-      }
+      header={undefined}
     >
-      {policyManaged && (
-        <div className="mx-4 mt-4 rounded-lg border border-primary/20 bg-primary/8 px-3 py-2 text-sm text-primary dark:border-primary/30 dark:bg-primary/15">
-          {t("settingsModal.managedByOrg")}
-        </div>
-      )}
       <SettingsPage
         activeSection={activeSection}
         onNavigateToSection={handleSectionChange}

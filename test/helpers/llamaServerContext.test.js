@@ -85,37 +85,6 @@ test("stopping the server forgets the grown context", async () => {
   assert.equal(manager.contextSize, null);
 });
 
-// --- spawn arguments -----------------------------------------------------
-
-test("every GPU ladder rung inherits the requested context and cache bounds", async () => {
-  const manager = new LlamaServerManager();
-  const seen = [];
-  manager._buildEnv = () => ({});
-  manager._killCurrentProcess = async () => {};
-  manager.findAvailablePort = async () => 8221;
-  manager.draftModelPath = null;
-  manager._startWithBinary = async (binary, args) => {
-    seen.push(args);
-    throw new Error("stub fail");
-  };
-
-  const baseArgs = manager._buildBaseArgs("/models/main.gguf", 8221, {
-    contextSize: 32768,
-    cacheRamMiB: 1024,
-  });
-  await assert.rejects(() =>
-    manager._startWithGpuFallback({ vulkan: "/bin/vulkan", cpu: "/bin/cpu" }, baseArgs, {}, [])
-  );
-
-  assert.ok(seen.length >= 2, "expected the ladder to try more than one rung");
-  for (const args of seen) {
-    assert.equal(args[args.indexOf("--ctx-size") + 1], "32768");
-    // llama-server defaults --cache-ram to 8192 MiB of host RAM on top of the
-    // KV cache. Left unbounded it would undo the memory budget entirely.
-    assert.equal(args[args.indexOf("--cache-ram") + 1], "1024");
-  }
-});
-
 // --- context-overflow errors --------------------------------------------
 
 test("a context overflow is reported as a typed error, not as llama.cpp JSON", async () => {
@@ -278,72 +247,4 @@ test("countPromptTokens returns null when the server cannot measure", async () =
       assert.equal(await manager.countPromptTokens([{ role: "user", content: "hi" }], {}), null);
     }
   );
-});
-
-// --- Vulkan context step-down --------------------------------------------
-//
-// Sizing the context to the request is bounded by SYSTEM RAM, but a discrete
-// GPU has its own memory that the app does not probe. A machine with plenty of
-// RAM and a small card can therefore now ask for a context that will not fit
-// in VRAM — a failure this change introduces. Dropping straight to CPU costs
-// 10-30x; halving the context is far cheaper, so try that first.
-
-function makeLadder(shouldFail, { contextSize = 32768 } = {}) {
-  const manager = new LlamaServerManager();
-  const attempts = [];
-  manager._buildEnv = () => ({});
-  manager._killCurrentProcess = async () => {};
-  manager.findAvailablePort = async () => 8221;
-  manager.draftModelPath = null;
-  manager._startWithBinary = async (binary, args) => {
-    const attempt = { binary, ctx: Number(args[args.indexOf("--ctx-size") + 1]) };
-    attempts.push(attempt);
-    if (shouldFail(attempt)) throw new Error(`stub fail: ${binary} ctx=${attempt.ctx}`);
-  };
-  const baseArgs = manager._buildBaseArgs("/models/main.gguf", 8221, { contextSize });
-  return { manager, attempts, baseArgs, options: { contextSize } };
-}
-
-const BINARIES = { vulkan: "/bin/vulkan", cpu: "/bin/cpu" };
-
-test("a Vulkan start that fails at a grown context retries smaller before dropping to CPU", async () => {
-  // Vulkan only succeeds at the baseline context.
-  const { manager, attempts, baseArgs, options } = makeLadder(
-    (attempt) => attempt.binary === "/bin/vulkan" && attempt.ctx > 16384
-  );
-
-  await manager._startWithGpuFallback(BINARIES, baseArgs, options, []);
-
-  assert.deepEqual(attempts, [
-    { binary: "/bin/vulkan", ctx: 32768 },
-    { binary: "/bin/vulkan", ctx: 16384 },
-  ]);
-  assert.equal(manager.activeBackend, "vulkan", "a live GPU beats a CPU fallback");
-});
-
-test("a baseline-context start keeps today's exact ladder, with no extra rung", async () => {
-  // The step-down must not add an attempt when there is nothing to step down
-  // to, or every existing failure path gets slower.
-  const { manager, attempts, baseArgs, options } = makeLadder(() => true, {
-    contextSize: 16384,
-  });
-
-  await assert.rejects(() => manager._startWithGpuFallback(BINARIES, baseArgs, options, []));
-
-  assert.deepEqual(attempts, [
-    { binary: "/bin/vulkan", ctx: 16384 },
-    { binary: "/bin/cpu", ctx: 16384 },
-  ]);
-});
-
-test("a context step-down is recorded, so the server reports what it actually has", async () => {
-  const { manager, baseArgs, options } = makeLadder(
-    (attempt) => attempt.binary === "/bin/vulkan" && attempt.ctx > 16384
-  );
-
-  await manager._startWithGpuFallback(BINARIES, baseArgs, options, []);
-
-  // Otherwise the preflight would believe the request still fits and send a
-  // prompt the server cannot take.
-  assert.equal(manager.contextSize, 16384);
 });

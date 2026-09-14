@@ -4,7 +4,7 @@ const path = require("path");
 const { app, safeStorage } = require("electron");
 const debugLogger = require("./debugLogger");
 
-const SERVICE = "OpenWhispr";
+const SERVICE = "OpenHercules";
 const ACCOUNT = "secrets-master-key";
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;

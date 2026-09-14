@@ -14,6 +14,19 @@ Do not build a replacement dashboard during cleanup.
 Isolate identity and storage in M1 before runtime smoke tests; never use the
 original OpenWhispr profile. Do not add compatibility shims.
 
+## Parallel agent resource limits
+
+- Subagents may run typecheck and lint, and write or update tests.
+- Only the root orchestrator/integrator may run tests, builds, dependency
+  installation or native rebuilds. Subagents must not run these, including
+  focused tests, watch mode, lifecycle hooks or equivalent direct commands.
+- Subagents report the exact test/build/install commands needed instead of
+  executing them. Repeat this restriction in every delegated task.
+- The orchestrator waits for the parallel wave to finish, then runs expensive
+  checks sequentially, never multiple test/build/install processes at once.
+  Use `--test-concurrency=1` for Node tests. After a failure, rerun focused tests
+  first; run the full suite after integration, not once per subagent.
+
 ## Future batch invariants (not cleanup acceptance criteria)
 
 These describe the next stage, not guarantees of the imported baseline.

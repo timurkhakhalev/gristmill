@@ -5,7 +5,6 @@ import {
   consumeTinfoilModelSwitches,
   useTinfoilModelSwitchStore,
 } from "../stores/tinfoilModelSwitchStore";
-import { isDictationPanelWindow } from "../utils/windowContext";
 
 /** Alerts the user when a retired Tinfoil model was switched out from under them. */
 export default function TinfoilModelSwitchToastListener() {
@@ -16,10 +15,6 @@ export default function TinfoilModelSwitchToastListener() {
 
   useEffect(() => {
     if (switchCount === 0) return;
-    // The panel may already be hidden after dictation; surface it so the toast is seen.
-    if (isDictationPanelWindow()) {
-      window.electronAPI?.showDictationPanel?.();
-    }
     for (const event of consumeTinfoilModelSwitches()) {
       toast({
         title: t("reasoning.tinfoil.modelRetiredTitle"),

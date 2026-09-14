@@ -8,70 +8,52 @@
 const dual = (streams, factory) =>
   streams === 2 ? Promise.all([factory(), factory()]) : factory();
 const duplicate = (streams, value) => (streams === 2 ? [value, value] : value);
+const requireByok = (provider, options) => {
+  if (options.mode !== "byok") {
+    throw new Error(`${provider} realtime requires a direct provider API key`);
+  }
+};
 
 const REALTIME_TOKEN_PROVIDERS = {
-  "assemblyai-realtime": async (
-    { environmentManager, proxyFetch, postServerToken },
-    options,
-    streams
-  ) => {
-    if (options.mode === "byok") {
-      const apiKey = environmentManager.getAssemblyAIKey();
-      if (!apiKey) {
-        throw new Error("No AssemblyAI API key configured. Add your key in Settings.");
-      }
-      return dual(streams, async () => {
-        const response = await proxyFetch(
-          "https://streaming.assemblyai.com/v3/token?expires_in_seconds=60",
-          { headers: { Authorization: apiKey } }
-        );
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({}));
-          throw new Error(err.error || `AssemblyAI token request failed: ${response.status}`);
-        }
-        const data = await response.json();
-        if (!data.token) throw new Error("No AssemblyAI token received");
-        return data.token;
-      });
+  "assemblyai-realtime": async ({ environmentManager, proxyFetch }, options, streams) => {
+    requireByok("AssemblyAI", options);
+    const apiKey = environmentManager.getAssemblyAIKey();
+    if (!apiKey) {
+      throw new Error("No AssemblyAI API key configured. Add your key in Settings.");
     }
     return dual(streams, async () => {
-      const data = await postServerToken("/api/streaming-token");
+      const response = await proxyFetch(
+        "https://streaming.assemblyai.com/v3/token?expires_in_seconds=60",
+        { headers: { Authorization: apiKey } }
+      );
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `AssemblyAI token request failed: ${response.status}`);
+      }
+      const data = await response.json();
       if (!data.token) throw new Error("No AssemblyAI token received");
       return data.token;
     });
   },
 
-  "deepgram-realtime": async ({ environmentManager, postServerToken }, options, streams) => {
-    if (options.mode === "byok") {
-      const apiKey = environmentManager.getDeepgramKey();
-      if (!apiKey) {
-        throw new Error("No Deepgram API key configured. Add your key in Settings.");
-      }
-      return duplicate(streams, apiKey);
+  "deepgram-realtime": async ({ environmentManager }, options, streams) => {
+    requireByok("Deepgram", options);
+    const apiKey = environmentManager.getDeepgramKey();
+    if (!apiKey) {
+      throw new Error("No Deepgram API key configured. Add your key in Settings.");
     }
-    return dual(streams, async () => {
-      const data = await postServerToken("/api/deepgram-streaming-token");
-      if (!data.token) throw new Error("No Deepgram token received");
-      return data.token;
-    });
+    return duplicate(streams, apiKey);
   },
 
-  "gemini-realtime": async ({ environmentManager, postServerToken }, options, streams) => {
-    if (options.mode === "byok") {
-      const apiKey = environmentManager.getGeminiKey();
-      if (!apiKey) {
-        throw new Error("No Gemini API key configured. Add your key in Settings.");
-      }
-      // The raw key opens the Live socket directly (BidiGenerateContent?key=)
-      // and is not consumed by a handshake, so both streams can share it.
-      return duplicate(streams, apiKey);
+  "gemini-realtime": async ({ environmentManager }, options, streams) => {
+    requireByok("Gemini", options);
+    const apiKey = environmentManager.getGeminiKey();
+    if (!apiKey) {
+      throw new Error("No Gemini API key configured. Add your key in Settings.");
     }
-    // Managed tokens are minted with uses:1, so N sockets need N mints.
-    return dual(streams, async () => {
-      const data = await postServerToken("/api/gemini-live-token");
-      if (!data.token) throw new Error("No Gemini token received");
-      return data.token;
-    });
+    // The raw key opens the Live socket directly and is not consumed by a
+    // handshake, so both streams can share it.
+    return duplicate(streams, apiKey);
   },
 
   "corti-realtime": async ({ mintCortiToken }, options, streams) => {
@@ -90,29 +72,15 @@ const REALTIME_TOKEN_PROVIDERS = {
     return duplicate(streams, apiKey);
   },
 
-  "openai-realtime": async ({ environmentManager, postServerToken }, options, streams) => {
-    if (options.mode === "byok") {
-      const apiKey = environmentManager.getOpenAIKey();
-      if (!apiKey) throw new Error("No OpenAI API key configured. Add your key in Settings.");
-      return duplicate(streams, apiKey);
-    }
-    const data = await postServerToken("/api/openai-realtime-token", {
-      model: options.model,
-      language: options.language,
-      streams: streams || 1,
-    });
-    if (streams === 2) {
-      if (!data.clientSecrets || data.clientSecrets.length < 2) {
-        throw new Error("Expected two client secrets for dual-stream");
-      }
-      return data.clientSecrets;
-    }
-    if (!data.clientSecret) throw new Error("No client secret received");
-    return data.clientSecret;
+  "openai-realtime": async ({ environmentManager }, options, streams) => {
+    requireByok("OpenAI", options);
+    const apiKey = environmentManager.getOpenAIKey();
+    if (!apiKey) throw new Error("No OpenAI API key configured. Add your key in Settings.");
+    return duplicate(streams, apiKey);
   },
 };
 
-async function fetchRealtimeTokenForProvider(provider, deps, options, { streams } = {}) {
+async function fetchRealtimeTokenForProvider(provider, deps, options = {}, { streams } = {}) {
   const acquire = REALTIME_TOKEN_PROVIDERS[provider];
   if (!acquire) {
     throw new Error(`Unsupported realtime token provider: ${provider}`);

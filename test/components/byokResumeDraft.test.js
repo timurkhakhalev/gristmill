@@ -21,7 +21,7 @@ const SECRETS = {
 
 const ALLOWED_DRAFT_KEYS = ["baseUrl", "customModel", "selectedModel", "selectedProvider"];
 
-async function collectByokDrafts(t, { stepId, selfHostedRequested, resumeState }) {
+async function collectByokDrafts(t, { selfHostedRequested, resumeState }) {
   installBrowserGlobals(t, {
     window: { electronAPI: { getPlatform: () => "linux" } },
   });
@@ -51,7 +51,6 @@ async function collectByokDrafts(t, { stepId, selfHostedRequested, resumeState }
     // Execute the real component and hooks with React lifecycle, while leaving
     // native controls unmounted: the persisted draft is the test boundary.
     ByokProviderStep({
-      stepId,
       selfHostedRequested,
       resumeState,
       onSelfHostedChange() {},
@@ -65,26 +64,22 @@ async function collectByokDrafts(t, { stepId, selfHostedRequested, resumeState }
   await React.act(async () => {
     root.render(React.createElement(Harness));
   });
-  // The typed fields are debounced, and unmounting flushes the pending write — the
-  // same path the step takes when onboarding advances past it.
+  // Unmounting flushes the latest draft — the same path the step takes when
+  // onboarding advances past it.
   await React.act(async () => root.unmount());
   return drafts;
 }
 
-// Each case has to actually load a credential or the value assertions guard
-// nothing: the step only seeds the one its step and mode select. A hosted step
-// with no resumed provider opens on none, leaving every credential state empty.
+// Each case exercises the draft boundary without exposing any credential value.
 for (const [name, options] of [
   [
     "a hosted provider",
     {
-      stepId: "byok-dictation",
       selfHostedRequested: false,
       resumeState: { selectedProvider: "openai", selectedModel: "", baseUrl: "", customModel: "" },
     },
   ],
-  ["a self-hosted transcription endpoint", { stepId: "byok-dictation", selfHostedRequested: true }],
-  ["a self-hosted assistant endpoint", { stepId: "byok-assistant", selfHostedRequested: true }],
+  ["a self-hosted endpoint", { selfHostedRequested: true }],
 ]) {
   test(`the resume draft for ${name} carries no credential`, async (t) => {
     const drafts = await collectByokDrafts(t, options);

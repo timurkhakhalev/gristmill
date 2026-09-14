@@ -9,12 +9,6 @@ import type {
   SelfHostedType,
 } from "../types/electron";
 import type { Snippet } from "../utils/snippets";
-import {
-  effectiveAudioRetentionDays,
-  effectiveLocalHistoryEnabled,
-  isLocalHistoryPolicyResolved,
-} from "../stores/policyRules";
-import { usePolicyStore } from "../stores/policyStore";
 
 export interface TranscriptionSettings {
   uiLanguage: string;
@@ -40,13 +34,11 @@ export interface TranscriptionSettings {
   customDictionary: string[];
   snippets: Snippet[];
   assemblyAiStreaming: boolean;
-  showTranscriptionPreview: boolean;
 }
 
 export interface CleanupSettings {
   autoGenerateNoteTitle: boolean;
   useCleanupModel: boolean;
-  useDictationAgent: boolean;
   cleanupModel: string;
   cleanupProvider: string;
   cleanupCloudBaseUrl?: string;
@@ -56,14 +48,8 @@ export interface CleanupSettings {
 }
 
 export interface HotkeySettings {
-  dictationKey: string;
-  /** Hotkeys actually registered by the main process (may be a subset of
-   * dictationKey, e.g. primary-only on GNOME/KDE/Hyprland). Display-only. */
-  activeDictationKey: string | null;
   meetingKey: string;
-  voiceAgentKey: string;
   meetingHotkeyLayoutMode: "side-panel" | "full-width";
-  activationMode: "tap" | "push";
 }
 
 export interface OnboardingSettings {
@@ -99,8 +85,6 @@ export interface ApiKeySettings {
 }
 
 export interface PrivacySettings {
-  cloudBackupEnabled: boolean;
-  insightsSyncEnabled: boolean;
   telemetryEnabled: boolean;
   audioRetentionDays: number;
   transcriptRetentionDays: number;
@@ -126,8 +110,8 @@ function useSettingsInternal() {
   const store = useSettingsStore();
   const { applyCustomDictionaryFromExternal, applySnippetsFromExternal } = store;
 
-  // One-time initialization: sync API keys, dictation key, activation mode,
-  // UI language, and dictionary from the main process / SQLite.
+  // One-time initialization: sync API keys, UI language, and dictionary from
+  // the main process / SQLite.
   const hasInitialized = useRef(false);
   useEffect(() => {
     if (hasInitialized.current) return;
@@ -164,56 +148,16 @@ function useSettingsInternal() {
     return unsubscribe;
   }, [applySnippetsFromExternal]);
 
-  // Auto-learn corrections from user edits in external apps
-  const [autoLearnCorrections, setAutoLearnCorrectionsRaw] = useLocalStorage(
-    "autoLearnCorrections",
-    true,
-    {
-      serialize: String,
-      deserialize: (value: string) => value !== "false",
-    }
-  );
-
-  const setAutoLearnCorrections = useCallback(
-    (enabled: boolean) => {
-      setAutoLearnCorrectionsRaw(enabled);
-      window.electronAPI?.setAutoLearnEnabled?.(enabled);
-    },
-    [setAutoLearnCorrectionsRaw]
-  );
-
-  // Sync auto-learn state to main process on mount
-  useEffect(() => {
-    window.electronAPI?.setAutoLearnEnabled?.(autoLearnCorrections);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Retention periods are enforced by the main process cleanup sweep
+  // Retention periods are enforced by the local main-process cleanup sweep.
   const { audioRetentionDays, transcriptRetentionDays, dataRetentionEnabled } = store;
-  const enforcedAudioRetentionDays = usePolicyStore((policyState) =>
-    effectiveAudioRetentionDays(policyState, audioRetentionDays)
-  );
-  // Sent alongside the periods because the main process reconstructs Insights
-  // history from stored transcripts, and that must answer to the same switch.
-  const enforcedDataRetentionEnabled = usePolicyStore((policyState) =>
-    effectiveLocalHistoryEnabled(policyState, dataRetentionEnabled)
-  );
-  // Reported alongside the value because history reconstruction reads that
-  // switch as consent, and until the policy settles it is only a default.
-  const localHistoryPolicyResolved = usePolicyStore(isLocalHistoryPolicyResolved);
   useEffect(() => {
     window.electronAPI?.syncRetentionSettings?.({
-      audioRetentionDays: enforcedAudioRetentionDays,
+      audioRetentionDays,
       transcriptRetentionDays,
-      dataRetentionEnabled: enforcedDataRetentionEnabled,
-      localHistoryPolicyResolved,
+      dataRetentionEnabled,
+      localHistoryPolicyResolved: true,
     });
-  }, [
-    enforcedAudioRetentionDays,
-    transcriptRetentionDays,
-    enforcedDataRetentionEnabled,
-    localHistoryPolicyResolved,
-  ]);
+  }, [audioRetentionDays, transcriptRetentionDays, dataRetentionEnabled]);
 
   // Sync startup pre-warming preferences to main process
   const {
@@ -226,9 +170,6 @@ function useSettingsInternal() {
     useCleanupModel,
     cleanupMode,
     cleanupModel,
-    useDictationAgent,
-    dictationAgentMode,
-    dictationAgentModel,
   } = store;
 
   useEffect(() => {
@@ -249,9 +190,6 @@ function useSettingsInternal() {
         useCleanupModel,
         cleanupMode,
         cleanupModel,
-        useDictationAgent,
-        dictationAgentMode,
-        dictationAgentModel,
       })
       .catch((err) =>
         logger.warn(
@@ -270,9 +208,6 @@ function useSettingsInternal() {
     useCleanupModel,
     cleanupMode,
     cleanupModel,
-    useDictationAgent,
-    dictationAgentMode,
-    dictationAgentModel,
   ]);
 
   return {
@@ -307,7 +242,6 @@ function useSettingsInternal() {
     autoGenerateNoteTitle: store.autoGenerateNoteTitle,
     setAutoGenerateNoteTitle: store.setAutoGenerateNoteTitle,
     useCleanupModel: store.useCleanupModel,
-    useDictationAgent: store.useDictationAgent,
     cleanupModel: store.cleanupModel,
     cleanupProvider: store.cleanupProvider,
     openaiApiKey: store.openaiApiKey,
@@ -320,9 +254,7 @@ function useSettingsInternal() {
     tinfoilApiKey: store.tinfoilApiKey,
     deepgramApiKey: store.deepgramApiKey,
     assemblyaiApiKey: store.assemblyaiApiKey,
-    dictationKey: store.dictationKey,
     meetingKey: store.meetingKey,
-    voiceAgentKey: store.voiceAgentKey,
     meetingHotkeyLayoutMode: store.meetingHotkeyLayoutMode,
     setMeetingHotkeyLayoutMode: store.setMeetingHotkeyLayoutMode,
     theme: store.theme,
@@ -352,7 +284,6 @@ function useSettingsInternal() {
     setCustomDictionary: store.setCustomDictionary,
     updateCustomDictionary: store.updateCustomDictionary,
     setUseCleanupModel: store.setUseCleanupModel,
-    setUseDictationAgent: store.setUseDictationAgent,
     setCleanupModel: store.setCleanupModel,
     setCleanupProvider: store.setCleanupProvider,
     setOpenaiApiKey: store.setOpenaiApiKey,
@@ -364,9 +295,7 @@ function useSettingsInternal() {
     setCustomTranscriptionApiKey: store.setCustomTranscriptionApiKey,
     cleanupCustomApiKey: store.cleanupCustomApiKey,
     setCleanupCustomApiKey: store.setCleanupCustomApiKey,
-    setDictationKey: store.setDictationKey,
     setMeetingKey: store.setMeetingKey,
-    setVoiceAgentKey: store.setVoiceAgentKey,
     onboardingUseCases: store.onboardingUseCases,
     setOnboardingUseCases: store.setOnboardingUseCases,
     onboardingUseCaseNote: store.onboardingUseCaseNote,
@@ -374,20 +303,14 @@ function useSettingsInternal() {
     spokenLanguages: store.spokenLanguages,
     setSpokenLanguages: store.setSpokenLanguages,
     setTheme: store.setTheme,
-    activationMode: store.activationMode,
-    setActivationMode: store.setActivationMode,
     notificationsEnabled: store.notificationsEnabled,
     setNotificationsEnabled: store.setNotificationsEnabled,
     notifyMeetingDetection: store.notifyMeetingDetection,
     setNotifyMeetingDetection: store.setNotifyMeetingDetection,
     notifyCalendarReminders: store.notifyCalendarReminders,
     setNotifyCalendarReminders: store.setNotifyCalendarReminders,
-    autoUpdatesEnabled: store.autoUpdatesEnabled,
-    setAutoUpdatesEnabled: store.setAutoUpdatesEnabled,
     audioCuesEnabled: store.audioCuesEnabled,
     setAudioCuesEnabled: store.setAudioCuesEnabled,
-    pauseMediaOnDictation: store.pauseMediaOnDictation,
-    setPauseMediaOnDictation: store.setPauseMediaOnDictation,
     floatingIconAutoHide: store.floatingIconAutoHide,
     setFloatingIconAutoHide: store.setFloatingIconAutoHide,
     startMinimized: store.startMinimized,
@@ -403,20 +326,10 @@ function useSettingsInternal() {
     setPreferBuiltInMic: store.setPreferBuiltInMic,
     setSelectedMicDevice: store.setSelectedMicDevice,
     setMicWarmHoldSeconds: store.setMicWarmHoldSeconds,
-    autoLearnCorrections,
-    setAutoLearnCorrections,
-    showTranscriptionPreview: store.showTranscriptionPreview,
-    setShowTranscriptionPreview: store.setShowTranscriptionPreview,
-    autoPasteEnabled: store.autoPasteEnabled,
-    setAutoPasteEnabled: store.setAutoPasteEnabled,
-    keepTranscriptionInClipboard: store.keepTranscriptionInClipboard,
-    setKeepTranscriptionInClipboard: store.setKeepTranscriptionInClipboard,
     noteFilesEnabled: store.noteFilesEnabled,
     setNoteFilesEnabled: store.setNoteFilesEnabled,
     noteFilesPath: store.noteFilesPath,
     setNoteFilesPath: store.setNoteFilesPath,
-    dictationSileroEnabled: store.dictationSileroEnabled,
-    setDictationSileroEnabled: store.setDictationSileroEnabled,
     noteRecordingSileroEnabled: store.noteRecordingSileroEnabled,
     setNoteRecordingSileroEnabled: store.setNoteRecordingSileroEnabled,
     meetingSileroEnabled: store.meetingSileroEnabled,
@@ -433,10 +346,6 @@ function useSettingsInternal() {
     setWhisperVadSpeechPadMs: store.setWhisperVadSpeechPadMs,
     whisperVadSamplesOverlap: store.whisperVadSamplesOverlap,
     setWhisperVadSamplesOverlap: store.setWhisperVadSamplesOverlap,
-    cloudBackupEnabled: store.cloudBackupEnabled,
-    setCloudBackupEnabled: store.setCloudBackupEnabled,
-    insightsSyncEnabled: store.insightsSyncEnabled,
-    setInsightsSyncEnabled: store.setInsightsSyncEnabled,
     telemetryEnabled: store.telemetryEnabled,
     setTelemetryEnabled: store.setTelemetryEnabled,
     audioRetentionDays: store.audioRetentionDays,

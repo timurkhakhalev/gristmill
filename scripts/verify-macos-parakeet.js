@@ -4,7 +4,7 @@ const { verifyPackagedMacosParakeet } = require("./download-sherpa-onnx");
 
 const appPath = process.argv[2];
 if (!appPath) {
-  console.error("Usage: node scripts/verify-macos-parakeet.js <OpenWhispr.app>");
+  console.error("Usage: node scripts/verify-macos-parakeet.js <OpenHercules.app>");
   process.exitCode = 1;
 } else {
   try {

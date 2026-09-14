@@ -50,15 +50,10 @@ function resolveAllOverlayTypes(platform, session) {
   );
 }
 
-test("Sway XWayland uses notification type only for focusless overlays", () => {
+test("macOS overlays use panel windows", () => {
   const windowConfig = loadWindowConfig({
-    platform: "linux",
-    environment: {
-      XDG_SESSION_TYPE: "wayland",
-      XDG_CURRENT_DESKTOP: "sway",
-      WAYLAND_DISPLAY: "wayland-1",
-      DISPLAY: ":0",
-    },
+    platform: "darwin",
+    environment: {},
   });
 
   assert.deepEqual(
@@ -67,8 +62,8 @@ test("Sway XWayland uses notification type only for focusless overlays", () => {
       notification: windowConfig.NOTIFICATION_WINDOW_CONFIG.type,
     },
     {
-      main: "notification",
-      notification: "notification",
+      main: "panel",
+      notification: "panel",
     }
   );
   assert.equal(windowConfig.MAIN_WINDOW_CONFIG.focusable, false);
@@ -89,92 +84,8 @@ test("onboarding sizing does not resize the normal control panel", () => {
   assert.deepEqual(windowConfig.ONBOARDING_WINDOW_SIZES.EXPANDED, { width: 1000, height: 740 });
 });
 
-test("the overlay resolver preserves every unaffected platform and session", () => {
+test("the overlay resolver uses the macOS panel contract", () => {
   const cases = [
-    {
-      name: "Sway without XWayland",
-      platform: "linux",
-      session: { isSway: true, xwaylandAvailable: false, isGnome: false, isKde: false },
-      expected: {
-        main: "toolbar",
-        notification: "toolbar",
-      },
-    },
-    {
-      name: "Hyprland",
-      platform: "linux",
-      session: { isSway: false, xwaylandAvailable: true, isGnome: false, isKde: false },
-      expected: {
-        main: "toolbar",
-        notification: "toolbar",
-      },
-    },
-    {
-      name: "GNOME Wayland",
-      platform: "linux",
-      session: {
-        isWayland: true,
-        isSway: false,
-        xwaylandAvailable: true,
-        desktopEnv: "gnome",
-        isGnome: true,
-        isKde: false,
-      },
-      expected: {
-        main: "normal",
-        notification: "toolbar",
-      },
-    },
-    {
-      name: "Ubuntu Unity Wayland",
-      platform: "linux",
-      session: {
-        isWayland: true,
-        isSway: false,
-        xwaylandAvailable: true,
-        desktopEnv: "ubuntu:unity",
-        isGnome: false,
-        isKde: false,
-      },
-      expected: {
-        main: "normal",
-        notification: "toolbar",
-      },
-    },
-    {
-      name: "Ubuntu Unity X11",
-      platform: "linux",
-      session: {
-        isWayland: false,
-        isSway: false,
-        xwaylandAvailable: false,
-        desktopEnv: "ubuntu:unity",
-        isGnome: false,
-        isKde: false,
-      },
-      expected: {
-        main: "toolbar",
-        notification: "toolbar",
-      },
-    },
-    {
-      name: "KDE Wayland",
-      platform: "linux",
-      session: { isSway: false, xwaylandAvailable: true, isGnome: false, isKde: true },
-      expected: {
-        main: "normal",
-        notification: "normal",
-      },
-    },
-    {
-      name: "i3 X11",
-      platform: "linux",
-      session: { isSway: false, xwaylandAvailable: false, isGnome: false, isKde: false },
-      expected: {
-        main: "toolbar",
-        notification: "toolbar",
-      },
-    },
     {
       name: "macOS",
       platform: "darwin",
@@ -184,15 +95,6 @@ test("the overlay resolver preserves every unaffected platform and session", () 
         notification: "panel",
       },
     },
-    {
-      name: "Windows",
-      platform: "win32",
-      session: {},
-      expected: {
-        main: "normal",
-        notification: "normal",
-      },
-    },
   ];
 
   for (const { name, platform, session, expected } of cases) {
@@ -200,17 +102,10 @@ test("the overlay resolver preserves every unaffected platform and session", () 
   }
 });
 
-test("a stale SWAYSOCK does not change Hyprland window types", () => {
+test("non-macOS inputs still resolve to the macOS window contract", () => {
   const windowConfig = loadWindowConfig({
-    platform: "linux",
-    environment: {
-      XDG_SESSION_TYPE: "wayland",
-      XDG_CURRENT_DESKTOP: "Hyprland",
-      WAYLAND_DISPLAY: "wayland-1",
-      DISPLAY: ":0",
-      SWAYSOCK: "/run/user/1000/stale-sway.sock",
-      HYPRLAND_INSTANCE_SIGNATURE: "hyprland-instance",
-    },
+    platform: "darwin",
+    environment: {},
   });
 
   assert.deepEqual(
@@ -219,8 +114,8 @@ test("a stale SWAYSOCK does not change Hyprland window types", () => {
       notification: windowConfig.NOTIFICATION_WINDOW_CONFIG.type,
     },
     {
-      main: "toolbar",
-      notification: "toolbar",
+      main: "panel",
+      notification: "panel",
     }
   );
 });

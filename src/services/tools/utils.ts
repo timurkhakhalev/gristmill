@@ -49,29 +49,3 @@ export function resolveSpace(spaces: SpaceItem[], spaceName: string): ResolveSpa
   const available = spaces.map((s) => s.name).join(", ");
   return { error: `Space "${normalized}" not found. Available spaces: ${available}` };
 }
-
-type NoteByClientIdLookup = (
-  clientNoteId: string
-) => Promise<{ id: number; deleted_at?: string | null } | null>;
-
-export async function resolveLocalNoteId(
-  clientNoteId: string | null | undefined,
-  lookup?: NoteByClientIdLookup
-): Promise<number | null> {
-  const resolve =
-    lookup ??
-    (typeof window !== "undefined"
-      ? (window.electronAPI.getNoteByClientId as NoteByClientIdLookup | undefined)
-      : undefined);
-  if (!clientNoteId || !resolve) return null;
-  try {
-    const note = await resolve(clientNoteId);
-    return note && !note.deleted_at && Number.isSafeInteger(note.id) && note.id > 0
-      ? note.id
-      : null;
-  } catch {
-    // Cloud search results remain useful to the model even when their local
-    // rows cannot be resolved into clickable cards.
-    return null;
-  }
-}

@@ -237,37 +237,6 @@ export default function DeveloperSection() {
         </div>
       )}
 
-      {/* Sharing instructions — conditional */}
-      {debugEnabled && (
-        <div>
-          <div className="mb-5">
-            <h3 className="text-[15px] font-semibold text-foreground tracking-tight">
-              {t("developerSection.sharing.title")}
-            </h3>
-          </div>
-          <div className="rounded-xl border border-border/70 dark:border-border-subtle bg-card dark:bg-surface-2">
-            <div className="px-5 py-4">
-              <div className="space-y-2">
-                {[
-                  t("developerSection.sharing.steps.0"),
-                  t("developerSection.sharing.steps.1"),
-                  t("developerSection.sharing.steps.2"),
-                ].map((step, i) => (
-                  <div key={i} className="flex items-start gap-3">
-                    <span className="mt-0.5 w-4 shrink-0 text-end font-mono text-xs text-muted-foreground/70">
-                      {i + 1}
-                    </span>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{step}</p>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground/70 mt-4 pt-3 border-t border-border/70">
-                {t("developerSection.sharing.footer")}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

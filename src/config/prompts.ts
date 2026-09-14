@@ -4,11 +4,9 @@ export {
   resolvePrompt,
   getDefaultPromptText,
   appendDictionarySuffix,
-  appendScreenContextSuffix,
   wrapCleanupTranscript,
 } from "./prompts/index";
 export { PROMPT_KINDS, PROMPT_KIND_LIST, type PromptKind } from "./prompts/registry";
-export { detectAgentName } from "./agentDetection";
 
 export function getCleanupSystemPrompt(
   agentName: string | null,
@@ -35,8 +33,6 @@ const TOOL_INSTRUCTIONS: Record<string, string> = {
     "Use update_note to modify an existing note's title, content, or move it to a different folder. If the current note's ID is provided in the context, use it directly. Otherwise, use search_notes first to find the note ID. When moving to a folder, call list_folders first and reuse an existing folder whose name fits the note's topic; only create a new folder when nothing existing fits.",
   list_folders:
     "Use list_folders before create_note or update_note whenever a note is going into a folder, so you can reuse an existing folder whose name fits the note's topic instead of creating a near-duplicate.",
-  web_search:
-    "Use web_search for questions about current events, facts you're unsure about, or anything requiring up-to-date information.",
   copy_to_clipboard:
     "Use copy_to_clipboard when the user asks you to copy something to their clipboard.",
   get_snippet:

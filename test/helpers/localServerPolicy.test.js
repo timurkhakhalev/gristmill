@@ -7,9 +7,6 @@ const LOCAL_CLEANUP = {
   useCleanupModel: true,
   cleanupMode: "local",
   cleanupModel: "qwen3-8b-q4_k_m",
-  useDictationAgent: false,
-  dictationAgentMode: "openwhispr",
-  dictationAgentModel: "",
 };
 
 test("a local scope pre-warms the model it selected", async () => {
@@ -17,7 +14,6 @@ test("a local scope pre-warms the model it selected", async () => {
 
   assert.deepEqual(resolveLocalServerNeeds(LOCAL_CLEANUP), {
     cleanup: "qwen3-8b-q4_k_m",
-    dictationAgent: "",
     stopServer: false,
   });
 });
@@ -39,7 +35,6 @@ test("a switched-off scope needs no server even with a local model selected", as
 
   assert.deepEqual(resolveLocalServerNeeds({ ...LOCAL_CLEANUP, useCleanupModel: false }), {
     cleanup: "",
-    dictationAgent: "",
     stopServer: true,
   });
 });
@@ -53,38 +48,28 @@ test("local mode without a downloaded model pre-warms nothing", async () => {
   assert.equal(needs.stopServer, true);
 });
 
-test("the shared server survives one scope leaving while the other stays local", async () => {
+test("the server stops when cleanup leaves local mode", async () => {
   const { resolveLocalServerNeeds } = await load();
 
   const needs = resolveLocalServerNeeds({
     useCleanupModel: true,
     cleanupMode: "providers",
     cleanupModel: "gpt-5-mini",
-    useDictationAgent: true,
-    dictationAgentMode: "local",
-    dictationAgentModel: "gemma-4-e4b-it-q4_k_m",
   });
 
-  assert.deepEqual(needs, {
-    cleanup: "",
-    dictationAgent: "gemma-4-e4b-it-q4_k_m",
-    stopServer: false,
-  });
+  assert.deepEqual(needs, { cleanup: "", stopServer: true });
 });
 
 test("the server stops once no scope runs locally", async () => {
   const { resolveLocalServerNeeds } = await load();
 
-  for (const mode of ["openwhispr", "providers", "self-hosted", "enterprise"]) {
+  for (const mode of ["providers", "self-hosted", "enterprise"]) {
     const needs = resolveLocalServerNeeds({
       useCleanupModel: true,
       cleanupMode: mode,
       cleanupModel: "gpt-5-mini",
-      useDictationAgent: true,
-      dictationAgentMode: mode,
-      dictationAgentModel: "gpt-5-mini",
     });
 
-    assert.deepEqual(needs, { cleanup: "", dictationAgent: "", stopServer: true }, mode);
+    assert.deepEqual(needs, { cleanup: "", stopServer: true }, mode);
   }
 });

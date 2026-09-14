@@ -447,33 +447,9 @@ test("a server that already died is not restored to a window it no longer has", 
   assert.deepEqual(attempts, [32768], "no second attempt at a window that was already gone");
 });
 
-test("only Apple Silicon is treated as memory the GPU already shares", async (t) => {
-  // discreteGpuUnverified reads darwin as unified memory, but an Intel Mac's
-  // Radeon has its own few GB. Sizing against system RAM there hands the card
-  // a context it cannot hold — and the darwin start path has no reduced-context
-  // rung to fall back on.
-  const real = { platform: process.platform, arch: process.arch };
-  const pretend = (platform, arch) => {
-    Object.defineProperty(process, "platform", { value: platform, configurable: true });
-    Object.defineProperty(process, "arch", { value: arch, configurable: true });
-  };
-  t.after(() => pretend(real.platform, real.arch));
-
-  // Both managers are built before any pretending, so only the ceiling
-  // decision sees the faked platform.
-  const roomy = { tokenCount: 40, totalMemoryBytes: 64 * GIB };
-  const apple = await setup(t, roomy);
-  const intel = await setup(t, roomy);
+test("Apple Silicon uses unified memory for context sizing", async (t) => {
+  const apple = await setup(t, { tokenCount: 40, totalMemoryBytes: 64 * GIB });
   const model = modelRegistryData.localProviders[0].models[0];
-  const ceilingFor = (manager) =>
-    manager.contextCeiling({ model }, path.join(manager.modelsDir, model.fileName));
-
-  pretend("darwin", "arm64");
-  const unified = await ceilingFor(apple.modelManager);
-  pretend("darwin", "x64");
-  const discrete = await ceilingFor(intel.modelManager);
-
-  assert.notEqual(unified.reason, "gpu-cap", "unified memory needs no unverified-GPU cap");
-  assert.equal(discrete.reason, "gpu-cap", "an Intel Mac's GPU memory is not system memory");
-  assert.ok(discrete.ceiling < unified.ceiling);
+  const result = await apple.modelManager.contextCeiling({ model }, path.join(apple.modelManager.modelsDir, model.fileName));
+  assert.notEqual(result.reason, "gpu-cap");
 });

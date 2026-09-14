@@ -32,8 +32,6 @@ const PERSISTED_KEYS = [
   "LOCAL_CLEANUP_MODEL",
   "DICTATION_AGENT_PROVIDER",
   "LOCAL_DICTATION_AGENT_MODEL",
-  "LLAMA_GPU_BACKEND",
-  "LLAMA_VULKAN_ENABLED",
   "DICTATION_KEY",
   "VOICE_AGENT_KEY",
   "TRANSLATION_KEY",
@@ -43,13 +41,7 @@ const PERSISTED_KEYS = [
   "PANEL_START_POSITION",
   "START_MINIMIZED",
   "UI_LANGUAGE",
-  "WHISPER_CUDA_ENABLED",
-  "WHISPER_VULKAN_ENABLED",
-  "WHISPER_VULKAN_DEVICE",
-  "WHISPER_GPU_FAILED",
   "WHISPER_THREADS",
-  "TRANSCRIPTION_GPU_UUID",
-  "INTELLIGENCE_GPU_UUID",
   "BEDROCK_REGION",
   "BEDROCK_PROFILE",
   "AZURE_OPENAI_ENDPOINT",
@@ -230,7 +222,7 @@ class EnvironmentManager {
     // otherwise a partial-migration recovery can lose unencrypted secrets.
     const stripSecrets =
       this._encryptionAvailable() && fs.existsSync(this._getMigrationSentinelPath());
-    let envContent = "# OpenWhispr Environment Variables\n";
+    let envContent = "# OpenHercules Environment Variables\n";
     for (const key of PERSISTED_KEYS) {
       if (stripSecrets && SECRET_KEY_SET.has(key)) continue;
       if (process.env[key]) {
@@ -501,7 +493,7 @@ class EnvironmentManager {
 
   // Removes a single key's line from .env, preserving every other line
   // verbatim. saveAllKeysToEnvFile() would instead regenerate the file from
-  // PERSISTED_KEYS, dropping hand-added lines (e.g. OPENWHISPR_LOG_LEVEL) and
+  // PERSISTED_KEYS, dropping hand-added lines (e.g. OPENHERCULES_LOG_LEVEL) and
   // materializing session/shell env values into the file.
   removeKeyFromEnvFile(key) {
     const envPath = path.join(app.getPath("userData"), ".env");

@@ -88,11 +88,14 @@ class AssemblyAiStreaming {
     debugLogger.debug("AssemblyAI token cached", { expiresIn: TOKEN_EXPIRY_MS });
   }
 
-  // BYOK and managed dictation share one client instance, so a token or warm
-  // socket minted under one credential kind must never serve the other. Callers
-  // that read the cache before connecting must adopt the mode first.
+  // A token or warm socket minted under one direct credential must never serve
+  // another connection. Callers that read the cache before connecting adopt
+  // the direct mode first.
   adoptMode(options) {
-    const mode = options.mode === "byok" ? "byok" : "openwhispr";
+    if (options.mode !== "byok") {
+      throw new Error("AssemblyAI realtime requires a direct provider API key");
+    }
+    const mode = "byok";
     if (this.mode !== null && this.mode !== mode) {
       debugLogger.debug("AssemblyAI credential mode changed, dropping cached session state", {
         from: this.mode,

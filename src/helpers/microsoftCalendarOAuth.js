@@ -20,14 +20,19 @@ class MicrosoftCalendarOAuth {
     return process.env.MICROSOFT_CALENDAR_CLIENT_ID;
   }
 
+  isConfigured() {
+    return Boolean(this.getClientId());
+  }
+
   startOAuthFlow() {
-    if (!this.getClientId()) {
+    if (!this.isConfigured()) {
       // Fail fast instead of opening the browser on a client_id=undefined URL
       // and hanging until the loopback flow times out.
-      throw new Error("MICROSOFT_CALENDAR_CLIENT_ID is not configured");
+      throw Object.assign(new Error("Microsoft Calendar OAuth is not configured"), {
+        code: "CALENDAR_NOT_CONFIGURED",
+      });
     }
     return runOAuthLoopbackFlow({
-      errorParam: "mcal_error",
       buildAuthUrl: (redirectUri, state, codeChallenge) => {
         const params = new URLSearchParams({
           client_id: this.getClientId(),

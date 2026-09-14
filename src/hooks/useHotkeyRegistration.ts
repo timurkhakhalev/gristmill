@@ -30,7 +30,7 @@ export interface UseHotkeyRegistrationOptions {
    */
   showAlert?: (options: { title: string; description: string }) => void;
 
-  registerFn?: (hotkey: string) => Promise<{ success: boolean; message?: string }>;
+  registerFn: (hotkey: string) => Promise<{ success: boolean; message?: string }>;
 }
 
 export interface UseHotkeyRegistrationResult {
@@ -69,7 +69,7 @@ export interface UseHotkeyRegistrationResult {
  * await registerHotkey("CommandOrControl+Shift+K");
  */
 export function useHotkeyRegistration(
-  options: UseHotkeyRegistrationOptions = {}
+  options: UseHotkeyRegistrationOptions
 ): UseHotkeyRegistrationResult {
   const { t } = useTranslation();
   const {
@@ -129,12 +129,7 @@ export function useHotkeyRegistration(
       }
 
       // Check if Electron API is available
-      const effectiveRegisterFn = registerFn ?? window.electronAPI?.updateHotkey;
-      if (!effectiveRegisterFn) {
-        // In non-Electron environment, just succeed silently
-        onSuccess?.(hotkey);
-        return true;
-      }
+      const effectiveRegisterFn = registerFn;
 
       try {
         registrationInFlightRef.current = true;

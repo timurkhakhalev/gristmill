@@ -13,7 +13,7 @@ $source = @'
 using System;
 using System.Runtime.InteropServices;
 
-public static class OpenWhisprDefaultInput {
+public static class OpenHerculesDefaultInput {
   enum EDataFlow { eRender, eCapture, eAll }
   enum ERole { eConsole, eMultimedia, eCommunications }
 
@@ -90,7 +90,7 @@ public static class OpenWhisprDefaultInput {
 }
 '@
 Add-Type -TypeDefinition $source
-[OpenWhisprDefaultInput]::GetJson()
+[OpenHerculesDefaultInput]::GetJson()
 `;
 
 function runFile(command, args, options = {}) {

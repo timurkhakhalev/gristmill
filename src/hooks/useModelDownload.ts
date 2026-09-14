@@ -16,9 +16,9 @@ const PROGRESS_THROTTLE_MS = 100;
 /**
  * Fired on this window whenever a local model lands on or leaves the disk
  * (download complete, model deleted), so surfaces that mirror disk truth
- * without owning the download — e.g. useRequiredLocalModels — can re-check.
+ * without owning the download can re-check.
  */
-export const LOCAL_MODELS_CHANGED_EVENT = "openwhispr-local-models-changed";
+export const LOCAL_MODELS_CHANGED_EVENT = "openhercules-local-models-changed";
 
 function notifyLocalModelsChanged(): void {
   window.dispatchEvent(new Event(LOCAL_MODELS_CHANGED_EVENT));
@@ -118,8 +118,8 @@ export function useModelDownload({
 
   useEffect(() => {
     const handleModelsCleared = () => onModelsClearedRef.current?.();
-    window.addEventListener("openwhispr-models-cleared", handleModelsCleared);
-    return () => window.removeEventListener("openwhispr-models-cleared", handleModelsCleared);
+    window.addEventListener("openhercules-models-cleared", handleModelsCleared);
+    return () => window.removeEventListener("openhercules-models-cleared", handleModelsCleared);
   }, []);
 
   const updateDownload = useCallback(

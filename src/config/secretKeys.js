@@ -80,35 +80,13 @@ const BYOK_API_KEYS = [
     save: "saveAssemblyAIKey",
     storeKey: "assemblyaiApiKey",
   },
-  // Per-scope Custom-endpoint keys. Dictation cleanup's counterpart predates
-  // this manifest and keeps its bespoke accessors (CUSTOM_CLEANUP_API_KEY).
+  // Per-scope custom-endpoint keys used by the remaining inference scopes.
   {
     base: "note-formatting-custom",
     env: "NOTE_FORMATTING_CUSTOM_API_KEY",
     get: "getNoteFormattingCustomKey",
     save: "saveNoteFormattingCustomKey",
     storeKey: "noteFormattingCustomApiKey",
-  },
-  {
-    base: "translation-custom",
-    env: "TRANSLATION_CUSTOM_API_KEY",
-    get: "getTranslationCustomKey",
-    save: "saveTranslationCustomKey",
-    storeKey: "translationCustomApiKey",
-  },
-  {
-    base: "dictation-agent-custom",
-    env: "DICTATION_AGENT_CUSTOM_API_KEY",
-    get: "getDictationAgentCustomKey",
-    save: "saveDictationAgentCustomKey",
-    storeKey: "dictationAgentCustomApiKey",
-  },
-  {
-    base: "dictation-agent-vision-custom",
-    env: "DICTATION_AGENT_VISION_CUSTOM_API_KEY",
-    get: "getDictationAgentVisionCustomKey",
-    save: "saveDictationAgentVisionCustomKey",
-    storeKey: "dictationAgentVisionCustomApiKey",
   },
   {
     base: "chat-agent-custom",

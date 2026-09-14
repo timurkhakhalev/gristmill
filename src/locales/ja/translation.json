@@ -4,7 +4,7 @@
       "sectionTitle": "言語",
       "sectionDescription": "インターフェースと文字起こしの言語を個別に設定",
       "uiLabel": "インターフェース言語",
-      "uiDescription": "OpenWhispr のインターフェースで使用する言語を選択",
+      "uiDescription": "OpenHercules のインターフェースで使用する言語を選択",
       "transcriptionLabel": "文字起こし言語",
       "transcriptionDescription": "より正確な文字起こしのために話す言語を選択",
       "chineseScriptLabel": "中国語の字体（ディクテーション）",
@@ -58,18 +58,14 @@
     }
   },
   "tray": {
-    "toggleDictation": {
-      "show": "ディクテーションパネルを表示",
-      "hide": "ディクテーションパネルを非表示"
-    },
     "openControlPanel": "コントロールパネルを開く",
     "hideControlPanel": "コントロールパネルを非表示",
-    "quit": "OpenWhispr を終了",
-    "tooltip": "OpenWhispr - 音声ディクテーション"
+    "quit": "OpenHercules を終了",
+    "tooltip": "OpenHercules"
   },
   "menu": {
-    "appLabel": "OpenWhispr",
-    "quit": "OpenWhispr を終了",
+    "appLabel": "OpenHercules",
+    "quit": "OpenHercules を終了",
     "speech": "スピーチ",
     "settings": "設定...",
     "help": "ヘルプ",
@@ -87,8 +83,8 @@
       "message": "ブラウザでリンクを開けませんでした:\n{{url}}\n\nエラー: {{error}}"
     },
     "loadFailure": {
-      "title": "OpenWhispr の読み込みに失敗しました",
-      "message": "OpenWhispr の UI を読み込めませんでした。",
+      "title": "OpenHercules の読み込みに失敗しました",
+      "message": "OpenHercules の UI を読み込めませんでした。",
       "detail": {
         "window": "ウィンドウ: {{windowName}}",
         "error": "エラー {{errorCode}}: {{errorDescription}}",
@@ -99,17 +95,17 @@
   },
   "startup": {
     "error": {
-      "title": "OpenWhispr 起動エラー",
+      "title": "OpenHercules 起動エラー",
       "message": "アプリケーションの起動に失敗しました:\n\n{{error}}\n\nこの問題を報告してください。"
     },
     "globeHotkey": {
       "title": "Globe ホットキーが使用できません",
-      "message": "OpenWhispr は Globe キーのホットキーを有効にできませんでした。",
+      "message": "OpenHercules は Globe キーのホットキーを有効にできませんでした。",
       "details": {
         "unknown": "Globe リスナーの起動中に不明なエラーが発生しました。",
         "fallback": "Globe キーのショートカットは無効のままになります。既存のキーボードショートカットは引き続き使用できます。",
         "devHint": "`npm run compile:globe` を実行し、アプリを再ビルドしてリスナーバイナリを再生成してください。",
-        "reinstallHint": "OpenWhispr を再インストールするか、問題が解決しない場合はサポートにお問い合わせください。"
+        "reinstallHint": "OpenHercules を再インストールするか、問題が解決しない場合はサポートにお問い合わせください。"
       }
     }
   },
@@ -136,21 +132,6 @@
     "screenRecording": "このプラットフォームでは画面収録の設定を利用できません。",
     "loginItems": "ログイン項目の設定はこのプラットフォームでは利用できません。"
   },
-  "upgradePrompt": {
-    "paymentFailed": "お支払いを処理できませんでした",
-    "weeklyLimit": "週間の利用上限に達しました",
-    "pastDueDescription": "現在は無料プランをご利用中です。ご安心ください、週 {{limit}} ワードまで引き続きご利用いただけます。\nお支払い方法を更新して、無制限の Pro に戻しましょう。",
-    "limitDescription": "{{used}} / {{limit}} ワード使用済み。\n文字起こしは保存・貼り付けされました。",
-    "updatePayment": "お支払い方法を更新",
-    "updatePaymentDescription": "無制限の Pro 文字起こしに戻りましょう。",
-    "upgradeToPro": "Pro にアップグレード",
-    "upgradeDescription": "月額 $8 から無制限の文字起こしを。",
-    "useApiKey": "自分の API キーを使用",
-    "useApiKeyDescription": "自分のキーで無制限に利用できます。",
-    "switchToLocal": "ローカルに切り替え",
-    "switchToLocalDescription": "オフライン文字起こし。制限なし。",
-    "rollingWeeklyLimit": "週間利用上限（ローリング）"
-  },
   "windowControls": {
     "minimize": "最小化",
     "maximize": "最大化",
@@ -174,8 +155,6 @@
     "cancel": "キャンセル",
     "recommended": "推奨",
     "active": "有効",
-    "managedByOrg": "組織によって管理されています",
-    "freeAccountRequired": "無料アカウントが必要です",
     "comingSoon": "近日公開",
     "cloud": "クラウド",
     "local": "ローカル",
@@ -201,22 +180,15 @@
     "copied": "コピーしました",
     "done": "完了",
     "skip": "スキップ",
-    "policyAiProcessingRestricted": "AI処理は組織によって制限されています。",
-    "policyAgentRestricted": "AIアシスタントの使用は組織によって制限されています。",
-    "policyTranscriptionRestricted": "文字起こしは組織によって制限されています。",
-    "managedConfigLoading": "組織のマネージド設定を確認しています。しばらくしてからもう一度お試しください。",
-    "managedConfigUnavailable": "マネージド エンタープライズ アクセスを利用できません。再度サインインするか、管理者にお問い合わせください。",
-    "managedPolicyConflict": "ワークスペースのポリシーによりマネージド アクセスがブロックされています。管理者にお問い合わせください。"
+    "finish": "Finish"
   },
   "onboarding": {
     "rehaul": {
       "permissions": {
-        "title": "3 分で OpenWhispr を設定",
+        "title": "3 分で OpenHercules を設定",
         "microphoneDescription": "話した内容をテキストにします。録音中のみ有効です。",
-        "accessibilityDescription": "テキストを、いま使っているアプリに貼り付けます。",
         "systemAudioTitle": "システムオーディオ",
         "systemAudioDescription": "会議メモのために、通話相手の音声を録音します。録音中のみ有効です。",
-        "screenContextDescription": "音声アシスタントに何かを頼んだとき、画面の内容を見られるようにします。保存は一切されません。",
         "enable": "有効にする",
         "enabled": "有効"
       },
@@ -224,20 +196,8 @@
         "title": "どの言語を話しますか？",
         "titleLineOne": "どの言語を",
         "titleLineTwo": "話しますか？",
-        "description": "当てはまるものをすべて選択してください。OpenWhisprが言語の切り替えをより正確に認識できるようになります。"
-      },
-      "dictationHotkey": {
-        "title": "ディクテーション用のショートカットを選びましょう",
-        "titleLineOne": "ディクテーション用の",
-        "titleLineTwo": "ショートカットを選びましょう",
-        "description": "入力の代わりに話したいときに押します。どのアプリでも使えます。",
-        "activation": "タップかホールド？"
-      },
-      "assistantHotkey": {
-        "title": "OpenWhispr Assistant を設定",
-        "titleLineOne": "セットアップ",
-        "titleLineTwo": "OpenWhispr Assistant",
-        "description": "頼みごとを話すだけ。OpenWhispr Assistant が結果を書きます。"
+        "description": "当てはまるものをすべて選択してください。OpenHerculesが言語の切り替えをより正確に認識できるようになります。",
+        "selected": "Selected languages"
       },
       "hotkey": {
         "capture": "使いたいキーを押してください",
@@ -245,59 +205,14 @@
         "inUse": "そのショートカットはすでに使用されています。別のものを選んでください。",
         "holding": "押したままにするか、別のキーを押してください"
       },
-      "dictationDemo": {
-        "title": "最初のディクテーションを試す",
-        "titleLineOne": "最初の",
-        "titleLineTwo": "ディクテーションを試す",
-        "description": "{{hotkey}} を押して話し始めてください。OpenWhispr が音声をテキストに変換します。",
-        "founder": "こんにちは、創業者のゲイブです。OpenWhispr を試してくれてありがとう！",
-        "prompt": "下のボックスをクリックしてショートカットを押し、教えてください。OpenWhispr に何をしてほしいですか？",
-        "placeholder": "ここをクリックしてからショートカットを押してください。OpenWhispr はどんなテキスト欄にも入力します。"
-      },
-      "assistantDemo": {
-        "title": "OpenWhispr Assistant を使ってみる",
-        "titleLineOne": "ご紹介します",
-        "titleLineTwo": "OpenWhispr Assistant",
-        "email": {
-          "subject": "来週コーヒーでも？",
-          "senderName": "マリア・アルバレス",
-          "recipient": "宛先: 自分",
-          "body": "こんにちは！昨日のミートアップでお会いできてうれしかったです。来週、少しコーヒーでもご一緒しませんか？ご都合の良い日時を教えてください。\n\nマリア",
-          "reply": "返信"
-        },
-        "scenarios": {
-          "calendarScreen": {
-            "description": "{{hotkey}} を押して返信を頼んでください。アシスタントが画面上のメールを読み取り、カレンダーで空き時間を確認します。",
-            "prompt": "「返信して、来週の空いている時間をいくつか提案して」と話してみてください。"
-          },
-          "screen": {
-            "description": "{{hotkey}} を押して返信を頼んでください。アシスタントが画面上のメールをそのまま読み取ります。",
-            "prompt": "「ぜひと返信して、水曜日の午後を提案して」と話してみてください。"
-          },
-          "calendar": {
-            "description": "{{hotkey}} を押して返信を頼んでください。アシスタントがカレンダーで空き時間を確認し、返信を書きます。",
-            "prompt": "「マリアに返信して、来週の空いている時間をいくつか提案して」と話してみてください。"
-          },
-          "general": {
-            "description": "{{hotkey}} を押して返信を頼んでください。アシスタントが代わりに書きます。",
-            "prompt": "「マリアにぜひと返信して、水曜日の午後を提案して」と話してみてください。"
-          }
-        }
-      },
-      "demo": {
-        "listening": "聞き取り中…",
-        "processing": "音声をテキストに変換中…",
-        "stop": "停止",
-        "typing": "入力中…"
-      },
       "notes": {
-        "title": "ボットなしで会議を録音 — OpenWhispr Notes",
+        "title": "ボットなしで会議を録音 — OpenHercules Notes",
         "titleLineOne": "ボットなしでミーティングを録音",
-        "titleLineTwoPrefix": "OpenWhispr の",
+        "titleLineTwoPrefix": "OpenHercules の",
         "titleLineTwoBrand": "Notes",
-        "description": "OpenWhispr は会話をわかりやすいノートに変換します。ミーティングボットが通話に参加することはありません。",
+        "description": "OpenHercules は会話をわかりやすいノートに変換します。ミーティングボットが通話に参加することはありません。",
         "hero": {
-          "description": "ミーティングを録音すれば、OpenWhispr が会話をわかりやすく整理されたノートに変換します。",
+          "description": "ミーティングを録音すれば、OpenHercules が会話をわかりやすく整理されたノートに変換します。",
           "chat": "ミーティングノートとチャット",
           "transcript": "全文の文字起こしを確認",
           "speakers": "誰が何を話したかを確認"
@@ -313,26 +228,10 @@
         }
       },
       "setupChoice": {
-        "title": "OpenWhispr のセットアップを選択",
-        "titleLineOne": "OpenWhispr の",
+        "title": "OpenHercules のセットアップを選択",
+        "titleLineOne": "OpenHercules の",
         "titleLineTwo": "セットアップを選択",
         "description": "働き方に合った方法を選んでください。",
-        "unavailable": {
-          "title": "利用できるセットアップ方法がありません",
-          "description": "ワークスペースのポリシーでは、文字起こしと AI の完全なセットアップが許可されていません。管理者にお問い合わせください。"
-        },
-        "cloud": {
-          "title": "OpenWhispr Cloud",
-          "description": "毎週 2,000 語を無料で利用できます。設定はデバイス間で同期されます。",
-          "continue": "無料で続ける",
-          "signIn": "サインインしてクラウドを使う",
-          "features": {
-            "fast": "最速、セットアップ不要",
-            "privacy": "Privacy-focused processing",
-            "sync": "設定をデバイス間で同期",
-            "features": "ノートとアクションの AI 機能"
-          }
-        },
         "byok": {
           "title": "API プロバイダー",
           "description": "自分の API キーを使用します。"
@@ -341,37 +240,8 @@
           "title": "デバイス上で実行",
           "description": "プライベートなオフライン文字起こし。空き容量が {{minimumSpace}} GB 以上必要です。",
           "badge": "無料",
-          "download": "モデルをダウンロード",
-          "features": {
-            "device": "デバイス上で動作",
-            "offline": "設定後はオフラインで動作",
-            "models": "ディクテーションとアシスタント用のモデルを選択",
-            "free": "ずっと無料で使える"
-          }
+          "download": "モデルをダウンロード"
         },
-        "warnings": {
-          "byok": {
-            "title": "データはプロバイダーが取り扱います",
-            "description": "ディクテーションと Assistant のプロバイダーそれぞれに認証情報を追加します。プロバイダーの料金と保持ポリシーが適用されます。",
-            "continue": "API プロバイダーを設定",
-            "steps": {
-              "1": "ディクテーションと Assistant のプロバイダーを選ぶ",
-              "2": "安全なストレージを使って認証情報を追加する",
-              "3": "有効化する前に各接続をテストする"
-            }
-          },
-          "local": {
-            "title": "ローカル設定には追加の手順がいくつか必要です",
-            "description": "ローカル処理では音声がこのデバイスに留まりますが、初回の設定と {{minimumSpace}} GB 以上の空き容量が必要です。",
-            "continue": "ローカルでセットアップ",
-            "steps": {
-              "1": "文字起こしエンジンを選ぶ",
-              "2": "モデルを設定またはダウンロードする（約 {{modelSize}}）",
-              "3": "インストールと有効化を待つ"
-            }
-          }
-        },
-        "useCloud": "代わりにクラウドを使う",
         "continueSetup": "セットアップを続ける",
         "showMore": "その他のオプションを表示",
         "moreOptions": {
@@ -385,8 +255,6 @@
       },
       "provider": {
         "progress": "プロバイダー設定の進行状況",
-        "dictation": "ディクテーション",
-        "assistant": "アシスタント",
         "title": "AI プロバイダーを接続",
         "description": "プロバイダーを選び、認証情報を追加して、接続をテストします。",
         "descriptionLineOne": "プロバイダーを選んで",
@@ -443,15 +311,6 @@
         "installing": "インストール中"
       }
     },
-    "steps": {
-      "welcome": "ようこそ",
-      "setup": "セットアップ",
-      "permissions": "権限",
-      "activation": "ディクテーション",
-      "useCase": "あなたについて",
-      "meeting": "会議",
-      "finish": "完了"
-    },
     "hotkey": {
       "couldNotRegisterTitle": "ホットキーを登録できませんでした",
       "couldNotRegisterDescription": "そのキーの組み合わせは既に使用されている可能性があります。別の組み合わせをお試しください。"
@@ -467,54 +326,20 @@
       "microphoneDescription": "あなたの声をテキストに変換します。ホットキーを押すまで何も録音されません。",
       "grant": "許可",
       "grantAccess": "アクセスを許可",
-      "accessibilityTitle": "アクセシビリティ",
-      "accessibilityDescription": "完成したテキストを、今使っているアプリ（ドキュメント、メール、チャット）に直接入力します。",
-      "testAndGrant": "テストして許可",
-      "requiredForApp": "OpenWhispr の動作に必要です",
-      "microphoneRequired": "マイクへのアクセスが必要です",
-      "openSystemSettings": "システム設定を開く",
       "systemAudioTitle": "システムオーディオ",
       "systemAudioDescription": "会議レコーダーが通話の相手側の音声（会議、講義、ポッドキャストなど）を聴けるようにします。後から設定で有効にできます。",
       "optional": "任意",
-      "recommended": "推奨",
-      "accessibilityTroubleshooting": "システム設定 → アクセシビリティで、OpenWhisprのスイッチをオフにしてから再度オンにしてください。OpenWhisprがリストに表示されていない場合は、+ をクリックしてアプリケーションフォルダから追加してください。それでも解決しませんか？support@openwhispr.com までメールでお問い合わせください。"
-    },
-    "transcription": {
-      "title": "文字起こし設定",
-      "description": "モードとプロバイダーを選択してください",
-      "preferredLanguage": "優先言語"
-    },
-    "activation": {
-      "title": "ディクテーション設定",
-      "description": "ディクテーションの起動方法を設定",
-      "hotkey": "ホットキー",
-      "mode": "モード",
-      "tapDescription": "押して開始/停止",
-      "holdDescription": "押しながら話す",
-      "test": "テスト",
-      "hotkeyToStartStop": "{{hotkey}} で開始/停止",
-      "holdHotkey": "{{hotkey}} を押し続ける",
-      "textareaPlaceholder": "ここをクリックしてホットキーでディクテーション..."
-    },
-    "connectivity": {
-      "title": "このネットワークから OpenWhispr Cloud に接続できません",
-      "body": "{{cause}} ローカルエンジンに切り替えるか、続行して後でもう一度お試しください。",
-      "useLocal": "ローカルエンジンを使う",
-      "continue": "そのまま続行"
+      "recommended": "推奨"
     },
     "useCase": {
-      "title": "OpenWhispr をどのように使いますか？",
-      "titleLineOne": "OpenWhisprを",
+      "title": "OpenHercules をどのように使いますか？",
+      "titleLineOne": "OpenHerculesを",
       "titleLineTwo": "どう使いますか？",
       "description": "当てはまるものをすべて選んでください。それに合わせてセットアップします。",
       "noteLabel": "他に伝えておきたいことはありますか？",
-      "notePlaceholder": "OpenWhispr の使い方を教えてください（任意）",
+      "notePlaceholder": "OpenHercules の使い方を教えてください（任意）",
       "proceedToSetup": "設定に進む",
       "options": {
-        "dictation": {
-          "title": "より速く書く",
-          "description": "タイピングの代わりに、どのアプリでも話して入力。"
-        },
         "meetings": {
           "title": "会議メモ",
           "description": "会議を録音・文字起こし・要約します。"
@@ -522,10 +347,6 @@
         "healthcare": {
           "title": "臨床記録",
           "description": "患者メモ、セッション記録、レポートを作成します。"
-        },
-        "translation": {
-          "title": "話しながら翻訳",
-          "description": "ある言語で話して、別の言語で書き出します。"
         },
         "ai": {
           "title": "AI と話す",
@@ -541,13 +362,12 @@
     "meeting": {
       "title": "会議メモ",
       "description": "会議を記録して要約します",
-      "autoDetect": "OpenWhispr は会議中であることを自動的に検出し、メモの開始を提案します。あなたの操作なしに録音されることはありません。",
+      "autoDetect": "OpenHercules は会議中であることを自動的に検出し、メモの開始を提案します。あなたの操作なしに録音されることはありません。",
       "hotkeyLabel": "会議ホットキー",
       "hotkeyHint": "任意 — 会議中に押すとすぐにメモを開始できます。"
     },
     "finish": {
       "title": "準備完了",
-      "cloudDescription": "OpenWhispr Cloud をご利用中です — 高速・高精度、データ保持なし、毎週 2,000 ワード無料。すべてを端末内で処理したい場合は、設定からローカル処理に切り替えられます。",
       "localDescription": "ローカル処理またはご自身の API キーで設定済みです。音声の処理方法はいつでも設定から変更できます。",
       "cleanupNote": "AI によるテキスト整形は適切な初期設定で動作します。設定からいつでも調整できます。",
       "openSettings": "設定を開く",
@@ -555,7 +375,6 @@
       "corti": {
         "title": "臨床文字起こしが目的とのことですね",
         "description": "私たちは Corti と提携しています — 最高精度の臨床グレード音声認識で、HIPAA に準拠しています。",
-        "createAccount": "Corti アカウントを作成",
         "creditBadge": "50ドルの無料クレジット",
         "regionHint": "音声の処理場所を選べます — 米国または EU。",
         "llmHint": "言語モデル機能も Corti モデルで実行されます。",
@@ -565,130 +384,12 @@
         "step2": "Corti コンソールで API 認証情報を作成",
         "step3": "Client ID と Secret を下に貼り付け"
       }
-    },
-    "requiredModels": {
-      "title": "必須モデルをインストール",
-      "description": "{{organization}}では、ディクテーションを開始する前にこれらのモデルをこのデバイスにインストールする必要があります。",
-      "genericOrganization": "所属組織",
-      "installed": "インストール済み",
-      "queued": "待機中",
-      "failed": {
-        "title": "ダウンロードが完了しませんでした",
-        "description": "接続とディスクの空き容量を確認して、再試行してください。それでも失敗する場合は、管理者にお問い合わせください。"
-      }
     }
   },
   "streaming": {
-    "errors": {
-      "cloudUnreachable": {
-        "title": "OpenWhispr Cloud に接続できません",
-        "generic": "ネットワーク要求に失敗しました。接続を確認してください。",
-        "dnsBlocked": "DNS が the server を解決できません — 広告ブロッカーやフィルターに遮断されている可能性があります。",
-        "refused": "接続が拒否されました — ファイアウォールまたは VPN の可能性があります。",
-        "timeout": "ネットワークがタイムアウトしました — VPN、キャプティブポータル、または不安定な接続。",
-        "tls": "TLS ハンドシェイクに失敗しました — システム時計または企業プロキシを確認してください。",
-        "fallback": "Cloud に接続できません — この録音にはローカルエンジンを使用します。"
-      }
-    }
+    "errors": {}
   },
   "controlPanel": {
-    "updateRequiredByOrg": {
-      "title": "アップデートが必要です",
-      "description": "組織では OpenWhispr {{version}} 以降が必要です。アプリを更新してください。"
-    },
-    "update": {
-      "readyTitle": "アップデートの準備完了",
-      "readyDescription": "「アップデートをインストール」をクリックして最新バージョンで再起動します。",
-      "installTitle": "アップデートをインストール",
-      "installDescription": "OpenWhispr はアップデートを適用するために再起動します。作業中のデータは保存されます。",
-      "couldNotInstallTitle": "アップデートをインストールできませんでした",
-      "couldNotInstallDescription": "問題が発生しました。もう一度お試しください。",
-      "couldNotDownloadTitle": "アップデートをダウンロードできませんでした",
-      "couldNotDownloadDescription": "インターネット接続を確認してもう一度お試しください。",
-      "installing": "インストール中...",
-      "installButton": "アップデートをインストール",
-      "availableButton": "アップデートあり"
-    },
-    "limit": {
-      "weeklyTitle": "週間の利用上限に達しました",
-      "weeklyDescription": "利用上限はローリング方式でリセットされます。Pro にアップグレードするか、自分の API キーを使用して無制限にご利用ください。"
-    },
-    "accessibilityMissing": {
-      "title": "アクセシビリティの許可が必要です",
-      "description": "OpenWhispr が正しく動作するにはアクセシビリティの許可が必要です。以下で有効にしてください。"
-    },
-    "billing": {
-      "pastDueTitle": "お支払いを処理できませんでした",
-      "pastDueDescription": "ご安心ください。現在は無料プランをご利用中です。設定からお支払い方法を更新して Pro に戻しましょう。",
-      "bannerDescription": "現在は無料プランをご利用中です。週 {{limit}} ワードまで利用できます。お支払い方法を更新して Pro に戻しましょう。",
-      "updatePayment": "お支払い方法を更新"
-    },
-    "history": {
-      "couldNotLoadTitle": "履歴を読み込めませんでした",
-      "couldNotLoadDescription": "文字起こし履歴の読み込み中に問題が発生しました。アプリを閉じて再度開いてください。",
-      "copiedTitle": "コピーしました！",
-      "copiedDescription": "テキストをクリップボードにコピーしました",
-      "couldNotCopyTitle": "コピーできませんでした",
-      "couldNotCopyDescription": "クリップボードへのコピー中に問題が発生しました。もう一度お試しください。",
-      "deleteTitle": "文字起こしを削除",
-      "deleteDescription": "この文字起こしは完全に削除されます。",
-      "couldNotDeleteTitle": "削除できませんでした",
-      "couldNotDeleteDescription": "この文字起こしは既に削除されている可能性があります。",
-      "couldNotDeleteDescriptionGeneric": "問題が発生しました。もう一度お試しください。",
-      "empty": "文字起こし履歴はまだありません",
-      "emptyDescription": "どのアプリでもホットキーを押して話し始めてください。すべての文字起こしは、このデバイス上にプライベートに保存されます。",
-      "sectionTitle": "文字起こし",
-      "dataRetentionDisabled": "データ保持が無効です。文字起こしと音声は履歴に保存されません。",
-      "press": "押してください",
-      "toStart": "開始するには",
-      "dateGroups": {
-        "today": "今日",
-        "yesterday": "昨日"
-      },
-      "transcriptionFailed": "文字起こしに失敗しました",
-      "failedCtaSettings": "文字起こしプロバイダーを設定してください",
-      "failedCtaAndRetry": "その後、再試行をクリックしてください",
-      "failedCtaSettingsOnly": "設定で文字起こしプロバイダーを設定してください",
-      "failedLimitReached": "1日の上限に達しました",
-      "failedOffline": "オフラインです",
-      "clearAll": "すべて削除",
-      "clearAllTitle": "すべての文字起こしを削除",
-      "clearAllDescription": "すべての文字起こし、音声ファイル、Insights のカウントが、このデバイスとアカウントから完全に削除されます。",
-      "clearAllDescriptionDevice": "すべての文字起こし、音声ファイル、Insights のカウントが、このデバイスから完全に削除されます。アカウントに同期済みのカウントには影響しません。",
-      "clearAllSuccess": "履歴を削除しました",
-      "clearAllErrorTitle": "履歴を削除できませんでした",
-      "clearAllErrorDescription": "問題が発生しました。もう一度お試しください。",
-      "copyText": "テキストをコピー",
-      "moreActions": "その他の操作",
-      "copyRawTranscript": "生の文字起こしをコピー",
-      "deleteItem": "削除",
-      "viewRawTranscript": "生の文字起こしを表示",
-      "showInFolder": "Finderで表示",
-      "showInFolderWindows": "エクスプローラーで表示",
-      "showInFolderLinux": "ファイルマネージャーで表示",
-      "retryTranscription": "再文字起こし",
-      "retrying": "再文字起こし中…",
-      "retrySuccess": "文字起こしが更新されました",
-      "retryError": "再文字起こしに失敗しました",
-      "audioNotFound": "音声ファイルが見つからないか有効期限切れです",
-      "noAiProcessing": "この文字起こしにはAI処理が適用されていません",
-      "rawTranscript": "生の文字起こし",
-      "discarded": {
-        "show": "破棄したものを表示",
-        "hide": "破棄したものを非表示",
-        "badge": "破棄済み",
-        "recording": "破棄した録音",
-        "recordingWithDuration": "破棄した録音 · {{duration}}",
-        "recover": "復元",
-        "recovered": "復元しました"
-      },
-      "retryTranslationMode": "翻訳モード"
-    },
-    "aiCta": {
-      "title": "AI で文字起こしを向上させましょう",
-      "description": "話しながら文法、句読点、書式を自動的に修正します。",
-      "enable": "AI 補正を有効にする"
-    },
     "loading": "読み込み中...",
     "gpu": {
       "bannerTitle": "GPU アクセラレーションが利用可能",
@@ -696,21 +397,14 @@
       "enableButton": "GPU を有効化",
       "dismissButton": "後で"
     },
-    "backToNotes": "ノートに戻る",
-    "requiredModelsByOrg": {
-      "title": "必須モデルがありません",
-      "description": "組織では、このデバイスにこれらのモデルが必要です：{{models}}。",
-      "download": "ダウンロード"
-    }
+    "backToNotes": "ノートに戻る"
   },
   "reasoning": {
     "mode": {
       "cloud": "クラウド",
       "local": "ローカル",
-      "enterprise": "エンタープライズ",
       "localDescription": "デバイス上で動作。完全なプライバシー保護、オフライン対応。",
-      "cloudDescription": "API 経由の高度なモデル。高速・高機能、インターネット接続が必要。",
-      "enterpriseDescription": "組織のクラウド認証情報を使用します。"
+      "cloudDescription": "API 経由の高度なモデル。高速・高機能、インターネット接続が必要。"
     },
     "custom": {
       "endpointWithProtocol": "プロトコルを含む完全なベース URL を入力してください（例: https://server/v1）。",
@@ -792,13 +486,12 @@
           "modelNotFound": "AWS Bedrock はリージョン {{region}} で選択したモデルを見つけられませんでした。モデル ID とそのリージョンでの提供状況を確認してください。",
           "configurationRejected": "AWS Bedrock はリージョン {{region}} のモデル設定を拒否しました。モデル ID、推論プロファイル、リージョンを確認してください。",
           "notConfigured": "AWS Bedrock が正しく設定されていません。リージョンと AWS 認証情報を確認してください。",
-          "serviceUnavailable": "需要が高いため、AWS Bedrock は一時的に利用できません。これは OpenWhispr の障害ではなく AWS サービス側の問題です。数分後にもう一度お試しください。",
+          "serviceUnavailable": "需要が高いため、AWS Bedrock は一時的に利用できません。これは OpenHercules の障害ではなく AWS サービス側の問題です。数分後にもう一度お試しください。",
           "throttled": "リクエストが多すぎるため、AWS Bedrock は一時的にリクエストを制限しています。少し待ってから再試行してください。続く場合は、AWS 管理者に Bedrock の使用量とクォータの確認を依頼してください。",
           "timeout": "AWS Bedrock が時間内に応答しませんでした。もう一度お試しください。続く場合は、インターネット接続と AWS Bedrock サービスの状態を確認してください。",
           "network": "AWS Bedrock に接続できませんでした。インターネット接続を確認して、もう一度お試しください。",
           "unknown": "AWS Bedrock エラー: {{error}}",
           "actions": {
-            "refreshManagedAccess": "サインアウトして再度サインインし、会社のアクセスを更新してから再試行してください。",
             "reauthenticate": "再認証するには、ターミナルで次のコマンドを実行してください:"
           }
         }
@@ -867,23 +560,8 @@
   "hooks": {
     "audioRecording": {
       "errorTitles": {
-        "sessionExpired": "セッション期限切れ",
         "offline": "オフラインです",
-        "agentUnavailable": "アシスタントを利用できません",
-        "screenContextSkipped": "画面コンテキストをスキップしました",
-        "dailyLimitReached": "1 日の上限に達しました",
         "providerRateLimited": "プロバイダーのレート制限"
-      },
-      "fallback": {
-        "title": "フォールバックモード",
-        "description": "ローカル Whisper が失敗しました。代わりに OpenAI API を使用しました。"
-      },
-      "errorActions": {
-        "viewTranscript": "文字起こしを表示"
-      },
-      "noAudio": {
-        "title": "聞き取れませんでした",
-        "description": "マイクを確認して、もう一度お試しください。"
       },
       "micDisconnected": {
         "title": "マイクが切断されました",
@@ -894,52 +572,16 @@
         "title": "マイクが復旧しました",
         "description": "音声の録音を再開しました。"
       },
-      "partialTranscription": {
-        "title": "部分的な文字起こし",
-        "description": "録音の一部を文字起こしできませんでした。"
-      },
       "errorDescriptions": {
-        "sessionExpired": "OpenWhispr Cloud のセッションが利用できません。「設定」から再度サインインしてください。",
         "offline": "オフラインです。クラウド文字起こしにはインターネット接続が必要です。",
-        "dailyLimitReached": "本日の文字起こし上限に達しました。明日もう一度お試しいただくか、プランをアップグレードしてください。",
         "providerRateLimited": "文字起こしプロバイダーがリクエストを制限しました。しばらく待ってからもう一度お試しください。",
         "chunkLoss": "ネットワークの問題で録音の大部分が失われました。履歴から再文字起こししてください。",
-        "agentReasoningFailed": "音声アシスタントがコマンドを処理できなかったため、未処理の文字起こしを挿入しました。",
-        "screenContextSkipped": "スクリーンショットを送信できなかったため、画面コンテキストなしでコマンドを実行しました。",
         "customEndpointInvalid": "カスタム文字起こしエンドポイントが未設定か、URLが無効です。設定 → 音声テキスト変換 から更新してください。",
-        "managedTranscriptionUnavailable": "マネージド文字起こしは現在利用できません。しばらくしてからもう一度お試しください。",
-        "managedRouteInvalid": "設定の不一致により、マネージド文字起こしを開始できませんでした。もう一度お試しいただくか、管理者にお問い合わせください。",
-        "managedAuthRejected": "組織のマネージド文字起こしの認証情報が拒否されました。管理者にお問い合わせください。",
         "streamingOnlyProvider": "このプロバイダーはライブ文字起こしのみに対応しています。ファイルのアップロードや再実行には別のプロバイダーを選択してください。",
         "providerKeyMissing": "文字起こしプロバイダーのAPIキーが設定されていません。設定 → 音声テキスト変換 から追加してください。"
-      },
-      "translationFallback": {
-        "unreachableTitle": "翻訳を利用できません",
-        "unreachableDescription": "口述内容は翻訳されずに貼り付けられました。翻訳設定を確認してください。",
-        "failedTitle": "翻訳に失敗しました",
-        "failedDescription": "元のテキストが貼り付けられました。履歴から再試行できます。"
-      },
-      "pushForceStopped": {
-        "title": "文字起こしは貼り付けられませんでした",
-        "description": "ホットキーが押されたままディクテーションが終了したため、テキストは貼り付けられませんでした。文字起こしはクリップボードにあります。",
-        "descriptionClipboardFailed": "ホットキーが押されたままディクテーションが終了したため、テキストは貼り付けられず、クリップボードにもコピーできませんでした。"
-      },
-      "selectionEditing": {
-        "notAppliedTitle": "選択範囲の編集を適用できませんでした",
-        "changed": "処理中に選択したテキストまたは対象アプリが変更されました。置換は行われていません。",
-        "expired": "選択範囲の編集が期限切れになりました。テキストを選択し直して再試行してください。",
-        "pasteFailed": "OpenWhispr は編集を生成しましたが、選択したテキストを置換できませんでした。",
-        "unavailable": "OpenWhispr は選択したテキストを安全に読み取れませんでした。アクセシビリティまたは入力自動化の権限を確認してください。",
-        "tooLarge": "選択範囲が大きすぎます。6,000文字以内を選択してください。",
-        "reasoningFailed": "AI は選択範囲の編集を完了できませんでした。元のテキストは変更されていません。"
       }
     },
-    "clipboard": {
-      "pasteFailed": {
-        "title": "クリップボードの貼り付けに失敗",
-        "description": "クリップボードから貼り付けできませんでした。手入力するか Cmd+V / Ctrl+V をお試しください。"
-      }
-    },
+    "clipboard": {},
     "hotkeyRegistration": {
       "titles": {
         "invalidHotkey": "無効なホットキー",
@@ -1004,7 +646,7 @@
       "micErrors": {
         "accessFailed": "マイクへのアクセスに失敗しました。もう一度お試しください。",
         "noMicrophones": "マイクが検出されませんでした。{{settingsPath}} でマイクを接続または選択してください。",
-        "permissionDenied": "権限が拒否されました。{{privacyPath}} を開いて OpenWhispr を許可してください。",
+        "permissionDenied": "権限が拒否されました。{{privacyPath}} を開いて OpenHercules を許可してください。",
         "couldNotStart": "選択したマイクを開始できませんでした。{{settingsPath}} で入力デバイスを選択してから、テストを再実行してください。",
         "noActiveInput": "アクティブな音声入力が見つかりませんでした。{{settingsPath}} でマイクを選択してください。",
         "unknown": "マイクへのアクセスに失敗しました: {{error}}。別の入力デバイスを選択してもう一度お試しください。",
@@ -1024,30 +666,9 @@
       "titles": {
         "microphoneUnavailable": "マイクが利用できません",
         "microphonePermissionRequired": "マイクの権限が必要です",
-        "accessibilityNeeded": "アクセシビリティの権限が必要です",
         "readyToGo": "準備完了！",
-        "waylandClipboardMode": "Wayland でのクリップボードモード",
-        "optionalPasteTool": "オプション: 貼り付けツールのインストール"
+        "waylandClipboardMode": "Wayland でのクリップボードモード"
       },
-      "descriptions": {
-        "accessibilityNeeded": "テキストの自動貼り付けを有効にするには、システム設定でアクセシビリティの権限を許可してください。",
-        "windowsReady": "Windows では自動貼り付けに特別な権限は必要ありません。準備完了です！",
-        "linuxReadyWithMethod": "{{method}} を使用した自動貼り付けが利用可能です。準備完了です！",
-        "waylandClipboardMode": "この Wayland セッションでは自動貼り付けが利用できません。OpenWhispr はテキストをクリップボードにコピーしますので、Ctrl+V で貼り付けてください。",
-        "optionalPasteTool": "自動貼り付けには {{tool}} をインストールしてください:\n\n{{installCmd}}{{waylandNote}}\n\nインストールしなくても OpenWhispr は使用できます。テキストがクリップボードにコピーされるので、Ctrl+V で貼り付けてください。"
-      },
-      "alerts": {
-        "accessibilityNeeded": "アクセシビリティの権限が必要です！システム設定で許可してください。"
-      },
-      "notes": {
-        "waylandWtype": "\n\n注: XWayland アプリでは xdotool も使用できます。",
-        "waylandXwaylandOnly": "\n\n注: 自動貼り付けは XWayland アプリのみで動作します。"
-      },
-      "labels": {
-        "defaultPasteTool": "xdotool",
-        "xdotoolXwayland": "xdotool（XWayland アプリ）"
-      },
-      "accessibilityTestText": "OpenWhispr アクセシビリティテスト",
       "warning": {
         "messages": {
           "macos": "サウンド設定で入力デバイスを確認してください",
@@ -1058,85 +679,6 @@
         "privacyLabel": "プライバシー"
       }
     }
-  },
-  "auth": {
-    "cloudNotConfigured": "クラウド未設定",
-    "sessionExpired": "セッションの有効期限が切れました",
-    "common": {
-      "back": "戻る",
-      "continue": "続ける",
-      "or": "または"
-    },
-    "emailStep": {
-      "checkingEmail": "メールアドレスを確認しています...",
-      "continueWithEmail": "メールで続ける",
-      "continueWithoutAccount": "アカウントなしで続ける",
-      "emailLabel": "メールアドレス",
-      "emailPlaceholder": "you@example.com",
-      "useDifferentEmail": "別のメールアドレスを使用"
-    },
-    "errors": {
-      "accountExistsSignIn": "このメールアドレスのアカウントは既に存在します。サインインしてください。",
-      "accountNotFoundCreate": "このメールアドレスのアカウントが見つかりません。アカウントを作成してください。",
-      "authNotConfigured": "認証が設定されていません",
-      "createAccountFailed": "アカウントの作成に失敗しました",
-      "failedProviderSignIn": "{{provider}} でのサインインに失敗しました",
-      "failedUserCheck": "ユーザーアカウントの確認に失敗しました",
-      "generic": "問題が発生しました。もう一度お試しください。",
-      "invalidCredentials": "メールアドレスまたはパスワードが正しくありません",
-      "invalidEmail": "有効なメールアドレスを入力してください"
-    },
-    "getStarted": "はじめる",
-    "legal": {
-      "and": "および",
-      "prefix": "続行すると、",
-      "privacy": "プライバシーポリシー",
-      "suffix": "に同意したことになります",
-      "terms": "利用規約"
-    },
-    "passwordForm": {
-      "createAccount": "アカウントを作成",
-      "createAccountButton": "メールで続ける",
-      "createAccountLink": "アカウントを作成",
-      "createPasswordPlaceholder": "パスワードを作成",
-      "creatingAccount": "アカウント作成中...",
-      "enterPasswordPlaceholder": "パスワードを入力",
-      "forgotPassword": "パスワードをお忘れですか？",
-      "fullNamePlaceholder": "名前を入力",
-      "nameLabel": "名前",
-      "passwordLabel": "パスワード",
-      "haveAccount": "既にアカウントをお持ちですか？",
-      "newHere": "初めてですか？",
-      "passwordMinLength": "パスワードは 8 文字以上にしてください",
-      "signIn": "メールで続ける",
-      "signInLink": "サインイン",
-      "signingIn": "サインイン中...",
-      "welcomeBack": "おかえりなさい"
-    },
-    "signedIn": {
-      "welcomeBack": "おかえりなさい",
-      "notYou": "別のアカウントですか？ログアウト"
-    },
-    "sso": {
-      "continueWithSSO": "SSO でサインイン",
-      "workEmailLabel": "勤務先のメールアドレス",
-      "emailPlaceholder": "メールアドレスを入力",
-      "emailRequired": "SSO を使用するには勤務先のメールアドレスを入力してください。",
-      "failed": "シングルサインオンに失敗しました。もう一度お試しください。",
-      "companySignInTitle": "会社のサインインを使用",
-      "requiredDescription": "{{domain}} では OpenWhispr に SSO が必須です。",
-      "availableDescription": "{{domain}} のアカウントは会社の SSO に対応しています。",
-      "useEmailInstead": "メールアドレスとパスワードを使用"
-    },
-    "social": {
-      "completeInBrowser": "ブラウザでサインインを完了してください",
-      "continueWithApple": "Apple で続ける",
-      "continueWithGoogle": "Google で続ける",
-      "continueWithMicrosoft": "Microsoft で続ける",
-      "protocolUnavailable": "ブラウザでのサインインを利用できません — システムの「既定のアプリ」設定で openwhispr:// プロトコルを再登録してください。"
-    },
-    "welcomeSubtitle": "あなたの声の力を、あなたのやり方で。",
-    "welcomeTitle": "OpenWhispr へようこそ"
   },
   "cleanupPrompt": "クリーンアップ",
   "developerSection": {
@@ -1151,15 +693,6 @@
     "performanceNote": {
       "description": "デバッグログは継続的にディスクに書き込まれるため、パフォーマンスにわずかに影響する場合があります。トラブルシューティング以外では無効にしてください。",
       "label": "注意"
-    },
-    "sharing": {
-      "footer": "ログに API キーや機密データは含まれません",
-      "steps": {
-        "0": "デバッグモードを有効にした状態で問題を再現してください",
-        "1": "上の「ログフォルダーを開く」をクリックしてください",
-        "2": "最新のログファイルをバグレポートに添付してください"
-      },
-      "title": "サポート向けログの共有"
     },
     "title": "デバッグログ",
     "toasts": {
@@ -1205,41 +738,10 @@
     }
   },
   "dictionarySuffix": "辞書サフィックス",
-  "emailVerification": {
-    "checkEmailDescription": "確認リンクを次のメールアドレスに送信しました：",
-    "checkEmailTitle": "確認メールを送信しました",
-    "errors": {
-      "resendFailed": "メールを再送信できませんでした。もう一度お試しください。",
-      "serverUnreachable": "サーバーに接続できませんでした。接続を確認してもう一度お試しください。"
-    },
-    "resendButton": "確認メールを再送信",
-    "resendIn": "{{seconds}} 秒後に再送信可能",
-    "verifiedDescription": "アカウントの設定が完了しました。",
-    "verifiedTitle": "確認済み",
-    "waiting": "確認を待っています",
-    "backToSignIn": "サインインに戻る"
-  },
   "errorBoundary": {
     "description": "予期しないエラーが発生しました。再読み込みしてもう一度お試しください。",
     "reload": "再読み込み",
     "title": "問題が発生しました"
-  },
-  "forgotPassword": {
-    "back": "戻る",
-    "backToSignIn": "サインインに戻る",
-    "emailPlaceholder": "メールアドレスを入力",
-    "goBack": "戻る",
-    "notConfigured": "認証がまだ設定されていません。",
-    "sendResetLink": "リセットリンクを送信",
-    "sending": "送信中...",
-    "subtitle": "メールアドレスを入力するとリセットリンクを送信します",
-    "success": {
-      "description": "パスワードリセットリンクを送信しました",
-      "help": "メールが届きませんか？迷惑メールフォルダを確認するか、もう一度お試しください。",
-      "title": "メールを確認してください",
-      "tryAnother": "別のメールアドレスで試す"
-    },
-    "title": "パスワードをリセット"
   },
   "actionPrompt": "アクションプロンプト",
   "hotkeyGuidance": {
@@ -1326,45 +828,7 @@
     "selectPlaceholder": "マイクを選択",
     "systemDefault": "システムデフォルト",
     "unknownDevice": "不明なデバイス",
-    "using": "使用中: {{device}}",
-    "warmHold": {
-      "label": "マイクをウォーム状態に保つ",
-      "description": "ディクテーション終了後もマイクを短時間開いたままにし、次回を冒頭の欠落なくすぐに開始できるようにします",
-      "privacyNote": "マイクを保持している間は、システムのマイク使用中インジケーターが点灯したままになります。ディクテーションの合間に録音は行われません。",
-      "options": {
-        "0": "オフ",
-        "10": "10秒",
-        "60": "1分",
-        "900": "15分"
-      }
-    }
-  },
-  "pasteToolsInfo": {
-    "checking": "システム機能を確認中...",
-    "installCommands": {
-      "archLinux": "# Arch Linux",
-      "debianUbuntu": "# Debian / Ubuntu",
-      "debianUbuntuPop": "# Debian / Ubuntu / Pop!_OS",
-      "debianUbuntuMint": "# Debian / Ubuntu / Mint",
-      "fedoraRhel": "# Fedora / RHEL",
-      "openSuse": "# openSUSE Tumbleweed / Leap"
-    },
-    "installPrefix": "テキストの自動貼り付けには",
-    "methodReady": "で自動貼り付け可能",
-    "noteXwaylandAlso": "注: XWayland アプリでは xdotool も使用できます。",
-    "noteXwaylandOnly": "注: 自動貼り付けは XWayland アプリのみで動作します。",
-    "optionalEnableTitle": "オプション: 自動貼り付けを有効にする",
-    "readyTitle": "自動貼り付け準備完了",
-    "recheck": "再確認",
-    "recheckChecking": "確認中...",
-    "title": "自動貼り付け",
-    "usingMethodPrefix": "使用中:",
-    "waylandClipboardDescription": "この Wayland セッションでは自動貼り付けが利用できません。OpenWhispr はテキストをクリップボードにコピーしますので、Ctrl+V で手動で貼り付けてください。",
-    "waylandClipboardTitle": "Wayland でのクリップボードモード",
-    "windowsReady": "Windows は自動貼り付けに標準対応しています。設定は不要です！",
-    "withoutToolPrefix": "このツールがない場合、OpenWhispr はテキストをクリップボードにコピーします。Ctrl+V で手動で貼り付けてください。",
-    "wtypeFallbackDescription": "この wlroots 系コンポジターでは wtype が推奨される自動貼り付け方法です。代替手段も利用できますが、信頼性が低い場合があります。",
-    "xwaylandAppsOnly": "自動貼り付けは XWayland アプリのみで動作します"
+    "using": "使用中: {{device}}"
   },
   "promptStudio": {
     "common": {
@@ -1373,7 +837,7 @@
       "reset": "リセット",
       "save": "保存"
     },
-    "defaultTestInput": "ねぇ Whispr、今日の天気はどう？",
+    "defaultTestInput": "ねぇ Hercules、今日の天気はどう？",
     "dialogs": {
       "reset": {
         "description": "プロンプトをデフォルト値にリセットしました。",
@@ -1385,10 +849,8 @@
       }
     },
     "edit": {
-      "agentNameLabel": "アシスタント名:",
       "cautionLabel": "注意",
       "cautionTextPrefix": "このプロンプトを変更すると文字起こしの品質に影響する場合があります。",
-      "cautionTextSuffix": "アシスタント検出を維持するために {{agentName}} プレースホルダーを残してください。",
       "placeholder": "カスタムシステムプロンプトを入力..."
     },
     "tabs": {
@@ -1397,7 +859,6 @@
       "view": "表示"
     },
     "test": {
-      "addressHint": "「{{agentName}}」と呼びかけて指示モードをテストしてみてください",
       "aiModels": "AI モデル",
       "baseUrlMissing": "{{provider}} のベース URL が未設定です。AI モデル設定で追加してください。",
       "cleanup": "クリーンアップ",
@@ -1413,41 +874,24 @@
       "none": "なし",
       "outputLabel": "出力",
       "processing": "処理中...",
-      "openwhisprCloud": "OpenWhispr Cloud",
       "providerLabel": "プロバイダー",
       "run": "テスト実行",
       "customEndpoint": "カスタムエンドポイント",
-      "apiKeyMissing": "{{provider}} の API キーが未設定です。AI モデル設定で追加してください。",
-      "translateHint": "テキストは{{language}}に翻訳されます",
-      "translation": "翻訳",
-      "translationDisabled": "このプロンプトをテストするには音声入力翻訳を有効にしてください",
-      "noTargetLanguage": "先に翻訳先の言語を選択してください",
-      "agentDisabled": "このプロンプトをテストするには音声アシスタントを有効にしてください"
+      "apiKeyMissing": "{{provider}} の API キーが未設定です。AI モデル設定で追加してください。"
     },
     "view": {
       "customPrompt": "カスタムプロンプト",
       "defaultPrompt": "デフォルトプロンプト",
       "modified": "変更済み"
-    },
-    "defaultTestInputTranslate": "今日はいい天気ですね、散歩に行きませんか？"
+    }
   },
   "settingsModal": {
-    "managedByOrg": "一部の設定は組織によって管理されています。",
     "groups": {
-      "account": "アカウント",
       "app": "アプリ",
       "aiModels": "AIモデル",
       "system": "システム"
     },
     "sections": {
-      "account": {
-        "description": "プロフィールとサインイン",
-        "label": "プロフィール"
-      },
-      "plansBilling": {
-        "description": "プラン、使用状況、請求",
-        "label": "プランと請求"
-      },
       "general": {
         "description": "外観、サウンド、起動設定",
         "label": "環境設定"
@@ -1471,282 +915,11 @@
       "system": {
         "description": "更新、ストレージ、開発者ツール",
         "label": "システム"
-      },
-      "workspace": {
-        "description": "メンバー、チームスペース、API キー",
-        "label": "ワークスペース"
       }
     },
     "title": "設定"
   },
   "settingsPage": {
-    "unifiedBilling": {
-      "workspaceTitle": "ワークスペースの請求",
-      "workspaceDescription": "各ワークスペースには独自のプラン、シート、請求管理者があります。",
-      "billableSeat": "あなたのシートは課金対象です",
-      "nonBillableSeat": "管理者専用アクセス · 有料シートなし",
-      "managedBy": "請求は {{owner}} が管理しています。",
-      "addSeat": "シートを追加",
-      "seatUpdated_one": "ワークスペースの容量を {{count}} シートに更新しました",
-      "seatUpdated_other": "ワークスペースの容量を {{count}} シートに更新しました",
-      "seatUpdateFailed": "ワークスペースのシートを更新できませんでした",
-      "businessWorkspaceOnly": "ワークスペースで利用可能",
-      "personalPlanTitle": "個人プラン",
-      "providedBy": "個人プラン: Free · 有料アクセスは {{workspaces}} から提供",
-      "confirmSeats": {
-        "title": "ワークスペースのシートを追加しますか？",
-        "description_one": "{{workspace}} を {{count}} シートに拡張します。Stripe が日割りで請求します。",
-        "description_other": "{{workspace}} を {{count}} シートに拡張します。Stripe が日割りで請求します。",
-        "newCapacity": "新しい容量",
-        "chargeToday": "本日の請求額",
-        "confirm": "シートを追加"
-      }
-    },
-    "account": {
-      "badges": {
-        "free": "無料",
-        "limitReached": "上限到達",
-        "pastDue": "支払い遅延",
-        "pro": "Pro",
-        "business": "Business",
-        "trial": "トライアル"
-      },
-      "billing": {
-        "couldNotOpenDescription": "請求ページを開く際に問題が発生しました。もう一度お試しください。",
-        "couldNotOpenTitle": "請求を開けませんでした",
-        "manageBilling": "請求を管理",
-        "opening": "開いています...",
-        "updatePaymentMethod": "お支払い方法を更新",
-        "contactOwnerTitle": "ワークスペースのオーナーにご連絡ください",
-        "contactOwnerDescription": "このワークスペースの請求を更新できるのはオーナーのみです。"
-      },
-      "checkout": {
-        "couldNotOpenDescription": "購入ページを開く際に問題が発生しました。もう一度お試しください。",
-        "couldNotOpenTitle": "購入ページを開けませんでした",
-        "opening": "開いています...",
-        "upgradeToPro": "Pro にアップグレード"
-      },
-      "disabled": "無効",
-      "featuresDisabled": "アカウント機能が無効です",
-      "featuresDisabledDescription": ".env ファイルで VITE_AUTH_URL を設定してアカウント機能を有効にしてください。",
-      "notConfigured": "認証が設定されていません",
-      "notSignedIn": "サインインしていません",
-      "notSignedInDescription": "アカウントを作成してプレミアム機能をアンロックしましょう。",
-      "offline": "オフライン",
-      "pastDue": {
-        "description": "現在は無料プランをご利用中です。お支払い方法を更新して Pro に戻しましょう。",
-        "title": "お支払いを処理できませんでした"
-      },
-      "planDescriptions": {
-        "freeUsage": "今週 {{used}} / {{limit}} ワード使用済み",
-        "nextBilling": "次の請求日: {{date}}",
-        "pastDue": "今週 {{used}} / {{limit}} 無料ワード使用済み - お支払い方法を更新して Pro を復元",
-        "trial": "残り {{days}} 日 - 無制限の文字起こし",
-        "unlimited": "無制限"
-      },
-      "planLabels": {
-        "free": "無料",
-        "pro": "Pro",
-        "business": "Business",
-        "trial": "トライアル"
-      },
-      "pricing": {
-        "title": "プラン",
-        "billedYearly": "年払い",
-        "free": {
-          "name": "Free",
-          "price": "$0",
-          "period": "永久",
-          "features": [
-            "## OpenWhispr Cloud",
-            "週2,000ワードの文字起こし",
-            "月5時間の会議録音",
-            "## 永久無料",
-            "無制限のローカルAIモデル",
-            "独自のAPIキーで無制限のクラウド文字起こし",
-            "100以上の言語に対応",
-            "カスタム辞書",
-            "データ保持なし",
-            "コミュニティサポート"
-          ]
-        },
-        "pro": {
-          "name": "Pro",
-          "monthlyPrice": "$8",
-          "monthlyPeriod": "/月",
-          "annualPrice": "$80",
-          "annualPeriod": "/年",
-          "annualEquivalent": "$6.67",
-          "includesPrefix": "Free の全機能 +",
-          "features": [
-            "無制限のクラウド文字起こし",
-            "月20時間の会議録音",
-            "デバイス間の同期",
-            "公開リンクでノートを共有",
-            "個人APIアクセス",
-            "すべてのアプリでMCP統合",
-            "モバイルアプリ",
-            "メールサポート"
-          ],
-          "cta": "始める",
-          "switchToAnnual": "年払いに切り替え"
-        },
-        "business": {
-          "name": "Business",
-          "monthlyPrice": "$16",
-          "monthlyPeriod": "/月",
-          "annualPrice": "$160",
-          "annualPeriod": "/年",
-          "annualEquivalent": "$13.33",
-          "includesPrefix": "Pro の全機能 +",
-          "badge": "一番人気",
-          "features": [
-            "無制限の会議録音",
-            "ワークスペースのロールとメンバー管理",
-            "アシスタントモード",
-            "データとチャット",
-            "優先サポート"
-          ],
-          "cta": "始める",
-          "switchToAnnual": "年払いに切り替え"
-        },
-        "enterprise": {
-          "name": "Enterprise",
-          "price": "カスタム",
-          "subtitle": "高度なセキュリティとサポート向け",
-          "includesPrefix": "Business の全機能 +",
-          "features": [
-            "管理されたAPIクレジット",
-            "デバイス間のクラウド同期",
-            "チーム機能と管理",
-            "SSO とコンプライアンス",
-            "専任サポート"
-          ],
-          "cta": "営業に問い合わせる",
-          "upgradeCta": "Enterpriseにアップグレード",
-          "askOwner": "{{name}}さんにワークスペースのアップグレードを依頼してください。"
-        },
-        "currentPlan": "現在のプラン",
-        "coveredByWorkspace": "ワークスペースのプランに含まれています",
-        "upgrade": "アップグレード",
-        "downgrade": "ダウングレード",
-        "planSwitched": "プランが正常に更新されました",
-        "confirmSwitch": {
-          "title": "プラン変更の確認",
-          "description": "{{plan}}（{{interval}}）に変更",
-          "monthly": "月額",
-          "yearly": "年額",
-          "chargeToday": "本日のご請求",
-          "accountCredit": "アカウントクレジット",
-          "newPrice": "新しい料金",
-          "nextBilling": "次回請求日",
-          "mo": "mo",
-          "yr": "yr",
-          "cancel": "キャンセル",
-          "confirm": "確認"
-        }
-      },
-      "rollingWeeklyLimit": "週間利用上限（ローリング）",
-      "signOut": {
-        "failedDescription": "サインアウト中に問題が発生しました。もう一度お試しください。",
-        "failedTitle": "サインアウトできませんでした",
-        "signOut": "サインアウト",
-        "signingOut": "サインアウト中..."
-      },
-      "signedOutPlans": {
-        "button": "無料アカウントを作成"
-      },
-      "title": "アカウント",
-      "toasts": {
-        "approachingLimit": {
-          "description": "今週 {{used}} / {{limit}} 無料ワードを使用しました。Pro にアップグレードして無制限にご利用ください。",
-          "title": "週間利用上限に近づいています"
-        }
-      },
-      "trialCta": {
-        "button": "無料アカウントを作成",
-        "description": "無制限の文字起こし、優先処理など。",
-        "title": "Pro を 7 日間無料でお試し"
-      },
-      "user": "ユーザー",
-      "wordsRemaining": "残り {{remaining}}",
-      "deleteAccount": {
-        "label": "アカウントを削除",
-        "labelDescription": "アカウントと個人のクラウドデータを完全に削除します。他のローカルユーザーとワークスペース所有のコンテンツは保持されます。",
-        "button": "アカウントを削除",
-        "deleting": "削除中...",
-        "title": "アカウントを削除しますか？",
-        "description": "OpenWhispr アカウントと個人データを完全に削除します。ワークスペース所有のコンテンツと他のローカルユーザーのデータはこのデバイスに残ります。",
-        "confirmText": "アカウントを削除",
-        "eraseDeviceLabel": "このデバイス上のすべてのデータも消去する",
-        "eraseDeviceDescription": "すべてのローカルユーザーのノートとワークスペースキャッシュ、ダウンロード済みモデル、設定、カレンダー接続、認証情報、録音を削除します。",
-        "eraseDeviceWarning": "このデバイス全体の消去は元に戻せず、すべてのローカルユーザーに影響します。",
-        "successTitle": "アカウントが削除されました",
-        "successDescription": "アカウントと個人データが削除されました。他のローカルユーザー、ワークスペース、モデル、デバイス設定は保持されました。",
-        "partialCleanupDescription": "アカウントは削除されましたが、一部のローカルクリーンアップを完了できませんでした。他のユーザーとワークスペース所有のコンテンツは保持されました。",
-        "failedTitle": "削除に失敗しました",
-        "failedDescription": "アカウントの削除を完了できませんでした。デバイス全体の消去は開始されていません。もう一度お試しください。"
-      },
-      "profile": {
-        "name": {
-          "label": "表示名",
-          "placeholder": "お名前",
-          "save": "保存",
-          "saving": "保存中...",
-          "saved": "表示名を更新しました",
-          "error": "名前を更新できませんでした"
-        },
-        "password": {
-          "label": "パスワード",
-          "description": "サインインに使用するパスワードを変更します。",
-          "change": "パスワードを変更",
-          "dialogTitle": "パスワードを変更",
-          "dialogDescription": "現在のパスワードを入力し、新しいパスワードを設定してください。",
-          "currentLabel": "現在のパスワード",
-          "newLabel": "新しいパスワード",
-          "confirmLabel": "新しいパスワード（確認）",
-          "minLength": "パスワードは 8 文字以上にしてください",
-          "mismatch": "パスワードが一致しません",
-          "revokeOthers": "他のデバイスでサインアウト",
-          "submit": "パスワードを更新",
-          "saving": "更新中...",
-          "cancel": "キャンセル",
-          "saved": "パスワードを更新しました"
-        },
-        "errors": {
-          "invalidPassword": "現在のパスワードが正しくありません。",
-          "passwordTooShort": "パスワードは 8 文字以上にしてください。",
-          "passwordTooLong": "パスワードが長すぎます。",
-          "noPassword": "このアカウントにはパスワードが設定されていません。",
-          "generic": "問題が発生しました。もう一度お試しください。"
-        }
-      },
-      "planUnavailable": {
-        "title": "プランを取得できません",
-        "description": "現在プランを読み込めませんでした。ご利用の権限は変わりません。"
-      }
-    },
-    "agentConfig": {
-      "agentName": "アシスタント名",
-      "description": "ディクテーション中に直接呼びかけられるよう、AI アシスタントに名前を付けましょう",
-      "dialogs": {
-        "updatedDescription": "アシスタントの名前が「{{name}}」になりました。「ねぇ {{name}}」と呼びかけて指示を出してください。",
-        "updatedTitle": "アシスタント名を更新しました"
-      },
-      "examplesTitle": "例",
-      "helper": "声に出して言いやすい短い名前を選びましょう",
-      "howItWorksDescription": "「ねぇ {{agentName}}」と呼びかけて指示を出すと、選択中のテキストは結果で安全に置き換えられます。自動貼り付けが有効で編集可能なテキスト欄にフォーカスがある場合、回答はカーソル位置に貼り付けられ、それ以外の場合はフローティングのアシスタントパネルに表示されます。",
-      "howItWorksTitle": "仕組み",
-      "instructionMode": "指示",
-      "placeholder": "例: ジャービス、ノヴァ、アトラス...",
-      "save": "保存",
-      "title": "音声アシスタント",
-      "examples": {
-        "formalEmail": "Hey {{agentName}}、予算についてフォーマルなメールを書いて",
-        "professional": "テキストを選択してから話しかけます：Hey {{agentName}}、これをもっとプロフェッショナルにして",
-        "bulletPoints": "Hey {{agentName}}、これを箇条書きに変換して"
-      }
-    },
     "aiModels": {
       "customSetup": "カスタム設定",
       "customSetupDescription": "独自のプロバイダーと API キーを使用。",
@@ -1754,25 +927,15 @@
       "enableTextCleanup": "テキスト補正を有効にする",
       "enableTextCleanupDescription": "AI がフィラーワードを除去し、文法と句読点を整える",
       "modes": {
-        "openwhispr": "OpenWhispr Cloud",
         "providers": "クラウドプロバイダー",
         "local": "ローカル",
         "selfHosted": "セルフホスト",
-        "openwhisprDesc": "信頼できる精度。設定不要。",
         "providersDesc": "自分のAPIキーを使用。",
         "localDesc": "端末上のモデル。完全プライベート。",
-        "selfHostedDesc": "自前サーバーをネットワーク上に。",
-        "enterprise": "エンタープライズ",
-        "enterpriseDesc": "組織のクラウドアカウントを使用 (AWS, Azure, GCP)。"
+        "selfHostedDesc": "自前サーバーをネットワーク上に。"
       },
-      "openwhisprCloud": "OpenWhispr Cloud",
-      "openwhisprCloudDescription": "信頼できる精度。設定不要。",
       "title": "AI テキスト補正",
       "toasts": {
-        "switchedCloud": {
-          "description": "テキスト補正に OpenWhispr のクラウドサービスを使用します。",
-          "title": "OpenWhispr Cloud に切り替えました"
-        },
         "switchedCustom": {
           "description": "独自のプロバイダーと API キーを設定してください。",
           "title": "カスタム設定に切り替えました"
@@ -1788,21 +951,9 @@
         "switchedSelfHosted": {
           "title": "セルフホスト",
           "description": "独自のサーバーを使用します。"
-        },
-        "switchedEnterprise": {
-          "title": "エンタープライズ",
-          "description": "組織のクラウドアカウントを使用しています。"
         }
       },
-      "managedEnterprise": {
-        "errorTitle": "マネージド エンタープライズ AI に対応が必要です",
-        "title": "組織によって管理されています",
-        "description": "サインインすると短期間のアクセスが自動的に付与されます。クラウドキーや CLI の設定は不要です。",
-        "usePersonalSetup": "個人の設定を使用",
-        "availableTitle": "組織の設定が利用できます",
-        "availableDescription": "認証情報を管理せずに {{provider}} を使用できます。",
-        "useManaged": "マネージドを使用"
-      }
+      "chatTitle": "Embedded chat"
     },
     "developer": {
       "clearCache": "キャッシュをクリア",
@@ -1823,7 +974,6 @@
       "removing": "削除中...",
       "resetAll": {
         "confirmText": "すべて削除",
-        "description": "すべてのローカル設定、文字起こし、音声録音、ダウンロード済みAIモデル、カレンダー接続、キャッシュデータが完全に削除されます。クラウドデータとアカウントは影響を受けません。リセット後にアプリが再読み込みされます。",
         "failedDescription": "問題が発生しました。もう一度試すか、アプリを再インストールしてください。",
         "failedTitle": "リセットできませんでした",
         "successDescription": "すべてリセットされました。アプリを再読み込みします。",
@@ -1846,7 +996,6 @@
       "clearDictionaryTitle": "辞書をクリアしますか？",
       "clearDictionaryDescription": "カスタム辞書からすべての単語が削除されます。この操作は元に戻せません。",
       "clearAll": "すべてクリア",
-      "agentNameAutoManaged": "自動管理 — アシスタント名と同期",
       "removeWord": "単語を削除",
       "noWords": "まだ単語がありません",
       "wordsAppearHere": "追加した単語がここに表示されます",
@@ -1859,36 +1008,11 @@
       "appearance": {
         "auto": "自動",
         "dark": "ダーク",
-        "description": "OpenWhispr の外観を設定",
+        "description": "OpenHercules の外観を設定",
         "light": "ライト",
         "theme": "テーマ",
         "themeDescription": "ライト、ダーク、またはシステムに合わせる",
         "title": "外観"
-      },
-      "floatingIcon": {
-        "autoHide": "使用していないときに自動で非表示",
-        "autoHideDescription": "ディクテーション開始までアイコンを非表示にする",
-        "description": "画面上のディクテーションアイコンの表示を制御",
-        "title": "フローティングアイコン",
-        "startPosition": "開始位置",
-        "startPositionDescription": "音声レコーダーパネルが画面上に表示される位置",
-        "bottomRight": "右下",
-        "center": "下中央",
-        "bottomLeft": "左下"
-      },
-      "hotkey": {
-        "activationMode": "起動モード",
-        "description": "音声ディクテーションの開始/停止に使用するキーの組み合わせ",
-        "resetToDefault": "{{hotkey}}にリセット",
-        "title": "ディクテーションホットキー",
-        "linuxPttPermissionTitle": "長押しして話すには追加の設定が必要です",
-        "linuxPttPermissionDescription": "次のコマンドを実行してログアウト/ログインしてください：sudo usermod -aG input $USER",
-        "linuxPttSetupTitle": "長押しして話すには設定が必要です",
-        "linuxPttSetupDescription": "キーボード入力デバイスへのアクセス権が必要です。",
-        "linuxPttSetupNote": "コマンド実行後、ログアウトして再度ログインしてください。",
-        "hyprlandConfigWriteWarningTitle": "Hyprland のキーバインドは永続化されません",
-        "hyprlandConfigWriteWarningDescription": "OpenWhispr は {{path}} に書き込めないため、Hyprland の設定を再読み込みするとキーバインドは維持されません。ファイルが存在し、書き込み可能であることを確認してください。",
-        "hyprlandUnbindDescription": "Hyprland では、OpenWhispr が選択したショートカットを使用します。同じキーの組み合わせを使う既存の Hyprland バインドは、OpenWhispr がショートカットを登録すると解除されます。"
       },
       "meetingHotkey": {
         "title": "ミーティングモードホットキー",
@@ -1897,24 +1021,15 @@
         "layoutFullWidth": "全幅",
         "layoutSidePanel": "サイドパネル"
       },
-      "voiceAgentHotkey": {
-        "title": "音声アシスタントホットキー",
-        "description": "コマンドを話すと、アシスタントがノート・カレンダー・ウェブツールを使います。回答はフォーカス中の編集可能なカーソル位置に貼り付けられるか、選択テキストを置き換えるか、フローティングパネルに表示されます。"
-      },
       "microphone": {
-        "description": "ディクテーションに使用する入力デバイスを選択",
         "title": "マイク"
       },
       "soundEffects": {
-        "dictationSounds": "ディクテーション音",
-        "dictationSoundsDescription": "録音の開始・停止時に効果音を再生",
-        "pauseMedia": "メディアを一時停止",
-        "pauseMediaDescription": "ディクテーション開始時に音楽を自動的に一時停止",
         "title": "サウンドエフェクト"
       },
       "notifications": {
         "title": "通知",
-        "description": "OpenWhispr が表示できる通知を設定します",
+        "description": "OpenHercules が表示できる通知を設定します",
         "disableAll": "すべての通知を無効にする",
         "disableAllDescription": "エラーメッセージ以外をすべて消音にする",
         "meetingDetection": "会議の検出",
@@ -1922,174 +1037,43 @@
         "calendarReminders": "カレンダーリマインダー",
         "calendarRemindersDescription": "予定された会議がまもなく始まるときに通知する"
       },
-      "clipboard": {
-        "title": "クリップボード",
-        "autoPaste": "自動貼り付け",
-        "autoPasteDescription": "ディクテーション完了後、文字起こしテキストをアクティブなアプリに自動的に貼り付けます",
-        "keepInClipboard": "文字起こしをクリップボードに保持",
-        "keepInClipboardDescription": "必要に応じて手動で貼り付けできるよう、音声入力テキストをクリップボードに保持します"
-      },
       "startup": {
         "launchAtLogin": "ログイン時に起動",
-        "launchAtLoginDescription": "ログイン時に OpenWhispr をバックグラウンドで起動します",
+        "launchAtLoginDescription": "ログイン時に OpenHercules をバックグラウンドで起動します",
         "title": "起動設定",
-        "description": "OpenWhispr の起動時の動作を制御",
+        "description": "OpenHercules の起動時の動作を制御",
         "startMinimized": "最小化で起動",
         "startMinimizedDescription": "コントロールパネルウィンドウを表示せずに起動",
         "needsApproval": {
           "title": "システム設定での許可が必要です",
-          "description": "macOS は OpenWhispr をログイン項目として登録しましたが、「ログイン項目」での許可を待っています。",
+          "description": "macOS は OpenHercules をログイン項目として登録しましたが、「ログイン項目」での許可を待っています。",
           "action": "ログイン項目を開く"
         }
       },
-      "waylandPaste": {
-        "title": "Wayland 貼り付け設定",
-        "description": "Wayland での自動貼り付けには ydotool または wtype を使用します。wlroots 系コンポジタでは wtype が優先されます。",
-        "allGoodDesc": "自動貼り付けの準備ができています。",
-        "recheck": "再確認",
-        "copy": "コピー",
-        "ydotoolDesc": "Wayland 用入力自動化ツール",
-        "wtypeDesc": "wlroots 系コンポジターで推奨される入力自動化ツール",
-        "ydotooldDesc": "ydotool デーモン（Ubuntu/Pop!_OS では別パッケージ）",
-        "uinputDesc": "カーネル入力デバイスへのアクセス",
-        "uinputRuleFound": "ルールは存在しますが未適用です。再起動で解決するはずです。",
-        "uinputRuleMissing": "udev ルールが見つかりません",
-        "inputGroup": "input グループ",
-        "inputGroupDesc": "ユーザーが input グループに所属している必要があります（再ログインが必要）",
-        "service": "systemd サービス",
-        "serviceDesc": "ydotoold を自動起動するユーザーサービスファイル",
-        "daemon": "ydotoold デーモン",
-        "daemonDesc": "バックグラウンドサービスが実行中である必要があります",
-        "guide": {
-          "open": "ガイド",
-          "ydotool": {
-            "step1Title": "ydotool をインストール",
-            "step1Desc": "お使いのディストリビューションのパッケージマネージャーで ydotool をインストールしてください。",
-            "step2Title": "インストールの確認",
-            "step2Desc": "ydotool が PATH で利用可能か確認してください。"
-          },
-          "wtype": {
-            "step1Title": "wtype をインストール",
-            "step1Desc": "wtype は Hyprland、Sway などの wlroots 系コンポジターにおける主要な自動貼り付け方法です。",
-            "step2Title": "インストールの確認"
-          },
-          "ydotoold": {
-            "step1Title": "ydotoold をインストール",
-            "step1Desc": "Ubuntu と Pop!_OS では ydotoold は別パッケージです。Fedora では ydotool に含まれています。"
-          },
-          "uinput": {
-            "ruleFoundTitle": "udev ルールは設定済み",
-            "ruleFoundDesc": "/dev/uinput の udev ルールはシステムに存在しますが、まだ適用されていません。再読み込みを試してください：",
-            "rebootTitle": "再読み込みで解決しない場合は再起動",
-            "rebootDesc": "一部のディストリビューションでは、udev の変更は完全な再起動後にのみ適用されます。コンピューターを再起動してから再確認してください。",
-            "step1Title": "udev ルールを作成",
-            "step1Desc": "このルールは input グループのユーザーに /dev/uinput へのアクセスを許可します。",
-            "step2Title": "udev ルールを再読み込み",
-            "step2Desc": "再起動せずに新しいルールを適用します。"
-          },
-          "group": {
-            "step1Title": "ユーザーを input グループに追加",
-            "step2Title": "ログアウトして再ログイン",
-            "step2Desc": "グループの変更は新しいセッションでのみ有効になります。デスクトップからログアウトし、再ログインしてから OpenWhispr を開き直してください。"
-          },
-          "service": {
-            "step1Title": "サービスディレクトリを作成",
-            "step2Title": "サービスファイルを作成",
-            "step2Desc": "ログイン時に ydotoold を自動起動するユーザーレベルの systemd サービスを作成します。",
-            "step3Title": "再読み込みして有効化"
-          },
-          "daemon": {
-            "step1Title": "デーモンを起動",
-            "step1Desc": "ydotoold を起動し、毎回のログイン時に実行されるよう有効化します。",
-            "step2Title": "実行中か確認"
-          },
-          "xclip": {
-            "step1Title": "xclipをインストール"
-          }
-        },
-        "xclipDesc": "KDE Waylandの貼り付け用クリップボードツール（xclipまたはxsel）",
-        "nixos": {
-          "intro": "NixOSをお使いです。自動貼り付けにはydotoolと/dev/uinputへのアクセスが必要で、NixOSでは宣言的に設定できます。",
-          "detected": "検出済み",
-          "manualTitle": "設定に以下を追加してください",
-          "manualDesc": "ご自身で設定してからリビルドしてください。",
-          "flakeTitle": "flakeからインストールする場合",
-          "flakeDesc": "flakeからOpenWhisprをインストールする場合、programs.openwhispr.enableを有効にするとydotool、uinputモジュール、グループのメンバーシップが自動で設定されます。",
-          "rebuildNote": "sudo nixos-rebuild switchを実行し、グループの変更と/dev/uinputのルールを反映させるためにログアウト後に再ログインしてください。<you>はあなたのユーザー名に置き換えてください。"
-        }
+      "title": "General",
+      "description": "Language, appearance and local notes.",
+      "language": {
+        "label": "Interface language",
+        "description": "Choose the language used by the app."
       },
-      "updates": {
-        "automaticUpdates": "自動アップデート",
-        "automaticUpdatesDescription": "アップデートをバックグラウンドでダウンロードしてインストールします",
-        "badges": {
-          "dev": "開発版",
-          "latest": "最新",
-          "update": "アップデート"
-        },
-        "checkForUpdates": "アップデートを確認",
-        "checking": "確認中...",
-        "currentVersion": "現在のバージョン",
-        "devMode": "開発モードで実行中",
-        "dialogs": {
-          "almostThere": {
-            "description": "アップデートの準備がほぼ完了しました。少々お待ちください。",
-            "title": "もうすぐです"
-          },
-          "checkFailed": {
-            "description": "アップデートの確認中に問題が発生しました。後でもう一度お試しください。",
-            "title": "アップデートを確認できませんでした"
-          },
-          "downloadFailed": {
-            "description": "アップデートのダウンロード中に問題が発生しました。もう一度お試しください。",
-            "title": "アップデートをダウンロードできませんでした"
-          },
-          "installFailed": {
-            "description": "アップデートのインストール中に問題が発生しました。もう一度お試しください。",
-            "title": "アップデートをインストールできませんでした"
-          },
-          "installUpdate": {
-            "confirmText": "インストールして再起動",
-            "description": "OpenWhispr はアップデートを適用するために再起動します。",
-            "title": "アップデートをインストール"
-          },
-          "noUpdates": {
-            "description": "最新バージョンをお使いです。",
-            "title": "アップデートはありません"
-          },
-          "updateAvailable": {
-            "description": "アップデートあり: v{{version}}",
-            "title": "アップデートあり"
-          }
-        },
-        "downloadUpdate": "アップデート v{{version}} をダウンロード",
-        "downloading": "ダウンロード中... {{progress}}%",
-        "installAndRestart": "インストールして再起動",
-        "latestVersion": "最新バージョンをお使いです",
-        "managedByPackageManager": "アップデートはパッケージマネージャーから行われます",
-        "newVersion": "新しいバージョンがあります",
-        "newVersionAvailable": "新しいバージョンが利用可能",
-        "restarting": "再起動中...",
-        "title": "アップデート",
-        "versionPlaceholder": "—",
-        "whatsNew": "v{{version}} の新機能"
+      "theme": {
+        "label": "Theme",
+        "description": "Match the system or choose a theme.",
+        "system": "System",
+        "light": "Light",
+        "dark": "Dark"
       },
-      "translationHotkey": {
-        "title": "翻訳ホットキー",
-        "description": "どの言語で話しても、貼り付けられるテキストは翻訳済みになります"
+      "autoGenerateTitle": "Generate note titles",
+      "autoGenerateTitleDescription": "Use the configured model to title notes.",
+      "noteFiles": {
+        "label": "Store note files",
+        "description": "Keep a local Markdown copy of notes."
       }
     },
     "permissions": {
-      "accessibilityDescription": "文字起こし後の自動貼り付けに必要",
-      "accessibilityTitle": "アクセシビリティ",
-      "description": "OpenWhispr の正常動作に必要なシステム権限をテスト・管理",
+      "description": "OpenHercules の正常動作に必要なシステム権限をテスト・管理",
       "microphoneDescription": "ディクテーションと文字起こしのためにあなたの声を録音します",
       "microphoneTitle": "マイク",
-      "resetAccessibility": {
-        "description": "OpenWhispr をアクセシビリティの権限から削除します。システム設定 > プライバシーとセキュリティ > アクセシビリティ で再度許可する必要があります。",
-        "label": "アクセシビリティの権限をリセット",
-        "rowDescription": "アプリの再インストールや再ビルド後の問題を修正するために、システム設定で OpenWhispr を削除してから再追加",
-        "title": "アクセシビリティの権限をリセット"
-      },
       "optional": "任意",
       "systemAudioTitle": "システムオーディオ",
       "systemAudioDescription": "会議、通話、講義、ポッドキャストなど、システム音声を文字起こしします。",
@@ -2101,44 +1085,16 @@
       "troubleshootingTitle": "トラブルシューティング"
     },
     "privacy": {
-      "cloudBackup": "クラウドバックアップ",
-      "cloudBackupDescription": "文字起こしとノートをクラウドにバックアップして、すべてのデバイスからシームレスにアクセスできます。",
-      "cloudBackupTeamCaveat": "チームスペース内のノートと共有したノートは、この設定に関係なく常に同期されます。",
-      "cloudNotesMigration": "ノートをバックアップ中… {{done}} / {{total}}",
-      "cloudNotesMigrationDone": "すべてのノートがバックアップされました",
       "description": "デバイスからのデータ送信を管理します。初期設定ではすべてオフです。",
       "title": "プライバシー",
-      "insightsSync": "個人の統計を同期",
-      "insightsSyncDescription": "単語数、日付と各ディクテーションの正確な時刻、長さ、モデルの種類をデバイス間で同期します。文字起こしの内容は送信されません。サインイン中に履歴を消去すると、これらのカウントもこのデバイスとアカウントから削除されます。",
-      "insightsSyncRequiresAccount": "サインインすると、内容を含まない統計データをデバイス間で同期できます。",
-      "insightsSyncRequiresHistory": "データ保持を有効にすると統計が記録され、デバイス間で同期できるようになります。",
-      "leaderboardDescription": "対象となるワークスペースと勤務先ドメインのリーダーボードに、名前、メールアドレス、アクティビティを表示します。文字起こしは非公開のままです。",
-      "leaderboardRequiresAccount": "リーダーボードへの参加を管理するにはサインインしてください。",
-      "leaderboardRequiresHistory": "リーダーボードに参加する前にデータ保持を有効にしてください。",
-      "usageAnalytics": "使用状況の分析",
-      "usageAnalyticsDescription": "匿名のパフォーマンスデータを共有して OpenWhispr の改善にご協力ください。文字起こしの内容は送信されません。タイミングとエラーデータのみです。",
-      "dataRetention": "データ保持",
-      "dataRetentionDescription": "文字起こしと音声を履歴にローカル保存します。無効にすると、文字起こしは貼り付けられますが保存されません。",
-      "transcriptRetention": "文字起こしの保持",
-      "transcriptRetentionDescription": "保存された文字起こし、その音声、およびその Insights カウンターを、この期間の経過後に自動的に削除します。",
-      "transcriptRetentionForever": "無期限",
-      "hoursAgo": "{{count}}時間前",
-      "justNow": "たった今",
-      "lastSynced": "最終同期 {{time}}",
-      "minutesAgo": "{{count}}分前",
-      "audioRetention": "音声の保持",
-      "audioRetentionDescription": "再文字起こしやダウンロードのために、ディクテーションの音声をローカルに保存します。ファイルは保持期間が過ぎると自動的に削除されます。会議の音声は保存されません。",
-      "audioRetentionDisabled": "無効",
       "retentionDays_one": "{{count}}日",
       "retentionDays_other": "{{count}}日",
-      "audioStorageUsage": "ストレージ使用量",
-      "audioStorageUsageDescription": "このデバイスに保存された音声ファイル",
-      "audioStorageFiles": "{{count}}ファイル、{{size}}",
-      "audioStorageEmpty": "保存された音声ファイルはありません",
-      "clearAllAudio": "すべての音声を削除",
-      "clearAllAudioConfirm": "保存されたすべての音声ファイルを削除しますか？この操作は元に戻せません。",
-      "saveDiscarded": "破棄したディクテーションを保存",
-      "saveDiscardedDescription": "Escape でディクテーションをキャンセルしたとき、音声を履歴に残して後で復元できるようにします。データと音声の保持を有効にする必要があります。"
+      "dataRetention": {
+        "label": "Local data retention",
+        "description": "Set audio and transcript retention periods. Zero means keep indefinitely."
+      },
+      "audioRetention": "Audio retention (days)",
+      "transcriptRetention": "Transcript retention (days)"
     },
     "prompts": {
       "description": "テキスト補正と指示検出を行う統合システムプロンプトの表示、カスタマイズ、テスト",
@@ -2148,7 +1104,6 @@
       "title": "音声認識",
       "description": "ディクテーションとノート録音用のエンジンを選択",
       "tabs": {
-        "dictation": "ディクテーション",
         "noteRecording": "ノート録音",
         "upload": "音声のアップロード"
       },
@@ -2158,11 +1113,8 @@
       "title": "言語モデル",
       "description": "クリーンアップ、ノートのフォーマット、チャット用のモデルを設定",
       "tabs": {
-        "dictationCleanup": "ディクテーションのクリーンアップ",
-        "dictationAgent": "音声アシスタント",
         "noteFormatting": "ノートのフォーマット",
-        "chatIntelligence": "チャット",
-        "dictationTranslation": "翻訳"
+        "chatIntelligence": "チャット"
       }
     },
     "noteFormatting": {
@@ -2172,27 +1124,16 @@
     "transcription": {
       "customSetup": "カスタム設定",
       "customSetupDescription": "独自のプロバイダーと API キーを使用。",
-      "description": "OpenWhispr の音声文字起こし方法を選択",
       "modes": {
-        "openwhispr": "OpenWhispr Cloud",
         "providers": "クラウドプロバイダー",
         "local": "ローカル",
         "selfHosted": "セルフホスト",
-        "openwhisprDesc": "信頼できる精度。設定不要。",
         "providersDesc": "自分のAPIキーを使用。",
         "localDesc": "端末上のモデル。完全プライベート。",
-        "selfHostedDesc": "自前サーバーをネットワーク上に。",
-        "enterprise": "エンタープライズクラウド",
-        "enterpriseDesc": "音声は組織自身のクラウドに送信されます。"
+        "selfHostedDesc": "自前サーバーをネットワーク上に。"
       },
-      "openwhisprCloud": "OpenWhispr Cloud",
-      "openwhisprCloudDescription": "信頼できる精度。設定不要。",
       "title": "音声テキスト変換",
       "toasts": {
-        "switchedCloud": {
-          "description": "文字起こしに OpenWhispr のクラウドサービスを使用します。",
-          "title": "OpenWhispr Cloud に切り替えました"
-        },
         "switchedCustom": {
           "description": "独自のプロバイダーと API キーを設定してください。",
           "title": "カスタム設定に切り替えました"
@@ -2208,10 +1149,6 @@
         "switchedSelfHosted": {
           "title": "セルフホスト",
           "description": "独自のサーバーを使用します。"
-        },
-        "switchedEnterprise": {
-          "title": "エンタープライズクラウドを選択しました",
-          "description": "音声入力は組織が管理する文字起こしを使用します。"
         }
       },
       "gpuDevice": {
@@ -2230,10 +1167,6 @@
         "title": "音声アクティビティ検出",
         "description": "ローカル Whisper 文字起こしで Silero VAD が発話を検出・分割する方法を設定します",
         "toggles": {
-          "dictation": {
-            "title": "ディクテーションで Silero VAD を使用",
-            "description": "ローカルディクテーションで音声アクティビティ検出を有効化"
-          },
           "noteRecording": {
             "title": "ノート録音で Silero VAD を使用",
             "description": "ローカルノート録音で音声アクティビティ検出を有効化"
@@ -2269,8 +1202,7 @@
             "info": "区間を連結するときに途切れないよう、次の区間に延長する音声の長さです。"
           }
         }
-      },
-      "meetingEnterpriseOnly": "組織はエンタープライズクラウドの文字起こしのみを許可しており、会議の録音にはまだ対応していません。"
+      }
     },
     "intelligence": {
       "gpuDevice": {
@@ -2282,234 +1214,6 @@
       "endpointUrl": "エンドポイント URL",
       "serverUrl": "サーバー URL",
       "apiKeyOptional": "API キー（任意）"
-    },
-    "workspace": {
-      "title": "ワークスペース",
-      "description": "チームメイトとのコラボレーション、ノートの共有、ワークスペースへのアクセス管理を一括で行えます。",
-      "empty": {
-        "title": "最初のワークスペースを作成",
-        "description": "ワークスペースでは、チームメイトとのコラボレーションやノートの共有ができます。",
-        "create": "ワークスペースを作成"
-      },
-      "loadError": {
-        "title": "ワークスペースを読み込めませんでした",
-        "description": "接続を確認して、もう一度お試しください。",
-        "retry": "再試行"
-      },
-      "tab": {
-        "general": "一般",
-        "members": "メンバー",
-        "teams": "チーム",
-        "developer": "開発者"
-      },
-      "role": {
-        "owner": "オーナー",
-        "admin": "管理者",
-        "member": "メンバー"
-      },
-      "general": {
-        "nameLabel": "ワークスペース名",
-        "saved": "ワークスペースを更新しました",
-        "dangerTitle": "ワークスペースを削除",
-        "dangerDescription": "共有されているノート、フォルダ、連携がすべて削除されます。この操作は取り消せません。",
-        "delete": "ワークスペースを削除",
-        "confirmTitle": "{{name}} を削除しますか？",
-        "confirmDescription": "サブスクリプションがキャンセルされ、ワークスペースのすべてのデータが完全に削除されます。",
-        "deleting": "削除中…",
-        "deleted": "ワークスペースを削除しました",
-        "leaveTitle": "ワークスペースから退出",
-        "leaveDescription": "このワークスペースと共有ノートにアクセスできなくなります。",
-        "leave": "ワークスペースから退出",
-        "leaving": "退出中…",
-        "leaveConfirm": {
-          "title": "{{name}} から退出しますか？",
-          "description": "すぐにアクセスできなくなります。管理者が再度招待できます。"
-        },
-        "left": "{{name}} から退出しました"
-      },
-      "members": {
-        "title": "メンバー",
-        "description": "{{seats}} シート中 {{count}} シートを使用中。",
-        "invite": "招待",
-        "empty": "まだメンバーがいません。",
-        "loadError": "メンバーを読み込めませんでした。",
-        "roleUpdated": "役割を更新しました",
-        "removed": "{{name}} を削除しました",
-        "promote": "管理者にする",
-        "demote": "メンバーにする",
-        "transferOwnership": "オーナー権限を譲渡",
-        "remove": "ワークスペースから削除",
-        "removeConfirm": {
-          "title": "このメンバーを削除しますか？",
-          "description": "{{name}} はすぐに {{workspace}} にアクセスできなくなります。"
-        },
-        "transferConfirm": {
-          "title": "オーナー権限を譲渡しますか？",
-          "description": "{{name}} が {{workspace}} のオーナーになります。あなたの役割は管理者に変わり、元に戻せるのは新しいオーナーのみです。"
-        }
-      },
-      "joinRequests": {
-        "title": "参加リクエスト",
-        "approve": "承認",
-        "deny": "却下",
-        "approved": "{{name}} がワークスペースに参加しました",
-        "denied": "リクエストを却下しました",
-        "errorTitle": "リクエストを更新できませんでした"
-      },
-      "teams": {
-        "title": "チーム",
-        "description": "チームスペースへのアクセスを付与するワークスペースメンバーのグループ。",
-        "new": "新しいチーム",
-        "empty": "チームはまだありません。",
-        "createFirst": "最初のチームを作成",
-        "addMembersLabel": "メンバーを追加",
-        "createTitle": "チームを作成",
-        "nameLabel": "チーム名",
-        "memberCount_one": "{{count}}人のメンバー",
-        "memberCount_other": "{{count}}人のメンバー",
-        "membersButton": "メンバー",
-        "grantsAccessToSpaces_one": "{{count}} 件のスペースへのアクセスを付与しています",
-        "grantsAccessToSpaces_other": "{{count}} 件のスペースへのアクセスを付与しています",
-        "couldNotCreate": "チームを作成できませんでした",
-        "created": "{{team}} を作成しました",
-        "deleted": "{{team}} を削除しました",
-        "deleteConfirmTitle": "{{team}} を削除しますか？",
-        "deleteConfirmDescription": "チームをアーカイブします。このチームが付与していたアクセスは失われます。",
-        "deleteConfirmSpaceAccess_one": "このチームは {{count}} 件のスペースへのアクセスを付与しています。メンバーはそのアクセスを失います。",
-        "deleteConfirmSpaceAccess_other": "このチームは {{count}} 件のスペースへのアクセスを付与しています。メンバーはそのアクセスを失います。",
-        "members": {
-          "title": "{{team}} のメンバー",
-          "removeConfirm": "{{name}} を {{team}} から外しますか？",
-          "leave": "チームから退出",
-          "leftTeam": "{{team}} から退出しました",
-          "leaveConfirm": "{{team}} から退出しますか？",
-          "leaveConfirmDescription": "他のチームに含まれていない限り、このチームが付与するスペースへのアクセスを失います。"
-        }
-      },
-      "invites": {
-        "title": "保留中の招待",
-        "expiresIn_one": "有効期限まであと{{count}}日",
-        "expiresIn_other": "有効期限まであと{{count}}日",
-        "expired": "期限切れ",
-        "loadError": "招待を読み込めませんでした。",
-        "resend": "再送信",
-        "resending": "再送信中…",
-        "revoke": "取り消す",
-        "resent": "招待を再送信しました",
-        "resentNoEmail": "招待を更新しましたが、メールを配信できませんでした。",
-        "revoked": "招待を取り消しました",
-        "revokeFailed": "招待を取り消せませんでした",
-        "revokeConfirm": {
-          "title": "この招待を取り消しますか？",
-          "description": "{{email}} への招待リンクが無効になります。"
-        }
-      },
-      "billing": {
-        "plan": "プラン",
-        "seats": "シート",
-        "ownerOnly": "サブスクリプションを管理できるのはワークスペースのオーナーのみです。",
-        "nextInvoice": "次回の請求",
-        "manageStripe": "Stripe で管理",
-        "startSubscription": "サブスクリプションを開始",
-        "planLabel": {
-          "business": "Business",
-          "pro": "Pro",
-          "free": "Free",
-          "enterprise": "Enterprise"
-        },
-        "status": {
-          "active": "有効",
-          "trialing": "トライアル中",
-          "past_due": "支払い期限超過",
-          "canceled": "キャンセル済み",
-          "incomplete": "未完了",
-          "unpaid": "未払い"
-        }
-      },
-      "developer": {
-        "title": "API キー",
-        "description": "このワークスペースに限定されたプログラムからのアクセス。",
-        "empty": "まだ API キーがありません。このワークスペースと連携するには作成してください。",
-        "loadError": "APIキーを読み込めませんでした。",
-        "new": "新規キー",
-        "create": "キーを作成",
-        "createTitle": "API キーを作成",
-        "createDescription": "このキーに必要な権限を選択してください。いつでも取り消せます。",
-        "nameLabel": "キー名",
-        "namePlaceholder": "本番環境の連携",
-        "revoke": "キーを取り消す",
-        "revoked": "キー {{name}} を取り消しました",
-        "lastUsed": "最終使用: {{date}}",
-        "neverUsed": "未使用",
-        "keyCreatedTitle": "API キーを作成しました",
-        "keyCreatedDescription": "このキーを今すぐコピーしてください。後で再表示することはできません。",
-        "revokeConfirm": {
-          "title": "このキーを取り消しますか？",
-          "description": "{{name}} はすぐに使用できなくなります。このキーを使用している連携は失敗するようになります。"
-        },
-        "scopes": {
-          "notes": {
-            "title": "ノート",
-            "read": "ノートの読み取り",
-            "write": "ノートの書き込み"
-          },
-          "folders": {
-            "title": "フォルダ",
-            "read": "フォルダの読み取り",
-            "write": "フォルダの書き込み"
-          },
-          "transcriptions": {
-            "title": "文字起こし",
-            "read": "文字起こしの読み取り"
-          },
-          "members": {
-            "title": "メンバー",
-            "read": "メンバーの読み取り",
-            "write": "メンバーの管理"
-          },
-          "billing": {
-            "title": "請求",
-            "read": "請求の読み取り"
-          },
-          "full": {
-            "title": "フルアクセス",
-            "admin": "ワークスペース管理者"
-          }
-        }
-      },
-      "enterpriseConsole": {
-        "title": "Enterpriseコンソール",
-        "description": "SSO、ポリシー、メンバーをウェブで管理",
-        "open": "コンソールを開く"
-      }
-    },
-    "enterpriseCheckout": {
-      "title": "Enterpriseにアップグレード",
-      "description": "ワークスペース、シート数、請求サイクルを選択してください。支払いはStripe Checkoutで完了します。",
-      "allSubscribed": "所有しているワークスペースは既にEnterpriseであるか、ここでは変更できません。プランの変更は営業までお問い合わせください。",
-      "workspaceLabel": "ワークスペース",
-      "seatsLabel": "シート数",
-      "seatsHint_one": "現在{{count}}シート使用中",
-      "seatsHint_other": "現在{{count}}シート使用中",
-      "intervalLabel": "請求サイクル",
-      "interval": {
-        "monthly": "月払い",
-        "annual": "年払い"
-      },
-      "proratedCharge": "日割り料金",
-      "prorationNote": "日割り計算された差額は次回の請求書に追加されます。",
-      "errors": {
-        "previewFailed": "アップグレードのプレビューを読み込めませんでした。",
-        "alreadyEnterprise": "このワークスペースはすでに Enterprise プランです。",
-        "subscriptionInactive": "このワークスペースのサブスクリプションが有効ではありません。請求情報を更新して再度お試しください。",
-        "priceNotConfigured": "Enterprise の料金は現在ご利用いただけません。営業までお問い合わせください。"
-      },
-      "priceNote": "最終的な価格はチェックアウト時に表示されます。",
-      "continueCta": "チェックアウトへ進む",
-      "upgradeDescription": "{{workspace}}を{{plan}}からEnterpriseにアップグレードします。シート数と請求サイクルは引き継がれ、変更は即時に適用されます。",
-      "upgradeCta": "今すぐアップグレード",
-      "upgradedTitle": "Enterpriseにアップグレードしました",
-      "upgradedDescription": "{{workspace}}はEnterpriseになりました。"
     }
   },
   "models": {
@@ -2671,122 +1375,12 @@
       "searchNotes": "ノートを検索",
       "actions": "アクション"
     },
-    "spaces": {
-      "privateSpaces": "プライベートノート",
-      "teamSpaces": "Teamspaces",
-      "personal": "個人",
-      "privateTooltip": "パーソナルスペースはあなただけが見られます",
-      "newSpace": "新しいチームスペース",
-      "newSpaceInWorkspace": "{{workspace}} に新しいチームスペース",
-      "createTitle": "チームスペースを作成",
-      "createDescription": "ワークスペース内の共有エリアで、1つ以上のチームがアクセスできます。",
-      "nameLabel": "名前",
-      "emojiLabel": "絵文字",
-      "create": "作成",
-      "couldNotCreate": "スペースを作成できませんでした",
-      "created": "{{space}} を作成しました",
-      "rename": "名前を変更",
-      "changeEmoji": "絵文字を変更",
-      "couldNotRename": "スペースの名前を変更できませんでした",
-      "renamed": "{{space}} の名前を変更しました",
-      "deleteSpace": "スペースを削除",
-      "deleteConfirmTitle": "スペースを削除しますか？",
-      "deleteConfirmDescription": "{{space}}とそのすべてのフォルダとノートがこのデバイスから完全に削除されます。",
-      "deleteConfirmTeamDescription": "{{space}} を全員に対して削除します。チームは残りますが、メンバーはすべてのフォルダーとノートへのアクセスを失います。",
-      "deleteTypeName": "確認のため {{space}} と入力してください",
-      "couldNotDelete": "スペースを削除できませんでした",
-      "deleted": "{{space}} を削除しました",
-      "moveTo": "移動",
-      "moveToSpace": "スペースに移動…",
-      "searchSpaces": "スペースを検索...",
-      "noSpacesFound": "スペースが見つかりません",
-      "spaceRoot": "スペースのルート",
-      "moveConfirm": "移動",
-      "confirmMoveInTitle": "{{space}}に移動しますか？",
-      "confirmMoveIn": "{{space}}の全員がこのノートを表示・編集できるようになります。ノートは後からチームスペースの外に移動できません。",
-      "confirmMoveInFolder": "{{space}}の全員がこのフォルダとそのノートを表示・編集できるようになります。フォルダとノートは後からチームスペースの外に移動できません。",
-      "cantMoveOut": "ノートはチームスペースの外に移動できません。",
-      "cantMoveTeammate": "ノートを別のスペースに移動できるのは、所有者またはワークスペースの管理者のみです。",
-      "moved": "「{{title}}」を{{target}}に移動しました",
-      "couldNotMove": "フォルダを移動できませんでした",
-      "couldNotMoveNote": "ノートを移動できませんでした",
-      "folderNameTaken": "「{{name}}」を移動できませんでした。同じ名前のフォルダが既に存在します",
-      "undo": "元に戻す",
-      "emptySpace": "まだノートがありません。ここのノートは{{space}}の全員に表示されます。",
-      "emptyTeamHint": "共有されたスペースはここに表示されます。",
-      "noteCount_one": "{{count}} 件のノート",
-      "noteCount_other": "{{count}} 件のノート",
-      "accessRevoked": "{{space}} へのアクセス権がなくなりました",
-      "accessRevokedActiveNote": "{{space}} へのアクセス権がなくなりました — 「{{title}}」はこのデバイスでは利用できなくなりました",
-      "movedToPersonal": "{{space}} へのアクセス権がなくなったため、「{{title}}」は個人スペースに移動されました",
-      "updateDeniedNote": "「{{title}}」を変更する権限がありません — 未同期の編集内容は個人スペースにコピーとして保存されました",
-      "deleteDeniedNote": "「{{title}}」は削除されませんでした — 削除できるのはノートの所有者または管理者のみです",
-      "updateDeniedFolder": "「{{name}}」を変更する権限がありません — 未同期の作業内容は個人スペースに保存されました",
-      "deleteDeniedFolder": "「{{name}}」は削除されませんでした — スペースのフォルダを削除できるのは管理者のみです",
-      "conflictBanner": "このノートには新しいバージョンがあります。",
-      "conflictRefresh": "更新",
-      "conflictKeep": "編集を続ける",
-      "editedBy": "{{name}} が編集 · {{time}}",
-      "members": {
-        "addPeopleToTeam": "{{team}} にメンバーを追加",
-        "addedToTeam": "{{name}} を {{team}} に追加しました",
-        "removedFromTeam": "{{name}} を {{team}} から削除しました",
-        "roleUpdated": "役割を更新しました",
-        "you": "自分",
-        "addFailed": "{{total}}人中{{failed}}人を追加できませんでした",
-        "searchPlaceholder": "メンバーを検索…",
-        "noResults": "メンバーが見つかりません",
-        "roleAdmin": "管理者",
-        "roleMember": "メンバー",
-        "remove": "削除",
-        "removeConfirm": "{{name}} を {{space}} から削除しますか？",
-        "removeConfirmDescription": "このスペースのすべてのノートにアクセスできなくなります。",
-        "inviteFooter": "{{email}} をワークスペースに招待…",
-        "empty": "まだ誰も追加されていません"
-      },
-      "invitedTo_one": "{{count}} 件のチームスペースに参加します",
-      "invitedTo_other": "{{count}} 件のチームスペースに参加します",
-      "teamsMembers": {
-        "menu": "チームとメンバー…",
-        "title": "{{space}} のチームとメンバー",
-        "noTeams": "このスペースにアクセスできるチームはまだありません。ワークスペース管理者のみが閲覧できます。",
-        "addTeamLabel": "このスペースにチームを追加",
-        "chooseTeam": "チームを選択…",
-        "teamAdded": "{{team}} を {{space}} に追加しました",
-        "teamRemoved": "{{team}} を {{space}} から削除しました",
-        "removeTeamFromSpace": "スペースから外す",
-        "removeTeamConfirm": "{{team}} を {{space}} から外しますか？",
-        "removeTeamConfirmDescription": "他の割り当て済みチームに含まれていない限り、そのメンバーはこのスペースへのアクセスを失います。",
-        "lastTeamWarning": "このスペースにアクセスできる唯一のチームです。外すと、ワークスペース管理者のみがアクセスを保持します。",
-        "affectsOtherSpaces_one": "{{team}} への変更は、このチームがアクセスできる他 {{count}} 件のスペースにも適用されます。",
-        "affectsOtherSpaces_other": "{{team}} への変更は、このチームがアクセスできる他 {{count}} 件のスペースにも適用されます。",
-        "accessLabel": "スペースへのアクセス",
-        "accessAdmin": "管理者",
-        "accessMember": "メンバー",
-        "accessChanged": "{{team}} のアクセスを更新しました",
-        "accessHint": "{{team}} の管理者は、アクセスが「管理者」に設定されている場合のみこのスペースを管理できます。"
-      },
-      "teams": {
-        "assignLabel": "チーム",
-        "newTeam": "新しいチーム",
-        "newTeamNameLabel": "チーム名",
-        "loadError": "チームを読み込めませんでした。"
-      }
-    },
     "structureIntro": {
       "title": "ノートの保存場所",
-      "description": "OpenWhispr は個人的な考えと共同作業を分け、適切な人だけがノートを見られるようにします。",
+      "description": "OpenHercules は個人的な考えと共同作業を分け、適切な人だけがノートを見られるようにします。",
       "personal": {
         "title": "個人スペース",
         "description": "ここのフォルダーとノートは自分だけが見ることができます。"
-      },
-      "workspace": {
-        "title": "ワークスペース",
-        "description": "ワークスペースのメンバー、役割、チームスペースをまとめて管理します。"
-      },
-      "teamSpace": {
-        "title": "チームスペース",
-        "description": "ワークスペース内の共有エリア。1つ以上のチームがアクセスを付与します。"
       },
       "contents": "各スペースにはフォルダーとノートを作成できます。",
       "done": "了解",
@@ -2917,7 +1511,6 @@
       "newNote": "新規ノート",
       "untitled": "無題",
       "untitledNote": "無題のノート",
-      "shared": "共有中",
       "timeNow": "たった今",
       "minutesAgo": "{{count}}分前",
       "hoursAgo": "{{count}}時間前",
@@ -2931,7 +1524,6 @@
       "dropToUpload": "ドロップしてアップロード",
       "transcribe": "文字起こし",
       "cancel": "キャンセル",
-      "transcribingCloud": "クラウドで文字起こし中...",
       "transcribingLocal": "ローカルで文字起こし中...",
       "transcribingProvider": "{{provider}} で文字起こし中...",
       "cancelTranscription": "文字起こしをキャンセル",
@@ -2947,7 +1539,6 @@
       "newFolder": "新しいフォルダ",
       "folderName": "フォルダ名",
       "create": "作成",
-      "openwhisprCloud": "OpenWhispr Cloud",
       "custom": "カスタム",
       "selectFolder": "フォルダを選択",
       "transcriptionFailed": "文字起こしに失敗しました",
@@ -2959,30 +1550,12 @@
       "fileTooLarge": "このファイルは 500 MB の制限を超えています。",
       "largeFileNote": "大容量ファイルは分割され、並列で文字起こしされます。",
       "chunkProgress": "パート {{completed}} / {{total}} を文字起こし中...",
-      "paidPlanRequired": "25 MB を超えるファイルのクラウド文字起こしには有料プランが必要です。大容量ファイルは OpenWhispr Cloud で信頼性の高い高品質な結果を得られます。",
       "byokTooLarge": "サードパーティの API キーは {{size}} MB までのファイルのみ対応しています。",
-      "byokTooLargeDetail": "{{size}} MB を超えるファイルは、OpenWhispr Cloud が分割・並列処理・結合を行います。サードパーティの制限に依存せず、信頼性の高い結果が得られます。",
-      "byokTooLargeNeedsAccount": "アカウントを作成し、有料プランにアップグレードすると、OpenWhispr Cloud でより大きなファイルを文字起こしできます。",
-      "byokTooLargeNeedsUpgrade": "有料プランにアップグレードすると、OpenWhispr Cloud でより大きなファイルを文字起こしできます。",
-      "switchToCloudForLargeFiles": "このファイルを文字起こしするには OpenWhispr Cloud に切り替えてください。",
-      "createAccount": "アカウント作成",
-      "upgrade": "アップグレード",
-      "switchToCloud": "OpenWhispr Cloud",
       "orDivider": "または",
-      "urlPlaceholder": "YouTubeまたは音声URLを貼り付け",
-      "urlDownloading": "音声をダウンロード中...",
-      "urlResolving": "URLを解析中...",
-      "urlInvalid": "無効なURLです。YouTubeリンクまたは音声ファイルの直接URLを貼り付けてください。",
-      "urlVideoUnavailable": "この動画は利用できません。非公開、削除済み、または地域制限されている可能性があります。",
-      "urlPlaylistNotSupported": "プレイリストには対応していません。個別の動画URLを貼り付けてください。",
-      "urlContentTypeInvalid": "このURLは音声または動画ファイルを指していません。",
-      "urlDownloadFailed": "ダウンロードに失敗しました。URLを確認してもう一度お試しください。",
-      "urlCancelDownload": "ダウンロードをキャンセル",
       "addToQueue": "キューに追加",
       "queueProgress": "{{completed}}/{{total}} 完了",
       "cancelAll": "すべてキャンセル",
       "clearQueue": "クリア",
-      "pasteUrls": "URLを貼り付け（1行に1つ）",
       "speakerDetection": "話者検出",
       "speakerDetectionDescription": "音声内の異なる話者を識別",
       "numSpeakersPlaceholder": "自動検出",
@@ -2998,19 +1571,24 @@
       "batchUnknownError": "不明なエラー",
       "removeFromQueue": "キューから削除",
       "diarizationRunsLocally": "話者検出はお使いのデバイス上でローカルに実行されます。",
-      "urlSubmit": "リンクを追加",
-      "urlsSkipped": "追加できなかったリンクがあります（{{n}}件）",
       "queueFailed": "{{n}}件失敗",
-      "urlFileTooLarge": "ファイルが大きすぎてダウンロードできません。最大サイズは500 MBです。",
-      "urlYoutubeBlocked": "YouTubeがお使いのネットワークからのダウンロードを一時的にブロックしています。しばらくしてからもう一度お試しください。",
       "customEndpointInvalid": "カスタム文字起こしエンドポイントが未設定か無効です。設定から更新してください。",
-      "streamingOnlyProvider": "このプロバイダーはライブ文字起こしのみに対応しています。ファイルのアップロードや再実行には別のプロバイダーを選択してください。"
+      "streamingOnlyProvider": "このプロバイダーはライブ文字起こしのみに対応しています。ファイルのアップロードや再実行には別のプロバイダーを選択してください。",
+      "urlInvalid": "Enter a direct HTTPS audio or video URL.",
+      "urlDownloadFailed": "Could not download this file.",
+      "urlsSkipped": "Some links were skipped.",
+      "pasteUrls": "Paste file URLs",
+      "urlPlaceholder": "https://example.com/recording.mp3",
+      "urlSubmit": "Download",
+      "urlResolving": "Resolving file…",
+      "urlDownloading": "Downloading…",
+      "urlCancelDownload": "Cancel download",
+      "byokTooLargeDetail": "This provider accepts files up to {{size}} MB. Choose another provider or a smaller file."
     },
     "meeting": {
       "title": "議事録",
       "description": "文字起こしと構造化されたサマリー",
       "back": "戻る",
-      "restrictedByOrg": "会議の文字起こしは組織によって制限されています。",
       "unsupportedSelfHosted": "ノート録音はまだセルフホストのエンドポイントを利用できません。設定を開き、ローカルまたはストリーミング対応プロバイダーを選択してください。",
       "unsupportedProvider": "ノート録音ではライブ文字起こしに {{provider}} を利用できません。設定を開き、ローカルまたはストリーミング対応プロバイダーを選択してください。",
       "noProviderSelected": "ノート録音のプロバイダーが選択されていません。設定を開き、ローカルまたはストリーミング対応プロバイダーを選択してください。",
@@ -3026,7 +1604,7 @@
       },
       "systemAudioStopped": {
         "title": "会議の音声が停止しました",
-        "description": "OpenWhispr は他の参加者の音声を取り込めなくなりました。録音を停止してもう一度開始するか、音声出力デバイスを確認してください。"
+        "description": "OpenHercules は他の参加者の音声を取り込めなくなりました。録音を停止してもう一度開始するか、音声出力デバイスを確認してください。"
       },
       "systemAudioQuiet": {
         "title": "会議の音声が無音になりました",
@@ -3058,10 +1636,6 @@
         "grant": "権限を許可",
         "enabled": "有効"
       }
-    },
-    "realtimeBanner": {
-      "message": "Pro でリアルタイム文字起こしが利用可能",
-      "upgrade": "アップグレード"
     },
     "enhance": {
       "title": "強化エラー"
@@ -3112,7 +1686,6 @@
     },
     "overview": {
       "subtitle": {
-        "team": "このスペースの全員がノートを閲覧できます。",
         "private": "このノートはあなただけが閲覧できます。"
       },
       "meta": {
@@ -3123,11 +1696,9 @@
       },
       "banner": {
         "title": {
-          "team": "チームスペース",
           "private": "プライベートスペース"
         },
         "body": {
-          "team": "会議のノートをチームと共有しましょう。ユーザーインタビュー、営業の通話、チームミーティングを追加して、全員が最新情報を把握できます。",
           "private": "会議のノート、アイデア、下書きを一か所にまとめて、このスペースの内容について何でも質問できます。"
         },
         "dismiss": "閉じる"
@@ -3147,6 +1718,19 @@
       "author": {
         "you": "自分"
       }
+    },
+    "spaces": {
+      "personal": "個人",
+      "moveToSpace": "スペースに移動…",
+      "moved": "「{{title}}」を{{target}}に移動しました",
+      "couldNotMoveNote": "ノートを移動できませんでした",
+      "undo": "元に戻す",
+      "noteCount_one": "{{count}} 件のノート",
+      "noteCount_other": "{{count}} 件のノート"
+    },
+    "dateGroups": {
+      "today": "今日",
+      "yesterday": "昨日"
     }
   },
   "dictionary": {
@@ -3155,7 +1739,7 @@
     "clearAll": "すべてクリア",
     "clearTitle": "辞書をクリアしますか？",
     "clearDescription": "カスタム辞書のすべての単語が削除されます。この操作は元に戻せません。",
-    "addPlaceholder": "カンマ区切りで単語を追加 — OpenWhispr、Supabase、ARR など",
+    "addPlaceholder": "カンマ区切りで単語を追加 — OpenHercules、Supabase、ARR など",
     "add": "追加",
     "importWords": "単語をインポート",
     "importPlaceholder": "カンマまたは改行区切りの単語を貼り付け...",
@@ -3185,7 +1769,7 @@
       "duplicate": "このトリガーのスニペットは既に存在します",
       "emptyTitle": "同じことを言うのは",
       "emptyTitleAccent": "一度だけ",
-      "emptyDescription": "トリガーワードを話すと、OpenWhisprが保存した内容に置き換えます。URL、自己紹介、署名、プロンプトなど。",
+      "emptyDescription": "トリガーワードを話すと、OpenHerculesが保存した内容に置き換えます。URL、自己紹介、署名、プロンプトなど。",
       "new": "新規スニペット",
       "examples": {
         "linkedinTrigger": "私のLinkedIn",
@@ -3205,225 +1789,14 @@
     "importList": "リストをインポート",
     "agentDefault": "デフォルトで追加済み"
   },
-  "referral": {
-    "title": "紹介して特典をゲット",
-    "subtitle": "1か月あげて、1か月もらおう。",
-    "modalTitle": "友達を紹介",
-    "tabs": {
-      "refer": "紹介する",
-      "pastInvites": "過去の招待"
-    },
-    "howItWorks": {
-      "shareLink": "招待リンクを共有",
-      "theySignUp": "相手が登録すると",
-      "freeMonthOfPro": "Pro の無料 1 か月",
-      "youGet": "あなたも",
-      "freeMonth": "無料 1 か月",
-      "whenTheyDictate": "を獲得（相手が 2,000 語ディクテーションした時点で）"
-    },
-    "inviteLink": {
-      "title": "招待リンク",
-      "copy": "コピー",
-      "copied": "コピーしました"
-    },
-    "sendInvites": {
-      "title": "招待を送信",
-      "placeholder": "friend@example.com",
-      "send": "送信",
-      "sending": "送信中"
-    },
-    "stats": {
-      "referred": "紹介済み",
-      "converted": "登録済み",
-      "monthsEarned": "獲得した月数"
-    },
-    "status": {
-      "converted": "登録済み",
-      "opened": "開封済み",
-      "failed": "失敗",
-      "sent": "送信済み"
-    },
-    "friends": {
-      "title": "フレンド",
-      "completed": "完了",
-      "sentInvites": "送信済みの招待"
-    },
-    "empty": {
-      "title": "まだ招待を送信していません",
-      "description": "リンクを共有するか招待を送信して始めましょう"
-    },
-    "toasts": {
-      "copiedTitle": "コピーしました！",
-      "copiedDescription": "紹介リンクをクリップボードにコピーしました",
-      "copyFailedTitle": "コピーに失敗しました",
-      "copyFailedDescription": "リンクをクリップボードにコピーできませんでした",
-      "invalidEmailTitle": "無効なメールアドレス",
-      "invalidEmailDescription": "有効なメールアドレスを入力してください",
-      "inviteSentTitle": "招待を送信しました！",
-      "inviteSentDescription": "{{email}} に招待を送信しました",
-      "sendFailedTitle": "送信に失敗しました",
-      "sendFailedDescription": "招待の送信に失敗しました。もう一度お試しください。"
-    },
-    "errors": {
-      "unableToLoad": "紹介データを読み込めませんでした",
-      "unableToLoadStats": "紹介統計を読み込めませんでした。後でもう一度お試しください。"
-    },
-    "tryAgain": "再試行",
-    "card": {
-      "brand": "OpenWhispr",
-      "signalId": "Signal ID",
-      "audioSignature": "あなたの音声シグネチャー",
-      "stop": "停止",
-      "playSignal": "シグナルを再生"
-    }
-  },
-  "insights": {
-    "title": "統計",
-    "yourUsage": "利用状況",
-    "description": "ディクテーションの習慣と継続状況をプライベートに確認できます。",
-    "wordsSpoken": "話した単語数",
-    "currentStreak": "現在の連続日数",
-    "wordsPerMinute": "1分あたりの単語数",
-    "dictations": "ディクテーション数",
-    "allTime": "全期間",
-    "days_one": "{{count}} 日",
-    "days_other": "{{count}} 日",
-    "longestStreak_one": "最長: {{count}} 日",
-    "longestStreak_other": "最長: {{count}} 日",
-    "wpmCoverage": "計測できた単語の {{count}}% に基づく",
-    "activity": "発話アクティビティ",
-    "activityDescription": "過去6か月間に話した単語数",
-    "activityLabel": "6か月間の発話アクティビティのヒートマップ",
-    "activityLess": "少ない",
-    "activityMore": "多い",
-    "dayTooltip_one": "{{date}}: {{count}} 語",
-    "dayTooltip_other": "{{date}}: {{count}} 語",
-    "dataRetentionDisabled": "データ保持が無効なため、新しいディクテーションは統計に集計されません。このデバイスでもアカウントでも加算されません。すでに同期済みのカウントはアカウントに残ります。",
-    "onDevice": "このデバイス上",
-    "onDevicePrivacy": "プライバシーを保護するため、これらのインサイトはこのデバイス上で計算されます。",
-    "synced": "デバイス間で同期済み",
-    "syncFallback": "デバイスのデータを表示中 — 同期は利用できません",
-    "syncPrompt": "内容を含まないカウンターを同期して、ローカルとクラウドのアクティビティをデバイス間でまとめます。",
-    "enableSync": "同期を有効にする",
-    "syncEnableError": "Insights の同期を有効にできませんでした。もう一度お試しください。",
-    "claimTitle": "以前のディクテーションを含めますか？",
-    "claimDescription_one": "以前のディクテーション {{count}} 件の利用状況を同期します。文字起こしは非公開のままです。",
-    "claimDescription_other": "以前のディクテーション {{count}} 件の利用状況を同期します。文字起こしは非公開のままです。",
-    "claimInclude": "含める",
-    "claimSkip": "今はしない",
-    "enableTitle": "Insights の同期をオンにしますか？",
-    "enableConfirm": "同期をオンにする",
-    "enableDescription_one": "既存のディクテーション {{count}} 件の利用状況を同期します。文字起こしは非公開のままです。",
-    "enableDescription_other": "既存のディクテーション {{count}} 件の利用状況を同期します。文字起こしは非公開のままです。",
-    "emptyTitle": "まだディクテーションがありません",
-    "emptyBody": "ディクテーションを始めると、単語数・連続記録・日々のアクティビティがここに表示されます。",
-    "loadError": "このデバイスから Insights を読み取れませんでした。",
-    "leaderboard": {
-      "title": "リーダーボード",
-      "inviteCta": "メンバーを招待",
-      "soloTitle": "最初のメンバーを招待しましょう",
-      "soloDescription": "リーダーボードの準備ができました。{{scope}} にメンバーを招待して、アクティビティの比較を始めましょう。",
-      "soloHint": "リーダーボードに参加すると、ここに表示されます。",
-      "topPerformers": "トップメンバー",
-      "refreshCadence": "1時間ごとに更新",
-      "moreActions": "ランキングのその他の操作",
-      "setupTitle": "チームのリーダーボードを作成",
-      "setupDescription": "ワークスペースを作成してメンバーを招待し、アクティビティを比較しながら一緒に成果を伸ばしましょう。",
-      "setupDomainDescription_one": "{{domain}} の {{count}} 人がリーダーボードに参加しています。ワークスペースを作成して招待しましょう。",
-      "setupDomainDescription_other": "{{domain}} の {{count}} 人がリーダーボードに参加しています。ワークスペースを作成して招待しましょう。",
-      "setupCta": "ワークスペースを作成",
-      "accessError": "リーダーボードへのアクセスを確認できませんでした。",
-      "signInTitle": "サインインしてリーダーボードを表示",
-      "signInDescription": "リーダーボードはアカウント内のチームメンバーと順位を比較します。利用できるかどうかはサインインして確認してください。",
-      "requestJoinTitle": "あなたのチームはすでに参加しています",
-      "requestJoinDescription_one": "{{workspace}} には {{count}} 人のメンバーがいます。管理者に追加を依頼してください。",
-      "requestJoinDescription_other": "{{workspace}} には {{count}} 人のメンバーがいます。管理者に追加を依頼してください。",
-      "requestJoinCta": "参加を申請",
-      "requestSent": "申請を送信しました",
-      "requesting": "申請を送信中…",
-      "acceptInviteTitle": "{{workspace}} に招待されています",
-      "acceptInviteDescription": "{{inviter}} さんから招待されました。参加してチームのリーダーボードを確認しましょう。",
-      "acceptInviteDescriptionNoInviter": "{{workspace}} に参加してチームのリーダーボードを確認しましょう。",
-      "acceptInviteCta": "チームに参加",
-      "joining": "参加中…",
-      "inviteAcceptedTitle": "ワークスペースに参加しました",
-      "inviteAcceptedDescription": "{{workspace}} のリーダーボードを表示できます。",
-      "inviteAcceptError": "ワークスペースに参加できませんでした",
-      "invitedList": "招待済み: {{emails}}",
-      "chooseBoard": "リーダーボードを選択",
-      "emptyStrip_one": "{{count}} 人のメンバーがまだリーダーボードに参加していません。参加するとランキングが始まります。",
-      "emptyStrip_other": "{{count}} 人のメンバーがまだリーダーボードに参加していません。参加するとランキングが始まります。",
-      "copyNudge": "案内をコピー",
-      "nudgeText": "チームのリーダーボードを表示するには、OpenWhispr → Insights でリーダーボードに参加してください。",
-      "nudgeCopied": "案内をコピーしました",
-      "nudgeCopyError": "案内をコピーできませんでした",
-      "joinTitle": "{{scope}} での順位を確認しましょう",
-      "joinDescription": "参加対象となるすべてのワークスペースおよび勤務先ドメインのリーダーボードに、名前、メールアドレス、アクティビティが表示されます。文字起こしは非公開で、いつでも退出できます。",
-      "joinCta": "リーダーボードに参加",
-      "joiningLeaderboard": "参加しています…",
-      "joinPolicyBlocked": "ワークスペースのポリシーによりリーダーボードへ参加できません。",
-      "activationError": "リーダーボードへの参加状況を確認できませんでした。接続を確認して、もう一度お試しください。",
-      "disabled": "リーダーボードは無効です",
-      "leave": "リーダーボードから退出",
-      "leavePending": "オンラインに戻り次第、リーダーボードからの退出を完了します。",
-      "allTime": "全期間",
-      "thisWeek": "今週",
-      "wpmValue": "{{count}} WPM",
-      "dayValue_one": "{{count}}日",
-      "dayValue_other": "{{count}}日",
-      "share": "共有",
-      "refresh": "リーダーボードを更新",
-      "error": "リーダーボードを読み込めませんでした。",
-      "retry": "再試行",
-      "rank": "順位",
-      "member": "メンバー",
-      "you": "（自分）",
-      "jumpToMe": "自分の順位へ移動",
-      "jumpUnavailable": "このリーダーボードでアカウントを特定できませんでした。",
-      "previous": "前のページ",
-      "jumpToRank": "指定順位へ移動",
-      "next": "次のページ",
-      "metrics": {
-        "total_words": "合計単語数",
-        "words_per_minute": "1分あたりの単語数",
-        "current_daily_streak": "現在の連続日数",
-        "desktop_words": "デスクトップの単語数",
-        "mobile_words": "モバイルの単語数"
-      },
-      "shareText": "OpenWhispr での私の順位をご覧ください。",
-      "shareTitle": "リーダーボードを共有",
-      "shareDescription": "このカードをコピーまたはダウンロードできます。SNS の投稿画面を開く前にコピーすることもできます。",
-      "copyImage": "画像をコピー",
-      "download": "ダウンロード",
-      "shareX": "X で共有",
-      "shareLinkedIn": "LinkedIn で共有",
-      "copied": "画像をコピーしました。投稿に貼り付けてください。",
-      "saved": "画像をダウンロードしました。",
-      "failed": "共有カードを作成できませんでした。",
-      "unnamedMember": "チームメイト"
-    }
-  },
   "sidebar": {
-    "insights": "統計",
-    "home": "ホーム",
     "notes": "ノート",
     "upload": "アップロード",
     "dictionary": "辞書",
-    "referral": "1か月無料を取得",
     "settings": "設定",
     "support": "サポート",
-    "limitReached": "週間の利用上限に達しました",
-    "limitReachedDescription": "Pro にアップグレードして無制限の文字起こしをご利用ください。",
-    "viewPlans": "プランを見る",
-    "upgradeTitle": "Pro にアップグレード",
-    "upgradeDescription": "無制限・高精度・高速の文字起こし。",
-    "upgradeInstantSetup": "すぐに使える",
-    "upgradeZeroRetention": "データ保持ゼロ",
-    "upgradeEnterpriseSecurity": "エンタープライズセキュリティ SOC 2 Type II, HIPAA, ISO27001",
     "learnMore": "詳しく見る",
     "integrations": "連携",
-    "defaultUser": "ユーザー",
-    "notSignedIn": "未サインイン",
     "chat": "チャット",
     "collapse": "サイドバーを折りたたむ",
     "expand": "サイドバーを展開"
@@ -3457,7 +1830,7 @@
     "submitBug": "バグを報告"
   },
   "postMigration": {
-    "title": "OpenWhispr へおかえりなさい",
+    "title": "OpenHercules へおかえりなさい",
     "description": "ノートと設定は以前のバージョンから引き継がれています。ただし macOS はこれを新しいアプリとして扱うため、いくつかの権限を改めて付与していただく必要があります。",
     "done": "完了",
     "remindLater": "後で通知"
@@ -3480,8 +1853,8 @@
     "ready": "GPUアクセラレーション準備完了",
     "activating": "GPU を有効化中...",
     "activationFailed": "GPU アクセラレーションを利用できません",
-    "activationFailedDescription": "OpenWhispr は CPU 文字起こしに切り替えました。",
-    "reasoningActivationFailedDescription": "OpenWhispr は CPU 処理に切り替えました。",
+    "activationFailedDescription": "OpenHercules は CPU 文字起こしに切り替えました。",
+    "reasoningActivationFailedDescription": "OpenHercules は CPU 処理に切り替えました。",
     "retryActivation": "GPU アクセラレーションを再試行",
     "remove": "削除",
     "dismiss": "後で",
@@ -3501,11 +1874,11 @@
       "undo": "元に戻す",
       "accessibilityMissing": {
         "title": "アクセシビリティの許可が必要です",
-        "description": "OpenWhispr がホットキーの検出とテキストの貼り付けを行うには、アクセシビリティの許可が必要です。コントロールパネルで有効にしてください。"
+        "description": "OpenHercules がホットキーの検出とテキストの貼り付けを行うには、アクセシビリティの許可が必要です。コントロールパネルで有効にしてください。"
       },
       "gpuFallback": {
         "title": "GPU アクセラレーションを利用できません",
-        "description": "OpenWhispr は CPU 文字起こしに切り替えました。",
+        "description": "OpenHercules は CPU 文字起こしに切り替えました。",
         "retry": "GPU を再試行"
       },
       "gpuPackMigration": {
@@ -3517,136 +1890,8 @@
         "description": "ディクテーションは AI クリーンアップなしで貼り付けられました。"
       }
     },
-    "mic": {
-      "hotkeyToSpeak": "{{hotkey}} で話す",
-      "recording": "録音中...",
-      "processing": "処理中...",
-      "clickToSpeak": "クリックして話す",
-      "waitingForMicrophone": "マイクを待っています…"
-    },
     "buttons": {
-      "cancelRecording": "録音をキャンセル",
-      "cancelProcessing": "処理をキャンセル"
-    },
-    "commandMenu": {
-      "stopListening": "録音を停止",
-      "startListening": "録音を開始",
-      "hideForNow": "一時的に非表示",
-      "askAssistant": "アシスタントに質問"
-    }
-  },
-  "dictationAgent": {
-    "enabled": "音声アシスタントを有効にする",
-    "enabledDescription": "アシスタントに指示を口述できます。選択中のテキストは設定済みのモデルに送信され、その場で編集されます。「{{agentName}}」と話しかけて起動します。",
-    "screenContext": {
-      "title": "画面コンテキスト",
-      "description": "音声アシスタントのコマンドに、作業中の画面のスクリーンショットを添付します。",
-      "enable": "画面コンテキストを共有",
-      "enableDescription": "音声アシスタントの録音開始時に、カーソルのあるディスプレイをキャプチャします。保存やログ記録は一切されません。",
-      "unsupported": "Linux Wayland では画面キャプチャを利用できません。",
-      "visionModel": "専用のビジョンモデル",
-      "visionModelDescription": "スクリーンショット付きのコマンドを、画像対応の別モデルに振り分けます。",
-      "permissionTitle": "画面収録",
-      "permissionDescription": "画面をキャプチャするには macOS の画面収録の許可が必要です。",
-      "relaunchHint": "画面収録の許可は OpenWhispr の実行中に付与されました。スクリーンショットのキャプチャを開始するには、OpenWhispr を終了して再度開いてください。"
-    },
-    "modes": {
-      "openwhispr": "OpenWhispr Cloud",
-      "openwhisprDesc": "OpenWhispr が管理するアシスタントを使用。API キーは不要です。",
-      "providers": "自分の API キーを使用",
-      "providersDesc": "自分の API キーで OpenAI、Anthropic、Gemini、Groq に接続します。",
-      "local": "ローカル",
-      "localDesc": "端末上でローカル LLM を実行。完全プライベート。",
-      "selfHosted": "セルフホスト",
-      "selfHostedDesc": "セルフホストの OpenAI 互換エンドポイントを指定します。",
-      "enterprise": "エンタープライズ",
-      "enterpriseDesc": "AWS Bedrock、Azure OpenAI、Google Vertex を使用します。"
-    },
-    "prompt": {
-      "title": "アシスタントプロンプト",
-      "description": "ウェイクワードが検出されたときに使用するシステムプロンプト。未設定の場合は組み込みのデフォルトが使われます。"
-    }
-  },
-  "agentMode": {
-    "settings": {
-      "systemPrompt": "システムプロンプト",
-      "systemPromptDescription": "アシスタントへのカスタム指示",
-      "systemPromptPlaceholder": "カスタムシステムプロンプトを入力...",
-      "modes": {
-        "openwhispr": "OpenWhispr Cloud",
-        "providers": "クラウドプロバイダー",
-        "local": "ローカル",
-        "selfHosted": "セルフホスト",
-        "openwhisprDesc": "信頼できる精度。設定不要。",
-        "providersDesc": "独自のAPIキーを使用。",
-        "localDesc": "デバイス上のモデル。完全プライベート。",
-        "selfHostedDesc": "ネットワーク上の自分のサーバー。",
-        "enterprise": "エンタープライズ",
-        "enterpriseDesc": "組織のクラウドアカウントを使用 (AWS, Azure, GCP)。"
-      }
-    },
-    "chat": {
-      "errorPrefix": "エラー",
-      "emptyResponse": "モデルから応答がありませんでした。"
-    },
-    "input": {
-      "listening": "聞いています...",
-      "transcribing": "文字起こし中...",
-      "thinking": "考え中...",
-      "typeMessage": "メッセージを入力...",
-      "send": "送信",
-      "voiceDraftStreamingOnly": "現在の文字起こしプロバイダーはライブ音声入力のみに対応しているため、音声入力は利用できません。設定 → 音声テキスト変換 で別のプロバイダーを選択してください。"
-    },
-    "tools": {
-      "search_notesName": "ノートを検索",
-      "get_noteName": "ノートを取得",
-      "create_noteName": "ノートを作成",
-      "update_noteName": "ノートを更新",
-      "list_foldersName": "フォルダー一覧",
-      "copy_to_clipboardName": "クリップボードにコピー",
-      "web_searchName": "ウェブ検索",
-      "get_calendar_eventsName": "カレンダーの予定を取得",
-      "get_calendar_availabilityName": "空き時間を確認",
-      "get_snippetName": "スニペットを取得",
-      "update_dictionaryName": "辞書を更新",
-      "update_snippetsName": "スニペットを更新",
-      "search_notesStatus": "ノートを検索中...",
-      "web_searchStatus": "ウェブを検索中...",
-      "copy_to_clipboardStatus": "クリップボードにコピー中...",
-      "get_calendar_eventsStatus": "カレンダーを確認中...",
-      "get_calendar_availabilityStatus": "空き時間を確認中...",
-      "get_snippetStatus": "スニペットを取得中...",
-      "update_dictionaryStatus": "辞書を更新中...",
-      "update_snippetsStatus": "スニペットを更新中...",
-      "get_noteStatus": "ノートを読み込み中...",
-      "create_noteStatus": "ノートを作成中...",
-      "update_noteStatus": "ノートを更新中...",
-      "copiedToClipboard": "クリップボードにコピーしました",
-      "openNote": "ノートを開く",
-      "unknownTool": "不明なツール: {{name}}",
-      "invalidArgs": "{{name}} のツール引数が無効です"
-    }
-  },
-  "assistant": {
-    "panel": {
-      "selectionHint": "編集するテキストを選択",
-      "selectedContext": "選択したテキストを追加",
-      "removeSelectedContext": "選択したテキストを削除",
-      "newConversation": "新しい会話",
-      "copyToClipboard": "クリップボードにコピー",
-      "suggestions": {
-        "summarizeNotes": "最近のノートを要約して",
-        "calendar": "カレンダーの予定を教えて",
-        "draft": "文章の下書きを手伝って"
-      }
-    },
-    "toolActivity": {
-      "verbs": {
-        "invoking": "呼び出し中",
-        "calling": "実行中",
-        "using": "使用中"
-      },
-      "toolFallback": "ツール"
+      "cancelRecording": "録音をキャンセル"
     }
   },
   "integrations": {
@@ -3659,6 +1904,7 @@
       "connect": "Google カレンダーを接続",
       "connecting": "接続中...",
       "connected": "接続済み",
+      "notConfigured": "未設定です。接続するには OAuth を設定してください。",
       "addAnother": "別のカレンダーを追加",
       "primaryOnly": "メインカレンダーのみ同期",
       "primaryOnlyDescription": "共有されたカレンダーの予定は無視します。",
@@ -3666,7 +1912,7 @@
       "disconnectConfirm": "{{email}} を切断しますか？",
       "disconnectDescription": "このカレンダーからの会議メモは記録されなくなります。",
       "systemAudioRequired": "システムオーディオの権限が必要です",
-      "systemAudioDescription": "会議を文字起こしするには、OpenWhispr に他の参加者の音声を録音するためのシステムオーディオの権限が必要です。画面を録画することはありません。システム設定に移動して有効にします。",
+      "systemAudioDescription": "会議を文字起こしするには、OpenHercules に他の参加者の音声を録音するためのシステムオーディオの権限が必要です。画面を録画することはありません。システム設定に移動して有効にします。",
       "openSettings": "システム設定を開く",
       "connectFailed": "接続に失敗しました",
       "connectFailedDescription": "Google Calendar への接続中にエラーが発生しました。もう一度お試しください。"
@@ -3677,6 +1923,7 @@
       "description": "Outlook または Microsoft 365 のカレンダーから会議を読み取ります。",
       "connect": "Microsoft カレンダーを接続",
       "connected": "接続済み",
+      "notConfigured": "未設定です。接続するには OAuth を設定してください。",
       "addAnother": "別のカレンダーを追加",
       "primaryOnly": "メインカレンダーのみ同期",
       "primaryOnlyDescription": "共有されたカレンダーの予定は無視します。",
@@ -3696,70 +1943,17 @@
       "disconnectConfirm": "Apple カレンダーを切断しますか？",
       "disconnectDescription": "Apple カレンダーからの会議メモは記録されなくなります。",
       "permissionDenied": "カレンダーへのアクセスが必要です",
-      "permissionDeniedDescription": "会議を検出するには、OpenWhispr にカレンダーへのアクセスが必要です。システム設定の「プライバシーとセキュリティ」→「カレンダー」で OpenWhispr を有効にしてください。",
+      "permissionDeniedDescription": "会議を検出するには、OpenHercules にカレンダーへのアクセスが必要です。システム設定の「プライバシーとセキュリティ」→「カレンダー」で OpenHercules を有効にしてください。",
       "openSettings": "システム設定を開く",
       "connectFailed": "接続に失敗しました",
-      "connectFailedDescription": "Calendar.app への接続中にエラーが発生しました。OpenWhispr を再起動してもう一度お試しください。"
+      "connectFailedDescription": "Calendar.app への接続中にエラーが発生しました。OpenHercules を再起動してもう一度お試しください。"
     },
     "sections": {
-      "calendar": "カレンダー",
-      "api": "API",
-      "mcp": "MCP",
-      "cli": "CLI"
-    },
-    "api": {
-      "title": "APIキー",
-      "description": "プログラムからのアクセス用にAPIキーを管理",
-      "proRequired": "APIを利用するには有料プランへのアップグレードが必要です",
-      "manage": "キーを管理",
-      "viewPlans": "プランを表示",
-      "dialogTitle": "APIキー"
-    },
-    "mcp": {
-      "title": "メモをAIツールに持ち込みましょう",
-      "description": "Claude、ChatGPT、Cursor内でメモを使ってチャット、検索、作業ができます。",
-      "step1": "AIツールで、公開URLを使用してOpenWhispr MCPを追加します",
-      "step2": "上のセクションで必要なスコープを持つAPIキーを作成します。",
-      "step3": "キーを Authorization ヘッダーとして貼り付けて接続します。",
-      "learnMore": "詳細",
-      "viewPlans": "プランを表示",
-      "copyUrl": "MCP URLをコピー",
-      "proRequired": "OpenWhispr を Claude、ChatGPT、Cursor に接続するには、有料プランへのアップグレードが必要です。",
-      "copied": "コピーしました"
-    },
-    "cli": {
-      "title": "コマンドラインアクセス",
-      "description": "ターミナルからアシスタントにメモへのアクセスを許可します。",
-      "installLabel": "インストール",
-      "learnMore": "ドキュメントを読む",
-      "copyDocsLink": "ドキュメントリンクをコピー",
-      "docsLinkCopied": "ドキュメントリンクをコピーしました",
-      "viewPlans": "プランを表示",
-      "local": {
-        "label": "ローカル",
-        "freeBadge": "無料",
-        "description": "ローカルのメモに直接アクセスできます。ログインや API キーは不要 — OpenWhispr の起動中に利用できます。"
-      },
-      "cloud": {
-        "label": "クラウド",
-        "description": "API キーを使ってデバイス間で同期します。",
-        "proRequired": "クラウドモードで CLI を利用するには有料プランへのアップグレードが必要です。"
-      }
-    },
-    "plan": {
-      "title": "プラン",
-      "current": "現在",
-      "free": "無料",
-      "freeLimit": "月5回の会議",
-      "essential": "Essential",
-      "essentialLimit": "月20回の会議",
-      "pro": "Pro",
-      "proLimit": "無制限",
-      "upgrade": "アップグレード"
+      "calendar": "カレンダー"
     },
     "notABot": {
-      "title": "OpenWhispr はミーティング録音ツールであり、ボットではありません",
-      "description": "OpenWhispr はシステムから直接オーディオをキャプチャします — 参加者としてミーティングに参加することはありません。カレンダーを接続して、通常通りノートを取るだけです。"
+      "title": "OpenHercules はミーティング録音ツールであり、ボットではありません",
+      "description": "OpenHercules はシステムから直接オーディオをキャプチャします — 参加者としてミーティングに参加することはありません。カレンダーを接続して、通常通りノートを取るだけです。"
     }
   },
   "calendar": {
@@ -3799,7 +1993,7 @@
     "systemAudioRequired": "他の参加者の音声を録音するには、システムオーディオの権限が必要です。",
     "openSettings": "システム設定を開く",
     "connectCalendar": "カレンダーを接続",
-    "connectCalendarDescription": "OpenWhispr を離れずに会議を確認して参加できます。",
+    "connectCalendarDescription": "OpenHercules を離れずに会議を確認して参加できます。",
     "connectCalendarButton": "カレンダーを接続"
   },
   "notesView": {
@@ -3824,55 +2018,7 @@
     "deleteNote": "ノートを削除",
     "deleteConfirmTitle": "ノートを削除しますか？",
     "deleteConfirmDescription": "このノートは完全に削除され、復元できません。",
-    "deleteConfirm": "削除",
-    "share": {
-      "button": "共有",
-      "dialog": {
-        "title": "ノートを共有",
-        "description": "メールで招待するか、このノートへのリンクを共有します。",
-        "searchPlaceholder": "ユーザー、フォルダー、メールを検索",
-        "noResults": "一致する結果が見つかりません",
-        "emailLabel": "ユーザー、フォルダー、メール",
-        "shareButton": "共有",
-        "createLink": "リンクを作成",
-        "copyLink": "リンクをコピー",
-        "copied": "コピーしました",
-        "export": "エクスポート",
-        "owner": "オーナー",
-        "editor": "編集可能",
-        "viewer": "閲覧可能",
-        "teamAudience": "このチームスペースの全員",
-        "pending": "保留中",
-        "accepted": "アクセス権あり",
-        "resend": "招待を再送信",
-        "revoke": "削除",
-        "invitationActions": "招待の操作",
-        "resendSent": "招待を送信しました",
-        "resendThrottled": "招待を送信したばかりです。1分ほど待ってからお試しください。",
-        "syncPrompt": "共有すると、このノートのコピーが OpenWhispr クラウドに保存されます。共有相手を選ぶまでは、あなた以外は閲覧できません。",
-        "syncAndShare": "ノートを同期",
-        "visibility": {
-          "label": "公開範囲",
-          "private": "非公開",
-          "privateOption": "非公開 — 自分のみ",
-          "link": "リンクを持つ全員",
-          "domain": "{{domain}} の全員（リンクを持つ人）",
-          "invited": "招待された人のみ"
-        },
-        "error": {
-          "invalidEmail": "有効なメールアドレスを入力してください",
-          "alreadyInvited": "{{email}} はすでに招待されています",
-          "inviteFailed": "招待を送信できませんでした。もう一度お試しください。",
-          "visibilityFailed": "共有設定を更新できませんでした。もう一度お試しください。",
-          "copyFailed": "リンクをコピーできませんでした。もう一度お試しください。",
-          "revokeFailed": "招待を削除できませんでした。もう一度お試しください。",
-          "resendFailed": "招待を再送信できませんでした。もう一度お試しください。",
-          "syncFailed": "このノートを同期できませんでした。もう一度お試しください。",
-          "loadFailed": "共有設定を読み込めませんでした",
-          "retry": "再試行"
-        }
-      }
-    }
+    "deleteConfirm": "削除"
   },
   "commandSearch": {
     "allSpaces": "すべてのスペース",
@@ -3894,61 +2040,8 @@
   },
   "permissionsGate": {
     "title": "権限が必要です",
-    "description": "OpenWhispr がこのコンピュータで動作するために、いくつかの権限が必要です。",
+    "description": "OpenHercules がこのコンピュータで動作するために、いくつかの権限が必要です。",
     "continue": "続行"
-  },
-  "apiKeysSection": {
-    "title": "APIキー",
-    "description": "アカウントへのプログラムアクセス用のキーを管理",
-    "docsLink": "APIドキュメント",
-    "empty": "APIキーはまだありません",
-    "createButton": "キーを作成",
-    "create": {
-      "title": "APIキーを作成",
-      "nameLabel": "キー名",
-      "namePlaceholder": "例: マイインテグレーション",
-      "scopesLabel": "権限",
-      "expiryLabel": "有効期限",
-      "expiryOptions": {
-        "never": "無期限",
-        "30days": "30日間",
-        "60days": "60日間",
-        "90days": "90日間",
-        "1year": "1年"
-      },
-      "submit": "作成",
-      "cancel": "キャンセル"
-    },
-    "created": {
-      "title": "キーが作成されました",
-      "warning": "このキーを今すぐコピーしてください。再度表示されることはありません。",
-      "copied": "コピー済み",
-      "copyButton": "クリップボードにコピー",
-      "done": "完了"
-    },
-    "scopes": {
-      "notesRead": "ノートの読み取り",
-      "notesWrite": "ノートの作成と編集",
-      "transcriptionsRead": "文字起こしの読み取り",
-      "dictionaryRead": "辞書を読み取り",
-      "dictionaryWrite": "辞書を編集",
-      "snippetsRead": "スニペットを読み取り",
-      "snippetsWrite": "スニペットを編集",
-      "transcriptionsWrite": "音声を文字起こし"
-    },
-    "revoke": {
-      "button": "取り消し",
-      "confirm": "このAPIキーを取り消しますか？このキーを使用しているインテグレーションは機能しなくなります。",
-      "success": "APIキーが取り消されました"
-    },
-    "neverUsed": "未使用",
-    "lastUsed": "{{time}}に使用",
-    "maxKeysReached": "キーの上限（{{max}}個）に達しました",
-    "errors": {
-      "loadFailed": "APIキーを読み込めませんでした",
-      "createFailed": "APIキーを作成できませんでした",
-      "revokeFailed": "APIキーを取り消せませんでした"
-    }
   },
   "embeddedChat": {
     "askPlaceholder": "何でも聞いてください...",
@@ -3978,104 +2071,6 @@
     },
     "missingAudio": "[音声欠落 {{from}}-{{to}}]"
   },
-  "workspaces": {
-    "switcher": {
-      "workspaces": "ワークスペース",
-      "create": "ワークスペースを作成…"
-    },
-    "create": {
-      "title": "ワークスペースを作成",
-      "description": "ワークスペースには組織のメンバーと請求がまとまります。その中に共有ノート用のチームスペースを作成できます。",
-      "nameLabel": "ワークスペース名",
-      "namePlaceholder": "Acme Corp",
-      "submit": "ワークスペースを作成",
-      "submitting": "作成中…",
-      "errorTitle": "ワークスペースを作成できませんでした"
-    },
-    "created": {
-      "title": "ワークスペースを作成しました",
-      "description": "{{name}} のオーナーになりました。"
-    },
-    "invite": {
-      "title": "{{workspace}} に招待",
-      "description": "メールアドレスでチームメイトを追加します。参加用のリンクが送信されます。",
-      "emailLabel": "メールアドレス",
-      "emailPlaceholder": "teammate@example.com",
-      "roleLabel": "役割",
-      "seatUsage": "{{seats}} シート中 {{used}} シートを使用中",
-      "seatCost": "承諾されるとプランに 1 席追加され、日割りの見積額 {{amount}} が請求されます。",
-      "submit": "招待を送信",
-      "submitting": "送信中…",
-      "sentTitle": "招待を送信しました",
-      "sentDescription": "{{email}} に招待を送信しました。",
-      "sentNoEmailTitle": "招待を作成しましたが、メールは送信されませんでした",
-      "sentNoEmailDescription": "{{email}} を招待しましたが、メールを配信できませんでした。後で再送信するか、別の方法で招待リンクを共有してください。",
-      "errorTitle": "招待を送信できませんでした",
-      "role": {
-        "admin": "管理者",
-        "member": "メンバー"
-      },
-      "roleDescription": {
-        "admin": "メンバーと請求を管理できます",
-        "member": "ワークスペースを利用できます"
-      }
-    },
-    "join": {
-      "title": "チームに参加",
-      "domainTitle": "あなたのチームはすでに OpenWhispr にいます",
-      "description": "これらのワークスペースに、あなたと同じメールドメインのメンバーがいます。",
-      "invitedDescription": "ワークスペースに招待されています。",
-      "invitedBy": "{{inviter}} が {{role}} として招待しました",
-      "memberCount_one": "メンバー {{count}} 人",
-      "memberCount_other": "メンバー {{count}} 人",
-      "join": "参加",
-      "requestErrorTitle": "リクエストを送信できませんでした",
-      "requestedDescription": "{{workspace}} の管理者が確認します。",
-      "requestedTitle": "リクエストを送信しました",
-      "requested": "リクエスト済み",
-      "request": "参加をリクエスト",
-      "notNow": "後で",
-      "successTitle": "参加しました",
-      "successDescription": "{{workspace}} のメンバーになりました。",
-      "errorTitle": "参加できませんでした"
-    },
-    "accept": {
-      "title": "ワークスペースに参加",
-      "description": "{{inviter}} さんから、{{workspace}} に{{role}}として参加するよう招待されています。",
-      "loading": "招待を読み込み中…",
-      "accept": "招待を承諾",
-      "accepting": "承諾中…",
-      "signInToAccept": "サインインして承諾",
-      "switchAccount": "アカウントを切り替える",
-      "successTitle": "参加しました",
-      "successDescription": "{{name}} のメンバーになりました。設定 → ワークスペースで管理できます。",
-      "errorTitle": "招待を承諾できませんでした",
-      "sentTo": "{{email}} に送信された招待です",
-      "wrongAccount": "この招待は {{email}} 宛てに送信されました。現在 {{current}} でサインインしています。"
-    }
-  },
-  "dictationTranslation": {
-    "title": "音声入力翻訳",
-    "description": "専用ホットキーで、音声入力を別の言語に翻訳して貼り付けます",
-    "enabled": "音声入力翻訳を有効にする",
-    "enabledDescription": "翻訳ホットキーで開始した音声入力は、整形されてから翻訳されて貼り付けられます",
-    "sourceLanguage": "話す言語",
-    "sourceLanguageDescription": "音声入力する言語。自動検出は複数言語が混在する場合にも対応します",
-    "targetLanguage": "翻訳先",
-    "targetLanguageDescription": "貼り付けられるテキストの言語",
-    "targetLanguageMissing": "翻訳ホットキーを有効にするには翻訳先の言語を選択してください",
-    "selectLanguage": "言語を選択…",
-    "prompt": {
-      "title": "翻訳プロンプト",
-      "description": "モデルによる音声入力の翻訳方法をカスタマイズします"
-    },
-    "hotkeyHint": "ホットキーは 設定 → ホットキー → 翻訳ホットキー で設定できます",
-    "targetsLabel": "翻訳先の言語",
-    "addTarget": "言語を追加…",
-    "activeTarget": "使用中の翻訳先言語",
-    "removeTarget": "{{language}}を削除",
-    "maxTargets": "最大{{max}}言語"
-  },
   "meetingNotification": {
     "title": "会議を検出しました",
     "body": {
@@ -4094,5 +2089,58 @@
       },
       "restart": "録音を再開"
     }
+  },
+  "agentMode": {
+    "settings": {
+      "systemPrompt": "システムプロンプト",
+      "systemPromptDescription": "アシスタントへのカスタム指示",
+      "systemPromptPlaceholder": "カスタムシステムプロンプトを入力..."
+    },
+    "chat": {
+      "errorPrefix": "エラー",
+      "emptyResponse": "モデルから応答がありませんでした。"
+    },
+    "input": {
+      "listening": "聞いています...",
+      "transcribing": "文字起こし中...",
+      "thinking": "考え中...",
+      "typeMessage": "メッセージを入力...",
+      "send": "送信",
+      "voiceDraftStreamingOnly": "現在の文字起こしプロバイダーはライブ音声入力のみに対応しているため、音声入力は利用できません。設定 → 音声テキスト変換 で別のプロバイダーを選択してください。"
+    },
+    "tools": {
+      "search_notesName": "ノートを検索",
+      "get_noteName": "ノートを取得",
+      "create_noteName": "ノートを作成",
+      "update_noteName": "ノートを更新",
+      "list_foldersName": "フォルダー一覧",
+      "copy_to_clipboardName": "クリップボードにコピー",
+      "get_calendar_eventsName": "カレンダーの予定を取得",
+      "get_calendar_availabilityName": "空き時間を確認",
+      "get_snippetName": "スニペットを取得",
+      "update_dictionaryName": "辞書を更新",
+      "update_snippetsName": "スニペットを更新",
+      "search_notesStatus": "ノートを検索中...",
+      "copy_to_clipboardStatus": "クリップボードにコピー中...",
+      "get_calendar_eventsStatus": "カレンダーを確認中...",
+      "get_calendar_availabilityStatus": "空き時間を確認中...",
+      "get_snippetStatus": "スニペットを取得中...",
+      "update_dictionaryStatus": "辞書を更新中...",
+      "update_snippetsStatus": "スニペットを更新中...",
+      "get_noteStatus": "ノートを読み込み中...",
+      "create_noteStatus": "ノートを作成中...",
+      "update_noteStatus": "ノートを更新中...",
+      "copiedToClipboard": "クリップボードにコピーしました",
+      "openNote": "ノートを開く",
+      "unknownTool": "不明なツール: {{name}}",
+      "invalidArgs": "{{name}} のツール引数が無効です"
+    }
+  },
+  "cleanupSettings": {
+    "permissions": "Recording permissions",
+    "openSettings": "Open system settings",
+    "systemAudio": "System audio",
+    "configureLater": "Configure a provider later",
+    "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   }
 }

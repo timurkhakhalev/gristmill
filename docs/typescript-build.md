@@ -12,7 +12,8 @@
 
 Sandboxed preload не может require локальные модули, поэтому после успешного
 tsc `build-main.js` бандлит исходный `preload.js` (вместе с
-`src/preload/notesBridge.ts`, `src/preload/urlDownloadBridge.ts` и
+`src/preload/notesBridge.ts`, `src/preload/urlDownloadBridge.ts`,
+`src/preload/vocabularyBridge.ts` и
 `src/contracts/*.ts`) в один файл
 `dist-main/preload.js` через esbuild (`bundle`, `format=cjs`,
 `platform=node`, `target=node24`, `external:electron`; devDependency
@@ -135,7 +136,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **133 JS, 12 TS, 1 MTS и 25 JSON**.
+а не всеми файлами в каталоге helpers. В нём **133 JS, 16 TS, 1 MTS и 25 JSON**.
 Entry points: main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
 
@@ -156,6 +157,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `preload.js`
 - `src/contracts/notes.ts`
 - `src/contracts/urlDownload.ts`
+- `src/contracts/vocabulary.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
 - `src/constants/speakerDetection.json`
@@ -174,6 +176,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/notesIpcHandlers.ts`
 - `src/preload/notesBridge.ts`
 - `src/preload/urlDownloadBridge.ts`
+- `src/preload/vocabularyBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
 - `src/helpers/builtinActions.js`
@@ -276,6 +279,8 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/systemDefaultMicrophone.js`
 - `src/helpers/systemTar.js`
 - `src/helpers/urlDownloadIpcHandlers.ts`
+- `src/helpers/vocabularyEvents.ts`
+- `src/helpers/vocabularyIpcHandlers.ts`
 - `src/helpers/tinfoilCatalog.js`
 - `src/helpers/tinfoilRealtimeStreaming.js`
 - `src/helpers/tinfoilSecureClient.js`
@@ -371,4 +376,32 @@ preload → handler Map → fake downloader; malformed progress отбрасыв
 Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings); focused
 55 passed (`urlDownloadIpc`, `urlDownloadBridge`, `urlAudioDownloader`,
 `rendererBridgeContract`, `mainBuild`, type probes); `build:main` OK.
-Inventory графа Electron: 133 JS, 12 TS, 1 MTS, 25 JSON.
+Inventory графа Electron: 133 JS, 16 TS, 1 MTS, 25 JSON.
+
+## Этап «типизированный IPC Dictionary/Snippets»
+
+14 сентября 2026 (issue #10, пункт, план PR #20). Десять каналов словаря и
+snippets вынесены из `ipcHandlers.js` в
+`src/helpers/vocabularyIpcHandlers.ts` с общим контрактом
+`src/contracts/vocabulary.ts` и bridge `src/preload/vocabularyBridge.ts`
+(подключён к bundled preload). SQL остаётся в `database.js`: он передаётся
+узкой зависимостью, его нормализация (trim, lowercase-dedupe, фильтр невалидных
+snippets) не ужесточена схемами — исторические throws (`words/add/remove/
+snippets must be an array`), tolerant null-delta, quiet-fail undo и
+re-read-from-SQLite broadcast payloads сохранены и зафиксированы
+characterization-тестами (`test/helpers/vocabularyIpc.test.js`, 10 тестов).
+Оба события идут через senders `src/helpers/vocabularyEvents.ts`
+(`sendDictionaryUpdated`/`sendSnippetsUpdated`) — их используют хендлеры и
+`cliBridge.js`; malformed payload дропается с логом, не попадая в renderer.
+Main-only каналы (hard delete, broadcast pull, undo) без renderer consumer не
+попадают в bridge API. Fallback «older preload → setDictionary(optimistic)» в
+`settingsStore.ts` удалён: delta-канал теперь обязателен. E2E
+(`test/helpers/vocabularyBridge.test.js`, 4 теста) гоняет настоящий bundled
+preload → handlers → временный SQLite; malformed события инжектируются прямо
+на вход preload и дропаются на нём.
+
+Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings); focused
+72 passed (vocabularyIpc, vocabularyBridge, cliBridgeDictionary,
+cliBridgeSnippets, dictionaryStartup, databaseLocalBehavior,
+rendererBridgeContract, mainBuild, dictionaryTool, snippetTool, snippets);
+`build:main` OK. Inventory графа Electron: 133 JS, 16 TS, 1 MTS, 25 JSON.

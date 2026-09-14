@@ -106,6 +106,7 @@ export const noteMutationResultSchema = z.union([
 
 export const noteListResultSchema = z.array(noteItemSchema);
 export const noteOrNullResultSchema = noteItemSchema.nullable();
+export type NoteMutationResult = z.infer<typeof noteMutationResultSchema>;
 
 export const noteDeletedPayloadSchema = z.object({ id: idArg });
 export type NoteDeletedPayload = z.infer<typeof noteDeletedPayloadSchema>;

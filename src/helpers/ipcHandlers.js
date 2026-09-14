@@ -54,6 +54,8 @@ function resolveEnterpriseRuntime(provider, modelId, config = {}) {
 }
 
 const { resolveLocalServerNeeds } = require("./localServerPolicy");
+const { registerNotesHandlers } = require("./notesIpcHandlers");
+const { sendNoteAdded, sendNoteUpdated, sendNoteDeleted } = require("./notesEvents");
 const autoStart = require("./autoStart");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
 const { i18nMain, changeLanguage } = require("./i18nMain");
@@ -1035,10 +1037,10 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle(
-      "db-save-note",
-      async (event, title, content, noteType, sourceFile, audioDuration, folderId, spaceId) => {
-        const result = this.databaseManager.saveNote(
+    // Notes DB channels live in the typed module; pass only what they need.
+    registerNotesHandlers(ipcMain, {
+      saveNote: (title, content, noteType, sourceFile, audioDuration, folderId, spaceId) =>
+        this.databaseManager.saveNote(
           title,
           content,
           noteType,
@@ -1046,46 +1048,20 @@ class IPCHandlers {
           audioDuration,
           folderId,
           spaceId
-        );
-        if (result?.success && result?.note) {
-          setImmediate(() => broadcastToWindows("note-added", result.note));
-          this._asyncMirrorWrite(result.note);
-        }
-        return result;
-      }
-    );
-
-    ipcMain.handle("db-get-note", async (event, id) => {
-      return this.databaseManager.getNote(id);
-    });
-
-    ipcMain.handle("db-get-notes", async (event, noteType, limit, folderId, spaceId) => {
-      return this.databaseManager.getNotes(noteType, limit, folderId, spaceId);
-    });
-
-    ipcMain.handle("db-get-space-notes", async (event, spaceId, limit) => {
-      return this.databaseManager.getNotesForSpace(spaceId, limit);
-    });
-
-    ipcMain.handle("db-update-note", async (event, id, updates) => {
-      const result = this.databaseManager.updateNote(id, updates);
-      if (result?.success && result?.note) {
-        setImmediate(() => broadcastToWindows("note-updated", result.note));
-        this._asyncMirrorWrite(result.note);
-        if (updates.participants) {
-          this._tryAutoLabelOneOnOne(id);
-          this._refreshMeetingSpeakerConfigFromNote(id, result.note);
-        }
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-delete-note", async (event, id) => {
-      return this.deleteNoteInternal(id);
-    });
-
-    ipcMain.handle("db-search-notes", async (event, query, limit, spaceId, folderId) => {
-      return this.databaseManager.searchNotes(query, limit, spaceId, folderId);
+        ),
+      getNote: (id) => this.databaseManager.getNote(id),
+      getNotes: (noteType, limit, folderId, spaceId) =>
+        this.databaseManager.getNotes(noteType, limit, folderId, spaceId),
+      getNotesForSpace: (spaceId, limit) =>
+        this.databaseManager.getNotesForSpace(spaceId, limit),
+      updateNote: (id, updates) => this.databaseManager.updateNote(id, updates),
+      deleteNoteInternal: (id) => this.deleteNoteInternal(id),
+      searchNotes: (query, limit, spaceId, folderId) =>
+        this.databaseManager.searchNotes(query, limit, spaceId, folderId),
+      asyncMirrorWrite: (note) => this._asyncMirrorWrite(note),
+      tryAutoLabelOneOnOne: (noteId) => this._tryAutoLabelOneOnOne(noteId),
+      refreshMeetingSpeakerConfigFromNote: (noteId, note) =>
+        this._refreshMeetingSpeakerConfigFromNote(noteId, note),
     });
 
     ipcMain.handle("db-get-folders", async (event, spaceId) => {
@@ -6717,7 +6693,7 @@ class IPCHandlers {
         if (changed) {
           this.databaseManager.updateNote(noteId, { transcript: JSON.stringify(transcript) });
           const updated = this.databaseManager.getNote(noteId);
-          if (updated) broadcastToWindows("note-updated", updated);
+          if (updated) sendNoteUpdated(updated);
         }
 
         if (profile) this._retroactiveMapping(profile);
@@ -7107,7 +7083,7 @@ class IPCHandlers {
   deleteNoteInternal(id) {
     const result = this.databaseManager.deleteNote(id);
     if (result?.success) {
-      setImmediate(() => broadcastToWindows("note-deleted", { id }));
+      setImmediate(() => sendNoteDeleted({ id }));
       this._asyncMirrorDelete(id);
     }
     return result;

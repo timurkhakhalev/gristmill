@@ -1,4 +1,4 @@
-import { API_ENDPOINTS, ensureV1Suffix } from "../../config/constants";
+import { API_ENDPOINTS, ensureV1Suffix } from "../../config/constants.mts";
 import { getSettings } from "../../stores/settingsStore";
 import { isSecureHttpEndpoint } from "../../utils/urlUtils";
 import logger from "../../utils/logger";

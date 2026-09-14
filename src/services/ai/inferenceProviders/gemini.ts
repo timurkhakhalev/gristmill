@@ -1,7 +1,7 @@
 import type { InferenceProvider } from "./types";
 import { getCloudModel } from "../../../models/ModelRegistry";
 import { withRetry, createApiRetryStrategy, httpError } from "../../../utils/retry";
-import { API_ENDPOINTS, TOKEN_LIMITS } from "../../../config/constants";
+import { API_ENDPOINTS, TOKEN_LIMITS } from "../../../config/constants.mts";
 import { getLlmRequestTimeoutSeconds } from "../../../helpers/llmRequestTimeout.js";
 import { extractGeminiText } from "../../../helpers/geminiResponse.js";
 import { wrapCleanupTranscript } from "../../../config/prompts";

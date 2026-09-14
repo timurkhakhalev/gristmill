@@ -10,7 +10,7 @@ import ModelCardList from "./ui/ModelCardList";
 import LocalModelPicker, { type LocalProvider } from "./LocalModelPicker";
 import { ProviderTabs, type ProviderTabItem } from "./ui/ProviderTabs";
 import OpenAICompatiblePanel from "./OpenAICompatiblePanel";
-import { API_ENDPOINTS } from "../config/constants";
+import { API_ENDPOINTS } from "../config/constants.mts";
 import {
   REASONING_PROVIDERS,
   toReasoningModel,

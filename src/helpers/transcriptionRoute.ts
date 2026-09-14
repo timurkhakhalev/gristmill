@@ -2,11 +2,11 @@
 // dictation, retry, and upload. Streaming provider selection is a live-recorder
 // concern and stays in audioManager.
 //
-// Loaded by the renderer and the main process alike (main uses dynamic import):
-// erasable TypeScript syntax only, explicit import extensions, no store imports.
+// Shared by the renderer and main; the main build emits JS and rewrites the
+// explicit import extensions. Keep this module independent of stores.
 // Routes never carry secrets — `auth.keyRef` names the key slot the executor
 // resolves itself.
-import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constants.ts";
+import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constants.mts";
 import {
   isSecureHttpEndpoint,
   isAzureOpenAIEndpoint,

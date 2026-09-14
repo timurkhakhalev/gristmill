@@ -43,7 +43,7 @@ export default [
   },
   // TypeScript files
   {
-    files: ["**/*.{ts,tsx}"],
+    files: ["**/*.{ts,tsx,mts}"],
     languageOptions: {
       ecmaVersion: 2022,
       globals: {

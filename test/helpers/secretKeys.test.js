@@ -11,7 +11,7 @@ const Module = require("module");
 const tmpUserData = fs.mkdtempSync(path.join(os.tmpdir(), "ow-secret-test-"));
 process.resourcesPath = tmpUserData; // Electron-only global; harmless dummy for the .env fallback scan
 const fakeElectron = {
-  app: { getPath: () => tmpUserData },
+  app: { getPath: () => tmpUserData, getAppPath: () => tmpUserData },
   safeStorage: { isEncryptionAvailable: () => false },
 };
 const origLoad = Module._load;

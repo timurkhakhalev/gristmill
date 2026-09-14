@@ -215,7 +215,7 @@ function verifyUnpackedBinaries(context) {
     );
   }
 
-  const onnxWorkerPath = path.join(unpackedDir, "src", "workers", "onnxWorker.js");
+  const onnxWorkerPath = path.join(unpackedDir, "dist-main", "src", "workers", "onnxWorker.js");
   if (!fs.existsSync(onnxWorkerPath)) {
     throw new Error(
       `afterPack: missing ${onnxWorkerPath} — src/workers was not unpacked from app.asar (asarUnpack/packaging failure); the ONNX utility process would crash-loop in the packed app`

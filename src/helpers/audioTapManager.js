@@ -1,3 +1,4 @@
+const { app } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -374,8 +375,8 @@ class AudioTapManager {
 
   resolveBinary() {
     const candidates = new Set([
-      path.join(__dirname, "..", "..", "resources", "bin", "macos-audio-tap"),
-      path.join(__dirname, "..", "..", "resources", "macos-audio-tap"),
+      path.join(app.getAppPath(), "resources", "bin", "macos-audio-tap"),
+      path.join(app.getAppPath(), "resources", "macos-audio-tap"),
     ]);
 
     if (process.resourcesPath) {

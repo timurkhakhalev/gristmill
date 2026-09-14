@@ -58,6 +58,7 @@ const { registerNotesHandlers } = require("./notesIpcHandlers");
 const { registerUrlDownloadHandlers } = require("./urlDownloadIpcHandlers");
 const { registerVocabularyHandlers } = require("./vocabularyIpcHandlers");
 const { registerContainerHandlers } = require("./containerIpcHandlers");
+const { registerChatPersistenceHandlers } = require("./chatPersistenceIpcHandlers");
 const { sendNoteAdded, sendNoteUpdated, sendNoteDeleted } = require("./notesEvents");
 const autoStart = require("./autoStart");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
@@ -1043,80 +1044,9 @@ class IPCHandlers {
       return result;
     });
 
-    // Agent conversation handlers
-    ipcMain.handle(
-      "db-create-agent-conversation",
-      async (event, title, noteId, spaceId, folderId) => {
-        return this.databaseManager.createAgentConversation(title, noteId, spaceId, folderId);
-      }
-    );
-
-    ipcMain.handle("db-get-conversations-for-note", async (event, noteId, limit) => {
-      return this.databaseManager.getConversationsForNote(noteId, limit);
-    });
-
-    ipcMain.handle(
-      "db-get-conversations-for-container",
-      async (event, spaceId, folderId, limit) => {
-        return this.databaseManager.getConversationsForContainer(spaceId, folderId, limit);
-      }
-    );
-
-    ipcMain.handle("db-get-agent-conversations", async (event, limit) => {
-      return this.databaseManager.getAgentConversations(limit);
-    });
-
-    ipcMain.handle("db-get-agent-conversation", async (event, id) => {
-      return this.databaseManager.getAgentConversation(id);
-    });
-
-    ipcMain.handle("db-delete-agent-conversation", async (event, id) => {
-      const result = this.databaseManager.deleteAgentConversation(id);
-      return result;
-    });
-
-    ipcMain.handle("db-update-agent-conversation-title", async (event, id, title) => {
-      return this.databaseManager.updateAgentConversationTitle(id, title);
-    });
-
-    ipcMain.handle(
-      "db-add-agent-message",
-      async (event, conversationId, role, content, metadata) => {
-        const result = this.databaseManager.addAgentMessage(
-          conversationId,
-          role,
-          content,
-          metadata
-        );
-        return result;
-      }
-    );
-
-    ipcMain.handle("db-get-agent-messages", async (event, conversationId) => {
-      return this.databaseManager.getAgentMessages(conversationId);
-    });
-
-    ipcMain.handle(
-      "db-get-agent-conversations-with-preview",
-      async (event, limit, offset, includeArchived) => {
-        return this.databaseManager.getAgentConversationsWithPreview(
-          limit,
-          offset,
-          includeArchived
-        );
-      }
-    );
-
-    ipcMain.handle("db-search-agent-conversations", async (event, query, limit) => {
-      return this.databaseManager.searchAgentConversations(query, limit);
-    });
-
-    ipcMain.handle("db-archive-agent-conversation", async (event, id) => {
-      return this.databaseManager.archiveAgentConversation(id);
-    });
-
-    ipcMain.handle("db-unarchive-agent-conversation", async (event, id) => {
-      return this.databaseManager.unarchiveAgentConversation(id);
+    // Agent conversation (chat persistence) channels live in the typed module.
+    registerChatPersistenceHandlers(ipcMain, {
+      database: this.databaseManager,
     });
 
     ipcMain.handle("export-note", async (event, noteId, format) => {

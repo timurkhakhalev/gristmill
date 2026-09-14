@@ -427,8 +427,8 @@ export async function transcribeAudioFileByok(
     return {
       success: false,
       error: err?.message,
-      code: err?.code,
-      messageKey: err?.messageKey,
+      ...(err?.code ? { code: err.code } : {}),
+      ...(err?.messageKey ? { messageKey: err.messageKey } : {}),
     };
   } finally {
     release();

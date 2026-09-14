@@ -1,4 +1,5 @@
 import type { ToolDefinition, ToolResult } from "./ToolRegistry";
+import type { NoteUpdate } from "../../contracts/notes";
 import { resolveFolderId } from "./utils";
 
 export const updateNoteTool: ToolDefinition = {
@@ -50,7 +51,7 @@ export const updateNoteTool: ToolDefinition = {
         return { success: false, data: null, displayText: `Note with ID ${id} not found` };
       }
 
-      const updates: Record<string, string | number | null> = {};
+      const updates: NoteUpdate = {};
       if (title) updates.title = title;
       if (content) updates.content = content;
 

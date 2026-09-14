@@ -13,7 +13,8 @@ import { ContainerIcon } from "./ContainerIcon";
 import { OverviewAskSection } from "./OverviewAskSection";
 import { OverviewNoteList } from "./OverviewNoteList";
 import { defaultFolderDisplayName } from "../shared";
-import type { NoteItem, SpaceItem, FolderItem } from "../../../types/electron";
+import type { SpaceItem, FolderItem } from "../../../types/electron";
+import type { NoteItem } from "../../../contracts/notes";
 
 const SPACE_NOTES_LIMIT = 50;
 

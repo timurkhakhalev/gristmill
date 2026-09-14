@@ -1,5 +1,6 @@
 import { MAX_SPEAKER_COUNT } from "../constants/speakerDetection.json";
 import type { DiarizationSettings } from "./fileTranscription";
+import type { NoteUpdate } from "../contracts/notes";
 
 // Renderer twin of normalizeStoredSpeakerCount in ../helpers/speakerCount.js.
 // That file is CommonJS for the main process (database.js, ipcHandlers.js), and
@@ -60,7 +61,7 @@ export function buildUploadNoteMetadata(
   anchorMs?: number
 ) {
   const transcript = buildUploadTranscript(segments, anchorMs);
-  const noteUpdates: Record<string, unknown> | null =
+  const noteUpdates: NoteUpdate | null =
     diarization.enabled || transcript
       ? {
           ...(diarization.enabled
@@ -92,10 +93,10 @@ interface SaveUploadNoteParams {
 }
 
 // The one save path for upload and URL-ingest notes, shared by the single-file
-// flow and the batch queue: the duration goes in the insert (updateNote does
-// not whitelist audio_duration_seconds), and the diarization columns and the
-// timestamped transcript follow through updateNote — the same route the
-// meeting path writes them through.
+// flow and the batch queue: the duration goes in the insert (updateNote accepts
+// audio_duration_seconds but the insert keeps save and metadata in one step
+// here), and the diarization columns and the timestamped transcript follow
+// through updateNote — the same route the meeting path writes them through.
 export async function saveUploadNote({
   title,
   text,

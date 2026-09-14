@@ -76,6 +76,10 @@ export function registerUrlDownloadHandlers(
       return { success: false, error: "Invalid URL", code: "INVALID_URL" };
     }
 
+    // The renderer API types downloadId as an optional string, but JS callers
+    // (old preload copies, CLI glue) historically passed anything; a missing,
+    // empty or non-string id gets a generated one — exactly the tolerant
+    // normalization the JS handlers did before parsing existed.
     const id =
       typeof downloadId === "string" && downloadId ? downloadId : `dl-${++urlDownloadSeq}`;
     const abortController = new AbortController();

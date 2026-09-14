@@ -24,17 +24,30 @@ Module._load = function patchedLoad(request, parent, isMain) {
   if (request === "electron") {
     return {
       app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
-      ipcMain: {
-        handle: (channel, listener) => {
+      ipcMain: (() => {
+        // One shared duplicate-detecting double: handle() throws on a
+        // second registration of the same channel, on()/emit() no-op.
+        const seen = new Set();
+        const getMap = () => {
           if (!activeHandlers) activeHandlers = new Map();
-          if (activeHandlers.has(channel)) {
-            throw new Error(
-              `Attempted to register a second handler for '${channel}'`
-            );
-          }
-          activeHandlers.set(channel, listener);
-        },
-      },
+          return activeHandlers;
+        };
+        return {
+          handle: (channel, listener) => {
+            const handlers = getMap();
+            if (seen.has(channel)) {
+              throw new Error(
+                `Attempted to register a second handler for '${channel}'`
+              );
+            }
+            seen.add(channel);
+            handlers.set(channel, listener);
+          },
+          on() {},
+          removeHandler() {},
+          emit() {},
+        };
+      })(),
       BrowserWindow: { getAllWindows: () => [] },
     };
   }
@@ -237,29 +250,50 @@ test("a wrong-shaped main response rejects instead of becoming an empty chat", a
   assert.ok(api && invoke);
 });
 
-test("registering the same channel twice fails loudly", async (t) => {
+test("the shared main registration registers every channel exactly once", async (t) => {
+  // Runs against the real IPCHandlers.setupHandlers over a
+  // duplicate-detecting electron stub: if any module (typed or leftover JS)
+  // registered db-get-folders or db-create-agent-conversation twice — the
+  // #23 packaged-start breakage — setupHandlers throws and the test fails.
   const ctx = await createFixture(t);
   if (!ctx) return;
-  const { db } = ctx;
 
-  const { registerChatPersistenceHandlers } = await import(
-    "../../src/helpers/chatPersistenceIpcHandlers.ts"
+  const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
+  delete require.cache[handlersModulePath];
+  const IPCHandlers = require(handlersModulePath);
+  const Ctor = IPCHandlers.default || IPCHandlers;
+
+  // Granola-test style `anything()`: each property access returns a fresh
+  // proxy instead of the self-referential one that blows the stack.
+  const anything = () =>
+    new Proxy(function () {}, {
+      get: (_target, property) => {
+        if (property === Symbol.toPrimitive || property === "toString") return () => "";
+        if (property === "then") return undefined;
+        if (property === "apply" || property === "call" || property === "bind") {
+          return () => anything();
+        }
+        return anything();
+      },
+      apply: () => anything(),
+    });
+
+  const target = { databaseManager: ctx.db };
+  Ctor.prototype.setupHandlers.call(
+    new Proxy(target, {
+      get: (value, property) => (property in value ? value[property] : anything()),
+    })
   );
-  // The fixture's ipcMain stub throws on a duplicate handle; this is the
-  // guard that would have caught the #23 duplicate-registration breakage.
-  assert.throws(
-    () =>
-      registerChatPersistenceHandlers(
-        {
-          handle: (channel) => {
-            if (activeHandlers.has(channel)) {
-              throw new Error(`Attempted to register a second handler for '${channel}'`);
-            }
-            activeHandlers.set(channel, () => {});
-          },
-        },
-        { database: db }
-      ),
-    /second handler/
-  );
+
+  // setupHandlers completed without the stub throwing, so no channel was
+  // registered twice. The chat persistence channels really went through the
+  // shared registration next to the remaining JS handlers.
+  for (const channel of [
+    "db-create-agent-conversation",
+    "db-get-agent-conversation",
+    "db-add-agent-message",
+    "db-get-conversations-for-container",
+  ]) {
+    assert.equal(typeof activeHandlers.get(channel), "function", channel);
+  }
 });

@@ -57,6 +57,11 @@ test("create defaults: title omitted becomes Untitled and scopes stay null", (t)
   assert.equal(conv.archived_at, null);
   assert.equal(typeof conv.created_at, "string");
   assert.deepEqual(conv.messages, []);
+  // undefined hits the JS default; an explicit null violates the NOT NULL
+  // constraint and must keep rejecting without creating a row.
+  assert.equal(db.createAgentConversation(undefined).title, "Untitled");
+  assert.throws(() => db.createAgentConversation(null), /NOT NULL/);
+  assert.equal(db.db.prepare("SELECT COUNT(*) AS n FROM agent_conversations").get().n, 2);
   db.close();
 });
 

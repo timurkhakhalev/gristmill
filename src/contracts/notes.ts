@@ -58,7 +58,7 @@ export const noteUpdateSchema = z
 
 export type NoteUpdate = z.infer<typeof noteUpdateSchema>;
 
-const idArg = nonNegativeInt;
+const idArg = z.number().int().nonnegative();
 const optionalId = nonNegativeInt.nullable().optional();
 const optionalLimit = z.number().optional();
 

@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **133 JS, 32 TS, 1 MTS и 25 JSON**.
+а не всеми файлами в каталоге helpers. В нём **131 JS, 37 TS, 1 MTS и 25 JSON**.
 Entry points: main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
 
@@ -163,6 +163,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/contracts/chatPersistence.ts`
 - `src/contracts/actions.ts`
 - `src/contracts/localFileTranscription.ts`
+- `src/contracts/calendarAvailability.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
 - `src/constants/speakerDetection.json`
@@ -186,6 +187,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/preload/chatBridge.ts`
 - `src/preload/actionsBridge.ts`
 - `src/preload/localFileTranscriptionBridge.ts`
+- `src/preload/calendarAvailabilityBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
 - `src/helpers/builtinActions.js`
@@ -297,6 +299,9 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/actionsIpcHandlers.ts`
 - `src/helpers/localFileTranscription.ts`
 - `src/helpers/localFileTranscriptionIpcHandler.ts`
+- `src/helpers/calendarAvailability.ts`
+- `src/helpers/calendarAvailabilityService.ts`
+- `src/helpers/calendarAvailabilityIpcHandler.ts`
 - `src/helpers/tinfoilCatalog.js`
 - `src/helpers/tinfoilRealtimeStreaming.js`
 - `src/helpers/tinfoilSecureClient.js`
@@ -392,7 +397,7 @@ preload → handler Map → fake downloader; malformed progress отбрасыв
 Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings); focused
 55 passed (`urlDownloadIpc`, `urlDownloadBridge`, `urlAudioDownloader`,
 `rendererBridgeContract`, `mainBuild`, type probes); `build:main` OK.
-Inventory графа Electron: 133 JS, 32 TS, 1 MTS, 25 JSON.
+Inventory графа Electron: 131 JS, 37 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированный IPC Dictionary/Snippets»
 
@@ -421,7 +426,7 @@ preload → handlers → временный SQLite; malformed события и�
 cliBridgeSnippets, dictionaryStartup, databaseLocalBehavior,
 rendererBridgeContract, mainBuild, vocabularyTypeProbe, dictionaryTool,
 snippetTool, snippets);
-`build:main` OK. Inventory графа Electron: 133 JS, 32 TS, 1 MTS, 25 JSON.
+`build:main` OK. Inventory графа Electron: 131 JS, 37 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированный IPC папок и пространств (containers)»
 
@@ -452,7 +457,7 @@ notesIpc, databaseLocalBehavior/Schema, notesDatabase,
 spacesTreeNoteActionClearance, toolUtils, searchNotesTool); compiler probe
 на неполную DB deps; полный `pnpm test`; `pnpm run pack`; Node ABI
 восстановлен; `node scripts/smoke-electron.js` на изолированном профиле.
-Inventory графа Electron: 133 JS, 32 TS, 1 MTS, 25 JSON.
+Inventory графа Electron: 131 JS, 37 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированная граница chat persistence»
 
@@ -548,4 +553,36 @@ localFileTranscriptionTypeProbe 3: неполные deps TS2345/2741, wrong brid
 call TS2345, positive под strict; uploadCancelRegistry,
 fileTranscriptionCustomEndpoint/DiarizationWarning/Managed/Timestamps,
 rendererBridgeContract); полный `pnpm test` 2587 passed; pack + isolated
-smoke. Inventory графа Electron: 133 JS, 32 TS, 1 MTS, 25 JSON.
+smoke. Inventory графа Electron: 131 JS, 37 TS, 1 MTS, 25 JSON.
+
+## Этап «типизированная граница календарной доступности»
+
+14 сентября 2026 (issue #10, план PR #29). Расчёт свободных интервалов и
+канал `calendar-get-availability` переведены в strict TS без изменения
+правил времени и privacy-проекции. `src/helpers/calendarAvailability.ts`
+(конвертация из JS, ESM-исходник сохранён) — чистый расчёт с typed
+normalized request/intervals/slots и внутренним результатом с busy;
+`calendarAvailabilityService.ts` — узкий DB callback + provider/manager
+connection status, injectable clock, apple только darwin, валидация до
+connection check, query range ±buffer; wire-проекция (range/timezone/
+isEntireRangeFree/availableSlots/hasMore/coverage, никогда busy) в
+`src/contracts/calendarAvailability.ts` с discriminated response.
+`calendarAvailabilityIpcHandler.ts` — одна регистрация, логирование и
+Error/non-Error политика сообщений; preload `calendarAvailabilityBridge.ts`
+валидирует ответ, так что extra private fields от main-мока не достигают
+renderer. Tool сохраняет независимую fail-closed проекцию недоверенных
+model args и allowlist user-correctable errors — отдельная граница
+доверия. Все существующие правила (explicit-offset RFC3339, leap year,
+5-minute tolerance, 31-day horizon, slot/buffer/maxResults bounds,
+all-day local dates, declined/canceled/free исключения, слияние/clip/
+truncation) не менялись; сообщения ошибок не заменялись generic Zod
+errors.
+
+Проверка: typecheck 0 ошибок; lint 0 errors (baseline 47+2 warnings);
+`build:main` OK; focused (calendarAvailability 12, calendarAvailabilityService 3,
+calendarAvailabilityBridge e2e через bundled preload 5 — включая shared
+registration guard, calendarAvailabilityTypeProbe 3: неполные deps
+TS2741/2345, wrong response usage TS2339, positive под strict;
+calendarAvailabilityTool 14, calendarDatabase/Tool/ReminderScheduler 26,
+rendererBridgeContract); полный `pnpm test` 2596 passed; pack + isolated
+smoke. Inventory графа Electron: 131 JS, 37 TS, 1 MTS, 25 JSON.

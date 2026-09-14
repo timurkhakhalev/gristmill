@@ -134,7 +134,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **136 JS, 3 TS, 1 MTS и 25 JSON**.
+а не всеми файлами в каталоге helpers. В нём **133 JS, 9 TS, 1 MTS и 25 JSON**.
 Entry points: main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
 
@@ -143,6 +143,9 @@ Entry points: main, preload и ONNX worker. Тесты и tooling в граф н
 Отдельно: root main/preload; 335 JS-тестов на исходной точке; scripts — 21 JS
 и 2 MJS; root cleanup.js/eslint.config.js — tooling. В этом PR добавлены
 build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS не входит в шаг.
+К 14 сентября 2026 срез стал `src` — 166 JS, 196 TS (+MTS), 252 TSX: этап 3a
+(types/electron → contracts/inferenceSettings и reasoningRouting.js → .ts) и
+этап «общий speaker count» (speakerCount.js → .ts) уменьшили JS-инвентарь.
 
 Список ниже — текущие входные файлы графа Electron; сторонние библиотеки
 и type declarations исключены. При изменении entry points или импортов
@@ -263,7 +266,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/sidecarReaper.js`
 - `src/helpers/sidecarRegistry.js`
 - `src/helpers/speakerAssignmentPolicy.js`
-- `src/helpers/speakerCount.js`
+- `src/helpers/speakerCount.ts`
 - `src/helpers/speakerEmbeddings.js`
 - `src/helpers/speakerMerge.js`
 - `src/helpers/stripThinking.js`
@@ -317,3 +320,26 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/utils/serverUtils.js`
 - `src/utils/urlUtils.ts`
 - `src/workers/onnxWorker.js`
+
+## Этап «общий normalizer числа спикеров»
+
+14 сентября 2026 (issue #10, пункт 3). Дубликат `normalizeStoredSpeakerCount`
+убран: `src/helpers/speakerCount.js` → `src/helpers/speakerCount.ts`
+(`value: unknown → number | null`), локальная копия в
+`src/services/uploadNotes.ts` удалена — оба процесса (main: `ipcHandlers.js`
+через emitted `.js`; renderer: `uploadNotes.ts` через Vite) используют одну
+TS-функцию. Extensionless `require("./speakerCount")` в `ipcHandlers.js`
+разрешается в emitted `.js` после `build:main`; неиспользуемый импорт из
+`database.js` удалён. Coercion-семантика `Number()` зафиксирована
+characterization-тестами (`test/helpers/speakerCount.test.js`): строки и
+одноэлементные массивы coercion-ятся, `false`/`0`/дробные/`NaN` → `null`,
+Symbol по-прежнему бросает TypeError. Parity-тест «копия равна оригиналу»
+заменён явными assertions результата `buildUploadNoteMetadata`. Diarization
+algorithm, metadata policy и SQL не менялись.
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors; focused —
+26 passed (`speakerCount`, `uploadNotes`, `uploadDiarizationPersistence`,
+`mainBuild`); `pnpm run build:renderer` OK; emitted
+`dist-main/src/helpers/speakerCount.js` загружен в plain Node без tsx и дал
+ожидаемые значения. Полный `pnpm test` — 2451 passed, 0 failed/skipped.
+Inventory обновлён (граф Electron: 133 JS, 9 TS, 1 MTS, 25 JSON).

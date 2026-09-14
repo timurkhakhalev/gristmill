@@ -1,6 +1,6 @@
 # OpenHercules
 
-OpenHercules is a macOS Apple Silicon meeting and notes client based on an imported OpenWhispr baseline. The current task is cleanup: remove OpenWhispr Cloud and unrelated products while preserving existing realtime recording, notes, full embedded chat, all direct providers, Local and supported Self-Hosted modes.
+OpenHercules is a macOS Apple Silicon meeting and notes client based on an imported OpenWhispr baseline. Cleanup is complete. Current work prepares the Electron build for TypeScript migration while preserving existing realtime recording, notes, full embedded chat, all direct providers, Local and supported Self-Hosted modes.
 
 The product is intended to use OpenWhispr as a one-time source for its Granola-like interface, macOS capture code, calendar integration, and selected provider adapters. OpenHercules is not planned as a long-lived rebrand that continuously merges all upstream OpenWhispr features.
 
@@ -28,7 +28,7 @@ Realtime transcription is optional. Reliable post-meeting processing is the prim
 
 ## Current status
 
-Cleanup is implemented on `codex/cleanup-openhercules`. Notes remain the product root, including blank notes and cross-note chat tools. OpenWhispr accounts/backend, dictation, the standalone assistant, YouTube and semantic search are removed. Direct providers, Local, supported Self-Hosted and existing realtime meeting recording remain. See the [milestone and verification log](docs/cleanup-log.md), [scope](docs/removal-plan.md) and [baseline](docs/cleanup-m0.md).
+Cleanup was merged in PR #6. The Electron build and TypeScript migration boundary are documented in [typescript-build.md](docs/typescript-build.md). Notes remain the product root, including blank notes and cross-note chat tools. OpenWhispr accounts/backend, dictation, the standalone assistant, YouTube and semantic search are removed. Direct providers, Local, supported Self-Hosted and existing realtime meeting recording remain. See the [milestone and verification log](docs/cleanup-log.md), [scope](docs/removal-plan.md) and [baseline](docs/cleanup-m0.md).
 
 ## Documents
 
@@ -42,6 +42,7 @@ need different SQLite ABIs: run `pnpm --dir node_modules/better-sqlite3 exec pre
 before Node tests after packaging. The packaging hook forcibly restores Electron's ABI
 and validates SQLite with the packaged runtime before creating installers.
 
+- [Electron TypeScript build](docs/typescript-build.md)
 - [Product requirements](docs/product.md)
 - [Target architecture](docs/architecture.md)
 - [OpenWhispr cutover](docs/openwhispr-cutover.md)

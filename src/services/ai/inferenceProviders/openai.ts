@@ -1,5 +1,5 @@
 import type { InferenceProvider } from "./types";
-import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl } from "../../../config/constants";
+import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl } from "../../../config/constants.mts";
 import { getOpenAiApiConfig } from "../../../models/ModelRegistry";
 import { getSettings } from "../../../stores/settingsStore";
 import { withRetry, createApiRetryStrategy, httpError } from "../../../utils/retry";

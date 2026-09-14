@@ -4,7 +4,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
 import { getTinfoilLanguageModel } from "./tinfoilClient";
-import { API_ENDPOINTS } from "../../config/constants";
+import { API_ENDPOINTS } from "../../config/constants.mts";
 import { openCodeSessionHeaders } from "./openCodeSession";
 
 // Renderer-side AI SDK factory. Cloud + local only — enterprise providers

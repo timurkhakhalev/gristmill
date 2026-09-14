@@ -35,7 +35,7 @@ import {
 import { STREAMING_ONLY_PROVIDERS } from "../helpers/transcriptionRoute";
 import { getRemoteProviderIcon } from "../utils/providerIcons";
 import { createExternalLinkHandler } from "../utils/externalLinks";
-import { API_ENDPOINTS, normalizeBaseUrl } from "../config/constants";
+import { API_ENDPOINTS, normalizeBaseUrl } from "../config/constants.mts";
 import { GetApiKeyLink } from "./ui/GetApiKeyLink";
 import logger from "../utils/logger";
 import type { ParakeetCheckResult } from "../types/electron";

@@ -1,5 +1,5 @@
 import type { InferenceProvider } from "./types";
-import { buildApiUrl } from "../../../config/constants";
+import { buildApiUrl } from "../../../config/constants.mts";
 import { getSettings } from "../../../stores/settingsStore";
 import logger from "../../../utils/logger";
 import { resolveSelfHostedOpenAIBase } from "../openaiBase";

@@ -5,7 +5,7 @@ import { Input } from "./ui/input";
 import ApiKeyInput from "./ui/ApiKeyInput";
 import ModelCardList from "./ui/ModelCardList";
 import SearchableModelList, { MODEL_SEARCH_THRESHOLD } from "./ui/SearchableModelList";
-import { buildApiUrl, getModelListBaseCandidates, normalizeBaseUrl } from "../config/constants";
+import { buildApiUrl, getModelListBaseCandidates, normalizeBaseUrl } from "../config/constants.mts";
 import { isSecureHttpEndpoint } from "../utils/urlUtils";
 import { GetApiKeyLink } from "./ui/GetApiKeyLink";
 

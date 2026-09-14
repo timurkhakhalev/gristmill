@@ -1,10 +1,12 @@
 const js = require("@eslint/js");
 const globals = require("globals");
+const tseslint = require("typescript-eslint");
 
 module.exports = [
   {
     ignores: [
       "dist/**",
+      "dist-main/**",
       "node_modules/**",
       "src/dist/**",
       "*.min.js",
@@ -48,6 +50,17 @@ module.exports = [
     languageOptions: {
       sourceType: "module",
       globals: { ...globals.node, ...globals.browser },
+    },
+  },
+  {
+    files: ["src/helpers/**/*.ts", "src/utils/**/*.ts"],
+    languageOptions: { parser: tseslint.parser, globals: { ...globals.node, ...globals.browser } },
+    plugins: { "@typescript-eslint": tseslint.plugin },
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
     },
   },
 ];

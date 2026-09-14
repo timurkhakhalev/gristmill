@@ -30,35 +30,6 @@ export interface CalendarEvent {
 
 export type CalendarAvailabilityStatus = "free" | "tentative" | "busy" | "unavailable" | "unknown";
 
-export interface CalendarAvailabilityRequest {
-  start: string;
-  end: string;
-  minimumSlotMinutes?: number;
-  bufferMinutes?: number;
-  maxResults?: number;
-}
-
-export interface CalendarAvailabilityInterval {
-  start: string;
-  end: string;
-}
-
-export interface CalendarAvailabilitySlot extends CalendarAvailabilityInterval {
-  durationMinutes: number;
-}
-
-export interface CalendarAvailabilityResult {
-  range: CalendarAvailabilityInterval;
-  timezone: string;
-  isEntireRangeFree: boolean;
-  availableSlots: CalendarAvailabilitySlot[];
-  hasMore: boolean;
-  coverage: {
-    source: "local-calendar-cache";
-    lookaheadDays: number;
-  };
-}
-
 export interface CalendarAccount {
   email: string;
 }

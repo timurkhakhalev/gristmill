@@ -11,11 +11,11 @@ import {
 } from "../../helpers/calendarAvailability";
 import type { ToolDefinition, ToolResult } from "./ToolRegistry";
 import type {
-  CalendarAvailabilityInterval,
-  CalendarAvailabilityRequest,
-  CalendarAvailabilityResult,
-  CalendarAvailabilitySlot,
-} from "../../types/calendar";
+  AvailabilityInterval,
+  AvailabilityResult,
+  AvailabilitySlot,
+  CalendarAvailabilityRequestWire,
+} from "../../contracts/calendarAvailability";
 
 const ALLOWED_ARGUMENTS = new Set([
   "start",
@@ -34,7 +34,7 @@ const failure = (displayText: string): ToolResult => ({
   displayText,
 });
 
-function parseRequest(args: Record<string, unknown>): CalendarAvailabilityRequest | null {
+function parseRequest(args: Record<string, unknown>): CalendarAvailabilityRequestWire | null {
   if (!args || typeof args !== "object" || Array.isArray(args)) return null;
   if (Object.keys(args).some((key) => !ALLOWED_ARGUMENTS.has(key))) return null;
 
@@ -43,7 +43,7 @@ function parseRequest(args: Record<string, unknown>): CalendarAvailabilityReques
   if (!isExplicitOffsetRfc3339(start) || !isExplicitOffsetRfc3339(end)) return null;
   if (Date.parse(start) >= Date.parse(end)) return null;
 
-  const request: CalendarAvailabilityRequest = { start, end };
+  const request: CalendarAvailabilityRequestWire = { start, end };
   for (const [key, bounds] of [
     ["minimumSlotMinutes", MINIMUM_SLOT_MINUTES_BOUNDS],
     ["bufferMinutes", BUFFER_MINUTES_BOUNDS],
@@ -66,7 +66,7 @@ function parseRequest(args: Record<string, unknown>): CalendarAvailabilityReques
   return request;
 }
 
-function toInterval(value: unknown): CalendarAvailabilityInterval | null {
+function toInterval(value: unknown): AvailabilityInterval | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const { start, end } = value as Record<string, unknown>;
   if (typeof start !== "string" || typeof end !== "string") return null;
@@ -77,7 +77,7 @@ function toInterval(value: unknown): CalendarAvailabilityInterval | null {
 }
 
 // Projects the IPC payload onto known privacy-safe fields; anything malformed fails closed.
-function projectAvailability(value: unknown): CalendarAvailabilityResult | null {
+function projectAvailability(value: unknown): AvailabilityResult | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const payload = value as Record<string, unknown>;
   const range = toInterval(payload.range);
@@ -98,7 +98,7 @@ function projectAvailability(value: unknown): CalendarAvailabilityResult | null 
     return null;
   }
 
-  const availableSlots: CalendarAvailabilitySlot[] = [];
+  const availableSlots: AvailabilitySlot[] = [];
   for (const item of payload.availableSlots) {
     const interval = toInterval(item);
     const durationMinutes = (item as Record<string, unknown> | null)?.durationMinutes;
@@ -137,8 +137,8 @@ function localizeInstant(
 }
 
 function toModelFacts(
-  availability: CalendarAvailabilityResult,
-  request: CalendarAvailabilityRequest
+  availability: AvailabilityResult,
+  request: CalendarAvailabilityRequestWire
 ): Record<string, unknown> {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: availability.timezone,

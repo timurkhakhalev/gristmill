@@ -28,14 +28,19 @@ Realtime transcription is optional. Reliable post-meeting processing is the prim
 
 ## Current status
 
-OpenWhispr source is imported as baseline commit `49cd2b3`. No application cleanup is implemented. Notes remain the product root, including blank notes and cross-note chat tools. Scope is in [the removal plan](docs/removal-plan.md); ownership, inventories and verification results are in [M0](docs/cleanup-m0.md).
+Cleanup is implemented on `codex/cleanup-openhercules`. Notes remain the product root, including blank notes and cross-note chat tools. OpenWhispr accounts/backend, dictation, the standalone assistant, YouTube and semantic search are removed. Direct providers, Local, supported Self-Hosted and existing realtime meeting recording remain. See the [milestone and verification log](docs/cleanup-log.md), [scope](docs/removal-plan.md) and [baseline](docs/cleanup-m0.md).
 
 ## Documents
 
 Install with `pnpm install --frozen-lockfile` (pnpm 10.19.0, Node >=24).
 Use `pnpm run build:renderer`, `pnpm run typecheck`, `pnpm run lint` and
 `pnpm test` for checks. The canonical lockfile is `pnpm-lock.yaml`.
-Do not start Electron before the identity/storage isolation in M1.
+Build the macOS arm64 app with `pnpm run build:mac:arm64` (Xcode command-line tools required). For an unsigned local build, set `CSC_IDENTITY_AUTO_DISCOVERY=false`.
+Run `node scripts/smoke-electron.js` after packaging for an isolated-profile smoke test.
+Only the integrator runs tests/build/install, sequentially. Node tests and Electron
+need different SQLite ABIs: run `pnpm --dir node_modules/better-sqlite3 exec prebuild-install`
+before Node tests after packaging. The packaging hook forcibly restores Electron's ABI
+and validates SQLite with the packaged runtime before creating installers.
 
 - [Product requirements](docs/product.md)
 - [Target architecture](docs/architecture.md)

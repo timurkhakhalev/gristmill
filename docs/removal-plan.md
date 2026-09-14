@@ -1,6 +1,7 @@
 # План сокращения OpenWhispr до OpenHercules
 
-Статус: план cleanup для реализации. Код cleanup пока не изменён.
+Статус: cleanup реализован. Результаты по M0–M9 и границы выполненных
+проверок: [cleanup-log.md](cleanup-log.md). Ниже сохранён согласованный scope.
 Основание: обсуждение OpenHercules и импорт OpenWhispr
 `4335972b96a62caab0c822b3b9549a1a4fdbb351`.
 

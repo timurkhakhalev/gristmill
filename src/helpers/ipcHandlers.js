@@ -57,6 +57,7 @@ const { resolveLocalServerNeeds } = require("./localServerPolicy");
 const { registerNotesHandlers } = require("./notesIpcHandlers");
 const { registerUrlDownloadHandlers } = require("./urlDownloadIpcHandlers");
 const { registerVocabularyHandlers } = require("./vocabularyIpcHandlers");
+const { registerContainerHandlers } = require("./containerIpcHandlers");
 const { sendNoteAdded, sendNoteUpdated, sendNoteDeleted } = require("./notesEvents");
 const autoStart = require("./autoStart");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
@@ -1066,6 +1067,18 @@ class IPCHandlers {
         setImmediate(() => broadcastToWindows("space-synced", result.space));
       }
       return result;
+    });
+
+    // Container (folders/spaces) channels live in the typed module.
+    registerContainerHandlers(ipcMain, {
+      database: this.databaseManager,
+      noteFilesEnabled: () => this._noteFilesEnabled,
+      getFolderName: (folderId) => this._getFolderName(folderId),
+      mirrorWriteNote: (note) => this._asyncMirrorWrite(note),
+      mirrorEnsureFolder: (name) => require("./markdownMirror").ensureFolder(name),
+      mirrorRenameFolder: (oldName, newName) =>
+        require("./markdownMirror").renameFolder(oldName, newName),
+      mirrorDeleteFolderIfUnshared: (name) => this._mirrorDeleteFolderIfUnshared(name),
     });
 
     ipcMain.handle("db-get-actions", async () => {

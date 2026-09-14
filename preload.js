@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 const { createNotesBridge } = require("./src/preload/notesBridge");
 const { createVocabularyBridge } = require("./src/preload/vocabularyBridge");
 const { createContainersBridge } = require("./src/preload/containerBridge");
+const { createChatPersistenceBridge } = require("./src/preload/chatBridge");
 const { createUrlDownloadBridge } = require("./src/preload/urlDownloadBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
@@ -59,6 +60,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createNotesBridge(ipcRenderer),
   ...createVocabularyBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
+  ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
   setOnboardingActive: (active) => ipcRenderer.invoke("onboarding-set-active", active),
   meetingTranscriptionPrepare: (options) =>
@@ -543,27 +545,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   acquireRecordingLock: (pipeline) => ipcRenderer.invoke("acquire-recording-lock", pipeline),
   releaseRecordingLock: (pipeline) => ipcRenderer.invoke("release-recording-lock", pipeline),
 
-  // Agent conversation persistence
-  createAgentConversation: (title, noteId, spaceId, folderId) =>
-    ipcRenderer.invoke("db-create-agent-conversation", title, noteId, spaceId, folderId),
-  getAgentConversations: (limit) => ipcRenderer.invoke("db-get-agent-conversations", limit),
-  getAgentConversation: (id) => ipcRenderer.invoke("db-get-agent-conversation", id),
-  deleteAgentConversation: (id) => ipcRenderer.invoke("db-delete-agent-conversation", id),
-  updateAgentConversationTitle: (id, title) =>
-    ipcRenderer.invoke("db-update-agent-conversation-title", id, title),
-  addAgentMessage: (conversationId, role, content, metadata) =>
-    ipcRenderer.invoke("db-add-agent-message", conversationId, role, content, metadata),
-  getAgentMessages: (conversationId) => ipcRenderer.invoke("db-get-agent-messages", conversationId),
-  getAgentConversationsWithPreview: (limit, offset, includeArchived) =>
-    ipcRenderer.invoke("db-get-agent-conversations-with-preview", limit, offset, includeArchived),
-  searchAgentConversations: (query, limit) =>
-    ipcRenderer.invoke("db-search-agent-conversations", query, limit),
-  getConversationsForNote: (noteId, limit) =>
-    ipcRenderer.invoke("db-get-conversations-for-note", noteId, limit),
-  getConversationsForContainer: (spaceId, folderId, limit) =>
-    ipcRenderer.invoke("db-get-conversations-for-container", spaceId, folderId, limit),
-  archiveAgentConversation: (id) => ipcRenderer.invoke("db-archive-agent-conversation", id),
-  unarchiveAgentConversation: (id) => ipcRenderer.invoke("db-unarchive-agent-conversation", id),
+  // Agent conversation persistence lives in the typed chatBridge above.
   // Google Calendar
   gcalStartOAuth: () => ipcRenderer.invoke("gcal-start-oauth"),
   gcalDisconnect: (email) => ipcRenderer.invoke("gcal-disconnect", email),

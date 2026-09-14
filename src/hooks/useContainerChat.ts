@@ -5,6 +5,7 @@ import { useChatMessageSender } from "../components/chat/useChatMessageSender";
 import type { Message, AgentState } from "../components/chat/types";
 import { deriveConversationTitle } from "../lib/conversationTitle";
 import type { SpaceItem, FolderItem } from "../contracts/containers";
+import type { ContainerConversation } from "../contracts/chatPersistence";
 import type { NoteItem } from "../contracts/notes";
 import type { ContainerScope } from "../types/chat";
 
@@ -17,20 +18,12 @@ interface UseContainerChatOptions {
   notes: NoteItem[];
 }
 
-export interface ContainerConversationItem {
-  id: number;
-  title: string;
-  created_at: string;
-  updated_at: string;
-  message_count: number;
-}
-
 interface UseContainerChatReturn {
   messages: Message[];
   agentState: AgentState;
   sendMessage: (text: string) => Promise<void>;
   cancelStream: () => void;
-  conversations: ContainerConversationItem[];
+  conversations: ContainerConversation[];
   activeConversationId: number | null;
   switchConversation: (id: number) => Promise<void>;
   startNewChat: () => void;
@@ -47,7 +40,7 @@ export function useContainerChat({
   notes,
 }: UseContainerChatOptions): UseContainerChatReturn {
   const [conversationId, setConversationId] = useState<number | null>(null);
-  const [conversations, setConversations] = useState<ContainerConversationItem[]>([]);
+  const [conversations, setConversations] = useState<ContainerConversation[]>([]);
   const folderId = folder?.id ?? null;
 
   const persistence = useChatPersistence({
@@ -82,7 +75,7 @@ export function useContainerChat({
 
   const fetchConversations = useCallback(
     async (isStale?: () => boolean): Promise<void> => {
-      let list: ContainerConversationItem[];
+      let list: ContainerConversation[];
       try {
         list = (await window.electronAPI?.getConversationsForContainer?.(space.id, folderId)) ?? [];
       } catch {

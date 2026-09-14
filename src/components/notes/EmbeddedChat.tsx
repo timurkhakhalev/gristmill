@@ -6,7 +6,7 @@ import { ChatMessages } from "../chat/ChatMessages";
 import { ChatInput } from "../chat/ChatInput";
 import type { Message, AgentState } from "../chat/types";
 import { setActiveNoteId, setActiveFolderId } from "../../stores/noteStore";
-import type { ContainerConversationItem } from "../../hooks/useContainerChat";
+import type { ConversationRow } from "../../contracts/chatPersistence";
 import { ConversationPicker } from "./ConversationPicker";
 import { FLOATING_CHAT_MAX_HEIGHT_CSS } from "./floatingChatLayout";
 
@@ -19,7 +19,7 @@ interface EmbeddedChatProps {
   agentState: AgentState;
   onTextSubmit: (text: string) => void;
   onCancel: () => void;
-  noteConversations?: ContainerConversationItem[];
+  noteConversations?: ConversationRow[];
   activeConversationId?: number | null;
   onSwitchConversation?: (id: number) => void;
   onNewChat?: () => void;

@@ -1,7 +1,7 @@
 import { ChevronDown, Plus } from "../icons";
 import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../../hooks/useUiLocale";
-import type { ContainerConversationItem } from "../../hooks/useContainerChat";
+import type { ConversationRow } from "../../contracts/chatPersistence";
 import { formatShortDate } from "../../utils/dateFormatting";
 import { cn } from "../lib/utils";
 import {
@@ -13,7 +13,7 @@ import {
 } from "../ui/dropdown-menu";
 
 interface ConversationPickerProps {
-  conversations: ContainerConversationItem[];
+  conversations: ConversationRow[];
   activeConversationId?: number | null;
   onSwitchConversation: (id: number) => void;
   onNewChat?: () => void;

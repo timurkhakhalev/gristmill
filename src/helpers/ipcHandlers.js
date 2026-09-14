@@ -59,6 +59,7 @@ const { registerUrlDownloadHandlers } = require("./urlDownloadIpcHandlers");
 const { registerVocabularyHandlers } = require("./vocabularyIpcHandlers");
 const { registerContainerHandlers } = require("./containerIpcHandlers");
 const { registerChatPersistenceHandlers } = require("./chatPersistenceIpcHandlers");
+const { registerActionsHandlers } = require("./actionsIpcHandlers");
 const { sendNoteAdded, sendNoteUpdated, sendNoteDeleted } = require("./notesEvents");
 const autoStart = require("./autoStart");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
@@ -1006,42 +1007,9 @@ class IPCHandlers {
       mirrorDeleteFolderIfUnshared: (name) => this._mirrorDeleteFolderIfUnshared(name),
     });
 
-    ipcMain.handle("db-get-actions", async () => {
-      return this.databaseManager.getActions();
-    });
-
-    ipcMain.handle("db-get-action", async (event, id) => {
-      return this.databaseManager.getAction(id);
-    });
-
-    ipcMain.handle("db-create-action", async (event, name, description, prompt, icon) => {
-      const result = this.databaseManager.createAction(name, description, prompt, icon);
-      if (result?.success && result?.action) {
-        setImmediate(() => {
-          broadcastToWindows("action-created", result.action);
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-update-action", async (event, id, updates) => {
-      const result = this.databaseManager.updateAction(id, updates);
-      if (result?.success && result?.action) {
-        setImmediate(() => {
-          broadcastToWindows("action-updated", result.action);
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-delete-action", async (event, id) => {
-      const result = this.databaseManager.deleteAction(id);
-      if (result?.success) {
-        setImmediate(() => {
-          broadcastToWindows("action-deleted", { id });
-        });
-      }
-      return result;
+    // AI Actions catalog channels live in the typed module.
+    registerActionsHandlers(ipcMain, {
+      database: this.databaseManager,
     });
 
     // Agent conversation (chat persistence) channels live in the typed module.

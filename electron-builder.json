@@ -1,10 +1,10 @@
 {
-  "appId": "com.gizmolabs.openwhispr",
+  "appId": "com.openhercules.desktop",
   "afterPack": "scripts/afterPack.js",
-  "productName": "OpenWhispr",
+  "productName": "OpenHercules",
   "protocols": {
-    "name": "OpenWhispr Protocol",
-    "schemes": ["openwhispr"]
+    "name": "OpenHercules Protocol",
+    "schemes": ["openhercules"]
   },
   "directories": {
     "output": "dist"
@@ -30,7 +30,6 @@
     "src/types/**/*",
     "src/utils.js",
     "src/utils/**/*",
-    "src/updater.js",
     "src/components.json",
     "!node_modules/.cache/**/*",
     "!src/node_modules/**/*",
@@ -155,8 +154,6 @@
     "hardenedRuntime": true,
     "entitlements": "resources/mac/entitlements.mac.plist",
     "entitlementsInherit": "resources/mac/entitlements.mac.plist",
-    "identity": "Gizmo Labs Inc. (T832773L2J)",
-    "notarize": true,
     "extraResources": [
       {
         "from": "src/assets/Assets.car",
@@ -166,22 +163,16 @@
     "extendInfo": {
       "LSUIElement": false,
       "CFBundleIconName": "openwhispr",
-      "NSMicrophoneUsageDescription": "OpenWhispr uses the microphone to capture your voice for transcription.",
-      "NSAudioCaptureUsageDescription": "OpenWhispr uses system audio to capture other participants' audio from calls and meetings.",
-      "NSAccessibilityUsageDescription": "OpenWhispr needs accessibility permissions to paste transcribed text into other applications.",
-      "NSCalendarsUsageDescription": "OpenWhispr reads your calendar to detect upcoming meetings and link meeting notes to events.",
-      "NSCalendarsFullAccessUsageDescription": "OpenWhispr reads your calendar to detect upcoming meetings and link meeting notes to events."
+      "NSMicrophoneUsageDescription": "OpenHercules uses the microphone to capture your voice for transcription.",
+      "NSAudioCaptureUsageDescription": "OpenHercules uses system audio to capture other participants' audio from calls and meetings.",
+      "NSAccessibilityUsageDescription": "OpenHercules needs accessibility permissions to paste transcribed text into other applications.",
+      "NSCalendarsUsageDescription": "OpenHercules reads your calendar to detect upcoming meetings and link meeting notes to events.",
+      "NSCalendarsFullAccessUsageDescription": "OpenHercules reads your calendar to detect upcoming meetings and link meeting notes to events."
     }
   },
   "win": {
     "target": ["nsis", "portable"],
     "icon": "src/assets/icon.ico",
-    "azureSignOptions": {
-      "endpoint": "https://eus.codesigning.azure.net/",
-      "certificateProfileName": "openwhispr-release",
-      "codeSigningAccountName": "OpenWhispr",
-      "publisherName": "CN=Gizmo Labs Inc., O=Gizmo Labs Inc., L=Wilmington, S=Delaware, C=US"
-    },
     "extraResources": [
       {
         "from": "resources/bin/nircmd.exe",
@@ -263,18 +254,11 @@
     "include": "resources/nsis/installer.nsh"
   },
   "dmg": {
-    "title": "OpenWhispr",
+    "title": "OpenHercules",
     "icon": "src/assets/icon.icns",
     "window": {
       "width": 540,
       "height": 380
     }
-  },
-  "publish": {
-    "provider": "github",
-    "owner": "OpenWhispr",
-    "repo": "openwhispr",
-    "private": false,
-    "releaseType": "draft"
   }
 }

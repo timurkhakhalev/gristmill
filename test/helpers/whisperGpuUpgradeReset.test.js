@@ -88,7 +88,7 @@ test("reset removes only the WHISPER_GPU_FAILED line; hand-added .env lines surv
       envPath,
       [
         "# OpenWhispr Environment Variables",
-        "OPENWHISPR_LOG_LEVEL=debug", // hand-added: not in PERSISTED_KEYS
+        "OPENHERCULES_LOG_LEVEL=debug", // hand-added: not in PERSISTED_KEYS
         "WHISPER_GPU_FAILED=cuda",
         "WHISPER_CUDA_ENABLED=true",
         "",
@@ -110,7 +110,7 @@ test("reset removes only the WHISPER_GPU_FAILED line; hand-added .env lines surv
       fs.readFileSync(envPath, "utf8"),
       [
         "# OpenWhispr Environment Variables",
-        "OPENWHISPR_LOG_LEVEL=debug",
+        "OPENHERCULES_LOG_LEVEL=debug",
         "WHISPER_CUDA_ENABLED=true",
         "",
       ].join("\n"),

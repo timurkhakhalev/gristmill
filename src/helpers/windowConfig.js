@@ -2,6 +2,11 @@ const path = require("path");
 const { getLinuxSessionInfo } = require("./linuxSession");
 const { ASSISTANT_PANEL_SIZE_LIMITS } = require("./voiceSurfaceGeometry");
 
+// All renderer windows share an app-owned persisted session. The explicit
+// partition prevents Electron from ever reusing a profile created by the
+// imported application when the user runs both apps side by side.
+const OPENHERCULES_SESSION_PARTITION = "persist:openhercules";
+
 const FOCUSLESS_OVERLAY_ROLES = new Set(["main", "notification"]);
 
 function usesGnomeOverlayPolicy(linuxSession) {
@@ -183,6 +188,7 @@ const MAIN_WINDOW_CONFIG = {
   title: "Voice Recorder",
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
+    partition: OPENHERCULES_SESSION_PARTITION,
     nodeIntegration: false,
     contextIsolation: true,
     sandbox: true,
@@ -222,6 +228,7 @@ const CONTROL_PANEL_CONFIG = {
   backgroundColor: process.platform === "darwin" ? "#00000000" : "#1c1c2e",
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
+    partition: OPENHERCULES_SESSION_PARTITION,
     nodeIntegration: false,
     contextIsolation: true,
     // sandbox: false is required because the preload script bridges IPC
@@ -277,6 +284,7 @@ const NOTIFICATION_WINDOW_CONFIG = {
   acceptFirstMouse: true,
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
+    partition: OPENHERCULES_SESSION_PARTITION,
     nodeIntegration: false,
     contextIsolation: true,
     sandbox: true,
@@ -394,6 +402,7 @@ class WindowPositionUtil {
 module.exports = {
   MAIN_WINDOW_CONFIG,
   CONTROL_PANEL_CONFIG,
+  OPENHERCULES_SESSION_PARTITION,
   ONBOARDING_WINDOW_SIZES,
   NOTIFICATION_WINDOW_CONFIG,
   ASSISTANT_PANEL_SIZE_LIMITS,

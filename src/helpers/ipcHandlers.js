@@ -136,7 +136,6 @@ const {
 } = require("./speakerAssignmentPolicy");
 const { normalizeStoredSpeakerCount } = require("./speakerCount");
 const { downsample24kTo16k, pcm16ToWav } = require("../utils/audioUtils");
-const postMigrationDetector = require("./postMigrationDetector");
 const screenContextCapture = require("./screenContextCapture");
 const {
   DEFAULT_EXPECTED_SPEAKER_COUNT,
@@ -224,8 +223,8 @@ const {
 
 // Chunk retries need their own connection pool: recovering a wedged chunk pool
 // must not abort an unrelated inline upload that has no collateral retry path.
-const CLOUD_CHUNK_UPLOAD_SESSION_PARTITION = "ow-cloud-chunk-uploads";
-const CLOUD_INLINE_UPLOAD_SESSION_PARTITION = "ow-cloud-uploads";
+const CLOUD_CHUNK_UPLOAD_SESSION_PARTITION = "persist:openhercules-cloud-chunk-uploads";
+const CLOUD_INLINE_UPLOAD_SESSION_PARTITION = "persist:openhercules-cloud-uploads";
 const cloudUploadSlots = createUploadSlots(CLOUD_CHUNK_GLOBAL_CONCURRENCY);
 const shouldDropUploadPool = createTeardownGate();
 const cloudUploadSessions = new Map();
@@ -601,7 +600,6 @@ class IPCHandlers {
     this.parakeetManager = managers.parakeetManager;
     this.diarizationManager = managers.diarizationManager;
     this.windowManager = managers.windowManager;
-    this.updateManager = managers.updateManager;
     this.windowsKeyManager = managers.windowsKeyManager;
     this.linuxKeyManager = managers.linuxKeyManager;
     this.textEditMonitor = managers.textEditMonitor;
@@ -619,7 +617,7 @@ class IPCHandlers {
     this.meetingAecManager = managers.meetingAecManager;
     this.getQdrantManager = managers.getQdrantManager;
     this.oauthProtocolRegistered = managers.oauthProtocolRegistered === true;
-    this.oauthProtocol = managers.oauthProtocol || "openwhispr";
+    this.oauthProtocol = managers.oauthProtocol || "openhercules";
     this.sessionId = crypto.randomUUID();
     // requestId -> AbortControllers for in-flight audio-upload work (cloud
     // upload, or local transcription + diarization sharing one id), so a
@@ -3962,7 +3960,7 @@ class IPCHandlers {
 
       // These caches are not owned by one account. Remove them only through
       // the explicit device-erasure path, never during normal account deletion.
-      const homeCacheRoot = path.join(os.homedir(), ".cache", "openwhispr");
+      const homeCacheRoot = path.join(os.homedir(), ".cache", "openhercules");
       for (const cacheName of ["embedding-models", "qdrant-data", "qdrant-data-dev", "yt-dlp"]) {
         try {
           fs.rmSync(path.join(homeCacheRoot, cacheName), { recursive: true, force: true });
@@ -5977,8 +5975,8 @@ class IPCHandlers {
       return getSessionCookiesFromWindow(win);
     };
 
-    // Bearer auth is preferred. Cookie fallback covers the brief window before
-    // main.js's startup migration bridge runs (or if it failed for this user).
+    // Bearer auth is preferred. The existing cookie path remains available to
+    // the account-backed cloud handlers until their M2 removal.
     const getAuthHeaderFromWindow = async (win) => {
       const token = tokenStore.get();
       if (token) return { Authorization: `Bearer ${token}` };
@@ -10227,25 +10225,25 @@ class IPCHandlers {
         // Parse lines
         const lines = envContent.split("\n");
         const logLevelIndex = lines.findIndex((line) =>
-          line.trim().startsWith("OPENWHISPR_LOG_LEVEL=")
+          line.trim().startsWith("OPENHERCULES_LOG_LEVEL=")
         );
 
         if (enabled) {
           // Set to debug
           if (logLevelIndex !== -1) {
-            lines[logLevelIndex] = "OPENWHISPR_LOG_LEVEL=debug";
+            lines[logLevelIndex] = "OPENHERCULES_LOG_LEVEL=debug";
           } else {
             // Add new line
             if (lines.length > 0 && lines[lines.length - 1] !== "") {
               lines.push("");
             }
             lines.push("# Debug logging setting");
-            lines.push("OPENWHISPR_LOG_LEVEL=debug");
+            lines.push("OPENHERCULES_LOG_LEVEL=debug");
           }
         } else {
           // Remove or set to info
           if (logLevelIndex !== -1) {
-            lines[logLevelIndex] = "OPENWHISPR_LOG_LEVEL=info";
+            lines[logLevelIndex] = "OPENHERCULES_LOG_LEVEL=info";
           }
         }
 
@@ -10253,7 +10251,7 @@ class IPCHandlers {
         fs.writeFileSync(envPath, lines.join("\n"), "utf8");
 
         // Update environment variable
-        process.env.OPENWHISPR_LOG_LEVEL = enabled ? "debug" : "info";
+        process.env.OPENHERCULES_LOG_LEVEL = enabled ? "debug" : "info";
 
         // Refresh logger state
         debugLogger.refreshLogLevel();
@@ -10280,50 +10278,11 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("check-for-updates", async () => {
-      return this.updateManager.checkForUpdates();
-    });
-
-    ipcMain.handle("download-update", async () => {
-      return this.updateManager.downloadUpdate();
-    });
-
-    ipcMain.handle("install-update", async () => {
-      return this.updateManager.installUpdate();
-    });
-
-    ipcMain.handle("get-app-version", async () => {
-      return this.updateManager.getAppVersion();
-    });
-
-    ipcMain.handle("get-post-migration-state", () => ({
-      justMigrated: postMigrationDetector.isReturningFromOldBundle(),
-    }));
-
     ipcMain.handle("get-oauth-protocol-registered", () => this.oauthProtocolRegistered);
 
     ipcMain.handle("get-oauth-protocol", () => this.oauthProtocol);
 
-    ipcMain.handle("mark-bundle-migrated", () => {
-      postMigrationDetector.markBundleMigrated();
-    });
-
-    ipcMain.handle("mark-bundle-migration-dismissed", () => {
-      postMigrationDetector.markBundleMigrationDismissed();
-    });
-
-    ipcMain.handle("get-update-status", async () => {
-      return this.updateManager.getUpdateStatus();
-    });
-
-    ipcMain.handle("get-update-info", async () => {
-      return this.updateManager.getUpdateInfo();
-    });
-
-    ipcMain.handle("set-auto-updates-enabled", async (_event, enabled) => {
-      this.updateManager.setAutoUpdatesEnabled(enabled === true);
-      return { success: true };
-    });
+    ipcMain.handle("get-app-version", () => ({ version: app.getVersion() }));
 
     const fetchStreamingToken = async (event) => {
       const apiUrl = getApiUrl();

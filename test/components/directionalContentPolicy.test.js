@@ -133,10 +133,6 @@ test("localized sentences isolate technical interpolations without changing word
       /<BidiInterpolatedText[\s\S]*?resetToDefault[\s\S]*?value=\{formatHotkeyLabel\(effectiveDefaultHotkey\)\}/,
     ],
     [
-      "src/components/SettingsPage.tsx",
-      /<BidiInterpolatedText[\s\S]*?updates\.whatsNew[\s\S]*?value=\{updateInfo\.version\}/,
-    ],
-    [
       "src/components/TeamRosterSection.tsx",
       /<BidiInterpolatedText[\s\S]*?members\.inviteFooter[\s\S]*?value=\{addSearch\.trim\(\)\}/,
     ],

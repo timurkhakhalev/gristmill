@@ -24,11 +24,11 @@ test("names saved audio in local time whether or not the timestamp carries a zon
 
   // 12:00 UTC is 05:00 in Los Angeles. Both spellings name the same instant, so
   // both must produce the same name.
-  assert.equal(filenameFor("2026-09-10 12:00:00.000Z"), "OpenWhispr-2026-09-10-05-00-00-42.webm");
-  assert.equal(filenameFor("2026-09-10 12:00:00"), "OpenWhispr-2026-09-10-05-00-00-42.webm");
+  assert.equal(filenameFor("2026-09-10 12:00:00.000Z"), "OpenHercules-2026-09-10-05-00-00-42.webm");
+  assert.equal(filenameFor("2026-09-10 12:00:00"), "OpenHercules-2026-09-10-05-00-00-42.webm");
 });
 
 test("falls back to the bare name when the timestamp is unusable", () => {
-  assert.equal(filenameFor(null), "OpenWhispr-42.webm");
-  assert.equal(filenameFor("not a date"), "OpenWhispr-42.webm");
+  assert.equal(filenameFor(null), "OpenHercules-42.webm");
+  assert.equal(filenameFor("not a date"), "OpenHercules-42.webm");
 });

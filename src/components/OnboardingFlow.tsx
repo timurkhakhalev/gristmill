@@ -540,7 +540,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         }
 
         await window.electronAPI?.saveAllKeysToEnv?.();
-        await window.electronAPI?.markBundleMigrated?.();
         await window.electronAPI?.setOnboardingWindowMode?.("restore");
 
         // hasPendingLocalModels() covers proceeding past a still-running download

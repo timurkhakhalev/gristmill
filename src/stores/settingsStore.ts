@@ -240,17 +240,6 @@ function migrateMicrophoneSelectionMode() {
 
 migrateMicrophoneSelectionMode();
 
-// Automatic updates default on for new installs only. An install that already
-// finished onboarding keeps the manual download-and-install flow until the
-// user opts in.
-function initializeAutoUpdatesDefault() {
-  if (!isBrowser || localStorage.getItem("autoUpdatesEnabled") !== null) return;
-  const isExistingInstall = localStorage.getItem("onboardingCompleted") === "true";
-  localStorage.setItem("autoUpdatesEnabled", String(!isExistingInstall));
-}
-
-initializeAutoUpdatesDefault();
-
 const BOOLEAN_SETTINGS = new Set([
   "useLocalWhisper",
   "meetingUseLocalWhisper",
@@ -293,7 +282,6 @@ const BOOLEAN_SETTINGS = new Set([
   "notificationsEnabled",
   "notifyMeetingDetection",
   "notifyCalendarReminders",
-  "autoUpdatesEnabled",
   "gcalPrimaryOnly",
   "mcalPrimaryOnly",
   "appleCalendarConnected",
@@ -860,7 +848,6 @@ export interface SettingsState
   notificationsEnabled: boolean;
   notifyMeetingDetection: boolean;
   notifyCalendarReminders: boolean;
-  autoUpdatesEnabled: boolean;
   gcalPrimaryOnly: boolean;
   mcalPrimaryOnly: boolean;
   appleCalendarConnected: boolean;
@@ -1169,7 +1156,6 @@ export interface SettingsState
   setNotificationsEnabled: (value: boolean) => void;
   setNotifyMeetingDetection: (value: boolean) => void;
   setNotifyCalendarReminders: (value: boolean) => void;
-  setAutoUpdatesEnabled: (enabled: boolean) => void;
   setGcalPrimaryOnly: (value: boolean) => void;
   setMcalPrimaryOnly: (value: boolean) => void;
   setAppleCalendarConnected: (value: boolean) => void;
@@ -1589,7 +1575,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   notificationsEnabled: readBoolean("notificationsEnabled", true),
   notifyMeetingDetection: readBoolean("notifyMeetingDetection", true),
   notifyCalendarReminders: readBoolean("notifyCalendarReminders", true),
-  autoUpdatesEnabled: readBoolean("autoUpdatesEnabled", true),
   ...(() => {
     let accounts: CalendarAccount[] = [];
     try {
@@ -2387,11 +2372,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setNotificationsEnabled: createBooleanSetter("notificationsEnabled"),
   setNotifyMeetingDetection: createBooleanSetter("notifyMeetingDetection"),
   setNotifyCalendarReminders: createBooleanSetter("notifyCalendarReminders"),
-  setAutoUpdatesEnabled: (enabled: boolean) => {
-    if (isBrowser) localStorage.setItem("autoUpdatesEnabled", String(enabled));
-    set({ autoUpdatesEnabled: enabled });
-    if (isBrowser) window.electronAPI?.setAutoUpdatesEnabled?.(enabled);
-  },
   setGcalPrimaryOnly: (value: boolean) => {
     if (isBrowser) localStorage.setItem("gcalPrimaryOnly", String(value));
     useSettingsStore.setState({ gcalPrimaryOnly: value });
@@ -3494,18 +3474,6 @@ export async function initializeSettings(): Promise<void> {
     } catch (err) {
       logger.warn(
         "Failed to sync notification preferences on startup",
-        { error: (err as Error).message },
-        "settings"
-      );
-    }
-
-    try {
-      await window.electronAPI.setAutoUpdatesEnabled?.(
-        useSettingsStore.getState().autoUpdatesEnabled
-      );
-    } catch (err) {
-      logger.warn(
-        "Failed to sync automatic updates preference on startup",
         { error: (err as Error).message },
         "settings"
       );

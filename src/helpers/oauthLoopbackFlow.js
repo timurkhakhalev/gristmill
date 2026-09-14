@@ -6,9 +6,9 @@ const OAUTH_TIMEOUT_MS = 120000;
 const DEFAULT_DESKTOP_CALLBACK_URL = "https://openwhispr.com/auth/desktop-callback";
 
 const PROTOCOL_BY_CHANNEL = {
-  development: "openwhispr-dev",
-  staging: "openwhispr-staging",
-  production: "openwhispr",
+  development: "openhercules-dev",
+  staging: "openhercules-staging",
+  production: "openhercules",
 };
 
 // Thrown by handleCallback to control the error code shown on the hosted
@@ -25,7 +25,7 @@ function getDesktopCallbackUrl() {
 }
 
 function getProtocol() {
-  const channel = process.env.OPENWHISPR_CHANNEL || "production";
+  const channel = process.env.OPENHERCULES_CHANNEL || "production";
   return PROTOCOL_BY_CHANNEL[channel] || PROTOCOL_BY_CHANNEL.production;
 }
 

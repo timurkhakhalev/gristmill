@@ -35,7 +35,7 @@ function resetWhisperGpuFailureOnUpgrade(environmentManager) {
     to: version,
   });
   // Targeted removal: a full saveAllKeysToEnvFile() rewrite would drop
-  // hand-added .env lines (e.g. OPENWHISPR_LOG_LEVEL=debug).
+  // hand-added .env lines (e.g. OPENHERCULES_LOG_LEVEL=debug).
   environmentManager.removeKeyFromEnvFile("WHISPER_GPU_FAILED").catch((err) => {
     debugLogger.error("Failed to persist WHISPER_GPU_FAILED clear to .env", {
       error: err.message,

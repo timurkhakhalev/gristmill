@@ -816,38 +816,6 @@ export interface ScreenContextImage {
   data: string;
 }
 
-export interface UpdateCheckResult {
-  updateAvailable: boolean;
-  version?: string;
-  releaseDate?: string;
-  files?: any[];
-  releaseNotes?: string;
-  message?: string;
-}
-
-export interface UpdateStatusResult {
-  updateAvailable: boolean;
-  updateDownloaded: boolean;
-  isDevelopment: boolean;
-  isSupported: boolean;
-}
-
-export interface UpdateInfoResult {
-  version?: string;
-  releaseDate?: string;
-  releaseNotes?: string | null;
-  files?: any[];
-}
-
-export interface UpdateResult {
-  success: boolean;
-  message: string;
-}
-
-export interface AppVersionResult {
-  version: string;
-}
-
 export interface WhisperDownloadProgressData {
   type: "progress" | "installing" | "complete" | "error";
   model: string;
@@ -1978,26 +1946,9 @@ declare global {
       // App management
       cleanupApp: () => Promise<{ success: boolean; message: string; errors?: string[] }>;
 
-      // Update operations
-      checkForUpdates: () => Promise<UpdateCheckResult>;
-      downloadUpdate: () => Promise<UpdateResult>;
-      installUpdate: () => Promise<UpdateResult>;
-      getAppVersion: () => Promise<AppVersionResult>;
-      getPostMigrationState: () => Promise<{ justMigrated: boolean }>;
       getOAuthProtocolRegistered: () => Promise<boolean>;
       getOAuthProtocol: () => Promise<string>;
-      markBundleMigrated: () => Promise<void>;
-      markBundleMigrationDismissed: () => Promise<void>;
-      getUpdateStatus: () => Promise<UpdateStatusResult>;
-      getUpdateInfo: () => Promise<UpdateInfoResult | null>;
-      setAutoUpdatesEnabled: (enabled: boolean) => Promise<{ success: boolean }>;
-
-      // Update event listeners
-      onUpdateAvailable: (callback: (event: any, info: any) => void) => () => void;
-      onUpdateNotAvailable: (callback: (event: any, info: any) => void) => () => void;
-      onUpdateDownloaded: (callback: (event: any, info: any) => void) => () => void;
-      onUpdateDownloadProgress: (callback: (event: any, progressObj: any) => void) => () => void;
-      onUpdateError: (callback: (event: any, error: any) => void) => () => void;
+      getAppVersion: () => Promise<{ version: string }>;
 
       openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
 

@@ -91,9 +91,12 @@ export function registerChatPersistenceHandlers(
 
   ipcMain.handle("db-create-agent-conversation", async (_event, ...args: unknown[]) => {
     const [title, noteId, spaceId, folderId] = parseArgs(createConversationArgsSchema, args);
+    // Title passes through untouched: the DB default (only for undefined)
+    // yields "Untitled", while an explicit null violates NOT NULL and the
+    // invoke rejects without creating a row — the pre-cutover behavior.
     return parseResult(
       conversationCreateResultSchema,
-      database.createAgentConversation(title ?? "Untitled", noteId ?? null, spaceId ?? null, folderId ?? null),
+      database.createAgentConversation(title, noteId ?? null, spaceId ?? null, folderId ?? null),
       "conversation detail"
     );
   });

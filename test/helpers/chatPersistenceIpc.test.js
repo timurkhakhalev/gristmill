@@ -78,7 +78,7 @@ const CONV = {
   updated_at: "2026-09-14 10:00:00",
 };
 
-test("create normalizes omitted scope ids and applies the Untitled default", async () => {
+test("create passes title through untouched and normalizes only omitted ids", async () => {
   const seen = [];
   const db = {
     ...fakeDb(),
@@ -87,10 +87,16 @@ test("create normalizes omitted scope ids and applies the Untitled default", asy
   const h = setup(db);
   const created = await call(h, "db-create-agent-conversation");
   assert.equal(created.id, 5);
-  assert.deepEqual(seen, [["Untitled", null, null, null]]);
+  // Omitted title reaches the DB as undefined: the DB default applies.
+  assert.deepEqual(seen, [[undefined, null, null, null]]);
   seen.length = 0;
   await call(h, "db-create-agent-conversation", "Title", 3, 4, 5);
   assert.deepEqual(seen, [["Title", 3, 4, 5]]);
+  // An explicit null must survive normalization: the DB rejects it and no
+  // row is created — the handler must not rescue null into "Untitled".
+  seen.length = 0;
+  await call(h, "db-create-agent-conversation", null);
+  assert.deepEqual(seen, [[null, null, null, null]]);
 });
 
 test("wrong-shaped create args reject before the database runs", async () => {

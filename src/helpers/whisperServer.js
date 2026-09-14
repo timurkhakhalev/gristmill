@@ -1,3 +1,4 @@
+const { app } = require("electron");
 const { spawn } = require("child_process");
 const EventEmitter = require("events");
 const fs = require("fs");
@@ -298,8 +299,8 @@ class WhisperServerManager extends EventEmitter {
     }
 
     candidates.push(
-      path.join(__dirname, "..", "..", "resources", "bin", binaryName),
-      path.join(__dirname, "..", "..", "resources", "bin", genericName)
+      path.join(app.getAppPath(), "resources", "bin", binaryName),
+      path.join(app.getAppPath(), "resources", "bin", genericName)
     );
 
     for (const candidate of candidates) {

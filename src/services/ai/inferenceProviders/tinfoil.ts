@@ -1,5 +1,5 @@
 import type { InferenceProvider } from "./types";
-import { TOKEN_LIMITS } from "../../../config/constants";
+import { TOKEN_LIMITS } from "../../../config/constants.mts";
 import { withRetry, createApiRetryStrategy } from "../../../utils/retry";
 import logger from "../../../utils/logger";
 import { applyChatCompletionsParams, isTruncatedFinishReason } from "../chatRequestBody";

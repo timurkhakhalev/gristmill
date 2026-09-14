@@ -71,7 +71,7 @@ class EnvironmentManager {
     } catch {}
 
     const fallbackPaths = [
-      path.join(__dirname, "..", "..", ".env"), // Development
+      path.join(app.getAppPath(), ".env"), // Development
       path.join(process.resourcesPath, ".env"),
       path.join(process.resourcesPath, "app.asar.unpacked", ".env"),
       path.join(process.resourcesPath, "app", ".env"), // Legacy

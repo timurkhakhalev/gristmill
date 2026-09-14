@@ -1,3 +1,4 @@
+const { app } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const EventEmitter = require("events");
@@ -445,8 +446,8 @@ class GlobeKeyManager extends EventEmitter {
 
   resolveListenerBinary() {
     const candidates = new Set([
-      path.join(__dirname, "..", "..", "resources", "bin", "macos-globe-listener"),
-      path.join(__dirname, "..", "..", "resources", "macos-globe-listener"),
+      path.join(app.getAppPath(), "resources", "bin", "macos-globe-listener"),
+      path.join(app.getAppPath(), "resources", "macos-globe-listener"),
     ]);
 
     if (process.resourcesPath) {

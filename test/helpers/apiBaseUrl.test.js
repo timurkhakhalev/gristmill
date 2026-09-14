@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 // Requires Node's native TypeScript type-stripping (Node >= 22.6 with
 // --experimental-strip-types, on by default in Node 23.6+/24). CI runs Node 24.
 
-const load = () => import("../../src/config/constants.ts");
+const load = () => import("../../src/config/constants.mts");
 
 test("empty or blank base URLs normalize to an empty string", async () => {
   const { normalizeBaseUrl } = await load();

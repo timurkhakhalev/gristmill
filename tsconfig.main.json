@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": ".",
+    "outDir": "dist-main",
+    "strict": true,
+    "allowJs": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "rewriteRelativeImportExtensions": true,
+    "noEmitOnError": true,
+    "types": ["node"]
+  },
+  "include": ["main.js", "preload.js", "src/workers/*.js"],
+  "exclude": ["node_modules", "dist", "dist-main", "src/dist", "test"]
+}

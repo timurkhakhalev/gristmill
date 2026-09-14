@@ -1,3 +1,4 @@
+const { app } = require("electron");
 const fs = require("fs");
 const net = require("net");
 const path = require("path");
@@ -37,7 +38,7 @@ function resolveBinaryPath(binaryName) {
     candidates.push(path.join(process.resourcesPath, "bin", binaryName));
   }
 
-  const projectBinDir = path.resolve(__dirname, "..", "..", "resources", "bin");
+  const projectBinDir = path.resolve(app.getAppPath(), "resources", "bin");
   candidates.push(path.join(projectBinDir, binaryName));
 
   for (const candidate of candidates) {

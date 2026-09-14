@@ -9,7 +9,7 @@ const {
 } = require("electron");
 const path = require("path");
 const tls = require("tls");
-require("dotenv").config({ path: path.join(__dirname, ".env") });
+require("dotenv").config({ path: path.join(app.getAppPath(), ".env") });
 
 // Extend Node's TLS trust with the OS store so ws and https.get see corporate
 // CAs that Chromium already trusts.

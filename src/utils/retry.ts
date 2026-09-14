@@ -1,4 +1,4 @@
-import { RETRY_CONFIG } from "../config/constants.ts";
+import { RETRY_CONFIG } from "../config/constants.mts";
 
 export interface RetryOptions {
   maxRetries?: number;

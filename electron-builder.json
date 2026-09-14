@@ -15,26 +15,12 @@
   "npmRebuild": true,
   "buildDependenciesFromSource": false,
   "files": [
-    "main.js",
-    "preload.js",
+    "dist-main/**/*",
     "package.json",
     "LICENSE",
     "docs/openwhispr-upstream/IMPORT.md",
     "node_modules/**/*",
     "src/dist/**/*",
-    "src/helpers/**/*",
-    "src/workers/**/*",
-    "src/config/**/*",
-    "src/constants/**/*",
-    "src/locales/**/*",
-    "src/hooks/**/*",
-    "src/models/**/*",
-    "src/services/localReasoningBridge.js",
-    "src/services/transcriptionBaseUrl.ts",
-    "src/types/**/*",
-    "src/utils.js",
-    "src/utils/**/*",
-    "src/components.json",
     "!node_modules/.cache/**/*",
     "!src/node_modules/**/*",
     "!**/node_modules/electron/**",
@@ -89,7 +75,7 @@
     "**/node_modules/better-sqlite3/**/*",
     "**/node_modules/onnxruntime-node/**/*",
     "**/node_modules/@napi-rs/keyring/**/*",
-    "src/workers/**/*"
+    "dist-main/src/workers/**/*"
   ],
   "extraResources": [
     {

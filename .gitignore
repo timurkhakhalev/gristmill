@@ -323,3 +323,6 @@ src/assets/fonts/yowza/*.otf
 # Talkkeep environment files
 .env.*
 !.env.example
+
+# Compiled Electron application
+dist-main/

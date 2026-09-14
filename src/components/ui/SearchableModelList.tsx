@@ -5,7 +5,7 @@ import { Search } from "../icons";
 import { Input } from "./input";
 import { ModelCard, type ModelCardOption } from "./ModelCardList";
 import { getRemoteProviderIcon } from "../../utils/providerIcons";
-import { LIST_SEARCH_THRESHOLD } from "../../config/constants";
+import { LIST_SEARCH_THRESHOLD } from "../../config/constants.mts";
 
 // Above this count, OpenAICompatiblePanel switches from the plain list to this
 // searchable/grouped/virtualized variant.

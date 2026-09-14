@@ -6,8 +6,8 @@ const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 const { isPortAvailable } = require("../utils/serverUtils");
 const { sendNoteAdded, sendNoteUpdated } = require("./notesEvents");
-const { broadcastToWindows } = require("./windowBroadcast");
 const { sendDictionaryUpdated, sendSnippetsUpdated } = require("./vocabularyEvents");
+const { sendFolderCreated } = require("./containerEvents");
 
 const PORT_RANGE_START = 8200;
 const PORT_RANGE_END = 8219;
@@ -444,7 +444,7 @@ class CliBridge {
         ({ body }) => {
           const result = db.createFolder(body?.name);
           const folder = unwrapMutationResult(result, "folder");
-          setImmediate(() => broadcastToWindows("folder-created", folder));
+          setImmediate(() => sendFolderCreated(folder));
           return { data: folder };
         },
         201

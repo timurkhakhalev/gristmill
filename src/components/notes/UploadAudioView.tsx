@@ -24,7 +24,7 @@ import {
 } from "../ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
 import { Input } from "../ui/input";
-import type { FolderItem } from "../../types/electron";
+import type { FolderItem } from "../../contracts/containers";
 import {
   findDefaultFolder,
   findVideosFolder,

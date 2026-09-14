@@ -57,6 +57,7 @@ const { resolveLocalServerNeeds } = require("./localServerPolicy");
 const { registerNotesHandlers } = require("./notesIpcHandlers");
 const { registerUrlDownloadHandlers } = require("./urlDownloadIpcHandlers");
 const { registerVocabularyHandlers } = require("./vocabularyIpcHandlers");
+const { registerContainerHandlers } = require("./containerIpcHandlers");
 const { sendNoteAdded, sendNoteUpdated, sendNoteDeleted } = require("./notesEvents");
 const autoStart = require("./autoStart");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
@@ -992,80 +993,16 @@ class IPCHandlers {
         this._refreshMeetingSpeakerConfigFromNote(noteId, note),
     });
 
-    ipcMain.handle("db-get-folders", async (event, spaceId) => {
-      return this.databaseManager.getFolders(spaceId);
-    });
-
-    ipcMain.handle("db-create-folder", async (event, name, spaceId) => {
-      const result = this.databaseManager.createFolder(name, spaceId);
-      if (result?.success && result?.folder) {
-        setImmediate(() => {
-          broadcastToWindows("folder-created", result.folder);
-          if (this._noteFilesEnabled) {
-            const markdownMirror = require("./markdownMirror");
-            markdownMirror.ensureFolder(result.folder.name);
-          }
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-delete-folder", async (event, id) => {
-      const folderName = this._noteFilesEnabled ? this._getFolderName(id) : null;
-      const result = this.databaseManager.deleteFolder(id);
-      if (result?.success) {
-        // Other accounts' notes were released to the space root; their mirror
-        // files leave with the folder directory, so rewrite the live ones.
-        for (const note of result.relocatedNotes ?? []) {
-          if (!note.deleted_at) this._asyncMirrorWrite(note);
-        }
-        setImmediate(() => {
-          broadcastToWindows("folder-deleted", { id });
-          if (folderName) this._mirrorDeleteFolderIfUnshared(folderName);
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-rename-folder", async (event, id, name) => {
-      const oldName = this._noteFilesEnabled ? this._getFolderName(id) : null;
-      const result = this.databaseManager.renameFolder(id, name);
-      if (result?.success && result?.folder) {
-        setImmediate(() => {
-          broadcastToWindows("folder-renamed", result.folder);
-          if (this._noteFilesEnabled && oldName) {
-            const markdownMirror = require("./markdownMirror");
-            markdownMirror.renameFolder(oldName, name);
-          }
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-move-folder-to-space", async (event, id, spaceId) => {
-      const result = this.databaseManager.moveFolderToSpace(id, spaceId);
-      if (result?.success) {
-        if (result.folder) {
-          setImmediate(() => broadcastToWindows("folder-synced", result.folder));
-        }
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-get-folder-note-counts", async () => {
-      return this.databaseManager.getFolderNoteCounts();
-    });
-
-    ipcMain.handle("db-get-spaces", async () => {
-      return this.databaseManager.getSpaces();
-    });
-
-    ipcMain.handle("db-update-space", async (event, id, updates) => {
-      const result = this.databaseManager.updateSpace(id, updates);
-      if (result?.success && result.space) {
-        setImmediate(() => broadcastToWindows("space-synced", result.space));
-      }
-      return result;
+    // Container (folders/spaces) channels live in the typed module.
+    registerContainerHandlers(ipcMain, {
+      database: this.databaseManager,
+      noteFilesEnabled: () => this._noteFilesEnabled,
+      getFolderName: (folderId) => this._getFolderName(folderId),
+      mirrorWriteNote: (note) => this._asyncMirrorWrite(note),
+      mirrorEnsureFolder: (name) => require("./markdownMirror").ensureFolder(name),
+      mirrorRenameFolder: (oldName, newName) =>
+        require("./markdownMirror").renameFolder(oldName, newName),
+      mirrorDeleteFolderIfUnshared: (name) => this._mirrorDeleteFolderIfUnshared(name),
     });
 
     ipcMain.handle("db-get-actions", async () => {

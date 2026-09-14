@@ -13,7 +13,7 @@
 Sandboxed preload не может require локальные модули, поэтому после успешного
 tsc `build-main.js` бандлит исходный `preload.js` (вместе с
 `src/preload/notesBridge.ts`, `src/preload/urlDownloadBridge.ts`,
-`src/preload/vocabularyBridge.ts` и
+`src/preload/vocabularyBridge.ts`, `src/preload/containerBridge.ts` и
 `src/contracts/*.ts`) в один файл
 `dist-main/preload.js` через esbuild (`bundle`, `format=cjs`,
 `platform=node`, `target=node24`, `external:electron`; devDependency
@@ -136,7 +136,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **133 JS, 16 TS, 1 MTS и 25 JSON**.
+а не всеми файлами в каталоге helpers. В нём **133 JS, 20 TS, 1 MTS и 25 JSON**.
 Entry points: main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
 
@@ -158,6 +158,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/contracts/notes.ts`
 - `src/contracts/urlDownload.ts`
 - `src/contracts/vocabulary.ts`
+- `src/contracts/containers.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
 - `src/constants/speakerDetection.json`
@@ -177,6 +178,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/preload/notesBridge.ts`
 - `src/preload/urlDownloadBridge.ts`
 - `src/preload/vocabularyBridge.ts`
+- `src/preload/containerBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
 - `src/helpers/builtinActions.js`
@@ -281,6 +283,8 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/urlDownloadIpcHandlers.ts`
 - `src/helpers/vocabularyEvents.ts`
 - `src/helpers/vocabularyIpcHandlers.ts`
+- `src/helpers/containerEvents.ts`
+- `src/helpers/containerIpcHandlers.ts`
 - `src/helpers/tinfoilCatalog.js`
 - `src/helpers/tinfoilRealtimeStreaming.js`
 - `src/helpers/tinfoilSecureClient.js`
@@ -376,7 +380,7 @@ preload → handler Map → fake downloader; malformed progress отбрасыв
 Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings); focused
 55 passed (`urlDownloadIpc`, `urlDownloadBridge`, `urlAudioDownloader`,
 `rendererBridgeContract`, `mainBuild`, type probes); `build:main` OK.
-Inventory графа Electron: 133 JS, 16 TS, 1 MTS, 25 JSON.
+Inventory графа Electron: 133 JS, 20 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированный IPC Dictionary/Snippets»
 
@@ -405,4 +409,35 @@ preload → handlers → временный SQLite; malformed события и�
 cliBridgeSnippets, dictionaryStartup, databaseLocalBehavior,
 rendererBridgeContract, mainBuild, vocabularyTypeProbe, dictionaryTool,
 snippetTool, snippets);
-`build:main` OK. Inventory графа Electron: 133 JS, 16 TS, 1 MTS, 25 JSON.
+`build:main` OK. Inventory графа Electron: 133 JS, 20 TS, 1 MTS, 25 JSON.
+
+## Этап «типизированный IPC папок и пространств (containers)»
+
+14 сентября 2026 (issue #10, план PR #21). Восемь каналов folders/spaces
+вынесены из `ipcHandlers.js` в `src/helpers/containerIpcHandlers.ts` с
+контрактом `src/contracts/containers.ts` и bridge
+`src/preload/containerBridge.ts` (подключён к bundled preload). Схемы
+отражают локальные таблицы SQLite (folders/spaces, kind=private) — облачные
+поля эры OpenWhispr (cloud_id, sync_status, teams, my_role и др.) удалены из
+типов вместе с FolderPushSnapshot/FolderAckResult/SpaceTeamRef; consumers
+(noteStore, SpacesTree, CommandSearch, useContainerChat, UploadAudioView,
+overview components, NoteEditor, shared, searchNotesTool, utils) берут
+FolderItem/SpaceItem из общего контракта. Пять событий идут через senders
+`src/helpers/containerEvents.ts` (хендлеры и CLI folder-created);
+malformed payload дропается с логом. Недостижимая relocatedNotes-ветка
+удалена: `database.deleteFolder` возвращает только `{success}`, notes
+переживают удаление через ON DELETE SET NULL —
+`folderDeleteRelocationContract.test.js` теперь проверяет фактическое
+сохранение notes и порядок mirror-вызовов вместо grep по тексту кода.
+`onSpacePurged` не имеет producer и в bridge не экспонируется;
+main-only события (folder-created/renamed/synced, space-synced) без
+renderer-подписок в bridge не попадают.
+
+Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings);
+`build:main` OK; focused tests (containerIpc 8, containerBridge 4,
+folderDeleteRelocationContract 2, rendererBridgeContract, mainBuild,
+notesIpc, databaseLocalBehavior/Schema, notesDatabase,
+spacesTreeNoteActionClearance, toolUtils, searchNotesTool); compiler probe
+на неполную DB deps; полный `pnpm test`; `pnpm run pack`; Node ABI
+восстановлен; `node scripts/smoke-electron.js` на изолированном профиле.
+Inventory графа Electron: 133 JS, 20 TS, 1 MTS, 25 JSON.

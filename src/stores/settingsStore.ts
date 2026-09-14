@@ -5,12 +5,12 @@ import { ensureAgentNameInDictionary } from "../utils/agentName";
 import { chooseDictionaryStartupAction } from "../helpers/dictionaryStartup";
 import logger from "../utils/logger";
 import whisperVadConstants from "../constants/whisperVad.json";
+import type { ChineseScriptPreference } from "../types/electron";
 import type {
-  ChineseScriptPreference,
   LocalTranscriptionProvider,
   InferenceMode,
   SelfHostedType,
-} from "../types/electron";
+} from "../contracts/inferenceSettings";
 import type { CalendarAccount } from "../types/calendar";
 import { PROMPT_KIND_LIST, type PromptKind } from "../config/prompts/registry";
 import { sweepRetiredPromptOverrides } from "../config/retiredPrompts";
@@ -2160,16 +2160,15 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       mode
     );
     s.updateCleanupSettings(cleanup);
-    s.setCleanupMode(cleanup.cleanupMode as InferenceMode);
+    s.setCleanupMode(cleanup.cleanupMode);
     if (cleanup.cleanupCustomApiKey !== undefined) {
       s.setCleanupCustomApiKey(cleanup.cleanupCustomApiKey);
     }
     // Each Settings tab selects on its own mode field, so every scope gets the
     // mode even when the routing fields are absent — otherwise the tab keeps
     // showing the previous provider despite the new cloud routing.
-    for (const [scope, patch] of Object.entries(mirrored) as [InferenceScope, Partial<ResolvedLLMConfig>][]) {
-      setResolvedLLMConfig(scope, patch);
-    }
+    setResolvedLLMConfig("noteFormatting", mirrored.noteFormatting);
+    setResolvedLLMConfig("chatIntelligence", mirrored.chatIntelligence);
   },
 
   updateApiKeys: (keys: Partial<ApiKeySettings>) => {

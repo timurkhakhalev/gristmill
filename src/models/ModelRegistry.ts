@@ -2,7 +2,7 @@ import modelDataRaw from "./modelRegistryData.json";
 import { getSettings } from "../stores/settingsStore";
 import { readCachedTinfoilModels } from "./tinfoilModelCache";
 import { filterMeetingStreamingProviders } from "../helpers/meetingTranscriptionRouting";
-import type { InferenceMode } from "../types/electron";
+import type { InferenceMode } from "../contracts/inferenceSettings";
 
 export interface ModelDefinition {
   id: string;

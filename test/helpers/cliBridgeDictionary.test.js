@@ -21,7 +21,7 @@ Module._load = function patchedLoad(request, parent, isMain) {
       },
     };
   }
-  if (request === "./windowBroadcast") {
+  if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
     return {
       broadcastToWindows: (channel, payload) => broadcasts.push({ channel, payload }),
     };

@@ -3,6 +3,7 @@ import type { TinfoilCatalogModel } from "../models/tinfoilModels";
 import type { CalendarAvailabilityRequest, CalendarAvailabilityResult } from "./calendar";
 import type { NotesApi } from "../contracts/notes";
 import type { UrlDownloadApi } from "../contracts/urlDownload";
+import type { VocabularyApi } from "../contracts/vocabulary";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -720,22 +721,9 @@ declare global {
         rawText: string
       ) => Promise<{ success: boolean; transcription?: TranscriptionItem; error?: string }>;
 
-      // Dictionary operations
-      getDictionary: () => Promise<string[]>;
-      /** Replaces the whole dictionary — omitted words are deleted. Prefer applyDictionaryChanges. */
-      setDictionary: (words: string[]) => Promise<{ success: boolean }>;
-      applyDictionaryChanges?: (changes: {
-        add?: string[];
-        remove?: string[];
-      }) => Promise<{ success: boolean; added: number; removed: number }>;
-      onDictionaryUpdated?: (callback: (words: string[]) => void) => () => void;
-      getSnippets?: () => Promise<Array<{ trigger: string; replacement: string }>>;
-      setSnippets?: (
-        snippets: Array<{ trigger: string; replacement: string }>
-      ) => Promise<{ success: boolean }>;
-      onSnippetsUpdated?: (
-        callback: (snippets: Array<{ trigger: string; replacement: string }>) => void
-      ) => () => void;
+      // Vocabulary operations come from the shared VocabularyApi contract
+      // (six renderer operations + the two subscriptions); dictionary export
+      // stays local.
 
       // Note operations come from the shared NotesApi contract (seven
       // operations + the three note subscriptions); note export stays local.
@@ -1744,7 +1732,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

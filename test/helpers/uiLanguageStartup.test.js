@@ -61,7 +61,7 @@ test("fresh Chinese browser locale survives settings hydration", async (t) => {
       electronAPI: {
         getDictionary: async () => ["OpenWhispr"],
         getUiLanguage: async () => "",
-        setDictionary: async () => ({ success: true }),
+        applyDictionaryChanges: async () => ({ success: true, added: 0, removed: 0 }),
       },
     },
   });

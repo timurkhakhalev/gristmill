@@ -175,9 +175,11 @@ function convertToWav(inputPath, outputPath, options = {}) {
 
     proc.on("error", (error) => {
       if (settled) return;
-      settled = true;
       signal?.removeEventListener("abort", onAbort);
+      // After an abort the error belongs to the kill; close still fires and
+      // must stay the settler, so don't consume the settlement here.
       if (signal?.aborted) return;
+      settled = true;
       reject(new Error(`FFmpeg process error: ${error.message}`));
     });
 

@@ -20,7 +20,7 @@ function assertValidTarget(environment, tenant) {
   }
 }
 
-async function getCortiToken({ environment, tenant, clientId, clientSecret }, fetchImpl) {
+async function getCortiToken({ environment, tenant, clientId, clientSecret, signal }, fetchImpl) {
   assertValidTarget(environment, tenant);
 
   // The secret is part of the key (digested, never stored raw) so edited
@@ -39,6 +39,9 @@ async function getCortiToken({ environment, tenant, clientId, clientSecret }, fe
   const doFetch = fetchImpl || ((url, init) => net.fetch(url, init));
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), TOKEN_FETCH_TIMEOUT_MS);
+  // A cancelled upload aborts the token request together with the work it
+  // was minted for; the timeout stays the authority otherwise.
+  const requestSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
   try {
     const response = await doFetch(
       `https://auth.${environment}.corti.app/realms/${tenant}/protocol/openid-connect/token`,
@@ -51,7 +54,7 @@ async function getCortiToken({ environment, tenant, clientId, clientSecret }, fe
           client_secret: clientSecret,
           scope: "openid",
         }).toString(),
-        signal: controller.signal,
+        signal: requestSignal,
       }
     );
 

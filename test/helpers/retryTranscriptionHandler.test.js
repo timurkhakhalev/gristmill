@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const Module = require("node:module");
 
 const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
+const { createUploadCancelRegistry } = require("../../src/helpers/uploadCancelRegistry");
 const originalLoad = Module._load;
 
 // Captures every ipcMain.handle registration and every net.fetch request so the
@@ -123,6 +124,9 @@ function buildFakeThis() {
       getCortiClientId: () => "corti-id",
       getCortiClientSecret: () => "corti-secret",
     },
+    // The real registry: the extracted byok handler registers every upload
+    // here, and a proxy stub would fake a permanently-aborted signal.
+    _uploadCancelRegistry: createUploadCancelRegistry(),
   };
   return new Proxy(target, {
     get: (t, prop) => (prop in t ? t[prop] : anything()),

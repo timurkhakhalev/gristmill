@@ -1,26 +1,22 @@
 import { resolveTranscriptionRoute, type TranscriptionRoute } from "../helpers/transcriptionRoute";
 import { getTranscriptionProviders } from "../models/ModelRegistry";
 import type { LocalTranscriptionProvider } from "../contracts/inferenceSettings";
+import type { TranscriptionResponse } from "../contracts/localFileTranscription";
+import type { RemoteTranscriptionResult } from "../contracts/uploadTranscription";
 
-export interface FileTranscriptionResult {
-  success: boolean;
-  text?: string;
-  error?: string;
-  code?: string;
-  messageKey?: string;
-  diarized?: boolean;
+// The renderer aggregate over the local and remote IPC results plus the
+// orchestration-only metadata (diarization warning, chunk accounting,
+// measured duration). The wire shapes themselves come from the shared
+// contracts — this type only adds the composed fields.
+export interface FileTranscriptionResult extends TranscriptionResponse, RemoteTranscriptionResult {
   // The transcript succeeded, but requested speaker labels could not be applied.
   diarizationWarning?: boolean;
-  warning?: string;
   // Set alongside `warning` by the chunked cloud path: how much audio was lost.
   failedChunks?: number;
   totalChunks?: number;
   // Measured duration of the source audio, for persisting as
   // audio_duration_seconds. Only transcribeFileWithSpeakers sets it.
   durationSeconds?: number | null;
-  // Segment-level timing from BYOK providers that support it (opts.timestamps
-  // or BYOK diarization). Absent whenever the provider returned text only.
-  segments?: Array<{ text: string; start: number; end: number; speaker?: string }>;
 }
 
 export interface DiarizationSettings {
@@ -145,8 +141,10 @@ export async function transcribeFile(
   }
 
   // Self-hosted fields make the handler route to the configured server
-  // (fail-closed on misconfiguration) instead of stale BYOK settings.
-  return window.electronAPI.transcribeAudioFileByok!({
+  // (fail-closed on misconfiguration) instead of stale BYOK settings. The
+  // requestId registers the execution in the shared cancel registry, so Stop
+  // aborts the transport instead of only discarding the late result.
+  return window.electronAPI.transcribeAudioFileByok({
     filePath,
     apiKey: cfg.getApiKey(),
     baseUrl: cfg.cloudTranscriptionBaseUrl,
@@ -160,6 +158,7 @@ export async function transcribeFile(
     transcriptionMode: cfg.transcriptionMode,
     remoteTranscriptionUrl: cfg.remoteTranscriptionUrl,
     remoteTranscriptionModel: cfg.remoteTranscriptionModel,
+    requestId: opts.requestId,
   });
 }
 
@@ -242,7 +241,7 @@ export async function transcribeFileWithSpeakers(
   }
 
   try {
-    const merged = await window.electronAPI.mergeSpeakerText?.(
+    const merged = await window.electronAPI.mergeSpeakerText(
       diar.segments,
       result.text,
       durationSeconds || 0

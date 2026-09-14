@@ -30,17 +30,6 @@ const serializeIpcError =
     }
   };
 
-// Which diarization dialect a resolved endpoint speaks, for Custom endpoints
-// that front a known provider. Null when the host offers no known dialect.
-const diarizationHost = (endpoint) => {
-  try {
-    const host = new URL(endpoint).hostname;
-    if (host === "mistral.ai" || host.endsWith(".mistral.ai")) return "mistral";
-    if (host === "openai.com" || host.endsWith(".openai.com")) return "openai";
-  } catch {}
-  return null;
-};
-
 // Enterprise providers run with credentials and endpoints supplied by the
 // user's local settings. Hosted identity/cloud bootstrap is not part of the
 // desktop runtime.
@@ -134,6 +123,9 @@ const {
 } = require("./meetingStreamingProviders");
 const { fetchRealtimeTokenForProvider } = require("./realtimeTokenProviders");
 const { registerCalendarAvailabilityHandler } = require("./calendarAvailabilityIpcHandler");
+const { registerRemoteTranscriptionHandler } = require("./remoteTranscriptionIpcHandler");
+const { registerFileDiarizationHandlers } = require("./fileDiarizationIpcHandlers");
+const { registerUploadCancelHandler } = require("./uploadCancelIpcHandler");
 
 // Meeting capture runs at 24 kHz (see meetingRecordingStore AudioContext); realtime
 // streaming providers must be told the true PCM rate or they misread the audio.
@@ -144,39 +136,10 @@ const MEETING_RECONNECT_BUFFER_MAX_BYTES = MEETING_STREAM_SAMPLE_RATE * 2 * 30;
 // uses a lower threshold so quiet remote speech still opens a turn.
 const MEETING_SYSTEM_VAD_THRESHOLD = 0.3;
 
-const MISTRAL_TRANSCRIPTION_URL = "https://api.mistral.ai/v1/audio/transcriptions";
-
-const XAI_STT_URL = "https://api.x.ai/v1/stt";
-
-// Debounce delay: wait for user to stop typing before processing corrections
-
-// Route caps vary by provider (Gemini's inline-base64 limit is the lowest), so
-// the message reports the cap that actually applied.
-const byokSizeCapError = (sizeCapBytes) =>
-  `File too large. Maximum size for bring-your-own-key is ${Math.floor(sizeCapBytes / (1024 * 1024))} MB.`;
-
-const AUDIO_MIME_TYPES = {
-  mp3: "audio/mpeg",
-  wav: "audio/wav",
-  m4a: "audio/mp4",
-  webm: "audio/webm",
-  ogg: "audio/ogg",
-  oga: "audio/ogg",
-  flac: "audio/flac",
-  aac: "audio/aac",
-  opus: "audio/ogg",
-};
-
 // Azure Responses rejects probes with fewer than 16 output tokens. The probe
 // only needs one word, but this is the provider's minimum accepted value.
 const CONNECTION_TEST_MAX_OUTPUT_TOKENS = 16;
 
-const {
-  formatTimestamp: formatDiarTime,
-  mergeSpeakersWithText,
-  formatSpeakerTranscript,
-} = require("./speakerMerge");
-const { timestampRequestFields, mapVerboseSegments } = require("./uploadTimestamps");
 const { listLocalTranscriptionModels } = require("./localTranscriptionModels");
 
 // Canonicalize allowed dirs so realpath'd inputs match on macOS (/var -> /private/var).
@@ -221,42 +184,11 @@ function resolveAllowedAudioPath(filePath) {
   return null;
 }
 
-function buildMultipartBody(fileBuffer, fileName, contentType, fields = {}) {
-  const boundary = `----OpenHercules${Date.now()}`;
-  const parts = [];
-
-  parts.push(
-    `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
-      `Content-Type: ${contentType}\r\n\r\n`
-  );
-  parts.push(fileBuffer);
-  parts.push("\r\n");
-
-  for (const [name, value] of Object.entries(fields)) {
-    if (value != null) {
-      parts.push(
-        `--${boundary}\r\n` +
-          `Content-Disposition: form-data; name="${name}"\r\n\r\n` +
-          `${value}\r\n`
-      );
-    }
-  }
-
-  parts.push(`--${boundary}--\r\n`);
-
-  const bodyParts = parts.map((p) => (typeof p === "string" ? Buffer.from(p) : p));
-  return { body: Buffer.concat(bodyParts), boundary };
-}
-
-async function postMultipart(
-  url,
-  body,
-  boundary,
-  headers = {},
-  { signal, session: fetchSession } = {}
-) {
-  const response = await (fetchSession ?? net).fetch(url.toString(), {
+// The multipart transport behind the remote transcription handler. Kept here
+// (not in the typed module) because it owns the Electron net session; the
+// handler receives it as a narrow dependency.
+async function postMultipart(url, body, boundary, headers = {}, { signal } = {}) {
+  const response = await net.fetch(url.toString(), {
     method: "POST",
     headers: {
       "Content-Type": `multipart/form-data; boundary=${boundary}`,
@@ -1202,6 +1134,38 @@ class IPCHandlers {
       logError: (message, data) => debugLogger.error(message, data),
     });
 
+    // Remote (BYOK/self-hosted) transcription lives in the typed module; the
+    // route resolver is re-run there as the trust boundary, and every active
+    // transport receives the cancel registry's AbortSignal.
+    registerRemoteTranscriptionHandler(ipcMain, {
+      resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
+      readFile: (filePath) => fs.readFileSync(filePath),
+      fileSize: (filePath) => fs.statSync(filePath).size,
+      providerBaseUrls: transcriptionProviderBaseUrls,
+      postMultipart: (url, body, boundary, headers, options) =>
+        postMultipart(url, body, boundary, headers, options),
+      transcribeWithTinfoil: (args) => transcribeWithTinfoil(args),
+      transcribeWithGemini: (args) => transcribeWithGemini(args),
+      // Lazy like the pre-cutover handler: the Corti client is only loaded
+      // when its route actually runs.
+      transcribeWithCorti: async (args) => {
+        const { transcribeAudio } = require("./cortiTranscription");
+        return transcribeAudio(args);
+      },
+      getCortiClientId: () => this.environmentManager.getCortiClientId(),
+      getCortiClientSecret: () => this.environmentManager.getCortiClientSecret(),
+      getTinfoilKey: () => this.environmentManager.getTinfoilKey(),
+      getGeminiKey: () => this.environmentManager.getGeminiKey(),
+      uploadCancelRegistry: this._uploadCancelRegistry,
+      logDebug: (message, data) => debugLogger.debug(message, data),
+      logWarn: (message, data) => debugLogger.warn(message, data),
+      logError: (message, data) => debugLogger.error(message, data),
+    });
+
+    // The explicit hard cancel of one managed upload execution: aborts the
+    // transcription, diarization and transport registered under the id.
+    registerUploadCancelHandler(ipcMain, { uploadCancelRegistry: this._uploadCancelRegistry });
+
     ipcMain.handle("check-accessibility-permission", async () => {
       return systemPreferences.isTrustedAccessibilityClient(false);
     });
@@ -1613,106 +1577,28 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("diarize-audio-file", async (event, filePath, options = {}) => {
-      // Registered under the same requestId as the upload's transcription, so
-      // one cancel kills both the decode and the diarization child process.
-      const { signal, release } = this._uploadCancelRegistry.register(options.requestId);
-      try {
-        if (!this.diarizationManager) {
-          return { success: false, error: "Diarization not available" };
-        }
-        if (!this.diarizationManager.isModelDownloaded()) {
-          return { success: false, error: "Diarization models not downloaded" };
-        }
-
-        if (typeof filePath !== "string") {
-          return { success: false, error: "Invalid file path" };
-        }
-        const realPath = resolveAllowedAudioPath(filePath);
-        if (!realPath) return { success: false, error: "File path not allowed" };
-        filePath = realPath;
-
-        const numSpeakers = Math.min(
-          MAX_SPEAKER_COUNT,
-          Math.max(-1, Math.round(Number(options.numSpeakers) || -1))
-        );
-
-        const { convertToWav } = require("./ffmpegUtils");
-        const { getSafeTempDir } = require("./safeTempDir");
-        const { resolveClusterThreshold, dropNegligibleClusters } = require("./diarizationPolicy");
-        const { PCM16_MONO_16K_BYTES_PER_SECOND } = require("./transcriptionTimeout");
-        const wavPath = path.join(getSafeTempDir(), `ow-diarize-${Date.now()}.wav`);
-
-        try {
-          await convertToWav(filePath, wavPath, { sampleRate: 16000, channels: 1 });
-          if (signal?.aborted) {
-            return { success: false, error: "Cancelled", code: "UPLOAD_CANCELLED" };
-          }
-          // Auto-clustering over-splits long single-mic audio at the 0.55
-          // default, so the threshold ramps with duration unless pinned.
-          const durationSeconds = fs.statSync(wavPath).size / PCM16_MONO_16K_BYTES_PER_SECOND;
-          const threshold = resolveClusterThreshold(durationSeconds, options.threshold);
-
-          let segments = await this.diarizationManager.diarize(wavPath, {
-            numSpeakers,
-            threshold,
-            signal,
-          });
-          if (signal?.aborted) {
-            return { success: false, error: "Cancelled", code: "UPLOAD_CANCELLED" };
-          }
-          // The meeting path caps clusters via its expectation resolver; this
-          // path fed raw sherpa output to the merge, which is how a 2-person
-          // voice memo surfaced 46 speakers.
-          segments = dropNegligibleClusters(segments);
-          segments = this.diarizationManager.capSpeakerClusters(
-            segments,
-            numSpeakers > 0 ? numSpeakers : MAX_SPEAKER_COUNT
-          );
-          // Callers persist this as audio_duration_seconds: for picked files
-          // the renderer has no other duration source.
-          return { success: true, segments, durationSeconds };
-        } finally {
-          try {
-            fs.unlinkSync(wavPath);
-          } catch {}
-        }
-      } catch (error) {
-        if (error?.name === "AbortError" || signal?.aborted) {
-          debugLogger.debug("Diarization cancelled", { requestId: options.requestId });
-          return { success: false, error: "Cancelled", code: "UPLOAD_CANCELLED" };
-        }
-        debugLogger.error("Diarization error", { error: error.message });
-        return { success: false, error: error.message };
-      } finally {
-        release();
-      }
-    });
-
-    ipcMain.handle("merge-speaker-text", async (event, { segments, text, duration }) => {
-      try {
-        if (
-          !Array.isArray(segments) ||
-          typeof text !== "string" ||
-          typeof duration !== "number" ||
-          !isFinite(duration)
-        ) {
-          return { success: false, error: "Invalid arguments" };
-        }
-        if (segments.length > 10000 || text.length > 1_000_000) {
-          return { success: false, error: "Input too large" };
-        }
-        const sanitizedSegments = segments.map((s) => ({
-          speaker: typeof s.speaker === "string" ? s.speaker.slice(0, 100) : "unknown",
-          start: typeof s.start === "number" && isFinite(s.start) ? s.start : 0,
-          end: typeof s.end === "number" && isFinite(s.end) ? s.end : 0,
-        }));
-        const merged = mergeSpeakersWithText(sanitizedSegments, text, duration);
-        return { success: true, text: formatSpeakerTranscript(merged) };
-      } catch (error) {
-        debugLogger.error("Speaker merge error", { error: error.message });
-        return { success: false, error: error.message };
-      }
+    // File diarization + speaker-text merge live in the typed module; the
+    // shared cancel registry below is the same instance transcription uses.
+    registerFileDiarizationHandlers(ipcMain, {
+      diarizationManager: this.diarizationManager,
+      resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
+      convertToWav: (inputPath, outputPath, options) => require("./ffmpegUtils").convertToWav(inputPath, outputPath, options),
+      createTempWavPath: () =>
+        path.join(require("./safeTempDir").getSafeTempDir(), `ow-diarize-${Date.now()}.wav`),
+      fileSize: (filePath) => fs.statSync(filePath).size,
+      resolveClusterThreshold: (durationSeconds, requestedThreshold) =>
+        require("./diarizationPolicy").resolveClusterThreshold(durationSeconds, requestedThreshold),
+      dropNegligibleClusters: (segments) =>
+        require("./diarizationPolicy").dropNegligibleClusters(segments),
+      pcm16Mono16kBytesPerSecond: require("./transcriptionTimeout").PCM16_MONO_16K_BYTES_PER_SECOND,
+      maxSpeakerCount: MAX_SPEAKER_COUNT,
+      removeFile: (filePath) => fs.unlinkSync(filePath),
+      mergeSpeakersWithText: (segments, text, duration) =>
+        require("./speakerMerge").mergeSpeakersWithText(segments, text, duration),
+      formatSpeakerTranscript: (merged) => require("./speakerMerge").formatSpeakerTranscript(merged),
+      uploadCancelRegistry: this._uploadCancelRegistry,
+      logDebug: (message, data) => debugLogger.debug(message, data),
+      logError: (message, data) => debugLogger.error(message, data),
     });
 
     ipcMain.handle("cancel-diarization-download", async () => {
@@ -2160,7 +2046,7 @@ class IPCHandlers {
         const formData = new FormData();
         const audioBlob = new Blob([Buffer.from(audioBuffer)], { type: "audio/webm" });
         formData.append("file", audioBlob, "audio.webm");
-        const { XAI_STT_LANGUAGES } = await import("./transcriptionRoute.ts");
+        const { XAI_STT_LANGUAGES, XAI_STT_URL } = await import("./transcriptionRoute.ts");
         if (language && language !== "auto" && XAI_STT_LANGUAGES.has(language)) {
           formData.append("language", language);
           formData.append("format", "true");
@@ -2194,6 +2080,7 @@ class IPCHandlers {
           throw new Error("Mistral API key not configured");
         }
 
+        const { MISTRAL_TRANSCRIPTION_URL } = await import("./transcriptionRoute.ts");
         const formData = new FormData();
         const audioBlob = new Blob([Buffer.from(audioBuffer)], { type: "audio/webm" });
         formData.append("file", audioBlob, "audio.webm");
@@ -3167,7 +3054,12 @@ class IPCHandlers {
           preferredLanguage && preferredLanguage !== "auto"
             ? preferredLanguage.split("-")[0]
             : undefined;
-        const { resolveTranscriptionRoute } = await import("./transcriptionRoute.ts");
+        const {
+          resolveTranscriptionRoute,
+          byokSizeCapError,
+          MISTRAL_TRANSCRIPTION_URL,
+          XAI_STT_URL,
+        } = await import("./transcriptionRoute.ts");
         // Renderer pre-flight owns policy; retry re-routes stored audio through
         // whatever is selected NOW.
         const route = resolveTranscriptionRoute({
@@ -5268,263 +5160,6 @@ class IPCHandlers {
         return { success: false, error: error.message };
       }
     });
-
-    ipcMain.handle(
-      "transcribe-audio-file-byok",
-      async (
-        event,
-        {
-          filePath,
-          apiKey,
-          baseUrl,
-          model,
-          diarize,
-          timestamps,
-          provider,
-          language,
-          environment,
-          tenant,
-          transcriptionMode,
-          remoteTranscriptionUrl,
-          remoteTranscriptionModel,
-        }
-      ) => {
-        const fs = require("fs");
-        try {
-          if (typeof filePath !== "string") {
-            return { success: false, error: "Invalid file path" };
-          }
-          const realByok = resolveAllowedAudioPath(filePath);
-          if (!realByok) return { success: false, error: "File path not allowed" };
-
-          const { resolveTranscriptionRoute } = await import("./transcriptionRoute.ts");
-          const route = resolveTranscriptionRoute({
-            settings: {
-              transcriptionMode,
-              remoteTranscriptionUrl,
-              remoteTranscriptionModel,
-              cloudTranscriptionProvider: provider,
-              cloudTranscriptionModel: model,
-              cloudTranscriptionBaseUrl: baseUrl,
-              cortiEnvironment: environment,
-              cortiTenant: tenant,
-            },
-            providers: transcriptionProviderBaseUrls(),
-            request: { effectiveLanguage: language || undefined },
-          });
-
-          // Fail closed: a misconfigured route must never fall through to a default.
-          if (route.transport === "error") {
-            return {
-              success: false,
-              error: route.message,
-              code: route.code,
-              messageKey: route.messageKey,
-            };
-          }
-
-          if (route.transport === "http-batch" && route.provider === "self-hosted") {
-            // User's own server, so the 25 MB third-party cap does not apply.
-            const ext = path.extname(realByok).toLowerCase().replace(".", "");
-            const { body, boundary } = buildMultipartBody(
-              fs.readFileSync(realByok),
-              path.basename(realByok),
-              AUDIO_MIME_TYPES[ext] || "audio/mpeg",
-              { model: route.model, language: route.language }
-            );
-            const data = await postMultipart(new URL(route.endpoint), body, boundary);
-            if (data.statusCode !== 200) {
-              throw new Error(
-                data.data?.error?.message ||
-                  data.data?.error ||
-                  `Self-hosted API Error: ${data.statusCode}`
-              );
-            }
-            return { success: true, text: data.data.text };
-          }
-
-          const fileSize = fs.statSync(realByok).size;
-          if (route.sizeCapBytes && fileSize > route.sizeCapBytes) {
-            return { success: false, error: byokSizeCapError(route.sizeCapBytes) };
-          }
-
-          if (route.transport === "proxied" && route.provider === "corti") {
-            const clientId = this.environmentManager.getCortiClientId();
-            const clientSecret = this.environmentManager.getCortiClientSecret();
-            if (!clientId || !clientSecret) {
-              throw new Error("Corti credentials not configured. Add them in Settings.");
-            }
-            const { transcribeAudio } = require("./cortiTranscription");
-            const { text } = await transcribeAudio({
-              environment: route.cortiEnvironment,
-              tenant: route.cortiTenant,
-              clientId,
-              clientSecret,
-              audioBuffer: fs.readFileSync(realByok),
-              language: route.language,
-            });
-            return { success: true, text };
-          }
-
-          if (route.transport === "proxied" && route.provider === "tinfoil") {
-            const ext = path.extname(realByok).toLowerCase().replace(".", "");
-            const { text } = await transcribeWithTinfoil({
-              audioBuffer: fs.readFileSync(realByok),
-              fileName: path.basename(realByok),
-              contentType: AUDIO_MIME_TYPES[ext] || "audio/mpeg",
-              language: route.language,
-              apiKey: this.environmentManager.getTinfoilKey(),
-            });
-            return { success: true, text };
-          }
-
-          if (route.transport === "proxied" && route.provider === "gemini") {
-            const ext = path.extname(realByok).toLowerCase().replace(".", "");
-            // Deliberately no language hint — same rationale as the multipart
-            // branch below, and Gemini's language_codes is a hard constraint.
-            const { text } = await transcribeWithGemini({
-              audioBuffer: fs.readFileSync(realByok),
-              model: route.model,
-              contentType: AUDIO_MIME_TYPES[ext] || "audio/mpeg",
-              apiKey: apiKey || this.environmentManager.getGeminiKey(),
-            });
-            return { success: true, text };
-          }
-
-          if (!apiKey && route.provider !== "custom") {
-            throw new Error("No API key configured. Add your key in Settings.");
-          }
-
-          const audioBuffer = fs.readFileSync(realByok);
-          const ext = path.extname(realByok).toLowerCase().replace(".", "");
-          const contentType = AUDIO_MIME_TYPES[ext] || "audio/mpeg";
-          const fileName = path.basename(realByok);
-
-          // mistral/xai have no OpenAI-compatible endpoint — talk to them
-          // directly; everything else consumes the route endpoint as-is.
-          let transcriptionUrl;
-          const multipartFields = {};
-          if (route.provider === "xai") {
-            transcriptionUrl = XAI_STT_URL;
-            // xAI STT accepts no model field; the route pre-filters language
-            if (route.language) {
-              multipartFields.language = route.language;
-              multipartFields.format = "true";
-            }
-          } else {
-            transcriptionUrl =
-              route.provider === "mistral" ? MISTRAL_TRANSCRIPTION_URL : route.endpoint;
-            multipartFields.model = route.model;
-            // No language field: an uploaded file may use a different language
-            // language, and a wrong hint silently mistranscribes it. Providers
-            // that require one (Corti) are handled on their own branch above.
-          }
-
-          if (diarize) {
-            // A Custom endpoint may front OpenAI or Mistral, so fall back to the
-            // resolved host before giving up on speaker labels.
-            const diarizeTarget =
-              route.provider === "custom" ? diarizationHost(route.endpoint) : route.provider;
-            if (diarizeTarget === "mistral") {
-              multipartFields.diarize = "true";
-              multipartFields.timestamp_granularities = "segment";
-            } else if (diarizeTarget === "openai") {
-              multipartFields.model = "gpt-4o-transcribe-diarize";
-              // Speaker annotations require diarized_json; verbose_json is not supported by this model.
-              multipartFields.response_format = "diarized_json";
-              multipartFields.chunking_strategy = "auto";
-            } else {
-              // Degrade to a plain transcript, never fail the upload.
-              debugLogger.warn(
-                "BYOK diarization requested but provider is not OpenAI/Mistral; transcribing without speakers",
-                { provider: route.provider, endpoint: route.endpoint }
-              );
-            }
-          } else if (timestamps) {
-            // Providers/models that don't support the request keep the
-            // plain-text request untouched (helper returns null).
-            const fields = timestampRequestFields(route.provider, route.model);
-            if (fields) Object.assign(multipartFields, fields);
-          }
-
-          const { body, boundary } = buildMultipartBody(
-            audioBuffer,
-            fileName,
-            contentType,
-            multipartFields
-          );
-
-          const url = new URL(transcriptionUrl);
-          // Mistral authenticates with x-api-key, not Bearer.
-          const headers = apiKey
-            ? route.provider === "mistral"
-              ? { "x-api-key": apiKey }
-              : route.transport === "http-batch" && route.auth.scheme === "azure-api-key"
-                ? { "api-key": apiKey }
-                : { Authorization: `Bearer ${apiKey}` }
-            : undefined;
-          const data = await postMultipart(url, body, boundary, headers);
-
-          if (data.statusCode === 401) {
-            return { success: false, error: "Invalid API key. Check your key in Settings." };
-          }
-          if (data.statusCode === 429) {
-            return { success: false, error: "Rate limit exceeded. Please try again later." };
-          }
-          if (data.statusCode !== 200) {
-            throw new Error(
-              data.data?.error?.message || data.data?.error || `API error: ${data.statusCode}`
-            );
-          }
-
-          if (diarize && data.data?.speakers) {
-            const segments = (data.data.speakers || []).map((s) => ({
-              speaker: s.id || `Speaker ${s.speaker || "?"}`,
-              text: s.text || "",
-              start: s.start || 0,
-              end: s.end || 0,
-            }));
-            const formatted = segments
-              .map(
-                (s) =>
-                  `[${s.speaker}] ${formatDiarTime(s.start)} - ${formatDiarTime(s.end)}\n${s.text}`
-              )
-              .join("\n\n");
-            return { success: true, text: formatted, diarized: true, segments };
-          }
-
-          if (diarize && data.data?.segments) {
-            const segments = (data.data.segments || []).map((s) => ({
-              speaker: s.speaker || "Speaker ?",
-              text: s.text || "",
-              start: s.start || 0,
-              end: s.end || 0,
-            }));
-            const formatted = segments
-              .map(
-                (s) =>
-                  `[${s.speaker}] ${formatDiarTime(s.start)} - ${formatDiarTime(s.end)}\n${s.text}`
-              )
-              .join("\n\n");
-            return { success: true, text: formatted, diarized: true, segments };
-          }
-
-          if (diarize) {
-            debugLogger.warn("BYOK diarization requested but provider returned no speaker data");
-          }
-          const segments = timestamps ? mapVerboseSegments(data.data) : null;
-          return { success: true, text: data.data.text, ...(segments ? { segments } : {}) };
-        } catch (error) {
-          debugLogger.error("BYOK audio file transcription error", { error: error.message });
-          return {
-            success: false,
-            error: error.message,
-            code: error.code,
-            messageKey: error.messageKey,
-          };
-        }
-      }
-    );
 
     ipcMain.handle("get-model-cache-root", () => {
       const { getCacheRoot } = require("./modelDirUtils");

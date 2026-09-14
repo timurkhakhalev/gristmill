@@ -148,6 +148,9 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const runIdRef = useRef(0);
   const mountedRef = useRef(true);
   const urlDownloadActiveRef = useRef(false);
+  // The requestId of the in-flight single upload, so Stop hard-cancels the
+  // exact execution (transport + diarization) before the UI resets.
+  const singleRequestIdRef = useRef<string | null>(null);
 
   const [urlInput, setUrlInput] = useState("");
   const [downloadProgress, setDownloadProgress] = useState<{
@@ -555,10 +558,23 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     if (personal) setSelectedFolderId(String(personal.id));
   };
 
-  const cancelTranscription = () => {
-    // The current preload has no transcription-cancel API. The run-id bump
-    // safely discards late results while the UI returns to the idle state.
+  const cancelTranscription = async () => {
+    // Hard cancel first: the typed cancel op aborts the transport, decode and
+    // diarization of this request, so the downloaded temp file below is only
+    // deleted after every reader settled. The run-id bump keeps any late
+    // result from touching the reset UI; user-picked source files are never
+    // deleted, only the downloaded temp copy.
+    const requestId = singleRequestIdRef.current;
     runIdRef.current++;
+    singleRequestIdRef.current = null;
+    if (requestId) {
+      try {
+        await window.electronAPI.cancelUploadTranscription({ requestId });
+      } catch {
+        // A late or repeated cancel is a safe no-op; resetting the UI must
+        // not depend on it.
+      }
+    }
     reset();
   };
   const handleTranscribe = async () => {
@@ -567,6 +583,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     const currentTempPath = downloadedTempPath;
     const runId = ++runIdRef.current;
     const requestId = crypto.randomUUID();
+    singleRequestIdRef.current = requestId;
     setState("transcribing");
     setError(null);
     setProgress(0);
@@ -583,6 +600,9 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
     try {
       const diarization = await buildDiarizationSettings();
+      // The settings preparation is async (lazy model download); a Stop that
+      // landed meanwhile must not start the IPC work at all.
+      if (runId !== runIdRef.current) return;
       const res: FileTranscriptionResult = await transcribeFileWithSpeakers(
         currentFile.path,
         buildTranscriptionConfig(),
@@ -592,6 +612,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       );
 
       if (runId !== runIdRef.current) return;
+      singleRequestIdRef.current = null;
 
       if (progressRef.current) clearInterval(progressRef.current);
       if (progressCleanupRef.current) progressCleanupRef.current();
@@ -646,6 +667,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       }
     } catch (err) {
       if (runId !== runIdRef.current) return;
+      singleRequestIdRef.current = null;
       if (progressRef.current) clearInterval(progressRef.current);
       if (progressCleanupRef.current) progressCleanupRef.current();
       progressCleanupRef.current = null;

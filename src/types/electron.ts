@@ -7,6 +7,7 @@ import type { VocabularyApi } from "../contracts/vocabulary";
 import type { ContainersApi } from "../contracts/containers";
 import type { ChatPersistenceApi } from "../contracts/chatPersistence";
 import type { ActionsApi } from "../contracts/actions";
+import type { LocalFileTranscriptionApi } from "../contracts/localFileTranscription";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -683,16 +684,6 @@ declare global {
         filePaths?: string[];
       }>;
       getFileSize?: (filePath: string) => Promise<number>;
-      transcribeAudioFile: (
-        filePath: string,
-        options?: {
-          provider?: LocalTranscriptionProvider;
-          model?: string;
-          language?: string;
-          requestId?: string;
-          [key: string]: unknown;
-        }
-      ) => Promise<{ success: boolean; text?: string; error?: string; code?: string }>;
       getPathForFile: (file: File) => string;
 
       // URL audio download operations come from the shared UrlDownloadApi
@@ -1480,7 +1471,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

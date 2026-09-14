@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **133 JS, 27 TS, 1 MTS и 25 JSON**.
+а не всеми файлами в каталоге helpers. В нём **133 JS, 32 TS, 1 MTS и 25 JSON**.
 Entry points: main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
 
@@ -162,6 +162,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/contracts/containers.ts`
 - `src/contracts/chatPersistence.ts`
 - `src/contracts/actions.ts`
+- `src/contracts/localFileTranscription.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
 - `src/constants/speakerDetection.json`
@@ -184,6 +185,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/preload/containerBridge.ts`
 - `src/preload/chatBridge.ts`
 - `src/preload/actionsBridge.ts`
+- `src/preload/localFileTranscriptionBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
 - `src/helpers/builtinActions.js`
@@ -293,6 +295,8 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/chatPersistenceIpcHandlers.ts`
 - `src/helpers/actionsEvents.ts`
 - `src/helpers/actionsIpcHandlers.ts`
+- `src/helpers/localFileTranscription.ts`
+- `src/helpers/localFileTranscriptionIpcHandler.ts`
 - `src/helpers/tinfoilCatalog.js`
 - `src/helpers/tinfoilRealtimeStreaming.js`
 - `src/helpers/tinfoilSecureClient.js`
@@ -388,7 +392,7 @@ preload → handler Map → fake downloader; malformed progress отбрасыв
 Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings); focused
 55 passed (`urlDownloadIpc`, `urlDownloadBridge`, `urlAudioDownloader`,
 `rendererBridgeContract`, `mainBuild`, type probes); `build:main` OK.
-Inventory графа Electron: 133 JS, 27 TS, 1 MTS, 25 JSON.
+Inventory графа Electron: 133 JS, 32 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированный IPC Dictionary/Snippets»
 
@@ -417,7 +421,7 @@ preload → handlers → временный SQLite; malformed события и�
 cliBridgeSnippets, dictionaryStartup, databaseLocalBehavior,
 rendererBridgeContract, mainBuild, vocabularyTypeProbe, dictionaryTool,
 snippetTool, snippets);
-`build:main` OK. Inventory графа Electron: 133 JS, 27 TS, 1 MTS, 25 JSON.
+`build:main` OK. Inventory графа Electron: 133 JS, 32 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированный IPC папок и пространств (containers)»
 
@@ -448,7 +452,7 @@ notesIpc, databaseLocalBehavior/Schema, notesDatabase,
 spacesTreeNoteActionClearance, toolUtils, searchNotesTool); compiler probe
 на неполную DB deps; полный `pnpm test`; `pnpm run pack`; Node ABI
 восстановлен; `node scripts/smoke-electron.js` на изолированном профиле.
-Inventory графа Electron: 133 JS, 27 TS, 1 MTS, 25 JSON.
+Inventory графа Electron: 133 JS, 32 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированная граница chat persistence»
 
@@ -514,3 +518,34 @@ positive под strict; actionProcessingNoteOutput, chat/container suites,
 rendererBridgeContract, mainBuild); полный `pnpm test` 2567 passed;
 pack + isolated smoke. Inventory графа Electron: 133 JS, 27 TS, 1 MTS,
 25 JSON.
+
+## Этап «типизированная граница локальной транскрипции файла»
+
+14 сентября 2026 (issue #10, план PR #28). Первый ограниченный шаг
+миграции file transcription: только локальный маршрут `transcribe-audio-file`.
+Чтение файла и whisper-vs-sherpa dispatch вынесены в
+`src/helpers/localFileTranscription.ts` — общий модуль, через который идут
+и IPC handler, и CLI bridge (composition entrypoint в
+`IPCHandlers.transcribeLocalFile`, второй реализации нет). Тонкий
+`src/helpers/localFileTranscriptionIpcHandler.ts` владеет проверкой
+allowed-path до чтения, регистрацией requestId в существующем
+uploadCancelRegistry (один реестр, не создаётся на запрос), переводом
+исключений в IPC failure (abort → Cancelled/UPLOAD_CANCELLED) и release в
+finally. Контракт `src/contracts/localFileTranscription.ts` сохраняет
+реальные формы результатов managers — message у whisper no-audio,
+warning=truncated у sherpa, code=NO_SPEECH_DETECTED, invalid_response —
+вместо узкой старой декларации. Soft-cancel семантика сохранена: runId
+подавляет поздний результат, hard cancel IPC не добавлялся; вводящие в
+заблуждение комментарии handler'а исправлены. Managers, VAD resolver и
+approved-path registry остаются владельцами своей логики; options идут
+насквозь (whisper получает noteRecording VAD merge, sherpa — signal).
+
+Проверка: typecheck 0 ошибок; lint 0 errors (baseline 47+2 warnings);
+`build:main` OK; focused (localFileTranscriptionBehavior 7,
+localFileTranscriptionIpc 6, localFileTranscriptionBridge e2e через
+bundled preload 4 — включая shared registration guard,
+localFileTranscriptionTypeProbe 3: неполные deps TS2345/2741, wrong bridge
+call TS2345, positive под strict; uploadCancelRegistry,
+fileTranscriptionCustomEndpoint/DiarizationWarning/Managed/Timestamps,
+rendererBridgeContract); полный `pnpm test` 2587 passed; pack + isolated
+smoke. Inventory графа Electron: 133 JS, 32 TS, 1 MTS, 25 JSON.

@@ -3,15 +3,11 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const Module = require("node:module");
 
-const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
-const downloadHandlersModulePath = require.resolve("../../src/helpers/urlDownloadIpcHandlers");
-const originalLoad = Module._load;
 const handlers = new Map();
 
-// Fake downloader: every call is recorded and can be held open or failed from
-// the test. No network, no real temp writes.
+// Fake downloader injected as a dependency; every call is recorded and can be
+// held open or failed from the test. No network, no real temp writes.
 const downloadCalls = [];
 let downloadBehavior = () => {
   throw new Error("fake download has no behavior set");
@@ -29,80 +25,35 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-const electronStub = {
-  app: {
-    getPath: () => "/tmp",
-    getName: () => "test",
-    getVersion: () => "0.0.0",
-    isPackaged: false,
-    on: () => {},
-    requestSingleInstanceLock: () => true,
-  },
-  ipcMain: {
-    handle: (channel, fn) => handlers.set(channel, fn),
-    on: () => {},
-    removeHandler: () => {},
-  },
-  net: { fetch: async () => ({ ok: true, status: 200, json: async () => ({}) }) },
-  BrowserWindow: class {
-    static getAllWindows() {
-      return [];
-    }
-    static fromWebContents() {
-      return null;
-    }
-  },
-  shell: {},
-  dialog: {},
-  screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 0, height: 0 } }) },
-  systemPreferences: { getMediaAccessStatus: () => "granted" },
-  session: { fromPartition: () => ({}) },
-  clipboard: {},
-  nativeImage: {},
-  globalShortcut: {},
-  utilityProcess: {},
-  MessageChannelMain: class {},
-};
-
-Module._load = function loadWithMocks(request, parent, isMain) {
-  if (request === "electron") return electronStub;
-  const fromHandlers =
-    parent?.filename === handlersModulePath ||
-    parent?.filename === downloadHandlersModulePath;
-  if (fromHandlers) {
-    if (request === "./debugLogger") {
-      return new Proxy({}, { get: () => () => {} });
-    }
-    // The TS handler module requests "./urlAudioDownloader.js" (with
-    // extension); match on the tail so both spellings hit the fake.
-    if (request.endsWith("urlAudioDownloader.js")) {
-      return {
-        download: (url, onProgress, signal) => {
-          const call = { url, onProgress, signal, deferred: deferred() };
-          downloadCalls.push(call);
-          return downloadBehavior(call);
-        },
-        sweepStaleTempArtifacts: () => {
-          sweepCalls.push(true);
-        },
-      };
-    }
-    if (request === "./safeTempDir" || request.endsWith("safeTempDir.js")) {
-      return { getSafeTempDir: () => safeTempRoot };
-    }
-  }
-  return originalLoad.call(this, request, parent, isMain);
+function resetDownloader() {
+  downloadCalls.length = 0;
+  downloadBehavior = (call) => call.deferred.promise;
 }
 
-function anything() {
-  return new Proxy(function () {}, {
-    get: (target, property) => {
-      if (property === Symbol.toPrimitive || property === "toString") return () => "";
-      if (property === "then") return undefined;
-      return anything();
+let register;
+test.before(async () => {
+  ({ registerUrlDownloadHandlers: register } = await import(
+    "../../src/helpers/urlDownloadIpcHandlers.ts"
+  ));
+});
+
+function registration() {
+  handlers.clear();
+  register(
+    {
+      handle: (channel, fn) => handlers.set(channel, fn),
     },
-    apply: () => anything(),
-  });
+    {
+      download: (url, onProgress, signal) => {
+        const call = { url, onProgress, signal, deferred: deferred() };
+        downloadCalls.push(call);
+        return downloadBehavior(call);
+      },
+      sweepStaleTempArtifacts: () => sweepCalls.push(1),
+      getSafeTempDir: () => safeTempRoot,
+      debugLogger: { error() {}, warn() {} },
+    }
+  );
 }
 
 function sender() {
@@ -118,36 +69,14 @@ function eventFrom(s) {
   return { sender: s };
 }
 
-function resetDownloader() {
-  downloadCalls.length = 0;
-  downloadBehavior = (call) => call.deferred.promise;
-}
-
-test.before(() => {
-  // Fresh load of the whole handler graph so the fake downloader/safeTempDir
-  // mocks are observed instead of already-cached real modules.
-  delete require.cache[handlersModulePath];
-  delete require.cache[downloadHandlersModulePath];
-  const IPCHandlers = require(handlersModulePath);
-  const Ctor = IPCHandlers.default || IPCHandlers;
-  Ctor.prototype.setupHandlers.call(
-    new Proxy({}, { get: (value, property) => (property in value ? value[property] : anything()) })
-  );
-  assert.ok(handlers.get("download-url-audio"), "download handler must be registered");
-  assert.ok(handlers.get("cancel-url-download"), "cancel handler must be registered");
-  assert.ok(handlers.get("delete-temp-file"), "delete-temp handler must be registered");
-});
-
-test.after(() => {
-  Module._load = originalLoad;
-  if (safeTempRoot) fs.rmSync(safeTempRoot, { recursive: true, force: true });
-});
-
 test("setup sweeps stale temp artifacts exactly once, not at module import", () => {
+  sweepCalls.length = 0;
+  registration();
   assert.equal(sweepCalls.length, 1);
 });
 
 test("success resolves with the downloader result spread under success:true", async () => {
+  registration();
   resetDownloader();
   downloadBehavior = () =>
     Promise.resolve({ tempPath: "/t/ow-url-a", title: "Song", durationSeconds: null, sizeBytes: 12 });
@@ -165,6 +94,7 @@ test("success resolves with the downloader result spread under success:true", as
 });
 
 test("progress goes only to the initiating sender and carries the assigned id", async () => {
+  registration();
   resetDownloader();
   const s1 = sender();
   const s2 = sender();
@@ -183,7 +113,38 @@ test("progress goes only to the initiating sender and carries the assigned id", 
   assert.deepEqual(s2.sent, []);
 });
 
+test("malformed progress from the downloader is dropped without breaking the download", async () => {
+  registration();
+  resetDownloader();
+  const s = sender();
+  const pending = handlers.get("download-url-audio")(
+    eventFrom(s),
+    "https://example.com/a.mp3",
+    "job-m"
+  );
+  downloadCalls[0].onProgress({ stage: "sideways", percent: "many" });
+  downloadCalls[0].onProgress({ stage: "downloading", percent: 90 });
+  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  await pending;
+  assert.deepEqual(s.sent, [
+    ["url-download-progress", { stage: "downloading", percent: 90, downloadId: "job-m" }],
+  ]);
+});
+
+test("a malformed downloader result is not reported as success", async () => {
+  registration();
+  resetDownloader();
+  downloadBehavior = () => Promise.resolve({ tempPath: 42 });
+  const result = await handlers.get("download-url-audio")(
+    eventFrom(sender()),
+    "https://example.com/a.mp3",
+    "job-bad"
+  );
+  assert.equal(result.success, false);
+});
+
 test("wrong-type or overlong urls are rejected before the downloader is touched", async () => {
+  registration();
   resetDownloader();
   for (const url of [null, 5, undefined, "x".repeat(2049)]) {
     const result = await handlers.get("download-url-audio")(eventFrom(sender()), url);
@@ -195,6 +156,7 @@ test("wrong-type or overlong urls are rejected before the downloader is touched"
 // "" is a string of valid length, so the current boundary passes it to the
 // downloader; rejecting it there is the downloader's job. Pin that split.
 test("empty string url reaches the downloader, which fails it", async () => {
+  registration();
   resetDownloader();
   downloadBehavior = () => Promise.reject(new Error("Invalid URL"));
   const result = await handlers.get("download-url-audio")(eventFrom(sender()), "");
@@ -203,6 +165,7 @@ test("empty string url reaches the downloader, which fails it", async () => {
 });
 
 test("a url of exactly 2048 chars is accepted by the boundary", async () => {
+  registration();
   resetDownloader();
   const filler = "a".repeat(2048 - "https://example.com/".length);
   const url = `https://example.com/${filler}`;
@@ -214,6 +177,7 @@ test("a url of exactly 2048 chars is accepted by the boundary", async () => {
 });
 
 test("missing, empty or non-string downloadId gets a generated dl-N id", async () => {
+  registration();
   resetDownloader();
   const seen = [];
   const pendings = ["https://example.com/1", "https://example.com/2", "https://example.com/3"].map(
@@ -238,6 +202,7 @@ test("missing, empty or non-string downloadId gets a generated dl-N id", async (
 });
 
 test("cancel with a string id aborts only that download", async () => {
+  registration();
   resetDownloader();
   const pending = handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/1", "job-a");
   const pendingB = handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/2", "job-b");
@@ -251,6 +216,7 @@ test("cancel with a string id aborts only that download", async () => {
 });
 
 test("cancel without an id, with empty string or a non-string cancels everything", async () => {
+  registration();
   resetDownloader();
   const pendings = [
     handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/1", "job-a"),
@@ -271,6 +237,7 @@ test("cancel without an id, with empty string or a non-string cancels everything
 });
 
 test("cancel of unknown or completed id and cancel-all with nothing running fail quietly", async () => {
+  registration();
   assert.deepEqual(await handlers.get("cancel-url-download")({ sender: sender() }, "nope"), {
     success: false,
   });
@@ -280,6 +247,7 @@ test("cancel of unknown or completed id and cancel-all with nothing running fail
 });
 
 test("same-id reuse replaces the entry; the finished job's cleanup keeps the new controller", async () => {
+  registration();
   resetDownloader();
   const first = handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/1", "same");
   const second = handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/2", "same");
@@ -294,6 +262,7 @@ test("same-id reuse replaces the entry; the finished job's cleanup keeps the new
 });
 
 test("downloader errors keep message and code; a missing code becomes DOWNLOAD_FAILED", async () => {
+  registration();
   resetDownloader();
   downloadBehavior = () =>
     Promise.reject(Object.assign(new Error("quota blown"), { code: "QUOTA" }));
@@ -306,6 +275,7 @@ test("downloader errors keep message and code; a missing code becomes DOWNLOAD_F
 });
 
 test("an aborted download keeps the downloader's own cancellation code", async () => {
+  registration();
   resetDownloader();
   downloadBehavior = (call) => {
     call.signal.addEventListener("abort", () =>
@@ -320,6 +290,7 @@ test("an aborted download keeps the downloader's own cancellation code", async (
 });
 
 test("progress is not sent to a destroyed sender and later downloads still work", async () => {
+  registration();
   resetDownloader();
   const s = sender();
   s.isDestroyed = () => true;
@@ -335,13 +306,14 @@ test("progress is not sent to a destroyed sender and later downloads still work"
   assert.equal((await next).success, true);
 });
 
-// delete-temp-file: real filesystem against a stubbed safe temp root.
+// delete-temp-file: real filesystem against the injected safe temp root.
 function setupTempRoot() {
   safeTempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ow-urltest-"));
   return safeTempRoot;
 }
 
 test("delete-temp-file rejects non-string paths without touching the disk", async () => {
+  registration();
   setupTempRoot();
   for (const value of [undefined, null, 12, {}]) {
     const result = await handlers.get("delete-temp-file")({ sender: sender() }, value);
@@ -351,6 +323,7 @@ test("delete-temp-file rejects non-string paths without touching the disk", asyn
 });
 
 test("delete-temp-file refuses basenames outside the ow-url-/ow-diarize- families", async () => {
+  registration();
   const root = setupTempRoot();
   const foreign = path.join(root, "important.txt");
   fs.writeFileSync(foreign, "keep me");
@@ -361,17 +334,18 @@ test("delete-temp-file refuses basenames outside the ow-url-/ow-diarize- familie
 });
 
 test("delete-temp-file refuses paths that escape the safe temp root", async () => {
-  const root = setupTempRoot();
+  registration();
+  setupTempRoot();
   const outside = path.join(os.tmpdir(), `ow-url-escape-${Date.now()}.tmp`);
   fs.writeFileSync(outside, "outside");
   const result = await handlers.get("delete-temp-file")({ sender: sender() }, outside);
   assert.equal(result.success, false);
   assert.equal(fs.existsSync(outside), true);
   fs.rmSync(outside, { force: true });
-  void root;
 });
 
 test("delete-temp-file refuses a symlink that points outside the temp root", async () => {
+  registration();
   const root = setupTempRoot();
   const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "ow-outside-"));
   const target = path.join(outsideDir, "ow-url-victim.tmp");
@@ -385,6 +359,7 @@ test("delete-temp-file refuses a symlink that points outside the temp root", asy
 });
 
 test("delete-temp-file reports failure for a missing file", async () => {
+  registration();
   const root = setupTempRoot();
   const result = await handlers.get("delete-temp-file")(
     { sender: sender() },
@@ -394,6 +369,7 @@ test("delete-temp-file reports failure for a missing file", async () => {
 });
 
 test("delete-temp-file removes a legitimate ow- file inside the safe temp root", async () => {
+  registration();
   const root = setupTempRoot();
   const ok = path.join(root, "ow-url-fine.tmp");
   fs.writeFileSync(ok, "audio");
@@ -403,9 +379,35 @@ test("delete-temp-file removes a legitimate ow- file inside the safe temp root",
 });
 
 test("delete-temp-file removes ow-diarize- files too", async () => {
+  registration();
   const root = setupTempRoot();
   const ok = path.join(root, "ow-diarize-123.wav");
   fs.writeFileSync(ok, "wav");
   const result = await handlers.get("delete-temp-file")({ sender: sender() }, ok);
   assert.deepEqual(result, { success: true });
+});
+
+test("each registration owns its own download map and sequence", async () => {
+  const a = { handle: (c, fn) => handlers.set("a-" + c, fn) };
+  const b = { handle: (c, fn) => handlers.set("b-" + c, fn) };
+  handlers.clear();
+  safeTempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ow-urltest-"));
+  register(a, {
+    download: () => Promise.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 }),
+    sweepStaleTempArtifacts: () => {},
+    getSafeTempDir: () => safeTempRoot,
+    debugLogger: { error() {}, warn() {} },
+  });
+  register(b, {
+    download: () => Promise.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 }),
+    sweepStaleTempArtifacts: () => {},
+    getSafeTempDir: () => safeTempRoot,
+    debugLogger: { error() {}, warn() {} },
+  });
+  fs.writeFileSync(path.join(safeTempRoot, "ow-url-a.tmp"), "a");
+  await handlers.get("a-download-url-audio")({ sender: sender() }, "https://example.com/1", "shared-id");
+  // b has its own map: the same id is unknown there.
+  assert.deepEqual(await handlers.get("b-cancel-url-download")({ sender: sender() }, "shared-id"), {
+    success: false,
+  });
 });

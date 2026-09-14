@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 const { createNotesBridge } = require("./src/preload/notesBridge");
+const { createUrlDownloadBridge } = require("./src/preload/urlDownloadBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -184,14 +185,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return filePath;
   },
 
-  // URL audio download
-  downloadUrlAudio: (url, downloadId) => ipcRenderer.invoke("download-url-audio", url, downloadId),
-  cancelUrlDownload: (downloadId) => ipcRenderer.invoke("cancel-url-download", downloadId),
-  deleteTempFile: (filePath) => ipcRenderer.invoke("delete-temp-file", filePath),
-  onUrlDownloadProgress: registerListener(
-    "url-download-progress",
-    (callback) => (_event, data) => callback(data)
-  ),
+  // URL audio download lives in the typed bridge module
+  ...createUrlDownloadBridge(ipcRenderer),
 
   onActionCreated: (callback) => {
     const listener = (_event, action) => callback?.(action);

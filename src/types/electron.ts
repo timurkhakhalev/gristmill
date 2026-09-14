@@ -2,6 +2,7 @@ import type { ModelDefinition } from "../models/ModelRegistry";
 import type { TinfoilCatalogModel } from "../models/tinfoilModels";
 import type { CalendarAvailabilityRequest, CalendarAvailabilityResult } from "./calendar";
 import type { NotesApi } from "../contracts/notes";
+import type { UrlDownloadApi } from "../contracts/urlDownload";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -856,31 +857,8 @@ declare global {
       ) => Promise<{ success: boolean; text?: string; error?: string; code?: string }>;
       getPathForFile: (file: File) => string;
 
-      // URL audio download
-      downloadUrlAudio: (
-        url: string,
-        downloadId?: string
-      ) => Promise<
-        | {
-            success: true;
-            tempPath: string;
-            title: string;
-            durationSeconds: number | null;
-            sizeBytes: number;
-          }
-        | { success: false; error: string; code?: string }
-      >;
-      cancelUrlDownload: (downloadId?: string) => Promise<{ success: boolean }>;
-      deleteTempFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-      onUrlDownloadProgress?: (
-        callback: (data: {
-          stage: "resolving" | "downloading" | "ready";
-          percent: number;
-          title?: string;
-          downloadId?: string;
-        }) => void
-      ) => () => void;
-
+      // URL audio download operations come from the shared UrlDownloadApi
+      // contract (three operations + the progress subscription).
       onFolderDeleted?: (callback: (payload: { id: number }) => void) => () => void;
 
       // Database event listeners
@@ -1766,7 +1744,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi;
+    } & NotesApi & UrlDownloadApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

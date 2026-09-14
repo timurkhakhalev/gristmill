@@ -33,6 +33,20 @@ export function byokFileSizeLimit(provider: string): number {
   return provider === "gemini" ? GEMINI_FILE_SIZE_LIMIT : BYOK_FILE_SIZE_LIMIT;
 }
 
+// Route caps vary by provider (Gemini's inline-base64 limit is the lowest), so
+// the message reports the cap that actually applied.
+export function byokSizeCapError(sizeCapBytes: number): string {
+  return `File too large. Maximum size for bring-your-own-key is ${Math.floor(
+    sizeCapBytes / (1024 * 1024)
+  )} MB.`;
+}
+
+// mistral/xai have no OpenAI-compatible transcription endpoint — the upload
+// and retry executors talk to them directly at these URLs.
+export const MISTRAL_TRANSCRIPTION_URL = "https://api.mistral.ai/v1/audio/transcriptions";
+
+export const XAI_STT_URL = "https://api.x.ai/v1/stt";
+
 const CUSTOM_ENDPOINT_INVALID_MESSAGE_KEY =
   "hooks.audioRecording.errorDescriptions.customEndpointInvalid";
 const STREAMING_ONLY_PROVIDER_MESSAGE_KEY =

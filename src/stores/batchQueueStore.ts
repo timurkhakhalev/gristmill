@@ -48,6 +48,11 @@ export const useBatchQueueStore = create<BatchQueueStoreState>()(() => ({
 // may finish, but its late result is discarded and cannot update the queue.
 let runId = 0;
 
+// The requestId of the batch item currently in its transcription phase, so
+// cancelBatch hard-cancels that execution (transport + diarization) instead
+// of only discarding its late result.
+let activeRequestId: string | null = null;
+
 function updateQueue(updater: (prev: QueueItem[]) => QueueItem[]) {
   useBatchQueueStore.setState((s) => ({ queue: updater(s.queue) }));
 }
@@ -88,6 +93,17 @@ export function removeQueueItem(id: string) {
 export function cancelBatch() {
   runId++;
   window.electronAPI.cancelUrlDownload();
+  // Hard-cancel the current item's execution before flipping the queue, so
+  // its transport/decode/diarization stop instead of burning a paid request
+  // to completion in the background. Navigation never calls this — the
+  // background batch survives it by design.
+  const requestId = activeRequestId;
+  activeRequestId = null;
+  if (requestId) {
+    void window.electronAPI.cancelUploadTranscription({ requestId }).catch(() => {
+      // A late or repeated cancel is a safe no-op.
+    });
+  }
   useBatchQueueStore.setState((s) => ({
     isProcessing: false,
     queue: s.queue.map((item) =>
@@ -184,6 +200,7 @@ export function processBatchQueue(
       updateItem(item.id, { status: "transcribing", progress: 0 });
 
       const requestId = crypto.randomUUID();
+      activeRequestId = requestId;
       const transcriptionResult = await transcribeFileWithSpeakers(
         filePath,
         transcription,
@@ -246,7 +263,9 @@ export function processBatchQueue(
           transcriptionErrorKey(err) || (err instanceof Error ? err.message : "batchUnknownError"),
       });
     } finally {
-      // Nothing else owns the temp file, so delete it even for a stale run.
+      // Release the active-id slot (a cancelBatch may have cleared it
+      // already) and the temp file: nothing else owns either.
+      activeRequestId = null;
       if (tempPath) {
         window.electronAPI.deleteTempFile(tempPath);
       }

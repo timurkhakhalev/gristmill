@@ -111,9 +111,14 @@ function isWavFormat(buffer) {
 }
 
 function convertToWav(inputPath, outputPath, options = {}) {
-  const { sampleRate = 16000, channels = 1 } = options;
+  const { sampleRate = 16000, channels = 1, signal } = options;
 
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+
     const ffmpegPath = getFFmpegPath();
     if (!ffmpegPath) {
       reject(
@@ -150,16 +155,42 @@ function convertToWav(inputPath, outputPath, options = {}) {
     });
 
     let stderr = "";
+    let settled = false;
+
+    // A cancelled upload kills the child, but the caller only unlinks the
+    // temp WAV after this promise settles — so wait for the child to close
+    // before rejecting with the abort error.
+    const onAbort = () => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        // an uncaught throw here would escape the abort dispatch
+      }
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     proc.stderr.on("data", (data) => {
       stderr += data.toString();
     });
 
     proc.on("error", (error) => {
+      if (settled) return;
+      signal?.removeEventListener("abort", onAbort);
+      // After an abort the error belongs to the kill; close still fires and
+      // must stay the settler, so don't consume the settlement here.
+      if (signal?.aborted) return;
+      settled = true;
       reject(new Error(`FFmpeg process error: ${error.message}`));
     });
 
     proc.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener("abort", onAbort);
+      if (signal?.aborted) {
+        reject(createAbortError());
+        return;
+      }
       if (code !== 0) {
         const stderrPreview = stderr.slice(-500).trim();
         debugLogger.debug("FFmpeg conversion failed", { code, stderr: stderrPreview });

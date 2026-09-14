@@ -8,23 +8,12 @@ import {
   modelRegistry,
 } from "../../models/ModelRegistry";
 import { getASRModelOrganization } from "../../helpers/localASROrganization";
-import { useSettingsStore } from "../../stores/settingsStore";
-import {
-  consumePendingLocalModel,
-  forgetPendingLocalModel,
-  getPendingLocalModelAvailability,
-  hasPendingLocalModels,
-  readPendingLocalModels,
-  type PendingLocalModelKind,
-  type PendingLocalModelSelection,
-} from "./pendingLocalModels";
 import type {
   LocalLLMDownloadProgressEvent,
   ParakeetDownloadProgressData,
   WhisperDownloadProgressData,
 } from "../../types/electron";
 import { ellipsisFrame, isTrayInstalling, mergeHydratedDownloads } from "./localDownloadState";
-import { ONBOARDING_SESSION_KEY, isRequiredModelsOnboardingStepActive } from "./flow";
 import { getPlatform } from "../../utils/platform";
 
 type DownloadKind = "whisper" | "parakeet" | "llm";
@@ -65,36 +54,6 @@ function downloadDisplay(download: ActiveDownload) {
     name: localModel?.model.name ?? download.id,
     provider: localModel?.provider.id ?? "local",
   };
-}
-
-function activatePendingLocalModel(kind: PendingLocalModelKind, modelId: string) {
-  if (localStorage.getItem("localSetupPending") !== "true") return;
-  const selection = consumePendingLocalModel(kind, modelId);
-  if (!selection) return;
-
-  const store = useSettingsStore.getState();
-  if (kind === "dictation") {
-    if (selection.provider === "nvidia") {
-      store.setLocalTranscriptionProvider("nvidia");
-      store.setParakeetModel(selection.modelId);
-    } else {
-      store.setLocalTranscriptionProvider("whisper");
-      store.setWhisperModel(selection.modelId);
-    }
-    store.setCloudTranscriptionForAllScopes({ useLocalWhisper: true });
-    return;
-  }
-
-  store.setChatAgentMode("local");
-  store.setChatAgentProvider(selection.provider);
-  store.setChatAgentModel(selection.modelId);
-  store.setCloudReasoningForAllScopes({
-    cleanupCloudMode: "local",
-    cleanupProvider: selection.provider,
-    cleanupModel: selection.modelId,
-    useCleanupModel: true,
-    useDictationAgent: true,
-  });
 }
 
 // The X on each row (Figma "Frame 25"), inlined rather than drawn with the icon set so
@@ -149,7 +108,6 @@ export default function BackgroundModelDownloadTray({
 }) {
   const { t } = useTranslation();
   const [downloads, setDownloads] = useState<Record<string, ActiveDownload>>({});
-  const [hydrated, setHydrated] = useState(false);
   const hydrationInProgress = useRef(true);
   const removedDuringHydration = useRef<Set<string>>(new Set());
   // An abort emits no terminal progress event (the IPC handlers exclude
@@ -161,18 +119,6 @@ export default function BackgroundModelDownloadTray({
   const cancelledKeys = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
-    // Hydration only exists to re-surface downloads the onboarding flow kicked
-    // off before this mount, and those always travel with the local-setup
-    // bookkeeping below. When neither marker is set there is nothing to recover,
-    // so skip the three disk-scanning IPC calls — this is safe because any
-    // download started after mount reaches us through the progress listeners in
-    // the next effect regardless.
-    if (localStorage.getItem("localSetupPending") !== "true" && !hasPendingLocalModels()) {
-      hydrationInProgress.current = false;
-      setHydrated(true);
-      return;
-    }
-
     let cancelled = false;
 
     const hydrate = async () => {
@@ -211,29 +157,10 @@ export default function BackgroundModelDownloadTray({
         };
       }
 
-      const inventory = {
-        whisper: whisper?.models,
-        parakeet: parakeet?.models,
-        llm,
-      };
-      const canActivate = localStorage.getItem("localSetupPending") === "true";
-      for (const [kind, selection] of Object.entries(readPendingLocalModels()) as [
-        PendingLocalModelKind,
-        PendingLocalModelSelection,
-      ][]) {
-        const availability = getPendingLocalModelAvailability(kind, selection, inventory);
-        if (availability === "downloaded" && canActivate) {
-          activatePendingLocalModel(kind, selection.modelId);
-        } else if (availability === "downloaded" || availability === "missing") {
-          forgetPendingLocalModel(kind, selection.modelId);
-        }
-      }
-
       setDownloads((current) =>
         mergeHydratedDownloads(active, current, removedDuringHydration.current)
       );
       hydrationInProgress.current = false;
-      setHydrated(true);
     };
 
     void hydrate();
@@ -245,7 +172,7 @@ export default function BackgroundModelDownloadTray({
   useEffect(() => {
     // The three progress channels carry the same lifecycle in different field
     // names, so each is normalized to this shape and fed through one apply
-    // function — cancel suppression, pending-model activation, and the upsert /
+    // function — cancel suppression and the upsert /
     // delete-on-complete logic then only exist once.
     const applyProgress = (event: {
       kind: DownloadKind;
@@ -254,17 +181,6 @@ export default function BackgroundModelDownloadTray({
       percentage: number | undefined;
       error?: string;
     }) => {
-      // The required-models onboarding step owns its downloads: it renders its
-      // own per-row progress, and cancelling from here cannot stick because the
-      // step auto-restarts org-mandated downloads. Suppress row creation while
-      // that step is active; completions still pass so any pre-existing row
-      // (a resumed local-setup download) can clear and activate normally.
-      if (
-        event.type !== "complete" &&
-        isRequiredModelsOnboardingStepActive(localStorage.getItem(ONBOARDING_SESSION_KEY))
-      ) {
-        return;
-      }
       const key = downloadKey(event.kind, event.id);
       const cancelledAt = cancelledKeys.current.get(key);
       if (cancelledAt !== undefined && event.type !== "complete") {
@@ -279,7 +195,6 @@ export default function BackgroundModelDownloadTray({
       if (event.type === "complete") {
         if (hydrationInProgress.current) removedDuringHydration.current.add(key);
         cancelledKeys.current.delete(key);
-        activatePendingLocalModel(event.kind === "llm" ? "assistant" : "dictation", event.id);
       }
       setDownloads((current) => {
         if (event.type === "complete") {
@@ -338,7 +253,6 @@ export default function BackgroundModelDownloadTray({
 
   const cancelDownload = useCallback(async (download: ActiveDownload) => {
     const key = downloadKey(download.kind, download.id);
-    const pendingKind = download.kind === "llm" ? "assistant" : "dictation";
 
     // An error row represents a transfer that has already stopped. Its X is a
     // dismiss action, so no cancellation IPC is needed (and would be refused).
@@ -348,7 +262,6 @@ export default function BackgroundModelDownloadTray({
         delete next[key];
         return next;
       });
-      forgetPendingLocalModel(pendingKind, download.id);
       return;
     }
 
@@ -384,10 +297,6 @@ export default function BackgroundModelDownloadTray({
       return;
     }
 
-    // Only discard the intended selection once the transfer actually stopped.
-    // If cancellation is refused, keeping it lets a finishing installation
-    // activate the exact model the user originally chose.
-    forgetPendingLocalModel(pendingKind, download.id);
   }, []);
 
   const activeDownloads = useMemo(() => Object.values(downloads), [downloads]);
@@ -397,12 +306,6 @@ export default function BackgroundModelDownloadTray({
         ? "end-5 top-5"
         : "end-5 top-14"
       : "end-7 bottom-5";
-
-  useEffect(() => {
-    if (hydrated && activeDownloads.length === 0 && !hasPendingLocalModels()) {
-      localStorage.removeItem("localSetupPending");
-    }
-  }, [activeDownloads.length, hydrated]);
 
   if (activeDownloads.length === 0) return null;
 

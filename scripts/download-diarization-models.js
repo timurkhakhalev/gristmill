@@ -27,7 +27,7 @@ function getModelDir() {
     return path.resolve(process.env.DIARIZATION_MODEL_DIR);
   }
 
-  return path.join(os.homedir(), ".cache", "openwhispr", "diarization-models");
+  return path.join(os.homedir(), ".cache", "openhercules", "diarization-models");
 }
 
 function extractTarBz2(archivePath, destDir) {

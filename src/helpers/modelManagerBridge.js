@@ -275,12 +275,9 @@ class ModelManager {
       // The GGUF is the file llama.cpp actually loads, so it outranks the
       // registry, which is wrong for at least the qwen2.5-7b entries.
       trainedContextTokens: metadata?.contextLength || modelInfo.model.contextLength || 0,
-      // Anywhere but Apple Silicon the GPU may have its own memory that we do
-      // not probe, so the system-RAM budget alone is not a safe bound. Stay
-      // modest and let the GPU fallback ladder handle the rest. Intel Macs
-      // count: a discrete Radeon has a few GB of its own, and the darwin start
-      // path has no reduced-context rung to catch an over-sized window.
-      discreteGpuUnverified: process.platform !== "darwin" || process.arch !== "arm64",
+      // OpenHercules ships the Metal llama-server for Apple Silicon only.
+      // Keep the context budget tied to unified system memory.
+      discreteGpuUnverified: false,
     });
 
     debugLogger.info("Resolved llama-server context ceiling", {
@@ -751,10 +748,6 @@ class ModelManager {
 
       try {
         await startAt(contextSize);
-        // The GPU ladder can load a smaller window than it was asked for
-        // without ever throwing. Recording that is what stops the preflight
-        // asking for the same window again and paying a second model load to
-        // be stepped down again.
         if (this.serverManager.contextSize < contextSize) refuse(contextSize);
       } catch (error) {
         refuse(contextSize);

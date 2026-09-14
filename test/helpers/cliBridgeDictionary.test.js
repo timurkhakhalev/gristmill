@@ -96,11 +96,10 @@ test("POST /v1/dictionary/update bulk-adds words that survive a reload", (t) => 
   assert.equal(result.data.added, 3);
   assert.deepEqual(ctx.db.getDictionary(), ["OpenWhispr", ...contacts]);
 
-  // The point of the endpoint: rows arrive with the sync columns set, so they
-  // are uploadable rather than invisible to the cloud push (#1295).
-  const pending = ctx.db.getPendingDictionary().map((r) => r.word);
-  for (const name of contacts) assert.ok(pending.includes(name), `${name} should be pending`);
-  for (const row of ctx.db.getPendingDictionary()) assert.ok(row.client_dict_id);
+  ctx.db.close();
+  const reopened = new DatabaseManager();
+  assert.deepEqual(reopened.getDictionary(), ["OpenWhispr", ...contacts]);
+  reopened.close();
 });
 
 test("POST /v1/dictionary/update removes only the named words", (t) => {

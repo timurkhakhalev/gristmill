@@ -143,21 +143,6 @@ function createElectronApi(db, options = {}) {
     getSpaces: async () => db.getSpaces(),
     upsertSpaceFromCloud: async (cloudSpace) => db.upsertSpaceFromCloud(cloudSpace),
     setSpaceSyncStatus: async (id, status) => db.setSpaceSyncStatus(id, status),
-    purgeSpace: async (id, purgeOptions) => {
-      // Mirrors the db-purge-space handler's stale-generation refusal.
-      if (
-        purgeOptions?.expectedAuthGeneration !== undefined &&
-        purgeOptions.expectedAuthGeneration !== AUTH_GENERATION
-      ) {
-        return {
-          success: false,
-          error: "Authentication context changed before account cleanup",
-          code: "AUTH_CONTEXT_CHANGED",
-        };
-      }
-      return db.purgeSpace(id, purgeOptions);
-    },
-
     // Conversations
     getAgentConversation: async (id) => db.getAgentConversation(id),
     getPendingConversations: async () => db.getPendingConversations(),

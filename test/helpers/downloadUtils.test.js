@@ -51,7 +51,7 @@ test("fetchJson sends the app User-Agent and returns the parsed body", async (t)
     tag_name: "v1",
   });
   assert.equal(calls[0].init.method, "GET");
-  assert.equal(calls[0].init.headers["User-Agent"], "OpenWhispr/1.0");
+  assert.equal(calls[0].init.headers["User-Agent"], "OpenHercules/1.0");
 });
 
 // The status is the only thing standing between an error page and a caller that
@@ -89,7 +89,7 @@ test("fetchJson forwards caller init and keeps the User-Agent alongside caller h
   assert.equal(init.cache, "no-store");
   assert.equal(init.signal, signal);
   assert.deepEqual(init.headers, {
-    "User-Agent": "OpenWhispr/1.0",
+    "User-Agent": "OpenHercules/1.0",
     Accept: "application/vnd.github+json",
   });
 });

@@ -38,8 +38,8 @@ export function findDefaultFolder(folders: FolderItem[]): FolderItem | undefined
   return folders.find((f) => f.name === DEFAULT_FOLDER_NAME && f.is_default);
 }
 
-// URL downloads route to "Videos" by name: a pre-existing user-created folder with
-// that name is used as-is (the migration never promotes or replaces it).
+// URL downloads route to "Videos" by name: an existing user-created folder with
+// that name is used as-is.
 export function findVideosFolder(folders: FolderItem[]): FolderItem | undefined {
   return folders.find((f) => f.name === VIDEOS_FOLDER_NAME);
 }
@@ -66,8 +66,8 @@ const TRANSCRIPTION_ERROR_KEYS: Record<string, string> = {
 };
 
 // A coded failure arrives either as a returned result (BYOK, local) or as a
-// thrown error — OpenWhispr Cloud rethrows it through withSessionRefresh — so
-// every call site resolves the key from whichever shape it is holding.
+// thrown error, so every call site resolves the key from whichever shape it
+// is holding.
 export function transcriptionErrorKey(failure: unknown): string | undefined {
   const code = (failure as { code?: string } | null | undefined)?.code;
   return code ? TRANSCRIPTION_ERROR_KEYS[code] : undefined;

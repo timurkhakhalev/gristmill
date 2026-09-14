@@ -264,20 +264,6 @@ test("labelled Tinfoil sessions carry the stream label in log metadata", async (
   assert.equal(typeof summary.meta.speechStartedCount, "number");
 });
 
-test("preconfigured sessions do not send a client session update", async () => {
-  const { TinfoilRealtimeStreaming } = await load();
-  const socket = makeFakeSocket(WS.CONNECTING);
-  const { factory } = makeRecordingFactory(socket);
-  const streaming = new TinfoilRealtimeStreaming(factory);
-
-  const connected = streaming.connect({ apiKey: "tk-secret", preconfigured: true });
-  await finishConnect(streaming, socket, true);
-  await connected;
-
-  assert.equal(sentEvents(socket, "session.update").length, 0);
-  streaming.cleanup();
-});
-
 test("speech followed by 600ms of PCM silence commits the turn", (t) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {

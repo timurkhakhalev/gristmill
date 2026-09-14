@@ -8,9 +8,7 @@ export interface UseWindowControlsReturn {
 }
 
 /**
- * Shared state and handlers for the custom window-control buttons that
- * frameless windows render on Windows and Linux (macOS windows keep their
- * native traffic lights, so callers skip rendering there).
+ * Shared state and handlers for legacy custom window-control buttons.
  */
 export const useWindowControls = (): UseWindowControlsReturn => {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -25,8 +23,8 @@ export const useWindowControls = (): UseWindowControlsReturn => {
     };
 
     void syncIsMaximized();
-    // Polled because maximize can also happen outside these buttons (Windows
-    // snap, double-clicking the drag band) and no renderer event reports it.
+    // Polled because maximize can also happen outside these buttons (for
+    // example, by double-clicking the drag band) and no renderer event reports it.
     const intervalId = window.setInterval(syncIsMaximized, 1000);
     return () => {
       mounted = false;

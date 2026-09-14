@@ -6,16 +6,12 @@ const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
 const { isPortAvailable } = require("../utils/serverUtils");
 const { getSafeTempDir } = require("./safeTempDir");
-const { app } = require("electron");
 const sidecarPidFile = require("./sidecarPidFile");
-const { BIN_SUBDIR: LLAMA_VULKAN_BIN_SUBDIR } = require("./llamaVulkanManager");
-const { BASELINE_CONTEXT_SIZE } = require("./llamaContextPolicy");
 
 // Range kept clear of cliBridge (8200-8219) to avoid port-bind collisions.
 const PORT_RANGE_START = 8221;
 const PORT_RANGE_END = 8240;
 const STARTUP_TIMEOUT_MS = 120000;
-const VULKAN_STARTUP_TIMEOUT_MS = 120000;
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
 const STARTUP_POLL_INTERVAL_MS = 500;
@@ -30,15 +26,6 @@ const PREFLIGHT_TIMEOUT_MS = 10000;
  * llama.cpp internals in a toast (#2142), so it becomes a typed error carrying
  * the two numbers callers actually need.
  */
-/** Same argv with --ctx-size rewritten; used by the context step-down rung. */
-function withContextSize(args, contextSize) {
-  const index = args.indexOf("--ctx-size");
-  if (index === -1) return args;
-  const copy = [...args];
-  copy[index + 1] = String(contextSize);
-  return copy;
-}
-
 function buildResponseError(statusCode, body) {
   if (statusCode === 400) {
     try {
@@ -78,8 +65,7 @@ class LlamaServerManager {
     // the start() restart check); activeDraftModelPath is the one that actually loaded.
     this.draftModelPath = null;
     this.activeDraftModelPath = null;
-    // The context that actually loaded, which the GPU ladder may step down
-    // below the requested one.
+    // The context that actually loaded.
     this.activeContextSize = null;
     // The context the running server was started with. Grows on demand and is
     // only reset by stop(), so a short request cannot shrink a window a long
@@ -96,10 +82,7 @@ class LlamaServerManager {
   getServerBinaryPaths() {
     if (this.cachedServerBinaryPaths) return this.cachedServerBinaryPaths;
 
-    const platform = process.platform;
-    const arch = process.arch;
-    const platformArch = `${platform}-${arch}`;
-    const ext = platform === "win32" ? ".exe" : "";
+    const platformArch = "darwin-arm64";
 
     const resolveBinary = (name) => {
       const candidates = [];
@@ -121,35 +104,9 @@ class LlamaServerManager {
       return null;
     };
 
-    let paths;
-
-    if (platform === "darwin") {
-      const defaultBin =
-        resolveBinary(`llama-server-${platformArch}`) || resolveBinary(`llama-server${ext}`);
-      paths = defaultBin ? { default: defaultBin } : {};
-    } else {
-      const vulkanName = `llama-server-vulkan${ext}`;
-      let vulkanBin = null;
-      try {
-        // Installed by LlamaVulkanManager into its own pack directory
-        const vulkanPath = path.join(
-          app.getPath("userData"),
-          "bin",
-          LLAMA_VULKAN_BIN_SUBDIR,
-          vulkanName
-        );
-        if (fs.existsSync(vulkanPath)) vulkanBin = vulkanPath;
-      } catch {}
-
-      const cpuBin =
-        resolveBinary(`llama-server-${platformArch}-cpu${ext}`) ||
-        resolveBinary(`llama-server-${platformArch}${ext}`) ||
-        resolveBinary(`llama-server${ext}`);
-
-      paths = {};
-      if (vulkanBin) paths.vulkan = vulkanBin;
-      if (cpuBin) paths.cpu = cpuBin;
-    }
+    const defaultBin =
+      resolveBinary(`llama-server-${platformArch}`) || resolveBinary("llama-server");
+    const paths = defaultBin ? { default: defaultBin } : {};
 
     // Only cache hits: a miss may be transient (binary downloaded after
     // startup), and caching it would require an app restart to recover.
@@ -193,8 +150,7 @@ class LlamaServerManager {
     this.startupPromise = this._doStart(modelPath, options);
     try {
       await this.startupPromise;
-      // The ladder may have stepped the context down to get a GPU rung to
-      // start; record what loaded, not what was asked for.
+      // Record the context that loaded, not only what was requested.
       this.contextSize = this.activeContextSize ?? requestedContextSize;
     } finally {
       this.startupPromise = null;
@@ -255,20 +211,15 @@ class LlamaServerManager {
         ]
       : [];
 
-    if (process.platform === "darwin") {
-      // The metal binary is always the bundled pin, so it never rejects the draft flags.
-      const args = [...baseArgs, "--n-gpu-layers", String(options.gpuLayers ?? 99), ...draftArgs];
-      await this._startWithBinary(
-        binaryPaths.default,
-        args,
-        this._buildEnv(binaryPaths.default),
-        STARTUP_TIMEOUT_MS
-      );
-      this.activeBackend = "metal";
-      this.activeDraftModelPath = this.draftModelPath;
-    } else {
-      await this._startWithGpuFallback(binaryPaths, baseArgs, options, draftArgs);
-    }
+    const args = [...baseArgs, "--n-gpu-layers", String(options.gpuLayers ?? 99), ...draftArgs];
+    await this._startWithBinary(
+      binaryPaths.default,
+      args,
+      this._buildEnv(binaryPaths.default),
+      STARTUP_TIMEOUT_MS
+    );
+    this.activeBackend = "metal";
+    this.activeDraftModelPath = this.draftModelPath;
 
     this.startHealthCheck();
     this.resetIdleTimer();
@@ -280,130 +231,11 @@ class LlamaServerManager {
     });
   }
 
-  async _startWithGpuFallback(binaryPaths, baseArgs, options, draftArgs = []) {
-    const gpuArgs = [...baseArgs, "--n-gpu-layers", String(options.gpuLayers ?? 99)];
-    const cpuArgs = baseArgs;
-    const hasDraft = draftArgs.length > 0;
-    const requestedContext = options.contextSize || DEFAULT_CONTEXT_SIZE;
-
-    // Degrade ladder: GPU+MTP, then GPU alone (a live GPU beats speculation), then
-    // CPU+MTP (the bundled pin normally accepts the flags), then plain CPU. The
-    // no-draft rungs collapse into their twins when no drafter is declared, so a
-    // drafterless start keeps today's exact single vulkan->cpu fallback.
-    const rungs = [
-      {
-        backend: "vulkan",
-        name: "Vulkan",
-        binary: binaryPaths.vulkan,
-        args: [...gpuArgs, ...draftArgs],
-        mtp: hasDraft,
-        timeout: VULKAN_STARTUP_TIMEOUT_MS,
-        attemptMsg: "Attempting Vulkan backend startup",
-      },
-      {
-        backend: "vulkan",
-        name: "Vulkan",
-        binary: binaryPaths.vulkan,
-        args: gpuArgs,
-        mtp: false,
-        noDraft: true,
-        timeout: VULKAN_STARTUP_TIMEOUT_MS,
-        attemptMsg: "Attempting Vulkan backend startup",
-      },
-      // A context sized against system RAM can still be too big for a
-      // discrete GPU's own memory, which the app does not probe. Halving it is
-      // far cheaper than the 10-30x cost of dropping to CPU, so try that
-      // first. Omitted entirely when there is nothing to step down to, so a
-      // baseline start keeps today's exact ladder.
-      ...(requestedContext > BASELINE_CONTEXT_SIZE && binaryPaths.vulkan
-        ? [
-            {
-              backend: "vulkan",
-              name: "Vulkan (reduced context)",
-              binary: binaryPaths.vulkan,
-              args: withContextSize(gpuArgs, BASELINE_CONTEXT_SIZE),
-              mtp: false,
-              contextSize: BASELINE_CONTEXT_SIZE,
-              timeout: VULKAN_STARTUP_TIMEOUT_MS,
-              attemptMsg: "Attempting Vulkan backend startup with a reduced context",
-            },
-          ]
-        : []),
-      {
-        backend: "cpu",
-        name: "CPU",
-        binary: binaryPaths.cpu,
-        args: [...cpuArgs, ...draftArgs],
-        mtp: hasDraft,
-        timeout: STARTUP_TIMEOUT_MS,
-        attemptMsg: "Starting with CPU backend",
-      },
-      {
-        backend: "cpu",
-        name: "CPU",
-        binary: binaryPaths.cpu,
-        args: cpuArgs,
-        mtp: false,
-        noDraft: true,
-        timeout: STARTUP_TIMEOUT_MS,
-        attemptMsg: "Starting with CPU backend",
-      },
-    ];
-
-    const ladder = rungs.filter((rung) => rung.binary && !(rung.noDraft && !hasDraft));
-    if (ladder.length === 0) throw new Error("No CPU llama-server binary available");
-
-    let lastError = null;
-    for (let i = 0; i < ladder.length; i++) {
-      const rung = ladder[i];
-      const next = ladder[i + 1];
-      try {
-        debugLogger.debug(rung.attemptMsg);
-        await this._startWithBinary(
-          rung.binary,
-          rung.args,
-          this._buildEnv(rung.binary),
-          rung.timeout
-        );
-        this.activeBackend = rung.backend;
-        this.activeDraftModelPath = rung.mtp ? this.draftModelPath : null;
-        // Without this the preflight would believe the full context is
-        // available and send a prompt the server cannot take.
-        this.activeContextSize = rung.contextSize ?? requestedContext;
-        this.contextSize = this.activeContextSize;
-        return;
-      } catch (err) {
-        lastError = err;
-        if (next) {
-          debugLogger.warn(`${rung.name} backend failed, falling back to ${next.name}`, {
-            error: err.message,
-          });
-          await this._killCurrentProcess();
-          this.port = await this.findAvailablePort();
-        }
-      }
-    }
-
-    throw lastError || new Error("No CPU llama-server binary available");
-  }
-
   _buildEnv(binaryPath) {
     const binDir = path.dirname(binaryPath);
     const env = { ...process.env };
 
-    if (process.platform === "darwin") {
-      env.DYLD_LIBRARY_PATH = binDir + (env.DYLD_LIBRARY_PATH ? `:${env.DYLD_LIBRARY_PATH}` : "");
-    } else if (process.platform === "linux") {
-      env.LD_LIBRARY_PATH = binDir + (env.LD_LIBRARY_PATH ? `:${env.LD_LIBRARY_PATH}` : "");
-    } else if (process.platform === "win32") {
-      env.PATH = binDir + (env.PATH ? `;${env.PATH}` : "");
-    }
-
-    // Select GPU by UUID + PCI_BUS_ID order so the device is unambiguous. See #531.
-    env.CUDA_DEVICE_ORDER = "PCI_BUS_ID";
-    if (process.env.INTELLIGENCE_GPU_UUID) {
-      env.CUDA_VISIBLE_DEVICES = process.env.INTELLIGENCE_GPU_UUID;
-    }
+    env.DYLD_LIBRARY_PATH = binDir + (env.DYLD_LIBRARY_PATH ? `:${env.DYLD_LIBRARY_PATH}` : "");
 
     // Disable llama.cpp auto-fit memory probing (adds ~70s to startup). Set via env
     // so builds without --fit ignore it instead of erroring. See LLAMA_ARG_FIT.
@@ -418,10 +250,9 @@ class LlamaServerManager {
 
       this.process = spawn(binaryPath, args, {
         stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
         cwd: getSafeTempDir(),
         env,
-        detached: process.platform !== "win32",
+        detached: true,
       });
       sidecarPidFile.write("llama", this.process.pid);
 
@@ -847,14 +678,9 @@ class LlamaServerManager {
       modelPath: this.modelPath,
       modelName: this.modelPath ? path.basename(this.modelPath, ".gguf") : null,
       backend: this.activeBackend,
-      gpuAccelerated: this.activeBackend === "vulkan" || this.activeBackend === "metal",
     };
   }
 
-  resetGpuDetection() {
-    this.activeBackend = null;
-    this.cachedServerBinaryPaths = null;
-  }
 }
 
 module.exports = LlamaServerManager;

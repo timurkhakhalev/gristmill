@@ -24,11 +24,8 @@ const {
 // (`useCallback`-wrapped) functions closing over refs, not requiring a live
 // fiber to keep working afterward. `setMessages` is supplied by the test
 // (useChatStreaming takes it as a prop, not internal state), so its calls
-// are observed directly without needing any DOM or reconciliation. Confirmed
-// empirically that this repo's harness supports it: no jsdom, no
-// `@testing-library/react`, no `act` exist here (`assistantPanel.test.js`
-// works around the same absence by stubbing `useChatStreaming` out entirely
-// for its markup-only assertions), but this narrower technique — one
+// are observed directly without needing any DOM or reconciliation. This
+// harness has no jsdom or `@testing-library/react`, but this narrower technique — one
 // synchronous render, then calling the returned functions like any other
 // closures — does not need any of those. The one thing SSR genuinely cannot
 // do is run `useEffect` bodies, so the unmount-mid-stream test mounts the
@@ -74,8 +71,6 @@ async function renderChatStreaming(
   }
 
   const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
-  const { usePolicyStore } = await vite.ssrLoadModule("/stores/policyStore.ts");
-  usePolicyStore.setState({ status: "unmanaged", appVersion: "1.8.3", policy: null });
   // A self-hosted (LAN) chat agent with no tools in play: 4B+ in the model
   // name makes it tool-eligible by the size heuristic, but the fixture
   // fetch never emits a tool call, so it stays on the plain-content path.
@@ -85,7 +80,6 @@ async function renderChatStreaming(
     chatAgentModel: "qwen3-4b-q4_k_m",
     chatAgentRemoteUrl: "http://127.0.0.1:11434/v1",
     chatAgentDisableThinking: true,
-    isSignedIn: false,
     ...settings,
   });
 
@@ -97,7 +91,6 @@ async function renderChatStreaming(
   t.after(() => reasoningService.destroy());
 
   let messages = [];
-  let responseContentCalls = 0;
   const setMessages = (updater) => {
     messages = typeof updater === "function" ? updater(messages) : updater;
   };
@@ -108,9 +101,6 @@ async function renderChatStreaming(
       messages,
       setMessages,
       onStreamComplete,
-      onResponseContent: () => {
-        responseContentCalls += 1;
-      },
     });
     return null;
   }
@@ -134,7 +124,6 @@ async function renderChatStreaming(
   return {
     captured,
     getMessages: () => messages,
-    getResponseContentCalls: () => responseContentCalls,
     unmount,
   };
 }
@@ -154,88 +143,13 @@ test("a genuine empty completion still shows the empty-response fallback", async
     });
   };
 
-  let completionCalls = 0;
   const { captured, getMessages } = await renderChatStreaming(t);
 
-  await captured.sendToAI("hello", [], {
-    suppressResponseContent: true,
-    onComplete: () => {
-      completionCalls += 1;
-    },
-  });
+  await captured.sendToAI("hello", []);
 
   const [message] = getMessages();
   assert.equal(message.content, EMPTY_RESPONSE_TEXT);
   assert.equal(message.isStreaming, false);
-  assert.equal(completionCalls, 0);
-});
-
-test("a completed response runs its request delivery hook without opening response content", async (t) => {
-  const originalFetch = globalThis.fetch;
-  t.after(() => {
-    globalThis.fetch = originalFetch;
-  });
-  globalThis.fetch = async () => {
-    const contentEvent = `data: ${JSON.stringify(
-      createOpenAiChunk({ content: "Agent answer" })
-    )}\n\n`;
-    const finishEvent = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
-    return new Response(`${contentEvent}${finishEvent}data: [DONE]\n\n`, {
-      status: 200,
-      headers: { "content-type": "text/event-stream" },
-    });
-  };
-
-  const completions = [];
-  const { captured, getResponseContentCalls } = await renderChatStreaming(t);
-
-  await captured.sendToAI("hello", [], {
-    suppressResponseContent: true,
-    onComplete: (result) => completions.push(result),
-  });
-
-  assert.equal(getResponseContentCalls(), 0);
-  assert.equal(completions.length, 1);
-  assert.equal(completions[0].content, "Agent answer");
-});
-
-test("cancelling during RAG setup does not start an assistant reply", async (t) => {
-  const originalFetch = globalThis.fetch;
-  t.after(() => {
-    globalThis.fetch = originalFetch;
-  });
-  globalThis.fetch = async () => {
-    const finishEvent = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
-    return new Response(`${finishEvent}data: [DONE]\n\n`, {
-      status: 200,
-      headers: { "content-type": "text/event-stream" },
-    });
-  };
-
-  let resolveSearch;
-  let searchStarted = false;
-  const searchResults = new Promise((resolve) => {
-    resolveSearch = resolve;
-  });
-  const { captured, getMessages } = await renderChatStreaming(t, {
-    electronAPI: {
-      semanticSearchNotes: () => {
-        searchStarted = true;
-        return searchResults;
-      },
-    },
-  });
-
-  const sendPromise = captured.sendToAI("hello", []);
-  const waitForMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
-  for (let i = 0; i < 50 && !searchStarted; i++) await waitForMicrotasks();
-  assert.equal(searchStarted, true, "fixture setup: RAG search must be pending before cancelling");
-
-  captured.cancelStream();
-  resolveSearch([]);
-  await sendPromise;
-
-  assert.deepEqual(getMessages(), []);
 });
 
 test("cancelling before any token arrives never shows the empty-response fallback", async (t) => {
@@ -267,12 +181,7 @@ test("cancelling before any token arrives never shows the empty-response fallbac
     },
   });
 
-  let completionCalls = 0;
-  const sendPromise = captured.sendToAI("hello", [], {
-    onComplete: () => {
-      completionCalls += 1;
-    },
-  });
+  const sendPromise = captured.sendToAI("hello", []);
 
   const waitForMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
   for (let i = 0; i < 50 && !fetchStarted; i++) await waitForMicrotasks();
@@ -290,7 +199,6 @@ test("cancelling before any token arrives never shows the empty-response fallbac
   assert.notEqual(message.content, EMPTY_RESPONSE_TEXT);
   assert.equal(message.content, "");
   assert.equal(message.isStreaming, false);
-  assert.equal(completionCalls, 0, "a cancelled request must never deliver a response");
   assert.equal(streamCompleteCalls, 0, "a cancelled request must never persist a partial reply");
 });
 
@@ -333,15 +241,10 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
     onStreamComplete: (_id, content) => persisted.push(content),
   });
 
-  let completionCalls = 0;
   let sendPromise;
   const waitForMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
   await React.act(async () => {
-    sendPromise = captured.sendToAI("hello", [], {
-      onComplete: () => {
-        completionCalls += 1;
-      },
-    });
+    sendPromise = captured.sendToAI("hello", []);
     for (
       let i = 0;
       i < 50 && !getMessages().some((m) => m.content === "Partial reply");
@@ -364,7 +267,6 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
     ["Partial reply"],
     "an unmounted stream must keep its partial reply in history"
   );
-  assert.equal(completionCalls, 0, "an unmounted request must never deliver a response");
   const assistantMessage = getMessages().find((m) => m.role === "assistant");
   assert.equal(assistantMessage.isStreaming, false);
 });
@@ -394,7 +296,7 @@ test("cancelling a tool-ineligible raw stream after reading starts shows no erro
     });
   };
 
-  const { captured, getMessages, getResponseContentCalls } = await renderChatStreaming(t, {
+  const { captured, getMessages } = await renderChatStreaming(t, {
     settings: { chatAgentModel: "qwen3-1.7b-q4_k_m" },
   });
   const sendPromise = captured.sendToAI("hello", []);
@@ -408,47 +310,4 @@ test("cancelling a tool-ineligible raw stream after reading starts shows no erro
   const [message] = getMessages();
   assert.equal(message.content, "");
   assert.equal(message.isStreaming, false);
-  assert.equal(getResponseContentCalls(), 0, "a user cancellation must not announce an error");
-});
-
-test("cloud screen context is sent without claiming the screenshot is already attached", async (t) => {
-  let streamEndListener;
-  let streamOptions;
-  const electronAPI = {
-    onAgentStreamChunk() {
-      return () => {};
-    },
-    onAgentStreamError() {
-      return () => {};
-    },
-    onAgentStreamEnd(listener) {
-      streamEndListener = listener;
-      return () => {};
-    },
-    startAgentStream(requestId, _messages, options) {
-      streamOptions = options;
-      streamEndListener({ requestId });
-    },
-    cancelAgentStream() {},
-  };
-  const { captured } = await renderChatStreaming(t, {
-    electronAPI,
-    settings: {
-      chatAgentMode: "openwhispr",
-      chatAgentCloudMode: "openwhispr",
-      isSignedIn: true,
-    },
-  });
-
-  await captured.sendToAI(
-    "What is on screen?",
-    [{ id: "user-1", role: "user", content: "What is on screen?", isStreaming: false }],
-    { attachment: { image: "base64-image", mediaType: "image/png" } }
-  );
-
-  assert.deepEqual(streamOptions.screenContext, {
-    data: "base64-image",
-    mediaType: "image/png",
-  });
-  assert.doesNotMatch(streamOptions.systemPrompt, /SCREEN CONTEXT:/);
 });

@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 
-export const BIDI_VALUE_TOKEN = "__OPENWHISPR_BIDI_VALUE__";
+export const BIDI_VALUE_TOKEN = "__OPENHERCULES_BIDI_VALUE__";
 
 interface BidiInterpolatedTextProps {
   text: string;

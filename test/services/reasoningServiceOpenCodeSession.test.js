@@ -9,8 +9,6 @@ async function loadReasoningService(t, cachePrefix) {
   installBrowserGlobals(t, {});
   const vite = await createRendererServer(t, { cachePrefix });
   const reasoningService = (await vite.ssrLoadModule("/services/ReasoningService.ts")).default;
-  const { usePolicyStore } = await vite.ssrLoadModule("/stores/policyStore.ts");
-  usePolicyStore.setState({ status: "unmanaged", appVersion: "1.10.0", policy: null });
   t.after(() => reasoningService.destroy());
   return reasoningService;
 }

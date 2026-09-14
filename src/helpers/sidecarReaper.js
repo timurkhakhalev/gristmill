@@ -6,13 +6,11 @@ const EXPECTED_BINARY_FRAGMENTS = {
   parakeet: ["sherpa-onnx-ws-", "sherpa-onnx-online-ws-"],
   whisper: ["whisper-server"],
   llama: ["llama-server"],
-  qdrant: ["qdrant"],
   diarization: ["sherpa-onnx-diarize"],
 };
 
-// A wedged sidecar can ignore SIGTERM entirely (observed with qdrant spinning
-// at full CPU), so reaping must verify death and escalate rather than
-// fire-and-forget.
+// A wedged sidecar can ignore SIGTERM, so reaping must verify death and
+// escalate rather than fire-and-forget.
 const SIGTERM_GRACE_MS = 5000;
 const SIGKILL_GRACE_MS = 1000;
 const EXIT_POLL_INTERVAL_MS = 200;

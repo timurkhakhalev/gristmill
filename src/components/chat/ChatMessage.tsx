@@ -134,7 +134,7 @@ function NoteCard({
   return (
     <button
       onClick={() =>
-        onOpenNote ? onOpenNote(noteId) : window.electronAPI?.agentOpenNote?.(noteId)
+        onOpenNote?.(noteId)
       }
       className={cn(
         "flex items-center gap-2 w-full mt-2 px-2.5 py-2 rounded-md",

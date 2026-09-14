@@ -17,7 +17,7 @@ const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 const NO_CONTENT = Symbol("CliBridge.NoContent");
 
 function getBridgeFilePath() {
-  return path.join(os.homedir(), ".openwhispr", "cli-bridge.json");
+  return path.join(os.homedir(), ".openhercules", "cli-bridge.json");
 }
 
 async function findAvailablePort() {
@@ -345,14 +345,14 @@ class CliBridge {
         const err = new Error(
           requested
             ? `Unknown model '${requested}'. Available: ${models.map((m) => m.model).join(", ")}`
-            : "No local transcription model is selected. Choose one in OpenWhispr under Settings → Transcription, or pass 'model'."
+            : "No local transcription model is selected. Choose one in OpenHercules under Settings → Transcription, or pass 'model'."
         );
         err.code = "VALIDATION";
         throw err;
       }
       if (!match.downloaded) {
         const err = new Error(
-          `Model '${match.model}' is not downloaded. Open OpenWhispr and download it under Settings → Transcription.`
+          `Model '${match.model}' is not downloaded. Open OpenHercules and download it under Settings → Transcription.`
         );
         err.code = "VALIDATION";
         throw err;

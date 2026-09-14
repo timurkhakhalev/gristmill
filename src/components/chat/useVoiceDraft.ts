@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "../../hooks/useAuth";
 import { useSettings } from "../../hooks/useSettings";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { getBaseLanguageCode } from "../../utils/languageSupport";
@@ -24,7 +23,6 @@ interface UseVoiceDraftOptions {
  * handed back for the caller to place into the input.
  */
 export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
-  const { isSignedIn } = useAuth();
   const settings = useSettings();
   const {
     useLocalWhisper,
@@ -32,7 +30,6 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
     localTranscriptionProvider,
     parakeetModel,
     cohereModel,
-    cloudTranscriptionMode,
     cloudTranscriptionProvider,
     cloudTranscriptionBaseUrl,
     cloudTranscriptionModel,
@@ -61,7 +58,6 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
     whisperModel,
     parakeetModel,
     cohereModel,
-    isOpenWhisprCloud: isSignedIn && cloudTranscriptionMode === "openwhispr" && !useLocalWhisper,
     getApiKey: () => getTranscriptionApiKey(cloudTranscriptionProvider as string, settings),
     cloudTranscriptionProvider: cloudTranscriptionProvider as string,
     cloudTranscriptionBaseUrl: cloudTranscriptionBaseUrl || "",
@@ -79,10 +75,7 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
   // provider cannot serve; the caller disables the mic rather than letting a
   // take record straight into that failure.
   const config = buildConfig();
-  const route =
-    config.isOpenWhisprCloud || config.useLocalWhisper
-      ? null
-      : resolveFileTranscriptionRoute(config);
+  const route = resolveFileTranscriptionRoute(config);
   const streamingOnlyProvider =
     route?.transport === "error" && route.code === "STREAMING_ONLY_PROVIDER";
 

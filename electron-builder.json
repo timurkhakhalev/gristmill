@@ -1,10 +1,13 @@
 {
-  "appId": "com.gizmolabs.openwhispr",
+  "appId": "com.openhercules.desktop",
+  "beforeBuild": "scripts/beforeBuild.js",
   "afterPack": "scripts/afterPack.js",
-  "productName": "OpenWhispr",
+  "productName": "OpenHercules",
   "protocols": {
-    "name": "OpenWhispr Protocol",
-    "schemes": ["openwhispr"]
+    "name": "OpenHercules Protocol",
+    "schemes": [
+      "openhercules"
+    ]
   },
   "directories": {
     "output": "dist"
@@ -15,6 +18,8 @@
     "main.js",
     "preload.js",
     "package.json",
+    "LICENSE",
+    "docs/openwhispr-upstream/IMPORT.md",
     "node_modules/**/*",
     "src/dist/**/*",
     "src/helpers/**/*",
@@ -26,15 +31,12 @@
     "src/models/**/*",
     "src/services/localReasoningBridge.js",
     "src/services/transcriptionBaseUrl.ts",
-    "src/stores/policyRules.ts",
     "src/types/**/*",
     "src/utils.js",
     "src/utils/**/*",
-    "src/updater.js",
     "src/components.json",
     "!node_modules/.cache/**/*",
     "!src/node_modules/**/*",
-
     "!**/node_modules/electron/**",
     "!**/node_modules/electron-builder/**",
     "!**/node_modules/app-builder-bin/**",
@@ -42,7 +44,6 @@
     "!**/node_modules/builder-util/**",
     "!**/node_modules/dmg-builder/**",
     "!**/node_modules/7zip-bin/**",
-
     "!**/node_modules/typescript/**",
     "!**/node_modules/prettier/**",
     "!**/node_modules/eslint/**",
@@ -50,20 +51,17 @@
     "!**/node_modules/@eslint/**",
     "!**/node_modules/@typescript-eslint/**",
     "!**/node_modules/globals/**",
-
     "!**/node_modules/vite/**",
     "!**/node_modules/@vitejs/**",
     "!**/node_modules/esbuild/**",
     "!**/node_modules/@esbuild/**",
     "!**/node_modules/rollup/**",
     "!**/node_modules/@rollup/**",
-
     "!**/node_modules/postcss/**",
     "!**/node_modules/autoprefixer/**",
     "!**/node_modules/tailwindcss/**",
     "!**/node_modules/@tailwindcss/**",
     "!**/node_modules/lightningcss*/**",
-
     "!**/node_modules/react/**",
     "!**/node_modules/react-dom/**",
     "!**/node_modules/lucide-react/**",
@@ -74,12 +72,10 @@
     "!**/node_modules/tw-animate-css/**",
     "!**/node_modules/react-markdown/**",
     "!**/node_modules/shadcn-ui/**",
-
     "!**/node_modules/@types/**",
     "!**/node_modules/concurrently/**",
     "!**/node_modules/cross-env/**",
     "!**/node_modules/@electron/notarize/**",
-
     "!**/node_modules/**/test/**",
     "!**/node_modules/**/tests/**",
     "!**/node_modules/**/*.ts",
@@ -96,11 +92,12 @@
     "src/workers/**/*"
   ],
   "extraResources": [
-    ".env",
     {
       "from": "src/assets",
       "to": "src/assets",
-      "filter": ["**/*", "!fonts/yowza/**"]
+      "filter": [
+        "**/*"
+      ]
     },
     {
       "from": "resources/bin/",
@@ -110,53 +107,38 @@
         "whisper-server-*",
         "llama-server-*",
         "sherpa-onnx-*",
-        "yt-dlp-*",
-        "qdrant-*",
         "macos-audio-tap",
         "macos-globe-listener",
-        "macos-fast-paste",
         "macos-mic-listener",
         "macos-calendar-listener",
-        "macos-text-monitor",
-        "macos-media-remote",
-        "MediaRemoteAdapter.framework/**",
-        "linux-fast-paste",
-        "linux-system-audio-helper",
-        "linux-text-monitor",
-        "linux-key-listener*",
-        "meeting-aec-helper-*",
-        "windows-key-listener*",
-        "windows-mic-listener*",
-        "windows-system-audio-helper*",
-        "windows-text-monitor*",
-        "windows-fast-paste*",
-        "all-MiniLM-L6-v2/**/*",
+        "meeting-aec-helper-darwin-arm64",
         "diarization-models/**/*",
         "whisper-vad/**/*",
-        "*.dylib",
-        "*.dll",
-        "*.so*"
+        "*.dylib"
       ]
-    },
-    {
-      "from": "resources/mediaremote-adapter/bin/mediaremote-adapter.pl",
-      "to": "bin/mediaremote-adapter.pl"
-    },
-    {
-      "from": "resources/mediaremote-adapter/LICENSE",
-      "to": "bin/mediaremote-adapter.LICENSE"
     }
   ],
   "mac": {
     "category": "public.app-category.productivity",
-    "target": ["dmg", "zip"],
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "arm64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ],
     "icon": "src/assets/icon.icns",
     "gatekeeperAssess": false,
     "hardenedRuntime": true,
     "entitlements": "resources/mac/entitlements.mac.plist",
     "entitlementsInherit": "resources/mac/entitlements.mac.plist",
-    "identity": "Gizmo Labs Inc. (T832773L2J)",
-    "notarize": true,
     "extraResources": [
       {
         "from": "src/assets/Assets.car",
@@ -165,116 +147,20 @@
     ],
     "extendInfo": {
       "LSUIElement": false,
-      "CFBundleIconName": "openwhispr",
-      "NSMicrophoneUsageDescription": "OpenWhispr uses the microphone to capture your voice for transcription.",
-      "NSAudioCaptureUsageDescription": "OpenWhispr uses system audio to capture other participants' audio from calls and meetings.",
-      "NSAccessibilityUsageDescription": "OpenWhispr needs accessibility permissions to paste transcribed text into other applications.",
-      "NSCalendarsUsageDescription": "OpenWhispr reads your calendar to detect upcoming meetings and link meeting notes to events.",
-      "NSCalendarsFullAccessUsageDescription": "OpenWhispr reads your calendar to detect upcoming meetings and link meeting notes to events."
+      "CFBundleIconName": "openhercules",
+      "NSMicrophoneUsageDescription": "OpenHercules uses the microphone to capture your voice for transcription.",
+      "NSAudioCaptureUsageDescription": "OpenHercules uses system audio to capture other participants' audio from calls and meetings.",
+      "NSAccessibilityUsageDescription": "OpenHercules uses accessibility access for global meeting shortcuts.",
+      "NSCalendarsUsageDescription": "OpenHercules reads your calendar to detect upcoming meetings and link meeting notes to events.",
+      "NSCalendarsFullAccessUsageDescription": "OpenHercules reads your calendar to detect upcoming meetings and link meeting notes to events."
     }
   },
-  "win": {
-    "target": ["nsis", "portable"],
-    "icon": "src/assets/icon.ico",
-    "azureSignOptions": {
-      "endpoint": "https://eus.codesigning.azure.net/",
-      "certificateProfileName": "openwhispr-release",
-      "codeSigningAccountName": "OpenWhispr",
-      "publisherName": "CN=Gizmo Labs Inc., O=Gizmo Labs Inc., L=Wilmington, S=Delaware, C=US"
-    },
-    "extraResources": [
-      {
-        "from": "resources/bin/nircmd.exe",
-        "to": "bin/nircmd.exe"
-      }
-    ]
-  },
-  "linux": {
-    "target": ["AppImage", "deb", "rpm", "tar.gz"],
-    "icon": "src/assets/icon.png",
-    "category": "Utility",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
-  },
-  "flatpak": {
-    "runtime": "org.freedesktop.Platform",
-    "runtimeVersion": "24.08",
-    "sdk": "org.freedesktop.Sdk",
-    "useWaylandFlags": true,
-    "finishArgs": [
-      "--socket=wayland",
-      "--socket=fallback-x11",
-      "--share=network",
-      "--share=ipc",
-      "--device=dri",
-      "--socket=pulseaudio",
-      "--filesystem=home",
-      "--filesystem=xdg-documents",
-      "--filesystem=xdg-download",
-      "--talk-name=org.freedesktop.Notifications",
-      "--talk-name=org.freedesktop.portal.Desktop"
-    ]
-  },
-  "deb": {
-    "afterInstall": "resources/linux/after-install.sh",
-    "afterRemove": "resources/linux/after-remove.sh",
-    "depends": ["ydotool", "libpipewire-0.3-0"],
-    "fpm": [
-      "--deb-recommends",
-      "ydotoold",
-      "--deb-suggests",
-      "xdotool",
-      "--deb-suggests",
-      "wtype",
-      "--deb-recommends",
-      "wl-clipboard",
-      "--deb-recommends",
-      "xclip",
-      "--deb-suggests",
-      "xsel"
-    ]
-  },
-  "rpm": {
-    "fpm": [
-      "--after-install",
-      "resources/linux/after-install.sh",
-      "--rpm-rpmbuild-define",
-      "_build_id_links none",
-      "--rpm-tag",
-      "Recommends: ydotool",
-      "--rpm-tag",
-      "Requires: libpipewire-0.3.so.0()(64bit)",
-      "--rpm-tag",
-      "Suggests: xdotool",
-      "--rpm-tag",
-      "Suggests: wtype",
-      "--rpm-tag",
-      "Recommends: wl-clipboard",
-      "--rpm-tag",
-      "Recommends: xclip",
-      "--rpm-tag",
-      "Suggests: xsel"
-    ]
-  },
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
-    "createStartMenuShortcut": true,
-    "include": "resources/nsis/installer.nsh"
-  },
   "dmg": {
-    "title": "OpenWhispr",
+    "title": "OpenHercules",
     "icon": "src/assets/icon.icns",
     "window": {
       "width": 540,
       "height": 380
     }
-  },
-  "publish": {
-    "provider": "github",
-    "owner": "OpenWhispr",
-    "repo": "openwhispr",
-    "private": false,
-    "releaseType": "draft"
   }
 }

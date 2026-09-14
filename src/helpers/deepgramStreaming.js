@@ -69,8 +69,8 @@ const NOVA3_LANGUAGES = new Set([
 const SILENCE_FRAME = Buffer.alloc((SAMPLE_RATE / 10) * 2);
 
 // Deepgram binds the scheme to the credential: a raw API key (BYOK) is accepted
-// only as `Token`, `Bearer` only for what /v1/auth/grant mints (managed). #2140
-const authorizationHeader = (mode, token) => `${mode === "byok" ? "Token" : "Bearer"} ${token}`;
+// Direct Deepgram API keys use the Token scheme. #2140
+const authorizationHeader = (_mode, token) => `Token ${token}`;
 
 // Everything buildWebSocketUrl pins on the socket, folded the way it folds it, so
 // a warm connection can be compared against the session that wants to ride it.
@@ -176,11 +176,14 @@ class DeepgramStreaming {
     debugLogger.debug("Deepgram token cached", { expiresIn: TOKEN_EXPIRY_MS });
   }
 
-  // BYOK and managed dictation share one client instance, so a token or warm
-  // socket minted under one credential kind must never serve the other. Callers
-  // that read the cache before connecting must adopt the mode first.
+  // A token or warm socket minted under one direct credential must never serve
+  // another connection. Callers that read the cache before connecting adopt
+  // the direct mode first.
   adoptMode(options) {
-    const mode = options.mode === "byok" ? "byok" : "openwhispr";
+    if (options.mode !== "byok") {
+      throw new Error("Deepgram realtime requires a direct provider API key");
+    }
+    const mode = "byok";
     if (this.mode !== null && this.mode !== mode) {
       debugLogger.debug("Deepgram credential mode changed, dropping cached session state", {
         from: this.mode,

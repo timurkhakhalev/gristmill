@@ -1,41 +1,25 @@
 const path = require("path");
-const { getLinuxSessionInfo } = require("./linuxSession");
-const { ASSISTANT_PANEL_SIZE_LIMITS } = require("./voiceSurfaceGeometry");
+// Kept only for legacy resize IPC responses while old preload bundles drain.
+// No assistant or dictation window is created by the current renderer.
+const ASSISTANT_PANEL_SIZE_LIMITS = Object.freeze({
+  ratioWidth: 760,
+  ratioHeight: 520,
+  gutter: 24,
+  minSurfaceWidth: 320,
+  maxSurfaceWidth: 760,
+  minSurfaceHeight: 120,
+});
 
-const FOCUSLESS_OVERLAY_ROLES = new Set(["main", "notification"]);
+// All renderer windows share an app-owned persisted session. The explicit
+// partition prevents Electron from ever reusing a profile created by the
+// imported application when the user runs both apps side by side.
+const OPENHERCULES_SESSION_PARTITION = "persist:openhercules";
 
-function usesGnomeOverlayPolicy(linuxSession) {
-  return (
-    linuxSession.isWayland &&
-    (linuxSession.isGnome || /ubuntu|unity/.test(linuxSession.desktopEnv || ""))
-  );
+function resolveOverlayWindowType() {
+  return "panel";
 }
 
-function resolveOverlayWindowType({ role, platform, linuxSession }) {
-  if (platform === "darwin") return "panel";
-  if (platform !== "linux") return "normal";
-
-  // Sway asks wlroots whether an unmanaged XWayland surface wants focus.
-  // "toolbar" opts in; "notification" keeps the existing text field focused.
-  if (linuxSession.isSway && linuxSession.xwaylandAvailable && FOCUSLESS_OVERLAY_ROLES.has(role)) {
-    return "notification";
-  }
-
-  if (linuxSession.isKde || (role === "main" && usesGnomeOverlayPolicy(linuxSession))) {
-    return "normal";
-  }
-  return "toolbar";
-}
-
-const linuxSession = getLinuxSessionInfo();
-const OVERLAY_WINDOW_TYPES = {
-  main: resolveOverlayWindowType({ role: "main", platform: process.platform, linuxSession }),
-  notification: resolveOverlayWindowType({
-    role: "notification",
-    platform: process.platform,
-    linuxSession,
-  }),
-};
+const OVERLAY_WINDOW_TYPES = { main: "panel", notification: "panel" };
 
 const ASSISTANT_WINDOW_SIZE = {
   width: ASSISTANT_PANEL_SIZE_LIMITS.ratioWidth + ASSISTANT_PANEL_SIZE_LIMITS.gutter,
@@ -176,13 +160,15 @@ function resolveHorizontalWindowDirection(bounds, display, preferredPosition = "
   return windowCenter < displayCenter ? "left" : "right";
 }
 
-// Main dictation window configuration
+// Legacy hidden renderer configuration. The visible application is the control
+// panel; this window remains inert for an upgrade-safe main-process cutover.
 const MAIN_WINDOW_CONFIG = {
   width: WINDOW_SIZES.BASE.width,
   height: WINDOW_SIZES.BASE.height,
-  title: "Voice Recorder",
+  title: "OpenHercules",
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
+    partition: OPENHERCULES_SESSION_PARTITION,
     nodeIntegration: false,
     contextIsolation: true,
     sandbox: true,
@@ -197,7 +183,7 @@ const MAIN_WINDOW_CONFIG = {
   show: false,
   skipTaskbar: true,
   focusable: false,
-  visibleOnAllWorkspaces: process.platform !== "win32",
+  visibleOnAllWorkspaces: true,
   fullScreenable: false,
   hasShadow: false,
   acceptsFirstMouse: true,
@@ -216,12 +202,12 @@ const ONBOARDING_WINDOW_SIZES = {
 const CONTROL_PANEL_CONFIG = {
   width: 1200,
   height: 800,
-  // macOS: fully transparent, so nothing paints into the compact onboarding
-  // frame's rounded corners. Windows/Linux keep an opaque backing (the renderer
-  // paints its own background on top) — see the transparent flag below.
-  backgroundColor: process.platform === "darwin" ? "#00000000" : "#1c1c2e",
+  // Fully transparent so nothing paints into the compact onboarding frame's
+  // rounded corners.
+  backgroundColor: "#00000000",
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
+    partition: OPENHERCULES_SESSION_PARTITION,
     nodeIntegration: false,
     contextIsolation: true,
     // sandbox: false is required because the preload script bridges IPC
@@ -229,7 +215,7 @@ const CONTROL_PANEL_CONFIG = {
     sandbox: false,
     // webSecurity: false disables same-origin policy. Required because in
     // production the renderer loads from a file:// origin but makes
-    // cross-origin fetch calls to Better Auth, Gemini, OpenAI, and Groq APIs
+    // cross-origin fetch calls to direct provider APIs
     // directly from the browser. These would be blocked by CORS otherwise.
     webSecurity: false,
     spellcheck: false,
@@ -239,20 +225,13 @@ const CONTROL_PANEL_CONFIG = {
   resizable: true,
   show: false,
   frame: false,
-  ...(process.platform === "darwin" && {
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 20, y: 20 },
-  }),
+  titleBarStyle: "hiddenInset",
+  trafficLightPosition: { x: 20, y: 20 },
   // macOS only: transparent so a renderer that insets or rounds itself shows
   // the desktop rather than a square page backing bleeding out behind it. Safe
   // for the other control panel screens because each paints its own opaque
   // background (ControlPanel's root is `bg-background`); only the compact
-  // onboarding steps clear body/#root — see index.css. Not on Windows/Linux:
-  // transparency is creation-time-only and this window outlives onboarding, and
-  // on Windows `transparent` forces thickFrame:false (no maximize/Aero-snap)
-  // and renders black when compositing is off. The compact onboarding frame
-  // falls back to square corners there by design.
-  transparent: process.platform === "darwin",
+  transparent: true,
   minimizable: true,
   maximizable: true,
   closable: true,
@@ -277,11 +256,12 @@ const NOTIFICATION_WINDOW_CONFIG = {
   acceptFirstMouse: true,
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
+    partition: OPENHERCULES_SESSION_PARTITION,
     nodeIntegration: false,
     contextIsolation: true,
     sandbox: true,
   },
-  visibleOnAllWorkspaces: process.platform !== "win32",
+  visibleOnAllWorkspaces: true,
   type: OVERLAY_WINDOW_TYPES.notification,
 };
 
@@ -355,38 +335,19 @@ class WindowPositionUtil {
     return { ...WindowPositionUtil.clampToWorkArea(bounds, display), width, height };
   }
 
-  // `level` only applies on macOS; Windows and Linux already use the strongest
-  // level their window managers honor.
   static setupAlwaysOnTop(window, { level = "floating" } = {}) {
-    if (process.platform === "darwin") {
-      // macOS: Use panel level for proper floating behavior
-      // This ensures the window stays on top across spaces and fullscreen apps
+    window.setAlwaysOnTop(true, level, 1);
+    if (!window.isVisibleOnAllWorkspaces()) {
+      window.setVisibleOnAllWorkspaces(true, {
+        visibleOnFullScreen: true,
+        skipTransformProcessType: true,
+      });
+    }
+    if (window.isFullScreenable()) {
+      window.setFullScreenable(false);
+    }
+    if (window.isVisible()) {
       window.setAlwaysOnTop(true, level, 1);
-      // Re-applying the collection behavior when nothing drifted makes the
-      // window server momentarily pull the window out of the active Space,
-      // which blinks the entire visible window. Enforce calls land on hot
-      // paths (assistant panel open/close, window show), so Spaces membership
-      // is only touched when it was actually lost.
-      if (!window.isVisibleOnAllWorkspaces()) {
-        window.setVisibleOnAllWorkspaces(true, {
-          visibleOnFullScreen: true,
-          skipTransformProcessType: true, // Keep Dock/Command-Tab behaviour
-        });
-      }
-      if (window.isFullScreenable()) {
-        window.setFullScreenable(false);
-      }
-
-      if (window.isVisible()) {
-        window.setAlwaysOnTop(true, level, 1);
-      }
-    } else if (process.platform === "win32") {
-      window.setAlwaysOnTop(true, "pop-up-menu");
-    } else if (usesGnomeOverlayPolicy(linuxSession)) {
-      window.setAlwaysOnTop(true, "floating");
-    } else {
-      // KDE XWayland and other Linux — "screen-saver" is the strongest z-level
-      window.setAlwaysOnTop(true, "screen-saver");
     }
   }
 }
@@ -394,6 +355,7 @@ class WindowPositionUtil {
 module.exports = {
   MAIN_WINDOW_CONFIG,
   CONTROL_PANEL_CONFIG,
+  OPENHERCULES_SESSION_PARTITION,
   ONBOARDING_WINDOW_SIZES,
   NOTIFICATION_WINDOW_CONFIG,
   ASSISTANT_PANEL_SIZE_LIMITS,

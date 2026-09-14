@@ -44,7 +44,7 @@ test("silent system audio warning arms on start and clears on every teardown pat
   assert.ok(rollbackStart >= 0 && stopStart > rollbackStart);
   const rollbackSection = source.slice(
     rollbackStart,
-    source.indexOf("const setupDictationCallbacks")
+    source.indexOf("const sendMeetingAudio")
   );
   assert.match(rollbackSection, /clearMeetingSystemAudioSilenceTimer\(\);/);
   const stopSection = source.slice(
@@ -52,37 +52,6 @@ test("silent system audio warning arms on start and clears on every teardown pat
     source.indexOf("const meetingTranscriptionLifecycle")
   );
   assert.match(stopSection, /clearMeetingSystemAudioSilenceTimer\(\);/);
-});
-
-test("a silent Windows capture hands the live session to renderer loopback", () => {
-  // probe/activation success cannot see this failure, so the helper's own
-  // capture_silent warning is the only trigger back to the Chromium fallback.
-  assert.match(
-    source,
-    /if \(code === "capture_silent"\) \{\s*void degradeMeetingSystemAudioToLoopback\(event\);/
-  );
-
-  const degradeStart = source.indexOf("const degradeMeetingSystemAudioToLoopback");
-  assert.ok(degradeStart >= 0);
-  const degradeSection = source.slice(
-    degradeStart,
-    source.indexOf("const startManagedMeetingSystemAudio")
-  );
-  // One-shot, and never fires once the helper has proven it can hear audio.
-  assert.match(
-    degradeSection,
-    /if \(meetingSystemAudioDegraded \|\| meetingSystemAudioHeard\) return;/
-  );
-  assert.match(degradeSection, /windowsLoopbackAudioManager\?\.stop\(\)/);
-  assert.match(degradeSection, /send\("meeting-system-audio-degraded"\)/);
-
-  // Leaking the latch across sessions would pin the fallback off for the rest
-  // of the app's life, so it resets everywhere the heard-audio latch does.
-  assert.equal(
-    (source.match(/meetingSystemAudioHeard = false;\s*\n\s*meetingSystemAudioDegraded = false;/g) ?? [])
-      .length,
-    2
-  );
 });
 
 test("the system-audio watchdog is armed beside the silence timer and torn down with it", () => {
@@ -119,7 +88,7 @@ test("the system-audio watchdog is armed beside the silence timer and torn down 
     [
       "rollback",
       "const rollbackMeetingTranscriptionStart",
-      "const setupDictationCallbacks",
+      "const sendMeetingAudio",
     ],
     ["stop", "const stopMeetingTranscription", "const meetingTranscriptionLifecycle"],
     ["mic-only fallback", "const fallBackToMicOnly", "const startMeetingSystemAudio = async"],

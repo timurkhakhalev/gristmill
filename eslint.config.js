@@ -9,7 +9,10 @@ module.exports = [
       "src/dist/**",
       "*.min.js",
       "build/**",
-      "src/**", // src has its own config
+      "src/*", // Renderer files have their own config; main-process JS must not be skipped.
+      "!src/helpers/",
+      "!src/utils/",
+      "!src/workers/",
     ],
   },
   // Main process files (CommonJS)
@@ -38,6 +41,13 @@ module.exports = [
       "no-async-promise-executor": "off",
       "prefer-const": "off",
       "no-var": "off",
+    },
+  },
+  {
+    files: ["src/helpers/**/*.js", "src/utils/**/*.js", "src/workers/**/*.js"],
+    languageOptions: {
+      sourceType: "module",
+      globals: { ...globals.node, ...globals.browser },
     },
   },
 ];

@@ -1,10 +1,9 @@
 import { useCallback } from "react";
 import { resetOnboardingProgress } from "../components/onboarding/flow";
 
-// Restart onboarding from the auth step so the user can sign in for OpenWhispr
-// Cloud. The restarted flow's setup-choice step commits whatever the user picks
-// via setCloudTranscriptionForAllScopes, so nothing is pre-armed here: a
-// pre-armed cloud switch is what overrode Local for #2086.
+// Restart the local setup flow without changing any provider or model settings.
+// The setup screen owns those choices, so this hook only clears its progress
+// marker and asks the renderer to reopen onboarding.
 export function useStartOnboarding(): () => void {
   return useCallback(() => {
     resetOnboardingProgress(localStorage);

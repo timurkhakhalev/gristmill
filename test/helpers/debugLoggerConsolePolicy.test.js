@@ -15,14 +15,14 @@ function withRuntime({ platform, argv = [], env = {}, electron }, loadModule) {
   const previousEnvironment = {
     LOG_LEVEL: process.env.LOG_LEVEL,
     NODE_ENV: process.env.NODE_ENV,
-    OPENWHISPR_LOG_LEVEL: process.env.OPENWHISPR_LOG_LEVEL,
+    OPENHERCULES_LOG_LEVEL: process.env.OPENHERCULES_LOG_LEVEL,
   };
 
   Object.defineProperty(process, "platform", { value: platform, configurable: true });
   process.argv = ["node", "main.js", ...argv];
   delete process.env.LOG_LEVEL;
   delete process.env.NODE_ENV;
-  delete process.env.OPENWHISPR_LOG_LEVEL;
+  delete process.env.OPENHERCULES_LOG_LEVEL;
   Object.assign(process.env, env);
 
   Module._load = function loadWithElectronMock(request, parent, isMain) {
@@ -38,7 +38,7 @@ function withRuntime({ platform, argv = [], env = {}, electron }, loadModule) {
     process.argv = previousArgv;
     delete process.env.LOG_LEVEL;
     delete process.env.NODE_ENV;
-    delete process.env.OPENWHISPR_LOG_LEVEL;
+    delete process.env.OPENHERCULES_LOG_LEVEL;
     for (const [name, value] of Object.entries(previousEnvironment)) {
       if (value !== undefined) process.env[name] = value;
     }
@@ -129,12 +129,12 @@ test("log-level settings never opt a packaged Windows build into console logging
   const cases = [
     { name: "--log-level", argv: ["--log-level=debug"] },
     {
-      name: "OPENWHISPR_LOG_LEVEL=debug",
-      env: { OPENWHISPR_LOG_LEVEL: "debug" },
+      name: "OPENHERCULES_LOG_LEVEL=debug",
+      env: { OPENHERCULES_LOG_LEVEL: "debug" },
     },
     {
-      name: "OPENWHISPR_LOG_LEVEL=info",
-      env: { OPENWHISPR_LOG_LEVEL: "info" },
+      name: "OPENHERCULES_LOG_LEVEL=info",
+      env: { OPENHERCULES_LOG_LEVEL: "info" },
     },
     { name: "LOG_LEVEL", env: { LOG_LEVEL: "debug" } },
   ];
@@ -192,7 +192,7 @@ test(
     const logger = loadLogger({
       platform: "win32",
       isPackaged: true,
-      env: { OPENWHISPR_LOG_LEVEL: "debug" },
+      env: { OPENHERCULES_LOG_LEVEL: "debug" },
       isReady: true,
       userDataPath,
     });

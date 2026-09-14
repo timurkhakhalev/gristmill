@@ -2,33 +2,18 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import ReasoningService, { type AgentStreamChunk } from "../../services/ReasoningService";
 import { isEnterpriseProvider } from "../../models/ModelRegistry";
-import { providerSupportsImages } from "../../services/ai/inferenceProviders";
-import { getSettings, useSettingsStore } from "../../stores/settingsStore";
-import { resolveChatStreamingInference } from "../../helpers/dictationAgentInference.js";
 import {
-  isAgentAllowed,
-  isLlmSelectionAllowed,
-  isWebSearchAllowed,
-} from "../../stores/policyRules";
-import { usePolicyStore } from "../../stores/policyStore";
-import {
-  appendDictionarySuffix,
-  appendScreenContextSuffix,
-  getAgentSystemPrompt,
-} from "../../config/prompts";
+  getSettings,
+  selectResolvedLLMConfig,
+  useSettingsStore,
+} from "../../stores/settingsStore";
+import { appendDictionarySuffix, getAgentSystemPrompt } from "../../config/prompts";
 import { getDictionaryHintWords } from "../../utils/snippets";
 import { createToolRegistry } from "../../services/tools";
 import type { ToolRegistry } from "../../services/tools/ToolRegistry";
 import { getAgentToolActivityRemainingMs } from "../../helpers/agentToolPresentation";
-import type { Message, AgentState, ChatImageAttachment, ToolCallInfo } from "./types";
+import type { Message, AgentState, ToolCallInfo } from "./types";
 import type { ContainerScope } from "../../types/chat";
-import {
-  buildAgentRequestText,
-  type AgentSelectionContext,
-} from "../../utils/agentSelectionContext";
-
-const RAG_NOTE_LIMIT = 5;
-const RAG_NOTE_SNIPPET_LENGTH = 500;
 
 const LOCAL_TOOL_MIN_PARAMS_B = 4;
 
@@ -37,101 +22,32 @@ function estimateModelSizeB(modelId: string): number {
   return match ? parseFloat(match[1]) : 0;
 }
 
-async function buildRAGContext(userText: string, scope?: ContainerScope): Promise<string> {
-  if (!window.electronAPI?.semanticSearchNotes) return "";
-  try {
-    const results = await window.electronAPI.semanticSearchNotes(
-      userText,
-      RAG_NOTE_LIMIT,
-      scope?.spaceId ?? null,
-      scope?.folderId ?? null
-    );
-    if (!results || results.length === 0) return "";
-
-    const snippets = await Promise.all(
-      results.map(async (r: { id: number; title: string; score?: number }) => {
-        const note = await window.electronAPI.getNote(r.id);
-        if (!note) return null;
-        const content = (note.content || "").slice(0, RAG_NOTE_SNIPPET_LENGTH);
-        return `<note id="${note.id}" title="${note.title}">\n${content}\n</note>`;
-      })
-    );
-
-    return snippets.filter(Boolean).join("\n\n");
-  } catch {
-    return "";
-  }
-}
-
-/**
- * Which settings scope answers a conversation. Typed chat surfaces stay on the
- * Chat scope; the voice assistant panel runs on the Voice Assistant scope so
- * the model picked under Settings > Voice Assistant is the one that answers
- * (see resolveChatStreamingInference for its Chat fallback).
- */
-export type ChatStreamingScope = "chatIntelligence" | "dictationAgent";
-
 interface UseChatStreamingOptions {
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
-  /** Settings scope the conversation resolves its provider and model from. */
-  inferenceScope?: ChatStreamingScope;
   /** Optional note context to prepend to the system prompt (used by embedded note chat). */
   noteContext?: string;
-  /** Optional container scope applied to RAG and the search_notes tool (container overview chat). */
+  /** Optional container scope applied to the search_notes tool (container overview chat). */
   searchScope?: ContainerScope;
   onStreamComplete?: (assistantId: string, content: string, toolCalls?: ToolCallInfo[]) => void;
-  /** Fires exactly once when displayable assistant content or tool activity becomes available. */
-  onResponseContent?: () => void;
-}
-
-export interface SendToAIOptions {
-  /** Screenshot for this message; attached only when the resolved model can see it. */
-  attachment?: ChatImageAttachment;
-  /** Agent-response selection attached to this request without changing chat history. */
-  selectedContext?: AgentSelectionContext;
-  /** Keeps a caret-destined voice response in the compact pill while it streams. */
-  suppressResponseContent?: boolean;
-  /** Per-request completion hook used to deliver a finished voice response. */
-  onComplete?: (result: {
-    assistantId: string;
-    content: string;
-    toolCalls?: ToolCallInfo[];
-  }) => void | Promise<void>;
 }
 
 export interface ChatStreaming {
   agentState: AgentState;
   toolStatus: string;
   activeToolName: string;
-  sendToAI: (userText: string, allMessages: Message[], options?: SendToAIOptions) => Promise<void>;
+  sendToAI: (userText: string, allMessages: Message[]) => Promise<void>;
   cancelStream: () => void;
 }
 
-type HistoryMessage = { role: string; content: string | Array<Record<string, unknown>> };
-
-// Walks backward to the newest user message; a null transform keeps walking.
-function transformLastUserMessage(
-  history: HistoryMessage[],
-  transform: (message: HistoryMessage) => HistoryMessage | null
-): void {
-  for (let i = history.length - 1; i >= 0; i--) {
-    if (history[i].role !== "user") continue;
-    const replacement = transform(history[i]);
-    if (replacement === null) continue;
-    history[i] = replacement;
-    break;
-  }
-}
+type HistoryMessage = { role: string; content: string };
 
 export function useChatStreaming({
   messages,
   setMessages,
-  inferenceScope = "chatIntelligence",
   noteContext: externalNoteContext,
   searchScope,
   onStreamComplete,
-  onResponseContent,
 }: UseChatStreamingOptions): ChatStreaming {
   const { t } = useTranslation();
   const [agentState, setAgentState] = useState<AgentState>("idle");
@@ -224,7 +140,7 @@ export function useChatStreaming({
   }, [cancelStream]);
 
   const sendToAI = useCallback(
-    async (userText: string, allMessages: Message[], options?: SendToAIOptions) => {
+    async (userText: string, allMessages: Message[]) => {
       const sendGeneration = ++sendGenerationRef.current;
       const cancelled = () => sendGeneration !== sendGenerationRef.current;
       clearToolActivity();
@@ -232,43 +148,12 @@ export function useChatStreaming({
       const announceResponse = () => {
         if (responseAnnounced) return;
         responseAnnounced = true;
-        if (!options?.suppressResponseContent) onResponseContent?.();
       };
       const settings = getSettings();
-      const { config: llmConfig, attachScreenContext } = resolveChatStreamingInference(settings, {
-        inferenceScope,
-        hasScreenContext: !!options?.attachment,
-        isProviderImageWired: providerSupportsImages,
-      });
-      const requestedAttachment = attachScreenContext ? (options?.attachment ?? null) : null;
-      const llmMode = llmConfig.mode || "openwhispr";
-      const policyState = usePolicyStore.getState();
-      const policyProvider =
-        llmMode === "openwhispr"
-          ? "openwhispr"
-          : llmMode === "local"
-            ? "local"
-            : llmConfig.provider;
-      if (
-        !isAgentAllowed(policyState) ||
-        !isLlmSelectionAllowed(policyState, { mode: llmMode, provider: policyProvider })
-      ) {
-        // The user message is already appended; answer it instead of dead-ending silently.
-        const restriction = !isAgentAllowed(policyState)
-          ? t("common.policyAgentRestricted")
-          : t("common.policyAiProcessingRestricted");
-        announceResponse();
-        setMessages((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), role: "assistant", content: restriction, isStreaming: false },
-        ]);
-        return;
-      }
-
+      const llmConfig = selectResolvedLLMConfig(settings, "chatIntelligence");
       setAgentState("thinking");
-      const isCloudAgent = llmMode === "openwhispr" && settings.isSignedIn;
-      const isLanAgent = llmMode === "self-hosted" && !!llmConfig.remoteUrl;
-      const isCustomAgent = llmMode === "providers" && llmConfig.provider === "custom";
+      const isLanAgent = llmConfig.mode === "self-hosted" && !!llmConfig.remoteUrl;
+      const isCustomAgent = llmConfig.mode === "providers" && llmConfig.provider === "custom";
       const isLocalProvider =
         !isEnterpriseProvider(llmConfig.provider) &&
         ![
@@ -283,7 +168,7 @@ export function useChatStreaming({
         ].includes(llmConfig.provider);
       const localModelCanUseTool =
         isLocalProvider && estimateModelSizeB(llmConfig.model) >= LOCAL_TOOL_MIN_PARAMS_B;
-      const supportsTools = isCloudAgent || !isLocalProvider || localModelCanUseTool;
+      const supportsTools = !isLocalProvider || localModelCanUseTool;
 
       const scope = searchScopeRef.current;
       let registry: ToolRegistry | null = null;
@@ -293,19 +178,15 @@ export function useChatStreaming({
         // so any connected provider enables it.
         const calendarConnected =
           settings.gcalConnected || settings.mcalConnected || settings.appleCalendarConnected;
-        const webSearchEnabled = isWebSearchAllowed(usePolicyStore.getState());
         // Triggers ride in the tool description, so a snippet edit rebuilds the registry.
         const snippetKey = settings.snippets.map((s) => s.trigger).join("|");
-        const cacheKey = `${settings.isSignedIn}-${calendarConnected}-${settings.cloudBackupEnabled}-${scopeKey}-${webSearchEnabled}-${snippetKey}`;
+        const cacheKey = `${calendarConnected}-${scopeKey}-${snippetKey}`;
         if (toolRegistryRef.current?.key === cacheKey) {
           registry = toolRegistryRef.current.registry;
         } else {
           registry = createToolRegistry({
-            isSignedIn: settings.isSignedIn,
             calendarConnected,
-            cloudBackupEnabled: settings.cloudBackupEnabled,
             searchScope: scope,
-            webSearchEnabled,
             vocabulary: {
               getDictionary: () => getSettings().customDictionary,
               updateDictionary: (changes) =>
@@ -318,11 +199,9 @@ export function useChatStreaming({
         }
       }
 
-      const ragContext = await buildRAGContext(userText, scope);
       if (cancelled() || !mountedRef.current) return;
-      const combinedContext = [noteContextRef.current, ragContext].filter(Boolean).join("\n\n");
-      // The user's dictionary rides on every conversation so replies use their
-      // jargon — same suffix the dictation prompts carry.
+      const combinedContext = noteContextRef.current;
+      // The user's dictionary rides on every conversation so replies use their jargon.
       let systemPrompt = appendDictionarySuffix(
         getAgentSystemPrompt(
           registry?.getAll().map((t) => t.name),
@@ -335,41 +214,6 @@ export function useChatStreaming({
       const history: HistoryMessage[] = allMessages
         .slice(-20)
         .map((m) => ({ role: m.role, content: m.content }));
-
-      const selectedContext = options?.selectedContext;
-      if (selectedContext) {
-        transformLastUserMessage(history, (message) =>
-          typeof message.content === "string"
-            ? { ...message, content: buildAgentRequestText(message.content, selectedContext) }
-            : null
-        );
-      }
-
-      // A screenshot the resolver kept rides with the command it came with:
-      // BYOK models get it as an image part, the cloud agent as a dedicated
-      // field the server vision-routes (older servers strip the unknown field,
-      // which degrades to a plain command). A dropped one costs nothing but the
-      // image — the command still runs.
-      const attachment = requestedAttachment && !isCloudAgent ? requestedAttachment : null;
-      const cloudScreenContext =
-        requestedAttachment && isCloudAgent
-          ? { data: requestedAttachment.image, mediaType: requestedAttachment.mediaType }
-          : null;
-      if (attachment) {
-        // The screenshot needs its grounding instruction, exactly like the
-        // dictation path pairs the suffix with an attached image. Restore it
-        // for cloud context once openwhispr-api#157 vision-routes that field.
-        systemPrompt = appendScreenContextSuffix(systemPrompt, settings.uiLanguage);
-      }
-      if (attachment) {
-        transformLastUserMessage(history, (message) => ({
-          role: "user",
-          content: [
-            { type: "text", text: message.content as string },
-            { type: "image", image: attachment.image, mediaType: attachment.mediaType },
-          ],
-        }));
-      }
 
       const llmMessages = [{ role: "system", content: systemPrompt }, ...history];
 
@@ -384,70 +228,22 @@ export function useChatStreaming({
         let fullContent = "";
         let stream: AsyncGenerator<AgentStreamChunk>;
 
-        if (isCloudAgent) {
-          const executeToolCall = registry
-            ? async (name: string, argsJson: string) => {
-                const tool = registry.get(name);
-                if (!tool)
-                  return {
-                    data: `Unknown tool: ${name}`,
-                    displayText: t("agentMode.tools.unknownTool", { name }),
-                  };
-                let args: Record<string, unknown>;
-                try {
-                  args = JSON.parse(argsJson);
-                } catch {
-                  return {
-                    data: `Invalid tool arguments for ${name}`,
-                    displayText: t("agentMode.tools.invalidArgs", { name }),
-                  };
-                }
-                const result = await tool.execute(args);
-                const data = result.success
-                  ? typeof result.data === "string"
-                    ? result.data
-                    : JSON.stringify(result.data)
-                  : result.displayText;
-                const metadata =
-                  result.success && result.data && typeof result.data === "object"
-                    ? (result.data as Record<string, unknown> | Array<Record<string, unknown>>)
-                    : undefined;
-                return { data, displayText: result.displayText, metadata };
-              }
-            : undefined;
-
-          stream = ReasoningService.processTextStreamingCloud(llmMessages, {
+        const aiTools = registry?.toAISDKFormat();
+        stream = ReasoningService.processTextStreamingAI(
+          llmMessages,
+          llmConfig.model,
+          llmConfig.provider,
+          {
             systemPrompt,
-            tools: registry?.getAll().map((t) => ({
-              name: t.name,
-              description: t.description,
-              parameters: t.parameters,
-            })),
-            executeToolCall,
-            ...(cloudScreenContext ? { screenContext: cloudScreenContext } : {}),
-          });
-        } else {
-          const aiTools = registry?.toAISDKFormat();
-          stream = ReasoningService.processTextStreamingAI(
-            llmMessages,
-            llmConfig.model,
-            llmConfig.provider,
-            {
-              systemPrompt,
-              // Policy and managed enforcement judge the scope that actually
-              // answers: the panel's Chat fallback as Chat, and the vision
-              // override as the agent scope whose image lane it is.
-              inferenceScope:
-                llmConfig.scope === "dictationAgentVision" ? "dictationAgent" : llmConfig.scope,
-              lanUrl: isLanAgent ? llmConfig.remoteUrl : undefined,
-              baseUrl: isCustomAgent ? llmConfig.cloudBaseUrl || undefined : undefined,
-              customApiKey:
-                isCustomAgent || isLanAgent ? llmConfig.customApiKey || undefined : undefined,
-              disableThinking: llmConfig.disableThinking,
-            },
-            aiTools
-          );
-        }
+            inferenceScope: llmConfig.scope,
+            lanUrl: isLanAgent ? llmConfig.remoteUrl : undefined,
+            baseUrl: isCustomAgent ? llmConfig.cloudBaseUrl || undefined : undefined,
+            customApiKey:
+              isCustomAgent || isLanAgent ? llmConfig.customApiKey || undefined : undefined,
+            disableThinking: llmConfig.disableThinking,
+          },
+          aiTools
+        );
 
         for await (const chunk of stream) {
           if (!mountedRef.current) {
@@ -521,8 +317,7 @@ export function useChatStreaming({
           // An unmount mid-stream (page navigation) keeps the partial reply in
           // history so the saved conversation matches what the user last saw;
           // an explicit cancel drops it. The unmount cleanup cancels too, so
-          // cancelled() alone cannot tell the two apart. Neither path may run
-          // the per-request delivery hook.
+          // cancelled() alone cannot tell the two apart.
           const explicitlyCancelled = explicitCancelGenerationRef.current > sendGeneration;
           if (!explicitlyCancelled && fullContent.trim().length > 0) {
             const finalMsg = messagesRef.current.find((m) => m.id === assistantId);
@@ -531,12 +326,10 @@ export function useChatStreaming({
           return;
         }
 
-        const hasDeliverableContent = fullContent.trim().length > 0;
         if (!responseAnnounced && !cancelled()) {
           // The stream ended without a visible token or tool call (think-only
-          // local model, empty completion). Show that as a reply so every
-          // listener — the assistant panel's thinking state included — sees a
-          // terminal outcome.
+          // local model, empty completion). Show that as a reply so the chat
+          // always reaches a terminal outcome.
           fullContent = t("agentMode.chat.emptyResponse");
           announceResponse();
           setMessages((prev) =>
@@ -550,13 +343,6 @@ export function useChatStreaming({
 
         const finalMsg = messagesRef.current.find((m) => m.id === assistantId);
         onStreamComplete?.(assistantId, fullContent, finalMsg?.toolCalls);
-        if (hasDeliverableContent) {
-          await options?.onComplete?.({
-            assistantId,
-            content: fullContent,
-            toolCalls: finalMsg?.toolCalls,
-          });
-        }
       } catch (error) {
         if (cancelled()) {
           setMessages((prev) =>
@@ -584,11 +370,9 @@ export function useChatStreaming({
       completeToolActivity();
     },
     [
-      inferenceScope,
       t,
       setMessages,
       onStreamComplete,
-      onResponseContent,
       clearToolActivity,
       beginToolActivity,
       completeToolActivity,

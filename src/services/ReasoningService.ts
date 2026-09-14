@@ -11,15 +11,13 @@ import { SecureCache } from "../utils/SecureCache";
 import { withRetry, createApiRetryStrategy, httpError } from "../utils/retry";
 import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, ensureV1Suffix } from "../config/constants";
 import logger from "../utils/logger";
-import { getSettings, isCloudCleanupMode } from "../stores/settingsStore";
+import { getSettings } from "../stores/settingsStore";
 import { wrapCleanupTranscript } from "../config/prompts";
 import { stripThinkingTags } from "../helpers/stripThinking.js";
 import { getLlmRequestTimeoutSeconds } from "../helpers/llmRequestTimeout.js";
 import { streamText, stepCountIs } from "ai";
 import { getAIModel } from "./ai/providers";
 import { createEnterpriseChatModel } from "./ai/enterpriseChatModel";
-import { getManagedScopeResolution } from "../stores/enterpriseIdentityStore";
-import type { InferenceScope } from "../config/inferenceScopes";
 import { PROVIDER_REGISTRY, type ProviderContext } from "./ai/inferenceProviders";
 import {
   canBorrowCleanupCustomKey,
@@ -38,16 +36,8 @@ import { createStreamingThinkFilter } from "./ai/streamingThinkFilter";
 import { extractApiErrorMessage } from "./ai/apiErrorMessage";
 import { clearTinfoilClientCache } from "./ai/tinfoilClient";
 import { resolveChatRoute } from "../helpers/chatRouting";
-import { assertAgentAllowedByPolicy, assertReasoningAllowedByPolicy } from "./reasoningPolicy";
-import type { InferenceMode } from "../types/electron";
 
 export type ToolMetadata = Record<string, unknown> | Array<Record<string, unknown>>;
-
-interface ToolExecutionResult {
-  data: string;
-  displayText: string;
-  metadata?: ToolMetadata;
-}
 
 const BYOK_STREAM_PROVIDERS = [
   "openai",
@@ -81,22 +71,6 @@ export type AgentStreamChunk =
     }
   | { type: "done"; finishReason?: string };
 
-function resolveLlmDispatchMode(
-  provider: string,
-  config: Pick<ReasoningConfig, "lanUrl">
-): InferenceMode {
-  if (config.lanUrl || provider === "lan") return "self-hosted";
-  if (provider === "openwhispr") return "openwhispr";
-  if (provider === "local") return "local";
-  if (isEnterpriseProvider(provider)) return "enterprise";
-  return "providers";
-}
-
-function assertAgentSessionAllowedByPolicy(provider: string, mode: InferenceMode): void {
-  assertAgentAllowedByPolicy();
-  assertReasoningAllowedByPolicy(provider, mode);
-}
-
 function logParamFallback(logEvent: string) {
   return (details: { status: number; stripped: string[] }) =>
     logger.logReasoning(logEvent, details);
@@ -108,8 +82,6 @@ class ReasoningService extends BaseReasoningService {
   private cacheCleanupStop: (() => void) | undefined;
   private streamAbortController: AbortController | null = null;
   private activeRequestControllers = new Set<AbortController>();
-  private activeCloudStream: { requestId: string; cancel: () => void } | null = null;
-  private cloudOperationGeneration = 0;
   private requestCancellationGeneration = 0;
 
   private readonly providerContext: ProviderContext;
@@ -137,40 +109,6 @@ class ReasoningService extends BaseReasoningService {
   private hasLanCleanupConfiguration(): boolean {
     const settings = getSettings();
     return settings.cleanupMode === "self-hosted" && !!settings.cleanupRemoteUrl?.trim();
-  }
-
-  // Managed enterprise access owns the route. Manual self-hosted and BYOK overrides are
-  // dropped so a leftover endpoint or key can never outrank the administrator's provider.
-  private resolveManagedScope<T extends ReasoningConfig, P extends string | undefined>(
-    model: string,
-    provider: P,
-    config: T,
-    fallbackScope: InferenceScope
-  ): { model: string; provider: P; config: T; isManaged: boolean } {
-    const inferenceScope = config.inferenceScope || fallbackScope;
-    const managed = getManagedScopeResolution(inferenceScope, getSettings().enterpriseSetupMode);
-    if (managed.kind === "error") {
-      throw Object.assign(new Error(managed.message), {
-        code: managed.code,
-        messageKey: managed.messageKey,
-      });
-    }
-    if (managed.kind !== "managed") {
-      return { model, provider, config: { ...config, inferenceScope }, isManaged: false };
-    }
-    return {
-      model: managed.model,
-      provider: managed.provider as P,
-      config: {
-        ...config,
-        inferenceScope,
-        provider: managed.provider,
-        lanUrl: undefined,
-        baseUrl: undefined,
-        customApiKey: undefined,
-      },
-      isManaged: true,
-    };
   }
 
   private async getApiKey(
@@ -449,18 +387,14 @@ class ReasoningService extends BaseReasoningService {
     agentName: string | null = null,
     config: ReasoningConfig = {}
   ): Promise<string> {
-    const managed = this.resolveManagedScope(model, config.provider, config, "dictationCleanup");
-    ({ model, config } = managed);
     const trimmedModel = model?.trim?.() || "";
     const settings = getSettings();
     const isImplicitCleanup =
       config.provider === undefined && config.baseUrl === undefined && config.lanUrl === undefined;
     const implicitProvider =
-      settings.cleanupMode === "openwhispr"
-        ? "openwhispr"
-        : settings.cleanupMode === "self-hosted"
-          ? "lan"
-          : settings.cleanupProvider || undefined;
+      settings.cleanupMode === "self-hosted"
+        ? "lan"
+        : settings.cleanupProvider || undefined;
     const isImplicitCustomCleanup =
       isImplicitCleanup && settings.cleanupMode === "providers" && implicitProvider === "custom";
     const dispatchConfig: ReasoningConfig = isImplicitCleanup
@@ -480,10 +414,7 @@ class ReasoningService extends BaseReasoningService {
     if (!providerId) {
       throw new Error("No reasoning provider selected");
     }
-    if (dispatchConfig.requiresAgent) assertAgentAllowedByPolicy();
-    assertReasoningAllowedByPolicy(providerId, resolveLlmDispatchMode(providerId, dispatchConfig));
-
-    if (!trimmedModel && providerId !== "openwhispr" && providerId !== "lan") {
+    if (!trimmedModel && providerId !== "lan") {
       throw new Error("No reasoning model selected");
     }
 
@@ -557,9 +488,6 @@ class ReasoningService extends BaseReasoningService {
       lanUrl: config.lanUrl,
       customApiKey: config.customApiKey,
     });
-    const mode: InferenceMode =
-      route.kind === "self-hosted" ? "self-hosted" : route.kind === "local" ? "local" : "providers";
-    assertAgentSessionAllowedByPolicy(provider, mode);
     const isLocalProvider = route.kind === "local";
     const isLanChat = route.kind === "self-hosted";
 
@@ -747,27 +675,12 @@ class ReasoningService extends BaseReasoningService {
     config: ReasoningConfig & { systemPrompt: string },
     tools?: Record<string, import("ai").Tool>
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
-    ({ model, provider, config } = this.resolveManagedScope(
-      model,
-      provider,
-      config,
-      "chatIntelligence"
-    ));
     const route = resolveChatRoute({
       provider,
       lanUrl: config.lanUrl,
       customApiKey: config.customApiKey,
       isEnterpriseProvider: isEnterpriseProvider(provider),
     });
-    const mode: InferenceMode =
-      route.kind === "self-hosted"
-        ? "self-hosted"
-        : route.kind === "enterprise"
-          ? "enterprise"
-          : route.kind === "local"
-            ? "local"
-            : "providers";
-    assertAgentSessionAllowedByPolicy(provider, mode);
     // Both streaming transports share this owner so cancellation survives
     // asynchronous server, key, and model setup.
     const abortController = new AbortController();
@@ -829,7 +742,7 @@ class ReasoningService extends BaseReasoningService {
     const openrouterDisableThinking = provider === "openrouter" && config.disableThinking === true;
     // Resolving a Tinfoil model refreshes the registry, so read model config after it.
     const aiModel = isEnterprise
-      ? createEnterpriseChatModel(provider as EnterpriseProvider, model, config.inferenceScope)
+      ? createEnterpriseChatModel(provider as EnterpriseProvider, model)
       : await getAIModel(aiProvider, model, apiKey, baseURL, {
           disableThinking: openrouterDisableThinking,
         });
@@ -956,263 +869,25 @@ class ReasoningService extends BaseReasoningService {
 
   /** Aborts the chat/agent stream only (panel Esc, chat surface unmount). */
   cancelActiveStream(): void {
-    this.cloudOperationGeneration += 1;
     this.streamAbortController?.abort();
     this.streamAbortController = null;
-    const activeCloudStream = this.activeCloudStream;
-    this.activeCloudStream = null;
-    activeCloudStream?.cancel();
   }
 
   /**
    * Aborts everything in flight in this renderer: the chat stream plus every
-   * single-shot request (cleanup, selection edit, titles) and the cloud-reason
-   * IPC jobs. Used by the dictation cancel path, never by chat lifecycle —
-   * a note or tab switch must not kill unrelated reasoning work.
+   * single-shot request (cleanup, selection edit, titles). Used by the
+   * dictation cancel path, never by chat lifecycle.
    */
   cancelAllRequests(): void {
     this.requestCancellationGeneration += 1;
     for (const controller of this.activeRequestControllers) controller.abort();
     this.activeRequestControllers.clear();
-    if (typeof window !== "undefined") {
-      window.electronAPI?.cancelCloudReason?.();
-      window.electronAPI?.cancelEnterpriseReasoning?.();
-    }
     this.cancelActiveStream();
-  }
-
-  private streamFromIPC(
-    messages: Array<{ role: string; content: string | Array<unknown> }>,
-    opts: {
-      systemPrompt?: string;
-      tools?: Array<{ name: string; description: string; parameters: Record<string, unknown> }>;
-      // Press-time screenshot; the server routes to its vision chain when present.
-      screenContext?: { data: string; mediaType: string };
-    }
-  ): {
-    stream: AsyncGenerator<
-      {
-        type: string;
-        text?: string;
-        id?: string;
-        name?: string;
-        arguments?: string;
-        finishReason?: string;
-      },
-      void,
-      unknown
-    >;
-    wasCancelled: () => boolean;
-  } {
-    type StreamEvent = {
-      type: string;
-      text?: string;
-      id?: string;
-      name?: string;
-      arguments?: string;
-      finishReason?: string;
-    };
-    const queue: Array<StreamEvent | { type: "__error"; error: string } | { type: "__end" }> = [];
-    let resolve: (() => void) | null = null;
-    let cancelled = false;
-    let closed = false;
-    const requestId = crypto.randomUUID();
-    const electronAPI = window.electronAPI;
-
-    this.activeCloudStream?.cancel();
-
-    const cleanupChunk = electronAPI?.onAgentStreamChunk?.((payload) => {
-      if (payload.requestId !== requestId || closed || cancelled) return;
-      queue.push(payload.chunk);
-      resolve?.();
-    });
-    const cleanupError = electronAPI?.onAgentStreamError?.((payload) => {
-      if (payload.requestId !== requestId || closed || cancelled) return;
-      queue.push({ type: "__error", error: payload.error });
-      resolve?.();
-    });
-    const cleanupEnd = electronAPI?.onAgentStreamEnd?.((payload) => {
-      if (payload.requestId !== requestId || closed || cancelled) return;
-      queue.push({ type: "__end" });
-      resolve?.();
-    });
-
-    const cleanup = () => {
-      if (closed) return;
-      closed = true;
-      cleanupChunk?.();
-      cleanupError?.();
-      cleanupEnd?.();
-      if (this.activeCloudStream?.requestId === requestId) this.activeCloudStream = null;
-    };
-
-    const cancel = () => {
-      if (closed || cancelled) return;
-      cancelled = true;
-      electronAPI?.cancelAgentStream?.(requestId);
-      queue.length = 0;
-      queue.push({ type: "__end" });
-      resolve?.();
-    };
-    this.activeCloudStream = { requestId, cancel };
-
-    electronAPI?.startAgentStream?.(requestId, messages, opts);
-
-    const generator = (async function* () {
-      try {
-        while (true) {
-          if (queue.length === 0) {
-            await new Promise<void>((r) => {
-              resolve = r;
-            });
-            resolve = null;
-          }
-
-          while (queue.length > 0) {
-            const item = queue.shift()!;
-            if (item.type === "__end") return;
-            if (item.type === "__error") throw new Error((item as { error: string }).error);
-            yield item as StreamEvent;
-          }
-        }
-      } finally {
-        cleanup();
-      }
-    })();
-
-    return { stream: generator, wasCancelled: () => cancelled };
-  }
-
-  processTextStreamingCloud(
-    messages: Array<{ role: string; content: string | Array<unknown> }>,
-    config: {
-      systemPrompt: string;
-      tools?: Array<{ name: string; description: string; parameters: Record<string, unknown> }>;
-      executeToolCall?: (name: string, args: string) => Promise<ToolExecutionResult>;
-      screenContext?: { data: string; mediaType: string };
-    }
-  ): AsyncGenerator<AgentStreamChunk, void, unknown> {
-    // Capture synchronously so a cancel before the first next() is observed.
-    const operationGeneration = ++this.cloudOperationGeneration;
-    return this._processTextStreamingCloud(messages, config, operationGeneration);
-  }
-
-  private async *_processTextStreamingCloud(
-    messages: Array<{ role: string; content: string | Array<unknown> }>,
-    config: {
-      systemPrompt: string;
-      tools?: Array<{ name: string; description: string; parameters: Record<string, unknown> }>;
-      executeToolCall?: (name: string, args: string) => Promise<ToolExecutionResult>;
-      screenContext?: { data: string; mediaType: string };
-    },
-    operationGeneration: number
-  ): AsyncGenerator<AgentStreamChunk, void, unknown> {
-    assertAgentSessionAllowedByPolicy("openwhispr", "openwhispr");
-    const operationWasCancelled = (): boolean =>
-      operationGeneration !== this.cloudOperationGeneration;
-    const maxSteps = config.tools?.length ? ReasoningService.MAX_TOOL_STEPS : 1;
-    let currentMessages = [...messages];
-
-    for (let step = 0; step < maxSteps; step++) {
-      if (operationWasCancelled()) return;
-      // The screenshot rides every step of the tool loop so the model keeps
-      // its vision after tool results come back.
-      const ipcStream = this.streamFromIPC(currentMessages, {
-        systemPrompt: config.systemPrompt,
-        tools: config.tools,
-        screenContext: config.screenContext,
-      });
-
-      const pendingToolCalls: Array<{ id: string; name: string; arguments: string }> = [];
-
-      for await (const ev of ipcStream.stream) {
-        if (ev.type === "content") {
-          yield { type: "content", text: ev.text as string };
-        } else if (ev.type === "tool_call") {
-          const call = {
-            id: ev.id as string,
-            name: ev.name as string,
-            arguments: ev.arguments as string,
-          };
-          pendingToolCalls.push(call);
-          yield { type: "tool_calls", calls: [call] };
-        }
-      }
-
-      if (ipcStream.wasCancelled() || operationWasCancelled()) return;
-
-      if (pendingToolCalls.length === 0 || !config.executeToolCall) {
-        yield { type: "done", finishReason: "stop" };
-        return;
-      }
-
-      for (const call of pendingToolCalls) {
-        if (operationWasCancelled()) return;
-        let toolResult: ToolExecutionResult;
-        try {
-          toolResult = await config.executeToolCall(call.name, call.arguments);
-        } catch (error) {
-          const errMsg = `Error: ${(error as Error).message}`;
-          toolResult = { data: errMsg, displayText: errMsg };
-        }
-        if (operationWasCancelled()) return;
-        yield {
-          type: "tool_result",
-          callId: call.id,
-          toolName: call.name,
-          displayText: toolResult.displayText,
-          ...(toolResult.metadata ? { metadata: toolResult.metadata } : {}),
-        };
-
-        currentMessages = [
-          ...currentMessages,
-          {
-            role: "assistant",
-            content: [
-              {
-                type: "tool-call",
-                toolCallId: call.id,
-                toolName: call.name,
-                input: JSON.parse(call.arguments),
-              },
-            ],
-          },
-          {
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolCallId: call.id,
-                toolName: call.name,
-                output: { type: "text", value: toolResult.data },
-              },
-            ],
-          },
-        ];
-      }
-    }
-
-    if (operationWasCancelled()) return;
-    yield { type: "done", finishReason: "stop" };
   }
 
   async isAvailable(): Promise<boolean> {
     try {
       const settings = getSettings();
-      // Mirrors processText's precedence: managed access outranks every manual route.
-      if (
-        getManagedScopeResolution("dictationCleanup", settings.enterpriseSetupMode).kind ===
-        "managed"
-      ) {
-        logger.logReasoning("API_KEY_CHECK", { managedEnterprise: true });
-        return true;
-      }
-
-      if (isCloudCleanupMode()) {
-        logger.logReasoning("API_KEY_CHECK", { cloudCleanupMode: true });
-        return true;
-      }
-
       if (this.hasLanCleanupConfiguration()) {
         logger.logReasoning("API_KEY_CHECK", { lanCleanup: true });
         return true;

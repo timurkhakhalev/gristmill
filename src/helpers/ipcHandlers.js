@@ -55,6 +55,7 @@ function resolveEnterpriseRuntime(provider, modelId, config = {}) {
 
 const { resolveLocalServerNeeds } = require("./localServerPolicy");
 const { registerNotesHandlers } = require("./notesIpcHandlers");
+const { registerUrlDownloadHandlers } = require("./urlDownloadIpcHandlers");
 const { sendNoteAdded, sendNoteUpdated, sendNoteDeleted } = require("./notesEvents");
 const autoStart = require("./autoStart");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
@@ -1405,85 +1406,14 @@ class IPCHandlers {
       }
     });
 
-    const activeUrlDownloads = new Map();
-    let urlDownloadSeq = 0;
-
-    // Sweep ow-url-*/ow-diarize-* orphans from crashes or windows closed mid-download.
-    require("./urlAudioDownloader").sweepStaleTempArtifacts();
-
-    ipcMain.handle("download-url-audio", async (event, url, downloadId) => {
-      if (typeof url !== "string" || url.length > 2048) {
-        return { success: false, error: "Invalid URL", code: "INVALID_URL" };
-      }
-      const { download } = require("./urlAudioDownloader");
-
-      const id =
-        typeof downloadId === "string" && downloadId ? downloadId : `dl-${++urlDownloadSeq}`;
-      const abortController = new AbortController();
-      activeUrlDownloads.set(id, abortController);
-
-      try {
-        const result = await download(
-          url,
-          (progress) => {
-            if (!event.sender.isDestroyed()) {
-              event.sender.send("url-download-progress", { ...progress, downloadId: id });
-            }
-          },
-          abortController.signal
-        );
-        return { success: true, ...result };
-      } catch (error) {
-        debugLogger.error("URL audio download error", { error: error.message, code: error.code });
-        return { success: false, error: error.message, code: error.code || "DOWNLOAD_FAILED" };
-      } finally {
-        if (activeUrlDownloads.get(id) === abortController) {
-          activeUrlDownloads.delete(id);
-        }
-      }
-    });
-
-    // With an id, cancels that download; without, cancels all (unmount cleanup).
-    ipcMain.handle("cancel-url-download", async (_event, downloadId) => {
-      if (typeof downloadId === "string" && downloadId) {
-        const controller = activeUrlDownloads.get(downloadId);
-        if (!controller) return { success: false };
-        controller.abort();
-        activeUrlDownloads.delete(downloadId);
-        return { success: true };
-      }
-      if (activeUrlDownloads.size === 0) return { success: false };
-      for (const controller of activeUrlDownloads.values()) controller.abort();
-      activeUrlDownloads.clear();
-      return { success: true };
-    });
-
-    ipcMain.handle("delete-temp-file", async (event, filePath) => {
-      try {
-        if (typeof filePath !== "string") {
-          return { success: false, error: "Invalid file path" };
-        }
-        const { getSafeTempDir } = require("./safeTempDir");
-        const resolved = path.resolve(filePath);
-        const basename = path.basename(resolved);
-        if (!basename.startsWith("ow-url-") && !basename.startsWith("ow-diarize-")) {
-          return { success: false, error: "Not an OpenHercules temp file" };
-        }
-        const real = fs.realpathSync(resolved);
-        let tempDir = getSafeTempDir();
-        try {
-          tempDir = fs.realpathSync(tempDir);
-        } catch {}
-        const rel = path.relative(tempDir, real);
-        if (rel.startsWith("..") || path.isAbsolute(rel)) {
-          return { success: false, error: "Not an OpenHercules temp file" };
-        }
-        fs.unlinkSync(real);
-        return { success: true };
-      } catch (error) {
-        debugLogger.warn("Failed to delete temp file", { error: error.message });
-        return { success: false, error: error.message };
-      }
+    // URL download channels live in the typed module, per-registration state
+    // included. Only the downloader and logging are shared.
+    const urlDownloader = require("./urlAudioDownloader");
+    registerUrlDownloadHandlers(ipcMain, {
+      download: urlDownloader.download,
+      sweepStaleTempArtifacts: urlDownloader.sweepStaleTempArtifacts,
+      getSafeTempDir: require("./safeTempDir").getSafeTempDir,
+      debugLogger,
     });
 
     ipcMain.handle("transcribe-audio-file", async (event, filePath, options = {}) => {

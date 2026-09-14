@@ -12,7 +12,8 @@
 
 Sandboxed preload не может require локальные модули, поэтому после успешного
 tsc `build-main.js` бандлит исходный `preload.js` (вместе с
-`src/preload/notesBridge.ts` и `src/contracts/notes.ts`) в один файл
+`src/preload/notesBridge.ts`, `src/preload/urlDownloadBridge.ts` и
+`src/contracts/*.ts`) в один файл
 `dist-main/preload.js` через esbuild (`bundle`, `format=cjs`,
 `platform=node`, `target=node24`, `external:electron`; devDependency
 `esbuild@0.28.1`). Ошибка bundle завершает сборку и удаляет промежуточный
@@ -134,7 +135,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **133 JS, 9 TS, 1 MTS и 25 JSON**.
+а не всеми файлами в каталоге helpers. В нём **133 JS, 12 TS, 1 MTS и 25 JSON**.
 Entry points: main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
 
@@ -154,6 +155,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `main.js`
 - `preload.js`
 - `src/contracts/notes.ts`
+- `src/contracts/urlDownload.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
 - `src/constants/speakerDetection.json`
@@ -171,6 +173,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/notesEvents.ts`
 - `src/helpers/notesIpcHandlers.ts`
 - `src/preload/notesBridge.ts`
+- `src/preload/urlDownloadBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
 - `src/helpers/builtinActions.js`
@@ -272,6 +275,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/stripThinking.js`
 - `src/helpers/systemDefaultMicrophone.js`
 - `src/helpers/systemTar.js`
+- `src/helpers/urlDownloadIpcHandlers.ts`
 - `src/helpers/tinfoilCatalog.js`
 - `src/helpers/tinfoilRealtimeStreaming.js`
 - `src/helpers/tinfoilSecureClient.js`
@@ -343,3 +347,28 @@ algorithm, metadata policy и SQL не менялись.
 `dist-main/src/helpers/speakerCount.js` загружен в plain Node без tsx и дал
 ожидаемые значения. Полный `pnpm test` — 2451 passed, 0 failed/skipped.
 Inventory обновлён (граф Electron: 133 JS, 9 TS, 1 MTS, 25 JSON).
+
+## Этап «типизированный IPC импорта по HTTPS»
+
+14 сентября 2026 (issue #10, пункт 3, план PR #16). Три канала download
+вертикали вынесены из `ipcHandlers.js` в `src/helpers/urlDownloadIpcHandlers.ts`
+с общим контрактом `src/contracts/urlDownload.ts` (Zod, типы выводятся из схем)
+и bridge `src/preload/urlDownloadBridge.ts` (подключён к bundled preload).
+Downloader `urlAudioDownloader.js` не переписан: он передаётся узкой
+зависимостью `download`/`sweepStaleTempArtifacts` (+ `getSafeTempDir`), его
+результаты и progress валидируются схемами на границе; SSRF/proxy/redirect/
+content-limit логика осталась в прежних regression-тестах. Характеристика
+(`test/helpers/urlDownloadIpc.test.js`, 24 теста): targeted progress,
+генерация `dl-N`, tolerant cancel-all, identity guard при reuse id, passthrough
+ошибок с fallback `DOWNLOAD_FAILED`, basename/realpath/relative-guard
+временного cleanup, per-registration Map. E2E
+(`test/helpers/urlDownloadBridge.test.js`, 7 тестов) гоняет настоящий bundled
+preload → handler Map → fake downloader; malformed progress отбрасывается
+на границе preload. Compile probes (`test/scripts/urlDownloadTypeProbe.test.js`)
+под strict-настройками main: обращение к `error` внутри success-ветки не
+компилируется (2339), корректная пара bridge/handler компилируется.
+
+Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings); focused
+55 passed (`urlDownloadIpc`, `urlDownloadBridge`, `urlAudioDownloader`,
+`rendererBridgeContract`, `mainBuild`, type probes); `build:main` OK.
+Inventory графа Electron: 133 JS, 12 TS, 1 MTS, 25 JSON.

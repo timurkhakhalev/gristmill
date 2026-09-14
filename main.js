@@ -19,12 +19,10 @@ const {
   BrowserWindow,
   dialog,
   ipcMain,
-  net,
   session,
   systemPreferences,
 } = require("electron");
 const path = require("path");
-const http = require("http");
 const tls = require("tls");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
@@ -44,12 +42,12 @@ try {
 
 const VALID_CHANNELS = new Set(["development", "staging", "production"]);
 const DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL = {
-  development: "openwhispr-dev",
-  staging: "openwhispr-staging",
-  production: "openwhispr",
+  development: "openhercules-dev",
+  staging: "openhercules-staging",
+  production: "openhercules",
 };
-const BASE_WINDOWS_APP_ID = "com.gizmolabs.openwhispr";
-const DEFAULT_AUTH_BRIDGE_PORT = 5199;
+const APP_NAME = "OpenHercules";
+const BASE_WINDOWS_APP_ID = "com.openhercules.desktop";
 
 function isElectronBinaryExec() {
   const execPath = (process.execPath || "").toLowerCase();
@@ -68,7 +66,7 @@ function inferDefaultChannel() {
 }
 
 function resolveAppChannel() {
-  const rawChannel = (process.env.OPENWHISPR_CHANNEL || process.env.VITE_OPENWHISPR_CHANNEL || "")
+  const rawChannel = (process.env.OPENHERCULES_CHANNEL || process.env.VITE_OPENHERCULES_CHANNEL || "")
     .trim()
     .toLowerCase();
 
@@ -80,14 +78,11 @@ function resolveAppChannel() {
 }
 
 const APP_CHANNEL = resolveAppChannel();
-process.env.OPENWHISPR_CHANNEL = APP_CHANNEL;
+process.env.OPENHERCULES_CHANNEL = APP_CHANNEL;
 
 function configureChannelUserDataPath() {
-  if (APP_CHANNEL === "production") {
-    return;
-  }
-
-  const isolatedPath = path.join(app.getPath("appData"), `OpenWhispr-${APP_CHANNEL}`);
+  const profileName = APP_CHANNEL === "production" ? APP_NAME : `${APP_NAME}-${APP_CHANNEL}`;
+  const isolatedPath = path.join(app.getPath("appData"), profileName);
   app.setPath("userData", isolatedPath);
 }
 
@@ -125,7 +120,7 @@ if (process.platform === "linux" && process.env.XDG_SESSION_TYPE === "wayland") 
 // Set desktop filename so Wayland compositors can match windows to the .desktop entry.
 // This allows XDG portals (e.g. PipeWire) to persist permissions across sessions.
 if (process.platform === "linux") {
-  app.setDesktopName("open-whispr.desktop");
+  app.setDesktopName("openhercules.desktop");
 }
 
 // Group all windows under single taskbar entry on Windows
@@ -136,7 +131,7 @@ if (process.platform === "win32") {
 }
 
 function getOAuthProtocol() {
-  const fromEnv = (process.env.VITE_OPENWHISPR_PROTOCOL || process.env.OPENWHISPR_PROTOCOL || "")
+  const fromEnv = (process.env.VITE_OPENHERCULES_PROTOCOL || process.env.OPENHERCULES_PROTOCOL || "")
     .trim()
     .toLowerCase();
 
@@ -184,7 +179,7 @@ function restoreHtmlHandlerIfChanged(original) {
   }
 }
 
-// True source of truth for whether openwhispr:// resolves on Linux — the same
+// True source of truth for whether the OpenHercules protocol resolves on Linux — the same
 // MIME database xdg-open consults. Returns true for deb/rpm/flatpak/AUR installs
 // (scheme registered via the packaged .desktop MimeType) and false for AppImage/
 // tar.gz runs where it genuinely isn't registered, so we never enable a dead-end
@@ -207,7 +202,7 @@ function isOAuthSchemeRegistered() {
 // Register custom protocol for OAuth callbacks.
 // In development, always include the app path argument so macOS/Windows/Linux
 // can launch the project app instead of opening bare Electron.
-function registerOpenWhisprProtocol() {
+function registerOpenHerculesProtocol() {
   const protocol = OAUTH_PROTOCOL;
   const htmlHandler = process.platform === "linux" ? getDefaultHtmlHandler() : null;
 
@@ -230,7 +225,7 @@ function registerOpenWhisprProtocol() {
 // fall back to probing the system MIME database for an actual handler. This keeps
 // OAuth enabled where the callback can resolve (deb/rpm/flatpak/AUR) and correctly
 // gated where it can't (AppImage/tar.gz with no scheme registration).
-const protocolRegistered = registerOpenWhisprProtocol() || isOAuthSchemeRegistered();
+const protocolRegistered = registerOpenHerculesProtocol() || isOAuthSchemeRegistered();
 if (!protocolRegistered) {
   console.warn(`[Auth] Failed to register ${OAUTH_PROTOCOL}:// protocol handler`);
 }
@@ -244,8 +239,8 @@ if (!gotSingleInstanceLock) {
 const isLiveWindow = (window) => window && !window.isDestroyed();
 
 // Ensure macOS menus use the proper casing for the app name
-if (process.platform === "darwin" && app.getName() !== "OpenWhispr") {
-  app.setName("OpenWhispr");
+if (process.platform === "darwin" && app.getName() !== APP_NAME) {
+  app.setName(APP_NAME);
 }
 
 // Add global error handling for uncaught exceptions
@@ -276,9 +271,7 @@ const dockManager = require("./src/helpers/dockManager");
 const autoStart = require("./src/helpers/autoStart");
 const IPCHandlers = require("./src/helpers/ipcHandlers");
 const CliBridge = require("./src/helpers/cliBridge");
-const UpdateManager = require("./src/updater");
 const GlobeKeyManager = require("./src/helpers/globeKeyManager");
-const DevServerManager = require("./src/helpers/devServerManager");
 const WindowsKeyManager = require("./src/helpers/windowsKeyManager");
 const LinuxKeyManager = require("./src/helpers/linuxKeyManager");
 const TextEditMonitor = require("./src/helpers/textEditMonitor");
@@ -302,7 +295,6 @@ const LinuxPortalAudioManager = require("./src/helpers/linuxPortalAudioManager")
 const WindowsLoopbackAudioManager = require("./src/helpers/windowsLoopbackAudioManager");
 const MeetingAecManager = require("./src/helpers/meetingAecManager");
 const MeetingDetectionEngine = require("./src/helpers/meetingDetectionEngine");
-const { applyOpenWhisprOriginHeader } = require("./src/helpers/sessionHeaders");
 const { i18nMain, changeLanguage } = require("./src/helpers/i18nMain");
 const { ensureYdotool } = require("./src/helpers/ensureYdotool");
 const sidecarRegistry = require("./src/helpers/sidecarRegistry");
@@ -319,7 +311,6 @@ let whisperManager = null;
 let parakeetManager = null;
 let diarizationManager = null;
 let trayManager = null;
-let updateManager = null;
 let globeKeyManager = null;
 let windowsKeyManager = null;
 let linuxKeyManager = null;
@@ -342,28 +333,11 @@ let cliBridge = null;
 let globeKeyAlertShown = false;
 let macAccessibilityFeaturesReady = false;
 let startMacAccessibilityFeatures = null;
-let authBridgeServer = null;
 let pendingNoteCloudId = null;
 let pendingNoteRetryTimer = null;
 let pendingNoteRetryCount = 0;
 const WHISPER_WAKE_REWARM_DELAY_MS = 3000;
 let wakeRewarmTimer = null;
-
-function parseAuthBridgePort() {
-  const raw = (process.env.OPENWHISPR_AUTH_BRIDGE_PORT || "").trim();
-  if (!raw) return DEFAULT_AUTH_BRIDGE_PORT;
-
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-    return DEFAULT_AUTH_BRIDGE_PORT;
-  }
-
-  return parsed;
-}
-
-const AUTH_BRIDGE_HOST = "127.0.0.1";
-const AUTH_BRIDGE_PORT = parseAuthBridgePort();
-const AUTH_BRIDGE_PATH = "/oauth/callback";
 
 // Set up PATH for production builds to find system tools (whisper.cpp, ffmpeg)
 function setupProductionPath() {
@@ -512,8 +486,6 @@ function initializeCoreManagers() {
   );
   windowManager.meetingDetectionEngine = meetingDetectionEngine;
   calendarReminderScheduler.meetingDetectionEngine = meetingDetectionEngine;
-  updateManager = new UpdateManager();
-  updateManager.setWindowManager(windowManager);
   windowsKeyManager = new WindowsKeyManager();
   linuxKeyManager = new LinuxKeyManager();
   textEditMonitor = new TextEditMonitor();
@@ -541,7 +513,6 @@ function initializeCoreManagers() {
     parakeetManager,
     diarizationManager,
     windowManager,
-    updateManager,
     windowsKeyManager,
     linuxKeyManager,
     textEditMonitor,
@@ -630,11 +601,6 @@ app.on("open-url", (event, url) => {
   event.preventDefault();
   if (!url.startsWith(`${OAUTH_PROTOCOL}://`)) return;
 
-  if (url.includes("upgrade-success")) {
-    handleUpgradeDeepLink();
-    return;
-  }
-
   if (isNoteDeepLink(url)) {
     void handleNoteDeepLink(url);
     return;
@@ -644,8 +610,6 @@ app.on("open-url", (event, url) => {
     handleInvitationDeepLink(url);
     return;
   }
-
-  void handleOAuthDeepLink(url);
 
   if (windowManager && isLiveWindow(windowManager.controlPanelWindow)) {
     windowManager.controlPanelWindow.show();
@@ -764,226 +728,6 @@ function handleInvitationDeepLink(deepLinkUrl) {
   }
 }
 
-function resolveAuthUrl() {
-  const fs = require("fs");
-  const envPath = path.join(__dirname, "src", "dist", "runtime-env.json");
-  let runtimeEnv = {};
-  try {
-    if (fs.existsSync(envPath)) runtimeEnv = JSON.parse(fs.readFileSync(envPath, "utf8"));
-  } catch {}
-  return (
-    process.env.AUTH_URL ||
-    process.env.VITE_AUTH_URL ||
-    runtimeEnv.VITE_AUTH_URL ||
-    "https://auth.openwhispr.com"
-  );
-}
-
-function getOauthCookieName() {
-  return process.env.NODE_ENV === "production"
-    ? "__Secure-openwhispr.session_token"
-    : "openwhispr.session_token";
-}
-
-// Older website builds send the signed cookie value as `?token=`; trade it
-// for the raw session.token the bearer plugin expects.
-async function exchangeSignedTokenForRawBearer(signedToken) {
-  try {
-    const res = await net.fetch(`${resolveAuthUrl()}/api/auth/get-session`, {
-      headers: { Cookie: `${getOauthCookieName()}=${signedToken}` },
-      signal: AbortSignal.timeout(5000),
-      useSessionCookies: false,
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data?.session?.token || null;
-  } catch (err) {
-    if (debugLogger) {
-      debugLogger.warn("Signed-token bearer exchange failed (non-fatal)", {
-        error: err?.message,
-      });
-    }
-    return null;
-  }
-}
-
-// One-time bridge for users upgrading from a build that injected the session
-// cookie into Electron's jar: exchange the existing cookie for a raw bearer
-// token, store it, and remove the cookie. Non-fatal — failures fall through
-// to the normal sign-in flow.
-async function migrateCookieToBearerToken() {
-  const tokenStore = require("./src/helpers/tokenStore");
-  if (tokenStore.get()) return;
-
-  const cookieName = getOauthCookieName();
-  const authUrl = resolveAuthUrl();
-
-  try {
-    const cookies = await session.defaultSession.cookies.get({ url: authUrl, name: cookieName });
-    if (!cookies.length) return;
-
-    const rawToken = await exchangeSignedTokenForRawBearer(cookies[0].value);
-    if (!rawToken) return;
-
-    tokenStore.set(rawToken);
-    await session.defaultSession.cookies.remove(authUrl, cookieName);
-    if (debugLogger) debugLogger.debug("Migrated cookie to bearer token");
-  } catch (err) {
-    if (debugLogger) {
-      debugLogger.warn("Cookie→bearer token migration failed (non-fatal)", {
-        error: err?.message,
-      });
-    }
-  }
-}
-
-// Persist the bearer token and reload the control panel so the renderer's
-// authClient sends `Authorization: Bearer <token>` on its next request.
-async function applySessionTokenAndRefresh(token) {
-  if (!token) return;
-  if (!isLiveWindow(windowManager?.controlPanelWindow)) return;
-
-  const tokenStore = require("./src/helpers/tokenStore");
-  tokenStore.set(token);
-
-  const appUrl = DevServerManager.getAppUrl(true);
-  if (appUrl) {
-    windowManager.controlPanelWindow.loadURL(appUrl);
-  } else {
-    const fileInfo = DevServerManager.getAppFilePath(true);
-    if (fileInfo) {
-      windowManager.controlPanelWindow.loadFile(fileInfo.path, { query: fileInfo.query });
-    }
-  }
-
-  if (debugLogger) {
-    debugLogger.debug("Applied bearer token and reloaded control panel", {
-      appChannel: APP_CHANNEL,
-      oauthProtocol: OAUTH_PROTOCOL,
-    });
-  }
-  windowManager.controlPanelWindow.show();
-  windowManager.controlPanelWindow.focus();
-  dockManager.setControlPanelVisible(true);
-}
-
-async function handleOAuthDeepLink(deepLinkUrl) {
-  try {
-    const parsed = new URL(deepLinkUrl);
-    const bearerToken = parsed.searchParams.get("bearer_token");
-    if (bearerToken) {
-      void applySessionTokenAndRefresh(bearerToken);
-      return;
-    }
-    const signedToken = parsed.searchParams.get("token");
-    if (!signedToken) return;
-    const rawToken = await exchangeSignedTokenForRawBearer(signedToken);
-    if (rawToken) void applySessionTokenAndRefresh(rawToken);
-  } catch (err) {
-    if (debugLogger) debugLogger.error("Failed to handle OAuth deep link:", err);
-  }
-}
-
-function handleUpgradeDeepLink() {
-  if (isLiveWindow(windowManager?.controlPanelWindow)) {
-    windowManager.controlPanelWindow.webContents.executeJavaScript(
-      'window.dispatchEvent(new Event("upgrade-success"))'
-    );
-    windowManager.controlPanelWindow.show();
-    windowManager.controlPanelWindow.focus();
-    dockManager.setControlPanelVisible(true);
-  }
-}
-
-function parseJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let raw = "";
-    req.on("data", (chunk) => {
-      raw += chunk;
-      if (raw.length > 32 * 1024) {
-        reject(new Error("Request body too large"));
-        req.destroy();
-      }
-    });
-    req.on("end", () => {
-      if (!raw) return resolve({});
-      try {
-        resolve(JSON.parse(raw));
-      } catch {
-        reject(new Error("Invalid JSON payload"));
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function writeCorsHeaders(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-}
-
-function startAuthBridgeServer() {
-  if (APP_CHANNEL !== "development" || authBridgeServer) {
-    return;
-  }
-
-  authBridgeServer = http.createServer(async (req, res) => {
-    writeCorsHeaders(res);
-    if (req.method === "OPTIONS") {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
-    const requestUrl = new URL(req.url || "/", `http://${AUTH_BRIDGE_HOST}:${AUTH_BRIDGE_PORT}`);
-    if (requestUrl.pathname !== AUTH_BRIDGE_PATH) {
-      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("Not found");
-      return;
-    }
-
-    let token = requestUrl.searchParams.get("bearer_token") || requestUrl.searchParams.get("token");
-    if (!token && req.method === "POST") {
-      try {
-        const body = await parseJsonBody(req);
-        token = body?.bearer_token || body?.token || null;
-      } catch (error) {
-        res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
-        res.end(error.message || "Invalid request");
-        return;
-      }
-    }
-
-    if (!token) {
-      res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("Missing token");
-      return;
-    }
-
-    void applySessionTokenAndRefresh(token);
-
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(
-      "<html><body><h3>OpenWhispr sign-in complete.</h3><p>You can close this tab.</p></body></html>"
-    );
-  });
-
-  authBridgeServer.on("error", (error) => {
-    if (debugLogger) {
-      debugLogger.error("OAuth auth bridge server failed:", error);
-    }
-  });
-
-  authBridgeServer.listen(AUTH_BRIDGE_PORT, AUTH_BRIDGE_HOST, () => {
-    if (debugLogger) {
-      debugLogger.debug("OAuth auth bridge server started", {
-        url: `http://${AUTH_BRIDGE_HOST}:${AUTH_BRIDGE_PORT}${AUTH_BRIDGE_PATH}`,
-      });
-    }
-  });
-}
-
 // Main application startup
 async function startApp() {
   // Await so a stale sidecar is confirmed dead before new ones can spawn and
@@ -997,7 +741,6 @@ async function startApp() {
   // failure before the whisper pre-warm below resolves its GPU backend.
   resetWhisperGpuFailureOnUpgrade(environmentManager);
   registerSidecars();
-  startAuthBridgeServer();
 
   cliBridge = new CliBridge(ipcHandlers);
   cliBridge.start().catch((err) => {
@@ -1005,9 +748,6 @@ async function startApp() {
     cliBridge = null;
   });
 
-  await migrateCookieToBearerToken();
-
-  applyOpenWhisprOriginHeader(session.defaultSession);
 
   await windowManager.setActivationModeCache(environmentManager.getActivationMode());
   windowManager.setFloatingIconAutoHide(environmentManager.getFloatingIconAutoHide());
@@ -1097,12 +837,8 @@ async function startApp() {
     await handleNoteDeepLink(initialProtocolUrl);
   } else {
     if (initialProtocolUrl && process.platform !== "darwin") {
-      if (initialProtocolUrl.includes("upgrade-success")) {
-        handleUpgradeDeepLink();
-      } else if (isInvitationDeepLink(initialProtocolUrl)) {
+      if (isInvitationDeepLink(initialProtocolUrl)) {
         handleInvitationDeepLink(initialProtocolUrl);
-      } else {
-        void handleOAuthDeepLink(initialProtocolUrl);
       }
     }
     await flushPendingNoteDeepLink();
@@ -1337,7 +1073,6 @@ async function startApp() {
   trayManager.setCreateControlPanelCallback(() => windowManager.createControlPanelWindow());
   await trayManager.createTray();
 
-  updateManager.checkForUpdatesOnStartup();
 
   if (process.platform === "darwin") {
     const { isGlobeLikeHotkey, isMouseButtonHotkey } = require("./src/helpers/hotkeyManager");
@@ -1852,14 +1587,10 @@ if (gotSingleInstanceLock) {
     // Check for OAuth protocol URL in command line arguments (Windows/Linux)
     const url = commandLine.find((arg) => arg.startsWith(`${OAUTH_PROTOCOL}://`));
     if (url) {
-      if (url.includes("upgrade-success")) {
-        handleUpgradeDeepLink();
-      } else if (isNoteDeepLink(url)) {
+      if (isNoteDeepLink(url)) {
         await handleNoteDeepLink(url);
       } else if (isInvitationDeepLink(url)) {
         handleInvitationDeepLink(url);
-      } else {
-        void handleOAuthDeepLink(url);
       }
     }
   });
@@ -1958,13 +1689,6 @@ if (gotSingleInstanceLock) {
   app.on("before-quit", (event) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
-    if (updateManager && updateManager.isQuittingForUpdate) {
-      // Quit must proceed for the installer to run, so no preventDefault;
-      // sidecar shutdown is best-effort (the reaper cleans up orphans on relaunch).
-      performSyncTeardown();
-      sidecarRegistry.shutdownAll().catch(() => {});
-      return;
-    }
     event.preventDefault();
     performSyncTeardown();
     sidecarRegistry.shutdownAll().finally(() => app.exit(0));
@@ -1977,10 +1701,6 @@ function performSyncTeardown() {
     wakeRewarmTimer = null;
   }
   clearPendingNoteDeepLink();
-  if (authBridgeServer) {
-    authBridgeServer.close();
-    authBridgeServer = null;
-  }
   if (cliBridge) {
     cliBridge.stop().catch(() => {});
     cliBridge = null;
@@ -2004,5 +1724,4 @@ function performSyncTeardown() {
   if (meetingAecManager) meetingAecManager.stop().catch(() => {});
   if (ipcHandlers) ipcHandlers._cleanupTextEditMonitor();
   if (textEditMonitor) textEditMonitor.stopMonitoring();
-  if (updateManager) updateManager.cleanup();
 }

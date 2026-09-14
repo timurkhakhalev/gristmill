@@ -551,27 +551,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   setAssistantPanelOpen: (open) => ipcRenderer.invoke("set-assistant-panel-open", open),
   setAssistantPanelBusy: (busy) => ipcRenderer.invoke("set-assistant-panel-busy", busy),
 
-  // Update functions
-  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
-  downloadUpdate: () => ipcRenderer.invoke("download-update"),
-  installUpdate: () => ipcRenderer.invoke("install-update"),
-  getAppVersion: () => ipcRenderer.invoke("get-app-version"),
-  getPostMigrationState: () => ipcRenderer.invoke("get-post-migration-state"),
   getOAuthProtocolRegistered: () => ipcRenderer.invoke("get-oauth-protocol-registered"),
   getOAuthProtocol: () => ipcRenderer.invoke("get-oauth-protocol"),
-  markBundleMigrated: () => ipcRenderer.invoke("mark-bundle-migrated"),
-  markBundleMigrationDismissed: () => ipcRenderer.invoke("mark-bundle-migration-dismissed"),
-  getUpdateStatus: () => ipcRenderer.invoke("get-update-status"),
-  getUpdateInfo: () => ipcRenderer.invoke("get-update-info"),
-  setAutoUpdatesEnabled: (enabled) => ipcRenderer.invoke("set-auto-updates-enabled", enabled),
-
-  // Update event listeners
-  onUpdateAvailable: registerListener("update-available"),
-  onUpdateNotAvailable: registerListener("update-not-available"),
-  onUpdateDownloaded: registerListener("update-downloaded"),
-  onUpdateDownloadProgress: registerListener("update-download-progress"),
-  onUpdateError: registerListener("update-error"),
-
   // Audio event listeners
   onCancelHotkeyPressed: registerListener("cancel-hotkey-pressed", (cb) => () => cb()),
   registerCancelHotkey: (key) => ipcRenderer.invoke("register-cancel-hotkey", key),
@@ -642,6 +623,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveVertexApiKey: (key) => ipcRenderer.invoke("save-vertex-api-key", key),
   testEnterpriseConnection: (provider, config) =>
     ipcRenderer.invoke("test-enterprise-connection", provider, config),
+
+  // App metadata used by managed policy diagnostics.
+  getAppVersion: () => ipcRenderer.invoke("get-app-version"),
 
   // Dictation key persistence (file-based for reliable startup)
   getDictationKey: () => ipcRenderer.invoke("get-dictation-key"),

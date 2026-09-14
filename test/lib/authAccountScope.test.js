@@ -58,8 +58,8 @@ test("a direct account replacement purges before remembering the new user", () =
 
 test("an account replacement clears the previous user's Insights sync consent", async (t) => {
   const { values, restore } = installStorage({
-    "openwhispr:accountScopeUserId": "user-a",
-    "openwhispr:accountScopeValidated": "true",
+    "openhercules:accountScopeUserId": "user-a",
+    "openhercules:accountScopeValidated": "true",
     isSignedIn: "true",
     insightsSyncEnabled: "true",
   });
@@ -77,8 +77,8 @@ test("an account replacement clears the previous user's Insights sync consent", 
 
 test("sign-out clears the previous user's Insights sync consent", async (t) => {
   const { values, restore } = installStorage({
-    "openwhispr:accountScopeUserId": "user-a",
-    "openwhispr:accountScopeValidated": "true",
+    "openhercules:accountScopeUserId": "user-a",
+    "openhercules:accountScopeValidated": "true",
     isSignedIn: "true",
     insightsSyncEnabled: "true",
   });
@@ -164,8 +164,8 @@ test("a session fetch error blocks cached account scope without authorizing purg
 
 test("a rejected purge persists the required marker even after capability disappears", async (t) => {
   const { values, restore } = installStorage({
-    "openwhispr:accountScopeUserId": "user-a",
-    "openwhispr:accountScopeValidated": "true",
+    "openhercules:accountScopeUserId": "user-a",
+    "openhercules:accountScopeValidated": "true",
     isSignedIn: "true",
     teamSpacesCapability: "true",
   });
@@ -184,13 +184,13 @@ test("a rejected purge persists the required marker even after capability disapp
     /database unavailable/
   );
 
-  assert.equal(values.get("openwhispr:accountScopePurgeRequired"), "true");
+  assert.equal(values.get("openhercules:accountScopePurgeRequired"), "true");
   assert.equal(accountScopeRequiresPurge(null), true);
 });
 
 test("the required marker survives clearing the legacy signed-in evidence", async (t) => {
   const { values, restore } = installStorage({
-    "openwhispr:accountScopeValidated": "true",
+    "openhercules:accountScopeValidated": "true",
     isSignedIn: "true",
   });
   t.after(restore);
@@ -210,13 +210,13 @@ test("the required marker survives clearing the legacy signed-in evidence", asyn
   });
 
   assert.equal(purgeCalls, 1);
-  assert.equal(values.has("openwhispr:accountScopePurgeRequired"), false);
+  assert.equal(values.has("openhercules:accountScopePurgeRequired"), false);
 });
 
 test("concurrent hook reconciliations share one purge and release only after verification", async (t) => {
   const { values, restore } = installStorage({
-    "openwhispr:accountScopeUserId": "user-a",
-    "openwhispr:accountScopeValidated": "true",
+    "openhercules:accountScopeUserId": "user-a",
+    "openhercules:accountScopeValidated": "true",
     isSignedIn: "true",
     teamSpacesCapability: "true",
   });
@@ -249,8 +249,8 @@ test("concurrent hook reconciliations share one purge and release only after ver
 
   assert.equal(purgeCalls, 1);
   assert.equal(values.get("isSignedIn"), "false");
-  assert.equal(values.has("openwhispr:accountScopeUserId"), false);
-  assert.equal(values.has("openwhispr:accountScopePurgeRequired"), false);
+  assert.equal(values.has("openhercules:accountScopeUserId"), false);
+  assert.equal(values.has("openhercules:accountScopePurgeRequired"), false);
   assert.equal(accountScopeRequiresPurge(null), false);
 });
 
@@ -276,8 +276,8 @@ test("failed first-upgrade verification stays non-destructive and unvalidated", 
 
   assert.equal(purgeCalls, 0);
   assert.equal(values.get("teamSpacesCapability"), "true");
-  assert.equal(values.has("openwhispr:accountScopePurgeRequired"), false);
-  assert.equal(values.has("openwhispr:accountScopeValidated"), false);
+  assert.equal(values.has("openhercules:accountScopePurgeRequired"), false);
+  assert.equal(values.has("openhercules:accountScopeValidated"), false);
 });
 
 test("account reconciliation retry backoff is bounded", () => {

@@ -33,7 +33,7 @@ const USER_AGENT = "OpenWhispr/1.0";
 // OPENWHISPR_YTDLP_CACHE_DIR overrides the location (relocate it, or isolate it in tests).
 const YT_DLP_CACHE_DIR =
   process.env.OPENWHISPR_YTDLP_CACHE_DIR ||
-  path.join(os.homedir(), ".cache", "openwhispr", "yt-dlp");
+  path.join(os.homedir(), ".cache", "openhercules", "yt-dlp");
 const YT_DLP_UPDATE_THROTTLE_MS = 24 * 60 * 60 * 1000;
 // Bound the self-update so a stalled GitHub request can never hang a download
 // or wedge the single-flight flag. Overridable via options.timeoutMs for tests.

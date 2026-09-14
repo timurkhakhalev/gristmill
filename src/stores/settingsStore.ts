@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { API_ENDPOINTS } from "../config/constants";
+import { API_ENDPOINTS } from "../config/constants.mts";
 import i18n, { normalizeUiLanguage } from "../i18n";
 import { ensureAgentNameInDictionary } from "../utils/agentName";
 import { chooseDictionaryStartupAction } from "../helpers/dictionaryStartup";

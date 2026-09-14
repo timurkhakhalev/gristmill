@@ -1,3 +1,4 @@
+const { app } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -38,7 +39,7 @@ class MeetingAecManager {
     const binaryName = `meeting-aec-helper-${process.platform}-${process.arch}${
       process.platform === "win32" ? ".exe" : ""
     }`;
-    const candidates = new Set([path.join(__dirname, "..", "..", "resources", "bin", binaryName)]);
+    const candidates = new Set([path.join(app.getAppPath(), "resources", "bin", binaryName)]);
 
     if (process.resourcesPath) {
       candidates.add(path.join(process.resourcesPath, "bin", binaryName));

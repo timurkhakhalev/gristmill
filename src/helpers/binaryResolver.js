@@ -1,3 +1,4 @@
+const { app } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const debugLogger = require("./debugLogger");
@@ -7,8 +8,8 @@ const debugLogger = require("./debugLogger");
 // no executable candidate exists so callers can fall back gracefully.
 function resolveBundledBinary(binaryName, logContext) {
   const candidates = [
-    path.join(__dirname, "..", "..", "resources", "bin", binaryName),
-    path.join(__dirname, "..", "..", "resources", binaryName),
+    path.join(app.getAppPath(), "resources", "bin", binaryName),
+    path.join(app.getAppPath(), "resources", binaryName),
   ];
 
   if (process.resourcesPath) {

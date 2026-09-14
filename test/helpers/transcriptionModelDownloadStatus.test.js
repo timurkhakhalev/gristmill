@@ -5,11 +5,18 @@ const Module = require("node:module");
 const os = require("node:os");
 const path = require("node:path");
 
+// Native resource lookup belongs to the app root, independently of module location.
+const originalLoad = Module._load;
+Module._load = function (request, ...args) {
+  if (request === "electron") return { app: { getAppPath: () => path.resolve(__dirname, "../..") } };
+  return originalLoad.call(this, request, ...args);
+};
 const ParakeetManager = require("../../src/helpers/parakeet");
 const WhisperManager = require("../../src/helpers/whisper");
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 const downloadUtils = require("../../src/helpers/downloadUtils");
 const whisperModulePath = require.resolve("../../src/helpers/whisper");
+Module._load = originalLoad;
 
 function activeDownload(model, overrides = {}) {
   return {

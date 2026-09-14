@@ -26,7 +26,7 @@ class ConnectionTestError extends Error {
   }
 }
 
-// --- CommonJS mirror of the URL helpers in src/config/constants.ts ---
+// --- CommonJS mirror of the URL helpers in src/config/constants.mts ---
 // This file runs in the main process, which cannot import that Vite/TS
 // module (it reads import.meta.env). Keep these in sync with
 // normalizeBaseUrl / getModelListBaseCandidates over there.
@@ -128,7 +128,7 @@ function normalizeBaseUrl(value) {
   return joinUrlDecorators(normalized.replace(/\/+$/, ""), query, hash);
 }
 
-// Reference: getModelListBaseCandidates in src/config/constants.ts.
+// Reference: getModelListBaseCandidates in src/config/constants.mts.
 // Self-hosted servers (LM Studio, Ollama, vLLM) serve the API under /v1 even
 // when users enter the bare origin, and LM Studio's native REST base
 // (/api/v1 or /api/v0) has its OpenAI-compatible sibling at /v1.

@@ -1,3 +1,4 @@
+const { app } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -89,7 +90,7 @@ class LlamaServerManager {
       if (process.resourcesPath) {
         candidates.push(path.join(process.resourcesPath, "bin", name));
       }
-      candidates.push(path.join(__dirname, "..", "..", "resources", "bin", name));
+      candidates.push(path.join(app.getAppPath(), "resources", "bin", name));
 
       for (const candidate of candidates) {
         try {

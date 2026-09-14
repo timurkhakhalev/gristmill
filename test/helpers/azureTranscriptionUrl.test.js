@@ -54,7 +54,7 @@ test("buildAzureTranscriptionUrl returns null when no deployment name is availab
 // that marks a deployment the user pinned by pasting their full Azure endpoint.
 test("a pinned Azure endpoint survives base-URL normalization", async () => {
   const { buildAzureTranscriptionUrl } = await import("../../src/utils/urlUtils.ts");
-  const { normalizeBaseUrl } = await import("../../src/config/constants.ts");
+  const { normalizeBaseUrl } = await import("../../src/config/constants.mts");
 
   for (const pinned of [
     "https://r.openai.azure.com/openai/deployments/my-deploy/audio/transcriptions?api-version=2024-06-01",
@@ -67,7 +67,7 @@ test("a pinned Azure endpoint survives base-URL normalization", async () => {
 
 test("a bare Azure resource base still rebuilds from the deployment name", async () => {
   const { buildAzureTranscriptionUrl } = await import("../../src/utils/urlUtils.ts");
-  const { normalizeBaseUrl } = await import("../../src/config/constants.ts");
+  const { normalizeBaseUrl } = await import("../../src/config/constants.mts");
 
   const bare = "https://r.openai.azure.com";
 

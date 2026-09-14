@@ -151,7 +151,7 @@ class TrayManager {
 
     if (platform === "darwin") {
       if (isDevelopment) {
-        candidatePaths.push(path.join(__dirname, "..", "assets", "iconTemplate@3x.png"));
+        candidatePaths.push(path.join(app.getAppPath(), "src", "assets", "iconTemplate@3x.png"));
       } else {
         candidatePaths.push(
           path.join(process.resourcesPath, "src", "assets", "iconTemplate@3x.png"),
@@ -163,7 +163,6 @@ class TrayManager {
             "assets",
             "iconTemplate@3x.png"
           ),
-          path.join(__dirname, "..", "..", "src", "assets", "iconTemplate@3x.png"),
           path.join(app.getAppPath(), "src", "assets", "iconTemplate@3x.png")
         );
       }
@@ -171,15 +170,14 @@ class TrayManager {
       const fileName = platform === "win32" ? "icon.ico" : "icon.png";
       if (isDevelopment) {
         candidatePaths.push(
-          path.join(__dirname, "..", "assets", fileName),
-          path.join(__dirname, "..", "assets", "icon.png")
+          path.join(app.getAppPath(), "src", "assets", fileName),
+          path.join(app.getAppPath(), "src", "assets", "icon.png")
         );
       } else {
         candidatePaths.push(
           path.join(process.resourcesPath, "src", "assets", fileName),
           path.join(process.resourcesPath, "assets", fileName),
           path.join(process.resourcesPath, "app.asar.unpacked", "src", "assets", fileName),
-          path.join(__dirname, "..", "..", "src", "assets", fileName),
           path.join(app.getAppPath(), "src", "assets", fileName)
         );
       }

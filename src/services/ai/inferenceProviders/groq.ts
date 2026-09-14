@@ -1,5 +1,5 @@
 import type { InferenceProvider } from "./types";
-import { API_ENDPOINTS, buildApiUrl } from "../../../config/constants";
+import { API_ENDPOINTS, buildApiUrl } from "../../../config/constants.mts";
 import logger from "../../../utils/logger";
 
 export const groqProvider: InferenceProvider = {

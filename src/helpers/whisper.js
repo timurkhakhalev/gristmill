@@ -1,3 +1,4 @@
+const { app } = require("electron");
 const fs = require("fs");
 const fsPromises = require("fs").promises;
 const path = require("path");
@@ -87,7 +88,7 @@ class WhisperManager {
     if (process.resourcesPath) {
       candidates.push(path.join(process.resourcesPath, "bin", "whisper-vad", fileName));
     }
-    candidates.push(path.join(__dirname, "..", "..", "resources", "bin", "whisper-vad", fileName));
+    candidates.push(path.join(app.getAppPath(), "resources", "bin", "whisper-vad", fileName));
 
     const resolved = candidates.find((p) => fs.existsSync(p)) || null;
     this.cachedVadModelPath = resolved;

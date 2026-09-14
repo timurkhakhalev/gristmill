@@ -14,7 +14,7 @@ Sandboxed preload не может require локальные модули, по�
 tsc `build-main.js` бандлит исходный `preload.js` (вместе с
 `src/preload/notesBridge.ts`, `src/preload/urlDownloadBridge.ts`,
 `src/preload/vocabularyBridge.ts`, `src/preload/containerBridge.ts`,
-`src/preload/chatBridge.ts` и
+`src/preload/chatBridge.ts`, `src/preload/actionsBridge.ts` и
 `src/contracts/*.ts`) в один файл
 `dist-main/preload.js` через esbuild (`bundle`, `format=cjs`,
 `platform=node`, `target=node24`, `external:electron`; devDependency
@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **133 JS, 23 TS, 1 MTS и 25 JSON**.
+а не всеми файлами в каталоге helpers. В нём **133 JS, 27 TS, 1 MTS и 25 JSON**.
 Entry points: main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
 
@@ -161,6 +161,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/contracts/vocabulary.ts`
 - `src/contracts/containers.ts`
 - `src/contracts/chatPersistence.ts`
+- `src/contracts/actions.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
 - `src/constants/speakerDetection.json`
@@ -182,6 +183,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/preload/vocabularyBridge.ts`
 - `src/preload/containerBridge.ts`
 - `src/preload/chatBridge.ts`
+- `src/preload/actionsBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
 - `src/helpers/builtinActions.js`
@@ -289,6 +291,8 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/containerEvents.ts`
 - `src/helpers/containerIpcHandlers.ts`
 - `src/helpers/chatPersistenceIpcHandlers.ts`
+- `src/helpers/actionsEvents.ts`
+- `src/helpers/actionsIpcHandlers.ts`
 - `src/helpers/tinfoilCatalog.js`
 - `src/helpers/tinfoilRealtimeStreaming.js`
 - `src/helpers/tinfoilSecureClient.js`
@@ -384,7 +388,7 @@ preload → handler Map → fake downloader; malformed progress отбрасыв
 Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings); focused
 55 passed (`urlDownloadIpc`, `urlDownloadBridge`, `urlAudioDownloader`,
 `rendererBridgeContract`, `mainBuild`, type probes); `build:main` OK.
-Inventory графа Electron: 133 JS, 23 TS, 1 MTS, 25 JSON.
+Inventory графа Electron: 133 JS, 27 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированный IPC Dictionary/Snippets»
 
@@ -413,7 +417,7 @@ preload → handlers → временный SQLite; malformed события и�
 cliBridgeSnippets, dictionaryStartup, databaseLocalBehavior,
 rendererBridgeContract, mainBuild, vocabularyTypeProbe, dictionaryTool,
 snippetTool, snippets);
-`build:main` OK. Inventory графа Electron: 133 JS, 23 TS, 1 MTS, 25 JSON.
+`build:main` OK. Inventory графа Electron: 133 JS, 27 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированный IPC папок и пространств (containers)»
 
@@ -444,7 +448,7 @@ notesIpc, databaseLocalBehavior/Schema, notesDatabase,
 spacesTreeNoteActionClearance, toolUtils, searchNotesTool); compiler probe
 на неполную DB deps; полный `pnpm test`; `pnpm run pack`; Node ABI
 восстановлен; `node scripts/smoke-electron.js` на изолированном профиле.
-Inventory графа Electron: 133 JS, 23 TS, 1 MTS, 25 JSON.
+Inventory графа Electron: 133 JS, 27 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированная граница chat persistence»
 
@@ -480,3 +484,33 @@ Schema, notesDatabase, conversationTitle, chatMessageSubmissionLock,
 chatRouting, containerIpc/containerBridge, rendererBridgeContract, mainBuild;
 полный `pnpm test` 2547 passed; pack + isolated smoke. Inventory графа
 Electron: 133 JS, 23 TS, 1 MTS, 25 JSON.
+
+## Этап «типизированная граница каталога AI Actions»
+
+14 сентября 2026 (issue #10, план PR #25). Пять каналов каталога
+(`db-get-actions`, `db-get-action`, `db-create-action`, `db-update-action`,
+`db-delete-action`) вынесены из `ipcHandlers.js` в
+`src/helpers/actionsIpcHandlers.ts` с контрактом `src/contracts/actions.ts`,
+sender-модулем `src/helpers/actionsEvents.ts` и bridge
+`src/preload/actionsBridge.ts` (5 методов + 3 подписки). Каталог отделён от
+выполнения: prompt execution остаётся в useActionProcessing/
+actionProcessingStore. `ActionItem` отражает локальную таблицу actions:
+`is_builtin` — SQLite 0|1 (не boolean), `translation_key` nullable, update
+whitelist строго name/description/prompt/icon/sort_order — is_builtin и
+translation_key в API не входят, неизвестные поля отбрасывает DB-слой.
+События — как раньше: setImmediate после успешного результата (create/
+update несут полную строку, delete — `{id}`), failures/events не отправляют;
+malformed payload дропается с диагностикой на обеих границах. Семантика
+зафиксирована characterization: ORDER BY sort_order,id (Generate Notes при
+sort_order 0 выигрывает id-тай-брейк), icon default только при omitted,
+builtin редактировать можно, удалять нельзя, seeding не перезаписывает
+пользовательский prompt (включая перезапуск БД в e2e).
+
+Проверка: typecheck 0 ошибок; lint 0 errors (baseline 46+2 warnings);
+`build:main` OK; focused (actionsCatalogBehavior 7, actionsIpc 6,
+actionsBridge e2e через bundled preload 4 — включая shared registration
+guard, actionsTypeProbe 3: неполная DB TS2741/2554+2345 wrong bridge call,
+positive под strict; actionProcessingNoteOutput, chat/container suites,
+rendererBridgeContract, mainBuild); полный `pnpm test` 2567 passed;
+pack + isolated smoke. Inventory графа Electron: 133 JS, 27 TS, 1 MTS,
+25 JSON.

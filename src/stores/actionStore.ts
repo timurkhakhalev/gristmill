@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { TFunction } from "i18next";
-import type { ActionItem } from "../types/electron";
+import type { ActionItem } from "../contracts/actions";
 
 interface ActionState {
   actions: ActionItem[];

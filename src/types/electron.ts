@@ -8,6 +8,7 @@ import type { ContainersApi } from "../contracts/containers";
 import type { ChatPersistenceApi } from "../contracts/chatPersistence";
 import type { ActionsApi } from "../contracts/actions";
 import type { LocalFileTranscriptionApi } from "../contracts/localFileTranscription";
+import type { CalendarAvailabilityApi } from "../contracts/calendarAvailability";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -1170,12 +1171,6 @@ declare global {
       gcalGetUpcomingEvents?: (
         windowMinutes?: number
       ) => Promise<{ success: boolean; events: any[] }>;
-      calendarGetAvailability?: (
-        request: CalendarAvailabilityRequest
-      ) => Promise<
-        | { success: true; availability: CalendarAvailabilityResult }
-        | { success: false; error: string }
-      >;
       gcalGetEvent?: (eventId: string) => Promise<{
         success: boolean;
         event: {
@@ -1471,7 +1466,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

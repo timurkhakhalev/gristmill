@@ -1,7 +1,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { getCalendarAvailability } = require("../../src/helpers/calendarAvailabilityService");
+let getCalendarAvailability;
+
+test.before(async () => {
+  ({ getCalendarAvailability } = await import("../../src/helpers/calendarAvailabilityService.ts"));
+});
 
 const NOW = new Date("2026-08-25T06:00:00.000Z");
 const REQUEST = {

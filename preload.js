@@ -6,6 +6,7 @@ const { createChatPersistenceBridge } = require("./src/preload/chatBridge");
 const { createUrlDownloadBridge } = require("./src/preload/urlDownloadBridge");
 const { createActionsBridge } = require("./src/preload/actionsBridge");
 const { createLocalFileTranscriptionBridge } = require("./src/preload/localFileTranscriptionBridge");
+const { createCalendarAvailabilityBridge } = require("./src/preload/calendarAvailabilityBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -63,6 +64,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createVocabularyBridge(ipcRenderer),
   ...createActionsBridge(ipcRenderer),
   ...createLocalFileTranscriptionBridge(ipcRenderer),
+  ...createCalendarAvailabilityBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -540,7 +542,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   gcalSyncEvents: () => ipcRenderer.invoke("gcal-sync-events"),
   gcalGetUpcomingEvents: (windowMinutes) =>
     ipcRenderer.invoke("gcal-get-upcoming-events", windowMinutes),
-  calendarGetAvailability: (request) => ipcRenderer.invoke("calendar-get-availability", request),
+  // Calendar availability lives in the typed bridge above.
+
   gcalGetEvent: (eventId) => ipcRenderer.invoke("gcal-get-event", eventId),
 
   // Microsoft Calendar

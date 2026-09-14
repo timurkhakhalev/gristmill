@@ -1,13 +1,17 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const {
-  MAX_AVAILABILITY_HORIZON_DAYS,
-  PAST_START_TOLERANCE_MS,
-  isExplicitOffsetRfc3339,
-  validateCalendarAvailabilityRequest,
-  calculateCalendarAvailability,
-} = require("../../src/helpers/calendarAvailability.js");
+let MAX_AVAILABILITY_HORIZON_DAYS, PAST_START_TOLERANCE_MS, isExplicitOffsetRfc3339, validateCalendarAvailabilityRequest, calculateCalendarAvailability;
+
+test.before(async () => {
+  ({
+    MAX_AVAILABILITY_HORIZON_DAYS,
+    PAST_START_TOLERANCE_MS,
+    isExplicitOffsetRfc3339,
+    validateCalendarAvailabilityRequest,
+    calculateCalendarAvailability,
+  } = await import("../../src/helpers/calendarAvailability.ts"));
+});
 
 const NOW = new Date("2026-08-25T09:00:00.000Z");
 

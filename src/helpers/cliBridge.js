@@ -6,7 +6,6 @@ const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 const { isPortAvailable } = require("../utils/serverUtils");
 const { sendNoteAdded, sendNoteUpdated } = require("./notesEvents");
-const { broadcastToWindows } = require("./windowBroadcast");
 const { sendDictionaryUpdated, sendSnippetsUpdated } = require("./vocabularyEvents");
 const { sendFolderCreated } = require("./containerEvents");
 

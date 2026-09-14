@@ -127,7 +127,7 @@ test("getFolders passes spaceId through (null keeps all folders)", async () => {
 });
 
 test("createFolder defers folder-created and the mirror only when enabled", async () => {
-  const db = { ...fakeDb(), createFolder: (name, spaceId) => ({ success: true, folder: FOLDER }) };
+  const db = { ...fakeDb(), createFolder: (_name, _spaceId) => ({ success: true, folder: FOLDER }) };
   const calls = [];
   const h = setup(db, {
     noteFilesEnabled: () => true,
@@ -246,7 +246,7 @@ test("getSpaces/getFolderNoteCounts pass the DB rows straight through", async ()
 });
 
 test("updateSpace defers space-synced only on success with a space", async () => {
-  const db = { ...fakeDb(), updateSpace: (id, updates) => ({ success: true, space: SPACE }) };
+  const db = { ...fakeDb(), updateSpace: (_id, _updates) => ({ success: true, space: SPACE }) };
   const h = setup(db);
   const result = await call(h, "db-update-space", 3, { name: "Renamed" });
   assert.equal(result.success, true);

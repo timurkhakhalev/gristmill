@@ -23,7 +23,7 @@ import {
   type FolderDeletedPayload,
   type FolderItem,
 } from "../contracts/containers.js";
-import { noteItemSchema, type NoteItem } from "../contracts/notes.js";
+import type { NoteItem } from "../contracts/notes.js";
 import {
   sendFolderCreated,
   sendFolderDeleted,

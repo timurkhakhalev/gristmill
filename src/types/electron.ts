@@ -4,6 +4,7 @@ import type { CalendarAvailabilityRequest, CalendarAvailabilityResult } from "./
 import type { NotesApi } from "../contracts/notes";
 import type { UrlDownloadApi } from "../contracts/urlDownload";
 import type { VocabularyApi } from "../contracts/vocabulary";
+import type { ContainersApi } from "../contracts/containers";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -210,77 +211,6 @@ export interface NoteShareInvitation {
   revoked_at: string | null;
   last_emailed_at: string | null;
   created_at: string;
-}
-
-export interface FolderItem {
-  id: number;
-  name: string;
-  is_default: number;
-  sort_order: number;
-  space_id: number;
-  created_at: string;
-  updated_at: string;
-  client_folder_id: string;
-  cloud_id: string | null;
-  sync_status: "synced" | "pending" | "error";
-  deleted_at: string | null;
-  // 1 while a cloud-backed row that left a team space still owes its scope
-  // retraction push (D6); cleared when the row settles.
-  left_team?: number;
-}
-
-export type FolderPushSnapshot = Pick<
-  FolderItem,
-  | "client_folder_id"
-  | "name"
-  | "is_default"
-  | "sort_order"
-  | "space_id"
-  | "created_at"
-  | "updated_at"
-  | "sync_status"
-  | "deleted_at"
-  | "left_team"
->;
-
-export interface FolderAckResult {
-  success: boolean;
-  outcome: "synced" | "pending" | "already-linked" | "identity-changed" | "unresolved";
-  changes: number;
-}
-
-/** A team assigned to a space, as mirrored from GET /api/me/spaces. */
-export interface SpaceTeamRef {
-  id: string;
-  name: string;
-  // Explicit team membership role, if any (workspace admins may have none).
-  my_role?: "admin" | "member" | null;
-  // Per-assignment cap on what the team conveys (space_teams.access): its
-  // team admins are space admins only when this is 'admin'. Absent on
-  // mirrors written before the API shipped it; those rows are 'admin'.
-  access?: "admin" | "member";
-}
-
-export interface SpaceItem {
-  id: number;
-  client_space_id: string;
-  cloud_space_id: string | null;
-  // Retained only for unambiguous adoption of pre-spaces team rows.
-  cloud_team_id?: string | null;
-  workspace_id: string | null;
-  kind: "private" | "team";
-  name: string;
-  emoji: string | null;
-  sort_order: number;
-  // Server-computed max effective role across assigned teams (ws owner/admin ⇒ admin).
-  my_role: "admin" | "member" | null;
-  // Server-computed deduped union of assigned team rosters.
-  member_count: number | null;
-  teams: SpaceTeamRef[];
-  sync_status: "synced" | "pending" | "error";
-  deleted_at: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface DictionaryEntryItem {
@@ -725,6 +655,10 @@ declare global {
       // (six renderer operations + the two subscriptions); dictionary export
       // stays local.
 
+      // Container (folders/spaces) operations come from the shared
+      // ContainersApi contract (eight operations + onFolderDeleted);
+      // onSpacePurged has no producer and is not exposed.
+
       // Note operations come from the shared NotesApi contract (seven
       // operations + the three note subscriptions); note export stays local.
       exportNote: (
@@ -736,38 +670,6 @@ declare global {
         format: "txt" | "srt" | "json" | "md"
       ) => Promise<{ success: boolean; error?: string }>;
       exportDictionary: (words: string[]) => Promise<{ success: boolean; error?: string }>;
-
-      // Folder operations
-      getFolders: (spaceId?: number | null) => Promise<FolderItem[]>;
-      createFolder: (
-        name: string,
-        spaceId?: number | null
-      ) => Promise<{ success: boolean; folder?: FolderItem; error?: string }>;
-      deleteFolder: (id: number) => Promise<{ success: boolean; error?: string }>;
-      renameFolder: (
-        id: number,
-        name: string
-      ) => Promise<{ success: boolean; folder?: FolderItem; error?: string }>;
-      moveFolderToSpace: (
-        id: number,
-        spaceId: number
-      ) => Promise<{
-        success: boolean;
-        folder?: FolderItem;
-        notes?: import("../contracts/notes").NoteItem[];
-        error?: string;
-      }>;
-      getFolderNoteCounts: () => Promise<
-        Array<{ space_id: number; folder_id: number | null; count: number }>
-      >;
-
-      // Space operations
-      getSpaces?: () => Promise<SpaceItem[]>;
-      updateSpace?: (
-        id: number,
-        updates: { name?: string; emoji?: string | null }
-      ) => Promise<{ success: boolean; space?: SpaceItem; error?: string }>;
-      onSpacePurged?: (callback: (payload: { spaceId: number }) => void) => () => void;
 
       // Note files (markdown mirror)
       noteFilesSetEnabled?: (
@@ -1732,7 +1634,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

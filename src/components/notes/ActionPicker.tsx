@@ -16,7 +16,7 @@ import {
   getActionCta,
   getActionDescription,
 } from "../../stores/actionStore";
-import type { ActionItem } from "../../types/electron";
+import type { ActionItem } from "../../contracts/actions";
 import { FOLLOW_UP_EMAIL_KEY } from "../../helpers/builtinActions";
 
 // Keyed fresh so the follow-up email default reaches installs that had

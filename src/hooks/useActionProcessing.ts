@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
-import type { ActionItem } from "../types/electron";
+import type { ActionItem } from "../contracts/actions";
 import {
   useActionProcessingStore,
   selectNoteActionState,

@@ -7,7 +7,7 @@ import { appendDictionarySuffix } from "../config/prompts";
 import { generateNoteTitle } from "../utils/generateTitle";
 import { buildNoteFormattingOverrides } from "../helpers/noteFormattingOverrides";
 import { tagActionItemOwners, type MentionPerson } from "../utils/mentionMarkdown";
-import type { ActionItem } from "../types/electron";
+import type { ActionItem } from "../contracts/actions";
 import type { NoteUpdate } from "../contracts/notes";
 
 /**

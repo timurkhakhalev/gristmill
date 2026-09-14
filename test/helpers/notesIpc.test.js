@@ -202,27 +202,14 @@ test("missing note and failed deletes resolve without events or mirror calls", a
 test("participants update triggers auto-label then speaker refresh, after mirror", async (t) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
-  const { call, effects, db, flush: flushCtx } = ctx;
+  const { db, flush: flushCtx } = ctx;
   const note = db.saveNote("P", "").note;
 
   const order = [];
-  effects.mirrorWrites.length = 0;
-  const originalMirror = effects.mirrorWrites;
-  const traced = {
-    ...ctx,
-    effects: {
-      ...effects,
-      mirrorWrites: { push: (v) => order.push(["mirror", v]) },
-      autoLabels: { push: (v) => order.push(["label", v]) },
-      speakerRefreshes: { push: (v) => order.push(["refresh", v]) },
-    },
-  };
 
   // Rebuild handlers with tracing deps for exact ordering.
   const { registerNotesHandlers } = await loadModules();
-  const Module1 = await import("../../src/helpers/notesIpcHandlers.ts");
   const db1 = ctx.db;
-  const events = await loadModules();
   const newHandlers = new Map();
   registerNotesHandlers(
     { handle: (channel, listener) => newHandlers.set(channel, listener) },
@@ -258,10 +245,6 @@ test("participants update triggers auto-label then speaker refresh, after mirror
   assert.equal(order.length, 5, "null only adds the mirror write");
   assert.equal(order[4][0], "mirror");
   await flushCtx();
-  void traced;
-  void originalMirror;
-  void Module1;
-  void events;
 });
 
 test("folder-only update via IPC matches the DB baseline cases", async (t) => {

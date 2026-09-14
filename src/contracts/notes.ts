@@ -104,9 +104,13 @@ export const noteMutationResultSchema = z.union([
   noteMutationFailureSchema,
 ]);
 
+// deleteNote never carries the row back; the DB layer reports plain success.
+export const noteDeleteResultSchema = z.object({ success: z.boolean() });
+
 export const noteListResultSchema = z.array(noteItemSchema);
 export const noteOrNullResultSchema = noteItemSchema.nullable();
 export type NoteMutationResult = z.infer<typeof noteMutationResultSchema>;
+export type NoteDeleteResult = z.infer<typeof noteDeleteResultSchema>;
 
 export const noteDeletedPayloadSchema = z.object({ id: idArg });
 export type NoteDeletedPayload = z.infer<typeof noteDeletedPayloadSchema>;
@@ -115,7 +119,8 @@ export const noteAddedUpdatedPayloadSchema = noteItemSchema;
 export type NoteAddedUpdatedPayload = z.infer<typeof noteAddedUpdatedPayloadSchema>;
 
 // The renderer-facing surface: seven operations, three subscriptions.
-// Unsubscribe functions are returned by every subscription.
+// Result types are derived from the shared schemas — keep them connected, not
+// hand-copied. Unsubscribe functions are returned by every subscription.
 export interface NotesApi {
   saveNote(
     title: string,
@@ -125,7 +130,7 @@ export interface NotesApi {
     audioDuration?: number | null,
     folderId?: number | null,
     spaceId?: number | null
-  ): Promise<{ success: boolean; note?: NoteItem }>;
+  ): Promise<NoteMutationResult>;
   getNote(id: number): Promise<NoteItem | null>;
   getNotes(
     noteType?: string | null,
@@ -134,11 +139,8 @@ export interface NotesApi {
     spaceId?: number | null
   ): Promise<NoteItem[]>;
   getSpaceNotes(spaceId: number, limit?: number): Promise<NoteItem[]>;
-  updateNote(
-    id: number,
-    updates: NoteUpdate
-  ): Promise<{ success: boolean; note?: NoteItem }>;
-  deleteNote(id: number): Promise<{ success: boolean }>;
+  updateNote(id: number, updates: NoteUpdate): Promise<NoteMutationResult>;
+  deleteNote(id: number): Promise<NoteDeleteResult>;
   searchNotes(
     query: string,
     limit?: number,

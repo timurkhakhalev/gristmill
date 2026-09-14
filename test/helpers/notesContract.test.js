@@ -2,7 +2,6 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const Module = require("node:module");
 
 // The contract is renderer/main-neutral; loading it under plain node only needs
 // zod to resolve, so no electron stub is required. The probe helper reuses the
@@ -122,6 +121,93 @@ async function ok(): Promise<NoteItem | null> {
   return api.getNote(17);
 }
 export { ok };
+`,
+    "notes-type-probe.ts"
+  );
+  assert.deepEqual(codes, []);
+});
+
+// The main boundary probe compiles against tsconfig.main.json (strict, Node)
+// because that is where registerNotesHandlers runs. It pins the P2 fix: the
+// handler listener takes unknown[] and only schema-derived values reach deps,
+// so swapped or wrong-typed arguments fail compilation.
+function compileMainWithProbe(probeSource, probeName) {
+  const configPath = path.join(root, "tsconfig.main.json");
+  const config = ts.readConfigFile(configPath, ts.sys.readFile);
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
+  const probe = path.join(root, probeName);
+  const host = ts.createCompilerHost(parsed.options);
+  const readSource = host.getSourceFile.bind(host);
+  host.getSourceFile = (file, languageVersion, ...args) =>
+    file === probe
+      ? ts.createSourceFile(file, probeSource, languageVersion, true)
+      : readSource(file, languageVersion, ...args);
+  const program = ts.createProgram([probe], { ...parsed.options, noEmit: true }, host);
+  const diagnostics = ts.getPreEmitDiagnostics(program).filter(
+    (d) => d.file && d.file.fileName === probe
+  );
+  return { codes: diagnostics.map((d) => d.code) };
+}
+
+test("main boundary probe: wrong-typed deps fail strict compilation", () => {
+  const { codes } = compileMainWithProbe(
+    `import { registerNotesHandlers } from "./src/helpers/notesIpcHandlers.js";
+registerNotesHandlers(
+  { handle() {} },
+  {
+    // saveNote's first parameter must be a string, not a number: the handler
+    // passes schema-parsed values, so a swap cannot compile through.
+    saveNote: (title: number) => null,
+    getNote: (id: number) => null,
+    getNotes: () => null,
+    getNotesForSpace: () => null,
+    updateNote: () => null,
+    deleteNoteInternal: () => null,
+    searchNotes: () => null,
+    asyncMirrorWrite: () => {},
+    tryAutoLabelOneOnOne: () => {},
+    refreshMeetingSpeakerConfigFromNote: () => {},
+  }
+);
+`,
+    "notes-main-probe.ts"
+  );
+  assert.deepEqual(codes, [2322]);
+});
+
+test("main boundary probe: correctly typed deps compile cleanly", () => {
+  const { codes } = compileMainWithProbe(
+    `import { registerNotesHandlers, type NotesHandlerDeps } from "./src/helpers/notesIpcHandlers.js";
+const deps: NotesHandlerDeps = {
+  saveNote: () => null,
+  getNote: () => null,
+  getNotes: () => null,
+  getNotesForSpace: () => null,
+  updateNote: () => null,
+  deleteNoteInternal: () => null,
+  searchNotes: () => null,
+  asyncMirrorWrite: () => {},
+  tryAutoLabelOneOnOne: () => {},
+  refreshMeetingSpeakerConfigFromNote: () => {},
+};
+registerNotesHandlers({ handle() {} }, deps);
+`,
+    "notes-main-probe.ts"
+  );
+  assert.deepEqual(codes, []);
+});
+
+test("renderer probe: NotesApi exposes the error discriminant on update results", () => {
+  const { codes } = compileWithProbe(
+    `import type { NotesApi } from "./contracts/notes";
+// The renderer tsconfig is not strict, so narrow with "=== false": truthiness
+// checks on the literal discriminant only narrow under strictNullChecks.
+async function check(api: NotesApi): Promise<string | undefined> {
+  const result = await api.updateNote(1, { title: "T" });
+  if (result.success === false) return result.error;
+  return result.note.title ? undefined : undefined;
+}
+export { check };
 `,
     "notes-type-probe.ts"
   );

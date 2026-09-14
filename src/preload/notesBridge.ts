@@ -2,15 +2,16 @@
 // operations and three subscriptions have one typed implementation backed by
 // the shared contract. The sandboxed preload can't require local modules, so
 // build-main.js bundles the final preload with esbuild before packaging.
-import { z } from "zod";
 import {
   noteChannels,
   noteDeletedPayloadSchema,
+  noteDeleteResultSchema,
   noteEventChannels,
   noteItemSchema,
   noteListResultSchema,
   noteMutationResultSchema,
   noteOrNullResultSchema,
+  type NotesApi,
   type NoteDeletedPayload,
   type NoteItem,
   type NoteUpdate,
@@ -34,7 +35,9 @@ function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   return result.data;
 }
 
-export function createNotesBridge(ipcRenderer: IpcRendererLike) {
+// The return type is the shared NotesApi, so any drift between this
+// implementation and the contract fails compilation instead of review.
+export function createNotesBridge(ipcRenderer: IpcRendererLike): NotesApi {
   return {
     saveNote: (
       title: string,
@@ -87,11 +90,7 @@ export function createNotesBridge(ipcRenderer: IpcRendererLike) {
       ipcRenderer
         .invoke(noteChannels.deleteNote, id)
         .then((raw) =>
-          parseResult(
-            z.object({ success: z.boolean() }),
-            raw,
-            noteChannels.deleteNote
-          )
+          parseResult(noteDeleteResultSchema, raw, noteChannels.deleteNote)
         ),
     searchNotes: (query: string, limit?: number, spaceId?: number | null, folderId?: number | null) =>
       ipcRenderer

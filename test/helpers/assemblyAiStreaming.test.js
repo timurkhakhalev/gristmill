@@ -54,7 +54,10 @@ test("warmup rejects when the socket closes before Begin", async () => {
     streaming.buildWebSocketUrl = () => url;
 
     try {
-      await assert.rejects(() => streaming.warmup({ token: "test-token" }), /closed.*1008/i);
+      await assert.rejects(
+        () => streaming.warmup({ token: "test-token", mode: "byok" }),
+        /closed.*1008/i
+      );
     } finally {
       streaming.cleanupAll();
     }
@@ -67,7 +70,10 @@ test("connect rejects when the socket closes before Begin", async () => {
     streaming.buildWebSocketUrl = () => url;
 
     try {
-      await assert.rejects(() => streaming.connect({ token: "test-token" }), /closed.*1008/i);
+      await assert.rejects(
+        () => streaming.connect({ token: "test-token", mode: "byok" }),
+        /closed.*1008/i
+      );
     } finally {
       streaming.cleanupAll();
     }
@@ -80,7 +86,7 @@ test("warmup resolves when the server sends Begin", async () => {
     streaming.buildWebSocketUrl = () => url;
 
     try {
-      await streaming.warmup({ token: "test-token" });
+      await streaming.warmup({ token: "test-token", mode: "byok" });
 
       assert.equal(streaming.hasWarmConnection(), true);
       assert.equal(streaming.warmSessionId, "test-session");
@@ -96,7 +102,7 @@ test("connect resolves when the server sends Begin", async () => {
     streaming.buildWebSocketUrl = () => url;
 
     try {
-      await streaming.connect({ token: "test-token" });
+      await streaming.connect({ token: "test-token", mode: "byok" });
 
       assert.equal(streaming.isConnected, true);
       assert.equal(streaming.sessionId, "test-session");
@@ -106,42 +112,12 @@ test("connect resolves when the server sends Begin", async () => {
   });
 });
 
-test("a warm connection is reused only within the same credential mode", async () => {
-  await withBeginServer(async (url, connections) => {
-    const streaming = new AssemblyAiStreaming();
-    streaming.buildWebSocketUrl = () => url;
-
-    try {
-      await streaming.warmup({ token: "managed-token", mode: "openwhispr" });
-      assert.equal(streaming.getCachedToken(), "managed-token");
-
-      // The main-process singleton serves BYOK and managed dictation alike: a
-      // BYOK session must neither ride the managed socket nor see its token.
-      await streaming.connect({ token: "byok-key", mode: "byok" });
-
-      assert.equal(connections.length, 2, "the managed warm socket was not reused");
-      assert.equal(streaming.hasWarmConnection(), false);
-      assert.equal(streaming.getCachedToken(), null, "the managed token was dropped");
-      assert.equal(streaming.mode, "byok");
-    } finally {
-      streaming.cleanupAll();
-    }
-  });
-
-  await withBeginServer(async (url, connections) => {
-    const streaming = new AssemblyAiStreaming();
-    streaming.buildWebSocketUrl = () => url;
-
-    try {
-      await streaming.warmup({ token: "managed-token", mode: "openwhispr" });
-      await streaming.connect({ token: "managed-token", mode: "openwhispr" });
-
-      assert.equal(connections.length, 1, "same-mode start rides the warm socket");
-      assert.equal(streaming.isConnected, true);
-    } finally {
-      streaming.cleanupAll();
-    }
-  });
+test("managed mode is rejected before opening a socket", async () => {
+  const streaming = new AssemblyAiStreaming();
+  await assert.rejects(
+    () => streaming.warmup({ token: "managed-token", mode: "openwhispr" }),
+    /requires a direct provider API key/
+  );
 });
 
 test("a warm connection opened for another speech model is not reused", async () => {

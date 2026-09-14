@@ -21,10 +21,9 @@ function makeFakeSocket(readyState) {
   return socket;
 }
 
-async function connectPreconfigured(streaming, socket) {
+async function connectDirect(streaming, socket) {
   const connected = streaming.connect({
     apiKey: "key",
-    preconfigured: true,
     createSocket: async () => socket,
   });
   await new Promise((resolve) => setImmediate(resolve));
@@ -142,7 +141,6 @@ test("connect() preserves audio buffered during beginConnecting() instead of wip
   const socket = makeFakeSocket(WS.CONNECTING);
   const connected = streaming.connect({
     apiKey: "key",
-    preconfigured: true,
     createSocket: async () => socket,
   });
   await new Promise((resolve) => setImmediate(resolve));
@@ -336,7 +334,7 @@ test("close after session_expired does not fire onSessionEnd (reconnect owns the
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new OpenAIRealtimeStreaming();
   const socket = makeFakeSocket(WS.CONNECTING);
-  await connectPreconfigured(streaming, socket);
+  await connectDirect(streaming, socket);
 
   let sessionEndCalled = false;
   streaming.onSessionEnd = () => {
@@ -361,7 +359,6 @@ test("connect() resets _sessionExpired left over from a previous session", async
   const socket = makeFakeSocket(WS.CONNECTING);
   const connected = streaming.connect({
     apiKey: "key",
-    preconfigured: true,
     createSocket: async () => socket,
   });
   assert.equal(streaming._sessionExpired, false, "flag must reset synchronously in connect()");
@@ -681,7 +678,7 @@ test("a final that lands during disconnect()'s commit window reaches onFinalTran
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new OpenAIRealtimeStreaming();
   const socket = makeFakeSocket(WS.CONNECTING);
-  await connectPreconfigured(streaming, socket);
+  await connectDirect(streaming, socket);
 
   const calls = [];
   streaming.onFinalTranscript = (text, timestamp) => calls.push({ text, timestamp });
@@ -804,7 +801,6 @@ test("disconnect summary carries streamLabel and speechStartedCount", async (t) 
   const socket = makeFakeSocket(WS.CONNECTING);
   const connected = streaming.connect({
     apiKey: "key",
-    preconfigured: true,
     streamLabel: "system",
     createSocket: async () => socket,
   });
@@ -827,7 +823,7 @@ test("disconnect summary carries streamLabel and speechStartedCount", async (t) 
   assert.equal(line.meta.audioBytesSent, 0);
 });
 
-test("preconfigured session.created echoes the server VAD config and format into the log", async (t) => {
+test("direct session.created sends the configured session update", async (t) => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new OpenAIRealtimeStreaming();
   const socket = makeFakeSocket(WS.CONNECTING);
@@ -835,7 +831,6 @@ test("preconfigured session.created echoes the server VAD config and format into
 
   const connected = streaming.connect({
     apiKey: "key",
-    preconfigured: true,
     streamLabel: "system",
     createSocket: async () => socket,
   });
@@ -857,15 +852,10 @@ test("preconfigured session.created echoes the server VAD config and format into
   );
   await connected;
 
-  const lines = logs.filter((entry) => entry.message.includes("session created (preconfigured)"));
-  assert.equal(lines.length, 1, "server config echo logs once per socket");
+  const lines = logs.filter((entry) => entry.message.includes("session created, sending configuration"));
+  assert.equal(lines.length, 1);
   assert.equal(lines[0].meta.stream, "system");
-  assert.deepEqual(lines[0].meta.turnDetection, {
-    type: "server_vad",
-    threshold: 0.5,
-    silence_duration_ms: 600,
-  });
-  assert.deepEqual(lines[0].meta.inputFormat, { type: "audio/pcm", rate: 24000 });
+  assert.equal(sentEvents(socket, "session.update").length, 1);
   streaming.cleanup();
 });
 
@@ -1086,7 +1076,7 @@ test("a socket that closes during the commit wait ends the stop at once with the
   assert.equal(streaming.ws, null);
 });
 
-test("preconfigured sessions adopt the model the server minted (session.created echo) and never send session.update", async (t) => {
+test("direct sessions keep the requested model and send session.update", async (t) => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const logs = captureLogs(t);
   const streaming = new OpenAIRealtimeStreaming();
@@ -1094,8 +1084,6 @@ test("preconfigured sessions adopt the model the server minted (session.created 
 
   const connected = streaming.connect({
     apiKey: "cs-secret",
-    preconfigured: true,
-    // The desktop's BYOK default; the server decides the managed model.
     model: "gpt-4o-mini-transcribe",
     createSocket: async () => socket,
   });
@@ -1118,16 +1106,15 @@ test("preconfigured sessions adopt the model the server minted (session.created 
   );
   await connected;
 
-  assert.equal(streaming.model, "gpt-live-transcribe");
-  assert.equal(sentEvents(socket, "session.update").length, 0);
-  const line = logs.find((entry) => entry.message.includes("session created (preconfigured)"));
-  assert.equal(line.meta.model, "gpt-live-transcribe");
-  assert.equal(line.meta.turnDetection, null);
+  assert.equal(streaming.model, "gpt-4o-mini-transcribe");
+  assert.equal(sentEvents(socket, "session.update").length, 1);
+  const line = logs.find((entry) => entry.message.includes("session created, sending configuration"));
+  assert.equal(line.meta.model, "gpt-4o-mini-transcribe");
   streaming.cleanup();
 
-  // No echo (older servers, bare mocks): the caller's model stands.
+  // Bare mocks still use the caller's direct model.
   const bare = new OpenAIRealtimeStreaming();
-  await connectPreconfigured(bare, makeFakeSocket(WS.CONNECTING));
+  await connectDirect(bare, makeFakeSocket(WS.CONNECTING));
   assert.equal(bare.model, "gpt-4o-mini-transcribe");
   bare.cleanup();
 });

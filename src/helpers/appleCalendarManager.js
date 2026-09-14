@@ -126,7 +126,7 @@ class AppleCalendarManager {
       // "responsible process", and its missing calendar usage strings abort
       // the permission prompt. The disclaim shim makes the helper responsible
       // for itself so its embedded Info.plist usage strings apply. Packaged
-      // builds are self-responsible and keep OpenWhispr as the prompt source.
+      // builds are self-responsible and keep the helper as the prompt source.
       const shimPath = resolveBundledBinary("macos-disclaim-exec", "acal");
       if (shimPath) {
         args = [binaryPath, ...args];

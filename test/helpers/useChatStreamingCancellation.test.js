@@ -199,45 +199,6 @@ test("a completed response runs its request delivery hook without opening respon
   assert.equal(completions[0].content, "Agent answer");
 });
 
-test("cancelling during RAG setup does not start an assistant reply", async (t) => {
-  const originalFetch = globalThis.fetch;
-  t.after(() => {
-    globalThis.fetch = originalFetch;
-  });
-  globalThis.fetch = async () => {
-    const finishEvent = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
-    return new Response(`${finishEvent}data: [DONE]\n\n`, {
-      status: 200,
-      headers: { "content-type": "text/event-stream" },
-    });
-  };
-
-  let resolveSearch;
-  let searchStarted = false;
-  const searchResults = new Promise((resolve) => {
-    resolveSearch = resolve;
-  });
-  const { captured, getMessages } = await renderChatStreaming(t, {
-    electronAPI: {
-      semanticSearchNotes: () => {
-        searchStarted = true;
-        return searchResults;
-      },
-    },
-  });
-
-  const sendPromise = captured.sendToAI("hello", []);
-  const waitForMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
-  for (let i = 0; i < 50 && !searchStarted; i++) await waitForMicrotasks();
-  assert.equal(searchStarted, true, "fixture setup: RAG search must be pending before cancelling");
-
-  captured.cancelStream();
-  resolveSearch([]);
-  await sendPromise;
-
-  assert.deepEqual(getMessages(), []);
-});
-
 test("cancelling before any token arrives never shows the empty-response fallback", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {

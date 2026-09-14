@@ -27,17 +27,12 @@ const FBANK_FFT_SIZE = 512;
 
 const SPEAKER_MAX_SAMPLES = FBANK_SAMPLE_RATE * 8;
 
-const TEXT_EMBED_MAX_TOKENS = 256;
-const TEXT_EMBED_DIM = 384;
-
 const intraOpNumThreads = Math.min(4, Math.max(2, Math.floor((os.cpus()?.length || 4) / 2)));
 
 let port = null;
 let ort = null;
 let speakerSession = null;
 let speakerInputName = null;
-let textSession = null;
-let textTokenizer = null;
 
 function log(level, message, extra) {
   if (!logStream) return;
@@ -221,129 +216,10 @@ async function speakerExtract({ samplesBuffer }) {
   return { embeddingBuffer: data.buffer };
 }
 
-function buildTextTokenizer(tokenizerData) {
-  const tokenToId = new Map();
-  for (const [token, id] of Object.entries(tokenizerData.model.vocab)) {
-    tokenToId.set(token, id);
-  }
-  return {
-    tokenToId,
-    clsId: tokenToId.get("[CLS]") ?? 101,
-    sepId: tokenToId.get("[SEP]") ?? 102,
-    unkId: tokenToId.get("[UNK]") ?? 100,
-  };
-}
-
-function tokenizeText(text) {
-  const { tokenToId, clsId, sepId, unkId } = textTokenizer;
-  const words = text.toLowerCase().match(/[a-z0-9]+|[^\s\w]/g) || [];
-  const tokenIds = [clsId];
-
-  for (const word of words) {
-    if (tokenIds.length >= TEXT_EMBED_MAX_TOKENS - 1) break;
-
-    if (tokenToId.has(word)) {
-      tokenIds.push(tokenToId.get(word));
-      continue;
-    }
-
-    let start = 0;
-    while (start < word.length) {
-      if (tokenIds.length >= TEXT_EMBED_MAX_TOKENS - 1) break;
-      let end = word.length;
-      let matched = false;
-      while (end > start) {
-        const subword = start === 0 ? word.slice(start, end) : `##${word.slice(start, end)}`;
-        if (tokenToId.has(subword)) {
-          tokenIds.push(tokenToId.get(subword));
-          start = end;
-          matched = true;
-          break;
-        }
-        end--;
-      }
-      if (!matched) {
-        tokenIds.push(unkId);
-        start++;
-      }
-    }
-  }
-
-  tokenIds.push(sepId);
-
-  const length = tokenIds.length;
-  const inputIds = new BigInt64Array(length);
-  const attentionMask = new BigInt64Array(length);
-  const tokenTypeIds = new BigInt64Array(length);
-  for (let i = 0; i < length; i++) {
-    inputIds[i] = BigInt(tokenIds[i]);
-    attentionMask[i] = 1n;
-    tokenTypeIds[i] = 0n;
-  }
-  return { inputIds, attentionMask, tokenTypeIds, length };
-}
-
-function meanPoolAndNormalize(data, tokenCount, dim) {
-  const embedding = new Float32Array(dim);
-  for (let t = 0; t < tokenCount; t++) {
-    const offset = t * dim;
-    for (let d = 0; d < dim; d++) {
-      embedding[d] += data[offset + d];
-    }
-  }
-  for (let d = 0; d < dim; d++) {
-    embedding[d] /= tokenCount;
-  }
-
-  let norm = 0;
-  for (let d = 0; d < dim; d++) {
-    norm += embedding[d] * embedding[d];
-  }
-  norm = Math.sqrt(norm);
-  if (norm > 0) {
-    for (let d = 0; d < dim; d++) {
-      embedding[d] /= norm;
-    }
-  }
-  return embedding;
-}
-
-async function textLoad({ modelDir }) {
-  if (textSession && textTokenizer) return { ok: true };
-  loadOrt();
-
-  const tokenizerData = JSON.parse(fs.readFileSync(path.join(modelDir, "tokenizer.json"), "utf-8"));
-  textTokenizer = buildTextTokenizer(tokenizerData);
-
-  textSession = await ort.InferenceSession.create(
-    path.join(modelDir, "model.onnx"),
-    SESSION_OPTIONS
-  );
-  log("info", "text session loaded", { modelDir });
-  return { ok: true };
-}
-
-async function textEmbed({ text }) {
-  if (!textSession) throw new Error("text session not loaded");
-
-  const { inputIds, attentionMask, tokenTypeIds, length } = tokenizeText(text);
-  const feeds = {
-    input_ids: new ort.Tensor("int64", inputIds, [1, length]),
-    attention_mask: new ort.Tensor("int64", attentionMask, [1, length]),
-    token_type_ids: new ort.Tensor("int64", tokenTypeIds, [1, length]),
-  };
-  const results = await textSession.run(feeds);
-  const output = results.last_hidden_state ?? results.output_0;
-  const embedding = meanPoolAndNormalize(output.data, length, TEXT_EMBED_DIM);
-  return { embeddingBuffer: embedding.buffer };
-}
-
 const handlers = {
-  ping: () => ({ ok: true, sessions: { speaker: !!speakerSession, text: !!textSession } }),
+  ping: () => ({ ok: true, sessions: { speaker: !!speakerSession } }),
   "speaker.load": speakerLoad,
   "speaker.extract": speakerExtract,
-  "text.load": textLoad,
-  "text.embed": textEmbed,
   shutdown: () => {
     log("info", "shutdown requested");
     setImmediate(() => process.exit(0));

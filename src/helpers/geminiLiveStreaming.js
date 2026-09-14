@@ -19,22 +19,13 @@ const MAX_CUSTOM_VOCABULARY = 100;
 const TURN_REOPEN_RMS = 0.012;
 const GEMINI_LIVE_MODEL = "gemini-3.5-transcribe-live";
 
-// In managed mode the model comes from the BYOK-shaped settings, which still
-// hold another provider's id, so anything but a Gemini id is ignored.
 const resolveLiveModel = (model) =>
   model && model.startsWith("gemini-") ? model : GEMINI_LIVE_MODEL;
 
 const WS_BASE = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage";
 
-// The two Live methods are auth-disjoint: BidiGenerateContent accepts only
-// `key`, BidiGenerateContentConstrained only `access_token` (an auth_tokens
-// resource name). Crossing them closes the socket with 1007 right after a
-// successful HTTP 101, so the credential kind decides the method, not the URL.
-function buildGeminiLiveUrl({ mode, token }) {
-  if (mode === "byok") {
-    return `${WS_BASE}.v1beta.GenerativeService.BidiGenerateContent?key=${token}`;
-  }
-  return `${WS_BASE}.v1alpha.GenerativeService.BidiGenerateContentConstrained?access_token=${token}`;
+function buildGeminiLiveUrl({ token }) {
+  return `${WS_BASE}.v1beta.GenerativeService.BidiGenerateContent?key=${token}`;
 }
 
 // Every Live failure arrives as a close frame after the upgrade succeeded (the
@@ -43,9 +34,7 @@ function buildGeminiLiveUrl({ mode, token }) {
 // reason is only logged by the close handler.
 function closeFrameError(code) {
   if (code === 1011) {
-    // "Token has been used too many times" / "Token has expired". The managed
-    // tokens are single-use, so this is the one retryable auth failure; byok
-    // re-handshakes with the same raw key and never sees it.
+    // A provider key that the service rejects is not recoverable by retrying.
     return Object.assign(new Error("Gemini Live session token expired"), {
       code: "AUTH_EXPIRED",
     });
@@ -126,7 +115,10 @@ class GeminiLiveStreaming {
   }
 
   async connect(options = {}) {
-    const { token, mode, refreshToken } = options;
+    const { token, mode } = options;
+    if (mode !== "byok") {
+      throw new Error("Gemini realtime requires a direct provider API key");
+    }
     if (!token) {
       throw Object.assign(new Error("Gemini API key not configured. Add your key in Settings."), {
         code: "API_KEY_MISSING",
@@ -146,20 +138,13 @@ class GeminiLiveStreaming {
     this._audioStreamEndSentAt = null;
     this._turnEnded = false;
 
-    try {
-      await this._openSocket(options);
-    } catch (err) {
-      if (err.code !== "AUTH_EXPIRED" || mode === "byok" || !refreshToken) throw err;
-      debugLogger.debug("Gemini Live re-minting single-use token after 1011 close");
-      this.bufferingAudio = true;
-      await this._openSocket({ ...options, token: await refreshToken() });
-    }
+    await this._openSocket(options);
   }
 
   _openSocket(options) {
     const url = this.buildWebSocketUrl(options);
     debugLogger.debug("Gemini Live connecting", {
-      mode: options.mode === "byok" ? "byok" : "openwhispr",
+      mode: "byok",
       model: this.currentModel,
     });
 

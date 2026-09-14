@@ -5,6 +5,24 @@ const Module = require("node:module");
 const managerModulePath = require.resolve("../../src/helpers/microsoftCalendarManager.js");
 const originalLoad = Module._load;
 
+test("getConnectionStatus reports Microsoft OAuth registration state", () => {
+  const MicrosoftCalendarManager = loadManagerModule();
+  const previousId = process.env.MICROSOFT_CALENDAR_CLIENT_ID;
+  delete process.env.MICROSOFT_CALENDAR_CLIENT_ID;
+  try {
+    const manager = new MicrosoftCalendarManager({ getMicrosoftAccounts: () => [] }, {
+      scheduleNextMeeting: () => {},
+      reset: () => {},
+    });
+    assert.equal(manager.getConnectionStatus().configured, false);
+    process.env.MICROSOFT_CALENDAR_CLIENT_ID = "client-id";
+    assert.equal(manager.getConnectionStatus().configured, true);
+  } finally {
+    if (previousId === undefined) delete process.env.MICROSOFT_CALENDAR_CLIENT_ID;
+    else process.env.MICROSOFT_CALENDAR_CLIENT_ID = previousId;
+  }
+});
+
 function loadManagerModule() {
   delete require.cache[managerModulePath];
   Module._load = function loadWithElectronMock(request, parent, isMain) {

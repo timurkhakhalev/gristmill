@@ -19,9 +19,17 @@ class GoogleCalendarOAuth {
     return process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
   }
 
+  isConfigured() {
+    return Boolean(this.getClientId() && this.getClientSecret());
+  }
+
   startOAuthFlow() {
+    if (!this.isConfigured()) {
+      throw Object.assign(new Error("Google Calendar OAuth is not configured"), {
+        code: "CALENDAR_NOT_CONFIGURED",
+      });
+    }
     return runOAuthLoopbackFlow({
-      errorParam: "gcal_error",
       buildAuthUrl: (redirectUri, state, codeChallenge) => {
         const params = new URLSearchParams({
           client_id: this.getClientId(),

@@ -32,6 +32,12 @@ test("every selectable cloud and enterprise provider has an inference handler", 
   }
 });
 
+test("managed OpenWhispr inference is absent from the registry and catalog", () => {
+  const handlers = inferenceProviderIds();
+  assert.equal(handlers.includes("openwhispr"), false);
+  assert.equal(Object.hasOwn(modelData, "openwhisprCloudModels"), false);
+});
+
 test("local catalog ids never shadow an inference provider id", () => {
   // resolveInferenceProvider maps a local catalog id (qwen, gemma, …) to the
   // llama.cpp "local" provider by looking it up in the model registry, so a

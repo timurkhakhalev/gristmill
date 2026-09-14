@@ -110,7 +110,6 @@ class OpenAIRealtimeStreaming {
     const {
       apiKey,
       model,
-      preconfigured,
       inputRate,
       captureRate,
       createSocket,
@@ -130,7 +129,6 @@ class OpenAIRealtimeStreaming {
 
     this.isConnecting = true;
     this.model = model || "gpt-4o-mini-transcribe";
-    this.preconfigured = !!preconfigured;
     this.inputRate = inputRate || SAMPLE_RATE;
     this.captureRate = captureRate || this.inputRate;
     this.streamLabel = streamLabel || null;
@@ -230,50 +228,29 @@ class OpenAIRealtimeStreaming {
 
       switch (event.type) {
         case "session.created": {
-          if (this.preconfigured) {
-            // Server-side ephemeral token already configured the session;
-            // sending an update would strip language and noise-reduction.
-            // Echo the server's VAD + format — the only place preconfigured
-            // (cloud) session settings ever appear in field logs.
-            const sessionInput = event.session?.audio?.input;
-            // The server picks the managed model when it mints the secret; the
-            // session echo is where the client learns which one it got.
-            this.model = sessionInput?.transcription?.model ?? this.model;
-            debugLogger.debug(
-              `${this.providerLabel} session created (preconfigured)`,
-              this._logContext({
-                model: this.model,
-                turnDetection:
-                  sessionInput?.turn_detection ?? event.session?.turn_detection ?? null,
-                inputFormat: sessionInput?.format ?? event.session?.input_audio_format ?? null,
-              })
-            );
-            this._markConnected();
-          } else {
-            debugLogger.debug(
-              `${this.providerLabel} session created, sending configuration`,
-              this._logContext({
-                model: this.model,
-                vadThreshold: this.vadThreshold,
-              })
-            );
-            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) break;
-            this.ws.send(
-              JSON.stringify({
-                type: "session.update",
-                session: {
-                  type: "transcription",
-                  audio: {
-                    input: {
-                      format: { type: "audio/pcm", rate: this.inputRate },
-                      transcription: { model: this.model },
-                      turn_detection: turnDetectionFor(this.model, this.vadThreshold),
-                    },
+          debugLogger.debug(
+            `${this.providerLabel} session created, sending configuration`,
+            this._logContext({
+              model: this.model,
+              vadThreshold: this.vadThreshold,
+            })
+          );
+          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) break;
+          this.ws.send(
+            JSON.stringify({
+              type: "session.update",
+              session: {
+                type: "transcription",
+                audio: {
+                  input: {
+                    format: { type: "audio/pcm", rate: this.inputRate },
+                    transcription: { model: this.model },
+                    turn_detection: turnDetectionFor(this.model, this.vadThreshold),
                   },
                 },
-              })
-            );
-          }
+              },
+            })
+          );
           break;
         }
 

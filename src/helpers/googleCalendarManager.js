@@ -52,6 +52,10 @@ class GoogleCalendarManager {
     return this.accounts.size > 0;
   }
 
+  isConfigured() {
+    return this.oauth.isConfigured();
+  }
+
   addAccount(email) {
     this.accounts.set(email, { email });
   }
@@ -108,6 +112,7 @@ class GoogleCalendarManager {
     const accounts = this.databaseManager.getGoogleAccounts();
     return {
       connected: accounts.length > 0,
+      configured: this.isConfigured(),
       accounts,
       // Backwards compat
       email: accounts[0]?.email || null,

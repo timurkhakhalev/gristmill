@@ -2,7 +2,6 @@ const Database = require("better-sqlite3");
 const path = require("path");
 const debugLogger = require("./debugLogger");
 const { buildNoteSearchQuery } = require("./noteSearch");
-const { normalizeStoredSpeakerCount } = require("./speakerCount");
 const { parseEventTime } = require("./calendarAvailability");
 const { toDbTimestamp } = require("./dbTimestamp");
 const { BUILTIN_ACTIONS, GENERATE_NOTES_KEY } = require("./builtinActions");

@@ -1,16 +1,6 @@
-import { MAX_SPEAKER_COUNT } from "../constants/speakerDetection.json";
+import { normalizeStoredSpeakerCount } from "../helpers/speakerCount";
 import type { DiarizationSettings } from "./fileTranscription";
 import type { NoteUpdate } from "../contracts/notes";
-
-// Renderer twin of normalizeStoredSpeakerCount in ../helpers/speakerCount.js.
-// That file is CommonJS for the main process (database.js, ipcHandlers.js), and
-// renderer source cannot load CJS modules under Vite — test/services/
-// uploadNotes.test.js holds the two implementations to identical outputs.
-function normalizeSpeakerCount(value: number | null | undefined): number | null {
-  const count = Number(value);
-  if (!Number.isInteger(count) || count < 1) return null;
-  return Math.min(count, MAX_SPEAKER_COUNT);
-}
 
 export interface UploadSegment {
   text: string;
@@ -67,7 +57,7 @@ export function buildUploadNoteMetadata(
           ...(diarization.enabled
             ? {
                 diarization_enabled: 1,
-                expected_speaker_count: normalizeSpeakerCount(diarization.numSpeakers),
+                expected_speaker_count: normalizeStoredSpeakerCount(diarization.numSpeakers),
               }
             : {}),
           ...(transcript ? { transcript } : {}),

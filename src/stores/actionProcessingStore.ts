@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { STANDALONE_PROMPT_KEYS } from "../helpers/builtinActions";
 import reasoningService from "../services/ReasoningService";
-import { getSettings, selectResolvedNoteFormatting } from "./settingsStore";
+import { getSettings } from "./settingsStore";
+import { selectResolvedNoteFormatting } from "../config/settingsSelectors";
 import { appendDictionarySuffix } from "../config/prompts";
 import { generateNoteTitle } from "../utils/generateTitle";
 import { buildNoteFormattingOverrides } from "../helpers/noteFormattingOverrides";

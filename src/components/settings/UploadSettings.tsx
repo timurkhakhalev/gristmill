@@ -6,7 +6,7 @@ import { InferenceModeSelector } from "../ui/SettingsSection";
 import type { InferenceModeOption } from "../ui/SettingsSection";
 import TranscriptionModelPicker from "../TranscriptionModelPicker";
 import SelfHostedPanel from "../SelfHostedPanel";
-import type { InferenceMode } from "../../types/electron";
+import type { InferenceMode } from "../../contracts/inferenceSettings";
 
 export function UploadTranscriptionPanel() {
   const { t } = useTranslation();

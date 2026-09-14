@@ -42,9 +42,9 @@ import {
 } from "../../models/ModelRegistry";
 import {
   useSettingsStore,
-  selectResolvedUploadTranscription,
   getSettings,
 } from "../../stores/settingsStore";
+import { selectResolvedUploadTranscription } from "../../config/settingsSelectors";
 import { useBatchQueue } from "../../stores/batchQueueStore";
 import type { TranscribeOptions } from "../../stores/batchQueueStore";
 import {

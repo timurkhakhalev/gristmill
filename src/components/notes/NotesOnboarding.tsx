@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { Sparkles, Plus, ChevronRight, Zap, Loader2, Check, Monitor } from "../icons";
 import { Button } from "../ui/button";
 import { cn } from "../lib/utils";
-import { selectResolvedLLMConfig, useSettingsStore } from "../../stores/settingsStore";
+import { useSettingsStore } from "../../stores/settingsStore";
+import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
 import { useNotesOnboarding } from "../../hooks/useNotesOnboarding";
 import {
   useActions,

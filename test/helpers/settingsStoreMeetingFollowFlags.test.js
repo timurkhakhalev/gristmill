@@ -77,7 +77,10 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
   const reload = async () => {
     writes.length = 0;
     vite.moduleGraph.invalidateAll();
-    const mod = await vite.ssrLoadModule("/stores/settingsStore.ts");
+    const mod = {
+      ...(await vite.ssrLoadModule("/stores/settingsStore.ts")),
+      ...(await vite.ssrLoadModule("/config/settingsSelectors.ts")),
+    };
     return { mod, state: mod.useSettingsStore.getState() };
   };
   const load = async (seed) => {

@@ -31,7 +31,7 @@ function resolveAllowedAudioPath(filePath) {
   return null;
 }
 
-function createHarness({ whisper, parakeet, requestId } = {}) {
+function createHarness({ whisper, parakeet } = {}) {
   const controllers = new Map();
   const registry = {
     register(id) {
@@ -212,7 +212,7 @@ test("throws become error strings; abort wins with the cancelled shape", async (
   });
 
   const aborting = createHarness({
-    whisper: (options) => {
+    whisper: () => {
       const error = new Error("cancelled");
       error.name = "AbortError";
       throw error;
@@ -242,7 +242,6 @@ test("requestId registers a signal; flows without one register nothing", async (
 
   // Cancel aborts every registered controller under the id and the handler
   // maps the abort to the cancelled shape.
-  let seenSignal;
   const harness2 = createHarness({
     whisper: (options) =>
       new Promise((_resolve, reject) => {
@@ -253,7 +252,6 @@ test("requestId registers a signal; flows without one register nothing", async (
         });
       }),
   });
-  harness2.calls.whisper.push = (options) => (seenSignal = options);
   const pending = harness2.handler(audioFile, { requestId: "req-b" });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(harness2.registry.cancel("req-b"), 1);

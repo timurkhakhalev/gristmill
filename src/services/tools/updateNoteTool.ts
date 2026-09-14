@@ -4,7 +4,7 @@ import { resolveFolderId } from "./utils";
 export const updateNoteTool: ToolDefinition = {
   name: "update_note",
   description:
-    "Before moving to a folder, always call list_folders first. Reuse an existing folder whenever one is a reasonable semantic fit for the note's topic, even if the user didn't name it. Only pass a new folder name when nothing existing fits. Updates a note's title, content, or folder (auto-created if missing). Use the note ID from context if provided; otherwise search_notes first.",
+    "Before moving to a folder, always call list_folders first. Reuse an existing folder whenever one is a reasonable match for the note's topic, even if the user didn't name it. Only pass a new folder name when nothing existing fits. Updates a note's title, content, or folder (auto-created if missing). Use the note ID from context if provided; otherwise search_notes first.",
   parameters: {
     type: "object",
     properties: {

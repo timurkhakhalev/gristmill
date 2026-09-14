@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { CircleCheck, Laptop, Undo2 } from "../icons";
+import { CircleCheck, Undo2 } from "../icons";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui/button";
 // Imported (not referenced by path) so Vite fingerprints them and they resolve
@@ -7,16 +7,11 @@ import { Button } from "../ui/button";
 // 44px slot; the row has since tightened to a 40px slot), with their rounded
 // corners baked in as transparency.
 import microphoneIcon from "@/assets/onboarding-permission-microphone.webp";
-import accessibilityIcon from "@/assets/onboarding-permission-accessibility.webp";
 import systemAudioIcon from "@/assets/onboarding-permission-system-audio.webp";
 import type { UsePermissionsReturn } from "../../hooks/usePermissions";
 import type { SystemAudioAccessResult } from "../../types/electron";
 import { canManageSystemAudioInApp } from "../../utils/systemAudioAccess";
-import { getPlatform } from "../../utils/platform";
-import { areRequiredPermissionsMet } from "../../utils/permissions";
-import { needsLinuxPasteToolGuidance } from "../../utils/linuxPasteTools";
 import MicPermissionWarning from "../ui/MicPermissionWarning";
-import PasteToolsInfo from "../ui/PasteToolsInfo";
 import { CompactOnboardingFrame } from "./OnboardingShell";
 
 interface CompactPermissionsStepProps {
@@ -24,18 +19,12 @@ interface CompactPermissionsStepProps {
   systemAudio: Pick<SystemAudioAccessResult, "granted" | "mode" | "supportsOnboardingGrant"> & {
     request: () => Promise<boolean>;
   };
-  screenContext?: {
-    enabled: boolean;
-    granted: boolean;
-    needsRelaunch: boolean;
-    request: () => Promise<boolean>;
-  };
   /** Omitted when there is no step to return to. */
   onBack?: () => void;
   onContinue: () => void;
 }
 
-type PermissionRowId = "microphone" | "accessibility" | "system-audio" | "screen-context";
+type PermissionRowId = "microphone" | "system-audio";
 
 interface PermissionRowProps {
   title: string;
@@ -120,28 +109,13 @@ function PermissionRow({
 export default function CompactPermissionsStep({
   permissions,
   systemAudio,
-  screenContext,
   onBack,
   onContinue,
 }: CompactPermissionsStepProps) {
   const { t } = useTranslation();
   const [busyPermission, setBusyPermission] = useState<PermissionRowId | null>(null);
-  const platform = getPlatform();
   const canRequestSystemAudio = canManageSystemAudioInApp(systemAudio);
-  const requiredGranted = areRequiredPermissionsMet(permissions.micPermissionGranted);
-  // Only macOS has grantable Accessibility (auto-paste) and System Audio
-  // permissions. Windows auto-grants both (SendKeys needs nothing, WASAPI
-  // loopback is permissionless) and Linux has no in-app grant for either, so
-  // showing those rows there is either a no-op button or a dead disabled one.
-  const showAccessibility = platform === "darwin";
-  const showSystemAudio = platform === "darwin";
-  // Screen Context: macOS grants via TCC, Windows is a permissionless opt-in;
-  // Linux is hidden because Wayland capture is unsupported.
-  const showScreenContext = platform === "darwin" || platform === "win32";
-  const showLinuxPasteGuidance =
-    platform === "linux" &&
-    permissions.pasteToolsInfo !== null &&
-    needsLinuxPasteToolGuidance(permissions.pasteToolsInfo);
+  const requiredGranted = permissions.micPermissionGranted;
 
   const request = async (id: PermissionRowId, action: () => Promise<unknown>) => {
     setBusyPermission(id);
@@ -163,7 +137,7 @@ export default function CompactPermissionsStep({
           {t("onboarding.rehaul.permissions.title")}
         </h1>
         <p className="mt-2 text-sm text-[var(--onboarding-text-secondary)]">
-          {t("auth.welcomeSubtitle")}
+          {t("onboarding.rehaul.permissions.microphoneDescription")}
         </p>
 
         <div className="mt-3 rounded-[1.35rem] bg-[var(--onboarding-surface-secondary)] px-3 py-1">
@@ -175,22 +149,7 @@ export default function CompactPermissionsStep({
             iconSrc={microphoneIcon}
             onRequest={() => request("microphone", permissions.requestMicPermission)}
           />
-          {showAccessibility && (
-            <>
-              <div className="h-px bg-[var(--onboarding-surface-tertiary)]" />
-              <PermissionRow
-                title={t("onboarding.permissions.accessibilityTitle")}
-                description={t("onboarding.rehaul.permissions.accessibilityDescription")}
-                granted={permissions.accessibilityPermissionGranted}
-                busy={busyPermission === "accessibility"}
-                iconSrc={accessibilityIcon}
-                onRequest={() =>
-                  request("accessibility", permissions.requestAccessibilityPermission)
-                }
-              />
-            </>
-          )}
-          {showSystemAudio && (
+          {
             <>
               <div className="h-px bg-[var(--onboarding-surface-tertiary)]" />
               <PermissionRow
@@ -204,35 +163,8 @@ export default function CompactPermissionsStep({
                 onRequest={() => request("system-audio", systemAudio.request)}
               />
             </>
-          )}
-          {showScreenContext && screenContext && (
-            <>
-              <div className="h-px bg-[var(--onboarding-surface-tertiary)]" />
-              <PermissionRow
-                title={t("dictationAgent.screenContext.title")}
-                description={t("onboarding.rehaul.permissions.screenContextDescription")}
-                badge={t("onboarding.permissions.optional")}
-                granted={screenContext.enabled && screenContext.granted}
-                busy={busyPermission === "screen-context"}
-                icon={
-                  <span
-                    aria-hidden="true"
-                    className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--onboarding-accent)] text-[var(--onboarding-accent-foreground)]"
-                  >
-                    <Laptop className="size-5" strokeWidth={2.2} />
-                  </span>
-                }
-                onRequest={() => request("screen-context", screenContext.request)}
-              />
-            </>
-          )}
+          }
         </div>
-
-        {platform === "darwin" && screenContext?.enabled && screenContext.needsRelaunch && (
-          <p className="mt-2 text-start text-xs leading-4 text-warning/80">
-            {t("dictationAgent.screenContext.relaunchHint")}
-          </p>
-        )}
 
         {!permissions.micPermissionGranted && permissions.micPermissionError && (
           <div className="mt-3 text-start">
@@ -244,20 +176,6 @@ export default function CompactPermissionsStep({
           </div>
         )}
 
-        {showLinuxPasteGuidance && (
-          <div className="mt-3 text-start">
-            <PasteToolsInfo
-              pasteToolsInfo={permissions.pasteToolsInfo}
-              isChecking={permissions.isCheckingPasteTools}
-              onCheck={() => void permissions.checkPasteToolsAvailability()}
-            />
-          </div>
-        )}
-
-        {/* Last child so mt-auto actually pins the actions to the bottom: any
-            element after them rides along on that auto margin, which put the
-            relaunch hint and the two warnings below the buttons — and, on Linux
-            where the paste guidance is the point of the screen, out of view. */}
         <div className="mt-auto flex w-full shrink-0 items-center justify-between gap-3 pt-3">
           {onBack && (
             <button

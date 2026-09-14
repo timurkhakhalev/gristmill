@@ -27,14 +27,6 @@ import {
 } from "../utils/modelPickerStyles";
 import { useSettingsStore } from "../stores/settingsStore";
 import {
-  filterByokProviderOptionsByPolicy,
-  isProviderAllowedByPolicy,
-  reconcileCloudProviderSelection,
-  shouldPersistProviderFallback,
-  type TranscriptionPolicyContext,
-} from "../stores/policyRules";
-import { usePolicySnapshot } from "../hooks/usePolicy";
-import {
   LOCAL_ASR_ORGANIZATIONS,
   getASRModelOrganization,
   getSelectedASROrganization,
@@ -217,7 +209,7 @@ function LocalModelCard({
 
 interface TranscriptionModelPickerProps {
   /** Settings scope whose provider/model keys this picker edits. */
-  transcriptionContext?: TranscriptionPolicyContext;
+  transcriptionContext?: "dictation" | "meeting" | "upload";
   selectedCloudProvider: string;
   /**
    * Policy reconciliation only — a user-driven pick goes through
@@ -425,7 +417,6 @@ export default function TranscriptionModelPicker({
   const setAssemblyaiApiKey = useSettingsStore((s) => s.setAssemblyaiApiKey);
   const customTranscriptionApiKey = useSettingsStore((s) => s.customTranscriptionApiKey);
   const setCustomTranscriptionApiKey = useSettingsStore((s) => s.setCustomTranscriptionApiKey);
-  const isSignedIn = useSettingsStore((s) => s.isSignedIn);
   const effectiveLocal = mode === "local" ? true : mode === "cloud" ? false : useLocalWhisper;
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
   const [parakeetModels, setParakeetModels] = useState<LocalModel[]>([]);
@@ -498,11 +489,6 @@ export default function TranscriptionModelPicker({
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
   const colorScheme: ColorScheme = variant === "settings" ? "purple" : "blue";
   const styles = useMemo(() => MODEL_PICKER_COLORS[colorScheme], [colorScheme]);
-  const policyState = usePolicySnapshot();
-  const providerAllowed = useCallback(
-    (providerId: string) => isProviderAllowedByPolicy(policyState, "transcription", providerId),
-    [policyState]
-  );
   // streamingOnly is Note Recording's picker, so it offers the streaming
   // providers note recording can actually run — not every streaming provider.
   // Upload is always http-batch, and the realtime-only providers have no batch
@@ -513,10 +499,7 @@ export default function TranscriptionModelPicker({
     if (transcriptionContext !== "upload") return providers;
     return providers.filter((provider) => !STREAMING_ONLY_PROVIDERS.has(provider.id));
   }, [streamingOnly, transcriptionContext]);
-  const cloudProviders = useMemo(
-    () => filterByokProviderOptionsByPolicy(availableCloudProviders, "transcription", policyState),
-    [availableCloudProviders, policyState]
-  );
+  const cloudProviders = availableCloudProviders;
   const cloudProviderTabs = useMemo(() => {
     const availableIds = new Set(availableCloudProviders.map((p) => p.id));
     if (!streamingOnly) availableIds.add("custom");
@@ -526,8 +509,8 @@ export default function TranscriptionModelPicker({
           ? { ...provider, name: t("transcription.customProvider") }
           : provider
     );
-    return filterByokProviderOptionsByPolicy(tabs, "transcription", policyState);
-  }, [availableCloudProviders, policyState, streamingOnly, t]);
+    return tabs;
+  }, [availableCloudProviders, streamingOnly, t]);
   const localProviderTabs = useMemo(
     () =>
       LOCAL_PROVIDER_TABS.map((provider) =>
@@ -605,10 +588,9 @@ export default function TranscriptionModelPicker({
   }, []);
 
   const effectiveCloudSelection = useMemo(() => {
-    // Every provider's URL counts as known, including policy-blocked ones and
-    // the ones this scope does not offer: otherwise such a provider's stored URL
-    // reads as a custom endpoint and reconciliation would keep pointing "custom"
-    // at what policy — or this scope — just denied.
+    // Provider tabs are direct BYOK endpoints. Keep the selected provider when
+    // it is available and fall back to the first available provider only when a
+    // saved selection no longer exists in the current lane.
     const knownProviderUrls = new Set(
       getTranscriptionProviders().map((provider) => normalizeBaseUrl(provider.baseUrl))
     );
@@ -618,28 +600,18 @@ export default function TranscriptionModelPicker({
       normalizedBaseUrl !== normalizeBaseUrl(API_ENDPOINTS.TRANSCRIPTION_BASE) &&
       !knownProviderUrls.has(normalizedBaseUrl)
     );
-    // Reconcile null means the input needs no correction — echo the browsed
-    // input, not the committed pair, or browsing to the Custom tab (always
-    // reconciled as valid) would never display it.
-    return (
-      reconcileCloudProviderSelection({
-        selectedProvider: browsedCloudProvider ?? selectedCloudProvider,
-        selectedModel: selectedCloudModel,
-        allowedProviders: cloudProviders,
-        customAllowed: !streamingOnly && providerAllowed("custom"),
-        hasCustomUrl,
-      }) ?? {
-        provider: browsedCloudProvider ?? selectedCloudProvider,
-        model: selectedCloudModel,
-      }
-    );
+    const candidate = browsedCloudProvider ?? selectedCloudProvider;
+    const candidateAvailable =
+      (candidate === "custom" && !streamingOnly && hasCustomUrl) ||
+      cloudProviders.some((provider) => provider.id === candidate);
+    const provider = candidateAvailable ? candidate : cloudProviders[0]?.id ?? "custom";
+    return { provider, model: selectedCloudModel };
   }, [
     cloudProviders,
     cloudTranscriptionBaseUrl,
     browsedCloudProvider,
     selectedCloudProvider,
     selectedCloudModel,
-    providerAllowed,
     streamingOnly,
   ]);
   const displayedCloudProvider = effectiveCloudSelection.provider;
@@ -649,7 +621,6 @@ export default function TranscriptionModelPicker({
     if (
       effectiveLocal ||
       browsedCloudProvider ||
-      !shouldPersistProviderFallback(policyState, isSignedIn) ||
       (effectiveCloudSelection.provider === selectedCloudProvider &&
         effectiveCloudSelection.model === selectedCloudModel)
     ) {
@@ -665,10 +636,8 @@ export default function TranscriptionModelPicker({
     effectiveCloudSelection,
     effectiveLocal,
     browsedCloudProvider,
-    isSignedIn,
     onCloudModelSelect,
     onCloudProviderSelect,
-    policyState,
     selectedCloudModel,
     selectedCloudProvider,
   ]);
@@ -864,10 +833,9 @@ export default function TranscriptionModelPicker({
 
   const handleCloudProviderChange = useCallback(
     (providerId: string) => {
-      if (!providerAllowed(providerId)) return;
       setBrowsedCloudProvider(providerId);
     },
-    [providerAllowed]
+    []
   );
 
   const handleLocalProviderChange = useCallback(
@@ -1198,8 +1166,7 @@ export default function TranscriptionModelPicker({
             />
           )}
 
-          {providerAllowed(displayedCloudProvider) && (
-            <div>
+          <div>
               {displayedCloudProvider === "custom" ? (
                 <div className="space-y-2">
                   <div className="space-y-1.5">
@@ -1320,8 +1287,7 @@ export default function TranscriptionModelPicker({
                   </div>
                 </div>
               )}
-            </div>
-          )}
+          </div>
         </>
       ) : (
         <>

@@ -1,14 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
 import { Sparkles, Plus, ChevronRight, Zap, Loader2, Check, Monitor } from "../icons";
 import { Button } from "../ui/button";
 import { cn } from "../lib/utils";
-import {
-  selectPolicyEffectiveSettings,
-  selectResolvedLLMConfig,
-  useSettingsStore,
-} from "../../stores/settingsStore";
+import { selectResolvedLLMConfig, useSettingsStore } from "../../stores/settingsStore";
 import { useNotesOnboarding } from "../../hooks/useNotesOnboarding";
 import {
   useActions,
@@ -22,7 +17,6 @@ import { AlertDialog } from "../ui/dialog";
 import ReasoningModelSelector from "../ReasoningModelSelector";
 import { useSystemAudioPermission } from "../../hooks/useSystemAudioPermission";
 import { canManageSystemAudioInApp } from "../../utils/systemAudioAccess";
-import { usePolicySnapshot } from "../../hooks/usePolicy";
 
 interface NotesOnboardingProps {
   onComplete: () => void;
@@ -40,20 +34,14 @@ export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [justCreated, setJustCreated] = useState(false);
 
-  const policyState = usePolicySnapshot();
-  const cleanupConfig = useSettingsStore(
-    useShallow((settings) =>
-      selectResolvedLLMConfig(
-        selectPolicyEffectiveSettings(settings, policyState),
-        "dictationCleanup"
-      )
-    )
+  const cleanupConfig = useSettingsStore((settings) =>
+    selectResolvedLLMConfig(settings, "noteFormatting")
   );
-  const setCleanupModel = useSettingsStore((s) => s.setCleanupModel);
-  const setCleanupProvider = useSettingsStore((s) => s.setCleanupProvider);
-  const setCleanupMode = useSettingsStore((s) => s.setCleanupMode);
-  const setCleanupCloudBaseUrl = useSettingsStore((s) => s.setCleanupCloudBaseUrl);
-  const setCleanupCustomApiKey = useSettingsStore((s) => s.setCleanupCustomApiKey);
+  const setCleanupModel = useSettingsStore((s) => s.setNoteFormattingModel);
+  const setCleanupProvider = useSettingsStore((s) => s.setNoteFormattingProvider);
+  const setCleanupMode = useSettingsStore((s) => s.setNoteFormattingMode);
+  const setCleanupCloudBaseUrl = useSettingsStore((s) => s.setNoteFormattingCloudBaseUrl);
+  const setCleanupCustomApiKey = useSettingsStore((s) => s.setNoteFormattingCustomApiKey);
 
   const { alertDialog, hideAlertDialog } = useDialogs();
   const {

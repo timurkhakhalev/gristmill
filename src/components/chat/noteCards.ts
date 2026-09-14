@@ -15,8 +15,7 @@ function cardFromHit(
   seen: Set<number>,
   fallbackTitle: string
 ): NoteCardRef | null {
-  // Cloud search hits carry null ids for notes with no local row — nothing to
-  // open. Non-numeric ids (cloud UUIDs) are equally unopenable locally.
+  // Results without a local numeric ID cannot be opened from the note library.
   if (hit.id == null) return null;
   const noteId = Number(hit.id);
   if (!Number.isSafeInteger(noteId) || noteId <= 0 || seen.has(noteId)) return null;

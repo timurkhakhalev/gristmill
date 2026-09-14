@@ -10,7 +10,6 @@ import {
   Lock,
   Users,
   Upload,
-  MessageSquare,
   ChevronDown,
 } from "./icons";
 import { cn } from "./lib/utils";
@@ -26,13 +25,6 @@ import type { NoteItem, FolderItem, SpaceItem, TranscriptionItem } from "../type
 import { formatRelativeTime } from "../utils/dateFormatting";
 import { defaultFolderDisplayName, folderMatchesQuery } from "./notes/shared";
 
-interface ConversationResult {
-  id: number;
-  title: string;
-  last_message?: string;
-  updated_at: string;
-}
-
 interface JumpTarget {
   key: string;
   spaceId: number;
@@ -44,19 +36,16 @@ interface JumpTarget {
 export interface CommandSearchProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  mode?: "all" | "conversations";
   transcriptions?: TranscriptionItem[];
   onNoteSelect?: (noteId: number, folderId: number | null, spaceId?: number) => void;
   onContainerSelect?: (spaceId: number, folderId: number | null) => void;
   onTranscriptSelect?: (transcriptId: number) => void;
-  onConversationSelect?: (conversationId: number) => void;
 }
 
 type FlatItem =
   | { kind: "container"; target: JumpTarget }
   | { kind: "note"; note: NoteItem }
-  | { kind: "transcript"; transcript: TranscriptionItem }
-  | { kind: "conversation"; conversation: ConversationResult };
+  | { kind: "transcript"; transcript: TranscriptionItem };
 
 function stripMarkdownPreview(text: string): string {
   return text
@@ -70,12 +59,10 @@ function stripMarkdownPreview(text: string): string {
 export default function CommandSearch({
   open,
   onOpenChange,
-  mode = "all",
   transcriptions = [],
   onNoteSelect,
   onContainerSelect,
   onTranscriptSelect,
-  onConversationSelect,
 }: CommandSearchProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
@@ -84,19 +71,16 @@ export default function CommandSearch({
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [spaces, setSpaces] = useState<SpaceItem[]>([]);
   const [scopeSpaceId, setScopeSpaceId] = useState<number | null>(null);
-  const [conversations, setConversations] = useState<ConversationResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchVersionRef = useRef(0);
-  const isConversationsMode = mode === "conversations";
   const [prevOpen, setPrevOpen] = useState(open);
   const [prevNotes, setPrevNotes] = useState(notes);
   const [prevQuery, setPrevQuery] = useState(query);
 
   useEffect(() => {
-    if (isConversationsMode) return;
     window.electronAPI
       .getFolders()
       .then(setFolders)
@@ -105,7 +89,7 @@ export default function CommandSearch({
       .getSpaces?.()
       .then((items) => setSpaces(items ?? []))
       .catch(() => {});
-  }, [isConversationsMode]);
+  }, []);
 
   if (open && !prevOpen) {
     setPrevOpen(open);
@@ -118,85 +102,37 @@ export default function CommandSearch({
 
   useEffect(() => {
     if (!open) return;
-    if (isConversationsMode) {
-      window.electronAPI?.getAgentConversationsWithPreview?.(20, 0, false).then((r) => {
-        if (r)
-          setConversations(
-            r.map((c) => ({
-              id: c.id,
-              title: c.title || "Untitled",
-              last_message: c.last_message,
-              updated_at: c.updated_at,
-            }))
-          );
-      });
-    } else {
-      window.electronAPI
-        .getNotes()
-        .then(setNotes)
-        .catch(() => {});
-    }
-  }, [open, isConversationsMode]);
+    window.electronAPI
+      .getNotes()
+      .then(setNotes)
+      .catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     const version = ++searchVersionRef.current;
 
-    if (isConversationsMode) {
-      if (!query.trim()) {
-        window.electronAPI?.getAgentConversationsWithPreview?.(20, 0, false).then((r) => {
-          if (searchVersionRef.current === version && r) {
-            setConversations(
-              r.map((c) => ({
-                id: c.id,
-                title: c.title || "Untitled",
-                last_message: c.last_message,
-                updated_at: c.updated_at,
-              }))
-            );
-          }
-        });
-        return;
-      }
-      searchTimerRef.current = setTimeout(async () => {
-        try {
-          const r = await window.electronAPI?.semanticSearchConversations?.(query, 20);
-          if (searchVersionRef.current === version && r) {
-            setConversations(
-              r.map((c) => ({
-                id: c.id,
-                title: c.title || "Untitled",
-                last_message: c.last_message,
-                updated_at: c.updated_at,
-              }))
-            );
-          }
-        } catch {
-          /* keep current */
-        }
-      }, 200);
-    } else {
-      if (!query.trim()) {
-        window.electronAPI
-          .getNotes()
-          .then(setNotes)
-          .catch(() => {});
-        return;
-      }
-      searchTimerRef.current = setTimeout(async () => {
-        try {
-          const results = await window.electronAPI.searchNotes(query, undefined, scopeSpaceId);
-          setNotes(results);
-        } catch {
-          /* keep current */
-        }
-      }, 200);
+    if (!query.trim()) {
+      window.electronAPI
+        .getNotes()
+        .then(setNotes)
+        .catch(() => {});
+      return;
     }
+
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const results = await window.electronAPI.searchNotes(query, undefined, scopeSpaceId);
+        if (searchVersionRef.current === version) setNotes(results);
+      } catch {
+        /* keep current */
+      }
+    }, 200);
 
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [query, isConversationsMode, scopeSpaceId]);
+  }, [query, scopeSpaceId]);
 
   if (notes !== prevNotes || query !== prevQuery) {
     setPrevNotes(notes);
@@ -243,7 +179,7 @@ export default function CommandSearch({
 
   const jumpTargets = useMemo<JumpTarget[]>(() => {
     const q = query.trim().toLowerCase();
-    if (!q || isConversationsMode) return [];
+    if (!q) return [];
     const targets: JumpTarget[] = [];
     for (const space of spaces) {
       const label = spaceLabel(space);
@@ -263,7 +199,7 @@ export default function CommandSearch({
       }
     }
     return targets.slice(0, 5);
-  }, [query, spaces, folders, spaceMap, spaceLabel, isConversationsMode, t]);
+  }, [query, spaces, folders, spaceMap, spaceLabel, t]);
 
   const filteredTranscripts = useMemo(() => {
     const slice = query.trim()
@@ -273,15 +209,12 @@ export default function CommandSearch({
   }, [transcriptions, query]);
 
   const flatItems = useMemo<FlatItem[]>(() => {
-    if (isConversationsMode) {
-      return conversations.map((c) => ({ kind: "conversation" as const, conversation: c }));
-    }
     const items: FlatItem[] = [];
     for (const target of jumpTargets) items.push({ kind: "container", target });
     for (const note of scopedNotes) items.push({ kind: "note", note });
     for (const transcript of filteredTranscripts) items.push({ kind: "transcript", transcript });
     return items;
-  }, [jumpTargets, scopedNotes, filteredTranscripts, conversations, isConversationsMode]);
+  }, [jumpTargets, scopedNotes, filteredTranscripts]);
 
   const selectItem = useCallback(
     (item: FlatItem) => {
@@ -289,10 +222,9 @@ export default function CommandSearch({
       else if (item.kind === "note")
         onNoteSelect?.(item.note.id, item.note.folder_id ?? null, item.note.space_id);
       else if (item.kind === "transcript") onTranscriptSelect?.(item.transcript.id);
-      else if (item.kind === "conversation") onConversationSelect?.(item.conversation.id);
       onOpenChange(false);
     },
-    [onNoteSelect, onContainerSelect, onTranscriptSelect, onConversationSelect, onOpenChange]
+    [onNoteSelect, onContainerSelect, onTranscriptSelect, onOpenChange]
   );
 
   const handleKeyDown = useCallback(
@@ -352,7 +284,7 @@ export default function CommandSearch({
           {/* Search input */}
           <div className="flex items-center gap-2.5 px-3.5 py-3 border-b border-border/70">
             <Search size={14} className="shrink-0 text-muted-foreground/70" />
-            {!isConversationsMode && spaces.length > 1 && (
+            {spaces.length > 1 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -398,7 +330,7 @@ export default function CommandSearch({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isConversationsMode ? t("chat.search") : t("commandSearch.placeholder")}
+              placeholder={t("commandSearch.placeholder")}
               autoFocus
               className="flex-1 text-sm text-foreground placeholder:text-muted-foreground/70"
               style={{
@@ -426,48 +358,9 @@ export default function CommandSearch({
                 <p className="text-xs text-muted-foreground/70">
                   {query.trim()
                     ? t("commandSearch.noResults")
-                    : isConversationsMode
-                      ? t("chat.noConversations")
-                      : t("commandSearch.emptyState")}
+                    : t("commandSearch.emptyState")}
                 </p>
               </div>
-            ) : isConversationsMode ? (
-              conversations.map((conv, idx) => (
-                <button
-                  key={conv.id}
-                  type="button"
-                  data-idx={idx}
-                  onClick={() => selectItem({ kind: "conversation", conversation: conv })}
-                  onMouseEnter={() => setSelectedIndex(idx)}
-                  className={cn(
-                    "flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-start transition-colors duration-100 outline-none",
-                    selectedIndex === idx
-                      ? "bg-primary/8 dark:bg-primary/10"
-                      : "hover:bg-foreground/4 dark:hover:bg-white/4"
-                  )}
-                >
-                  <MessageSquare
-                    size={13}
-                    className={cn(
-                      "shrink-0 mt-px transition-colors",
-                      selectedIndex === idx ? "text-primary" : "text-muted-foreground/70"
-                    )}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p dir="auto" className="text-xs font-medium text-foreground truncate">
-                      {conv.title}
-                    </p>
-                    {conv.last_message && (
-                      <p dir="auto" className="text-[11px] text-muted-foreground/55 truncate mt-px">
-                        {conv.last_message.slice(0, 90)}
-                      </p>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground/70 tabular-nums shrink-0">
-                    {formatRelativeTime(conv.updated_at, t, locale)}
-                  </span>
-                </button>
-              ))
             ) : (
               <>
                 {jumpTargets.length > 0 && (

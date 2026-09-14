@@ -20,7 +20,6 @@ const {
   dialog,
   ipcMain,
   session,
-  systemPreferences,
 } = require("electron");
 const path = require("path");
 const tls = require("tls");
@@ -327,15 +326,9 @@ let audioTapManager = null;
 let linuxPortalAudioManager = null;
 let windowsLoopbackAudioManager = null;
 let meetingAecManager = null;
-let qdrantManager = null;
 let ipcHandlers = null;
 let cliBridge = null;
 let globeKeyAlertShown = false;
-let macAccessibilityFeaturesReady = false;
-let startMacAccessibilityFeatures = null;
-let pendingNoteCloudId = null;
-let pendingNoteRetryTimer = null;
-let pendingNoteRetryCount = 0;
 const WHISPER_WAKE_REWARM_DELAY_MS = 3000;
 let wakeRewarmTimer = null;
 
@@ -408,16 +401,6 @@ function initializeCoreManagers() {
   windowManager = new WindowManager();
   hotkeyManager = windowManager.hotkeyManager;
   databaseManager = new DatabaseManager();
-  // Restore the last validated account scope before any window, IPC handler,
-  // or meeting flow can read or create notes. Offline launches keep the
-  // account's data visible; a stale or rotated credential fails the hash
-  // check and restores nothing.
-  const accountScopeBinding = require("./src/helpers/accountScopeBinding");
-  const bootAccountId = accountScopeBinding.resolveBootAccountScope({
-    token: require("./src/helpers/tokenStore").get(),
-    binding: accountScopeBinding.read(),
-  });
-  if (bootAccountId) databaseManager.setActiveAccountId(bootAccountId);
   clipboardManager = new ClipboardManager();
   whisperManager = new WhisperManager();
   if (process.platform !== "darwin") {
@@ -527,7 +510,6 @@ function initializeCoreManagers() {
     linuxPortalAudioManager,
     windowsLoopbackAudioManager,
     meetingAecManager,
-    getQdrantManager: () => qdrantManager,
     getTrayManager: () => trayManager,
     oauthProtocolRegistered: protocolRegistered,
     oauthProtocol: OAUTH_PROTOCOL,
@@ -601,132 +583,12 @@ app.on("open-url", (event, url) => {
   event.preventDefault();
   if (!url.startsWith(`${OAUTH_PROTOCOL}://`)) return;
 
-  if (isNoteDeepLink(url)) {
-    void handleNoteDeepLink(url);
-    return;
-  }
-
-  if (isInvitationDeepLink(url)) {
-    handleInvitationDeepLink(url);
-    return;
-  }
-
   if (windowManager && isLiveWindow(windowManager.controlPanelWindow)) {
     windowManager.controlPanelWindow.show();
     windowManager.controlPanelWindow.focus();
     dockManager.setControlPanelVisible(true);
   }
 });
-
-function isInvitationDeepLink(url) {
-  return url.slice(`${OAUTH_PROTOCOL}://`.length).startsWith("invitations/");
-}
-
-// Deep links can arrive before windowManager exists (cold start) or before the
-// renderer has mounted its listener. The token is stashed here and the renderer
-// pulls it via `get-pending-invitation-token` on mount; the push below is a
-// best-effort fast path for an already-running app.
-let pendingInvitationDeepLinkToken = null;
-
-ipcMain.handle("get-pending-invitation-token", () => {
-  const token = pendingInvitationDeepLinkToken;
-  pendingInvitationDeepLinkToken = null;
-  return token;
-});
-
-function isNoteDeepLink(url) {
-  return url.slice(`${OAUTH_PROTOCOL}://`.length).startsWith("notes/");
-}
-
-function parseNoteCloudId(deepLinkUrl) {
-  try {
-    const match = deepLinkUrl.match(/notes\/([^/?#]+)/);
-    const cloudId = match?.[1] ? decodeURIComponent(match[1]) : "";
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cloudId)
-      ? cloudId
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function clearPendingNoteDeepLink() {
-  clearTimeout(pendingNoteRetryTimer);
-  pendingNoteRetryTimer = null;
-  pendingNoteCloudId = null;
-  pendingNoteRetryCount = 0;
-}
-
-async function flushPendingNoteDeepLink() {
-  if (!pendingNoteCloudId || !windowManager || !databaseManager) return;
-
-  try {
-    // Surface the panel on the first attempt only; retries just poll the
-    // database so they can't repeatedly steal focus.
-    if (pendingNoteRetryCount === 0) {
-      await windowManager.createControlPanelWindow();
-    }
-
-    const note = databaseManager.getNoteByCloudId(pendingNoteCloudId);
-    if (!note) {
-      // Cloud sync may still be hydrating during a cold launch. Retry briefly so
-      // the handoff can resolve a note pulled after the protocol event arrived.
-      pendingNoteRetryCount += 1;
-      if (pendingNoteRetryCount <= 10) {
-        clearTimeout(pendingNoteRetryTimer);
-        pendingNoteRetryTimer = setTimeout(() => {
-          void flushPendingNoteDeepLink();
-        }, 1000);
-      } else {
-        console.warn("Note deep link could not resolve a local note", {
-          cloudId: pendingNoteCloudId,
-        });
-        clearPendingNoteDeepLink();
-      }
-      return;
-    }
-
-    const payload = { noteId: note.id, folderId: note.folder_id ?? null };
-    clearPendingNoteDeepLink();
-    await windowManager.queueNoteNavigation(payload);
-  } catch (error) {
-    console.error("Note deep link failed:", error);
-    clearPendingNoteDeepLink();
-  }
-}
-
-async function handleNoteDeepLink(deepLinkUrl) {
-  const cloudId = parseNoteCloudId(deepLinkUrl);
-  if (!cloudId) {
-    console.warn("Invalid note deep link");
-    return;
-  }
-
-  clearPendingNoteDeepLink();
-  pendingNoteCloudId = cloudId;
-  await flushPendingNoteDeepLink();
-}
-
-function handleInvitationDeepLink(deepLinkUrl) {
-  try {
-    const match = deepLinkUrl.match(/invitations\/([^/?#]+)/);
-    const token = match?.[1];
-    if (!token) return;
-    pendingInvitationDeepLinkToken = token;
-    if (!windowManager) return;
-    if (isLiveWindow(windowManager.controlPanelWindow)) {
-      windowManager.controlPanelWindow.show();
-      windowManager.controlPanelWindow.focus();
-      dockManager.setControlPanelVisible(true);
-      // Best-effort fast path — the get-pending-invitation-token pull is the reliable path.
-      windowManager.controlPanelWindow.webContents.send("workspace-invitation-token", token);
-    } else {
-      windowManager.createControlPanelWindow();
-    }
-  } catch (error) {
-    console.error("Invitation deep link parse failed:", error);
-  }
-}
 
 // Main application startup
 async function startApp() {
@@ -811,7 +673,6 @@ async function startApp() {
   const launchedHidden = wasLaunchedAtLoginHidden();
   const startMinimized = environmentManager.getStartMinimized() || launchedHidden;
   if (debugLogger) debugLogger.info("Start minimized", { enabled: startMinimized, launchedHidden });
-  await windowManager.createMainWindow();
   // The activation mode was cached before the hotkey was registered, so a saved
   // Hold could not be checked against its key until now.
   if (
@@ -828,71 +689,6 @@ async function startApp() {
   }
   if (!startMinimized) {
     await windowManager.createControlPanelWindow();
-  }
-
-  // Windows/Linux cold start delivers protocol URLs via argv (macOS uses
-  // open-url); without this scan a deep link that launches the app is lost.
-  const initialProtocolUrl = process.argv.find((arg) => arg.startsWith(`${OAUTH_PROTOCOL}://`));
-  if (initialProtocolUrl && isNoteDeepLink(initialProtocolUrl)) {
-    await handleNoteDeepLink(initialProtocolUrl);
-  } else {
-    if (initialProtocolUrl && process.platform !== "darwin") {
-      if (isInvitationDeepLink(initialProtocolUrl)) {
-        handleInvitationDeepLink(initialProtocolUrl);
-      }
-    }
-    await flushPendingNoteDeepLink();
-  }
-
-  // Set up voice agent hotkey (dictation routed straight to the dictation
-  // agent, bypassing cleanup). Tap-only slots gate autorepeat like the
-  // dictation toggle does.
-  const isVoiceAgentPress = createHotkeyRepeatGate();
-  const voiceAgentHotkeyCallback = () => {
-    if (!isVoiceAgentPress()) return;
-    windowManager.sendToggleVoiceAgent();
-  };
-  windowManager._voiceAgentHotkeyCallback = voiceAgentHotkeyCallback;
-
-  const savedVoiceAgentKey = environmentManager.getVoiceAgentKey?.() || "";
-  if (savedVoiceAgentKey) {
-    const result = await hotkeyManager.registerSlot(
-      "voiceAgent",
-      savedVoiceAgentKey,
-      voiceAgentHotkeyCallback
-    );
-    if (!result.success) {
-      debugLogger.warn(
-        "Failed to restore voice agent hotkey",
-        { hotkey: savedVoiceAgentKey },
-        "hotkey"
-      );
-    }
-  }
-
-  // Set up translation hotkey (dictation cleaned up and translated into the
-  // configured target language before pasting)
-  const isTranslationPress = createHotkeyRepeatGate();
-  const translationHotkeyCallback = () => {
-    if (!isTranslationPress()) return;
-    windowManager.sendToggleTranslation();
-  };
-  windowManager._translationHotkeyCallback = translationHotkeyCallback;
-
-  const savedTranslationKey = environmentManager.getTranslationKey?.() || "";
-  if (savedTranslationKey) {
-    const result = await hotkeyManager.registerSlot(
-      "translation",
-      savedTranslationKey,
-      translationHotkeyCallback
-    );
-    if (!result.success) {
-      debugLogger.warn(
-        "Failed to restore translation hotkey",
-        { hotkey: savedTranslationKey },
-        "hotkey"
-      );
-    }
   }
 
   // Set up meeting mode hotkey
@@ -999,19 +795,6 @@ async function startApp() {
     });
   }
 
-  if (
-    process.env.DICTATION_AGENT_PROVIDER === "local" &&
-    process.env.LOCAL_DICTATION_AGENT_MODEL &&
-    process.env.LOCAL_DICTATION_AGENT_MODEL !== cleanupLocalModel
-  ) {
-    const modelManager = require("./src/helpers/modelManagerBridge").default;
-    modelManager.prewarmServer(process.env.LOCAL_DICTATION_AGENT_MODEL).catch((err) => {
-      debugLogger.debug("dictation-agent llama-server pre-warm error (non-fatal)", {
-        error: err.message,
-      });
-    });
-  }
-
   // Auto-download diarization models if binary is available
   if (
     diarizationManager.getBinaryPath() &&
@@ -1021,45 +804,6 @@ async function startApp() {
       debugLogger.debug("Diarization model auto-download error (non-fatal)", {
         error: err.message,
       });
-    });
-  }
-
-  const QdrantManager = require("./src/helpers/qdrantManager");
-  qdrantManager = new QdrantManager();
-  // Must not throw: this also runs inside the unhealthy-restart path, whose
-  // catch would stop the replacement sidecar.
-  const wireVectorIndex = (port) => {
-    try {
-      const vectorIndex = require("./src/helpers/vectorIndex");
-      vectorIndex.init(port);
-      vectorIndex
-        .ensureCollection()
-        .then(() => ipcHandlers?.drainPendingVectorPurges())
-        .catch((err) => {
-          debugLogger.debug("Qdrant collection setup error (non-fatal)", { error: err.message });
-        });
-    } catch (err) {
-      debugLogger.debug("Qdrant rewire error (non-fatal)", { error: err.message });
-    }
-  };
-  // A successful unhealthy-restart can bring the sidecar back on a new port.
-  qdrantManager.on("restarted", wireVectorIndex);
-  sidecarRegistry.register("qdrant", () => qdrantManager.stop());
-  if (qdrantManager.isAvailable()) {
-    qdrantManager
-      .start()
-      .then(() => {
-        if (qdrantManager.isReady()) wireVectorIndex(qdrantManager.getPort());
-      })
-      .catch((err) => {
-        debugLogger.debug("Qdrant startup error (non-fatal)", { error: err.message });
-      });
-  }
-
-  const localEmbeddings = require("./src/helpers/localEmbeddings");
-  if (!localEmbeddings.isAvailable()) {
-    localEmbeddings.downloadModel().catch((err) => {
-      debugLogger.debug("Embedding model download error (non-fatal)", { error: err.message });
     });
   }
 
@@ -1074,369 +818,6 @@ async function startApp() {
   await trayManager.createTray();
 
 
-  if (process.platform === "darwin") {
-    const { isGlobeLikeHotkey, isMouseButtonHotkey } = require("./src/helpers/hotkeyManager");
-    let globeKeyDownTime = 0;
-    let globeKeyIsRecording = false;
-    let globeLastStopTime = 0;
-    const MIN_HOLD_DURATION_MS = 150;
-    const POST_STOP_COOLDOWN_MS = 300;
-
-    globeKeyManager.on("globe-down", async () => {
-      const currentHotkey = hotkeyManager.getCurrentHotkey && hotkeyManager.getCurrentHotkey();
-      const mainWindowLive = isLiveWindow(windowManager.mainWindow);
-      debugLogger?.debug("[Globe] globe-down received", {
-        currentHotkey,
-        mainWindowLive,
-        activationMode: mainWindowLive ? windowManager.getActivationMode() : "n/a",
-      });
-
-      // Forward to control panel for hotkey capture
-      if (isLiveWindow(windowManager.controlPanelWindow)) {
-        windowManager.controlPanelWindow.webContents.send("globe-key-pressed");
-      }
-
-      // Handle dictation if Globe/Fn is one of the dictation hotkeys
-      const dictationUsesGlobe = hotkeyManager.getSlotHotkeys("dictation").some(isGlobeLikeHotkey);
-      if (dictationUsesGlobe) {
-        if (mainWindowLive && windowManager.isDictationProcessing()) {
-          debugLogger?.debug("[Globe] Ignored — dictation processing");
-        } else if (mainWindowLive) {
-          // Capture target app PID BEFORE showing the overlay
-          if (textEditMonitor) textEditMonitor.captureTargetPid();
-          const activationMode = windowManager.getActivationMode();
-          if (activationMode === "push") {
-            const now = Date.now();
-            if (now - globeLastStopTime < POST_STOP_COOLDOWN_MS) {
-              debugLogger?.debug("[Globe] Ignored — cooldown active");
-              return;
-            }
-            windowManager.showDictationPanel();
-            windowManager.sendPrepareDictation();
-            const pressTime = now;
-            globeKeyDownTime = pressTime;
-            globeKeyIsRecording = false;
-            setTimeout(async () => {
-              if (globeKeyDownTime === pressTime && !globeKeyIsRecording) {
-                globeKeyIsRecording = true;
-                debugLogger?.debug("[Globe] Starting dictation (push hold)");
-                windowManager.sendStartDictation();
-              }
-            }, MIN_HOLD_DURATION_MS);
-          } else {
-            windowManager.sendToggleDictation();
-          }
-        } else {
-          debugLogger?.debug("[Globe] Ignored — mainWindow not live");
-        }
-      }
-
-      // Check voice agent slot for Globe/Fn key
-      const voiceAgentUsesGlobe = hotkeyManager
-        .getSlotHotkeys("voiceAgent")
-        .some(isGlobeLikeHotkey);
-      const translationUsesGlobe = hotkeyManager
-        .getSlotHotkeys("translation")
-        .some(isGlobeLikeHotkey);
-      if (voiceAgentUsesGlobe) {
-        windowManager.sendToggleVoiceAgent();
-      }
-      if (translationUsesGlobe) {
-        windowManager.sendToggleTranslation();
-      }
-      if (!voiceAgentUsesGlobe && !translationUsesGlobe && !dictationUsesGlobe) {
-        debugLogger?.debug("[Globe] Ignored — hotkey is not GLOBE", { currentHotkey });
-      }
-    });
-
-    globeKeyManager.on("globe-up", async () => {
-      debugLogger?.debug("[Globe] globe-up received", { wasRecording: globeKeyIsRecording });
-
-      // Forward to control panel for hotkey capture (Fn key released)
-      if (isLiveWindow(windowManager.controlPanelWindow)) {
-        windowManager.controlPanelWindow.webContents.send("globe-key-released");
-      }
-
-      if (hotkeyManager.getSlotHotkeys("dictation").some(isGlobeLikeHotkey)) {
-        const activationMode = windowManager.getActivationMode();
-        if (activationMode === "push") {
-          if (globeKeyDownTime === 0 && !globeKeyIsRecording) {
-            // The press was ignored (dictation was processing); releasing it
-            // must not cancel preparation or hide the thinking pill.
-            debugLogger?.debug("[Globe] Release without a registered press — ignored");
-          } else {
-            globeKeyDownTime = 0;
-            globeLastStopTime = Date.now();
-            if (globeKeyIsRecording) {
-              globeKeyIsRecording = false;
-              debugLogger?.debug("[Globe] Stopping dictation (push release)");
-              windowManager.sendStopDictation();
-            } else {
-              windowManager.sendCancelDictationPreparation();
-              windowManager.hideDictationPanel();
-            }
-          }
-        }
-      }
-
-      // Fn release also stops compound push-to-talk for Fn+F-key hotkeys
-      windowManager.handleMacPushModifierUp("fn");
-    });
-
-    // Another key was pressed while Fn was held — user is using Fn as a
-    // navigation modifier (Fn+Arrow → Home, Fn+Backspace → Forward Delete, etc.).
-    // Cancel any bare-Fn push-to-talk in progress instead of transcribing noise.
-    // Only the bare-Fn path uses globeKeyDownTime/globeKeyIsRecording, so compound
-    // Fn-hotkey push-to-talk and tap mode are untouched.
-    globeKeyManager.on("globe-interrupted", () => {
-      if (globeKeyDownTime === 0 && !globeKeyIsRecording) {
-        return;
-      }
-      const wasRecording = globeKeyIsRecording;
-      debugLogger?.debug("[Globe] Fn+key interrupted push-to-talk", { wasRecording });
-      globeKeyDownTime = 0;
-      globeKeyIsRecording = false;
-      globeLastStopTime = Date.now();
-      if (wasRecording) {
-        windowManager.sendCancelDictation();
-      } else {
-        windowManager.sendCancelDictationPreparation();
-        windowManager.hideDictationPanel();
-      }
-    });
-
-    globeKeyManager.on("modifier-up", (modifier) => {
-      if (windowManager?.handleMacPushModifierUp) {
-        windowManager.handleMacPushModifierUp(modifier);
-      }
-    });
-
-    // Right-side single modifier handling (e.g., RightOption as hotkey)
-    let rightModDownTime = 0;
-    let rightModIsRecording = false;
-    let rightModLastStopTime = 0;
-    let rightModActiveKey = null;
-
-    globeKeyManager.on("right-modifier-down", async (modifier) => {
-      // Check voice agent slot for right-modifier
-      if (hotkeyManager.slotHasHotkey("voiceAgent", modifier)) {
-        windowManager.sendToggleVoiceAgent();
-      }
-      if (hotkeyManager.slotHasHotkey("translation", modifier)) {
-        windowManager.sendToggleTranslation();
-      }
-
-      if (!hotkeyManager.slotHasHotkey("dictation", modifier)) return;
-      if (!isLiveWindow(windowManager.mainWindow)) return;
-      if (windowManager.isDictationProcessing()) return;
-
-      const activationMode = windowManager.getActivationMode();
-      if (textEditMonitor) textEditMonitor.captureTargetPid();
-      if (activationMode === "push") {
-        if (rightModActiveKey && rightModActiveKey !== modifier) return;
-        const now = Date.now();
-        if (now - rightModLastStopTime < POST_STOP_COOLDOWN_MS) return;
-        windowManager.showDictationPanel();
-        windowManager.sendPrepareDictation();
-        const pressTime = now;
-        rightModActiveKey = modifier;
-        rightModDownTime = pressTime;
-        rightModIsRecording = false;
-        setTimeout(() => {
-          if (rightModDownTime === pressTime && !rightModIsRecording) {
-            rightModIsRecording = true;
-            windowManager.sendStartDictation();
-          }
-        }, MIN_HOLD_DURATION_MS);
-      } else {
-        windowManager.sendToggleDictation();
-      }
-    });
-
-    globeKeyManager.on("right-modifier-up", async (modifier) => {
-      if (hotkeyManager.slotHasHotkey("dictation", modifier)) {
-        if (!isLiveWindow(windowManager.mainWindow)) return;
-
-        const activationMode = windowManager.getActivationMode();
-        if (activationMode === "push" && (!rightModActiveKey || rightModActiveKey === modifier)) {
-          if (rightModDownTime === 0 && !rightModIsRecording) {
-            // The press was ignored (dictation was processing); releasing it
-            // must not cancel preparation or hide the thinking pill.
-            debugLogger?.debug("[RightMod] Release without a registered press — ignored");
-          } else {
-            rightModActiveKey = null;
-            rightModDownTime = 0;
-            rightModLastStopTime = Date.now();
-            if (rightModIsRecording) {
-              rightModIsRecording = false;
-              windowManager.sendStopDictation();
-            } else {
-              windowManager.sendCancelDictationPreparation();
-              windowManager.hideDictationPanel();
-            }
-          }
-        }
-      }
-
-      const rightModToBase = {
-        RightCommand: "command",
-        RightOption: "option",
-        RightControl: "control",
-        RightShift: "shift",
-      };
-      const baseMod = rightModToBase[modifier];
-      if (baseMod && windowManager?.handleMacPushModifierUp) {
-        windowManager.handleMacPushModifierUp(baseMod);
-      }
-    });
-
-    const MAC_NATIVE_HOTKEY_SLOTS = ["dictation", "voiceAgent", "translation"];
-    const syncMacNativeHotkeyConfiguration = () => {
-      globeKeyManager.setConfiguration(
-        hotkeyManager.getMacNativeListenerConfig(MAC_NATIVE_HOTKEY_SLOTS)
-      );
-    };
-
-    // Mouse Button 4/5 handling (e.g., Logitech MX Master side buttons)
-    let mouseButtonDownTime = 0;
-    let mouseButtonIsRecording = false;
-    let mouseButtonLastStopTime = 0;
-    let mouseButtonActiveButton = null;
-
-    globeKeyManager.on("mouse-button-down", async (button) => {
-      if (hotkeyManager.isInListeningMode && hotkeyManager.isInListeningMode()) return;
-      if (!isMouseButtonHotkey(button)) return;
-
-      if (hotkeyManager.slotHasHotkey("voiceAgent", button)) {
-        windowManager.sendToggleVoiceAgent();
-      }
-      if (hotkeyManager.slotHasHotkey("translation", button)) {
-        windowManager.sendToggleTranslation();
-      }
-
-      if (!hotkeyManager.slotHasHotkey("dictation", button)) return;
-      if (!isLiveWindow(windowManager.mainWindow)) return;
-      if (windowManager.isDictationProcessing()) return;
-
-      const activationMode = windowManager.getActivationMode();
-      if (textEditMonitor) textEditMonitor.captureTargetPid();
-
-      if (activationMode === "push") {
-        if (mouseButtonActiveButton && mouseButtonActiveButton !== button) return;
-        const now = Date.now();
-        if (now - mouseButtonLastStopTime < POST_STOP_COOLDOWN_MS) return;
-        windowManager.showDictationPanel();
-        windowManager.sendPrepareDictation();
-        const pressTime = now;
-        mouseButtonActiveButton = button;
-        mouseButtonDownTime = pressTime;
-        mouseButtonIsRecording = false;
-        setTimeout(() => {
-          if (mouseButtonDownTime === pressTime && !mouseButtonIsRecording) {
-            mouseButtonIsRecording = true;
-            windowManager.sendStartDictation();
-          }
-        }, MIN_HOLD_DURATION_MS);
-      } else {
-        windowManager.sendToggleDictation();
-      }
-    });
-
-    globeKeyManager.on("mouse-button-up", async (button) => {
-      if (hotkeyManager.isInListeningMode && hotkeyManager.isInListeningMode()) return;
-      if (!isMouseButtonHotkey(button)) return;
-
-      if (!hotkeyManager.slotHasHotkey("dictation", button)) return;
-      if (!isLiveWindow(windowManager.mainWindow)) return;
-
-      const activationMode = windowManager.getActivationMode();
-      if (
-        activationMode === "push" &&
-        (!mouseButtonActiveButton || mouseButtonActiveButton === button)
-      ) {
-        if (mouseButtonDownTime === 0 && !mouseButtonIsRecording) {
-          // The press was ignored (dictation was processing); releasing it
-          // must not cancel preparation or hide the thinking pill.
-          debugLogger?.debug("[MouseButton] Release without a registered press — ignored");
-        } else {
-          mouseButtonActiveButton = null;
-          mouseButtonDownTime = 0;
-          mouseButtonLastStopTime = Date.now();
-          if (mouseButtonIsRecording) {
-            mouseButtonIsRecording = false;
-            windowManager.sendStopDictation();
-          } else {
-            windowManager.sendCancelDictationPreparation();
-            windowManager.hideDictationPanel();
-          }
-        }
-      }
-    });
-
-    // If accessibility is missing, notify the normal control panel after the
-    // protected macOS features have started. During onboarding the permissions
-    // screen owns this guidance, so its event has no ControlPanel listener.
-    const checkAndNotifyAccessibility = () => {
-      if (!systemPreferences.isTrustedAccessibilityClient(false)) {
-        debugLogger.info("[Accessibility] macOS accessibility not trusted — notifying renderers");
-        if (isLiveWindow(windowManager.controlPanelWindow)) {
-          windowManager.controlPanelWindow.webContents.send("accessibility-missing");
-        }
-      }
-    };
-
-    let accessibilityFeaturesStarted = false;
-    startMacAccessibilityFeatures = () => {
-      if (accessibilityFeaturesStarted) return;
-      accessibilityFeaturesStarted = true;
-      clipboardManager.preWarmAccessibility();
-      syncMacNativeHotkeyConfiguration();
-      globeKeyManager.start();
-      setTimeout(checkAndNotifyAccessibility, 3000);
-    };
-
-    if (macAccessibilityFeaturesReady) {
-      startMacAccessibilityFeatures();
-    }
-
-    hotkeyManager.on("hotkey-loaded", syncMacNativeHotkeyConfiguration);
-
-    ipcMain.on("hotkey-listening-mode-changed", (_event, enabled) => {
-      if (enabled) {
-        startMacAccessibilityFeatures();
-        // Let mouse buttons through so they can be captured, but keep macOS's
-        // Globe action down so choosing Globe cannot flash the emoji viewer.
-        globeKeyManager.setConfiguration({ mouseButtons: [], suppressGlobeAction: true });
-      } else {
-        syncMacNativeHotkeyConfiguration();
-      }
-    });
-
-    // Allow renderer to request an accessibility check (e.g. on sign-in).
-    // Also sends accessibility-missing events if untrusted.
-    ipcMain.handle("check-accessibility-trusted", () => {
-      const trusted = systemPreferences.isTrustedAccessibilityClient(false);
-      if (!trusted) {
-        checkAndNotifyAccessibility();
-      }
-      return trusted;
-    });
-
-    // Reset native key state when hotkey changes
-    ipcMain.on("hotkey-changed", (_event, _newHotkey) => {
-      globeKeyDownTime = 0;
-      globeKeyIsRecording = false;
-      globeLastStopTime = 0;
-      rightModDownTime = 0;
-      rightModIsRecording = false;
-      rightModLastStopTime = 0;
-      mouseButtonDownTime = 0;
-      mouseButtonIsRecording = false;
-      mouseButtonLastStopTime = 0;
-      syncMacNativeHotkeyConfiguration();
-    });
-  }
-
   // Windows and Linux share the same native low-level key listener model: one hook
   // process per watched key (Electron globalShortcut can't see modifier-only or
   // right-side-modifier combos), routed to the owning slot here. macOS is handled
@@ -1444,46 +825,17 @@ async function startApp() {
   if (process.platform === "win32" || process.platform === "linux") {
     const isWindows = process.platform === "win32";
     const nativeKeyManager = isWindows ? windowsKeyManager : linuxKeyManager;
-    debugLogger.debug("[Push-to-Talk] Native key listener setup starting");
-
-    // Dictation supports push-to-talk and needs the overlay window; meeting
-    // drives other windows (matching their globalShortcut callbacks and macOS).
     const dispatchNativeKeyDown = (key) => {
-      if (hotkeyManager.slotHasHotkey("dictation", key)) {
-        if (!isLiveWindow(windowManager.mainWindow)) return;
-        if (windowManager.getActivationMode() === "push") {
-          windowManager.startWindowsPushToTalk(key);
-        } else {
-          windowManager.sendToggleDictation();
-        }
-        return;
-      }
-      if (hotkeyManager.slotHasHotkey("voiceAgent", key)) {
-        windowManager.sendToggleVoiceAgent();
-      } else if (hotkeyManager.slotHasHotkey("translation", key)) {
-        windowManager.sendToggleTranslation();
-      } else if (hotkeyManager.slotHasHotkey("meeting", key)) {
+      if (hotkeyManager.slotHasHotkey("meeting", key)) {
         if (!hotkeyManager.isInListeningMode() && windowManager.isMeetingInputAllowed()) {
           meetingDetectionEngine?.startManualMeeting();
         }
       }
     };
 
-    // Only dictation drives push-to-talk, so only its key-up matters.
-    const dispatchNativeKeyUp = (key) => {
-      if (!hotkeyManager.slotHasHotkey("dictation", key)) return;
-      if (windowManager.winPushState?.active) {
-        windowManager.handleWindowsPushKeyUp(key);
-      } else if (
-        isLiveWindow(windowManager.mainWindow) &&
-        windowManager.getActivationMode() === "push"
-      ) {
-        windowManager.handleWindowsPushKeyUp(key);
-      }
-    };
+    debugLogger.debug("[Push-to-Talk] Native key listener setup starting");
 
     nativeKeyManager.on("key-down", dispatchNativeKeyDown);
-    nativeKeyManager.on("key-up", dispatchNativeKeyUp);
 
     nativeKeyManager.on("error", (error) => {
       debugLogger.warn("[Push-to-Talk] Native key listener error", { error: error.message });
@@ -1532,33 +884,9 @@ async function startApp() {
   }
 }
 
-ipcMain.on("mac-accessibility-features-ready", (_event, expectedAccountScope) => {
-  if (process.platform !== "darwin") return;
-  if (expectedAccountScope) {
-    const accountScopeBinding = require("./src/helpers/accountScopeBinding");
-    const currentAccountScope = accountScopeBinding.resolveActiveAccountScope({
-      ...require("./src/helpers/tokenStore").getState(),
-      binding: accountScopeBinding.read(),
-    });
-    if (!accountScopeBinding.matchesActiveAccountScope(expectedAccountScope, currentAccountScope)) {
-      debugLogger.info("[Accessibility] Ignoring stale account-scoped readiness signal");
-      return;
-    }
-  }
-  macAccessibilityFeaturesReady = true;
-  startMacAccessibilityFeatures?.();
-});
-
-// Listen for usage limit reached from dictation overlay, forward to control panel
-ipcMain.on("limit-reached", (_event, data) => {
-  if (isLiveWindow(windowManager?.controlPanelWindow)) {
-    windowManager.controlPanelWindow.webContents.send("limit-reached", data);
-  }
-});
-
 // App event handlers
 if (gotSingleInstanceLock) {
-  app.on("second-instance", async (_event, commandLine) => {
+  app.on("second-instance", async (_event, _commandLine) => {
     await app.whenReady();
     if (!windowManager) {
       return;
@@ -1584,15 +912,6 @@ if (gotSingleInstanceLock) {
       windowManager.createMainWindow();
     }
 
-    // Check for OAuth protocol URL in command line arguments (Windows/Linux)
-    const url = commandLine.find((arg) => arg.startsWith(`${OAUTH_PROTOCOL}://`));
-    if (url) {
-      if (isNoteDeepLink(url)) {
-        await handleNoteDeepLink(url);
-      } else if (isInvitationDeepLink(url)) {
-        handleInvitationDeepLink(url);
-      }
-    }
   });
 
   app
@@ -1644,24 +963,11 @@ if (gotSingleInstanceLock) {
     // On macOS, keep the app running even without windows
   });
 
-  app.on("browser-window-focus", (event, window) => {
-    // Only apply always-on-top to the dictation window, not the control panel
-    if (windowManager && isLiveWindow(windowManager.mainWindow)) {
-      // Check if the focused window is the dictation window
-      if (window === windowManager.mainWindow) {
-        windowManager.enforceMainWindowOnTop();
-      }
-    }
-
-    // Control panel doesn't need any special handling on focus
-    // It should behave like a normal window
-  });
 
   app.on("activate", () => {
     // On macOS, re-create windows when dock icon is clicked
     if (BrowserWindow.getAllWindows().length === 0) {
       if (windowManager) {
-        windowManager.createMainWindow();
         windowManager.createControlPanelWindow();
       }
     } else {
@@ -1678,10 +984,6 @@ if (gotSingleInstanceLock) {
         windowManager.createControlPanelWindow();
       }
 
-      // Ensure dictation panel maintains its always-on-top status
-      if (windowManager && isLiveWindow(windowManager.mainWindow)) {
-        windowManager.enforceMainWindowOnTop();
-      }
     }
   });
 
@@ -1700,7 +1002,6 @@ function performSyncTeardown() {
     clearTimeout(wakeRewarmTimer);
     wakeRewarmTimer = null;
   }
-  clearPendingNoteDeepLink();
   if (cliBridge) {
     cliBridge.stop().catch(() => {});
     cliBridge = null;

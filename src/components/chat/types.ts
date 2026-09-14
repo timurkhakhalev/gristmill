@@ -19,10 +19,4 @@ export interface Message {
 export type AgentState =
   "idle" | "listening" | "transcribing" | "thinking" | "streaming" | "tool-executing";
 
-/** Screenshot riding along with a voice command (base64 without a data-URL prefix). */
-export interface ChatImageAttachment {
-  image: string;
-  mediaType: string;
-}
-
 export { toolIcons } from "./toolIcons";

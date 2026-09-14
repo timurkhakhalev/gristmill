@@ -1,6 +1,15 @@
 const path = require("path");
 const { getLinuxSessionInfo } = require("./linuxSession");
-const { ASSISTANT_PANEL_SIZE_LIMITS } = require("./voiceSurfaceGeometry");
+// Kept only for legacy resize IPC responses while old preload bundles drain.
+// No assistant or dictation window is created by the current renderer.
+const ASSISTANT_PANEL_SIZE_LIMITS = Object.freeze({
+  ratioWidth: 760,
+  ratioHeight: 520,
+  gutter: 24,
+  minSurfaceWidth: 320,
+  maxSurfaceWidth: 760,
+  minSurfaceHeight: 120,
+});
 
 // All renderer windows share an app-owned persisted session. The explicit
 // partition prevents Electron from ever reusing a profile created by the
@@ -181,11 +190,12 @@ function resolveHorizontalWindowDirection(bounds, display, preferredPosition = "
   return windowCenter < displayCenter ? "left" : "right";
 }
 
-// Main dictation window configuration
+// Legacy hidden renderer configuration. The visible application is the control
+// panel; this window remains inert for an upgrade-safe main-process cutover.
 const MAIN_WINDOW_CONFIG = {
   width: WINDOW_SIZES.BASE.width,
   height: WINDOW_SIZES.BASE.height,
-  title: "Voice Recorder",
+  title: "OpenWhispr",
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
     partition: OPENHERCULES_SESSION_PARTITION,

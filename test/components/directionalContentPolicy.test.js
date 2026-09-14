@@ -107,10 +107,6 @@ test("technical output values remain LTR inside an Arabic document", () => {
       "src/components/onboarding/ProviderSetupStep.tsx",
       /<span\s+dir="ltr">\s*\{models\.find[\s\S]*?\?\? selectedModel\}/,
     ],
-    [
-      "src/components/onboarding/RequiredModelDownloadStep.tsx",
-      /<span\s+dir="ltr"[\s\S]*?\{info\?\.name \?\? modelId\}/,
-    ],
   ];
 
   for (const [file, pattern] of expectations) {

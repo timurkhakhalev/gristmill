@@ -4,18 +4,10 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
 import {
   ToastContext,
-  type ToastActionConfig,
   type ToastPresentation,
   type ToastProps,
 } from "./useToast";
-import { isDictationPanelWindow } from "../../utils/windowContext";
-import {
-  getDictationErrorActionCount,
-  getDictationErrorDuration,
-  resolveToastPresentation,
-} from "../../helpers/toastPresentation";
 import { useCopyFeedback } from "../../hooks/useCopyFeedback";
-import { DictationErrorCard } from "../dictation/DictationErrorCard";
 import { TechnicalErrorDetails } from "./TechnicalErrorDetails";
 
 interface ToastState extends ToastProps {
@@ -51,18 +43,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const toast = React.useCallback(
     (props: Omit<ToastProps, "id">): string => {
       const id = Math.random().toString(36).substring(2, 11);
-      const presentation = resolveToastPresentation({
-        presentation: props.presentation,
-        variant: props.variant,
-        isDictationPanel: isDictationPanelWindow(),
-      });
+      const presentation = "standard" as const;
       const duration =
         props.duration ??
-        (presentation === "dictation-error"
-          ? getDictationErrorDuration(props.title, props.description)
-          : props.variant === "destructive"
-            ? 6000
-            : 3500);
+        (props.variant === "destructive" ? 6000 : 3500);
       const newToast: ToastState = {
         ...props,
         presentation,
@@ -71,28 +55,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         createdAt: Date.now(),
       };
 
-      if (presentation === "dictation-error") {
-        // The new error replaces any current one; its auto-dismiss timer must
-        // not fire (and re-schedule exit work) for the removed toast.
-        for (const item of toastsRef.current) {
-          if (item.presentation === "dictation-error") clearTimer(item.id);
-        }
-      }
-      setToasts((prev) =>
-        presentation === "dictation-error"
-          ? [...prev.filter((item) => item.presentation !== "dictation-error"), newToast]
-          : [...prev, newToast]
-      );
+      setToasts((prev) => [...prev, newToast]);
       // Mirror synchronously: dismissByPresentation can run from a child's
       // effect in the same commit, before this provider's effect refreshes
       // toastsRef from state.
-      toastsRef.current =
-        presentation === "dictation-error"
-          ? [
-              ...toastsRef.current.filter((item) => item.presentation !== "dictation-error"),
-              newToast,
-            ]
-          : [...toastsRef.current, newToast];
+      toastsRef.current = [...toastsRef.current, newToast];
 
       if (duration > 0) {
         const timer = setTimeout(() => {
@@ -103,7 +70,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       return id;
     },
-    [clearTimer, startExitAnimation]
+    [startExitAnimation]
   );
 
   const dismissByPresentation = React.useCallback(
@@ -161,7 +128,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, []);
 
-  const dictationErrorActionCount = getDictationErrorActionCount(toasts);
+  const dictationErrorActionCount = 0;
 
   return (
     <ToastContext.Provider
@@ -190,22 +157,13 @@ const ToastViewport: React.FC<{
   onPauseTimer: (id: string) => void;
   onResumeTimer: (id: string, remainingTime: number) => void;
 }> = ({ toasts, onDismiss, onPauseTimer, onResumeTimer }) => {
-  const isDictationPanel = React.useMemo(isDictationPanelWindow, []);
-  // Keep the error viewport anchored through its exit animation so the card
-  // does not jump back to the standard toast position while fading out.
-  const hasDictationError = toasts.some((toast) => toast.presentation === "dictation-error");
-
   if (toasts.length === 0) return null;
 
   return (
     <div
       className={cn(
         "fixed z-[100] flex flex-col gap-1.5 pointer-events-none",
-        isDictationPanel
-          ? hasDictationError
-            ? "inset-x-3 bottom-3"
-            : "bottom-20 end-6"
-          : "bottom-5 end-5"
+        "bottom-5 end-5"
       )}
     >
       {toasts.map((toast) => (
@@ -249,7 +207,6 @@ const Toast: React.FC<
   copyCommand,
   technicalDetails,
   action,
-  actions,
   presentation = "standard",
   variant = "default",
   duration = 3500,
@@ -269,36 +226,7 @@ const Toast: React.FC<
   });
   const { t } = useTranslation();
   const [timerPaused, setTimerPaused] = React.useState(false);
-  const [errorSurfaceReady, setErrorSurfaceReady] = React.useState(false);
   const isDestructive = variant === "destructive";
-
-  React.useEffect(() => {
-    if (presentation !== "dictation-error" || errorSurfaceReady) return undefined;
-
-    // Native error sizing is an enhancement, not a visibility gate. A resize
-    // acknowledgment can be delayed or skipped when another panel is handing
-    // off the same BrowserWindow, so always reveal the already-mounted card
-    // after a short grace period instead of leaving it permanently transparent.
-    const fallbackTimer = setTimeout(() => {
-      requestAnimationFrame(() => setErrorSurfaceReady(true));
-    }, 240);
-    return () => clearTimeout(fallbackTimer);
-  }, [errorSurfaceReady, presentation]);
-
-  const handleStructuredAction = (structuredAction: ToastActionConfig) => {
-    if (structuredAction.dismissOnClick !== false) onClose?.();
-    void structuredAction.onClick();
-  };
-
-  const handleErrorHeightChange = React.useCallback(async (height: number) => {
-    try {
-      await window.electronAPI?.resizeDictationErrorWindowToContent?.(height);
-    } finally {
-      // A failed or superseded content-height request must never suppress the
-      // actual warning. The initial DICTATION_ERROR width is already usable.
-      requestAnimationFrame(() => setErrorSurfaceReady(true));
-    }
-  }, []);
 
   const handleMouseEnter = () => {
     if (pausedAtRef.current !== null || duration <= 0) return;
@@ -324,30 +252,6 @@ const Toast: React.FC<
 
   const message = title || description;
   const detail = title && description ? description : undefined;
-
-  if (presentation === "dictation-error") {
-    return (
-      <div
-        className={cn(
-          "pointer-events-auto w-full transition-[opacity,transform] duration-200 ease-out",
-          isExiting ? "translate-y-2 scale-[0.98] opacity-0" : "translate-y-0 scale-100 opacity-100"
-        )}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        <DictationErrorCard
-          title={title}
-          description={description}
-          actions={actions ?? []}
-          onAction={handleStructuredAction}
-          onPreferredHeightChange={handleErrorHeightChange}
-          progressDuration={!isExiting ? duration : 0}
-          progressPaused={timerPaused}
-          ready={errorSurfaceReady}
-        />
-      </div>
-    );
-  }
 
   return (
     <div

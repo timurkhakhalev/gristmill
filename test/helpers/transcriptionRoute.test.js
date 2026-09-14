@@ -179,7 +179,9 @@ test("realtime-only providers fail closed instead of falling through to OpenAI",
 // skipped for want of a key, so the key — not the transport — is the diagnosis
 // there. Retry and upload cannot know about keys and keep the transport error.
 test("realtime-only providers report a missing key ahead of the transport limitation", async () => {
-  const { STREAMING_ONLY_PROVIDERS } = await load();
+  const { STREAMING_ONLY_PROVIDERS } = await import(
+    "../../src/config/transcriptionCapabilities.ts"
+  );
 
   for (const provider of STREAMING_ONLY_PROVIDERS) {
     const missingKey = await resolve(

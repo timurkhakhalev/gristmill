@@ -2,13 +2,14 @@ import { useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
 import { Key, Cpu, Network } from "../icons";
-import { useSettingsStore, selectResolvedLLMConfig, setResolvedLLMConfig } from "../../stores/settingsStore";
+import { useSettingsStore, setResolvedLLMConfig } from "../../stores/settingsStore";
+import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
 import { InferenceModeSelector } from "../ui/SettingsSection";
 import type { InferenceModeOption } from "../ui/SettingsSection";
 import ReasoningModelSelector from "../ReasoningModelSelector";
 import OpenAICompatiblePanel from "../OpenAICompatiblePanel";
 import { Toggle } from "../ui/toggle";
-import type { InferenceMode } from "../../types/electron";
+import type { InferenceMode } from "../../contracts/inferenceSettings";
 import type { InferenceScope } from "../../config/inferenceScopes";
 import { getCloudModel, getLocalModel } from "../../models/ModelRegistry";
 

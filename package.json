@@ -84,7 +84,7 @@
     "format:check": "eslint . && cd src && eslint . && prettier --check \"**/*.{js,jsx,ts,tsx,mts,json,css,md}\"",
     "lint": "eslint --config eslint.config.js . && cd src && eslint .",
     "test": "node --import tsx --test --test-concurrency=1 --test-timeout=30000 \"test/**/*.test.js\"",
-    "typecheck": "pnpm run typecheck:main && pnpm run typecheck:renderer",
+    "typecheck": "pnpm run typecheck:main && pnpm run typecheck:renderer && pnpm run typecheck:settings-selectors",
     "quality-check": "pnpm run format:check && pnpm run typecheck",
     "i18n:check": "node scripts/check-i18n.js",
     "preview": "cd src && vite preview",
@@ -92,6 +92,7 @@
     "build:main": "node scripts/build-main.js",
     "typecheck:main": "tsc -p tsconfig.main.json --noEmit",
     "typecheck:renderer": "tsc -p src/tsconfig.json --noEmit",
+    "typecheck:settings-selectors": "tsc -p tsconfig.settings-selectors.json",
     "pretest": "pnpm run build:main"
   },
   "keywords": [

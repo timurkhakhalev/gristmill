@@ -44,7 +44,10 @@ export function registerLocalFileTranscriptionHandler(
     "transcribe-audio-file",
     async (_event, ...args: unknown[]): Promise<TranscriptionResponse> => {
       const filePath = args[0];
-      const options = (args[1] ?? {}) as Record<string, unknown>;
+      // The old JS default (`options = {}`) applied only to undefined; an
+      // explicit null reached options.requestId and threw before any read —
+      // keep rejecting it instead of accepting it as an empty config.
+      const options = args[1] === undefined ? {} : (args[1] as Record<string, unknown>);
       // Uploads pass a requestId so cancel-upload-transcription can abort the
       // local decode; flows without one (voice drafts) register nothing.
       const { signal, release } = deps.uploadCancelRegistry.register(options.requestId);

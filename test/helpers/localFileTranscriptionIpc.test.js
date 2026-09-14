@@ -120,6 +120,24 @@ test("nvidia/cohere dispatch to sherpa with the signal, whisper options untouche
   assert.equal(calls.whisper.length, 0);
 });
 
+test("options omitted or undefined default to empty; explicit null rejects", async () => {
+  const { call, calls } = setup();
+  // undefined reaches the manager as an empty options object.
+  assert.deepEqual(await call(audioFile), { success: true, text: "whisper text" });
+  assert.equal(calls.whisper[0].options.requestId, undefined);
+  // An explicit null must keep the old TypeError path: it fails before any
+  // read or manager call, never as an accepted empty config.
+  let thrown = false;
+  try {
+    await call(audioFile, null);
+  } catch {
+    thrown = true;
+  }
+  assert.equal(thrown, true, "null options throw like the pre-cutover handler");
+  assert.equal(calls.reads.length, 1, "no additional read for the null call");
+  assert.equal(calls.whisper.length, 1, "no manager call for the null call");
+});
+
 test("path checks reject before any read", async () => {
   const { call, calls } = setup();
   assert.deepEqual(await call(12345, {}), { success: false, error: "Invalid file path" });

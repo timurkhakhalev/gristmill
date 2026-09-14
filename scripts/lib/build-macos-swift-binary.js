@@ -5,13 +5,11 @@ const path = require("path");
 
 const ARCH_TO_TARGET = {
   arm64: "arm64-apple-macosx11.0",
-  x64: "x86_64-apple-macosx10.15",
 };
 
 // Mach-O CPU type constants for architecture verification
 const ARCH_CPU_TYPE = {
   arm64: 0x0100000c, // CPU_TYPE_ARM64
-  x64: 0x01000007, // CPU_TYPE_X86_64
 };
 
 function ensureDir(dirPath) {
@@ -52,10 +50,7 @@ function buildMacosSwiftBinary({ label, sourceName, binaryName, frameworks = [],
     process.exit(0);
   }
 
-  // Support cross-compilation via --arch flag or TARGET_ARCH env var
-  const archIndex = process.argv.indexOf("--arch");
-  const targetArch =
-    (archIndex !== -1 && process.argv[archIndex + 1]) || process.env.TARGET_ARCH || process.arch;
+  const targetArch = "arm64";
 
   const swiftTarget = ARCH_TO_TARGET[targetArch];
   if (!swiftTarget) {
@@ -182,7 +177,7 @@ function buildMacosSwiftBinary({ label, sourceName, binaryName, frameworks = [],
   if (!verifyBinaryArch(outputBinary, targetArch)) {
     console.error(
       `[${label}] FATAL: Compiled binary architecture does not match target (${targetArch}). ` +
-        `This can happen when cross-compiling without setting TARGET_ARCH env var.`
+        "The macOS build must produce an arm64 Mach-O binary."
     );
     process.exit(1);
   }

@@ -1,7 +1,7 @@
 // macOS Dock icon policy.
 //
 // The Dock icon follows the control panel: it appears when the control panel
-// opens and goes away when the panel is closed to the tray, so OpenWhispr
+// opens and goes away when the panel is closed to the tray, so OpenHercules
 // lives in the menu bar like other background utilities.
 //
 // Hiding the dictation panel must never touch the Dock. The panel is hidden

@@ -1,6 +1,6 @@
 // Only callers that ask for the shared error surface get it. A destructive
 // variant alone is a red toast: promoting every destructive notice (mic
-// disconnect, cleanup failure, hotkey/GPU fallback) hid the pill, resized the
+// disconnect, cleanup failure) hid the pill, resized the
 // window and tore down the live transcript for unrelated notices.
 /**
  * @param {{ presentation?: string, variant?: string, isDictationPanel?: boolean }} options

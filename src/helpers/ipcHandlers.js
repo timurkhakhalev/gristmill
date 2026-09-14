@@ -1,4 +1,4 @@
-const { ipcMain, app, shell, BrowserWindow, systemPreferences, net, session } = require("electron");
+const { ipcMain, app, shell, BrowserWindow, systemPreferences, net, clipboard } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -8,11 +8,11 @@ const { PARAKEET_UNSUPPORTED_OS_CODE } = require("./parakeetCapability");
 const { getModelType, isSherpaLocalProvider } = require("./parakeetModelInfo");
 const { broadcastToWindows } = require("./windowBroadcast");
 const { openExternalUrl } = require("./externalUrlOpener");
-const { resolveFailedGpuBackends } = require("./whisper");
 const { BYOK_API_KEYS } = require("../config/secretKeys");
 const { extractAnthropicText, describeMissingAnthropicText } = require("./anthropicResponse");
 const { classifyAndLog } = require("./networkErrors");
 const { resolveSystemDefaultMicrophone } = require("./systemDefaultMicrophone");
+const { pickEnterpriseConfig } = require("./enterpriseProviderErrors");
 // The renderer's ModelRegistry is not main-loadable; the raw registry data is
 // packaged, and the route resolver only needs {id, baseUrl} per provider.
 const transcriptionProviderBaseUrls = () =>
@@ -40,9 +40,21 @@ const diarizationHost = (endpoint) => {
   } catch {}
   return null;
 };
+
+// Enterprise providers run with credentials and endpoints supplied by the
+// user's local settings. Hosted identity/cloud bootstrap is not part of the
+// desktop runtime.
+function resolveEnterpriseRuntime(provider, modelId, config = {}) {
+  return {
+    provider,
+    model: config.model || modelId,
+    apiKey: config.apiKey || "",
+    enterprise: pickEnterpriseConfig(config),
+  };
+}
+
 const { resolveLocalServerNeeds } = require("./localServerPolicy");
 const autoStart = require("./autoStart");
-const HyprlandShortcutManager = require("./hyprlandShortcut");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
 const { i18nMain, changeLanguage } = require("./i18nMain");
 const DeepgramStreaming = require("./deepgramStreaming");
@@ -50,8 +62,6 @@ const { GeminiLiveStreaming, GEMINI_LIVE_MODEL } = require("./geminiLiveStreamin
 const CortiStreaming = require("./cortiStreaming");
 const OpenAIRealtimeStreaming = require("./openaiRealtimeStreaming");
 const { getCortiToken } = require("./cortiAuth");
-const { ONBOARDING_DEMO_KINDS, ONBOARDING_DEMO_STATUSES } = require("./onboardingInputPolicy");
-const { focusWindowsHotkeyCaptureWindow } = require("./hotkeyCaptureFocus");
 const { createTinfoilRealtimeSocket } = require("./tinfoilSecureClient");
 const { TINFOIL_REALTIME_MODEL } = require("./tinfoilRealtimeStreaming");
 const { getTinfoilChatModels } = require("./tinfoilCatalog");
@@ -59,6 +69,8 @@ const { transcribeWithTinfoil } = require("./tinfoilTranscription");
 const { transcribeWithGemini } = require("./geminiTranscription");
 const AudioStorageManager = require("./audioStorage");
 const AgentStreamRequestRegistry = require("./agentStreamRequestRegistry");
+const { createUploadCancelRegistry } = require("./uploadCancelRegistry");
+const { testProviderConnection } = require("./providerConnectionTest");
 const LocalModelDownloadStatus = require("./localModelDownloadStatus");
 const createMeetingTranscriptionLifecycle = require("./meetingTranscriptionLifecycle");
 const { registerMeetingAutoEndLifecycleHandlers } = require("./meetingAutoEndLifecycle");
@@ -80,8 +92,6 @@ const {
   MEETING_MIC_SILENCE_PEAK,
 } = require("./meetingMicGate");
 const { resolveDiarizationInput } = require("./meetingDiarizationInput");
-const { applySmartSpacing } = require("./smartSpacing");
-const { applyAutoLearnSetting } = require("./autoLearnSetting");
 const {
   DEFAULT_RETENTION_SETTINGS,
   createRetentionSettingsHandler,
@@ -122,10 +132,8 @@ const { getCalendarAvailability } = require("./calendarAvailabilityService");
 const MEETING_STREAM_SAMPLE_RATE = 24000;
 const MEETING_RECONNECT_BUFFER_MAX_BYTES = MEETING_STREAM_SAMPLE_RATE * 2 * 30;
 // The realtime clients default to a 0.6 server-VAD threshold, raised in #630 to
-// keep mic ambient noise from opening turns. The system loopback channel's noise
-// floor is digital silence, so it keeps the original, more sensitive threshold —
-// at 0.6 quiet remote speech may never trip the VAD and the whole channel
-// transcribes to nothing.
+// keep mic ambient noise from opening turns. The direct system-audio channel
+// uses a lower threshold so quiet remote speech still opens a turn.
 const MEETING_SYSTEM_VAD_THRESHOLD = 0.3;
 
 const MISTRAL_TRANSCRIPTION_URL = "https://api.mistral.ai/v1/audio/transcriptions";
@@ -133,7 +141,6 @@ const MISTRAL_TRANSCRIPTION_URL = "https://api.mistral.ai/v1/audio/transcription
 const XAI_STT_URL = "https://api.x.ai/v1/stt";
 
 // Debounce delay: wait for user to stop typing before processing corrections
-const AUTO_LEARN_DEBOUNCE_MS = 1500;
 
 // Route caps vary by provider (Gemini's inline-base64 limit is the lowest), so
 // the message reports the cap that actually applied.
@@ -151,6 +158,10 @@ const AUDIO_MIME_TYPES = {
   aac: "audio/aac",
   opus: "audio/ogg",
 };
+
+// Azure Responses rejects probes with fewer than 16 output tokens. The probe
+// only needs one word, but this is the provider's minimum accepted value.
+const CONNECTION_TEST_MAX_OUTPUT_TOKENS = 16;
 
 const {
   formatTimestamp: formatDiarTime,
@@ -263,25 +274,16 @@ class IPCHandlers {
   constructor(managers) {
     this.environmentManager = managers.environmentManager;
     this.databaseManager = managers.databaseManager;
-    this.clipboardManager = managers.clipboardManager;
     this.whisperManager = managers.whisperManager;
     this.parakeetManager = managers.parakeetManager;
     this.diarizationManager = managers.diarizationManager;
     this.windowManager = managers.windowManager;
-    this.windowsKeyManager = managers.windowsKeyManager;
-    this.linuxKeyManager = managers.linuxKeyManager;
-    this.textEditMonitor = managers.textEditMonitor;
-    this.selectionManager = managers.selectionManager;
     this.getTrayManager = managers.getTrayManager;
-    this.whisperCudaManager = managers.whisperCudaManager;
-    this.whisperVulkanManager = managers.whisperVulkanManager;
     this.googleCalendarManager = managers.googleCalendarManager;
     this.microsoftCalendarManager = managers.microsoftCalendarManager;
     this.appleCalendarManager = managers.appleCalendarManager;
     this.meetingDetectionEngine = managers.meetingDetectionEngine;
     this.audioTapManager = managers.audioTapManager;
-    this.linuxPortalAudioManager = managers.linuxPortalAudioManager;
-    this.windowsLoopbackAudioManager = managers.windowsLoopbackAudioManager;
     this.meetingAecManager = managers.meetingAecManager;
     this.oauthProtocolRegistered = managers.oauthProtocolRegistered === true;
     this.oauthProtocol = managers.oauthProtocol || "openhercules";
@@ -299,12 +301,7 @@ class IPCHandlers {
     this._meetingMicStreaming = null;
     this._meetingSystemStreaming = null;
     this._hotkeyCaptureMode = false;
-    this._autoLearnEnabled = true; // Default on, synced from renderer
-    this._autoLearnDebounceTimer = null;
-    this._autoLearnLatestData = null;
-    this._textEditHandler = null;
     this._activeRecordingPipeline = null;
-    this._onboardingDemoSession = null;
     this.audioStorageManager = new AudioStorageManager();
     this.localModelDownloadStatus = new LocalModelDownloadStatus();
     this._retentionCleanupInterval = null;
@@ -320,30 +317,8 @@ class IPCHandlers {
       ...DEFAULT_WHISPER_VAD_CONFIG,
     };
     liveSpeakerIdentifier.setDiarizationManager(this.diarizationManager);
-    this._setupTextEditMonitor();
     this._setupRetentionCleanup();
-    this._logDetectedGpus();
     this.setupHandlers();
-    if (this.whisperManager?.serverManager) {
-      // Remember the failed backend so it isn't re-attempted (and its model
-      // reload re-paid) on every launch; cleared by retry, re-download, delete.
-      this.whisperManager.serverManager.on("cuda-fallback", () => {
-        this._recordWhisperGpuFailure("cuda");
-        broadcastToWindows("cuda-fallback-notification", {});
-      });
-      this.whisperManager.serverManager.on("gpu-fallback", () => {
-        this._recordWhisperGpuFailure("vulkan");
-        broadcastToWindows("gpu-fallback-notification", {});
-      });
-      // Persist the discrete-GPU pin so later launches spawn pinned directly
-      // instead of paying a second Vulkan cold start. See #1606.
-      this.whisperManager.serverManager.on("vulkan-device-pinned", ({ index }) => {
-        this._syncStartupEnv({ WHISPER_VULKAN_DEVICE: String(index) });
-      });
-      this.whisperManager.serverManager.on("vulkan-device-pin-cleared", () => {
-        this._syncStartupEnv({}, ["WHISPER_VULKAN_DEVICE"]);
-      });
-    }
   }
 
   // The dictation slot reports its own changes from the renderer. Slots
@@ -628,35 +603,6 @@ class IPCHandlers {
     }
   }
 
-  _cleanupTextEditMonitor() {
-    if (this._autoLearnDebounceTimer) {
-      clearTimeout(this._autoLearnDebounceTimer);
-      this._autoLearnDebounceTimer = null;
-    }
-    this._autoLearnLatestData = null;
-    if (this.textEditMonitor && this._textEditHandler) {
-      this.textEditMonitor.removeListener("text-edited", this._textEditHandler);
-      this._textEditHandler = null;
-    }
-  }
-
-  async _logDetectedGpus() {
-    const { listNvidiaGpus } = require("../utils/gpuDetection");
-    const gpus = await listNvidiaGpus();
-    if (gpus.length > 0) {
-      debugLogger.info(
-        "NVIDIA GPUs detected",
-        {
-          count: gpus.length,
-          devices: gpus.map((g) => `[${g.index}] ${g.name} (${g.vramMb}MB) ${g.uuid}`),
-        },
-        "gpu"
-      );
-    } else {
-      debugLogger.debug("No NVIDIA GPUs detected", {}, "gpu");
-    }
-  }
-
   _setupRetentionCleanup() {
     const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
     // No sweep at startup: _retentionSettings still holds the 30-day default
@@ -687,124 +633,6 @@ class IPCHandlers {
     }
   }
 
-  _setupTextEditMonitor() {
-    if (!this.textEditMonitor) return;
-
-    this._textEditHandler = (data) => {
-      if (
-        !data ||
-        typeof data.originalText !== "string" ||
-        typeof data.newFieldValue !== "string"
-      ) {
-        debugLogger.debug("[AutoLearn] Invalid event payload, skipping");
-        return;
-      }
-
-      const { originalText, newFieldValue } = data;
-
-      debugLogger.debug("[AutoLearn] text-edited event", {
-        originalPreview: originalText.substring(0, 80),
-        newValuePreview: newFieldValue.substring(0, 80),
-      });
-
-      this._autoLearnLatestData = { originalText, newFieldValue };
-
-      if (this._autoLearnDebounceTimer) {
-        clearTimeout(this._autoLearnDebounceTimer);
-      }
-
-      this._autoLearnDebounceTimer = setTimeout(() => {
-        this._processCorrections();
-      }, AUTO_LEARN_DEBOUNCE_MS);
-    };
-
-    this.textEditMonitor.on("text-edited", this._textEditHandler);
-  }
-
-  _processCorrections() {
-    this._autoLearnDebounceTimer = null;
-    if (!this._autoLearnLatestData) return;
-    if (!this._autoLearnEnabled) {
-      debugLogger.debug("[AutoLearn] Disabled, skipping correction processing");
-      this._autoLearnLatestData = null;
-      return;
-    }
-
-    const { originalText, newFieldValue } = this._autoLearnLatestData;
-    this._autoLearnLatestData = null;
-
-    try {
-      const { extractCorrections } = require("../utils/correctionLearner");
-      const currentDict = this._getDictionarySafe();
-      const corrections = extractCorrections(originalText, newFieldValue, currentDict);
-      debugLogger.debug("[AutoLearn] Corrections result", {
-        corrections,
-        dictSize: currentDict.length,
-      });
-
-      if (corrections.length > 0) {
-        const saveResult = this.databaseManager.applyDictionaryChanges(
-          { add: corrections },
-          "learned"
-        );
-
-        if (saveResult?.success === false) {
-          debugLogger.debug("[AutoLearn] Failed to save dictionary", { error: saveResult.error });
-          return;
-        }
-
-        // Broadcast the post-save normalized list, not the raw input (which
-        // still has case-variant dupes), so renderers don't flash ghost rows.
-        broadcastToWindows("dictionary-updated", this.databaseManager.getDictionary());
-
-        // Show the overlay so the toast is visible (it may have been hidden after dictation)
-        this.windowManager.showDictationPanel();
-        broadcastToWindows("corrections-learned", corrections);
-        debugLogger.debug("[AutoLearn] Saved corrections", { corrections });
-      }
-    } catch (error) {
-      debugLogger.debug("[AutoLearn] Error processing corrections", { error: error.message });
-    }
-  }
-
-  _whisperGpuFailedBackends() {
-    return resolveFailedGpuBackends(process.env.WHISPER_GPU_FAILED);
-  }
-
-  _recordWhisperGpuFailure(backend) {
-    const failed = this._whisperGpuFailedBackends();
-    if (!failed.includes(backend)) failed.push(backend);
-    this._syncStartupEnv({ WHISPER_GPU_FAILED: failed.join(",") });
-  }
-
-  _clearWhisperGpuFailure(backend) {
-    const failed = this._whisperGpuFailedBackends().filter((b) => b !== backend);
-    if (failed.length > 0) {
-      this._syncStartupEnv({ WHISPER_GPU_FAILED: failed.join(",") });
-    } else {
-      this._syncStartupEnv({}, ["WHISPER_GPU_FAILED"]);
-    }
-  }
-
-  // Captured before a handler stops the server to touch pack files (stopServer
-  // clears currentServerModel); tells _applyWhisperGpuPreference what to reload.
-  _whisperReloadModel() {
-    return this.whisperManager.serverManager.isRemote
-      ? null
-      : this.whisperManager.currentServerModel;
-  }
-
-  // Apply a GPU pack change to the loaded server without blocking the caller's
-  // IPC reply (a Vulkan cold start can take minutes); the renderer follows
-  // progress by polling whisper-server-status. Returns whether a reload was
-  // kicked off so the UI shows "activating" only when one is coming.
-  _applyWhisperGpuPreference(modelName) {
-    this.whisperManager.restartServerWithGpuPreference(modelName).catch((err) => {
-      debugLogger.error("whisper-server GPU preference restart failed", { error: err.message });
-    });
-    return !!modelName;
-  }
-
   _syncStartupEnv(setVars, clearVars = []) {
     let changed = false;
     for (const [key, value] of Object.entries(setVars)) {
@@ -824,8 +652,7 @@ class IPCHandlers {
         set: Object.keys(setVars),
         cleared: clearVars.filter((k) => !process.env[k]),
       });
-      // A swallowed .env write failure here left GPU enablement flags silently
-      // out of sync with the packs on disk (#1340) — log which keys were lost.
+      // Log persistence failures with the exact keys that were requested.
       this.environmentManager.saveAllKeysToEnvFile().catch((err) => {
         debugLogger.error("Failed to persist startup env vars to .env", {
           set: Object.keys(setVars),
@@ -859,69 +686,9 @@ class IPCHandlers {
       this.windowManager.setOnboardingWindowMode(mode)
     );
 
-    // WindowManager owns every teardown path for a demo (id-matched end,
-    // onboarding-set-active(false), control panel closed); without this hook a
-    // renderer crash mid-demo would leave the session set and broadcast every
-    // later dictation's transcripts on onboarding-demo-event forever.
-    this.windowManager.onOnboardingDemoTeardown = () => {
-      this._onboardingDemoSession = null;
-    };
-
     ipcMain.handle("onboarding-set-active", (_event, active) => {
       if (typeof active !== "boolean") return false;
       return this.windowManager.setOnboardingActive(active);
-    });
-
-    ipcMain.handle("onboarding-demo-begin", (_event, session) => {
-      if (
-        !session ||
-        typeof session.id !== "string" ||
-        session.id.length > 128 ||
-        !ONBOARDING_DEMO_KINDS.has(session.kind)
-      ) {
-        return false;
-      }
-      this._onboardingDemoSession = {
-        id: session.id,
-        kind: session.kind,
-        startedAt: Date.now(),
-      };
-      return this.windowManager.beginOnboardingDemo(session.kind);
-    });
-
-    ipcMain.handle("onboarding-demo-end", (_event, id) => {
-      if (this._onboardingDemoSession?.id === id) {
-        // Session cleanup rides on the teardown hook above.
-        this.windowManager.endOnboardingDemo();
-      }
-      return true;
-    });
-
-    ipcMain.handle("onboarding-demo-stop", (_event, id) => {
-      if (this._onboardingDemoSession?.id !== id) return false;
-      return this.windowManager.stopOnboardingDemoRecording();
-    });
-
-    ipcMain.handle("onboarding-demo-publish", (_event, event) => {
-      const session = this._onboardingDemoSession;
-      if (!session || !event || event.kind !== session.kind) return false;
-      if (!ONBOARDING_DEMO_STATUSES.has(event.status)) return false;
-      const text = typeof event.text === "string" ? event.text.slice(0, 20000) : undefined;
-      const message = typeof event.message === "string" ? event.message.slice(0, 500) : undefined;
-      const tool = typeof event.tool === "string" ? event.tool.slice(0, 64) : undefined;
-      const level = Number.isFinite(event.level)
-        ? Math.min(1, Math.max(0, event.level))
-        : undefined;
-      broadcastToWindows("onboarding-demo-event", {
-        demoId: session.id,
-        kind: session.kind,
-        status: event.status,
-        text,
-        message,
-        tool,
-        level,
-      });
-      return true;
     });
 
     ipcMain.handle("test-provider-connection", async (_event, config) => {
@@ -1012,22 +779,9 @@ class IPCHandlers {
       this.meetingDetectionEngine?.setMeetingModeActive(false);
     });
 
-    ipcMain.handle("set-main-window-interactivity", (event, shouldCapture) => {
-      this.windowManager.setMainWindowInteractivity(Boolean(shouldCapture));
-      return { success: true };
-    });
-
-    ipcMain.handle("get-main-window-horizontal-direction", () => {
-      return this.windowManager.getMainWindowHorizontalDirection();
-    });
-
     ipcMain.handle("set-notification-interactivity", (event, interactive) => {
       this.windowManager.setNotificationInteractivity(event.sender, Boolean(interactive));
       return { success: true };
-    });
-
-    ipcMain.handle("resize-main-window", (event, sizeKey) => {
-      return this.windowManager.resizeMainWindow(sizeKey);
     });
 
     for (const k of BYOK_API_KEYS) {
@@ -1201,21 +955,6 @@ class IPCHandlers {
     });
 
     // Dictionary handlers
-    ipcMain.on("auto-learn-changed", (_event, enabled) => {
-      // Both renderer windows re-sync this on mount — ignore same-value updates (#1080).
-      const { changed, enabled: next } = applyAutoLearnSetting(this._autoLearnEnabled, enabled);
-      if (!changed) return;
-      this._autoLearnEnabled = next;
-      if (!this._autoLearnEnabled) {
-        if (this._autoLearnDebounceTimer) {
-          clearTimeout(this._autoLearnDebounceTimer);
-          this._autoLearnDebounceTimer = null;
-        }
-        this._autoLearnLatestData = null;
-      }
-      debugLogger.debug("[AutoLearn] Setting changed", { enabled: this._autoLearnEnabled });
-    });
-
     ipcMain.handle("db-get-dictionary", async () => {
       return this.databaseManager.getDictionary();
     });
@@ -1421,27 +1160,6 @@ class IPCHandlers {
       const result = this.databaseManager.updateSpace(id, updates);
       if (result?.success && result.space) {
         setImmediate(() => broadcastToWindows("space-synced", result.space));
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-purge-space", async (event, id, options) => {
-      const result = this.databaseManager.purgeSpace(id, options);
-      if (result?.success) {
-        if (!result.preservedForOtherAccounts) {
-          for (const note of result.relocatedNotes ?? []) {
-            this._asyncMirrorWrite(note);
-          }
-          for (const noteId of result.noteIds ?? []) {
-            this._asyncMirrorDelete(noteId);
-          }
-        }
-        setImmediate(() => {
-          broadcastToWindows("space-purged", { spaceId: result.spaceId });
-          for (const folderName of result.folderNames ?? []) {
-            this._mirrorDeleteFolderIfUnshared(folderName);
-          }
-        });
       }
       return result;
     });
@@ -1773,7 +1491,7 @@ class IPCHandlers {
         const resolved = path.resolve(filePath);
         const basename = path.basename(resolved);
         if (!basename.startsWith("ow-url-") && !basename.startsWith("ow-diarize-")) {
-          return { success: false, error: "Not an OpenWhispr temp file" };
+          return { success: false, error: "Not an OpenHercules temp file" };
         }
         const real = fs.realpathSync(resolved);
         let tempDir = getSafeTempDir();
@@ -1782,7 +1500,7 @@ class IPCHandlers {
         } catch {}
         const rel = path.relative(tempDir, real);
         if (rel.startsWith("..") || path.isAbsolute(rel)) {
-          return { success: false, error: "Not an OpenWhispr temp file" };
+          return { success: false, error: "Not an OpenHercules temp file" };
         }
         fs.unlinkSync(real);
         return { success: true };
@@ -1817,137 +1535,25 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("capture-selected-text", async (event, options = {}) => {
-      if (!this.selectionManager) {
-        return { status: "unavailable", code: "selection_manager_unavailable" };
-      }
-      return this.selectionManager.captureSelectedText({
-        probeEditable: options.probeEditable === true,
-      });
-    });
-
-    ipcMain.handle("replace-selected-text", async (event, sessionId, text, options = {}) => {
-      if (!this.selectionManager) {
-        return { success: false, code: "selection_manager_unavailable" };
-      }
-      return this.selectionManager.replaceSelectedText(sessionId, text, {
-        restoreClipboard: options.restoreClipboard !== false,
-        allowClipboardFallback: options.allowClipboardFallback === true,
-        webContents: event.sender,
-      });
-    });
-
-    ipcMain.handle("paste-at-captured-target", async (event, sessionId, text, options = {}) => {
-      if (!this.selectionManager) {
-        return { success: false, code: "selection_manager_unavailable" };
-      }
-      return this.selectionManager.pasteAtCapturedTarget(sessionId, text, {
-        restoreClipboard: options.restoreClipboard !== false,
-        allowClipboardFallback: options.allowClipboardFallback === true,
-        webContents: event.sender,
-      });
-    });
-
-    ipcMain.handle("paste-text", async (event, text, options) => {
-      // An onboarding demo already puts the transcript in its own textarea from
-      // the demo event, and that textarea is what has focus — pasting on top of
-      // it appends the same sentence a second time. This is a successful no-op,
-      // not a completed paste, so callers can avoid reporting paste-dependent
-      // fallbacks as if text reached another application.
-      if (this.windowManager?.isOnboardingDemoActive()) {
-        return { success: true, pasted: false };
-      }
-
-      const mainWindow = this.windowManager?.mainWindow;
-      const targetPid = this.textEditMonitor?.lastTargetPid || null;
-
-      // Activating the target by PID is more reliable than hide()'s implicit
-      // focus hand-off for Chromium apps like Claude desktop and Brave (#668).
-      let activated = false;
-      if (process.platform === "darwin" && this.textEditMonitor) {
-        activated = await this.textEditMonitor.activateTargetPid();
-      }
-
-      if (!activated && mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) {
-        if (process.platform === "darwin") {
-          mainWindow.hide();
-          await new Promise((resolve) => setTimeout(resolve, 120));
-          mainWindow.showInactive();
-        } else {
-          mainWindow.blur();
-          await new Promise((resolve) => setTimeout(resolve, 80));
-        }
-      }
-
-      // Smart spacing (#856): append a trailing space so the next paste's leading
-      // space self-corrects the gap. Reading the char before the cursor to space
-      // the front instead would take a macOS Accessibility read costing hundreds
-      // of ms — too slow for the paste hot path.
-      const textToPaste = applySmartSpacing(text);
-
-      // Windows: restore the foreground window captured at record start so the
-      // paste lands in the field the user was dictating into, not wherever focus
-      // drifted during transcription (#859). macOS handles this via
-      // activateTargetPid above; Linux re-detects the target inside pasteLinux.
-      const targetWindow =
-        process.platform === "win32"
-          ? ((await this.selectionManager?.getWinTargetHwnd?.()) ?? null)
-          : null;
-
-      const pasteResult = await this.clipboardManager.pasteText(textToPaste, {
-        ...options,
-        webContents: event.sender,
-        targetWindow,
-      });
-      const pasted = pasteResult?.pasted !== false;
-      debugLogger.debug("[AutoLearn] Paste completed", {
-        autoLearnEnabled: this._autoLearnEnabled,
-        hasMonitor: !!this.textEditMonitor,
-        targetPid,
-        pasted,
-      });
-      if (pasted && this.textEditMonitor && this._autoLearnEnabled) {
-        setTimeout(() => {
-          try {
-            debugLogger.debug("[AutoLearn] Starting monitoring", {
-              textPreview: text.substring(0, 80),
-            });
-            this.textEditMonitor.startMonitoring(text, 30000, { targetPid });
-          } catch (err) {
-            debugLogger.debug("[AutoLearn] Failed to start monitoring", { error: err.message });
-          }
-        }, 500);
-      }
-      // ClipboardManager returns `restoreComplete` so main-process callers can
-      // serialize subsequent clipboard work behind its delayed restore. A
-      // Promise cannot cross Electron's IPC boundary, though, and renderer
-      // callers need to know whether text was pasted, but not the delayed
-      // clipboard restoration promise. Successful platform paths predate the
-      // explicit `pasted` outcome; only the clipboard-only fallback sets false.
-      return { success: true, pasted };
-    });
-
-    ipcMain.handle("check-accessibility-permission", async (_event, silent = false) => {
-      return this.clipboardManager.checkAccessibilityPermissions(silent);
+    ipcMain.handle("check-accessibility-permission", async () => {
+      return systemPreferences.isTrustedAccessibilityClient(false);
     });
 
     // Passes `true` to isTrustedAccessibilityClient to trigger the macOS system prompt
     ipcMain.handle("prompt-accessibility-permission", async () => {
-      if (process.platform !== "darwin") return true;
       return systemPreferences.isTrustedAccessibilityClient(true);
     });
 
     ipcMain.handle("read-clipboard", async (event) => {
-      return this.clipboardManager.readClipboard();
+      return clipboard.readText();
     });
 
-    ipcMain.handle("write-clipboard", async (event, text) => {
-      return this.clipboardManager.writeClipboard(text, event.sender);
+    ipcMain.handle("write-clipboard", async (_event, text) => {
+      if (typeof text !== "string") throw new TypeError("Clipboard text must be a string");
+      clipboard.writeText(text);
+      return { success: true };
     });
 
-    ipcMain.handle("check-paste-tools", async () => {
-      return this.clipboardManager.checkPasteTools();
-    });
 
     // Voice drafts (chat input): persist a recorded buffer so the file-based
     // transcription pipeline (all providers) can consume it, then delete it.
@@ -2129,10 +1735,7 @@ class IPCHandlers {
     });
 
     ipcMain.handle("whisper-server-start", async (event, modelName) => {
-      return this.whisperManager.startServer(
-        modelName,
-        this.whisperManager.resolveGpuStartOptions()
-      );
+      return this.whisperManager.startServer(modelName);
     });
 
     ipcMain.handle("whisper-server-stop", async () => {
@@ -2141,220 +1744,6 @@ class IPCHandlers {
 
     ipcMain.handle("whisper-server-status", async () => {
       return this.whisperManager.getServerStatus();
-    });
-
-    ipcMain.handle("detect-gpu", async () => {
-      const { detectNvidiaGpu } = require("../utils/gpuDetection");
-      return detectNvidiaGpu();
-    });
-
-    ipcMain.handle("list-gpus", async () => {
-      const { listNvidiaGpus } = require("../utils/gpuDetection");
-      return listNvidiaGpus();
-    });
-
-    ipcMain.handle("set-gpu-device-index", async (_event, purpose, uuid) => {
-      if (purpose !== "transcription" && purpose !== "intelligence") {
-        return { success: false };
-      }
-      // Empty string clears the pinned GPU; otherwise require an nvidia-smi UUID. See #531.
-      if (typeof uuid !== "string" || (uuid !== "" && !uuid.startsWith("GPU-"))) {
-        return { success: false };
-      }
-      const key = purpose === "intelligence" ? "INTELLIGENCE_GPU_UUID" : "TRANSCRIPTION_GPU_UUID";
-      const oldUuid = process.env[key] || "";
-      process.env[key] = uuid;
-      this.environmentManager.saveAllKeysToEnvFile().catch((err) => {
-        debugLogger.error("Failed to persist GPU UUID", { error: err.message }, "gpu");
-      });
-
-      if (oldUuid !== uuid) {
-        try {
-          if (purpose === "transcription" && this.whisperManager?.serverManager?.process) {
-            debugLogger.info(
-              "Restarting whisper-server for GPU change",
-              { from: oldUuid, to: uuid },
-              "gpu"
-            );
-            await this.whisperManager.restartServerWithGpuPreference();
-          }
-          if (purpose === "intelligence") {
-            const modelManager = require("./modelManagerBridge").default;
-            if (modelManager.serverManager?.process) {
-              debugLogger.info(
-                "Restarting llama-server for GPU change",
-                { from: oldUuid, to: uuid },
-                "gpu"
-              );
-              const modelId = modelManager.currentServerModelId;
-              await modelManager.serverManager.stop();
-              if (modelId) {
-                await modelManager.prewarmServer(modelId);
-              }
-            }
-          }
-        } catch (err) {
-          debugLogger.error(
-            "Failed to restart server after GPU change",
-            { error: err.message, purpose },
-            "gpu"
-          );
-        }
-      }
-
-      return { success: true };
-    });
-
-    ipcMain.handle("get-gpu-device-index", async (_event, purpose) => {
-      if (purpose !== "transcription" && purpose !== "intelligence") {
-        return "";
-      }
-      const key = purpose === "intelligence" ? "INTELLIGENCE_GPU_UUID" : "TRANSCRIPTION_GPU_UUID";
-      return process.env[key] || "";
-    });
-
-    ipcMain.handle("get-cuda-whisper-status", async () => {
-      const { detectNvidiaGpu } = require("../utils/gpuDetection");
-      const gpuInfo = await detectNvidiaGpu();
-      if (!this.whisperCudaManager) {
-        return { downloaded: false, downloading: false, path: null, gpuInfo };
-      }
-      return {
-        downloaded: this.whisperCudaManager.isDownloaded(),
-        downloading: this.whisperCudaManager.isDownloading(),
-        path: this.whisperCudaManager.getCudaBinaryPath(),
-        gpuInfo,
-        gpuFailed: this._whisperGpuFailedBackends().includes("cuda"),
-      };
-    });
-
-    ipcMain.handle("download-cuda-whisper-binary", async (event) => {
-      if (!this.whisperCudaManager) {
-        return { success: false, error: "CUDA not supported on this platform" };
-      }
-      try {
-        const reloadModel = this._whisperReloadModel();
-        // Stop the server first: swapping in a pack a running binary is loaded
-        // from EBUSYs on Windows (same rule as the Vulkan handler below)
-        await this.whisperManager.stopServer().catch(() => {});
-        await this.whisperCudaManager.download((downloaded, total) => {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send("cuda-download-progress", {
-              downloadedBytes: downloaded,
-              totalBytes: total,
-              percentage: total > 0 ? Math.round((downloaded / total) * 100) : 0,
-            });
-          }
-        });
-        this._syncStartupEnv({ WHISPER_CUDA_ENABLED: "true" });
-        this._clearWhisperGpuFailure("cuda");
-        return { success: true, willRestart: this._applyWhisperGpuPreference(reloadModel) };
-      } catch (error) {
-        debugLogger.error("CUDA binary download failed", {
-          error: error.message,
-          stack: error.stack,
-        });
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("cancel-cuda-whisper-download", async () => {
-      if (!this.whisperCudaManager) return { success: false };
-      return this.whisperCudaManager.cancelDownload();
-    });
-
-    ipcMain.handle("delete-cuda-whisper-binary", async () => {
-      if (!this.whisperCudaManager) return { success: false };
-      const reloadModel = this._whisperReloadModel();
-      // Stop the server first so the running binary can be deleted on Windows
-      await this.whisperManager.stopServer().catch(() => {});
-      const result = await this.whisperCudaManager.delete();
-      if (result.success) {
-        this._syncStartupEnv({}, ["WHISPER_CUDA_ENABLED"]);
-        this._clearWhisperGpuFailure("cuda");
-        this._applyWhisperGpuPreference(reloadModel);
-      }
-      return result;
-    });
-
-    ipcMain.handle("get-vulkan-whisper-status", async () => {
-      const { detectVulkanGpu } = require("../utils/vulkanDetection");
-      const { detectNvidiaGpu } = require("../utils/gpuDetection");
-      const [vulkan, gpuInfo] = await Promise.all([detectVulkanGpu(), detectNvidiaGpu()]);
-      return {
-        downloaded: this.whisperVulkanManager?.isDownloaded() ?? false,
-        downloading: this.whisperVulkanManager?.isDownloading() ?? false,
-        vulkan,
-        hasNvidiaGpu: gpuInfo.hasNvidiaGpu,
-        gpuFailed: this._whisperGpuFailedBackends().includes("vulkan"),
-      };
-    });
-
-    ipcMain.handle("download-vulkan-whisper-binary", async (event) => {
-      if (!this.whisperVulkanManager) {
-        return { success: false, error: "Vulkan not supported on this platform" };
-      }
-      try {
-        const reloadModel = this._whisperReloadModel();
-        // Stop the server first: overwriting a running binary EBUSYs on Windows
-        await this.whisperManager.stopServer().catch(() => {});
-        await this.whisperVulkanManager.download((downloaded, total) => {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send("vulkan-whisper-download-progress", {
-              downloadedBytes: downloaded,
-              totalBytes: total,
-              percentage: total > 0 ? Math.round((downloaded / total) * 100) : 0,
-            });
-          }
-        });
-        this._syncStartupEnv({ WHISPER_VULKAN_ENABLED: "true" });
-        this._clearWhisperGpuFailure("vulkan");
-        return { success: true, willRestart: this._applyWhisperGpuPreference(reloadModel) };
-      } catch (error) {
-        debugLogger.error("Vulkan whisper binary download failed", {
-          error: error.message,
-          stack: error.stack,
-        });
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("cancel-vulkan-whisper-download", async () => {
-      if (!this.whisperVulkanManager) return { success: false };
-      return { success: this.whisperVulkanManager.cancelDownload() };
-    });
-
-    ipcMain.handle("delete-vulkan-whisper-binary", async () => {
-      if (!this.whisperVulkanManager) return { success: false };
-      const reloadModel = this._whisperReloadModel();
-      // Stop the server first so the running binary can be deleted on Windows
-      await this.whisperManager.stopServer().catch(() => {});
-      const { deletedCount } = await this.whisperVulkanManager.delete();
-      this._syncStartupEnv({}, ["WHISPER_VULKAN_ENABLED", "WHISPER_VULKAN_DEVICE"]);
-      this._clearWhisperGpuFailure("vulkan");
-      this._applyWhisperGpuPreference(reloadModel);
-      return { success: true, deletedCount };
-    });
-
-    // One-time "GPU pack needs re-downloading" notice recorded by the
-    // legacy-layout migration before any window existed. See #1606.
-    ipcMain.handle("get-gpu-pack-migration-notice", () => {
-      return require("./gpuPackMigrationNotice").read();
-    });
-
-    ipcMain.handle("dismiss-gpu-pack-migration-notice", () => {
-      require("./gpuPackMigrationNotice").clear();
-      return { success: true };
-    });
-
-    // Clears the remembered GPU failure and reloads the server with the GPU
-    // backend re-enabled (Retry on the "GPU could not be activated" state)
-    ipcMain.handle("whisper-gpu-retry", async () => {
-      this._syncStartupEnv({}, ["WHISPER_GPU_FAILED"]);
-      return {
-        success: true,
-        willRestart: this._applyWhisperGpuPreference(this._whisperReloadModel()),
-      };
     });
 
     ipcMain.handle("check-ffmpeg-availability", async (event) => {
@@ -2830,51 +2219,20 @@ class IPCHandlers {
       return { success: errors.length === 0, message: "Cleanup completed", errors };
     });
 
-    ipcMain.handle("update-hotkey", async (event, hotkey) => {
-      return await this.windowManager.updateHotkey(hotkey);
-    });
-
-    ipcMain.handle("set-hotkey-listening-mode", async (event, enabled) => {
-      if (enabled) {
-        const captureWindow = BrowserWindow.fromWebContents(event.sender);
-        // Only the control panel owns editable hotkey fields. Refocusing the
-        // sender before the idempotence check also repairs a stale capture-mode
-        // flag after Windows has moved foreground focus to another window.
-        if (captureWindow === this.windowManager.controlPanelWindow) {
-          focusWindowsHotkeyCaptureWindow(captureWindow);
-        }
-      }
+    ipcMain.handle("set-hotkey-listening-mode", async (_event, enabled) => {
       if (this._hotkeyCaptureMode === enabled) return { success: true, skipped: true };
       this._hotkeyCaptureMode = enabled;
       this.windowManager.setHotkeyListeningMode(enabled);
       ipcMain.emit("hotkey-listening-mode-changed", null, enabled);
       const hotkeyManager = this.windowManager.hotkeyManager;
 
-      // Restore from slot state only. A freshly captured hotkey is registered by
-      // its own update IPC (invoked before this one); re-binding it here would
-      // overwrite the primary on DE backends or leak untracked registrations.
-      const effectiveHotkey = hotkeyManager.getCurrentHotkey();
-
-      const {
-        isGlobeLikeHotkey,
-        isModifierOnlyHotkey,
-        isRightSideModifier,
-        isMouseButtonHotkey,
-      } = require("./hotkeyManager");
-      const usesNativeListener = (hotkey) =>
-        !hotkey ||
-        isGlobeLikeHotkey(hotkey) ||
-        isMouseButtonHotkey(hotkey) ||
-        isModifierOnlyHotkey(hotkey) ||
-        isRightSideModifier(hotkey);
-
       if (enabled) {
         // Entering capture mode — unregister ALL slots so none intercept keypresses.
         // Dictation is always active; meeting and agent may or may not be set.
         const allSlots = hotkeyManager.slots;
         for (const [slot, info] of allSlots) {
-          // Native-listener entries (null accelerator) are handled by stopping
-          // the key listeners below.
+          // Native-listener entries (null accelerator) are handled by the
+          // platform hotkey manager.
           for (const accel of info?.accelerators || []) {
             if (!accel) continue;
             debugLogger.log(
@@ -2887,117 +2245,12 @@ class IPCHandlers {
           }
         }
 
-        // On Windows, stop the Windows key listener
-        if (process.platform === "win32" && this.windowsKeyManager) {
-          debugLogger.log("[IPC] Stopping Windows key listener for hotkey capture mode");
-          this.windowsKeyManager.stop();
-        }
-
-        // On Linux, stop the Linux key listener
-        if (process.platform === "linux" && this.linuxKeyManager) {
-          debugLogger.log("[IPC] Stopping Linux key listener for hotkey capture mode");
-          this.linuxKeyManager.stop();
-        }
-
-        // On GNOME, unregister all native keybindings during capture
-        if (hotkeyManager.isUsingGnome() && hotkeyManager.gnomeManager) {
-          await hotkeyManager.gnomeManager.unregisterPushToTalk();
-          for (const slot of [...hotkeyManager.gnomeManager.registeredSlots]) {
-            debugLogger.log(
-              `[IPC] Unregistering GNOME keybinding (slot "${slot}") for capture mode`
-            );
-            await hotkeyManager.gnomeManager.unregisterKeybinding(slot).catch((err) => {
-              debugLogger.warn(`[IPC] Failed to unregister GNOME slot "${slot}":`, err.message);
-            });
-          }
-        }
-
-        // On Hyprland Wayland, unregister the keybinding during capture
-        if (hotkeyManager.isUsingHyprland() && hotkeyManager.hyprlandManager) {
-          debugLogger.log("[IPC] Unregistering Hyprland keybinding for hotkey capture mode");
-          await hotkeyManager.hyprlandManager.unregisterKeybinding().catch((err) => {
-            debugLogger.warn("[IPC] Failed to unregister Hyprland keybinding:", err.message);
-          });
-        }
       } else {
-        // Exiting capture mode - re-register globalShortcut if not already registered
-        // Skip for KDE/GNOME/Hyprland — updateHotkey handles re-registration via native path
-        const usesNativePath =
-          hotkeyManager.isUsingKDE() ||
-          hotkeyManager.isUsingGnome() ||
-          hotkeyManager.isUsingHyprland();
-        if (!usesNativePath) {
-          const { globalShortcut } = require("electron");
-          // Re-register every globalShortcut-backed dictation hotkey (the slot
-          // may hold several).
-          for (const hk of hotkeyManager.getSlotHotkeys("dictation")) {
-            if (!hk || usesNativeListener(hk)) continue;
-            const accelerator = hk;
-            if (!globalShortcut.isRegistered(accelerator)) {
-              debugLogger.log(
-                `[IPC] Re-registering globalShortcut "${accelerator}" after capture mode`
-              );
-              const callback = this.windowManager.createHotkeyCallback();
-              const registered = globalShortcut.register(accelerator, () => callback(hk));
-              if (!registered) {
-                debugLogger.warn(
-                  `[IPC] Failed to re-register globalShortcut "${accelerator}" after capture mode`
-                );
-              }
-            }
-          }
-        }
-
-        // Re-sync native key listeners (Windows/Linux) across all hotkey slots now
-        // that capture is done. Idempotent — reads the current slot hotkeys.
-        this.windowManager.reconcileNativeKeyListeners();
-
-        // On GNOME, re-register the keybinding with the effective hotkey
-        if (hotkeyManager.isUsingGnome() && hotkeyManager.gnomeManager && effectiveHotkey) {
-          debugLogger.log(
-            `[IPC] Re-registering GNOME keybinding "${effectiveHotkey}" after capture mode`
-          );
-          await hotkeyManager.registerGnomeDictationHotkey(
-            effectiveHotkey,
-            this.windowManager.createHotkeyCallback()
-          );
-        }
-
-        // On Hyprland Wayland, re-register the keybinding with the effective hotkey
-        if (hotkeyManager.isUsingHyprland() && hotkeyManager.hyprlandManager && effectiveHotkey) {
-          debugLogger.log(
-            `[IPC] Re-registering Hyprland keybinding "${effectiveHotkey}" after capture mode`
-          );
-          await hotkeyManager.hyprlandManager.registerKeybinding(
-            effectiveHotkey,
-            this.windowManager.getActivationMode() === "push"
-          );
-        }
-
-        // On KDE (X11 or Wayland), re-register the keybinding with the effective hotkey
-        if (hotkeyManager.isUsingKDE() && hotkeyManager.kdeManager && effectiveHotkey) {
-          debugLogger.log(
-            `[IPC] Re-registering KDE keybinding "${effectiveHotkey}" after capture mode`
-          );
-          const callback = this.windowManager.createHotkeyCallback();
-          const result = await hotkeyManager.kdeManager.registerKeybinding(
-            effectiveHotkey,
-            "dictation",
-            callback,
-            this.windowManager.getActivationMode() === "push"
-          );
-          if (result !== true) {
-            debugLogger.warn(
-              `[IPC] Failed to re-register KDE keybinding "${effectiveHotkey}" after capture mode`,
-              { result }
-            );
-          }
-        }
-
+        // Exiting capture mode — re-register globalShortcut-backed hotkeys.
         // Re-register non-dictation slots (meeting, agent) that were unregistered on capture enter
         for (const [slot, info] of hotkeyManager.slots) {
           const hotkeys = info?.hotkeys || [];
-          if (slot === "dictation" || slot === "cancel" || hotkeys.length === 0 || !info?.callback)
+          if (hotkeys.length === 0 || !info?.callback)
             continue;
           debugLogger.log(
             `[IPC] Re-registering slot "${slot}" ("${hotkeys.join(", ")}") after capture mode`
@@ -3018,30 +2271,18 @@ class IPCHandlers {
           ? requestedHotkey.split(",")[0].trim()
           : hotkeyManager.getCurrentHotkey();
       const isUsingNativeShortcut = this.windowManager.isUsingNativeShortcutHotkeys();
-      const supportsPushToTalk =
-        process.platform === "linux"
-          ? isUsingNativeShortcut
-            ? hotkeyManager.supportsPushToTalk(hotkey)
-            : this.linuxKeyManager?.isAvailable?.() === true
-          : process.platform === "darwin"
-            ? hotkeyManager.supportsPushToTalk(hotkey)
-            : !isUsingNativeShortcut;
+      const supportsPushToTalk = hotkeyManager.supportsPushToTalk(hotkey);
 
       return {
-        isUsingGnome: this.windowManager.isUsingGnomeHotkeys(),
-        isUsingHyprland: this.windowManager.isUsingHyprlandHotkeys(),
-        isUsingKDE: this.windowManager.isUsingKDEHotkeys(),
+        isUsingGnome: false,
+        isUsingHyprland: false,
+        isUsingKDE: false,
         isUsingNativeShortcut,
         supportsPushToTalk,
         pushToTalkUnavailableReason: supportsPushToTalk
           ? null
           : hotkeyManager.getPushToTalkUnavailableReason(hotkey),
       };
-    });
-
-    ipcMain.handle("get-hyprland-config-status", async () => {
-      if (!this.windowManager.isUsingHyprlandHotkeys()) return null;
-      return this.windowManager.getHyprlandConfigStatus();
     });
 
     ipcMain.handle("register-cancel-hotkey", async (event, key) => {
@@ -3055,14 +2296,6 @@ class IPCHandlers {
     ipcMain.handle("unregister-cancel-hotkey", async () => {
       this.windowManager.hotkeyManager.unregisterSlot("cancel");
       return { success: true };
-    });
-
-    ipcMain.handle("start-window-drag", async (event) => {
-      return await this.windowManager.startWindowDrag();
-    });
-
-    ipcMain.handle("stop-window-drag", async (event) => {
-      return await this.windowManager.stopWindowDrag();
     });
 
     ipcMain.handle("start-control-panel-drag", async () => {
@@ -3501,12 +2734,7 @@ class IPCHandlers {
 
         const resolveModel = (abortSignal) =>
           runAbortableOperation(async () => {
-            runtime = await resolveEnterpriseRuntime(
-              event,
-              provider,
-              config?.model || "test",
-              config
-            );
+            runtime = resolveEnterpriseRuntime(provider, config?.model || "test", config);
             abortSignal?.throwIfAborted();
             validateEnterpriseEndpoint(runtime.enterprise.azureEndpoint);
             return getEnterpriseAIModel(
@@ -3576,7 +2804,7 @@ class IPCHandlers {
             throw new Error(`Unsupported enterprise provider: ${provider}`);
           }
           const isBedrockCleanup =
-            provider === "bedrock" && config?.inferenceScope === "dictationCleanup";
+            provider === "bedrock" && config?.inferenceScope === "cleanup";
           const sender = isBedrockCleanup ? event.sender : null;
           const senderId = sender?.id;
           const requestId = isBedrockCleanup ? crypto.randomUUID() : null;
@@ -3600,7 +2828,7 @@ class IPCHandlers {
             const useTemperature = config?.supportsTemperature !== false;
             const resolveModel = (abortSignal) =>
               runAbortableOperation(async () => {
-                runtime = await resolveEnterpriseRuntime(event, provider, modelId, config || {});
+                runtime = resolveEnterpriseRuntime(provider, modelId, config || {});
                 abortSignal?.throwIfAborted();
                 if (!runtime.model) throw new Error("No model specified for enterprise reasoning");
                 validateEnterpriseEndpoint(runtime.enterprise.azureEndpoint);
@@ -3712,7 +2940,7 @@ class IPCHandlers {
         if (!streamId || !isEnterpriseProvider(provider)) {
           throw new Error(`Unsupported enterprise provider: ${provider}`);
         }
-        runtime = await resolveEnterpriseRuntime(event, provider, modelId, config || {});
+        runtime = resolveEnterpriseRuntime(provider, modelId, config || {});
         if (!runtime.model) throw new Error("No model specified for enterprise streaming");
         validateEnterpriseEndpoint(runtime.enterprise.azureEndpoint);
 
@@ -3772,12 +3000,7 @@ class IPCHandlers {
     ipcMain.handle("bedrock-list-models", async (event, config) => {
       const { mapEnterpriseError } = require("./enterpriseProviderErrors");
       try {
-        const runtime = await resolveEnterpriseRuntime(
-          event,
-          "bedrock",
-          config?.model || "test",
-          config
-        );
+        const runtime = resolveEnterpriseRuntime("bedrock", config?.model || "test", config);
         const {
           BedrockClient,
           ListFoundationModelsCommand,
@@ -3787,9 +3010,7 @@ class IPCHandlers {
 
         const region = runtime.enterprise.bedrockRegion || "us-east-1";
         let credentials;
-        if (runtime.enterprise.managedCredentialProvider) {
-          credentials = runtime.enterprise.managedCredentialProvider;
-        } else if (runtime.enterprise.bedrockProfile) {
+        if (runtime.enterprise.bedrockProfile) {
           const { fromNodeProviderChain } = require("@aws-sdk/credential-providers");
           credentials = fromNodeProviderChain({ profile: runtime.enterprise.bedrockProfile });
         } else if (
@@ -4117,123 +3338,6 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("llama-gpu-reset", async () => {
-      try {
-        const modelManager = require("./modelManagerBridge").default;
-        const previousModelId = modelManager.currentServerModelId;
-        modelManager.serverManager.resetGpuDetection();
-        await modelManager.stopServer();
-
-        // Restart server with previous model so Vulkan binary is picked up
-        if (previousModelId) {
-          modelManager.prewarmServer(previousModelId).catch(() => {});
-        }
-
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("detect-vulkan-gpu", async () => {
-      try {
-        const { detectVulkanGpu } = require("../utils/vulkanDetection");
-        return await detectVulkanGpu();
-      } catch (error) {
-        return { available: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("get-llama-vulkan-status", async () => {
-      try {
-        if (!this._llamaVulkanManager) {
-          const LlamaVulkanManager = require("./llamaVulkanManager");
-          this._llamaVulkanManager = new LlamaVulkanManager();
-        }
-        return this._llamaVulkanManager.getStatus();
-      } catch (error) {
-        return { supported: false, downloaded: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("download-llama-vulkan-binary", async (event) => {
-      try {
-        if (!this._llamaVulkanManager) {
-          const LlamaVulkanManager = require("./llamaVulkanManager");
-          this._llamaVulkanManager = new LlamaVulkanManager();
-        }
-
-        // Stop Vulkan server before downloading to release file locks on DLLs (Windows EBUSY)
-        const modelManager = require("./modelManagerBridge").default;
-        if (modelManager.serverManager.activeBackend === "vulkan") {
-          await modelManager.stopServer().catch((err) => {
-            debugLogger.warn("Failed to stop Vulkan server before download", {
-              error: err.message,
-            });
-          });
-        }
-
-        const result = await this._llamaVulkanManager.download((downloaded, total) => {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send("llama-vulkan-download-progress", {
-              downloaded,
-              total,
-              percentage: total > 0 ? Math.round((downloaded / total) * 100) : 0,
-            });
-          }
-        });
-
-        if (result.success) {
-          process.env.LLAMA_VULKAN_ENABLED = "true";
-          delete process.env.LLAMA_GPU_BACKEND;
-          modelManager.serverManager.cachedServerBinaryPaths = null;
-          await this.environmentManager.saveAllKeysToEnvFile().catch(() => {});
-          // Stop server so next inference picks up the new Vulkan binary
-          await modelManager.stopServer().catch(() => {});
-        }
-
-        return result;
-      } catch (error) {
-        debugLogger.error("Vulkan binary download failed", {
-          error: error.message,
-          stack: error.stack,
-        });
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("cancel-llama-vulkan-download", async () => {
-      if (this._llamaVulkanManager) {
-        return { success: this._llamaVulkanManager.cancelDownload() };
-      }
-      return { success: false };
-    });
-
-    ipcMain.handle("delete-llama-vulkan-binary", async () => {
-      try {
-        if (!this._llamaVulkanManager) {
-          const LlamaVulkanManager = require("./llamaVulkanManager");
-          this._llamaVulkanManager = new LlamaVulkanManager();
-        }
-
-        const modelManager = require("./modelManagerBridge").default;
-        if (modelManager.serverManager.activeBackend === "vulkan") {
-          await modelManager.stopServer();
-        }
-
-        const result = await this._llamaVulkanManager.deleteBinary();
-
-        delete process.env.LLAMA_VULKAN_ENABLED;
-        delete process.env.LLAMA_GPU_BACKEND;
-        modelManager.serverManager.cachedServerBinaryPaths = null;
-        this.environmentManager.saveAllKeysToEnvFile().catch(() => {});
-
-        return result;
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
     ipcMain.handle("get-log-level", async () => {
       return debugLogger.getLevel();
     });
@@ -4256,11 +3360,6 @@ class IPCHandlers {
         calendars: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars",
         loginItems: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
       },
-      win32: {
-        microphone: "ms-settings:privacy-microphone",
-        sound: "ms-settings:sound",
-        loginItems: "ms-settings:startupapps",
-      },
     };
 
     const openSystemSettings = async (settingType) => {
@@ -4269,7 +3368,7 @@ class IPCHandlers {
       const url = urls?.[settingType];
 
       if (!url) {
-        // Platform doesn't support this settings URL
+        // macOS is the only supported runtime platform.
         const messages = {
           microphone: i18nMain.t("systemSettings.microphone"),
           sound: i18nMain.t("systemSettings.sound"),
@@ -4318,33 +3417,15 @@ class IPCHandlers {
       return false;
     });
 
-    ipcMain.handle("toggle-media-playback", () => {
-      const mediaPlayer = require("./mediaPlayer");
-      return mediaPlayer.toggleMedia();
-    });
 
-    ipcMain.handle("pause-media-playback", () => {
-      const mediaPlayer = require("./mediaPlayer");
-      return mediaPlayer.pauseMedia();
-    });
 
-    ipcMain.handle("resume-media-playback", () => {
-      const mediaPlayer = require("./mediaPlayer");
-      return mediaPlayer.resumeMedia();
-    });
 
     ipcMain.handle("request-microphone-access", async () => {
-      if (process.platform !== "darwin") {
-        return { granted: true, status: "granted" };
-      }
       const granted = await systemPreferences.askForMediaAccess("microphone");
       return { granted };
     });
 
     ipcMain.handle("check-microphone-access", () => {
-      if (process.platform !== "darwin") {
-        return { granted: true, status: "granted" };
-      }
       const status = systemPreferences.getMediaAccessStatus("microphone");
       return { granted: status === "granted", status };
     });
@@ -4364,66 +3445,7 @@ class IPCHandlers {
       ...partial,
     });
 
-    const getLinuxSystemAudioAccess = async () => {
-      const capability = await this.linuxPortalAudioManager?.getCapability().catch((error) => ({
-        available: false,
-        supportsPersistentGrant: false,
-        supportsPersistentPortalGrant: false,
-        supportsSystemAudio: false,
-        supportsNativeCapture: false,
-        portalVersion: null,
-        error: error.message,
-      }));
-      const available = !!capability?.available;
-      const supportsSystemAudio = !!capability?.supportsSystemAudio;
-      const supportsNativeCapture = !!capability?.supportsNativeCapture;
-      const granted = available && supportsSystemAudio && supportsNativeCapture;
-      const helperError =
-        typeof capability?.error === "string" &&
-        !capability.error.includes("helper binary not found")
-          ? capability.error
-          : undefined;
-
-      return buildSystemAudioAccess({
-        granted,
-        status: granted ? "granted" : "unknown",
-        mode: granted ? "loopback" : "unsupported",
-        supportsNativeCapture,
-        strategy: granted ? "pipewire-loopback" : "unsupported",
-        portalVersion: capability?.portalVersion ?? null,
-        error: helperError,
-      });
-    };
-
-    // System audio is always capturable on Windows: via the native WASAPI
-    // process-loopback helper when available (hears every output device),
-    // otherwise via Chromium's default-device loopback in the renderer.
-    const getWindowsSystemAudioAccess = async ({ refreshCapability = false } = {}) => {
-      const capability = await this.windowsLoopbackAudioManager
-        ?.getCapability({ force: refreshCapability })
-        .catch(() => ({
-          available: false,
-        }));
-      const helperAvailable = !!capability?.available;
-
-      return buildSystemAudioAccess({
-        granted: true,
-        status: "granted",
-        mode: "loopback",
-        supportsNativeCapture: helperAvailable,
-        strategy: helperAvailable ? "wasapi-loopback" : "loopback",
-      });
-    };
-
     const getSystemAudioAccess = async () => {
-      if (process.platform === "win32") {
-        return getWindowsSystemAudioAccess();
-      }
-
-      if (process.platform === "linux") {
-        return getLinuxSystemAudioAccess();
-      }
-
       if (!this.audioTapManager?.isSupported()) {
         return buildSystemAudioAccess();
       }
@@ -4440,14 +3462,6 @@ class IPCHandlers {
     ipcMain.handle("check-system-audio-access", () => getSystemAudioAccess());
 
     ipcMain.handle("request-system-audio-access", async () => {
-      if (process.platform === "win32") {
-        return getWindowsSystemAudioAccess();
-      }
-
-      if (process.platform === "linux") {
-        return getLinuxSystemAudioAccess();
-      }
-
       if (!this.audioTapManager?.isSupported()) {
         return buildSystemAudioAccess();
       }
@@ -5267,41 +4281,18 @@ class IPCHandlers {
 
     const getMeetingSystemAudioCapabilityMode = () => {
       if (this.audioTapManager?.isSupported()) return "native";
-      if (process.platform === "win32") return "loopback";
-      if (process.platform === "linux") return "loopback";
       return "unsupported";
     };
 
     const getMeetingSystemAudioMode = () => getMeetingSystemAudioCapabilityMode();
 
-    const getMeetingSystemAudioPlan = async ({ refreshWindowsCapability = false } = {}) => {
+    const getMeetingSystemAudioPlan = async () => {
       const mode = getMeetingSystemAudioMode();
       if (mode === "unsupported") {
         return { mode, strategy: "unsupported" };
       }
 
-      if (mode === "native") {
-        return { mode, strategy: "native" };
-      }
-
-      if (process.platform === "linux") {
-        const linuxAccess = await getLinuxSystemAudioAccess();
-        return {
-          mode: linuxAccess.mode,
-          strategy: linuxAccess.strategy || "unsupported",
-        };
-      }
-
-      if (process.platform === "win32") {
-        const windowsAccess = await getWindowsSystemAudioAccess({
-          refreshCapability: refreshWindowsCapability,
-        });
-        return { mode: windowsAccess.mode, strategy: windowsAccess.strategy };
-      }
-
-      // Unreachable today (loopback implies win32 or linux, both handled
-      // above), but callers destructure the result, so never return undefined.
-      return { mode, strategy: "unsupported" };
+      return { mode, strategy: "native" };
     };
 
     const hasNativeMeetingSystemAudio = () => getMeetingSystemAudioMode() === "native";
@@ -6061,6 +5052,527 @@ class IPCHandlers {
       meetingEchoLeakDetector.reset();
     };
 
+    const resetMeetingStreamingState = () => {
+      this._meetingMicStreaming = null;
+      this._meetingSystemStreaming = null;
+      meetingSendCounts = { mic: 0, system: 0 };
+      meetingLiveSpeakerStartedAt = null;
+      meetingPendingMicChunks = [];
+      resetPendingMicFinals();
+      meetingAecEnabled = false;
+      meetingEchoLeakDetector.reset();
+      meetingReconnectPromise = null;
+      meetingFatalErrorSent = false;
+      meetingReconnectCount = 0;
+      meetingConnectionOptions = null;
+      meetingConnectionWin = null;
+      meetingConnectionKey = null;
+      resetMeetingReconnectAudio();
+    };
+
+    const disconnectMeetingStreaming = async ({ flushPending = false } = {}) => {
+      const results = await Promise.all([
+        this._meetingMicStreaming
+          ? this._meetingMicStreaming.disconnect().catch(() => ({ text: "" }))
+          : Promise.resolve({ text: "" }),
+        this._meetingSystemStreaming
+          ? this._meetingSystemStreaming.disconnect().catch(() => ({ text: "" }))
+          : Promise.resolve({ text: "" }),
+      ]);
+      if (flushPending) flushPendingMicFinals(true);
+      resetMeetingStreamingState();
+      return results;
+    };
+
+    const clearMeetingSystemAudioSilenceTimer = () => {
+      if (meetingSystemAudioSilenceTimer) {
+        clearTimeout(meetingSystemAudioSilenceTimer);
+        meetingSystemAudioSilenceTimer = null;
+      }
+    };
+
+    const armMeetingSystemAudioSilenceTimer = (win, systemAudioStrategy) => {
+      clearMeetingSystemAudioSilenceTimer();
+      meetingSystemAudioSilenceTimer = setTimeout(() => {
+        meetingSystemAudioSilenceTimer = null;
+        if (meetingSystemAudioHeard) return;
+        debugLogger.debug(
+          "Meeting system audio still silent past warning window",
+          { systemAudioStrategy, timeoutMs: MEETING_SYSTEM_AUDIO_SILENCE_WARNING_MS },
+          "meeting"
+        );
+        if (win && !win.isDestroyed()) {
+          win.webContents.send("meeting-system-audio-silent", { systemAudioStrategy });
+        }
+      }, MEETING_SYSTEM_AUDIO_SILENCE_WARNING_MS);
+    };
+
+    const clearMeetingSystemAudioTicker = () => {
+      if (meetingSystemAudioTicker) {
+        clearInterval(meetingSystemAudioTicker);
+        meetingSystemAudioTicker = null;
+      }
+    };
+
+    const stopMeetingSystemAudioWatchdog = () => {
+      clearMeetingSystemAudioTicker();
+      meetingSystemAudioWatchdog.stop();
+      meetingSystemAudioWatchdogWin = null;
+    };
+
+    const startMeetingSystemAudioWatchdog = (win, systemAudioStrategy) => {
+      clearMeetingSystemAudioTicker();
+      meetingSystemAudioWatchdogWin = win;
+      meetingSystemAudioWatchdog.start({
+        systemAudioStrategy,
+        watchesDelivery: systemAudioStrategy === "native",
+      });
+      meetingSystemAudioTicker = setInterval(
+        () => meetingSystemAudioWatchdog.tick(),
+        MEETING_SYSTEM_AUDIO_TICK_MS
+      );
+    };
+
+    const rollbackMeetingTranscriptionStart = async () => {
+      clearMeetingSystemAudioSilenceTimer();
+      stopMeetingSystemAudioWatchdog();
+      if (this.audioTapManager) await this.audioTapManager.stop().catch(() => {});
+      await stopMeetingAec();
+      await stopLiveSpeakerIdentification().catch(() => {});
+      resetMeetingLocalState();
+      await disconnectMeetingStreaming().catch(() => {});
+      this.activeMeetingSpeakerConfig = null;
+    };
+
+    ipcMain.handle("meeting-transcription-prepare", async (event, options = {}) => {
+      if (meetingTranscriptionPrepareInProgress || meetingTranscriptionStartInProgress) {
+        debugLogger.debug("Meeting transcription prepare already in progress, ignoring");
+        return { success: false, error: "Operation in progress" };
+      }
+      if (!ALLOWED_MEETING_PROVIDERS.has(options.provider)) {
+        return { success: false, error: `Unsupported provider: ${options.provider}` };
+      }
+      if (options.provider === "local") return { success: true };
+
+      const { mode: systemAudioMode } = await getMeetingSystemAudioPlan();
+      const requestedConnectionKey = getMeetingConnectionKey(options);
+      if (
+        isMeetingStreamingConnected(systemAudioMode) &&
+        meetingConnectionKey === requestedConnectionKey
+      ) {
+        return { success: true, alreadyPrepared: true };
+      }
+      meetingTranscriptionPrepareInProgress = true;
+      meetingTranscriptionPreparePromise = (async () => {
+        let timeoutHandle;
+        try {
+          await Promise.race([
+            connectRealtimeStreaming(event, options),
+            new Promise((_, reject) => {
+              timeoutHandle = setTimeout(() => reject(new Error("Prepare timed out")), 15000);
+            }),
+          ]);
+          return { success: true };
+        } catch (error) {
+          debugLogger.error("Meeting transcription prepare error", { error: error.message });
+          return { success: false, error: error.message };
+        } finally {
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+          meetingTranscriptionPrepareInProgress = false;
+          meetingTranscriptionPreparePromise = null;
+        }
+      })();
+      return meetingTranscriptionPreparePromise;
+    });
+
+    ipcMain.handle("meeting-transcription-cancel", async () => {
+      if (isMeetingStreamingConnected() || meetingLocalTimer) {
+        return { success: false, reason: "recording-active" };
+      }
+      meetingTranscriptionPrepareInProgress = false;
+      meetingTranscriptionStartInProgress = false;
+      meetingTranscriptionPreparePromise = null;
+      return { success: true };
+    });
+
+    const meetingFailure = (error) => ({
+      success: false,
+      error: error?.message || String(error),
+      ...(error?.code ? { code: error.code } : {}),
+      ...(error?.messageKey ? { messageKey: error.messageKey } : {}),
+    });
+
+    const startMeetingTranscription = async (event, options = {}) => {
+      if (meetingTranscriptionPreparePromise) await meetingTranscriptionPreparePromise;
+      if (meetingTranscriptionStartInProgress) {
+        return { success: false, error: "Operation in progress" };
+      }
+      if (!ALLOWED_MEETING_PROVIDERS.has(options.provider)) {
+        return { success: false, error: `Unsupported provider: ${options.provider}` };
+      }
+
+      meetingTranscriptionStartInProgress = true;
+      const recordingSessionId = options.sessionId;
+      meetingStartedAt = Date.now();
+      meetingConnectionOptions = options;
+      meetingConnectionWin = BrowserWindow.fromWebContents(event.sender);
+      meetingReconnectCount = 0;
+      meetingFatalErrorSent = false;
+      this.meetingDetectionEngine?.endRecordingSession();
+      this.meetingDetectionEngine?.setUserRecording(true);
+
+      const completeStart = async (result) => {
+        await this.meetingDetectionEngine?.beginRecordingSession({
+          sessionId: recordingSessionId,
+          autoEndEligible: options.autoEndEligible === true,
+          ownerWebContents: event.sender,
+          systemAudioAvailable: false,
+        });
+        if (result.systemAudioStrategy && result.systemAudioStrategy !== "unsupported") {
+          armMeetingSystemAudioSilenceTimer(meetingConnectionWin, result.systemAudioStrategy);
+          startMeetingSystemAudioWatchdog(meetingConnectionWin, result.systemAudioStrategy);
+        }
+        return { ...result, sessionId: recordingSessionId };
+      };
+
+      try {
+        const { mode: systemAudioMode, strategy: systemAudioStrategy } =
+          await getMeetingSystemAudioPlan();
+        const requestedConnectionKey = getMeetingConnectionKey(options);
+        meetingEchoLeakDetector.reset();
+        meetingOneOnOneAttendee = resolveOneOnOneAttendeeForNote(options.noteId);
+        meetingOneOnOneProfileBound = false;
+        meetingNoteId = options.noteId ?? null;
+        this._activeMeetingNoteId = meetingNoteId;
+        if (!this.activeMeetingSpeakerConfig) {
+          this.activeMeetingSpeakerConfig = this._resolveInitialMeetingSpeakerConfig(meetingNoteId);
+        }
+
+        if (systemAudioMode === "unsupported" && this._meetingSystemStreaming?.isConnected) {
+          await this._meetingSystemStreaming.disconnect().catch(() => ({ text: "" }));
+          this._meetingSystemStreaming = null;
+        }
+
+        if (
+          !meetingLocalMode &&
+          isMeetingStreamingConnected(systemAudioMode) &&
+          meetingConnectionKey === requestedConnectionKey
+        ) {
+          const win = BrowserWindow.fromWebContents(event.sender);
+          attachMeetingStreamingHandlers(this._meetingMicStreaming, win, "mic");
+          if (systemAudioMode !== "unsupported") {
+            attachMeetingStreamingHandlers(this._meetingSystemStreaming, win, "system");
+          }
+          await startMeetingAec(systemAudioMode);
+          await startLiveSpeakerIdentification(win, systemAudioMode);
+          const started = await startMeetingSystemAudio(
+            event,
+            systemAudioMode,
+            systemAudioStrategy,
+            "during warm-start reuse"
+          );
+          return completeStart({ success: true, ...started, oneOnOneAttendee: meetingOneOnOneAttendee });
+        }
+
+        if (options.provider === "local") {
+          meetingLocalMode = true;
+          meetingLocalProvider = options.localProvider || "whisper";
+          meetingLocalModel = options.localModel || null;
+          meetingLocalLanguage = options.language || null;
+          meetingLocalWin = BrowserWindow.fromWebContents(event.sender);
+          meetingLocalBuffers = { mic: [], system: [] };
+          meetingLocalTranscript = "";
+          await startLiveSpeakerIdentification(meetingLocalWin, systemAudioMode);
+          await startMeetingAec(systemAudioMode);
+          meetingLocalTimer = setInterval(() => transcribeAllLocalBuffers(), LOCAL_MEETING_CHUNK_INTERVAL_MS);
+          const started = await startMeetingSystemAudio(
+            event,
+            systemAudioMode,
+            systemAudioStrategy,
+            "in local meeting mode"
+          );
+          return completeStart({ success: true, ...started, oneOnOneAttendee: meetingOneOnOneAttendee });
+        }
+
+        await connectRealtimeStreaming(event, options);
+        const realtimeWin = BrowserWindow.fromWebContents(event.sender);
+        await startLiveSpeakerIdentification(realtimeWin, systemAudioMode);
+        await startMeetingAec(systemAudioMode);
+        const started = await startMeetingSystemAudio(
+          event,
+          systemAudioMode,
+          systemAudioStrategy,
+          "in realtime mode"
+        );
+        return completeStart({ success: true, ...started, oneOnOneAttendee: meetingOneOnOneAttendee });
+      } catch (error) {
+        await rollbackMeetingTranscriptionStart();
+        this.meetingDetectionEngine?.endRecordingSession(recordingSessionId);
+        this.meetingDetectionEngine?.setUserRecording(false);
+        debugLogger.error("Meeting transcription start error", { error: error.message });
+        return meetingFailure(error);
+      } finally {
+        meetingTranscriptionStartInProgress = false;
+      }
+    };
+
+    const sendMeetingAudio = (audioBuffer, source, synthetic = false, capturedAt = null) => {
+      const outboundBuffer = Buffer.isBuffer(audioBuffer) ? audioBuffer : Buffer.from(audioBuffer);
+      if (!synthetic) {
+        this.meetingDetectionEngine?.recordMeetingAudioChunk(source, outboundBuffer);
+      }
+
+      if (source === "system") {
+        const receivedAt = Date.now();
+        if (!synthetic) {
+          meetingEchoLeakDetector.recordSystemChunk(outboundBuffer, receivedAt);
+          if (meetingAecEnabled && !this.meetingAecManager?.processSystemBuffer(outboundBuffer)) {
+            meetingAecEnabled = false;
+          }
+          flushPendingMeetingMicChunks();
+        }
+        if (meetingLiveSpeakerActive) {
+          meetingLiveSpeakerStartedAt ??= receivedAt;
+          void liveSpeakerIdentifier.feedAudio(outboundBuffer);
+        }
+        if (!meetingDiarizationStream) {
+          meetingDiarizationPath = path.join(os.tmpdir(), `ow-diarize-raw-${Date.now()}.pcm`);
+          meetingDiarizationStream = fs.createWriteStream(meetingDiarizationPath);
+          meetingDiarizationStartedAt = receivedAt;
+        }
+        meetingDiarizationStream.write(outboundBuffer);
+        if (!synthetic) {
+          // Every real chunk feeds the watchdog, including actual silence.
+          const { rms, peak } = computeChunkStats(outboundBuffer);
+          const audible = rms >= MEETING_MIC_SILENCE_RMS || peak >= MEETING_MIC_SILENCE_PEAK;
+          meetingSystemAudioWatchdog.recordChunk(audible);
+          if (audible && !meetingSystemAudioHeard) {
+            meetingSystemAudioHeard = true;
+            dropMeetingMicDiarizationCapture();
+            clearMeetingSystemAudioSilenceTimer();
+          }
+        }
+        dispatchMeetingAudioBuffer(outboundBuffer, "system", synthetic, capturedAt);
+        return;
+      }
+
+      if (source !== "mic") return;
+      if (!meetingSystemAudioHeard) {
+        if (!meetingMicDiarizationStream) {
+          const receivedAt = Date.now();
+          meetingMicDiarizationPath = path.join(os.tmpdir(), `ow-diarize-raw-mic-${receivedAt}.pcm`);
+          meetingMicDiarizationStream = fs.createWriteStream(meetingMicDiarizationPath);
+          meetingMicDiarizationStartedAt = receivedAt;
+        }
+        meetingMicDiarizationStream.write(outboundBuffer);
+      }
+      if (processMeetingMicWithAec(outboundBuffer)) return;
+      if (!hasNativeMeetingSystemAudio()) {
+        const analysis = meetingEchoLeakDetector.analyzeMicChunk(outboundBuffer);
+        if (analysis?.shouldMute && !meetingAecEnabled) {
+          if (!meetingLocalMode) dispatchMeetingAudioBuffer(Buffer.alloc(outboundBuffer.length), "mic");
+          return;
+        }
+        dispatchMeetingAudioBuffer(outboundBuffer, "mic");
+        return;
+      }
+      meetingPendingMicChunks.push({ buffer: outboundBuffer, queuedAt: Date.now() });
+      flushPendingMeetingMicChunks();
+    };
+
+    const startManagedMeetingSystemAudio = (event, manager, warningLabel, onWarningCode) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const timeline = manager === this.audioTapManager ? require("./meetingAudioTimeline")() : null;
+      let captureStarted = false;
+      const startCapture = () => {
+        if (captureStarted) timeline?.markRestart();
+        captureStarted = true;
+        return manager.start({
+          onChunk: (chunk) => {
+            if (timeline) {
+              timeline.write(chunk, (buffer, synthetic, capturedAt) =>
+                sendMeetingAudio(buffer, "system", synthetic, capturedAt)
+              );
+            } else {
+              sendMeetingAudio(chunk, "system");
+            }
+          },
+          onError: (error) => {
+            if (win && !win.isDestroyed()) {
+              win.webContents.send("meeting-transcription-error", error.message);
+            }
+          },
+          onWarning: (warning) => {
+            debugLogger.warn(warningLabel, { code: warning.code, message: warning.message }, "meeting");
+            onWarningCode?.(warning.code);
+          },
+        });
+      };
+      meetingSystemAudioWatchdog.attachCapture({
+        stop: () => manager.stop(),
+        start: startCapture,
+      });
+      return startCapture();
+    };
+
+    const fallBackToMicOnly = async (context) => {
+      if (this._meetingSystemStreaming?.isConnected) {
+        await this._meetingSystemStreaming.disconnect().catch((error) => {
+          debugLogger.debug(`System streaming disconnect during ${context} fallback failed`, {
+            error: error.message,
+          }, "meeting");
+        });
+      }
+      this._meetingSystemStreaming = null;
+      stopMeetingSystemAudioWatchdog();
+      await stopLiveSpeakerIdentification().catch(() => {});
+    };
+
+    const startMeetingSystemAudio = async (
+      event,
+      systemAudioMode,
+      systemAudioStrategy,
+      context
+    ) => {
+      if (systemAudioMode !== "native") {
+        return { systemAudioMode, systemAudioStrategy };
+      }
+      try {
+        await startManagedMeetingSystemAudio(
+          event,
+          this.audioTapManager,
+          "macOS system audio tap warning",
+          (code) => {
+            if (code === "device_invalidated") {
+              meetingSystemAudioWatchdog.reportDeviceInvalidated();
+            }
+          }
+        );
+        return { systemAudioMode, systemAudioStrategy };
+      } catch (error) {
+        debugLogger.warn(`Native system audio tap failed ${context}, falling back to mic-only`, {
+          error: error.message,
+        }, "meeting");
+        await fallBackToMicOnly("native");
+        return { systemAudioMode: "unsupported", systemAudioStrategy: "unsupported" };
+      }
+    };
+
+    ipcMain.on("meeting-transcription-send", (_event, audioBuffer, source) => {
+      sendMeetingAudio(audioBuffer, source);
+    });
+
+    const stopMeetingTranscription = async (expectedSessionId) => {
+      if (this.meetingDetectionEngine?.endRecordingSession(expectedSessionId) === false) {
+        return { success: false, reason: "stale-session" };
+      }
+      this.meetingDetectionEngine?.setUserRecording(false);
+      clearMeetingSystemAudioSilenceTimer();
+      stopMeetingSystemAudioWatchdog();
+      try {
+        if (this.audioTapManager) await this.audioTapManager.stop().catch(() => {});
+        flushPendingMeetingMicChunks(true);
+        await stopMeetingAec();
+        const liveSpeakerState = await stopLiveSpeakerIdentification().catch(() => null);
+        const diarizationSessionId = `diar-${Date.now()}`;
+        const diarizationWin = meetingLocalWin || this.windowManager.controlPanelWindow;
+
+        if (meetingLocalMode) {
+          if (meetingLocalTimer) {
+            clearInterval(meetingLocalTimer);
+            meetingLocalTimer = null;
+          }
+          try {
+            await transcribeAllLocalBuffers();
+          } catch (error) {
+            debugLogger.error("Local meeting final transcription failed", { error: error.message });
+          }
+          flushPendingMicFinals(true);
+          const state = await captureMeetingDiarizationState();
+          const transcript = buildOrderedTranscriptText(state.diarizationSegments) || meetingLocalTranscript;
+          const sessionSpeakerConfigSnapshot = this.activeMeetingSpeakerConfig;
+          const noteIdSnapshot = meetingNoteId;
+          this.activeMeetingSpeakerConfig = null;
+          resetMeetingLocalState();
+          this._startOrSkipDiarization(
+            diarizationSessionId,
+            state.diarizationPcmPath,
+            state.diarizationStartedAt,
+            state.diarizationSegments,
+            diarizationWin,
+            liveSpeakerState,
+            sessionSpeakerConfigSnapshot,
+            noteIdSnapshot,
+            state.diarizedSource
+          );
+          return { success: true, transcript, diarizationSessionId };
+        }
+
+        const results = await disconnectMeetingStreaming({ flushPending: true });
+        const state = await captureMeetingDiarizationState();
+        const transcript = buildOrderedTranscriptText(state.diarizationSegments) ||
+          [results[0]?.text, results[1]?.text].filter(Boolean).join(" ");
+        const sessionSpeakerConfigSnapshot = this.activeMeetingSpeakerConfig;
+        const noteIdSnapshot = meetingNoteId;
+        this.activeMeetingSpeakerConfig = null;
+        this._startOrSkipDiarization(
+          diarizationSessionId,
+          state.diarizationPcmPath,
+          state.diarizationStartedAt,
+          state.diarizationSegments,
+          diarizationWin,
+          liveSpeakerState,
+          sessionSpeakerConfigSnapshot,
+          noteIdSnapshot,
+          state.diarizedSource
+        );
+        return { success: true, transcript, diarizationSessionId };
+      } catch (error) {
+        debugLogger.error("Meeting transcription stop error", { error: error.message });
+        return { success: false, error: error.message };
+      }
+    };
+
+    const meetingTranscriptionLifecycle = createMeetingTranscriptionLifecycle({
+      start: ({ sessionId, ownerWebContents, options }) =>
+        startMeetingTranscription({ sender: ownerWebContents }, { ...options, sessionId }),
+      stop: (sessionId) => stopMeetingTranscription(sessionId),
+      onError: (error, sessionId) => {
+        debugLogger.error("Meeting transcription owner-loss teardown failed", {
+          error: error?.message,
+          sessionId,
+        }, "meeting");
+      },
+    });
+
+    ipcMain.handle("meeting-transcription-start", (event, options = {}) => {
+      const sessionId =
+        typeof options.sessionId === "string" && options.sessionId.length > 0
+          ? options.sessionId
+          : crypto.randomUUID();
+      return meetingTranscriptionLifecycle.startSession({
+        sessionId,
+        ownerWebContents: event.sender,
+        options,
+      });
+    });
+
+    ipcMain.handle("meeting-transcription-stop", (_event, expectedSessionId) =>
+      meetingTranscriptionLifecycle.stopSession(expectedSessionId)
+    );
+
+    ipcMain.handle(
+      "meeting-transcription-set-system-audio-available",
+      async (event, sessionId, available) => {
+        const updated = await this.meetingDetectionEngine?.setRecordingSystemAudioAvailable(
+          sessionId,
+          available === true,
+          event.sender
+        );
+        return updated === true ? { success: true } : { success: false, reason: "stale-session" };
+      }
+    );
+
     ipcMain.handle("update-transcription-text", async (_event, id, text, rawText) => {
       try {
         this.databaseManager.updateTranscriptionText(id, text, rawText);
@@ -6364,27 +5876,6 @@ class IPCHandlers {
         debugLogger.error("Failed to open model cache folder:", error);
         return { success: false, error: error.message };
       }
-    });
-
-    ipcMain.handle("get-ydotool-status", () => {
-      const { getYdotoolStatus } = require("./ensureYdotool");
-      const { getLinuxSessionInfo } = require("./linuxSession");
-      const { execFileSync } = require("child_process");
-      const status = getYdotoolStatus();
-      const { isKde } = getLinuxSessionInfo();
-      let hasXclip = false;
-      let hasXsel = false;
-      if (isKde) {
-        try {
-          execFileSync("which", ["xclip"], { timeout: 1000 });
-          hasXclip = true;
-        } catch {}
-        try {
-          execFileSync("which", ["xsel"], { timeout: 1000 });
-          hasXsel = true;
-        } catch {}
-      }
-      return { ...status, hasXclip, hasXsel };
     });
 
     ipcMain.handle("get-debug-state", async () => {
@@ -6958,7 +6449,7 @@ class IPCHandlers {
           await import("./granolaImport.js");
         const allocateNoteKey = createGranolaNoteKeyAllocator();
         const notes = [];
-        const seenIds = new Set();
+        const seenSourceFiles = new Set();
         let rowIssueCount = 0;
         for (const filePath of filePaths) {
           if (fs.statSync(filePath).size > MAX_IMPORT_BYTES) {
@@ -6974,16 +6465,16 @@ class IPCHandlers {
           // real export; only row-scoped problems belong in the issue count.
           rowIssueCount += parsed.warnings.filter((warning) => warning.row != null).length;
           for (const note of parsed.notes) {
-            if (!seenIds.has(note.clientNoteId)) {
-              seenIds.add(note.clientNoteId);
+            // Granola's source key is deterministic and local. It is enough
+            // to avoid showing the same row twice when a chunked export is
+            // selected twice, without consulting a server identity column.
+            const sourceFile = typeof note.sourceFile === "string" ? note.sourceFile : null;
+            if (!sourceFile || !seenSourceFiles.has(sourceFile)) {
+              if (sourceFile) seenSourceFiles.add(sourceFile);
               notes.push(note);
             }
           }
         }
-        const existing = new Set(
-          this.databaseManager.getExistingClientNoteIds(notes.map((n) => n.clientNoteId))
-        );
-        const freshNotes = notes.filter((n) => !existing.has(n.clientNoteId));
         // The run handler only ever imports what this preview parsed — the
         // renderer never sends a file path across the bridge.
         this._granolaImportPending = { notes };
@@ -6992,9 +6483,9 @@ class IPCHandlers {
           success: true,
           fileName: filePaths.map((p) => path.basename(p)).join(", "),
           total: notes.length,
-          newCount: freshNotes.length,
-          duplicateCount: notes.length - freshNotes.length,
-          sampleTitles: freshNotes.slice(0, 5).map((n) => n.title),
+          newCount: notes.length,
+          duplicateCount: 0,
+          sampleTitles: notes.slice(0, 5).map((n) => n.title),
           rowIssueCount,
         };
       } catch (error) {

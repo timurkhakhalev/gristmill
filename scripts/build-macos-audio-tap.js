@@ -9,18 +9,13 @@ if (process.platform !== "darwin") {
   process.exit(0);
 }
 
-const archIndex = process.argv.indexOf("--arch");
-const targetArch =
-  (archIndex !== -1 && process.argv[archIndex + 1]) || process.env.TARGET_ARCH || process.arch;
-
 const ARCH_TO_TARGET = {
   arm64: "arm64-apple-macosx14.2",
-  x64: "x86_64-apple-macosx14.2",
 };
+const targetArch = "arm64";
 
 const ARCH_CPU_TYPE = {
   arm64: 0x0100000c,
-  x64: 0x01000007,
 };
 
 const swiftTarget = ARCH_TO_TARGET[targetArch];

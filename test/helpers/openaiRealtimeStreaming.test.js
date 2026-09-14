@@ -29,6 +29,7 @@ async function connectDirect(streaming, socket) {
   await new Promise((resolve) => setImmediate(resolve));
   socket.readyState = WS.OPEN;
   socket.emit("message", JSON.stringify({ type: "session.created" }));
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
   await connected;
 }
 
@@ -44,6 +45,7 @@ async function connectByok(streaming, socket, options) {
   await new Promise((resolve) => setImmediate(resolve));
   socket.readyState = WS.OPEN;
   socket.emit("message", JSON.stringify({ type: "session.created" }));
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
   socket.emit("message", JSON.stringify({ type: "session.updated" }));
   await connected;
 }
@@ -121,7 +123,7 @@ test("sendAudio flushes buffered audio in order once the socket opens, then send
 
   assert.equal(sent, true);
   assert.equal(streaming.ws.sent.length, 3);
-  const payloads = streaming.ws.sent.map((raw) => JSON.parse(raw).audio);
+  const payloads = sentEvents(streaming.ws, "input_audio_buffer.append").map((event) => event.audio);
   assert.deepEqual(payloads, [
     Buffer.from("first").toString("base64"),
     Buffer.from("second").toString("base64"),
@@ -148,10 +150,11 @@ test("connect() preserves audio buffered during beginConnecting() instead of wip
 
   socket.readyState = WS.OPEN;
   socket.emit("message", JSON.stringify({ type: "session.created" }));
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
   await connected;
 
   streaming.sendAudio(Buffer.from("live"));
-  const payloads = streaming.ws.sent.map((raw) => JSON.parse(raw).audio);
+  const payloads = sentEvents(streaming.ws, "input_audio_buffer.append").map((event) => event.audio);
   assert.deepEqual(payloads, [
     Buffer.from("pre-token-fetch audio").toString("base64"),
     Buffer.from("live").toString("base64"),
@@ -366,6 +369,7 @@ test("connect() resets _sessionExpired left over from a previous session", async
   await new Promise((resolve) => setImmediate(resolve));
   socket.readyState = WS.OPEN;
   socket.emit("message", JSON.stringify({ type: "session.created" }));
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
   await connected;
   streaming.cleanup();
 });
@@ -587,6 +591,7 @@ test("BYOK session.update is byte-for-byte today's payload when no VAD/language/
   });
 
   socket.emit("message", JSON.stringify({ type: "session.updated" }));
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
   await connected;
   streaming.cleanup();
 });
@@ -631,6 +636,7 @@ test("BYOK session.update is byte-for-byte the overridden payload when vadThresh
   });
 
   socket.emit("message", JSON.stringify({ type: "session.updated" }));
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
   await connected;
   streaming.cleanup();
 });
@@ -669,6 +675,7 @@ test("dictation-style connect (inputRate 16000, custom socket factory) declares 
   assert.equal("noise_reduction" in update.session.audio.input, false);
   assert.equal("language" in update.session.audio.input.transcription, false);
 
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
   socket.emit("message", JSON.stringify({ type: "session.updated" }));
   await connected;
   streaming.cleanup();
@@ -807,6 +814,7 @@ test("disconnect summary carries streamLabel and speechStartedCount", async (t) 
   await new Promise((resolve) => setImmediate(resolve));
   socket.readyState = WS.OPEN;
   socket.emit("message", JSON.stringify({ type: "session.created" }));
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
   await connected;
 
   socket.emit("message", JSON.stringify({ type: "input_audio_buffer.speech_started" }));
@@ -850,6 +858,7 @@ test("direct session.created sends the configured session update", async (t) => 
       },
     })
   );
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
   await connected;
 
   const lines = logs.filter((entry) => entry.message.includes("session created, sending configuration"));
@@ -1104,6 +1113,7 @@ test("direct sessions keep the requested model and send session.update", async (
       },
     })
   );
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
   await connected;
 
   assert.equal(streaming.model, "gpt-4o-mini-transcribe");

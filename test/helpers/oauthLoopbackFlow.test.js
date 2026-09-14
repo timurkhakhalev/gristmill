@@ -230,12 +230,12 @@ test("a request with no code leaves the flow running until a real callback", asy
   assert.deepEqual(await flow, { code: "ok" });
 });
 
-test("a provider error query still fails the flow immediately", async () => {
-  const { flow, getRedirectUri } = startFlow();
+test("a provider error query with the valid state still fails the flow immediately", async () => {
+  const { flow, getRedirectUri, getState } = startFlow();
   const redirectUri = await waitForListen(getRedirectUri);
   const rejected = assert.rejects(flow, /OAuth error: access_denied/);
 
-  const response = await fetch(`${redirectUri}/?error=access_denied`, {
+  const response = await fetch(`${redirectUri}/?error=access_denied&state=${getState()}`, {
     redirect: "manual",
   });
   assert.equal(response.status, 400);

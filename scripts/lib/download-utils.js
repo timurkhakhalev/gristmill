@@ -22,7 +22,7 @@ function fetchJson(url, redirectCount = 0) {
     }
 
     const headers = {
-      "User-Agent": "OpenWhispr-Downloader",
+      "User-Agent": "OpenHercules-Downloader",
       Accept: "application/vnd.github+json",
     };
 
@@ -172,6 +172,9 @@ function downloadFile(url, dest, retryCount = 0) {
           const redirectUrl = location.startsWith("/")
             ? new URL(location, currentUrl).href
             : location;
+          // Drain the old response so redirects cannot keep a completed CLI alive.
+          response.resume();
+          activeRequest.setTimeout(0);
           request(redirectUrl, redirectCount + 1);
           return;
         }
@@ -240,16 +243,7 @@ function downloadFile(url, dest, retryCount = 0) {
 }
 
 async function extractZip(zipPath, destDir) {
-  if (process.platform === "win32") {
-    // Use unzipper package on Windows for better path handling
-    const unzipper = require("unzipper");
-    await fs
-      .createReadStream(zipPath)
-      .pipe(unzipper.Extract({ path: destDir }))
-      .promise();
-  } else {
-    execSync(`unzip -o "${zipPath}" -d "${destDir}"`, { stdio: "inherit" });
-  }
+  execSync(`unzip -o "${zipPath}" -d "${destDir}"`, { stdio: "inherit" });
 }
 
 function extractTarGz(tarPath, destDir) {
@@ -314,9 +308,7 @@ function parseArgs() {
 }
 
 function setExecutable(filePath) {
-  if (process.platform !== "win32") {
-    fs.chmodSync(filePath, 0o755);
-  }
+  fs.chmodSync(filePath, 0o755);
 }
 
 function matchesPattern(filename, pattern) {

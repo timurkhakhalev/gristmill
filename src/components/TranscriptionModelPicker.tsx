@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Download, Trash2, Cloud, Lock, X, Zap, Check, CircleAlert } from "./icons";
+import { Download, Trash2, Cloud, Lock, X } from "./icons";
 import { ProviderIcon } from "./ui/ProviderIcon";
 import { ProviderTabs } from "./ui/ProviderTabs";
 import ModelCardList from "./ui/ModelCardList";
@@ -11,7 +11,7 @@ import { DownloadProgressBar } from "./ui/DownloadProgressBar";
 import ApiKeyInput from "./ui/ApiKeyInput";
 import { ConfirmDialog } from "./ui/dialog";
 import { useDialogs } from "../hooks/useDialogs";
-import { useModelDownload, type DownloadProgress } from "../hooks/useModelDownload";
+import { useModelDownload } from "../hooks/useModelDownload";
 import {
   getTranscriptionProviders,
   getMeetingStreamingTranscriptionProviders,
@@ -37,7 +37,6 @@ import { getRemoteProviderIcon } from "../utils/providerIcons";
 import { createExternalLinkHandler } from "../utils/externalLinks";
 import { API_ENDPOINTS, normalizeBaseUrl } from "../config/constants";
 import { GetApiKeyLink } from "./ui/GetApiKeyLink";
-import { getCachedPlatform } from "../utils/platform";
 import logger from "../utils/logger";
 import type { ParakeetCheckResult } from "../types/electron";
 
@@ -290,7 +289,7 @@ const PROVIDER_CREDENTIALS: Record<
     fields: [{ key: "geminiApiKey", input: "secret" }],
   },
   corti: {
-    consoleUrl: "https://www.corti.ai/?utm_source=referral&utm_content=&utm_campaign=openwhispr",
+    consoleUrl: "https://www.corti.ai/?utm_source=referral&utm_content=&utm_campaign=openhercules",
     fields: [
       { key: "cortiClientId", input: "secret", labelKey: "transcription.corti.clientId" },
       { key: "cortiClientSecret", input: "secret", labelKey: "transcription.corti.clientSecret" },
@@ -312,7 +311,7 @@ const PROVIDER_CREDENTIALS: Record<
     ],
   },
   tinfoil: {
-    consoleUrl: "https://tinfoil.sh/inference?utm_source=referral&utm_campaign=openwhispr",
+    consoleUrl: "https://tinfoil.sh/inference?utm_source=referral&utm_campaign=openhercules",
     fields: [{ key: "tinfoilApiKey", input: "secret" }],
   },
   deepgram: {
@@ -427,21 +426,6 @@ export default function TranscriptionModelPicker({
   );
   const hasLoadedRef = useRef(false);
   const hasLoadedParakeetRef = useRef(false);
-  const [gpuBackend, setGpuBackend] = useState<"cuda" | "vulkan" | null>(null);
-  const [gpuDownloaded, setGpuDownloaded] = useState(false);
-  const [gpuDownloading, setGpuDownloading] = useState(false);
-  const [gpuProgress, setGpuProgress] = useState<DownloadProgress>({
-    downloadedBytes: 0,
-    totalBytes: 0,
-    percentage: 0,
-  });
-  const [gpuDismissed, setGpuDismissed] = useState(false);
-  // The pack fell back to CPU on this machine (persisted by main until retried)
-  const [gpuFailed, setGpuFailed] = useState(false);
-  // A server reload with the new backend is in flight (Vulkan cold starts are slow)
-  const [gpuActivating, setGpuActivating] = useState(false);
-  // Live truth from the running server; "active" is never inferred from a download
-  const [gpuActive, setGpuActive] = useState(false);
 
   useEffect(() => {
     const organization = getSelectedASROrganization(selectedLocalProvider, selectedLocalModel);
@@ -672,133 +656,9 @@ export default function TranscriptionModelPicker({
       loadLocalModels();
       loadParakeetModels();
     };
-    window.addEventListener("openwhispr-models-cleared", handleModelsCleared);
-    return () => window.removeEventListener("openwhispr-models-cleared", handleModelsCleared);
+    window.addEventListener("openhercules-models-cleared", handleModelsCleared);
+    return () => window.removeEventListener("openhercules-models-cleared", handleModelsCleared);
   }, [loadLocalModels, loadParakeetModels]);
-
-  useEffect(() => {
-    if (!effectiveLocal || internalLocalProvider !== "whisper") return;
-    if (getCachedPlatform() === "darwin") return;
-    const detect = async () => {
-      try {
-        const [cuda, vulkan] = await Promise.all([
-          window.electronAPI?.getCudaWhisperStatus?.(),
-          window.electronAPI?.getVulkanWhisperStatus?.(),
-        ]);
-        // Cards below the CUDA build's kernel floor (e.g. Maxwell) crash at the
-        // first kernel launch, so they get the Vulkan pack like AMD/Intel GPUs.
-        const cudaEligible = !!cuda?.gpuInfo.hasNvidiaGpu && !!cuda.gpuInfo.cudaSupported;
-        // Prefer the pack that's already installed: a working Vulkan setup must
-        // not be re-prompted to download the CUDA pack (matches the resolver,
-        // which only prefers CUDA when it is actually downloaded).
-        if (cudaEligible && (cuda.downloaded || !vulkan?.downloaded)) {
-          setGpuBackend("cuda");
-          setGpuDownloaded(cuda.downloaded);
-          setGpuFailed(!!cuda.gpuFailed);
-        } else if (vulkan?.vulkan.available) {
-          setGpuBackend("vulkan");
-          setGpuDownloaded(vulkan.downloaded);
-          setGpuFailed(!!vulkan.gpuFailed);
-        }
-      } catch {}
-    };
-    detect();
-  }, [effectiveLocal, internalLocalProvider]);
-
-  useEffect(() => {
-    if (!gpuDownloading || !gpuBackend) return;
-    const subscribe =
-      gpuBackend === "cuda"
-        ? window.electronAPI?.onCudaDownloadProgress
-        : window.electronAPI?.onVulkanWhisperDownloadProgress;
-    return subscribe?.((data) => setGpuProgress(data));
-  }, [gpuDownloading, gpuBackend]);
-
-  // Live server state: "GPU acceleration active" reflects what the server is
-  // actually running on, not just that a pack is on disk (a crashed GPU server
-  // silently falls back to CPU). Faster poll while an activation is in flight.
-  useEffect(() => {
-    if (!effectiveLocal || internalLocalProvider !== "whisper" || !gpuDownloaded) return;
-    const poll = () => {
-      window.electronAPI
-        ?.whisperServerStatus?.()
-        .then((status) => {
-          setGpuActive(!!status?.gpuAccelerated);
-          if (status?.gpuAccelerated) setGpuActivating(false);
-        })
-        .catch(() => {});
-    };
-    poll();
-    const id = setInterval(poll, gpuActivating ? 1000 : 5000);
-    return () => clearInterval(id);
-  }, [effectiveLocal, internalLocalProvider, gpuDownloaded, gpuActivating]);
-
-  // Safety valve: a Vulkan cold start can take up to ~2 minutes (see #698);
-  // past that the live status or a fallback notification settles the state.
-  useEffect(() => {
-    if (!gpuActivating) return;
-    const timeout = setTimeout(() => setGpuActivating(false), 150_000);
-    return () => clearTimeout(timeout);
-  }, [gpuActivating]);
-
-  // Main falls back to CPU (and remembers it) when a GPU server crashes
-  useEffect(() => {
-    const onFallback = () => {
-      setGpuFailed(true);
-      setGpuActivating(false);
-      setGpuActive(false);
-    };
-    const disposeCuda = window.electronAPI?.onCudaFallbackNotification?.(onFallback);
-    const disposeVulkan = window.electronAPI?.onGpuFallbackNotification?.(onFallback);
-    return () => {
-      disposeCuda?.();
-      disposeVulkan?.();
-    };
-  }, []);
-
-  const handleGpuDownload = async () => {
-    setGpuDownloading(true);
-    try {
-      const result =
-        gpuBackend === "cuda"
-          ? await window.electronAPI?.downloadCudaWhisperBinary?.()
-          : await window.electronAPI?.downloadVulkanWhisperBinary?.();
-      if (result?.success) {
-        setGpuDownloaded(true);
-        setGpuFailed(false);
-        // Main reloads the server with the new backend only when one is loaded;
-        // otherwise the pack simply engages on the next dictation.
-        setGpuActivating(!!result.willRestart);
-      }
-    } finally {
-      setGpuDownloading(false);
-    }
-  };
-
-  const handleGpuRetry = async () => {
-    setGpuFailed(false);
-    const result = await window.electronAPI?.whisperGpuRetry?.();
-    setGpuActivating(!!result?.willRestart);
-  };
-
-  const handleGpuDelete = async () => {
-    const result =
-      gpuBackend === "cuda"
-        ? await window.electronAPI?.deleteCudaWhisperBinary?.()
-        : await window.electronAPI?.deleteVulkanWhisperBinary?.();
-    if (result?.success) {
-      setGpuDownloaded(false);
-      setGpuFailed(false);
-      setGpuActivating(false);
-      setGpuActive(false);
-    }
-  };
-
-  const handleGpuCancel = async () => {
-    if (gpuBackend === "cuda") await window.electronAPI?.cancelCudaWhisperDownload?.();
-    else await window.electronAPI?.cancelVulkanWhisperDownload?.();
-    setGpuDownloading(false);
-  };
 
   const {
     downloads: whisperDownloads,
@@ -1299,126 +1159,6 @@ export default function TranscriptionModelPicker({
           />
 
           {progressDisplay}
-
-          {gpuDownloading && internalLocalProvider === "whisper" && (
-            <div>
-              <DownloadProgressBar modelName="GPU acceleration" progress={gpuProgress} />
-              <div className="px-2.5 pb-1 flex justify-end">
-                <button
-                  onClick={handleGpuCancel}
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {t("gpu.cancel")}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {internalLocalProvider === "whisper" &&
-            !gpuDismissed &&
-            !gpuDownloading &&
-            gpuBackend && (
-              <div
-                className={`rounded-md border p-2.5 ${
-                  gpuDownloaded && gpuFailed
-                    ? "border-warning/40 bg-warning/5"
-                    : "border-border bg-surface-1"
-                }`}
-              >
-                {gpuDownloaded ? (
-                  gpuFailed ? (
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-2">
-                        <CircleAlert size={15} className="mt-0.5 shrink-0 text-warning" />
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-foreground">
-                            {t("gpu.activationFailed")}
-                          </p>
-                          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-                            {t("gpu.activationFailedDescription")}
-                          </p>
-                          <Button
-                            onClick={handleGpuRetry}
-                            size="sm"
-                            className="mt-2 h-7 px-3 text-xs"
-                          >
-                            {t("gpu.retryActivation")}
-                          </Button>
-                        </div>
-                      </div>
-                      <Button
-                        onClick={handleGpuDelete}
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 shrink-0 px-2 text-xs text-muted-foreground hover:text-destructive"
-                      >
-                        {t("gpu.remove")}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        {gpuActivating ? (
-                          <>
-                            <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0 bg-primary animate-pulse" />
-                            <span className="text-xs font-medium text-foreground">
-                              {t("gpu.activating")}
-                            </span>
-                          </>
-                        ) : gpuActive ? (
-                          <>
-                            <Check size={13} className="text-success" />
-                            <span className="text-xs font-medium text-foreground">
-                              {t("gpu.active")}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0 bg-primary" />
-                            <span className="text-xs font-medium text-foreground">
-                              {t("gpu.ready")}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      <Button
-                        onClick={handleGpuDelete}
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
-                      >
-                        {t("gpu.remove")}
-                      </Button>
-                    </div>
-                  )
-                ) : (
-                  <div className="flex items-start gap-2.5">
-                    <Zap size={13} className="text-primary shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-foreground">
-                        {t("gpu.transcriptionBanner")}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <Button
-                          onClick={handleGpuDownload}
-                          size="sm"
-                          variant="default"
-                          className="h-6 px-2.5 text-xs"
-                        >
-                          {t("gpu.enableButton")}
-                        </Button>
-                        <button
-                          onClick={() => setGpuDismissed(true)}
-                          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          {t("gpu.dismiss")}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
           <div>
             {internalLocalProvider === "whisper" && renderLocalModels()}

@@ -5,7 +5,7 @@ const path = require("path");
 let logStream = null;
 
 function openLog() {
-  const logPath = process.env.OPENWHISPR_ONNX_WORKER_LOG;
+  const logPath = process.env.OPENHERCULES_ONNX_WORKER_LOG;
   if (!logPath) return;
   try {
     fs.mkdirSync(path.dirname(logPath), { recursive: true });

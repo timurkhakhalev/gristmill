@@ -49,15 +49,7 @@ function runOAuthLoopbackFlow({ buildAuthUrl, handleCallback }) {
         const code = url.searchParams.get("code");
         const error = url.searchParams.get("error");
 
-        if (error) {
-          callbackClaimed = true;
-          respond(res, 400, `OAuth error: ${error}`);
-          cleanup();
-          reject(new Error(`OAuth error: ${error}`));
-          return;
-        }
-
-        if (!code || returnedState !== state) {
+        if (returnedState !== state) {
           respond(res, 400, "Invalid request.");
           // A real callback with a code but the wrong state is a failed
           // attempt (stale tab, CSRF). Fail the flow now. A request with no
@@ -67,6 +59,19 @@ function runOAuthLoopbackFlow({ buildAuthUrl, handleCallback }) {
             cleanup();
             reject(new Error("OAuth state mismatch"));
           }
+          return;
+        }
+
+        if (error) {
+          callbackClaimed = true;
+          respond(res, 400, `OAuth error: ${error}`);
+          cleanup();
+          reject(new Error(`OAuth error: ${error}`));
+          return;
+        }
+
+        if (!code) {
+          respond(res, 400, "Invalid request.");
           return;
         }
 

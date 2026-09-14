@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key>
-  <string>com.openwhispr.calendar-listener</string>
+  <string>com.openhercules.calendar-listener</string>
   <key>CFBundleName</key>
-  <string>OpenWhispr Calendar Listener</string>
+  <string>OpenHercules Calendar Listener</string>
   <key>NSCalendarsUsageDescription</key>
-  <string>OpenWhispr reads your calendar to detect upcoming meetings and link meeting notes to events.</string>
+  <string>OpenHercules reads your calendar to detect upcoming meetings and link meeting notes to events.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
-  <string>OpenWhispr reads your calendar to detect upcoming meetings and link meeting notes to events.</string>
+  <string>OpenHercules reads your calendar to detect upcoming meetings and link meeting notes to events.</string>
 </dict>
 </plist>

@@ -19,7 +19,7 @@ test("per-provider reasoning model memory", async (t) => {
   const state = () => useSettingsStore.getState();
 
   await t.test("switch-and-return restores the custom model (Parasail scenario)", () => {
-    state().switchReasoningProvider("dictationCleanup", "openai", "gpt-5.2");
+    state().switchReasoningProvider("cleanup", "openai", "gpt-5.2");
     assert.equal(state().cleanupProvider, "openai");
     assert.equal(state().cleanupModel, "gpt-5.2");
     assert.equal(
@@ -28,22 +28,22 @@ test("per-provider reasoning model memory", async (t) => {
       "the custom URL slot must never be touched by a provider switch"
     );
 
-    state().switchReasoningProvider("dictationCleanup", "custom", "");
+    state().switchReasoningProvider("cleanup", "custom", "");
     assert.equal(state().cleanupProvider, "custom");
     assert.equal(state().cleanupModel, "parasail-llm-v1");
   });
 
   await t.test("reselecting the current provider keeps the current model", () => {
     state().setCleanupModel("parasail-tuned");
-    state().switchReasoningProvider("dictationCleanup", "custom", "");
+    state().switchReasoningProvider("cleanup", "custom", "");
     assert.equal(state().cleanupModel, "parasail-tuned");
   });
 
   await t.test("a remembered model the provider no longer ships falls back", () => {
-    state().switchReasoningProvider("dictationCleanup", "groq", "llama-3.3-70b-versatile");
+    state().switchReasoningProvider("cleanup", "groq", "llama-3.3-70b-versatile");
     state().setCleanupModel("retired-groq-model");
-    state().switchReasoningProvider("dictationCleanup", "custom", "");
-    state().switchReasoningProvider("dictationCleanup", "groq", "llama-3.3-70b-versatile");
+    state().switchReasoningProvider("cleanup", "custom", "");
+    state().switchReasoningProvider("cleanup", "groq", "llama-3.3-70b-versatile");
     assert.equal(
       state().cleanupModel,
       "llama-3.3-70b-versatile",
@@ -52,7 +52,7 @@ test("per-provider reasoning model memory", async (t) => {
   });
 
   await t.test("scopes have independent memory and writes", () => {
-    state().switchReasoningProvider("dictationCleanup", "custom", "");
+    state().switchReasoningProvider("cleanup", "custom", "");
     const cleanupModel = state().cleanupModel;
 
     state().switchReasoningProvider("chatIntelligence", "openai", "gpt-5.2");
@@ -65,7 +65,7 @@ test("per-provider reasoning model memory", async (t) => {
   await t.test("memory persists to localStorage as JSON", () => {
     const persisted = JSON.parse(localStorage.getItem("reasoningModelByProvider"));
     assert.equal(typeof persisted, "object");
-    assert.ok(Object.keys(persisted).some((key) => key.startsWith("dictationCleanup:")));
+    assert.ok(Object.keys(persisted).some((key) => key.startsWith("cleanup:")));
   });
 });
 
@@ -88,9 +88,9 @@ test("explicit model click commits the (provider, model) pair atomically", async
   const state = () => useSettingsStore.getState();
 
   // Seed per-provider memory: anthropic remembers claude-opus-4-6.
-  state().switchReasoningProvider("dictationCleanup", "anthropic", "claude-sonnet-4-6");
+  state().switchReasoningProvider("cleanup", "anthropic", "claude-sonnet-4-6");
   state().setCleanupModel("claude-opus-4-6");
-  state().switchReasoningProvider("dictationCleanup", "openai", "gpt-5.2");
+  state().switchReasoningProvider("cleanup", "openai", "gpt-5.2");
   assert.equal(state().cleanupModel, "gpt-5-mini", "switch-and-return restores openai's model");
 
   // Explicit click on claude-haiku-4-5 under the browsed anthropic tab:

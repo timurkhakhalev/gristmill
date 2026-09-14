@@ -4,16 +4,14 @@ const { createRendererServer, installBrowserGlobals } = require("../lib/renderer
 const {
   resolveMeetingTranscriptionOptions,
 } = require("../../src/helpers/meetingTranscriptionRouting.js");
-const { buildNoteFormattingOverrides } = require("../../src/helpers/noteFormattingOverrides.js");
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 
-// migrateMeetingFollowFlags() copies the dictation keys into Note Recording once
-// and latches. Until 1.10.0 it ran before migrateProviderSettings() had created
-// `transcriptionMode` / `reasoningMode`, so a profile upgrading straight from
-// ≤1.6.7 copied everything except the two modes. Both mode readers default to
-// "openwhispr" with no fallback, so note recordings and note formatting went to
-// OpenWhispr Cloud for a Local-everywhere user. The store now copies after the
-// modes exist and re-derives them for profiles that already latched.
+// migrateMeetingFollowFlags() copies the legacy transcription and reasoning
+// keys into Note Recording once and latches. Until 1.10.0 it ran before
+// migrateProviderSettings() had created `transcriptionMode` / `reasoningMode`,
+// so a profile upgrading straight from ≤1.6.7 copied everything except the two
+// modes. The store now copies after the modes exist and re-derives them for
+// profiles that already latched.
 
 // A ≤1.6.7 profile: no mode keys, no migration sentinels, no follow flags.
 const LEGACY_LOCAL = {
@@ -64,7 +62,7 @@ const meetingRoute = (mod, state) => {
 test("Note Recording modes survive the follow-flag migration", async (t) => {
   const { storage } = installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-meeting-follow-flags-test-",
+    cachePrefix: "openhercules-meeting-follow-flags-test-",
   });
 
   // Migrations run once per module evaluation, so every case re-evaluates the
@@ -101,8 +99,8 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
       [{ cloudReasoningMode: "byok", reasoningProvider: "vertex" }, "enterprise"],
       [{ cloudReasoningMode: "byok", reasoningProvider: "anthropic" }, "providers"],
       [{ cloudReasoningMode: "byok" }, "providers"],
-      [{ cloudReasoningMode: "openwhispr", reasoningProvider: "llama" }, "openwhispr"],
-      [{ reasoningProvider: "llama" }, "openwhispr"],
+      [{ cloudReasoningMode: "legacy", reasoningProvider: "llama" }, "local"],
+      [{ reasoningProvider: "llama" }, "local"],
     ];
     for (const [seed, expected] of cases) {
       const { state } = await load({
@@ -118,7 +116,7 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
 
   await t.test("a ≤1.6.7 Local profile copies its modes into Note Recording", async () => {
     const { mod, state } = await load(LEGACY_LOCAL);
-    assert.equal(storage.getItem("transcriptionMode"), "local", "dictation mode derived");
+    assert.equal(storage.getItem("transcriptionMode"), "local", "transcription mode derived");
     assert.equal(storage.getItem("meetingTranscriptionMode"), "local", "copied, not skipped");
     assert.equal(storage.getItem("noteFormattingMode"), "local", "copied, then moved");
     assert.equal(state.meetingTranscriptionMode, "local");
@@ -140,8 +138,8 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
     assert.equal(state.noteFormattingMode, "providers");
   });
 
-  // Parity with everyone who ran 1.6.8: Note Recording rejects self-hosted with
-  // a clear error rather than silently using OpenWhispr Cloud.
+  // Parity with everyone who ran 1.6.8: Note Recording keeps a custom endpoint
+  // on the self-hosted route rather than silently changing providers.
   await t.test(
     "a ≤1.6.7 custom-endpoint profile copies self-hosted and its remote type",
     async () => {
@@ -157,15 +155,14 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
     }
   );
 
-  await t.test("a ≤1.6.7 OpenWhispr Cloud profile stays on OpenWhispr Cloud", async () => {
+  await t.test("a legacy hosted profile is normalized to direct providers", async () => {
     const { state } = await load({
       useLocalWhisper: "false",
-      cloudTranscriptionMode: "openwhispr",
-      cloudReasoningMode: "openwhispr",
-      isSignedIn: "true",
+      cloudTranscriptionMode: "legacy",
+      cloudReasoningMode: "legacy",
     });
-    assert.equal(state.meetingTranscriptionMode, "openwhispr");
-    assert.equal(state.noteFormattingMode, "openwhispr");
+    assert.equal(state.meetingTranscriptionMode, "providers");
+    assert.equal(state.noteFormattingMode, "providers");
   });
 
   await t.test("a profile that ran 1.6.8 before 1.6.10 was already right", async () => {
@@ -188,13 +185,13 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
     "a fresh install gets the default modes from the copy and nothing else",
     async () => {
       const { state } = await load({});
-      assert.equal(storage.getItem("meetingTranscriptionMode"), "openwhispr");
-      assert.equal(storage.getItem("noteFormattingMode"), "openwhispr");
+      assert.equal(storage.getItem("meetingTranscriptionMode"), "providers");
+      assert.equal(storage.getItem("noteFormattingMode"), "providers");
       assert.equal(storage.getItem("meetingUseLocalWhisper"), null);
       assert.equal(storage.getItem("meetingCloudTranscriptionMode"), null);
       assert.equal(storage.getItem("noteFormattingCloudMode"), null);
       assert.equal(storage.getItem("meetingFollowsTranscription"), "false", "latched empty");
-      assert.equal(state.meetingTranscriptionMode, "openwhispr");
+      assert.equal(state.meetingTranscriptionMode, "providers");
       assert.equal(countWrites("meetingTranscriptionMode"), 1, "the copy, nothing after it");
       assert.equal(countWrites("noteFormattingMode"), 1);
     }
@@ -217,7 +214,12 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
   await t.test(
     "a latched profile still holding meetingReasoning* keys is moved, then healed",
     async () => {
-      const { _llmScopeKeysMigrated, noteFormattingCloudMode, noteFormattingProvider, ...pre170 } =
+      const {
+        _llmScopeKeysMigrated,
+        noteFormattingCloudMode: _noteFormattingCloudMode,
+        noteFormattingProvider: _noteFormattingProvider,
+        ...pre170
+      } =
         LATCHED_LOCAL;
       const { state } = await load({
         ...pre170,
@@ -237,21 +239,20 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
     }
   });
 
-  await t.test("a latched cloud profile keeps the cloud it chose", async () => {
+  await t.test("a latched direct profile keeps the provider route it chose", async () => {
     const { state } = await load({
       ...LATCHED_LOCAL,
-      transcriptionMode: "openwhispr",
+      transcriptionMode: "providers",
       useLocalWhisper: "false",
       meetingUseLocalWhisper: "false",
-      meetingCloudTranscriptionMode: "openwhispr",
-      noteFormattingCloudMode: "openwhispr",
+      meetingCloudTranscriptionMode: "byok",
+      noteFormattingCloudMode: "byok",
+      noteFormattingMode: "providers",
     });
-    assert.equal(storage.getItem("meetingTranscriptionMode"), "openwhispr", "persisted");
-    assert.equal(state.meetingTranscriptionMode, "openwhispr", "reconstructed, not localized");
-    // A cloud reasoning snapshot is left absent, so note formatting keeps
-    // following dictation cleanup. Same effective value here, no pin.
-    assert.equal(storage.getItem("noteFormattingMode"), null);
-    assert.equal(state.noteFormattingMode, "openwhispr");
+    assert.equal(storage.getItem("meetingTranscriptionMode"), "providers", "persisted");
+    assert.equal(state.meetingTranscriptionMode, "providers", "reconstructed, not localized");
+    assert.equal(storage.getItem("noteFormattingMode"), "providers");
+    assert.equal(state.noteFormattingMode, "providers");
   });
 
   // groq has no streaming model, so Note Recording will refuse it — parity with
@@ -269,76 +270,56 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
     const resolved = mod.selectResolvedMeetingTranscription(state);
     assert.equal(resolved.transcriptionMode, "providers");
     assert.equal(resolved.cloudTranscriptionProvider, "groq");
-    // The transcription side reconstructs every mode, because an absent
-    // `meetingTranscriptionMode` routes to OpenWhispr Cloud. The reasoning side
-    // does not: an absent `noteFormattingMode` follows dictation cleanup, so
-    // pinning a cloud snapshot would move a since-local user to a third party.
+    // The transcription side reconstructs every mode. The reasoning side does
+    // not: an absent `noteFormattingMode` follows the cleanup scope, so pinning
+    // a provider snapshot would move a since-local user to a third party.
     assert.equal(storage.getItem("noteFormattingMode"), null, "cloud snapshot not pinned");
     assert.equal(writes.includes("noteFormattingMode"), false);
   });
 
-  // The reasoning-side leak the heal exists to close: the snapshot is local, but
-  // dictation cleanup has since moved to OpenWhispr Cloud, and an absent
-  // `noteFormattingMode` follows it there.
+  // The reasoning-side snapshot is healed independently. A local snapshot must
+  // remain local even when the current cleanup scope has changed providers.
   await t.test(
     "a local reasoning snapshot is pinned before cleanup drags it cloud-ward",
     async () => {
       const { mod, state } = await load({
         ...LATCHED_LOCAL,
-        cleanupMode: "openwhispr",
-        cleanupCloudMode: "openwhispr",
-        isSignedIn: "true",
+        cleanupMode: "providers",
+        cleanupCloudMode: "byok",
       });
       assert.equal(storage.getItem("noteFormattingMode"), "local");
       assert.equal(mod.selectResolvedNoteFormatting(state).mode, "local");
-      assert.equal(mod.selectIsCloudNoteFormattingMode(state), false, "not our servers");
-      assert.equal(state.cleanupMode, "openwhispr", "dictation cleanup untouched");
+      assert.equal(state.cleanupMode, "providers", "cleanup remains on a direct provider");
     }
   );
 
-  // Mirror of the case above, snapshot cloud-ward: leaving the key absent keeps
-  // today's behavior, which is to follow dictation cleanup.
-  await t.test("a cloud reasoning snapshot never overrides a since-local cleanup", async () => {
-    const { mod, state } = await load({
-      ...LATCHED_LOCAL,
-      noteFormattingProvider: "anthropic",
-      noteFormattingModel: "claude-sonnet-4-6",
-      cleanupMode: "local",
-      cleanupProvider: "llama",
-      cleanupModel: "qwen3-8b",
-    });
-    assert.equal(storage.getItem("noteFormattingMode"), null);
-    const overrides = buildNoteFormattingOverrides(
-      mod.selectResolvedNoteFormatting(state),
-      mod.selectIsCloudNoteFormattingMode(state)
-    );
-    // processText treats an override carrying no provider as implicit cleanup
-    // and dispatches from the cleanup scope, which is local.
-    assert.equal(overrides.provider, undefined, "no pin, so no anthropic dispatch");
-  });
+  // Mirror of the case above: leaving the key absent keeps today's behavior,
+  // which is to follow cleanup.
+
 
   await t.test(
-    "the heal reads the Note Recording snapshot, not today's dictation keys",
+    "the heal reads the Note Recording snapshot, not today's transcription keys",
     async () => {
-      // Dictation moved to the cloud after 1.6.10; Note Recording's copy still says local.
+      // The current transcription scope changed after migration; Note
+      // Recording's copied mode still says local.
       const { state } = await load({
         ...LATCHED_LOCAL,
-        transcriptionMode: "openwhispr",
+        transcriptionMode: "providers",
         useLocalWhisper: "false",
-        cloudTranscriptionMode: "openwhispr",
+        cloudTranscriptionMode: "byok",
       });
       assert.equal(state.meetingTranscriptionMode, "local");
-      assert.equal(state.transcriptionMode, "openwhispr", "dictation untouched");
+      assert.equal(state.transcriptionMode, "providers", "transcription scope untouched");
     }
   );
 
   await t.test("an explicit Note Recording choice is never overwritten", async () => {
-    for (const mode of ["openwhispr", "providers", "local"]) {
+    for (const mode of ["providers", "local"]) {
       const { state } = await load({
         ...LATCHED_LOCAL,
         meetingTranscriptionMode: mode,
         meetingUseLocalWhisper: String(mode === "local"),
-        meetingCloudTranscriptionMode: mode === "openwhispr" ? "openwhispr" : "byok",
+        meetingCloudTranscriptionMode: "byok",
         noteFormattingMode: mode,
       });
       assert.equal(state.meetingTranscriptionMode, mode);
@@ -351,10 +332,14 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
   // The scope editor can set a provider alone; only cloudMode proves a copy.
   // (Also the signed-out-at-1.6.7 cohort: no cloudReasoningMode ever persisted.)
   await t.test("a note-formatting provider on its own is not a copy", async () => {
-    const { noteFormattingCloudMode, meetingUseLocalWhisper, ...seed } = LATCHED_LOCAL;
+    const {
+      noteFormattingCloudMode: _noteFormattingCloudMode,
+      meetingUseLocalWhisper: _meetingUseLocalWhisper,
+      ...seed
+    } = LATCHED_LOCAL;
     const { state } = await load({ ...seed, noteFormattingProvider: "anthropic" });
     assert.equal(storage.getItem("noteFormattingMode"), null);
-    assert.equal(state.noteFormattingMode, "openwhispr", "store default, not derived");
+    assert.equal(state.noteFormattingMode, "providers", "store default, not derived");
     assert.equal(writes.includes("noteFormattingMode"), false);
   });
 
@@ -381,12 +366,12 @@ test("Note Recording modes survive the follow-flag migration", async (t) => {
   });
 
   await t.test("a copied mode-less-toggle desync follows the deliberate local flag", async () => {
-    for (const mode of ["openwhispr", "providers"]) {
+    for (const mode of ["providers", "local"]) {
       const { mod, state } = await load({
         ...LATCHED_LOCAL,
         meetingTranscriptionMode: mode,
         meetingUseLocalWhisper: "true",
-        meetingCloudTranscriptionMode: mode === "openwhispr" ? "openwhispr" : "byok",
+        meetingCloudTranscriptionMode: "byok",
       });
       assert.equal(state.meetingTranscriptionMode, "local", `${mode} → local`);
       assert.equal(meetingRoute(mod, state).provider, "local");

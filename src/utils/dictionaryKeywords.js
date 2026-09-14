@@ -1,7 +1,7 @@
 // gpt-transcribe takes the custom dictionary as one `keywords[]` multipart field
 // per term instead of the Whisper-era free-text prompt. OpenAI rejects the whole
 // request when a keyword carries `<`, `>` or a line break. Same rules as the
-// server-side adapter in openwhispr-api (lib/providers/openai.ts).
+// server-side provider adapter.
 
 export function usesTranscriptionKeywords(model) {
   return typeof model === "string" && model.trim() === "gpt-transcribe";

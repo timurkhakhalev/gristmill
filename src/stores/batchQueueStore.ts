@@ -44,12 +44,9 @@ export const useBatchQueueStore = create<BatchQueueStoreState>()(() => ({
   isProcessing: false,
 }));
 
-// Bumping the run id soft-cancels the drain loop; provider in-flight IPC still
-// cannot be aborted. Either way the
-// orphaned run's late results are discarded on arrival while the UI unlocks
-// immediately.
+// Bumping the run id soft-cancels the drain loop. Any in-flight provider call
+// may finish, but its late result is discarded and cannot update the queue.
 let runId = 0;
-let activeUploadRequestId: string | null = null;
 
 function updateQueue(updater: (prev: QueueItem[]) => QueueItem[]) {
   useBatchQueueStore.setState((s) => ({ queue: updater(s.queue) }));
@@ -90,10 +87,6 @@ export function removeQueueItem(id: string) {
 
 export function cancelBatch() {
   runId++;
-  if (activeUploadRequestId) {
-    window.electronAPI.cancelUploadTranscription?.(activeUploadRequestId);
-    activeUploadRequestId = null;
-  }
   window.electronAPI.cancelUrlDownload();
   useBatchQueueStore.setState((s) => ({
     isProcessing: false,
@@ -191,16 +184,13 @@ export function processBatchQueue(
       updateItem(item.id, { status: "transcribing", progress: 0 });
 
       const requestId = crypto.randomUUID();
-      activeUploadRequestId = requestId;
       const transcriptionResult = await transcribeFileWithSpeakers(
         filePath,
         transcription,
         diarization,
         durationSeconds,
         { requestId, timestamps: true }
-      ).finally(() => {
-        if (activeUploadRequestId === requestId) activeUploadRequestId = null;
-      });
+      );
 
       if (run !== runId) return;
 

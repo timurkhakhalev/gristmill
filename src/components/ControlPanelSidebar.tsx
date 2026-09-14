@@ -1,8 +1,7 @@
 import React from "react";
-import { Settings, HelpCircle } from "./icons";
+import { Settings } from "./icons";
 import { useTranslation } from "react-i18next";
 import { cn } from "./lib/utils";
-import SupportDropdown from "./ui/SupportDropdown";
 import { useControlPanelNavItems, type ControlPanelView } from "./controlPanelNav";
 
 export type { ControlPanelView };
@@ -87,15 +86,6 @@ export default function ControlPanelSidebar({
           <Settings size={16} className={rowIconClass} />
           <span className={rowLabelClass}>{t("sidebar.settings")}</span>
         </button>
-
-        <SupportDropdown
-          trigger={
-            <button aria-label={t("sidebar.support")} className={rowButtonClass}>
-              <HelpCircle size={16} className={rowIconClass} />
-              <span className={rowLabelClass}>{t("sidebar.support")}</span>
-            </button>
-          }
-        />
 
         <div className="mx-1 h-px bg-border/10 dark:bg-white/6 my-1.5!" />
 

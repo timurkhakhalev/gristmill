@@ -8,13 +8,7 @@ export function resolveLocalServerNeeds({
   useCleanupModel,
   cleanupMode,
   cleanupModel,
-  useDictationAgent,
-  dictationAgentMode,
-  dictationAgentModel,
 }) {
   const cleanup = useCleanupModel && cleanupMode === "local" ? cleanupModel?.trim() || "" : "";
-  const dictationAgent =
-    useDictationAgent && dictationAgentMode === "local" ? dictationAgentModel?.trim() || "" : "";
-
-  return { cleanup, dictationAgent, stopServer: !cleanup && !dictationAgent };
+  return { cleanup, stopServer: !cleanup };
 }

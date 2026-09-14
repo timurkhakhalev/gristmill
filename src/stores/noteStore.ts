@@ -542,11 +542,6 @@ export async function updateSpaceMeta(
   return result;
 }
 
-/** Local purge (dev override); store cleanup happens via the space-purged broadcast. */
-export async function purgeSpace(id: number): Promise<{ success: boolean; error?: string }> {
-  return (await window.electronAPI.purgeSpace?.(id)) ?? { success: false };
-}
-
 export function setActiveNoteId(id: number | null): void {
   if (useNoteStore.getState().activeNoteId === id) return;
   useNoteStore.setState({ activeNoteId: id });

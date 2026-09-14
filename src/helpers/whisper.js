@@ -32,27 +32,13 @@ function getValidModelNames() {
   return Object.keys(modelRegistryData.whisperModels);
 }
 
-// WHISPER_GPU_FAILED holds a comma-separated list of backends that fell back
-// to CPU on this machine (e.g. "cuda" or "cuda,vulkan")
-function resolveFailedGpuBackends(value) {
-  return String(value || "")
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
 function shouldRewarmOnWake({
   isRemote,
-  useCuda,
-  useVulkan,
   modelName,
   transcribing,
   rewarmInFlight,
 }) {
-  // Only re-warm a running local GPU whisper-server: sleep evicts its model from
-  // VRAM. Skip remote/CPU servers, and skip while a transcription (already warming
-  // the server) or another re-warm is in flight. See #766.
-  return !isRemote && !!(useCuda || useVulkan) && !!modelName && !transcribing && !rewarmInFlight;
+  return !isRemote && !!modelName && !transcribing && !rewarmInFlight;
 }
 
 class WhisperManager {
@@ -67,51 +53,6 @@ class WhisperManager {
     this.cachedVadModelPath = undefined;
     this._transcribing = false;
     this._rewarmInFlight = false;
-    this._cudaBinaryManager = null;
-    this._vulkanBinaryManager = null;
-  }
-
-  setGpuBinaryManagers({ cuda, vulkan }) {
-    this._cudaBinaryManager = cuda || null;
-    this._vulkanBinaryManager = vulkan || null;
-  }
-
-  // The GPU backend for every server start is resolved fresh from the current
-  // env + installed packs, so enabling or removing a pack applies immediately
-  // instead of after an app restart. A pack on disk implies intent: the user
-  // downloaded it, so it engages unless WHISPER_*_ENABLED is explicitly set to
-  // "false" (case-insensitive; an opt-out that survives without deleting the
-  // pack). Requiring the flag to be present stranded downloaded packs on
-  // silent CPU whenever the .env line was lost (#1340). WHISPER_GPU_FAILED
-  // lists backends that crashed on this machine (persisted by ipcHandlers
-  // when the server falls back to CPU); they stay off until the user retries
-  // or re-downloads, so a doomed backend isn't re-attempted — and its model
-  // reload re-paid — on every launch.
-  resolveGpuStartOptions() {
-    const failed = resolveFailedGpuBackends(process.env.WHISPER_GPU_FAILED);
-    const useCuda =
-      (process.env.WHISPER_CUDA_ENABLED || "").toLowerCase() !== "false" &&
-      !failed.includes("cuda") &&
-      !!this._cudaBinaryManager?.isDownloaded();
-    const useVulkan =
-      !useCuda &&
-      (process.env.WHISPER_VULKAN_ENABLED || "").toLowerCase() !== "false" &&
-      !failed.includes("vulkan") &&
-      !!this._vulkanBinaryManager?.isDownloaded();
-    return { useCuda, useVulkan };
-  }
-
-  // Re-resolve GPU options and reload the server in place. Used after a GPU
-  // pack download, delete, or failure-retry so the change takes effect without
-  // an app restart. Callers that had to stop the server before touching pack
-  // files pass the model they captured first; no-op when none was loaded.
-  async restartServerWithGpuPreference(modelName = this.currentServerModel) {
-    if (!modelName || this.serverManager.isRemote) return { success: true, restarted: false };
-
-    const options = { ...this.serverManager.lastStartOptions, ...this.resolveGpuStartOptions() };
-    await this.stopServer();
-    const result = await this.startServer(modelName, options);
-    return { ...result, restarted: true };
   }
 
   getModelsDir() {
@@ -163,7 +104,6 @@ class WhisperManager {
 
       // Pre-warm whisper-server if local mode enabled (eliminates 2-5s cold-start delay)
       const { localTranscriptionProvider, whisperModel } = settings;
-      const { useCuda, useVulkan } = this.resolveGpuStartOptions();
 
       if (
         localTranscriptionProvider === "whisper" &&
@@ -176,13 +116,11 @@ class WhisperManager {
           debugLogger.info("Pre-warming whisper-server", {
             model: whisperModel,
             modelPath,
-            cuda: useCuda,
-            vulkan: useVulkan,
           });
 
           try {
             const serverStartTime = Date.now();
-            await this.serverManager.start(modelPath, { useCuda, useVulkan });
+            await this.serverManager.start(modelPath);
             this.currentServerModel = whisperModel;
 
             debugLogger.info("whisper-server pre-warmed successfully", {
@@ -267,7 +205,7 @@ class WhisperManager {
       }
     }
 
-    debugLogger.info("OpenWhispr dependency check", status);
+    debugLogger.info("OpenHercules dependency check", status);
 
     // Log a summary for easy scanning
     const serverStatus = status.whisperServer.available
@@ -319,8 +257,6 @@ class WhisperManager {
     if (
       !shouldRewarmOnWake({
         isRemote: sm.isRemote,
-        useCuda: sm.useCuda,
-        useVulkan: sm.useVulkan,
         modelName,
         transcribing: this._transcribing,
         rewarmInFlight: this._rewarmInFlight,
@@ -330,11 +266,8 @@ class WhisperManager {
     }
 
     // Replay the last start options (VAD, threads) so the reloaded server
-    // matches the signature the next dictation will use; a bare start would
-    // otherwise be rejected by start()'s no-op guard and reload the model on
-    // the first dictation. See #766. GPU flags are re-resolved so a backend
-    // that failed since is not re-attempted.
-    const options = { ...sm.lastStartOptions, ...this.resolveGpuStartOptions() };
+    // matches the signature the next dictation will use.
+    const options = { ...sm.lastStartOptions };
     this._rewarmInFlight = true;
     try {
       debugLogger.info("Re-warming whisper-server after wake from sleep", { model: modelName });
@@ -428,7 +361,6 @@ class WhisperManager {
     }
 
     await this.serverManager.start(modelPath, {
-      ...this.resolveGpuStartOptions(),
       vadEnabled,
       vadModelPath,
       vadConfig: options.vadConfig || null,
@@ -946,4 +878,3 @@ class WhisperManager {
 
 module.exports = WhisperManager;
 module.exports.shouldRewarmOnWake = shouldRewarmOnWake;
-module.exports.resolveFailedGpuBackends = resolveFailedGpuBackends;

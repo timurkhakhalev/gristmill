@@ -25,7 +25,7 @@ async function renderTree(t, direction) {
       "/stores/noteStore": `
         const spaces = [
           { id: 1, kind: "private", name: "Personal", sync_status: "synced" },
-          { id: 2, kind: "team", name: "Engineering", sync_status: "synced" },
+          { id: 2, kind: "private", name: "Engineering", sync_status: "synced" },
         ];
         const folders = [
           { id: 11, space_id: 1, name: "Private folder", is_default: 0 },
@@ -155,14 +155,16 @@ function openingTagForTitle(markup, title) {
 }
 
 for (const direction of ["ltr", "rtl"]) {
-  test(`private and team folder note titles clear their actions in ${direction}`, async (t) => {
+  test(`folder note titles clear their actions in ${direction}`, async (t) => {
     const markup = await renderTree(t, direction);
 
+    assert.match(markup, /class="[^"]*min-w-0[^"]*flex-1/);
+    assert.match(markup, /class="[^"]*h-5 w-5 shrink-0/);
     for (const title of [PRIVATE_NOTE_TITLE, TEAM_NOTE_TITLE]) {
       assert.match(
         openingTagForTitle(markup, title),
-        /style="padding-inline-end:27px"/,
-        `${title} must reserve the complete logical-end kebab slot`
+        /class="[^"]*flex[^"]*"/,
+        `${title} uses a flex row for a separate action slot`
       );
     }
   });

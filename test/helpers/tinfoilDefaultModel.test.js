@@ -58,8 +58,8 @@ test("a cached catalog does not displace the named Tinfoil default", async (t) =
       _llmScopeKeysMigrated: "1",
       tinfoilModels: JSON.stringify({ models: LIVE_CATALOG, fetchedAt: Date.now() }),
       cleanupMode: "providers",
-      cleanupProvider: "openai",
-      cleanupModel: "gpt-5-mini",
+      cleanupProvider: "tinfoil",
+      cleanupModel: "glm-5-3",
     },
   });
   const vite = await createRendererServer(t, {
@@ -67,31 +67,11 @@ test("a cached catalog does not displace the named Tinfoil default", async (t) =
   });
   // Loading the registry applies the cached list, exactly as app startup does.
   await vite.ssrLoadModule("/models/ModelRegistry.ts");
-  const { useSettingsStore, selectPolicyEffectiveSettings } = await vite.ssrLoadModule(
+  const { useSettingsStore } = await vite.ssrLoadModule(
     "/stores/settingsStore.ts"
   );
 
-  const effective = selectPolicyEffectiveSettings(useSettingsStore.getState(), {
-    status: "managed",
-    appVersion: "1.9.2",
-    policy: {
-      version: 1,
-      transcription: { allowedModes: ["local"], allowedByokProviders: [] },
-      llm: {
-        allowedModes: ["providers"],
-        allowedByokProviders: ["tinfoil"],
-        allowedEnterpriseProviders: [],
-      },
-      features: { agentEnabled: true, webSearchEnabled: true },
-      sharing: { externalLinkSharing: "allowed" },
-      dataRetention: {
-        audioRetentionMaxDays: null,
-        localHistoryMode: "user_choice",
-        cloudBackupAllowed: true,
-      },
-      minAppVersion: null,
-    },
-  });
+  const effective = useSettingsStore.getState();
 
   assert.equal(effective.cleanupProvider, "tinfoil");
   assert.equal(effective.cleanupModel, "glm-5-3");

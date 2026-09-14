@@ -56,7 +56,7 @@ struct GlobePreferenceState: Codable {
 
 // macOS runs the standalone Globe action (emoji viewer, input-source switch,
 // dictation) from WindowServer ahead of every event tap, so a listener cannot
-// consume the key — the only way to stop it firing alongside an OpenWhispr Globe
+// consume the key — the only way to stop it firing alongside an OpenHercules Globe
 // hotkey is to hold AppleFnUsageType at "Do Nothing" while we own the key.
 // TISUpdateFnUsageType is what System Settings itself calls: it persists the
 // preference and broadcasts the change so it applies live. Writing the

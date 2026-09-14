@@ -72,8 +72,8 @@ export function formatDateGroup(
   yesterday.setDate(yesterday.getDate() - 1);
   const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
-  if (target.getTime() === today.getTime()) return t("controlPanel.history.dateGroups.today");
+  if (target.getTime() === today.getTime()) return t("notes.dateGroups.today");
   if (target.getTime() === yesterday.getTime())
-    return t("controlPanel.history.dateGroups.yesterday");
+    return t("notes.dateGroups.yesterday");
   return d.toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" });
 }

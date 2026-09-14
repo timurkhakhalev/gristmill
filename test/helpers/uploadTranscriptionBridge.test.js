@@ -217,7 +217,7 @@ test("failure shapes cross the boundary intact", async () => {
     success: false,
     error: "File path not allowed",
   });
-  assert.deepEqual(await api.mergeSpeakerText([], "t", Number.POSITIVE_INFINITY), {
+  assert.deepEqual(plain(await api.mergeSpeakerText([], "t", Number.POSITIVE_INFINITY)), {
     success: false,
     error: "Invalid arguments",
   });

@@ -217,12 +217,12 @@ export async function transcribeFileWithSpeakers(
   const byokDiarize = shouldUseByokDiarize(cfg, diarization.enabled);
   const diarizePromise =
     diarization.enabled && diarization.localModelsReady && !byokDiarize
-      ? window.electronAPI
-          .diarizeAudioFile(filePath, {
+      ? (window.electronAPI
+          .diarizeAudioFile?.(filePath, {
             numSpeakers: diarization.numSpeakers ?? undefined,
             requestId: opts.requestId,
           })
-          .catch(() => null)
+          .catch(() => null) ?? Promise.resolve(null))
       : Promise.resolve(null);
 
   const [transcribed, diar] = await Promise.all([

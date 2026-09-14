@@ -1,23 +1,48 @@
-import type { SettingsState } from "../stores/settingsStore";
-import type { CloudReasonPurpose } from "../types/electron";
+import type {
+  CloudReasonPurpose,
+  InferenceMode,
+  InferenceSettingsSnapshot,
+} from "../contracts/inferenceSettings";
 
+// Keys point into the narrow selector snapshot, not the whole store: string
+// fields must reference string snapshot fields, the mode field a mode field,
+// disableThinking a boolean field. The store's SettingsState structurally
+// satisfies the snapshot, so the same keys read its state.
 export interface InferenceScopeStoreKeys {
-  mode: keyof SettingsState;
-  provider: keyof SettingsState;
-  model: keyof SettingsState;
-  cloudMode?: keyof SettingsState;
-  cloudBaseUrl?: keyof SettingsState;
-  remoteUrl?: keyof SettingsState;
-  customApiKey?: keyof SettingsState;
-  disableThinking?: keyof SettingsState;
+  mode: {
+    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends InferenceMode ? K : never;
+  }[keyof InferenceSettingsSnapshot];
+  provider: {
+    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
+  }[keyof InferenceSettingsSnapshot];
+  model: {
+    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
+  }[keyof InferenceSettingsSnapshot];
+  cloudMode?: {
+    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
+  }[keyof InferenceSettingsSnapshot];
+  cloudBaseUrl?: {
+    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
+  }[keyof InferenceSettingsSnapshot];
+  remoteUrl?: {
+    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
+  }[keyof InferenceSettingsSnapshot];
+  customApiKey?: {
+    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
+  }[keyof InferenceSettingsSnapshot];
+  disableThinking?: {
+    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends boolean ? K : never;
+  }[keyof InferenceSettingsSnapshot];
 }
 
 export interface InferenceScopeDefinition {
   storeKeys: InferenceScopeStoreKeys;
-  fallbackScope?: string;
+  fallbackScope?: InferenceScopeId;
   /** Configured fallback purpose for this inference scope. */
   cloudPurpose: CloudReasonPurpose;
 }
+
+export type InferenceScopeId = "cleanup" | "noteFormatting" | "chatIntelligence";
 
 export const INFERENCE_SCOPES = {
   cleanup: {
@@ -61,6 +86,13 @@ export const INFERENCE_SCOPES = {
       disableThinking: "chatAgentDisableThinking",
     },
   },
-} as const satisfies Record<string, InferenceScopeDefinition>;
+} as const satisfies Record<InferenceScopeId, InferenceScopeDefinition>;
 
 export type InferenceScope = keyof typeof INFERENCE_SCOPES;
+
+// Indexed lookup keeps `def` typed as InferenceScopeDefinition (so the
+// optional fallbackScope exists on every branch) while the const object still
+// pins the exact key/value pairs for type-checked storeKeys.
+export function inferenceScopeDefinition(scope: InferenceScope): InferenceScopeDefinition {
+  return INFERENCE_SCOPES[scope];
+}

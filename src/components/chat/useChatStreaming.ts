@@ -4,9 +4,9 @@ import ReasoningService, { type AgentStreamChunk } from "../../services/Reasonin
 import { isEnterpriseProvider } from "../../models/ModelRegistry";
 import {
   getSettings,
-  selectResolvedLLMConfig,
   useSettingsStore,
 } from "../../stores/settingsStore";
+import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
 import { appendDictionarySuffix, getAgentSystemPrompt } from "../../config/prompts";
 import { getDictionaryHintWords } from "../../utils/snippets";
 import { createToolRegistry } from "../../services/tools";

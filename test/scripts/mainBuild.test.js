@@ -71,7 +71,8 @@ test("emitted preload loads with the sandbox Electron API and forwards arguments
         ipcRenderer: {
           invoke: async (...args) => {
             calls.push(args);
-            return { success: true };
+            // Notes contract: getNote resolves to a row or null.
+            return args[0] === "db-get-note" ? null : { success: true };
           },
           send() {},
           on: (channel, listener) => listeners.set(channel, listener),
@@ -86,8 +87,7 @@ test("emitted preload loads with the sandbox Electron API and forwards arguments
     process: { platform: "darwin", versions: {} },
   });
   await api.getNote(17);
-  assert.deepEqual(calls, [["db-get-note", 17]]);
-  const unsubscribe = api.onMeetingTranscriptionSegment(() => {});
+  assert.deepEqual(calls, [["db-get-note", 17]]);  const unsubscribe = api.onMeetingTranscriptionSegment(() => {});
   const before = listeners.size;
   unsubscribe();
   assert.equal(listeners.size, before - 1);

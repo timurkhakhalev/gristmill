@@ -5,6 +5,29 @@ const Module = require("node:module");
 const managerModulePath = require.resolve("../../src/helpers/googleCalendarManager.js");
 const originalLoad = Module._load;
 
+test("getConnectionStatus reports Google OAuth registration state", () => {
+  const GoogleCalendarManager = loadManagerModule();
+  const previousId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
+  const previousSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+  delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
+  delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+  try {
+    const manager = new GoogleCalendarManager({ getGoogleAccounts: () => [] }, null, {
+      scheduleNextMeeting: () => {},
+      reset: () => {},
+    });
+    assert.equal(manager.getConnectionStatus().configured, false);
+    process.env.GOOGLE_CALENDAR_CLIENT_ID = "client-id";
+    process.env.GOOGLE_CALENDAR_CLIENT_SECRET = "client-secret";
+    assert.equal(manager.getConnectionStatus().configured, true);
+  } finally {
+    if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
+    else process.env.GOOGLE_CALENDAR_CLIENT_ID = previousId;
+    if (previousSecret === undefined) delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+    else process.env.GOOGLE_CALENDAR_CLIENT_SECRET = previousSecret;
+  }
+});
+
 function loadManagerModule() {
   delete require.cache[managerModulePath];
   Module._load = function loadWithElectronMock(request, parent, isMain) {

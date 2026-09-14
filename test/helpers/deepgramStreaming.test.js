@@ -24,47 +24,12 @@ async function withMetadataServer(run) {
   }
 }
 
-test("a warm connection is reused only within the same credential mode", async () => {
-  await withMetadataServer(async (url, connections) => {
-    const streaming = new DeepgramStreaming();
-    streaming.buildWebSocketUrl = () => url;
-
-    try {
-      await streaming.warmup({ token: "managed-token", mode: "openwhispr" });
-      assert.equal(streaming.getCachedToken(), "managed-token");
-
-      // The main-process singleton serves BYOK and managed dictation alike: a
-      // BYOK session must neither ride the managed socket nor see its token.
-      await streaming.connect({ token: "byok-key", mode: "byok" });
-
-      assert.equal(connections.length, 2, "the managed warm socket was not reused");
-      assert.equal(streaming.hasWarmConnection(), false);
-      assert.equal(streaming.getCachedToken(), null, "the managed token was dropped");
-      assert.equal(streaming.mode, "byok");
-      assert.equal(
-        streaming.connectionOptions.mode,
-        "byok",
-        "a liveness reconnect must stay in the session's mode"
-      );
-    } finally {
-      streaming.cleanupAll();
-    }
-  });
-
-  await withMetadataServer(async (url, connections) => {
-    const streaming = new DeepgramStreaming();
-    streaming.buildWebSocketUrl = () => url;
-
-    try {
-      await streaming.warmup({ token: "managed-token", mode: "openwhispr" });
-      await streaming.connect({ token: "managed-token", mode: "openwhispr" });
-
-      assert.equal(connections.length, 1, "same-mode start rides the warm socket");
-      assert.equal(streaming.isConnected, true);
-    } finally {
-      streaming.cleanupAll();
-    }
-  });
+test("managed mode is rejected before opening a socket", async () => {
+  const streaming = new DeepgramStreaming();
+  await assert.rejects(
+    () => streaming.warmup({ token: "managed-token", mode: "openwhispr" }),
+    /requires a direct provider API key/
+  );
 });
 
 // Keeps the real query string (language, keyterms) while dialing the loopback server.
@@ -147,23 +112,9 @@ test("a warm connection is reused when the two option sets build the same URL", 
   });
 });
 
-test("adopting a different mode before a warmup drops the other mode's token", async () => {
-  await withMetadataServer(async (url) => {
-    const streaming = new DeepgramStreaming();
-    streaming.buildWebSocketUrl = () => url;
-
-    try {
-      await streaming.warmup({ token: "byok-key", mode: "byok" });
-      // ipcHandlers adopts the incoming mode before consulting the token cache
-      // for a managed start, so the BYOK key can never be replayed as a token.
-      streaming.adoptMode({ mode: "openwhispr" });
-
-      assert.equal(streaming.getCachedToken(), null);
-      assert.equal(streaming.hasWarmConnection(), false);
-    } finally {
-      streaming.cleanupAll();
-    }
-  });
+test("adopting managed mode is rejected before changing the direct session", async () => {
+  const streaming = new DeepgramStreaming();
+  await assert.rejects(() => streaming.adoptMode({ mode: "openwhispr" }), /requires a direct/);
 });
 
 test("a BYOK key authenticates under Deepgram's Token scheme", async () => {
@@ -175,21 +126,6 @@ test("a BYOK key authenticates under Deepgram's Token scheme", async () => {
       await streaming.connect({ token: "byok-key", mode: "byok" });
 
       assert.deepEqual(authHeaders, ["Token byok-key"]);
-    } finally {
-      streaming.cleanupAll();
-    }
-  });
-});
-
-test("a managed grant token authenticates under the Bearer scheme", async () => {
-  await withMetadataServer(async (url, connections, authHeaders) => {
-    const streaming = new DeepgramStreaming();
-    streaming.buildWebSocketUrl = () => url;
-
-    try {
-      await streaming.connect({ token: "grant-token", mode: "openwhispr" });
-
-      assert.deepEqual(authHeaders, ["Bearer grant-token"]);
     } finally {
       streaming.cleanupAll();
     }
@@ -230,7 +166,7 @@ function captureScheduledCallback(schedule) {
   return scheduled;
 }
 
-test("a re-warm whose options were dropped does not re-authenticate as managed", async () => {
+test("a re-warm whose options were dropped does not open a socket without direct mode", async () => {
   await withMetadataServer(async (url, connections, authHeaders) => {
     const streaming = new DeepgramStreaming();
     streaming.buildWebSocketUrl = () => url;
@@ -241,12 +177,9 @@ test("a re-warm whose options were dropped does not re-authenticate as managed",
 
       const rewarm = captureScheduledCallback(() => streaming.scheduleRewarm());
       // cleanupWarmConnection() drops the saved options without cancelling the
-      // timer, and the cached token outlives them — so the re-warm still has a
-      // credential to present, just no longer any record of which kind it is.
+      // timer. A re-warm without an explicit direct mode must fail closed.
       streaming.cleanupWarmConnection();
-      await rewarm();
-
-      assert.equal(streaming.mode, "byok", "the re-warm renegotiated the credential mode");
+      await assert.rejects(() => rewarm(), /requires a direct/);
       assert.equal(streaming.warmConnection, null, "a socket was opened without a known mode");
     } finally {
       streaming.cleanupAll();
@@ -258,5 +191,5 @@ test("a re-warm whose options were dropped does not re-authenticate as managed",
 // export stays green for a week.
 test("the authorization scheme is exported for the canary to reuse", () => {
   assert.equal(DeepgramStreaming.authorizationHeader("byok", "k"), "Token k");
-  assert.equal(DeepgramStreaming.authorizationHeader("openwhispr", "k"), "Bearer k");
+  assert.equal(DeepgramStreaming.authorizationHeader("openwhispr", "k"), "Token k");
 });

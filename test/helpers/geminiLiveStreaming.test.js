@@ -42,14 +42,10 @@ async function withServer(run, script) {
 
 const audioFrames = (received) => received.filter((message) => message.realtimeInput?.audio);
 
-test("url: the two Live methods are auth-disjoint and pinned per mode", () => {
+test("url: direct Gemini Live uses the API-key endpoint", () => {
   assert.equal(
     buildGeminiLiveUrl({ mode: "byok", token: "AI-KEY" }),
     "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=AI-KEY"
-  );
-  assert.equal(
-    buildGeminiLiveUrl({ mode: "openwhispr", token: "auth_tokens/abc" }),
-    "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained?access_token=auth_tokens/abc"
   );
 });
 
@@ -173,9 +169,8 @@ test("audio: a dictation shorter than the handshake still reaches the wire", asy
   });
 });
 
-test("setup: a non-Gemini model id never reaches the wire", async () => {
+test("setup: a non-Gemini model id falls back to the direct Gemini model", async () => {
   const streaming = new GeminiLiveStreaming();
-  // Managed dictation carries the BYOK default, which is an OpenAI id.
   assert.equal(
     streaming.buildSetupMessage({ model: "gpt-4o-mini-transcribe" }).setup.model,
     "models/gemini-3.5-transcribe-live"
@@ -460,24 +455,11 @@ for (const [code, reason] of [
   });
 }
 
-test("errors: a spent managed token is re-minted once and the session survives", async () => {
-  await withServer(
-    async ({ streaming, urls }) => {
-      await streaming.connect({
-        token: "auth_tokens/spent",
-        mode: "openwhispr",
-        refreshToken: async () => "auth_tokens/fresh",
-      });
-      assert.equal(streaming.isConnected, true);
-      assert.deepEqual(urls, ["/?t=auth_tokens/spent", "/?t=auth_tokens/fresh"]);
-    },
-    (socket, _message, connectionCount) => {
-      if (connectionCount === 1) {
-        socket.close(1011, "Token has been used too many times");
-        return;
-      }
-      socket.send(JSON.stringify({ setupComplete: {} }));
-    }
+test("errors: managed mode is rejected before opening a socket", async () => {
+  const streaming = new GeminiLiveStreaming();
+  await assert.rejects(
+    () => streaming.connect({ token: "managed-token", mode: "openwhispr" }),
+    /requires a direct provider API key/
   );
 });
 

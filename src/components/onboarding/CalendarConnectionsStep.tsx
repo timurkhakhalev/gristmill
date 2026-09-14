@@ -19,6 +19,8 @@ export default function CalendarConnectionsStep() {
   const [connecting, setConnecting] = useState<ProviderId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [appleDenied, setAppleDenied] = useState(false);
+  const [googleConfigured, setGoogleConfigured] = useState(false);
+  const [microsoftConfigured, setMicrosoftConfigured] = useState(false);
   const isMac = window.electronAPI?.getPlatform?.() === "darwin";
 
   const ensureSystemAudio = useCallback(async () => {
@@ -82,6 +84,12 @@ export default function CalendarConnectionsStep() {
   );
 
   useEffect(() => {
+    void window.electronAPI?.gcalGetConnectionStatus?.()?.then((status) => {
+      setGoogleConfigured(Boolean((status as { configured?: boolean }).configured));
+    });
+    void window.electronAPI?.mcalGetConnectionStatus?.()?.then((status) => {
+      setMicrosoftConfigured(Boolean((status as { configured?: boolean }).configured));
+    });
     const google = window.electronAPI?.onGcalConnectionChanged?.((data) => {
       if (data.accounts) store.setGcalAccounts(data.accounts);
     });
@@ -105,6 +113,7 @@ export default function CalendarConnectionsStep() {
       title: t("onboarding.rehaul.notes.connectors.googleTitle"),
       description: t("onboarding.rehaul.notes.connectors.googleDescription"),
       connected: store.gcalAccounts.length > 0,
+      configured: googleConfigured,
     },
     {
       id: "microsoft" as const,
@@ -112,6 +121,7 @@ export default function CalendarConnectionsStep() {
       title: t("onboarding.rehaul.notes.connectors.microsoftTitle"),
       description: t("onboarding.rehaul.notes.connectors.microsoftDescription"),
       connected: store.mcalAccounts.length > 0,
+      configured: microsoftConfigured,
     },
     ...(isMac
       ? [
@@ -220,7 +230,11 @@ export default function CalendarConnectionsStep() {
                 white. Deliberately a plain button, not the shadcn Button — that
                 default variant layers on shadow-sm, hover:shadow, a
                 border-primary/60 and font-semibold, none of which the spec has. */}
-            {provider.connected ? (
+            {provider.configured === false ? (
+              <span className="shrink-0 text-xs text-[var(--onboarding-text-secondary)]">
+                {t(`integrations.${provider.id}Calendar.notConfigured`)}
+              </span>
+            ) : provider.connected ? (
               <span className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[38px] bg-[var(--onboarding-accent)] px-3 py-1.5 text-xs font-medium leading-[1.4] text-[var(--onboarding-accent-foreground)]">
                 <CircleCheck className="size-3.5 shrink-0" strokeWidth={1.167} />
                 {t(`integrations.${provider.id}Calendar.connected`)}

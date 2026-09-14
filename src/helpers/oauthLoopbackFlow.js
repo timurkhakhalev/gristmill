@@ -3,16 +3,7 @@ const crypto = require("crypto");
 const { openExternalUrl } = require("./externalUrlOpener");
 
 const OAUTH_TIMEOUT_MS = 120000;
-const DEFAULT_DESKTOP_CALLBACK_URL = "https://openwhispr.com/auth/desktop-callback";
-
-const PROTOCOL_BY_CHANNEL = {
-  development: "openhercules-dev",
-  staging: "openhercules-staging",
-  production: "openhercules",
-};
-
-// Thrown by handleCallback to control the error code shown on the hosted
-// desktop-callback page (defaults to "server_error").
+// Thrown by handleCallback so callers can distinguish callback failures.
 class OAuthFlowError extends Error {
   constructor(redirectCode, message) {
     super(message);
@@ -20,27 +11,15 @@ class OAuthFlowError extends Error {
   }
 }
 
-function getDesktopCallbackUrl() {
-  return process.env.VITE_OPENWHISPR_OAUTH_CALLBACK_URL || DEFAULT_DESKTOP_CALLBACK_URL;
-}
-
-function getProtocol() {
-  const channel = process.env.OPENHERCULES_CHANNEL || "production";
-  return PROTOCOL_BY_CHANNEL[channel] || PROTOCOL_BY_CHANNEL.production;
-}
-
-function buildCallbackRedirect(params) {
-  const url = new URL(getDesktopCallbackUrl());
-  url.searchParams.set("protocol", getProtocol());
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
-  }
-  return url.toString();
-}
-
-function redirect(res, params) {
-  res.writeHead(302, { Location: buildCallbackRedirect(params) });
-  res.end();
+function respond(res, statusCode, message) {
+  const safeMessage = String(message)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+  res.writeHead(statusCode, { "Content-Type": "text/html; charset=utf-8" });
+  res.end(`<html><body><h3>${safeMessage}</h3></body></html>`);
 }
 
 // Runs a PKCE auth-code flow through an ephemeral 127.0.0.1 server:
@@ -48,11 +27,7 @@ function redirect(res, params) {
 // - handleCallback(code, redirectUri, codeVerifier) → resolves the flow result;
 //   called once with a state-validated code, throws (OAuthFlowError for a
 //   specific callback-page code) to reject.
-// - errorParam — query-param name for the hosted desktop-callback page
-//   (e.g. "gcal_error"); the success param is derived from the same prefix.
-function runOAuthLoopbackFlow({ buildAuthUrl, handleCallback, errorParam }) {
-  const connectedParam = errorParam.replace(/_error$/, "_connected");
-
+function runOAuthLoopbackFlow({ buildAuthUrl, handleCallback }) {
   return new Promise((resolve, reject) => {
     const codeVerifier = crypto.randomBytes(32).toString("base64url").slice(0, 43);
     const codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
@@ -76,15 +51,14 @@ function runOAuthLoopbackFlow({ buildAuthUrl, handleCallback, errorParam }) {
 
         if (error) {
           callbackClaimed = true;
-          redirect(res, { [errorParam]: error });
+          respond(res, 400, `OAuth error: ${error}`);
           cleanup();
           reject(new Error(`OAuth error: ${error}`));
           return;
         }
 
         if (!code || returnedState !== state) {
-          res.writeHead(400, { "Content-Type": "text/html" });
-          res.end("<html><body><h3>Invalid request.</h3></body></html>");
+          respond(res, 400, "Invalid request.");
           // A real callback with a code but the wrong state is a failed
           // attempt (stale tab, CSRF). Fail the flow now. A request with no
           // code (favicon / bare GET) must keep waiting for the redirect.
@@ -100,12 +74,12 @@ function runOAuthLoopbackFlow({ buildAuthUrl, handleCallback, errorParam }) {
         const redirectUri = `http://127.0.0.1:${server.address().port}`;
         const result = await handleCallback(code, redirectUri, codeVerifier);
 
-        redirect(res, { [connectedParam]: "true" });
+        respond(res, 200, "Calendar connected. You can close this window.");
         cleanup();
         resolve(result);
       } catch (err) {
         callbackClaimed = true;
-        redirect(res, { [errorParam]: err.redirectCode || "server_error" });
+        respond(res, 400, `OAuth error: ${err.redirectCode || "server_error"}`);
         cleanup();
         reject(err);
       }

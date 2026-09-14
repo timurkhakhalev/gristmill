@@ -87,6 +87,10 @@ class MicrosoftCalendarManager {
     return this.accounts.size > 0;
   }
 
+  isConfigured() {
+    return this.oauth.isConfigured();
+  }
+
   addAccount(email) {
     this.accounts.set(email, { email });
   }
@@ -133,7 +137,7 @@ class MicrosoftCalendarManager {
 
   getConnectionStatus() {
     const accounts = this.databaseManager.getMicrosoftAccounts();
-    return { connected: accounts.length > 0, accounts };
+    return { connected: accounts.length > 0, configured: this.isConfigured(), accounts };
   }
 
   getAccounts() {

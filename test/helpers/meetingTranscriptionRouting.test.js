@@ -38,12 +38,6 @@ const baseOptions = {
   selectedProvider: "tinfoil",
   selectedModel: "voxtral-mini-4b-realtime",
   byokProviders,
-  managedProviders: [
-    {
-      id: "assemblyai",
-      models: [{ id: "universal-streaming", default: true }],
-    },
-  ],
   cortiEnvironment: "us",
   cortiTenant: "tenant",
   keyterms: ["OpenWhispr"],
@@ -124,38 +118,12 @@ test("local mode wins over stale cloud provider state", async () => {
   );
 });
 
-test("managed mode ignores stale BYOK state", async () => {
+test("managed mode fails closed instead of routing through an OpenWhispr provider", async () => {
   const { resolveMeetingTranscriptionOptions } = await load();
 
-  assert.deepEqual(
-    resolveMeetingTranscriptionOptions({
-      ...baseOptions,
-      transcriptionMode: "openwhispr",
-    }),
-    {
-      provider: "assemblyai-realtime",
-      model: "universal-streaming",
-      mode: "openwhispr",
-      language: "en",
-    }
-  );
-});
-
-test("managed mode keeps its established OpenAI default before the catalog loads", async () => {
-  const { resolveMeetingTranscriptionOptions } = await load();
-
-  assert.deepEqual(
-    resolveMeetingTranscriptionOptions({
-      ...baseOptions,
-      transcriptionMode: "openwhispr",
-      managedProviders: null,
-    }),
-    {
-      provider: "openai-realtime",
-      model: "gpt-4o-mini-transcribe",
-      mode: "openwhispr",
-      language: "en",
-    }
+  assert.throws(
+    () => resolveMeetingTranscriptionOptions({ ...baseOptions, transcriptionMode: "openwhispr" }),
+    /Unsupported Note Recording transcription mode/
   );
 });
 
@@ -254,19 +222,13 @@ test("gpt-live-transcribe is never offered for Note Recording", async () => {
     }).model,
     "gpt-4o-mini-transcribe"
   );
-  const managedCatalogs = [
-    null,
-    [{ id: "openai", models: [{ id: "gpt-4o-mini-transcribe", default: true }] }],
-  ];
-  for (const managedProviders of managedCatalogs) {
-    assert.equal(
+  assert.throws(
+    () =>
       resolveMeetingTranscriptionOptions({
         ...baseOptions,
         transcriptionMode: "openwhispr",
-        managedProviders,
         selectedModel: "gpt-live-transcribe",
-      }).model,
-      "gpt-4o-mini-transcribe"
-    );
-  }
+      }),
+    /Unsupported Note Recording transcription mode/
+  );
 });

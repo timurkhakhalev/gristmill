@@ -6,12 +6,6 @@ import { providerSupportsImages } from "../../services/ai/inferenceProviders";
 import { getSettings, useSettingsStore } from "../../stores/settingsStore";
 import { resolveChatStreamingInference } from "../../helpers/dictationAgentInference.js";
 import {
-  isAgentAllowed,
-  isLlmSelectionAllowed,
-  isWebSearchAllowed,
-} from "../../stores/policyRules";
-import { usePolicyStore } from "../../stores/policyStore";
-import {
   appendDictionarySuffix,
   appendScreenContextSuffix,
   getAgentSystemPrompt,
@@ -27,40 +21,11 @@ import {
   type AgentSelectionContext,
 } from "../../utils/agentSelectionContext";
 
-const RAG_NOTE_LIMIT = 5;
-const RAG_NOTE_SNIPPET_LENGTH = 500;
-
 const LOCAL_TOOL_MIN_PARAMS_B = 4;
 
 function estimateModelSizeB(modelId: string): number {
   const match = modelId.match(/-([\d.]+)[bB]/);
   return match ? parseFloat(match[1]) : 0;
-}
-
-async function buildRAGContext(userText: string, scope?: ContainerScope): Promise<string> {
-  if (!window.electronAPI?.semanticSearchNotes) return "";
-  try {
-    const results = await window.electronAPI.semanticSearchNotes(
-      userText,
-      RAG_NOTE_LIMIT,
-      scope?.spaceId ?? null,
-      scope?.folderId ?? null
-    );
-    if (!results || results.length === 0) return "";
-
-    const snippets = await Promise.all(
-      results.map(async (r: { id: number; title: string; score?: number }) => {
-        const note = await window.electronAPI.getNote(r.id);
-        if (!note) return null;
-        const content = (note.content || "").slice(0, RAG_NOTE_SNIPPET_LENGTH);
-        return `<note id="${note.id}" title="${note.title}">\n${content}\n</note>`;
-      })
-    );
-
-    return snippets.filter(Boolean).join("\n\n");
-  } catch {
-    return "";
-  }
 }
 
 /**
@@ -78,7 +43,7 @@ interface UseChatStreamingOptions {
   inferenceScope?: ChatStreamingScope;
   /** Optional note context to prepend to the system prompt (used by embedded note chat). */
   noteContext?: string;
-  /** Optional container scope applied to RAG and the search_notes tool (container overview chat). */
+  /** Optional container scope applied to the search_notes tool (container overview chat). */
   searchScope?: ContainerScope;
   onStreamComplete?: (assistantId: string, content: string, toolCalls?: ToolCallInfo[]) => void;
   /** Fires exactly once when displayable assistant content or tool activity becomes available. */
@@ -242,29 +207,6 @@ export function useChatStreaming({
       });
       const requestedAttachment = attachScreenContext ? (options?.attachment ?? null) : null;
       const llmMode = llmConfig.mode || "openwhispr";
-      const policyState = usePolicyStore.getState();
-      const policyProvider =
-        llmMode === "openwhispr"
-          ? "openwhispr"
-          : llmMode === "local"
-            ? "local"
-            : llmConfig.provider;
-      if (
-        !isAgentAllowed(policyState) ||
-        !isLlmSelectionAllowed(policyState, { mode: llmMode, provider: policyProvider })
-      ) {
-        // The user message is already appended; answer it instead of dead-ending silently.
-        const restriction = !isAgentAllowed(policyState)
-          ? t("common.policyAgentRestricted")
-          : t("common.policyAiProcessingRestricted");
-        announceResponse();
-        setMessages((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), role: "assistant", content: restriction, isStreaming: false },
-        ]);
-        return;
-      }
-
       setAgentState("thinking");
       const isCloudAgent = llmMode === "openwhispr" && settings.isSignedIn;
       const isLanAgent = llmMode === "self-hosted" && !!llmConfig.remoteUrl;
@@ -293,19 +235,15 @@ export function useChatStreaming({
         // so any connected provider enables it.
         const calendarConnected =
           settings.gcalConnected || settings.mcalConnected || settings.appleCalendarConnected;
-        const webSearchEnabled = isWebSearchAllowed(usePolicyStore.getState());
         // Triggers ride in the tool description, so a snippet edit rebuilds the registry.
         const snippetKey = settings.snippets.map((s) => s.trigger).join("|");
-        const cacheKey = `${settings.isSignedIn}-${calendarConnected}-${settings.cloudBackupEnabled}-${scopeKey}-${webSearchEnabled}-${snippetKey}`;
+        const cacheKey = `${calendarConnected}-${scopeKey}-${snippetKey}`;
         if (toolRegistryRef.current?.key === cacheKey) {
           registry = toolRegistryRef.current.registry;
         } else {
           registry = createToolRegistry({
-            isSignedIn: settings.isSignedIn,
             calendarConnected,
-            cloudBackupEnabled: settings.cloudBackupEnabled,
             searchScope: scope,
-            webSearchEnabled,
             vocabulary: {
               getDictionary: () => getSettings().customDictionary,
               updateDictionary: (changes) =>
@@ -318,9 +256,8 @@ export function useChatStreaming({
         }
       }
 
-      const ragContext = await buildRAGContext(userText, scope);
       if (cancelled() || !mountedRef.current) return;
-      const combinedContext = [noteContextRef.current, ragContext].filter(Boolean).join("\n\n");
+      const combinedContext = noteContextRef.current;
       // The user's dictionary rides on every conversation so replies use their
       // jargon — same suffix the dictation prompts carry.
       let systemPrompt = appendDictionarySuffix(

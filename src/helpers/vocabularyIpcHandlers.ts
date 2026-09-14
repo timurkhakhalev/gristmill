@@ -13,7 +13,6 @@ import {
   setSnippetsArgsSchema,
   undoLearnedCorrectionsArgsSchema,
   vocabularyChannels,
-  vocabularyEventChannels,
   dictionaryChangeResultSchema,
   dictionaryWordsSchema,
   simpleSuccessSchema,

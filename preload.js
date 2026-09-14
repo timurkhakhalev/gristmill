@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 const { createNotesBridge } = require("./src/preload/notesBridge");
+const { createVocabularyBridge } = require("./src/preload/vocabularyBridge");
 const { createUrlDownloadBridge } = require("./src/preload/urlDownloadBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
@@ -55,6 +56,7 @@ const registerListener = (channel, handlerFactory) => {
 
 contextBridge.exposeInMainWorld("electronAPI", {
   ...createNotesBridge(ipcRenderer),
+  ...createVocabularyBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
   setOnboardingActive: (active) => ipcRenderer.invoke("onboarding-set-active", active),
   onFolderDeleted: (callback) => {
@@ -114,22 +116,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("update-transcription-text", id, text, rawText),
   getTranscriptionById: (id) => ipcRenderer.invoke("get-transcription-by-id", id),
 
-  // Dictionary functions
-  getDictionary: () => ipcRenderer.invoke("db-get-dictionary"),
-  setDictionary: (words) => ipcRenderer.invoke("db-set-dictionary", words),
-  applyDictionaryChanges: (changes) => ipcRenderer.invoke("db-apply-dictionary-changes", changes),
-  onDictionaryUpdated: (callback) => {
-    const listener = (_event, words) => callback?.(words);
-    ipcRenderer.on("dictionary-updated", listener);
-    return () => ipcRenderer.removeListener("dictionary-updated", listener);
-  },
-  getSnippets: () => ipcRenderer.invoke("db-get-snippets"),
-  setSnippets: (snippets) => ipcRenderer.invoke("db-set-snippets", snippets),
-  onSnippetsUpdated: (callback) => {
-    const listener = (_event, snippets) => callback?.(snippets);
-    ipcRenderer.on("snippets-updated", listener);
-    return () => ipcRenderer.removeListener("snippets-updated", listener);
-  },
+  // Vocabulary functions: getDictionary/setDictionary/applyDictionaryChanges/
+  // getSnippets/setSnippets + the two subscriptions come from the typed
+  // vocabularyBridge above.
 
   // Note functions: saveNote/getNote/getNotes/getSpaceNotes/updateNote/
   // deleteNote/searchNotes + the three note subscriptions come from the typed

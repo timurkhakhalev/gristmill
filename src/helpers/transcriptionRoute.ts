@@ -7,6 +7,7 @@
 // Routes never carry secrets — `auth.keyRef` names the key slot the executor
 // resolves itself.
 import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constants.mts";
+import { STREAMING_ONLY_PROVIDERS } from "../config/transcriptionCapabilities.ts";
 import {
   isSecureHttpEndpoint,
   isAzureOpenAIEndpoint,
@@ -39,16 +40,6 @@ const STREAMING_ONLY_PROVIDER_MESSAGE_KEY =
 
 const PROVIDER_KEY_MISSING_MESSAGE_KEY =
   "hooks.audioRecording.errorDescriptions.providerKeyMissing";
-
-// Deepgram and AssemblyAI have no OpenAI-compatible /audio/transcriptions, so
-// they exist only as realtime providers. A batch/upload/retry request for them
-// has to fail closed: the fall-through at the end of resolveTranscriptionRoute
-// would otherwise POST the user's audio to api.openai.com with their OpenAI key.
-// Hand-maintained rather than derived from the registry: Corti's only model is
-// realtime too, yet it batches through the proxy. Every other "realtime-only"
-// decision (dictationStreamingRouting, audioManager.shouldUseStreaming, the
-// upload picker and selector) derives from this set.
-export const STREAMING_ONLY_PROVIDERS = new Set(["deepgram", "assemblyai"]);
 
 export interface TranscriptionRouteSettings {
   transcriptionMode?: string;

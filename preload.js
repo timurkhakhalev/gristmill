@@ -5,6 +5,7 @@ const { createContainersBridge } = require("./src/preload/containerBridge");
 const { createChatPersistenceBridge } = require("./src/preload/chatBridge");
 const { createUrlDownloadBridge } = require("./src/preload/urlDownloadBridge");
 const { createActionsBridge } = require("./src/preload/actionsBridge");
+const { createLocalFileTranscriptionBridge } = require("./src/preload/localFileTranscriptionBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -61,6 +62,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createNotesBridge(ipcRenderer),
   ...createVocabularyBridge(ipcRenderer),
   ...createActionsBridge(ipcRenderer),
+  ...createLocalFileTranscriptionBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -148,8 +150,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Audio file operations
   selectAudioFile: (options) => ipcRenderer.invoke("select-audio-file", options),
   getFileSize: (filePath) => ipcRenderer.invoke("get-file-size", filePath),
-  transcribeAudioFile: (filePath, options) =>
-    ipcRenderer.invoke("transcribe-audio-file", filePath, options),
+  // Local file transcription lives in the typed bridge above.
+
   getPathForFile: (file) => {
     const filePath = webUtils.getPathForFile(file);
     // Register real dropped-file paths so the main-process audio allowlist accepts them.

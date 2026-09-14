@@ -60,6 +60,7 @@ const { registerVocabularyHandlers } = require("./vocabularyIpcHandlers");
 const { registerContainerHandlers } = require("./containerIpcHandlers");
 const { registerChatPersistenceHandlers } = require("./chatPersistenceIpcHandlers");
 const { registerActionsHandlers } = require("./actionsIpcHandlers");
+const { registerLocalFileTranscriptionHandler } = require("./localFileTranscriptionIpcHandler");
 const { sendNoteAdded, sendNoteUpdated, sendNoteDeleted } = require("./notesEvents");
 const autoStart = require("./autoStart");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
@@ -389,15 +390,22 @@ class IPCHandlers {
 
   // Shared by the upload IPC handler and the CLI bridge. `filePath` must
   // already have passed resolveAllowedAudioPath (or approveAudioPath).
+  // Delegates to the shared module; the IPC handler passes the same deps.
   async transcribeLocalFile(filePath, options = {}) {
-    const audioBuffer = fs.readFileSync(filePath);
-    if (isSherpaLocalProvider(options.provider)) {
-      return this.parakeetManager.transcribeLocalParakeet(audioBuffer, options);
-    }
-    return this.whisperManager.transcribeLocalWhisper(audioBuffer, {
-      ...options,
-      ...this._resolveWhisperVadOptions("noteRecording"),
-    });
+    const { transcribeLocalFile: execute } = require("./localFileTranscription");
+    return execute(
+      {
+        readFile: (p) => fs.readFileSync(p),
+        isSherpaLocalProvider: (provider) => isSherpaLocalProvider(provider),
+        transcribeLocalWhisper: (audioBuffer, opts) =>
+          this.whisperManager.transcribeLocalWhisper(audioBuffer, opts),
+        transcribeLocalParakeet: (audioBuffer, opts) =>
+          this.parakeetManager.transcribeLocalParakeet(audioBuffer, opts),
+        resolveWhisperVadOptions: (context) => this._resolveWhisperVadOptions(context),
+      },
+      filePath,
+      options
+    );
   }
 
   approveAudioPath(filePath) {
@@ -1178,29 +1186,20 @@ class IPCHandlers {
       debugLogger,
     });
 
-    ipcMain.handle("transcribe-audio-file", async (event, filePath, options = {}) => {
-      // Uploads pass a requestId so cancel-upload-transcription can abort the
-      // local decode; flows without one (voice drafts) register nothing.
-      const { signal, release } = this._uploadCancelRegistry.register(options.requestId);
-      try {
-        if (typeof filePath !== "string") {
-          return { success: false, error: "Invalid file path" };
-        }
-        const real = resolveAllowedAudioPath(filePath);
-        if (!real) return { success: false, error: "File path not allowed" };
-        return await this.transcribeLocalFile(real, { ...options, signal });
-      } catch (error) {
-        if (error?.name === "AbortError" || signal?.aborted) {
-          debugLogger.debug("Local audio file transcription cancelled", {
-            requestId: options.requestId,
-          });
-          return { success: false, error: "Cancelled", code: "UPLOAD_CANCELLED" };
-        }
-        debugLogger.error("Audio file transcription error", { error: error.message });
-        return { success: false, error: error.message };
-      } finally {
-        release();
-      }
+    // Local file transcription lives in the typed module; the shared
+    // execution below it also serves the CLI bridge.
+    registerLocalFileTranscriptionHandler(ipcMain, {
+      readFile: (filePath) => fs.readFileSync(filePath),
+      resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
+      isSherpaLocalProvider: (provider) => isSherpaLocalProvider(provider),
+      transcribeLocalWhisper: (audioBuffer, options) =>
+        this.whisperManager.transcribeLocalWhisper(audioBuffer, options),
+      transcribeLocalParakeet: (audioBuffer, options) =>
+        this.parakeetManager.transcribeLocalParakeet(audioBuffer, options),
+      resolveWhisperVadOptions: (context) => this._resolveWhisperVadOptions(context),
+      uploadCancelRegistry: this._uploadCancelRegistry,
+      logDebug: (message, data) => debugLogger.debug(message, data),
+      logError: (message, data) => debugLogger.error(message, data),
     });
 
     ipcMain.handle("check-accessibility-permission", async () => {

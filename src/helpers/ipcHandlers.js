@@ -1407,8 +1407,14 @@ class IPCHandlers {
     });
 
     // URL download channels live in the typed module, per-registration state
-    // included. Only the logging dependency is shared.
-    registerUrlDownloadHandlers(ipcMain, { debugLogger });
+    // included. Only the downloader and logging are shared.
+    const urlDownloader = require("./urlAudioDownloader");
+    registerUrlDownloadHandlers(ipcMain, {
+      download: urlDownloader.download,
+      sweepStaleTempArtifacts: urlDownloader.sweepStaleTempArtifacts,
+      getSafeTempDir: require("./safeTempDir").getSafeTempDir,
+      debugLogger,
+    });
 
     ipcMain.handle("transcribe-audio-file", async (event, filePath, options = {}) => {
       // Uploads pass a requestId so cancel-upload-transcription can abort the

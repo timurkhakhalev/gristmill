@@ -1,7 +1,7 @@
 // The three direct-HTTPS download channels, moved out of ipcHandlers.js.
 // Registration order, tolerant argument handling, cancel semantics, targeted
 // progress and the temp-cleanup path guards match the previous JS
-// implementations. The downloader stays JS behind a validated boundary:
+// implementations. The downloader stays JS behind a narrow dependency:
 // its results and progress events are accepted as unknown and checked with
 // the shared contract schemas before use.
 import path from "node:path";
@@ -19,10 +19,11 @@ import {
   type DeleteTempFileResult,
   type UrlDownloadResult,
 } from "../contracts/urlDownload.js";
-import { getSafeTempDir } from "./safeTempDir.js";
-import { download, sweepStaleTempArtifacts } from "./urlAudioDownloader.js";
 
 export interface UrlDownloadHandlerDeps {
+  download: (url: string, onProgress: (progress: unknown) => void, signal: AbortSignal) => Promise<unknown>;
+  sweepStaleTempArtifacts: () => void;
+  getSafeTempDir: () => string;
   debugLogger: {
     error(message: string, meta?: unknown): void;
     warn(message: string, meta?: unknown): void;
@@ -60,7 +61,7 @@ export function registerUrlDownloadHandlers(
   // Sweep ow-url-*/ow-diarize-* orphans from crashes or windows closed
   // mid-download. Runs once at setup time, exactly where the old handler ran
   // it — never at module import.
-  sweepStaleTempArtifacts();
+  deps.sweepStaleTempArtifacts();
 
   ipcMain.handle(urlDownloadChannels.downloadUrlAudio, async (rawEvent, ...rawArgs): Promise<UrlDownloadResult> => {
     const parsed = downloadUrlAudioArgsSchema.safeParse(rawArgs);
@@ -81,7 +82,7 @@ export function registerUrlDownloadHandlers(
     activeUrlDownloads.set(id, abortController);
 
     try {
-      const result = await download(
+      const result = await deps.download(
         url,
         (progress: unknown) => {
           const validated = urlDownloadProgressSchema.safeParse(progress);
@@ -98,9 +99,10 @@ export function registerUrlDownloadHandlers(
         },
         abortController.signal
       );
+      const merged: unknown = { success: true, ...(result as Record<string, unknown>) };
       return parseOrThrow(
         urlDownloadResultSchema,
-        { success: true, ...result },
+        merged,
         "URL audio downloader returned an unexpected result shape"
       );
     } catch (error) {
@@ -149,7 +151,7 @@ export function registerUrlDownloadHandlers(
         return { success: false, error: "Not an OpenHercules temp file" };
       }
       const real = fs.realpathSync(resolved);
-      let tempDir = getSafeTempDir();
+      let tempDir = deps.getSafeTempDir();
       try {
         tempDir = fs.realpathSync(tempDir);
       } catch {}

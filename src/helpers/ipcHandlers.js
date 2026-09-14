@@ -56,6 +56,7 @@ function resolveEnterpriseRuntime(provider, modelId, config = {}) {
 const { resolveLocalServerNeeds } = require("./localServerPolicy");
 const { registerNotesHandlers } = require("./notesIpcHandlers");
 const { registerUrlDownloadHandlers } = require("./urlDownloadIpcHandlers");
+const { registerVocabularyHandlers } = require("./vocabularyIpcHandlers");
 const { sendNoteAdded, sendNoteUpdated, sendNoteDeleted } = require("./notesEvents");
 const autoStart = require("./autoStart");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
@@ -957,85 +958,11 @@ class IPCHandlers {
       this.meetingDetectionEngine?.setMicWarmHold(true);
     });
 
-    // Dictionary handlers
-    ipcMain.handle("db-get-dictionary", async () => {
-      return this.databaseManager.getDictionary();
-    });
-
-    ipcMain.handle("db-set-dictionary", async (event, words) => {
-      if (!Array.isArray(words)) {
-        throw new Error("words must be an array");
-      }
-      return this.databaseManager.setDictionary(words);
-    });
-
-    ipcMain.handle("db-apply-dictionary-changes", async (_event, changes) => {
-      const { add, remove } = changes ?? {};
-      if (add !== undefined && !Array.isArray(add)) {
-        throw new Error("add must be an array");
-      }
-      if (remove !== undefined && !Array.isArray(remove)) {
-        throw new Error("remove must be an array");
-      }
-      return this.databaseManager.applyDictionaryChanges({ add, remove });
-    });
-
-    ipcMain.handle("db-hard-delete-dictionary", async (_event, id) => {
-      return this.databaseManager.hardDeleteDictionaryEntry(id);
-    });
-
-    ipcMain.handle("db-broadcast-dictionary-updated", async () => {
-      // Emit the normalized list straight from SQLite so renderers see the
-      // post-dedupe truth, never a caller-supplied payload.
-      const words = this.databaseManager.getDictionary();
-      broadcastToWindows("dictionary-updated", words);
-      return { success: true };
-    });
-
-    ipcMain.handle("db-get-snippets", async () => {
-      return this.databaseManager.getSnippets();
-    });
-
-    ipcMain.handle("db-set-snippets", async (_event, snippets) => {
-      if (!Array.isArray(snippets)) {
-        throw new Error("snippets must be an array");
-      }
-      return this.databaseManager.setSnippets(snippets);
-    });
-
-    ipcMain.handle("db-hard-delete-snippet", async (_event, id) => {
-      return this.databaseManager.hardDeleteSnippet(id);
-    });
-
-    ipcMain.handle("db-broadcast-snippets-updated", async () => {
-      const snippets = this.databaseManager.getSnippets();
-      broadcastToWindows("snippets-updated", snippets);
-      return { success: true };
-    });
-
-    ipcMain.handle("undo-learned-corrections", async (_event, words) => {
-      try {
-        if (!Array.isArray(words) || words.length === 0) {
-          return { success: false };
-        }
-        const validWords = words.filter((w) => typeof w === "string" && w.trim().length > 0);
-        if (validWords.length === 0) {
-          return { success: false };
-        }
-        const saveResult = this.databaseManager.applyDictionaryChanges({ remove: validWords });
-        if (saveResult?.success === false) {
-          debugLogger.debug("[AutoLearn] Undo failed to save dictionary", {
-            error: saveResult.error,
-          });
-          return { success: false };
-        }
-        broadcastToWindows("dictionary-updated", this.databaseManager.getDictionary());
-        debugLogger.debug("[AutoLearn] Undo: removed words", { words: validWords });
-        return { success: true };
-      } catch (err) {
-        debugLogger.debug("[AutoLearn] Undo failed", { error: err.message });
-        return { success: false };
-      }
+    // Vocabulary (dictionary/snippets) channels live in the typed module.
+    registerVocabularyHandlers(ipcMain, {
+      database: this.databaseManager,
+      broadcast: broadcastToWindows,
+      debugLogger,
     });
 
     // Notes DB channels live in the typed module; pass only what they need.

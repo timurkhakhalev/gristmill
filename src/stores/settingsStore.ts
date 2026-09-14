@@ -1653,10 +1653,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
     const api = window.electronAPI;
     if (!api) return;
-    // Older preloads have no delta channel; fall back rather than drop the edit.
-    const written = api.applyDictionaryChanges
-      ? api.applyDictionaryChanges({ add, remove })
-      : api.setDictionary(optimistic);
+    const written = api.applyDictionaryChanges({ add, remove });
 
     written
       .then(async () => {

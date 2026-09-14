@@ -50,7 +50,31 @@ function setup(database) {
 }
 
 function fakeDb() {
-  return {};
+  // Test doubles must provide the same contract the real DatabaseManager has;
+  // individual tests override the methods they drive.
+  return {
+    getDictionary: () => {
+      throw new Error("fake db: getDictionary not set");
+    },
+    setDictionary: () => {
+      throw new Error("fake db: setDictionary not set");
+    },
+    applyDictionaryChanges: () => {
+      throw new Error("fake db: applyDictionaryChanges not set");
+    },
+    hardDeleteDictionaryEntry: () => {
+      throw new Error("fake db: hardDeleteDictionaryEntry not set");
+    },
+    getSnippets: () => {
+      throw new Error("fake db: getSnippets not set");
+    },
+    setSnippets: () => {
+      throw new Error("fake db: setSnippets not set");
+    },
+    hardDeleteSnippet: () => {
+      throw new Error("fake db: hardDeleteSnippet not set");
+    },
+  };
 }
 
 test("get channels return whatever the database reads", async () => {

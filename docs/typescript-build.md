@@ -401,7 +401,8 @@ preload → handlers → временный SQLite; malformed события и�
 на вход preload и дропаются на нём.
 
 Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings); focused
-72 passed (vocabularyIpc, vocabularyBridge, cliBridgeDictionary,
+74 passed (vocabularyIpc, vocabularyBridge, cliBridgeDictionary,
 cliBridgeSnippets, dictionaryStartup, databaseLocalBehavior,
-rendererBridgeContract, mainBuild, dictionaryTool, snippetTool, snippets);
+rendererBridgeContract, mainBuild, vocabularyTypeProbe, dictionaryTool,
+snippetTool, snippets);
 `build:main` OK. Inventory графа Electron: 133 JS, 16 TS, 1 MTS, 25 JSON.

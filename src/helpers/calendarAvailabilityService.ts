@@ -1,23 +1,45 @@
-const {
+// Node service for calendar availability: validates the request against the
+// domain policy, queries the local calendar cache for the connected
+// providers and projects the computation onto the privacy-safe wire shape.
+// Busy intervals never leave this layer — the renderer tool only surfaces
+// free-slot facts to the model.
+import {
   MAX_AVAILABILITY_HORIZON_DAYS,
   USER_CORRECTABLE_ERRORS,
   validateCalendarAvailabilityRequest,
   computeCalendarAvailability,
-} = require("./calendarAvailability");
+} from "./calendarAvailability.js";
+import type { AvailabilityResult } from "../contracts/calendarAvailability.js";
 
-function connectedCalendarProviders(calendarProviders) {
+export interface CalendarProviderEntry {
+  provider: string;
+  manager: { isConnected?: () => boolean } | null | undefined;
+}
+
+export interface CalendarAvailabilityServiceDeps {
+  databaseManager: {
+    getCalendarEventsInRange: (start: string, end: string, providers: string[]) => unknown;
+  };
+}
+
+function connectedCalendarProviders(calendarProviders: CalendarProviderEntry[]): CalendarProviderEntry[] {
   return calendarProviders.filter(
     ({ provider, manager }) =>
       (provider !== "apple" || process.platform === "darwin") && manager?.isConnected?.()
   );
 }
 
-function getCalendarAvailability({
+export function getCalendarAvailability({
   request,
   databaseManager,
   calendarProviders,
   clock = () => new Date(),
-}) {
+}: {
+  request: unknown;
+  databaseManager: CalendarAvailabilityServiceDeps["databaseManager"];
+  calendarProviders: CalendarProviderEntry[];
+  clock?: () => Date;
+}): AvailabilityResult {
   const now = clock();
   const normalized = validateCalendarAvailabilityRequest(request, now);
   const connectedProviders = connectedCalendarProviders(calendarProviders);
@@ -35,19 +57,20 @@ function getCalendarAvailability({
     queryEnd,
     connectedProviders.map(({ provider }) => provider)
   );
-  // Busy intervals stay in the main process: they carry buffer padding and the
-  // renderer tool only surfaces free-slot facts to the model.
-  const { busy: _busy, ...availability } = computeCalendarAvailability(events, normalized);
+  const { availableSlots, hasMore, isEntireRangeFree } = computeCalendarAvailability(
+    events,
+    normalized
+  );
 
   return {
     range: { start: normalized.start, end: normalized.end },
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-    ...availability,
+    availableSlots,
+    hasMore,
+    isEntireRangeFree,
     coverage: {
       source: "local-calendar-cache",
       lookaheadDays: MAX_AVAILABILITY_HORIZON_DAYS,
     },
   };
 }
-
-module.exports = { getCalendarAvailability };

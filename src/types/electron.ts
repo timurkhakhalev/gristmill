@@ -1,6 +1,5 @@
 import type { ModelDefinition } from "../models/ModelRegistry";
 import type { TinfoilCatalogModel } from "../models/tinfoilModels";
-import type { CalendarAvailabilityRequest, CalendarAvailabilityResult } from "./calendar";
 import type { NotesApi } from "../contracts/notes";
 import type { UrlDownloadApi } from "../contracts/urlDownload";
 import type { VocabularyApi } from "../contracts/vocabulary";

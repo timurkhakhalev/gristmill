@@ -6,6 +6,7 @@
 import type { ZodType } from "zod";
 import {
   availabilityResponseSchema,
+  calendarAvailabilityChannels,
   type AvailabilityResponse,
 } from "../contracts/calendarAvailability.js";
 import type { CalendarAvailabilityServiceDeps, CalendarProviderEntry } from "./calendarAvailabilityService.js";
@@ -32,28 +33,31 @@ export function registerCalendarAvailabilityHandler(
   ipcMain: { handle(channel: string, listener: IpcEventListener): void },
   deps: CalendarAvailabilityHandlerDeps
 ): void {
-  ipcMain.handle("calendar-get-availability", async (_event, ...args: unknown[]) => {
-    try {
-      const availability = getCalendarAvailability({
-        request: args[0],
-        databaseManager: deps.databaseManager,
-        calendarProviders: deps.calendarProviders,
-        clock: deps.clock,
-      });
-      return parseResponse(availabilityResponseSchema, {
-        success: true as const,
-        availability,
-      });
-    } catch (error) {
-      deps.logWarn(
-        "Calendar availability request failed",
-        { error: error instanceof Error ? error.message : String(error) },
-        "calendar"
-      );
-      return {
-        success: false as const,
-        error: error instanceof Error ? error.message : "Failed to check calendar availability",
-      } satisfies AvailabilityResponse;
+  ipcMain.handle(
+    calendarAvailabilityChannels.getAvailability,
+    async (_event, ...args: unknown[]): Promise<AvailabilityResponse> => {
+      try {
+        const availability = getCalendarAvailability({
+          request: args[0],
+          databaseManager: deps.databaseManager,
+          calendarProviders: deps.calendarProviders,
+          clock: deps.clock,
+        });
+        return parseResponse(availabilityResponseSchema, {
+          success: true as const,
+          availability,
+        });
+      } catch (error) {
+        deps.logWarn(
+          "Calendar availability request failed",
+          { error: error instanceof Error ? error.message : String(error) },
+          "calendar"
+        );
+        return {
+          success: false as const,
+          error: error instanceof Error ? error.message : "Failed to check calendar availability",
+        } satisfies AvailabilityResponse;
+      }
     }
-  });
+  );
 }

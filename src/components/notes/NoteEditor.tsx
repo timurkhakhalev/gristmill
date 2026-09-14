@@ -29,7 +29,7 @@ import {
   DropdownMenuSeparator,
 } from "../ui/dropdown-menu";
 import { cn } from "../lib/utils";
-import type { FolderItem } from "../../types/electron";
+import type { FolderItem } from "../../contracts/containers";
 import type { NoteItem } from "../../contracts/notes";
 import type { ActionProcessingState } from "../../hooks/useActionProcessing";
 import ActionProcessingOverlay from "./ActionProcessingOverlay";

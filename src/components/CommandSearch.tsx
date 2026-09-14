@@ -21,7 +21,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
-import type { FolderItem, SpaceItem, TranscriptionItem } from "../types/electron.js";
+import type { FolderItem, SpaceItem } from "../contracts/containers";
+import type { TranscriptionItem } from "../types/electron.js";
 import type { NoteItem } from "../contracts/notes";
 import { formatRelativeTime } from "../utils/dateFormatting";
 import { defaultFolderDisplayName, folderMatchesQuery } from "./notes/shared";

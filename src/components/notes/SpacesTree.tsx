@@ -34,7 +34,7 @@ import { useSettingsStore } from "../../stores/settingsStore";
 import { cn } from "../lib/utils";
 import { treeHorizontalIntent } from "./treeDirection";
 import { defaultFolderDisplayName } from "./shared";
-import type { FolderItem, SpaceItem } from "../../types/electron";
+import type { FolderItem, SpaceItem } from "../../contracts/containers";
 import type { NoteItem } from "../../contracts/notes";
 import {
   folderContainerKey,

@@ -1,4 +1,4 @@
-import type { SpaceItem } from "../../types/electron";
+import type { SpaceItem } from "../../contracts/containers";
 
 type ResolveFolderResult =
   | { folderId: number; created: boolean; error?: undefined }

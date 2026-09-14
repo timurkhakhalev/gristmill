@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 const { createNotesBridge } = require("./src/preload/notesBridge");
 const { createVocabularyBridge } = require("./src/preload/vocabularyBridge");
+const { createContainersBridge } = require("./src/preload/containerBridge");
 const { createUrlDownloadBridge } = require("./src/preload/urlDownloadBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
@@ -57,13 +58,9 @@ const registerListener = (channel, handlerFactory) => {
 contextBridge.exposeInMainWorld("electronAPI", {
   ...createNotesBridge(ipcRenderer),
   ...createVocabularyBridge(ipcRenderer),
+  ...createContainersBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
   setOnboardingActive: (active) => ipcRenderer.invoke("onboarding-set-active", active),
-  onFolderDeleted: (callback) => {
-    const listener = (_event, data) => callback?.(data);
-    ipcRenderer.on("folder-deleted", listener);
-    return () => ipcRenderer.removeListener("folder-deleted", listener);
-  },
   meetingTranscriptionPrepare: (options) =>
     ipcRenderer.invoke("meeting-transcription-prepare", options),
   meetingTranscriptionStart: (options) =>
@@ -126,22 +123,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   exportNote: (noteId, format) => ipcRenderer.invoke("export-note", noteId, format),
   exportTranscript: (noteId, format) => ipcRenderer.invoke("export-transcript", noteId, format),
   exportDictionary: (words) => ipcRenderer.invoke("export-dictionary", words),
-  // Folder functions
-  getFolders: (spaceId) => ipcRenderer.invoke("db-get-folders", spaceId),
-  createFolder: (name, spaceId) => ipcRenderer.invoke("db-create-folder", name, spaceId),
-  deleteFolder: (id) => ipcRenderer.invoke("db-delete-folder", id),
-  renameFolder: (id, name) => ipcRenderer.invoke("db-rename-folder", id, name),
-  moveFolderToSpace: (id, spaceId) => ipcRenderer.invoke("db-move-folder-to-space", id, spaceId),
-  getFolderNoteCounts: () => ipcRenderer.invoke("db-get-folder-note-counts"),
+  // Folder/space functions + the onFolderDeleted subscription come from the
+  // typed containersBridge above. onSpacePurged has no main-side producer and
+  // is not exposed.
 
-  // Space functions
-  getSpaces: () => ipcRenderer.invoke("db-get-spaces"),
-  updateSpace: (id, updates) => ipcRenderer.invoke("db-update-space", id, updates),
-  onSpacePurged: (callback) => {
-    const listener = (_event, payload) => callback?.(payload);
-    ipcRenderer.on("space-purged", listener);
-    return () => ipcRenderer.removeListener("space-purged", listener);
-  },
   // Note files (markdown mirror) functions
   noteFilesSetEnabled: (enabled, customPath, options) =>
     ipcRenderer.invoke("note-files-set-enabled", enabled, customPath, options),

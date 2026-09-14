@@ -7,6 +7,7 @@ import { generateNoteTitle } from "../utils/generateTitle";
 import { buildNoteFormattingOverrides } from "../helpers/noteFormattingOverrides";
 import { tagActionItemOwners, type MentionPerson } from "../utils/mentionMarkdown";
 import type { ActionItem } from "../types/electron";
+import type { NoteUpdate } from "../contracts/notes";
 
 /**
  * Output budget for a formatted note.
@@ -197,7 +198,7 @@ export function runBackgroundAction(
 
       if (cancelledFlags.get(noteId)) return;
 
-      const updates: Record<string, string> = {
+      const updates: NoteUpdate = {
         enhanced_content: options.knownPeople?.length
           ? tagActionItemOwners(enhanced, options.knownPeople)
           : enhanced,

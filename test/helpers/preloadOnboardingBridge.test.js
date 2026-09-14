@@ -30,7 +30,7 @@ function loadPreloadApi() {
     ipcRenderer,
     webUtils: {},
   };
-  const source = fs.readFileSync(path.join(__dirname, "../../preload.js"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "../../dist-main/preload.js"), "utf8");
   vm.runInNewContext(source, {
     require: (specifier) => {
       if (specifier === "electron") return electron;

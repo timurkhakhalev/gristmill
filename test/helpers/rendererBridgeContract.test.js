@@ -5,9 +5,10 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "../..");
+const bundledPreload = path.join(root, "dist-main", "preload.js");
 function loadBridge() {
   let api;
-  vm.runInNewContext(fs.readFileSync(path.join(root, "preload.js"), "utf8"), {
+  vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     require(name) {
       assert.equal(name, "electron");
       return {
@@ -24,6 +25,10 @@ function loadBridge() {
   });
   return api;
 }
+
+test("the bundled preload is committed to the build output", () => {
+  assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
+});
 
 test("every renderer Electron API reference is exposed by the packaged preload", () => {
   const api = loadBridge();

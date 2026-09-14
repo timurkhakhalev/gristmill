@@ -3,7 +3,7 @@ const { openExternalUrl } = require("./externalUrlOpener");
 const { getMeetingJoinUrl } = require("./meetingJoinUrl");
 const createMeetingAutoEndController = require("./meetingAutoEndController");
 const { createMeetingAudioActivityMonitor } = require("./meetingAudioActivityMonitor");
-const { broadcastToWindows } = require("./windowBroadcast");
+const { sendNoteAdded, sendNoteUpdated } = require("./notesEvents");
 
 const IMMINENT_THRESHOLD_MS = 5 * 60 * 1000;
 const AUTO_END_TICK_MS = 1000;
@@ -630,7 +630,7 @@ class MeetingDetectionEngine {
 
         this._meetingModeActive = true;
 
-        broadcastToWindows("note-added", noteResult.note);
+        sendNoteAdded(noteResult.note);
 
         if (isRealEvent) {
           const calEvent = this.databaseManager.getCalendarEventById(detection.event.id);
@@ -640,7 +640,7 @@ class MeetingDetectionEngine {
           }
           const updateResult = this.databaseManager.updateNote(noteResult.note.id, updates);
           if (updateResult?.success && updateResult?.note) {
-            broadcastToWindows("note-updated", updateResult.note);
+            sendNoteUpdated(updateResult.note);
           }
         }
 
@@ -697,7 +697,7 @@ class MeetingDetectionEngine {
       return;
     }
 
-    broadcastToWindows("note-added", noteResult.note);
+    sendNoteAdded(noteResult.note);
 
     await this.windowManager.queueMeetingNoteNavigation({
       noteId: noteResult.note.id,
@@ -760,7 +760,7 @@ class MeetingDetectionEngine {
     }
     const updateResult = this.databaseManager.updateNote(noteResult.note.id, updates);
 
-    broadcastToWindows("note-added", updateResult?.note || noteResult.note);
+    sendNoteAdded(updateResult?.note || noteResult.note);
 
     await this.windowManager.queueMeetingNoteNavigation({
       noteId: noteResult.note.id,

@@ -106,7 +106,6 @@ export default function NoteRecordControl({
           onClick={onStart}
           disabled={disabled || isProcessing}
           aria-label={t("notes.editor.transcribe")}
-          title={disabled ? t("common.managedByOrg") : undefined}
           className={cn(
             "flex h-[30px] w-[30px] items-center justify-center rounded-full",
             GRADIENT_CIRCLE,

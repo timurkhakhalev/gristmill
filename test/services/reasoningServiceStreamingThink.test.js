@@ -53,8 +53,6 @@ async function loadReasoningService(t, cachePrefix, { window = {} } = {}) {
   installBrowserGlobals(t, { window });
   const vite = await createRendererServer(t, { cachePrefix });
   const reasoningService = (await vite.ssrLoadModule("/services/ReasoningService.ts")).default;
-  const { usePolicyStore } = await vite.ssrLoadModule("/stores/policyStore.ts");
-  usePolicyStore.setState({ status: "unmanaged", appVersion: "1.8.3", policy: null });
   t.after(() => reasoningService.destroy());
   return { reasoningService, vite };
 }
@@ -71,35 +69,6 @@ async function collectAgentText(stream) {
     if (chunk.type === "content") output += chunk.text;
   }
   return output;
-}
-
-function createAgentStreamBridge() {
-  const startCalls = [];
-  const cancelCalls = [];
-  const listeners = { chunk: null, error: null, end: null };
-  const cleanupCounts = { chunk: 0, error: 0, end: 0 };
-  const subscribe = (kind, callback) => {
-    listeners[kind] = callback;
-    return () => {
-      cleanupCounts[kind] += 1;
-      if (listeners[kind] === callback) listeners[kind] = null;
-    };
-  };
-
-  return {
-    electronAPI: {
-      startAgentStream: (...args) => startCalls.push(args),
-      cancelAgentStream: (requestId) => cancelCalls.push(requestId),
-      onAgentStreamChunk: (callback) => subscribe("chunk", callback),
-      onAgentStreamError: (callback) => subscribe("error", callback),
-      onAgentStreamEnd: (callback) => subscribe("end", callback),
-    },
-    startCalls,
-    cancelCalls,
-    cleanupCounts,
-    emitChunk: (payload) => listeners.chunk?.(payload),
-    emitEnd: (payload) => listeners.end?.(payload),
-  };
 }
 
 const waitForMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
@@ -627,164 +596,6 @@ test("chat cancellation leaves single-shot reasoning alive until all requests ar
 
   await cancelled;
   assert.equal(fetchCalls, 1);
-});
-
-test("cloud agent streaming correlates events to the initiating request", async (t) => {
-  const bridge = createAgentStreamBridge();
-  const { reasoningService } = await loadReasoningService(
-    t,
-    "openwhispr-cloud-agent-correlation-test-",
-    { window: { electronAPI: bridge.electronAPI } }
-  );
-  const stream = reasoningService.processTextStreamingCloud([{ role: "user", content: "hello" }], {
-    systemPrompt: "Answer the user.",
-  });
-  let firstSettled = false;
-  const first = stream.next().then((result) => {
-    firstSettled = true;
-    return result;
-  });
-  await waitForMicrotasks();
-
-  assert.equal(bridge.startCalls.length, 1);
-  const [requestId] = bridge.startCalls[0];
-  assert.equal(typeof requestId, "string");
-  assert.ok(requestId.length > 0);
-
-  bridge.emitChunk({
-    requestId: "another-request",
-    chunk: { type: "content", text: "wrong" },
-  });
-  await waitForMicrotasks();
-  assert.equal(firstSettled, false);
-
-  bridge.emitChunk({ requestId, chunk: { type: "content", text: "right" } });
-  assert.deepEqual(await first, { value: { type: "content", text: "right" }, done: false });
-
-  const end = stream.next();
-  bridge.emitEnd({ requestId });
-  assert.deepEqual(await end, {
-    value: { type: "done", finishReason: "stop" },
-    done: false,
-  });
-  assert.equal((await stream.next()).done, true);
-  assert.deepEqual(bridge.cleanupCounts, { chunk: 1, error: 1, end: 1 });
-});
-
-test("cancelling a cloud agent stream aborts main and ends the local generator", async (t) => {
-  const bridge = createAgentStreamBridge();
-  const { reasoningService } = await loadReasoningService(
-    t,
-    "openwhispr-cloud-agent-cancel-test-",
-    { window: { electronAPI: bridge.electronAPI } }
-  );
-  const stream = reasoningService.processTextStreamingCloud([{ role: "user", content: "hello" }], {
-    systemPrompt: "Answer the user.",
-  });
-  const pending = stream.next();
-  await waitForMicrotasks();
-  const [requestId] = bridge.startCalls[0];
-
-  reasoningService.cancelActiveStream();
-
-  assert.deepEqual(bridge.cancelCalls, [requestId]);
-  assert.equal((await pending).done, true);
-  assert.deepEqual(bridge.cleanupCounts, { chunk: 1, error: 1, end: 1 });
-});
-
-test("cancelling a cloud stream before its first next prevents the request", async (t) => {
-  const bridge = createAgentStreamBridge();
-  const { reasoningService } = await loadReasoningService(
-    t,
-    "openwhispr-cloud-agent-pre-next-cancel-test-",
-    { window: { electronAPI: bridge.electronAPI } }
-  );
-  const stream = reasoningService.processTextStreamingCloud([{ role: "user", content: "hello" }], {
-    systemPrompt: "Answer the user.",
-  });
-
-  reasoningService.cancelActiveStream();
-  const first = stream.next();
-  await waitForMicrotasks();
-  const startedRequests = bridge.startCalls.length;
-  if (startedRequests > 0) reasoningService.cancelActiveStream();
-
-  assert.equal(startedRequests, 0);
-  assert.equal((await first).done, true);
-});
-
-test("cancelling a cloud agent stream drops chunks already queued locally", async (t) => {
-  const bridge = createAgentStreamBridge();
-  const { reasoningService } = await loadReasoningService(
-    t,
-    "openwhispr-cloud-agent-queued-cancel-test-",
-    { window: { electronAPI: bridge.electronAPI } }
-  );
-  const stream = reasoningService.processTextStreamingCloud([{ role: "user", content: "hello" }], {
-    systemPrompt: "Answer the user.",
-  });
-  const first = stream.next();
-  await waitForMicrotasks();
-  const [requestId] = bridge.startCalls[0];
-
-  bridge.emitChunk({ requestId, chunk: { type: "content", text: "first" } });
-  bridge.emitChunk({ requestId, chunk: { type: "content", text: "queued" } });
-  assert.deepEqual(await first, { value: { type: "content", text: "first" }, done: false });
-
-  reasoningService.cancelActiveStream();
-
-  assert.equal((await stream.next()).done, true);
-  bridge.emitChunk({ requestId, chunk: { type: "content", text: "late" } });
-  assert.equal((await stream.next()).done, true);
-});
-
-test("cancelling during a cloud tool execution prevents results and later model steps", async (t) => {
-  const bridge = createAgentStreamBridge();
-  const { reasoningService } = await loadReasoningService(
-    t,
-    "openwhispr-cloud-agent-tool-cancel-test-",
-    { window: { electronAPI: bridge.electronAPI } }
-  );
-  let resolveTool;
-  let toolStarted = false;
-  const toolResult = new Promise((resolve) => {
-    resolveTool = resolve;
-  });
-  const stream = reasoningService.processTextStreamingCloud(
-    [{ role: "user", content: "create a note" }],
-    {
-      systemPrompt: "Use tools.",
-      tools: [{ name: "create_note", description: "Create a note", parameters: {} }],
-      executeToolCall: async () => {
-        toolStarted = true;
-        return toolResult;
-      },
-    }
-  );
-  const first = stream.next();
-  await waitForMicrotasks();
-  const [requestId] = bridge.startCalls[0];
-  bridge.emitChunk({
-    requestId,
-    chunk: { type: "tool_call", id: "call-1", name: "create_note", arguments: "{}" },
-  });
-  assert.deepEqual(await first, {
-    value: {
-      type: "tool_calls",
-      calls: [{ id: "call-1", name: "create_note", arguments: "{}" }],
-    },
-    done: false,
-  });
-
-  const pending = stream.next();
-  bridge.emitEnd({ requestId });
-  while (!toolStarted) await waitForMicrotasks();
-
-  reasoningService.cancelActiveStream();
-  resolveTool({ data: "created", displayText: "Created note" });
-
-  assert.equal((await pending).done, true);
-  assert.equal(bridge.startCalls.length, 1);
 });
 
 test("a provider error part rejects the agent stream instead of ending it silently", async (t) => {

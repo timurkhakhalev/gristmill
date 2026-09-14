@@ -2,11 +2,10 @@ import { useTranslation } from "react-i18next";
 import { Mic, Shield, Monitor } from "../icons";
 import PermissionCard from "./PermissionCard";
 import MicPermissionWarning from "./MicPermissionWarning";
-import PasteToolsInfo from "./PasteToolsInfo";
-import { needsLinuxPasteToolGuidance } from "../../utils/linuxPasteTools";
 import type { UsePermissionsReturn } from "../../hooks/usePermissions";
 import type { SystemAudioAccessResult } from "../../types/electron";
 import { canManageSystemAudioInApp } from "../../utils/systemAudioAccess";
+import { getPlatform } from "../../utils/platform";
 
 interface PermissionsSectionProps {
   permissions: UsePermissionsReturn;
@@ -23,7 +22,7 @@ export default function PermissionsSection({
   systemAudioRecommended = false,
 }: PermissionsSectionProps) {
   const { t } = useTranslation();
-  const platform = permissions.pasteToolsInfo?.platform;
+  const platform = getPlatform();
   const isMacOS = platform === "darwin";
   const shouldShowSystemAudioPermission = canManageSystemAudioInApp(systemAudio);
 
@@ -81,15 +80,6 @@ export default function PermissionsSection({
         />
       )}
 
-      {platform === "linux" &&
-        permissions.pasteToolsInfo &&
-        needsLinuxPasteToolGuidance(permissions.pasteToolsInfo) && (
-          <PasteToolsInfo
-            pasteToolsInfo={permissions.pasteToolsInfo}
-            isChecking={permissions.isCheckingPasteTools}
-            onCheck={permissions.checkPasteToolsAvailability}
-          />
-        )}
     </>
   );
 }

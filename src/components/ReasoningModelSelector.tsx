@@ -26,13 +26,6 @@ import { getRemoteProviderIcon } from "../utils/providerIcons";
 import { GetApiKeyLink } from "./ui/GetApiKeyLink";
 import { getCachedPlatform } from "../utils/platform";
 import { useSettingsStore } from "../stores/settingsStore";
-import {
-  filterByokProviderOptionsByPolicy,
-  isModeAllowedByPolicy,
-  isProviderAllowedByPolicy,
-  reconcileProviderSelection,
-} from "../stores/policyRules";
-import { usePolicySnapshot } from "../hooks/usePolicy";
 
 type CloudModelOption = {
   value: string;
@@ -362,44 +355,31 @@ export default function ReasoningModelSelector({
   const [selectedMode, setSelectedMode] = useState<"cloud" | "local">(mode || "cloud");
   const [selectedCloudProvider, setSelectedCloudProvider] = useState("openai");
   const [selectedLocalProvider, setSelectedLocalProvider] = useState("qwen");
-  const policyState = usePolicySnapshot();
-  const providerAllowed = useCallback(
-    (providerId: string) => isProviderAllowedByPolicy(policyState, "llm", providerId),
-    [policyState]
-  );
-
   const cloudProviderTabs = useMemo(
     () =>
-      filterByokProviderOptionsByPolicy(
-        CLOUD_PROVIDER_IDS.map((id): ProviderTabItem => ({
-          id,
-          name:
-            id === "custom"
-              ? t("reasoning.custom.providerName")
-              : id === OPENROUTER_TAB
-                ? "OpenRouter"
-                : REASONING_PROVIDERS[id as keyof typeof REASONING_PROVIDERS]?.name || id,
-        })),
-        "llm",
-        policyState
-      ),
-    [policyState, t]
+      CLOUD_PROVIDER_IDS.map((id): ProviderTabItem => ({
+        id,
+        name:
+          id === "custom"
+            ? t("reasoning.custom.providerName")
+            : id === OPENROUTER_TAB
+              ? "OpenRouter"
+              : REASONING_PROVIDERS[id as keyof typeof REASONING_PROVIDERS]?.name || id,
+      })),
+    [t]
   );
   const cloudProviders = cloudProviderTabs;
-  const cloudProviderFallback = reconcileProviderSelection(selectedCloudProvider, cloudProviders);
-  const displayedCloudProvider = cloudProviderFallback ?? selectedCloudProvider;
+  const displayedCloudProvider = cloudProviderTabs.some((provider) => provider.id === selectedCloudProvider)
+    ? selectedCloudProvider
+    : cloudProviderTabs[0]?.id ?? "openai";
   const {
     models: tinfoilModels,
     loading: tinfoilModelsLoading,
     error: tinfoilModelsError,
   } = useTinfoilModels(displayedCloudProvider === "tinfoil");
   const modeTabs = [
-    ...(isModeAllowedByPolicy(policyState, "llm", "providers") && cloudProviders.length > 0
-      ? [{ id: "cloud", name: t("reasoning.mode.cloud") }]
-      : []),
-    ...(isModeAllowedByPolicy(policyState, "llm", "local")
-      ? [{ id: "local", name: t("reasoning.mode.local") }]
-      : []),
+    ...(cloudProviders.length > 0 ? [{ id: "cloud", name: t("reasoning.mode.cloud") }] : []),
+    { id: "local", name: t("reasoning.mode.local") },
   ];
   const effectiveMode =
     mode ??
@@ -489,8 +469,6 @@ export default function ReasoningModelSelector({
   };
 
   const handleModeChange = (newMode: "cloud" | "local") => {
-    const policyMode = newMode === "local" ? "local" : "providers";
-    if (!isModeAllowedByPolicy(policyState, "llm", policyMode)) return;
     if (newMode === "cloud" && cloudProviders.length === 0) return;
     setSelectedMode(newMode);
     const inferenceMode: InferenceMode = newMode === "local" ? "local" : "providers";
@@ -506,7 +484,6 @@ export default function ReasoningModelSelector({
   };
 
   const handleCloudProviderChange = (provider: string) => {
-    if (!providerAllowed(provider)) return;
     setSelectedCloudProvider(provider);
   };
 
@@ -523,24 +500,20 @@ export default function ReasoningModelSelector({
     <div className="space-y-4">
       {!mode && (
         <div className="space-y-2">
-          {modeTabs.length > 0 ? (
-            <>
-              <ProviderTabs
-                providers={modeTabs}
-                selectedId={effectiveMode}
-                onSelect={(id) => handleModeChange(id as "cloud" | "local")}
-                renderIcon={renderModeIcon}
-                colorScheme="purple"
-              />
-              <p className="text-xs text-muted-foreground text-center">
-                {effectiveMode === "local"
-                  ? t("reasoning.mode.localDescription")
-                  : t("reasoning.mode.cloudDescription")}
-              </p>
-            </>
-          ) : (
-            <p className="text-xs text-muted-foreground text-center">{t("common.managedByOrg")}</p>
-          )}
+          <>
+            <ProviderTabs
+              providers={modeTabs}
+              selectedId={effectiveMode}
+              onSelect={(id) => handleModeChange(id as "cloud" | "local")}
+              renderIcon={renderModeIcon}
+              colorScheme="purple"
+            />
+            <p className="text-xs text-muted-foreground text-center">
+              {effectiveMode === "local"
+                ? t("reasoning.mode.localDescription")
+                : t("reasoning.mode.cloudDescription")}
+            </p>
+          </>
         </div>
       )}
 
@@ -556,8 +529,7 @@ export default function ReasoningModelSelector({
             />
           )}
 
-          {providerAllowed(displayedCloudProvider) && (
-            <div>
+          <div>
               {/* A model renders as selected only under its committed provider —
                 free-form custom/OpenRouter ids can collide with registry ids. */}
               {displayedCloudProvider === OPENROUTER_TAB ? (
@@ -711,8 +683,7 @@ export default function ReasoningModelSelector({
                   </div>
                 </>
               )}
-            </div>
-          )}
+          </div>
         </div>
       )}
 

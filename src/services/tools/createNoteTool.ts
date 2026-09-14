@@ -4,7 +4,7 @@ import { resolveFolderId, resolveSpace } from "./utils";
 export const createNoteTool: ToolDefinition = {
   name: "create_note",
   description:
-    "Always call list_folders first. Reuse an existing folder whenever one is a reasonable semantic fit for the note's topic (e.g. a story goes into an existing 'Stories' folder), even if the user didn't name it. Only pass a new folder name when nothing existing fits. Creates a note with title, content, optional folder (auto-created if missing), and optional space. When space is omitted, the note AND its folder always stay in the user's private space — folder names never match team folders. To file a note into a team space (visible to its members), you must pass space explicitly.",
+    "Always call list_folders first. Reuse an existing folder whenever one is a reasonable match for the note's topic (e.g. a story goes into an existing 'Stories' folder), even if the user didn't name it. Only pass a new folder name when nothing existing fits. Creates a note with title, content, optional folder (auto-created if missing), and optional space. When space is omitted, the note AND its folder always stay in the user's private space — folder names never match team folders. To file a note into a team space (visible to its members), you must pass space explicitly.",
   parameters: {
     type: "object",
     properties: {

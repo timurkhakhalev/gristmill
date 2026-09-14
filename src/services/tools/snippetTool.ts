@@ -73,7 +73,7 @@ export function createUpdateSnippetsTool(actions: SnippetActions): ToolDefinitio
   return {
     name: "update_snippets",
     description:
-      "Create, replace, or delete the user's snippets. A snippet is a short spoken trigger phrase that expands into saved text during dictation. Adding a trigger that already exists replaces its saved text.",
+      "Create, replace, or delete the user's snippets. A snippet is a short trigger phrase that expands into saved text. Adding a trigger that already exists replaces its saved text.",
     parameters: {
       type: "object",
       properties: {

@@ -8,11 +8,7 @@ const {
   installHookDom,
 } = require("../lib/rendererTestHarness");
 
-// Restarting onboarding used to arm `pendingCloudMigration`, which a ControlPanel
-// effect consumed after sign-in to force cloud routing regardless of the setup
-// the user then chose in onboarding (#2086). The hook must only reset onboarding
-// progress and reload; the routing pair is onboarding's to decide.
-test("restarting onboarding resets progress without arming a cloud switch", async (t) => {
+test("restarting onboarding resets progress without changing provider settings", async (t) => {
   let root = null;
   t.after(async () => {
     if (root) await React.act(async () => root.unmount());

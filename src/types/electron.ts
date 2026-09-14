@@ -1,11 +1,5 @@
 import type { ModelDefinition } from "../models/ModelRegistry";
 import type { TinfoilCatalogModel } from "../models/tinfoilModels";
-import type { UsageResponse } from "../lib/usageStore";
-import type { OrgPolicy } from "./policy";
-import type {
-  ManagedEnterpriseConfig,
-  ManagedEnterpriseRequestContext,
-} from "./enterpriseIdentity";
 import type { CalendarAvailabilityRequest, CalendarAvailabilityResult } from "./calendar";
 
 export type LocalTranscriptionProvider = "whisper" | "nvidia" | "cohere";
@@ -1187,50 +1181,6 @@ declare global {
         | null
       >;
 
-      // Org policy (see src/types/policy.ts)
-      getWorkspacePolicy?: (
-        accountId?: string,
-        expectedAuthGeneration?: number
-      ) => Promise<{
-        success: boolean;
-        status?: "network" | "cached" | "current" | "unsupported" | "restricted" | "error";
-        revision?: number;
-        accountId?: string | null;
-        authGeneration?: number | null;
-        managed?: boolean;
-        policy?: OrgPolicy | null;
-        policyUpdatedAt?: string | null;
-        endpointSupported?: boolean;
-        code?: string;
-        error?: string;
-        enforcementRequired?: boolean;
-      }>;
-      onWorkspacePolicyChanged?: (
-        callback: (
-          snapshot:
-            | {
-                success: true;
-                status: "network" | "cached" | "current" | "unsupported";
-                revision: number;
-                accountId: string | null;
-                authGeneration: number;
-                managed: boolean;
-                policy: OrgPolicy | null;
-                policyUpdatedAt: string | null;
-                endpointSupported: boolean;
-              }
-            | {
-                success: false;
-                status: "error";
-                revision: number;
-                accountId: string | null;
-                authGeneration: number;
-                code: "POLICY_UNRESOLVABLE";
-                error: string;
-              }
-        ) => void
-      ) => () => void;
-
       getNoteRecordingConfig?: () => Promise<NoteRecordingConfigResult | null>;
 
       // Database operations
@@ -1329,12 +1279,6 @@ declare global {
           remoteTranscriptionType?: SelfHostedType;
           remoteTranscriptionUrl?: string;
           remoteTranscriptionModel?: string;
-          managed?: {
-            kind: "managed";
-            provider: "azure";
-            deployment: string;
-            context: ManagedEnterpriseRequestContext;
-          };
         }
       ) => Promise<{
         success: boolean;
@@ -2127,44 +2071,6 @@ declare global {
           underlyingError?: string;
         };
       }>;
-      getManagedEnterpriseConfig?: (
-        accountId: string,
-        workspaceId: string,
-        expectedAuthGeneration: number,
-        forceRefresh?: boolean
-      ) => Promise<{
-        success: boolean;
-        status?: "network" | "current" | "cached" | "error";
-        accountId?: string | null;
-        workspaceId?: string | null;
-        authGeneration?: number | null;
-        config?: ManagedEnterpriseConfig;
-        code?: string;
-        error?: string;
-        enforcementRequired?: boolean;
-        enforcedScopes?: string[];
-      }>;
-      onManagedEnterpriseConfigChanged?: (
-        callback: (snapshot: {
-          accountId: string;
-          workspaceId: string;
-          authGeneration: number;
-          config: ManagedEnterpriseConfig | null;
-          code: string | null;
-          enforcementRequired?: boolean;
-          enforcedScopes?: string[];
-        }) => void
-      ) => () => void;
-      clearManagedEnterpriseIdentity?: () => Promise<void>;
-      managedTranscribe?: (data: {
-        audioBuffer: ArrayBuffer;
-        fileName: string;
-        mimeType: string;
-        language?: string;
-        prompt?: string;
-        managed: { provider: "azure"; context: ManagedEnterpriseRequestContext };
-      }) => Promise<{ text?: string; error?: string; code?: string; messageKey?: string }>;
-
       // Dictation key persistence (file-based for reliable startup)
       getDictationKey?: () => Promise<string | null>;
       getActiveDictationKey?: () => Promise<string>;
@@ -2352,13 +2258,6 @@ declare global {
         code?: string;
         messageKey?: string;
       }>;
-      cloudUsage?: () => Promise<
-        UsageResponse & {
-          success: boolean;
-          error?: string;
-          code?: string;
-        }
-      >;
       cloudCheckout?: (opts?: {
         plan?: "monthly" | "annual";
         tier?: "pro" | "business";
@@ -2447,12 +2346,6 @@ declare global {
         transcriptionMode?: string;
         remoteTranscriptionUrl?: string;
         remoteTranscriptionModel?: string;
-        managed?: {
-          kind: "managed";
-          provider: "azure";
-          deployment: string;
-          context: ManagedEnterpriseRequestContext;
-        };
       }) => Promise<{
         success: boolean;
         text?: string;
@@ -2796,6 +2689,7 @@ declare global {
       gcalDisconnect?: (email?: string) => Promise<{ success: boolean; error?: string }>;
       gcalGetConnectionStatus?: () => Promise<{
         connected: boolean;
+        configured: boolean;
         accounts: Array<{ email: string }>;
         email: string | null;
       }>;
@@ -3035,6 +2929,7 @@ declare global {
       mcalDisconnect?: (email?: string) => Promise<{ success: boolean; error?: string }>;
       mcalGetConnectionStatus?: () => Promise<{
         connected: boolean;
+        configured: boolean;
         accounts: Array<{ email: string }>;
       }>;
       mcalSetPrimaryOnly?: (value: boolean) => Promise<{ success: boolean; error?: string }>;

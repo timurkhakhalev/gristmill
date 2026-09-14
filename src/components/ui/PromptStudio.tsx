@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useShallow } from "zustand/react/shallow";
 import { Button } from "./button";
 import { Textarea } from "./textarea";
 import { Eye, Edit3, Play, Save, RotateCcw, Copy, TestTube, AlertTriangle, Check } from "../icons";
@@ -10,290 +9,92 @@ import { useAgentName } from "../../utils/agentName";
 import ReasoningService from "../../services/ReasoningService";
 import { getModelProvider } from "../../models/ModelRegistry";
 import logger from "../../utils/logger";
-import { getDefaultPromptText, resolvePrompt, type PromptKind } from "../../config/prompts";
-import {
-  useSettingsStore,
-  selectPolicyEffectiveSettings,
-  selectIsCloudCleanupMode,
-  selectIsCloudDictationAgentMode,
-  selectIsCloudTranslationMode,
-} from "../../stores/settingsStore";
-import { usePolicySnapshot } from "../../hooks/usePolicy";
-import { getLanguageLabel } from "../../utils/languageSupport";
-import { getDictionaryHintWords } from "../../utils/snippets";
-import { resolveDictationAgentInference } from "../../helpers/dictationAgentInference";
-import { resolveDictationTranslationInference } from "../../helpers/dictationTranslationInference";
+import { getDefaultPromptText, resolvePrompt } from "../../config/prompts";
+import { useSettingsStore } from "../../stores/settingsStore";
+
+type NotesPromptKind = "cleanup" | "chatAgent";
 
 interface PromptStudioProps {
   className?: string;
-  kind?: PromptKind;
+  kind?: NotesPromptKind;
 }
 
-type ProviderConfig = {
-  label: string;
-  apiKeyStorageKey?: string;
-  baseStorageKey?: string;
-};
+const providerLabel = (provider: string) =>
+  ({
+    openwhispr: "OpenWhispr Cloud",
+    openai: "OpenAI",
+    anthropic: "Anthropic",
+    gemini: "Gemini",
+    groq: "Groq",
+    openrouter: "OpenRouter",
+    custom: "Custom endpoint",
+    local: "Local",
+  })[provider] ?? provider;
 
-const PROVIDER_CONFIG: Record<string, ProviderConfig> = {
-  openai: { label: "OpenAI", apiKeyStorageKey: "openaiApiKey" },
-  anthropic: { label: "Anthropic", apiKeyStorageKey: "anthropicApiKey" },
-  gemini: { label: "Gemini", apiKeyStorageKey: "geminiApiKey" },
-  groq: { label: "Groq", apiKeyStorageKey: "groqApiKey" },
-  openrouter: { label: "OpenRouter", apiKeyStorageKey: "openrouterApiKey" },
-  tinfoil: { label: "Tinfoil", apiKeyStorageKey: "tinfoilApiKey" },
-  openwhispr: { label: "OpenWhispr Cloud" },
-  custom: {
-    label: "Custom endpoint",
-    apiKeyStorageKey: "openaiApiKey",
-    baseStorageKey: "cleanupCloudBaseUrl",
-  },
-  local: { label: "Local" },
-};
-
+/** Edit and exercise the prompts used by Notes AI Actions. */
 export default function PromptStudio({ className = "", kind = "cleanup" }: PromptStudioProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<"current" | "edit" | "test">("current");
-  const [testText, setTestText] = useState(() =>
-    t(
-      kind === "translate"
-        ? "promptStudio.defaultTestInputTranslate"
-        : "promptStudio.defaultTestInput"
-    )
-  );
+  const [testText, setTestText] = useState(() => t("promptStudio.defaultTestInput"));
   const [testResult, setTestResult] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
-
   const { alertDialog, showAlertDialog, hideAlertDialog } = useDialogs();
   const { agentName } = useAgentName();
-  const policyState = usePolicySnapshot();
-  const effectiveSettings = useSettingsStore(
-    useShallow((settings) => selectPolicyEffectiveSettings(settings, policyState))
-  );
-  const uiLanguage = effectiveSettings.uiLanguage;
-
-  const isCloudMode = selectIsCloudCleanupMode(effectiveSettings);
-  const useCleanupModel = effectiveSettings.useCleanupModel;
-  const cleanupModel = effectiveSettings.cleanupModel;
-
-  const isCloudDictationAgent = selectIsCloudDictationAgentMode(effectiveSettings);
-  const useDictationAgent = effectiveSettings.useDictationAgent;
-  const dictationAgentMode = effectiveSettings.dictationAgentMode;
-  const dictationAgentProvider = effectiveSettings.dictationAgentProvider;
-  const dictationAgentModel = effectiveSettings.dictationAgentModel;
-
-  const isCloudTranslation = selectIsCloudTranslationMode(effectiveSettings);
-  const useDictationTranslation = effectiveSettings.useDictationTranslation;
-  const translationMode = effectiveSettings.translationMode;
-  const translationProvider = effectiveSettings.translationProvider;
-  const translationModel = effectiveSettings.translationModel;
-  const translationRemoteUrl = effectiveSettings.translationRemoteUrl;
-  const translationTargetLanguage = effectiveSettings.translationTargetLanguage;
-
-  const isTranslate = kind === "translate";
-  const isAgent = kind === "dictationAgent";
-
-  const customPrompt = useSettingsStore((s) => s.customPrompts[kind]);
-  const setCustomPrompt = useSettingsStore((s) => s.setCustomPrompt);
-  const defaultPrompt = getDefaultPromptText(kind, uiLanguage);
+  const settings = useSettingsStore();
+  const customPrompt = settings.customPrompts[kind] ?? "";
+  const defaultPrompt = getDefaultPromptText(kind, settings.uiLanguage);
   const [editedPrompt, setEditedPrompt] = useState(customPrompt || defaultPrompt);
+  const currentPrompt = customPrompt || defaultPrompt;
+  const isCustomPrompt = customPrompt.length > 0;
+  const isCloud = kind === "chatAgent" ? settings.chatAgentMode === "openwhispr" : settings.cleanupMode === "openwhispr";
+  const model = kind === "chatAgent" ? settings.chatAgentModel : settings.cleanupModel;
+  const provider = kind === "chatAgent" ? settings.chatAgentProvider : (isCloud ? "openwhispr" : settings.cleanupProvider);
+  const useModel = kind === "chatAgent" ? true : settings.useCleanupModel;
 
   const savePrompt = () => {
-    // Saving the unedited default is not a customization; keep resolving the
-    // shipped default so future prompt updates still reach this install.
-    setCustomPrompt(kind, editedPrompt === defaultPrompt ? "" : editedPrompt);
-    showAlertDialog({
-      title: t("promptStudio.dialogs.saved.title"),
-      description: t("promptStudio.dialogs.saved.description"),
-    });
+    settings.setCustomPrompt(kind, editedPrompt === defaultPrompt ? "" : editedPrompt);
+    showAlertDialog({ title: t("promptStudio.dialogs.saved.title"), description: t("promptStudio.dialogs.saved.description") });
   };
 
   const resetToDefault = () => {
     setEditedPrompt(defaultPrompt);
-    setCustomPrompt(kind, "");
-    showAlertDialog({
-      title: t("promptStudio.dialogs.reset.title"),
-      description: t("promptStudio.dialogs.reset.description"),
-    });
+    settings.setCustomPrompt(kind, "");
+    showAlertDialog({ title: t("promptStudio.dialogs.reset.title"), description: t("promptStudio.dialogs.reset.description") });
   };
 
   const copyText = (text: string) => {
-    navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(text);
     setCopiedPrompt(true);
     setTimeout(() => setCopiedPrompt(false), 2000);
   };
 
   const testPrompt = async () => {
-    if (!testText.trim()) return;
-
+    if (!testText.trim() || !useModel) return;
     setIsLoading(true);
     setTestResult("");
-
+    const previous = customPrompt;
+    settings.setCustomPrompt(kind, editedPrompt);
     try {
-      if (isTranslate) {
-        if (!useDictationTranslation) {
-          setTestResult(t("promptStudio.test.translationDisabled"));
-          return;
-        }
-        if (!translationTargetLanguage.trim()) {
-          setTestResult(t("promptStudio.test.noTargetLanguage"));
-          return;
-        }
-
-        const translation = resolveDictationTranslationInference(effectiveSettings, {
-          isCloudTranslation,
-        });
-        if (!translation.reachable) {
-          if (translationMode === "self-hosted" && !translationRemoteUrl.trim()) {
-            setTestResult(t("notes.actions.errors.noEndpoint"));
-            return;
-          }
-          setTestResult(t("promptStudio.test.noModelSelected"));
-          return;
-        }
-
-        const previous = customPrompt;
-        setCustomPrompt(kind, editedPrompt);
-        try {
-          const result = await ReasoningService.processText(
-            testText,
-            translation.model,
-            agentName,
-            {
-              ...translation.config,
-              systemPrompt: resolvePrompt("translate", {
-                agentName,
-                targetLanguageLabel: getLanguageLabel(translationTargetLanguage),
-                customDictionary: getDictionaryHintWords(effectiveSettings),
-                uiLanguage,
-              }),
-            }
-          );
-          setTestResult(result);
-        } finally {
-          setCustomPrompt(kind, previous);
-        }
-        return;
-      }
-
-      // The agent runs on its own inference scope; falling through to the cleanup
-      // branch would test the cleanup provider with the cleanup prompt.
-      if (isAgent) {
-        if (!useDictationAgent) {
-          setTestResult(t("promptStudio.test.agentDisabled"));
-          return;
-        }
-
-        const settings = effectiveSettings;
-        const agent = resolveDictationAgentInference(settings, {
-          isCloudAgent: isCloudDictationAgent,
-        });
-
-        if (!agent.reachable) {
-          setTestResult(t("promptStudio.test.noModelSelected"));
-          return;
-        }
-
-        const previous = customPrompt;
-        setCustomPrompt(kind, editedPrompt);
-        try {
-          const result = await ReasoningService.processText(testText, agent.model, agentName, {
-            ...agent.config,
-            inferenceScope: "dictationAgent",
-            requiresAgent: true,
-            systemPrompt: resolvePrompt("dictationAgent", {
-              agentName,
-              language: settings.preferredLanguage,
-              customDictionary: getDictionaryHintWords(settings),
-              uiLanguage,
-            }),
-          });
-          setTestResult(result);
-        } finally {
-          setCustomPrompt(kind, previous);
-        }
-        return;
-      }
-
-      const cleanupProvider = isCloudMode
-        ? "openwhispr"
-        : (cleanupModel && getModelProvider(cleanupModel)) || "openai";
-
-      logger.debug(
-        "PromptStudio test starting",
-        {
-          useCleanupModel,
-          isCloudMode,
-          cleanupModel,
-          cleanupProvider,
-          testTextLength: testText.length,
-          agentName,
-        },
-        "prompt-studio"
-      );
-
-      if (!useCleanupModel) {
-        setTestResult(t("promptStudio.test.disabledReasoning"));
-        return;
-      }
-
-      if (!isCloudMode && !cleanupModel) {
+      if (!isCloud && !model) {
         setTestResult(t("promptStudio.test.noModelSelected"));
         return;
       }
-
-      if (!isCloudMode) {
-        const providerConfig = PROVIDER_CONFIG[cleanupProvider] || {
-          label: cleanupProvider.charAt(0).toUpperCase() + cleanupProvider.slice(1),
-        };
-
-        if (providerConfig.baseStorageKey) {
-          const baseUrl = (effectiveSettings.cleanupCloudBaseUrl || "").trim();
-          if (!baseUrl) {
-            setTestResult(
-              t("promptStudio.test.baseUrlMissing", {
-                provider:
-                  cleanupProvider === "custom"
-                    ? t("promptStudio.test.customEndpoint")
-                    : providerConfig.label,
-              })
-            );
-            return;
-          }
-        }
-      }
-
-      const modelToUse = isCloudMode ? cleanupModel || "auto" : cleanupModel;
-
-      const previous = customPrompt;
-      setCustomPrompt(kind, editedPrompt);
-      try {
-        const result = await ReasoningService.processText(testText, modelToUse, agentName, {
-          inferenceScope: "dictationCleanup",
-          disableThinking: effectiveSettings.cleanupDisableThinking,
-        });
-        setTestResult(result);
-      } finally {
-        setCustomPrompt(kind, previous);
-      }
+      const result = await ReasoningService.processText(testText, isCloud ? model || "auto" : model, agentName, {
+        ...(kind === "chatAgent" ? { inferenceScope: "chatIntelligence" as const } : {}),
+        disableThinking: settings.cleanupDisableThinking,
+        systemPrompt: resolvePrompt(kind, { agentName, uiLanguage: settings.uiLanguage }),
+      });
+      setTestResult(result);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error("PromptStudio test failed", { error: errorMessage }, "prompt-studio");
-      const typed = error as { code?: string; provider?: string };
-      setTestResult(
-        typed?.code === "API_KEY_MISSING"
-          ? t("promptStudio.test.apiKeyMissing", { provider: typed.provider })
-          : t("promptStudio.test.failed", { error: errorMessage })
-      );
+      setTestResult(t("promptStudio.test.failed", { error: errorMessage }));
     } finally {
+      settings.setCustomPrompt(kind, previous);
       setIsLoading(false);
     }
   };
-
-  const isAgentAddressed = testText.toLowerCase().includes(agentName.toLowerCase());
-  const isCustomPrompt = customPrompt.length > 0;
-  const currentPrompt = customPrompt || defaultPrompt;
 
   const tabs = [
     { id: "current" as const, label: t("promptStudio.tabs.view"), icon: Eye },
@@ -303,315 +104,37 @@ export default function PromptStudio({ className = "", kind = "cleanup" }: Promp
 
   return (
     <div className={className}>
-      <AlertDialog
-        open={alertDialog.open}
-        onOpenChange={(open) => !open && hideAlertDialog()}
-        title={alertDialog.title}
-        description={alertDialog.description}
-        onOk={() => {}}
-      />
-
-      {/* Tab Navigation + Content in a single panel */}
-      <div className="rounded-xl border border-border/70 dark:border-border-subtle bg-card dark:bg-surface-2 overflow-hidden">
+      <AlertDialog open={alertDialog.open} onOpenChange={(open) => !open && hideAlertDialog()} title={alertDialog.title} description={alertDialog.description} onOk={() => {}} />
+      <div className="overflow-hidden rounded-xl border border-border/70 bg-card dark:border-border-subtle dark:bg-surface-2">
         <div className="flex border-b border-border/70 dark:border-border-subtle">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-xs font-medium transition-colors duration-150 border-b-2 ${
-                  isActive
-                    ? "border-primary text-foreground bg-primary/5 dark:bg-primary/3"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-black/2 dark:hover:bg-white/2"
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {tab.label}
-              </button>
-            );
-          })}
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button key={id} type="button" onClick={() => setActiveTab(id)} className={`flex-1 border-b-2 px-4 py-3 text-xs font-medium ${activeTab === id ? "border-primary bg-primary/5 text-foreground" : "border-transparent text-muted-foreground"}`}>
+              <Icon className="me-2 inline size-3.5" />{label}
+            </button>
+          ))}
         </div>
-
-        {/* ── View Tab ── */}
         {activeTab === "current" && (
-          <div className="divide-y divide-border/60 dark:divide-border-subtle">
-            <div className="px-5 py-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <p className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
-                    {isCustomPrompt
-                      ? t("promptStudio.view.customPrompt")
-                      : t("promptStudio.view.defaultPrompt")}
-                  </p>
-                  {isCustomPrompt && (
-                    <span className="text-xs font-semibold uppercase tracking-wider px-1.5 py-px rounded-full bg-primary/10 text-primary">
-                      {t("promptStudio.view.modified")}
-                    </span>
-                  )}
-                </div>
-                <Button
-                  onClick={() => copyText(currentPrompt)}
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                >
-                  {copiedPrompt ? (
-                    <>
-                      <Check className="w-3 h-3 me-1 text-success" />{" "}
-                      {t("promptStudio.common.copied")}
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3 h-3 me-1" /> {t("promptStudio.common.copy")}
-                    </>
-                  )}
-                </Button>
-              </div>
-              <div className="bg-muted/30 dark:bg-surface-raised/30 border border-border/70 rounded-lg p-4 max-h-80 overflow-y-auto">
-                <pre
-                  dir="auto"
-                  className="text-xs font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed"
-                >
-                  {currentPrompt.replace(/\{\{agentName\}\}/g, agentName)}
-                </pre>
-              </div>
-            </div>
+          <div className="px-5 py-4">
+            <div className="mb-3 flex items-center justify-between"><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">{isCustomPrompt ? t("promptStudio.view.customPrompt") : t("promptStudio.view.defaultPrompt")}</p><Button onClick={() => copyText(currentPrompt)} variant="ghost" size="sm" className="h-7 px-2 text-xs">{copiedPrompt ? <><Check className="me-1 inline size-3 text-success" />{t("promptStudio.common.copied")}</> : <><Copy className="me-1 inline size-3" />{t("promptStudio.common.copy")}</>}</Button></div>
+            <pre dir="auto" className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground">{currentPrompt.replace(/\{\{agentName\}\}/g, agentName)}</pre>
           </div>
         )}
-
-        {/* ── Edit Tab ── */}
         {activeTab === "edit" && (
-          <div className="divide-y divide-border/60 dark:divide-border-subtle">
-            <div className="px-5 py-4">
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                <span className="font-medium text-warning">
-                  {t("promptStudio.edit.cautionLabel")}
-                </span>{" "}
-                {t("promptStudio.edit.cautionTextPrefix")}{" "}
-                <code dir="ltr" className="text-xs bg-muted/50 px-1 py-0.5 rounded font-mono">
-                  {"{{agentName}}"}
-                </code>{" "}
-                {t("promptStudio.edit.cautionTextSuffix")}
-              </p>
-            </div>
-
-            <div className="px-5 py-4">
-              <Textarea
-                dir="auto"
-                value={editedPrompt}
-                onChange={(e) => setEditedPrompt(e.target.value)}
-                rows={16}
-                className="font-mono text-xs leading-relaxed"
-                placeholder={t("promptStudio.edit.placeholder")}
-              />
-              <p className="text-xs text-muted-foreground/70 mt-2">
-                {t("promptStudio.edit.agentNameLabel")}{" "}
-                <span dir="auto" className="font-medium text-foreground">
-                  {agentName}
-                </span>
-              </p>
-            </div>
-
-            <div className="px-5 py-4">
-              <div className="flex gap-2">
-                <Button onClick={savePrompt} size="sm" className="flex-1">
-                  <Save className="w-3.5 h-3.5 me-2" />
-                  {t("promptStudio.common.save")}
-                </Button>
-                <Button onClick={resetToDefault} variant="outline" size="sm">
-                  <RotateCcw className="w-3.5 h-3.5 me-2" />
-                  {t("promptStudio.common.reset")}
-                </Button>
-              </div>
-            </div>
+          <div className="px-5 py-4">
+            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{t("promptStudio.edit.cautionTextPrefix")}</p>
+            <Textarea dir="auto" value={editedPrompt} onChange={(event) => setEditedPrompt(event.target.value)} rows={16} className="font-mono text-xs leading-relaxed" placeholder={t("promptStudio.edit.placeholder")} />
+            <div className="mt-4 flex gap-2"><Button onClick={savePrompt} size="sm" className="flex-1"><Save className="me-2 size-3.5" />{t("promptStudio.common.save")}</Button><Button onClick={resetToDefault} variant="outline" size="sm"><RotateCcw className="me-2 size-3.5" />{t("promptStudio.common.reset")}</Button></div>
           </div>
         )}
-
-        {/* ── Test Tab ── */}
-        {activeTab === "test" &&
-          (() => {
-            // Each kind reports the scope that actually runs it.
-            const testIsCloud = isTranslate
-              ? isCloudTranslation
-              : isAgent
-                ? isCloudDictationAgent
-                : isCloudMode;
-            const testModel = isTranslate
-              ? translationModel
-              : isAgent
-                ? dictationAgentModel
-                : cleanupModel;
-            const agentDisplayProvider = isAgent
-              ? resolveDictationAgentInference(
-                  {
-                    useDictationAgent,
-                    dictationAgentMode,
-                    dictationAgentProvider,
-                    dictationAgentModel,
-                  },
-                  { isCloudAgent: isCloudDictationAgent }
-                ).displayProvider
-              : "";
-            const translationDisplayProvider = isTranslate
-              ? resolveDictationTranslationInference(
-                  {
-                    translationMode,
-                    translationProvider,
-                  },
-                  { isCloudTranslation }
-                ).displayProvider
-              : "";
-            const scopeProvider = isTranslate
-              ? translationDisplayProvider
-              : isAgent
-                ? agentDisplayProvider
-                : "";
-            const testProvider =
-              isAgent || isTranslate
-                ? scopeProvider
-                : testIsCloud
-                  ? "openwhispr"
-                  : scopeProvider || (testModel && getModelProvider(testModel)) || "openai";
-            const providerConfig = PROVIDER_CONFIG[testProvider] || {
-              label: testProvider.charAt(0).toUpperCase() + testProvider.slice(1),
-            };
-
-            const displayModel = testIsCloud
-              ? t("promptStudio.test.openwhisprCloud")
-              : testModel || t("promptStudio.test.none");
-            const displayProvider =
-              testProvider === "custom"
-                ? t("promptStudio.test.customEndpoint")
-                : providerConfig.label;
-
-            return (
-              <div className="divide-y divide-border/60 dark:divide-border-subtle">
-                {!isTranslate && !isAgent && !useCleanupModel && (
-                  <div className="px-5 py-4">
-                    <div className="rounded-lg border border-warning/20 bg-warning/5 dark:bg-warning/10 px-4 py-3">
-                      <div className="flex items-start gap-2.5">
-                        <AlertTriangle className="w-3.5 h-3.5 text-warning mt-0.5 shrink-0" />
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          {t("promptStudio.test.disabledInSettingsPrefix")}{" "}
-                          <span className="font-medium text-foreground">
-                            {t("promptStudio.test.aiModels")}
-                          </span>{" "}
-                          {t("promptStudio.test.disabledInSettingsSuffix")}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="px-5 py-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
-                        {t("promptStudio.test.modelLabel")}
-                      </p>
-                      <p dir="ltr" className="text-xs font-medium text-foreground font-mono">
-                        {displayModel}
-                      </p>
-                    </div>
-                    <div className="h-3 w-px bg-border/40" />
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
-                        {t("promptStudio.test.providerLabel")}
-                      </p>
-                      <p dir="ltr" className="text-xs font-medium text-foreground">
-                        {displayProvider}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="px-5 py-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-foreground">
-                      {t("promptStudio.test.inputLabel")}
-                    </p>
-                    {testText && (
-                      <span
-                        className={`text-xs font-medium uppercase tracking-wider px-1.5 py-px rounded ${
-                          isTranslate || isAgent || isAgentAddressed
-                            ? "bg-primary/10 text-primary dark:bg-primary/15"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {isTranslate
-                          ? t("promptStudio.test.translation")
-                          : isAgent || isAgentAddressed
-                            ? t("promptStudio.test.instruction")
-                            : t("promptStudio.test.cleanup")}
-                      </span>
-                    )}
-                  </div>
-                  <Textarea
-                    dir="auto"
-                    value={testText}
-                    onChange={(e) => setTestText(e.target.value)}
-                    rows={3}
-                    className="text-xs"
-                    placeholder={t("promptStudio.test.inputPlaceholder")}
-                  />
-                  {/* The agent tab always runs the agent prompt, addressed or not. */}
-                  {!isAgent && (
-                    <p className="text-xs text-muted-foreground/70 mt-1.5">
-                      {isTranslate
-                        ? t("promptStudio.test.translateHint", {
-                            language: getLanguageLabel(translationTargetLanguage),
-                          })
-                        : t("promptStudio.test.addressHint", { agentName })}
-                    </p>
-                  )}
-                </div>
-
-                <div className="px-5 py-4">
-                  <Button
-                    onClick={testPrompt}
-                    disabled={
-                      !testText.trim() ||
-                      isLoading ||
-                      (!isTranslate && !isAgent && !useCleanupModel)
-                    }
-                    size="sm"
-                    className="w-full"
-                  >
-                    <Play className="w-3.5 h-3.5 me-2" />
-                    {isLoading ? t("promptStudio.test.processing") : t("promptStudio.test.run")}
-                  </Button>
-                </div>
-
-                {testResult && (
-                  <div className="px-5 py-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-medium text-foreground">
-                        {t("promptStudio.test.outputLabel")}
-                      </p>
-                      <Button
-                        onClick={() => copyText(testResult)}
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-1.5"
-                      >
-                        <Copy className="w-3 h-3 text-muted-foreground" />
-                      </Button>
-                    </div>
-                    <div className="bg-muted/30 dark:bg-surface-raised/30 border border-border/70 rounded-lg p-4 max-h-48 overflow-y-auto">
-                      <pre
-                        dir="auto"
-                        className="text-xs text-foreground whitespace-pre-wrap leading-relaxed"
-                      >
-                        {testResult}
-                      </pre>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+        {activeTab === "test" && (
+          <div className="divide-y divide-border/60 dark:divide-border-subtle">
+            {!useModel && <div className="px-5 py-4"><div className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/5 px-4 py-3 text-xs text-muted-foreground"><AlertTriangle className="mt-0.5 size-3.5 text-warning" />{t("promptStudio.test.disabledReasoning")}</div></div>}
+            <div className="flex items-center gap-4 px-5 py-4 text-xs"><span className="text-muted-foreground">{t("promptStudio.test.modelLabel")}: <b className="font-mono text-foreground">{model || t("promptStudio.test.none")}</b></span><span className="text-muted-foreground">{t("promptStudio.test.providerLabel")}: <b className="text-foreground">{providerLabel(provider)}</b></span></div>
+            <div className="px-5 py-4"><p className="mb-2 text-xs font-medium text-foreground">{t("promptStudio.test.inputLabel")}</p><Textarea dir="auto" value={testText} onChange={(event) => setTestText(event.target.value)} rows={3} className="text-xs" /></div>
+            <div className="px-5 py-4"><Button onClick={testPrompt} disabled={!testText.trim() || isLoading || !useModel} size="sm" className="w-full"><Play className="me-2 size-3.5" />{isLoading ? t("promptStudio.test.processing") : t("promptStudio.test.run")}</Button></div>
+            {testResult && <div className="px-5 py-4"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-medium">{t("promptStudio.test.outputLabel")}</p><Button onClick={() => copyText(testResult)} variant="ghost" size="sm" className="h-6 px-1.5"><Copy className="size-3" /></Button></div><pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-muted/30 p-4 text-xs">{testResult}</pre></div>}
+          </div>
+        )}
       </div>
     </div>
   );

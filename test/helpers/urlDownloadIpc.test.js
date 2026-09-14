@@ -6,6 +6,7 @@ const path = require("node:path");
 const Module = require("node:module");
 
 const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
+const downloadHandlersModulePath = require.resolve("../../src/helpers/urlDownloadIpcHandlers");
 const originalLoad = Module._load;
 const handlers = new Map();
 
@@ -65,11 +66,16 @@ const electronStub = {
 
 Module._load = function loadWithMocks(request, parent, isMain) {
   if (request === "electron") return electronStub;
-  if (parent?.filename === handlersModulePath) {
+  const fromHandlers =
+    parent?.filename === handlersModulePath ||
+    parent?.filename === downloadHandlersModulePath;
+  if (fromHandlers) {
     if (request === "./debugLogger") {
       return new Proxy({}, { get: () => () => {} });
     }
-    if (request === "./urlAudioDownloader") {
+    // The TS handler module requests "./urlAudioDownloader.js" (with
+    // extension); match on the tail so both spellings hit the fake.
+    if (request.endsWith("urlAudioDownloader.js")) {
       return {
         download: (url, onProgress, signal) => {
           const call = { url, onProgress, signal, deferred: deferred() };
@@ -81,7 +87,7 @@ Module._load = function loadWithMocks(request, parent, isMain) {
         },
       };
     }
-    if (request === "./safeTempDir") {
+    if (request === "./safeTempDir" || request.endsWith("safeTempDir.js")) {
       return { getSafeTempDir: () => safeTempRoot };
     }
   }
@@ -118,7 +124,10 @@ function resetDownloader() {
 }
 
 test.before(() => {
+  // Fresh load of the whole handler graph so the fake downloader/safeTempDir
+  // mocks are observed instead of already-cached real modules.
   delete require.cache[handlersModulePath];
+  delete require.cache[downloadHandlersModulePath];
   const IPCHandlers = require(handlersModulePath);
   const Ctor = IPCHandlers.default || IPCHandlers;
   Ctor.prototype.setupHandlers.call(

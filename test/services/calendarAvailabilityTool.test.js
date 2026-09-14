@@ -1,7 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { MAX_AVAILABILITY_HORIZON_DAYS } = require("../../src/helpers/calendarAvailability.js");
+let MAX_AVAILABILITY_HORIZON_DAYS;
+test.before(async () => {
+  ({ MAX_AVAILABILITY_HORIZON_DAYS } = await import("../../src/helpers/calendarAvailability.ts"));
+});
 
 const loadTool = () => import("../../src/services/tools/calendarAvailabilityTool.ts");
 

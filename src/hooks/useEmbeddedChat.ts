@@ -3,6 +3,7 @@ import { useChatPersistence } from "../components/chat/useChatPersistence";
 import { useChatStreaming } from "../components/chat/useChatStreaming";
 import { useChatMessageSender } from "../components/chat/useChatMessageSender";
 import type { Message, AgentState } from "../components/chat/types";
+import type { ConversationRow } from "../contracts/chatPersistence";
 
 interface UseEmbeddedChatOptions {
   noteId: number | null;
@@ -12,20 +13,12 @@ interface UseEmbeddedChatOptions {
   noteTranscript?: string;
 }
 
-interface NoteConversationItem {
-  id: number;
-  title: string;
-  created_at: string;
-  updated_at: string;
-  message_count: number;
-}
-
 interface UseEmbeddedChatReturn {
   messages: Message[];
   agentState: AgentState;
   sendMessage: (text: string) => Promise<void>;
   cancelStream: () => void;
-  noteConversations: NoteConversationItem[];
+  noteConversations: ConversationRow[];
   activeConversationId: number | null;
   switchConversation: (id: number) => Promise<void>;
   startNewChat: () => void;
@@ -39,7 +32,7 @@ export function useEmbeddedChat({
   noteTranscript,
 }: UseEmbeddedChatOptions): UseEmbeddedChatReturn {
   const [conversationId, setConversationId] = useState<number | null>(null);
-  const [noteConversations, setNoteConversations] = useState<NoteConversationItem[]>([]);
+  const [noteConversations, setNoteConversations] = useState<ConversationRow[]>([]);
   const noteIdRef = useRef(noteId);
   const [prevNoteId, setPrevNoteId] = useState(noteId);
 

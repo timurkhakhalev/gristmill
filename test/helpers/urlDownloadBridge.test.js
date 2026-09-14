@@ -186,6 +186,24 @@ test("cancel-one aborts only its job; bare cancel aborts the rest; finished id f
   assert.equal(cancelFinished.success, false);
 });
 
+// Tolerant normalization is a main-side contract: even a JS caller bypassing
+// the typed bridge gets the old dl-N generation and cancel-all semantics.
+test("raw JS calls with non-string ids keep the tolerant behavior", async (t) => {
+  await createFixture(t);
+  resetDownloader();
+  const rawInvoke = async (channel, ...args) => {
+    const handler = activeHandlers.get(channel);
+    return handler({ sender: { isDestroyed: () => false, send() {} } }, ...args);
+  };
+  const pending = rawInvoke("download-url-audio", "https://example.com/raw.mp3", 7);
+  const cancelAll = await rawInvoke("cancel-url-download", 7);
+  assert.equal(cancelAll.success, true);
+  assert.equal(downloadCalls[0].signal.aborted, true);
+  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  const result = await pending;
+  assert.equal(result.success, true);
+});
+
 test("error results keep message and code through the bridge", async (t) => {
   const { api } = await createFixture(t);
   resetDownloader();

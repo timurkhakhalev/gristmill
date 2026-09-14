@@ -12,8 +12,11 @@ import { z } from "zod";
 
 const urlArg = z.string().max(2048);
 
-export const downloadUrlAudioArgsSchema = z.tuple([urlArg, z.string().optional()]);
-export const cancelUrlDownloadArgsSchema = z.tuple([z.string().optional()]);
+// downloadId keeps its public optional-string shape, but the JS side of the
+// boundary historically passed anything (missing, null, numbers); the main
+// handlers normalize that tolerant id, not the schema.
+export const downloadUrlAudioArgsSchema = z.tuple([urlArg, z.unknown().optional()]);
+export const cancelUrlDownloadArgsSchema = z.tuple([z.unknown().optional()]);
 export const deleteTempFileArgsSchema = z.tuple([z.string()]);
 
 export const urlDownloadSuccessSchema = z.object({

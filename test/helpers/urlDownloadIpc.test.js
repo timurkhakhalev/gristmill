@@ -236,6 +236,58 @@ test("cancel without an id, with empty string or a non-string cancels everything
   await Promise.all(pendings);
 });
 
+// Regression: the Zod arg schemas must not tighten the tolerant JS boundary.
+// cancel(7) with active downloads used to abort all of them; a number id in
+// the schema would reject first and leave the work running.
+test("cancel(null/7) with active downloads still cancels them all", async () => {
+  registration();
+  resetDownloader();
+  const pendings = [
+    handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/1", "job-a"),
+    handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/2", "job-b"),
+  ];
+  assert.deepEqual(await handlers.get("cancel-url-download")({ sender: sender() }, 7), {
+    success: true,
+  });
+  for (const call of downloadCalls) assert.equal(call.signal.aborted, true);
+  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[1].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  await Promise.all(pendings);
+
+  resetDownloader();
+  const pendings2 = [
+    handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/3", "job-c"),
+    handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/4", "job-d"),
+  ];
+  assert.deepEqual(await handlers.get("cancel-url-download")({ sender: sender() }, null), {
+    success: true,
+  });
+  for (const call of downloadCalls) assert.equal(call.signal.aborted, true);
+  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[1].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  await Promise.all(pendings2);
+});
+
+// Regression: download(url, 7) used to start with a generated id; a strict
+// string schema would reject before the downloader runs.
+test("download with a null or non-string id still starts", async () => {
+  registration();
+  resetDownloader();
+  for (const [i, id] of [7, null, true].entries()) {
+    const pending = handlers.get("download-url-audio")(
+      eventFrom(sender()),
+      `https://example.com/gen-${i}`,
+      id
+    );
+    downloadCalls[i].onProgress({ stage: "ready", percent: 100 });
+    downloadCalls[i].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+    const result = await pending;
+    assert.equal(result.success, true, String(id));
+  }
+  // Every non-string id generated a dl-N instead of failing.
+  assert.equal(downloadCalls.length, 3);
+});
+
 test("cancel of unknown or completed id and cancel-all with nothing running fail quietly", async () => {
   registration();
   assert.deepEqual(await handlers.get("cancel-url-download")({ sender: sender() }, "nope"), {

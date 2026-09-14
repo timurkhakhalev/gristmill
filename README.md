@@ -43,7 +43,6 @@ before Node tests after packaging. The packaging hook forcibly restores Electron
 and validates SQLite with the packaged runtime before creating installers.
 
 - [Electron TypeScript build](docs/typescript-build.md)
-- [Next step: Notes TypeScript plan](docs/plans/notes-typescript.md)
 - [Product requirements](docs/product.md)
 - [Target architecture](docs/architecture.md)
 - [OpenWhispr cutover](docs/openwhispr-cutover.md)

@@ -1,4 +1,4 @@
-import type { SpaceItem } from "../../types/electron";
+import type { SpaceItem } from "../../contracts/containers";
 import type { ContainerScope } from "../../types/chat";
 import type { ToolDefinition, ToolResult } from "./ToolRegistry";
 import { resolveSpace } from "./utils";

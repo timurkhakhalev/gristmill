@@ -1,5 +1,5 @@
 import { Folder, Lock, Users } from "../../icons";
-import type { SpaceItem, FolderItem } from "../../../types/electron";
+import type { SpaceItem, FolderItem } from "../../../contracts/containers";
 
 interface ContainerIconProps {
   space: SpaceItem;

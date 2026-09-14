@@ -56,11 +56,12 @@ export const getFolderNoteCountsArgsSchema = z.tuple([]);
 export const getSpacesArgsSchema = z.tuple([]);
 export const updateSpaceArgsSchema = z.tuple([idArg, z.unknown().optional()]);
 
-// renameFolder misses return `folder: null` for unknown ids; keep it in the
-// type so consumers keep their truthiness guards.
+// renameFolder misses omit `folder` entirely (the SELECT after a 0-change
+// UPDATE returns undefined); the schema keeps the field optional so the
+// shape stays documented without inventing a null the DB never sends.
 export const folderMutationResultSchema = z.object({
   success: z.boolean(),
-  folder: folderSchema.nullable().optional(),
+  folder: folderSchema.nullish(),
   error: z.string().optional(),
 });
 export type FolderMutationResult = z.infer<typeof folderMutationResultSchema>;

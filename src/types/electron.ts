@@ -413,8 +413,6 @@ export interface ScreenRecordingAccessResult {
   needsRelaunch?: boolean;
 }
 
-export type CloudReasonPurpose = "cleanup" | "assistant" | "translation" | "noteFormatting";
-
 export interface ScreenContextImage {
   mediaType: string;
   /** Base64 image bytes, no data-URL prefix. */

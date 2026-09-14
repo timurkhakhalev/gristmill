@@ -8,6 +8,7 @@ import type { ChatPersistenceApi } from "../contracts/chatPersistence";
 import type { ActionsApi } from "../contracts/actions";
 import type { LocalFileTranscriptionApi } from "../contracts/localFileTranscription";
 import type { CalendarAvailabilityApi } from "../contracts/calendarAvailability";
+import type { UploadTranscriptionApi } from "../contracts/uploadTranscription";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -1128,28 +1129,9 @@ declare global {
       getAutoStartEnabled?: () => Promise<{ enabled: boolean; requiresApproval: boolean }>;
       setAutoStartEnabled?: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
 
-      // BYOK audio file transcription
-      transcribeAudioFileByok?: (options: {
-        filePath: string;
-        apiKey: string;
-        baseUrl: string;
-        model: string;
-        diarize?: boolean;
-        timestamps?: boolean;
-        provider?: string;
-        language?: string;
-        environment?: string;
-        tenant?: string;
-        transcriptionMode?: string;
-        remoteTranscriptionUrl?: string;
-        remoteTranscriptionModel?: string;
-      }) => Promise<{
-        success: boolean;
-        text?: string;
-        error?: string;
-        diarized?: boolean;
-        segments?: Array<{ text: string; start: number; end: number; speaker?: string }>;
-      }>;
+      // BYOK audio file transcription, file diarization, speaker-text merge
+      // and the hard cancel of one upload execution come from the shared
+      // UploadTranscriptionApi contract (four channels).
 
       // Google Calendar
       gcalStartOAuth?: () => Promise<{ success: boolean; email?: string; error?: string }>;
@@ -1284,21 +1266,8 @@ declare global {
         message?: string;
         error?: string;
       }>;
-      mergeSpeakerText?: (
-        segments: Array<{ start: number; end: number; speaker: string }>,
-        text: string,
-        duration: number
-      ) => Promise<{ success: boolean; text?: string; error?: string }>;
-      diarizeAudioFile?: (
-        filePath: string,
-        options?: { numSpeakers?: number; threshold?: number; requestId?: string }
-      ) => Promise<{
-        success: boolean;
-        segments?: Array<{ start: number; end: number; speaker: string }>;
-        durationSeconds?: number;
-        error?: string;
-        code?: string;
-      }>;
+      // mergeSpeakerText and diarizeAudioFile come from the shared
+      // UploadTranscriptionApi contract.
       onDiarizationDownloadProgress?: (callback: (data: any) => void) => () => void;
       onMeetingDiarizationComplete?: (
         callback: (data: {
@@ -1465,7 +1434,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

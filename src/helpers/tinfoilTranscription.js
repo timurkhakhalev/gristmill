@@ -24,6 +24,7 @@ async function transcribeWithTinfoil({
   language,
   prompt,
   apiKey,
+  signal,
 }) {
   if (!apiKey?.trim()) {
     const error = new Error("Tinfoil API key not configured. Add your key in Settings.");
@@ -48,6 +49,7 @@ async function transcribeWithTinfoil({
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}` },
     body: formData,
+    signal,
   });
 
   if (response.status === 401) {

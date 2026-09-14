@@ -2,15 +2,26 @@
 // operation the upload spawned (transcription and diarization run in parallel
 // under the same id). Pure seam: no Electron imports, unit-tested in
 // test/helpers/uploadCancelRegistry.test.js.
-function createUploadCancelRegistry() {
+
+export interface UploadCancelRegistration {
+  signal: AbortSignal | undefined;
+  release: () => void;
+}
+
+export interface UploadCancelRegistry {
+  register(requestId: unknown): UploadCancelRegistration;
+  cancel(requestId: unknown): number;
+}
+
+export function createUploadCancelRegistry(): UploadCancelRegistry {
   // requestId -> Set<AbortController>, one controller per in-flight operation.
-  const controllers = new Map();
+  const controllers = new Map<string, Set<AbortController>>();
 
   return {
     // Registers one operation. Missing/invalid ids are inert — flows without a
     // requestId (dictation, voice drafts, warm-ups) get no signal and a no-op
     // release, so their behavior is untouched.
-    register(requestId) {
+    register(requestId: unknown): UploadCancelRegistration {
       if (typeof requestId !== "string" || !requestId) {
         return { signal: undefined, release: () => {} };
       }
@@ -36,14 +47,12 @@ function createUploadCancelRegistry() {
     // Aborts every operation registered under the id and returns how many were
     // aborted. Unknown or already-finished ids are a safe no-op — the renderer
     // fires a cancel for every provider, including ones that never register.
-    cancel(requestId) {
-      const set = controllers.get(requestId);
+    cancel(requestId: unknown): number {
+      const set = controllers.get(requestId as string);
       if (!set) return 0;
-      controllers.delete(requestId);
+      controllers.delete(requestId as string);
       for (const controller of set) controller.abort();
       return set.size;
     },
   };
 }
-
-module.exports = { createUploadCancelRegistry };

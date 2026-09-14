@@ -1,15 +1,7 @@
 import { create } from "zustand";
+import type { ConversationRow } from "../contracts/chatPersistence";
 
-interface ConversationItem {
-  id: number;
-  title: string;
-  cloud_id?: string | null;
-  client_conversation_id?: string | null;
-  archived_at?: string | null;
-  note_id?: number | null;
-  created_at: string;
-  updated_at: string;
-}
+type ConversationItem = ConversationRow;
 
 interface ChatState {
   conversations: ConversationItem[];

@@ -5,6 +5,7 @@ import type { NotesApi } from "../contracts/notes";
 import type { UrlDownloadApi } from "../contracts/urlDownload";
 import type { VocabularyApi } from "../contracts/vocabulary";
 import type { ContainersApi } from "../contracts/containers";
+import type { ChatPersistenceApi } from "../contracts/chatPersistence";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -505,23 +506,6 @@ export type LocalLLMDownloadProgressEvent =
       details?: unknown;
       sequence?: number;
     };
-
-export interface ConversationPreview {
-  id: number;
-  title: string;
-  created_at: string;
-  updated_at: string;
-  archived_at?: string | null;
-  cloud_id?: string | null;
-  client_conversation_id?: string;
-  sync_status?: "synced" | "pending" | "error";
-  deleted_at?: string | null;
-  // Computed for sync lookups while the parent folder delete is unresolved.
-  folder_delete_pending?: number;
-  message_count: number;
-  last_message?: string | null;
-  last_message_role?: "user" | "assistant" | "system" | null;
-}
 
 export interface ConversationCreateSnapshot {
   client_conversation_id?: string | null;
@@ -1212,108 +1196,6 @@ declare global {
         segments?: Array<{ text: string; start: number; end: number; speaker?: string }>;
       }>;
 
-      // Agent Mode
-      createAgentConversation?: (
-        title: string,
-        noteId?: number | null,
-        spaceId?: number | null,
-        folderId?: number | null
-      ) => Promise<{
-        id: number;
-        title: string;
-        note_id?: number | null;
-        space_id?: number | null;
-        folder_id?: number | null;
-        created_at: string;
-        updated_at: string;
-      } | null>;
-      getConversationsForNote?: (
-        noteId: number,
-        limit?: number
-      ) => Promise<
-        Array<{
-          id: number;
-          title: string;
-          created_at: string;
-          updated_at: string;
-          message_count: number;
-        }>
-      >;
-      getConversationsForContainer?: (
-        spaceId: number,
-        folderId?: number | null,
-        limit?: number
-      ) => Promise<
-        Array<{
-          id: number;
-          title: string;
-          created_at: string;
-          updated_at: string;
-          message_count: number;
-        }>
-      >;
-      getAgentConversations?: (limit?: number) => Promise<
-        Array<{
-          id: number;
-          title: string;
-          archived_at?: string;
-          cloud_id?: string;
-          client_conversation_id?: string;
-          created_at: string;
-          updated_at: string;
-        }>
-      >;
-      getAgentConversation?: (id: number) => Promise<{
-        id: number;
-        title: string;
-        archived_at?: string;
-        cloud_id?: string | null;
-        client_conversation_id?: string | null;
-        created_at: string;
-        updated_at: string;
-        messages: Array<{
-          id: number;
-          conversation_id: number;
-          role: "user" | "assistant" | "system";
-          content: string;
-          metadata?: string;
-          created_at: string;
-        }>;
-      } | null>;
-      deleteAgentConversation?: (id: number) => Promise<{ success: boolean }>;
-      updateAgentConversationTitle?: (id: number, title: string) => Promise<{ success: boolean }>;
-      addAgentMessage?: (
-        conversationId: number,
-        role: "user" | "assistant" | "system",
-        content: string,
-        metadata?: Record<string, unknown>
-      ) => Promise<{
-        id: number;
-        conversation_id: number;
-        role: string;
-        content: string;
-        metadata?: string;
-        created_at: string;
-      } | null>;
-      getAgentMessages?: (conversationId: number) => Promise<
-        Array<{
-          id: number;
-          conversation_id: number;
-          role: "user" | "assistant" | "system";
-          content: string;
-          metadata?: string;
-          created_at: string;
-        }>
-      >;
-      getAgentConversationsWithPreview?: (
-        limit?: number,
-        offset?: number,
-        includeArchived?: boolean
-      ) => Promise<ConversationPreview[]>;
-      searchAgentConversations?: (query: string, limit?: number) => Promise<ConversationPreview[]>;
-      archiveAgentConversation?: (id: number) => Promise<{ success: boolean }>;
-      unarchiveAgentConversation?: (id: number) => Promise<{ success: boolean }>;
-
       // Google Calendar
       gcalStartOAuth?: () => Promise<{ success: boolean; email?: string; error?: string }>;
       gcalDisconnect?: (email?: string) => Promise<{ success: boolean; error?: string }>;
@@ -1634,7 +1516,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ChatMessages } from "../../chat/ChatMessages";
 import { ChatInput } from "../../chat/ChatInput";
 import type { Message, AgentState } from "../../chat/types";
-import type { ContainerConversationItem } from "../../../hooks/useContainerChat";
+import type { ContainerConversation } from "../../../contracts/chatPersistence";
 import { ConversationPicker } from "../ConversationPicker";
 
 const PROMPT_CHIP_KEYS = [
@@ -17,7 +17,7 @@ interface OverviewAskSectionProps {
   agentState: AgentState;
   onTextSubmit: (text: string) => void;
   onCancel: () => void;
-  conversations: ContainerConversationItem[];
+  conversations: ContainerConversation[];
   activeConversationId: number | null;
   onSwitchConversation: (id: number) => void;
   onNewChat: () => void;

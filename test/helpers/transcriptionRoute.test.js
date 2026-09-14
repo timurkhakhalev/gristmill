@@ -147,7 +147,9 @@ test("custom requires a configured secure endpoint (empty, sentinel, garbage all
 // provider and then uploading or retrying would have POSTed the user's audio to
 // api.openai.com under their OpenAI key.
 test("realtime-only providers fail closed instead of falling through to OpenAI", async () => {
-  const { STREAMING_ONLY_PROVIDERS } = await load();
+  const { STREAMING_ONLY_PROVIDERS } = await import(
+    "../../src/config/transcriptionCapabilities.ts"
+  );
   assert.ok(STREAMING_ONLY_PROVIDERS.size > 0);
 
   for (const provider of STREAMING_ONLY_PROVIDERS) {

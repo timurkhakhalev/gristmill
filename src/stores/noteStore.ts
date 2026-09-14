@@ -5,7 +5,8 @@ import {
   teardownNoteContainers,
 } from "./noteListOps";
 import { findDefaultFolder } from "../components/notes/shared";
-import type { FolderItem, NoteItem, SpaceItem } from "../types/electron";
+import type { FolderItem, SpaceItem } from "../types/electron";
+import type { NoteItem } from "../contracts/notes";
 
 export interface ActiveContext {
   spaceId: number;

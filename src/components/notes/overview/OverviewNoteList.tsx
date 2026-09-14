@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { FileText, Plus } from "../../icons";
 import { useTranslation } from "react-i18next";
 import { groupItemsByDate } from "../../../utils/dateGrouping";
-import type { NoteItem, SpaceItem } from "../../../types/electron";
+import type { SpaceItem } from "../../../types/electron";
+import type { NoteItem } from "../../../contracts/notes";
 
 interface OverviewNoteListProps {
   notes: NoteItem[];

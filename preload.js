@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
+const { createNotesBridge } = require("./src/preload/notesBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -52,6 +53,7 @@ const registerListener = (channel, handlerFactory) => {
 };
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  ...createNotesBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
   setOnboardingActive: (active) => ipcRenderer.invoke("onboarding-set-active", active),
   onFolderDeleted: (callback) => {
@@ -128,29 +130,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("snippets-updated", listener);
   },
 
-  // Note functions
-  saveNote: (title, content, noteType, sourceFile, audioDuration, folderId, spaceId) =>
-    ipcRenderer.invoke(
-      "db-save-note",
-      title,
-      content,
-      noteType,
-      sourceFile,
-      audioDuration,
-      folderId,
-      spaceId
-    ),
-  getNote: (id) => ipcRenderer.invoke("db-get-note", id),
-  getNotes: (noteType, limit, folderId, spaceId) =>
-    ipcRenderer.invoke("db-get-notes", noteType, limit, folderId, spaceId),
-  getSpaceNotes: (spaceId, limit) => ipcRenderer.invoke("db-get-space-notes", spaceId, limit),
-  updateNote: (id, updates) => ipcRenderer.invoke("db-update-note", id, updates),
-  deleteNote: (id) => ipcRenderer.invoke("db-delete-note", id),
+  // Note functions: saveNote/getNote/getNotes/getSpaceNotes/updateNote/
+  // deleteNote/searchNotes + the three note subscriptions come from the typed
+  // notesBridge above. exportNote/exportTranscript stay here.
   exportNote: (noteId, format) => ipcRenderer.invoke("export-note", noteId, format),
   exportTranscript: (noteId, format) => ipcRenderer.invoke("export-transcript", noteId, format),
   exportDictionary: (words) => ipcRenderer.invoke("export-dictionary", words),
-  searchNotes: (query, limit, spaceId, folderId) =>
-    ipcRenderer.invoke("db-search-notes", query, limit, spaceId, folderId),
   // Folder functions
   getFolders: (spaceId) => ipcRenderer.invoke("db-get-folders", spaceId),
   createFolder: (name, spaceId) => ipcRenderer.invoke("db-create-folder", name, spaceId),
@@ -208,21 +193,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     (callback) => (_event, data) => callback(data)
   ),
 
-  onNoteAdded: (callback) => {
-    const listener = (_event, note) => callback?.(note);
-    ipcRenderer.on("note-added", listener);
-    return () => ipcRenderer.removeListener("note-added", listener);
-  },
-  onNoteUpdated: (callback) => {
-    const listener = (_event, note) => callback?.(note);
-    ipcRenderer.on("note-updated", listener);
-    return () => ipcRenderer.removeListener("note-updated", listener);
-  },
-  onNoteDeleted: (callback) => {
-    const listener = (_event, data) => callback?.(data);
-    ipcRenderer.on("note-deleted", listener);
-    return () => ipcRenderer.removeListener("note-deleted", listener);
-  },
   onActionCreated: (callback) => {
     const listener = (_event, action) => callback?.(action);
     ipcRenderer.on("action-created", listener);

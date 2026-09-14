@@ -1,6 +1,7 @@
 import type { ModelDefinition } from "../models/ModelRegistry";
 import type { TinfoilCatalogModel } from "../models/tinfoilModels";
 import type { CalendarAvailabilityRequest, CalendarAvailabilityResult } from "./calendar";
+import type { NotesApi } from "../contracts/notes";
 
 export type LocalTranscriptionProvider = "whisper" | "nvidia" | "cohere";
 
@@ -155,92 +156,8 @@ export interface TranscriptionItem {
   deleted_at: string | null;
 }
 
-export interface NoteItem {
-  id: number;
-  title: string;
-  content: string;
-  enhanced_content: string | null;
-  enhancement_prompt: string | null;
-  enhanced_at_content_hash: string | null;
-  note_type: "personal" | "meeting" | "upload";
-  source_file: string | null;
-  audio_duration_seconds: number | null;
-  folder_id: number | null;
-  space_id: number;
-  transcript: string | null;
-  calendar_event_id: string | null;
-  participants: string | null;
-  diarization_enabled: number | null;
-  expected_speaker_count: number | null;
-  cloud_id: string | null;
-  is_shared: number;
-  share_token: string | null;
-  // The note's owner (CloudNote.user_id) — who created it, not who last
-  // edited it. Only populated from the cloud; NULL on local-only rows and on
-  // team notes mirrored before ownership shipped (the UI fails closed on
-  // those until the owner backfill fills them).
-  owner_user_id?: string | null;
-  created_by_user_id?: string | null;
-  // Last cloud editor; only populated on cloud pull (local edits don't set it).
-  updated_by_user_id?: string | null;
-  // Server updated_at this device last acked (push response or pull); echoed
-  // as base_updated_at on the next PATCH. Null = pre-guard row, pushes LWW.
-  cloud_updated_at?: string | null;
-  created_at: string;
-  updated_at: string;
-  client_note_id: string;
-  sync_status: "synced" | "pending" | "error";
-  deleted_at: string | null;
-  // Computed by getNoteByClientId while a parent folder DELETE awaits its
-  // server result. Held notes stay hidden and must not be pulled/queued alone.
-  folder_delete_pending?: number;
-  // 1 while a cloud-backed row that left a team space still owes its scope
-  // retraction push (D6); cleared when the row settles.
-  left_team?: number;
-}
-
-// Immutable view of every local field that affects a note push. The main
-// process compares this atomically when the cloud response returns, so an
-// in-flight create/PATCH cannot settle a newer edit or a purged identity.
-export type NotePushSnapshot = Pick<
-  NoteItem,
-  | "client_note_id"
-  | "title"
-  | "content"
-  | "enhanced_content"
-  | "enhancement_prompt"
-  | "enhanced_at_content_hash"
-  | "note_type"
-  | "source_file"
-  | "audio_duration_seconds"
-  | "folder_id"
-  | "space_id"
-  | "transcript"
-  | "calendar_event_id"
-  | "participants"
-  | "diarization_enabled"
-  | "expected_speaker_count"
-  | "created_at"
-  | "updated_at"
-  | "sync_status"
-  | "deleted_at"
-  | "cloud_updated_at"
-  | "left_team"
->;
-
-export type NoteCreateSnapshot = NotePushSnapshot;
-export type NoteUpdateSnapshot = NotePushSnapshot;
-
-export interface NoteCreateAckResult {
-  success: boolean;
-  outcome: "synced" | "pending" | "already-linked" | "orphaned" | "unresolved";
-}
-
-export interface NoteUpdateAckResult {
-  success: boolean;
-  outcome: "synced" | "pending" | "identity-changed";
-  changes: number;
-}
+// NoteItem and the Notes IPC surface live in src/contracts/notes.ts; import
+// from there instead of re-adding row/cloud-era fields here.
 
 export type ShareVisibility = "private" | "link" | "domain" | "invited";
 
@@ -822,48 +739,8 @@ declare global {
         callback: (snippets: Array<{ trigger: string; replacement: string }>) => void
       ) => () => void;
 
-      // Note operations
-      saveNote: (
-        title: string,
-        content: string,
-        noteType?: string,
-        sourceFile?: string | null,
-        audioDuration?: number | null,
-        folderId?: number | null,
-        spaceId?: number | null
-      ) => Promise<{ success: boolean; note?: NoteItem }>;
-      getNote: (id: number) => Promise<NoteItem | null>;
-      getNotes: (
-        noteType?: string | null,
-        limit?: number,
-        folderId?: number | null,
-        spaceId?: number | null
-      ) => Promise<NoteItem[]>;
-      getSpaceNotes: (spaceId: number, limit?: number) => Promise<NoteItem[]>;
-      updateNote: (
-        id: number,
-        updates: {
-          title?: string;
-          content?: string;
-          enhanced_content?: string | null;
-          enhancement_prompt?: string | null;
-          enhanced_at_content_hash?: string | null;
-          folder_id?: number | null;
-          space_id?: number;
-          transcript?: string | null;
-          calendar_event_id?: string | null;
-          participants?: string | null;
-          diarization_enabled?: number | null;
-          expected_speaker_count?: number | null;
-          client_note_id?: string;
-          cloud_id?: string | null;
-          cloud_updated_at?: string | null;
-          owner_user_id?: string | null;
-          updated_by_user_id?: string | null;
-          left_team?: number;
-        }
-      ) => Promise<{ success: boolean; note?: NoteItem }>;
-      deleteNote: (id: number) => Promise<{ success: boolean }>;
+      // Note operations come from the shared NotesApi contract (seven
+      // operations + the three note subscriptions); note export stays local.
       exportNote: (
         noteId: number,
         format: "txt" | "md"
@@ -873,12 +750,6 @@ declare global {
         format: "txt" | "srt" | "json" | "md"
       ) => Promise<{ success: boolean; error?: string }>;
       exportDictionary: (words: string[]) => Promise<{ success: boolean; error?: string }>;
-      searchNotes: (
-        query: string,
-        limit?: number,
-        spaceId?: number | null,
-        folderId?: number | null
-      ) => Promise<NoteItem[]>;
 
       // Folder operations
       getFolders: (spaceId?: number | null) => Promise<FolderItem[]>;
@@ -894,7 +765,12 @@ declare global {
       moveFolderToSpace: (
         id: number,
         spaceId: number
-      ) => Promise<{ success: boolean; folder?: FolderItem; notes?: NoteItem[]; error?: string }>;
+      ) => Promise<{
+        success: boolean;
+        folder?: FolderItem;
+        notes?: import("../contracts/notes").NoteItem[];
+        error?: string;
+      }>;
       getFolderNoteCounts: () => Promise<
         Array<{ space_id: number; folder_id: number | null; count: number }>
       >;
@@ -1008,10 +884,6 @@ declare global {
         }) => void
       ) => () => void;
 
-      // Note event listeners
-      onNoteAdded?: (callback: (note: NoteItem) => void) => () => void;
-      onNoteUpdated?: (callback: (note: NoteItem) => void) => () => void;
-      onNoteDeleted?: (callback: (payload: { id: number }) => void) => () => void;
       onFolderDeleted?: (callback: (payload: { id: number }) => void) => () => void;
 
       // Database event listeners
@@ -1897,7 +1769,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-        };
+    } & NotesApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

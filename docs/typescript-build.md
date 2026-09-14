@@ -10,6 +10,14 @@
 `preload.js` и отдельно загружаемого ONNX worker; копирует используемые JSON.
 Никакие `.env`, assets или native binaries в этот каталог не копируются.
 
+Sandboxed preload не может require локальные модули, поэтому после успешного
+tsc `build-main.js` бандлит исходный `preload.js` (вместе с
+`src/preload/notesBridge.ts` и `src/contracts/notes.ts`) в один файл
+`dist-main/preload.js` через esbuild (`bundle`, `format=cjs`,
+`platform=node`, `target=node24`, `external:electron`; devDependency
+`esbuild@0.28.1`). Ошибка bundle завершает сборку и удаляет промежуточный
+unbundled preload. Main и worker остаются под tsc без бандлинга.
+
 `package.json#main` указывает на `dist-main/main.js`. И `pnpm start`, и
 `pnpm run dev:main` сначала собирают этот каталог. `build:mac:arm64`, `pack`
 и `dist` тоже собирают его перед упаковкой. После изменения main-кода в dev
@@ -104,6 +112,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 
 - `main.js`
 - `preload.js`
+- `src/contracts/notes.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
 - `src/constants/speakerDetection.json`
@@ -118,6 +127,9 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/audioTapManager.js`
 - `src/helpers/autoStart.js`
 - `src/helpers/autoStartPolicy.js`
+- `src/helpers/notesEvents.ts`
+- `src/helpers/notesIpcHandlers.ts`
+- `src/preload/notesBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
 - `src/helpers/builtinActions.js`

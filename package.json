@@ -121,6 +121,7 @@
     "cross-env": "^10.0.0",
     "electron": "^41.2.0",
     "electron-builder": "^26.4.0",
+    "esbuild": "0.28.1",
     "eslint": "^10.7.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",

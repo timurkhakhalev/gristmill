@@ -5,6 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 const { isPortAvailable } = require("../utils/serverUtils");
+const { sendNoteAdded, sendNoteUpdated } = require("./notesEvents");
 const { broadcastToWindows } = require("./windowBroadcast");
 
 const PORT_RANGE_START = 8200;
@@ -411,7 +412,7 @@ class CliBridge {
             body.folder_id ?? null
           );
           const note = unwrapMutationResult(result, "note");
-          setImmediate(() => broadcastToWindows("note-added", note));
+          setImmediate(() => sendNoteAdded(note));
           ipc._asyncVectorUpsert(note);
           ipc._asyncMirrorWrite(note);
           return { data: note };
@@ -422,7 +423,7 @@ class CliBridge {
         const id = requireId(params, "note");
         const result = db.updateNote(id, body || {});
         const note = unwrapMutationResult(result, "note");
-        setImmediate(() => broadcastToWindows("note-updated", note));
+        setImmediate(() => sendNoteUpdated(note));
         ipc._asyncVectorUpsert(note);
         ipc._asyncMirrorWrite(note);
         return { data: note };

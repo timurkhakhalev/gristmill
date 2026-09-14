@@ -20,7 +20,7 @@ const START_ARGS = {
 
 function createElectronAPI({ stopResult }) {
   const noopListener = () => () => {};
-  const notes = new Map([[11, { id: 11, transcript: "", deleted_at: null }]]);
+  const notes = new Map([[11, { id: 11, transcript: "" }]]);
   return {
     updatedTranscripts: [],
     api: {

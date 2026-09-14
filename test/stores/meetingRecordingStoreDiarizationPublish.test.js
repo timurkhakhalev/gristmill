@@ -17,7 +17,7 @@ const START_ARGS = { noteId: NOTE_ID, noteTitle: "Standup", folderId: null, auto
 function createElectronAPI() {
   const noopListener = () => () => {};
   const state = { diarizationCallback: null, updatedTranscripts: [] };
-  const notes = new Map([[NOTE_ID, { id: NOTE_ID, transcript: "", deleted_at: null }]]);
+  const notes = new Map([[NOTE_ID, { id: NOTE_ID, transcript: "" }]]);
   const api = {
     checkSystemAudioAccess: async () => ({
       granted: true,

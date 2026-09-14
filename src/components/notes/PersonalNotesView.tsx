@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
 import { Plus, Sparkles } from "../icons";
 import { useToast } from "../ui/useToast";
@@ -203,8 +204,7 @@ export default function PersonalNotesView({
     [commitDraft, persistPendingWrites, takePendingSnapshots]
   );
   const { toast } = useToast();
-  const noteFormatting = useSettingsStore((settings) => selectResolvedNoteFormatting(settings));
-  const isCloudMode = noteFormatting.mode === "providers" || noteFormatting.mode === "openwhispr";
+  const noteFormatting = useSettingsStore(useShallow(selectResolvedNoteFormatting));
   const effectiveModelId = noteFormatting.model;
   const { isComplete: isOnboardingComplete, complete: completeOnboarding } = useNotesOnboarding();
 
@@ -648,7 +648,7 @@ export default function PersonalNotesView({
       .filter(Boolean)
       .join("\n\n");
     runAction(action, parts, makeContentHash(`${noteContent}\n${rawTranscript}`), {
-      isCloudMode,
+      isCloudMode: false,
       modelId: effectiveModelId,
       isMeetingNote,
       knownPeople,

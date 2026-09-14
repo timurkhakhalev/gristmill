@@ -8,22 +8,14 @@ const { i18nMain } = require("./i18nMain");
 class TrayManager {
   constructor() {
     this.tray = null;
-    this.mainWindow = null;
     this.controlPanelWindow = null;
     this.windowManager = null;
     this.attachedControlPanels = new WeakSet();
   }
 
-  setWindows(mainWindow, controlPanelWindow) {
-    this.mainWindow = mainWindow;
+  setWindows(controlPanelWindow) {
     this.controlPanelWindow = controlPanelWindow;
 
-    if (this.mainWindow) {
-      this.mainWindow.on("show", () => this.updateTrayMenu?.());
-      this.mainWindow.on("hide", () => this.updateTrayMenu?.());
-      this.mainWindow.on("minimize", () => this.updateTrayMenu?.());
-      this.mainWindow.on("restore", () => this.updateTrayMenu?.());
-    }
 
     if (this.controlPanelWindow) {
       this.attachControlPanelListeners(this.controlPanelWindow);
@@ -252,23 +244,8 @@ class TrayManager {
   }
 
   buildContextMenuTemplate() {
-    const dictationVisible = this.windowManager?.isDictationPanelVisible?.() ?? false;
 
     return [
-      {
-        label: dictationVisible
-          ? i18nMain.t("tray.toggleDictation.hide")
-          : i18nMain.t("tray.toggleDictation.show"),
-        click: () => {
-          if (!this.windowManager) return;
-          if (this.windowManager.isDictationPanelVisible()) {
-            this.windowManager.hideDictationPanel();
-          } else {
-            this.windowManager.showDictationPanel({ focus: true, reposition: true });
-          }
-          this.updateTrayMenu();
-        },
-      },
       {
         label: this.isControlPanelVisible()
           ? i18nMain.t("tray.hideControlPanel")

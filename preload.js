@@ -21,7 +21,6 @@ const BYOK_KEY_BRIDGES = [
     get: "getNoteFormattingCustomKey",
     save: "saveNoteFormattingCustomKey",
   },
-  { base: "translation-custom", get: "getTranslationCustomKey", save: "saveTranslationCustomKey" },
   { base: "chat-agent-custom", get: "getChatAgentCustomKey", save: "saveChatAgentCustomKey" },
 ];
 const secretKeyApi = {};
@@ -55,25 +54,39 @@ const registerListener = (channel, handlerFactory) => {
 contextBridge.exposeInMainWorld("electronAPI", {
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
   setOnboardingActive: (active) => ipcRenderer.invoke("onboarding-set-active", active),
-  markMacAccessibilityFeaturesReady: (expectedAccountScope) =>
-    expectedAccountScope
-      ? ipcRenderer.send("mac-accessibility-features-ready", expectedAccountScope)
-      : ipcRenderer.send("mac-accessibility-features-ready"),
-  beginOnboardingDemo: (session) => ipcRenderer.invoke("onboarding-demo-begin", session),
-  endOnboardingDemo: (id) => ipcRenderer.invoke("onboarding-demo-end", id),
-  stopOnboardingDemo: (id) => ipcRenderer.invoke("onboarding-demo-stop", id),
-  publishOnboardingDemoEvent: (event) => ipcRenderer.invoke("onboarding-demo-publish", event),
-  onOnboardingDemoEvent: registerListener(
-    "onboarding-demo-event",
-    (callback) => (_event, payload) => callback(payload)
+  onFolderDeleted: (callback) => {
+    const listener = (_event, data) => callback?.(data);
+    ipcRenderer.on("folder-deleted", listener);
+    return () => ipcRenderer.removeListener("folder-deleted", listener);
+  },
+  meetingTranscriptionPrepare: (options) =>
+    ipcRenderer.invoke("meeting-transcription-prepare", options),
+  meetingTranscriptionStart: (options) =>
+    ipcRenderer.invoke("meeting-transcription-start", options),
+  meetingTranscriptionSend: (buffer, source) =>
+    ipcRenderer.send("meeting-transcription-send", buffer, source),
+  meetingTranscriptionSetSystemAudioAvailable: (sessionId, available) =>
+    ipcRenderer.invoke("meeting-transcription-set-system-audio-available", sessionId, available),
+  meetingTranscriptionStop: (expectedSessionId) =>
+    ipcRenderer.invoke("meeting-transcription-stop", expectedSessionId),
+  meetingTranscriptionCancel: () => ipcRenderer.invoke("meeting-transcription-cancel"),
+  onMeetingTranscriptionSegment: registerListener(
+    "meeting-transcription-segment",
+    (callback) => (_event, data) => callback(data)
+  ),
+  onMeetingSpeakerIdentified: registerListener(
+    "meeting-speaker-identified",
+    (callback) => (_event, data) => callback(data)
+  ),
+  onMeetingSpeakersMerged: registerListener(
+    "meeting-speakers-merged",
+    (callback) => (_event, data) => callback(data)
   ),
   testProviderConnection: (config) => ipcRenderer.invoke("test-provider-connection", config),
-  pasteText: (text, options) => ipcRenderer.invoke("paste-text", text, options),
-  captureSelectedText: (options) => ipcRenderer.invoke("capture-selected-text", options),
-  replaceSelectedText: (sessionId, text, options) =>
-    ipcRenderer.invoke("replace-selected-text", sessionId, text, options),
-  pasteAtCapturedTarget: (sessionId, text, options) =>
-    ipcRenderer.invoke("paste-at-captured-target", sessionId, text, options),
+
+
+
+
   // Database functions
   saveTranscription: (text, rawText, options) =>
     ipcRenderer.invoke("db-save-transcription", text, rawText, options),
@@ -114,13 +127,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("snippets-updated", listener);
     return () => ipcRenderer.removeListener("snippets-updated", listener);
   },
-  setAutoLearnEnabled: (enabled) => ipcRenderer.send("auto-learn-changed", enabled),
-  onCorrectionsLearned: (callback) => {
-    const listener = (_event, words) => callback?.(words);
-    ipcRenderer.on("corrections-learned", listener);
-    return () => ipcRenderer.removeListener("corrections-learned", listener);
-  },
-  undoLearnedCorrections: (words) => ipcRenderer.invoke("undo-learned-corrections", words),
 
   // Note functions
   saveNote: (title, content, noteType, sourceFile, audioDuration, folderId, spaceId) =>
@@ -156,7 +162,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Space functions
   getSpaces: () => ipcRenderer.invoke("db-get-spaces"),
   updateSpace: (id, updates) => ipcRenderer.invoke("db-update-space", id, updates),
-  purgeSpace: (id, options) => ipcRenderer.invoke("db-purge-space", id, options),
   onSpacePurged: (callback) => {
     const listener = (_event, payload) => callback?.(payload);
     ipcRenderer.on("space-purged", listener);
@@ -263,7 +268,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   promptAccessibilityPermission: () => ipcRenderer.invoke("prompt-accessibility-permission"),
   readClipboard: () => ipcRenderer.invoke("read-clipboard"),
   writeClipboard: (text) => ipcRenderer.invoke("write-clipboard", text),
-  checkPasteTools: () => ipcRenderer.invoke("check-paste-tools"),
 
   // Voice drafts (chat input recordings)
   saveTempAudio: (buffer) => ipcRenderer.invoke("save-temp-audio", buffer),
@@ -287,43 +291,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   whisperServerStart: (modelName) => ipcRenderer.invoke("whisper-server-start", modelName),
   whisperServerStop: () => ipcRenderer.invoke("whisper-server-stop"),
   whisperServerStatus: () => ipcRenderer.invoke("whisper-server-status"),
-  whisperGpuRetry: () => ipcRenderer.invoke("whisper-gpu-retry"),
-
-  // CUDA GPU acceleration
-  listGpus: () => ipcRenderer.invoke("list-gpus"),
-  setGpuDeviceIndex: (purpose, uuid) => ipcRenderer.invoke("set-gpu-device-index", purpose, uuid),
-  getGpuDeviceIndex: (purpose) => ipcRenderer.invoke("get-gpu-device-index", purpose),
-  detectGpu: () => ipcRenderer.invoke("detect-gpu"),
-  getCudaWhisperStatus: () => ipcRenderer.invoke("get-cuda-whisper-status"),
-  downloadCudaWhisperBinary: () => ipcRenderer.invoke("download-cuda-whisper-binary"),
-  cancelCudaWhisperDownload: () => ipcRenderer.invoke("cancel-cuda-whisper-download"),
-  deleteCudaWhisperBinary: () => ipcRenderer.invoke("delete-cuda-whisper-binary"),
-  onCudaDownloadProgress: registerListener(
-    "cuda-download-progress",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onCudaFallbackNotification: registerListener(
-    "cuda-fallback-notification",
-    (callback) => () => callback()
-  ),
-
-  // Vulkan GPU acceleration (whisper on AMD/Intel GPUs)
-  getVulkanWhisperStatus: () => ipcRenderer.invoke("get-vulkan-whisper-status"),
-  downloadVulkanWhisperBinary: () => ipcRenderer.invoke("download-vulkan-whisper-binary"),
-  cancelVulkanWhisperDownload: () => ipcRenderer.invoke("cancel-vulkan-whisper-download"),
-  deleteVulkanWhisperBinary: () => ipcRenderer.invoke("delete-vulkan-whisper-binary"),
-  onVulkanWhisperDownloadProgress: registerListener(
-    "vulkan-whisper-download-progress",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onGpuFallbackNotification: registerListener(
-    "gpu-fallback-notification",
-    (callback) => () => callback()
-  ),
-
-  // One-time "GPU pack needs re-downloading" notice from the legacy-layout migration
-  getGpuPackMigrationNotice: () => ipcRenderer.invoke("get-gpu-pack-migration-notice"),
-  dismissGpuPackMigrationNotice: () => ipcRenderer.invoke("dismiss-gpu-pack-migration-notice"),
 
   // Local Parakeet (NVIDIA) functions
   transcribeLocalParakeet: (audioBlob, options) =>
@@ -385,16 +352,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Cleanup function
   cleanupApp: () => ipcRenderer.invoke("cleanup-app"),
-  updateHotkey: (hotkey) => ipcRenderer.invoke("update-hotkey", hotkey),
   setHotkeyListeningMode: (enabled) => ipcRenderer.invoke("set-hotkey-listening-mode", enabled),
   getHotkeyModeInfo: (hotkey) => ipcRenderer.invoke("get-hotkey-mode-info", hotkey),
-  getHyprlandConfigStatus: () => ipcRenderer.invoke("get-hyprland-config-status"),
-  startWindowDrag: () => ipcRenderer.invoke("start-window-drag"),
-  stopWindowDrag: () => ipcRenderer.invoke("stop-window-drag"),
   startControlPanelDrag: () => ipcRenderer.invoke("start-control-panel-drag"),
   stopControlPanelDrag: () => ipcRenderer.invoke("stop-control-panel-drag"),
-  getMainWindowHorizontalDirection: () =>
-    ipcRenderer.invoke("get-main-window-horizontal-direction"),
   onMainWindowHorizontalDirectionChanged: registerListener(
     "main-window-horizontal-direction-changed",
     (callback) => (_event, direction) => callback(direction)
@@ -403,12 +364,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     "main-window-will-resize",
     (callback) => (_event, resize) => callback(resize)
   ),
-  ackMainWindowResizeMask: (token) => ipcRenderer.send("main-window-resize-mask-ready", token),
-  setMainWindowInteractivity: (interactive) =>
-    ipcRenderer.invoke("set-main-window-interactivity", interactive),
   setNotificationInteractivity: (interactive) =>
     ipcRenderer.invoke("set-notification-interactivity", interactive),
-  resizeMainWindow: (sizeKey) => ipcRenderer.invoke("resize-main-window", sizeKey),
   getOAuthProtocolRegistered: () => ipcRenderer.invoke("get-oauth-protocol-registered"),
   getOAuthProtocol: () => ipcRenderer.invoke("get-oauth-protocol"),
   // Audio event listeners
@@ -522,24 +479,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   llamaServerStart: (modelId) => ipcRenderer.invoke("llama-server-start", modelId),
   llamaServerStop: () => ipcRenderer.invoke("llama-server-stop"),
   llamaServerStatus: () => ipcRenderer.invoke("llama-server-status"),
-  llamaGpuReset: () => ipcRenderer.invoke("llama-gpu-reset"),
-
-  // Vulkan GPU acceleration
-  detectVulkanGpu: () => ipcRenderer.invoke("detect-vulkan-gpu"),
-  getLlamaVulkanStatus: () => ipcRenderer.invoke("get-llama-vulkan-status"),
-  downloadLlamaVulkanBinary: () => ipcRenderer.invoke("download-llama-vulkan-binary"),
-  cancelLlamaVulkanDownload: () => ipcRenderer.invoke("cancel-llama-vulkan-download"),
-  deleteLlamaVulkanBinary: () => ipcRenderer.invoke("delete-llama-vulkan-binary"),
-  onLlamaVulkanDownloadProgress: registerListener(
-    "llama-vulkan-download-progress",
-    (callback) => (_event, data) => callback(data)
-  ),
 
   getLogLevel: () => ipcRenderer.invoke("get-log-level"),
   log: (entry) => ipcRenderer.invoke("app-log", entry),
-
-  // ydotool status check
-  getYdotoolStatus: () => ipcRenderer.invoke("get-ydotool-status"),
 
   // Debug logging management
   getDebugState: () => ipcRenderer.invoke("get-debug-state"),
@@ -560,9 +502,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openScreenRecordingSettings: () => ipcRenderer.invoke("open-screen-recording-settings"),
   openLoginItemsSettings: () => ipcRenderer.invoke("open-login-items-settings"),
   showEmojiPanel: () => ipcRenderer.invoke("show-emoji-panel"),
-  toggleMediaPlayback: () => ipcRenderer.invoke("toggle-media-playback"),
-  pauseMediaPlayback: () => ipcRenderer.invoke("pause-media-playback"),
-  resumeMediaPlayback: () => ipcRenderer.invoke("resume-media-playback"),
   getModelCacheRoot: () => ipcRenderer.invoke("get-model-cache-root"),
   openWhisperModelsFolder: () => ipcRenderer.invoke("open-whisper-models-folder"),
   transcribeAudioFileByok: (options) => ipcRenderer.invoke("transcribe-audio-file-byok", options),
@@ -628,12 +567,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("setting-updated", listener);
     return () => ipcRenderer.removeListener("setting-updated", listener);
   },
-  onWindowsPushToTalkUnavailable: registerListener("windows-ptt-unavailable"),
-  onLinuxPttPermissionDenied: registerListener(
-    "linux-ptt-permission-denied",
-    (callback) => () => callback()
-  ),
-
   // Settings shortcut (Cmd+, / Ctrl+,)
   onShowSettings: registerListener("show-settings", (callback) => () => callback()),
 
@@ -643,9 +576,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("accessibility-missing", listener);
     return () => ipcRenderer.removeListener("accessibility-missing", listener);
   },
-  checkAccessibilityTrusted: () => ipcRenderer.invoke("check-accessibility-trusted"),
 
-  // Notify main process of activation mode changes (for Windows Push-to-Talk)
+  // Notify main process of activation mode changes.
   notifyActivationModeChanged: (mode) => ipcRenderer.send("activation-mode-changed", mode),
   notifyHotkeyChanged: (hotkey) => ipcRenderer.send("hotkey-changed", hotkey),
   registerMeetingHotkey: (hotkey) => ipcRenderer.invoke("register-meeting-hotkey", hotkey),

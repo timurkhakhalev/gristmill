@@ -3,7 +3,7 @@
  * Downloads prebuilt meeting AEC helper binary from GitHub releases.
  *
  * Usage:
- *   node scripts/download-meeting-aec-helper.js [--current|--all] [--platform p --arch a] [--force]
+ *   node scripts/download-meeting-aec-helper.js --current [--force]
  */
 
 const fs = require("fs");
@@ -22,15 +22,9 @@ const TAG_PREFIX = "meeting-aec-helper-v";
 const VERSION_OVERRIDE = process.env.MEETING_AEC_HELPER_VERSION || null;
 const BIN_DIR = path.join(__dirname, "..", "resources", "bin");
 
-const TARGETS = [
-  { platform: "darwin", arch: "arm64", ext: "tar.gz" },
-  { platform: "darwin", arch: "x64", ext: "tar.gz" },
-  { platform: "linux", arch: "x64", ext: "tar.gz" },
-  { platform: "win32", arch: "x64", ext: "zip" },
-];
+const TARGETS = [{ platform: "darwin", arch: "arm64", ext: "tar.gz" }];
 
-const binaryName = ({ platform, arch }) =>
-  `meeting-aec-helper-${platform}-${arch}${platform === "win32" ? ".exe" : ""}`;
+const binaryName = ({ platform, arch }) => `meeting-aec-helper-${platform}-${arch}`;
 
 const archiveName = ({ platform, arch, ext }) => `meeting-aec-helper-${platform}-${arch}.${ext}`;
 
@@ -88,9 +82,9 @@ async function downloadTarget(target, release, force) {
 async function main() {
   const args = parseArgs();
 
-  const selected = args.isAll
-    ? TARGETS
-    : TARGETS.filter((t) => t.platform === args.targetPlatform && t.arch === args.targetArch);
+  const selected = TARGETS.filter(
+    (t) => t.platform === args.targetPlatform && t.arch === args.targetArch
+  );
 
   if (selected.length === 0) {
     console.log(

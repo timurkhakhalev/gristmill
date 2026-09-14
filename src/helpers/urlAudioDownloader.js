@@ -215,7 +215,7 @@ async function downloadViaProxy(url, onProgress, abortSignal, redirectCount = 0)
       let next; try { next = new URL(redirectUrl); } catch { return finish(Object.assign(new Error("Invalid redirect URL"), { code: "INVALID_URL" })); }
       if (next.protocol !== "https:") return finish(Object.assign(new Error("Only HTTPS URLs are supported for direct downloads"), { code: "INVALID_URL" }));
       try { assertNotYouTube(next); } catch (error) { return finish(error); }
-      request.abort(); finish({ code: REDIRECT_RESTART, url: next.href });
+      request.abort(); finish({ code: REDIRECT_RESTART, url: next.href }, false);
     });
     request.on("response", (response) => {
       const contentType = (firstHeaderValue(response.headers, "content-type") || "").toLowerCase();

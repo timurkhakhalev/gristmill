@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
 import { Sparkles, Plus, ChevronRight, Zap, Loader2, Check, Monitor } from "../icons";
 import { Button } from "../ui/button";
@@ -24,9 +25,9 @@ interface NotesOnboardingProps {
 
 export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
   const { t } = useTranslation();
-  const { isProUser, isProLoading, isLLMConfigured, complete } = useNotesOnboarding();
+  const { isLLMConfigured, complete } = useNotesOnboarding();
   const actions = useActions();
-  const [llmExpanded, setLlmExpanded] = useState(!isLLMConfigured && !isProUser);
+  const [llmExpanded, setLlmExpanded] = useState(!isLLMConfigured);
   const [createExpanded, setCreateExpanded] = useState(false);
   const [actionName, setActionName] = useState("");
   const [actionDescription, setActionDescription] = useState("");
@@ -34,9 +35,9 @@ export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [justCreated, setJustCreated] = useState(false);
 
-  const cleanupConfig = useSettingsStore((settings) =>
+  const cleanupConfig = useSettingsStore(useShallow((settings) =>
     selectResolvedLLMConfig(settings, "noteFormatting")
-  );
+  ));
   const setCleanupModel = useSettingsStore((s) => s.setNoteFormattingModel);
   const setCleanupProvider = useSettingsStore((s) => s.setNoteFormattingProvider);
   const setCleanupMode = useSettingsStore((s) => s.setNoteFormattingMode);
@@ -112,8 +113,6 @@ export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
           </p>
         </div>
 
-        {/* LLM Configuration — non-Pro only, deferred until pro status is known */}
-        {!isProLoading && !isProUser && (
           <div
             className={cn(
               "rounded-lg border transition-colors duration-200",
@@ -171,7 +170,6 @@ export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
               </div>
             )}
           </div>
-        )}
 
         {/* System Audio Permission */}
         {shouldShowSystemAudioPermission && (

@@ -114,7 +114,7 @@ test("a warm connection is reused when the two option sets build the same URL", 
 
 test("adopting managed mode is rejected before changing the direct session", async () => {
   const streaming = new DeepgramStreaming();
-  await assert.rejects(() => streaming.adoptMode({ mode: "openwhispr" }), /requires a direct/);
+  assert.throws(() => streaming.adoptMode({ mode: "openwhispr" }), /requires a direct/);
 });
 
 test("a BYOK key authenticates under Deepgram's Token scheme", async () => {
@@ -141,46 +141,6 @@ test("warmup presents the same scheme the session will connect with", async () =
       await streaming.warmup({ token: "byok-key", mode: "byok" });
 
       assert.deepEqual(authHeaders, ["Token byok-key"]);
-    } finally {
-      streaming.cleanupAll();
-    }
-  });
-});
-
-// Runs `schedule` with setTimeout stubbed out and hands back its callback, so a
-// timer-gated branch can be exercised at once. Scoped to the one synchronous
-// call: mocking setTimeout for any longer deadlocks the ws server's teardown.
-function captureScheduledCallback(schedule) {
-  const realSetTimeout = global.setTimeout;
-  let scheduled = null;
-  global.setTimeout = (callback) => {
-    scheduled = callback;
-    return { unref() {} };
-  };
-  try {
-    schedule();
-  } finally {
-    global.setTimeout = realSetTimeout;
-  }
-  assert.ok(scheduled, "nothing was scheduled");
-  return scheduled;
-}
-
-test("a re-warm whose options were dropped does not open a socket without direct mode", async () => {
-  await withMetadataServer(async (url, connections, authHeaders) => {
-    const streaming = new DeepgramStreaming();
-    streaming.buildWebSocketUrl = () => url;
-
-    try {
-      await streaming.warmup({ token: "byok-key", mode: "byok" });
-      assert.deepEqual(authHeaders, ["Token byok-key"]);
-
-      const rewarm = captureScheduledCallback(() => streaming.scheduleRewarm());
-      // cleanupWarmConnection() drops the saved options without cancelling the
-      // timer. A re-warm without an explicit direct mode must fail closed.
-      streaming.cleanupWarmConnection();
-      await assert.rejects(() => rewarm(), /requires a direct/);
-      assert.equal(streaming.warmConnection, null, "a socket was opened without a known mode");
     } finally {
       streaming.cleanupAll();
     }

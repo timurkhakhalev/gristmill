@@ -17,8 +17,8 @@ test("enterprise cleanup preserves AWS technical details on the renderer error",
           error: "AWS Bedrock is temporarily unavailable.",
           messageKey: "reasoning.enterprise.errors.bedrock.serviceUnavailable",
           messageParams: { region: "eu-west-1" },
-          action: "Retry after signing in.",
-          actionKey: "reasoning.enterprise.errors.bedrock.actions.refreshManagedAccess",
+          action: "Run the command below in your terminal to re-authenticate:",
+          actionKey: "reasoning.enterprise.errors.bedrock.actions.reauthenticate",
           copyCommand: "aws sso login --profile company-sso",
           retryable: true,
           technicalDetails,
@@ -60,10 +60,13 @@ test("enterprise cleanup preserves AWS technical details on the renderer error",
       assert.equal(error.message, "AWS Bedrock is temporarily unavailable.");
       assert.equal(error.messageKey, "reasoning.enterprise.errors.bedrock.serviceUnavailable");
       assert.deepEqual(error.messageParams, { region: "eu-west-1" });
-      assert.equal(error.action, "Retry after signing in.");
+      assert.equal(
+        error.action,
+        "Run the command below in your terminal to re-authenticate:"
+      );
       assert.equal(
         error.actionKey,
-        "reasoning.enterprise.errors.bedrock.actions.refreshManagedAccess"
+        "reasoning.enterprise.errors.bedrock.actions.reauthenticate"
       );
       assert.equal(error.copyCommand, "aws sso login --profile company-sso");
       assert.equal(error.retryable, true);

@@ -81,11 +81,7 @@ test.before(() => {
   delete require.cache[handlersModulePath];
   const IPCHandlers = require(handlersModulePath);
   const Ctor = IPCHandlers.default || IPCHandlers;
-  target = {
-    databaseManager: {
-      getExistingClientNoteIds: () => [],
-    },
-  };
+  target = {};
   Ctor.prototype.setupHandlers.call(
     new Proxy(target, {
       get: (value, property) => (property in value ? value[property] : anything()),
@@ -102,7 +98,7 @@ test.after(() => {
   fs.rmSync(importDir, { recursive: true, force: true });
 });
 
-test("multi-file Granola preview allocates distinct fallback ids across files", async () => {
+test("multi-file Granola preview keeps distinct local source keys across files", async () => {
   selectedCsvPaths = csvPaths;
   const result = await handlers.get("granola-import-pick-and-preview")({ sender: {} });
 
@@ -110,7 +106,7 @@ test("multi-file Granola preview allocates distinct fallback ids across files", 
   assert.equal(result.total, 3);
   assert.equal(target._granolaImportPending.notes.length, 3);
   assert.equal(
-    new Set(target._granolaImportPending.notes.map((note) => note.clientNoteId)).size,
+    new Set(target._granolaImportPending.notes.map((note) => note.sourceFile)).size,
     3
   );
 });
@@ -120,7 +116,7 @@ test("multi-file Granola preview is stable when file picker order changes", asyn
   await handlers.get("granola-import-pick-and-preview")({ sender: {} });
   const firstIdsByContent = Object.fromEntries(
     target._granolaImportPending.notes
-      .map((note) => [note.content, note.clientNoteId])
+      .map((note) => [note.content, note.sourceFile])
       .sort(([leftContent], [rightContent]) => leftContent.localeCompare(rightContent))
   );
 
@@ -128,7 +124,7 @@ test("multi-file Granola preview is stable when file picker order changes", asyn
   await handlers.get("granola-import-pick-and-preview")({ sender: {} });
   const reversedIdsByContent = Object.fromEntries(
     target._granolaImportPending.notes
-      .map((note) => [note.content, note.clientNoteId])
+      .map((note) => [note.content, note.sourceFile])
       .sort(([leftContent], [rightContent]) => leftContent.localeCompare(rightContent))
   );
 

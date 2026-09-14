@@ -1,85 +1,20 @@
 const Database = require("better-sqlite3");
 const path = require("path");
-const fs = require("fs");
-const { randomUUID } = require("crypto");
 const debugLogger = require("./debugLogger");
 const { buildNoteSearchQuery } = require("./noteSearch");
 const { normalizeStoredSpeakerCount } = require("./speakerCount");
 const { parseEventTime } = require("./calendarAvailability");
-// An explicit zone marks an instant this app captured at dictation time. A
-// naive timestamp may instead be a sync artifact: upsertTranscriptionFromCloud
-// keeps the cloud created_at but lets timestamp default to the local pull, so
-// a naive value must never outrank created_at when dating a historical row.
-const { hasExplicitTimeZone, parseDbTimestamp, toDbTimestamp } = require("./dbTimestamp");
+const { toDbTimestamp } = require("./dbTimestamp");
 const { BUILTIN_ACTIONS, GENERATE_NOTES_KEY } = require("./builtinActions");
 const { app } = require("electron");
 
-// Server-enforced trigger cap (openwhispr-api); enforced here so one oversized
-// trigger can't 400 the whole sync batch.
 const MAX_SNIPPET_TRIGGER_LENGTH = 100;
+const CALENDARS_TABLE_BY_PROVIDER = {
+  google: "google_calendars",
+  microsoft: "microsoft_calendars",
+};
+const CALENDAR_PROVIDERS = new Set(["google", "microsoft", "apple"]);
 
-// Every local field a note create (POST) carries; the acknowledgement compares
-// these atomically against the pushed snapshot. Must mirror NotePushSnapshot
-// in src/types/electron.ts.
-const NOTE_CREATE_ACK_FIELDS = [
-  "client_note_id",
-  "title",
-  "content",
-  "enhanced_content",
-  "enhancement_prompt",
-  "enhanced_at_content_hash",
-  "note_type",
-  "source_file",
-  "audio_duration_seconds",
-  "folder_id",
-  "space_id",
-  "transcript",
-  "calendar_event_id",
-  "participants",
-  "diarization_enabled",
-  "expected_speaker_count",
-  "created_at",
-  "updated_at",
-  "sync_status",
-  "deleted_at",
-];
-// A PATCH additionally pins the server base and any pending scope retraction.
-const NOTE_PATCH_ACK_FIELDS = [...NOTE_CREATE_ACK_FIELDS, "cloud_updated_at", "left_team"];
-// Must mirror FolderPushSnapshot in src/types/electron.ts.
-const FOLDER_ACK_FIELDS = [
-  "client_folder_id",
-  "name",
-  "is_default",
-  "sort_order",
-  "space_id",
-  "created_at",
-  "updated_at",
-  "sync_status",
-  "deleted_at",
-  "left_team",
-];
-
-function rowMatchesSnapshot(row, snapshot, fields) {
-  return fields.every((field) => {
-    const expected = snapshot[field] === undefined ? null : snapshot[field];
-    return row[field] === expected;
-  });
-}
-
-// An optimistically deleted folder still holds its server-side name until the
-// DELETE is confirmed, so it must keep blocking reuse of that name.
-const FOLDER_NAME_TAKEN_FILTER = `(deleted_at IS NULL OR EXISTS (
-  SELECT 1 FROM optimistic_folder_delete_rows r
-  WHERE r.folder_id = folders.id AND r.entity_type = 'folder'
-))`;
-
-// A meeting synced by both a REST provider (Google/Microsoft) and Apple
-// (Calendar.app mirrors the same accounts) would double-fire reminders and
-// duplicate UI rows; suppress the Apple copy when a REST row occupies the same
-// time slot + title (REST rows have richer conference data). datetime()
-// normalizes the providers' timestamp formats (Google stores offset-form
-// RFC3339, Apple/Microsoft store UTC "Z" form). REST rows are never collapsed
-// — Google and Microsoft are never mirrors of each other.
 function dedupedEventsQuery(where) {
   return `SELECT * FROM (
     SELECT *, MAX(provider != 'apple') OVER (
@@ -94,210 +29,101 @@ function stripDedupeColumn({ has_synced: _hasSynced, ...event }) {
   return event;
 }
 
-// Whitelist for provider-scoped SQL against the per-provider calendars tables.
-const CALENDARS_TABLE_BY_PROVIDER = {
-  google: "google_calendars",
-  microsoft: "microsoft_calendars",
-};
+function selectedCalendarFilter() {
+  return `(
+    (provider = 'google' AND EXISTS (
+      SELECT 1 FROM google_calendars
+      WHERE google_calendars.id = calendar_events.calendar_id
+        AND google_calendars.is_selected = 1
+    )) OR
+    (provider = 'microsoft' AND EXISTS (
+      SELECT 1 FROM microsoft_calendars
+      WHERE microsoft_calendars.id = calendar_events.calendar_id
+        AND microsoft_calendars.is_selected = 1
+    )) OR
+    (provider = 'apple' AND EXISTS (
+      SELECT 1 FROM apple_calendars
+      WHERE apple_calendars.id = calendar_events.calendar_id
+    ))
+  )`;
+}
 
-const AVAILABILITY_PROVIDERS = new Set(["google", "microsoft", "apple"]);
-const SELECTED_CALENDAR_EVENT_FILTER = `(
-  (provider = 'google' AND EXISTS (
-    SELECT 1 FROM google_calendars WHERE google_calendars.id = calendar_events.calendar_id
-      AND google_calendars.is_selected = 1
-  )) OR
-  (provider = 'microsoft' AND EXISTS (
-    SELECT 1 FROM microsoft_calendars WHERE microsoft_calendars.id = calendar_events.calendar_id
-      AND microsoft_calendars.is_selected = 1
-  )) OR
-  (provider = 'apple' AND EXISTS (
-    SELECT 1 FROM apple_calendars WHERE apple_calendars.id = calendar_events.calendar_id
-  ))
-)`;
+function normalizeWords(words) {
+  const result = new Map();
+  for (const raw of Array.isArray(words) ? words : []) {
+    if (typeof raw !== "string") continue;
+    const word = raw.trim();
+    if (word && !result.has(word.toLowerCase())) result.set(word.toLowerCase(), word);
+  }
+  return result;
+}
 
 class DatabaseManager {
   constructor() {
     this.db = null;
-    this.activeAccountId = null;
     this.initDatabase();
-  }
-
-  setActiveAccountId(accountId) {
-    this.activeAccountId =
-      typeof accountId === "string" && accountId.trim().length > 0 ? accountId.trim() : null;
-  }
-
-  _accountScopeCondition(tableName) {
-    return {
-      sql: `((${tableName}.account_id IS NULL AND EXISTS (
-        SELECT 1 FROM spaces account_scope_space
-        WHERE account_scope_space.id = ${tableName}.space_id
-          AND account_scope_space.kind = 'private'
-      )) OR ${tableName}.account_id = ? OR EXISTS (
-        SELECT 1
-        FROM spaces account_scope_space
-        JOIN space_accounts account_scope_membership
-          ON account_scope_membership.space_id = account_scope_space.id
-        WHERE account_scope_space.id = ${tableName}.space_id
-          AND account_scope_space.kind = 'team'
-          AND account_scope_membership.account_id = ?
-      ))`,
-      params: [this.activeAccountId, this.activeAccountId],
-    };
-  }
-
-  _accountIdForSpace(spaceId) {
-    const space = this.db.prepare("SELECT kind FROM spaces WHERE id = ?").get(spaceId);
-    return space?.kind === "team" ? null : this.activeAccountId;
-  }
-
-  _getFolderInAccountScope(id) {
-    const accountScope = this._accountScopeCondition("folders");
-    return (
-      this.db
-        .prepare(`SELECT * FROM folders WHERE id = ? AND ${accountScope.sql}`)
-        .get(id, ...accountScope.params) || null
-    );
-  }
-
-  // Child notes owned by another local account are invisible to the active
-  // scope, so a folder removal must release them to the space root — never
-  // delete them (or their conversations, speaker rows, or cloud tombstones)
-  // with the folder. Run this before any statement that targets the folder's
-  // children, so plain `folder_id = ?` filters only ever see in-scope rows.
-  _releaseOutOfScopeChildNotes(folderId) {
-    const accountScope = this._accountScopeCondition("notes");
-    const outOfScopeIds = this.db
-      .prepare(
-        `SELECT id FROM notes
-         WHERE folder_id = ? AND id NOT IN (
-           SELECT id FROM notes WHERE folder_id = ? AND ${accountScope.sql}
-         )`
-      )
-      .all(folderId, folderId, ...accountScope.params)
-      .map((row) => row.id);
-    if (outOfScopeIds.length === 0) return [];
-    const placeholders = outOfScopeIds.map(() => "?").join(", ");
-    this.db
-      .prepare(
-        `UPDATE notes
-         SET folder_id = NULL, sync_status = 'pending', updated_at = datetime('now')
-         WHERE id IN (${placeholders})`
-      )
-      .run(...outOfScopeIds);
-    return this.db
-      .prepare(`SELECT * FROM notes WHERE id IN (${placeholders})`)
-      .all(...outOfScopeIds);
-  }
-
-  _releaseActiveSpaceMembershipIfShared(spaceId) {
-    if (!this.activeAccountId) return false;
-    const otherMembership = this.db
-      .prepare(
-        `SELECT 1 FROM space_accounts
-         WHERE space_id = ? AND account_id != ?
-         LIMIT 1`
-      )
-      .get(spaceId, this.activeAccountId);
-    if (!otherMembership) return false;
-    this.db
-      .prepare("DELETE FROM space_accounts WHERE space_id = ? AND account_id = ?")
-      .run(spaceId, this.activeAccountId);
-    return true;
   }
 
   initDatabase() {
     try {
-      const dbFileName =
+      const fileName =
         process.env.NODE_ENV === "development" ? "transcriptions-dev.db" : "transcriptions.db";
-
-      const dbPath = path.join(app.getPath("userData"), dbFileName);
-
-      this.db = new Database(dbPath);
+      this.db = new Database(path.join(app.getPath("userData"), fileName));
+      this.db.pragma("foreign_keys = ON");
       this.db.pragma("journal_mode = WAL");
 
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS transcriptions (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           text TEXT NOT NULL,
-          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      // Audio retention columns
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN raw_text TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN has_audio INTEGER NOT NULL DEFAULT 0");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN audio_duration_ms INTEGER");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN provider TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN model TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec(
-          "ALTER TABLE transcriptions ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'"
+          raw_text TEXT,
+          timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          has_audio INTEGER NOT NULL DEFAULT 0,
+          audio_duration_ms INTEGER,
+          provider TEXT,
+          model TEXT,
+          status TEXT NOT NULL DEFAULT 'completed',
+          error_message TEXT,
+          error_code TEXT,
+          route_kind TEXT
         );
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN error_message TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN error_code TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      // Records the dictation intent (e.g. "translation") so retry/recover re-runs the same route.
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN route_kind TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
 
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS custom_dictionary (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           word TEXT NOT NULL UNIQUE,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
 
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS snippets (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          trigger TEXT NOT NULL,
+          trigger TEXT NOT NULL UNIQUE COLLATE NOCASE,
           replacement TEXT NOT NULL,
-          client_snippet_id TEXT,
-          cloud_id TEXT,
-          sync_status TEXT DEFAULT 'pending',
-          deleted_at TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
 
-      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS spaces (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          emoji TEXT,
+          kind TEXT NOT NULL DEFAULT 'private' CHECK (kind = 'private'),
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS folders (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          is_default INTEGER NOT NULL DEFAULT 0,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          space_id INTEGER NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (space_id, name)
+        );
+
         CREATE TABLE IF NOT EXISTS notes (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           title TEXT NOT NULL DEFAULT 'Untitled Note',
@@ -305,136 +131,20 @@ class DatabaseManager {
           note_type TEXT NOT NULL DEFAULT 'personal',
           source_file TEXT,
           audio_duration_seconds REAL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN enhanced_content TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN enhancement_prompt TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN enhanced_at_content_hash TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN cloud_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
-          title,
-          content,
-          enhanced_content,
-          content='notes',
-          content_rowid='id'
-        )
-      `);
-
-      this.db.exec(`
-        CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON notes BEGIN
-          INSERT INTO notes_fts(rowid, title, content, enhanced_content)
-          VALUES (new.id, new.title, new.content, new.enhanced_content);
-        END
-      `);
-
-      this.db.exec(`
-        CREATE TRIGGER IF NOT EXISTS notes_fts_update AFTER UPDATE ON notes BEGIN
-          INSERT INTO notes_fts(notes_fts, rowid, title, content, enhanced_content)
-          VALUES ('delete', old.id, old.title, old.content, old.enhanced_content);
-          INSERT INTO notes_fts(rowid, title, content, enhanced_content)
-          VALUES (new.id, new.title, new.content, new.enhanced_content);
-        END
-      `);
-
-      this.db.exec(`
-        CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON notes BEGIN
-          INSERT INTO notes_fts(notes_fts, rowid, title, content, enhanced_content)
-          VALUES ('delete', old.id, old.title, old.content, old.enhanced_content);
-        END
-      `);
-
-      this.db
-        .prepare(
-          `
-        INSERT OR IGNORE INTO notes_fts(rowid, title, content, enhanced_content)
-        SELECT id, COALESCE(title, ''), COALESCE(content, ''), COALESCE(enhanced_content, '')
-        FROM notes
-      `
-        )
-        .run();
-
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS folders (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL UNIQUE,
-          is_default INTEGER NOT NULL DEFAULT 0,
-          sort_order INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      const folderCount = this.db.prepare("SELECT COUNT(*) as count FROM folders").get();
-      if (folderCount.count === 0) {
-        const seedFolder = this.db.prepare(
-          "INSERT INTO folders (name, is_default, sort_order) VALUES (?, 1, ?)"
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          enhanced_content TEXT,
+          enhancement_prompt TEXT,
+          enhanced_at_content_hash TEXT,
+          folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+          space_id INTEGER NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+          transcript TEXT,
+          calendar_event_id TEXT,
+          participants TEXT,
+          diarization_enabled INTEGER,
+          expected_speaker_count INTEGER
         );
-        seedFolder.run("Personal", 0);
-        seedFolder.run("Meetings", 1);
-        seedFolder.run("Videos", 2);
-      }
 
-      // Backfill folder_id only when the column is first added: on later
-      // launches a NULL folder_id is a legitimate space-root note, not a
-      // pre-folders row.
-      let folderColumnAdded = true;
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN folder_id INTEGER REFERENCES folders(id)");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-        folderColumnAdded = false;
-      }
-
-      if (folderColumnAdded) {
-        const personalFolder = this.db
-          .prepare("SELECT id FROM folders WHERE name = 'Personal' AND is_default = 1")
-          .get();
-        if (personalFolder) {
-          this.db
-            .prepare("UPDATE notes SET folder_id = ? WHERE folder_id IS NULL")
-            .run(personalFolder.id);
-        }
-      }
-
-      // One-time seed (user_version 1): a pre-existing user-created "Videos"
-      // folder stays untouched (never promoted to default); URL downloads route
-      // to it by name. Guarded so a later delete/rename doesn't resurrect it as
-      // an undeletable default on the next launch.
-      if (this.db.pragma("user_version", { simple: true }) < 1) {
-        const videosFolder = this.db.prepare("SELECT id FROM folders WHERE name = 'Videos'").get();
-        if (!videosFolder) {
-          const maxOrder = this.db.prepare("SELECT MAX(sort_order) as m FROM folders").get();
-          this.db
-            .prepare(
-              "INSERT OR IGNORE INTO folders (name, is_default, sort_order) VALUES ('Videos', 1, ?)"
-            )
-            .run((maxOrder?.m ?? 1) + 1);
-        }
-        this.db.pragma("user_version = 1");
-      }
-
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS actions (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
@@ -443,114 +153,31 @@ class DatabaseManager {
           icon TEXT NOT NULL DEFAULT 'sparkles',
           is_builtin INTEGER NOT NULL DEFAULT 0,
           sort_order INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
+          translation_key TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
 
-      try {
-        this.db.exec("ALTER TABLE actions ADD COLUMN translation_key TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS agent_conversations (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           title TEXT NOT NULL DEFAULT 'Untitled',
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
+          note_id INTEGER REFERENCES notes(id) ON DELETE CASCADE,
+          space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+          folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+          archived_at DATETIME,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
 
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS agent_messages (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           conversation_id INTEGER NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
           role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
           content TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
+          metadata TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
 
-      this.db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_agent_messages_conversation ON agent_messages(conversation_id)"
-      );
-
-      try {
-        this.db.exec("ALTER TABLE agent_messages ADD COLUMN metadata TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE agent_conversations ADD COLUMN archived_at DATETIME");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE agent_conversations ADD COLUMN cloud_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE agent_conversations ADD COLUMN note_id INTEGER");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      this.db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_agent_conversations_note ON agent_conversations(note_id)"
-      );
-      try {
-        this.db.exec("ALTER TABLE agent_conversations ADD COLUMN space_id INTEGER");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE agent_conversations ADD COLUMN folder_id INTEGER");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      this.db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_agent_conversations_container ON agent_conversations(space_id, folder_id)"
-      );
-
-      // Pre-2026 installs carry one built-in row under an older key: rename it to
-      // Generate Notes so the loop below recognizes and upgrades it.
-      const builtinKeys = BUILTIN_ACTIONS.map((action) => action.translationKey);
-      this.db
-        .prepare(
-          `UPDATE actions SET translation_key = ? WHERE is_builtin = 1 AND (translation_key IS NULL OR translation_key NOT IN (${builtinKeys.map(() => "?").join(", ")}))`
-        )
-        .run(GENERATE_NOTES_KEY, ...builtinKeys);
-
-      // Built-in actions: insert any that are missing, and roll a new default prompt
-      // out to rows whose prompt is still a previous default (never a user edit).
-      const selectBuiltin = this.db.prepare(
-        "SELECT id, prompt FROM actions WHERE is_builtin = 1 AND translation_key = ?"
-      );
-      const insertBuiltin = this.db.prepare(
-        "INSERT INTO actions (name, description, prompt, icon, is_builtin, sort_order, translation_key) VALUES (?, ?, ?, ?, 1, ?, ?)"
-      );
-      const upgradeBuiltin = this.db.prepare(
-        "UPDATE actions SET name = ?, description = ?, prompt = ? WHERE id = ?"
-      );
-      for (const action of BUILTIN_ACTIONS) {
-        const existing = selectBuiltin.get(action.translationKey);
-        if (!existing) {
-          insertBuiltin.run(
-            action.name,
-            action.description,
-            action.prompt,
-            action.icon,
-            action.sortOrder,
-            action.translationKey
-          );
-        } else if (action.previousPrompts.includes(existing.prompt)) {
-          upgradeBuiltin.run(action.name, action.description, action.prompt, existing.id);
-        }
-      }
-
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS google_calendar_tokens (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           google_email TEXT NOT NULL UNIQUE,
@@ -558,67 +185,23 @@ class DatabaseManager {
           refresh_token TEXT NOT NULL,
           expires_at INTEGER NOT NULL,
           scope TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      // Migration: add UNIQUE constraint to google_email if table already existed without it
-      try {
-        const tableInfo = this.db.pragma("index_list('google_calendar_tokens')");
-        const hasUniqueEmail = tableInfo.some((idx) => {
-          if (!idx.unique) return false;
-          const cols = this.db.pragma(`index_info('${idx.name}')`);
-          return cols.length === 1 && cols[0].name === "google_email";
-        });
-        if (!hasUniqueEmail) {
-          this.db.exec(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_google_calendar_tokens_email ON google_calendar_tokens(google_email)"
-          );
-        }
-      } catch (err) {
-        debugLogger.error(
-          "Migration: google_email unique index",
-          { error: err.message },
-          "database"
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
-      }
 
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS google_calendars (
           id TEXT PRIMARY KEY,
           summary TEXT NOT NULL,
           description TEXT,
           background_color TEXT,
           is_selected INTEGER NOT NULL DEFAULT 1,
+          is_primary INTEGER NOT NULL DEFAULT 0,
           sync_token TEXT,
           sync_token_expires_at INTEGER,
           account_email TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      try {
-        this.db.exec("ALTER TABLE google_calendars ADD COLUMN account_email TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      try {
-        this.db.exec("ALTER TABLE google_calendars ADD COLUMN sync_token_expires_at INTEGER");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      try {
-        this.db.exec(
-          "ALTER TABLE google_calendars ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0"
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
 
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS microsoft_calendar_tokens (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           microsoft_email TEXT NOT NULL UNIQUE,
@@ -626,12 +209,10 @@ class DatabaseManager {
           refresh_token TEXT NOT NULL,
           expires_at INTEGER NOT NULL,
           scope TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
 
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS microsoft_calendars (
           id TEXT PRIMARY KEY,
           summary TEXT NOT NULL,
@@ -641,24 +222,21 @@ class DatabaseManager {
           sync_token TEXT,
           sync_token_expires_at INTEGER,
           account_email TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      // One-time reset (user_version 2): pre-fix builds stored recurring
-      // occurrences untitled when the series-master fetch failed, and delta
-      // never re-delivers them; a forced full sync re-fetches them fixed.
-      if (this.db.pragma("user_version", { simple: true }) < 2) {
-        this.db.exec(
-          "UPDATE microsoft_calendars SET sync_token = NULL, sync_token_expires_at = NULL"
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
-        this.db.pragma("user_version = 2");
-      }
 
-      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS apple_calendars (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          color TEXT,
+          source_name TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS calendar_events (
           id TEXT PRIMARY KEY,
           calendar_id TEXT NOT NULL,
+          provider TEXT NOT NULL DEFAULT 'google',
           summary TEXT,
           start_time TEXT NOT NULL,
           end_time TEXT NOT NULL,
@@ -669,594 +247,97 @@ class DatabaseManager {
           hangout_link TEXT,
           conference_data TEXT,
           organizer_email TEXT,
-          attendees_count INTEGER DEFAULT 0,
-          synced_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      try {
-        this.db.exec(
-          "ALTER TABLE calendar_events ADD COLUMN provider TEXT NOT NULL DEFAULT 'google'"
+          attendees_count INTEGER NOT NULL DEFAULT 0,
+          attendees TEXT,
+          synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
 
-      let availabilitySchemaChanged = false;
-      for (const column of ["availability_status", "self_response_status"]) {
-        try {
-          this.db.exec(
-            `ALTER TABLE calendar_events ADD COLUMN ${column} TEXT NOT NULL DEFAULT 'unknown'`
-          );
-          availabilitySchemaChanged = true;
-        } catch (err) {
-          if (!err.message.includes("duplicate column")) throw err;
-        }
-      }
-      if (availabilitySchemaChanged) {
-        // Existing incremental tokens will not resend unchanged free/declined
-        // events, so rebuild both REST caches once with the new semantics.
-        this.db
-          .prepare("UPDATE google_calendars SET sync_token = NULL, sync_token_expires_at = NULL")
-          .run();
-        this.db
-          .prepare("UPDATE microsoft_calendars SET sync_token = NULL, sync_token_expires_at = NULL")
-          .run();
-      }
-
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS apple_calendars (
-          id TEXT PRIMARY KEY,
-          title TEXT NOT NULL,
-          color TEXT,
-          source_name TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN transcript TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN calendar_event_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      try {
-        this.db.exec("ALTER TABLE calendar_events ADD COLUMN attendees TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN participants TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN diarization_enabled INTEGER");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN expected_speaker_count INTEGER");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS contacts (
           email TEXT PRIMARY KEY,
           display_name TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
 
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS speaker_profiles (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           display_name TEXT NOT NULL,
           email TEXT,
           embedding BLOB NOT NULL,
-          sample_count INTEGER DEFAULT 1,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
+          sample_count INTEGER NOT NULL DEFAULT 1,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
 
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS speaker_mappings (
-          note_id INTEGER NOT NULL,
+          note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
           speaker_id TEXT NOT NULL,
-          profile_id INTEGER,
+          profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
           display_name TEXT NOT NULL,
-          PRIMARY KEY (note_id, speaker_id),
-          FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
-          FOREIGN KEY (profile_id) REFERENCES speaker_profiles(id) ON DELETE SET NULL
-        )
-      `);
+          PRIMARY KEY (note_id, speaker_id)
+        );
 
-      this.db.exec(`
         CREATE TABLE IF NOT EXISTS note_speaker_embeddings (
-          note_id INTEGER NOT NULL,
+          note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
           speaker_id TEXT NOT NULL,
           embedding BLOB NOT NULL,
-          PRIMARY KEY (note_id, speaker_id),
-          FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
-        )
+          PRIMARY KEY (note_id, speaker_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_notes_space ON notes(space_id, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(folder_id, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation ON agent_messages(conversation_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_conversations_note ON agent_conversations(note_id, updated_at);
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+          title, content, enhanced_content,
+          content='notes', content_rowid='id'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON notes BEGIN
+          INSERT INTO notes_fts(rowid, title, content, enhanced_content)
+          VALUES (new.id, new.title, new.content, new.enhanced_content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS notes_fts_update AFTER UPDATE ON notes BEGIN
+          INSERT INTO notes_fts(notes_fts, rowid, title, content, enhanced_content)
+          VALUES ('delete', old.id, old.title, old.content, old.enhanced_content);
+          INSERT INTO notes_fts(rowid, title, content, enhanced_content)
+          VALUES (new.id, new.title, new.content, new.enhanced_content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON notes BEGIN
+          INSERT INTO notes_fts(notes_fts, rowid, title, content, enhanced_content)
+          VALUES ('delete', old.id, old.title, old.content, old.enhanced_content);
+        END;
       `);
 
-      // A cloud folder delete is optimistic until the API answers. Keep the
-      // exact pre-delete row state in a durable journal so a permission denial
-      // can revive the same folder, notes, speakers, and conversations even
-      // after an app restart. Content stays in its owning tables; the journal
-      // contains only identity and sync metadata.
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS optimistic_folder_delete_rows (
-          folder_id INTEGER NOT NULL,
-          entity_type TEXT NOT NULL,
-          entity_id INTEGER NOT NULL,
-          original_sync_status TEXT,
-          original_deleted_at TEXT,
-          original_updated_at TEXT,
-          PRIMARY KEY (folder_id, entity_type, entity_id)
-        )
-      `);
-      this.db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_optimistic_folder_delete_entity ON optimistic_folder_delete_rows(entity_type, entity_id)"
-      );
-
-      // Sync columns for notes
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN client_note_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN sync_status TEXT DEFAULT 'pending'");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN deleted_at TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN is_shared INTEGER NOT NULL DEFAULT 0");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN share_token TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      // Sync columns for folders
-      try {
-        this.db.exec("ALTER TABLE folders ADD COLUMN client_folder_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE folders ADD COLUMN cloud_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE folders ADD COLUMN sync_status TEXT DEFAULT 'pending'");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE folders ADD COLUMN deleted_at TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE folders ADD COLUMN updated_at DATETIME");
-        this.db.exec("UPDATE folders SET updated_at = created_at WHERE updated_at IS NULL");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      // Sync columns for agent_conversations
-      try {
-        this.db.exec("ALTER TABLE agent_conversations ADD COLUMN client_conversation_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec(
-          "ALTER TABLE agent_conversations ADD COLUMN sync_status TEXT DEFAULT 'pending'"
+      const existingSpace = this.db.prepare("SELECT id FROM spaces LIMIT 1").get();
+      const spaceId = existingSpace?.id ?? Number(this.db
+        .prepare("INSERT INTO spaces (name, kind, sort_order) VALUES ('Personal', 'private', 0)")
+        .run().lastInsertRowid);
+      if (!existingSpace) {
+        const insertFolder = this.db.prepare(
+          "INSERT INTO folders (name, is_default, sort_order, space_id) VALUES (?, 1, ?, ?)"
         );
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE agent_conversations ADD COLUMN deleted_at TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
+        insertFolder.run("Personal", 0, spaceId);
+        insertFolder.run("Meetings", 1, spaceId);
+        insertFolder.run("Videos", 2, spaceId);
       }
 
-      // Sync columns for transcriptions
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN client_transcription_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN cloud_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN sync_status TEXT DEFAULT 'pending'");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE transcriptions ADD COLUMN deleted_at TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      // Sync columns for custom_dictionary
-      try {
-        this.db.exec("ALTER TABLE custom_dictionary ADD COLUMN client_dict_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE custom_dictionary ADD COLUMN cloud_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec(
-          "ALTER TABLE custom_dictionary ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'"
+      if (this.db.prepare("SELECT 1 FROM actions LIMIT 1").get() == null) {
+        const insertAction = this.db.prepare(
+          "INSERT INTO actions (name, description, prompt, icon, is_builtin, sort_order, translation_key) VALUES (?, ?, ?, ?, 1, ?, ?)"
         );
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE custom_dictionary ADD COLUMN sync_status TEXT DEFAULT 'pending'");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE custom_dictionary ADD COLUMN deleted_at TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE custom_dictionary ADD COLUMN updated_at DATETIME");
-        this.db.exec(
-          "UPDATE custom_dictionary SET updated_at = created_at WHERE updated_at IS NULL"
-        );
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      // Backfill client IDs for existing rows
-      const syncTables = [
-        { table: "notes", col: "client_note_id" },
-        { table: "folders", col: "client_folder_id" },
-        { table: "agent_conversations", col: "client_conversation_id" },
-        { table: "transcriptions", col: "client_transcription_id" },
-        { table: "custom_dictionary", col: "client_dict_id" },
-        { table: "snippets", col: "client_snippet_id" },
-      ];
-      for (const { table, col } of syncTables) {
-        const rows = this.db.prepare(`SELECT id FROM ${table} WHERE ${col} IS NULL`).all();
-        const stmt = this.db.prepare(`UPDATE ${table} SET ${col} = ? WHERE id = ?`);
-        for (const row of rows) {
-          stmt.run(randomUUID(), row.id);
+        for (const action of BUILTIN_ACTIONS) {
+          insertAction.run(
+            action.name,
+            action.description,
+            action.prompt,
+            action.icon,
+            action.sortOrder,
+            action.translationKey
+          );
         }
       }
-
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_client_note_id ON notes(client_note_id)"
-      );
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_client_folder_id ON folders(client_folder_id)"
-      );
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_client_id ON agent_conversations(client_conversation_id)"
-      );
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_transcriptions_client_id ON transcriptions(client_transcription_id)"
-      );
-
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS analytics_events (
-          event_id TEXT PRIMARY KEY,
-          account_id TEXT,
-          occurred_at TEXT NOT NULL,
-          local_date TEXT NOT NULL,
-          word_count INTEGER NOT NULL CHECK (word_count > 0),
-          spoken_duration_ms INTEGER,
-          mode TEXT NOT NULL,
-          provider TEXT,
-          model TEXT,
-          counter_version INTEGER NOT NULL DEFAULT 1,
-          sync_status TEXT NOT NULL DEFAULT 'pending',
-          deleted_at TEXT,
-          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE INDEX IF NOT EXISTS idx_analytics_events_account_date
-          ON analytics_events(account_id, local_date);
-        CREATE TABLE IF NOT EXISTS analytics_clear_requests (
-          account_id TEXT PRIMARY KEY,
-          cleared_through TEXT NOT NULL,
-          synced INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS analytics_device_clear_state (
-          id INTEGER PRIMARY KEY CHECK (id = 1),
-          cleared_through TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS analytics_history_backfill_state (
-          id INTEGER PRIMARY KEY CHECK (id = 1),
-          version INTEGER NOT NULL,
-          scanned_through_transcription_id INTEGER NOT NULL DEFAULT 0
-            CHECK (scanned_through_transcription_id >= 0)
-        );
-      `);
-      // Repair databases created before analytics deletion tombstones were
-      // introduced. SQLite has no ADD COLUMN IF NOT EXISTS syntax.
-      try {
-        this.db.exec("ALTER TABLE analytics_events ADD COLUMN deleted_at TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_dictionary_client_id ON custom_dictionary(client_dict_id)"
-      );
-      // Cloud batch-create matches responses by client_dict_id, so a row
-      // without one can never be marked synced and re-uploads every pass. Rows
-      // written straight to SQLite don't set it (#1295), so the schema does.
-      this.db.exec(`
-        CREATE TRIGGER IF NOT EXISTS custom_dictionary_client_id_default
-        AFTER INSERT ON custom_dictionary
-        WHEN new.client_dict_id IS NULL
-        BEGIN
-          UPDATE custom_dictionary SET client_dict_id =
-            lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' ||
-            substr(lower(hex(randomblob(2))), 2) || '-' ||
-            substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) ||
-            '-' || lower(hex(randomblob(6)))
-          WHERE id = new.id;
-        END
-      `);
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_snippets_client_id ON snippets(client_snippet_id) WHERE client_snippet_id IS NOT NULL"
-      );
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_snippets_trigger_lower_active ON snippets(lower(trigger)) WHERE deleted_at IS NULL"
-      );
-      this.db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_snippets_pending_sync ON snippets(sync_status) WHERE sync_status = 'pending'"
-      );
-
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS spaces (
-          id              INTEGER PRIMARY KEY AUTOINCREMENT,
-          client_space_id TEXT,
-          cloud_team_id   TEXT,
-          workspace_id    TEXT,
-          kind            TEXT NOT NULL DEFAULT 'team' CHECK (kind IN ('private','team')),
-          name            TEXT NOT NULL,
-          emoji           TEXT,
-          sort_order      INTEGER NOT NULL DEFAULT 0,
-          my_role         TEXT,
-          member_count    INTEGER,
-          sync_status     TEXT NOT NULL DEFAULT 'pending',
-          deleted_at      TEXT,
-          created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_spaces_client_space_id ON spaces(client_space_id)"
-      );
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_spaces_cloud_team_id ON spaces(cloud_team_id) WHERE cloud_team_id IS NOT NULL"
-      );
-
-      // First-class spaces: a space mirrors a cloud space with one or more
-      // assigned teams. cloud_team_id survives only so pre-spaces rows can be
-      // adopted by upsertSpaceFromCloud (matched via the space's single
-      // backfilled team).
-      try {
-        this.db.exec("ALTER TABLE spaces ADD COLUMN cloud_space_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        // JSON array of { id, name, my_role } mirrored from GET /api/me/spaces.
-        this.db.exec("ALTER TABLE spaces ADD COLUMN teams TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_spaces_cloud_space_id ON spaces(cloud_space_id) WHERE cloud_space_id IS NOT NULL"
-      );
-
-      const privateSpaceCount = this.db
-        .prepare("SELECT COUNT(*) as count FROM spaces WHERE kind = 'private'")
-        .get();
-      if (privateSpaceCount.count === 0) {
-        this.db
-          .prepare(
-            "INSERT INTO spaces (client_space_id, kind, name, sort_order, sync_status) VALUES (?, 'private', 'Personal', 0, 'synced')"
-          )
-          .run(randomUUID());
-      }
-
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN space_id INTEGER");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE folders ADD COLUMN space_id INTEGER");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      // Rebuild folders to drop the table-level UNIQUE(name); per-space name
-      // uniqueness is enforced by idx_folders_space_name below.
-      // better-sqlite3 enables foreign_keys by default, so DROP TABLE folders
-      // would fail while notes.folder_id rows reference it; the pragma is a
-      // no-op inside a transaction, so toggle it around the rebuild.
-      const foldersTable = this.db
-        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'folders'")
-        .get();
-      if (foldersTable?.sql.includes("UNIQUE")) {
-        const foreignKeysWereOn = this.db.pragma("foreign_keys", { simple: true }) === 1;
-        this.db.pragma("foreign_keys = OFF");
-        try {
-          this.db.transaction(() => {
-            this.db.exec(`
-            CREATE TABLE folders_new (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              name TEXT NOT NULL,
-              is_default INTEGER NOT NULL DEFAULT 0,
-              sort_order INTEGER NOT NULL DEFAULT 0,
-              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-              client_folder_id TEXT,
-              cloud_id TEXT,
-              sync_status TEXT DEFAULT 'pending',
-              deleted_at TEXT,
-              space_id INTEGER
-            )
-          `);
-            this.db.exec(`
-            INSERT INTO folders_new (id, name, is_default, sort_order, created_at, updated_at,
-              client_folder_id, cloud_id, sync_status, deleted_at, space_id)
-            SELECT id, name, is_default, sort_order, created_at, updated_at,
-              client_folder_id, cloud_id, sync_status, deleted_at, space_id
-            FROM folders
-          `);
-            this.db.exec("DROP TABLE folders");
-            this.db.exec("ALTER TABLE folders_new RENAME TO folders");
-            this.db.exec(
-              "CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_client_folder_id ON folders(client_folder_id)"
-            );
-          })();
-        } finally {
-          if (foreignKeysWereOn) this.db.pragma("foreign_keys = ON");
-        }
-      }
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_space_name ON folders(space_id, name) WHERE deleted_at IS NULL"
-      );
-
-      const privateSpace = this.db.prepare("SELECT id FROM spaces WHERE kind = 'private'").get();
-      this.db
-        .prepare("UPDATE folders SET space_id = ? WHERE space_id IS NULL")
-        .run(privateSpace.id);
-      this.db.prepare("UPDATE notes SET space_id = ? WHERE space_id IS NULL").run(privateSpace.id);
-
-      this.db.exec("CREATE INDEX IF NOT EXISTS idx_notes_folder_id ON notes(folder_id)");
-      this.db.exec("CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at)");
-      this.db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_notes_space_updated ON notes(space_id, updated_at)"
-      );
-      this.db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_folders_space_sort ON folders(space_id, sort_order)"
-      );
-
-      // Account attribution is intentionally nullable. Existing rows remain
-      // device-owned legacy content; workspace rows are never attributed to a
-      // personal account and therefore cannot be erased with that account.
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN account_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE folders ADD COLUMN account_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      this.db.exec("CREATE INDEX IF NOT EXISTS idx_notes_account_id ON notes(account_id)");
-      this.db.exec("CREATE INDEX IF NOT EXISTS idx_folders_account_id ON folders(account_id)");
-      this.db.exec("DROP INDEX IF EXISTS idx_folders_space_name");
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_space_legacy_name ON folders(space_id, name) WHERE deleted_at IS NULL AND account_id IS NULL"
-      );
-      this.db.exec(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_space_account_name ON folders(space_id, account_id, name) WHERE deleted_at IS NULL AND account_id IS NOT NULL"
-      );
-
-      // A cloud space is workspace-owned, while visibility is account-specific.
-      // Keep the many-to-many membership separate so signing out one local
-      // account cannot delete or expose another account's workspace cache.
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS space_accounts (
-          space_id INTEGER NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
-          account_id TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (space_id, account_id)
-        )
-      `);
-      this.db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_space_accounts_account_id ON space_accounts(account_id)"
-      );
-
-      // Cloud-backed rows that just LEFT a team must keep pushing their scope
-      // retraction (D6) even in the backup-off team-only pass, where the
-      // pending queues otherwise filter on the row's CURRENT space kind.
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN left_team INTEGER NOT NULL DEFAULT 0");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE folders ADD COLUMN left_team INTEGER NOT NULL DEFAULT 0");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      // Last cloud editor (CloudNote.updated_by_user_id); only populated on
-      // cloud pull — local edits don't set it. Resolved to a display name via
-      // the team roster when rendering note authorship.
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN updated_by_user_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      // Server updated_at this device last acked (push response or pull),
-      // echoed verbatim as base_updated_at on the next PATCH so the server can
-      // 409 a stale overwrite. Local edits never touch it; NULL means the note
-      // predates the guard and pushes last-write-wins once.
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN cloud_updated_at TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
-      // The note's owner (CloudNote.user_id) — who created it, not who last
-      // edited it (updated_by_user_id). Drives the client-side delete/scope
-      // permission checks; NULL until a cloud pull or push response fills it.
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN owner_user_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-      try {
-        this.db.exec("ALTER TABLE notes ADD COLUMN created_by_user_id TEXT");
-      } catch (err) {
-        if (!err.message.includes("duplicate column")) throw err;
-      }
-
       return true;
     } catch (error) {
       debugLogger.error("Database initialization failed", { error: error.message }, "database");
@@ -1264,5172 +345,435 @@ class DatabaseManager {
     }
   }
 
-  saveTranscription(
-    text,
-    rawText = null,
-    {
-      status = "completed",
-      errorMessage = null,
-      errorCode = null,
-      routeKind = null,
-      clientTranscriptionId = randomUUID(),
-      analyticsOccurredAt = null,
-    } = {}
-  ) {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      // With an occurrence time this column carries when the dictation was
-      // spoken rather than when the row was written -- earlier by the length
-      // of the recording plus transcription. History reads it through
-      // normalizeDbDate, which already branches on a trailing zone.
-      // Keep the existing SQLite-friendly separator so mixed old/new rows
-      // continue to sort chronologically, while the trailing Z marks this as
-      // an exact client-captured instant for clear-state reconciliation.
-      const occurredAt = toDbTimestamp(analyticsOccurredAt);
-      const stmt = this.db.prepare(
-        `INSERT INTO transcriptions (
-           text, raw_text, status, error_message, error_code, route_kind,
-           client_transcription_id, timestamp
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`
-      );
-      const result = stmt.run(
-        text,
-        rawText,
-        status,
-        errorMessage,
-        errorCode,
-        routeKind,
-        clientTranscriptionId,
-        occurredAt
-      );
-
-      const fetchStmt = this.db.prepare("SELECT * FROM transcriptions WHERE id = ?");
-      const transcription = fetchStmt.get(result.lastInsertRowid);
-
-      return { id: result.lastInsertRowid, success: true, transcription };
-    } catch (error) {
-      debugLogger.error("Error saving transcription", { error: error.message }, "database");
-      throw error;
-    }
+  _privateSpaceId() {
+    return this.db.prepare("SELECT id FROM spaces WHERE kind = 'private' LIMIT 1").get()?.id ?? null;
   }
 
-  getTranscriptions(limit = 50, { includeDiscarded = false } = {}) {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      const statusFilter = includeDiscarded ? "" : " AND status != 'discarded'";
-      const stmt = this.db.prepare(
-        `SELECT * FROM transcriptions WHERE deleted_at IS NULL${statusFilter} ORDER BY timestamp DESC LIMIT ?`
-      );
-      const transcriptions = stmt.all(limit);
-      return transcriptions;
-    } catch (error) {
-      debugLogger.error("Error getting transcriptions", { error: error.message }, "database");
-      throw error;
-    }
+  getPrivateSpaceId() {
+    return this._privateSpaceId();
   }
 
-  clearTranscriptions() {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      const tombstone = this.db.prepare(
-        "UPDATE transcriptions SET deleted_at = datetime('now'), sync_status = 'pending' WHERE cloud_id IS NOT NULL AND deleted_at IS NULL"
-      );
-      const hardDelete = this.db.prepare("DELETE FROM transcriptions WHERE cloud_id IS NULL");
-      // One rule decides every row: a counter the cloud never received is
-      // erased outright, and only a counter it did receive leaves a tombstone
-      // behind for the delete pusher.
-      //
-      // It matters in both directions. Tombstoning a row that was never
-      // uploaded sent its event id to the server on the next pass — for an
-      // account that never turned Insights sync on, that was the only
-      // analytics traffic it ever produced, and the server stores a row per id
-      // it is asked to delete. Hard-deleting a row that *was* uploaded stranded
-      // it in the cloud with nothing left on the device to erase it, which is
-      // what signing out before clearing used to do.
-      //
-      // Scope follows the credentials: only the active account can be erased
-      // remotely, so another account's synced rows keep their tombstones until
-      // that account signs in here again.
-      const hardDeleteLocalAnalytics = this.db.prepare(
-        `DELETE FROM analytics_events
-         WHERE account_id IS NULL OR (sync_status <> 'synced' AND deleted_at IS NULL)`
-      );
-      const tombstoneSyncedAnalytics = this.db.prepare(
-        `UPDATE analytics_events
-         SET deleted_at = ?, sync_status = 'pending'
-         WHERE sync_status = 'synced' AND deleted_at IS NULL`
-      );
-      const countSyncedAnalytics = this.db.prepare(
-        "SELECT COUNT(*) AS count FROM analytics_events WHERE account_id = ? AND sync_status = 'synced'"
-      );
-      const queueAnalyticsClear = this.db.prepare(
-        `INSERT INTO analytics_clear_requests (account_id, cleared_through, synced)
-         VALUES (?, ?, 0)
-         ON CONFLICT(account_id) DO UPDATE SET
-           cleared_through = MAX(analytics_clear_requests.cleared_through, excluded.cleared_through),
-           synced = 0`
-      );
-      const updateDeviceClearState = this.db.prepare(
-        `INSERT INTO analytics_device_clear_state (id, cleared_through)
-         VALUES (1, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           cleared_through = MAX(analytics_device_clear_state.cleared_through, excluded.cleared_through)`
-      );
-      const clearedThrough = new Date().toISOString();
-      const clearAll = this.db.transaction(() => {
-        const cleared = tombstone.run().changes + hardDelete.run().changes;
-        updateDeviceClearState.run(clearedThrough);
-        // The account-wide cutoff is what erases rows this device no longer
-        // has — another device's uploads. It is only meaningful once this
-        // account has actually put something in the cloud; queueing it for an
-        // account that never synced would be a bare request to the analytics
-        // API from a user who never opted in.
-        const hasSyncedRows =
-          this.activeAccountId && countSyncedAnalytics.get(this.activeAccountId).count > 0;
-        tombstoneSyncedAnalytics.run(clearedThrough);
-        hardDeleteLocalAnalytics.run();
-        if (hasSyncedRows) {
-          queueAnalyticsClear.run(this.activeAccountId, clearedThrough);
-        }
-        return cleared;
-      });
-      return { cleared: clearAll(), success: true };
-    } catch (error) {
-      debugLogger.error("Error clearing transcriptions", { error: error.message }, "database");
-      throw error;
-    }
+  _spaceRow(row) {
+    return row ? { ...row, kind: "private" } : null;
   }
 
-  /** Purges transcriptions and their Insights counters older than the retention window.
-   *  Returns the affected transcription ids so callers can drop the matching audio files.
-   *  Runs even with no expired transcriptions: counters outlive tombstoned rows. */
-  deleteTranscriptionsExpiredBefore(retentionDays) {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      // Resolve the cutoff once so the ids we report are exactly the rows we purge.
-      const cutoff = this.db
-        .prepare("SELECT datetime('now', ?) AS cutoff")
-        .get(`-${retentionDays} days`).cutoff;
-      const expired = this.db
-        .prepare("SELECT id FROM transcriptions WHERE deleted_at IS NULL AND created_at < ?")
-        .all(cutoff)
-        .map((row) => row.id);
-
-      const tombstone = this.db.prepare(
-        "UPDATE transcriptions SET deleted_at = datetime('now'), sync_status = 'pending' WHERE cloud_id IS NOT NULL AND deleted_at IS NULL AND created_at < ?"
-      );
-      const hardDelete = this.db.prepare(
-        "DELETE FROM transcriptions WHERE cloud_id IS NULL AND created_at < ?"
-      );
-      // Counters follow the transcripts they describe, on the same cutoff and
-      // in the same transaction. Matched on created_at, never occurred_at:
-      // created_at uses the same SQLite timestamp format as the cutoff.
-      //
-      // Same rule as clearTranscriptions: only a row the cloud actually holds
-      // leaves a tombstone. Attribution alone is not enough — every dictation
-      // made while signed in carries an account_id whether or not Insights
-      // sync was ever turned on, so tombstoning on that basis shipped the event
-      // ids of a user who never opted in.
-      const tombstoneSyncedAnalytics = this.db.prepare(
-        `UPDATE analytics_events
-         SET deleted_at = datetime('now'), sync_status = 'pending'
-         WHERE sync_status = 'synced' AND deleted_at IS NULL AND created_at < ?`
-      );
-      const purgeUnsyncedAnalytics = this.db.prepare(
-        `DELETE FROM analytics_events
-         WHERE (account_id IS NULL OR sync_status <> 'synced')
-           AND deleted_at IS NULL AND created_at < ?`
-      );
-      let analyticsPurged = 0;
-      this.db.transaction(() => {
-        tombstone.run(cutoff);
-        hardDelete.run(cutoff);
-        analyticsPurged =
-          tombstoneSyncedAnalytics.run(cutoff).changes + purgeUnsyncedAnalytics.run(cutoff).changes;
-      })();
-      return { ids: expired, analyticsPurged };
-    } catch (error) {
-      debugLogger.error(
-        "Error purging expired transcriptions",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
+  getSpaces() {
+    return this.db.prepare("SELECT * FROM spaces ORDER BY sort_order, id").all().map((row) => this._spaceRow(row));
   }
 
-  deleteTranscription(id) {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      const row = this.db
-        .prepare("SELECT cloud_id, deleted_at FROM transcriptions WHERE id = ?")
-        .get(id);
-      if (!row || row.deleted_at) return { success: false, id };
-      const stmt = row.cloud_id
-        ? this.db.prepare(
-            "UPDATE transcriptions SET deleted_at = datetime('now'), sync_status = 'pending' WHERE id = ? AND deleted_at IS NULL"
-          )
-        : this.db.prepare("DELETE FROM transcriptions WHERE id = ?");
-      const result = stmt.run(id);
-      return { success: result.changes > 0, id };
-    } catch (error) {
-      debugLogger.error("Error deleting transcription", { error: error.message }, "database");
-      throw error;
-    }
+  getSpace(id) {
+    return this._spaceRow(this.db.prepare("SELECT * FROM spaces WHERE id = ?").get(id));
   }
 
-  updateTranscriptionAudio(id, { hasAudio, audioDurationMs, provider, model }) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const stmt = this.db.prepare(
-        "UPDATE transcriptions SET has_audio = ?, audio_duration_ms = ?, provider = ?, model = ? WHERE id = ?"
-      );
-      stmt.run(hasAudio, audioDurationMs, provider, model, id);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error updating transcription audio", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  updateTranscriptionText(id, text, rawText) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const stmt = this.db.prepare("UPDATE transcriptions SET text = ?, raw_text = ? WHERE id = ?");
-      this.db.transaction(() => {
-        const existing = this.db
-          .prepare("SELECT text, raw_text FROM transcriptions WHERE id = ?")
-          .get(id);
-        stmt.run(text, rawText, id);
-      })();
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error updating transcription text", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  updateTranscriptionStatus(id, status, errorMessage = null, errorCode = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const stmt = this.db.prepare(
-        "UPDATE transcriptions SET status = ?, error_message = ?, error_code = ? WHERE id = ?"
-      );
-      this.db.transaction(() => {
-        const existing = this.db.prepare("SELECT status FROM transcriptions WHERE id = ?").get(id);
-        stmt.run(status, errorMessage, errorCode, id);
-      })();
-      return { success: true };
-    } catch (error) {
-      debugLogger.error(
-        "Error updating transcription status",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  getTranscriptionById(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const stmt = this.db.prepare("SELECT * FROM transcriptions WHERE id = ?");
-      return stmt.get(id) || null;
-    } catch (error) {
-      debugLogger.error("Error getting transcription by id", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  clearAudioFlags(ids) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!ids || ids.length === 0) return { success: true };
-      const transaction = this.db.transaction((idList) => {
-        const stmt = this.db.prepare("UPDATE transcriptions SET has_audio = 0 WHERE id = ?");
-        for (const id of idList) {
-          stmt.run(id);
-        }
-      });
-      transaction(ids);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error clearing audio flags", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getDictionary() {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      const rows = this.db
-        .prepare("SELECT word FROM custom_dictionary WHERE deleted_at IS NULL ORDER BY id ASC")
-        .all();
-      return rows.map((row) => row.word);
-    } catch (error) {
-      debugLogger.error("Error getting dictionary", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  // Every dictionary mutation rule lives here once, so the whole-list and
-  // delta write paths cannot drift apart.
-  _dictionaryWriteStatements() {
-    return {
-      tombstone: this.db.prepare(
-        "UPDATE custom_dictionary SET deleted_at = datetime('now'), updated_at = datetime('now'), sync_status = 'pending' WHERE id = ? AND deleted_at IS NULL"
-      ),
-      hardDelete: this.db.prepare(
-        "DELETE FROM custom_dictionary WHERE id = ? AND cloud_id IS NULL"
-      ),
-      restore: this.db.prepare(
-        "UPDATE custom_dictionary SET deleted_at = NULL, source = CASE WHEN source = 'learned' AND ? = 'manual' THEN 'manual' ELSE source END, word = ?, updated_at = datetime('now'), sync_status = 'pending' WHERE id = ?"
-      ),
-      promoteSource: this.db.prepare(
-        "UPDATE custom_dictionary SET word = ?, source = 'manual', updated_at = datetime('now'), sync_status = 'pending' WHERE id = ? AND source = 'learned'"
-      ),
-      // Guarded on word != ? so an unchanged row keeps its sync_status.
-      updateWord: this.db.prepare(
-        "UPDATE custom_dictionary SET word = ?, updated_at = datetime('now'), sync_status = 'pending' WHERE id = ? AND word != ?"
-      ),
-      // INSERT OR IGNORE in case a legacy case-variant row collides on the
-      // case-sensitive UNIQUE(word) that the lowercase index didn't catch.
-      insert: this.db.prepare(
-        "INSERT OR IGNORE INTO custom_dictionary (word, source, client_dict_id, sync_status, updated_at) VALUES (?, ?, ?, 'pending', datetime('now'))"
-      ),
-    };
-  }
-
-  // Dedupe by lower(word), keeping the first occurrence's casing, so no caller
-  // can present two spellings of the same word to a write loop.
-  _normalizeDictionaryWords(words) {
-    const byLower = new Map();
-    for (const raw of Array.isArray(words) ? words : []) {
-      if (typeof raw !== "string") continue;
-      const trimmed = raw.trim();
-      if (!trimmed) continue;
-      const lower = trimmed.toLowerCase();
-      if (!byLower.has(lower)) byLower.set(lower, trimmed);
-    }
-    return byLower;
-  }
-
-  _dictionaryRows() {
-    const rows = this.db
-      .prepare("SELECT id, word, source, deleted_at FROM custom_dictionary")
-      .all();
-    return { rows, byLower: new Map(rows.map((r) => [r.word.toLowerCase(), r])) };
-  }
-
-  // Returns true when the word became present, so callers can report how many
-  // words they actually added rather than how many they asked for.
-  _upsertDictionaryWord(stmts, word, existing, source) {
-    if (!existing) {
-      return stmts.insert.run(word, source, randomUUID()).changes > 0;
-    }
-    if (existing.deleted_at) {
-      stmts.restore.run(source, word, existing.id);
-      return true;
-    }
-    if (source === "manual" && existing.source === "learned") {
-      stmts.promoteSource.run(word, existing.id);
-    } else {
-      stmts.updateWord.run(word, existing.id, word);
-    }
-    return false;
-  }
-
-  // Hard-delete when the row never reached the cloud, else tombstone so the
-  // next push tells the server about the deletion.
-  _deleteDictionaryRow(stmts, existing) {
-    if (!existing || existing.deleted_at) return false;
-    const hardResult = stmts.hardDelete.run(existing.id);
-    if (hardResult.changes === 0) stmts.tombstone.run(existing.id);
-    return true;
-  }
-
-  // Add and/or remove specific words, leaving every other row untouched.
-  // Prefer this over setDictionary, which deletes whatever the caller omitted
-  // and so lets a stale snapshot destroy the rest (#1295).
-  // `source` tags additions ('manual' for user-typed, 'learned' for auto-learn).
-  applyDictionaryChanges({ add = [], remove = [] } = {}, source = "manual") {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      const additions = this._normalizeDictionaryWords(add);
-      const removals = this._normalizeDictionaryWords(remove);
-      // A word on both sides is a rename to itself; adding wins.
-      for (const lower of additions.keys()) removals.delete(lower);
-      if (additions.size === 0 && removals.size === 0) {
-        return { success: true, added: 0, removed: 0 };
-      }
-
-      const { byLower } = this._dictionaryRows();
-      const stmts = this._dictionaryWriteStatements();
-      let added = 0;
-      let removed = 0;
-
-      this.db.transaction(() => {
-        for (const lower of removals.keys()) {
-          if (this._deleteDictionaryRow(stmts, byLower.get(lower))) removed += 1;
-        }
-        for (const [lower, word] of additions) {
-          if (this._upsertDictionaryWord(stmts, word, byLower.get(lower), source)) added += 1;
-        }
-      })();
-
-      return { success: true, added, removed };
-    } catch (error) {
-      debugLogger.error("Error applying dictionary changes", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  // Replace the entire dictionary: anything absent from `words` is deleted.
-  // Only for deliberate replace-everything callers (settings restore, clear
-  // all, first write into an empty database). Everything else wants
-  // applyDictionaryChanges.
-  //
-  // Diff-based so unchanged rows keep their source/created_at/cloud_id.
-  setDictionary(words, sourceForNewWords = "manual") {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      const incomingByLower = this._normalizeDictionaryWords(words);
-      const { rows, byLower } = this._dictionaryRows();
-      const stmts = this._dictionaryWriteStatements();
-
-      this.db.transaction(() => {
-        for (const existing of rows) {
-          if (incomingByLower.has(existing.word.toLowerCase())) continue;
-          this._deleteDictionaryRow(stmts, existing);
-        }
-        for (const [lower, word] of incomingByLower) {
-          this._upsertDictionaryWord(stmts, word, byLower.get(lower), sourceForNewWords);
-        }
-      })();
-
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error setting dictionary", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getPendingDictionary() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          "SELECT * FROM custom_dictionary WHERE sync_status = 'pending' AND deleted_at IS NULL"
-        )
-        .all();
-    } catch (error) {
-      debugLogger.error("Error getting pending dictionary", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getPendingDictionaryDeletes() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          "SELECT * FROM custom_dictionary WHERE deleted_at IS NOT NULL AND cloud_id IS NOT NULL AND sync_status = 'pending'"
-        )
-        .all();
-    } catch (error) {
-      debugLogger.error(
-        "Error getting pending dictionary deletes",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  hardDeleteDictionaryEntry(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db.prepare("DELETE FROM custom_dictionary WHERE id = ?").run(id);
-      return { success: result.changes > 0, id };
-    } catch (error) {
-      debugLogger.error(
-        "Error hard deleting dictionary entry",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  getDictionaryEntryByClientId(clientDictId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return (
-        this.db
-          .prepare("SELECT * FROM custom_dictionary WHERE client_dict_id = ?")
-          .get(clientDictId) || null
-      );
-    } catch (error) {
-      debugLogger.error(
-        "Error getting dictionary entry by client id",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  upsertDictionaryFromCloud(cloudEntry) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      // Reject incomplete payloads rather than corrupt a row with defaults.
-      if (!cloudEntry || typeof cloudEntry !== "object") return null;
-      if (typeof cloudEntry.id !== "string" || !cloudEntry.id) return null;
-
-      const word = typeof cloudEntry.word === "string" ? cloudEntry.word.trim() : "";
-      if (!word) return null;
-
-      const clientDictId =
-        typeof cloudEntry.client_dict_id === "string" && cloudEntry.client_dict_id
-          ? cloudEntry.client_dict_id
-          : randomUUID();
-      const incomingSource = cloudEntry.source === "learned" ? "learned" : "manual";
-      const updatedAt =
-        typeof cloudEntry.updated_at === "string" && cloudEntry.updated_at
-          ? cloudEntry.updated_at
-          : typeof cloudEntry.created_at === "string" && cloudEntry.created_at
-            ? cloudEntry.created_at
-            : new Date().toISOString();
-      const createdAt =
-        typeof cloudEntry.created_at === "string" && cloudEntry.created_at
-          ? cloudEntry.created_at
-          : updatedAt;
-
-      // Resolve the local row deterministically: client_dict_id, then cloud_id,
-      // then word.
-      const byClient = this.db
-        .prepare("SELECT * FROM custom_dictionary WHERE client_dict_id = ? LIMIT 1")
-        .get(clientDictId);
-      const byCloud =
-        byClient ||
-        this.db
-          .prepare("SELECT * FROM custom_dictionary WHERE cloud_id = ? LIMIT 1")
-          .get(cloudEntry.id);
-      const existing =
-        byCloud ||
-        this.db
-          .prepare("SELECT * FROM custom_dictionary WHERE lower(word) = lower(?) LIMIT 1")
-          .get(word);
-
-      if (existing) {
-        // Manual is sticky — a pull never demotes a local manual row to learned.
-        const mergedSource =
-          existing.source === "manual" || incomingSource === "manual" ? "manual" : "learned";
-        this.db
-          .prepare(
-            `UPDATE custom_dictionary
-             SET cloud_id = ?, client_dict_id = ?, word = ?, source = ?,
-                 sync_status = 'synced', deleted_at = NULL, updated_at = ?
-             WHERE id = ?`
-          )
-          .run(cloudEntry.id, clientDictId, word, mergedSource, updatedAt, existing.id);
-        return this.db.prepare("SELECT * FROM custom_dictionary WHERE id = ?").get(existing.id);
-      }
-
-      this.db
-        .prepare(
-          `INSERT INTO custom_dictionary
-             (word, source, client_dict_id, cloud_id, sync_status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'synced', ?, ?)`
-        )
-        .run(word, incomingSource, clientDictId, cloudEntry.id, createdAt, updatedAt);
-      return this.db
-        .prepare("SELECT * FROM custom_dictionary WHERE client_dict_id = ?")
-        .get(clientDictId);
-    } catch (error) {
-      debugLogger.error(
-        "Error upserting dictionary entry from cloud",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  markDictionaryEntrySynced(id, cloudId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      // Guard on deleted_at so a delete or tombstone that raced the push isn't
-      // flipped back to 'synced' (which would strand the deletion). changes=0
-      // signals that race to SyncService, which reconciles the cloud row.
-      const result = this.db
-        .prepare(
-          "UPDATE custom_dictionary SET sync_status = 'synced', cloud_id = ? WHERE id = ? AND deleted_at IS NULL"
-        )
-        .run(cloudId, id);
-      return { success: result.changes > 0, changes: result.changes };
-    } catch (error) {
-      debugLogger.error(
-        "Error marking dictionary entry synced",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  // Clears cloud_id after a 404 so the next push re-creates the row via
-  // batchCreate instead of retrying the dead PATCH.
-  clearDictionaryCloudId(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db
-        .prepare(
-          "UPDATE custom_dictionary SET cloud_id = NULL, sync_status = 'pending' WHERE id = ?"
-        )
-        .run(id);
-      return { success: result.changes > 0 };
-    } catch (error) {
-      debugLogger.error("Error clearing dictionary cloud_id", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getSnippets() {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      return this.db
-        .prepare(
-          "SELECT trigger, replacement FROM snippets WHERE deleted_at IS NULL ORDER BY id ASC"
-        )
-        .all();
-    } catch (error) {
-      debugLogger.error("Error getting snippets", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  setSnippets(snippets) {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-
-      const incomingByLower = new Map();
-      for (const raw of Array.isArray(snippets) ? snippets : []) {
-        if (!raw || typeof raw !== "object") continue;
-        const trigger = typeof raw.trigger === "string" ? raw.trigger.trim() : "";
-        const replacement = typeof raw.replacement === "string" ? raw.replacement.trim() : "";
-        if (!trigger || !replacement) continue;
-        if (trigger.length > MAX_SNIPPET_TRIGGER_LENGTH) continue;
-        const lower = trigger.toLowerCase();
-        if (!incomingByLower.has(lower)) incomingByLower.set(lower, { trigger, replacement });
-      }
-      const cleaned = Array.from(incomingByLower.values());
-      const incomingLower = new Set(incomingByLower.keys());
-
-      const existingRows = this.db.prepare("SELECT * FROM snippets").all();
-      const existingByLower = new Map();
-      for (const row of existingRows) {
-        const lower = row.trigger.toLowerCase();
-        const current = existingByLower.get(lower);
-        if (!current || (current.deleted_at && !row.deleted_at)) existingByLower.set(lower, row);
-      }
-
-      const tombstone = this.db.prepare(
-        "UPDATE snippets SET deleted_at = datetime('now'), updated_at = datetime('now'), sync_status = 'pending' WHERE id = ? AND deleted_at IS NULL"
-      );
-      const hardDelete = this.db.prepare("DELETE FROM snippets WHERE id = ? AND cloud_id IS NULL");
-      const restore = this.db.prepare(
-        "UPDATE snippets SET deleted_at = NULL, trigger = ?, replacement = ?, updated_at = datetime('now'), sync_status = 'pending' WHERE id = ?"
-      );
-      const updateActive = this.db.prepare(
-        "UPDATE snippets SET trigger = ?, replacement = ?, updated_at = datetime('now'), sync_status = 'pending' WHERE id = ? AND (trigger != ? OR replacement != ?)"
-      );
-      const insert = this.db.prepare(
-        "INSERT OR IGNORE INTO snippets (trigger, replacement, client_snippet_id, sync_status, updated_at) VALUES (?, ?, ?, 'pending', datetime('now'))"
-      );
-
-      this.db.transaction(() => {
-        for (const existing of existingRows) {
-          if (incomingLower.has(existing.trigger.toLowerCase())) continue;
-          if (existing.deleted_at) continue;
-          const hardResult = hardDelete.run(existing.id);
-          if (hardResult.changes === 0) tombstone.run(existing.id);
-        }
-
-        for (const snippet of cleaned) {
-          const existing = existingByLower.get(snippet.trigger.toLowerCase());
-          if (existing) {
-            if (existing.deleted_at) {
-              restore.run(snippet.trigger, snippet.replacement, existing.id);
-            } else {
-              updateActive.run(
-                snippet.trigger,
-                snippet.replacement,
-                existing.id,
-                snippet.trigger,
-                snippet.replacement
-              );
-            }
-            continue;
-          }
-          insert.run(snippet.trigger, snippet.replacement, randomUUID());
-        }
-      })();
-
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error setting snippets", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getPendingSnippets() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare("SELECT * FROM snippets WHERE sync_status = 'pending' AND deleted_at IS NULL")
-        .all();
-    } catch (error) {
-      debugLogger.error("Error getting pending snippets", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getPendingSnippetDeletes() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          "SELECT * FROM snippets WHERE deleted_at IS NOT NULL AND cloud_id IS NOT NULL AND sync_status = 'pending'"
-        )
-        .all();
-    } catch (error) {
-      debugLogger.error(
-        "Error getting pending snippet deletes",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  hardDeleteSnippet(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db.prepare("DELETE FROM snippets WHERE id = ?").run(id);
-      return { success: result.changes > 0, id };
-    } catch (error) {
-      debugLogger.error("Error hard deleting snippet", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getSnippetForCloudMerge(cloudEntry) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!cloudEntry || typeof cloudEntry !== "object") return null;
-
-      const clientSnippetId =
-        typeof cloudEntry.client_snippet_id === "string" && cloudEntry.client_snippet_id
-          ? cloudEntry.client_snippet_id
-          : "";
-      if (clientSnippetId) {
-        const byClient = this.db
-          .prepare("SELECT * FROM snippets WHERE client_snippet_id = ? LIMIT 1")
-          .get(clientSnippetId);
-        if (byClient) return byClient;
-      }
-
-      if (typeof cloudEntry.id === "string" && cloudEntry.id) {
-        const byCloud = this.db
-          .prepare("SELECT * FROM snippets WHERE cloud_id = ? LIMIT 1")
-          .get(cloudEntry.id);
-        if (byCloud) return byCloud;
-      }
-
-      const trigger = typeof cloudEntry.trigger === "string" ? cloudEntry.trigger.trim() : "";
-      if (!trigger) return null;
-      const byActiveTrigger = this.db
-        .prepare(
-          "SELECT * FROM snippets WHERE lower(trigger) = lower(?) AND deleted_at IS NULL LIMIT 1"
-        )
-        .get(trigger);
-      if (byActiveTrigger) return byActiveTrigger;
-      return (
-        this.db
-          .prepare(
-            "SELECT * FROM snippets WHERE lower(trigger) = lower(?) AND deleted_at IS NOT NULL LIMIT 1"
-          )
-          .get(trigger) || null
-      );
-    } catch (error) {
-      debugLogger.error(
-        "Error getting snippet for cloud merge",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  upsertSnippetFromCloud(cloudEntry) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!cloudEntry || typeof cloudEntry !== "object") return null;
-      if (typeof cloudEntry.id !== "string" || !cloudEntry.id) return null;
-
-      const trigger = typeof cloudEntry.trigger === "string" ? cloudEntry.trigger.trim() : "";
-      const replacement =
-        typeof cloudEntry.replacement === "string" ? cloudEntry.replacement.trim() : "";
-      if (!trigger || !replacement) return null;
-
-      const clientSnippetId =
-        typeof cloudEntry.client_snippet_id === "string" && cloudEntry.client_snippet_id
-          ? cloudEntry.client_snippet_id
-          : randomUUID();
-      const updatedAt =
-        typeof cloudEntry.updated_at === "string" && cloudEntry.updated_at
-          ? cloudEntry.updated_at
-          : typeof cloudEntry.created_at === "string" && cloudEntry.created_at
-            ? cloudEntry.created_at
-            : new Date().toISOString();
-      const createdAt =
-        typeof cloudEntry.created_at === "string" && cloudEntry.created_at
-          ? cloudEntry.created_at
-          : updatedAt;
-
-      const existing = this.getSnippetForCloudMerge({
-        ...cloudEntry,
-        client_snippet_id: clientSnippetId,
-        trigger,
-      });
-
-      if (existing) {
-        // A different active row may already hold this trigger (cross-device
-        // rename); it must yield first or the UPDATE trips the active-trigger
-        // unique index and aborts the pull.
-        const collidingActive = this.db
-          .prepare(
-            "SELECT * FROM snippets WHERE lower(trigger) = lower(?) AND deleted_at IS NULL AND id != ? LIMIT 1"
-          )
-          .get(trigger, existing.id);
-        // Tombstone existing → keep the active collider; else keep existing and
-        // drop the stale collider.
-        const target = existing.deleted_at && collidingActive ? collidingActive : existing;
-        const orphanId = target.id === existing.id ? collidingActive?.id : existing.id;
-        if (orphanId) {
-          this.db.prepare("DELETE FROM snippets WHERE id = ?").run(orphanId);
-        }
-        this.db
-          .prepare(
-            `UPDATE snippets
-             SET cloud_id = ?, client_snippet_id = ?, trigger = ?, replacement = ?,
-                 sync_status = 'synced', deleted_at = NULL, updated_at = ?
-             WHERE id = ?`
-          )
-          .run(cloudEntry.id, clientSnippetId, trigger, replacement, updatedAt, target.id);
-        return this.db.prepare("SELECT * FROM snippets WHERE id = ?").get(target.id);
-      }
-
-      this.db
-        .prepare(
-          `INSERT INTO snippets
-             (trigger, replacement, client_snippet_id, cloud_id, sync_status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'synced', ?, ?)`
-        )
-        .run(trigger, replacement, clientSnippetId, cloudEntry.id, createdAt, updatedAt);
-      return this.db
-        .prepare("SELECT * FROM snippets WHERE client_snippet_id = ?")
-        .get(clientSnippetId);
-    } catch (error) {
-      debugLogger.error("Error upserting snippet from cloud", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  markSnippetSynced(
-    id,
-    cloudId,
-    serverUpdatedAt = null,
-    expectedTrigger = null,
-    expectedReplacement = null
-  ) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      // If a user edit landed between push and ack, the row no longer matches
-      // what was pushed — leave it 'pending' so the next sync re-pushes it.
-      const result = this.db
-        .prepare(
-          `UPDATE snippets
-           SET sync_status = 'synced',
-               cloud_id = ?,
-               updated_at = COALESCE(?, updated_at)
-           WHERE id = ? AND deleted_at IS NULL
-             AND (? IS NULL OR trigger = ?)
-             AND (? IS NULL OR replacement = ?)`
-        )
-        .run(
-          cloudId,
-          serverUpdatedAt,
-          id,
-          expectedTrigger,
-          expectedTrigger,
-          expectedReplacement,
-          expectedReplacement
-        );
-      return { success: result.changes > 0, changes: result.changes };
-    } catch (error) {
-      debugLogger.error("Error marking snippet synced", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  clearSnippetCloudId(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db
-        .prepare("UPDATE snippets SET cloud_id = NULL, sync_status = 'pending' WHERE id = ?")
-        .run(id);
-      return { success: result.changes > 0 };
-    } catch (error) {
-      debugLogger.error("Error clearing snippet cloud_id", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  saveNote(
-    title,
-    content,
-    noteType = "personal",
-    sourceFile = null,
-    audioDuration = null,
-    folderId = null,
-    spaceId = null
-  ) {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      if (folderId) {
-        // D2: a note's space always follows its folder's space.
-        const folder = this._getFolderInAccountScope(folderId);
-        if (!folder) throw new Error("Folder not found in the active account scope");
-        spaceId = folder.space_id;
-      } else {
-        if (spaceId == null) spaceId = this.getPrivateSpaceId();
-        if (!this.getSpace(spaceId)) throw new Error("Space not found in the active account scope");
-        const defaultFolderName = noteType === "meeting" ? "Meetings" : "Personal";
-        const folderScope = this._accountScopeCondition("folders");
-        const defaultFolder = this.db
-          .prepare(
-            `SELECT id FROM folders
-             WHERE name = ? AND is_default = 1 AND space_id = ? AND ${folderScope.sql}`
-          )
-          .get(defaultFolderName, spaceId, ...folderScope.params);
-        folderId = defaultFolder?.id || null;
-      }
-      const clientNoteId = randomUUID();
-      const accountId = this._accountIdForSpace(spaceId);
-      const stmt = this.db.prepare(
-        "INSERT INTO notes (title, content, note_type, source_file, audio_duration_seconds, folder_id, space_id, client_note_id, account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-      );
-      const result = stmt.run(
-        title,
-        content,
-        noteType,
-        sourceFile,
-        audioDuration,
-        folderId,
-        spaceId,
-        clientNoteId,
-        accountId
-      );
-
-      const fetchStmt = this.db.prepare("SELECT * FROM notes WHERE id = ?");
-      const note = fetchStmt.get(result.lastInsertRowid);
-
-      return { success: true, note };
-    } catch (error) {
-      debugLogger.error("Error saving note", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  /**
-   * Bulk-insert externally imported notes (e.g. a Granola CSV export).
-   * Unlike saveNote, rows carry their own client_note_id and original
-   * created_at/updated_at; the UNIQUE client_note_id index makes re-imports
-   * idempotent (duplicates are skipped, never overwritten).
-   */
-  importNotes(rows, { noteType = "meeting", folderName = "Imported" } = {}) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const spaceId = this.getPrivateSpaceId();
-      const accountId = this._accountIdForSpace(spaceId);
-
-      let folderId = null;
-      try {
-        const folderScope = this._accountScopeCondition("folders");
-        const existing = this.db
-          .prepare(
-            `SELECT id FROM folders
-             WHERE name = ? AND space_id = ? AND deleted_at IS NULL AND ${folderScope.sql}`
-          )
-          .get(folderName, spaceId, ...folderScope.params);
-        folderId = existing?.id ?? this.createFolder(folderName, spaceId)?.folder?.id ?? null;
-      } catch (folderError) {
-        debugLogger.error(
-          "Import folder resolution failed; importing without a folder",
-          { error: folderError.message },
-          "notes"
-        );
-      }
-
-      const insert = this.db.prepare(`
-        INSERT INTO notes (client_note_id, title, content, note_type, source_file,
-          folder_id, space_id, account_id, transcript, participants, sync_status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending',
-          COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
-        ON CONFLICT(client_note_id) DO NOTHING
-      `);
-
-      let imported = 0;
-      let skipped = 0;
-      const noteIds = [];
-      const errors = [];
-      this.db.transaction(() => {
-        for (const row of rows) {
-          try {
-            const result = insert.run(
-              row.clientNoteId,
-              row.title,
-              row.content,
-              noteType,
-              row.sourceFile,
-              folderId,
-              spaceId,
-              accountId,
-              row.transcript,
-              row.participants,
-              row.createdAt,
-              row.createdAt
-            );
-            if (result.changes === 1) {
-              imported++;
-              noteIds.push(Number(result.lastInsertRowid));
-            } else {
-              skipped++;
-            }
-          } catch (rowError) {
-            errors.push({ clientNoteId: row.clientNoteId, error: rowError.message });
-          }
-        }
-      })();
-
-      return { success: true, imported, skipped, folderId, noteIds, errors };
-    } catch (error) {
-      debugLogger.error("Error importing notes", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  getExistingClientNoteIds(clientNoteIds) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const existing = [];
-      for (let i = 0; i < clientNoteIds.length; i += 500) {
-        const chunk = clientNoteIds.slice(i, i + 500);
-        const placeholders = chunk.map(() => "?").join(",");
-        const found = this.db
-          .prepare(`SELECT client_note_id FROM notes WHERE client_note_id IN (${placeholders})`)
-          .all(...chunk);
-        existing.push(...found.map((row) => row.client_note_id));
-      }
-      return existing;
-    } catch (error) {
-      debugLogger.error("Error checking client note ids", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  getNote(id) {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      const accountScope = this._accountScopeCondition("notes");
-      const stmt = this.db.prepare(`SELECT * FROM notes WHERE id = ? AND ${accountScope.sql}`);
-      return stmt.get(id, ...accountScope.params) || null;
-    } catch (error) {
-      debugLogger.error("Error getting note", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  getNoteByCloudId(cloudId) {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      const accountScope = this._accountScopeCondition("notes");
-      const stmt = this.db.prepare(
-        `SELECT * FROM notes
-         WHERE cloud_id = ? AND deleted_at IS NULL AND ${accountScope.sql}
-         LIMIT 1`
-      );
-      return stmt.get(cloudId, ...accountScope.params) || null;
-    } catch (error) {
-      debugLogger.error("Error getting note by cloud_id", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  getNotes(noteType = null, limit = 100, folderId = null, spaceId = null) {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      const conditions = ["deleted_at IS NULL"];
-      const params = [];
-      const accountScope = this._accountScopeCondition("notes");
-      conditions.push(accountScope.sql);
-      params.push(...accountScope.params);
-      if (noteType) {
-        conditions.push("note_type = ?");
-        params.push(noteType);
-      }
-      if (folderId != null) {
-        conditions.push("folder_id = ?");
-        params.push(folderId);
-      } else if (spaceId != null) {
-        // spaceId without folderId lists a space's root: folderless notes only.
-        conditions.push("folder_id IS NULL");
-      }
-      if (spaceId != null) {
-        conditions.push("space_id = ?");
-        params.push(spaceId);
-      }
-      const where = `WHERE ${conditions.join(" AND ")}`;
-      const stmt = this.db.prepare(`SELECT * FROM notes ${where} ORDER BY updated_at DESC LIMIT ?`);
-      params.push(limit);
-      return stmt.all(...params);
-    } catch (error) {
-      debugLogger.error("Error getting notes", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  // Unlike getNotes(null, limit, null, spaceId) — which is root-only — this
-  // lists every note in the space, foldered or not (space overview list).
-  getNotesForSpace(spaceId, limit = 50) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("notes");
-      return this.db
-        .prepare(
-          `SELECT * FROM notes
-           WHERE space_id = ? AND deleted_at IS NULL AND ${accountScope.sql}
-           ORDER BY updated_at DESC LIMIT ?`
-        )
-        .all(spaceId, ...accountScope.params, limit);
-    } catch (error) {
-      debugLogger.error("Error getting notes for space", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  getNoteIdsInFolder(folderId) {
-    return this.getNoteIdsInScope(null, folderId);
-  }
-
-  // Authoritative scope membership for semantic-search candidates. Qdrant
-  // payload writes are asynchronous/best-effort, so its filters are only an
-  // optimization and must not decide which space or folder a hit belongs to.
-  getNoteIdsInScope(spaceId = null, folderId = null, candidateIds = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (candidateIds && candidateIds.length === 0) return [];
-      const conditions = ["deleted_at IS NULL"];
-      const params = [];
-      const accountScope = this._accountScopeCondition("notes");
-      conditions.push(accountScope.sql);
-      params.push(...accountScope.params);
-      if (candidateIds) {
-        conditions.push(`id IN (${candidateIds.map(() => "?").join(", ")})`);
-        params.push(...candidateIds);
-      }
-      if (spaceId != null) {
-        conditions.push("space_id = ?");
-        params.push(spaceId);
-      }
-      if (folderId != null) {
-        conditions.push("folder_id = ?");
-        params.push(folderId);
-      }
-      return this.db
-        .prepare(`SELECT id FROM notes WHERE ${conditions.join(" AND ")}`)
-        .all(...params)
-        .map((row) => row.id);
-    } catch (error) {
-      debugLogger.error("Error getting scoped note ids", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  updateNote(id, updates) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(id)) return { success: false, error: "Note not found" };
-      updates = { ...updates };
-      delete updates.account_id;
-      if (updates.folder_id != null) {
-        // D2: a note's space always follows its folder's space.
-        const folder = this._getFolderInAccountScope(updates.folder_id);
-        if (folder) updates = { ...updates, space_id: folder.space_id };
-        else return { success: false, error: "Folder not found" };
-      }
-      if (updates.space_id !== undefined) {
-        if (!this.getSpace(updates.space_id)) {
-          return { success: false, error: "Space not found" };
-        }
-        updates.account_id = this._accountIdForSpace(updates.space_id);
-        // D6: a cloud-backed note leaving a team must keep pushing until the
-        // scope retraction lands, even when cloud backup is off (left_team
-        // keeps it in the team-only pending queue). Identity forks null the
-        // cloud_id — nothing to retract, so they never set the flag.
-        const current = this.db
-          .prepare(
-            "SELECT n.space_id, n.cloud_id, s.kind AS space_kind FROM notes n LEFT JOIN spaces s ON s.id = n.space_id WHERE n.id = ?"
-          )
-          .get(id);
-        if (current && current.space_id !== updates.space_id) {
-          const newKind = this.db
-            .prepare("SELECT kind FROM spaces WHERE id = ?")
-            .get(updates.space_id)?.kind;
-          const keepsCloudId =
-            updates.cloud_id === undefined ? current.cloud_id != null : updates.cloud_id != null;
-          if (current.space_kind === "team" && newKind === "private" && keepsCloudId) {
-            updates = { ...updates, left_team: 1 };
-          } else if (newKind === "team") {
-            updates = { ...updates, left_team: 0 };
-          }
-        }
-      }
-      const allowedFields = [
-        "title",
-        "content",
-        "enhanced_content",
-        "enhancement_prompt",
-        "enhanced_at_content_hash",
-        "folder_id",
-        "space_id",
-        "transcript",
-        "calendar_event_id",
-        "participants",
-        "diarization_enabled",
-        "expected_speaker_count",
-        "sync_status",
-        "deleted_at",
-        "client_note_id",
-        "cloud_id",
-        "cloud_updated_at",
-        "owner_user_id",
-        "updated_by_user_id",
-        "left_team",
-        "account_id",
-      ];
-      const fields = [];
-      const values = [];
-      for (const [key, value] of Object.entries(updates)) {
-        if (allowedFields.includes(key) && value !== undefined) {
-          fields.push(`${key} = ?`);
-          values.push(value);
-        }
-      }
-      if (fields.length === 0) return { success: false };
-      // Re-queue for cloud sync on any local edit, so post-sync field changes aren't
-      // left local-only and overwritten by a later pull.
-      if (!("sync_status" in updates)) {
-        fields.push("sync_status = 'pending'");
-      }
-      fields.push("updated_at = CURRENT_TIMESTAMP");
-      values.push(id);
-      const accountScope = this._accountScopeCondition("notes");
-      const stmt = this.db.prepare(
-        `UPDATE notes SET ${fields.join(", ")} WHERE id = ? AND ${accountScope.sql}`
-      );
-      const result = stmt.run(...values, ...accountScope.params);
-      if (result.changes === 0) return { success: false, error: "Note not found" };
-      const fetchStmt = this.db.prepare("SELECT * FROM notes WHERE id = ?");
-      const note = fetchStmt.get(id);
-      return { success: true, note };
-    } catch (error) {
-      debugLogger.error("Error updating note", { error: error.message }, "notes");
-      throw error;
-    }
+  updateSpace(id, { name, emoji } = {}) {
+    const fields = [];
+    const values = [];
+    if (name !== undefined) { fields.push("name = ?"); values.push(name); }
+    if (emoji !== undefined) { fields.push("emoji = ?"); values.push(emoji); }
+    if (fields.length === 0) return { success: false };
+    values.push(id);
+    const result = this.db.prepare(`UPDATE spaces SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...values);
+    return { success: result.changes > 0, space: this.getSpace(id) };
   }
 
   getFolders(spaceId = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const conditions = ["deleted_at IS NULL"];
-      const params = [];
-      const accountScope = this._accountScopeCondition("folders");
-      conditions.push(accountScope.sql);
-      params.push(...accountScope.params);
-      if (spaceId != null) {
-        conditions.push("space_id = ?");
-        params.push(spaceId);
-      }
-      return this.db
-        .prepare(
-          `SELECT * FROM folders WHERE ${conditions.join(" AND ")} ORDER BY sort_order ASC, created_at ASC`
-        )
-        .all(...params);
-    } catch (error) {
-      debugLogger.error("Error getting folders", { error: error.message }, "notes");
-      throw error;
-    }
+    const sql = spaceId == null
+      ? "SELECT * FROM folders ORDER BY sort_order, created_at"
+      : "SELECT * FROM folders WHERE space_id = ? ORDER BY sort_order, created_at";
+    return spaceId == null ? this.db.prepare(sql).all() : this.db.prepare(sql).all(spaceId);
   }
 
   createFolder(name, spaceId = null) {
+    const trimmed = String(name || "").trim();
+    spaceId ??= this._privateSpaceId();
+    if (!trimmed) return { success: false, error: "Folder name is required" };
+    if (!spaceId || !this.getSpace(spaceId)) return { success: false, error: "Space not found" };
+    const max = this.db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS value FROM folders WHERE space_id = ?").get(spaceId).value;
     try {
-      if (!this.db) throw new Error("Database not initialized");
-      const trimmed = (name || "").trim();
-      if (!trimmed) return { success: false, error: "Folder name is required" };
-      if (spaceId == null) spaceId = this.getPrivateSpaceId();
-      if (!this.getSpace(spaceId)) {
-        return { success: false, error: "Space not found" };
-      }
-      const accountScope = this._accountScopeCondition("folders");
-      const existing = this.db
-        .prepare(
-          `SELECT id FROM folders
-           WHERE name = ? AND space_id = ? AND ${FOLDER_NAME_TAKEN_FILTER}
-             AND ${accountScope.sql}`
-        )
-        .get(trimmed, spaceId, ...accountScope.params);
-      if (existing) return { success: false, error: "A folder with that name already exists" };
-      const maxOrder = this.db
-        .prepare("SELECT MAX(sort_order) as max_order FROM folders WHERE space_id = ?")
-        .get(spaceId);
-      const sortOrder = (maxOrder?.max_order ?? 0) + 1;
-      const clientFolderId = randomUUID();
-      const accountId = this._accountIdForSpace(spaceId);
-      const result = this.db
-        .prepare(
-          "INSERT INTO folders (name, sort_order, space_id, client_folder_id, account_id) VALUES (?, ?, ?, ?, ?)"
-        )
-        .run(trimmed, sortOrder, spaceId, clientFolderId, accountId);
-      const folder = this.db
-        .prepare("SELECT * FROM folders WHERE id = ?")
-        .get(result.lastInsertRowid);
-      return { success: true, folder };
+      const result = this.db.prepare("INSERT INTO folders (name, sort_order, space_id) VALUES (?, ?, ?)").run(trimmed, max + 1, spaceId);
+      return { success: true, folder: this.db.prepare("SELECT * FROM folders WHERE id = ?").get(result.lastInsertRowid) };
     } catch (error) {
-      debugLogger.error("Error creating folder", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  deleteAccountData(accountId) {
-    if (!this.db) throw new Error("Database not initialized");
-    if (!accountId || accountId !== this.activeAccountId) {
-      throw new Error("Account deletion must match the active account scope");
-    }
-
-    const deletedNoteIds = this.db
-      .prepare(
-        `SELECT notes.id
-         FROM notes
-         JOIN spaces ON spaces.id = notes.space_id
-         WHERE notes.account_id = ? AND spaces.kind = 'private'
-         ORDER BY notes.id`
-      )
-      .all(accountId)
-      .map((row) => row.id);
-    const deletedFolderIds = this.db
-      .prepare(
-        `SELECT folders.id
-         FROM folders
-         JOIN spaces ON spaces.id = folders.space_id
-         WHERE folders.account_id = ? AND spaces.kind = 'private'
-         ORDER BY folders.id`
-      )
-      .all(accountId)
-      .map((row) => row.id);
-
-    const notePlaceholders = deletedNoteIds.map(() => "?").join(", ");
-    const folderPlaceholders = deletedFolderIds.map(() => "?").join(", ");
-    const deleteRows = () => {
-      const conversationConditions = [];
-      const conversationParams = [];
-      if (deletedNoteIds.length > 0) {
-        conversationConditions.push(`note_id IN (${notePlaceholders})`);
-        conversationParams.push(...deletedNoteIds);
-      }
-      if (deletedFolderIds.length > 0) {
-        conversationConditions.push(`folder_id IN (${folderPlaceholders})`);
-        conversationParams.push(...deletedFolderIds);
-      }
-      if (conversationConditions.length > 0) {
-        const conversationIds = this.db
-          .prepare(
-            `SELECT id FROM agent_conversations WHERE ${conversationConditions.join(" OR ")}`
-          )
-          .all(...conversationParams)
-          .map((row) => row.id);
-        if (conversationIds.length > 0) {
-          const conversationPlaceholders = conversationIds.map(() => "?").join(", ");
-          this.db
-            .prepare(
-              `DELETE FROM agent_messages WHERE conversation_id IN (${conversationPlaceholders})`
-            )
-            .run(...conversationIds);
-          this.db
-            .prepare(`DELETE FROM agent_conversations WHERE id IN (${conversationPlaceholders})`)
-            .run(...conversationIds);
-        }
-      }
-
-      if (deletedNoteIds.length > 0) {
-        this.db
-          .prepare(`DELETE FROM speaker_mappings WHERE note_id IN (${notePlaceholders})`)
-          .run(...deletedNoteIds);
-        this.db
-          .prepare(`DELETE FROM note_speaker_embeddings WHERE note_id IN (${notePlaceholders})`)
-          .run(...deletedNoteIds);
-        this.db
-          .prepare(`DELETE FROM notes WHERE id IN (${notePlaceholders})`)
-          .run(...deletedNoteIds);
-      }
-      if (deletedFolderIds.length > 0) {
-        this.db
-          .prepare(
-            `DELETE FROM optimistic_folder_delete_rows WHERE folder_id IN (${folderPlaceholders})`
-          )
-          .run(...deletedFolderIds);
-        this.db
-          .prepare(`DELETE FROM folders WHERE id IN (${folderPlaceholders})`)
-          .run(...deletedFolderIds);
-      }
-      this.db.prepare("DELETE FROM analytics_events WHERE account_id = ?").run(accountId);
-      this.db.prepare("DELETE FROM analytics_clear_requests WHERE account_id = ?").run(accountId);
-      this.db.prepare("DELETE FROM space_accounts WHERE account_id = ?").run(accountId);
-    };
-
-    if (typeof this.db.transaction === "function") {
-      this.db.transaction(deleteRows)();
-    } else {
-      this.db.exec("BEGIN");
-      try {
-        deleteRows();
-        this.db.exec("COMMIT");
-      } catch (error) {
-        this.db.exec("ROLLBACK");
-        throw error;
-      }
-    }
-
-    return { deletedNoteIds, deletedFolderIds };
-  }
-
-  deleteFolder(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const folder = this._getFolderInAccountScope(id);
-      if (folder?.deleted_at) return { success: false, error: "Folder not found" };
-      if (!folder) return { success: false, error: "Folder not found" };
-      if (folder.is_default) return { success: false, error: "Cannot delete default folders" };
-      const allChildNotes = "SELECT id FROM notes WHERE folder_id = ?";
-      const childNotes = `${allChildNotes} AND deleted_at IS NULL`;
-      const accountScope = this._accountScopeCondition("notes");
-      const noteIds = this.db
-        .prepare(`${childNotes} AND ${accountScope.sql}`)
-        .all(id, ...accountScope.params)
-        .map((row) => row.id);
-      let relocatedNotes = [];
-      this.db.transaction(() => {
-        relocatedNotes = this._releaseOutOfScopeChildNotes(id);
-        if (!folder.cloud_id) {
-          // There is no server operation to deny. Local-only folders can
-          // finalize immediately, including their local-only child content.
-          this._retireConversationsWhere(`note_id IN (${allChildNotes})`, [id], {
-            scrubSyncedMessages: true,
-          });
-          this._deleteSpeakerRowsForNotes(allChildNotes, id);
-          this.db.prepare("DELETE FROM notes WHERE folder_id = ?").run(id);
-          this._retireConversationsWhere("folder_id = ?", [id], {
-            scrubSyncedMessages: true,
-          });
-          this.db.prepare("DELETE FROM folders WHERE id = ?").run(id);
-          return;
-        }
-
-        const journal = this.db.prepare(
-          `INSERT OR IGNORE INTO optimistic_folder_delete_rows
-             (folder_id, entity_type, entity_id, original_sync_status,
-              original_deleted_at, original_updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)`
-        );
-        journal.run(
-          id,
-          "folder",
-          id,
-          folder.sync_status ?? "synced",
-          folder.deleted_at ?? null,
-          folder.updated_at ?? null
-        );
-
-        const activeNotes = this.db.prepare(
-          "SELECT id, sync_status, deleted_at, updated_at FROM notes WHERE folder_id = ? AND deleted_at IS NULL"
-        );
-        for (const note of activeNotes.all(id)) {
-          journal.run(
-            id,
-            "note",
-            note.id,
-            note.sync_status ?? "pending",
-            note.deleted_at ?? null,
-            note.updated_at ?? null
-          );
-        }
-
-        // Only live conversations belong to this rollback. A tombstone that
-        // predates the folder action is an independent user-requested delete
-        // and must remain pending on both denial and confirmation.
-        const activeConversations = this.db
-          .prepare(
-            `SELECT id, sync_status, deleted_at, updated_at
-             FROM agent_conversations
-             WHERE deleted_at IS NULL
-               AND (folder_id = ? OR note_id IN (${childNotes}))`
-          )
-          .all(id, id);
-        for (const conversation of activeConversations) {
-          journal.run(
-            id,
-            "conversation",
-            conversation.id,
-            conversation.sync_status ?? "pending",
-            conversation.deleted_at ?? null,
-            conversation.updated_at ?? null
-          );
-        }
-
-        // Keep every child row and message body in place while hiding them
-        // from normal readers and all per-note/per-conversation sync queues.
-        this.db
-          .prepare(
-            `UPDATE notes
-             SET deleted_at = datetime('now'), sync_status = 'folder_delete_pending',
-                 updated_at = datetime('now')
-             WHERE id IN (
-               SELECT entity_id FROM optimistic_folder_delete_rows
-               WHERE folder_id = ? AND entity_type = 'note'
-             )`
-          )
-          .run(id);
-        this.db
-          .prepare(
-            `UPDATE agent_conversations
-             SET deleted_at = datetime('now'), sync_status = 'folder_delete_pending',
-                 updated_at = datetime('now')
-             WHERE id IN (
-               SELECT entity_id FROM optimistic_folder_delete_rows
-               WHERE folder_id = ? AND entity_type = 'conversation'
-             )`
-          )
-          .run(id);
-        this.db
-          .prepare(
-            `UPDATE folders
-             SET deleted_at = datetime('now'), updated_at = datetime('now'),
-                 sync_status = 'pending'
-             WHERE id = ?`
-          )
-          .run(id);
-      })();
-      return { success: true, id, noteIds, relocatedNotes };
-    } catch (error) {
-      debugLogger.error("Error deleting folder", { error: error.message }, "notes");
+      if (error.code === "SQLITE_CONSTRAINT_UNIQUE") return { success: false, error: "A folder with that name already exists" };
       throw error;
     }
   }
 
   renameFolder(id, name) {
+    const trimmed = String(name || "").trim();
+    if (!trimmed) return { success: false, error: "Folder name is required" };
     try {
-      if (!this.db) throw new Error("Database not initialized");
-      const folder = this._getFolderInAccountScope(id);
-      if (folder?.deleted_at) return { success: false, error: "Folder not found" };
-      if (!folder) return { success: false, error: "Folder not found" };
-      if (folder.is_default) return { success: false, error: "Cannot rename default folders" };
-      const trimmed = (name || "").trim();
-      if (!trimmed) return { success: false, error: "Folder name is required" };
-      const folderScope = this._accountScopeCondition("folders");
-      const existing = this.db
-        .prepare(
-          `SELECT id FROM folders
-           WHERE name = ? AND space_id = ? AND id != ? AND ${FOLDER_NAME_TAKEN_FILTER}
-             AND ${folderScope.sql}`
-        )
-        .get(trimmed, folder.space_id, id, ...folderScope.params);
-      if (existing) return { success: false, error: "A folder with that name already exists" };
-      this.db
-        .prepare(
-          "UPDATE folders SET name = ?, sync_status = 'pending', updated_at = datetime('now') WHERE id = ?"
-        )
-        .run(trimmed, id);
-      const updated = this.db.prepare("SELECT * FROM folders WHERE id = ?").get(id);
-      return { success: true, folder: updated };
+      const result = this.db.prepare("UPDATE folders SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(trimmed, id);
+      return { success: result.changes > 0, folder: this.db.prepare("SELECT * FROM folders WHERE id = ?").get(id) };
     } catch (error) {
-      debugLogger.error("Error renaming folder", { error: error.message }, "notes");
+      if (error.code === "SQLITE_CONSTRAINT_UNIQUE") return { success: false, error: "A folder with that name already exists" };
       throw error;
     }
   }
 
+  deleteFolder(id) {
+    const result = this.db.prepare("DELETE FROM folders WHERE id = ?").run(id);
+    return { success: result.changes > 0 };
+  }
+
   moveFolderToSpace(id, spaceId) {
+    if (!this.getSpace(spaceId)) return { success: false, error: "Space not found" };
     try {
-      if (!this.db) throw new Error("Database not initialized");
-      const folder = this._getFolderInAccountScope(id);
-      if (folder?.deleted_at) return { success: false, error: "Folder not found" };
-      if (!folder) return { success: false, error: "Folder not found" };
-      if (folder.is_default) return { success: false, error: "Cannot move default folders" };
-      const space = this.getSpace(spaceId);
-      if (!space) return { success: false, error: "Space not found" };
-      if (folder.space_id === spaceId) return { success: true, folder, notes: [] };
-      const folderScope = this._accountScopeCondition("folders");
-      const existing = this.db
-        .prepare(
-          `SELECT id FROM folders
-           WHERE name = ? AND space_id = ? AND id != ? AND ${FOLDER_NAME_TAKEN_FILTER}
-             AND ${folderScope.sql}`
-        )
-        .get(folder.name, spaceId, id, ...folderScope.params);
-      if (existing) return { success: false, error: "A folder with that name already exists" };
-      // D6: cloud-backed rows leaving a team must keep pushing their scope
-      // retraction even in the backup-off team-only pass (left_team).
-      const oldKind = this.db
-        .prepare("SELECT kind FROM spaces WHERE id = ?")
-        .get(folder.space_id)?.kind;
-      const leftTeam = oldKind === "team" && space.kind === "private" ? 1 : 0;
-      const nextAccountId = this._accountIdForSpace(spaceId);
-      const notes = this.db.transaction(() => {
-        this.db
-          .prepare(
-            "UPDATE folders SET space_id = ?, account_id = ?, sync_status = 'pending', updated_at = datetime('now'), left_team = ? WHERE id = ?"
-          )
-          .run(spaceId, nextAccountId, leftTeam && folder.cloud_id ? 1 : 0, id);
-        this.db
-          .prepare(
-            "UPDATE notes SET space_id = ?, account_id = ?, sync_status = 'pending', updated_at = datetime('now'), left_team = (CASE WHEN ? = 1 AND cloud_id IS NOT NULL THEN 1 ELSE 0 END) WHERE folder_id = ? AND deleted_at IS NULL"
-          )
-          .run(spaceId, nextAccountId, leftTeam, id);
-        return this.db
-          .prepare("SELECT * FROM notes WHERE folder_id = ? AND deleted_at IS NULL")
-          .all(id);
+      const result = this.db.transaction(() => {
+        const folder = this.db.prepare("SELECT id FROM folders WHERE id = ?").get(id);
+        if (!folder) return { changes: 0, notes: [] };
+        const updated = this.db.prepare("UPDATE folders SET space_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(spaceId, id);
+        this.db.prepare("UPDATE notes SET space_id = ?, updated_at = CURRENT_TIMESTAMP WHERE folder_id = ?").run(spaceId, id);
+        const notes = this.db.prepare("SELECT * FROM notes WHERE folder_id = ?").all(id);
+        return { changes: updated.changes, notes };
       })();
-      const updated = this.db.prepare("SELECT * FROM folders WHERE id = ?").get(id);
-      return { success: true, folder: updated, notes };
+      return { success: result.changes > 0, folder: this.db.prepare("SELECT * FROM folders WHERE id = ?").get(id), notes: result.notes };
     } catch (error) {
-      debugLogger.error("Error moving folder to space", { error: error.message }, "spaces");
+      if (error.code === "SQLITE_CONSTRAINT_UNIQUE") return { success: false, error: "A folder with that name already exists" };
       throw error;
     }
   }
 
   getFolderNoteCounts() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      // folder_id NULL rows are space-root notes; grouping by space_id too
-      // attributes them per space so the tree shows true space totals.
-      const accountScope = this._accountScopeCondition("notes");
-      return this.db
-        .prepare(
-          `SELECT space_id, folder_id, COUNT(*) as count
-           FROM notes
-           WHERE deleted_at IS NULL AND ${accountScope.sql}
-           GROUP BY space_id, folder_id`
-        )
-        .all(...accountScope.params);
-    } catch (error) {
-      debugLogger.error("Error getting folder note counts", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  getPrivateSpaceId() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db.prepare("SELECT id FROM spaces WHERE kind = 'private'").get()?.id ?? null;
-    } catch (error) {
-      debugLogger.error("Error getting private space id", { error: error.message }, "spaces");
-      throw error;
-    }
-  }
-
-  // Parses the teams JSON mirror so renderer consumers only ever see an array.
-  _spaceRow(row) {
-    if (!row) return row;
-    let teams = [];
-    if (row.teams) {
-      try {
-        teams = JSON.parse(row.teams);
-      } catch {
-        teams = [];
-      }
-    }
-    return { ...row, teams };
-  }
-
-  getSpaces() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          `SELECT * FROM spaces
-           WHERE deleted_at IS NULL
-             AND (kind = 'private' OR EXISTS (
-               SELECT 1 FROM space_accounts
-               WHERE space_accounts.space_id = spaces.id
-                 AND space_accounts.account_id = ?
-             ))
-           ORDER BY CASE WHEN kind = 'private' THEN 0 ELSE 1 END, sort_order ASC, name ASC`
-        )
-        .all(this.activeAccountId)
-        .map((row) => this._spaceRow(row));
-    } catch (error) {
-      debugLogger.error("Error getting spaces", { error: error.message }, "spaces");
-      throw error;
-    }
-  }
-
-  getSpace(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const row = this.db
-        .prepare(
-          `SELECT * FROM spaces
-           WHERE id = ? AND deleted_at IS NULL
-             AND (kind = 'private' OR EXISTS (
-               SELECT 1 FROM space_accounts
-               WHERE space_accounts.space_id = spaces.id
-                 AND space_accounts.account_id = ?
-             ))`
-        )
-        .get(id, this.activeAccountId);
-      return row ? this._spaceRow(row) : null;
-    } catch (error) {
-      debugLogger.error("Error getting space", { error: error.message }, "spaces");
-      throw error;
-    }
-  }
-
-  updateSpace(id, { name, emoji } = {}) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const space = this.getSpace(id);
-      if (!space) return { success: false, error: "Space not found" };
-      const fields = [];
-      const values = [];
-      if (name !== undefined) {
-        if (space.kind === "private") {
-          return { success: false, error: "Cannot rename the private space" };
-        }
-        const trimmed = (name || "").trim();
-        if (!trimmed) return { success: false, error: "Space name is required" };
-        fields.push("name = ?");
-        values.push(trimmed);
-      }
-      if (emoji !== undefined) {
-        fields.push("emoji = ?");
-        values.push(emoji);
-      }
-      if (fields.length === 0) return { success: false };
-      fields.push("sync_status = 'pending'", "updated_at = datetime('now')");
-      values.push(id);
-      this.db.prepare(`UPDATE spaces SET ${fields.join(", ")} WHERE id = ?`).run(...values);
-      const updated = this._spaceRow(this.db.prepare("SELECT * FROM spaces WHERE id = ?").get(id));
-      return { success: true, space: updated };
-    } catch (error) {
-      debugLogger.error("Error updating space", { error: error.message }, "spaces");
-      throw error;
-    }
-  }
-
-  setSpaceSyncStatus(id, status) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getSpace(id)) return { success: false, space: null };
-      const result = this.db
-        .prepare("UPDATE spaces SET sync_status = ? WHERE id = ? AND deleted_at IS NULL")
-        .run(status, id);
-      const success = result.changes > 0;
-      return { success, space: success ? this.getSpace(id) : null };
-    } catch (error) {
-      debugLogger.error("Error setting space sync status", { error: error.message }, "spaces");
-      throw error;
-    }
-  }
-
-  getSpaceByCloudSpaceId(cloudSpaceId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const row = this.db
-        .prepare("SELECT * FROM spaces WHERE cloud_space_id = ?")
-        .get(cloudSpaceId);
-      return row ? this._spaceRow(row) : null;
-    } catch (error) {
-      debugLogger.error(
-        "Error getting space by cloud space id",
-        { error: error.message },
-        "spaces"
-      );
-      throw error;
-    }
-  }
-
-  upsertSpaceFromCloud(space) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.activeAccountId) {
-        throw new Error("Cannot cache a cloud space without an active account scope");
-      }
-      const updatedAt = space.updated_at || space.created_at || new Date().toISOString();
-      const teams = Array.isArray(space.teams) ? space.teams : [];
-      const teamsJson = JSON.stringify(teams);
-      let existing = this.db.prepare("SELECT * FROM spaces WHERE cloud_space_id = ?").get(space.id);
-      if (!existing && teams.length === 1) {
-        // Adopt a pre-spaces row: the server backfilled one space per legacy
-        // team, so a single-team space claims the local row that mirrored that
-        // team. Keeps local ids alive for chats, vector payloads and tree state.
-        existing = this.db
-          .prepare("SELECT * FROM spaces WHERE cloud_space_id IS NULL AND cloud_team_id = ?")
-          .get(teams[0].id);
-      }
-      if (existing) {
-        this.db
-          .prepare(
-            `UPDATE spaces SET cloud_space_id = ?, workspace_id = ?, name = ?, emoji = ?, my_role = ?,
-               member_count = ?, teams = ?, deleted_at = NULL, updated_at = ? WHERE id = ?`
-          )
-          .run(
-            space.id,
-            space.workspace_id ?? null,
-            space.name,
-            space.emoji ?? null,
-            space.my_role ?? null,
-            space.member_count ?? null,
-            teamsJson,
-            updatedAt,
-            existing.id
-          );
-        this.db
-          .prepare("INSERT OR IGNORE INTO space_accounts (space_id, account_id) VALUES (?, ?)")
-          .run(existing.id, this.activeAccountId);
-        return this._spaceRow(
-          this.db.prepare("SELECT * FROM spaces WHERE id = ?").get(existing.id)
-        );
-      }
-      const maxOrder = this.db.prepare("SELECT MAX(sort_order) as max_order FROM spaces").get();
-      // New spaces insert as 'pending' (skeletons until the content backfill
-      // completes); updates never touch sync_status, so an interrupted
-      // backfill's 'pending' survives the next mirror pass and re-runs.
-      const result = this.db
-        .prepare(
-          `INSERT INTO spaces (client_space_id, cloud_space_id, workspace_id, kind, name, emoji,
-             sort_order, my_role, member_count, teams, sync_status, created_at, updated_at)
-           VALUES (?, ?, ?, 'team', ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
-        )
-        .run(
-          randomUUID(),
-          space.id,
-          space.workspace_id ?? null,
-          space.name,
-          space.emoji ?? null,
-          (maxOrder?.max_order ?? 0) + 1,
-          space.my_role ?? null,
-          space.member_count ?? null,
-          teamsJson,
-          space.created_at || updatedAt,
-          updatedAt
-        );
-      this.db
-        .prepare("INSERT OR IGNORE INTO space_accounts (space_id, account_id) VALUES (?, ?)")
-        .run(result.lastInsertRowid, this.activeAccountId);
-      return this._spaceRow(
-        this.db.prepare("SELECT * FROM spaces WHERE id = ?").get(result.lastInsertRowid)
-      );
-    } catch (error) {
-      debugLogger.error("Error upserting space from cloud", { error: error.message }, "spaces");
-      throw error;
-    }
-  }
-
-  // Speaker rows cascade on note delete (ON DELETE CASCADE), but callers that
-  // only tombstone notes still need the explicit cleanup.
-  _deleteSpeakerRowsForNotes(noteIdSubquery, param) {
-    this.db.prepare(`DELETE FROM speaker_mappings WHERE note_id IN (${noteIdSubquery})`).run(param);
-    this.db
-      .prepare(`DELETE FROM note_speaker_embeddings WHERE note_id IN (${noteIdSubquery})`)
-      .run(param);
-  }
-
-  // Conversations whose note or container is being removed must not survive
-  // as global chats. Synced rows tombstone (like deleteAgentConversation) so
-  // the next push retires the cloud copy; a hard local delete would let the
-  // next pull resurrect the conversation. Irreversible purge/revocation
-  // callers also scrub their messages, while an optimistic ordinary delete
-  // retains synced messages until the server accepts it. Never-synced rows
-  // hard-delete: there is no server row to retire, and a bare tombstone would
-  // linger forever (getPendingConversationDeletes requires a cloud_id).
-  _retireConversationsWhere(
-    filter,
-    params,
-    { scrubSyncedMessages = false, syncedTombstoneStatus = "pending" } = {}
-  ) {
-    const messageFilter = scrubSyncedMessages ? filter : `cloud_id IS NULL AND (${filter})`;
-    this.db
-      .prepare(
-        `DELETE FROM agent_messages WHERE conversation_id IN (SELECT id FROM agent_conversations WHERE ${messageFilter})`
-      )
-      .run(...params);
-    this.db
-      .prepare(`DELETE FROM agent_conversations WHERE cloud_id IS NULL AND (${filter})`)
-      .run(...params);
-    this.db
-      .prepare(
-        `UPDATE agent_conversations SET deleted_at = datetime('now'), sync_status = ?, updated_at = datetime('now') WHERE cloud_id IS NOT NULL AND deleted_at IS NULL AND (${filter})`
-      )
-      .run(syncedTombstoneStatus, ...params);
-  }
-
-  // Account transitions are a local privacy boundary, not a cloud mutation:
-  // no old-account conversation row (including a pending cloud tombstone)
-  // may remain for the next account to see or push.
-  _hardDeleteConversationsWhere(filter, params) {
-    this.db
-      .prepare(
-        `DELETE FROM agent_messages WHERE conversation_id IN (SELECT id FROM agent_conversations WHERE ${filter})`
-      )
-      .run(...params);
-    this.db.prepare(`DELETE FROM agent_conversations WHERE ${filter}`).run(...params);
-  }
-
-  purgeSpace(localSpaceId, options = {}) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const mode = options?.mode ?? "preserve-dirty";
-      if (mode !== "preserve-dirty" && mode !== "destructive") {
-        return { success: false, error: "Invalid purge mode" };
-      }
-      const destructive = mode === "destructive";
-      const space = this.getSpace(localSpaceId);
-      if (!space) return { success: false, error: "Space not found" };
-      if (space.kind === "private") {
-        return { success: false, error: "Cannot purge the private space" };
-      }
-      if (this._releaseActiveSpaceMembershipIfShared(localSpaceId)) {
-        return {
-          success: true,
-          noteIds: [],
-          folderNames: [],
-          spaceId: localSpaceId,
-          relocatedNotes: [],
-          relocatedCount: 0,
-          relocatedTitles: [],
-          preservedForOtherAccounts: true,
-        };
-      }
-      if (!destructive) {
-        // Space revocation supersedes any unresolved folder delete. Recover
-        // the held rows first so dirty/local-only children are classified by
-        // their real pre-delete state and can still relocate to Personal.
-        const heldFolderIds = this.db
-          .prepare(
-            `SELECT DISTINCT r.folder_id
-             FROM optimistic_folder_delete_rows r
-             JOIN folders f ON f.id = r.folder_id
-             WHERE r.entity_type = 'folder' AND f.space_id = ?`
-          )
-          .all(localSpaceId)
-          .map((row) => row.folder_id);
-        for (const folderId of heldFolderIds) {
-          const rollback = this.restoreFolderAfterDeniedDelete(folderId);
-          if (!rollback.success) return rollback;
-        }
-      }
-      const privateSpaceId = this.getPrivateSpaceId();
-      const { noteIds, folderNames, relocatedNotes } = this.db.transaction(() => {
-        // Dirty or never-synced notes are the only surviving content (plan
-        // §7.2, matching relocateRevokedFolder): they move to the private
-        // space root with forked identities — the server row (if any) stays
-        // the team's, so the next push re-creates them as personal notes.
-        let relocated = [];
-        if (!destructive && privateSpaceId != null) {
-          const preservedIds = this.db
-            .prepare(
-              "SELECT id FROM notes WHERE space_id = ? AND deleted_at IS NULL AND (sync_status != 'synced' OR cloud_id IS NULL)"
-            )
-            .all(localSpaceId)
-            .map((row) => row.id);
-          if (preservedIds.length > 0) {
-            const relocateNote = this.db.prepare(
-              "UPDATE notes SET space_id = ?, folder_id = NULL, client_note_id = ?, cloud_id = NULL, cloud_updated_at = NULL, owner_user_id = NULL, updated_by_user_id = NULL, sync_status = 'pending', left_team = 0, is_shared = 0, share_token = NULL, updated_at = datetime('now') WHERE id = ?"
-            );
-            const detachNoteConversation = this.db.prepare(
-              "UPDATE agent_conversations SET space_id = NULL, folder_id = NULL WHERE note_id = ?"
-            );
-            for (const noteId of preservedIds) {
-              relocateNote.run(privateSpaceId, randomUUID(), noteId);
-              // A note chat follows the dirty note fork into Personal. Clear
-              // any redundant team-container scope so the container cleanup
-              // below cannot retire a conversation whose note survived.
-              detachNoteConversation.run(noteId);
-            }
-            const getNote = this.db.prepare("SELECT * FROM notes WHERE id = ?");
-            relocated = preservedIds.map((id) => getNote.get(id));
-          }
-        }
-        const ids = this.db
-          .prepare("SELECT id FROM notes WHERE space_id = ?")
-          .all(localSpaceId)
-          .map((row) => row.id);
-        const names = this.db
-          .prepare("SELECT name FROM folders WHERE space_id = ?")
-          .all(localSpaceId)
-          .map((row) => row.name);
-        // Note chats normally carry only note_id, so container cleanup alone
-        // cannot see them. Retire them while the doomed note rows still
-        // identify the space; relocated dirty-note chats were moved above.
-        if (destructive) {
-          // Account-boundary cleanup must leave neither visible chats nor
-          // cloud-delete tombstones. Match note-only chats and both kinds of
-          // container scope before deleting their parent rows.
-          this._hardDeleteConversationsWhere(
-            `note_id IN (SELECT id FROM notes WHERE space_id = ?)
-             OR space_id = ?
-             OR folder_id IN (SELECT id FROM folders WHERE space_id = ?)`,
-            [localSpaceId, localSpaceId, localSpaceId]
-          );
-          this.db
-            .prepare(
-              `DELETE FROM optimistic_folder_delete_rows
-               WHERE folder_id IN (SELECT id FROM folders WHERE space_id = ?)`
-            )
-            .run(localSpaceId);
-        } else {
-          this._retireConversationsWhere(
-            "note_id IN (SELECT id FROM notes WHERE space_id = ?)",
-            [localSpaceId],
-            { scrubSyncedMessages: true }
-          );
-        }
-        this._deleteSpeakerRowsForNotes("SELECT id FROM notes WHERE space_id = ?", localSpaceId);
-        this.db.prepare("DELETE FROM notes WHERE space_id = ?").run(localSpaceId);
-        // Deleted-note tombstones in other spaces can still reference folders
-        // in this space (folder moved across spaces after the delete); clear
-        // the refs or the folder delete below aborts on the FK.
-        this.db
-          .prepare(
-            "UPDATE notes SET folder_id = NULL WHERE space_id != ? AND folder_id IN (SELECT id FROM folders WHERE space_id = ?)"
-          )
-          .run(localSpaceId, localSpaceId);
-        if (!destructive) {
-          this._retireConversationsWhere(
-            "space_id = ? OR folder_id IN (SELECT id FROM folders WHERE space_id = ?)",
-            [localSpaceId, localSpaceId],
-            { scrubSyncedMessages: true }
-          );
-        }
-        this.db.prepare("DELETE FROM folders WHERE space_id = ?").run(localSpaceId);
-        this.db.prepare("DELETE FROM spaces WHERE id = ?").run(localSpaceId);
-        return { noteIds: ids, folderNames: names, relocatedNotes: relocated };
-      })();
-      return {
-        success: true,
-        noteIds,
-        folderNames,
-        spaceId: localSpaceId,
-        relocatedNotes,
-        relocatedCount: relocatedNotes.length,
-        relocatedTitles: relocatedNotes.slice(0, 3).map((note) => note.title),
-      };
-    } catch (error) {
-      debugLogger.error("Error purging space", { error: error.message }, "spaces");
-      throw error;
-    }
-  }
-
-  getActions() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db.prepare("SELECT * FROM actions ORDER BY sort_order ASC, created_at ASC").all();
-    } catch (error) {
-      debugLogger.error("Error getting actions", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  getAction(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db.prepare("SELECT * FROM actions WHERE id = ?").get(id) || null;
-    } catch (error) {
-      debugLogger.error("Error getting action", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  createAction(name, description, prompt, icon = "sparkles") {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const trimmedName = (name || "").trim();
-      const trimmedPrompt = (prompt || "").trim();
-      if (!trimmedName) return { success: false, error: "Action name is required" };
-      if (!trimmedPrompt) return { success: false, error: "Action prompt is required" };
-      const maxOrder = this.db.prepare("SELECT MAX(sort_order) as max_order FROM actions").get();
-      const sortOrder = (maxOrder?.max_order ?? 0) + 1;
-      const result = this.db
-        .prepare(
-          "INSERT INTO actions (name, description, prompt, icon, sort_order) VALUES (?, ?, ?, ?, ?)"
-        )
-        .run(trimmedName, (description || "").trim(), trimmedPrompt, icon || "sparkles", sortOrder);
-      const action = this.db
-        .prepare("SELECT * FROM actions WHERE id = ?")
-        .get(result.lastInsertRowid);
-      return { success: true, action };
-    } catch (error) {
-      debugLogger.error("Error creating action", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  updateAction(id, updates) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const allowedFields = ["name", "description", "prompt", "icon", "sort_order"];
-      const fields = [];
-      const values = [];
-      for (const [key, value] of Object.entries(updates)) {
-        if (allowedFields.includes(key) && value !== undefined) {
-          fields.push(`${key} = ?`);
-          values.push(value);
-        }
-      }
-      if (fields.length === 0) return { success: false };
-      fields.push("updated_at = CURRENT_TIMESTAMP");
-      values.push(id);
-      this.db.prepare(`UPDATE actions SET ${fields.join(", ")} WHERE id = ?`).run(...values);
-      const action = this.db.prepare("SELECT * FROM actions WHERE id = ?").get(id);
-      return { success: true, action };
-    } catch (error) {
-      debugLogger.error("Error updating action", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  deleteAction(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const action = this.db.prepare("SELECT * FROM actions WHERE id = ?").get(id);
-      if (!action) return { success: false, error: "Action not found" };
-      if (action.is_builtin) return { success: false, error: "Cannot delete built-in actions" };
-      this.db.prepare("DELETE FROM actions WHERE id = ?").run(id);
-      return { success: true, id };
-    } catch (error) {
-      debugLogger.error("Error deleting action", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  deleteNote(id) {
-    try {
-      if (!this.db) {
-        throw new Error("Database not initialized");
-      }
-      const accountScope = this._accountScopeCondition("notes");
-      const stmt = this.db.prepare(
-        `UPDATE notes
-         SET deleted_at = datetime('now'), sync_status = 'pending', updated_at = datetime('now')
-         WHERE id = ? AND deleted_at IS NULL AND ${accountScope.sql}`
-      );
-      const result = stmt.run(id, ...accountScope.params);
-      return { success: result.changes > 0, id };
-    } catch (error) {
-      debugLogger.error("Error deleting note", { error: error.message }, "notes");
-      throw error;
-    }
-  }
-
-  createAgentConversation(title = "Untitled", noteId = null, spaceId = null, folderId = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db.transaction(() => {
-        let note = null;
-        let space = null;
-        let folder = null;
-
-        if (noteId != null) {
-          note = this.getNote(noteId);
-          if (!note || note.deleted_at) return null;
-          if (note.folder_id != null) {
-            const noteFolder = this._getFolderInAccountScope(note.folder_id);
-            if (!noteFolder || noteFolder.deleted_at || noteFolder.space_id !== note.space_id) {
-              return null;
-            }
-          }
-        }
-        if (spaceId != null) {
-          space = this.getSpace(spaceId);
-          if (!space) return null;
-        }
-        if (folderId != null) {
-          folder = this._getFolderInAccountScope(folderId);
-          if (!folder || folder.deleted_at || !this.getSpace(folder.space_id)) return null;
-        }
-        if (folder && spaceId != null && folder.space_id !== spaceId) return null;
-        if (note && spaceId != null && note.space_id !== spaceId) return null;
-        if (note && folderId != null && note.folder_id !== folderId) return null;
-
-        const clientConversationId = randomUUID();
-        const result = this.db
-          .prepare(
-            "INSERT INTO agent_conversations (title, note_id, space_id, folder_id, client_conversation_id) VALUES (?, ?, ?, ?, ?)"
-          )
-          .run(title, noteId, spaceId, folderId, clientConversationId);
-        return this.db
-          .prepare("SELECT * FROM agent_conversations WHERE id = ?")
-          .get(result.lastInsertRowid);
-      })();
-    } catch (error) {
-      debugLogger.error("Error creating agent conversation", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getConversationsForNote(noteId, limit = 20) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(noteId)) return [];
-      return this.db
-        .prepare(
-          `SELECT c.id, c.title, c.created_at, c.updated_at,
-            COUNT(m.id) AS message_count
-          FROM agent_conversations c
-          LEFT JOIN agent_messages m ON m.conversation_id = c.id
-          WHERE c.note_id = ? AND c.deleted_at IS NULL
-          GROUP BY c.id
-          ORDER BY c.updated_at DESC
-          LIMIT ?`
-        )
-        .all(noteId, limit);
-    } catch (error) {
-      debugLogger.error(
-        "Error getting conversations for note",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  // Space-root scope (folderId null) intentionally excludes folder-scoped
-  // conversations — each container surfaces only its own chats.
-  getConversationsForContainer(spaceId, folderId = null, limit = 20) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (folderId != null) {
-        const folder = this._getFolderInAccountScope(folderId);
-        if (!folder || folder.deleted_at) return [];
-      } else if (!this.getSpace(spaceId)) {
-        return [];
-      }
-      const scopeFilter =
-        folderId != null ? "c.folder_id = ?" : "c.space_id = ? AND c.folder_id IS NULL";
-      const params = folderId != null ? [folderId, limit] : [spaceId, limit];
-      return this.db
-        .prepare(
-          `SELECT c.id, c.title, c.created_at, c.updated_at,
-            COUNT(m.id) AS message_count
-          FROM agent_conversations c
-          LEFT JOIN agent_messages m ON m.conversation_id = c.id
-          WHERE ${scopeFilter} AND c.deleted_at IS NULL
-          GROUP BY c.id
-          ORDER BY c.updated_at DESC
-          LIMIT ?`
-        )
-        .all(...params);
-    } catch (error) {
-      debugLogger.error(
-        "Error getting conversations for container",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  getAgentConversations(limit = 50) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          "SELECT * FROM agent_conversations WHERE deleted_at IS NULL AND space_id IS NULL AND folder_id IS NULL ORDER BY updated_at DESC LIMIT ?"
-        )
-        .all(limit);
-    } catch (error) {
-      debugLogger.error("Error getting agent conversations", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getAgentConversation(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const conversation = this.db
-        .prepare("SELECT * FROM agent_conversations WHERE id = ? AND deleted_at IS NULL")
-        .get(id);
-      if (!conversation) return null;
-      const messages = this.db
-        .prepare("SELECT * FROM agent_messages WHERE conversation_id = ? ORDER BY created_at ASC")
-        .all(id);
-      return { ...conversation, messages };
-    } catch (error) {
-      debugLogger.error("Error getting agent conversation", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  deleteAgentConversation(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db
-        .prepare(
-          "UPDATE agent_conversations SET deleted_at = datetime('now'), sync_status = 'pending', updated_at = datetime('now') WHERE id = ?"
-        )
-        .run(id);
-      return { success: result.changes > 0 };
-    } catch (error) {
-      debugLogger.error("Error deleting agent conversation", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  updateAgentConversationTitle(id, title) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db
-        .prepare(
-          "UPDATE agent_conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL"
-        )
-        .run(title, id);
-      return { success: result.changes > 0 };
-    } catch (error) {
-      debugLogger.error(
-        "Error updating agent conversation title",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  saveGoogleTokens(tokens) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const stmt = this.db.prepare(
-        `INSERT INTO google_calendar_tokens (google_email, access_token, refresh_token, expires_at, scope)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(google_email) DO UPDATE SET
-           access_token = excluded.access_token,
-           refresh_token = excluded.refresh_token,
-           expires_at = excluded.expires_at,
-           scope = excluded.scope,
-           updated_at = CURRENT_TIMESTAMP`
-      );
-      stmt.run(
-        tokens.google_email,
-        tokens.access_token,
-        tokens.refresh_token,
-        tokens.expires_at,
-        tokens.scope
-      );
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error saving Google tokens", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  getGoogleTokens() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db.prepare("SELECT * FROM google_calendar_tokens LIMIT 1").get() || null;
-    } catch (error) {
-      debugLogger.error("Error getting Google tokens", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  getGoogleTokensByEmail(email) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return (
-        this.db.prepare("SELECT * FROM google_calendar_tokens WHERE google_email = ?").get(email) ||
-        null
-      );
-    } catch (error) {
-      debugLogger.error("Error getting Google tokens by email", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  addAgentMessage(conversationId, role, content, metadata) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db.transaction(() => {
-        const conversation = this.db
-          .prepare("SELECT id FROM agent_conversations WHERE id = ? AND deleted_at IS NULL")
-          .get(conversationId);
-        if (!conversation) return null;
-
-        const metadataStr = metadata ? JSON.stringify(metadata) : null;
-        const result = this.db
-          .prepare(
-            "INSERT INTO agent_messages (conversation_id, role, content, metadata) VALUES (?, ?, ?, ?)"
-          )
-          .run(conversationId, role, content, metadataStr);
-        this.db
-          .prepare(
-            "UPDATE agent_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL"
-          )
-          .run(conversationId);
-        return this.db
-          .prepare("SELECT * FROM agent_messages WHERE id = ?")
-          .get(result.lastInsertRowid);
-      })();
-    } catch (error) {
-      debugLogger.error("Error adding agent message", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getAllGoogleTokens() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db.prepare("SELECT * FROM google_calendar_tokens").all();
-    } catch (error) {
-      debugLogger.error("Error getting all Google tokens", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  getGoogleAccounts() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare("SELECT google_email AS email FROM google_calendar_tokens ORDER BY created_at ASC")
-        .all();
-    } catch (error) {
-      debugLogger.error("Error getting Google accounts", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  removeGoogleAccount(email) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const transaction = this.db.transaction(() => {
-        const calendarIds = this.db
-          .prepare("SELECT id FROM google_calendars WHERE account_email = ?")
-          .all(email)
-          .map((c) => c.id);
-        if (calendarIds.length > 0) {
-          const placeholders = calendarIds.map(() => "?").join(", ");
-          this.db
-            .prepare(
-              `DELETE FROM calendar_events WHERE provider = 'google' AND calendar_id IN (${placeholders})`
-            )
-            .run(...calendarIds);
-        }
-        this.db.prepare("DELETE FROM google_calendars WHERE account_email = ?").run(email);
-        this.db.prepare("DELETE FROM google_calendar_tokens WHERE google_email = ?").run(email);
-      });
-      transaction();
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error removing Google account", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  deleteGoogleTokens() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      this.db.prepare("DELETE FROM google_calendar_tokens").run();
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error deleting Google tokens", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  saveGoogleCalendars(calendars, accountEmail = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const stmt = this.db.prepare(
-        `INSERT INTO google_calendars (id, summary, description, background_color, account_email, is_primary)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           summary = excluded.summary,
-           description = excluded.description,
-           background_color = excluded.background_color,
-           account_email = excluded.account_email,
-           is_primary = excluded.is_primary`
-      );
-      for (const cal of calendars) {
-        stmt.run(
-          cal.id,
-          cal.summary,
-          cal.description || null,
-          cal.background_color || null,
-          accountEmail,
-          cal.is_primary ? 1 : 0
-        );
-      }
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error saving Google calendars", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  applyPrimaryOnlyToSelection(primaryOnly) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      this.db
-        .prepare(
-          "UPDATE google_calendars SET is_selected = CASE WHEN ? = 1 THEN is_primary ELSE 1 END"
-        )
-        .run(primaryOnly ? 1 : 0);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error applying primary-only selection", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  getGoogleCalendars(accountEmail = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (accountEmail) {
-        return this.db
-          .prepare("SELECT * FROM google_calendars WHERE account_email = ?")
-          .all(accountEmail);
-      }
-      return this.db.prepare("SELECT * FROM google_calendars").all();
-    } catch (error) {
-      debugLogger.error("Error getting Google calendars", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  updateCalendarSelection(calendarId, isSelected) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      this.db
-        .prepare("UPDATE google_calendars SET is_selected = ? WHERE id = ?")
-        .run(isSelected ? 1 : 0, calendarId);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error updating calendar selection", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  getAgentMessages(conversationId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare("SELECT * FROM agent_messages WHERE conversation_id = ? ORDER BY created_at ASC")
-        .all(conversationId);
-    } catch (error) {
-      debugLogger.error("Error getting agent messages", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getSelectedCalendars(accountEmail = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (accountEmail) {
-        return this.db
-          .prepare("SELECT * FROM google_calendars WHERE is_selected = 1 AND account_email = ?")
-          .all(accountEmail);
-      }
-      return this.db.prepare("SELECT * FROM google_calendars WHERE is_selected = 1").all();
-    } catch (error) {
-      debugLogger.error("Error getting selected calendars", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  upsertCalendarEvents(events) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const transaction = this.db.transaction((eventList) => {
-        const stmt = this.db.prepare(
-          "INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, organizer_email, attendees_count, attendees, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
-        );
-        for (const e of eventList) {
-          stmt.run(
-            e.id,
-            e.calendar_id,
-            e.provider || "google",
-            e.summary || null,
-            e.start_time,
-            e.end_time,
-            e.is_all_day ? 1 : 0,
-            e.status || "confirmed",
-            e.availability_status || "unknown",
-            e.self_response_status || "unknown",
-            e.hangout_link || null,
-            e.conference_data || null,
-            e.organizer_email || null,
-            e.attendees_count || 0,
-            e.attendees || null
-          );
-        }
-      });
-      transaction(events);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error upserting calendar events", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  getActiveEvents() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          dedupedEventsQuery(
-            "datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now') AND is_all_day = 0 AND status IN ('confirmed', 'tentative')"
-          )
-        )
-        .all()
-        .map(stripDedupeColumn);
-    } catch (error) {
-      debugLogger.error("Error getting active events", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  searchNotes(query, limit = 50, spaceId = null, folderId = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const ftsQuery = buildNoteSearchQuery(query);
-      if (!ftsQuery) return [];
-      const accountScope = this._accountScopeCondition("n");
-      const params = [ftsQuery, ...accountScope.params];
-      let scopeFilter = "";
-      if (spaceId != null) {
-        scopeFilter += " AND n.space_id = ?";
-        params.push(spaceId);
-      }
-      if (folderId != null) {
-        scopeFilter += " AND n.folder_id = ?";
-        params.push(folderId);
-      }
-      params.push(limit);
-      return this.db
-        .prepare(
-          `
-        SELECT n.*
-        FROM notes n
-        JOIN notes_fts ON notes_fts.rowid = n.id
-        WHERE notes_fts MATCH ? AND n.deleted_at IS NULL AND ${accountScope.sql}${scopeFilter}
-        ORDER BY notes_fts.rank
-        LIMIT ?
-      `
-        )
-        .all(...params);
-    } catch (error) {
-      debugLogger.error("Error searching notes", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getUpcomingEvents(windowMinutes = 1440) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          dedupedEventsQuery(
-            "((datetime(start_time) > datetime('now') AND datetime(start_time) <= datetime('now', '+' || ? || ' minutes')) OR (datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now'))) AND is_all_day = 0 AND status IN ('confirmed', 'tentative')"
-          )
-        )
-        .all(windowMinutes)
-        .map(stripDedupeColumn);
-    } catch (error) {
-      debugLogger.error("Error getting upcoming events", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  getCalendarEventsInRange(start, end, providers) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const rangeStart = Date.parse(start);
-      const rangeEnd = Date.parse(end);
-      if (!Number.isFinite(rangeStart) || !Number.isFinite(rangeEnd) || rangeEnd <= rangeStart) {
-        throw new RangeError("Invalid calendar event range");
-      }
-
-      const selectedProviders = [...new Set(providers)].filter((provider) =>
-        AVAILABILITY_PROVIDERS.has(provider)
-      );
-      if (selectedProviders.length === 0) return [];
-      const placeholders = selectedProviders.map(() => "?").join(", ");
-      const events = this.db
-        .prepare(
-          dedupedEventsQuery(
-            `provider IN (${placeholders}) AND status IN ('confirmed', 'tentative') AND ${SELECTED_CALENDAR_EVENT_FILTER}`
-          )
-        )
-        .all(...selectedProviders)
-        .map(stripDedupeColumn);
-
-      return events.filter((event) => {
-        const isAllDay = event.is_all_day === true || event.is_all_day === 1;
-        const eventStart = parseEventTime(event.start_time, isAllDay);
-        const eventEnd = parseEventTime(event.end_time, isAllDay);
-        return (
-          Number.isFinite(eventStart) &&
-          Number.isFinite(eventEnd) &&
-          eventStart < rangeEnd &&
-          eventEnd > rangeStart
-        );
-      });
-    } catch (error) {
-      debugLogger.error(
-        "Error getting calendar events in range",
-        { error: error.message },
-        "calendar"
-      );
-      throw error;
-    }
-  }
-
-  getCalendarEventById(eventId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db.prepare("SELECT * FROM calendar_events WHERE id = ?").get(eventId) || null;
-    } catch (error) {
-      debugLogger.error("Error getting calendar event by id", { error: error.message }, "gcal");
-      return null;
-    }
-  }
-
-  getNoteByCalendarEventId(eventId, excludeNoteId = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("notes");
-      const base = `SELECT * FROM notes
-                    WHERE calendar_event_id = ? AND deleted_at IS NULL
-                      AND ${accountScope.sql}`;
-      if (excludeNoteId) {
-        return (
-          this.db
-            .prepare(`${base} AND id != ? LIMIT 1`)
-            .get(eventId, ...accountScope.params, excludeNoteId) || null
-        );
-      }
-      return this.db.prepare(`${base} LIMIT 1`).get(eventId, ...accountScope.params) || null;
-    } catch (error) {
-      debugLogger.error(
-        "Error getting note by calendar event id",
-        { error: error.message },
-        "notes"
-      );
-      return null;
-    }
-  }
-
-  upsertContacts(contacts) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const transaction = this.db.transaction((list) => {
-        const stmt = this.db.prepare(
-          "INSERT INTO contacts (email, display_name, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(email) DO UPDATE SET display_name = COALESCE(excluded.display_name, contacts.display_name), updated_at = CURRENT_TIMESTAMP"
-        );
-        for (const c of list) {
-          if (c.email) stmt.run(c.email.toLowerCase().trim(), c.displayName || null);
-        }
-      });
-      transaction(contacts);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error upserting contacts", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  searchContacts(query) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const pattern = `%${query || ""}%`;
-      return this.db
-        .prepare(
-          "SELECT * FROM contacts WHERE email LIKE ? OR display_name LIKE ? ORDER BY display_name ASC, email ASC LIMIT 20"
-        )
-        .all(pattern, pattern);
-    } catch (error) {
-      debugLogger.error("Error searching contacts", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  clearGoogleCalendarData() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const transaction = this.db.transaction(() => {
-        this.db.prepare("DELETE FROM calendar_events WHERE provider = 'google'").run();
-        this.db.prepare("DELETE FROM google_calendars").run();
-        this.db.prepare("DELETE FROM google_calendar_tokens").run();
-      });
-      transaction();
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error clearing calendar data", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  updateCalendarSyncToken(calendarId, syncToken, expiresAt) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      this.db
-        .prepare(
-          "UPDATE google_calendars SET sync_token = ?, sync_token_expires_at = ? WHERE id = ?"
-        )
-        .run(syncToken, expiresAt, calendarId);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error updating sync token", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  removeCalendarEvents(eventIds) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const placeholders = eventIds.map(() => "?").join(", ");
-      this.db.prepare(`DELETE FROM calendar_events WHERE id IN (${placeholders})`).run(...eventIds);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error removing calendar events", { error: error.message }, "gcal");
-      throw error;
-    }
-  }
-
-  // A full (non-incremental) REST sync is authoritative for its calendar's
-  // window: rows the provider no longer returns were deleted while no valid
-  // sync token existed (e.g. the app was offline past the token TTL), so they
-  // would otherwise linger and fire reminders for cancelled meetings. Rows
-  // referenced by meeting notes are kept so notes retain calendar metadata.
-  removeStaleCalendarEvents(provider, calendarId, freshEventIds) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const placeholders = freshEventIds.map(() => "?").join(", ");
-      const freshFilter = freshEventIds.length > 0 ? `AND id NOT IN (${placeholders})` : "";
-      this.db
-        .prepare(
-          `DELETE FROM calendar_events
-           WHERE provider = ? AND calendar_id = ? ${freshFilter}
-             AND id NOT IN (
-               SELECT calendar_event_id
-               FROM notes
-               WHERE calendar_event_id IS NOT NULL AND deleted_at IS NULL
-             )`
-        )
-        .run(provider, calendarId, ...freshEventIds);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error(
-        "Error removing stale calendar events",
-        { error: error.message },
-        provider === "microsoft" ? "mcal" : "gcal"
-      );
-      throw error;
-    }
-  }
-
-  removeEventsFromDeselectedCalendars(provider) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const calendarsTable = CALENDARS_TABLE_BY_PROVIDER[provider];
-      if (!calendarsTable) throw new Error(`Unknown calendar provider: ${provider}`);
-      this.db
-        .prepare(
-          `DELETE FROM calendar_events WHERE provider = ? AND calendar_id NOT IN (SELECT id FROM ${calendarsTable} WHERE is_selected = 1)`
-        )
-        .run(provider);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error(
-        "Error removing events from deselected calendars",
-        { error: error.message },
-        provider === "microsoft" ? "mcal" : "gcal"
-      );
-      throw error;
-    }
-  }
-
-  saveMicrosoftTokens(tokens) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const stmt = this.db.prepare(
-        `INSERT INTO microsoft_calendar_tokens (microsoft_email, access_token, refresh_token, expires_at, scope)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(microsoft_email) DO UPDATE SET
-           access_token = excluded.access_token,
-           refresh_token = excluded.refresh_token,
-           expires_at = excluded.expires_at,
-           scope = excluded.scope,
-           updated_at = CURRENT_TIMESTAMP`
-      );
-      stmt.run(
-        tokens.microsoft_email,
-        tokens.access_token,
-        tokens.refresh_token,
-        tokens.expires_at,
-        tokens.scope
-      );
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error saving Microsoft tokens", { error: error.message }, "mcal");
-      throw error;
-    }
-  }
-
-  getMicrosoftTokensByEmail(email) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return (
-        this.db
-          .prepare("SELECT * FROM microsoft_calendar_tokens WHERE microsoft_email = ?")
-          .get(email) || null
-      );
-    } catch (error) {
-      debugLogger.error(
-        "Error getting Microsoft tokens by email",
-        { error: error.message },
-        "mcal"
-      );
-      throw error;
-    }
-  }
-
-  getMicrosoftAccounts() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          "SELECT microsoft_email AS email FROM microsoft_calendar_tokens ORDER BY created_at ASC"
-        )
-        .all();
-    } catch (error) {
-      debugLogger.error("Error getting Microsoft accounts", { error: error.message }, "mcal");
-      throw error;
-    }
-  }
-
-  removeMicrosoftAccount(email) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const transaction = this.db.transaction(() => {
-        const calendarIds = this.db
-          .prepare("SELECT id FROM microsoft_calendars WHERE account_email = ?")
-          .all(email)
-          .map((c) => c.id);
-        if (calendarIds.length > 0) {
-          const placeholders = calendarIds.map(() => "?").join(", ");
-          this.db
-            .prepare(
-              `DELETE FROM calendar_events WHERE provider = 'microsoft' AND calendar_id IN (${placeholders})`
-            )
-            .run(...calendarIds);
-        }
-        this.db.prepare("DELETE FROM microsoft_calendars WHERE account_email = ?").run(email);
-        this.db
-          .prepare("DELETE FROM microsoft_calendar_tokens WHERE microsoft_email = ?")
-          .run(email);
-      });
-      transaction();
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error removing Microsoft account", { error: error.message }, "mcal");
-      throw error;
-    }
-  }
-
-  saveMicrosoftCalendars(calendars, accountEmail) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const stmt = this.db.prepare(
-        `INSERT INTO microsoft_calendars (id, summary, background_color, account_email, is_primary)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           summary = excluded.summary,
-           background_color = excluded.background_color,
-           account_email = excluded.account_email,
-           is_primary = excluded.is_primary`
-      );
-      for (const cal of calendars) {
-        stmt.run(
-          cal.id,
-          cal.summary,
-          cal.background_color || null,
-          accountEmail,
-          cal.is_primary ? 1 : 0
-        );
-      }
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error saving Microsoft calendars", { error: error.message }, "mcal");
-      throw error;
-    }
-  }
-
-  applyMicrosoftPrimaryOnlyToSelection(primaryOnly) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      this.db
-        .prepare(
-          "UPDATE microsoft_calendars SET is_selected = CASE WHEN ? = 1 THEN is_primary ELSE 1 END"
-        )
-        .run(primaryOnly ? 1 : 0);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error applying primary-only selection", { error: error.message }, "mcal");
-      throw error;
-    }
-  }
-
-  getSelectedMicrosoftCalendars() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db.prepare("SELECT * FROM microsoft_calendars WHERE is_selected = 1").all();
-    } catch (error) {
-      debugLogger.error(
-        "Error getting selected Microsoft calendars",
-        { error: error.message },
-        "mcal"
-      );
-      throw error;
-    }
-  }
-
-  updateMicrosoftCalendarSyncToken(calendarId, syncToken, expiresAt) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      this.db
-        .prepare(
-          "UPDATE microsoft_calendars SET sync_token = ?, sync_token_expires_at = ? WHERE id = ?"
-        )
-        .run(syncToken, expiresAt, calendarId);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error updating sync token", { error: error.message }, "mcal");
-      throw error;
-    }
-  }
-
-  clearMicrosoftCalendarData() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const transaction = this.db.transaction(() => {
-        this.db.prepare("DELETE FROM calendar_events WHERE provider = 'microsoft'").run();
-        this.db.prepare("DELETE FROM microsoft_calendars").run();
-        this.db.prepare("DELETE FROM microsoft_calendar_tokens").run();
-      });
-      transaction();
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error clearing calendar data", { error: error.message }, "mcal");
-      throw error;
-    }
-  }
-
-  saveAppleCalendars(calendars) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const transaction = this.db.transaction((list) => {
-        // Snapshots are complete: prune calendars removed from Calendar.app,
-        // upsert the rest so created_at survives.
-        if (list.length === 0) {
-          this.db.prepare("DELETE FROM apple_calendars").run();
-          return;
-        }
-        const placeholders = list.map(() => "?").join(", ");
-        this.db
-          .prepare(`DELETE FROM apple_calendars WHERE id NOT IN (${placeholders})`)
-          .run(...list.map((cal) => cal.id));
-
-        const stmt = this.db.prepare(
-          `INSERT INTO apple_calendars (id, title, color, source_name)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET
-             title = excluded.title,
-             color = excluded.color,
-             source_name = excluded.source_name`
-        );
-        for (const cal of list) {
-          stmt.run(cal.id, cal.title, cal.color || null, cal.source_name || null);
-        }
-      });
-      transaction(calendars);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error saving Apple calendars", { error: error.message }, "acal");
-      throw error;
-    }
-  }
-
-  getAppleCalendars() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db.prepare("SELECT * FROM apple_calendars").all();
-    } catch (error) {
-      debugLogger.error("Error getting Apple calendars", { error: error.message }, "acal");
-      throw error;
-    }
-  }
-
-  // Snapshots cover the full current/future window, so missing unreferenced
-  // events can be removed while note-linked history is retained.
-  replaceAppleCalendarEvents(events) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const transaction = this.db.transaction((list) => {
-        // The helper snapshot only contains current/future events. Keep past or
-        // rescheduled rows that are still referenced by meeting notes so those
-        // notes retain their calendar metadata.
-        this.db
-          .prepare(
-            `DELETE FROM calendar_events
-             WHERE provider = 'apple'
-               AND id NOT IN (
-                 SELECT calendar_event_id
-                 FROM notes
-                 WHERE calendar_event_id IS NOT NULL AND deleted_at IS NULL
-               )`
-          )
-          .run();
-        if (list.length > 0) this.upsertCalendarEvents(list);
-      });
-      transaction(events);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error replacing Apple calendar events", { error: error.message }, "acal");
-      throw error;
-    }
-  }
-
-  clearAppleCalendarData() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const transaction = this.db.transaction(() => {
-        this.db.prepare("DELETE FROM calendar_events WHERE provider = 'apple'").run();
-        this.db.prepare("DELETE FROM apple_calendars").run();
-      });
-      transaction();
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error clearing Apple calendar data", { error: error.message }, "acal");
-      throw error;
-    }
+    return this.db.prepare(`
+      SELECT folder_id, space_id, COUNT(*) AS count
+      FROM notes GROUP BY folder_id, space_id
+    `).all();
   }
 
   getMeetingsFolder(spaceId = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("folders");
-      return (
-        this.db
-          .prepare(
-            `SELECT id FROM folders
-             WHERE name = 'Meetings' AND is_default = 1 AND space_id = ?
-               AND ${accountScope.sql}`
-          )
-          .get(spaceId ?? this.getPrivateSpaceId(), ...accountScope.params) || null
-      );
-    } catch (error) {
-      debugLogger.error("Error getting meetings folder", { error: error.message }, "gcal");
-      throw error;
-    }
+    spaceId ??= this._privateSpaceId();
+    return this.db.prepare("SELECT * FROM folders WHERE space_id = ? AND name = 'Meetings' LIMIT 1").get(spaceId) || null;
   }
 
-  updateNoteCloudId(id, cloudId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(id)) return null;
-      this.db.prepare("UPDATE notes SET cloud_id = ? WHERE id = ?").run(cloudId, id);
-      return this.db.prepare("SELECT * FROM notes WHERE id = ?").get(id);
-    } catch (error) {
-      debugLogger.error("Error updating note cloud_id", { error: error.message }, "database");
-      throw error;
-    }
+  saveTranscription(text, rawText = null, options = {}) {
+    const { status = "completed", errorMessage = null, errorCode = null, routeKind = null } = options;
+    const timestamp = toDbTimestamp(options.occurredAt) || null;
+    const result = this.db.prepare(`
+      INSERT INTO transcriptions (text, raw_text, status, error_message, error_code, route_kind, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+    `).run(text, rawText, status, errorMessage, errorCode, routeKind, timestamp);
+    return { id: Number(result.lastInsertRowid), success: true, transcription: this.getTranscriptionById(result.lastInsertRowid) };
   }
 
-  // Share bookkeeping, not a content edit — must not bump updated_at (which
-  // would reorder note lists and churn sync last-write-wins comparisons).
-  updateNoteShareState(id, { is_shared, share_token }) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(id)) return null;
-      if (share_token !== undefined) {
-        this.db
-          .prepare("UPDATE notes SET is_shared = ?, share_token = ? WHERE id = ?")
-          .run(is_shared, share_token, id);
-      } else {
-        this.db.prepare("UPDATE notes SET is_shared = ? WHERE id = ?").run(is_shared, id);
-      }
-      return this.db.prepare("SELECT * FROM notes WHERE id = ?").get(id);
-    } catch (error) {
-      debugLogger.error("Error updating note share state", { error: error.message }, "database");
-      throw error;
-    }
+  getTranscriptions(limit = 50, { includeDiscarded = false } = {}) {
+    const filter = includeDiscarded ? "" : " WHERE status != 'discarded'";
+    return this.db.prepare(`SELECT * FROM transcriptions${filter} ORDER BY timestamp DESC LIMIT ?`).all(limit);
   }
 
-  cleanup() {
-    try {
-      if (this.db) {
-        try {
-          this.db.close();
-        } catch (closeError) {
-          debugLogger.error("Error closing database", { error: closeError.message }, "database");
-        }
-        this.db = null;
-      }
-      const dbPath = path.join(
-        app.getPath("userData"),
-        process.env.NODE_ENV === "development" ? "transcriptions-dev.db" : "transcriptions.db"
-      );
-      if (fs.existsSync(dbPath)) {
-        fs.unlinkSync(dbPath);
-      }
-    } catch (error) {
-      debugLogger.error("Error deleting database file", { error: error.message }, "database");
-    }
-  }
-  getAgentConversationsWithPreview(limit = 50, offset = 0, includeArchived = false) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const archiveFilter = includeArchived
-        ? "WHERE c.archived_at IS NOT NULL AND c.deleted_at IS NULL AND c.space_id IS NULL AND c.folder_id IS NULL"
-        : "WHERE c.archived_at IS NULL AND c.deleted_at IS NULL AND c.space_id IS NULL AND c.folder_id IS NULL";
-      return this.db
-        .prepare(
-          `SELECT c.id, c.title, c.created_at, c.updated_at, c.archived_at, c.cloud_id,
-            COUNT(m.id) AS message_count,
-            (SELECT content FROM agent_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
-            (SELECT role FROM agent_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message_role
-          FROM agent_conversations c
-          LEFT JOIN agent_messages m ON m.conversation_id = c.id
-          ${archiveFilter}
-          GROUP BY c.id
-          ORDER BY c.updated_at DESC
-          LIMIT ? OFFSET ?`
-        )
-        .all(limit, offset);
-    } catch (error) {
-      debugLogger.error(
-        "Error getting agent conversations with preview",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
+  clearTranscriptions() {
+    const result = this.db.prepare("DELETE FROM transcriptions").run();
+    return { success: true, cleared: result.changes };
   }
 
-  searchAgentConversations(query, limit = 20) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const pattern = `%${query}%`;
-      return this.db
-        .prepare(
-          `SELECT DISTINCT c.id, c.title, c.created_at, c.updated_at, c.archived_at, c.cloud_id,
-            COUNT(m.id) AS message_count,
-            (SELECT content FROM agent_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
-            (SELECT role FROM agent_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message_role
-          FROM agent_conversations c
-          LEFT JOIN agent_messages m ON m.conversation_id = c.id
-          LEFT JOIN agent_messages ms ON ms.conversation_id = c.id
-          WHERE c.archived_at IS NULL AND c.deleted_at IS NULL
-            AND c.space_id IS NULL AND c.folder_id IS NULL
-            AND (c.title LIKE ? OR ms.content LIKE ?)
-          GROUP BY c.id
-          ORDER BY c.updated_at DESC
-          LIMIT ?`
-        )
-        .all(pattern, pattern, limit);
-    } catch (error) {
-      debugLogger.error(
-        "Error searching agent conversations",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
+  deleteTranscriptionsExpiredBefore(retentionDays) {
+    const cutoff = this.db.prepare("SELECT datetime('now', ?) AS cutoff").get(`-${retentionDays} days`).cutoff;
+    const ids = this.db.prepare("SELECT id FROM transcriptions WHERE created_at < ?").all(cutoff).map((row) => row.id);
+    this.db.prepare("DELETE FROM transcriptions WHERE created_at < ?").run(cutoff);
+    return { ids };
   }
 
-  archiveAgentConversation(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db
-        .prepare(
-          "UPDATE agent_conversations SET archived_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL"
-        )
-        .run(id);
-      return { success: result.changes > 0 };
-    } catch (error) {
-      debugLogger.error("Error archiving agent conversation", { error: error.message }, "database");
-      throw error;
-    }
+  deleteTranscription(id) {
+    const result = this.db.prepare("DELETE FROM transcriptions WHERE id = ?").run(id);
+    return { success: result.changes > 0, id };
   }
 
-  unarchiveAgentConversation(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db
-        .prepare(
-          "UPDATE agent_conversations SET archived_at = NULL WHERE id = ? AND deleted_at IS NULL"
-        )
-        .run(id);
-      return { success: result.changes > 0 };
-    } catch (error) {
-      debugLogger.error(
-        "Error unarchiving agent conversation",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
+  updateTranscriptionAudio(id, { hasAudio, audioDurationMs, provider, model }) {
+    this.db.prepare("UPDATE transcriptions SET has_audio = ?, audio_duration_ms = ?, provider = ?, model = ? WHERE id = ?").run(hasAudio ? 1 : 0, audioDurationMs, provider, model, id);
+    return { success: true };
   }
 
-  updateAgentConversationCloudId(id, cloudId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db
-        .prepare("UPDATE agent_conversations SET cloud_id = ? WHERE id = ? AND deleted_at IS NULL")
-        .run(cloudId, id);
-      return { success: result.changes > 0 };
-    } catch (error) {
-      debugLogger.error(
-        "Error updating agent conversation cloud_id",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
+  updateTranscriptionText(id, text, rawText) {
+    this.db.prepare("UPDATE transcriptions SET text = ?, raw_text = ? WHERE id = ?").run(text, rawText, id);
+    return { success: true };
   }
 
-  _normalizeEmail(email) {
-    const trimmed = (email || "").trim().toLowerCase();
-    return trimmed || null;
+  updateTranscriptionStatus(id, status, errorMessage = null, errorCode = null) {
+    this.db.prepare("UPDATE transcriptions SET status = ?, error_message = ?, error_code = ? WHERE id = ?").run(status, errorMessage, errorCode, id);
+    return { success: true };
   }
 
-  _findProfileByEmail(email) {
-    const normalized = this._normalizeEmail(email);
-    if (!normalized) return null;
-    return this.db.prepare("SELECT * FROM speaker_profiles WHERE lower(email) = ?").get(normalized);
+  getTranscriptionById(id) {
+    return this.db.prepare("SELECT * FROM transcriptions WHERE id = ?").get(id) || null;
   }
 
-  upsertSpeakerProfile(name, email, embeddingBuffer, profileId = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const normalizedEmail = this._normalizeEmail(email);
-      let existing = profileId
-        ? this.db.prepare("SELECT * FROM speaker_profiles WHERE id = ?").get(profileId)
-        : null;
-      if (!existing && normalizedEmail) {
-        existing = this._findProfileByEmail(normalizedEmail);
-      }
-      if (!existing) {
-        existing = this.db
-          .prepare("SELECT * FROM speaker_profiles WHERE display_name = ?")
-          .get(name);
-      }
-      if (existing) {
-        const stored = new Float32Array(
-          existing.embedding.buffer,
-          existing.embedding.byteOffset,
-          existing.embedding.byteLength / 4
-        );
-        const incoming = new Float32Array(
-          embeddingBuffer.buffer,
-          embeddingBuffer.byteOffset,
-          embeddingBuffer.byteLength / 4
-        );
-        const updated = new Float32Array(stored.length);
-        for (let i = 0; i < stored.length; i++) {
-          updated[i] = 0.3 * incoming[i] + 0.7 * stored[i];
-        }
-        const updatedBuf = Buffer.from(updated.buffer);
-        const finalEmail = normalizedEmail || existing.email || null;
-        this.db
-          .prepare(
-            "UPDATE speaker_profiles SET display_name = ?, email = ?, embedding = ?, sample_count = sample_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-          )
-          .run(name, finalEmail, updatedBuf, existing.id);
-        const resolved = this.db
-          .prepare("SELECT * FROM speaker_profiles WHERE id = ?")
-          .get(existing.id);
-        if (normalizedEmail) {
-          const collision = this.db
-            .prepare("SELECT * FROM speaker_profiles WHERE lower(email) = ? AND id != ?")
-            .get(normalizedEmail, existing.id);
-          if (collision) {
-            return this.mergeSpeakerProfiles(resolved, collision);
-          }
-        }
-        return resolved;
-      }
-      const result = this.db
-        .prepare("INSERT INTO speaker_profiles (display_name, email, embedding) VALUES (?, ?, ?)")
-        .run(name, normalizedEmail, embeddingBuffer);
-      return this.db
-        .prepare("SELECT * FROM speaker_profiles WHERE id = ?")
-        .get(result.lastInsertRowid);
-    } catch (error) {
-      debugLogger.error("Error upserting speaker profile", { error: error.message }, "database");
-      throw error;
-    }
+  clearAudioFlags(ids) {
+    if (!ids?.length) return { success: true };
+    const update = this.db.prepare("UPDATE transcriptions SET has_audio = 0 WHERE id = ?");
+    this.db.transaction(() => ids.forEach((id) => update.run(id)))();
+    return { success: true };
   }
 
-  attachEmailToProfile(profileId, email) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const normalizedEmail = this._normalizeEmail(email);
-      const profile = this.db.prepare("SELECT * FROM speaker_profiles WHERE id = ?").get(profileId);
-      if (!profile) throw new Error(`Speaker profile ${profileId} not found`);
-
-      if (!normalizedEmail) {
-        this.db
-          .prepare(
-            "UPDATE speaker_profiles SET email = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-          )
-          .run(profileId);
-        return this.db.prepare("SELECT * FROM speaker_profiles WHERE id = ?").get(profileId);
-      }
-
-      const collision = this._findProfileByEmail(normalizedEmail);
-      if (collision && collision.id !== profileId) {
-        return this.mergeSpeakerProfiles(collision, profile);
-      }
-
-      this.db
-        .prepare(
-          "UPDATE speaker_profiles SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-        )
-        .run(normalizedEmail, profileId);
-      return this.db.prepare("SELECT * FROM speaker_profiles WHERE id = ?").get(profileId);
-    } catch (error) {
-      debugLogger.error(
-        "Error attaching email to speaker profile",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
+  getDictionary() {
+    return this.db.prepare("SELECT word FROM custom_dictionary ORDER BY id").all().map((row) => row.word);
   }
 
-  mergeSpeakerProfiles(a, b) {
-    const winner = (a.sample_count || 0) >= (b.sample_count || 0) ? a : b;
-    const loser = winner === a ? b : a;
-
-    const winnerEmb = new Float32Array(
-      winner.embedding.buffer,
-      winner.embedding.byteOffset,
-      winner.embedding.byteLength / 4
-    );
-    const loserEmb = new Float32Array(
-      loser.embedding.buffer,
-      loser.embedding.byteOffset,
-      loser.embedding.byteLength / 4
-    );
-    const wSamples = winner.sample_count || 1;
-    const lSamples = loser.sample_count || 1;
-    const total = wSamples + lSamples;
-    const blended = new Float32Array(winnerEmb.length);
-    for (let i = 0; i < winnerEmb.length; i++) {
-      blended[i] = (winnerEmb[i] * wSamples + loserEmb[i] * lSamples) / total;
-    }
-
-    const finalEmail = winner.email || loser.email || null;
-    const finalName = winner.display_name || loser.display_name;
-
-    const tx = this.db.transaction(() => {
-      this.db
-        .prepare(
-          "UPDATE speaker_profiles SET display_name = ?, email = ?, embedding = ?, sample_count = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-        )
-        .run(finalName, finalEmail, Buffer.from(blended.buffer), total, winner.id);
-      this.db
-        .prepare(
-          "UPDATE speaker_mappings SET profile_id = ?, display_name = ? WHERE profile_id = ?"
-        )
-        .run(winner.id, finalName, loser.id);
-      this.db.prepare("DELETE FROM speaker_profiles WHERE id = ?").run(loser.id);
+  setDictionary(words) {
+    const incoming = normalizeWords(words);
+    const current = this.db.prepare("SELECT id, word FROM custom_dictionary").all();
+    const transaction = this.db.transaction(() => {
+      const remove = this.db.prepare("DELETE FROM custom_dictionary WHERE id = ?");
+      current.forEach((row) => { if (!incoming.has(row.word.toLowerCase())) remove.run(row.id); });
+      const insert = this.db.prepare("INSERT OR IGNORE INTO custom_dictionary (word) VALUES (?)");
+      incoming.forEach((word) => insert.run(word));
     });
-    tx();
-
-    return this.db.prepare("SELECT * FROM speaker_profiles WHERE id = ?").get(winner.id);
+    transaction();
+    return { success: true };
   }
 
-  getSpeakerProfiles(includeEmbedding = false) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const query = includeEmbedding
-        ? "SELECT * FROM speaker_profiles"
-        : `SELECT id, display_name, email, sample_count, created_at, updated_at
-           FROM speaker_profiles`;
-      return this.db.prepare(query).all();
-    } catch (error) {
-      debugLogger.error("Error getting speaker profiles", { error: error.message }, "database");
-      throw error;
+  applyDictionaryChanges({ add = [], remove = [] } = {}) {
+    const additions = normalizeWords(add);
+    const removals = normalizeWords(remove);
+    const transaction = this.db.transaction(() => {
+      const removeStmt = this.db.prepare("DELETE FROM custom_dictionary WHERE lower(word) = lower(?)");
+      removals.forEach((word) => removeStmt.run(word));
+      const addStmt = this.db.prepare("INSERT OR IGNORE INTO custom_dictionary (word) VALUES (?)");
+      additions.forEach((word) => addStmt.run(word));
+    });
+    transaction();
+    return { success: true, added: additions.size, removed: removals.size };
+  }
+
+  hardDeleteDictionaryEntry(id) {
+    return { success: this.db.prepare("DELETE FROM custom_dictionary WHERE id = ?").run(id).changes > 0 };
+  }
+
+  getSnippets() {
+    return this.db.prepare("SELECT trigger, replacement FROM snippets ORDER BY id").all();
+  }
+
+  setSnippets(snippets) {
+    const incoming = new Map();
+    for (const item of Array.isArray(snippets) ? snippets : []) {
+      const trigger = typeof item?.trigger === "string" ? item.trigger.trim() : "";
+      const replacement = typeof item?.replacement === "string" ? item.replacement.trim() : "";
+      if (trigger && replacement && trigger.length <= MAX_SNIPPET_TRIGGER_LENGTH) incoming.set(trigger.toLowerCase(), { trigger, replacement });
     }
+    const transaction = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM snippets").run();
+      const insert = this.db.prepare("INSERT INTO snippets (trigger, replacement) VALUES (?, ?)");
+      incoming.forEach(({ trigger, replacement }) => insert.run(trigger, replacement));
+    });
+    transaction();
+    return { success: true };
   }
 
-  setSpeakerMapping(noteId, speakerId, profileId, displayName) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(noteId)) return { success: false, error: "Note not found" };
-      this.db
-        .prepare(
-          "INSERT OR REPLACE INTO speaker_mappings (note_id, speaker_id, profile_id, display_name) VALUES (?, ?, ?, ?)"
-        )
-        .run(noteId, speakerId, profileId, displayName);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error setting speaker mapping", { error: error.message }, "database");
-      throw error;
+  hardDeleteSnippet(id) {
+    return { success: this.db.prepare("DELETE FROM snippets WHERE id = ?").run(id).changes > 0 };
+  }
+
+  saveNote(title, content, noteType = "personal", sourceFile = null, audioDuration = null, folderId = null, spaceId = null) {
+    spaceId ??= this._privateSpaceId();
+    if (folderId != null) spaceId = this.db.prepare("SELECT space_id FROM folders WHERE id = ?").get(folderId)?.space_id;
+    if (!spaceId || !this.getSpace(spaceId)) throw new Error("Space not found");
+    if (folderId == null) {
+      const folderName = noteType === "meeting" ? "Meetings" : "Personal";
+      folderId = this.db.prepare("SELECT id FROM folders WHERE space_id = ? AND name = ? LIMIT 1").get(spaceId, folderName)?.id ?? null;
     }
+    const result = this.db.prepare("INSERT INTO notes (title, content, note_type, source_file, audio_duration_seconds, folder_id, space_id) VALUES (?, ?, ?, ?, ?, ?, ?)").run(title, content, noteType, sourceFile, audioDuration, folderId, spaceId);
+    return { success: true, note: this.getNote(result.lastInsertRowid) };
   }
 
-  getSpeakerMappings(noteId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(noteId)) return [];
-      return this.db.prepare("SELECT * FROM speaker_mappings WHERE note_id = ?").all(noteId);
-    } catch (error) {
-      debugLogger.error("Error getting speaker mappings", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  saveNoteSpeakerEmbeddings(noteId, embeddings) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(noteId)) return { success: false, error: "Note not found" };
-      const transaction = this.db.transaction((entries) => {
-        const stmt = this.db.prepare(
-          "INSERT OR REPLACE INTO note_speaker_embeddings (note_id, speaker_id, embedding) VALUES (?, ?, ?)"
-        );
-        for (const [speakerId, buffer] of entries) {
-          stmt.run(noteId, speakerId, buffer);
-        }
-      });
-      transaction(Object.entries(embeddings));
-      return { success: true };
-    } catch (error) {
-      debugLogger.error(
-        "Error saving note speaker embeddings",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  getNoteSpeakerEmbeddings(noteId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(noteId)) return [];
-      return this.db.prepare("SELECT * FROM note_speaker_embeddings WHERE note_id = ?").all(noteId);
-    } catch (error) {
-      debugLogger.error(
-        "Error getting note speaker embeddings",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  getPendingNotes(spaceKind = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("n");
-      if (spaceKind != null) {
-        // 'team' also returns cloud-backed rows that just LEFT a team: their
-        // scope retraction must push even when cloud backup is off (D6).
-        const leftTeam =
-          spaceKind === "team" ? " OR (n.left_team = 1 AND n.cloud_id IS NOT NULL)" : "";
-        return this.db
-          .prepare(
-            `SELECT n.* FROM notes n JOIN spaces s ON s.id = n.space_id
-             WHERE n.sync_status IN ('pending', 'error') AND n.deleted_at IS NULL
-               AND ${accountScope.sql} AND (s.kind = ?${leftTeam})`
-          )
-          .all(...accountScope.params, spaceKind);
+  importNotes(rows, { noteType = "meeting", folderName = "Imported" } = {}) {
+    const spaceId = this._privateSpaceId();
+    let folderId = this.db.prepare("SELECT id FROM folders WHERE space_id = ? AND name = ?").get(spaceId, folderName)?.id;
+    if (!folderId) folderId = this.createFolder(folderName, spaceId).folder?.id ?? null;
+    let imported = 0;
+    const noteIds = [];
+    const errors = [];
+    const insert = this.db.prepare("INSERT INTO notes (title, content, note_type, source_file, folder_id, space_id, transcript, participants, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))");
+    this.db.transaction(() => {
+      for (const row of Array.isArray(rows) ? rows : []) {
+        try {
+          const result = insert.run(row.title, row.content, noteType, row.sourceFile, folderId, spaceId, row.transcript, row.participants, row.createdAt, row.createdAt);
+          imported += 1;
+          noteIds.push(Number(result.lastInsertRowid));
+        } catch (error) { errors.push({ error: error.message }); }
       }
-      // 'error' rows retry too: a transient failure (e.g. one offline pass)
-      // must not strand a note until its next local edit.
-      return this.db
-        .prepare(
-          `SELECT n.* FROM notes n
-           WHERE n.sync_status IN ('pending', 'error') AND n.deleted_at IS NULL
-             AND ${accountScope.sql}`
-        )
-        .all(...accountScope.params);
-    } catch (error) {
-      debugLogger.error("Error getting pending notes", { error: error.message }, "database");
-      throw error;
-    }
+    })();
+    return { success: true, imported, skipped: 0, folderId, noteIds, errors };
   }
 
-  getPendingNoteDeletes() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("n");
-      return this.db
-        .prepare(
-          `SELECT * FROM notes n
-           WHERE deleted_at IS NOT NULL AND cloud_id IS NOT NULL
-             AND sync_status = 'pending'
-             AND ${accountScope.sql}
-             AND NOT EXISTS (
-               SELECT 1 FROM optimistic_folder_delete_rows r
-               WHERE r.entity_type = 'note' AND r.entity_id = n.id
-             )`
-        )
-        .all(...accountScope.params);
-    } catch (error) {
-      debugLogger.error("Error getting pending note deletes", { error: error.message }, "database");
-      throw error;
-    }
+  getNote(id) { return this.db.prepare("SELECT * FROM notes WHERE id = ?").get(id) || null; }
+
+  getNotes(noteType = null, limit = 100, folderId = null, spaceId = null) {
+    const conditions = [];
+    const params = [];
+    if (noteType) { conditions.push("note_type = ?"); params.push(noteType); }
+    if (folderId != null) { conditions.push("folder_id = ?"); params.push(folderId); }
+    if (spaceId != null) { conditions.push("space_id = ?"); params.push(spaceId); if (folderId == null) conditions.push("folder_id IS NULL"); }
+    const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
+    return this.db.prepare(`SELECT * FROM notes${where} ORDER BY updated_at DESC LIMIT ?`).all(...params, limit);
   }
 
-  getNoteByClientId(clientNoteId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("n");
-      return (
-        this.db
-          .prepare(
-            `SELECT n.*,
-               EXISTS (
-                 SELECT 1 FROM optimistic_folder_delete_rows r
-                 WHERE r.entity_type = 'note' AND r.entity_id = n.id
-               ) AS folder_delete_pending
-             FROM notes n
-             WHERE n.client_note_id = ? AND ${accountScope.sql}`
-          )
-          .get(clientNoteId, ...accountScope.params) || null
-      );
-    } catch (error) {
-      debugLogger.error("Error getting note by client id", { error: error.message }, "database");
-      throw error;
-    }
+  getNotesForSpace(spaceId, limit = 50) { return this.db.prepare("SELECT * FROM notes WHERE space_id = ? ORDER BY updated_at DESC LIMIT ?").all(spaceId, limit); }
+
+  getNoteIdsInFolder(folderId) { return this.db.prepare("SELECT id FROM notes WHERE folder_id = ?").all(folderId).map((row) => row.id); }
+
+  getNoteIdsInScope(spaceId = null, folderId = null, candidateIds = null) {
+    const conditions = [];
+    const params = [];
+    if (spaceId != null) { conditions.push("space_id = ?"); params.push(spaceId); }
+    if (folderId != null) { conditions.push("folder_id = ?"); params.push(folderId); }
+    if (candidateIds) { if (!candidateIds.length) return []; conditions.push(`id IN (${candidateIds.map(() => "?").join(",")})`); params.push(...candidateIds); }
+    const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
+    return this.db.prepare(`SELECT id FROM notes${where}`).all(...params).map((row) => row.id);
   }
 
-  upsertNoteFromCloud(cloudNote, localFolderId, localSpaceId = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const spaceId = localSpaceId ?? this.getPrivateSpaceId();
-      const accountId = this._accountIdForSpace(spaceId);
-      const hasExplicitCreator = Object.prototype.hasOwnProperty.call(
-        cloudNote,
-        "created_by_user_id"
-      );
-      const hasLegacyCreator = Object.prototype.hasOwnProperty.call(cloudNote, "user_id");
-      const createdByUserId = hasExplicitCreator ? cloudNote.created_by_user_id : cloudNote.user_id;
-      const creatorUpdate =
-        hasExplicitCreator || hasLegacyCreator
-          ? "excluded.created_by_user_id"
-          : "created_by_user_id";
-      const hasExplicitUpdater = Object.prototype.hasOwnProperty.call(
-        cloudNote,
-        "updated_by_user_id"
-      );
-      const updaterUpdate = hasExplicitUpdater
-        ? "excluded.updated_by_user_id"
-        : "updated_by_user_id";
-      // Sync must never replace non-empty local content/enhanced_content/
-      // transcript with an empty cloud value (#1290, the #938 invariant).
-      // The enhancement prompt/hash travel with enhanced_content.
-      const stmt = this.db.prepare(`
-        INSERT INTO notes (client_note_id, cloud_id, title, content, enhanced_content,
-          enhancement_prompt, enhanced_at_content_hash, note_type, source_file,
-          audio_duration_seconds, transcript, folder_id, space_id, participants, calendar_event_id,
-          diarization_enabled, expected_speaker_count, updated_by_user_id, owner_user_id, created_by_user_id, sync_status, created_at, updated_at,
-          cloud_updated_at, account_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?, ?, ?, ?)
-        ON CONFLICT(client_note_id) DO UPDATE SET
-          cloud_id = excluded.cloud_id,
-          title = excluded.title,
-          content = CASE
-            WHEN COALESCE(excluded.content, '') = '' AND COALESCE(content, '') <> ''
-            THEN content ELSE excluded.content END,
-          enhanced_content = CASE
-            WHEN COALESCE(excluded.enhanced_content, '') = '' AND COALESCE(enhanced_content, '') <> ''
-            THEN enhanced_content ELSE excluded.enhanced_content END,
-          enhancement_prompt = CASE
-            WHEN COALESCE(excluded.enhanced_content, '') = '' AND COALESCE(enhanced_content, '') <> ''
-            THEN enhancement_prompt ELSE excluded.enhancement_prompt END,
-          enhanced_at_content_hash = CASE
-            WHEN COALESCE(excluded.enhanced_content, '') = '' AND COALESCE(enhanced_content, '') <> ''
-            THEN enhanced_at_content_hash ELSE excluded.enhanced_at_content_hash END,
-          transcript = CASE
-            WHEN COALESCE(excluded.transcript, '') = '' AND COALESCE(transcript, '') <> ''
-            THEN transcript ELSE excluded.transcript END,
-          folder_id = excluded.folder_id,
-          space_id = excluded.space_id,
-          account_id = excluded.account_id,
-          participants = COALESCE(excluded.participants, participants),
-          calendar_event_id = COALESCE(excluded.calendar_event_id, calendar_event_id),
-          diarization_enabled = COALESCE(excluded.diarization_enabled, diarization_enabled),
-          expected_speaker_count = COALESCE(excluded.expected_speaker_count, expected_speaker_count),
-          updated_by_user_id = ${updaterUpdate},
-          owner_user_id = COALESCE(excluded.owner_user_id, owner_user_id),
-          created_by_user_id = ${creatorUpdate},
-          sync_status = 'synced',
-          left_team = 0,
-          updated_at = excluded.updated_at,
-          cloud_updated_at = excluded.cloud_updated_at
-      `);
-      stmt.run(
-        cloudNote.client_note_id,
-        cloudNote.id,
-        cloudNote.title,
-        cloudNote.content,
-        cloudNote.enhanced_content || null,
-        cloudNote.enhancement_prompt || null,
-        cloudNote.enhanced_at_content_hash || null,
-        cloudNote.note_type || "personal",
-        cloudNote.source_file || null,
-        cloudNote.audio_duration_seconds || null,
-        cloudNote.transcript || null,
-        localFolderId,
-        spaceId,
-        cloudNote.participants || null,
-        cloudNote.calendar_event_id || null,
-        cloudNote.diarization_enabled ?? null,
-        normalizeStoredSpeakerCount(cloudNote.expected_speaker_count),
-        cloudNote.updated_by_user_id || null,
-        cloudNote.user_id ?? null,
-        createdByUserId ?? null,
-        cloudNote.created_at,
-        cloudNote.updated_at,
-        cloudNote.updated_at,
-        accountId
-      );
-      return this.db
-        .prepare("SELECT * FROM notes WHERE client_note_id = ?")
-        .get(cloudNote.client_note_id);
-    } catch (error) {
-      debugLogger.error("Error upserting note from cloud", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  markNoteSynced(id, cloudId, cloudUpdatedAt = null, ownerUserId = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(id)) return { success: false, changes: 0 };
-      // cloud_updated_at and owner_user_id are overwritten even with null: a
-      // forked row that re-creates under a new cloud_id must not keep the old
-      // note's base or its previous owner (a null base settles last-write-wins
-      // once; a null owner fails closed until a pull records the real one).
-      this.db
-        .prepare(
-          "UPDATE notes SET sync_status = 'synced', cloud_id = ?, left_team = 0, cloud_updated_at = ?, owner_user_id = ? WHERE id = ?"
-        )
-        .run(cloudId, cloudUpdatedAt, ownerUserId, id);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error marking note synced", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  // A row moved from a team space to Personal while its push was in flight
-  // still owes the server a scope retraction for the returned team-side copy.
-  _leftTeamDuringPush(snapshotSpaceId, currentSpaceId) {
-    const kindOf = this.db.prepare("SELECT kind FROM spaces WHERE id = ?");
-    return kindOf.get(snapshotSpaceId)?.kind === "team" &&
-      kindOf.get(currentSpaceId)?.kind === "private"
-      ? 1
-      : 0;
-  }
-
-  // A create response arrives after an arbitrary network delay. Adopt it only
-  // for the exact local identity that issued the request, and settle only when
-  // every pushed field still matches that request's snapshot. A newer edit
-  // adopts the cloud identity/base but remains pending. Response metadata is
-  // assigned even when null because a fork may still carry the old identity's
-  // base/owner. A purge forks the client_note_id, so the relocated Personal
-  // row is never mutated. Partial migration creates explicitly opt out of
-  // settling so a later full PATCH still delivers fields the POST omitted.
-  acknowledgeNoteCreate(
-    id,
-    snapshot,
-    cloudId,
-    cloudUpdatedAt = null,
-    ownerUserId = null,
-    settleIfUnchanged = true
-  ) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(id)) {
-        return { success: true, outcome: "identity-changed", changes: 0 };
-      }
-      const expectedClientNoteId = snapshot?.client_note_id;
-      if (!expectedClientNoteId || !cloudId) {
-        return { success: false, outcome: "unresolved" };
-      }
-
-      return this.db.transaction(() => {
-        const current = this.db.prepare("SELECT * FROM notes WHERE id = ?").get(id);
-        if (!current || current.client_note_id !== expectedClientNoteId) {
-          // If the same identity exists under an unexpected numeric row, do
-          // not mutate it and do not authorize deletion of its cloud result.
-          const identityStillExists = this.db
-            .prepare("SELECT 1 FROM notes WHERE client_note_id = ?")
-            .get(expectedClientNoteId);
-          return {
-            success: true,
-            outcome: identityStillExists ? "unresolved" : "orphaned",
-          };
-        }
-
-        if (current.cloud_id) {
-          // Concurrent creates should be idempotent and return the same id.
-          // A different id is ambiguous, though, so never replace the adopted
-          // identity or authorize destructive cleanup in that case.
-          return {
-            success: true,
-            outcome: current.cloud_id === cloudId ? "already-linked" : "unresolved",
-          };
-        }
-
-        const unchanged = rowMatchesSnapshot(current, snapshot, NOTE_CREATE_ACK_FIELDS);
-
-        // If a team note was moved to Personal while POST was in flight, the
-        // returned cloud row still lives in the old team. Mark the attached
-        // identity as owing a scope retraction even when backup is disabled.
-        const leftTeam = this._leftTeamDuringPush(snapshot.space_id, current.space_id);
-
-        if (unchanged && settleIfUnchanged) {
-          this.db
-            .prepare(
-              `UPDATE notes
-               SET sync_status = 'synced', cloud_id = ?, left_team = 0,
-                   cloud_updated_at = ?,
-                   owner_user_id = ?
-               WHERE id = ? AND client_note_id = ? AND cloud_id IS NULL`
-            )
-            .run(cloudId, cloudUpdatedAt, ownerUserId, id, expectedClientNoteId);
-          return { success: true, outcome: "synced" };
-        }
-
-        this.db
-          .prepare(
-            `UPDATE notes
-             SET cloud_id = ?,
-                 cloud_updated_at = ?,
-                 owner_user_id = ?,
-                 sync_status = 'pending',
-                 left_team = CASE WHEN ? = 1 THEN 1 ELSE left_team END
-             WHERE id = ? AND client_note_id = ? AND cloud_id IS NULL`
-          )
-          .run(cloudId, cloudUpdatedAt, ownerUserId, leftTeam, id, expectedClientNoteId);
-        return { success: true, outcome: "pending" };
-      })();
-    } catch (error) {
-      debugLogger.error("Error acknowledging note create", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  // A PATCH response belongs to both the local client identity and the cloud
-  // identity that issued it. Purge/revocation forks in place, so numeric id
-  // alone is never sufficient. An exact pushed snapshot settles; newer work
-  // on the same identity remains pending while advancing its server base.
-  markNoteSyncedIfUnchanged(
-    id,
-    snapshot,
-    expectedCloudId,
-    cloudUpdatedAt = null,
-    ownerUserId = null
-  ) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(id)) {
-        return { success: true, outcome: "identity-changed", changes: 0 };
-      }
-      if (!snapshot?.client_note_id || !expectedCloudId) {
-        return { success: false, outcome: "identity-changed", changes: 0 };
-      }
-
-      return this.db.transaction(() => {
-        const current = this.db.prepare("SELECT * FROM notes WHERE id = ?").get(id);
-        if (
-          !current ||
-          current.client_note_id !== snapshot.client_note_id ||
-          current.cloud_id !== expectedCloudId
-        ) {
-          return { success: true, outcome: "identity-changed", changes: 0 };
-        }
-
-        const unchanged = rowMatchesSnapshot(current, snapshot, NOTE_PATCH_ACK_FIELDS);
-        const nextCloudUpdatedAt = (() => {
-          if (!cloudUpdatedAt) return current.cloud_updated_at;
-          if (!current.cloud_updated_at) return cloudUpdatedAt;
-          const incomingMs = Date.parse(cloudUpdatedAt);
-          const currentMs = Date.parse(current.cloud_updated_at);
-          if (Number.isFinite(incomingMs) && Number.isFinite(currentMs)) {
-            return incomingMs > currentMs ? cloudUpdatedAt : current.cloud_updated_at;
-          }
-          return cloudUpdatedAt > current.cloud_updated_at
-            ? cloudUpdatedAt
-            : current.cloud_updated_at;
-        })();
-
-        if (unchanged) {
-          const result = this.db
-            .prepare(
-              `UPDATE notes
-               SET sync_status = 'synced', left_team = 0,
-                   cloud_updated_at = ?,
-                   owner_user_id = COALESCE(?, owner_user_id)
-               WHERE id = ? AND client_note_id = ? AND cloud_id = ?`
-            )
-            .run(nextCloudUpdatedAt, ownerUserId, id, snapshot.client_note_id, expectedCloudId);
-          return { success: true, outcome: "synced", changes: result.changes };
-        }
-
-        // The delivered PATCH still advances this identity's base; otherwise
-        // the next push would 409 against this device's own write. An older
-        // response arriving out of order must not regress a newer base. Never
-        // run this update for an identity/cloud mismatch.
-        this.db
-          .prepare(
-            `UPDATE notes
-             SET cloud_updated_at = ?,
-                 owner_user_id = COALESCE(?, owner_user_id)
-             WHERE id = ? AND client_note_id = ? AND cloud_id = ?`
-          )
-          .run(nextCloudUpdatedAt, ownerUserId, id, snapshot.client_note_id, expectedCloudId);
-        return { success: true, outcome: "pending", changes: 0 };
-      })();
-    } catch (error) {
-      debugLogger.error(
-        "Error marking note synced if unchanged",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  // Copies the cloud owner onto a local row without touching updated_at or
-  // sync_status: an unchanged note skips the last-write-wins upsert but must
-  // still gain its owner (the owner_user_id backfill relies on this).
-  setNoteOwnerFromCloud(id, ownerUserId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(id)) return { success: false };
-      this.db.prepare("UPDATE notes SET owner_user_id = ? WHERE id = ?").run(ownerUserId, id);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error(
-        "Error setting note owner from cloud",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  // Live cloud-backed team notes whose owner is still unknown — the UI fails
-  // closed on them, so a snapshot backfill runs while any remain.
-  countTeamNotesMissingOwner() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("n");
-      const row = this.db
-        .prepare(
-          `SELECT COUNT(*) AS count FROM notes n
-             JOIN spaces s ON s.id = n.space_id
-            WHERE s.kind = 'team' AND n.deleted_at IS NULL
-              AND n.cloud_id IS NOT NULL AND n.owner_user_id IS NULL
-              AND ${accountScope.sql}`
-        )
-        .get(...accountScope.params);
-      return row?.count ?? 0;
-    } catch (error) {
-      debugLogger.error(
-        "Error counting team notes missing owner",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  // Records the server revision the user knowingly overwrites ("Keep editing"
-  // on the conflict banner). Deliberately leaves updated_at and sync_status
-  // alone — the local edit stays pending and pushes with the advanced base.
-  setNoteCloudBase(id, cloudUpdatedAt) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(id)) return { success: false };
-      this.db.prepare("UPDATE notes SET cloud_updated_at = ? WHERE id = ?").run(cloudUpdatedAt, id);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error setting note cloud base", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  markNoteSyncError(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(id)) return { success: false };
-      this.db.prepare("UPDATE notes SET sync_status = 'error' WHERE id = ?").run(id);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error marking note sync error", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  // A denied optimistic delete leaves the server row untouched. Revive the
-  // local tombstone in place so its numeric id, chats and speaker rows survive;
-  // the deliberately old timestamp lets the mandatory snapshot pull replace
-  // it with the authoritative cloud row.
-  restoreNoteAfterDeniedDelete(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("notes");
-      const result = this.db
-        .prepare(
-          `UPDATE notes
-           SET deleted_at = NULL, sync_status = 'synced',
-               updated_at = '1970-01-01 00:00:00'
-           WHERE id = ? AND deleted_at IS NOT NULL AND ${accountScope.sql}`
-        )
-        .run(id, ...accountScope.params);
-      return { success: result.changes > 0, id };
-    } catch (error) {
-      debugLogger.error(
-        "Error restoring note after denied delete",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  // Confirmed cloud deletes and access revocation retire note chats; denied
-  // deletes use the restore method above instead.
-  hardDeleteNote(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(id)) return { success: false, id, error: "Note not found" };
-      const result = this.db.transaction(() => {
-        this._retireConversationsWhere("note_id = ?", [id], {
-          scrubSyncedMessages: true,
-        });
-        this._deleteSpeakerRowsForNotes("SELECT id FROM notes WHERE id = ?", id);
-        return this.db.prepare("DELETE FROM notes WHERE id = ?").run(id);
-      })();
-      return { success: result.changes > 0, id };
-    } catch (error) {
-      debugLogger.error("Error hard deleting note", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getPendingFolders(spaceKind = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("f");
-      if (spaceKind != null) {
-        // 'team' also returns cloud-backed rows that just LEFT a team: their
-        // scope retraction must push even when cloud backup is off (D6).
-        const leftTeam =
-          spaceKind === "team" ? " OR (f.left_team = 1 AND f.cloud_id IS NOT NULL)" : "";
-        return this.db
-          .prepare(
-            `SELECT f.* FROM folders f JOIN spaces s ON s.id = f.space_id
-             WHERE f.sync_status = 'pending' AND f.deleted_at IS NULL
-               AND ${accountScope.sql} AND (s.kind = ?${leftTeam})
-             ORDER BY f.space_id, f.name`
-          )
-          .all(...accountScope.params, spaceKind);
-      }
-      return this.db
-        .prepare(
-          `SELECT f.* FROM folders f
-           WHERE f.sync_status = 'pending' AND f.deleted_at IS NULL
-             AND ${accountScope.sql}
-           ORDER BY f.space_id, f.name`
-        )
-        .all(...accountScope.params);
-    } catch (error) {
-      debugLogger.error("Error getting pending folders", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getPendingFolderDeletes() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("f");
-      return this.db
-        .prepare(
-          `SELECT * FROM folders f
-           WHERE deleted_at IS NOT NULL AND cloud_id IS NOT NULL
-             AND ${accountScope.sql}
-             AND (sync_status = 'pending' OR EXISTS (
-               SELECT 1 FROM optimistic_folder_delete_rows r
-               WHERE r.folder_id = f.id AND r.entity_type = 'folder'
-             ))`
-        )
-        .all(...accountScope.params);
-    } catch (error) {
-      debugLogger.error(
-        "Error getting pending folder deletes",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  // A folder DELETE permission denial means the server changed nothing.
-  // Restore only rows hidden by that exact optimistic operation; independent
-  // note/conversation tombstones were never journaled and remain deleted.
-  restoreFolderAfterDeniedDelete(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this._getFolderInAccountScope(id)) {
-        return { success: false, id, error: "Folder not found" };
-      }
-      return this.db.transaction(() => {
-        const journalRows = this.db
-          .prepare(
-            `SELECT * FROM optimistic_folder_delete_rows
-             WHERE folder_id = ?
-             ORDER BY CASE entity_type
-               WHEN 'folder' THEN 0 WHEN 'note' THEN 1 ELSE 2 END, entity_id`
-          )
-          .all(id);
-        const folderState = journalRows.find((row) => row.entity_type === "folder");
-        if (!folderState) {
-          return { success: false, id, error: "Folder delete rollback not found" };
-        }
-
-        const folder = this.db.prepare("SELECT * FROM folders WHERE id = ?").get(id);
-        if (!folder) {
-          return { success: false, id, error: "Folder row is missing" };
-        }
-        const collision = this.db
-          .prepare(
-            "SELECT id FROM folders WHERE name = ? AND space_id = ? AND deleted_at IS NULL AND id != ?"
-          )
-          .get(folder.name, folder.space_id, id);
-        if (collision) {
-          return {
-            success: false,
-            id,
-            reason: "name-taken",
-            error: "Folder name is no longer available",
-          };
-        }
-
-        const noteStates = journalRows.filter((row) => row.entity_type === "note");
-        const conversationStates = journalRows.filter((row) => row.entity_type === "conversation");
-        const noteExists = this.db.prepare("SELECT 1 FROM notes WHERE id = ?");
-        const conversationExists = this.db.prepare(
-          "SELECT 1 FROM agent_conversations WHERE id = ?"
-        );
-        if (noteStates.some((row) => !noteExists.get(row.entity_id))) {
-          return { success: false, id, error: "A folder note row is missing" };
-        }
-        if (conversationStates.some((row) => !conversationExists.get(row.entity_id))) {
-          return { success: false, id, error: "A folder conversation row is missing" };
-        }
-
-        this.db
-          .prepare(
-            `UPDATE folders
-             SET deleted_at = ?, sync_status = ?, updated_at = ?
-             WHERE id = ?`
-          )
-          .run(
-            folderState.original_deleted_at,
-            folderState.original_sync_status,
-            folderState.original_updated_at,
-            id
-          );
-        const restoreNote = this.db.prepare(
-          `UPDATE notes
-           SET deleted_at = ?, sync_status = ?, updated_at = ?
-           WHERE id = ?`
-        );
-        for (const state of noteStates) {
-          restoreNote.run(
-            state.original_deleted_at,
-            state.original_sync_status,
-            state.original_updated_at,
-            state.entity_id
-          );
-        }
-        const restoreConversation = this.db.prepare(
-          `UPDATE agent_conversations
-           SET deleted_at = ?, sync_status = ?, updated_at = ?
-           WHERE id = ?`
-        );
-        for (const state of conversationStates) {
-          restoreConversation.run(
-            state.original_deleted_at,
-            state.original_sync_status,
-            state.original_updated_at,
-            state.entity_id
-          );
-        }
-
-        this.db.prepare("DELETE FROM optimistic_folder_delete_rows WHERE folder_id = ?").run(id);
-        const getNote = this.db.prepare("SELECT * FROM notes WHERE id = ?");
-        return {
-          success: true,
-          id,
-          folder: this.db.prepare("SELECT * FROM folders WHERE id = ?").get(id),
-          notes: noteStates.map((state) => getNote.get(state.entity_id)),
-          conversationIds: conversationStates.map((state) => state.entity_id),
-        };
-      })();
-    } catch (error) {
-      debugLogger.error(
-        "Error restoring folder after denied delete",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  hardDeleteFolder(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const folder = this._getFolderInAccountScope(id);
-      if (!folder) return { success: false, id, error: "Folder not found" };
-      const childNotes = "SELECT id FROM notes WHERE folder_id = ?";
-      const heldNotes =
-        "SELECT entity_id FROM optimistic_folder_delete_rows WHERE folder_id = ? AND entity_type = 'note'";
-      const heldConversations =
-        "SELECT entity_id FROM optimistic_folder_delete_rows WHERE folder_id = ? AND entity_type = 'conversation'";
-      const accountScope = this._accountScopeCondition("notes");
-      const noteIds = this.db
-        .prepare(`${childNotes} AND ${accountScope.sql}`)
-        .all(id, ...accountScope.params)
-        .map((row) => row.id);
-      let relocatedNotes = [];
-      const result = this.db.transaction(() => {
-        relocatedNotes = this._releaseOutOfScopeChildNotes(id);
-        // Note chats normally have note_id only. Retire them while the child
-        // rows still identify which chats belong to this folder cleanup, then
-        // handle independently folder-scoped conversations.
-        this._retireConversationsWhere(`note_id IN (${childNotes})`, [id], {
-          scrubSyncedMessages: true,
-        });
-        // The journal is the authoritative ownership record for the
-        // optimistic operation. Use it as well as current parent columns so a
-        // late stale write cannot strand a held row by changing its scope.
-        this.db
-          .prepare(
-            `DELETE FROM agent_messages
-             WHERE conversation_id IN (${heldConversations})`
-          )
-          .run(id);
-        this.db
-          .prepare(
-            `DELETE FROM agent_conversations
-             WHERE cloud_id IS NULL AND id IN (${heldConversations})`
-          )
-          .run(id);
-        this.db
-          .prepare(
-            `UPDATE agent_conversations
-             SET deleted_at = COALESCE(deleted_at, datetime('now')),
-                 sync_status = 'pending', updated_at = datetime('now')
-             WHERE cloud_id IS NOT NULL AND id IN (${heldConversations})`
-          )
-          .run(id);
-        this._deleteSpeakerRowsForNotes(childNotes, id);
-        this._deleteSpeakerRowsForNotes(heldNotes, id);
-        this.db.prepare(`DELETE FROM notes WHERE id IN (${heldNotes})`).run(id);
-        this.db.prepare(`DELETE FROM notes WHERE id IN (${childNotes})`).run(id);
-        this._retireConversationsWhere("folder_id = ?", [id], {
-          scrubSyncedMessages: true,
-        });
-        // Held cloud chats now become ordinary pending cloud deletes. Rows
-        // tombstoned before the folder action were never journaled and keep
-        // their existing pending state.
-        const deleted = this.db.prepare("DELETE FROM folders WHERE id = ?").run(id);
-        this.db.prepare("DELETE FROM optimistic_folder_delete_rows WHERE folder_id = ?").run(id);
-        return deleted;
-      })();
-      return {
-        success: result.changes > 0,
-        id,
-        noteIds,
-        relocatedNotes,
-        name: folder?.name ?? null,
-      };
-    } catch (error) {
-      debugLogger.error("Error hard deleting folder", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  // The folder's server row moved into a team this user can't access
-  // (access_removed stub or a team_access_revoked push rejection). Clean
-  // server-owned child notes are no longer ours to keep — the server retains
-  // them; dirty or never-synced children are the only surviving content
-  // (plan §7.2): they relocate to the private space with forked identities so
-  // the next push re-creates them as personal rows. The folder row itself
-  // survives in the private space only when it carries unpushed changes
-  // (preserveFolder), renamed "name (2)" on a collision; otherwise it is
-  // deleted.
-  relocateRevokedFolder(id, privateSpaceId, preserveFolder = false) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this._getFolderInAccountScope(id)) {
-        return { success: false, error: "Folder not found" };
-      }
-      // If access revocation overtakes an optimistic delete, first recover the
-      // held rows so the normal dirty-note preservation rules can classify
-      // them from their real pre-delete state.
-      const held = this.db
-        .prepare(
-          "SELECT 1 FROM optimistic_folder_delete_rows WHERE folder_id = ? AND entity_type = 'folder'"
-        )
-        .get(id);
-      if (held) {
-        const rollback = this.restoreFolderAfterDeniedDelete(id);
-        if (!rollback.success) return rollback;
-      }
-
-      const folder = this.db.prepare("SELECT * FROM folders WHERE id = ?").get(id);
+  updateNote(id, updates) {
+    if (!this.getNote(id)) return { success: false, error: "Note not found" };
+    const allowed = ["title", "content", "enhanced_content", "enhancement_prompt", "enhanced_at_content_hash", "folder_id", "space_id", "transcript", "calendar_event_id", "participants", "diarization_enabled", "expected_speaker_count", "source_file", "audio_duration_seconds", "note_type"];
+    const fields = [];
+    const values = [];
+    for (const key of allowed) if (updates[key] !== undefined) { fields.push(`${key} = ?`); values.push(updates[key]); }
+    if (updates.folder_id != null) {
+      const folder = this.db.prepare("SELECT space_id FROM folders WHERE id = ?").get(updates.folder_id);
       if (!folder) return { success: false, error: "Folder not found" };
-      const serverOwnedChildren =
-        "SELECT id FROM notes WHERE folder_id = ? AND (deleted_at IS NOT NULL OR (sync_status = 'synced' AND cloud_id IS NOT NULL))";
-      const result = this.db.transaction(() => {
-        const preservedIds = this.db
-          .prepare(
-            "SELECT id FROM notes WHERE folder_id = ? AND deleted_at IS NULL AND (sync_status != 'synced' OR cloud_id IS NULL)"
-          )
-          .all(id)
-          .map((row) => row.id);
-        const deletedNoteIds = this.db
-          .prepare(serverOwnedChildren)
-          .all(id)
-          .map((row) => row.id);
-        // Note chats have no folder_id, so retire them before deleting the
-        // server-owned notes that prove they belonged to this revoked folder.
-        this._retireConversationsWhere(`note_id IN (${serverOwnedChildren})`, [id], {
-          scrubSyncedMessages: true,
-        });
-        this._deleteSpeakerRowsForNotes(serverOwnedChildren, id);
-        this.db.prepare(`DELETE FROM notes WHERE id IN (${serverOwnedChildren})`).run(id);
-        const relocateNote = this.db.prepare(
-          "UPDATE notes SET space_id = ?, folder_id = ?, client_note_id = ?, cloud_id = NULL, cloud_updated_at = NULL, owner_user_id = NULL, updated_by_user_id = NULL, sync_status = 'pending', left_team = 0, is_shared = 0, share_token = NULL, updated_at = datetime('now') WHERE id = ?"
-        );
-        const detachNoteConversation = this.db.prepare(
-          "UPDATE agent_conversations SET space_id = NULL, folder_id = NULL WHERE note_id = ?"
-        );
-        for (const noteId of preservedIds) {
-          relocateNote.run(privateSpaceId, preserveFolder ? id : null, randomUUID(), noteId);
-          // Note-scoped chats follow a preserved dirty note, not the revoked
-          // team container. Folder-only chats are handled separately below.
-          detachNoteConversation.run(noteId);
-        }
-        let preservedFolder = null;
-        if (preserveFolder) {
-          let name = folder.name;
-          const taken = this.db.prepare(
-            "SELECT 1 FROM folders WHERE name = ? AND space_id = ? AND deleted_at IS NULL AND id != ?"
-          );
-          for (let n = 2; taken.get(name, privateSpaceId, id); n++) {
-            name = `${folder.name} (${n})`;
-          }
-          this.db
-            .prepare(
-              "UPDATE folders SET space_id = ?, name = ?, client_folder_id = ?, cloud_id = NULL, sync_status = 'pending', left_team = 0, updated_at = datetime('now') WHERE id = ?"
-            )
-            .run(privateSpaceId, name, randomUUID(), id);
-          preservedFolder = this.db.prepare("SELECT * FROM folders WHERE id = ?").get(id);
-          // Folder-scoped chats follow the preserved folder into the private
-          // space so their space ref doesn't dangle on the revoked space.
-          this.db
-            .prepare("UPDATE agent_conversations SET space_id = ? WHERE folder_id = ?")
-            .run(privateSpaceId, id);
-        } else {
-          this._retireConversationsWhere("folder_id = ?", [id], {
-            scrubSyncedMessages: true,
-          });
-          this.db.prepare("DELETE FROM folders WHERE id = ?").run(id);
-        }
-        const getNote = this.db.prepare("SELECT * FROM notes WHERE id = ?");
-        return {
-          folder: preservedFolder,
-          relocatedNotes: preservedIds.map((noteId) => getNote.get(noteId)),
-          deletedNoteIds,
-        };
-      })();
-      return { success: true, folderName: folder.name, ...result };
-    } catch (error) {
-      debugLogger.error("Error relocating revoked folder", { error: error.message }, "database");
-      throw error;
+      if (updates.space_id === undefined) { fields.push("space_id = ?"); values.push(folder.space_id); }
     }
+    if (!fields.length) return { success: false };
+    values.push(id);
+    const result = this.db.prepare(`UPDATE notes SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...values);
+    return { success: result.changes > 0, note: this.getNote(id) };
   }
 
-  getFolderByClientId(clientFolderId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("folders");
-      return (
-        this.db
-          .prepare(`SELECT * FROM folders WHERE client_folder_id = ? AND ${accountScope.sql}`)
-          .get(clientFolderId, ...accountScope.params) || null
-      );
-    } catch (error) {
-      debugLogger.error("Error getting folder by client id", { error: error.message }, "database");
-      throw error;
-    }
+  deleteNote(id) {
+    const result = this.db.prepare("DELETE FROM notes WHERE id = ?").run(id);
+    return { success: result.changes > 0 };
   }
 
-  upsertFolderFromCloud(cloudFolder, localSpaceId = null) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const spaceId = localSpaceId ?? this.getPrivateSpaceId();
-      const accountId = this._accountIdForSpace(spaceId);
-      const updatedAt = cloudFolder.updated_at || cloudFolder.created_at;
-      const stmt = this.db.prepare(`
-        INSERT INTO folders (client_folder_id, cloud_id, name, is_default, sort_order, space_id, account_id, sync_status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'synced', ?, ?)
-        ON CONFLICT(client_folder_id) DO UPDATE SET
-          cloud_id = excluded.cloud_id,
-          name = excluded.name,
-          sort_order = excluded.sort_order,
-          space_id = excluded.space_id,
-          account_id = excluded.account_id,
-          sync_status = 'synced',
-          left_team = 0,
-          updated_at = excluded.updated_at
-      `);
-      try {
-        stmt.run(
-          cloudFolder.client_folder_id,
-          cloudFolder.id,
-          cloudFolder.name,
-          cloudFolder.is_default ? 1 : 0,
-          cloudFolder.sort_order || 0,
-          spaceId,
-          accountId,
-          cloudFolder.created_at,
-          updatedAt
-        );
-      } catch (err) {
-        // A live same-named folder already exists in this space (partial unique
-        // index idx_folders_space_name is a different conflict target than the
-        // client_folder_id upsert). Converge on the existing folder by adopting
-        // the cloud row's identity instead of wedging the pull.
-        // Match the error code, not the message text (which SQLite could
-        // reformat); the column check keeps client_folder_id collisions on
-        // the rethrow path.
-        if (err.code !== "SQLITE_CONSTRAINT_UNIQUE" || !err.message.includes("folders.space_id")) {
-          throw err;
-        }
-        const existing = this.db
-          .prepare(
-            "SELECT id FROM folders WHERE space_id = ? AND name = ? AND account_id IS ? AND deleted_at IS NULL"
-          )
-          .get(spaceId, cloudFolder.name, accountId);
-        if (!existing) throw err;
-        this.db.transaction(() => {
-          const holder = this.db
-            .prepare("SELECT id FROM folders WHERE client_folder_id = ? AND id != ?")
-            .get(cloudFolder.client_folder_id, existing.id);
-          // A different local row already tracked this cloud folder (rename
-          // collision via the DO UPDATE branch) — fork it so the winner can
-          // take the cloud identity without violating the client id index.
-          if (holder) this.forkFolderIdentity(holder.id);
-          this.db
-            .prepare(
-              "UPDATE folders SET client_folder_id = ?, cloud_id = ?, sort_order = ?, sync_status = 'synced', left_team = 0, updated_at = ? WHERE id = ?"
-            )
-            .run(
-              cloudFolder.client_folder_id,
-              cloudFolder.id,
-              cloudFolder.sort_order || 0,
-              updatedAt,
-              existing.id
-            );
-        })();
-      }
-      return this.db
-        .prepare("SELECT * FROM folders WHERE client_folder_id = ?")
-        .get(cloudFolder.client_folder_id);
-    } catch (error) {
-      debugLogger.error("Error upserting folder from cloud", { error: error.message }, "database");
-      throw error;
-    }
+  getFolderNoteCountsBySpace(spaceId) { return this.getFolderNoteCounts().filter((row) => row.space_id === spaceId); }
+
+  getActions() { return this.db.prepare("SELECT * FROM actions ORDER BY sort_order, id").all(); }
+  getAction(id) { return this.db.prepare("SELECT * FROM actions WHERE id = ?").get(id) || null; }
+  createAction(name, description, prompt, icon = "sparkles") {
+    const result = this.db.prepare("INSERT INTO actions (name, description, prompt, icon) VALUES (?, ?, ?, ?)").run(name, description, prompt, icon);
+    return { success: true, action: this.getAction(result.lastInsertRowid) };
+  }
+  updateAction(id, updates) {
+    const allowed = ["name", "description", "prompt", "icon", "sort_order"];
+    const fields = [];
+    const values = [];
+    for (const key of allowed) if (updates[key] !== undefined) { fields.push(`${key} = ?`); values.push(updates[key]); }
+    if (!fields.length) return { success: false };
+    values.push(id);
+    const result = this.db.prepare(`UPDATE actions SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...values);
+    return { success: result.changes > 0, action: this.getAction(id) };
+  }
+  deleteAction(id) { return { success: this.db.prepare("DELETE FROM actions WHERE id = ? AND is_builtin = 0").run(id).changes > 0 }; }
+
+  createAgentConversation(title = "Untitled", noteId = null, spaceId = null, folderId = null) {
+    const result = this.db.prepare("INSERT INTO agent_conversations (title, note_id, space_id, folder_id) VALUES (?, ?, ?, ?)").run(title, noteId, spaceId, folderId);
+    return this.getAgentConversation(result.lastInsertRowid);
+  }
+  getAgentConversation(id) {
+    const conversation = this.db.prepare("SELECT * FROM agent_conversations WHERE id = ?").get(id);
+    return conversation ? { ...conversation, messages: this.getAgentMessages(id) } : null;
+  }
+  getAgentConversations(limit = 50) { return this.db.prepare("SELECT * FROM agent_conversations WHERE archived_at IS NULL ORDER BY updated_at DESC LIMIT ?").all(limit); }
+  getConversationsForNote(noteId, limit = 20) { return this.db.prepare("SELECT * FROM agent_conversations WHERE note_id = ? ORDER BY updated_at DESC LIMIT ?").all(noteId, limit); }
+  getConversationsForContainer(spaceId, folderId = null, limit = 20) {
+    const fields = "c.*, (SELECT COUNT(*) FROM agent_messages m WHERE m.conversation_id = c.id) AS message_count";
+    const sql = folderId == null ? `SELECT ${fields} FROM agent_conversations c WHERE c.space_id = ? AND c.folder_id IS NULL ORDER BY c.updated_at DESC LIMIT ?` : `SELECT ${fields} FROM agent_conversations c WHERE c.space_id = ? AND c.folder_id = ? ORDER BY c.updated_at DESC LIMIT ?`;
+    return folderId == null ? this.db.prepare(sql).all(spaceId, limit) : this.db.prepare(sql).all(spaceId, folderId, limit);
+  }
+  addAgentMessage(conversationId, role, content, metadata) {
+    if (!this.getAgentConversation(conversationId)) return null;
+    const result = this.db.prepare("INSERT INTO agent_messages (conversation_id, role, content, metadata) VALUES (?, ?, ?, ?)").run(conversationId, role, content, metadata ? JSON.stringify(metadata) : null);
+    this.db.prepare("UPDATE agent_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(conversationId);
+    return this.db.prepare("SELECT * FROM agent_messages WHERE id = ?").get(result.lastInsertRowid);
+  }
+  getAgentMessages(conversationId) { return this.db.prepare("SELECT * FROM agent_messages WHERE conversation_id = ? ORDER BY created_at").all(conversationId); }
+  getAgentConversationsWithPreview(limit = 50, offset = 0, includeArchived = false) {
+    const archive = includeArchived ? "" : "WHERE c.archived_at IS NULL";
+    return this.db.prepare(`SELECT c.*, (SELECT content FROM agent_messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS preview FROM agent_conversations c ${archive} ORDER BY c.updated_at DESC LIMIT ? OFFSET ?`).all(limit, offset);
+  }
+  searchAgentConversations(query, limit = 20) { const pattern = `%${query || ""}%`; return this.db.prepare("SELECT * FROM agent_conversations WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?").all(pattern, limit); }
+  updateAgentConversationTitle(id, title) { const result = this.db.prepare("UPDATE agent_conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(title, id); return { success: result.changes > 0 }; }
+  archiveAgentConversation(id) { const result = this.db.prepare("UPDATE agent_conversations SET archived_at = CURRENT_TIMESTAMP WHERE id = ?").run(id); return { success: result.changes > 0 }; }
+  unarchiveAgentConversation(id) { const result = this.db.prepare("UPDATE agent_conversations SET archived_at = NULL WHERE id = ?").run(id); return { success: result.changes > 0 }; }
+  deleteAgentConversation(id) { const result = this.db.prepare("DELETE FROM agent_conversations WHERE id = ?").run(id); return { success: result.changes > 0 }; }
+
+  saveGoogleTokens(tokens) { this.db.prepare("INSERT INTO google_calendar_tokens (google_email, access_token, refresh_token, expires_at, scope) VALUES (?, ?, ?, ?, ?) ON CONFLICT(google_email) DO UPDATE SET access_token = excluded.access_token, refresh_token = excluded.refresh_token, expires_at = excluded.expires_at, scope = excluded.scope, updated_at = CURRENT_TIMESTAMP").run(tokens.google_email, tokens.access_token, tokens.refresh_token, tokens.expires_at, tokens.scope); return { success: true }; }
+  getGoogleTokens() { return this.db.prepare("SELECT * FROM google_calendar_tokens LIMIT 1").get() || null; }
+  getGoogleTokensByEmail(email) { return this.db.prepare("SELECT * FROM google_calendar_tokens WHERE google_email = ?").get(email) || null; }
+  getAllGoogleTokens() { return this.db.prepare("SELECT * FROM google_calendar_tokens").all(); }
+  getGoogleAccounts() { return this.db.prepare("SELECT google_email AS email FROM google_calendar_tokens ORDER BY created_at").all(); }
+  deleteGoogleTokens() { this.db.prepare("DELETE FROM google_calendar_tokens").run(); return { success: true }; }
+  removeGoogleAccount(email) { this.db.prepare("DELETE FROM google_calendar_tokens WHERE google_email = ?").run(email); this.db.prepare("DELETE FROM google_calendars WHERE account_email = ?").run(email); return { success: true }; }
+  saveGoogleCalendars(calendars, accountEmail = null) { const stmt = this.db.prepare("INSERT INTO google_calendars (id, summary, description, background_color, account_email, is_primary) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, description = excluded.description, background_color = excluded.background_color, account_email = excluded.account_email, is_primary = excluded.is_primary"); calendars.forEach((cal) => stmt.run(cal.id, cal.summary, cal.description || null, cal.background_color || null, accountEmail, cal.is_primary ? 1 : 0)); return { success: true }; }
+  getGoogleCalendars(accountEmail = null) { return accountEmail ? this.db.prepare("SELECT * FROM google_calendars WHERE account_email = ?").all(accountEmail) : this.db.prepare("SELECT * FROM google_calendars").all(); }
+  getSelectedCalendars(accountEmail = null) { return accountEmail ? this.db.prepare("SELECT * FROM google_calendars WHERE is_selected = 1 AND account_email = ?").all(accountEmail) : this.db.prepare("SELECT * FROM google_calendars WHERE is_selected = 1").all(); }
+  applyPrimaryOnlyToSelection(primaryOnly) { this.db.prepare("UPDATE google_calendars SET is_selected = CASE WHEN ? = 1 THEN is_primary ELSE 1 END").run(primaryOnly ? 1 : 0); return { success: true }; }
+  updateCalendarSelection(id, selected) { this.db.prepare("UPDATE google_calendars SET is_selected = ? WHERE id = ?").run(selected ? 1 : 0, id); return { success: true }; }
+
+  saveMicrosoftTokens(tokens) { this.db.prepare("INSERT INTO microsoft_calendar_tokens (microsoft_email, access_token, refresh_token, expires_at, scope) VALUES (?, ?, ?, ?, ?) ON CONFLICT(microsoft_email) DO UPDATE SET access_token = excluded.access_token, refresh_token = excluded.refresh_token, expires_at = excluded.expires_at, scope = excluded.scope, updated_at = CURRENT_TIMESTAMP").run(tokens.microsoft_email, tokens.access_token, tokens.refresh_token, tokens.expires_at, tokens.scope); return { success: true }; }
+  getMicrosoftTokensByEmail(email) { return this.db.prepare("SELECT * FROM microsoft_calendar_tokens WHERE microsoft_email = ?").get(email) || null; }
+  getMicrosoftAccounts() { return this.db.prepare("SELECT microsoft_email AS email FROM microsoft_calendar_tokens ORDER BY created_at").all(); }
+  removeMicrosoftAccount(email) { this.db.prepare("DELETE FROM microsoft_calendar_tokens WHERE microsoft_email = ?").run(email); this.db.prepare("DELETE FROM microsoft_calendars WHERE account_email = ?").run(email); return { success: true }; }
+  saveMicrosoftCalendars(calendars, accountEmail) { const stmt = this.db.prepare("INSERT INTO microsoft_calendars (id, summary, background_color, account_email, is_primary) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, background_color = excluded.background_color, account_email = excluded.account_email, is_primary = excluded.is_primary"); calendars.forEach((cal) => stmt.run(cal.id, cal.summary, cal.background_color || null, accountEmail, cal.is_primary ? 1 : 0)); return { success: true }; }
+  applyMicrosoftPrimaryOnlyToSelection(primaryOnly) { this.db.prepare("UPDATE microsoft_calendars SET is_selected = CASE WHEN ? = 1 THEN is_primary ELSE 1 END").run(primaryOnly ? 1 : 0); return { success: true }; }
+  getSelectedMicrosoftCalendars() { return this.db.prepare("SELECT * FROM microsoft_calendars WHERE is_selected = 1").all(); }
+
+  saveAppleCalendars(calendars) { const tx = this.db.transaction((list) => { this.db.prepare("DELETE FROM apple_calendars").run(); const stmt = this.db.prepare("INSERT INTO apple_calendars (id, title, color, source_name) VALUES (?, ?, ?, ?)"); list.forEach((cal) => stmt.run(cal.id, cal.title, cal.color || null, cal.source_name || null)); }); tx(calendars); return { success: true }; }
+  getAppleCalendars() { return this.db.prepare("SELECT * FROM apple_calendars").all(); }
+  upsertCalendarEvents(events) { const stmt = this.db.prepare("INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, organizer_email, attendees_count, attendees, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"); this.db.transaction((list) => list.forEach((e) => stmt.run(e.id, e.calendar_id, e.provider || "google", e.summary || null, e.start_time, e.end_time, e.is_all_day ? 1 : 0, e.status || "confirmed", e.availability_status || "unknown", e.self_response_status || "unknown", e.hangout_link || null, e.conference_data || null, e.organizer_email || null, e.attendees_count || 0, e.attendees || null)))(events); return { success: true }; }
+  getActiveEvents() { return this.db.prepare(dedupedEventsQuery("datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now') AND is_all_day = 0 AND status IN ('confirmed', 'tentative')")).all().map(stripDedupeColumn); }
+  getUpcomingEvents(windowMinutes = 1440) { return this.db.prepare(dedupedEventsQuery("((datetime(start_time) > datetime('now') AND datetime(start_time) <= datetime('now', '+' || ? || ' minutes')) OR (datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now'))) AND is_all_day = 0 AND status IN ('confirmed', 'tentative')")).all(windowMinutes).map(stripDedupeColumn); }
+  getCalendarEventsInRange(start, end, providers) {
+    const from = Date.parse(start); const to = Date.parse(end);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) throw new RangeError("Invalid calendar event range");
+    const selected = [...new Set(providers)].filter((provider) => CALENDAR_PROVIDERS.has(provider));
+    if (!selected.length) return [];
+    const placeholders = selected.map(() => "?").join(", ");
+    const events = this.db.prepare(dedupedEventsQuery(`provider IN (${placeholders}) AND status IN ('confirmed', 'tentative') AND ${selectedCalendarFilter()}`)).all(...selected).map(stripDedupeColumn);
+    return events.filter((event) => { const eventStart = parseEventTime(event.start_time, event.is_all_day === 1); const eventEnd = parseEventTime(event.end_time, event.is_all_day === 1); return Number.isFinite(eventStart) && Number.isFinite(eventEnd) && eventStart < to && eventEnd > from; });
+  }
+  getCalendarEventById(id) { return this.db.prepare("SELECT * FROM calendar_events WHERE id = ?").get(id) || null; }
+  getNoteByCalendarEventId(eventId, excludeNoteId = null) { return excludeNoteId == null ? this.db.prepare("SELECT * FROM notes WHERE calendar_event_id = ? LIMIT 1").get(eventId) || null : this.db.prepare("SELECT * FROM notes WHERE calendar_event_id = ? AND id != ? LIMIT 1").get(eventId, excludeNoteId) || null; }
+  updateCalendarSyncToken(id, token, expiresAt) { this.db.prepare("UPDATE google_calendars SET sync_token = ?, sync_token_expires_at = ? WHERE id = ?").run(token, expiresAt, id); return { success: true }; }
+  updateMicrosoftCalendarSyncToken(id, token, expiresAt) { this.db.prepare("UPDATE microsoft_calendars SET sync_token = ?, sync_token_expires_at = ? WHERE id = ?").run(token, expiresAt, id); return { success: true }; }
+  removeCalendarEvents(ids) { if (ids?.length) this.db.prepare(`DELETE FROM calendar_events WHERE id IN (${ids.map(() => "?").join(",")})`).run(...ids); return { success: true }; }
+  removeStaleCalendarEvents(provider, calendarId, freshIds) { const filter = freshIds?.length ? `AND id NOT IN (${freshIds.map(() => "?").join(",")})` : ""; this.db.prepare(`DELETE FROM calendar_events WHERE provider = ? AND calendar_id = ? ${filter} AND id NOT IN (SELECT calendar_event_id FROM notes WHERE calendar_event_id IS NOT NULL)`).run(provider, calendarId, ...(freshIds || [])); return { success: true }; }
+  removeEventsFromDeselectedCalendars(provider) { const table = CALENDARS_TABLE_BY_PROVIDER[provider]; if (!table) throw new Error(`Unknown calendar provider: ${provider}`); this.db.prepare(`DELETE FROM calendar_events WHERE provider = ? AND calendar_id NOT IN (SELECT id FROM ${table} WHERE is_selected = 1)`).run(provider); return { success: true }; }
+  replaceAppleCalendarEvents(events) {
+    const tx = this.db.transaction((list) => {
+      this.db.prepare("DELETE FROM calendar_events WHERE provider = 'apple' AND id NOT IN (SELECT calendar_event_id FROM notes WHERE calendar_event_id IS NOT NULL)").run();
+      const stmt = this.db.prepare("INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, organizer_email, attendees_count, attendees, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)");
+      list.forEach((e) => stmt.run(e.id, e.calendar_id, e.provider || "apple", e.summary || null, e.start_time, e.end_time, e.is_all_day ? 1 : 0, e.status || "confirmed", e.availability_status || "unknown", e.self_response_status || "unknown", e.hangout_link || null, e.conference_data || null, e.organizer_email || null, e.attendees_count || 0, e.attendees || null));
+    });
+    tx(events);
+    return { success: true };
+  }
+  clearGoogleCalendarData() { this.db.prepare("DELETE FROM calendar_events WHERE provider = 'google'").run(); this.db.prepare("DELETE FROM google_calendars").run(); this.db.prepare("DELETE FROM google_calendar_tokens").run(); return { success: true }; }
+  clearMicrosoftCalendarData() { this.db.prepare("DELETE FROM calendar_events WHERE provider = 'microsoft'").run(); this.db.prepare("DELETE FROM microsoft_calendars").run(); this.db.prepare("DELETE FROM microsoft_calendar_tokens").run(); return { success: true }; }
+  clearAppleCalendarData() { this.db.prepare("DELETE FROM calendar_events WHERE provider = 'apple'").run(); this.db.prepare("DELETE FROM apple_calendars").run(); return { success: true }; }
+
+  searchNotes(query, limit = 50, spaceId = null, folderId = null) {
+    const ftsQuery = buildNoteSearchQuery(query);
+    if (!ftsQuery) return [];
+    const conditions = ["notes_fts MATCH ?"];
+    const params = [ftsQuery];
+    if (spaceId != null) { conditions.push("n.space_id = ?"); params.push(spaceId); }
+    if (folderId != null) { conditions.push("n.folder_id = ?"); params.push(folderId); }
+    params.push(limit);
+    return this.db.prepare(`SELECT n.* FROM notes n JOIN notes_fts ON notes_fts.rowid = n.id WHERE ${conditions.join(" AND ")} ORDER BY notes_fts.rank LIMIT ?`).all(...params);
   }
 
-  markFolderSynced(id, cloudId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this._getFolderInAccountScope(id)) return { success: false };
-      this.db
-        .prepare(
-          "UPDATE folders SET sync_status = 'synced', cloud_id = ?, left_team = 0 WHERE id = ?"
-        )
-        .run(cloudId, id);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error marking folder synced", { error: error.message }, "database");
-      throw error;
-    }
-  }
+  upsertContacts(contacts) { const stmt = this.db.prepare("INSERT INTO contacts (email, display_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET display_name = COALESCE(excluded.display_name, contacts.display_name), updated_at = CURRENT_TIMESTAMP"); this.db.transaction((list) => list.forEach((contact) => { if (contact.email) stmt.run(contact.email.toLowerCase().trim(), contact.displayName || null); }))(contacts); return { success: true }; }
+  searchContacts(query) { const pattern = `%${query || ""}%`; return this.db.prepare("SELECT * FROM contacts WHERE email LIKE ? OR display_name LIKE ? ORDER BY display_name, email LIMIT 20").all(pattern, pattern); }
+  upsertSpeakerProfile(name, email, embeddingBuffer, profileId = null) { if (profileId != null) { this.db.prepare("UPDATE speaker_profiles SET display_name = ?, email = ?, embedding = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(name, email || null, embeddingBuffer, profileId); return this.db.prepare("SELECT * FROM speaker_profiles WHERE id = ?").get(profileId); } const result = this.db.prepare("INSERT INTO speaker_profiles (display_name, email, embedding) VALUES (?, ?, ?)").run(name, email || null, embeddingBuffer); return this.db.prepare("SELECT * FROM speaker_profiles WHERE id = ?").get(result.lastInsertRowid); }
+  getSpeakerProfiles(includeEmbedding = false) { return this.db.prepare(`SELECT ${includeEmbedding ? "*" : "id, display_name, email, sample_count, created_at, updated_at"} FROM speaker_profiles ORDER BY display_name`).all(); }
+  attachEmailToProfile(profileId, email) { this.db.prepare("UPDATE speaker_profiles SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(email, profileId); return { success: true }; }
+  mergeSpeakerProfiles(a, b) { this.db.prepare("UPDATE speaker_mappings SET profile_id = ? WHERE profile_id = ?").run(a, b); this.db.prepare("DELETE FROM speaker_profiles WHERE id = ?").run(b); return { success: true }; }
+  setSpeakerMapping(noteId, speakerId, profileId, displayName) { this.db.prepare("INSERT INTO speaker_mappings (note_id, speaker_id, profile_id, display_name) VALUES (?, ?, ?, ?) ON CONFLICT(note_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name").run(noteId, speakerId, profileId, displayName); return { success: true }; }
+  getSpeakerMappings(noteId) { return this.db.prepare("SELECT * FROM speaker_mappings WHERE note_id = ?").all(noteId); }
+  removeSpeakerMapping(noteId, speakerId) { return { success: this.db.prepare("DELETE FROM speaker_mappings WHERE note_id = ? AND speaker_id = ?").run(noteId, speakerId).changes > 0 }; }
+  saveNoteSpeakerEmbeddings(noteId, embeddings) { const tx = this.db.transaction((list) => { const stmt = this.db.prepare("INSERT INTO note_speaker_embeddings (note_id, speaker_id, embedding) VALUES (?, ?, ?) ON CONFLICT(note_id, speaker_id) DO UPDATE SET embedding = excluded.embedding"); list.forEach((item) => stmt.run(noteId, item.speakerId, item.embedding)); }); tx(embeddings); return { success: true }; }
+  getNoteSpeakerEmbeddings(noteId) { return this.db.prepare("SELECT * FROM note_speaker_embeddings WHERE note_id = ?").all(noteId); }
+  getNotesWithUnmappedSpeakers() { return this.db.prepare("SELECT DISTINCT n.* FROM notes n JOIN speaker_mappings m ON m.note_id = n.id WHERE m.profile_id IS NULL ORDER BY n.updated_at DESC").all(); }
 
-  // A folder create or pull-side name adoption may return a canonical client
-  // identity different from the local one. Adopt it only while both identities
-  // captured before the request still occupy this numeric row. A newer rename
-  // or move adopts the cloud identity but remains pending for its follow-up
-  // PATCH; an in-place revocation fork is never touched.
-  acknowledgeFolderCreate(
-    id,
-    snapshot,
-    expectedCloudId,
-    responseClientFolderId,
-    cloudId,
-    cloudUpdatedAt = null
-  ) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this._getFolderInAccountScope(id)) {
-        return { success: true, outcome: "identity-changed", changes: 0 };
-      }
-      if (
-        !snapshot?.client_folder_id ||
-        (expectedCloudId !== null && typeof expectedCloudId !== "string") ||
-        !responseClientFolderId ||
-        !cloudId
-      ) {
-        return { success: false, outcome: "unresolved", changes: 0 };
-      }
-
-      return this.db.transaction(() => {
-        const current = this.db.prepare("SELECT * FROM folders WHERE id = ?").get(id);
-        if (
-          !current ||
-          current.client_folder_id !== snapshot.client_folder_id ||
-          current.cloud_id !== expectedCloudId
-        ) {
-          return { success: true, outcome: "identity-changed", changes: 0 };
-        }
-        if (expectedCloudId !== null && expectedCloudId !== cloudId) {
-          return { success: true, outcome: "unresolved", changes: 0 };
-        }
-        const responseIdentityHolder = this.db
-          .prepare("SELECT id FROM folders WHERE client_folder_id = ? AND id != ?")
-          .get(responseClientFolderId, id);
-        if (responseIdentityHolder) {
-          return { success: true, outcome: "unresolved", changes: 0 };
-        }
-
-        const unchanged = rowMatchesSnapshot(current, snapshot, FOLDER_ACK_FIELDS);
-        const leftTeam = this._leftTeamDuringPush(snapshot.space_id, current.space_id);
-
-        if (unchanged) {
-          const result = this.db
-            .prepare(
-              `UPDATE folders
-               SET client_folder_id = ?, cloud_id = ?, sync_status = 'synced',
-                   left_team = 0, updated_at = COALESCE(?, updated_at)
-               WHERE id = ? AND client_folder_id = ? AND cloud_id IS ?`
-            )
-            .run(
-              responseClientFolderId,
-              cloudId,
-              cloudUpdatedAt,
-              id,
-              snapshot.client_folder_id,
-              expectedCloudId
-            );
-          return { success: true, outcome: "synced", changes: result.changes };
-        }
-
-        const result = this.db
-          .prepare(
-            `UPDATE folders
-             SET client_folder_id = ?, cloud_id = ?, sync_status = 'pending',
-                 left_team = CASE WHEN ? = 1 THEN 1 ELSE left_team END
-             WHERE id = ? AND client_folder_id = ? AND cloud_id IS ?`
-          )
-          .run(
-            responseClientFolderId,
-            cloudId,
-            leftTeam,
-            id,
-            snapshot.client_folder_id,
-            expectedCloudId
-          );
-        return { success: true, outcome: "pending", changes: result.changes };
-      })();
-    } catch (error) {
-      debugLogger.error("Error acknowledging folder create", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  // Folder PATCH twin of the guarded note acknowledgement. Bind the response
-  // to both client and cloud identity and compare every pushed field so a
-  // same-second rename or an in-place revocation fork cannot be settled.
-  markFolderSyncedIfUnchanged(id, snapshot, expectedCloudId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this._getFolderInAccountScope(id)) {
-        return { success: true, outcome: "identity-changed", changes: 0 };
-      }
-      if (!snapshot?.client_folder_id || !expectedCloudId) {
-        return { success: false, outcome: "identity-changed", changes: 0 };
-      }
-      return this.db.transaction(() => {
-        const current = this.db.prepare("SELECT * FROM folders WHERE id = ?").get(id);
-        if (
-          !current ||
-          current.client_folder_id !== snapshot.client_folder_id ||
-          current.cloud_id !== expectedCloudId
-        ) {
-          return { success: true, outcome: "identity-changed", changes: 0 };
-        }
-        const unchanged = rowMatchesSnapshot(current, snapshot, FOLDER_ACK_FIELDS);
-        if (!unchanged) {
-          return { success: true, outcome: "pending", changes: 0 };
-        }
-        const result = this.db
-          .prepare(
-            `UPDATE folders
-             SET sync_status = 'synced', left_team = 0
-             WHERE id = ? AND client_folder_id = ? AND cloud_id = ?`
-          )
-          .run(id, snapshot.client_folder_id, expectedCloudId);
-        return { success: true, outcome: "synced", changes: result.changes };
-      })();
-    } catch (error) {
-      debugLogger.error(
-        "Error marking folder synced if unchanged",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  // A folder whose server row moved into a scope this user can no longer
-  // write gets a fresh identity, so the next push creates it as a new
-  // personal folder instead of PATCHing the inaccessible row forever.
-  forkFolderIdentity(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this._getFolderInAccountScope(id)) return { success: false };
-      const result = this.db
-        .prepare(
-          "UPDATE folders SET client_folder_id = ?, cloud_id = NULL, sync_status = 'pending', left_team = 0 WHERE id = ?"
-        )
-        .run(randomUUID(), id);
-      return { success: result.changes > 0 };
-    } catch (error) {
-      debugLogger.error("Error forking folder identity", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getFolderIdMap() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("folders");
-      return this.db
-        .prepare(`SELECT * FROM folders WHERE deleted_at IS NULL AND ${accountScope.sql}`)
-        .all(...accountScope.params);
-    } catch (error) {
-      debugLogger.error("Error getting folder id map", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getPendingConversations() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      // The cloud conversation contract has no space/folder scope yet.
-      // Keep container chats local so another device cannot pull them as
-      // global chats. Cloud-backed tombstones still use the delete queue.
-      return this.db
-        .prepare(
-          "SELECT * FROM agent_conversations WHERE sync_status = 'pending' AND deleted_at IS NULL AND space_id IS NULL AND folder_id IS NULL"
-        )
-        .all();
-    } catch (error) {
-      debugLogger.error(
-        "Error getting pending conversations",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  getPendingConversationDeletes() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          `SELECT * FROM agent_conversations c
-           WHERE deleted_at IS NOT NULL AND cloud_id IS NOT NULL
-             AND sync_status = 'pending'
-             AND NOT EXISTS (
-               SELECT 1 FROM optimistic_folder_delete_rows r
-               WHERE r.entity_type = 'conversation' AND r.entity_id = c.id
-             )`
-        )
-        .all();
-    } catch (error) {
-      debugLogger.error(
-        "Error getting pending conversation deletes",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  getConversationByClientId(clientId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return (
-        this.db
-          .prepare(
-            `SELECT c.*,
-               EXISTS (
-                 SELECT 1 FROM optimistic_folder_delete_rows r
-                 WHERE r.entity_type = 'conversation' AND r.entity_id = c.id
-               ) AS folder_delete_pending
-             FROM agent_conversations c
-             WHERE c.client_conversation_id = ?`
-          )
-          .get(clientId) || null
-      );
-    } catch (error) {
-      debugLogger.error(
-        "Error getting conversation by client id",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  upsertConversationFromCloud(cloudConv, messages) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const transaction = this.db.transaction(() => {
-        // A local tombstone represents an unacknowledged delete. A newer live
-        // cloud revision must not cancel that intent or restore message bodies
-        // while the delete retries. Match by cloud id as a fallback for legacy
-        // rows without a client_conversation_id.
-        let existing = null;
-        if (cloudConv.client_conversation_id != null) {
-          existing = this.db
-            .prepare("SELECT * FROM agent_conversations WHERE client_conversation_id = ?")
-            .get(cloudConv.client_conversation_id);
-        }
-        if (!existing && cloudConv.id != null) {
-          existing = this.db
-            .prepare("SELECT * FROM agent_conversations WHERE cloud_id = ?")
-            .get(cloudConv.id);
-        }
-        if (existing?.deleted_at) return existing;
-
-        const convStmt = this.db.prepare(`
-          INSERT INTO agent_conversations (client_conversation_id, cloud_id, title, note_id, sync_status, created_at, updated_at)
-          VALUES (?, ?, ?, ?, 'synced', ?, ?)
-          ON CONFLICT(client_conversation_id) DO UPDATE SET
-            cloud_id = excluded.cloud_id,
-            title = excluded.title,
-            note_id = excluded.note_id,
-            sync_status = 'synced',
-            updated_at = excluded.updated_at
-        `);
-        convStmt.run(
-          cloudConv.client_conversation_id ?? null,
-          cloudConv.id ?? null,
-          cloudConv.title ?? "Untitled",
-          cloudConv.note_id ?? null,
-          cloudConv.created_at ?? new Date().toISOString(),
-          cloudConv.updated_at ?? new Date().toISOString()
-        );
-        const conv = this.db
-          .prepare("SELECT * FROM agent_conversations WHERE client_conversation_id = ?")
-          .get(cloudConv.client_conversation_id);
-        this.db.prepare("DELETE FROM agent_messages WHERE conversation_id = ?").run(conv.id);
-        if (messages && messages.length > 0) {
-          const msgStmt = this.db.prepare(
-            "INSERT INTO agent_messages (conversation_id, role, content, metadata, created_at) VALUES (?, ?, ?, ?, ?)"
-          );
-          for (const msg of messages) {
-            msgStmt.run(
-              conv.id,
-              msg.role ?? "user",
-              msg.content ?? "",
-              msg.metadata ? JSON.stringify(msg.metadata) : null,
-              msg.created_at ?? new Date().toISOString()
-            );
-          }
-        }
-        return conv;
-      });
-      return transaction();
-    } catch (error) {
-      debugLogger.error(
-        "Error upserting conversation from cloud",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  markConversationSynced(id, cloudId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db
-        .prepare(
-          `UPDATE agent_conversations
-           SET cloud_id = COALESCE(cloud_id, ?),
-               sync_status = CASE WHEN deleted_at IS NULL THEN 'synced' ELSE 'pending' END
-           WHERE id = ?`
-        )
-        .run(cloudId, id);
-      return { success: result.changes > 0 };
-    } catch (error) {
-      debugLogger.error("Error marking conversation synced", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  acknowledgeConversationCreate(id, snapshot, cloudId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!snapshot || !cloudId) {
-        return { success: false, outcome: "unresolved", cloud_id: null };
-      }
-
-      return this.db.transaction(() => {
-        const current = this.db
-          .prepare(
-            `SELECT c.*, COUNT(m.id) AS message_count
-             FROM agent_conversations c
-             LEFT JOIN agent_messages m ON m.conversation_id = c.id
-             WHERE c.id = ?
-             GROUP BY c.id`
-          )
-          .get(id);
-        const expectedClientId = snapshot.client_conversation_id ?? null;
-
-        if (!current || (current.client_conversation_id ?? null) !== expectedClientId) {
-          const identityStillExists = expectedClientId
-            ? this.db
-                .prepare("SELECT 1 FROM agent_conversations WHERE client_conversation_id = ?")
-                .get(expectedClientId)
-            : null;
-          return {
-            success: true,
-            outcome: identityStillExists ? "unresolved" : "orphaned",
-            cloud_id: null,
-          };
-        }
-
-        if (current.cloud_id) {
-          return { success: true, outcome: "already-linked", cloud_id: current.cloud_id };
-        }
-
-        if (current.deleted_at) {
-          this.db
-            .prepare(
-              `UPDATE agent_conversations
-               SET cloud_id = ?, sync_status = 'pending'
-               WHERE id = ? AND cloud_id IS NULL`
-            )
-            .run(cloudId, id);
-          return { success: true, outcome: "delete-pending", cloud_id: cloudId };
-        }
-
-        const unchanged =
-          current.title === snapshot.title &&
-          current.updated_at === snapshot.updated_at &&
-          Number(current.message_count) === snapshot.message_count;
-        if (!unchanged) {
-          return { success: true, outcome: "changed", cloud_id: null };
-        }
-
-        this.db
-          .prepare(
-            `UPDATE agent_conversations
-             SET cloud_id = ?, sync_status = 'synced'
-             WHERE id = ? AND cloud_id IS NULL`
-          )
-          .run(cloudId, id);
-        return { success: true, outcome: "synced", cloud_id: cloudId };
-      })();
-    } catch (error) {
-      debugLogger.error(
-        "Error acknowledging conversation create",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  hardDeleteConversation(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      this.db.prepare("DELETE FROM agent_messages WHERE conversation_id = ?").run(id);
-      const result = this.db.prepare("DELETE FROM agent_conversations WHERE id = ?").run(id);
-      return { success: result.changes > 0 };
-    } catch (error) {
-      debugLogger.error("Error hard deleting conversation", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getPendingTranscriptions() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          "SELECT * FROM transcriptions WHERE sync_status = 'pending' AND deleted_at IS NULL"
-        )
-        .all();
-    } catch (error) {
-      debugLogger.error(
-        "Error getting pending transcriptions",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  getPendingTranscriptionDeletes() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return this.db
-        .prepare(
-          "SELECT * FROM transcriptions WHERE deleted_at IS NOT NULL AND cloud_id IS NOT NULL AND sync_status = 'pending'"
-        )
-        .all();
-    } catch (error) {
-      debugLogger.error(
-        "Error getting pending transcription deletes",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  hardDeleteTranscription(id) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const result = this.db.prepare("DELETE FROM transcriptions WHERE id = ?").run(id);
-      return { success: result.changes > 0, id };
-    } catch (error) {
-      debugLogger.error("Error hard deleting transcription", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getTranscriptionByClientId(clientId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      return (
-        this.db
-          .prepare("SELECT * FROM transcriptions WHERE client_transcription_id = ?")
-          .get(clientId) || null
-      );
-    } catch (error) {
-      debugLogger.error(
-        "Error getting transcription by client id",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  upsertTranscriptionFromCloud(cloudTranscription) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const text = cloudTranscription.text ?? "";
-      const rawText = cloudTranscription.raw_text || null;
-      const status = cloudTranscription.status || "completed";
-      // timestamp is what the history list sorts and groups on, so it takes the
-      // cloud row's own instant rather than defaulting to the moment of the
-      // pull -- which would land a whole archive at "now", above everything
-      // spoken since. Deliberately not in the conflict update: a row this
-      // device recorded already carries the recording's start time, which is
-      // more precise than the cloud's creation time for the same dictation.
-      //
-      // The separator is normalized because that sort is a TEXT comparison and
-      // the API sends ISO 8601: "T" (0x54) outranks the space (0x20) every
-      // locally written row uses, so a raw cloud value would sort above every
-      // local dictation from the same UTC day whatever the hour.
-      const cloudOccurredAt = toDbTimestamp(cloudTranscription.created_at);
-      const stmt = this.db.prepare(`
-        INSERT INTO transcriptions (client_transcription_id, cloud_id, text, raw_text, status, sync_status, created_at, timestamp)
-        VALUES (?, ?, ?, ?, ?, 'synced', ?, COALESCE(?, CURRENT_TIMESTAMP))
-        ON CONFLICT(client_transcription_id) DO UPDATE SET
-          cloud_id = excluded.cloud_id,
-          text = excluded.text,
-          raw_text = excluded.raw_text,
-          status = excluded.status,
-          sync_status = 'synced'
-      `);
-      return this.db.transaction(() => {
-        const existing = this.db
-          .prepare(
-            `SELECT id, text, raw_text, status FROM transcriptions
-             WHERE client_transcription_id = ?`
-          )
-          .get(cloudTranscription.client_transcription_id);
-        if (
-          existing &&
-          (existing.text !== text || existing.raw_text !== rawText || existing.status !== status)
-        ) {
-        }
-        stmt.run(
-          cloudTranscription.client_transcription_id,
-          cloudTranscription.id,
-          text,
-          rawText,
-          status,
-          cloudTranscription.created_at,
-          cloudOccurredAt
-        );
-        return this.db
-          .prepare("SELECT * FROM transcriptions WHERE client_transcription_id = ?")
-          .get(cloudTranscription.client_transcription_id);
-      })();
-    } catch (error) {
-      debugLogger.error(
-        "Error upserting transcription from cloud",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  markTranscriptionSynced(id, cloudId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      this.db
-        .prepare("UPDATE transcriptions SET sync_status = 'synced', cloud_id = ? WHERE id = ?")
-        .run(cloudId, id);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error marking transcription synced", { error: error.message }, "database");
-      throw error;
-    }
-  }
-
-  getNotesWithUnmappedSpeakers() {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      const accountScope = this._accountScopeCondition("notes");
-      return this.db
-        .prepare(
-          `SELECT DISTINCT nse.note_id
-          FROM note_speaker_embeddings nse
-          JOIN notes ON notes.id = nse.note_id
-          LEFT JOIN speaker_mappings sm ON nse.note_id = sm.note_id AND nse.speaker_id = sm.speaker_id
-          WHERE sm.note_id IS NULL AND ${accountScope.sql}`
-        )
-        .all(...accountScope.params)
-        .map((row) => row.note_id);
-    } catch (error) {
-      debugLogger.error(
-        "Error getting notes with unmapped speakers",
-        { error: error.message },
-        "database"
-      );
-      throw error;
-    }
-  }
-
-  removeSpeakerMapping(noteId, speakerId) {
-    try {
-      if (!this.db) throw new Error("Database not initialized");
-      if (!this.getNote(noteId)) return { success: false };
-      this.db
-        .prepare("DELETE FROM speaker_mappings WHERE note_id = ? AND speaker_id = ?")
-        .run(noteId, speakerId);
-      return { success: true };
-    } catch (error) {
-      debugLogger.error("Error removing speaker mapping", { error: error.message }, "database");
-      throw error;
-    }
-  }
+  cleanup() { if (this.db) { this.db.close(); this.db = null; } }
+  close() { this.cleanup(); }
 }
 
 module.exports = DatabaseManager;

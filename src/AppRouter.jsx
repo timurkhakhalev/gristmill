@@ -2,7 +2,7 @@ import React, { Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import MeetingNotificationOverlay from "./components/MeetingNotificationOverlay.tsx";
 import { useTheme } from "./hooks/useTheme";
-import { isControlPanelWindow } from "./utils/windowContext.ts";
+import { useControlPanelWindowDrag } from "./hooks/useControlPanelWindowDrag";
 
 const ControlPanel = React.lazy(() => import("./components/ControlPanel.tsx"));
 const OnboardingFlow = React.lazy(() => import("./components/OnboardingFlow.tsx"));
@@ -15,16 +15,12 @@ export default function AppRouter() {
     return <MeetingNotificationOverlay />;
   }
 
-  if (!isControlPanelWindow()) {
-    // The main process may still load an old overlay URL during an upgrade;
-    // keep that renderer inert.
-    return null;
-  }
 
   return <MainApp />;
 }
 
 function MainApp() {
+  useControlPanelWindowDrag(true);
   const [showOnboarding, setShowOnboarding] = useState(
     () => localStorage.getItem("onboardingCompleted") !== "true"
   );
@@ -32,9 +28,7 @@ function MainApp() {
 
   useEffect(() => {
     window.electronAPI?.setOnboardingActive?.(showOnboarding);
-    if (!showOnboarding) {
-      void window.electronAPI?.setOnboardingWindowMode?.("restore");
-    }
+    void window.electronAPI?.setOnboardingWindowMode?.(showOnboarding ? "compact" : "restore");
     return () => window.electronAPI?.setOnboardingActive?.(true);
   }, [showOnboarding]);
 

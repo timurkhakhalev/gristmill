@@ -30,8 +30,6 @@ test("retired groq model selections migrate to served replacements", async (t) =
     storage.clear();
     storage.setItem("cleanupProvider", "groq");
     storage.setItem("cleanupModel", "llama-3.3-70b-versatile");
-    storage.setItem("dictationAgentProvider", "groq");
-    storage.setItem("dictationAgentModel", "llama-3.1-8b-instant");
     storage.setItem("chatAgentProvider", "openrouter");
     storage.setItem("chatAgentModel", "llama-3.3-70b-versatile");
 
@@ -39,7 +37,6 @@ test("retired groq model selections migrate to served replacements", async (t) =
     const state = useSettingsStore.getState();
 
     assert.equal(state.cleanupModel, "openai/gpt-oss-120b");
-    assert.equal(state.dictationAgentModel, "openai/gpt-oss-20b");
     assert.equal(state.chatAgentModel, "llama-3.3-70b-versatile", "openrouter still serves the id");
   });
 

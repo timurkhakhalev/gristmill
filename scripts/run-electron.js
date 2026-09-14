@@ -7,11 +7,6 @@
 
 const { spawn } = require("child_process");
 const path = require("path");
-const {
-  OZONE_PLATFORM_PREFIX,
-  XWAYLAND_FLAG,
-  shouldForceXWayland,
-} = require("../src/helpers/xwayland");
 
 // Remove ELECTRON_RUN_AS_NODE from environment
 delete process.env.ELECTRON_RUN_AS_NODE;
@@ -56,20 +51,13 @@ console.log("[run-electron] Electron path:", electronPath);
 console.log("[run-electron] App dir:", appDir);
 console.log("[run-electron] Args:", args);
 
-// Adding the flag here avoids the self-relaunch in main.js, which kills concurrently in dev mode.
-if (shouldForceXWayland(args)) {
-  args.push(XWAYLAND_FLAG);
-  console.log("[run-electron] Wayland detected, forcing XWayland");
-}
-
-// Chromium flags must come before the app path, app args after.
-const chromiumFlags = args.filter((a) => a.startsWith(OZONE_PLATFORM_PREFIX));
-// Dev-only: OW_DEBUG_CDP=<port> exposes the Chrome DevTools Protocol so tools
+// Dev-only: OPENHERCULES_DEBUG_CDP=<port> exposes the Chrome DevTools Protocol so tools
 // can inspect the renderers (used for animation/window diagnostics).
-if (process.env.OW_DEBUG_CDP) {
-  chromiumFlags.push(`--remote-debugging-port=${process.env.OW_DEBUG_CDP}`);
+const chromiumFlags = [];
+if (process.env.OPENHERCULES_DEBUG_CDP) {
+  chromiumFlags.push(`--remote-debugging-port=${process.env.OPENHERCULES_DEBUG_CDP}`);
 }
-const appArgs = args.filter((a) => !a.startsWith(OZONE_PLATFORM_PREFIX));
+const appArgs = args;
 const child = spawn(electronPath, [...chromiumFlags, appDir, ...appArgs], {
   stdio: "inherit",
   env: process.env,

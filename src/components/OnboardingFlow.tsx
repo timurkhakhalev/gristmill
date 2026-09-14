@@ -43,7 +43,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   }
 
   return (
-    <CompactOnboardingFrame showLegalNotice={false}>
+    <CompactOnboardingFrame>
       <div className="onboarding-shell-scroll flex h-full flex-col overflow-y-auto px-6 pb-6 pt-24">
         {step === "provider" && (
           <>
@@ -58,6 +58,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 onProceed={() => setStep("languages")}
               />
             </div>
+            <Button variant="ghost" onClick={() => setStep("languages")}>{t("cleanupSettings.configureLater")}</Button>
             <Footer
               back={() => setStep("permissions")}
               continueDisabled={!providerConnected}

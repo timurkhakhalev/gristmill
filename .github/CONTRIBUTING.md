@@ -35,20 +35,20 @@ The short version:
 
 1. Fork the repo and create a feature branch off `main`.
 2. Make your change, keeping the diff focused.
-3. Run `npm run lint` and `npm run format` before opening a PR.
-4. Open a pull request against `OpenWhispr/openwhispr` `main` and fill
-   in the description so reviewers can see the "why".
+3. Run `pnpm run lint` and `pnpm run format` before opening a PR.
+4. Open a pull request against the project default branch and fill in the
+   description so reviewers can see the "why".
 
 ### Local setup
 
 | Requirement | Notes                                                                             |
 | ----------- | --------------------------------------------------------------------------------- |
 | Node.js     | Version pinned in [`.nvmrc`](../.nvmrc) (currently `24`). Use `nvm use` to match. |
-| Install     | `npm install`                                                                     |
-| Run dev     | `npm run dev`                                                                     |
-| Lint        | `npm run lint`                                                                    |
-| Format      | `npm run format`                                                                  |
-| Build       | `npm run build` (or `build:mac` / `build:win` / `build:linux`)                    |
+| Install     | `pnpm install --frozen-lockfile`                                                  |
+| Run dev     | `pnpm run dev`                                                                    |
+| Lint        | `pnpm run lint`                                                                   |
+| Format      | `pnpm run format`                                                                 |
+| Build       | `pnpm run build:mac:arm64`                                                        |
 
 Platform-specific setup, local Whisper notes, and packaging details are
 in [`README.md`](../README.md) and

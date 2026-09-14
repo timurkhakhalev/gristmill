@@ -56,31 +56,16 @@ function inventoryByFile(inventory) {
 // multiple fields in the same component and makes any new or reclassified
 // consumer require an explicit policy decision in this test.
 const EXPECTED_SHARED_FIELD_DIRECTIONS = {
-  "src/components/ApiKeysSection.tsx": ["auto"],
-  "src/components/AuthenticationStep.tsx": ["ltr", "auto", "ltr", "ltr", "ltr"],
-  "src/components/CreateTeamDialog.tsx": ["auto"],
-  "src/components/CreateWorkspaceDialog.tsx": ["auto"],
   "src/components/DictionaryView.tsx": ["auto", "auto", "auto"],
   "src/components/EnterpriseProviderConfig.tsx": ["ltr", "ltr", "ltr", "ltr", "ltr", "ltr"],
-  "src/components/ForgotPasswordView.tsx": ["ltr"],
-  "src/components/InviteTeammateDialog.tsx": ["ltr"],
-  "src/components/LeaderboardSection.tsx": ["ltr"],
   "src/components/OpenAICompatiblePanel.tsx": ["ltr"],
   "src/components/SelfHostedPanel.tsx": ["ltr", "ltr"],
-  "src/components/SettingsPage.tsx": ["ltr", "ltr", "ltr", "ltr", "ltr", "ltr"],
   "src/components/SnippetsView.tsx": ["auto", "auto", "auto", "auto"],
   "src/components/TranscriptionModelPicker.tsx": ["ltr", "ltr", "ltr"],
   "src/components/notes/ActionManagerDialog.tsx": ["auto", "auto"],
-  "src/components/notes/CreateSpaceDialog.tsx": ["auto", "auto"],
-  "src/components/notes/DeleteSpaceDialog.tsx": ["auto"],
   "src/components/notes/EmojiPickerInput.tsx": ["inherit"],
   "src/components/notes/UploadAudioView.tsx": ["auto"],
-  "src/components/onboarding/ProviderSetupStep.tsx": ["ltr", "ltr", "ltr", "ltr", "ltr", "ltr"],
-  "src/components/settings/DictationAgentSettings.tsx": ["auto"],
-  "src/components/settings/EnterpriseCheckoutDialog.tsx": ["inherit"],
-  "src/components/settings/ProfileSection.tsx": ["auto", "ltr", "ltr", "ltr"],
-  "src/components/settings/WorkspaceDeveloperTab.tsx": ["auto"],
-  "src/components/settings/WorkspaceSection.tsx": ["auto"],
+  "src/components/onboarding/ProviderSetupStep.tsx": ["ltr", "ltr", "ltr", "ltr"],
   "src/components/ui/ApiKeyInput.tsx": ["ltr"],
   "src/components/ui/CustomModelInput.tsx": ["ltr"],
   "src/components/ui/PromptStudio.tsx": ["auto", "auto"],
@@ -88,11 +73,7 @@ const EXPECTED_SHARED_FIELD_DIRECTIONS = {
 };
 
 const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
-  "src/components/ApiKeysSection.tsx": ["inherit"],
   "src/components/CommandSearch.tsx": ["auto"],
-  "src/components/MemberPickList.tsx": ["auto"],
-  "src/components/ReferralDashboard.tsx": ["ltr"],
-  "src/components/SettingsPage.tsx": ["inherit"],
   "src/components/chat/ChatInput.tsx": ["auto"],
   "src/components/notes/ActionManagerDialog.tsx": ["auto"],
   "src/components/notes/AddNotesToFolderDialog.tsx": ["auto"],
@@ -101,14 +82,11 @@ const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/notes/NoteEditor.tsx": ["auto", "auto"],
   "src/components/notes/NoteParticipants.tsx": ["auto"],
   "src/components/notes/NotesOnboarding.tsx": ["auto", "auto", "auto"],
-  "src/components/notes/ShareNoteDialog.tsx": ["auto"],
-  "src/components/notes/SpacesTree.tsx": ["auto", "auto", "auto", "auto", "auto"],
+  "src/components/notes/SpacesTree.tsx": ["auto", "auto", "auto", "auto"],
   "src/components/notes/UploadAudioView.tsx": ["ltr", "ltr", "inherit", "inherit"],
-  "src/components/onboarding/DemoStep.tsx": ["auto"],
   "src/components/onboarding/LanguageSelectionStep.tsx": ["auto"],
   "src/components/onboarding/UseCaseStep.tsx": ["auto"],
   "src/components/settings/ChatAgentSettings.tsx": ["auto"],
-  "src/components/settings/ProfileSection.tsx": ["inherit"],
   "src/components/ui/LanguageSelector.tsx": ["auto"],
 };
 
@@ -158,10 +136,7 @@ test("native text fields use the same reviewed direction policy", () => {
 });
 
 test("representative prose, identity, secret, and rich-editor surfaces keep their policy", () => {
-  assert.match(
-    source("src/components/AuthenticationStep.tsx"),
-    /<Input\s+dir="ltr"\s+type="password"/
-  );
+
   assert.match(
     source("src/components/onboarding/ProviderSetupStep.tsx"),
     /<Input\s+dir="ltr"\s+type="password"/
@@ -174,10 +149,7 @@ test("representative prose, identity, secret, and rich-editor surfaces keep thei
     source("src/components/notes/UploadAudioView.tsx"),
     /<input\s+dir="ltr"\s+type="url"/
   );
-  assert.match(
-    source("src/components/notes/ShareNoteDialog.tsx"),
-    /<input\s+dir="auto"[\s\S]*?placeholder=\{t\("noteEditor\.share\.dialog\.searchPlaceholder"\)\}/
-  );
+
   assert.match(
     source("src/components/ui/ApiKeyInput.tsx"),
     /<span\s+dir="ltr"[\s\S]*?\{maskKey\(apiKey\)\}/

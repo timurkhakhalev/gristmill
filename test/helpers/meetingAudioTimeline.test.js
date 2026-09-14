@@ -11,7 +11,10 @@ const micGate = require("../../src/helpers/meetingMicGate");
 const ipcPath = path.join(__dirname, "../../src/helpers/ipcHandlers.js");
 const source = fs.readFileSync(ipcPath, "utf8");
 function section(from, to) {
-  return source.slice(source.indexOf(from), source.indexOf(to));
+  const start = source.indexOf(from);
+  const end = source.indexOf(to, start);
+  assert.ok(start >= 0 && end > start, `Missing section: ${from} → ${to}`);
+  return source.slice(start, end);
 }
 function harness({ native = true, local = false } = {}) {
   let now = 0;
@@ -43,6 +46,8 @@ function harness({ native = true, local = false } = {}) {
         : imported;
     },
     Buffer,
+    os: require("node:os"),
+    clearMeetingSystemAudioSilenceTimer() {},
     path,
     Date: { now: () => now },
     performance: { now: () => now },
@@ -85,7 +90,7 @@ function harness({ native = true, local = false } = {}) {
     `
     ${section("const resetMeetingReconnectAudio =", "// Labels the socket for field logs")}
     ${section("const dispatchMeetingAudioBuffer =", "const stopMeetingAec =")}
-    ${section("const sendMeetingAudio =", "// The Windows helper reports capture_silent")}
+    ${section("const sendMeetingAudio =", "const startManagedMeetingSystemAudio =")}
     ${section("const startManagedMeetingSystemAudio =", "const fallBackToMicOnly =")}
     globalThis.startCapture = () => startManagedMeetingSystemAudio({ sender: {} }, capture, "warning");
     globalThis.replaySystemAudio = (streaming) => replayMeetingReconnectAudio("system", streaming);
@@ -296,17 +301,6 @@ test("a restart before the first packet does not move the first-packet anchor", 
   run.chunk();
   assert.equal(bytes(run.pcm), 4800);
   assert.equal(run.context.meetingDiarizationStartedAt, 3000);
-});
-
-test("other native platform helpers keep their existing idle-gap behavior", async () => {
-  const run = harness({ native: false });
-  await run.start();
-  run.watchdog.start({ systemAudioStrategy: "wasapi-loopback" });
-  run.chunk();
-  run.at(10000);
-  await run.restart();
-  run.chunk();
-  assert.equal(bytes(run.pcm), 9600);
 });
 
 test("local transcription excludes synthetic silence while diarization retains the gap", async () => {

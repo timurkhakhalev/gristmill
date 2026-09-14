@@ -16,7 +16,7 @@ test("M1 build identity belongs to OpenHercules and has no publish destination",
     schemes: ["openhercules"],
   });
   assert.equal("publish" in builder, false);
-  assert.equal("azureSignOptions" in builder.win, false);
+  assert.equal("win" in builder, false);
   assert.equal("identity" in builder.mac, false);
   assert.equal("notarize" in builder.mac, false);
 });
@@ -28,7 +28,7 @@ test("M1 main process selects an OpenHercules-only profile and protocol", () => 
   assert.match(source, /openhercules-dev/);
   assert.match(source, /production: "openhercules"/);
   assert.match(source, /path\.join\(app\.getPath\("appData"\), profileName\)/);
-  assert.match(source, /app\.setDesktopName\("openhercules\.desktop"\)/);
+  assert.doesNotMatch(source, /setDesktopName|setAppUserModelId/);
   assert.doesNotMatch(source, /registerOpenWhisprProtocol|OPENWHISPR_PROTOCOL/);
   assert.doesNotMatch(
     source,

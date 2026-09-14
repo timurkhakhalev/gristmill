@@ -8,8 +8,8 @@ const load = () => import("../../src/utils/dateFormatting.ts");
 
 const t = (key) =>
   ({
-    "controlPanel.history.dateGroups.today": "Today",
-    "controlPanel.history.dateGroups.yesterday": "Yesterday",
+    "notes.dateGroups.today": "Today",
+    "notes.dateGroups.yesterday": "Yesterday",
   })[key] || key;
 
 // Local-time constructors keep these assertions timezone-independent.

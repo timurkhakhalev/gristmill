@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
 import { Key, Cpu, Network } from "../icons";
 import { useSettingsStore, selectResolvedLLMConfig, setResolvedLLMConfig } from "../../stores/settingsStore";
@@ -15,7 +16,7 @@ interface InferenceConfigEditorProps { scope: InferenceScope; onModeChange?: (mo
 
 export default function InferenceConfigEditor({ scope, onModeChange, allowedModes }: InferenceConfigEditorProps) {
   const { t } = useTranslation();
-  const config = useSettingsStore((settings) => selectResolvedLLMConfig(settings, scope));
+  const config = useSettingsStore(useShallow((settings) => selectResolvedLLMConfig(settings, scope)));
   const modes: InferenceModeOption[] = [
     { id: "providers", label: t("settingsPage.aiModels.modes.providers"), description: t("settingsPage.aiModels.modes.providersDesc"), icon: <Key className="w-4 h-4" /> },
     { id: "local", label: t("settingsPage.aiModels.modes.local"), description: t("settingsPage.aiModels.modes.localDesc"), icon: <Cpu className="w-4 h-4" /> },

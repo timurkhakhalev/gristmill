@@ -181,7 +181,7 @@ export function ByokProviderStep({
             </label>
             <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.modelLabel")}</FieldLabel>
               <Select value={selectedModel || undefined} onValueChange={(value) => { setSelectedModel(value); setConnected(false); onConnectionChange(false); }} disabled={!selectedProvider}>
-                <SelectTrigger><span>{models.find((model) => model.id === selectedModel)?.name ?? t("onboarding.rehaul.provider.modelPlaceholder")}</span></SelectTrigger>
+                <SelectTrigger><span dir="ltr">{models.find((model) => model.id === selectedModel)?.name ?? t("onboarding.rehaul.provider.modelPlaceholder")}</span></SelectTrigger>
                 <SelectContent>{models.map((model) => <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>)}</SelectContent>
               </Select>
             </label>

@@ -21,7 +21,6 @@ interface PromptStudioProps {
 
 const providerLabel = (provider: string) =>
   ({
-    openwhispr: "OpenWhispr Cloud",
     openai: "OpenAI",
     anthropic: "Anthropic",
     gemini: "Gemini",
@@ -47,9 +46,8 @@ export default function PromptStudio({ className = "", kind = "cleanup" }: Promp
   const [editedPrompt, setEditedPrompt] = useState(customPrompt || defaultPrompt);
   const currentPrompt = customPrompt || defaultPrompt;
   const isCustomPrompt = customPrompt.length > 0;
-  const isCloud = kind === "chatAgent" ? settings.chatAgentMode === "openwhispr" : settings.cleanupMode === "openwhispr";
   const model = kind === "chatAgent" ? settings.chatAgentModel : settings.cleanupModel;
-  const provider = kind === "chatAgent" ? settings.chatAgentProvider : (isCloud ? "openwhispr" : settings.cleanupProvider);
+  const provider = kind === "chatAgent" ? settings.chatAgentProvider : settings.cleanupProvider;
   const useModel = kind === "chatAgent" ? true : settings.useCleanupModel;
 
   const savePrompt = () => {
@@ -76,11 +74,11 @@ export default function PromptStudio({ className = "", kind = "cleanup" }: Promp
     const previous = customPrompt;
     settings.setCustomPrompt(kind, editedPrompt);
     try {
-      if (!isCloud && !model) {
+      if (!model) {
         setTestResult(t("promptStudio.test.noModelSelected"));
         return;
       }
-      const result = await ReasoningService.processText(testText, isCloud ? model || "auto" : model, agentName, {
+      const result = await ReasoningService.processText(testText, model, agentName, {
         ...(kind === "chatAgent" ? { inferenceScope: "chatIntelligence" as const } : {}),
         disableThinking: settings.cleanupDisableThinking,
         systemPrompt: resolvePrompt(kind, { agentName, uiLanguage: settings.uiLanguage }),

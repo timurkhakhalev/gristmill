@@ -146,7 +146,6 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressCleanupRef = useRef<(() => void) | null>(null);
   const runIdRef = useRef(0);
-  const activeRequestIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const urlDownloadActiveRef = useRef(false);
 
@@ -557,12 +556,8 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   };
 
   const cancelTranscription = () => {
-    // Abort local/direct uploads; the run-id bump still
-    // discards any late result from providers that can't be aborted (BYOK).
-    if (activeRequestIdRef.current) {
-      window.electronAPI.cancelUploadTranscription?.(activeRequestIdRef.current);
-      activeRequestIdRef.current = null;
-    }
+    // The current preload has no transcription-cancel API. The run-id bump
+    // safely discards late results while the UI returns to the idle state.
     runIdRef.current++;
     reset();
   };
@@ -572,7 +567,6 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     const currentTempPath = downloadedTempPath;
     const runId = ++runIdRef.current;
     const requestId = crypto.randomUUID();
-    activeRequestIdRef.current = requestId;
     setState("transcribing");
     setError(null);
     setProgress(0);
@@ -595,9 +589,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         diarization,
         currentFile.durationSeconds,
         { requestId, timestamps: true }
-      ).finally(() => {
-        if (activeRequestIdRef.current === requestId) activeRequestIdRef.current = null;
-      });
+      );
 
       if (runId !== runIdRef.current) return;
 

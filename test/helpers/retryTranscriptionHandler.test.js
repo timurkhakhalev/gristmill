@@ -178,22 +178,6 @@ test("retry: custom misconfiguration fails closed with a coded error", async () 
   assert.equal(fetches.length, 0);
 });
 
-test("retry: openwhispr cloud masks a leftover BYOK misconfiguration", async () => {
-  fetches.length = 0;
-  const result = await invoke({
-    cloudTranscriptionProvider: "custom",
-    cloudTranscriptionMode: "openwhispr",
-    transcriptionMode: "providers",
-    cloudTranscriptionBaseUrl: "",
-  });
-  // BrowserWindow.fromWebContents is stubbed to null, so the cloud branch
-  // produces no result — but the route error must NOT surface.
-  assert.equal(result.success, false);
-  assert.notEqual(result.code, "CUSTOM_ENDPOINT_INVALID");
-  assert.match(result.error, /No transcription engine available/);
-  assert.equal(fetches.length, 0);
-});
-
 test("retry: Azure custom endpoints get deployment URLs and api-key auth", async () => {
   fetches.length = 0;
   const result = await invoke({

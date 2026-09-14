@@ -24,5 +24,5 @@ test("SpacesTree resolves horizontal keyboard intent from the active i18n direct
     path.join(__dirname, "../../src/components/notes/SpacesTree.tsx"),
     "utf8"
   );
-  assert.match(source, /treeHorizontalIntent\(e\.key, i18n\.dir\(\)\)/);
+  assert.match(source, /treeHorizontalIntent\(event\.key, i18n\.dir\(\)\)/);
 });

@@ -11,7 +11,6 @@ export interface ResolvePromptOptions {
   uiLanguage?: string;
   language?: string;
   customDictionary?: string[];
-  targetLanguageLabel?: string;
 }
 
 export function resolvePrompt(kind: PromptKind, opts: ResolvePromptOptions): string {
@@ -30,19 +29,10 @@ export function getDefaultPromptText(kind: PromptKind, uiLanguage?: string): str
 
 // The cleanup prompt tells the model its input arrives between <transcript>
 // tags; the trailing line re-anchors the output contract right after the
-// transcript, where models weight instructions most. Mirrors api/reason.ts
-// in openwhispr-api.
+// transcript, where models weight instructions most. Keep this aligned with
+// the cleanup request contract.
 export function wrapCleanupTranscript(text: string): string {
   return `<transcript>\n${text}\n</transcript>\n\nOutput only the cleaned transcript.`;
-}
-
-// Appended to the dictation-agent prompt only when a screenshot is attached.
-export function appendScreenContextSuffix(prompt: string, uiLanguage?: string): string {
-  const locale = normalizeUiLanguage(uiLanguage || "en");
-  const suffix = i18n.getFixedT(locale, "prompts")("screenContextSuffix", {
-    defaultValue: enPrompts.screenContextSuffix,
-  });
-  return prompt + suffix;
 }
 
 export function appendDictionarySuffix(
@@ -61,10 +51,6 @@ export function appendDictionarySuffix(
 function applySubstitutions(template: string, opts: ResolvePromptOptions): string {
   const name = opts.agentName?.trim() || "Assistant";
   let prompt = template.replace(/\{\{agentName\}\}/g, name);
-
-  if (opts.targetLanguageLabel) {
-    prompt = prompt.replace(/\{\{targetLanguage\}\}/g, opts.targetLanguageLabel);
-  }
 
   const langInstruction = getLanguageInstruction(opts.language);
   if (langInstruction) prompt += "\n\n" + langInstruction;

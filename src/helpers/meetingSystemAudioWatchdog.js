@@ -17,7 +17,7 @@ const TICK_GAP_MS = 5_000;
 // so a route change or a disappearing device can stop capture with the helper
 // process still alive and the UI still showing a live recording. Nothing else
 // notices: the helper does not exit, and silence is indistinguishable from a
-// quiet call, which is what made openwhispr#1990 invisible mid-meeting.
+// quiet call, which is what made the original meeting regression invisible mid-call.
 //
 // Two triggers are trusted enough to restart capture:
 //

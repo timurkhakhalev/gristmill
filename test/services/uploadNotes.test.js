@@ -46,7 +46,10 @@ test("disabled diarization writes no columns at all", async () => {
   assert.equal(audioDurationSeconds, 120);
 });
 
-test("speaker counts reuse the stored-count clamp", async () => {
+// Uploads persist numSpeakers through the shared stored-count normalizer
+// (src/helpers/speakerCount.ts, also used by the main process). Pin the
+// outcomes explicitly instead of comparing against a second call.
+test("speaker counts normalize through the shared stored-count clamp", async () => {
   const { buildUploadNoteMetadata } = await load();
 
   const above = buildUploadNoteMetadata(
@@ -60,6 +63,12 @@ test("speaker counts reuse the stored-count clamp", async () => {
     null
   );
   assert.equal(unusable.noteUpdates.expected_speaker_count, null);
+
+  const auto = buildUploadNoteMetadata(
+    { enabled: true, localModelsReady: true, numSpeakers: null },
+    null
+  );
+  assert.equal(auto.noteUpdates.expected_speaker_count, null);
 });
 
 test("unusable durations degrade to null", async () => {
@@ -199,22 +208,4 @@ test("upload titles fall back to the transcript, then the file name", async () =
     "one two three four five six..."
   );
   assert.equal(uploadTitleFallback("   ", "board-meeting.m4a"), "board-meeting");
-});
-
-// uploadNotes.ts carries a renderer twin of the main-process
-// normalizeStoredSpeakerCount (CJS, unloadable from renderer source). Hold the
-// two implementations to identical outputs so they cannot drift apart.
-test("speaker-count normalization matches the main-process implementation", async () => {
-  const { buildUploadNoteMetadata } = await load();
-  const { normalizeStoredSpeakerCount } = require("../../src/helpers/speakerCount");
-
-  const inputs = [1, 2, 3, MAX_SPEAKER_COUNT, MAX_SPEAKER_COUNT + 1, MAX_SPEAKER_COUNT + 5];
-  for (const value of [...inputs, 0, -1, 1.5, NaN, Infinity, -Infinity, null, undefined, "", {}]) {
-    assert.equal(
-      buildUploadNoteMetadata({ enabled: true, numSpeakers: value }).noteUpdates
-        .expected_speaker_count,
-      normalizeStoredSpeakerCount(value),
-      `diverged from normalizeStoredSpeakerCount for ${JSON.stringify(value)}`
-    );
-  }
 });

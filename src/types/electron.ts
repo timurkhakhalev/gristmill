@@ -2,14 +2,19 @@ import type { ModelDefinition } from "../models/ModelRegistry";
 import type { TinfoilCatalogModel } from "../models/tinfoilModels";
 import type { CalendarAvailabilityRequest, CalendarAvailabilityResult } from "./calendar";
 import type { NotesApi } from "../contracts/notes";
+import type {
+  LocalTranscriptionProvider,
+  InferenceMode,
+  SelfHostedType,
+} from "../contracts/inferenceSettings";
 
-export type LocalTranscriptionProvider = "whisper" | "nvidia" | "cohere";
+export type {
+  LocalTranscriptionProvider,
+  InferenceMode,
+  SelfHostedType,
+} from "../contracts/inferenceSettings";
 
 export type ChineseScriptPreference = "simplified" | "traditional" | "as-transcribed";
-
-export type InferenceMode = "providers" | "local" | "self-hosted" | "enterprise";
-
-export type SelfHostedType = "openai-compatible" | "lan";
 
 export type TranscriptionStatus = "completed" | "failed" | "pending" | "discarded";
 

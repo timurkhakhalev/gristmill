@@ -25,7 +25,7 @@ export interface TranscriptionSettings {
   chineseScriptPreference: ChineseScriptPreference;
   cloudTranscriptionProvider: string;
   cloudTranscriptionModel: string;
-  cloudTranscriptionBaseUrl?: string;
+  cloudTranscriptionBaseUrl: string;
   cloudTranscriptionMode: string;
   transcriptionMode: InferenceMode;
   remoteTranscriptionType: SelfHostedType;
@@ -41,7 +41,7 @@ export interface CleanupSettings {
   useCleanupModel: boolean;
   cleanupModel: string;
   cleanupProvider: string;
-  cleanupCloudBaseUrl?: string;
+  cleanupCloudBaseUrl: string;
   cleanupCloudMode: string;
   cleanupMode: InferenceMode;
   cleanupRemoteUrl: string;

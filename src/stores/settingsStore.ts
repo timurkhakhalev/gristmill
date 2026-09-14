@@ -16,6 +16,14 @@ import { PROMPT_KIND_LIST, type PromptKind } from "../config/prompts/registry";
 import { sweepRetiredPromptOverrides } from "../config/retiredPrompts";
 import { sweepRetiredCloudModelSelections } from "../config/retiredCloudModels";
 import { buildReasoningScopePatches, inheritsFallbackEndpoint } from "../helpers/reasoningRouting";
+import {
+  selectResolvedMeetingTranscription,
+  selectResolvedUploadTranscription,
+  selectResolvedLLMConfig,
+  selectResolvedNoteFormatting,
+  type ResolvedLLMConfig,
+} from "../config/settingsSelectors";
+import { DEFAULT_CLOUD_TRANSCRIPTION_PROVIDER } from "../config/transcriptionCapabilities";
 import { findStaleLocalModelKeys } from "../helpers/localModelSelections";
 import {
   INFERENCE_SCOPES,
@@ -30,7 +38,6 @@ import { pickDefaultModelId } from "../models/providerDefaultModel";
 // the switch store only zustand, so neither reopens the ModelRegistry cycle.
 import { readCachedTinfoilModels } from "../models/tinfoilModelCache";
 import { recordTinfoilModelSwitch } from "./tinfoilModelSwitchStore";
-import { STREAMING_ONLY_PROVIDERS } from "../helpers/transcriptionRoute";
 import type {
   TranscriptionSettings,
   CleanupSettings,
@@ -52,8 +59,6 @@ let _ReasoningService: typeof import("../services/ReasoningService").default | n
 // dereference the bare localStorage global, and test harnesses import this
 // store with partial window stubs that don't define it.
 const isBrowser = typeof window !== "undefined" && typeof localStorage !== "undefined";
-
-const DEFAULT_CLOUD_TRANSCRIPTION_PROVIDER = "openai";
 
 const localLlmProviderIds = new Set(
   modelRegistryData.localProviders.map((provider) => provider.id)
@@ -2155,15 +2160,15 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       mode
     );
     s.updateCleanupSettings(cleanup);
-    s.setCleanupMode(cleanup.cleanupMode);
+    s.setCleanupMode(cleanup.cleanupMode as InferenceMode);
     if (cleanup.cleanupCustomApiKey !== undefined) {
       s.setCleanupCustomApiKey(cleanup.cleanupCustomApiKey);
     }
     // Each Settings tab selects on its own mode field, so every scope gets the
     // mode even when the routing fields are absent — otherwise the tab keeps
     // showing the previous provider despite the new cloud routing.
-    for (const [scope, patch] of Object.entries(mirrored)) {
-      setResolvedLLMConfig(scope as InferenceScope, patch);
+    for (const [scope, patch] of Object.entries(mirrored) as [InferenceScope, Partial<ResolvedLLMConfig>][]) {
+      setResolvedLLMConfig(scope, patch);
     }
   },
 
@@ -2196,166 +2201,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       s.setChatAgentCloudMode(settings.chatAgentCloudMode);
   },
 }));
-
-// --- Selectors (derived state, not stored) ---
-
-export interface ResolvedMeetingTranscription {
-  useLocalWhisper: boolean;
-  whisperModel: string;
-  localTranscriptionProvider: LocalTranscriptionProvider;
-  parakeetModel: string;
-  cohereModel: string;
-  cloudTranscriptionProvider: string;
-  cloudTranscriptionModel: string;
-  cloudTranscriptionBaseUrl: string;
-  cloudTranscriptionMode: string;
-  transcriptionMode: InferenceMode;
-  remoteTranscriptionType: SelfHostedType;
-  remoteTranscriptionUrl: string;
-}
-
-export const selectResolvedMeetingTranscription = (
-  state: SettingsState
-): ResolvedMeetingTranscription => ({
-  useLocalWhisper: state.meetingUseLocalWhisper,
-  whisperModel: state.meetingWhisperModel || state.whisperModel,
-  localTranscriptionProvider: state.meetingLocalTranscriptionProvider,
-  parakeetModel: state.meetingParakeetModel || state.parakeetModel,
-  cohereModel: state.meetingCohereModel || state.cohereModel,
-  cloudTranscriptionProvider:
-    state.meetingCloudTranscriptionProvider || state.cloudTranscriptionProvider,
-  cloudTranscriptionModel: state.meetingCloudTranscriptionModel || state.cloudTranscriptionModel,
-  cloudTranscriptionBaseUrl:
-    state.meetingCloudTranscriptionBaseUrl || state.cloudTranscriptionBaseUrl || "",
-  cloudTranscriptionMode: state.meetingCloudTranscriptionMode || state.cloudTranscriptionMode,
-  transcriptionMode: state.meetingTranscriptionMode,
-  remoteTranscriptionType: state.meetingRemoteTranscriptionType,
-  remoteTranscriptionUrl: state.meetingRemoteTranscriptionUrl || state.remoteTranscriptionUrl,
-});
-
-export interface ResolvedUploadTranscription {
-  useLocalWhisper: boolean;
-  whisperModel: string;
-  localTranscriptionProvider: LocalTranscriptionProvider;
-  parakeetModel: string;
-  cohereModel: string;
-  cloudTranscriptionProvider: string;
-  cloudTranscriptionModel: string;
-  cloudTranscriptionBaseUrl: string;
-  cloudTranscriptionMode: string;
-  transcriptionMode: InferenceMode;
-}
-
-// Audio upload is batch (not streaming), so unset values fall back to the base
-// transcription settings — matching the behavior before upload had its own context.
-// A realtime-only transcription provider is the exception: it has no batch route, so
-// inheriting it would fail every upload closed. Uploads take the default provider
-// instead, and the base model stays behind with the provider it belongs to.
-export const selectResolvedUploadTranscription = (
-  state: SettingsState
-): ResolvedUploadTranscription => {
-  const inheritsBaseProvider = !STREAMING_ONLY_PROVIDERS.has(state.cloudTranscriptionProvider);
-  return {
-    useLocalWhisper: state.uploadUseLocalWhisper,
-    whisperModel: state.uploadWhisperModel || state.whisperModel,
-    localTranscriptionProvider: state.uploadLocalTranscriptionProvider,
-    parakeetModel: state.uploadParakeetModel || state.parakeetModel,
-    cohereModel: state.uploadCohereModel || state.cohereModel,
-    cloudTranscriptionProvider:
-      state.uploadCloudTranscriptionProvider ||
-      (inheritsBaseProvider
-        ? state.cloudTranscriptionProvider
-        : DEFAULT_CLOUD_TRANSCRIPTION_PROVIDER),
-    cloudTranscriptionModel:
-      state.uploadCloudTranscriptionModel ||
-      (inheritsBaseProvider ? state.cloudTranscriptionModel : ""),
-    cloudTranscriptionBaseUrl:
-      state.uploadCloudTranscriptionBaseUrl || state.cloudTranscriptionBaseUrl || "",
-    cloudTranscriptionMode: state.uploadCloudTranscriptionMode || state.cloudTranscriptionMode,
-    transcriptionMode: state.uploadTranscriptionMode,
-  };
-};
-
-export interface ResolvedNoteFormatting {
-  provider: string;
-  model: string;
-  mode: InferenceMode;
-  cloudMode: string;
-  cloudBaseUrl: string;
-  remoteUrl: string;
-  customApiKey: string;
-}
-
-export const selectResolvedNoteFormatting = (state: SettingsState): ResolvedNoteFormatting => {
-  const cfg = selectResolvedLLMConfig(state, "noteFormatting");
-  const cleanup = selectResolvedLLMConfig(state, "cleanup");
-  // The endpoint falls back to the cleanup scope, so the key that opens it must too,
-  // or an inherited endpoint gets called with no credential.
-  const borrowsEndpoint = inheritsFallbackEndpoint(
-    {
-      mode: cfg.mode,
-      cloudBaseUrl: state.noteFormattingCloudBaseUrl,
-      remoteUrl: state.noteFormattingRemoteUrl,
-    },
-    cleanup.mode
-  );
-  return {
-    provider: cfg.provider,
-    model: cfg.model,
-    mode: cfg.mode,
-    cloudMode: cfg.cloudMode || "",
-    cloudBaseUrl: cfg.cloudBaseUrl || "",
-    remoteUrl: cfg.remoteUrl || "",
-    customApiKey: cfg.customApiKey || (borrowsEndpoint ? cleanup.customApiKey || "" : ""),
-  };
-};
-
-export interface ResolvedLLMConfig {
-  scope: InferenceScope;
-  mode: InferenceMode;
-  provider: string;
-  model: string;
-  cloudMode?: string;
-  cloudBaseUrl?: string;
-  remoteUrl?: string;
-  customApiKey?: string;
-  disableThinking: boolean;
-}
-
-export const selectResolvedLLMConfig = (
-  state: SettingsState,
-  scope: InferenceScope
-): ResolvedLLMConfig => {
-  const def: InferenceScopeDefinition = INFERENCE_SCOPES[scope];
-  const fallback = def.fallbackScope
-    ? selectResolvedLLMConfig(state, def.fallbackScope as InferenceScope)
-    : undefined;
-
-  const read = (field: keyof InferenceScopeStoreKeys): string | undefined => {
-    const key = def.storeKeys[field];
-    if (!key) return undefined;
-    return (state[key] as string | undefined) || undefined;
-  };
-
-  const disableThinkingKey = def.storeKeys.disableThinking;
-  const disableThinking = disableThinkingKey ? (state[disableThinkingKey] as boolean) : true;
-
-  const localConfig: ResolvedLLMConfig = {
-    scope,
-    mode: state[def.storeKeys.mode] as InferenceMode,
-    provider: read("provider") || fallback?.provider || "",
-    model: read("model") || fallback?.model || "",
-    cloudMode: read("cloudMode") || fallback?.cloudMode,
-    cloudBaseUrl: read("cloudBaseUrl") || fallback?.cloudBaseUrl,
-    remoteUrl: read("remoteUrl") || fallback?.remoteUrl,
-    // Not inherited here: the settings editor renders this field, and a borrowed key
-    // in it would be committed to this scope's storage by an idle edit. Inheritance
-    // belongs on the request path — see selectResolvedNoteFormatting.
-    customApiKey: read("customApiKey"),
-    disableThinking,
-  };
-  return localConfig;
-};
 
 // Scope custom keys are secrets kept in the OS secure store, not localStorage
 // (which is stripped on startup). Writes must go through their dedicated

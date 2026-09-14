@@ -24,13 +24,13 @@ const snippetListSchema = z.array(snippetSchema);
 
 export interface VocabularyHandlerDeps {
   database: {
-    getDictionary?: () => unknown;
-    setDictionary?: (words: unknown) => unknown;
-    applyDictionaryChanges?: (changes: { add?: unknown; remove?: unknown }) => unknown;
-    hardDeleteDictionaryEntry?: (id: unknown) => unknown;
-    getSnippets?: () => unknown;
-    setSnippets?: (snippets: unknown) => unknown;
-    hardDeleteSnippet?: (id: unknown) => unknown;
+    getDictionary: () => unknown;
+    setDictionary: (words: unknown) => unknown;
+    applyDictionaryChanges: (changes: { add?: unknown; remove?: unknown }) => unknown;
+    hardDeleteDictionaryEntry: (id: unknown) => unknown;
+    getSnippets: () => unknown;
+    setSnippets: (snippets: unknown) => unknown;
+    hardDeleteSnippet: (id: unknown) => unknown;
   };
   debugLogger: { debug: (message: string, context?: Record<string, unknown>) => void };
 }
@@ -60,7 +60,7 @@ export function registerVocabularyHandlers(ipcMain: IpcMainLike, deps: Vocabular
   const { database, debugLogger } = deps;
 
   ipcMain.handle(vocabularyChannels.getDictionary, async () => {
-    return parseResult(dictionaryWordsSchema, database.getDictionary?.());
+    return parseResult(dictionaryWordsSchema, database.getDictionary());
   });
 
   ipcMain.handle(vocabularyChannels.setDictionary, async (_event, ...rawArgs) => {
@@ -69,7 +69,7 @@ export function registerVocabularyHandlers(ipcMain: IpcMainLike, deps: Vocabular
     if (!Array.isArray(words)) {
       throw new Error("words must be an array");
     }
-    return parseResult(simpleSuccessSchema, database.setDictionary?.(words));
+    return parseResult(simpleSuccessSchema, database.setDictionary(words));
   });
 
   ipcMain.handle(vocabularyChannels.applyDictionaryChanges, async (_event, ...rawArgs) => {
@@ -83,25 +83,25 @@ export function registerVocabularyHandlers(ipcMain: IpcMainLike, deps: Vocabular
     }
     return parseResult(
       dictionaryChangeResultSchema,
-      database.applyDictionaryChanges?.({ add, remove })
+      database.applyDictionaryChanges({ add, remove })
     );
   });
 
   ipcMain.handle(vocabularyChannels.hardDeleteDictionary, async (_event, ...rawArgs) => {
     const [id] = parseArgs(hardDeleteDictionaryArgsSchema, rawArgs);
-    return parseResult(simpleSuccessSchema, database.hardDeleteDictionaryEntry?.(id));
+    return parseResult(simpleSuccessSchema, database.hardDeleteDictionaryEntry(id));
   });
 
   ipcMain.handle(vocabularyChannels.broadcastDictionaryUpdated, async () => {
     // Emit the normalized list straight from SQLite so renderers see the
     // post-dedupe truth, never a caller-supplied payload.
-    const words = parseResult(dictionaryWordsSchema, database.getDictionary?.());
+    const words = parseResult(dictionaryWordsSchema, database.getDictionary());
     sendDictionaryUpdated(words);
     return { success: true };
   });
 
   ipcMain.handle(vocabularyChannels.getSnippets, async () => {
-    return parseResult(snippetListSchema, database.getSnippets?.());
+    return parseResult(snippetListSchema, database.getSnippets());
   });
 
   ipcMain.handle(vocabularyChannels.setSnippets, async (_event, ...rawArgs) => {
@@ -109,16 +109,16 @@ export function registerVocabularyHandlers(ipcMain: IpcMainLike, deps: Vocabular
     if (!Array.isArray(snippets)) {
       throw new Error("snippets must be an array");
     }
-    return parseResult(simpleSuccessSchema, database.setSnippets?.(snippets));
+    return parseResult(simpleSuccessSchema, database.setSnippets(snippets));
   });
 
   ipcMain.handle(vocabularyChannels.hardDeleteSnippet, async (_event, ...rawArgs) => {
     const [id] = parseArgs(hardDeleteSnippetArgsSchema, rawArgs);
-    return parseResult(simpleSuccessSchema, database.hardDeleteSnippet?.(id));
+    return parseResult(simpleSuccessSchema, database.hardDeleteSnippet(id));
   });
 
   ipcMain.handle(vocabularyChannels.broadcastSnippetsUpdated, async () => {
-    const snippets = parseResult(snippetListSchema, database.getSnippets?.());
+    const snippets = parseResult(snippetListSchema, database.getSnippets());
     sendSnippetsUpdated(snippets);
     return { success: true };
   });
@@ -133,14 +133,14 @@ export function registerVocabularyHandlers(ipcMain: IpcMainLike, deps: Vocabular
       if (validWords.length === 0) {
         return { success: false };
       }
-      const saveResult = database.applyDictionaryChanges?.({ remove: validWords });
+      const saveResult = database.applyDictionaryChanges({ remove: validWords });
       if ((saveResult as { success?: boolean } | undefined)?.success === false) {
         debugLogger.debug("[AutoLearn] Undo failed to save dictionary", {
           error: (saveResult as { error?: unknown }).error,
         });
         return { success: false };
       }
-      sendDictionaryUpdated(parseResult(dictionaryWordsSchema, database.getDictionary?.()));
+      sendDictionaryUpdated(parseResult(dictionaryWordsSchema, database.getDictionary()));
       debugLogger.debug("[AutoLearn] Undo: removed words", { words: validWords });
       return { success: true };
     } catch (err) {

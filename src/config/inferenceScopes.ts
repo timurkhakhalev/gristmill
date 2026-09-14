@@ -8,31 +8,25 @@ import type {
 // fields must reference string snapshot fields, the mode field a mode field,
 // disableThinking a boolean field. The store's SettingsState structurally
 // satisfies the snapshot, so the same keys read its state.
+type StringKey = {
+  [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
+}[keyof InferenceSettingsSnapshot];
+type ModeKey = {
+  [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends InferenceMode ? K : never;
+}[keyof InferenceSettingsSnapshot];
+type BooleanKey = {
+  [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends boolean ? K : never;
+}[keyof InferenceSettingsSnapshot];
+
 export interface InferenceScopeStoreKeys {
-  mode: {
-    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends InferenceMode ? K : never;
-  }[keyof InferenceSettingsSnapshot];
-  provider: {
-    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
-  }[keyof InferenceSettingsSnapshot];
-  model: {
-    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
-  }[keyof InferenceSettingsSnapshot];
-  cloudMode?: {
-    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
-  }[keyof InferenceSettingsSnapshot];
-  cloudBaseUrl?: {
-    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
-  }[keyof InferenceSettingsSnapshot];
-  remoteUrl?: {
-    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
-  }[keyof InferenceSettingsSnapshot];
-  customApiKey?: {
-    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
-  }[keyof InferenceSettingsSnapshot];
-  disableThinking?: {
-    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends boolean ? K : never;
-  }[keyof InferenceSettingsSnapshot];
+  mode: ModeKey;
+  provider: StringKey;
+  model: StringKey;
+  cloudMode?: StringKey;
+  cloudBaseUrl?: StringKey;
+  remoteUrl?: StringKey;
+  customApiKey?: StringKey;
+  disableThinking?: BooleanKey;
 }
 
 export interface InferenceScopeDefinition {

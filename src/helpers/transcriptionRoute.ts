@@ -7,7 +7,7 @@
 // Routes never carry secrets — `auth.keyRef` names the key slot the executor
 // resolves itself.
 import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constants.mts";
-import { STREAMING_ONLY_PROVIDERS } from "../config/transcriptionCapabilities";
+import { STREAMING_ONLY_PROVIDERS } from "../config/transcriptionCapabilities.ts";
 import {
   isSecureHttpEndpoint,
   isAzureOpenAIEndpoint,

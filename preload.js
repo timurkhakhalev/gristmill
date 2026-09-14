@@ -6,6 +6,7 @@ const { createChatPersistenceBridge } = require("./src/preload/chatBridge");
 const { createUrlDownloadBridge } = require("./src/preload/urlDownloadBridge");
 const { createActionsBridge } = require("./src/preload/actionsBridge");
 const { createLocalFileTranscriptionBridge } = require("./src/preload/localFileTranscriptionBridge");
+const { createUploadTranscriptionBridge } = require("./src/preload/uploadTranscriptionBridge");
 const { createCalendarAvailabilityBridge } = require("./src/preload/calendarAvailabilityBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
@@ -64,6 +65,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createVocabularyBridge(ipcRenderer),
   ...createActionsBridge(ipcRenderer),
   ...createLocalFileTranscriptionBridge(ipcRenderer),
+  ...createUploadTranscriptionBridge(ipcRenderer),
   ...createCalendarAvailabilityBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
@@ -237,15 +239,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   parakeetServerStop: () => ipcRenderer.invoke("parakeet-server-stop"),
   parakeetServerStatus: () => ipcRenderer.invoke("parakeet-server-status"),
 
-  // Diarization (speaker identification) functions
+  // Diarization model management stays here; diarizeAudioFile and
+  // mergeSpeakerText come from the typed uploadTranscriptionBridge above.
   downloadDiarizationModels: () => ipcRenderer.invoke("download-diarization-models"),
   getDiarizationModelStatus: () => ipcRenderer.invoke("get-diarization-model-status"),
   deleteDiarizationModels: () => ipcRenderer.invoke("delete-diarization-models"),
   cancelDiarizationDownload: () => ipcRenderer.invoke("cancel-diarization-download"),
-  diarizeAudioFile: (filePath, options) =>
-    ipcRenderer.invoke("diarize-audio-file", filePath, options),
-  mergeSpeakerText: (segments, text, duration) =>
-    ipcRenderer.invoke("merge-speaker-text", { segments, text, duration }),
   onDiarizationDownloadProgress: registerListener(
     "diarization-download-progress",
     (callback) => (_event, data) => callback(data)
@@ -430,7 +429,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   showEmojiPanel: () => ipcRenderer.invoke("show-emoji-panel"),
   getModelCacheRoot: () => ipcRenderer.invoke("get-model-cache-root"),
   openWhisperModelsFolder: () => ipcRenderer.invoke("open-whisper-models-folder"),
-  transcribeAudioFileByok: (options) => ipcRenderer.invoke("transcribe-audio-file-byok", options),
+  // BYOK file transcription and its hard cancel come from the typed
+  // uploadTranscriptionBridge above.
   onUploadTranscriptionProgress: registerListener(
     "upload-transcription-progress",
     (callback) => (_event, data) => callback(data)

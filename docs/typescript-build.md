@@ -137,8 +137,9 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **131 JS, 37 TS, 1 MTS и 25 JSON**.
-Entry points: main, preload и ONNX worker. Тесты и tooling в граф не входят.
+а не всеми файлами в каталоге helpers. В нём **130 JS, 43 TS, 1 MTS и 25 JSON**
+(только `src/`; main/preload/worker — отдельные entry points). Entry points:
+main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
 
 Исходный срез репозитория после cleanup: `src` — 168 JS, 2 JSX, 1 MJS,
@@ -163,6 +164,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/contracts/chatPersistence.ts`
 - `src/contracts/actions.ts`
 - `src/contracts/localFileTranscription.ts`
+- `src/contracts/uploadTranscription.ts`
 - `src/contracts/calendarAvailability.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
@@ -187,12 +189,11 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/preload/chatBridge.ts`
 - `src/preload/actionsBridge.ts`
 - `src/preload/localFileTranscriptionBridge.ts`
+- `src/preload/uploadTranscriptionBridge.ts`
 - `src/preload/calendarAvailabilityBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
 - `src/helpers/builtinActions.js`
-- `src/helpers/calendarAvailability.js`
-- `src/helpers/calendarAvailabilityService.js`
 - `src/helpers/calendarReminderScheduler.js`
 - `src/helpers/calendarSyncInterval.js`
 - `src/helpers/cliBridge.js`
@@ -299,6 +300,10 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/actionsIpcHandlers.ts`
 - `src/helpers/localFileTranscription.ts`
 - `src/helpers/localFileTranscriptionIpcHandler.ts`
+- `src/helpers/remoteTranscriptionIpcHandler.ts`
+- `src/helpers/fileDiarizationIpcHandlers.ts`
+- `src/helpers/uploadCancelIpcHandler.ts`
+- `src/helpers/uploadCancelRegistry.ts`
 - `src/helpers/calendarAvailability.ts`
 - `src/helpers/calendarAvailabilityService.ts`
 - `src/helpers/calendarAvailabilityIpcHandler.ts`
@@ -311,7 +316,6 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/transcriptionRoute.ts`
 - `src/helpers/transcriptionTimeout.js`
 - `src/helpers/tray.js`
-- `src/helpers/uploadCancelRegistry.js`
 - `src/helpers/uploadTimestamps.js`
 - `src/helpers/urlAudioDownloader.js`
 - `src/helpers/whisper.js`
@@ -586,3 +590,60 @@ TS2741/2345, wrong response usage TS2339, positive под strict;
 calendarAvailabilityTool 14, calendarDatabase/Tool/ReminderScheduler 26,
 rendererBridgeContract); полный `pnpm test` 2596 passed; pack + isolated
 smoke. Inventory графа Electron: 131 JS, 37 TS, 1 MTS, 25 JSON.
+
+## Этап «upload execution, remote transcription и hard cancel»
+
+15 сентября 2026 (issue #32). Вертикаль Audio Upload для удалённой
+транскрипции и локальной диаризации переведена в strict TS с явной отменой
+одного upload execution. Каналы `transcribe-audio-file-byok`,
+`diarize-audio-file`, `merge-speaker-text` и новый `cancel-upload-transcription`
+описаны одним контрактом `src/contracts/uploadTranscription.ts` (Zod, типы
+выводятся из схем) и bridge `src/preload/uploadTranscriptionBridge.ts`;
+ручные методы удалены из `preload.js` и `src/types/electron.ts`.
+
+- `src/helpers/remoteTranscriptionIpcHandler.ts` — удалённая транскрипция,
+  вынесена из `ipcHandlers.js` с узкими зависимостями (path resolution,
+  read/stat, route resolver, provider clients, multipart transport,
+  credentials, logging). Невалидный payload отклоняется до path resolution,
+  чтения файла и сети; присутствующий `requestId` валидируется как непустой.
+  `buildMultipartBody`/`AUDIO_MIME_TYPES` переехали сюда; реальный
+  `postMultipart` (Electron net) остался в `ipcHandlers.js` и передаётся
+  зависимостью. Provider payloads принимаются как `unknown` и проецируются
+  в проверенный wire result (diarized_json/`speakers`, verbose segments,
+  непустой `text`); local-маршрут на этом канале закрывается fail-closed.
+  `byokSizeCapError`, `MISTRAL_TRANSCRIPTION_URL` и `XAI_STT_URL` переехали
+  в `transcriptionRoute.ts` (их по-прежнему используют retry и proxy-каналы).
+- `src/helpers/fileDiarizationIpcHandlers.ts` — только file-oriented
+  diarize/merge. Cancel проверяется после ленивой подготовки моделей и между
+  стадиями, `AbortSignal` передаётся в `convertToWav` и диаризатор,
+  временный WAV и регистрация освобождаются в `finally`. Нормализующее
+  поведение merge (sanitization, лимиты как error result) сохранено.
+- `src/helpers/uploadCancelIpcHandler.ts` + `src/helpers/uploadCancelRegistry.ts`
+  (переведён из JS в strict TS, поведение без изменений) — один app-scoped
+  реестр; `cancel-upload-transcription` абортит все операции requestId
+  (параллельные transcription+diarization), повторный/поздний cancel — no-op.
+- Транспорты получили сигнал: generic/self-hosted multipart, OpenAI/
+  custom/Azure, Mistral/xAI, Gemini, Tinfoil и каждый сетевой шаг Corti
+  (токен через `AbortSignal.any`, cleanup DELETE — на собственном
+  `AbortSignal.timeout`, не на уже aborted signal). `ffmpegUtils.convertToWav`
+  убивает child по abort и отвергает AbortError только после закрытия child.
+  Отмена возвращает `Cancelled`/`UPLOAD_CANCELLED`, не provider error.
+- Renderer: `transcribeFile` передаёт один `requestId` одновременно в
+  транскрипцию и диаризацию (раньше BYOK-вызов его терял — дефект #32);
+  Stop одиночного upload вызывает hard cancel до UI reset и проверяет
+  generation после асинхронной подготовки настроек; `cancelBatch()` отменяет
+  текущий item, фоновой очереди навигация по-прежнему не касается;
+  `FileTranscriptionResult` наследует общие поля обоих wire-контрактов.
+  Передача ключей и settings не менялась (перенос секретов в main — отдельное
+  решение).
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors (baseline
+47+2 warnings); strict compiler probes в
+`test/scripts/uploadTranscriptionTypeProbe.test.js`. Characterization и
+отмена: `test/helpers/remoteTranscriptionIpc.test.js`,
+`fileDiarizationIpc.test.js`, `uploadCancelIpc.test.js` (включая e2e
+параллельной отмены transcription+diarization одного id),
+`uploadTranscriptionBridge.test.js` через bundled preload,
+`test/stores/batchQueueCancel.test.js` (hard cancel текущего item и
+игнорирование позднего результата). Inventory графа Electron:
+130 JS, 43 TS, 1 MTS, 25 JSON.

@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { getSettings, selectResolvedMeetingTranscription } from "./settingsStore";
+import { getSettings } from "./settingsStore";
+import { selectResolvedMeetingTranscription } from "../config/settingsSelectors";
 import { getMeetingStreamingTranscriptionProviders } from "../models/ModelRegistry";
 import { resolveMeetingTranscriptionOptions } from "../helpers/meetingTranscriptionRouting";
 import { followsSystemDefaultMic } from "../helpers/micSelectionRecovery";
@@ -12,10 +13,10 @@ import {
 } from "../utils/participants";
 import type {
   MeetingSystemAudioInterruption,
-  NoteItem,
   SystemAudioAccessResult,
   SystemAudioStrategy,
 } from "../types/electron";
+import type { NoteItem } from "../contracts/notes";
 import type { CalendarAttendee } from "../types/calendar";
 import {
   DEFAULT_SYSTEM_AUDIO_ACCESS,
@@ -1720,10 +1721,9 @@ if (typeof window !== "undefined") {
           "meeting"
         );
       }
-      // No note means no safe base to merge into, and writing to a deleted one
-      // would resurrect its tombstone in the sidebar, cloud mirror, and vector
-      // index.
-      if (!persisted || persisted.deleted_at) {
+      // No note means no safe base to merge into; a deleted note reads back
+      // as null, so it can't be written behind the user's back either.
+      if (!persisted) {
         publish([]);
         return;
       }

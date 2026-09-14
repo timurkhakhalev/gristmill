@@ -10,6 +10,16 @@
 `preload.js` и отдельно загружаемого ONNX worker; копирует используемые JSON.
 Никакие `.env`, assets или native binaries в этот каталог не копируются.
 
+Sandboxed preload не может require локальные модули, поэтому после успешного
+tsc `build-main.js` бандлит исходный `preload.js` (вместе с
+`src/preload/notesBridge.ts`, `src/preload/urlDownloadBridge.ts`,
+`src/preload/vocabularyBridge.ts` и
+`src/contracts/*.ts`) в один файл
+`dist-main/preload.js` через esbuild (`bundle`, `format=cjs`,
+`platform=node`, `target=node24`, `external:electron`; devDependency
+`esbuild@0.28.1`). Ошибка bundle завершает сборку и удаляет промежуточный
+unbundled preload. Main и worker остаются под tsc без бандлинга.
+
 `package.json#main` указывает на `dist-main/main.js`. И `pnpm start`, и
 `pnpm run dev:main` сначала собирают этот каталог. `build:mac:arm64`, `pack`
 и `dist` тоже собирают его перед упаковкой. После изменения main-кода в dev
@@ -35,7 +45,16 @@ Renderer по-прежнему собирается в `src/dist`; native binari
 
 - `pnpm run typecheck:main`: Node/Electron target, `strict: true`, без DOM globals.
 - `pnpm run typecheck:renderer`: существующий browser target в `src/tsconfig.json`.
-- `pnpm run typecheck`: обе проверки последовательно.
+- `pnpm run typecheck:settings-selectors`: strict noEmit target
+  (`tsconfig.settings-selectors.json`, `types: []`) над чистым графом
+  provider-настроек: `contracts/inferenceSettings.ts`,
+  `config/settingsSelectors.ts`, `config/inferenceScopes.ts`,
+  `config/transcriptionCapabilities.ts`, `helpers/reasoningRouting.ts`.
+  Граф не импортирует store/Zustand/localStorage/i18n/Electron — только
+  contracts и статические capabilities; compiler probes в
+  `test/helpers/settingsSelectorsTypes.test.js` проверяют отказ на неверный
+  scope, неверные типы полей и DOM-зависимость.
+- `pnpm run typecheck`: все три проверки последовательно.
 - `pnpm run lint`: включает TS в helpers/utils и `.mts` в renderer/shared code.
 
 Оставшийся JS включён в сборку с `allowJs: true`, но пока не проверяется
@@ -85,10 +104,39 @@ Tests/build/install/rebuild запускаются последовательн�
 Реальная запись и платные API не использовались. Проверки hardware realtime
 и качества распознавания этот шаг не заявляет.
 
+## Этап 3a: чистые selectors конфигурации providers
+
+14 сентября 2026 (issue #10, пункт 3, подэтап 3a). Вычисление effective
+provider-конфигурации вынесено из `stores/settingsStore.ts` в чистый TS-граф:
+
+- `src/config/settingsSelectors.ts` — единственное место четырёх
+  `selectResolved*` функций и их Resolved* типов. Store импортирует их для
+  внутренних вызовов; `setResolvedLLMConfig`, hydration, migrations и
+  secure-key persistence остались в store.
+- `src/contracts/inferenceSettings.ts` — узкие snapshot-типы входа селекторов
+  (только читаемые поля) плюс `InferenceMode`, `SelfHostedType`,
+  `LocalTranscriptionProvider`, `CloudReasonPurpose` (перенесены из
+  `types/electron.ts`, который ре-экспортирует их).
+- `src/config/inferenceScopes.ts` — без импорта SettingsState: storeKeys
+  типизированы по snapshot, fallbackScope ограничен `InferenceScopeId`.
+- `src/config/transcriptionCapabilities.ts` — `STREAMING_ONLY_PROVIDERS`
+  (перенесён из `helpers/transcriptionRoute.ts`) и
+  `DEFAULT_CLOUD_TRANSCRIPTION_PROVIDER` (одна копия для store и селектора).
+- `src/helpers/reasoningRouting.ts` — типизирован (был `.js`).
+
+Границы владения: store (`stores/settingsStore.ts`) — загрузка, migrations,
+persistence, setters; `config/settingsSelectors.ts` — чистое вычисление из
+snapshot; callers (meeting/upload/AI Actions/chat) — только вызов селекторов
+поверх `getSettings`/`useSettingsStore`. Чистый граф проверяется strict-таргетом
+`typecheck:settings-selectors` (см. «Проверка типов и lint»), поведение —
+characterization-тестами `test/helpers/settingsSelectors*.test.js` с прямым
+импортом без browser harness. Интеграционные проверки миграций и follow-flags
+сохранены через store harness.
+
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **136 JS, 3 TS, 1 MTS и 25 JSON**.
+а не всеми файлами в каталоге helpers. В нём **133 JS, 16 TS, 1 MTS и 25 JSON**.
 Entry points: main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
 
@@ -97,6 +145,9 @@ Entry points: main, preload и ONNX worker. Тесты и tooling в граф н
 Отдельно: root main/preload; 335 JS-тестов на исходной точке; scripts — 21 JS
 и 2 MJS; root cleanup.js/eslint.config.js — tooling. В этом PR добавлены
 build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS не входит в шаг.
+К 14 сентября 2026 срез стал `src` — 166 JS, 196 TS (+MTS), 252 TSX: этап 3a
+(types/electron → contracts/inferenceSettings и reasoningRouting.js → .ts) и
+этап «общий speaker count» (speakerCount.js → .ts) уменьшили JS-инвентарь.
 
 Список ниже — текущие входные файлы графа Electron; сторонние библиотеки
 и type declarations исключены. При изменении entry points или импортов
@@ -104,6 +155,9 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 
 - `main.js`
 - `preload.js`
+- `src/contracts/notes.ts`
+- `src/contracts/urlDownload.ts`
+- `src/contracts/vocabulary.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
 - `src/constants/speakerDetection.json`
@@ -118,6 +172,11 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/audioTapManager.js`
 - `src/helpers/autoStart.js`
 - `src/helpers/autoStartPolicy.js`
+- `src/helpers/notesEvents.ts`
+- `src/helpers/notesIpcHandlers.ts`
+- `src/preload/notesBridge.ts`
+- `src/preload/urlDownloadBridge.ts`
+- `src/preload/vocabularyBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
 - `src/helpers/builtinActions.js`
@@ -213,12 +272,15 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/sidecarReaper.js`
 - `src/helpers/sidecarRegistry.js`
 - `src/helpers/speakerAssignmentPolicy.js`
-- `src/helpers/speakerCount.js`
+- `src/helpers/speakerCount.ts`
 - `src/helpers/speakerEmbeddings.js`
 - `src/helpers/speakerMerge.js`
 - `src/helpers/stripThinking.js`
 - `src/helpers/systemDefaultMicrophone.js`
 - `src/helpers/systemTar.js`
+- `src/helpers/urlDownloadIpcHandlers.ts`
+- `src/helpers/vocabularyEvents.ts`
+- `src/helpers/vocabularyIpcHandlers.ts`
 - `src/helpers/tinfoilCatalog.js`
 - `src/helpers/tinfoilRealtimeStreaming.js`
 - `src/helpers/tinfoilSecureClient.js`
@@ -267,3 +329,80 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/utils/serverUtils.js`
 - `src/utils/urlUtils.ts`
 - `src/workers/onnxWorker.js`
+
+## Этап «общий normalizer числа спикеров»
+
+14 сентября 2026 (issue #10, пункт 3). Дубликат `normalizeStoredSpeakerCount`
+убран: `src/helpers/speakerCount.js` → `src/helpers/speakerCount.ts`
+(`value: unknown → number | null`), локальная копия в
+`src/services/uploadNotes.ts` удалена — оба процесса (main: `ipcHandlers.js`
+через emitted `.js`; renderer: `uploadNotes.ts` через Vite) используют одну
+TS-функцию. Extensionless `require("./speakerCount")` в `ipcHandlers.js`
+разрешается в emitted `.js` после `build:main`; неиспользуемый импорт из
+`database.js` удалён. Coercion-семантика `Number()` зафиксирована
+characterization-тестами (`test/helpers/speakerCount.test.js`): строки и
+одноэлементные массивы coercion-ятся, `false`/`0`/дробные/`NaN` → `null`,
+Symbol по-прежнему бросает TypeError. Parity-тест «копия равна оригиналу»
+заменён явными assertions результата `buildUploadNoteMetadata`. Diarization
+algorithm, metadata policy и SQL не менялись.
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors; focused —
+26 passed (`speakerCount`, `uploadNotes`, `uploadDiarizationPersistence`,
+`mainBuild`); `pnpm run build:renderer` OK; emitted
+`dist-main/src/helpers/speakerCount.js` загружен в plain Node без tsx и дал
+ожидаемые значения. Полный `pnpm test` — 2451 passed, 0 failed/skipped.
+Inventory обновлён (граф Electron: 133 JS, 9 TS, 1 MTS, 25 JSON).
+
+## Этап «типизированный IPC импорта по HTTPS»
+
+14 сентября 2026 (issue #10, пункт 3, план PR #16). Три канала download
+вертикали вынесены из `ipcHandlers.js` в `src/helpers/urlDownloadIpcHandlers.ts`
+с общим контрактом `src/contracts/urlDownload.ts` (Zod, типы выводятся из схем)
+и bridge `src/preload/urlDownloadBridge.ts` (подключён к bundled preload).
+Downloader `urlAudioDownloader.js` не переписан: он передаётся узкой
+зависимостью `download`/`sweepStaleTempArtifacts` (+ `getSafeTempDir`), его
+результаты и progress валидируются схемами на границе; SSRF/proxy/redirect/
+content-limit логика осталась в прежних regression-тестах. Характеристика
+(`test/helpers/urlDownloadIpc.test.js`, 24 теста): targeted progress,
+генерация `dl-N`, tolerant cancel-all, identity guard при reuse id, passthrough
+ошибок с fallback `DOWNLOAD_FAILED`, basename/realpath/relative-guard
+временного cleanup, per-registration Map. E2E
+(`test/helpers/urlDownloadBridge.test.js`, 7 тестов) гоняет настоящий bundled
+preload → handler Map → fake downloader; malformed progress отбрасывается
+на границе preload. Compile probes (`test/scripts/urlDownloadTypeProbe.test.js`)
+под strict-настройками main: обращение к `error` внутри success-ветки не
+компилируется (2339), корректная пара bridge/handler компилируется.
+
+Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings); focused
+55 passed (`urlDownloadIpc`, `urlDownloadBridge`, `urlAudioDownloader`,
+`rendererBridgeContract`, `mainBuild`, type probes); `build:main` OK.
+Inventory графа Electron: 133 JS, 16 TS, 1 MTS, 25 JSON.
+
+## Этап «типизированный IPC Dictionary/Snippets»
+
+14 сентября 2026 (issue #10, пункт, план PR #20). Десять каналов словаря и
+snippets вынесены из `ipcHandlers.js` в
+`src/helpers/vocabularyIpcHandlers.ts` с общим контрактом
+`src/contracts/vocabulary.ts` и bridge `src/preload/vocabularyBridge.ts`
+(подключён к bundled preload). SQL остаётся в `database.js`: он передаётся
+узкой зависимостью, его нормализация (trim, lowercase-dedupe, фильтр невалидных
+snippets) не ужесточена схемами — исторические throws (`words/add/remove/
+snippets must be an array`), tolerant null-delta, quiet-fail undo и
+re-read-from-SQLite broadcast payloads сохранены и зафиксированы
+characterization-тестами (`test/helpers/vocabularyIpc.test.js`, 10 тестов).
+Оба события идут через senders `src/helpers/vocabularyEvents.ts`
+(`sendDictionaryUpdated`/`sendSnippetsUpdated`) — их используют хендлеры и
+`cliBridge.js`; malformed payload дропается с логом, не попадая в renderer.
+Main-only каналы (hard delete, broadcast pull, undo) без renderer consumer не
+попадают в bridge API. Fallback «older preload → setDictionary(optimistic)» в
+`settingsStore.ts` удалён: delta-канал теперь обязателен. E2E
+(`test/helpers/vocabularyBridge.test.js`, 4 теста) гоняет настоящий bundled
+preload → handlers → временный SQLite; malformed события инжектируются прямо
+на вход preload и дропаются на нём.
+
+Проверка: typecheck 0 ошибок; lint 0 errors (baseline 44+2 warnings); focused
+74 passed (vocabularyIpc, vocabularyBridge, cliBridgeDictionary,
+cliBridgeSnippets, dictionaryStartup, databaseLocalBehavior,
+rendererBridgeContract, mainBuild, vocabularyTypeProbe, dictionaryTool,
+snippetTool, snippets);
+`build:main` OK. Inventory графа Electron: 133 JS, 16 TS, 1 MTS, 25 JSON.

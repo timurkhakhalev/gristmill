@@ -11,13 +11,12 @@ import ActionManagerDialog from "./ActionManagerDialog";
 import AddNotesToFolderDialog from "./AddNotesToFolderDialog";
 import { useActionProcessing } from "../../hooks/useActionProcessing";
 import type { NoteMoveTarget } from "../../hooks/useNoteDragAndDrop";
-import type { ActionItem, NoteItem } from "../../types/electron";
+import type { ActionItem } from "../../types/electron";
+import type { NoteItem } from "../../contracts/notes";
 import { useActions } from "../../stores/actionStore";
 import { DETAILED_NOTES_KEY } from "../../helpers/builtinActions";
-import {
-  useSettingsStore,
-  selectResolvedNoteFormatting,
-} from "../../stores/settingsStore";
+import { useSettingsStore } from "../../stores/settingsStore";
+import { selectResolvedNoteFormatting } from "../../config/settingsSelectors";
 import { cn } from "../lib/utils";
 import logger from "../../utils/logger";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";

@@ -4,7 +4,8 @@ import { useChatStreaming } from "../components/chat/useChatStreaming";
 import { useChatMessageSender } from "../components/chat/useChatMessageSender";
 import type { Message, AgentState } from "../components/chat/types";
 import { deriveConversationTitle } from "../lib/conversationTitle";
-import type { SpaceItem, FolderItem, NoteItem } from "../types/electron";
+import type { SpaceItem, FolderItem } from "../types/electron";
+import type { NoteItem } from "../contracts/notes";
 import type { ContainerScope } from "../types/chat";
 
 const MAX_CONTEXT_NOTES = 12;

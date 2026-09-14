@@ -54,6 +54,10 @@ function resolveEnterpriseRuntime(provider, modelId, config = {}) {
 }
 
 const { resolveLocalServerNeeds } = require("./localServerPolicy");
+const { registerNotesHandlers } = require("./notesIpcHandlers");
+const { registerUrlDownloadHandlers } = require("./urlDownloadIpcHandlers");
+const { registerVocabularyHandlers } = require("./vocabularyIpcHandlers");
+const { sendNoteAdded, sendNoteUpdated, sendNoteDeleted } = require("./notesEvents");
 const autoStart = require("./autoStart");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
 const { i18nMain, changeLanguage } = require("./i18nMain");
@@ -954,91 +958,17 @@ class IPCHandlers {
       this.meetingDetectionEngine?.setMicWarmHold(true);
     });
 
-    // Dictionary handlers
-    ipcMain.handle("db-get-dictionary", async () => {
-      return this.databaseManager.getDictionary();
+    // Vocabulary (dictionary/snippets) channels live in the typed module.
+    registerVocabularyHandlers(ipcMain, {
+      database: this.databaseManager,
+      broadcast: broadcastToWindows,
+      debugLogger,
     });
 
-    ipcMain.handle("db-set-dictionary", async (event, words) => {
-      if (!Array.isArray(words)) {
-        throw new Error("words must be an array");
-      }
-      return this.databaseManager.setDictionary(words);
-    });
-
-    ipcMain.handle("db-apply-dictionary-changes", async (_event, changes) => {
-      const { add, remove } = changes ?? {};
-      if (add !== undefined && !Array.isArray(add)) {
-        throw new Error("add must be an array");
-      }
-      if (remove !== undefined && !Array.isArray(remove)) {
-        throw new Error("remove must be an array");
-      }
-      return this.databaseManager.applyDictionaryChanges({ add, remove });
-    });
-
-    ipcMain.handle("db-hard-delete-dictionary", async (_event, id) => {
-      return this.databaseManager.hardDeleteDictionaryEntry(id);
-    });
-
-    ipcMain.handle("db-broadcast-dictionary-updated", async () => {
-      // Emit the normalized list straight from SQLite so renderers see the
-      // post-dedupe truth, never a caller-supplied payload.
-      const words = this.databaseManager.getDictionary();
-      broadcastToWindows("dictionary-updated", words);
-      return { success: true };
-    });
-
-    ipcMain.handle("db-get-snippets", async () => {
-      return this.databaseManager.getSnippets();
-    });
-
-    ipcMain.handle("db-set-snippets", async (_event, snippets) => {
-      if (!Array.isArray(snippets)) {
-        throw new Error("snippets must be an array");
-      }
-      return this.databaseManager.setSnippets(snippets);
-    });
-
-    ipcMain.handle("db-hard-delete-snippet", async (_event, id) => {
-      return this.databaseManager.hardDeleteSnippet(id);
-    });
-
-    ipcMain.handle("db-broadcast-snippets-updated", async () => {
-      const snippets = this.databaseManager.getSnippets();
-      broadcastToWindows("snippets-updated", snippets);
-      return { success: true };
-    });
-
-    ipcMain.handle("undo-learned-corrections", async (_event, words) => {
-      try {
-        if (!Array.isArray(words) || words.length === 0) {
-          return { success: false };
-        }
-        const validWords = words.filter((w) => typeof w === "string" && w.trim().length > 0);
-        if (validWords.length === 0) {
-          return { success: false };
-        }
-        const saveResult = this.databaseManager.applyDictionaryChanges({ remove: validWords });
-        if (saveResult?.success === false) {
-          debugLogger.debug("[AutoLearn] Undo failed to save dictionary", {
-            error: saveResult.error,
-          });
-          return { success: false };
-        }
-        broadcastToWindows("dictionary-updated", this.databaseManager.getDictionary());
-        debugLogger.debug("[AutoLearn] Undo: removed words", { words: validWords });
-        return { success: true };
-      } catch (err) {
-        debugLogger.debug("[AutoLearn] Undo failed", { error: err.message });
-        return { success: false };
-      }
-    });
-
-    ipcMain.handle(
-      "db-save-note",
-      async (event, title, content, noteType, sourceFile, audioDuration, folderId, spaceId) => {
-        const result = this.databaseManager.saveNote(
+    // Notes DB channels live in the typed module; pass only what they need.
+    registerNotesHandlers(ipcMain, {
+      saveNote: (title, content, noteType, sourceFile, audioDuration, folderId, spaceId) =>
+        this.databaseManager.saveNote(
           title,
           content,
           noteType,
@@ -1046,46 +976,20 @@ class IPCHandlers {
           audioDuration,
           folderId,
           spaceId
-        );
-        if (result?.success && result?.note) {
-          setImmediate(() => broadcastToWindows("note-added", result.note));
-          this._asyncMirrorWrite(result.note);
-        }
-        return result;
-      }
-    );
-
-    ipcMain.handle("db-get-note", async (event, id) => {
-      return this.databaseManager.getNote(id);
-    });
-
-    ipcMain.handle("db-get-notes", async (event, noteType, limit, folderId, spaceId) => {
-      return this.databaseManager.getNotes(noteType, limit, folderId, spaceId);
-    });
-
-    ipcMain.handle("db-get-space-notes", async (event, spaceId, limit) => {
-      return this.databaseManager.getNotesForSpace(spaceId, limit);
-    });
-
-    ipcMain.handle("db-update-note", async (event, id, updates) => {
-      const result = this.databaseManager.updateNote(id, updates);
-      if (result?.success && result?.note) {
-        setImmediate(() => broadcastToWindows("note-updated", result.note));
-        this._asyncMirrorWrite(result.note);
-        if (updates.participants) {
-          this._tryAutoLabelOneOnOne(id);
-          this._refreshMeetingSpeakerConfigFromNote(id, result.note);
-        }
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-delete-note", async (event, id) => {
-      return this.deleteNoteInternal(id);
-    });
-
-    ipcMain.handle("db-search-notes", async (event, query, limit, spaceId, folderId) => {
-      return this.databaseManager.searchNotes(query, limit, spaceId, folderId);
+        ),
+      getNote: (id) => this.databaseManager.getNote(id),
+      getNotes: (noteType, limit, folderId, spaceId) =>
+        this.databaseManager.getNotes(noteType, limit, folderId, spaceId),
+      getNotesForSpace: (spaceId, limit) =>
+        this.databaseManager.getNotesForSpace(spaceId, limit),
+      updateNote: (id, updates) => this.databaseManager.updateNote(id, updates),
+      deleteNoteInternal: (id) => this.deleteNoteInternal(id),
+      searchNotes: (query, limit, spaceId, folderId) =>
+        this.databaseManager.searchNotes(query, limit, spaceId, folderId),
+      asyncMirrorWrite: (note) => this._asyncMirrorWrite(note),
+      tryAutoLabelOneOnOne: (noteId) => this._tryAutoLabelOneOnOne(noteId),
+      refreshMeetingSpeakerConfigFromNote: (noteId, note) =>
+        this._refreshMeetingSpeakerConfigFromNote(noteId, note),
     });
 
     ipcMain.handle("db-get-folders", async (event, spaceId) => {
@@ -1429,85 +1333,14 @@ class IPCHandlers {
       }
     });
 
-    const activeUrlDownloads = new Map();
-    let urlDownloadSeq = 0;
-
-    // Sweep ow-url-*/ow-diarize-* orphans from crashes or windows closed mid-download.
-    require("./urlAudioDownloader").sweepStaleTempArtifacts();
-
-    ipcMain.handle("download-url-audio", async (event, url, downloadId) => {
-      if (typeof url !== "string" || url.length > 2048) {
-        return { success: false, error: "Invalid URL", code: "INVALID_URL" };
-      }
-      const { download } = require("./urlAudioDownloader");
-
-      const id =
-        typeof downloadId === "string" && downloadId ? downloadId : `dl-${++urlDownloadSeq}`;
-      const abortController = new AbortController();
-      activeUrlDownloads.set(id, abortController);
-
-      try {
-        const result = await download(
-          url,
-          (progress) => {
-            if (!event.sender.isDestroyed()) {
-              event.sender.send("url-download-progress", { ...progress, downloadId: id });
-            }
-          },
-          abortController.signal
-        );
-        return { success: true, ...result };
-      } catch (error) {
-        debugLogger.error("URL audio download error", { error: error.message, code: error.code });
-        return { success: false, error: error.message, code: error.code || "DOWNLOAD_FAILED" };
-      } finally {
-        if (activeUrlDownloads.get(id) === abortController) {
-          activeUrlDownloads.delete(id);
-        }
-      }
-    });
-
-    // With an id, cancels that download; without, cancels all (unmount cleanup).
-    ipcMain.handle("cancel-url-download", async (_event, downloadId) => {
-      if (typeof downloadId === "string" && downloadId) {
-        const controller = activeUrlDownloads.get(downloadId);
-        if (!controller) return { success: false };
-        controller.abort();
-        activeUrlDownloads.delete(downloadId);
-        return { success: true };
-      }
-      if (activeUrlDownloads.size === 0) return { success: false };
-      for (const controller of activeUrlDownloads.values()) controller.abort();
-      activeUrlDownloads.clear();
-      return { success: true };
-    });
-
-    ipcMain.handle("delete-temp-file", async (event, filePath) => {
-      try {
-        if (typeof filePath !== "string") {
-          return { success: false, error: "Invalid file path" };
-        }
-        const { getSafeTempDir } = require("./safeTempDir");
-        const resolved = path.resolve(filePath);
-        const basename = path.basename(resolved);
-        if (!basename.startsWith("ow-url-") && !basename.startsWith("ow-diarize-")) {
-          return { success: false, error: "Not an OpenHercules temp file" };
-        }
-        const real = fs.realpathSync(resolved);
-        let tempDir = getSafeTempDir();
-        try {
-          tempDir = fs.realpathSync(tempDir);
-        } catch {}
-        const rel = path.relative(tempDir, real);
-        if (rel.startsWith("..") || path.isAbsolute(rel)) {
-          return { success: false, error: "Not an OpenHercules temp file" };
-        }
-        fs.unlinkSync(real);
-        return { success: true };
-      } catch (error) {
-        debugLogger.warn("Failed to delete temp file", { error: error.message });
-        return { success: false, error: error.message };
-      }
+    // URL download channels live in the typed module, per-registration state
+    // included. Only the downloader and logging are shared.
+    const urlDownloader = require("./urlAudioDownloader");
+    registerUrlDownloadHandlers(ipcMain, {
+      download: urlDownloader.download,
+      sweepStaleTempArtifacts: urlDownloader.sweepStaleTempArtifacts,
+      getSafeTempDir: require("./safeTempDir").getSafeTempDir,
+      debugLogger,
     });
 
     ipcMain.handle("transcribe-audio-file", async (event, filePath, options = {}) => {
@@ -6717,7 +6550,7 @@ class IPCHandlers {
         if (changed) {
           this.databaseManager.updateNote(noteId, { transcript: JSON.stringify(transcript) });
           const updated = this.databaseManager.getNote(noteId);
-          if (updated) broadcastToWindows("note-updated", updated);
+          if (updated) sendNoteUpdated(updated);
         }
 
         if (profile) this._retroactiveMapping(profile);
@@ -7107,7 +6940,7 @@ class IPCHandlers {
   deleteNoteInternal(id) {
     const result = this.databaseManager.deleteNote(id);
     if (result?.success) {
-      setImmediate(() => broadcastToWindows("note-deleted", { id }));
+      setImmediate(() => sendNoteDeleted({ id }));
       this._asyncMirrorDelete(id);
     }
     return result;

@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { cn } from "../lib/utils";
 import { formatDateGroup } from "../../utils/dateFormatting";
-import type { NoteItem } from "../../types/electron";
+import type { NoteItem } from "../../contracts/notes";
 
 interface AddNotesToFolderDialogProps {
   open: boolean;

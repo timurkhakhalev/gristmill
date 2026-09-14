@@ -1,6 +1,3 @@
 version: 2
-updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
+# Temporarily paused. Restore update entries to resume Dependabot.
+updates: []

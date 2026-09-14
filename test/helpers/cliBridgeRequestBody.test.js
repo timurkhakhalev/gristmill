@@ -9,7 +9,8 @@ const originalLoad = Module._load;
 const broadcasts = [];
 
 Module._load = function patchedLoad(request, parent, isMain) {
-  if (request === "./windowBroadcast") {
+  // tsx-resolved imports keep the .js extension; legacy requires do not.
+  if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
     return {
       broadcastToWindows: (channel, payload) => broadcasts.push({ channel, payload }),
     };
@@ -95,7 +96,30 @@ test("multibyte content split across request chunks is preserved", async () => {
     databaseManager: {
       saveNote(_title, content) {
         savedContent = content;
-        return { success: true, note: { id: 1 } };
+        // The shape the Notes event sender validates before broadcasting.
+        return {
+          success: true,
+          note: {
+            id: 1,
+            title: "T",
+            content: "",
+            note_type: "personal",
+            source_file: null,
+            audio_duration_seconds: null,
+            created_at: "2026-09-14T00:00:00Z",
+            updated_at: "2026-09-14T00:00:00Z",
+            enhanced_content: null,
+            enhancement_prompt: null,
+            enhanced_at_content_hash: null,
+            folder_id: null,
+            space_id: 1,
+            transcript: null,
+            calendar_event_id: null,
+            participants: null,
+            diarization_enabled: null,
+            expected_speaker_count: null,
+          },
+        };
       },
     },
     _asyncVectorUpsert() {},

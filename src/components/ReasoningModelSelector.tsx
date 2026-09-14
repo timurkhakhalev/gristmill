@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type {
-  LlamaServerStatus,
-  InferenceMode,
-} from "../types/electron";
+import type { InferenceMode } from "../contracts/inferenceSettings";
+import type { LlamaServerStatus } from "../types/electron";
 import { Cloud, Lock } from "./icons";
 import ApiKeyInput from "./ui/ApiKeyInput";
 import ModelCardList from "./ui/ModelCardList";

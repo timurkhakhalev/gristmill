@@ -1,4 +1,4 @@
-import type { NoteItem } from "../types/electron";
+import type { NoteItem } from "../contracts/notes";
 
 export interface NoteListsState {
   notesByContainer: Record<string, NoteItem[]>;

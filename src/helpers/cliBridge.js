@@ -5,7 +5,9 @@ const path = require("path");
 const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 const { isPortAvailable } = require("../utils/serverUtils");
+const { sendNoteAdded, sendNoteUpdated } = require("./notesEvents");
 const { broadcastToWindows } = require("./windowBroadcast");
+const { sendDictionaryUpdated, sendSnippetsUpdated } = require("./vocabularyEvents");
 
 const PORT_RANGE_START = 8200;
 const PORT_RANGE_END = 8219;
@@ -411,7 +413,7 @@ class CliBridge {
             body.folder_id ?? null
           );
           const note = unwrapMutationResult(result, "note");
-          setImmediate(() => broadcastToWindows("note-added", note));
+          setImmediate(() => sendNoteAdded(note));
           ipc._asyncVectorUpsert(note);
           ipc._asyncMirrorWrite(note);
           return { data: note };
@@ -422,7 +424,7 @@ class CliBridge {
         const id = requireId(params, "note");
         const result = db.updateNote(id, body || {});
         const note = unwrapMutationResult(result, "note");
-        setImmediate(() => broadcastToWindows("note-updated", note));
+        setImmediate(() => sendNoteUpdated(note));
         ipc._asyncVectorUpsert(note);
         ipc._asyncMirrorWrite(note);
         return { data: note };
@@ -463,7 +465,7 @@ class CliBridge {
         }
         const result = db.applyDictionaryChanges({ add, remove });
         const words = db.getDictionary();
-        setImmediate(() => broadcastToWindows("dictionary-updated", words));
+        setImmediate(() => sendDictionaryUpdated(words));
         return { data: { words, added: result.added, removed: result.removed } };
       }),
       exact("GET", "/v1/snippets/list", () => {
@@ -488,7 +490,7 @@ class CliBridge {
         );
         db.setSnippets([...kept, ...add]);
         const snippets = db.getSnippets();
-        setImmediate(() => broadcastToWindows("snippets-updated", snippets));
+        setImmediate(() => sendSnippetsUpdated(snippets));
         // setSnippets drops entries it cannot store (e.g. over-long triggers),
         // so count what landed rather than what was sent.
         const storedKeys = new Set(snippets.map((s) => lower(s.trigger)));

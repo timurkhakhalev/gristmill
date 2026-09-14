@@ -7,7 +7,7 @@ import type { InferenceModeOption } from "../ui/SettingsSection";
 import { Toggle } from "../ui/toggle";
 import TranscriptionModelPicker from "../TranscriptionModelPicker";
 import SelfHostedPanel from "../SelfHostedPanel";
-import type { InferenceMode } from "../../types/electron";
+import type { InferenceMode } from "../../contracts/inferenceSettings";
 
 export function MeetingSpeakerDetectionRow() {
   const { t } = useTranslation();

@@ -1,0 +1,282 @@
+// The real bundled preload talks to the real typed transcription handler
+// over fake managers (no binaries): full response shapes crossing the wire,
+// path rejection, the cancelled shape, and the shared main registration
+// duplicate-channel guard.
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const vm = require("node:vm");
+const Module = require("node:module");
+
+const root = path.resolve(__dirname, "../..");
+const bundledPreload = path.join(root, "dist-main", "preload.js");
+
+let activeHandlers = null;
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-"));
+
+const originalLoad = Module._load;
+Module._load = function patchedLoad(request, parent, isMain) {
+  if (request === "electron") {
+    return {
+      app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
+      ipcMain: {
+        handle: (channel, listener) => {
+          if (!activeHandlers) activeHandlers = new Map();
+          if (activeHandlers.has(channel)) {
+            throw new Error(`Attempted to register a second handler for '${channel}'`);
+          }
+          activeHandlers.set(channel, listener);
+        },
+        on() {},
+        removeHandler() {},
+        emit() {},
+      },
+      BrowserWindow: { getAllWindows: () => [] },
+    };
+  }
+  return originalLoad.call(this, request, parent, isMain);
+};
+process.env.NODE_ENV = "test";
+
+const DatabaseManager = require("../../src/helpers/database.js");
+
+test.after(() => {
+  Module._load = originalLoad;
+});
+
+function loadBundledPreload(invoke) {
+  let api;
+  vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
+    require(name) {
+      assert.equal(name, "electron", "the bundled preload must only require electron");
+      return {
+        contextBridge: {
+          exposeInMainWorld: (_name, value) => {
+            api = value;
+          },
+        },
+        ipcRenderer: {
+          invoke,
+          send() {},
+          on() {},
+          removeListener() {},
+        },
+        webUtils: { getPathForFile: () => "" },
+      };
+    },
+    process: { platform: "darwin", versions: {} },
+    console,
+  });
+  return api;
+}
+
+const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-")));
+const audioFile = path.join(tmpRoot, "audio.wav");
+fs.writeFileSync(audioFile, "RIFF....");
+
+// Objects from vm.runInNewContext have a different prototype; compare by JSON.
+const plain = (value) => JSON.parse(JSON.stringify(value));
+
+async function createFixture(t, managers = {}) {
+  activeHandlers = new Map();
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-"));
+  let db;
+  try {
+    db = new DatabaseManager();
+  } catch (error) {
+    const message = String(error?.message || error);
+    if (message.includes("NODE_MODULE_VERSION") || message.includes("Could not locate the bindings file")) {
+      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+      return null;
+    }
+    throw error;
+  }
+  t.after(() => db.close());
+
+  const calls = { whisper: [], parakeet: [], reads: [] };
+  const { registerLocalFileTranscriptionHandler } = await import(
+    "../../src/helpers/localFileTranscriptionIpcHandler.ts"
+  );
+  registerLocalFileTranscriptionHandler(
+    { handle: (channel, listener) => activeHandlers.set(channel, listener) },
+    {
+      readFile: (filePath) => {
+        calls.reads.push(filePath);
+        return fs.readFileSync(filePath);
+      },
+      resolveAllowedAudioPath: (filePath) => {
+        try {
+          const real = fs.realpathSync(path.resolve(filePath));
+          return real.startsWith(tmpRoot + path.sep) ? real : null;
+        } catch {
+          return null;
+        }
+      },
+      isSherpaLocalProvider: (provider) => provider === "nvidia" || provider === "cohere",
+      transcribeLocalWhisper: async (audioBuffer, options) =>
+        managers.whisper ? managers.whisper(audioBuffer, options) : { success: true, text: "w" },
+      transcribeLocalParakeet: async (audioBuffer, options) =>
+        managers.parakeet ? managers.parakeet(audioBuffer, options) : { success: true, text: "s" },
+      resolveWhisperVadOptions: (context) => ({ vadEnabled: context === "noteRecording" }),
+      uploadCancelRegistry: db && createSharedRegistry(),
+      logDebug: () => {},
+      logError: () => {},
+    }
+  );
+
+  function createSharedRegistry() {
+    const controllers = new Map();
+    return {
+      register(id) {
+        if (typeof id !== "string" || !id) return { signal: undefined, release: () => {} };
+        let set = controllers.get(id);
+        if (!set) {
+          set = new Set();
+          controllers.set(id, set);
+        }
+        const controller = new AbortController();
+        set.add(controller);
+        return {
+          signal: controller.signal,
+          release: () => set.delete(controller),
+        };
+      },
+    };
+  }
+
+  const handlersSnapshot = new Map(activeHandlers);
+  const invoke = async (channel, ...args) => {
+    const handler = handlersSnapshot.get(channel);
+    if (!handler) throw new Error(`No handler registered for ${channel}`);
+    return handler(null, ...args);
+  };
+  const api = loadBundledPreload(invoke);
+  return { api, calls };
+}
+
+test("full response shapes cross the bundled preload boundary", async (t) => {
+  let ctx = await createFixture(t, {
+    whisper: () => ({ success: true, text: "whisper text" }),
+  });
+  if (!ctx) return;
+  assert.deepEqual(plain(await ctx.api.transcribeAudioFile(audioFile, { model: "base" })), {
+    success: true,
+    text: "whisper text",
+  });
+
+  // A fresh fixture per shape keeps manager results isolated.
+  ctx = await createFixture(t, {
+    parakeet: () => ({ success: true, text: "partial", warning: "truncated" }),
+  });
+  assert.deepEqual(
+    plain(await ctx.api.transcribeAudioFile(audioFile, { provider: "nvidia" })),
+    { success: true, text: "partial", warning: "truncated" }
+  );
+
+  ctx = await createFixture(t, {
+    whisper: () => ({ success: false, message: "No audio detected" }),
+  });
+  assert.deepEqual(plain(await ctx.api.transcribeAudioFile(audioFile, {})), {
+    success: false,
+    message: "No audio detected",
+  });
+
+  ctx = await createFixture(t, {
+    parakeet: () => ({ success: false, code: "NO_SPEECH_DETECTED", message: "No audio detected" }),
+  });
+  assert.deepEqual(plain(await ctx.api.transcribeAudioFile(audioFile, { provider: "cohere" })), {
+    success: false,
+    code: "NO_SPEECH_DETECTED",
+    message: "No audio detected",
+  });
+
+  ctx = await createFixture(t, {
+    whisper: () => ({ success: false, error: "invalid_response", message: "bad" }),
+  });
+  assert.deepEqual(plain(await ctx.api.transcribeAudioFile(audioFile, {})), {
+    success: false,
+    error: "invalid_response",
+    message: "bad",
+  });
+});
+
+test("path rejection and the cancelled shape through the bridge", async (t) => {
+  const ctx = await createFixture(t);
+  if (!ctx) return;
+  const { api } = ctx;
+
+  assert.deepEqual(plain(await api.transcribeAudioFile("/etc/hosts")), {
+    success: false,
+    error: "File path not allowed",
+  });
+  assert.deepEqual(plain(await api.transcribeAudioFile(12345)), {
+    success: false,
+    error: "Invalid file path",
+  });
+
+  const aborting = await createFixture(t, {
+    whisper: () =>
+      new Promise((_resolve, reject) => {
+        const error = new Error("cancelled");
+        error.name = "AbortError";
+        reject(error);
+      }),
+  });
+  assert.deepEqual(
+    plain(await aborting.api.transcribeAudioFile(audioFile, { requestId: "r9" })),
+    {
+      success: false,
+      error: "Cancelled",
+      code: "UPLOAD_CANCELLED",
+    }
+  );
+});
+
+test("a junk main response rejects at the preload boundary", async (t) => {
+  await createFixture(t);
+  if (!activeHandlers || !activeHandlers.get("transcribe-audio-file")) {
+    return t.skip("handler missing");
+  }
+  const realHandler = activeHandlers.get("transcribe-audio-file");
+  const api = loadBundledPreload(async (channel, ...args) => {
+    if (channel === "transcribe-audio-file") return { silentlyWrong: true };
+    return realHandler(null, ...args);
+  });
+  await assert.rejects(api.transcribeAudioFile(audioFile, {}));
+});
+
+test("the shared main registration registers the transcription channel once", async (t) => {
+  const ctx = await createFixture(t);
+  if (!ctx) return;
+
+  activeHandlers = new Map();
+
+  const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
+  delete require.cache[handlersModulePath];
+  const IPCHandlers = require(handlersModulePath);
+  const Ctor = IPCHandlers.default || IPCHandlers;
+
+  const anything = () =>
+    new Proxy(function () {}, {
+      get: (_target, property) => {
+        if (property === Symbol.toPrimitive || property === "toString") return () => "";
+        if (property === "then") return undefined;
+        if (property === "apply" || property === "call" || property === "bind") {
+          return () => anything();
+        }
+        return anything();
+      },
+      apply: () => anything(),
+    });
+
+  const target = { databaseManager: ctx.api ? {} : {} };
+  Ctor.prototype.setupHandlers.call(
+    new Proxy(target, {
+      get: (value, property) => (property in value ? value[property] : anything()),
+    })
+  );
+
+  assert.equal(typeof activeHandlers.get("transcribe-audio-file"), "function");
+});

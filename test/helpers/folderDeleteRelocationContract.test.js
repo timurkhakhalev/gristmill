@@ -1,30 +1,143 @@
-const test = require("node:test");
 const assert = require("node:assert/strict");
+const test = require("node:test");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+const Module = require("node:module");
 
-const ipcHandlersSource = fs.readFileSync(
-  path.join(__dirname, "../../src/helpers/ipcHandlers.js"),
-  "utf8"
-);
+// Folder deletion relocates notes to the space root in SQL (ON DELETE SET
+// NULL on notes.folder_id) and database.deleteFolder reports only
+// {success}. The handler must defer folder-deleted and delete the folder's
+// mirror directory only when no live same-named folder remains; there is no
+// relocated-note list to rewrite per note.
+process.env.NODE_ENV = "test";
 
-function handlerBody(channel, nextChannel) {
-  const match = ipcHandlersSource.match(
-    new RegExp(`ipcMain\\.handle\\("${channel}"([\\s\\S]*?)ipcMain\\.handle\\("${nextChannel}"`)
+const originalLoad = Module._load;
+let sent = null;
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-folder-del-"));
+Module._load = function patchedLoad(request, parent, isMain) {
+  if (request === "electron") {
+    return {
+      app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
+      BrowserWindow: {
+        getAllWindows: () => [
+          {
+            isDestroyed: () => false,
+            webContents: {
+              send: (ch, data) => {
+                if (sent) sent.push({ channel: ch, data });
+              },
+            },
+          },
+        ],
+      },
+    };
+  }
+  return originalLoad.call(this, request, parent, isMain);
+};
+
+test.after(() => {
+  Module._load = originalLoad;
+});
+
+function isNativeBindingUnavailable(error) {
+  const message = String(error?.message || error);
+  return (
+    message.includes("NODE_MODULE_VERSION") ||
+    message.includes("Could not locate the bindings file")
   );
-  assert.ok(match, `${channel} handler is present`);
-  return match[1];
 }
 
-// Folder deletion relocates notes to the space root instead of deleting them. Their markdown mirror files live under the folder's mirror
-// directory, which is removed with the folder — so the handlers must rewrite
-// every live relocated note at its new location.
-test("folder delete handlers rewrite relocated notes into the markdown mirror", () => {
-  for (const [channel, nextChannel] of [
-    ["db-delete-folder", "db-rename-folder"],
-  ]) {
-    const source = handlerBody(channel, nextChannel);
-    assert.ok(source.includes("relocatedNotes"), `${channel} consumes relocatedNotes`);
-    assert.ok(source.includes("_asyncMirrorWrite"), `${channel} rewrites relocated mirror files`);
+test("deleting a folder keeps its notes and rewrites the released mirrors", async (t) => {
+  const DatabaseManager = require("../../src/helpers/database.js");
+  let db;
+  try {
+    db = new DatabaseManager();
+  } catch (error) {
+    if (isNativeBindingUnavailable(error)) {
+      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+      return;
+    }
+    throw error;
   }
+  t.after(() => db.close());
+
+  const space = db.getSpaces()[0];
+  const folder = db
+    .createFolder("DeletionContract", space.id)
+    .folder;
+  assert.ok(folder, "fixture folder created");
+
+  const saved = db.saveNote(
+    "Released note",
+    "body",
+    "personal",
+    null,
+    null,
+    folder.id,
+    space.id
+  );
+  assert.equal(saved.success, true);
+  assert.equal(saved.note.folder_id, folder.id);
+
+  // SQL level: the delete reports only success; the notes row survives with
+  // folder_id cleared (ON DELETE SET NULL) and the same space.
+  assert.deepEqual(db.deleteFolder(folder.id), { success: true });
+  const released = db.getNote(saved.note.id);
+  assert.ok(released, "the note survives the folder delete");
+  assert.equal(released.folder_id, null);
+  assert.equal(released.space_id, space.id);
+
+  // Handler level: registerContainerHandlers defers folder-deleted and asks
+  // the mirror layer to rewrite the released note.
+  const { registerContainerHandlers } = await import(
+    "../../src/helpers/containerIpcHandlers.ts"
+  );
+  sent = [];
+  const mirrorWrites = [];
+  let nameLookups = 0;
+  const handlers = new Map();
+  registerContainerHandlers(
+    { handle: (channel, fn) => handlers.set(channel, fn) },
+    {
+      database: db,
+      noteFilesEnabled: () => true,
+      getFolderName: (id) => {
+        nameLookups += 1;
+        return id === folder.id ? "DeletionContract" : null;
+      },
+      mirrorWriteNote: (note) => mirrorWrites.push(note),
+      mirrorEnsureFolder: () => {},
+      mirrorRenameFolder: () => {},
+      mirrorDeleteFolderIfUnshared: () => {},
+    }
+  );
+  const result = await handlers.get("db-delete-folder")(null, folder.id);
+  assert.deepEqual(result, { success: false });
+  assert.equal(nameLookups, 1, "the mirror name is resolved before the delete");
+
+  // Repeat against a live folder: success path writes the mirror.
+  const folder2 = db.createFolder("DeletionContract2", space.id).folder;
+  const saved2 = db.saveNote(
+    "Released note 2",
+    "",
+    "personal",
+    null,
+    null,
+    folder2.id,
+    space.id
+  );
+  assert.equal(saved2.success, true);
+  const result2 = await handlers.get("db-delete-folder")(null, folder2.id);
+  assert.deepEqual(result2, { success: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(sent, [{ channel: "folder-deleted", data: { id: folder2.id } }]);
+  // The handler has no relocated-note list to iterate (deleteFolder reports
+  // only success) — it delegates mirror cleanup of the released notes to the
+  // unshared-folder deletion path, so no per-note rewrite happens here.
+  assert.deepEqual(mirrorWrites, []);
+  assert.deepEqual(db.getNote(saved2.note.id), {
+    ...saved2.note,
+    folder_id: null,
+  });
 });

@@ -4,6 +4,7 @@ const { createVocabularyBridge } = require("./src/preload/vocabularyBridge");
 const { createContainersBridge } = require("./src/preload/containerBridge");
 const { createChatPersistenceBridge } = require("./src/preload/chatBridge");
 const { createUrlDownloadBridge } = require("./src/preload/urlDownloadBridge");
+const { createActionsBridge } = require("./src/preload/actionsBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -59,6 +60,7 @@ const registerListener = (channel, handlerFactory) => {
 contextBridge.exposeInMainWorld("electronAPI", {
   ...createNotesBridge(ipcRenderer),
   ...createVocabularyBridge(ipcRenderer),
+  ...createActionsBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -141,13 +143,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   showNoteFile: (noteId) => ipcRenderer.invoke("show-note-file", noteId),
   showFolderInExplorer: (folderName) => ipcRenderer.invoke("show-folder-in-explorer", folderName),
 
-  // Action functions
-  getActions: () => ipcRenderer.invoke("db-get-actions"),
-  getAction: (id) => ipcRenderer.invoke("db-get-action", id),
-  createAction: (name, description, prompt, icon) =>
-    ipcRenderer.invoke("db-create-action", name, description, prompt, icon),
-  updateAction: (id, updates) => ipcRenderer.invoke("db-update-action", id, updates),
-  deleteAction: (id) => ipcRenderer.invoke("db-delete-action", id),
+  // AI Actions catalog lives in the typed actionsBridge above.
 
   // Audio file operations
   selectAudioFile: (options) => ipcRenderer.invoke("select-audio-file", options),
@@ -164,21 +160,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // URL audio download lives in the typed bridge module
   ...createUrlDownloadBridge(ipcRenderer),
 
-  onActionCreated: (callback) => {
-    const listener = (_event, action) => callback?.(action);
-    ipcRenderer.on("action-created", listener);
-    return () => ipcRenderer.removeListener("action-created", listener);
-  },
-  onActionUpdated: (callback) => {
-    const listener = (_event, action) => callback?.(action);
-    ipcRenderer.on("action-updated", listener);
-    return () => ipcRenderer.removeListener("action-updated", listener);
-  },
-  onActionDeleted: (callback) => {
-    const listener = (_event, data) => callback?.(data);
-    ipcRenderer.on("action-deleted", listener);
-    return () => ipcRenderer.removeListener("action-deleted", listener);
-  },
 
   onTranscriptionAdded: (callback) => {
     const listener = (_event, transcription) => callback?.(transcription);

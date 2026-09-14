@@ -6,7 +6,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { cn } from "../lib/utils";
 import { useActions, initializeActions, getActionName } from "../../stores/actionStore";
-import type { ActionItem } from "../../types/electron";
+import type { ActionItem } from "../../contracts/actions";
 
 interface ActionManagerDialogProps {
   open: boolean;

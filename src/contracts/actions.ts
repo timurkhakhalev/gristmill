@@ -49,6 +49,7 @@ export const actionMutationResultSchema = z.object({
   action: actionSchema.nullish(),
   error: z.string().optional(),
 });
+export type ActionMutationResult = z.infer<typeof actionMutationResultSchema>;
 // deleteAction never carries the row back; builtins and unknown ids
 // report plain success:false.
 export const actionDeleteResultSchema = z.object({ success: z.boolean() });
@@ -62,6 +63,14 @@ export const actionDeletedPayloadSchema = z.object({ id: idArg });
 export type ActionDeletedPayload = z.infer<typeof actionDeletedPayloadSchema>;
 
 // The renderer-facing surface: five operations, three subscriptions.
+export interface ActionUpdateInput {
+  name?: string;
+  description?: string;
+  prompt?: string;
+  icon?: string;
+  sort_order?: number;
+}
+
 export interface ActionsApi {
   getActions(): Promise<ActionItem[]>;
   getAction(id: number): Promise<ActionItem | null>;
@@ -70,17 +79,8 @@ export interface ActionsApi {
     description: string,
     prompt: string,
     icon?: string
-  ): Promise<{ success: boolean; action?: ActionItem; error?: string }>;
-  updateAction(
-    id: number,
-    updates: {
-      name?: string;
-      description?: string;
-      prompt?: string;
-      icon?: string;
-      sort_order?: number;
-    }
-  ): Promise<{ success: boolean; action?: ActionItem; error?: string }>;
+  ): Promise<ActionMutationResult>;
+  updateAction(id: number, updates: ActionUpdateInput): Promise<ActionMutationResult>;
   deleteAction(id: number): Promise<{ success: boolean }>;
   onActionCreated(callback: (action: ActionItem) => void): () => void;
   onActionUpdated(callback: (action: ActionItem) => void): () => void;

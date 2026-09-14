@@ -6,6 +6,7 @@ import type { UrlDownloadApi } from "../contracts/urlDownload";
 import type { VocabularyApi } from "../contracts/vocabulary";
 import type { ContainersApi } from "../contracts/containers";
 import type { ChatPersistenceApi } from "../contracts/chatPersistence";
+import type { ActionsApi } from "../contracts/actions";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -236,19 +237,6 @@ export interface SnippetEntryItem {
   cloud_id: string | null;
   sync_status: "synced" | "pending" | "error";
   deleted_at: string | null;
-}
-
-export interface ActionItem {
-  id: number;
-  name: string;
-  description: string;
-  prompt: string;
-  icon: string;
-  is_builtin: number;
-  sort_order: number;
-  translation_key: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface WhisperServerStatus {
@@ -685,30 +673,6 @@ declare global {
       }>;
       showNoteFile?: (noteId: number) => Promise<{ success: boolean }>;
       showFolderInExplorer?: (folderName: string) => Promise<{ success: boolean }>;
-
-      // Action operations
-      getActions: () => Promise<ActionItem[]>;
-      getAction: (id: number) => Promise<ActionItem | null>;
-      createAction: (
-        name: string,
-        description: string,
-        prompt: string,
-        icon?: string
-      ) => Promise<{ success: boolean; action?: ActionItem; error?: string }>;
-      updateAction: (
-        id: number,
-        updates: {
-          name?: string;
-          description?: string;
-          prompt?: string;
-          icon?: string;
-          sort_order?: number;
-        }
-      ) => Promise<{ success: boolean; action?: ActionItem; error?: string }>;
-      deleteAction: (id: number) => Promise<{ success: boolean; id?: number; error?: string }>;
-      onActionCreated?: (callback: (action: ActionItem) => void) => () => void;
-      onActionUpdated?: (callback: (action: ActionItem) => void) => () => void;
-      onActionDeleted?: (callback: (payload: { id: number }) => void) => () => void;
 
       // Audio file operations
       saveTempAudio: (buffer: ArrayBuffer) => Promise<{ success: boolean; path: string }>;
@@ -1516,7 +1480,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

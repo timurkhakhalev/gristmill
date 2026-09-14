@@ -6,7 +6,6 @@
 import type { ZodType } from "zod";
 import {
   actionDeleteResultSchema,
-  actionDeletedPayloadSchema,
   actionListResultSchema,
   actionMutationResultSchema,
   actionResultSchema,

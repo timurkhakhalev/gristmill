@@ -2,12 +2,12 @@ import React, { createContext, useCallback, useContext, useEffect, useRef } from
 import { useSettingsStore, initializeSettings } from "../stores/settingsStore";
 import logger from "../utils/logger";
 import { useLocalStorage } from "./useLocalStorage";
+import type { ChineseScriptPreference } from "../types/electron";
 import type {
-  ChineseScriptPreference,
   LocalTranscriptionProvider,
   InferenceMode,
   SelfHostedType,
-} from "../types/electron";
+} from "../contracts/inferenceSettings";
 import type { Snippet } from "../utils/snippets";
 
 export interface TranscriptionSettings {
@@ -25,7 +25,7 @@ export interface TranscriptionSettings {
   chineseScriptPreference: ChineseScriptPreference;
   cloudTranscriptionProvider: string;
   cloudTranscriptionModel: string;
-  cloudTranscriptionBaseUrl?: string;
+  cloudTranscriptionBaseUrl: string;
   cloudTranscriptionMode: string;
   transcriptionMode: InferenceMode;
   remoteTranscriptionType: SelfHostedType;
@@ -41,7 +41,7 @@ export interface CleanupSettings {
   useCleanupModel: boolean;
   cleanupModel: string;
   cleanupProvider: string;
-  cleanupCloudBaseUrl?: string;
+  cleanupCloudBaseUrl: string;
   cleanupCloudMode: string;
   cleanupMode: InferenceMode;
   cleanupRemoteUrl: string;

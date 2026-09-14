@@ -1,7 +1,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { useSettingsLayout } from "./useSettingsLayout";
-import type { InferenceMode } from "../../types/electron";
+import type { InferenceMode } from "../../contracts/inferenceSettings";
 
 interface SettingsSectionProps {
   title: string;

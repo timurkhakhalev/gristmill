@@ -12,10 +12,13 @@ test("upload transcription never inherits a realtime-only dictation provider", a
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-upload-transcription-test-",
   });
-  const { useSettingsStore, selectResolvedUploadTranscription } = await vite.ssrLoadModule(
-    "/stores/settingsStore.ts"
+  const useSettingsStore = (await vite.ssrLoadModule("/stores/settingsStore.ts")).useSettingsStore;
+  const { selectResolvedUploadTranscription } = await vite.ssrLoadModule(
+    "/config/settingsSelectors.ts"
   );
-  const { STREAMING_ONLY_PROVIDERS } = await vite.ssrLoadModule("/helpers/transcriptionRoute.ts");
+  const { STREAMING_ONLY_PROVIDERS } = await vite.ssrLoadModule(
+    "/config/transcriptionCapabilities.ts"
+  );
   const base = useSettingsStore.getState();
 
   for (const provider of STREAMING_ONLY_PROVIDERS) {

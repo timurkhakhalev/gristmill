@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
-import { selectResolvedLLMConfig, useSettingsStore } from "../stores/settingsStore";
+import { useSettingsStore } from "../stores/settingsStore";
+import { selectResolvedLLMConfig } from "../config/settingsSelectors";
 
 interface UseNotesOnboardingReturn {
   isComplete: boolean;

@@ -43,7 +43,16 @@ Renderer по-прежнему собирается в `src/dist`; native binari
 
 - `pnpm run typecheck:main`: Node/Electron target, `strict: true`, без DOM globals.
 - `pnpm run typecheck:renderer`: существующий browser target в `src/tsconfig.json`.
-- `pnpm run typecheck`: обе проверки последовательно.
+- `pnpm run typecheck:settings-selectors`: strict noEmit target
+  (`tsconfig.settings-selectors.json`, `types: []`) над чистым графом
+  provider-настроек: `contracts/inferenceSettings.ts`,
+  `config/settingsSelectors.ts`, `config/inferenceScopes.ts`,
+  `config/transcriptionCapabilities.ts`, `helpers/reasoningRouting.ts`.
+  Граф не импортирует store/Zustand/localStorage/i18n/Electron — только
+  contracts и статические capabilities; compiler probes в
+  `test/helpers/settingsSelectorsTypes.test.js` проверяют отказ на неверный
+  scope, неверные типы полей и DOM-зависимость.
+- `pnpm run typecheck`: все три проверки последовательно.
 - `pnpm run lint`: включает TS в helpers/utils и `.mts` в renderer/shared code.
 
 Оставшийся JS включён в сборку с `allowJs: true`, но пока не проверяется
@@ -92,6 +101,35 @@ Tests/build/install/rebuild запускаются последовательн�
 затем полный прогон выше. Это не ошибки, скрытые fallback-кодом приложения.
 Реальная запись и платные API не использовались. Проверки hardware realtime
 и качества распознавания этот шаг не заявляет.
+
+## Этап 3a: чистые selectors конфигурации providers
+
+14 сентября 2026 (issue #10, пункт 3, подэтап 3a). Вычисление effective
+provider-конфигурации вынесено из `stores/settingsStore.ts` в чистый TS-граф:
+
+- `src/config/settingsSelectors.ts` — единственное место четырёх
+  `selectResolved*` функций и их Resolved* типов. Store импортирует их для
+  внутренних вызовов; `setResolvedLLMConfig`, hydration, migrations и
+  secure-key persistence остались в store.
+- `src/contracts/inferenceSettings.ts` — узкие snapshot-типы входа селекторов
+  (только читаемые поля) плюс `InferenceMode`, `SelfHostedType`,
+  `LocalTranscriptionProvider`, `CloudReasonPurpose` (перенесены из
+  `types/electron.ts`, который ре-экспортирует их).
+- `src/config/inferenceScopes.ts` — без импорта SettingsState: storeKeys
+  типизированы по snapshot, fallbackScope ограничен `InferenceScopeId`.
+- `src/config/transcriptionCapabilities.ts` — `STREAMING_ONLY_PROVIDERS`
+  (перенесён из `helpers/transcriptionRoute.ts`) и
+  `DEFAULT_CLOUD_TRANSCRIPTION_PROVIDER` (одна копия для store и селектора).
+- `src/helpers/reasoningRouting.ts` — типизирован (был `.js`).
+
+Границы владения: store (`stores/settingsStore.ts`) — загрузка, migrations,
+persistence, setters; `config/settingsSelectors.ts` — чистое вычисление из
+snapshot; callers (meeting/upload/AI Actions/chat) — только вызов селекторов
+поверх `getSettings`/`useSettingsStore`. Чистый граф проверяется strict-таргетом
+`typecheck:settings-selectors` (см. «Проверка типов и lint»), поведение —
+characterization-тестами `test/helpers/settingsSelectors*.test.js` с прямым
+импортом без browser harness. Интеграционные проверки миграций и follow-flags
+сохранены через store harness.
 
 ## Inventory на первом шаге
 

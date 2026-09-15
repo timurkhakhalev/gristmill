@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **96 JS, 89 TS, 1 MTS и 25 JSON**
+а не всеми файлами в каталоге helpers. В нём **93 JS, 92 TS, 1 MTS и 25 JSON**
 (только `src/`; main/preload/worker — отдельные entry points). Entry points:
 main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
@@ -169,7 +169,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/contracts/calendar.ts`
 - `src/contracts/calendarAvailability.ts`
 - `src/config/constants.mts`
-- `src/config/secretKeys.js`
+- `src/config/secretKeys.ts`
 - `src/constants/speakerDetection.json`
 - `src/constants/whisperVad.json`
 - `src/helpers/abortError.ts`
@@ -218,7 +218,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/electronProcessIds.js`
 - `src/helpers/enterpriseAiProviders.js`
 - `src/helpers/enterpriseProviderErrors.js`
-- `src/helpers/environment.js`
+- `src/helpers/environment.ts`
 - `src/helpers/externalUrlOpener.js`
 - `src/helpers/ffmpegUtils.ts`
 - `src/helpers/geminiLiveStreaming.js`
@@ -282,7 +282,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/realtimeTokenProviders.js`
 - `src/helpers/retentionSettings.ts`
 - `src/helpers/safeTempDir.ts`
-- `src/helpers/secretCrypto.js`
+- `src/helpers/secretCrypto.ts`
 - `src/helpers/selfHostedTranscription.js`
 - `src/helpers/sidecarPidFile.ts`
 - `src/helpers/sidecarReaper.ts`
@@ -1068,3 +1068,47 @@ class/function + helpers на месте); strict probes
 `test/scripts/calendarManagersTypeProbe.test.js` — коды 2345×5/2554×3
 сверены фактическим tsc-прогоном, positive graph чист. Inventory графа
 Electron: 96 JS, 89 TS, 1 MTS, 25 JSON.
+
+## Этап «environment и secret storage implementations»
+
+16 сентября 2026 (issue #41). Main-owned настройки и encrypted secret
+persistence переведены в strict TS: `environment.js`(532) → `.ts`,
+`secretCrypto.js` → `.ts`, `config/secretKeys.js` → `.ts`. Storage format и
+владелец credentials не менялись.
+
+- Storage contract зафиксирован типами: `SecretEnvKey` — literal union из
+  `as const`-каталога BYOK + перечисленных enterprise/corti/custom ключей
+  (свободного string index нет); PERSISTED_KEYS — упорядоченный список
+  записи .env; BackendMode secretCrypto — keychain (32-byte master в
+  keychain, AES-256-GCM per secret, safeStorage backup 0600 с atomic
+  rename) / safeStorage / unavailable; `DecryptResult.needsReencrypt`
+  описывает legacy-blob recovery.
+- Behavior сохранён: env precedence (userData `.env` override → fallback
+  paths), ленивая инициализация crypto, migration sentinel (`secure-keys/
+  .migrated` пишется до strip plaintext, failed migration сохраняет .env и
+  НЕ пишет sentinel), round-trip verification, atomic tmp+rename записи
+  (`.enc` и `.env`, сериализованные общим envWriteQueue), rename fallback
+  CUSTOM_REASONING→CUSTOM_CLEANUP, clearAllPersistedData, BYOK accessors,
+  генерируемые из каталога на prototype. `.env`-значения секретов не
+  логируются (в error-логе только key name + code).
+- Catalog: `BYOK_API_KEYS` теперь `as const satisfies readonly
+  ByokApiKeyEntry[]` — literal имена get/save делают сгенерированную
+  поверхность типизированной (`EnvironmentManagerWithByok` для typed
+  consumers; runtime-аттачмент на prototype как раньше). Dual-export
+  паттерн везде явный: `module.exports = X; module.exports.X = X` —
+  проверено на emitted graph: cross-module named import
+  (`new environment_js_1.EnvironmentManager()`) + CJS require оба дают
+  конструктор (урок #57 применён).
+- Callers: ipcHandlers.js/hotkeyManager.js/main.js extensionless requires
+  разрешаются в emitted `.js` без изменений; public channels не тронуты.
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors (39+2
+warnings); emitted-graph smoke по прод-пути (tsc --outDir + named import
+консьюмер под stubbed electron/keyring); targeted behavior tests
+`test/helpers/envSecretStorage.test.js` (fake keychain/safeStorage/tmp
+userData: backend modes, master-key reuse без перезаписи, legacy
+re-encrypt flag, fail-closed, migration sentinel + strip .env, failed
+migration preserves plaintext, clearAllPersistedData, секреты не попадают
+в логи); strict probes `test/scripts/envSecretTypeProbe.test.js` — коды
+(2345/2322/2554×2/2339) сверены фактическим tsc-прогоном, positive graph
+чист. Inventory графа Electron: 93 JS, 92 TS, 1 MTS, 25 JSON.

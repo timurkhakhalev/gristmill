@@ -43,7 +43,7 @@ export const calendarTool: ToolDefinition = {
     const windowMinutes = getWindowMinutes(timeRange);
 
     try {
-      const response = await window.electronAPI.gcalGetUpcomingEvents!(windowMinutes);
+      const response = await window.electronAPI.gcalGetUpcomingEvents(windowMinutes);
 
       if (!response.success) {
         return {
@@ -53,10 +53,10 @@ export const calendarTool: ToolDefinition = {
         };
       }
 
-      // Rows come straight from the calendar_events table (start_time/end_time
-      // columns; there is no location column — the join link is what the DB
-      // actually has for "where").
-      const events = response.events.map((event: Record<string, unknown>) => ({
+      // Rows are the validated contract DTO projected from calendar_events
+      // (start_time/end_time columns; there is no location column — the join
+      // link is what the DB actually has for "where").
+      const events = response.events.map((event) => ({
         summary: event.summary || "(No title)",
         start: event.start_time,
         end: event.end_time,

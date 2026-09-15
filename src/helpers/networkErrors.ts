@@ -1,6 +1,6 @@
 const debugLogger = require("./debugLogger");
 
-const CODE_TO_KEY = {
+const CODE_TO_KEY: Record<string, string> = {
   ENOTFOUND: "streaming.errors.cloudUnreachable.dnsBlocked",
   EAI_AGAIN: "streaming.errors.cloudUnreachable.dnsBlocked",
   ECONNREFUSED: "streaming.errors.cloudUnreachable.refused",
@@ -14,28 +14,35 @@ const CODE_TO_KEY = {
   DEPTH_ZERO_SELF_SIGNED_CERT: "streaming.errors.cloudUnreachable.tls",
 };
 
-const NAME_TO_KEY = {
+const NAME_TO_KEY: Record<string, string> = {
   TimeoutError: "streaming.errors.cloudUnreachable.timeout",
   AbortError: "streaming.errors.cloudUnreachable.timeout",
 };
 
-function classifyNetworkError(err) {
+export interface NetworkErrorClassification {
+  code?: string;
+  messageKey?: string;
+  isNetworkError: boolean;
+}
+
+export function classifyNetworkError(err: unknown): NetworkErrorClassification {
   if (!err) return { isNetworkError: false };
-  const code = err.code || err.cause?.code;
+  const record = err as { code?: string; cause?: { code?: string }; name?: string };
+  const code = record.code || record.cause?.code;
   if (code && CODE_TO_KEY[code]) {
     return { code, messageKey: CODE_TO_KEY[code], isNetworkError: true };
   }
-  if (err.name && NAME_TO_KEY[err.name]) {
-    return { code: err.name, messageKey: NAME_TO_KEY[err.name], isNetworkError: true };
+  if (record.name && NAME_TO_KEY[record.name]) {
+    return { code: record.name, messageKey: NAME_TO_KEY[record.name], isNetworkError: true };
   }
   return { isNetworkError: false };
 }
 
-function classifyAndLog(err, url) {
+export function classifyAndLog(err: unknown, url: string): NetworkErrorClassification {
   const classified = classifyNetworkError(err);
   if (!classified.isNetworkError) return classified;
-  let host;
-  let urlPath;
+  let host: string | undefined;
+  let urlPath: string | undefined;
   try {
     const parsed = new URL(url);
     host = parsed.host;
@@ -46,8 +53,3 @@ function classifyAndLog(err, url) {
   debugLogger.warn("Network error", { code: classified.code, host, urlPath }, "network");
   return classified;
 }
-
-module.exports = {
-  classifyNetworkError,
-  classifyAndLog,
-};

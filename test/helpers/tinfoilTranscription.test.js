@@ -2,14 +2,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 
-const transcriptionModulePath = require.resolve("../../src/helpers/tinfoilTranscription.js");
+const transcriptionModulePath = require.resolve("../../src/helpers/tinfoilTranscription.ts");
 const originalLoad = Module._load;
 
 function loadTranscription(fetchImpl) {
   delete require.cache[transcriptionModulePath];
 
   Module._load = function loadWithMocks(request, parent, isMain) {
-    if (request === "./tinfoilSecureClient") {
+    if (request === "./tinfoilSecureClient" || request === "./tinfoilSecureClient.js") {
       return { tinfoilSecureFetch: fetchImpl };
     }
     if (request === "./debugLogger") {

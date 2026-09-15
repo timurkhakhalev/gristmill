@@ -6,6 +6,24 @@
 
 const { classifyNetworkError } = require("./networkErrors");
 
+export interface MappedEnterpriseError {
+  message: string;
+  messageKey?: string;
+  messageParams?: Record<string, string | number>;
+  action?: string;
+  actionKey?: string;
+  copyCommand?: string;
+  retryable?: boolean;
+  technicalDetails?: {
+    status?: number;
+    exceptionType?: string;
+    requestId?: string;
+    underlyingError?: string;
+  };
+}
+
+export type EnterpriseProvider = "bedrock" | "azure" | "vertex";
+
 const BEDROCK_MAX_ATTEMPTS = 6;
 const BEDROCK_INITIAL_DELAY_MS = 500;
 const BEDROCK_MAX_DELAY_MS = 8_000;
@@ -27,48 +45,59 @@ const BEDROCK_SAFE_NETWORK_CODES = new Set([
   "UND_ERR_SOCKET",
 ]);
 
-function unwrapRetryError(error) {
-  let current = error;
-  const seen = new Set();
+export type ErrorRecord = Record<string, unknown> & { lastError?: unknown; cause?: unknown };
+
+function asErrorRecord(value: unknown): ErrorRecord | null {
+  return typeof value === "object" && value !== null ? (value as ErrorRecord) : null;
+}
+
+export function unwrapRetryError(error: unknown): unknown {
+  let current = asErrorRecord(error);
+  const seen = new Set<unknown>();
   while (current?.lastError && !seen.has(current)) {
     seen.add(current);
-    current = current.lastError;
+    current = asErrorRecord(current.lastError);
   }
   return current;
 }
 
-function bedrockErrorChain(error) {
-  const chain = [];
-  let current = unwrapRetryError(error);
-  const seen = new Set();
+function bedrockErrorChain(error: unknown): unknown[] {
+  const chain: unknown[] = [];
+  let current: unknown = unwrapRetryError(error);
+  const seen = new Set<unknown>();
   while (current && !seen.has(current)) {
     chain.push(current);
     seen.add(current);
-    current = current.cause;
+    current = asErrorRecord(current)?.cause;
   }
   return chain;
 }
 
-function getBedrockHttpStatus(error) {
+function getBedrockHttpStatus(error: unknown): number | undefined {
   for (const item of bedrockErrorChain(error)) {
+    const record = asErrorRecord(item);
+    const metadata = asErrorRecord(record?.$metadata);
+    const response = asErrorRecord(record?.response);
     const status =
-      item?.status ?? item?.statusCode ?? item?.$metadata?.httpStatusCode ?? item?.response?.status;
-    if (Number.isInteger(status)) return status;
+      record?.status ?? record?.statusCode ?? metadata?.httpStatusCode ?? response?.status;
+    if (typeof status === "number" && Number.isInteger(status)) return status;
   }
   return undefined;
 }
 
-function getHeaderCaseInsensitive(headers, headerName) {
+function getHeaderCaseInsensitive(headers: unknown, headerName: string): string | undefined {
   if (!headers) return undefined;
-  if (typeof headers.get === "function") return headers.get(headerName) || undefined;
+  const getter = (headers as { get?: unknown }).get;
+  if (typeof getter === "function")
+    return (getter as (name: string) => string | null).call(headers, headerName) || undefined;
   const normalizedName = headerName.toLowerCase();
-  for (const [name, value] of Object.entries(headers)) {
-    if (name.toLowerCase() === normalizedName) return value;
+  for (const [name, value] of Object.entries(headers as Record<string, unknown>)) {
+    if (name.toLowerCase() === normalizedName) return value as string;
   }
   return undefined;
 }
 
-function normalizeBedrockExceptionType(value) {
+function normalizeBedrockExceptionType(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   const namespaceSeparator = trimmed.lastIndexOf("#");
@@ -80,17 +109,19 @@ function normalizeBedrockExceptionType(value) {
   return normalized.trim() || undefined;
 }
 
-function getBedrockExceptionType(error) {
+function getBedrockExceptionType(error: unknown): string | undefined {
   for (const item of bedrockErrorChain(error)) {
-    const headers = item?.responseHeaders || item?.response?.headers;
+    const record = asErrorRecord(item);
+    const response = asErrorRecord(record?.response);
+    const headers = record?.responseHeaders || response?.headers;
     const candidates = [
       getHeaderCaseInsensitive(headers, "x-amzn-errortype"),
-      item?.data?.code,
-      item?.data?.__type,
-      item?.data?.type,
-      item?.type,
-      item?.code,
-      item?.name,
+      asErrorRecord(record?.data)?.code,
+      asErrorRecord(record?.data)?.__type,
+      asErrorRecord(record?.data)?.type,
+      record?.type,
+      record?.code,
+      record?.name,
     ];
     for (const candidate of candidates) {
       const type = normalizeBedrockExceptionType(candidate);
@@ -100,28 +131,32 @@ function getBedrockExceptionType(error) {
   return undefined;
 }
 
-function getBedrockRequestId(error) {
+function getBedrockRequestId(error: unknown): string | undefined {
   for (const item of bedrockErrorChain(error)) {
-    const headers = item?.responseHeaders || item?.response?.headers || {};
+    const record = asErrorRecord(item);
+    const response = asErrorRecord(record?.response);
+    const headers = record?.responseHeaders || response?.headers || {};
     const requestId =
-      item?.$metadata?.requestId ||
-      item?.requestId ||
+      asErrorRecord(record?.$metadata)?.requestId ||
+      record?.requestId ||
       getHeaderCaseInsensitive(headers, "x-amzn-requestid") ||
       getHeaderCaseInsensitive(headers, "x-amz-request-id");
-    if (requestId) return requestId;
+    if (requestId) return requestId as string;
   }
   return undefined;
 }
 
-function getBedrockErrorCode(error) {
+function getBedrockErrorCode(error: unknown): string | undefined {
   for (const item of bedrockErrorChain(error)) {
-    if (typeof item?.code === "string") return item.code;
-    if (typeof item?.cause?.code === "string") return item.cause.code;
+    const record = asErrorRecord(item);
+    if (typeof record?.code === "string") return record.code;
+    const causeCode = asErrorRecord(record?.cause)?.code;
+    if (typeof causeCode === "string") return causeCode;
   }
   return undefined;
 }
 
-function isBedrockTimeout(error) {
+function isBedrockTimeout(error: unknown): boolean {
   const status = getBedrockHttpStatus(error);
   const type = (getBedrockExceptionType(error) || "").toLowerCase();
   const code = (getBedrockErrorCode(error) || "").toUpperCase();
@@ -136,20 +171,22 @@ function isBedrockTimeout(error) {
   );
 }
 
-function isSafeBedrockNetworkError(error) {
+function isSafeBedrockNetworkError(error: unknown): boolean {
   if (getBedrockHttpStatus(error) !== undefined) return false;
   const code = (getBedrockErrorCode(error) || "").toUpperCase();
   if (BEDROCK_SAFE_NETWORK_CODES.has(code)) return true;
   return bedrockErrorChain(error).some(
-    (item) => item?.name === "TypeError" && /fetch failed|network/i.test(item?.message || "")
+    (item) =>
+      (item as { name?: unknown })?.name === "TypeError" &&
+      /fetch failed|network/i.test(String((item as { message?: unknown })?.message || ""))
   );
 }
 
-function getBedrockFailureKind(error) {
+function getBedrockFailureKind(error: unknown): string {
   const status = getBedrockHttpStatus(error);
   const type = (getBedrockExceptionType(error) || "").toLowerCase();
   const message = bedrockErrorChain(error)
-    .map((item) => item?.message || "")
+    .map((item) => String((item as { message?: unknown })?.message || ""))
     .join(" ")
     .toLowerCase();
 
@@ -167,22 +204,22 @@ function getBedrockFailureKind(error) {
   return "other";
 }
 
-function shouldRetryBedrockError(error) {
+function shouldRetryBedrockError(error: unknown): boolean {
   return ["unavailable", "throttled", "timeout", "network"].includes(getBedrockFailureKind(error));
 }
 
-function sleepWithAbort(delay, signal) {
-  return new Promise((resolve, reject) => {
+function sleepWithAbort(delay: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     if (signal?.aborted) {
       reject(signal.reason);
       return;
     }
 
-    let timer;
+    let timer: NodeJS.Timeout | undefined;
     const onAbort = () => {
       clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-      reject(signal.reason);
+      signal?.removeEventListener("abort", onAbort);
+      reject((signal as AbortSignal).reason);
     };
     const onTimeout = () => {
       signal?.removeEventListener("abort", onAbort);
@@ -194,12 +231,15 @@ function sleepWithAbort(delay, signal) {
   });
 }
 
-async function runAbortableOperation(operation, signal) {
+export async function runAbortableOperation<T>(
+  operation: () => Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
   if (!signal) return operation();
   signal.throwIfAborted();
 
-  let onAbort;
-  const aborted = new Promise((_, reject) => {
+  let onAbort: () => void = () => {};
+  const aborted = new Promise<never>((_, reject) => {
     onAbort = () => reject(signal.reason);
     signal.addEventListener("abort", onAbort, { once: true });
   });
@@ -212,7 +252,19 @@ async function runAbortableOperation(operation, signal) {
   }
 }
 
-async function runBedrockRequest(operation, options = {}) {
+export interface BedrockRetryOptions {
+  signal?: AbortSignal;
+  maxAttempts?: number;
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  random?: () => number;
+  sleep?: (delay: number, signal?: AbortSignal) => Promise<void>;
+}
+
+export async function runBedrockRequest<T>(
+  operation: () => Promise<T>,
+  options: BedrockRetryOptions = {}
+): Promise<T> {
   const {
     signal,
     maxAttempts = BEDROCK_MAX_ATTEMPTS,
@@ -238,7 +290,7 @@ async function runBedrockRequest(operation, options = {}) {
   throw new Error("Bedrock retry loop exited unexpectedly");
 }
 
-function getBedrockTechnicalDetails(error) {
+function getBedrockTechnicalDetails(error: unknown): MappedEnterpriseError["technicalDetails"] {
   const underlying = unwrapRetryError(error);
   return {
     ...(getBedrockHttpStatus(underlying) !== undefined
@@ -248,20 +300,28 @@ function getBedrockTechnicalDetails(error) {
       ? { exceptionType: getBedrockExceptionType(underlying) }
       : {}),
     ...(getBedrockRequestId(underlying) ? { requestId: getBedrockRequestId(underlying) } : {}),
-    underlyingError: underlying?.message || String(underlying),
+    underlyingError:
+      (asErrorRecord(underlying)?.message as string | undefined) || String(underlying),
   };
 }
 
-function mapBedrockError(error, config = {}) {
+function mapBedrockError(error: unknown, config: Record<string, unknown> = {}): MappedEnterpriseError {
   const underlying = unwrapRetryError(error);
-  const msg = underlying?.message || underlying?.code || String(underlying);
+  const underlyingRecord = asErrorRecord(underlying);
+  const msg =
+    (underlyingRecord?.message as string | undefined) ||
+    (underlyingRecord?.code as string | undefined) ||
+    String(underlying);
   const status = getBedrockHttpStatus(underlying);
   const exceptionType = getBedrockExceptionType(underlying) || "";
   const signature = `${exceptionType} ${msg}`.toLowerCase();
-  const profile = config.bedrockProfile || "default";
-  const region = config.bedrockRegion || "us-east-1";
+  const profile = String(config.bedrockProfile || "default");
+  const region = String(config.bedrockRegion || "us-east-1");
   const technicalDetails = getBedrockTechnicalDetails(underlying);
-  const withDetails = (mapped) => ({ ...mapped, technicalDetails });
+  const withDetails = (mapped: MappedEnterpriseError): MappedEnterpriseError => ({
+    ...mapped,
+    technicalDetails,
+  });
 
   if (signature.includes("expiredtoken") || signature.includes("expired")) {
     return withDetails({
@@ -357,9 +417,10 @@ function mapBedrockError(error, config = {}) {
   });
 }
 
-function mapAzureError(error) {
-  const status = error?.status || error?.statusCode;
-  const msg = error?.message || error?.code || String(error);
+function mapAzureError(error: unknown): MappedEnterpriseError {
+  const record = asErrorRecord(error);
+  const status = (record?.status ?? record?.statusCode) as number | undefined;
+  const msg = ((record?.message ?? record?.code) as string | undefined) || String(error);
 
   if (status === 401 || msg.includes("Unauthorized") || msg.includes("invalid")) {
     return { message: "Invalid API key for Azure OpenAI resource." };
@@ -390,8 +451,9 @@ function mapAzureError(error) {
   return { message: `Azure OpenAI error: ${msg}` };
 }
 
-function mapVertexError(error, config = {}) {
-  const msg = error?.message || error?.code || String(error);
+function mapVertexError(error: unknown, config: Record<string, unknown> = {}): MappedEnterpriseError {
+  const record = asErrorRecord(error);
+  const msg = ((record?.message ?? record?.code) as string | undefined) || String(error);
   const project = config.vertexProject || "";
 
   if (msg.includes("UNAUTHENTICATED") || msg.includes("Could not load the default credentials")) {
@@ -434,7 +496,11 @@ function mapVertexError(error, config = {}) {
  * @param {Record<string,string>} config - provider config for contextual messages
  * @returns {{ message: string, action?: string, copyCommand?: string, retryable?: boolean }}
  */
-function mapEnterpriseError(provider, error, config = {}) {
+export function mapEnterpriseError(
+  provider: string,
+  error: unknown,
+  config: Record<string, unknown> = {}
+): MappedEnterpriseError {
   switch (provider) {
     case "bedrock":
       return mapBedrockError(error, config);
@@ -443,13 +509,13 @@ function mapEnterpriseError(provider, error, config = {}) {
     case "vertex":
       return mapVertexError(error, config);
     default:
-      return { message: error?.message || String(error) };
+      return { message: (asErrorRecord(error)?.message as string | undefined) || String(error) };
   }
 }
 
-const ENTERPRISE_PROVIDERS = ["bedrock", "azure", "vertex"];
+const ENTERPRISE_PROVIDERS: readonly string[] = ["bedrock", "azure", "vertex"];
 
-function isEnterpriseProvider(value) {
+export function isEnterpriseProvider(value: unknown): boolean {
   return typeof value === "string" && ENTERPRISE_PROVIDERS.includes(value);
 }
 
@@ -462,7 +528,7 @@ const BLOCKED_HOSTS = new Set([
 
 const BLOCKED_SUFFIXES = [".internal", ".localhost", ".local"];
 
-function isPrivateIPv4(hostname) {
+function isPrivateIPv4(hostname: string): boolean {
   const match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (!match) return false;
   const [, a, b] = match.map(Number);
@@ -476,7 +542,7 @@ function isPrivateIPv4(hostname) {
   );
 }
 
-function isPrivateIPv6(hostname) {
+function isPrivateIPv6(hostname: string): boolean {
   if (hostname === "::1") return true;
   if (/^(fe80|fc[0-9a-f]{2}|fd[0-9a-f]{2}):/i.test(hostname)) return true;
   // The URL parser rewrites an IPv4-mapped address to its hex form, so
@@ -496,7 +562,7 @@ function isPrivateIPv6(hostname) {
  * Throws if the URL is non-HTTPS or resolves to a private/metadata host.
  * Note: DNS rebinding is not mitigated — hostnames resolve per-request.
  */
-function validateEnterpriseEndpoint(endpoint) {
+export function validateEnterpriseEndpoint(endpoint: string | null | undefined): void {
   if (!endpoint) return;
   const url = new URL(endpoint);
   if (url.protocol !== "https:") {
@@ -519,7 +585,7 @@ function validateEnterpriseEndpoint(endpoint) {
  * Extracts the enterprise credential/config subset from an IPC payload
  * so SDK factories receive only the fields they expect.
  */
-function pickEnterpriseConfig(config = {}) {
+export function pickEnterpriseConfig(config: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     bedrockRegion: config.bedrockRegion,
     bedrockProfile: config.bedrockProfile,
@@ -532,14 +598,3 @@ function pickEnterpriseConfig(config = {}) {
     vertexLocation: config.vertexLocation,
   };
 }
-
-module.exports = {
-  ENTERPRISE_PROVIDERS,
-  isEnterpriseProvider,
-  mapEnterpriseError,
-  pickEnterpriseConfig,
-  runAbortableOperation,
-  runBedrockRequest,
-  unwrapRetryError,
-  validateEnterpriseEndpoint,
-};

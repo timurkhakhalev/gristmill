@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { getEnterpriseAIModel } = require("../../src/helpers/enterpriseAiProviders.js");
-const { mapEnterpriseError } = require("../../src/helpers/enterpriseProviderErrors.js");
+const { getEnterpriseAIModel } = require("../../src/helpers/enterpriseAiProviders.ts");
+const { mapEnterpriseError } = require("../../src/helpers/enterpriseProviderErrors.ts");
 
 const bedrockPrompt = [{ role: "user", content: [{ type: "text", text: "Hello" }] }];
 

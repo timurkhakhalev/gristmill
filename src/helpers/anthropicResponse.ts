@@ -5,23 +5,27 @@
 
 // Returns the trimmed concatenation of all text blocks, or null when the
 // response contains no text block at all.
-function extractAnthropicText(data) {
-  const blocks = Array.isArray(data?.content) ? data.content : [];
+export function extractAnthropicText(data: unknown): string | null {
+  const blocks = Array.isArray((data as { content?: unknown })?.content)
+    ? ((data as { content: unknown[] }).content as unknown[])
+    : [];
   const parts = blocks
-    .filter((block) => block?.type === "text" && typeof block.text === "string")
-    .map((block) => block.text);
+    .filter(
+      (block) =>
+        (block as { type?: unknown })?.type === "text" &&
+        typeof (block as { text?: unknown }).text === "string"
+    )
+    .map((block) => (block as { text: string }).text);
   if (parts.length === 0) return null;
   return parts.join("").trim();
 }
 
-function describeMissingAnthropicText(data) {
-  const stopReason = data?.stop_reason;
+export function describeMissingAnthropicText(data: unknown): string {
+  const stopReason = (data as { stop_reason?: unknown })?.stop_reason;
   if (stopReason === "max_tokens") {
     return "Anthropic returned no text before hitting the max_tokens limit";
   }
-  return stopReason
+  return typeof stopReason === "string"
     ? `Anthropic response contained no text content (stop_reason: ${stopReason})`
     : "Anthropic response contained no text content";
 }
-
-module.exports = { extractAnthropicText, describeMissingAnthropicText };

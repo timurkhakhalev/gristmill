@@ -1,12 +1,12 @@
 const debugLogger = require("./debugLogger");
-const modelRegistryData = require("../models/modelRegistryData.json");
-const { tinfoilSecureFetch } = require("./tinfoilSecureClient");
+import modelRegistryData from "../models/modelRegistryData.json";
+import { tinfoilSecureFetch } from "./tinfoilSecureClient.js";
 
 const TINFOIL_TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
 
 // "Voxtral" is one picker choice but two Tinfoil models: the realtime one streams
 // over /v1/realtime; this batch model handles every non-streaming path.
-function getBatchModel() {
+function getBatchModel(): string {
   const provider = (modelRegistryData.transcriptionProviders || []).find((p) => p.id === "tinfoil");
   const model = provider?.batchModel;
   if (!model) {
@@ -17,7 +17,22 @@ function getBatchModel() {
 
 // Batch transcription over the attested transport, sharing the per-session
 // SecureClient with realtime dictation so the enclave is verified once.
-async function transcribeWithTinfoil({
+interface TinfoilTranscriptionRequest {
+  audioBuffer: Buffer;
+  fileName: string;
+  contentType: string;
+  language?: string;
+  prompt?: string;
+  apiKey: string | null | undefined;
+  signal?: AbortSignal;
+}
+
+interface CodedTranscriptionError extends Error {
+  code?: string;
+  messageKey?: string;
+}
+
+export async function transcribeWithTinfoil({
   audioBuffer,
   fileName,
   contentType,
@@ -25,16 +40,22 @@ async function transcribeWithTinfoil({
   prompt,
   apiKey,
   signal,
-}) {
+}: TinfoilTranscriptionRequest): Promise<{ text: string; model: string }> {
   if (!apiKey?.trim()) {
-    const error = new Error("Tinfoil API key not configured. Add your key in Settings.");
-    error.code = "API_KEY_MISSING";
+    const error = Object.assign(
+      new Error("Tinfoil API key not configured. Add your key in Settings."),
+      { code: "API_KEY_MISSING" }
+    ) as CodedTranscriptionError;
     throw error;
   }
 
   const model = getBatchModel();
   const formData = new FormData();
-  formData.append("file", new Blob([audioBuffer], { type: contentType }), fileName);
+  formData.append(
+    "file",
+    new Blob([new Uint8Array(audioBuffer)], { type: contentType }),
+    fileName
+  );
   formData.append("model", model);
   if (language && language !== "auto") {
     formData.append("language", language);
@@ -53,13 +74,16 @@ async function transcribeWithTinfoil({
   });
 
   if (response.status === 401) {
-    const error = new Error("Invalid Tinfoil API key. Check your key in Settings.");
-    error.code = "INVALID_KEY";
-    throw error;
+    throw Object.assign(new Error("Invalid Tinfoil API key. Check your key in Settings."), {
+      code: "INVALID_KEY",
+    }) as CodedTranscriptionError;
   }
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
-    const error = new Error(`Tinfoil API Error: ${response.status} ${errorText}`.trim());
+    const error = Object.assign(
+      new Error(`Tinfoil API Error: ${response.status} ${errorText}`.trim()),
+      {} as Record<string, unknown>
+    ) as CodedTranscriptionError;
     if (response.status === 429) {
       error.code = "PROVIDER_RATE_LIMITED";
       error.messageKey = "hooks.audioRecording.errorDescriptions.providerRateLimited";
@@ -69,8 +93,6 @@ async function transcribeWithTinfoil({
     throw error;
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as { text?: string } | null;
   return { text: data?.text || "", model };
 }
-
-module.exports = { transcribeWithTinfoil };

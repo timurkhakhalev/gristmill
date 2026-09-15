@@ -126,7 +126,7 @@ test("remount restores concurrent LLM downloads and cancellation settles only it
 
   await React.act(async () => {
     for (const listener of listeners) {
-      listener(null, {
+      listener({
         type: "error",
         modelId: "model-a",
         error: "Download cancelled by user",
@@ -141,7 +141,7 @@ test("remount restores concurrent LLM downloads and cancellation settles only it
 
   await React.act(async () => {
     for (const listener of listeners) {
-      listener(null, { type: "complete", modelId: "model-b", progress: 100, sequence: 6 });
+      listener({ type: "complete", modelId: "model-b", progress: 100, sequence: 6 });
     }
   });
   assert.equal(download.isDownloading, false);
@@ -190,7 +190,6 @@ for (const outcome of ["error", "complete", "cancel"]) {
     assert.equal(snapshotCalls, 2);
     await React.act(async () => {
       progressListener(
-        null,
         outcome === "complete"
           ? { modelId: "model-a", type: "complete", progress: 100, sequence: 2 }
           : {

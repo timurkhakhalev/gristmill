@@ -17,6 +17,7 @@ const { createSpeakerBridge } = require("./src/preload/speakerBridge");
 const { createTranscriptionExecutionBridge } = require("./src/preload/transcriptionExecutionBridge");
 const { createTranscriptionDataBridge } = require("./src/preload/transcriptionDataBridge");
 const { createDesktopSettingsBridge } = require("./src/preload/desktopSettingsBridge");
+const { createMeetingCoordinatorBridge } = require("./src/preload/meetingCoordinatorBridge");
 
 /**
  * Helper to register an IPC listener and return a cleanup function.
@@ -56,31 +57,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createTranscriptionExecutionBridge(ipcRenderer),
   ...createTranscriptionDataBridge(ipcRenderer),
   ...createDesktopSettingsBridge(ipcRenderer),
+  ...createMeetingCoordinatorBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
-  meetingTranscriptionPrepare: (options) =>
-    ipcRenderer.invoke("meeting-transcription-prepare", options),
-  meetingTranscriptionStart: (options) =>
-    ipcRenderer.invoke("meeting-transcription-start", options),
-  meetingTranscriptionSend: (buffer, source) =>
-    ipcRenderer.send("meeting-transcription-send", buffer, source),
-  meetingTranscriptionSetSystemAudioAvailable: (sessionId, available) =>
-    ipcRenderer.invoke("meeting-transcription-set-system-audio-available", sessionId, available),
-  meetingTranscriptionStop: (expectedSessionId) =>
-    ipcRenderer.invoke("meeting-transcription-stop", expectedSessionId),
-  meetingTranscriptionCancel: () => ipcRenderer.invoke("meeting-transcription-cancel"),
-  onMeetingTranscriptionSegment: registerListener(
-    "meeting-transcription-segment",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onMeetingSpeakerIdentified: registerListener(
-    "meeting-speaker-identified",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onMeetingSpeakersMerged: registerListener(
-    "meeting-speakers-merged",
-    (callback) => (_event, data) => callback(data)
-  ),
   // Provider connection tests, local/remote transcription execution and the
   // voice-draft temp audio come from the typed transcriptionExecutionBridge
   // above.
@@ -116,12 +95,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Local Whisper/Parakeet model lifecycle (downloads, status, servers,
   // VAD config, diagnostics) lives in the typed localModelLifecycleBridge.
 
-  onMeetingDiarizationComplete: registerListener(
-    "meeting-diarization-complete",
-    (callback) => (_event, data) => callback(data)
-  ),
-
-
   getPlatform: () => process.platform,
 
   onMainWindowHorizontalDirectionChanged: registerListener(
@@ -150,34 +123,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     (callback) => (_event, data) => callback(data)
   ),
 
-  onMeetingSessionSpeakerConfigUpdated: registerListener(
-    "meeting-session-speaker-config-updated",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onMeetingTranscriptionError: registerListener(
-    "meeting-transcription-error",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onMeetingTranscriptionFatalError: registerListener(
-    "meeting-transcription-fatal-error",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onMeetingSystemAudioSilent: registerListener(
-    "meeting-system-audio-silent",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onMeetingSystemAudioDegraded: registerListener(
-    "meeting-system-audio-degraded",
-    (callback) => () => callback()
-  ),
-  onMeetingSystemAudioInterrupted: registerListener(
-    "meeting-system-audio-interrupted",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onMeetingSystemAudioResumed: registerListener(
-    "meeting-system-audio-resumed",
-    (callback) => () => callback()
-  ),
+  // Meeting transcription/detection/auto-end/notification operations and
+  // events come from the typed meetingCoordinatorBridge above.
 
   // Globe key listener for hotkey capture (macOS only)
   onGlobeKeyPressed: (callback) => {
@@ -220,7 +167,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Notify main process of activation mode changes.
   notifyActivationModeChanged: (mode) => ipcRenderer.send("activation-mode-changed", mode),
   notifyHotkeyChanged: (hotkey) => ipcRenderer.send("hotkey-changed", hotkey),
-  registerMeetingHotkey: (hotkey) => ipcRenderer.invoke("register-meeting-hotkey", hotkey),
 
   // Floating icon auto-hide
   notifyFloatingIconAutoHideChanged: (enabled) =>
@@ -237,45 +183,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Start minimized
   notifyStartMinimizedChanged: (enabled) => ipcRenderer.send("start-minimized-changed", enabled),
 
-  acquireRecordingLock: (pipeline) => ipcRenderer.invoke("acquire-recording-lock", pipeline),
-  releaseRecordingLock: (pipeline) => ipcRenderer.invoke("release-recording-lock", pipeline),
-
   // Agent conversation persistence lives in the typed chatBridge above.
   // Google/Microsoft/Apple Calendar commands and events live in the typed
   // calendarBridge above (availability has its own bridge).
 
-  // Meeting detection
-  meetingDetectionGetPreferences: () => ipcRenderer.invoke("meeting-detection-get-preferences"),
-  meetingDetectionSetPreferences: (prefs) =>
-    ipcRenderer.invoke("meeting-detection-set-preferences", prefs),
-  setSpeakerDiarizationEnabled: (enabled) =>
-    ipcRenderer.invoke("meeting-set-speaker-diarization-enabled", { enabled }),
-  setMeetingSessionSpeakerConfig: (config) =>
-    ipcRenderer.invoke("meeting-set-session-speaker-config", config),
-  onMeetingNotificationData: registerListener(
-    "meeting-notification-data",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onMeetingAutoEndRequested: registerListener(
-    "meeting-auto-end-requested",
-    (callback) => (_event, data) => callback(data)
-  ),
-  meetingAutoEndCompleted: (sessionId) =>
-    ipcRenderer.invoke("meeting-auto-end-completed", sessionId),
-  meetingAutoEndRespond: (sessionId, action) =>
-    ipcRenderer.invoke("meeting-auto-end-respond", sessionId, action),
-  onMeetingAutoEndRestartRequested: registerListener(
-    "meeting-auto-end-restart-requested",
-    (callback) => (_event, data) => callback(data)
-  ),
-  getMeetingNotificationData: () => ipcRenderer.invoke("get-meeting-notification-data"),
-  meetingNotificationReady: () => ipcRenderer.invoke("meeting-notification-ready"),
-  meetingNotificationRespond: (detectionId, action) =>
-    ipcRenderer.invoke("meeting-notification-respond", detectionId, action),
-  joinCalendarMeeting: (eventId) => ipcRenderer.invoke("join-calendar-meeting", eventId),
-  getPendingMeetingNoteNavigation: () => ipcRenderer.invoke("get-pending-meeting-note-navigation"),
-  onMeetingNoteNavigationPending: registerListener(
-    "meeting-note-navigation-pending",
-    (callback) => () => callback()
-  ),
 });

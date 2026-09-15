@@ -1624,3 +1624,61 @@ granolaImportIpc, mainProcessEsmEntries, mainBuild), затем `pnpm test` и
 isolated smoke (Settings: ключи/провайдеры/hotkeys/language/debug;
 upload/diarization; onboarding; Notes) на отдельном профиле; после pack —
 восстановить Node ABI better-sqlite3 перед DB-тестами.
+
+## Этап «meeting coordinator: session lifecycle, detection, auto-end и diarization publication»
+
+16 сентября 2026 (issue #72). Весь meeting runtime вынесен из `src/helpers/ipcHandlers.js`
+(3588 → ~1250 строк; файл остался composition root) в strict TS. Владельцы и
+единственный путь исполнения сохранены; политики detection/auto-end остались в
+своих модулях, единого state-machine framework нет.
+
+- Девять хелперов переведены в strict TS (JS-версии удалены):
+  `meetingTranscriptionLifecycle` (dual-export module-as-factory),
+  `meetingAutoEndController` (factory + константы на module.exports),
+  `meetingAutoEndLifecycle`, `meetingDetectionEngine` (класс + константы dual),
+  `meetingJoinUrl`, `meetingProcessDetector` (класс dual), `processListCache`
+  (синглтон), `ownProcessPids`, `electronProcessIds`. Пороги, окно restart
+  grace, sleep-reset, исключение собственных PID и все экспорты сохранены.
+- `src/helpers/meetingCoordinatorIpcHandlers.ts` — координатор: prepare/connect
+  (reuse по connection key, guard «Operation in progress»), local chunks,
+  native capture/AEC/watchdog/silence-timer, live speakers, lifecycle-очередь
+  start/stop (owner-loss, same-document navigation, идемпотентный stop),
+  recording locks, mic-warm-hold, detection prefs, session speaker config,
+  notification respond/ready/data, auto-end IPC, join-calendar-meeting,
+  pending meeting-note navigation. Зависимости — managers и узкие callbacks
+  (fetchRealtimeToken, resolveWhisperVadOptions, speakerEmbeddings loader,
+  windowManager surface); `this` целиком не передаётся.
+- `src/helpers/meetingDiarizationPublication.ts` — финальная диаризация
+  (`_startOrSkipDiarization`), reconcile live-speaker state, speaker
+  expectation, roster-проекции; поздний результат уходит исходной
+  session/note. `src/helpers/meetingHotkeyIpcHandler.ts` — владелец
+  `register-meeting-hotkey`; bootstrap-регистрация и общий callback остались
+  в main.js.
+- Контракт `src/contracts/meetingCoordinator.ts` (21 канал + 15 событий),
+  bridge `src/preload/meetingCoordinatorBridge.ts` (валидация ответов,
+  malformed события дропаются, payload-only listeners, idempotent
+  unsubscribe), `src/types/electron.ts` — meeting DTO переехал в контракт.
+  `mic-warm-hold-changed` и `meeting-system-audio-degraded` не имеют
+  renderer-продюсера/producer'а — каналы сохранены как есть.
+- Найденный самостоятельный lifecycle дефект prepare/cancel задокументирован
+  и зафиксирован characterization-тестом БЕЗ изменения поведения: cancel
+  сбрасывает guards, пока connect ещё выполняется, и допускает второй
+  параллельный prepare (last-writer-wins на streaming refs/connection key).
+  Hard abort по-прежнему не обещается.
+
+Проверка исполнителем: `pnpm run typecheck` — 0 ошибок в main и
+settings-selectors, renderer-entrypoints closure побайтово совпадает с
+baseline main (никаких новых strict-ошибок у renderer-потребителей);
+`pnpm run lint` — 0 errors, warnings меньше baseline (в ipcHandlers.js
+осталось 3 прежних warning'а вместо 20). Tests/builds/install/native rebuild
+по ограничению задачи не запускались. Оркестратору нужно последовательно
+выполнить `pnpm run build:main`, `pnpm run build:renderer`, focused tests
+(meetingCoordinatorIpc, meetingCoordinatorBridge, meetingCoordinatorTypeProbe,
+meetingStreamingWiring, meetingSpeakerReconcile, meetingDetectionEngine,
+meetingDetectionEngineAutoEnd, meetingAutoEndController/Lifecycle,
+meetingTranscriptionLifecycle, meetingJoinUrl, electronProcessIds,
+meetingRecordingSession, meetingTranscriptPersistence, meetingStreaming*,
+rendererBridgeContract, mainProcessEsmEntries, mainBuild, macInferenceSource,
+deviceCleanupContract), затем `pnpm test` и isolated macOS smoke (start/stop,
+mic+system, local/realtime, auto-end/restart, notification join, speaker
+completion) на отдельном профиле.

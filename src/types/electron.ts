@@ -17,6 +17,7 @@ import type { SpeakerApi } from "../contracts/speakerProfiles";
 import type { TranscriptionExecutionApi } from "../contracts/transcriptionExecution";
 import type { DesktopSettingsApi } from "../contracts/desktopSettings";
 import type { TranscriptionDataApi } from "../contracts/transcriptionData";
+import type { MeetingCoordinatorApi } from "../contracts/meetingCoordinator";
 
 export type ChineseScriptPreference = "simplified" | "traditional" | "as-transcribed";
 
@@ -76,48 +77,6 @@ export type TranscriptionErrorCode =
   | "MODEL_NOT_AVAILABLE"
   | "CUSTOM_ENDPOINT_INVALID"
   | null;
-
-export type MeetingPromptVariant = "detected" | "starting" | "underway";
-
-export interface MeetingDetectionNotificationData {
-  kind: "detection";
-  detectionId: string;
-  source: string;
-  key: string;
-  event: { summary?: string | null } | null;
-  variant: MeetingPromptVariant;
-  joinUrl: string | null;
-}
-
-/** Why auto-end concluded the meeting is over. */
-export type MeetingAutoEndReason = "mic-released" | "silence" | "process-exit";
-
-export interface MeetingAutoEndNotificationData {
-  kind: "auto-end";
-  sessionId: string;
-  expiresAt: number;
-  reason?: MeetingAutoEndReason;
-}
-
-export type MeetingNotificationData =
-  MeetingDetectionNotificationData | MeetingAutoEndNotificationData;
-
-export interface MeetingAutoEndRequest {
-  sessionId: string;
-  reason?: MeetingAutoEndReason;
-}
-
-export type MeetingAutoEndAction = "restart" | "dismiss";
-
-export interface MeetingAutoEndRestartRequest {
-  sessionId: string;
-}
-
-export interface MeetingAutoEndLifecycleResult {
-  success: boolean;
-  reason?: "invalid-session" | "invalid-action" | "stale-session";
-  error?: string;
-}
 
 /**
  * Proxied-transcription IPC results. `ipcMain.handle` drops custom error props on
@@ -288,12 +247,6 @@ export interface AudioDiagnosticsResult {
 export type SystemAudioMode = "native" | "loopback" | "portal" | "unsupported";
 export type SystemAudioStrategy =
   "native" | "loopback" | "pipewire-loopback" | "wasapi-loopback" | "unsupported";
-
-export interface MeetingSystemAudioInterruption {
-  systemAudioStrategy: SystemAudioStrategy;
-  reason: "no_audio_delivered" | "device_invalidated" | "gone_quiet";
-  recovering: boolean;
-}
 
 export interface SystemAudioAccessResult {
   granted: boolean;
@@ -581,7 +534,6 @@ declare global {
       // Windows Push-to-Talk notifications
       notifyActivationModeChanged?: (mode: "tap" | "push") => void;
       notifyHotkeyChanged?: (hotkey: string) => void;
-      registerMeetingHotkey?: (hotkey: string) => Promise<{ success: boolean; message?: string }>;
       notifyFloatingIconAutoHideChanged?: (enabled: boolean) => void;
       onFloatingIconAutoHideChanged?: (callback: (enabled: boolean) => void) => () => void;
       notifyStartMinimizedChanged?: (enabled: boolean) => void;
@@ -605,156 +557,12 @@ declare global {
 
 
 
-      // Meeting transcription (streaming, dual-channel)
-      meetingTranscriptionPrepare?: (options: {
-        provider?: string;
-        model?: string;
-        language?: string;
-      }) => Promise<{ success: boolean; alreadyPrepared?: boolean } & PolicyFailureMetadata>;
-      meetingTranscriptionStart?: (options: {
-        provider?: string;
-        model?: string;
-        language?: string;
-        noteId?: number | null;
-        sessionId: string;
-        autoEndEligible: boolean;
-      }) => Promise<
-        {
-          success: boolean;
-          sessionId?: string;
-          error?: string;
-          systemAudioMode?: SystemAudioMode;
-          systemAudioStrategy?: SystemAudioStrategy;
-          oneOnOneAttendee?: { displayName: string; email: string | null } | null;
-        } & PolicyFailureMetadata
-      >;
-      meetingTranscriptionSend?: (buffer: ArrayBuffer, source: "mic" | "system") => void;
-      meetingTranscriptionSetSystemAudioAvailable?: (
-        sessionId: string,
-        available: boolean
-      ) => Promise<{ success: boolean; reason?: "stale-session" }>;
-      meetingTranscriptionStop?: (expectedSessionId?: string) => Promise<{
-        success: boolean;
-        transcript?: string;
-        diarizationSessionId?: string;
-        error?: string;
-        reason?: "stale-session";
-      }>;
-      meetingTranscriptionCancel?: () => Promise<{
-        success: boolean;
-        reason?: "recording-active";
-      }>;
-      onMeetingTranscriptionSegment?: (
-        callback: (data: {
-          text: string;
-          source: "mic" | "system";
-          type: "partial" | "final" | "retract";
-          timestamp?: number;
-        }) => void
-      ) => () => void;
-      onMeetingSpeakerIdentified?: (
-        callback: (data: {
-          speakerId: string;
-          displayName?: string | null;
-          startTime: number;
-          endTime: number;
-        }) => void
-      ) => () => void;
-      onMeetingSpeakersMerged?: (
-        callback: (
-          merges: Array<{
-            keep: string;
-            remove: string;
-            displayName?: string | null;
-            similarity: number;
-          }>
-        ) => void
-      ) => () => void;
-      onMeetingSessionSpeakerConfigUpdated?: (
-        callback: (config: { enabled: boolean; expectedCount: number }) => void
-      ) => () => void;
-      onMeetingTranscriptionError?: (callback: (error: string) => void) => () => void;
-      onMeetingTranscriptionFatalError?: (callback: (error: string) => void) => () => void;
-      onMeetingSystemAudioSilent?: (
-        callback: (data: { systemAudioStrategy: SystemAudioStrategy }) => void
-      ) => () => void;
-      onMeetingSystemAudioDegraded?: (callback: () => void) => () => void;
-      onMeetingSystemAudioInterrupted?: (
-        callback: (data: MeetingSystemAudioInterruption) => void
-      ) => () => void;
-      onMeetingSystemAudioResumed?: (callback: () => void) => () => void;
+      // Meeting transcription, detection, auto-end, notification and
+      // note-navigation operations/events come from the shared
+      // MeetingCoordinatorApi contract. register-meeting-hotkey lives there
+      // too (its handler moved to the typed meetingHotkeyIpcHandler owner).
 
-      // Diarization model management, the speaker mapping/profile/embedding
-      // commands and contacts come from the shared SpeakerApi contract.
-      // mergeSpeakerText and diarizeAudioFile come from the shared
-      // UploadTranscriptionApi contract.
-      onMeetingDiarizationComplete?: (
-        callback: (data: {
-          sessionId?: string;
-          noteId?: number | null;
-          segments: Array<{
-            id: string;
-            text: string;
-            source: "mic" | "system";
-            timestamp?: number;
-            speaker?: string;
-            speakerName?: string;
-            speakerIsPlaceholder?: boolean;
-            suggestedName?: string;
-            suggestedProfileId?: number;
-            speakerStatus?: "provisional" | "confirmed" | "suggested" | "locked";
-            speakerLocked?: boolean;
-            speakerLockSource?: "user" | "diarization" | "suggestion";
-          }>;
-          speakerEmbeddings?: Record<string, number[]> | null;
-        }) => void
-      ) => () => void;
-
-
-
-      // Google/Microsoft/Apple Calendar commands and their six events come
-      // from the shared CalendarIntegrationApi contract.
-
-      meetingDetectionGetPreferences?: () => Promise<{ success: boolean; preferences?: any }>;
-      meetingDetectionSetPreferences?: (
-        prefs: Record<string, boolean>
-      ) => Promise<{ success: boolean }>;
-      setSpeakerDiarizationEnabled?: (
-        enabled: boolean
-      ) => Promise<{ success: boolean; error?: string }>;
-      setMeetingSessionSpeakerConfig?: (config: {
-        enabled: boolean;
-        expectedCount: number;
-        countIsExplicit?: boolean;
-      }) => Promise<{ success: boolean; error?: string }>;
-      // VAD config comes from the LocalModelLifecycleApi contract.
-      onMeetingNotificationData?: (callback: (data: MeetingNotificationData) => void) => () => void;
-      onMeetingAutoEndRequested?: (
-        callback: (request: MeetingAutoEndRequest) => void
-      ) => () => void;
-      meetingAutoEndCompleted?: (sessionId: string) => Promise<MeetingAutoEndLifecycleResult>;
-      meetingAutoEndRespond?: (
-        sessionId: string,
-        action: MeetingAutoEndAction
-      ) => Promise<MeetingAutoEndLifecycleResult>;
-      onMeetingAutoEndRestartRequested?: (
-        callback: (request: MeetingAutoEndRestartRequest) => void
-      ) => () => void;
-      getMeetingNotificationData?: () => Promise<MeetingNotificationData | null>;
-      meetingNotificationReady?: () => Promise<void>;
-      meetingNotificationRespond?: (
-        detectionId: string,
-        action: string
-      ) => Promise<{ success: boolean }>;
-      joinCalendarMeeting?: (eventId: string) => Promise<{ success: boolean }>;
-      getPendingMeetingNoteNavigation?: () => Promise<{
-        noteId: number;
-        folderId: number;
-        event: any;
-        trigger?: "hotkey" | "manual" | "calendar-join";
-      } | null>;
-      onMeetingNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi & DesktopSettingsApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi & DesktopSettingsApi & MeetingCoordinatorApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

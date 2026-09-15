@@ -12,10 +12,10 @@ import {
   resolveParticipantSpeakerCountSync,
 } from "../utils/participants";
 import type {
-  MeetingSystemAudioInterruption,
   SystemAudioAccessResult,
   SystemAudioStrategy,
 } from "../types/electron";
+import type { MeetingSystemAudioInterruption } from "../contracts/meetingCoordinator";
 import type { NoteItem } from "../contracts/notes";
 import type { CalendarAttendee } from "../contracts/calendar";
 import {

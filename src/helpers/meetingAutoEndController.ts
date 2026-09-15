@@ -1,7 +1,7 @@
 // Fallback mode: both channels must stay quiet this long before stopping.
-const SILENCE_WINDOW_MS = 60_000;
+export const SILENCE_WINDOW_MS = 60_000;
 // Fallback mode after the tracked meeting app exits — a much stronger signal.
-const FAST_SILENCE_MS = 10_000;
+export const FAST_SILENCE_MS = 10_000;
 // A mic release must stay uncontradicted this long before it stops a recording.
 // The OS reports a release for things that are not the call ending: a device
 // flap emits MIC_STOP and MIC_START in one reconcile pass, an app rebuilds its
@@ -9,14 +9,63 @@ const FAST_SILENCE_MS = 10_000;
 // looks identical to one that left the call. Without a dwell time each of those
 // ends a live recording, and the stop is irreversible. A flap has no gap at all,
 // so a few seconds absorbs it while keeping the stop prompt.
-const OWNERSHIP_CONFIRM_MS = 5_000;
+export const OWNERSHIP_CONFIRM_MS = 5_000;
 // An external mic hold shorter than this (Siri, a permission prompt, the Sound
 // settings input meter) is incidental — it must not arm the mic-ignoring
 // ownership path on what is really an in-person recording.
-const OWNERSHIP_MIN_ACTIVE_MS = 30_000;
+export const OWNERSHIP_MIN_ACTIVE_MS = 30_000;
 // A tick gap longer than this means the machine slept; silence accumulated
 // before the gap is stale and must not stop the recording on wake.
-const TICK_GAP_MS = 5_000;
+export const TICK_GAP_MS = 5_000;
+
+export interface AutoEndExternalMicState {
+  reliable: boolean;
+  externalMicActive: boolean;
+}
+
+export interface AutoEndAudioActivity {
+  micActive?: boolean;
+  systemActive?: boolean;
+}
+
+export interface AutoEndAudioActivityInput {
+  micActive: boolean;
+  systemActive: boolean;
+}
+
+export interface AutoEndSessionInput extends AutoEndAudioActivity {
+  sessionId: string;
+  eligible: boolean;
+  reliable: boolean;
+  externalMicActive: boolean;
+  suppressUntil?: number;
+}
+
+export type AutoEndStopReason = "mic-released" | "silence" | "process-exit";
+
+export interface MeetingAutoEndController {
+  beginSession(input: AutoEndSessionInput): void;
+  handleExternalMicState(input: { sessionId: string } & AutoEndExternalMicState): void;
+  handleAudioActivity(input: { sessionId: string } & AutoEndAudioActivityInput): void;
+  handleMeetingProcessExit(input: { sessionId: string }): void;
+  endSession(sessionId: string): void;
+  tick(): void;
+}
+
+interface AutoEndControllerState {
+  sessionId: string;
+  eligible: boolean;
+  mode: "ownership" | "fallback";
+  externalMicActive: boolean;
+  externalMicActiveSince: number | null;
+  micActive: boolean;
+  systemActive: boolean;
+  quietSince: number;
+  fastArmAt: number | null;
+  ownershipQuietSince: number | null;
+  suppressUntil: number;
+  stopped: boolean;
+}
 
 // Two evidence sources decide "the meeting is over":
 //
@@ -31,14 +80,20 @@ const TICK_GAP_MS = 5_000;
 //
 // Tick-driven and timer-free: every input updates state and re-evaluates; the
 // owner calls tick() about once a second. This keeps sleep handling correct.
-const createMeetingAutoEndController = ({ now = Date.now, onStop }) => {
-  let session = null;
-  let lastSeenAt = null;
+export function createMeetingAutoEndController({
+  now = Date.now,
+  onStop,
+}: {
+  now?: () => number;
+  onStop: (sessionId: string, reason: AutoEndStopReason) => void;
+}): MeetingAutoEndController {
+  let session: AutoEndControllerState | null = null;
+  let lastSeenAt: number | null = null;
 
-  const isLive = (sessionId) =>
+  const isLive = (sessionId: string) =>
     session !== null && session.sessionId === sessionId && session.eligible && !session.stopped;
 
-  const observeClock = () => {
+  const observeClock = (): number => {
     const nowMs = now();
     const gap = lastSeenAt === null ? 0 : nowMs - lastSeenAt;
     lastSeenAt = nowMs;
@@ -58,13 +113,14 @@ const createMeetingAutoEndController = ({ now = Date.now, onStop }) => {
     return nowMs;
   };
 
-  const stop = (reason) => {
+  const stop = (reason: AutoEndStopReason): void => {
+    if (!session) return;
     const { sessionId } = session;
     session.stopped = true;
     onStop(sessionId, reason);
   };
 
-  const evaluate = () => {
+  const evaluate = (): void => {
     if (!session || !session.eligible || session.stopped) return;
     const nowMs = now();
 
@@ -93,7 +149,7 @@ const createMeetingAutoEndController = ({ now = Date.now, onStop }) => {
     if (session.micActive || session.systemActive) return;
     const fastArmed = session.fastArmAt !== null;
     const quietStart = fastArmed
-      ? Math.max(session.quietSince, session.fastArmAt)
+      ? Math.max(session.quietSince, session.fastArmAt ?? 0)
       : session.quietSince;
     const windowMs = fastArmed ? FAST_SILENCE_MS : SILENCE_WINDOW_MS;
     if (nowMs - quietStart >= windowMs) stop(fastArmed ? "process-exit" : "silence");
@@ -107,7 +163,7 @@ const createMeetingAutoEndController = ({ now = Date.now, onStop }) => {
     micActive = false,
     systemActive = false,
     suppressUntil = 0,
-  }) => {
+  }: AutoEndSessionInput): void => {
     const nowMs = now();
     lastSeenAt = nowMs;
     const ownership = eligible && reliable && externalMicActive;
@@ -128,9 +184,13 @@ const createMeetingAutoEndController = ({ now = Date.now, onStop }) => {
     evaluate();
   };
 
-  const handleExternalMicState = ({ sessionId, reliable, externalMicActive }) => {
+  const handleExternalMicState = ({
+    sessionId,
+    reliable,
+    externalMicActive,
+  }: { sessionId: string } & AutoEndExternalMicState): void => {
     const nowMs = observeClock();
-    if (!isLive(sessionId)) return;
+    if (!isLive(sessionId) || !session) return;
 
     if (!reliable) {
       session.mode = "fallback";
@@ -153,7 +213,7 @@ const createMeetingAutoEndController = ({ now = Date.now, onStop }) => {
 
     if (session.mode === "ownership" && session.externalMicActive) {
       session.externalMicActive = false;
-      const heldMs = nowMs - session.externalMicActiveSince;
+      const heldMs = nowMs - (session.externalMicActiveSince ?? nowMs);
       session.externalMicActiveSince = null;
       if (heldMs < OWNERSHIP_MIN_ACTIVE_MS) {
         session.mode = "fallback";
@@ -163,9 +223,13 @@ const createMeetingAutoEndController = ({ now = Date.now, onStop }) => {
     evaluate();
   };
 
-  const handleAudioActivity = ({ sessionId, micActive, systemActive }) => {
+  const handleAudioActivity = ({
+    sessionId,
+    micActive,
+    systemActive,
+  }: { sessionId: string } & AutoEndAudioActivityInput): void => {
     const nowMs = observeClock();
-    if (!isLive(sessionId)) return;
+    if (!isLive(sessionId) || !session) return;
     const micBecameActive = micActive && !session.micActive;
     const systemBecameActive = systemActive && !session.systemActive;
     const wasQuiet = !session.micActive && !session.systemActive;
@@ -179,19 +243,19 @@ const createMeetingAutoEndController = ({ now = Date.now, onStop }) => {
     evaluate();
   };
 
-  const handleMeetingProcessExit = ({ sessionId }) => {
+  const handleMeetingProcessExit = ({ sessionId }: { sessionId: string }): void => {
     const nowMs = observeClock();
-    if (!isLive(sessionId) || session.mode !== "fallback") return;
+    if (!isLive(sessionId) || !session || session.mode !== "fallback") return;
     session.fastArmAt = nowMs;
     evaluate();
   };
 
-  const endSession = (sessionId) => {
+  const endSession = (sessionId: string): void => {
     if (!session || session.sessionId !== sessionId) return;
     session = null;
   };
 
-  const tick = () => {
+  const tick = (): void => {
     observeClock();
     evaluate();
   };
@@ -204,7 +268,7 @@ const createMeetingAutoEndController = ({ now = Date.now, onStop }) => {
     endSession,
     tick,
   };
-};
+}
 
 module.exports = createMeetingAutoEndController;
 module.exports.SILENCE_WINDOW_MS = SILENCE_WINDOW_MS;

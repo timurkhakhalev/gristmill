@@ -1,15 +1,13 @@
-const debugLogger = require("./debugLogger");
+import debugLogger from "./debugLogger.js";
 
 const CACHE_TTL_MS = 5000;
 
 class ProcessListCache {
-  constructor() {
-    this._cache = null;
-    this._cacheTime = 0;
-    this._pending = null;
-  }
+  private _cache: string[] | null = null;
+  private _cacheTime = 0;
+  private _pending: Promise<string[]> | null = null;
 
-  async getProcessList() {
+  async getProcessList(): Promise<string[]> {
     const now = Date.now();
     if (this._cache && now - this._cacheTime < CACHE_TTL_MS) {
       return this._cache;
@@ -25,7 +23,7 @@ class ProcessListCache {
     }
   }
 
-  async _fetch(now) {
+  async _fetch(now: number): Promise<string[]> {
     try {
       const psList = (await import("ps-list")).default;
       const procs = await psList();
@@ -35,16 +33,21 @@ class ProcessListCache {
       debugLogger.debug("Process list refreshed", { count: names.length }, "meeting");
       return names;
     } catch (err) {
-      debugLogger.warn("Failed to fetch process list", { error: err.message }, "meeting");
+      debugLogger.warn(
+        "Failed to fetch process list",
+        { error: err instanceof Error ? err.message : String(err) },
+        "meeting"
+      );
       return [];
     }
   }
 
-  invalidate() {
+  invalidate(): void {
     this._cache = null;
     this._cacheTime = 0;
     this._pending = null;
   }
 }
 
-module.exports = new ProcessListCache();
+export const processListCache = new ProcessListCache();
+module.exports = processListCache;

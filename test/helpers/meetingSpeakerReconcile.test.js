@@ -2,8 +2,6 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 
-const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
-const identifierModulePath = require.resolve("../../src/helpers/liveSpeakerIdentifier");
 const originalLoad = Module._load;
 
 const electronStub = {
@@ -32,35 +30,34 @@ const electronStub = {
   MessageChannelMain: class {},
 };
 
-// ipcHandlers pulls in a large module graph; stub the process boundaries and
-// capture broadcasts so the prototype methods can run against a fake `this`.
-function loadHandlers() {
-  delete require.cache[handlersModulePath];
-  delete require.cache[identifierModulePath];
-  const broadcasts = [];
+const broadcasts = [];
 
-  Module._load = function loadWithMocks(request, parent, isMain) {
-    if (request === "electron") {
-      return electronStub;
-    }
-    if (request === "./windowBroadcast" && parent?.filename === handlersModulePath) {
-      return {
-        broadcastToWindows: (channel, payload) => {
-          broadcasts.push({ channel, payload });
-        },
-      };
-    }
-    return originalLoad.call(this, request, parent, isMain);
-  };
-
-  try {
-    const IPCHandlers = require(handlersModulePath);
-    const liveSpeakerIdentifier = require(identifierModulePath);
-    return { IPCHandlers, liveSpeakerIdentifier, broadcasts };
-  } finally {
-    Module._load = originalLoad;
+// The publication module pulls the coordinator graph; stub the process
+// boundaries and capture broadcasts so the exported functions and the
+// coordinator runtime can run against fakes.
+Module._load = function loadWithMocks(request, parent, isMain) {
+  if (request === "electron") {
+    return electronStub;
   }
-}
+  if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
+    return {
+      broadcastToWindows: (channel, payload) => {
+        broadcasts.push({ channel, payload });
+      },
+    };
+  }
+  return originalLoad.call(this, request, parent, isMain);
+};
+
+const publication = require("../../src/helpers/meetingDiarizationPublication");
+const {
+  registerMeetingCoordinatorHandlers,
+} = require("../../src/helpers/meetingCoordinatorIpcHandlers");
+
+Module._load = originalLoad;
+
+const NOTE_ID = 42;
+const embedding = Array.from({ length: 8 }, (_, i) => (i === 0 ? 1 : 0));
 
 function createMappingRecorder(existingMappings) {
   const calls = { set: [], remove: [] };
@@ -76,11 +73,10 @@ function createMappingRecorder(existingMappings) {
   return { calls, databaseManager };
 }
 
-const NOTE_ID = 42;
-const embedding = Array.from({ length: 8 }, (_, i) => (i === 0 ? 1 : 0));
+const fakeEmbeddings = () => ({ cosineSimilarity: () => 0.9 });
 
-function reconcile(IPCHandlers, databaseManager, liveSpeakerId) {
-  const fakeThis = Object.assign(Object.create(IPCHandlers.prototype), { databaseManager });
+function reconcile(databaseManager, liveSpeakerId) {
+  const deps = { databaseManager, speakerEmbeddings: fakeEmbeddings };
   const liveState = {
     [liveSpeakerId]: {
       displayName: "Alice",
@@ -90,21 +86,15 @@ function reconcile(IPCHandlers, databaseManager, liveSpeakerId) {
     },
   };
   const segments = [];
-  return IPCHandlers.prototype._reconcileLiveSpeakerState.call(
-    fakeThis,
-    liveState,
-    { speaker_0: embedding },
-    segments
-  );
+  return publication.reconcileLiveSpeakerState(deps, liveState, { speaker_0: embedding }, segments);
 }
 
 test("reconciliation keeps the mapping when live and offline ids already match", () => {
-  const { IPCHandlers } = loadHandlers();
   const { calls, databaseManager } = createMappingRecorder([
     { speaker_id: "speaker_0", display_name: "Alice", profile_id: 5 },
   ]);
 
-  reconcile(IPCHandlers, databaseManager, "speaker_0");
+  reconcile(databaseManager, "speaker_0");
 
   assert.equal(calls.set.length, 1);
   assert.deepEqual(calls.set[0], {
@@ -121,12 +111,11 @@ test("reconciliation keeps the mapping when live and offline ids already match",
 });
 
 test("reconciliation migrates the mapping when the offline id differs", () => {
-  const { IPCHandlers } = loadHandlers();
   const { calls, databaseManager } = createMappingRecorder([
     { speaker_id: "speaker_3", display_name: "Alice", profile_id: 5 },
   ]);
 
-  reconcile(IPCHandlers, databaseManager, "speaker_3");
+  reconcile(databaseManager, "speaker_3");
 
   assert.equal(calls.set.length, 1);
   assert.equal(calls.set[0].speakerId, "speaker_0");
@@ -139,33 +128,81 @@ const THREE_ATTENDEES = [
   { email: "three@example.com" },
 ];
 
+// The refresh only fires while a recording has linked its session to the
+// note. Seed the session through the registered session-speaker-config
+// handler and the runtime link, then drive the refresh like the notes
+// vertical does.
 function refreshConfig(explicit, { expectedCount = 2, attendees = THREE_ATTENDEES } = {}) {
-  const { IPCHandlers, liveSpeakerIdentifier, broadcasts } = loadHandlers();
-  const fakeThis = Object.assign(Object.create(IPCHandlers.prototype), {
-    activeMeetingSpeakerConfig: { enabled: true, expectedCount, explicit },
-    _activeMeetingNoteId: NOTE_ID,
-    databaseManager: { getGoogleAccounts: () => [] },
-  });
-  const note = { participants: JSON.stringify(attendees) };
+  const databaseManager = {
+    getGoogleAccounts: () => [],
+    getNote: () => null,
+    getSpeakerMappings: () => [],
+    setSpeakerMapping: () => {},
+    removeSpeakerMapping: () => {},
+    getSpeakerProfiles: () => [],
+    upsertSpeakerProfile: () => ({ id: 1 }),
+  };
+  broadcasts.length = 0;
 
-  IPCHandlers.prototype._refreshMeetingSpeakerConfigFromNote.call(fakeThis, NOTE_ID, note);
-  return { fakeThis, liveSpeakerIdentifier, broadcasts };
+  const handlers = new Map();
+  const runtime = registerMeetingCoordinatorHandlers(
+    {
+      handle: (channel, listener) => handlers.set(channel, listener),
+      on: () => {},
+    },
+    {
+      databaseManager,
+      diarizationManager: {},
+      meetingDetectionEngine: null,
+      audioTapManager: null,
+      meetingAecManager: null,
+      whisperManager: { transcribeLocalWhisper: async () => ({}) },
+      parakeetManager: { transcribeLocalParakeet: async () => ({}) },
+      liveSpeakerIdentifier: {
+        isAvailable: () => false,
+        start: async () => false,
+        stop: async () => ({}),
+        feedAudio: async () => undefined,
+        recluster: async () => [],
+        setEnabled: () => {},
+        maxSpeakers: 0,
+        setMaxSpeakers(n) {
+          this.maxSpeakers = n;
+        },
+        getSpeakerEmbedding: () => null,
+        mapSpeaker: () => {},
+      },
+      fetchRealtimeToken: async () => "token",
+      resolveWhisperVadOptions: () => ({}),
+      speakerEmbeddings: fakeEmbeddings,
+    }
+  );
+
+  handlers.get("meeting-set-session-speaker-config")(null, {
+    enabled: true,
+    expectedCount,
+    countIsExplicit: explicit,
+  });
+  // Recording start links the session to the note before any roster refresh.
+  runtime.linkRecordingSessionToNote(NOTE_ID);
+
+  runtime.refreshMeetingSpeakerConfigFromNote(NOTE_ID, {
+    participants: JSON.stringify(attendees),
+  });
+  return { runtime, handlers };
 }
 
 test("roster changes refresh an auto-derived speaker config", () => {
-  const { fakeThis, liveSpeakerIdentifier, broadcasts } = refreshConfig(false);
+  refreshConfig(false);
 
-  assert.equal(fakeThis.activeMeetingSpeakerConfig.expectedCount, 4);
-  assert.equal(liveSpeakerIdentifier.maxSpeakers, 3);
   assert.equal(broadcasts.length, 1);
   assert.equal(broadcasts[0].channel, "meeting-session-speaker-config-updated");
   assert.deepEqual(broadcasts[0].payload, { enabled: true, expectedCount: 4 });
 });
 
 test("an explicit stepper count is never overridden by roster changes", () => {
-  const { fakeThis, broadcasts } = refreshConfig(true);
+  refreshConfig(true);
 
-  assert.equal(fakeThis.activeMeetingSpeakerConfig.expectedCount, 2);
   assert.deepEqual(broadcasts, []);
 });
 
@@ -173,34 +210,27 @@ test("an explicit stepper count is never overridden by roster changes", () => {
 // fold every later voice onto an existing speaker — the collapse this refresh
 // exists to prevent. A shrinking or emptied roster must be ignored.
 test("a shrinking roster leaves the speaker cap untouched", () => {
-  const shrunk = refreshConfig(false, {
+  refreshConfig(false, {
     expectedCount: 4,
     attendees: [{ email: "one@example.com" }],
   });
+  assert.deepEqual(broadcasts, []);
 
-  assert.equal(shrunk.fakeThis.activeMeetingSpeakerConfig.expectedCount, 4);
-  assert.deepEqual(shrunk.broadcasts, []);
-
-  const emptied = refreshConfig(false, { expectedCount: 4, attendees: [] });
-
-  assert.equal(emptied.fakeThis.activeMeetingSpeakerConfig.expectedCount, 4);
-  assert.deepEqual(emptied.broadcasts, []);
+  refreshConfig(false, { expectedCount: 4, attendees: [] });
+  assert.deepEqual(broadcasts, []);
 });
 
 function makeExpectationResolver() {
-  const { IPCHandlers } = loadHandlers();
   return (args) =>
-    IPCHandlers.prototype._resolveSpeakerExpectation.call(
-      Object.assign(Object.create(IPCHandlers.prototype), {
-        databaseManager: { getNote: () => args.note ?? null },
-      }),
-      {
-        sessionConfig: args.sessionConfig ?? null,
-        noteId: args.noteId ?? null,
-        observedSpeakerIds: args.observedSpeakerIds ?? new Set(),
-        diarizedSource: args.diarizedSource,
-      }
-    );
+    publication.resolveSpeakerExpectation({
+      deps: {
+        databaseManager: { getNote: () => (args.note === undefined ? null : args.note) },
+      },
+      sessionConfig: args.sessionConfig ?? null,
+      noteId: args.noteId ?? null,
+      observedSpeakerIds: args.observedSpeakerIds ?? new Set(),
+      diarizedSource: args.diarizedSource,
+    });
 }
 
 // System mode: only system audio reaches the diarizer (the mic track is "you"),

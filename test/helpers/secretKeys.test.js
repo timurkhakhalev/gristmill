@@ -74,18 +74,17 @@ test("the STT accessors keep the spellings their callers use", () => {
   assert.equal(typeof env.saveDeepgramKey, "function");
 });
 
-test("preload BYOK_KEY_BRIDGES mirror the manifest exactly", () => {
-  // preload.js can't require the manifest under sandbox, so it inlines the
-  // {base, get, save} tuples. Assert they stay in lockstep with the manifest.
+test("the desktop settings bridge derives its BYOK methods from the manifest", () => {
+  // The bridge builds get-<base>-key / save-<base>-key methods from
+  // BYOK_API_KEYS itself, so the old preload.js mirror tuples are gone and a
+  // new provider is one manifest entry on both sides of the bridge.
+  const bridgeSrc = fs.readFileSync(
+    path.join(__dirname, "../../src/preload/desktopSettingsBridge.ts"),
+    "utf8"
+  );
+  assert.match(bridgeSrc, /import \{ BYOK_API_KEYS \} from "\.\.\/config\/secretKeys/);
+  assert.match(bridgeSrc, /get-\$\{k\.base\}-key/);
+  assert.match(bridgeSrc, /save-\$\{k\.base\}-key/);
   const preloadSrc = fs.readFileSync(path.join(__dirname, "../../preload.js"), "utf8");
-  const block = preloadSrc.match(/BYOK_KEY_BRIDGES = \[([\s\S]*?)\];/);
-  assert.ok(block, "BYOK_KEY_BRIDGES declared in preload.js");
-  for (const k of BYOK_API_KEYS) {
-    const entry = new RegExp(
-      `\\{\\s*base:\\s*"${k.base}",\\s*get:\\s*"${k.get}",\\s*save:\\s*"${k.save}",?\\s*\\}`
-    );
-    assert.match(block[1], entry, `preload mirrors ${k.base}`);
-  }
-  const bridgeCount = (block[1].match(/base:/g) || []).length;
-  assert.equal(bridgeCount, BYOK_API_KEYS.length, "no extra/missing preload bridges");
+  assert.doesNotMatch(preloadSrc, /BYOK_KEY_BRIDGES/, "inlined preload tuples removed");
 });

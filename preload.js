@@ -16,35 +16,7 @@ const { createLocalLlmModelsBridge } = require("./src/preload/localLlmModelsBrid
 const { createSpeakerBridge } = require("./src/preload/speakerBridge");
 const { createTranscriptionExecutionBridge } = require("./src/preload/transcriptionExecutionBridge");
 const { createTranscriptionDataBridge } = require("./src/preload/transcriptionDataBridge");
-
-// BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
-// preloads can't require local modules, so the {base, get, save} tuples are
-// inlined here; keep them in sync with the BYOK_API_KEYS manifest in
-// src/config/secretKeys.js (the main process derives its plumbing from that).
-const BYOK_KEY_BRIDGES = [
-  { base: "openai", get: "getOpenAIKey", save: "saveOpenAIKey" },
-  { base: "anthropic", get: "getAnthropicKey", save: "saveAnthropicKey" },
-  { base: "gemini", get: "getGeminiKey", save: "saveGeminiKey" },
-  { base: "groq", get: "getGroqKey", save: "saveGroqKey" },
-  { base: "xai", get: "getXaiKey", save: "saveXaiKey" },
-  { base: "mistral", get: "getMistralKey", save: "saveMistralKey" },
-  { base: "openrouter", get: "getOpenrouterKey", save: "saveOpenrouterKey" },
-  { base: "tinfoil", get: "getTinfoilKey", save: "saveTinfoilKey" },
-  { base: "corti", get: "getCortiKey", save: "saveCortiKey" },
-  { base: "deepgram", get: "getDeepgramKey", save: "saveDeepgramKey" },
-  { base: "assemblyai", get: "getAssemblyAIKey", save: "saveAssemblyAIKey" },
-  {
-    base: "note-formatting-custom",
-    get: "getNoteFormattingCustomKey",
-    save: "saveNoteFormattingCustomKey",
-  },
-  { base: "chat-agent-custom", get: "getChatAgentCustomKey", save: "saveChatAgentCustomKey" },
-];
-const secretKeyApi = {};
-for (const k of BYOK_KEY_BRIDGES) {
-  secretKeyApi[k.get] = () => ipcRenderer.invoke(`get-${k.base}-key`);
-  secretKeyApi[k.save] = (key) => ipcRenderer.invoke(`save-${k.base}-key`, key);
-}
+const { createDesktopSettingsBridge } = require("./src/preload/desktopSettingsBridge");
 
 /**
  * Helper to register an IPC listener and return a cleanup function.
@@ -83,10 +55,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createSpeakerBridge(ipcRenderer),
   ...createTranscriptionExecutionBridge(ipcRenderer),
   ...createTranscriptionDataBridge(ipcRenderer),
+  ...createDesktopSettingsBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
-  setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
-  setOnboardingActive: (active) => ipcRenderer.invoke("onboarding-set-active", active),
   meetingTranscriptionPrepare: (options) =>
     ipcRenderer.invoke("meeting-transcription-prepare", options),
   meetingTranscriptionStart: (options) =>
@@ -142,16 +113,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createUrlDownloadBridge(ipcRenderer),
 
 
-  // BYOK API keys (get/save for every provider in the secretKeys manifest)
-  ...secretKeyApi,
-
-  // Clipboard functions
-  checkAccessibilityPermission: (silent) =>
-    ipcRenderer.invoke("check-accessibility-permission", silent),
-  promptAccessibilityPermission: () => ipcRenderer.invoke("prompt-accessibility-permission"),
-  readClipboard: () => ipcRenderer.invoke("read-clipboard"),
-  writeClipboard: (text) => ipcRenderer.invoke("write-clipboard", text),
-
   // Local Whisper/Parakeet model lifecycle (downloads, status, servers,
   // VAD config, diagnostics) lives in the typed localModelLifecycleBridge.
 
@@ -161,21 +122,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ),
 
 
-  // Window control functions
-  windowMinimize: () => ipcRenderer.invoke("window-minimize"),
-  windowMaximize: () => ipcRenderer.invoke("window-maximize"),
-  windowClose: () => ipcRenderer.invoke("window-close"),
-  windowIsMaximized: () => ipcRenderer.invoke("window-is-maximized"),
-  snapToMeetingMode: () => ipcRenderer.invoke("snap-to-meeting-mode"),
-  restoreFromMeetingMode: () => ipcRenderer.invoke("restore-from-meeting-mode"),
   getPlatform: () => process.platform,
 
-  // Cleanup function
-  cleanupApp: () => ipcRenderer.invoke("cleanup-app"),
-  setHotkeyListeningMode: (enabled) => ipcRenderer.invoke("set-hotkey-listening-mode", enabled),
-  getHotkeyModeInfo: (hotkey) => ipcRenderer.invoke("get-hotkey-mode-info", hotkey),
-  startControlPanelDrag: () => ipcRenderer.invoke("start-control-panel-drag"),
-  stopControlPanelDrag: () => ipcRenderer.invoke("stop-control-panel-drag"),
   onMainWindowHorizontalDirectionChanged: registerListener(
     "main-window-horizontal-direction-changed",
     (callback) => (_event, direction) => callback(direction)
@@ -184,73 +132,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     "main-window-will-resize",
     (callback) => (_event, resize) => callback(resize)
   ),
-  setNotificationInteractivity: (interactive) =>
-    ipcRenderer.invoke("set-notification-interactivity", interactive),
-  getOAuthProtocolRegistered: () => ipcRenderer.invoke("get-oauth-protocol-registered"),
-  getOAuthProtocol: () => ipcRenderer.invoke("get-oauth-protocol"),
   // Audio event listeners
-  onCancelHotkeyPressed: registerListener("cancel-hotkey-pressed", (cb) => () => cb()),
-  registerCancelHotkey: (key) => ipcRenderer.invoke("register-cancel-hotkey", key),
-  unregisterCancelHotkey: () => ipcRenderer.invoke("unregister-cancel-hotkey"),
-
-  // External link opener
-  openExternal: (url) => ipcRenderer.invoke("open-external", url),
-
-  getUiLanguage: () => ipcRenderer.invoke("get-ui-language"),
-  saveUiLanguage: (language) => ipcRenderer.invoke("save-ui-language", language),
-  setUiLanguage: (language) => ipcRenderer.invoke("set-ui-language", language),
-
   // The xAI/Mistral/Corti/Tinfoil/Gemini transcription proxies and the
   // Tinfoil chat model catalog come from the typed
   // transcriptionExecutionBridge above.
-
-  // Corti API
-  getCortiClientId: () => ipcRenderer.invoke("get-corti-client-id"),
-  saveCortiClientId: (key) => ipcRenderer.invoke("save-corti-client-id", key),
-  getCortiClientSecret: () => ipcRenderer.invoke("get-corti-client-secret"),
-  saveCortiClientSecret: (key) => ipcRenderer.invoke("save-corti-client-secret", key),
-
-  // Custom endpoint API keys
-  getCustomTranscriptionKey: () => ipcRenderer.invoke("get-custom-transcription-key"),
-  saveCustomTranscriptionKey: (key) => ipcRenderer.invoke("save-custom-transcription-key", key),
-  getCleanupCustomKey: () => ipcRenderer.invoke("get-cleanup-custom-key"),
-  saveCleanupCustomKey: (key) => ipcRenderer.invoke("save-cleanup-custom-key", key),
-
-  // Enterprise provider key management
-  getBedrockRegion: () => ipcRenderer.invoke("get-bedrock-region"),
-  saveBedrockRegion: (value) => ipcRenderer.invoke("save-bedrock-region", value),
-  getBedrockProfile: () => ipcRenderer.invoke("get-bedrock-profile"),
-  saveBedrockProfile: (value) => ipcRenderer.invoke("save-bedrock-profile", value),
-  getBedrockAccessKeyId: () => ipcRenderer.invoke("get-bedrock-access-key-id"),
-  saveBedrockAccessKeyId: (key) => ipcRenderer.invoke("save-bedrock-access-key-id", key),
-  getBedrockSecretAccessKey: () => ipcRenderer.invoke("get-bedrock-secret-access-key"),
-  saveBedrockSecretAccessKey: (key) => ipcRenderer.invoke("save-bedrock-secret-access-key", key),
-  getBedrockSessionToken: () => ipcRenderer.invoke("get-bedrock-session-token"),
-  saveBedrockSessionToken: (key) => ipcRenderer.invoke("save-bedrock-session-token", key),
-  getAzureEndpoint: () => ipcRenderer.invoke("get-azure-endpoint"),
-  saveAzureEndpoint: (value) => ipcRenderer.invoke("save-azure-endpoint", value),
-  getAzureApiKey: () => ipcRenderer.invoke("get-azure-api-key"),
-  saveAzureApiKey: (key) => ipcRenderer.invoke("save-azure-api-key", key),
-  getAzureDeployment: () => ipcRenderer.invoke("get-azure-deployment"),
-  saveAzureDeployment: (value) => ipcRenderer.invoke("save-azure-deployment", value),
-  getAzureApiVersion: () => ipcRenderer.invoke("get-azure-api-version"),
-  saveAzureApiVersion: (value) => ipcRenderer.invoke("save-azure-api-version", value),
-  getVertexProject: () => ipcRenderer.invoke("get-vertex-project"),
-  saveVertexProject: (value) => ipcRenderer.invoke("save-vertex-project", value),
-  getVertexLocation: () => ipcRenderer.invoke("get-vertex-location"),
-  saveVertexLocation: (value) => ipcRenderer.invoke("save-vertex-location", value),
-  getVertexApiKey: () => ipcRenderer.invoke("get-vertex-api-key"),
-  saveVertexApiKey: (key) => ipcRenderer.invoke("save-vertex-api-key", key),
-
-  // App metadata
-  getAppVersion: () => ipcRenderer.invoke("get-app-version"),
-
-  // Activation mode persistence (file-based for reliable startup)
-  getActivationMode: () => ipcRenderer.invoke("get-activation-mode"),
-  saveActivationMode: (mode) => ipcRenderer.invoke("save-activation-mode", mode),
-
-  saveAllKeysToEnv: () => ipcRenderer.invoke("save-all-keys-to-env"),
-  syncStartupPreferences: (prefs) => ipcRenderer.invoke("sync-startup-preferences", prefs),
 
   // Local, Anthropic and enterprise one-shot reasoning plus the enterprise
   // stream lifecycle come from the typed reasoningBridge above.
@@ -258,30 +143,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Enterprise reasoning (Bedrock, Azure, Vertex) and its streams live in the
   // typed reasoningBridge above; the Bedrock model listing comes from the
   // transcriptionExecutionBridge.
-  getLogLevel: () => ipcRenderer.invoke("get-log-level"),
-  log: (entry) => ipcRenderer.invoke("app-log", entry),
-
-  // Debug logging management
-  getDebugState: () => ipcRenderer.invoke("get-debug-state"),
-  setDebugLogging: (enabled) => ipcRenderer.invoke("set-debug-logging", enabled),
-  openLogsFolder: () => ipcRenderer.invoke("open-logs-folder"),
-
-  // System settings helpers for microphone/audio permissions
-  requestMicrophoneAccess: () => ipcRenderer.invoke("request-microphone-access"),
-  checkMicrophoneAccess: () => ipcRenderer.invoke("check-microphone-access"),
-  getSystemDefaultMicrophone: (options) =>
-    ipcRenderer.invoke("get-system-default-microphone", options),
-  checkSystemAudioAccess: () => ipcRenderer.invoke("check-system-audio-access"),
-  requestSystemAudioAccess: () => ipcRenderer.invoke("request-system-audio-access"),
-  openMicrophoneSettings: () => ipcRenderer.invoke("open-microphone-settings"),
-  openSoundInputSettings: () => ipcRenderer.invoke("open-sound-input-settings"),
-  openAccessibilitySettings: () => ipcRenderer.invoke("open-accessibility-settings"),
-  openSystemAudioSettings: () => ipcRenderer.invoke("open-system-audio-settings"),
-  openScreenRecordingSettings: () => ipcRenderer.invoke("open-screen-recording-settings"),
-  openLoginItemsSettings: () => ipcRenderer.invoke("open-login-items-settings"),
-  showEmojiPanel: () => ipcRenderer.invoke("show-emoji-panel"),
-  getModelCacheRoot: () => ipcRenderer.invoke("get-model-cache-root"),
-  openWhisperModelsFolder: () => ipcRenderer.invoke("open-whisper-models-folder"),
   // BYOK file transcription and its hard cancel come from the typed
   // uploadTranscriptionBridge above.
   onUploadTranscriptionProgress: registerListener(
@@ -376,10 +237,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Start minimized
   notifyStartMinimizedChanged: (enabled) => ipcRenderer.send("start-minimized-changed", enabled),
 
-  // Auto-start management
-  getAutoStartEnabled: () => ipcRenderer.invoke("get-auto-start-enabled"),
-  setAutoStartEnabled: (enabled) => ipcRenderer.invoke("set-auto-start-enabled", enabled),
-
   acquireRecordingLock: (pipeline) => ipcRenderer.invoke("acquire-recording-lock", pipeline),
   releaseRecordingLock: (pipeline) => ipcRenderer.invoke("release-recording-lock", pipeline),
 
@@ -387,16 +244,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Google/Microsoft/Apple Calendar commands and events live in the typed
   // calendarBridge above (availability has its own bridge).
 
-  // Contacts
-
-  getMD5Hash: (text) => ipcRenderer.invoke("get-md5-hash", text),
-
   // Meeting detection
   meetingDetectionGetPreferences: () => ipcRenderer.invoke("meeting-detection-get-preferences"),
   meetingDetectionSetPreferences: (prefs) =>
     ipcRenderer.invoke("meeting-detection-set-preferences", prefs),
-  syncNotificationPreferences: (prefs) =>
-    ipcRenderer.invoke("sync-notification-preferences", prefs),
   setSpeakerDiarizationEnabled: (enabled) =>
     ipcRenderer.invoke("meeting-set-speaker-diarization-enabled", { enabled }),
   setMeetingSessionSpeakerConfig: (config) =>

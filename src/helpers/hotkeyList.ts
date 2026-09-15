@@ -7,22 +7,21 @@
 
 const HOTKEY_LIST_SEPARATOR = ",";
 
+export type StoredHotkeyListValue = string | string[] | null | undefined;
+
 /**
  * Normalize a stored hotkey value (string, comma-separated string, or array)
  * into a clean array: trimmed, de-duplicated, empties removed, order preserved.
- *
- * @param {string|string[]|null|undefined} value
- * @returns {string[]}
  */
-function parseHotkeyList(value) {
+export function parseHotkeyList(value: StoredHotkeyListValue): string[] {
   if (value == null) return [];
 
   const raw = Array.isArray(value)
     ? value.flatMap((item) => String(item).split(HOTKEY_LIST_SEPARATOR))
     : String(value).split(HOTKEY_LIST_SEPARATOR);
 
-  const seen = new Set();
-  const result = [];
+  const seen = new Set<string>();
+  const result: string[] = [];
   for (let i = 0; i < raw.length; i++) {
     let hotkey = raw[i].trim();
     // A non-final segment ending in "+" lost its comma key to the split only if
@@ -39,15 +38,7 @@ function parseHotkeyList(value) {
 
 /**
  * Serialize a hotkey value into the canonical comma-separated storage string.
- *
- * @param {string|string[]|null|undefined} value
- * @returns {string}
  */
-function serializeHotkeyList(value) {
+export function serializeHotkeyList(value: StoredHotkeyListValue): string {
   return parseHotkeyList(value).join(HOTKEY_LIST_SEPARATOR);
 }
-
-module.exports = {
-  parseHotkeyList,
-  serializeHotkeyList,
-};

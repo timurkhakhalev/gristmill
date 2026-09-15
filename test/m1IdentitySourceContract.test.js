@@ -41,8 +41,8 @@ test("M1 secrets, local storage, and renderer sessions use OpenHercules namespac
   assert.match(read("src/lib/authAccountScope.ts"), /openhercules:accountScope/);
   assert.match(read("src/helpers/modelDirUtils.ts"), /\.cache", "openhercules/);
   assert.match(read("src/helpers/cliBridge.ts"), /"\.openhercules"/);
-  assert.match(read("src/helpers/windowConfig.js"), /persist:openhercules/);
-  assert.match(read("src/helpers/windowConfig.js"), /partition: OPENHERCULES_SESSION_PARTITION/);
+  assert.match(read("src/helpers/windowConfig.ts"), /persist:openhercules/);
+  assert.match(read("src/helpers/windowConfig.ts"), /partition: OPENHERCULES_SESSION_PARTITION/);
 });
 
 test("M1 removes updater and old-bundle migration runtime", () => {

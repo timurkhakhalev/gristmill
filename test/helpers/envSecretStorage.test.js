@@ -44,7 +44,7 @@ function createFixture({
 
   const secretCryptoModulePath = require.resolve("../../src/helpers/secretCrypto.ts");
   const environmentModulePath = require.resolve("../../src/helpers/environment.ts");
-  const debugLoggerPath = require.resolve("../../src/helpers/debugLogger.js");
+  const debugLoggerPath = require.resolve("../../src/helpers/debugLogger.ts");
   delete require.cache[secretCryptoModulePath];
   delete require.cache[environmentModulePath];
 

@@ -1,41 +1,87 @@
-const { app, screen, BrowserWindow, dialog, ipcMain } = require("electron");
-const debugLogger = require("./debugLogger");
+import { app, screen, BrowserWindow, dialog, type WebContents } from "electron";
+import debugLogger from "./debugLogger.js";
 // Aliased: this class has an openExternalUrl method wrapping the helper.
-const { openExternalUrl: openUrlInExternalBrowser } = require("./externalUrlOpener");
-const HotkeyManager = require("./hotkeyManager");
-const DragManager = require("./dragManager");
-const MenuManager = require("./menuManager");
-const DevServerManager = require("./devServerManager");
-const { isAllowedAppNavigation, isExternalBrowserUrl } = require("./navigationGuard");
-const { pathToFileURL } = require("url");
-const dockManager = require("./dockManager");
-const { i18nMain } = require("./i18nMain");
-const { NotificationDismissTimer, getNotificationTimeoutMs } = require("./notificationTimer");
-const { DEV_SERVER_PORT } = DevServerManager;
-const AUTO_END_NOTIFICATION_LOAD_TIMEOUT_MS = 10_000;
-const {
+import { openExternalUrl as openUrlInExternalBrowser } from "./externalUrlOpener.js";
+import { HotkeyManager } from "./hotkeyManager.js";
+import { DragManager, type DragOperationResult } from "./dragManager.js";
+import { MenuManager } from "./menuManager.js";
+import { DevServerManager } from "./devServerManager.js";
+import { isAllowedAppNavigation, isExternalBrowserUrl } from "./navigationGuard.js";
+import { pathToFileURL } from "url";
+import dockManager from "./dockManager.js";
+import { i18nMain } from "./i18nMain.js";
+import { NotificationDismissTimer, getNotificationTimeoutMs } from "./notificationTimer.js";
+import type { MeetingNotificationPrompt } from "./windowConfig.js";
+import {
   CONTROL_PANEL_CONFIG,
   ONBOARDING_WINDOW_SIZES,
   NOTIFICATION_WINDOW_CONFIG,
   getMeetingNotificationWindowSize,
   WindowPositionUtil,
-} = require("./windowConfig");
-const { centeredBounds, clampedBounds } = require("./onboardingWindowBounds");
+} from "./windowConfig.js";
+import { centeredBounds, clampedBounds, type WindowBounds } from "./onboardingWindowBounds.js";
+import fs from "fs";
+import type { TrayManager } from "./tray.js";
 
-class WindowManager {
+const AUTO_END_NOTIFICATION_LOAD_TIMEOUT_MS = 10_000;
+
+// The window manager only needs these three engine entry points; the engine's
+// detection algorithm stays its own owner (set from main.js).
+export interface MeetingDetectionEngineCallbacks {
+  handleNotificationTimeout?(notification?: MeetingNotificationPrompt | null): void;
+  handleAutoEndNotificationClosed?(
+    sessionId: string,
+    options?: { flushQueued?: boolean }
+  ): void;
+  handleDetectionNotificationClosed?(
+    detectionId: string,
+    options?: { flushQueued?: boolean }
+  ): void;
+}
+
+interface OnboardingWindowState {
+  resizable: boolean;
+  minimizable: boolean;
+  maximizable: boolean;
+  closable: boolean;
+  fullscreenable: boolean;
+  minimumSize: number[];
+}
+
+export class WindowManager {
+  controlPanelWindow: BrowserWindow | null = null;
+  _controlPanelVisibilityTimer: NodeJS.Timeout | null = null;
+  _onboardingRestoreBounds: WindowBounds | null = null;
+  _onboardingWindowMode: string | null = null;
+  _onboardingWindowState: OnboardingWindowState | null = null;
+  // Fail closed until AppRouter has resolved persisted onboarding state and
+  // committed the normal app. This covers the startup gap before React mounts.
+  _onboardingActive = true;
+  // Set by IPCHandlers so its demo session dies with the demo kind on every
+  // teardown path (id-matched end, onboarding exit, control panel closed).
+  notificationWindow: BrowserWindow | null = null;
+  _notificationLoadTimeout: NodeJS.Timeout | null = null;
+  _notificationDismissTimer: NotificationDismissTimer;
+  notificationPrefs = {
+    notificationsEnabled: true,
+    notifyMeetingDetection: true,
+    notifyCalendarReminders: true,
+  };
+  tray: TrayManager | null = null;
+  hotkeyManager: HotkeyManager;
+  dragManager: DragManager;
+  isQuitting = false;
+  loadErrorShown = false;
+  _pendingMeetingNoteNavigation: unknown = null;
+  _pendingNoteNavigation: unknown = null;
+  meetingDetectionEngine: MeetingDetectionEngineCallbacks | null = null;
+  _pendingNotificationData: MeetingNotificationPrompt | null = null;
+  _notificationReadyFallback: NodeJS.Timeout | null = null;
+  _preMeetingBounds: WindowBounds | null = null;
+
   constructor() {
-    this.controlPanelWindow = null;
-    this._controlPanelVisibilityTimer = null;
-    this._onboardingRestoreBounds = null;
-    this._onboardingWindowMode = null;
-    this._onboardingWindowState = null;
-    // Fail closed until AppRouter has resolved persisted onboarding state and
-    // committed the normal app. This covers the startup gap before React mounts.
-    this._onboardingActive = true;
-    // Set by IPCHandlers so its demo session dies with the demo kind on every
-    // teardown path (id-matched end, onboarding exit, control panel closed).
-    this.notificationWindow = null;
-    this._notificationLoadTimeout = null;
+    this.hotkeyManager = new HotkeyManager();
+    this.dragManager = new DragManager();
     this._notificationDismissTimer = new NotificationDismissTimer(() => {
       const notification = this._pendingNotificationData;
       // Dismiss first: an expiring restart offer lets the engine flush the
@@ -46,21 +92,9 @@ class WindowManager {
       // about to clear.
       this.dismissMeetingNotification({ notifyEngine: false });
       if (this.meetingDetectionEngine) {
-        this.meetingDetectionEngine.handleNotificationTimeout(notification);
+        this.meetingDetectionEngine.handleNotificationTimeout?.(notification);
       }
     });
-    this.notificationPrefs = {
-      notificationsEnabled: true,
-      notifyMeetingDetection: true,
-      notifyCalendarReminders: true,
-    };
-    this.tray = null;
-    this.hotkeyManager = new HotkeyManager();
-    this.dragManager = new DragManager();
-    this.isQuitting = false;
-    this.loadErrorShown = false;
-    this._pendingMeetingNoteNavigation = null;
-    this._pendingNoteNavigation = null;
 
     app.on("before-quit", () => {
       this.isQuitting = true;
@@ -71,7 +105,7 @@ class WindowManager {
   // Only the meeting prompt owns this: another overlay reporting its own hover
   // must not pause a countdown it cannot resume — it may be destroyed before
   // its pointer ever leaves.
-  setNotificationInteractivity(sender, interactive) {
+  setNotificationInteractivity(sender: WebContents, interactive: boolean): void {
     const win = this.notificationWindow;
     if (!win || win.isDestroyed() || sender !== win.webContents) {
       return;
@@ -87,38 +121,37 @@ class WindowManager {
     }
   }
 
-  async loadWindowContent(window, isControlPanel = false) {
+  async loadWindowContent(window: BrowserWindow | null, isControlPanel = false): Promise<void> {
     if (process.env.NODE_ENV === "development") {
       const appUrl = DevServerManager.getAppUrl(isControlPanel);
       await DevServerManager.waitForDevServer();
-      await window.loadURL(appUrl);
+      await window!.loadURL(appUrl as string);
     } else {
       const fileInfo = DevServerManager.getAppFilePath(isControlPanel);
       if (!fileInfo) {
         throw new Error("Failed to get app file path");
       }
 
-      const fs = require("fs");
       if (!fs.existsSync(fileInfo.path)) {
         throw new Error(`HTML file not found: ${fileInfo.path}`);
       }
 
-      await window.loadFile(fileInfo.path, { query: fileInfo.query });
+      await window!.loadFile(fileInfo.path, { query: fileInfo.query });
     }
   }
 
   // Public gate for main.js's meeting hotkey call sites, which invoke the
   // detection engine directly rather than routing through a send method here.
   // "meeting" is never a demo kind, so this is simply "not during onboarding".
-  isMeetingInputAllowed() {
+  isMeetingInputAllowed(): boolean {
     return !this._onboardingActive;
   }
 
-  setHotkeyListeningMode(enabled) {
+  setHotkeyListeningMode(enabled: boolean): void {
     this.hotkeyManager.setListeningMode(enabled);
   }
 
-  isUsingNativeShortcutHotkeys() {
+  isUsingNativeShortcutHotkeys(): boolean {
     return this.hotkeyManager.isUsingNativeShortcut();
   }
 
@@ -126,29 +159,29 @@ class WindowManager {
   // `-webkit-app-region: drag` entirely — the renderer recreates its titlebar
   // drag through the shared DragManager instead (useControlPanelWindowDrag).
   // No pill bookkeeping: position ownership below is main-window-only.
-  async startControlPanelDrag() {
+  async startControlPanelDrag(): Promise<DragOperationResult> {
     if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
       return { success: false, message: "Window not available" };
     }
     return await this.dragManager.startWindowDrag(this.controlPanelWindow);
   }
 
-  async stopControlPanelDrag() {
+  async stopControlPanelDrag(): Promise<DragOperationResult> {
     return await this.dragManager.stopWindowDrag();
   }
 
-  openExternalUrl(url, showError = true) {
-    openUrlInExternalBrowser(url).catch((error) => {
+  openExternalUrl(url: string, showError = true): void {
+    openUrlInExternalBrowser(url).catch((error: unknown) => {
       if (showError) {
         dialog.showErrorBox(
           i18nMain.t("dialog.openLink.title"),
-          i18nMain.t("dialog.openLink.message", { url, error: error.message })
+          i18nMain.t("dialog.openLink.message", { url, error: (error as Error).message })
         );
       }
     });
   }
 
-  async createControlPanelWindow() {
+  async createControlPanelWindow(): Promise<void> {
     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
       if (this.controlPanelWindow.isMinimized()) {
         this.controlPanelWindow.restore();
@@ -170,7 +203,7 @@ class WindowManager {
       // getAppUrl() is null in packaged builds; exactly one of the two is set.
       const appUrl =
         DevServerManager.getAppUrl(true) ??
-        pathToFileURL(DevServerManager.getAppFilePath(true).path).href;
+        pathToFileURL(DevServerManager.getAppFilePath(true)!.path).href;
 
       if (isAllowedAppNavigation(url, appUrl)) {
         return;
@@ -264,7 +297,7 @@ class WindowManager {
     });
 
     this.controlPanelWindow.on("show", () => {
-      if (this.controlPanelWindow.webContents.isCrashed()) {
+      if (this.controlPanelWindow?.webContents.isCrashed()) {
         debugLogger.error("Control panel crashed, reloading on show", undefined, "window");
         this.loadControlPanel();
       }
@@ -273,26 +306,26 @@ class WindowManager {
     await this.loadControlPanel();
   }
 
-  async loadControlPanel() {
+  async loadControlPanel(): Promise<void> {
     await this.loadWindowContent(this.controlPanelWindow, true);
   }
 
-  setOnboardingActive(active) {
+  setOnboardingActive(active: unknown): boolean {
     this._onboardingActive = active === true;
     if (this._onboardingActive) this._hideNormalAppSurfaces();
     return true;
   }
 
-  _hideNormalAppSurfaces() {
+  _hideNormalAppSurfaces(): void {
     this.dismissMeetingNotification({ flushQueued: false });
   }
 
-  _clearControlPanelVisibilityTimer() {
-    clearTimeout(this._controlPanelVisibilityTimer);
+  _clearControlPanelVisibilityTimer(): void {
+    clearTimeout(this._controlPanelVisibilityTimer as NodeJS.Timeout);
     this._controlPanelVisibilityTimer = null;
   }
 
-  _showControlPanel() {
+  _showControlPanel(): void {
     const win = this.controlPanelWindow;
     if (!win || win.isDestroyed()) return;
     // Cancel the backstop either way: once the window has been shown on purpose,
@@ -307,7 +340,7 @@ class WindowManager {
   // Compact onboarding starts at smaller bounds, but both modes expose the
   // complete window-control contract so a frameless window never traps the
   // user in setup.
-  _applyOnboardingWindowChrome(win, mode) {
+  _applyOnboardingWindowChrome(win: BrowserWindow, mode: string): void {
     const expanded = mode === "expanded";
     win.setResizable(true);
     win.setMinimizable(true);
@@ -328,7 +361,7 @@ class WindowManager {
     }
   }
 
-  setOnboardingWindowMode(mode) {
+  setOnboardingWindowMode(mode: string): boolean {
     const win = this.controlPanelWindow;
     if (!win || win.isDestroyed()) return false;
     if (!new Set(["compact", "expanded", "restore"]).has(mode)) return false;
@@ -359,7 +392,9 @@ class WindowManager {
         win.setMaximizable(state.maximizable);
         win.setClosable(state.closable);
         win.setFullScreenable(state.fullscreenable);
-        if (state.minimumSize) win.setMinimumSize(...state.minimumSize);
+        if (state.minimumSize) {
+          win.setMinimumSize(state.minimumSize[0], state.minimumSize[1]);
+        }
       }
       if (process.platform === "darwin" && typeof win.setWindowButtonVisibility === "function") {
         win.setWindowButtonVisibility(true);
@@ -410,7 +445,7 @@ class WindowManager {
     return true;
   }
 
-  hideControlPanelToTray() {
+  hideControlPanelToTray(): void {
     if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
       return;
     }
@@ -425,7 +460,10 @@ class WindowManager {
     dockManager.setControlPanelVisible(false);
   }
 
-  async showMeetingNotification(promptData, { autoDismiss = true, autoDismissAt = null } = {}) {
+  async showMeetingNotification(
+    promptData: MeetingNotificationPrompt,
+    { autoDismiss = true, autoDismissAt = null }: { autoDismiss?: boolean; autoDismissAt?: number | null } = {}
+  ): Promise<boolean> {
     if (this._onboardingActive) return false;
     if (this.notificationWindow && !this.notificationWindow.isDestroyed()) {
       const previousWindow = this.notificationWindow;
@@ -504,7 +542,7 @@ class WindowManager {
     // Everything past the load addresses `win` directly: a replacement taking
     // over mid-load must not have this prompt's data, countdown or force-show
     // applied to its window.
-    let loadTimeout = null;
+    let loadTimeout: NodeJS.Timeout | null = null;
     try {
       const loadNotification = async () => {
         if (process.env.NODE_ENV === "development") {
@@ -514,14 +552,14 @@ class WindowManager {
           return;
         }
 
-        const fileInfo = DevServerManager.getAppFilePath(false);
+        const fileInfo = DevServerManager.getAppFilePath(false)!;
         await win.loadFile(fileInfo.path, {
           query: { ...fileInfo.query, "meeting-notification": "true" },
         });
       };
       const loadPromise = loadNotification();
       if (promptData?.kind === "auto-end") {
-        const timeoutPromise = new Promise((_, reject) => {
+        const timeoutPromise = new Promise<never>((_, reject) => {
           loadTimeout = setTimeout(() => {
             if (this._notificationLoadTimeout === loadTimeout) {
               this._notificationLoadTimeout = null;
@@ -574,7 +612,7 @@ class WindowManager {
 
   // Only the window that loaded the prompt may reveal it: a stale window's late
   // "ready" must not clear the fallback that would force-show its replacement.
-  showNotificationWindow(ownerWebContents) {
+  showNotificationWindow(ownerWebContents?: WebContents | null): void {
     if (this._onboardingActive) {
       this.dismissMeetingNotification();
       return;
@@ -591,7 +629,10 @@ class WindowManager {
     win.showInactive();
   }
 
-  dismissMeetingNotification({ notifyEngine = true, flushQueued = true } = {}) {
+  dismissMeetingNotification({
+    notifyEngine = true,
+    flushQueued = true,
+  } = {}): void {
     const notification = this._pendingNotificationData;
     this._pendingNotificationData = null;
     if (this._notificationReadyFallback) {
@@ -607,20 +648,28 @@ class WindowManager {
     this.notificationWindow = null;
     if (win && !win.isDestroyed()) win.close();
     if (notifyEngine && notification?.kind === "detection") {
-      this.meetingDetectionEngine?.handleDetectionNotificationClosed?.(notification.detectionId, {
+      this.meetingDetectionEngine?.handleDetectionNotificationClosed?.(notification.detectionId!, {
         flushQueued,
       });
     }
   }
 
-  showMeetingAutoEndNotification({ sessionId, expiresAt, reason }) {
+  showMeetingAutoEndNotification({
+    sessionId,
+    expiresAt,
+    reason,
+  }: {
+    sessionId: string;
+    expiresAt: number;
+    reason: string;
+  }): Promise<boolean> {
     return this.showMeetingNotification(
       { kind: "auto-end", sessionId, expiresAt, reason },
       { autoDismissAt: expiresAt }
     );
   }
 
-  dismissMeetingAutoEndNotification(sessionId) {
+  dismissMeetingAutoEndNotification(sessionId: string): void {
     if (
       this._pendingNotificationData?.kind !== "auto-end" ||
       this._pendingNotificationData.sessionId !== sessionId
@@ -630,12 +679,12 @@ class WindowManager {
     this.dismissMeetingNotification();
   }
 
-  isMeetingNotificationSender(sender) {
+  isMeetingNotificationSender(sender: WebContents): boolean {
     const win = this.notificationWindow;
     return !!win && !win.isDestroyed() && win.webContents === sender;
   }
 
-  sendToControlPanel(channel, data) {
+  sendToControlPanel(channel: string, data?: unknown): void {
     const win = this.controlPanelWindow;
     if (!win || win.isDestroyed()) return;
     if (win.webContents.isLoading()) {
@@ -647,31 +696,31 @@ class WindowManager {
     }
   }
 
-  async queueMeetingNoteNavigation(payload) {
+  async queueMeetingNoteNavigation(payload: unknown): Promise<void> {
     this._pendingMeetingNoteNavigation = payload;
     await this.createControlPanelWindow();
     this.sendToControlPanel("meeting-note-navigation-pending");
   }
 
-  consumePendingMeetingNoteNavigation() {
+  consumePendingMeetingNoteNavigation(): unknown {
     const payload = this._pendingMeetingNoteNavigation;
     this._pendingMeetingNoteNavigation = null;
     return payload;
   }
 
-  async queueNoteNavigation(payload) {
+  async queueNoteNavigation(payload: unknown): Promise<void> {
     this._pendingNoteNavigation = payload;
     await this.createControlPanelWindow();
     this.sendToControlPanel("note-navigation-pending");
   }
 
-  consumePendingNoteNavigation() {
+  consumePendingNoteNavigation(): unknown {
     const payload = this._pendingNoteNavigation;
     this._pendingNoteNavigation = null;
     return payload;
   }
 
-  snapControlPanelToMeetingMode() {
+  snapControlPanelToMeetingMode(): void {
     const win = this.controlPanelWindow;
     if (!win || win.isDestroyed()) return;
     this._preMeetingBounds = win.getBounds();
@@ -687,7 +736,7 @@ class WindowManager {
     win.focus();
   }
 
-  restoreControlPanelFromMeetingMode() {
+  restoreControlPanelFromMeetingMode(): void {
     const win = this.controlPanelWindow;
     if (!win || win.isDestroyed()) return;
     if (this._preMeetingBounds) {
@@ -695,12 +744,12 @@ class WindowManager {
       this._preMeetingBounds = null;
     } else {
       const { width, height } = CONTROL_PANEL_CONFIG;
-      win.setSize(width, height);
+      win.setSize(width as number, height as number);
       win.center();
     }
   }
 
-  refreshLocalizedUi() {
+  refreshLocalizedUi(): void {
     MenuManager.setupMainMenu(() => this.openSettings());
 
     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
@@ -710,14 +759,19 @@ class WindowManager {
 
   }
 
-  async openSettings() {
+  async openSettings(): Promise<void> {
     await this.createControlPanelWindow();
     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
       this.controlPanelWindow.webContents.send("show-settings");
     }
   }
 
-  showLoadFailureDialog(windowName, errorCode, errorDescription, validatedURL) {
+  showLoadFailureDialog(
+    windowName: string,
+    errorCode: number,
+    errorDescription: string,
+    validatedURL: string
+  ): void {
     if (this.loadErrorShown) {
       return;
     }
@@ -738,3 +792,4 @@ class WindowManager {
 }
 
 module.exports = WindowManager;
+module.exports.WindowManager = WindowManager;

@@ -5,7 +5,7 @@ const {
   getLoginItemArgs,
   resolveAutoStartState,
   wasLaunchedHidden,
-} = require("../../src/helpers/autoStartPolicy.js");
+} = require("../../src/helpers/autoStartPolicy.ts");
 
 test("macOS login items use no command-line arguments", () => {
   assert.deepEqual(getLoginItemArgs(), []);

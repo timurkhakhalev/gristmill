@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const WINDOW_CONFIG_PATH = require.resolve("../../src/helpers/windowConfig.js");
+const WINDOW_CONFIG_PATH = require.resolve("../../src/helpers/windowConfig.ts");
 const { resolveOverlayWindowType } = require(WINDOW_CONFIG_PATH);
 
 const SESSION_ENV_KEYS = [

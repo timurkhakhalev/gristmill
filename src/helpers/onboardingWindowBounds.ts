@@ -1,4 +1,18 @@
-function centeredBounds(current, target, workArea) {
+export interface WindowBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type WindowSize = Pick<WindowBounds, "width" | "height">;
+type WorkArea = WindowBounds;
+
+export function centeredBounds(
+  current: WindowBounds,
+  target: WindowSize,
+  workArea: WorkArea
+): WindowBounds {
   const width = Math.min(target.width, workArea.width);
   const height = Math.min(target.height, workArea.height);
   const centerX = current.x + current.width / 2;
@@ -12,7 +26,7 @@ function centeredBounds(current, target, workArea) {
   return { x, y, width, height };
 }
 
-function clampedBounds(bounds, workArea) {
+export function clampedBounds(bounds: WindowBounds, workArea: WorkArea): WindowBounds {
   const width = Math.min(bounds.width, workArea.width);
   const height = Math.min(bounds.height, workArea.height);
   const x = Math.round(
@@ -23,5 +37,3 @@ function clampedBounds(bounds, workArea) {
   );
   return { x, y, width, height };
 }
-
-module.exports = { centeredBounds, clampedBounds };

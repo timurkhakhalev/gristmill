@@ -222,7 +222,7 @@
     background: transparent;
   }
 
-  /* The control panel window is transparent (windowConfig.js), so the page backing
+  /* The control panel window is transparent (windowConfig.ts), so the page backing
      is cleared here rather than filled. The compact frame owns the complete
      480x576 surface, including its rounded corners. */
   body:has(.onboarding-canvas.compact),

@@ -36,7 +36,7 @@ const INTERACTIVE_SELECTOR = [
  * travels past the threshold, moves the native window through the shared
  * DragManager.
  */
-export function useControlPanelWindowDrag(enabled) {
+export function useControlPanelWindowDrag(enabled: boolean): void {
   useEffect(() => {
     if (!enabled || getCachedPlatform() !== "darwin") return undefined;
     const api = window.electronAPI;
@@ -46,7 +46,7 @@ export function useControlPanelWindowDrag(enabled) {
     // target: a declared zone can then be pointer-events-none and still count,
     // which is what keeps the compact onboarding hero from swallowing the
     // clicks and wheel scrolling of the step content it overlays.
-    const pointInDeclaredDragZone = (x, y) => {
+    const pointInDeclaredDragZone = (x: number, y: number): boolean => {
       for (const zone of document.querySelectorAll("[data-window-drag-zone]")) {
         const rect = zone.getBoundingClientRect();
         if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
@@ -56,15 +56,15 @@ export function useControlPanelWindowDrag(enabled) {
       return false;
     };
 
-    let origin = null;
+    let origin: { x: number; y: number } | null = null;
     let dragging = false;
-    const stop = () => {
+    const stop = (): void => {
       origin = null;
       if (!dragging) return;
       dragging = false;
       void api.stopControlPanelDrag?.();
     };
-    const onMouseDown = (event) => {
+    const onMouseDown = (event: MouseEvent): void => {
       if (event.button !== 0) return;
       const target = event.target instanceof Element ? event.target : null;
       // The universal titlebar band, plus any surface that declares itself
@@ -77,7 +77,7 @@ export function useControlPanelWindowDrag(enabled) {
       if (target?.closest(INTERACTIVE_SELECTOR)) return;
       origin = { x: event.clientX, y: event.clientY };
     };
-    const onMouseMove = (event) => {
+    const onMouseMove = (event: MouseEvent): void => {
       if (!origin || dragging) return;
       // A mouseup that never reached this listener (a handler that stopped it,
       // a release the window never saw) would otherwise leave `origin` armed

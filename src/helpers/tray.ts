@@ -1,19 +1,30 @@
-const { Tray, Menu, nativeImage, app } = require("electron");
-const path = require("path");
-const fs = require("fs");
-const debugLogger = require("./debugLogger");
-const dockManager = require("./dockManager");
-const { i18nMain } = require("./i18nMain");
+import { Tray, Menu, nativeImage, app, BrowserWindow, type MenuItemConstructorOptions } from "electron";
+import path from "path";
+import fs from "fs";
+import debugLogger from "./debugLogger.js";
+import dockManager from "./dockManager.js";
+import { i18nMain } from "./i18nMain.js";
+import type { WindowManager } from "./windowManager.js";
 
-class TrayManager {
-  constructor() {
-    this.tray = null;
-    this.controlPanelWindow = null;
-    this.windowManager = null;
-    this.attachedControlPanels = new WeakSet();
-  }
+// Minimal structural slice of the lazy "canvas" fallback dependency.
+interface CanvasLike {
+  getContext(type: string): {
+    fillStyle: string;
+    beginPath(): void;
+    arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void;
+    fill(): void;
+  };
+  toBuffer(format: string): Buffer;
+}
 
-  setWindows(controlPanelWindow) {
+export class TrayManager {
+  tray: Tray | null = null;
+  controlPanelWindow: BrowserWindow | null = null;
+  windowManager: WindowManager | null = null;
+  attachedControlPanels = new WeakSet<BrowserWindow>();
+  createControlPanelCallback: (() => Promise<void> | void) | undefined;
+
+  setWindows(controlPanelWindow: BrowserWindow | null): void {
     this.controlPanelWindow = controlPanelWindow;
 
 
@@ -24,15 +35,15 @@ class TrayManager {
     this.updateTrayMenu?.();
   }
 
-  setWindowManager(windowManager) {
+  setWindowManager(windowManager: WindowManager): void {
     this.windowManager = windowManager;
   }
 
-  setCreateControlPanelCallback(callback) {
+  setCreateControlPanelCallback(callback: () => Promise<void> | void): void {
     this.createControlPanelCallback = callback;
   }
 
-  attachControlPanelListeners(window) {
+  attachControlPanelListeners(window: BrowserWindow | null): void {
     if (!window || this.attachedControlPanels.has(window)) {
       return;
     }
@@ -55,13 +66,13 @@ class TrayManager {
       this.updateTrayMenu?.();
     });
 
-    window.on("destroyed", () => {
+    // Electron emits "destroyed" from its EventEmitter base but doesn't declare it.
+    (window as unknown as NodeJS.EventEmitter).on("destroyed", () => {
       this.controlPanelWindow = null;
       this.updateTrayMenu?.();
-    });
-  }
+    });  }
 
-  syncControlPanelWindow() {
+  syncControlPanelWindow(): BrowserWindow | null {
     if (this.windowManager) {
       this.controlPanelWindow = this.windowManager.controlPanelWindow || this.controlPanelWindow;
     }
@@ -69,14 +80,14 @@ class TrayManager {
     return this.controlPanelWindow;
   }
 
-  isControlPanelVisible() {
+  isControlPanelVisible(): boolean {
     const win = this.syncControlPanelWindow();
     return !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized();
   }
 
   // On Linux a window parked on another workspace still reports as visible, so
   // the first click hides it and the next re-shows it on the current workspace.
-  async toggleControlPanelFromTray() {
+  async toggleControlPanelFromTray(): Promise<void> {
     if (this.isControlPanelVisible()) {
       this.windowManager?.hideControlPanelToTray();
       return;
@@ -85,7 +96,7 @@ class TrayManager {
     await this.showControlPanelFromTray();
   }
 
-  async showControlPanelFromTray() {
+  async showControlPanelFromTray(): Promise<void> {
     try {
       this.syncControlPanelWindow();
 
@@ -118,11 +129,11 @@ class TrayManager {
 
       debugLogger.error("No control panel callback available", undefined, "tray");
     } catch (error) {
-      debugLogger.error("Failed to open control panel", { error: error?.message }, "tray");
+      debugLogger.error("Failed to open control panel", { error: (error as Error)?.message }, "tray");
     }
   }
 
-  async createTray() {
+  async createTray(): Promise<void> {
     try {
       const trayIcon = await this.loadTrayIcon();
       if (!trayIcon || trayIcon.isEmpty()) {
@@ -139,15 +150,15 @@ class TrayManager {
       this.updateTrayMenu();
       this.setupTrayEventHandlers();
     } catch (error) {
-      debugLogger.error("Error creating tray icon", { error: error.message }, "tray");
+      debugLogger.error("Error creating tray icon", { error: (error as Error).message }, "tray");
     }
   }
 
-  async loadTrayIcon() {
+  async loadTrayIcon(): Promise<Electron.NativeImage | null> {
     const platform = process.platform;
     const isDevelopment = process.env.NODE_ENV === "development";
 
-    const candidatePaths = [];
+    const candidatePaths: string[] = [];
 
     if (platform === "darwin") {
       if (isDevelopment) {
@@ -198,7 +209,7 @@ class TrayManager {
       } catch (error) {
         debugLogger.error(
           "Error checking tray icon path",
-          { path: testPath, error: error.message },
+          { path: testPath, error: (error as Error).message },
           "tray"
         );
       }
@@ -208,10 +219,12 @@ class TrayManager {
     return this.createFallbackIcon();
   }
 
-  createFallbackIcon() {
+  createFallbackIcon(): Electron.NativeImage | null {
     try {
       // Create a simple 16x16 PNG icon programmatically
-      const { createCanvas } = require("canvas");
+      const { createCanvas } = require("canvas") as {
+        createCanvas: (width: number, height: number) => CanvasLike;
+      };
       const canvas = createCanvas(16, 16);
       const ctx = canvas.getContext("2d");
 
@@ -224,7 +237,7 @@ class TrayManager {
       const fallbackIcon = nativeImage.createFromBuffer(buffer);
       debugLogger.info("Created fallback tray icon", undefined, "tray");
       return fallbackIcon;
-    } catch (fallbackError) {
+    } catch {
       debugLogger.warn("Canvas not available, creating minimal fallback icon", undefined, "tray");
       // Create a minimal 16x16 black square PNG as fallback
       const pngData = Buffer.from([
@@ -241,7 +254,7 @@ class TrayManager {
     }
   }
 
-  buildContextMenuTemplate() {
+  buildContextMenuTemplate(): MenuItemConstructorOptions[] {
 
     return [
       {
@@ -263,7 +276,7 @@ class TrayManager {
     ];
   }
 
-  updateTrayMenu() {
+  updateTrayMenu(): void {
     if (!this.tray) return;
 
     const contextMenu = Menu.buildFromTemplate(this.buildContextMenuTemplate());
@@ -271,7 +284,7 @@ class TrayManager {
     this.tray.setContextMenu(contextMenu);
   }
 
-  setupTrayEventHandlers() {
+  setupTrayEventHandlers(): void {
     if (!this.tray) {
       return;
     }
@@ -282,7 +295,8 @@ class TrayManager {
       });
     }
 
-    this.tray.on("destroyed", () => {
+    // Electron emits "destroyed" from its EventEmitter base but doesn't declare it.
+    (this.tray as unknown as NodeJS.EventEmitter).on("destroyed", () => {
       debugLogger.debug("Tray icon destroyed", undefined, "tray");
       this.tray = null;
     });
@@ -290,3 +304,4 @@ class TrayManager {
 }
 
 module.exports = TrayManager;
+module.exports.TrayManager = TrayManager;

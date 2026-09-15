@@ -5,8 +5,8 @@ const os = require("node:os");
 const path = require("node:path");
 const Module = require("node:module");
 
-const loggerPath = require.resolve("../../src/helpers/debugLogger.js");
-const dragManagerPath = require.resolve("../../src/helpers/dragManager.js");
+const loggerPath = require.resolve("../../src/helpers/debugLogger.ts");
+const dragManagerPath = require.resolve("../../src/helpers/dragManager.ts");
 const originalLoad = Module._load;
 const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
 

@@ -2,9 +2,12 @@
 // 225–375ms, then every 30–90ms) and never reports the release. Fires inside
 // the window of the previous fire are repeats and renew the window, so one
 // hold is one press however long it lasts.
-const HOTKEY_REPEAT_WINDOW_MS = 600;
+export const HOTKEY_REPEAT_WINDOW_MS = 600;
 
-function createHotkeyRepeatGate(windowMs = HOTKEY_REPEAT_WINDOW_MS, now = Date.now) {
+export function createHotkeyRepeatGate(
+  windowMs: number = HOTKEY_REPEAT_WINDOW_MS,
+  now: () => number = Date.now
+): () => boolean {
   let lastFireAt = -Infinity;
   return () => {
     const firedAt = now();
@@ -13,5 +16,3 @@ function createHotkeyRepeatGate(windowMs = HOTKEY_REPEAT_WINDOW_MS, now = Date.n
     return !isRepeat;
   };
 }
-
-module.exports = { HOTKEY_REPEAT_WINDOW_MS, createHotkeyRepeatGate };

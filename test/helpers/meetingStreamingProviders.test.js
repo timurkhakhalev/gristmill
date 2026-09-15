@@ -1,13 +1,13 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/meetingStreamingProviders.js");
+const load = () => import("../../src/helpers/meetingStreamingProviders.ts");
 
 test("tinfoil-realtime resolves to the Tinfoil client, never the OpenAI default", async () => {
   const { STREAMING_CLIENT_BY_PROVIDER } = await load();
   const { TinfoilRealtimeStreaming } =
-    await import("../../src/helpers/tinfoilRealtimeStreaming.js");
-  const OpenAIRealtimeStreaming = (await import("../../src/helpers/openaiRealtimeStreaming.js"))
+    await import("../../src/helpers/tinfoilRealtimeStreaming.ts");
+  const OpenAIRealtimeStreaming = (await import("../../src/helpers/openaiRealtimeStreaming.ts"))
     .default;
 
   assert.equal(STREAMING_CLIENT_BY_PROVIDER["tinfoil-realtime"], TinfoilRealtimeStreaming);
@@ -37,7 +37,7 @@ test("allow-list accepts tinfoil-realtime and local", async () => {
 test("every provider note recording offers is one the main process accepts", async () => {
   const { ALLOWED_MEETING_PROVIDERS } = await load();
   const { MEETING_STREAMING_PROVIDER_IDS } =
-    await import("../../src/helpers/meetingTranscriptionRouting.js");
+    await import("../../src/helpers/meetingTranscriptionRouting.ts");
 
   // Note recording derives its streaming provider id by concatenation
   // (`${provider.id}-realtime`), so an offered catalog id with no client class
@@ -94,14 +94,18 @@ test("allow-list rejects unknown and batch-only providers", async () => {
 });
 
 test("client lookup fails closed instead of defaulting to OpenAI", async () => {
-  const { getMeetingStreamingClient } = await load();
+  const { STREAMING_CLIENT_BY_PROVIDER, getMeetingStreamingClient } = await load();
 
   assert.throws(() => getMeetingStreamingClient("unknown-realtime"), /Unsupported meeting/);
+  assert.equal(
+    getMeetingStreamingClient(Object("openai-realtime")),
+    STREAMING_CLIENT_BY_PROVIDER["openai-realtime"]
+  );
 });
 
 test("OpenAI-derived streaming clients carry their own provider log label", async () => {
   const { STREAMING_CLIENT_BY_PROVIDER } = await load();
-  const OpenAIRealtimeStreaming = (await import("../../src/helpers/openaiRealtimeStreaming.js"))
+  const OpenAIRealtimeStreaming = (await import("../../src/helpers/openaiRealtimeStreaming.ts"))
     .default;
   const baseLabel = new OpenAIRealtimeStreaming().providerLabel;
 

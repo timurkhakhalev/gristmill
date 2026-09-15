@@ -1,5 +1,87 @@
-const WebSocket = require("ws");
+interface SocketData {
+  toString(): string;
+}
+
+interface RealtimeSocket {
+  readyState: number;
+  on(event: "open", listener: () => void): this;
+  on(event: "message", listener: (data: SocketData) => void): this;
+  on(event: "error", listener: (error: Error) => void): this;
+  on(event: "close", listener: (code: number, reason?: SocketData) => void): this;
+  removeAllListeners(event: string): this;
+  send(data: string | Buffer): void;
+  close(code?: number): void;
+  ping(): void;
+}
+
+interface RealtimeSocketConstructor {
+  new (url: string): RealtimeSocket;
+  readonly OPEN: number;
+}
+
+const WebSocket: RealtimeSocketConstructor = require("ws");
 const debugLogger = require("./debugLogger");
+
+type Timer = ReturnType<typeof setTimeout>;
+type JsonRecord = Record<string, unknown>;
+
+export interface CortiStreamingOptions {
+  token?: string | null;
+  environment?: string | null;
+  tenant?: string | null;
+  language?: string | null;
+  keyterms?: readonly string[];
+  sampleRate?: number;
+}
+
+interface CortiSocketOptions extends CortiStreamingOptions {
+  token: string;
+  environment: string;
+  tenant: string;
+}
+
+interface CortiConfiguration {
+  primaryLanguage: string;
+  interimResults: true;
+  automaticPunctuation: true;
+  audioFormat: string;
+  keyterms?: { terms: Array<{ term: string }> };
+}
+
+interface TranscriptResult {
+  text: string;
+}
+
+interface PendingAck {
+  type: string;
+  resolve: () => void;
+  timer: Timer;
+}
+
+const isRecord = (value: unknown): value is JsonRecord =>
+  typeof value === "object" && value !== null;
+
+const recordField = (record: JsonRecord, key: string): JsonRecord | undefined => {
+  const value = record[key];
+  return isRecord(value) ? value : undefined;
+};
+
+const stringField = (record: JsonRecord | undefined, key: string): string | undefined => {
+  const value = record?.[key];
+  return typeof value === "string" ? value : undefined;
+};
+
+const numberField = (record: JsonRecord, key: string): number | undefined => {
+  const value = record[key];
+  return typeof value === "number" ? value : undefined;
+};
+
+const errorMessage = (error: unknown): string | undefined =>
+  error instanceof Error
+    ? error.message
+    : isRecord(error)
+      ? stringField(error, "message")
+      : undefined;
 
 const SAMPLE_RATE = 16000;
 const WEBSOCKET_TIMEOUT_MS = 30000;
@@ -8,7 +90,36 @@ const KEEPALIVE_INTERVAL_MS = 15000;
 
 // Corti's WSS transport: OAuth token in the query, a JSON config message after
 // open, then raw PCM frames. Mirrors the AssemblyAI/Deepgram streaming classes.
-class CortiStreaming {
+export class CortiStreaming {
+  declare ws: RealtimeSocket | null;
+  declare sessionId: string | null;
+  declare isConnected: boolean;
+  declare onPartialTranscript: ((text: string) => void) | null;
+  declare onFinalTranscript: ((text: string, startedAt: number) => void) | null;
+  declare onError: ((error: Error) => void) | null;
+  declare onSessionEnd: ((result: TranscriptResult) => void) | null;
+  declare onConnectionLost: ((error: Error) => void) | null;
+  declare connectionLossNotified: boolean;
+  declare pendingResolve: (() => void) | null;
+  declare pendingReject: ((reason?: unknown) => void) | null;
+  declare connectionTimeout: Timer | null;
+  declare accumulatedText: string;
+  declare completedSegments: string[];
+  declare pendingAck: PendingAck | null;
+  declare isDisconnecting: boolean;
+  declare configAccepted: boolean;
+  declare preConfigBuffer: Buffer[];
+  declare preConfigBufferSize: number;
+  declare sessionStartedAt: number | null;
+  declare audioBytesSent: number;
+  declare currentModel: string;
+  declare sampleRate: number;
+  declare warmConnection: RealtimeSocket | null;
+  declare warmConnectionReady: boolean;
+  declare warmSessionId: string | null;
+  declare warmSessionStartedAt: number | null;
+  declare keepAliveInterval: Timer | null;
+
   constructor() {
     this.ws = null;
     this.sessionId = null;
@@ -40,7 +151,7 @@ class CortiStreaming {
     this.keepAliveInterval = null;
   }
 
-  buildWebSocketUrl(options) {
+  buildWebSocketUrl(options: CortiSocketOptions): string {
     const params = new URLSearchParams({
       "tenant-name": options.tenant,
       token: `Bearer ${options.token}`,
@@ -48,8 +159,8 @@ class CortiStreaming {
     return `wss://api.${options.environment}.corti.app/audio-bridge/v2/transcribe?${params}`;
   }
 
-  buildConfiguration(options) {
-    const configuration = {
+  buildConfiguration(options: CortiStreamingOptions): CortiConfiguration {
+    const configuration: CortiConfiguration = {
       primaryLanguage: options.language && options.language !== "auto" ? options.language : "en",
       interimResults: true,
       automaticPunctuation: true,
@@ -61,7 +172,7 @@ class CortiStreaming {
     return configuration;
   }
 
-  async connect(options = {}) {
+  async connect(options: CortiStreamingOptions = {}): Promise<void> {
     const { token, environment, tenant } = options;
     if (!token || !environment || !tenant) {
       throw new Error("Corti streaming requires token, environment, and tenant");
@@ -87,11 +198,12 @@ class CortiStreaming {
       return;
     }
 
-    const url = this.buildWebSocketUrl(options);
+    const socketOptions = { ...options, token, environment, tenant };
+    const url = this.buildWebSocketUrl(socketOptions);
     const configuration = this.buildConfiguration(options);
     debugLogger.debug("Corti streaming connecting", { environment, tenant });
 
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       this.pendingResolve = resolve;
       this.pendingReject = reject;
 
@@ -100,17 +212,18 @@ class CortiStreaming {
         reject(new Error("Corti WebSocket connection timeout"));
       }, WEBSOCKET_TIMEOUT_MS);
 
-      this.ws = new WebSocket(url);
-      this.ws.on("open", () => {
+      const socket = new WebSocket(url);
+      this.ws = socket;
+      socket.on("open", () => {
         debugLogger.debug("Corti WebSocket connected, sending config");
-        this.ws.send(JSON.stringify({ type: "config", configuration }));
+        socket.send(JSON.stringify({ type: "config", configuration }));
       });
-      this.attachSocketHandlers(this.ws);
+      this.attachSocketHandlers(socket);
     });
   }
 
   // Live-socket wiring shared by the cold connect and a promoted warm connection.
-  attachSocketHandlers(ws) {
+  attachSocketHandlers(ws: RealtimeSocket): void {
     ws.on("message", (data) => {
       this.handleMessage(data);
     });
@@ -151,7 +264,7 @@ class CortiStreaming {
     });
   }
 
-  notifyConnectionLost(error) {
+  notifyConnectionLost(error: Error): void {
     if (this.connectionLossNotified) return;
     this.connectionLossNotified = true;
     if (this.onConnectionLost) {
@@ -163,7 +276,7 @@ class CortiStreaming {
 
   // Pre-open the socket and finish the config handshake before recording, so the
   // first words aren't lost waiting for CONFIG_ACCEPTED. Mirrors Deepgram/AssemblyAI.
-  async warmup(options = {}) {
+  async warmup(options: CortiStreamingOptions = {}): Promise<void> {
     const { token, environment, tenant } = options;
     if (!token || !environment || !tenant) {
       throw new Error("Corti warmup requires token, environment, and tenant");
@@ -181,11 +294,12 @@ class CortiStreaming {
     this.warmSessionId = null;
     this.sampleRate = options.sampleRate || SAMPLE_RATE;
 
-    const url = this.buildWebSocketUrl(options);
+    const socketOptions = { ...options, token, environment, tenant };
+    const url = this.buildWebSocketUrl(socketOptions);
     const configuration = this.buildConfiguration(options);
     debugLogger.debug("Corti warming up connection", { environment, tenant });
 
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       let settled = false;
       const warmupTimeout = setTimeout(() => {
         if (settled) return;
@@ -194,25 +308,28 @@ class CortiStreaming {
         reject(new Error("Corti warmup connection timeout"));
       }, WEBSOCKET_TIMEOUT_MS);
 
-      this.warmConnection = new WebSocket(url);
+      const socket = new WebSocket(url);
+      this.warmConnection = socket;
 
-      this.warmConnection.on("open", () => {
+      socket.on("open", () => {
         debugLogger.debug("Corti warm connection opened, sending config");
-        this.warmConnection.send(JSON.stringify({ type: "config", configuration }));
+        socket.send(JSON.stringify({ type: "config", configuration }));
       });
 
-      this.warmConnection.on("message", (data) => {
-        let message;
+      socket.on("message", (data) => {
+        let message: JsonRecord;
         try {
-          message = JSON.parse(data.toString());
-        } catch (err) {
+          const parsed: unknown = JSON.parse(data.toString());
+          if (!isRecord(parsed)) return;
+          message = parsed;
+        } catch {
           return;
         }
         if (message.type === "CONFIG_ACCEPTED" && !settled) {
           settled = true;
           clearTimeout(warmupTimeout);
           this.warmConnectionReady = true;
-          this.warmSessionId = message.sessionId || null;
+          this.warmSessionId = stringField(message, "sessionId") || null;
           this.warmSessionStartedAt = Date.now();
           this.startKeepAlive();
           debugLogger.debug("Corti connection warmed up", { sessionId: this.warmSessionId });
@@ -220,7 +337,7 @@ class CortiStreaming {
         }
       });
 
-      this.warmConnection.on("error", (error) => {
+      socket.on("error", (error) => {
         debugLogger.error("Corti warmup connection error", { error: error.message });
         this.cleanupWarmConnection();
         if (!settled) {
@@ -230,7 +347,7 @@ class CortiStreaming {
         }
       });
 
-      this.warmConnection.on("close", (code, reason) => {
+      socket.on("close", (code, reason) => {
         clearTimeout(warmupTimeout);
         const wasReady = this.warmConnectionReady;
         debugLogger.debug("Corti warm connection closed", {
@@ -247,7 +364,7 @@ class CortiStreaming {
     });
   }
 
-  hasWarmConnection() {
+  hasWarmConnection(): boolean {
     return (
       this.warmConnection !== null &&
       this.warmConnectionReady &&
@@ -257,14 +374,15 @@ class CortiStreaming {
 
   // Promote the warm socket to the active session — config is already accepted, so
   // audio flows immediately. Returns false (clearing any stale socket) if none usable.
-  useWarmConnection() {
-    if (!this.hasWarmConnection()) {
+  useWarmConnection(): boolean {
+    const socket = this.warmConnection;
+    if (!this.hasWarmConnection() || !socket) {
       this.cleanupWarmConnection();
       return false;
     }
 
     this.stopKeepAlive();
-    this.ws = this.warmConnection;
+    this.ws = socket;
     this.isConnected = true;
     this.configAccepted = true;
     this.sessionId = this.warmSessionId || null;
@@ -274,22 +392,22 @@ class CortiStreaming {
     this.warmSessionId = null;
     this.warmSessionStartedAt = null;
 
-    this.ws.removeAllListeners("open");
-    this.ws.removeAllListeners("message");
-    this.ws.removeAllListeners("error");
-    this.ws.removeAllListeners("close");
-    this.attachSocketHandlers(this.ws);
+    socket.removeAllListeners("open");
+    socket.removeAllListeners("message");
+    socket.removeAllListeners("error");
+    socket.removeAllListeners("close");
+    this.attachSocketHandlers(socket);
     return true;
   }
 
-  startKeepAlive() {
+  startKeepAlive(): void {
     this.stopKeepAlive();
     this.keepAliveInterval = setInterval(() => {
       if (this.warmConnection?.readyState === WebSocket.OPEN) {
         try {
           this.warmConnection.ping();
         } catch (err) {
-          debugLogger.debug("Corti keep-alive ping failed", { error: err.message });
+          debugLogger.debug("Corti keep-alive ping failed", { error: errorMessage(err) });
           this.cleanupWarmConnection();
         }
       } else {
@@ -298,19 +416,19 @@ class CortiStreaming {
     }, KEEPALIVE_INTERVAL_MS);
   }
 
-  stopKeepAlive() {
+  stopKeepAlive(): void {
     if (this.keepAliveInterval) {
       clearInterval(this.keepAliveInterval);
       this.keepAliveInterval = null;
     }
   }
 
-  cleanupWarmConnection() {
+  cleanupWarmConnection(): void {
     this.stopKeepAlive();
     if (this.warmConnection) {
       try {
         this.warmConnection.close(1000);
-      } catch (err) {
+      } catch {
         // Ignore close errors
       }
       this.warmConnection = null;
@@ -320,12 +438,14 @@ class CortiStreaming {
     this.warmSessionStartedAt = null;
   }
 
-  handleMessage(data) {
-    let message;
+  handleMessage(data: SocketData): void {
+    let message: JsonRecord;
     try {
-      message = JSON.parse(data.toString());
+      const parsed: unknown = JSON.parse(data.toString());
+      if (!isRecord(parsed)) return;
+      message = parsed;
     } catch (err) {
-      debugLogger.error("Corti message parse error", { error: err.message });
+      debugLogger.error("Corti message parse error", { error: errorMessage(err) });
       return;
     }
 
@@ -333,9 +453,9 @@ class CortiStreaming {
       case "CONFIG_ACCEPTED":
         this.isConnected = true;
         this.configAccepted = true;
-        this.sessionId = message.sessionId || null;
+        this.sessionId = stringField(message, "sessionId") || null;
         this.sessionStartedAt = Date.now();
-        clearTimeout(this.connectionTimeout);
+        if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
         this.flushPreConfigBuffer();
         debugLogger.debug("Corti session started", { sessionId: this.sessionId });
         if (this.pendingResolve) {
@@ -346,16 +466,18 @@ class CortiStreaming {
         break;
 
       case "transcript": {
-        const text = message.data?.text;
+        const data = recordField(message, "data");
+        const text = stringField(data, "text");
         if (!text) break;
-        if (message.data.isFinal) {
+        if (data?.isFinal) {
           const trimmed = text.trim();
           if (!trimmed) break;
           this.completedSegments.push(trimmed);
           this.accumulatedText = this.completedSegments.join(" ");
+          const start = numberField(data, "start");
           const startedAt =
-            this.sessionStartedAt != null && typeof message.data.start === "number"
-              ? this.sessionStartedAt + message.data.start * 1000
+            this.sessionStartedAt != null && start !== undefined
+              ? this.sessionStartedAt + start * 1000
               : Date.now();
           this.onFinalTranscript?.(this.accumulatedText, startedAt);
         } else {
@@ -377,7 +499,13 @@ class CortiStreaming {
 
       case "error":
         debugLogger.error("Corti streaming error", { error: message.error });
-        this.onError?.(new Error(message.error?.title || message.error?.details || "Corti error"));
+        this.onError?.(
+          new Error(
+            stringField(recordField(message, "error"), "title") ||
+              stringField(recordField(message, "error"), "details") ||
+              "Corti error"
+          )
+        );
         break;
 
       default:
@@ -385,21 +513,23 @@ class CortiStreaming {
     }
   }
 
-  flushPreConfigBuffer() {
+  flushPreConfigBuffer(): void {
     if (this.preConfigBuffer.length === 0) return;
+    const socket = this.ws;
+    if (!socket) return;
     debugLogger.debug("Corti flushing pre-config buffer", {
       chunks: this.preConfigBuffer.length,
       bytes: this.preConfigBufferSize,
     });
     for (const frame of this.preConfigBuffer) {
-      this.ws.send(frame);
+      socket.send(frame);
       this.audioBytesSent += frame.length;
     }
     this.preConfigBuffer = [];
     this.preConfigBufferSize = 0;
   }
 
-  sendAudio(pcmBuffer) {
+  sendAudio(pcmBuffer: Buffer): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return false;
     }
@@ -419,7 +549,7 @@ class CortiStreaming {
     return true;
   }
 
-  finalize() {
+  finalize(): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return false;
     }
@@ -429,15 +559,15 @@ class CortiStreaming {
   }
 
   // Resolves a single in-flight waitForAck (server ack or socket close).
-  resolvePendingAck() {
+  resolvePendingAck(): void {
     if (!this.pendingAck) return;
     clearTimeout(this.pendingAck.timer);
     this.pendingAck.resolve();
     this.pendingAck = null;
   }
 
-  waitForAck(type) {
-    return new Promise((resolve) => {
+  waitForAck(type: string): Promise<void> {
+    return new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         this.pendingAck = null;
         resolve();
@@ -446,7 +576,7 @@ class CortiStreaming {
     });
   }
 
-  async disconnect(closeStream = true) {
+  async disconnect(closeStream = true): Promise<TranscriptResult> {
     if (!this.ws) return { text: this.accumulatedText };
 
     this.isDisconnecting = true;
@@ -474,8 +604,8 @@ class CortiStreaming {
     return result;
   }
 
-  cleanup() {
-    clearTimeout(this.connectionTimeout);
+  cleanup(): void {
+    if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
     this.connectionTimeout = null;
     this.preConfigBuffer = [];
     this.preConfigBufferSize = 0;
@@ -483,7 +613,7 @@ class CortiStreaming {
     if (this.ws) {
       try {
         this.ws.close(1000);
-      } catch (err) {
+      } catch {
         // Ignore close errors
       }
       this.ws = null;
@@ -495,7 +625,7 @@ class CortiStreaming {
     this.resolvePendingAck();
   }
 
-  getStatus() {
+  getStatus(): { isConnected: boolean; sessionId: string | null } {
     return {
       isConnected: this.isConnected,
       sessionId: this.sessionId,
@@ -504,3 +634,4 @@ class CortiStreaming {
 }
 
 module.exports = CortiStreaming;
+module.exports.CortiStreaming = CortiStreaming;

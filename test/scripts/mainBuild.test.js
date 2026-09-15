@@ -59,7 +59,10 @@ test("emitted preload loads with the sandbox Electron API and forwards arguments
   let api;
   const calls = [];
   const listeners = new Map();
+  const preloadModule = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(output, "preload.js"), "utf8"), {
+    module: preloadModule,
+    exports: preloadModule.exports,
     require(name) {
       assert.equal(name, "electron");
       return {
@@ -87,7 +90,8 @@ test("emitted preload loads with the sandbox Electron API and forwards arguments
     process: { platform: "darwin", versions: {} },
   });
   await api.getNote(17);
-  assert.deepEqual(calls, [["db-get-note", 17]]);  const unsubscribe = api.onMeetingTranscriptionSegment(() => {});
+  assert.deepEqual(calls, [["db-get-note", 17]]);
+  const unsubscribe = api.onMeetingTranscriptionSegment(() => {});
   const before = listeners.size;
   unsubscribe();
   assert.equal(listeners.size, before - 1);
@@ -106,6 +110,80 @@ test("compiled route and ESM constants load in plain Node without a TS loader", 
     { cwd: root, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "" } }
   );
   assert.deepEqual(JSON.parse(result), { transport: "local" });
+});
+
+test("compiled realtime modules keep their CommonJS consumer shapes", () => {
+  const result = execFileSync(
+    process.execPath,
+    [
+      "-e",
+      `
+    const Module = require('node:module');
+    const originalLoad = Module._load;
+    const logger = { debug() {}, info() {}, warn() {}, error() {} };
+    Module._load = function(request, parent, isMain) {
+      if (request === './debugLogger' || request === './debugLogger.js') return logger;
+      if (request === '../utils/audioUtils' || request === '../utils/audioUtils.js') {
+        return { computePcm16Rms: () => 0 };
+      }
+      if (request === './tinfoilSecureClient' || request === './tinfoilSecureClient.js') {
+        return { createTinfoilRealtimeSocket: async () => ({}) };
+      }
+      return originalLoad.call(this, request, parent, isMain);
+    };
+
+    const OpenAI = require('./dist-main/src/helpers/openaiRealtimeStreaming.js');
+    const AssemblyAI = require('./dist-main/src/helpers/assemblyAiStreaming.js');
+    const Deepgram = require('./dist-main/src/helpers/deepgramStreaming.js');
+    const Corti = require('./dist-main/src/helpers/cortiStreaming.js');
+    const Gemini = require('./dist-main/src/helpers/geminiLiveStreaming.js');
+    const Tinfoil = require('./dist-main/src/helpers/tinfoilRealtimeStreaming.js');
+    const tokens = require('./dist-main/src/helpers/realtimeTokenProviders.js');
+    const registry = require('./dist-main/src/helpers/meetingStreamingProviders.js');
+
+    console.log(JSON.stringify({
+      direct: {
+        openai: OpenAI === OpenAI.OpenAIRealtimeStreaming,
+        assemblyai: AssemblyAI === AssemblyAI.AssemblyAiStreaming,
+        deepgram: Deepgram === Deepgram.DeepgramStreaming,
+        corti: Corti === Corti.CortiStreaming,
+        deepgramStatic: typeof Deepgram.authorizationHeader === 'function',
+      },
+      named: {
+        gemini: typeof Gemini.GeminiLiveStreaming === 'function',
+        tinfoil: typeof Tinfoil.TinfoilRealtimeStreaming === 'function',
+        tokenRouter: typeof tokens.fetchRealtimeTokenForProvider === 'function',
+        clientRouter: typeof registry.getMeetingStreamingClient === 'function',
+      },
+      providers: Object.keys(registry.STREAMING_CLIENT_BY_PROVIDER),
+    }));
+  `,
+    ],
+    { cwd: root, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "" } }
+  );
+
+  assert.deepEqual(JSON.parse(result), {
+    direct: {
+      openai: true,
+      assemblyai: true,
+      deepgram: true,
+      corti: true,
+      deepgramStatic: true,
+    },
+    named: {
+      gemini: true,
+      tinfoil: true,
+      tokenRouter: true,
+      clientRouter: true,
+    },
+    providers: [
+      "openai-realtime",
+      "assemblyai-realtime",
+      "deepgram-realtime",
+      "corti-realtime",
+      "tinfoil-realtime",
+    ],
+  });
 });
 
 test("main compiler rejects a wrong typed argument and renderer-only globals", () => {

@@ -1,5 +1,66 @@
-const WebSocket = require("ws");
+interface SocketData {
+  toString(): string;
+}
+
+export interface RealtimeSocket {
+  readyState: number;
+  isAlive?: boolean;
+  on(event: "open", listener: () => void): this;
+  on(event: "message", listener: (data: SocketData) => void): this;
+  on(event: "error", listener: (error: Error) => void): this;
+  on(event: "close", listener: (code: number, reason?: SocketData) => void): this;
+  on(event: "pong", listener: () => void): this;
+  once(event: "open", listener: () => void): this;
+  send(data: string | Buffer): void;
+  close(code?: number): void;
+  terminate(): void;
+  ping(): void;
+}
+
+interface RealtimeSocketConstructor {
+  new (url: string, options?: { headers?: Record<string, string> }): RealtimeSocket;
+  readonly CONNECTING: number;
+  readonly OPEN: number;
+}
+
+const WebSocket: RealtimeSocketConstructor = require("ws");
 const debugLogger = require("./debugLogger");
+
+type Timer = ReturnType<typeof setTimeout>;
+type JsonRecord = Record<string, unknown>;
+
+export interface StreamingTranscriptResult {
+  text: string;
+}
+
+export interface OpenAIRealtimeConnectOptions {
+  apiKey?: string | null;
+  model?: string | null;
+  inputRate?: number;
+  captureRate?: number;
+  createSocket?: () => Promise<RealtimeSocket>;
+  streamLabel?: string | null;
+  vadThreshold?: number;
+}
+
+const isRecord = (value: unknown): value is JsonRecord =>
+  typeof value === "object" && value !== null;
+
+const recordField = (record: JsonRecord, key: string): JsonRecord | undefined => {
+  const value = record[key];
+  return isRecord(value) ? value : undefined;
+};
+
+const stringField = (record: JsonRecord | undefined, key: string): string | undefined => {
+  const value = record?.[key];
+  return typeof value === "string" ? value : undefined;
+};
+
+const errorMessage = (error: unknown): string | undefined => {
+  if (error instanceof Error) return error.message;
+  if (!isRecord(error)) return undefined;
+  return stringField(error, "message");
+};
 
 const WEBSOCKET_TIMEOUT_MS = 15000;
 const DISCONNECT_TIMEOUT_MS = 3000;
@@ -18,13 +79,13 @@ const SESSION_PREEMPT_MS = 55 * 60 * 1000;
 const DEFAULT_VAD_THRESHOLD = 0.6;
 
 // Matches the server's check, which may pin a snapshot id.
-const isLiveTranscribe = (model) => model.startsWith("gpt-live-transcribe");
+const isLiveTranscribe = (model: string): boolean => model.startsWith("gpt-live-transcribe");
 
 // gpt-live-transcribe rejects every turn_detection config ("Turn detection is
 // not supported for this transcription model"), so it never emits
 // speech_started/speech_stopped and a turn only completes once the client
 // commits — which disconnect() does on stop. Legacy models keep server VAD.
-const turnDetectionFor = (model, vadThreshold) =>
+const turnDetectionFor = (model: string, vadThreshold: number) =>
   isLiveTranscribe(model)
     ? null
     : {
@@ -36,12 +97,15 @@ const turnDetectionFor = (model, vadThreshold) =>
 
 // A socket factory does network work before the socket exists, so the dial
 // must be bounded; a socket resolving after the deadline is closed, not leaked.
-async function createSocketWithTimeout(createSocket, timeoutMs) {
+async function createSocketWithTimeout(
+  createSocket: () => Promise<RealtimeSocket>,
+  timeoutMs: number
+): Promise<RealtimeSocket> {
   const socketPromise = createSocket();
-  let timer;
-  const timeout = new Promise((_, reject) => {
+  let timer: Timer | undefined;
+  const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      socketPromise.then((socket) => socket?.close?.()).catch(() => {});
+      socketPromise.then((socket) => socket.close()).catch(() => {});
       reject(new Error("Realtime socket setup timeout"));
     }, timeoutMs);
   });
@@ -52,7 +116,41 @@ async function createSocketWithTimeout(createSocket, timeoutMs) {
   }
 }
 
-class OpenAIRealtimeStreaming {
+export class OpenAIRealtimeStreaming {
+  declare ws: RealtimeSocket | null;
+  declare isConnected: boolean;
+  declare isConnecting: boolean;
+  declare completedSegments: string[];
+  declare currentPartial: string;
+  declare onPartialTranscript: ((text: string) => void) | null;
+  declare onFinalTranscript: ((text: string, startedAt: number) => void) | null;
+  declare onError: ((error: Error) => void) | null;
+  declare onSessionEnd: ((result: StreamingTranscriptResult) => void) | null;
+  declare onSessionExpired: ((event: { proactive?: boolean }) => void) | null;
+  declare onConnectionLost: ((error: Error) => void) | null;
+  declare _sessionExpired: boolean;
+  declare _connectionLossNotified: boolean;
+  declare _sessionTimer: Timer | null;
+  declare pendingResolve: (() => void) | null;
+  declare pendingReject: ((reason?: unknown) => void) | null;
+  declare connectionTimeout: Timer | null;
+  declare isDisconnecting: boolean;
+  declare audioBytesSent: number;
+  declare providerLabel: string;
+  declare streamLabel: string | null;
+  declare vadThreshold: number;
+  declare speechStartedCount: number;
+  declare _vadEventCount: number;
+  declare model: string;
+  declare inputRate: number;
+  declare captureRate: number;
+  declare coldStartBuffer: Buffer[];
+  declare coldStartBufferSize: number;
+  declare speechStartedAt: number | null;
+  declare bufferingAudio: boolean;
+  declare keepAliveInterval: Timer | null;
+  declare _onTurnSettled: (() => void) | null;
+
   constructor() {
     this.ws = null;
     this.isConnected = false;
@@ -106,16 +204,9 @@ class OpenAIRealtimeStreaming {
     return this.completedSegments.join(" ");
   }
 
-  async connect(options = {}) {
-    const {
-      apiKey,
-      model,
-      inputRate,
-      captureRate,
-      createSocket,
-      streamLabel,
-      vadThreshold,
-    } = options;
+  async connect(options: OpenAIRealtimeConnectOptions = {}): Promise<void> {
+    const { apiKey, model, inputRate, captureRate, createSocket, streamLabel, vadThreshold } =
+      options;
     if (!apiKey) throw new Error(`${this.providerLabel} API key is required`);
 
     if (this.isConnected || this.isConnecting) {
@@ -146,7 +237,7 @@ class OpenAIRealtimeStreaming {
     debugLogger.debug(`${this.providerLabel} connecting`, this._logContext({ model: this.model }));
 
     // Attested providers (Tinfoil) supply their socket via an async factory.
-    let ws;
+    let ws: RealtimeSocket;
     try {
       ws = createSocket
         ? await createSocketWithTimeout(createSocket, WEBSOCKET_TIMEOUT_MS)
@@ -157,7 +248,7 @@ class OpenAIRealtimeStreaming {
       throw err;
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       this.pendingResolve = resolve;
       this.pendingReject = reject;
 
@@ -222,9 +313,11 @@ class OpenAIRealtimeStreaming {
     });
   }
 
-  handleMessage(data) {
+  handleMessage(data: SocketData): void {
     try {
-      const event = JSON.parse(data.toString());
+      const parsed: unknown = JSON.parse(data.toString());
+      if (!isRecord(parsed)) return;
+      const event = parsed;
 
       switch (event.type) {
         case "session.created": {
@@ -268,7 +361,7 @@ class OpenAIRealtimeStreaming {
         }
 
         case "conversation.item.input_audio_transcription.delta": {
-          const delta = event.delta || "";
+          const delta = stringField(event, "delta") || "";
           if (delta) {
             this.currentPartial += delta;
             this.onPartialTranscript?.(this.currentPartial);
@@ -277,7 +370,7 @@ class OpenAIRealtimeStreaming {
         }
 
         case "conversation.item.input_audio_transcription.completed": {
-          const transcript = (event.transcript || "").trim();
+          const transcript = (stringField(event, "transcript") || "").trim();
           if (transcript) {
             this.completedSegments.push(transcript);
           }
@@ -316,7 +409,10 @@ class OpenAIRealtimeStreaming {
             `${this.providerLabel} turn transcription failed`,
             this._logContext({
               itemId: event.item_id,
-              error: event.error?.message || event.error?.code || null,
+              error:
+                stringField(recordField(event, "error"), "message") ||
+                stringField(recordField(event, "error"), "code") ||
+                null,
             })
           );
           this._onTurnSettled?.();
@@ -334,8 +430,9 @@ class OpenAIRealtimeStreaming {
           break;
 
         case "error": {
-          const errCode = event.error?.code;
-          const errMsg = event.error?.message || `${this.providerLabel} error`;
+          const eventError = recordField(event, "error");
+          const errCode = stringField(eventError, "code");
+          const errMsg = stringField(eventError, "message") || `${this.providerLabel} error`;
           // Only consumers that attach onSessionExpired (meetings) get the
           // reconnect path; others (dictation) keep the onError/onSessionEnd flow.
           if (errCode === "session_expired" && this.onSessionExpired) {
@@ -377,20 +474,20 @@ class OpenAIRealtimeStreaming {
     } catch (err) {
       debugLogger.error(
         `${this.providerLabel} message parse error`,
-        this._logContext({ error: err.message })
+        this._logContext({ error: errorMessage(err) })
       );
     }
   }
 
   // Unlabelled sockets (dictation) keep their pre-label log shape exactly.
-  _logContext(extra) {
+  _logContext(extra?: JsonRecord): JsonRecord | undefined {
     if (this.streamLabel == null) return extra;
     return { stream: this.streamLabel, ...extra };
   }
 
   // Throttled to first-3-then-every-50th: a normal meeting produces hundreds of
   // these, so ZERO over a whole meeting means server VAD never fired.
-  _logVadEvent(type) {
+  _logVadEvent(type: string): void {
     this._vadEventCount++;
     if (this._vadEventCount <= 3 || this._vadEventCount % 50 === 0) {
       debugLogger.debug(
@@ -404,10 +501,10 @@ class OpenAIRealtimeStreaming {
     }
   }
 
-  _markConnected() {
+  _markConnected(): void {
     this.isConnected = true;
     this.isConnecting = false;
-    clearTimeout(this.connectionTimeout);
+    if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
     this.startKeepAlive();
     this._startSessionTimer();
     if (this.pendingResolve) {
@@ -417,7 +514,7 @@ class OpenAIRealtimeStreaming {
     }
   }
 
-  _notifyConnectionLost(error) {
+  _notifyConnectionLost(error: Error): void {
     if (this._connectionLossNotified) return;
     this._connectionLossNotified = true;
     if (this.onConnectionLost) {
@@ -427,8 +524,8 @@ class OpenAIRealtimeStreaming {
     }
   }
 
-  _startSessionTimer() {
-    clearTimeout(this._sessionTimer);
+  _startSessionTimer(): void {
+    if (this._sessionTimer) clearTimeout(this._sessionTimer);
     this._sessionTimer = setTimeout(() => {
       if (!this.isConnected) return;
       debugLogger.debug(
@@ -443,7 +540,7 @@ class OpenAIRealtimeStreaming {
   // reused with no other liveness check; a network path that dies silently
   // (NAT/firewall drop, sleep/wake, VPN toggle) leaves isConnected stuck true
   // and the next recording gets sent into a dead socket.
-  startKeepAlive() {
+  startKeepAlive(): void {
     this.stopKeepAlive();
     const socket = this.ws;
     if (!socket) return;
@@ -472,14 +569,14 @@ class OpenAIRealtimeStreaming {
       } catch (err) {
         debugLogger.debug(
           `${this.providerLabel} keep-alive ping failed`,
-          this._logContext({ error: err.message })
+          this._logContext({ error: errorMessage(err) })
         );
         socket.terminate();
       }
     }, KEEPALIVE_INTERVAL_MS);
   }
 
-  stopKeepAlive() {
+  stopKeepAlive(): void {
     if (this.keepAliveInterval) {
       clearInterval(this.keepAliveInterval);
       this.keepAliveInterval = null;
@@ -488,7 +585,7 @@ class OpenAIRealtimeStreaming {
 
   // OpenAI rejects PCM session rates below 24kHz, so 16kHz capture can't be
   // declared as-is; it is upsampled to the declared rate before sending.
-  _resampleToInputRate(pcmBuffer) {
+  _resampleToInputRate(pcmBuffer: Buffer): Buffer {
     if (this.captureRate === this.inputRate) return pcmBuffer;
     const src = new Int16Array(pcmBuffer.buffer, pcmBuffer.byteOffset, pcmBuffer.length / 2);
     const ratio = this.inputRate / this.captureRate;
@@ -502,8 +599,9 @@ class OpenAIRealtimeStreaming {
     return Buffer.from(out.buffer);
   }
 
-  sendAudio(pcmBuffer) {
-    const isOpen = this.ws?.readyState === WebSocket.OPEN;
+  sendAudio(pcmBuffer: Buffer): boolean {
+    const socket = this.ws;
+    const isOpen = socket?.readyState === WebSocket.OPEN;
 
     if (!isOpen) {
       if (this.bufferingAudio && this.coldStartBufferSize < COLD_START_BUFFER_MAX) {
@@ -524,7 +622,7 @@ class OpenAIRealtimeStreaming {
       );
       for (const buf of this.coldStartBuffer) {
         const audio = this._resampleToInputRate(buf);
-        this.ws.send(
+        socket.send(
           JSON.stringify({ type: "input_audio_buffer.append", audio: audio.toString("base64") })
         );
         this.audioBytesSent += audio.length;
@@ -534,14 +632,16 @@ class OpenAIRealtimeStreaming {
     }
 
     const audio = this._resampleToInputRate(Buffer.from(pcmBuffer));
-    this.ws.send(
+    socket.send(
       JSON.stringify({ type: "input_audio_buffer.append", audio: audio.toString("base64") })
     );
     this.audioBytesSent += audio.length;
     return true;
   }
 
-  async disconnect({ commit = true } = {}) {
+  async disconnect({
+    commit = true,
+  }: { commit?: boolean } = {}): Promise<StreamingTranscriptResult> {
     debugLogger.debug(
       `${this.providerLabel} disconnect`,
       this._logContext({
@@ -572,7 +672,7 @@ class OpenAIRealtimeStreaming {
           ? LIVE_TRANSCRIBE_COMMIT_TIMEOUT_MS
           : DISCONNECT_TIMEOUT_MS;
 
-        await new Promise((resolve) => {
+        await new Promise<void>((resolve) => {
           const done = () => {
             clearTimeout(tid);
             this._onTurnSettled = null;
@@ -592,7 +692,7 @@ class OpenAIRealtimeStreaming {
           // or failed turn must not stall for the whole budget.
           this._onTurnSettled = done;
 
-          this.onError = (err) => {
+          this.onError = (err: Error) => {
             if (
               err?.message?.includes("buffer too small") ||
               err?.message?.includes("commit_empty")
@@ -604,7 +704,7 @@ class OpenAIRealtimeStreaming {
           };
 
           try {
-            this.ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+            this.ws?.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
           } catch {
             done();
           }
@@ -620,10 +720,10 @@ class OpenAIRealtimeStreaming {
     return result;
   }
 
-  cleanup() {
-    clearTimeout(this.connectionTimeout);
+  cleanup(): void {
+    if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
     this.connectionTimeout = null;
-    clearTimeout(this._sessionTimer);
+    if (this._sessionTimer) clearTimeout(this._sessionTimer);
     this._sessionTimer = null;
     this.stopKeepAlive();
     // A socket that dies mid-commit can never deliver the turn.
@@ -643,3 +743,4 @@ class OpenAIRealtimeStreaming {
 }
 
 module.exports = OpenAIRealtimeStreaming;
+module.exports.OpenAIRealtimeStreaming = OpenAIRealtimeStreaming;

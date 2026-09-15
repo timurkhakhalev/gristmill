@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const WS = require("ws");
 
-const load = () => import("../../src/helpers/openaiRealtimeStreaming.js");
+const load = () => import("../../src/helpers/openaiRealtimeStreaming.ts");
 
 function makeFakeSocket(readyState) {
   const socket = new EventEmitter();

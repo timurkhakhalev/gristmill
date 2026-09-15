@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { mergeSpeakersWithText, formatSpeakerTranscript } = require("../../src/helpers/speakerMerge");
+const { mergeSpeakersWithText, formatSpeakerTranscript } = require("../../src/helpers/speakerMerge.ts");
 
 test("mergeSpeakersWithText assigns sentences to speakers by time proportion", () => {
   const segments = [

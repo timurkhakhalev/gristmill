@@ -16,6 +16,6 @@
     "noEmitOnError": true,
     "types": ["node"]
   },
-  "include": ["main.js", "preload.js", "src/workers/*.js"],
+  "include": ["main.js", "preload.js", "src/workers/*.ts"],
   "exclude": ["node_modules", "dist", "dist-main", "src/dist", "test"]
 }

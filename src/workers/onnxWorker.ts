@@ -1,10 +1,22 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+import {
+  parseOnnxWorkerRequest,
+  type OnnxWorkerRequest,
+  type PingResult,
+  type ShutdownResult,
+  type SpeakerExtractResult,
+  type SpeakerLoadResult,
+} from "../contracts/onnxWorker.js";
 
-let logStream = null;
+interface LogExtra {
+  [key: string]: unknown;
+}
 
-function openLog() {
+let logStream: import("fs").WriteStream | null = null;
+
+function openLog(): void {
   const logPath = process.env.OPENHERCULES_ONNX_WORKER_LOG;
   if (!logPath) return;
   try {
@@ -29,12 +41,44 @@ const SPEAKER_MAX_SAMPLES = FBANK_SAMPLE_RATE * 8;
 
 const intraOpNumThreads = Math.min(4, Math.max(2, Math.floor((os.cpus()?.length || 4) / 2)));
 
-let port = null;
-let ort = null;
-let speakerSession = null;
-let speakerInputName = null;
+interface MessagePortLike {
+  on(event: "message", listener: (event: { data: unknown }) => void): unknown;
+  on(event: "close", listener: () => void): unknown;
+  start(): void;
+  postMessage(message: unknown, transferList?: unknown[]): unknown;
+}
 
-function log(level, message, extra) {
+let port: MessagePortLike | null = null;
+
+// onnxruntime-node's surface is untyped in this graph; the narrow slice the
+// worker uses is declared here instead of pulling the package's types into a
+// utility process that must boot without them.
+interface OrtTensorData {
+  data: ArrayLike<number>;
+}
+interface OrtTensor {
+  data: ArrayLike<number>;
+}
+type OrtTensorConstructor = new (
+  type: "float32" | "int64",
+  data: Float32Array | BigInt64Array,
+  dims: number[]
+) => OrtTensor;
+interface OrtSession {
+  inputNames: readonly string[];
+  run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensorData>>;
+}
+interface OrtModule {
+  InferenceSession: {
+    create(modelPath: string, options: Record<string, unknown>): Promise<OrtSession>;
+  };
+  Tensor: OrtTensorConstructor;
+}
+let ort: OrtModule | null = null;
+let speakerSession: OrtSession | null = null;
+let speakerInputName: string | null = null;
+
+function log(level: string, message: string, extra?: LogExtra): void {
   if (!logStream) return;
   const line = JSON.stringify({
     ts: new Date().toISOString(),
@@ -50,16 +94,19 @@ function log(level, message, extra) {
   }
 }
 
-function loadOrt() {
+function loadOrt(): void {
   if (ort) return;
-  ort = require("onnxruntime-node");
+  ort = require("onnxruntime-node") as OrtModule;
   log("info", "ort loaded");
 }
 
-const SESSION_OPTIONS = { intraOpNumThreads, executionMode: "sequential" };
+const SESSION_OPTIONS: Record<string, unknown> = {
+  intraOpNumThreads,
+  executionMode: "sequential",
+};
 
-let _melFilterbank = null;
-function getMelFilterbank() {
+let _melFilterbank: Float32Array[] | null = null;
+function getMelFilterbank(): Float32Array[] {
   if (_melFilterbank) return _melFilterbank;
 
   const numBins = FBANK_FFT_SIZE / 2 + 1;
@@ -79,7 +126,7 @@ function getMelFilterbank() {
     binPoints[i] = Math.floor(((FBANK_FFT_SIZE + 1) * melPoints[i]) / FBANK_SAMPLE_RATE);
   }
 
-  _melFilterbank = new Array(FBANK_NUM_MELS);
+  const bank = new Array<Float32Array>(FBANK_NUM_MELS);
   for (let m = 0; m < FBANK_NUM_MELS; m++) {
     const filter = new Float32Array(numBins);
     const left = binPoints[m];
@@ -92,13 +139,14 @@ function getMelFilterbank() {
         filter[k] = (right - k) / (right - center);
       }
     }
-    _melFilterbank[m] = filter;
+    bank[m] = filter;
   }
 
+  _melFilterbank = bank;
   return _melFilterbank;
 }
 
-function realFFT(frame) {
+function realFFT(frame: Float32Array): Float32Array {
   const n = FBANK_FFT_SIZE;
   const re = new Float64Array(n);
   const im = new Float64Array(n);
@@ -147,7 +195,12 @@ function realFFT(frame) {
   return powerSpectrum;
 }
 
-function computeFbank(samples) {
+interface Fbank {
+  features: Float32Array;
+  numFrames: number;
+}
+
+function computeFbank(samples: Float32Array): Fbank | null {
   const numFrames = Math.max(
     0,
     Math.floor((samples.length - FBANK_FRAME_LENGTH) / FBANK_FRAME_SHIFT) + 1
@@ -182,17 +235,24 @@ function computeFbank(samples) {
   return { features, numFrames };
 }
 
-async function speakerLoad({ modelPath }) {
+async function speakerLoad({ modelPath }: { modelPath: string }): Promise<SpeakerLoadResult> {
   if (speakerSession) return { ok: true };
   loadOrt();
-  speakerSession = await ort.InferenceSession.create(modelPath, SESSION_OPTIONS);
+  const module = ort as OrtModule;
+  speakerSession = await module.InferenceSession.create(modelPath, SESSION_OPTIONS);
   speakerInputName = speakerSession.inputNames[0];
   log("info", "speaker session loaded", { modelPath });
   return { ok: true };
 }
 
-async function speakerExtract({ samplesBuffer }) {
-  if (!speakerSession) throw new Error("speaker session not loaded");
+async function speakerExtract({
+  samplesBuffer,
+}: {
+  samplesBuffer: ArrayBuffer;
+}): Promise<SpeakerExtractResult> {
+  if (!speakerSession || !ort || speakerInputName === null) {
+    throw new Error("speaker session not loaded");
+  }
 
   const allSamples = new Float32Array(samplesBuffer);
   const samples =
@@ -212,11 +272,18 @@ async function speakerExtract({ samplesBuffer }) {
   };
   const results = await speakerSession.run(feeds);
   const output = results[Object.keys(results)[0]];
-  const data = new Float32Array(output.data);
+  const data = new Float32Array(Array.from(output.data));
   return { embeddingBuffer: data.buffer };
 }
 
-const handlers = {
+type HandlerResult = PingResult | SpeakerLoadResult | SpeakerExtractResult | ShutdownResult;
+
+const handlers: {
+  ping(): HandlerResult;
+  "speaker.load"(payload: { modelPath: string }): Promise<SpeakerLoadResult>;
+  "speaker.extract"(payload: { samplesBuffer: ArrayBuffer }): Promise<SpeakerExtractResult>;
+  shutdown(): ShutdownResult;
+} = {
   ping: () => ({ ok: true, sessions: { speaker: !!speakerSession } }),
   "speaker.load": speakerLoad,
   "speaker.extract": speakerExtract,
@@ -227,44 +294,64 @@ const handlers = {
   },
 };
 
-async function dispatch({ id, method, payload }) {
-  const handler = handlers[method];
-  if (!handler) {
-    return { reply: { id, error: { message: `unknown method: ${method}` } }, transferList: [] };
+interface ReplyEnvelope {
+  reply:
+    | { id: number; result: HandlerResult; error?: undefined }
+    | { id: number; error: { message: string }; result?: undefined };
+  transferList: unknown[];
+}
+
+async function dispatch(raw: unknown): Promise<ReplyEnvelope> {
+  const request: OnnxWorkerRequest | null = parseOnnxWorkerRequest(raw);
+  if (!request) {
+    const id = (raw as { id?: unknown } | null)?.id;
+    const method = (raw as { method?: unknown } | null)?.method;
+    return {
+      reply: { id: typeof id === "number" ? id : 0, error: { message: `unknown method: ${String(method)}` } },
+      transferList: [],
+    };
   }
+
+  const handler = handlers[request.method] as (payload?: unknown) => HandlerResult | Promise<HandlerResult>;
   try {
-    const result = await handler(payload || {});
+    const result = await handler(request.method === "ping" || request.method === "shutdown" ? {} : request.payload);
     // MessagePortMain transfers only ports, not ArrayBuffers — clone the result buffers instead.
-    return { reply: { id, result }, transferList: [] };
+    return { reply: { id: request.id, result }, transferList: [] };
   } catch (err) {
-    log("error", "handler threw", { method, error: err?.message, stack: err?.stack });
-    return { reply: { id, error: { message: err?.message || String(err) } }, transferList: [] };
+    const message = (err as Error | undefined)?.message || String(err);
+    log("error", "handler threw", { method: request.method, error: message, stack: (err as Error | undefined)?.stack });
+    return { reply: { id: request.id, error: { message } }, transferList: [] };
   }
 }
 
-process.on("uncaughtException", (err) => {
+process.on("uncaughtException", (err: Error) => {
   log("fatal", "uncaughtException", { error: err?.message, stack: err?.stack });
   process.stderr.write(`onnx worker uncaughtException: ${err?.stack || err?.message}\n`);
   process.exit(1);
 });
-process.on("unhandledRejection", (err) => {
+process.on("unhandledRejection", (err: Error) => {
   log("fatal", "unhandledRejection", { error: err?.message, stack: err?.stack });
   process.stderr.write(`onnx worker unhandledRejection: ${err?.stack || err?.message}\n`);
   process.exit(1);
 });
 
-if (!process.parentPort) {
+const parentPort = process.parentPort as
+  | {
+      once(event: "message", listener: (message: { data: unknown; ports?: unknown[] }) => void): void;
+    }
+  | undefined;
+
+if (!parentPort) {
   process.stderr.write("onnx worker: process.parentPort is undefined\n");
   process.exit(1);
 }
 
-process.parentPort.once("message", ({ data, ports }) => {
+parentPort.once("message", ({ data, ports }) => {
   if (data === "init" && ports?.length) {
-    port = ports[0];
-    port.on("message", async (event) => {
-      const message = event.data;
-      const { reply, transferList } = await dispatch(message);
-      port.postMessage(reply, transferList);
+    port = ports[0] as MessagePortLike;
+    port.on("message", async (event: { data: unknown }) => {
+      const { reply, transferList } = await dispatch(event.data);
+      port?.postMessage(reply, transferList);
     });
     port.on("close", () => {
       log("info", "port closed");

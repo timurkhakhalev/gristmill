@@ -12,7 +12,7 @@ const LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadSt
 
 const originalLoad = Module._load;
 const modelManagerModulePath = require.resolve("../../src/helpers/modelManagerBridge.js");
-const modelDirUtilsModulePath = require.resolve("../../src/helpers/modelDirUtils.js");
+const modelDirUtilsModulePath = require.resolve("../../src/helpers/modelDirUtils.ts");
 let electronHome = os.tmpdir();
 
 function loadModelManager({ downloadFile, checkDiskSpace } = {}) {
@@ -47,7 +47,7 @@ function loadModelManager({ downloadFile, checkDiskSpace } = {}) {
     // after this mock is uninstalled. Load it with the Electron stub, then pin
     // this manager to the test home so host XDG/OPENWHISPR cache overrides
     // cannot expose real downloaded models to the test.
-    require("../../src/helpers/modelDirUtils.js");
+    require("../../src/helpers/modelDirUtils.ts");
     const modelManager = require("../../src/helpers/modelManagerBridge.js").default;
     modelManager.getModelsDir = () => path.join(electronHome, ".cache", "openwhispr", "models");
     return modelManager;

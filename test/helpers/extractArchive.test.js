@@ -23,7 +23,7 @@ function writeZip(dir, name, buf) {
   return p;
 }
 
-const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.js");
+const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.ts");
 const originalLoad = Module._load;
 
 function freshRequire({ runSystemTar } = {}) {
@@ -36,7 +36,7 @@ function freshRequire({ runSystemTar } = {}) {
   };
 
   try {
-    return require("../../src/helpers/downloadUtils.js");
+    return require("../../src/helpers/downloadUtils.ts");
   } finally {
     Module._load = originalLoad;
   }

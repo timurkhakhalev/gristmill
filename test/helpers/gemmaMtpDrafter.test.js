@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const modelManagerModulePath = require.resolve("../../src/helpers/modelManagerBridge.js");
-const modelDirUtilsModulePath = require.resolve("../../src/helpers/modelDirUtils.js");
+const modelDirUtilsModulePath = require.resolve("../../src/helpers/modelDirUtils.ts");
 const originalLoad = Module._load;
 let electronHome = os.tmpdir();
 
@@ -36,7 +36,7 @@ function loadModelManager() {
     // after this mock is uninstalled — load it now so its electron binding is
     // the stub and modelsDir resolves inside the per-test temp home instead of
     // the real ~/.cache/openwhispr (where deleteModel would touch real files).
-    require("../../src/helpers/modelDirUtils.js");
+    require("../../src/helpers/modelDirUtils.ts");
     return require("../../src/helpers/modelManagerBridge.js").default;
   } finally {
     Module._load = originalLoad;

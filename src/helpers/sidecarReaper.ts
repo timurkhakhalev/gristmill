@@ -1,8 +1,8 @@
-const { execFileSync } = require("child_process");
-const debugLogger = require("./debugLogger");
-const sidecarPidFile = require("./sidecarPidFile");
+import { execFileSync } from "child_process";
+import debugLogger from "./debugLogger.js";
+import { clear as clearPidEntry, readAll } from "./sidecarPidFile.js";
 
-const EXPECTED_BINARY_FRAGMENTS = {
+const EXPECTED_BINARY_FRAGMENTS: Record<string, string[]> = {
   parakeet: ["sherpa-onnx-ws-", "sherpa-onnx-online-ws-"],
   whisper: ["whisper-server"],
   llama: ["llama-server"],
@@ -15,16 +15,16 @@ const SIGTERM_GRACE_MS = 5000;
 const SIGKILL_GRACE_MS = 1000;
 const EXIT_POLL_INTERVAL_MS = 200;
 
-function isProcessAlive(pid) {
+function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
   } catch (err) {
-    return err.code === "EPERM";
+    return (err as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 
-function processCommand(pid) {
+function processCommand(pid: number): string {
   try {
     if (process.platform === "win32") {
       const out = execFileSync("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], {
@@ -44,7 +44,7 @@ function processCommand(pid) {
   }
 }
 
-function signalProcess(pid, signal) {
+function signalProcess(pid: number, signal: NodeJS.Signals): void {
   try {
     process.kill(pid, signal);
   } catch {
@@ -52,11 +52,11 @@ function signalProcess(pid, signal) {
   }
 }
 
-function sleep(ms) {
+function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForExit(pid, timeoutMs) {
+export async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (isProcessAlive(pid)) {
     if (Date.now() >= deadline) return false;
@@ -65,7 +65,11 @@ async function waitForExit(pid, timeoutMs) {
   return true;
 }
 
-async function killStaleSidecar(name, pid, { sigtermGraceMs, sigkillGraceMs }) {
+async function killStaleSidecar(
+  name: string,
+  pid: number,
+  { sigtermGraceMs, sigkillGraceMs }: { sigtermGraceMs: number; sigkillGraceMs: number }
+): Promise<boolean> {
   debugLogger.warn("Reaping stale sidecar", { name, pid });
   signalProcess(pid, "SIGTERM");
   if (await waitForExit(pid, sigtermGraceMs)) return true;
@@ -81,11 +85,16 @@ async function killStaleSidecar(name, pid, { sigtermGraceMs, sigkillGraceMs }) {
   return false;
 }
 
-async function reapStaleSidecars({
+interface ReaperOptions {
+  sigtermGraceMs?: number;
+  sigkillGraceMs?: number;
+}
+
+export async function reapStaleSidecars({
   sigtermGraceMs = SIGTERM_GRACE_MS,
   sigkillGraceMs = SIGKILL_GRACE_MS,
-} = {}) {
-  const entries = sidecarPidFile.readAll();
+}: ReaperOptions = {}): Promise<void> {
+  const entries = readAll();
   await Promise.all(
     entries.map(async ({ name, pid }) => {
       const fragments = EXPECTED_BINARY_FRAGMENTS[name];
@@ -96,9 +105,7 @@ async function reapStaleSidecars({
           if (!dead) return;
         }
       }
-      sidecarPidFile.clear(name);
+      clearPidEntry(name);
     })
   );
 }
-
-module.exports = { reapStaleSidecars, waitForExit };

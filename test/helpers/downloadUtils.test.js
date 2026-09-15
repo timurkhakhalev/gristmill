@@ -23,7 +23,7 @@ function createElectronMock(response) {
 
 function loadWithNetFetch(fetchImpl) {
   const electronPath = require.resolve("electron");
-  const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.js");
+  const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.ts");
   const originalElectronCache = require.cache[electronPath];
   require.cache[electronPath] = {
     exports: { app: { isReady: () => false }, net: { fetch: fetchImpl } },
@@ -102,7 +102,7 @@ test("downloadFile waits for a cancelled write stream to close before removing i
   response.headers = {};
 
   const electronPath = require.resolve("electron");
-  const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.js");
+  const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.ts");
   const originalElectronCache = require.cache[electronPath];
   const originalCreateWriteStream = fs.createWriteStream;
   let releaseOpen;

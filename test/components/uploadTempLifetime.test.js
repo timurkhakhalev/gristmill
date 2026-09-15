@@ -173,9 +173,9 @@ test("a Stop's reset never deletes the temp; the settling execution deletes it a
   sandbox.downloadedTempPathRef.current = "/tmp/dl-1.wav";
   sandbox.file = fromUrlFile("/tmp/dl-1.wav");
 
-  const transcription = deferred();
-  sandbox.transcription = transcription.promise;
-  const run = sandbox.handleTranscribe();
+  const transcriptionA = deferred();
+  sandbox.transcription = transcriptionA.promise;
+  const runA = sandbox.handleTranscribe();
   await tick();
   assert.equal(sandbox.executionTempRef.current, "/tmp/dl-1.wav", "the execution owns the temp");
   assert.equal(sandbox.downloadedTempPath, null, "the view no longer holds it");
@@ -189,22 +189,38 @@ test("a Stop's reset never deletes the temp; the settling execution deletes it a
   await sandbox.cancelTranscription();
   assert.deepEqual(deletes, []);
 
-  // The reader settles (close), then the aborted execution settles.
+  // Start a new upload while A's readers are still open. B claims a different
+  // execution temp and must remain the owner while A settles.
+  sandbox.downloadedTempPath = "/tmp/dl-2.wav";
+  sandbox.downloadedTempPathRef.current = "/tmp/dl-2.wav";
+  sandbox.file = fromUrlFile("/tmp/dl-2.wav");
+  const transcriptionB = deferred();
+  sandbox.transcription = transcriptionB.promise;
+  const runB = sandbox.handleTranscribe();
+  await tick();
+  assert.equal(sandbox.executionTempRef.current, "/tmp/dl-2.wav");
+
+  // The reader settles (close), then the aborted A execution settles.
   childClose.resolve();
   await tick();
   assert.equal(isClosed(), true);
-  // A new upload lands between the reset and the old execution's settlement.
-  sandbox.downloadedTempPath = "/tmp/dl-2.wav";
-  transcription.resolve({ success: false, code: "UPLOAD_CANCELLED" });
-  await run;
+  transcriptionA.resolve({ success: false, code: "UPLOAD_CANCELLED" });
+  await runA;
   await tick();
   await tick();
   assert.deepEqual(
     deletes,
     ["/tmp/dl-1.wav"],
-    "the temp is deleted exactly once, after close, and the new upload is untouched"
+    "A deletes only its own temp after close, while B's upload remains untouched"
   );
-  assert.equal(sandbox.executionTempRef.current, null);
+  assert.equal(sandbox.executionTempRef.current, "/tmp/dl-2.wav");
+
+  // Finish B after the regression assertion so the fixture leaves no pending
+  // execution behind for the next test.
+  await sandbox.cancelTranscription();
+  transcriptionB.resolve({ success: false, code: "UPLOAD_CANCELLED" });
+  await runB;
+  await tick();
 });
 
 test("a settled error keeps the temp for Retry and hands it back to the view", async () => {

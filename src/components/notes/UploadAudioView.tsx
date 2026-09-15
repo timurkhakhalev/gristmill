@@ -543,24 +543,25 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   // RPC only confirms the abort signal was sent, not that the readers
   // finished, so the file is deleted here — after they settled. User-picked
   // source files are never deleted, only the downloaded temp copy.
-  const releaseExecutionTemp = () => {
-    const tempPath = executionTempRef.current;
+  const releaseExecutionTemp = (executionTemp: string | null) => {
+    if (!executionTemp) return;
+    window.electronAPI.deleteTempFile(executionTemp);
+    // CAS: an older execution may settle after a newer upload claimed the ref.
+    // Clear only its own claim so the newer execution remains the owner.
+    if (executionTempRef.current !== executionTemp) return;
     executionTempRef.current = null;
-    if (!tempPath) return;
-    window.electronAPI.deleteTempFile(tempPath);
-    if (downloadedTempPathRef.current === tempPath) {
+    if (downloadedTempPathRef.current === executionTemp) {
       downloadedTempPathRef.current = null;
       setDownloadedTempPath(null);
     }
   };
   // A settled error keeps the temp for Retry: hand it back to the view
   // state, which deletes it on reset or unmount as before.
-  const keepExecutionTempForRetry = () => {
-    const tempPath = executionTempRef.current;
+  const keepExecutionTempForRetry = (executionTemp: string | null) => {
+    if (!executionTemp || executionTempRef.current !== executionTemp) return;
     executionTempRef.current = null;
-    if (!tempPath) return;
-    downloadedTempPathRef.current = tempPath;
-    setDownloadedTempPath(tempPath);
+    downloadedTempPathRef.current = executionTemp;
+    setDownloadedTempPath(executionTemp);
   };
 
   const reset = () => {
@@ -610,12 +611,13 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     if (!file || batch.isProcessing) return;
     const currentFile = file;
     const currentTempPath = downloadedTempPath;
+    const executionTemp = currentTempPath;
     const runId = ++runIdRef.current;
     const requestId = crypto.randomUUID();
     singleRequestIdRef.current = requestId;
     // This execution now owns the downloaded temp: reset()/unmount see no
     // temp until it settles, so a Stop cannot delete it under open readers.
-    executionTempRef.current = currentTempPath;
+    executionTempRef.current = executionTemp;
     if (currentTempPath) {
       downloadedTempPathRef.current = null;
       setDownloadedTempPath(null);
@@ -640,7 +642,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       // landed meanwhile must not start the IPC work at all.
       if (runId !== runIdRef.current) {
         // Cancelled before any reader started — the temp is free to delete.
-        releaseExecutionTemp();
+        releaseExecutionTemp(executionTemp);
         return;
       }
       const res: FileTranscriptionResult = await transcribeFileWithSpeakers(
@@ -653,7 +655,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
       if (runId !== runIdRef.current) {
         // Readers settled after a Stop: only now is the temp deleted.
-        releaseExecutionTemp();
+        releaseExecutionTemp(executionTemp);
         return;
       }
       singleRequestIdRef.current = null;
@@ -678,7 +680,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         } else {
           const aiTitle = await generateTitle(res.text);
           if (runId !== runIdRef.current) {
-            releaseExecutionTemp();
+            releaseExecutionTemp(executionTemp);
             return;
           }
           title = aiTitle || uploadTitleFallback(res.text, currentFile.name);
@@ -694,14 +696,14 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           segments: res.segments,
         });
         if (runId !== runIdRef.current) {
-          releaseExecutionTemp();
+          releaseExecutionTemp(executionTemp);
           return;
         }
         if (noteRes.success && noteRes.note) setNoteId(noteRes.note.id);
-        releaseExecutionTemp();
+        releaseExecutionTemp(executionTemp);
         setState("complete");
       } else {
-        keepExecutionTempForRetry();
+        keepExecutionTempForRetry(executionTemp);
         setProgress(0);
         const errorKey = transcriptionErrorKey(res);
         setError(
@@ -716,10 +718,10 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     } catch (err) {
       if (runId !== runIdRef.current) {
         // A thrown settlement after a Stop: readers are done, delete the temp.
-        releaseExecutionTemp();
+        releaseExecutionTemp(executionTemp);
         return;
       }
-      keepExecutionTempForRetry();
+      keepExecutionTempForRetry(executionTemp);
       singleRequestIdRef.current = null;
       if (progressRef.current) clearInterval(progressRef.current);
       if (progressCleanupRef.current) progressCleanupRef.current();

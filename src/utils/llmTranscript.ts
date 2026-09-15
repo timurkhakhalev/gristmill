@@ -1,5 +1,5 @@
 import type { TranscriptSegment } from "../stores/meetingRecordingStore";
-import type { CalendarAttendee } from "../types/calendar";
+import type { CalendarAttendee } from "../contracts/calendar";
 import { resolveSegmentSpeakerName } from "./transcriptSpeakerState";
 import type { MentionPerson } from "./mentionMarkdown";
 

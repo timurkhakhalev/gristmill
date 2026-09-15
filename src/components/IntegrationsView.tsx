@@ -18,7 +18,7 @@ import {
 import { useSettingsStore } from "../stores/settingsStore";
 import { useSystemAudioPermission } from "../hooks/useSystemAudioPermission";
 import { canManageSystemAudioInApp } from "../utils/systemAudioAccess";
-import type { CalendarAccount } from "../types/calendar";
+import type { CalendarAccount } from "../contracts/calendar";
 import googleCalendarIcon from "../assets/icons/google-calendar.svg";
 import microsoftCalendarIcon from "../assets/icons/microsoft-calendar.svg";
 import appleCalendarIcon from "../assets/icons/apple-calendar.svg";
@@ -201,7 +201,7 @@ export default function IntegrationsView() {
           ...current.filter((a) => a.email !== result.email),
           { email: result.email },
         ]);
-      } else if (!result?.error?.includes("access_denied")) {
+      } else if (!(result?.success === false && result.error?.includes("access_denied"))) {
         // access_denied means the user cancelled on the consent screen
         setOauthErrorKey("integrations.googleCalendar");
       }
@@ -220,7 +220,7 @@ export default function IntegrationsView() {
           ...current.filter((a) => a.email !== result.email),
           { email: result.email },
         ]);
-      } else if (!result?.error?.includes("access_denied")) {
+      } else if (!(result?.success === false && result.error?.includes("access_denied"))) {
         setOauthErrorKey("integrations.microsoftCalendar");
       }
     } finally {
@@ -237,7 +237,9 @@ export default function IntegrationsView() {
       } else {
         // Only send the user to Privacy settings when access was actually
         // denied; helper-missing/snapshot-failed are not permission problems.
-        setAppleConnectError(result?.reason === "denied" ? "denied" : "failed");
+        setAppleConnectError(
+          result?.success === false && result.reason === "denied" ? "denied" : "failed"
+        );
       }
     } finally {
       setIsAppleConnecting(false);
@@ -308,52 +310,38 @@ export default function IntegrationsView() {
   );
 
   useEffect(() => {
-    void window.electronAPI?.gcalGetConnectionStatus?.()?.then((status) => {
-      setGoogleConfigured(Boolean((status as { configured?: boolean }).configured));
+    void window.electronAPI?.gcalGetConnectionStatus().then((status) => {
+      setGoogleConfigured(Boolean(status.configured));
     });
-    void window.electronAPI?.mcalGetConnectionStatus?.()?.then((status) => {
-      setMicrosoftConfigured(Boolean((status as { configured?: boolean }).configured));
+    void window.electronAPI?.mcalGetConnectionStatus().then((status) => {
+      setMicrosoftConfigured(Boolean(status.configured));
     });
-    const unsub = window.electronAPI?.onGcalConnectionChanged?.(
-      (data: {
-        accounts?: Array<{ email: string }>;
-        connected?: boolean;
-        email?: string | null;
-      }) => {
-        if (data.accounts) {
-          setGcalAccounts(data.accounts);
-        } else if (data.connected && data.email) {
-          const current = useSettingsStore.getState().gcalAccounts;
-          setGcalAccounts([
-            ...current.filter((a) => a.email !== data.email),
-            { email: data.email },
-          ]);
-        }
-      }
-    );
+    // The typed gcal-connection-changed event always carries the full
+    // account list; the legacy no-accounts payload shape no longer exists.
+    const unsub = window.electronAPI?.onGcalConnectionChanged((data) => {
+      setGcalAccounts(data.accounts);
+    });
     return () => unsub?.();
   }, [setGcalAccounts]);
 
   useEffect(() => {
-    const unsub = window.electronAPI?.onMcalConnectionChanged?.(
-      (data: { accounts?: Array<{ email: string }> }) => {
-        if (data.accounts) setMcalAccounts(data.accounts);
-      }
-    );
+    const unsub = window.electronAPI?.onMcalConnectionChanged((data) => {
+      setMcalAccounts(data.accounts);
+    });
     return () => unsub?.();
   }, [setMcalAccounts]);
 
   useEffect(() => {
     if (!isMac) return;
-    window.electronAPI?.acalGetConnectionStatus?.().then((status) => {
+    window.electronAPI?.acalGetConnectionStatus().then((status) => {
       if (status) {
         setAppleCalendarConnected(status.connected);
         setAppleSourceNames(status.sourceNames);
       }
     });
-    const unsub = window.electronAPI?.onAcalConnectionChanged?.((data) => {
+    const unsub = window.electronAPI?.onAcalConnectionChanged((data) => {
       setAppleCalendarConnected(data.connected);
-      setAppleSourceNames(data.sourceNames ?? []);
+      setAppleSourceNames(data.sourceNames);
     });
     return () => unsub?.();
   }, [isMac, setAppleCalendarConnected]);

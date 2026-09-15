@@ -17,7 +17,7 @@ import type {
   SystemAudioStrategy,
 } from "../types/electron";
 import type { NoteItem } from "../contracts/notes";
-import type { CalendarAttendee } from "../types/calendar";
+import type { CalendarAttendee } from "../contracts/calendar";
 import {
   DEFAULT_SYSTEM_AUDIO_ACCESS,
   getDisplayCaptureModeForStrategy,

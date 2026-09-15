@@ -7,7 +7,7 @@ import PersonAvatar from "./ui/PersonAvatar";
 import EmptyStateCard from "./ui/EmptyStateCard";
 import { GRADIENT_CIRCLE } from "./ui/gradientCircle";
 import { cn } from "./lib/utils";
-import type { CalendarAttendee, CalendarEvent } from "../types/calendar";
+import type { CalendarAttendee, CalendarEvent } from "../contracts/calendar";
 import { parseAttendees } from "../utils/calendarAttendees";
 import { useSystemAudioPermission } from "../hooks/useSystemAudioPermission";
 import { canManageSystemAudioInApp } from "../utils/systemAudioAccess";

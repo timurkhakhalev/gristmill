@@ -28,7 +28,7 @@ import {
   type MeetingIdentity,
 } from "../../utils/llmTranscript";
 import type { MentionPerson } from "../../utils/mentionMarkdown";
-import type { CalendarAttendee } from "../../types/calendar";
+import type { CalendarAttendee } from "../../contracts/calendar";
 import {
   useNotes,
   useSpaces,
@@ -257,7 +257,7 @@ export default function PersonalNotesView({
       setCalendarEventName(null);
       return;
     }
-    window.electronAPI.gcalGetEvent?.(activeNote.calendar_event_id).then((result) => {
+    window.electronAPI.gcalGetEvent(activeNote.calendar_event_id).then((result) => {
       setCalendarEventName(result?.success && result.event?.summary ? result.event.summary : null);
     });
   }, [activeNote?.calendar_event_id]);

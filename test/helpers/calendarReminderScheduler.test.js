@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const CalendarReminderScheduler = require("../../src/helpers/calendarReminderScheduler.js");
+const CalendarReminderScheduler = require("../../src/helpers/calendarReminderScheduler.ts");
 
 function activeEvent(provider, id) {
   const now = Date.now();

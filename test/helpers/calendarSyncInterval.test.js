@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const CalendarSyncInterval = require("../../src/helpers/calendarSyncInterval.js");
+const CalendarSyncInterval = require("../../src/helpers/calendarSyncInterval.ts");
 const { FOCUS_SYNC_THROTTLE_MS } = CalendarSyncInterval;
 
 function createRunner(syncFn, overrides = {}) {

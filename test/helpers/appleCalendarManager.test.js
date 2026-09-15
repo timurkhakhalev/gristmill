@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 
-const managerModulePath = require.resolve("../../src/helpers/appleCalendarManager.js");
+const managerModulePath = require.resolve("../../src/helpers/appleCalendarManager.ts");
 const originalLoad = Module._load;
 
 function loadManager() {

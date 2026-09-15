@@ -1,38 +1,69 @@
-const { net } = require("electron");
-const { runOAuthLoopbackFlow, OAuthFlowError } = require("./oauthLoopbackFlow");
+import { net } from "electron";
+import { runOAuthLoopbackFlow, OAuthFlowError } from "./oauthLoopbackFlow.js";
+import type { GoogleTokenRow } from "./database.js";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CALENDAR_SCOPE =
   "openid email https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly";
 
-class GoogleCalendarOAuth {
-  constructor(databaseManager) {
+// Google token-endpoint payload: success fields or the error/description pair.
+interface GoogleTokenResponse {
+  error?: string;
+  error_description?: string;
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  scope?: string;
+  id_token?: string;
+}
+
+export interface GoogleOAuthDb {
+  getGoogleTokens(): GoogleTokenRow | null;
+  getGoogleTokensByEmail(email: string): GoogleTokenRow | null;
+  getAllGoogleTokens(): GoogleTokenRow[];
+  saveGoogleTokens(tokens: {
+    google_email: string;
+    access_token: string;
+    refresh_token: string;
+    expires_at: number;
+    scope: string;
+  }): unknown;
+}
+
+function isConfiguredError(): Error & { code: string } {
+  return Object.assign(new Error("Google Calendar OAuth is not configured"), {
+    code: "CALENDAR_NOT_CONFIGURED",
+  });
+}
+
+export class GoogleCalendarOAuth {
+  private readonly databaseManager: GoogleOAuthDb;
+
+  constructor(databaseManager: GoogleOAuthDb) {
     this.databaseManager = databaseManager;
   }
 
-  getClientId() {
+  getClientId(): string | undefined {
     return process.env.GOOGLE_CALENDAR_CLIENT_ID;
   }
 
-  getClientSecret() {
+  getClientSecret(): string | undefined {
     return process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
   }
 
-  isConfigured() {
+  isConfigured(): boolean {
     return Boolean(this.getClientId() && this.getClientSecret());
   }
 
-  startOAuthFlow() {
+  startOAuthFlow(): Promise<{ success: boolean; email: string }> {
     if (!this.isConfigured()) {
-      throw Object.assign(new Error("Google Calendar OAuth is not configured"), {
-        code: "CALENDAR_NOT_CONFIGURED",
-      });
+      throw isConfiguredError();
     }
     return runOAuthLoopbackFlow({
       buildAuthUrl: (redirectUri, state, codeChallenge) => {
         const params = new URLSearchParams({
-          client_id: this.getClientId(),
+          client_id: this.getClientId() as string,
           redirect_uri: redirectUri,
           response_type: "code",
           scope: CALENDAR_SCOPE,
@@ -54,14 +85,16 @@ class GoogleCalendarOAuth {
           );
         }
 
-        let email = null;
+        let email: string | null = null;
         if (tokenData.id_token) {
           try {
             const payload = JSON.parse(
-              Buffer.from(tokenData.id_token.split(".")[1], "base64url").toString()
-            );
-            email = payload.email;
-          } catch {}
+              Buffer.from(tokenData.id_token.split(".")[1] as string, "base64url").toString()
+            ) as { email?: string };
+            email = payload.email ?? null;
+          } catch {
+            // A malformed id_token falls through to the no_email error.
+          }
         }
 
         if (!email) {
@@ -73,9 +106,9 @@ class GoogleCalendarOAuth {
 
         this.databaseManager.saveGoogleTokens({
           google_email: email,
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
-          expires_at: Date.now() + tokenData.expires_in * 1000,
+          access_token: tokenData.access_token as string,
+          refresh_token: tokenData.refresh_token as string,
+          expires_at: Date.now() + (tokenData.expires_in ?? 0) * 1000,
           scope: tokenData.scope || CALENDAR_SCOPE,
         });
 
@@ -84,11 +117,15 @@ class GoogleCalendarOAuth {
     });
   }
 
-  async exchangeCodeForTokens(code, redirectUri, codeVerifier) {
+  async exchangeCodeForTokens(
+    code: string,
+    redirectUri: string,
+    codeVerifier: string
+  ): Promise<GoogleTokenResponse> {
     const body = new URLSearchParams({
       code,
-      client_id: this.getClientId(),
-      client_secret: this.getClientSecret(),
+      client_id: this.getClientId() as string,
+      client_secret: this.getClientSecret() as string,
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
       code_verifier: codeVerifier,
@@ -97,10 +134,10 @@ class GoogleCalendarOAuth {
     return this._httpsPost(GOOGLE_TOKEN_URL, body);
   }
 
-  async refreshAccessToken(refreshToken) {
+  async refreshAccessToken(refreshToken: string): Promise<GoogleTokenResponse> {
     const body = new URLSearchParams({
-      client_id: this.getClientId(),
-      client_secret: this.getClientSecret(),
+      client_id: this.getClientId() as string,
+      client_secret: this.getClientSecret() as string,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }).toString();
@@ -108,7 +145,7 @@ class GoogleCalendarOAuth {
     return this._httpsPost(GOOGLE_TOKEN_URL, body);
   }
 
-  async getValidAccessToken(accountEmail = null) {
+  async getValidAccessToken(accountEmail: string | null = null): Promise<string> {
     const tokens = accountEmail
       ? this.databaseManager.getGoogleTokensByEmail(accountEmail)
       : this.databaseManager.getGoogleTokens();
@@ -119,25 +156,27 @@ class GoogleCalendarOAuth {
     if (tokens.expires_at - fiveMinutes < Date.now()) {
       const refreshed = await this.refreshAccessToken(tokens.refresh_token);
       if (refreshed.error) {
-        throw new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`);
+        throw new Error(
+          `Token refresh failed: ${refreshed.error_description || refreshed.error}`
+        );
       }
 
-      const newExpiresAt = Date.now() + refreshed.expires_in * 1000;
+      const newExpiresAt = Date.now() + (refreshed.expires_in ?? 0) * 1000;
       this.databaseManager.saveGoogleTokens({
         google_email: tokens.google_email,
-        access_token: refreshed.access_token,
+        access_token: refreshed.access_token as string,
         refresh_token: tokens.refresh_token,
         expires_at: newExpiresAt,
         scope: tokens.scope,
       });
 
-      return refreshed.access_token;
+      return refreshed.access_token as string;
     }
 
     return tokens.access_token;
   }
 
-  async revokeToken(token) {
+  async revokeToken(token: string): Promise<void> {
     const body = new URLSearchParams({ token }).toString();
     try {
       await this._httpsPost("https://oauth2.googleapis.com/revoke", body);
@@ -146,17 +185,17 @@ class GoogleCalendarOAuth {
     }
   }
 
-  async _httpsPost(urlString, body) {
+  async _httpsPost(urlString: string, body: string): Promise<GoogleTokenResponse> {
     const response = await net.fetch(urlString, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
       signal: AbortSignal.timeout(10000),
       useSessionCookies: false,
-    });
+    } as RequestInit);
     const text = await response.text();
     try {
-      return JSON.parse(text);
+      return JSON.parse(text) as GoogleTokenResponse;
     } catch {
       throw new Error(`Invalid JSON response: ${text.slice(0, 200)}`);
     }

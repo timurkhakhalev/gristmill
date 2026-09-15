@@ -1,10 +1,16 @@
-const { net } = require("electron");
-const debugLogger = require("./debugLogger");
-const GoogleCalendarOAuth = require("./googleCalendarOAuth");
-const CalendarSyncInterval = require("./calendarSyncInterval");
-const { MAX_BUFFER_MINUTES } = require("./calendarAvailability");
-const { extractMeetingUrl } = require("./meetingJoinUrl");
-const { sendGcalConnectionChanged, sendGcalEventsSynced } = require("./calendarEvents");
+import { net } from "electron";
+import debugLogger from "./debugLogger.js";
+import { GoogleCalendarOAuth } from "./googleCalendarOAuth.js";
+import { CalendarSyncInterval } from "./calendarSyncInterval.js";
+import { MAX_BUFFER_MINUTES } from "./calendarAvailability.js";
+import { extractMeetingUrl } from "./meetingJoinUrl.js";
+import { sendGcalConnectionChanged, sendGcalEventsSynced } from "./calendarEvents.js";
+import type {
+  CalendarAccountRow,
+  CalendarEventInput,
+  GoogleCalendarInput,
+  GoogleCalendarRow,
+} from "./database.js";
 
 const CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";
 const BUFFER_COVERAGE_MS = MAX_BUFFER_MINUTES * 60 * 1000;
@@ -14,23 +20,102 @@ const ALL_DAY_TIMEZONE_PADDING_MS = 48 * 60 * 60 * 1000;
 // after a day to keep the lookahead covering the 31-day availability horizon.
 const SYNC_LOOKAHEAD_MS = 33 * 24 * 60 * 60 * 1000;
 const SYNC_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
-const GOOGLE_RESPONSE_STATUSES = new Set(["accepted", "declined", "tentative", "needsAction"]);
+const GOOGLE_RESPONSE_STATUSES: ReadonlySet<string> = new Set([
+  "accepted",
+  "declined",
+  "tentative",
+  "needsAction",
+]);
 
-class GoogleCalendarManager {
-  constructor(databaseManager, windowManager, reminderScheduler) {
+// Raw Google API shapes — parsed from unknown provider payloads, then mapped
+// to internal DB rows. Only the fields the manager actually reads are typed.
+interface GoogleCalendarListItem {
+  id: string;
+  summary: string;
+  description?: string;
+  backgroundColor?: string;
+  primary?: boolean;
+}
+
+interface GoogleAttendee {
+  email?: string;
+  displayName?: string;
+  responseStatus?: string;
+  self?: boolean;
+}
+
+interface GoogleEventItem {
+  id: string;
+  status?: string;
+  summary?: string;
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+  transparency?: string;
+  attendees?: GoogleAttendee[];
+  hangoutLink?: string;
+  location?: string;
+  description?: string;
+  conferenceData?: unknown;
+  organizer?: { email?: string };
+}
+
+interface GoogleEventsPage {
+  items?: GoogleEventItem[];
+  nextPageToken?: string;
+  nextSyncToken?: string;
+}
+
+class ApiGetError extends Error {
+  statusCode?: number;
+}
+
+export interface GoogleManagerDb {
+  getGoogleAccounts(): CalendarAccountRow[];
+  getAllGoogleTokens(): Array<{ access_token: string }>;
+  removeGoogleAccount(email: string): unknown;
+  clearGoogleCalendarData(): unknown;
+  saveGoogleCalendars(calendars: GoogleCalendarInput[], accountEmail: string | null): unknown;
+  getGoogleCalendars(accountEmail?: string | null): GoogleCalendarRow[];
+  getSelectedCalendars(accountEmail?: string | null): GoogleCalendarRow[];
+  applyPrimaryOnlyToSelection(primaryOnly: boolean): unknown;
+  updateCalendarSelection(id: string, selected: boolean): unknown;
+  removeEventsFromDeselectedCalendars(provider: string): unknown;
+  upsertCalendarEvents(events: CalendarEventInput[]): unknown;
+  removeCalendarEvents(ids: string[]): unknown;
+  removeStaleCalendarEvents(provider: string, calendarId: string, freshIds: string[]): unknown;
+  updateCalendarSyncToken(id: string, token: string, expiresAt: number): unknown;
+  upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
+  getUpcomingEvents(windowMinutes?: number): unknown[];
+}
+
+export interface ReminderSchedulerLike {
+  scheduleNextMeeting(): void;
+  reset(provider: string): void;
+}
+
+export class GoogleCalendarManager {
+  private readonly databaseManager: GoogleManagerDb;
+  private readonly reminderScheduler: ReminderSchedulerLike;
+  private readonly oauth: GoogleCalendarOAuth;
+  private accounts = new Map<string, { email: string }>();
+  private primaryOnly = true;
+  private readonly syncRunner: CalendarSyncInterval;
+
+  constructor(
+    databaseManager: GoogleManagerDb & ConstructorParameters<typeof GoogleCalendarOAuth>[0],
+    _windowManager: unknown,
+    reminderScheduler: ReminderSchedulerLike
+  ) {
     this.databaseManager = databaseManager;
-    this.windowManager = windowManager;
     this.reminderScheduler = reminderScheduler;
     this.oauth = new GoogleCalendarOAuth(databaseManager);
-    this.accounts = new Map();
-    this.primaryOnly = true;
     this.syncRunner = new CalendarSyncInterval(
       () => this.syncEvents().then(() => this.reminderScheduler.scheduleNextMeeting()),
       { intervalMs: 2 * 60 * 1000, maxIntervalMs: 30 * 60 * 1000, logScope: "gcal" }
     );
   }
 
-  start() {
+  start(): void {
     this._loadAccounts();
     if (this.accounts.size === 0) return;
 
@@ -38,29 +123,29 @@ class GoogleCalendarManager {
       .then(() => this.syncEvents())
       .then(() => this.reminderScheduler.scheduleNextMeeting())
       .catch((err) =>
-        debugLogger.error("Initial calendar sync failed", { error: err.message }, "gcal")
+        debugLogger.error("Initial calendar sync failed", { error: (err as Error).message }, "gcal")
       );
 
     this.syncRunner.start();
   }
 
-  stop() {
+  stop(): void {
     this.syncRunner.stop();
   }
 
-  isConnected() {
+  isConnected(): boolean {
     return this.accounts.size > 0;
   }
 
-  isConfigured() {
+  isConfigured(): boolean {
     return this.oauth.isConfigured();
   }
 
-  addAccount(email) {
+  addAccount(email: string): void {
     this.accounts.set(email, { email });
   }
 
-  removeAccount(email) {
+  removeAccount(email: string): void {
     this.accounts.delete(email);
     this.databaseManager.removeGoogleAccount(email);
     this._broadcastAccountsChanged();
@@ -72,7 +157,7 @@ class GoogleCalendarManager {
     }
   }
 
-  async startOAuth() {
+  async startOAuth(): Promise<{ success: boolean; email?: string; error?: string }> {
     const result = await this.oauth.startOAuthFlow();
     this.addAccount(result.email);
 
@@ -85,17 +170,17 @@ class GoogleCalendarManager {
     return result;
   }
 
-  async revokeAllTokens() {
+  async revokeAllTokens(): Promise<void> {
     try {
       const allTokens = this.databaseManager.getAllGoogleTokens();
       await Promise.allSettled(allTokens.map((t) => this.oauth.revokeToken(t.access_token)));
     } catch (err) {
-      debugLogger.error("Error revoking Google tokens", { error: err.message }, "gcal");
+      debugLogger.error("Error revoking Google tokens", { error: (err as Error).message }, "gcal");
     }
     this.disconnect();
   }
 
-  disconnect(email) {
+  disconnect(email?: string | null): void {
     if (email) {
       this.removeAccount(email);
     } else {
@@ -108,7 +193,12 @@ class GoogleCalendarManager {
     }
   }
 
-  getConnectionStatus() {
+  getConnectionStatus(): {
+    connected: boolean;
+    configured: boolean;
+    accounts: CalendarAccountRow[];
+    email: string | null;
+  } {
     const accounts = this.databaseManager.getGoogleAccounts();
     return {
       connected: accounts.length > 0,
@@ -119,18 +209,20 @@ class GoogleCalendarManager {
     };
   }
 
-  getAccounts() {
+  getAccounts(): CalendarAccountRow[] {
     return this.databaseManager.getGoogleAccounts();
   }
 
-  async fetchCalendars(accountEmail = null) {
+  async fetchCalendars(accountEmail: string | null = null): Promise<GoogleCalendarInput[]> {
     const emails = accountEmail ? [accountEmail] : this._getAccountEmails();
-    const allCalendars = [];
+    const allCalendars: GoogleCalendarInput[] = [];
 
     for (const email of emails) {
       try {
-        const data = await this._apiGet("/users/me/calendarList", email);
-        const calendars = (data.items || []).map((item) => ({
+        const data = (await this._apiGet("/users/me/calendarList", email)) as {
+          items?: GoogleCalendarListItem[];
+        };
+        const calendars: GoogleCalendarInput[] = (data.items || []).map((item) => ({
           id: item.id,
           summary: item.summary,
           description: item.description || null,
@@ -140,7 +232,7 @@ class GoogleCalendarManager {
         this.databaseManager.saveGoogleCalendars(calendars, email);
         allCalendars.push(...calendars);
       } catch (err) {
-        debugLogger.error("Error fetching calendars", { email, error: err.message }, "gcal");
+        debugLogger.error("Error fetching calendars", { email, error: (err as Error).message }, "gcal");
       }
     }
 
@@ -149,7 +241,7 @@ class GoogleCalendarManager {
     return allCalendars;
   }
 
-  async syncEvents() {
+  async syncEvents(): Promise<void> {
     const selectedCalendars = this.databaseManager.getSelectedCalendars();
     if (selectedCalendars.length === 0) return;
 
@@ -159,7 +251,7 @@ class GoogleCalendarManager {
       } catch (err) {
         debugLogger.error(
           "Error syncing calendar",
-          { calendarId: calendar.id, error: err.message },
+          { calendarId: calendar.id, error: (err as Error).message },
           "gcal"
         );
       }
@@ -169,7 +261,7 @@ class GoogleCalendarManager {
     this.reminderScheduler.scheduleNextMeeting();
   }
 
-  async _syncCalendar(calendar) {
+  private async _syncCalendar(calendar: GoogleCalendarRow): Promise<void> {
     const accountEmail = calendar.account_email;
 
     const buildFullParams = () =>
@@ -185,35 +277,35 @@ class GoogleCalendarManager {
       });
 
     const hasFreshToken = Boolean(
-      calendar.sync_token && calendar.sync_token_expires_at > Date.now()
+      calendar.sync_token && (calendar.sync_token_expires_at ?? 0) > Date.now()
     );
     let isFullSync = !hasFreshToken;
     let tokenExpiresAt = hasFreshToken
-      ? calendar.sync_token_expires_at
+      ? (calendar.sync_token_expires_at as number)
       : Date.now() + SYNC_TOKEN_TTL_MS;
     let baseParams = isFullSync
       ? buildFullParams()
       : new URLSearchParams({
           singleEvents: "true",
-          syncToken: calendar.sync_token,
+          syncToken: calendar.sync_token as string,
         });
-    let pageToken = null;
-    let nextSyncToken = null;
-    const allItems = [];
+    let pageToken: string | null = null;
+    let nextSyncToken: string | null = null;
+    const allItems: GoogleEventItem[] = [];
 
-    while (true) {
+    for (;;) {
       const params = new URLSearchParams(baseParams);
       if (pageToken) params.set("pageToken", pageToken);
 
-      let data;
+      let data: GoogleEventsPage;
       try {
-        data = await this._apiGet(
+        data = (await this._apiGet(
           `/calendars/${encodeURIComponent(calendar.id)}/events?${params.toString()}`,
           accountEmail
-        );
+        )) as GoogleEventsPage;
       } catch (err) {
         // 410 Gone means syncToken is invalid; fall back to full sync
-        if (err.statusCode === 410 && !pageToken && !isFullSync) {
+        if ((err as ApiGetError).statusCode === 410 && !pageToken && !isFullSync) {
           isFullSync = true;
           tokenExpiresAt = Date.now() + SYNC_TOKEN_TTL_MS;
           baseParams = buildFullParams();
@@ -233,9 +325,9 @@ class GoogleCalendarManager {
       if (!pageToken) break;
     }
 
-    const toUpsert = [];
-    const toRemove = [];
-    const contactsToUpsert = [];
+    const toUpsert: CalendarEventInput[] = [];
+    const toRemove: string[] = [];
+    const contactsToUpsert: Array<{ email: string; displayName: string | null }> = [];
 
     for (const item of allItems) {
       if (item.status === "cancelled") {
@@ -250,15 +342,17 @@ class GoogleCalendarManager {
         calendar_id: calendar.id,
         provider: "google",
         summary: item.summary || null,
-        start_time: item.start?.dateTime || item.start?.date,
-        end_time: item.end?.dateTime || item.end?.date,
+        start_time: item.start?.dateTime || (item.start?.date as string),
+        end_time: item.end?.dateTime || (item.end?.date as string),
         is_all_day: isAllDay,
         status: item.status || "confirmed",
         availability_status: item.transparency === "transparent" ? "free" : "busy",
-        self_response_status: GOOGLE_RESPONSE_STATUSES.has(selfAttendee?.responseStatus)
-          ? selfAttendee.responseStatus
-          : "unknown",
-        hangout_link: item.hangoutLink || extractMeetingUrl([item.location, item.description]),
+        self_response_status:
+          selfAttendee?.responseStatus && GOOGLE_RESPONSE_STATUSES.has(selfAttendee.responseStatus)
+            ? selfAttendee.responseStatus
+            : "unknown",
+        hangout_link:
+          item.hangoutLink || extractMeetingUrl([item.location, item.description]) || null,
         conference_data: item.conferenceData ? JSON.stringify(item.conferenceData) : null,
         organizer_email: item.organizer?.email || null,
         attendees_count: item.attendees?.length || 0,
@@ -300,29 +394,31 @@ class GoogleCalendarManager {
     if (contactsToUpsert.length > 0) this.databaseManager.upsertContacts(contactsToUpsert);
   }
 
-  onWakeFromSleep() {
+  onWakeFromSleep(): void {
     this.syncEvents()
       .then(() => this.syncRunner.notifySuccess())
-      .catch((err) => debugLogger.error("Post-wake sync failed", { error: err.message }, "gcal"));
+      .catch((err) =>
+        debugLogger.error("Post-wake sync failed", { error: (err as Error).message }, "gcal")
+      );
   }
 
-  syncOnFocus() {
+  syncOnFocus(): void {
     if (!this.isConnected()) return;
     this.syncRunner.syncOnFocus();
   }
 
-  getCalendars() {
+  getCalendars(): GoogleCalendarRow[] {
     return this.databaseManager.getGoogleCalendars();
   }
 
-  async setCalendarSelection(calendarId, isSelected) {
+  async setCalendarSelection(calendarId: string, isSelected: boolean): Promise<void> {
     this.databaseManager.updateCalendarSelection(calendarId, isSelected);
     await this.syncEvents();
     this.syncRunner.notifySuccess();
     this.reminderScheduler.scheduleNextMeeting();
   }
 
-  async setPrimaryOnly(value) {
+  async setPrimaryOnly(value: boolean): Promise<void> {
     if (this.primaryOnly === value) return;
     this.primaryOnly = value;
     if (!this.isConnected()) return;
@@ -334,11 +430,11 @@ class GoogleCalendarManager {
     sendGcalEventsSynced();
   }
 
-  async getUpcomingEvents(windowMinutes) {
+  async getUpcomingEvents(windowMinutes?: number): Promise<unknown[]> {
     return this.databaseManager.getUpcomingEvents(windowMinutes);
   }
 
-  _loadAccounts() {
+  private _loadAccounts(): void {
     const accounts = this.databaseManager.getGoogleAccounts();
     this.accounts.clear();
     for (const account of accounts) {
@@ -346,16 +442,16 @@ class GoogleCalendarManager {
     }
   }
 
-  _getAccountEmails() {
+  private _getAccountEmails(): string[] {
     return Array.from(this.accounts.keys());
   }
 
-  _broadcastAccountsChanged() {
+  private _broadcastAccountsChanged(): void {
     const accounts = this.getAccounts();
     sendGcalConnectionChanged({ accounts });
   }
 
-  async _apiGet(path, accountEmail = null) {
+  private async _apiGet(path: string, accountEmail: string | null = null): Promise<unknown> {
     const accessToken = await this.oauth.getValidAccessToken(accountEmail);
     const urlString = path.startsWith("http") ? path : `${CALENDAR_API_BASE}${path}`;
 
@@ -364,9 +460,9 @@ class GoogleCalendarManager {
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: AbortSignal.timeout(10000),
       useSessionCookies: false,
-    });
+    } as RequestInit);
     const text = await response.text();
-    let parsed = null;
+    let parsed: unknown = null;
     try {
       parsed = JSON.parse(text);
     } catch {
@@ -374,7 +470,10 @@ class GoogleCalendarManager {
       // status below instead of masking it as a parse failure.
     }
     if (response.status >= 400) {
-      const err = new Error(parsed?.error?.message || `API error ${response.status}`);
+      const err = new ApiGetError(
+        (parsed as { error?: { message?: string } } | null)?.error?.message ||
+          `API error ${response.status}`
+      );
       err.statusCode = response.status;
       throw err;
     }

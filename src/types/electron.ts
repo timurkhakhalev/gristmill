@@ -9,6 +9,7 @@ import type { ActionsApi } from "../contracts/actions";
 import type { LocalFileTranscriptionApi } from "../contracts/localFileTranscription";
 import type { CalendarAvailabilityApi } from "../contracts/calendarAvailability";
 import type { UploadTranscriptionApi } from "../contracts/uploadTranscription";
+import type { ReasoningApi } from "../contracts/reasoning";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -812,69 +813,10 @@ declare global {
         callback: (event: any, data: LocalLLMDownloadProgressEvent) => void
       ) => () => void;
 
-      // Local reasoning
-      processLocalReasoning: (
-        text: string,
-        modelId: string,
-        agentName: string | null,
-        config: any
-      ) => Promise<{
-        success: boolean;
-        text?: string;
-        error?: string;
-        code?: string;
-        details?: Record<string, unknown>;
-      }>;
-      checkLocalReasoningAvailable: () => Promise<boolean>;
+      // Local/Anthropic/enterprise one-shot reasoning, the Bedrock cleanup
+      // cancel and the enterprise stream lifecycle come from the shared
+      // ReasoningApi contract.
 
-      // Anthropic reasoning
-      processAnthropicReasoning: (
-        text: string,
-        modelId: string,
-        agentName: string | null,
-        config: any
-      ) => Promise<{ success: boolean; text?: string; error?: string }>;
-
-      // Enterprise reasoning (Bedrock, Azure, Vertex)
-      processEnterpriseReasoning: (
-        text: string,
-        modelId: string,
-        agentName: string | null,
-        config: any
-      ) => Promise<{
-        success: boolean;
-        text?: string;
-        error?: string;
-        messageKey?: string;
-        messageParams?: Record<string, string | number>;
-        action?: string;
-        actionKey?: string;
-        copyCommand?: string;
-        retryable?: boolean;
-        technicalDetails?: {
-          status?: number;
-          exceptionType?: string;
-          requestId?: string;
-          underlyingError?: string;
-        };
-      }>;
-      cancelEnterpriseReasoning?: () => void;
-      enterpriseStreamStart?: (payload: {
-        streamId: string;
-        provider: string;
-        modelId: string;
-        config: Record<string, unknown>;
-        options: Record<string, unknown>;
-      }) => Promise<{ success: boolean; error?: string }>;
-      enterpriseStreamCancel?: (streamId: string) => Promise<void>;
-      onEnterpriseStreamPart?: (
-        callback: (payload: {
-          streamId: string;
-          part?: unknown;
-          done?: boolean;
-          error?: string;
-        }) => void
-      ) => () => void;
       listBedrockModels?: (config: Record<string, unknown>) => Promise<{
         success: boolean;
         models?: Array<{ value: string; label: string; vendor: string }>;
@@ -1434,7 +1376,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

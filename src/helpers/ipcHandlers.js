@@ -12,7 +12,13 @@ const { BYOK_API_KEYS } = require("../config/secretKeys");
 const { extractAnthropicText, describeMissingAnthropicText } = require("./anthropicResponse");
 const { classifyAndLog } = require("./networkErrors");
 const { resolveSystemDefaultMicrophone } = require("./systemDefaultMicrophone");
-const { pickEnterpriseConfig } = require("./enterpriseProviderErrors");
+const {
+  isEnterpriseProvider,
+  mapEnterpriseError,
+  runAbortableOperation,
+  runBedrockRequest,
+  validateEnterpriseEndpoint,
+} = require("./enterpriseProviderErrors");
 // The renderer's ModelRegistry is not main-loadable; the raw registry data is
 // packaged, and the route resolver only needs {id, baseUrl} per provider.
 const transcriptionProviderBaseUrls = () =>
@@ -29,18 +35,6 @@ const serializeIpcError =
       return { error: error.message, code: error.code, messageKey: error.messageKey };
     }
   };
-
-// Enterprise providers run with credentials and endpoints supplied by the
-// user's local settings. Hosted identity/cloud bootstrap is not part of the
-// desktop runtime.
-function resolveEnterpriseRuntime(provider, modelId, config = {}) {
-  return {
-    provider,
-    model: config.model || modelId,
-    apiKey: config.apiKey || "",
-    enterprise: pickEnterpriseConfig(config),
-  };
-}
 
 const { resolveLocalServerNeeds } = require("./localServerPolicy");
 const { registerNotesHandlers } = require("./notesIpcHandlers");
@@ -65,7 +59,7 @@ const { getTinfoilChatModels } = require("./tinfoilCatalog");
 const { transcribeWithTinfoil } = require("./tinfoilTranscription");
 const { transcribeWithGemini } = require("./geminiTranscription");
 const AudioStorageManager = require("./audioStorage");
-const AgentStreamRequestRegistry = require("./agentStreamRequestRegistry");
+const { AgentStreamRequestRegistry } = require("./agentStreamRequestRegistry");
 const { createUploadCancelRegistry } = require("./uploadCancelRegistry");
 const { testProviderConnection } = require("./providerConnectionTest");
 const LocalModelDownloadStatus = require("./localModelDownloadStatus");
@@ -124,6 +118,7 @@ const {
 const { fetchRealtimeTokenForProvider } = require("./realtimeTokenProviders");
 const { registerCalendarAvailabilityHandler } = require("./calendarAvailabilityIpcHandler");
 const { registerRemoteTranscriptionHandler } = require("./remoteTranscriptionIpcHandler");
+const { registerReasoningHandlers, resolveEnterpriseRuntime } = require("./reasoningIpcHandlers");
 const { registerFileDiarizationHandlers } = require("./fileDiarizationIpcHandlers");
 const { registerUploadCancelHandler } = require("./uploadCancelIpcHandler");
 
@@ -232,6 +227,9 @@ class IPCHandlers {
     // cancel can abort the exact job.
     this._uploadCancelRegistry = createUploadCancelRegistry();
     this._enterpriseReasoningRequests = new AgentStreamRequestRegistry();
+    // Enterprise streams get their own registry so cancelling a Bedrock
+    // one-shot cleanup never aborts a live chat stream or vice versa.
+    this._enterpriseStreams = new AgentStreamRequestRegistry();
     // webContents id -> its release listener, for renderers holding the mic open.
     this._micHoldSenders = new Map();
     this.assemblyAiStreaming = null;
@@ -1165,6 +1163,34 @@ class IPCHandlers {
     // The explicit hard cancel of one managed upload execution: aborts the
     // transcription, diarization and transport registered under the id.
     registerUploadCancelHandler(ipcMain, { uploadCancelRegistry: this._uploadCancelRegistry });
+
+    // Main-owned reasoning lives in the typed module: local/Anthropic/
+    // enterprise one-shots plus the sender-scoped enterprise stream
+    // lifecycle. Provider factories stay lazy and injected so startup never
+    // eager-loads the enterprise SDKs.
+    registerReasoningHandlers(ipcMain, {
+      localService: require("../services/localReasoningBridge").default,
+      getAnthropicKey: () => this.environmentManager.getAnthropicKey(),
+      proxyFetch: (url, init) => proxyFetch(url, init),
+      extractAnthropicText,
+      describeMissingAnthropicText,
+      isEnterpriseProvider,
+      mapEnterpriseError,
+      runAbortableOperation,
+      runBedrockRequest,
+      validateEnterpriseEndpoint,
+      generateText: (options) => require("ai").generateText(options),
+      getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
+        require("./enterpriseAiProviders").getEnterpriseAIModel(
+          provider,
+          model,
+          apiKey,
+          enterprise
+        ),
+      bedrockCleanupRequests: this._enterpriseReasoningRequests,
+      enterpriseStreams: this._enterpriseStreams,
+      logError: (message, data) => debugLogger.error(message, data),
+    });
 
     ipcMain.handle("check-accessibility-permission", async () => {
       return systemPreferences.isTrustedAccessibilityClient(false);
@@ -2341,214 +2367,6 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle(
-      "process-enterprise-reasoning",
-      async (event, text, modelId, _agentName, config) => {
-        const {
-          isEnterpriseProvider,
-          mapEnterpriseError,
-          runAbortableOperation,
-          runBedrockRequest,
-          validateEnterpriseEndpoint,
-        } = require("./enterpriseProviderErrors");
-        const provider = config?.provider;
-        let runtime;
-        try {
-          if (!isEnterpriseProvider(provider)) {
-            throw new Error(`Unsupported enterprise provider: ${provider}`);
-          }
-          const isBedrockCleanup =
-            provider === "bedrock" && config?.inferenceScope === "cleanup";
-          const sender = isBedrockCleanup ? event.sender : null;
-          const senderId = sender?.id;
-          const requestId = isBedrockCleanup ? crypto.randomUUID() : null;
-          const controller = isBedrockCleanup
-            ? this._enterpriseReasoningRequests.begin(senderId, requestId)
-            : null;
-          const cancelSenderRequests = () =>
-            this._enterpriseReasoningRequests.cancelSender(senderId);
-          try {
-            if (controller) {
-              sender.once("destroyed", cancelSenderRequests);
-              if (sender.isDestroyed()) controller.abort();
-            }
-            controller?.signal.throwIfAborted();
-
-            const { generateText } = require("ai");
-            const { getEnterpriseAIModel } = require("./enterpriseAiProviders");
-            const timeoutMs = config?.timeoutMs || 60000;
-            // Opus 4.7 / GPT-5 / o-series dropped `temperature`; renderer
-            // derives support from the model registry and we honor that here.
-            const useTemperature = config?.supportsTemperature !== false;
-            const resolveModel = (abortSignal) =>
-              runAbortableOperation(async () => {
-                runtime = resolveEnterpriseRuntime(provider, modelId, config || {});
-                abortSignal?.throwIfAborted();
-                if (!runtime.model) throw new Error("No model specified for enterprise reasoning");
-                validateEnterpriseEndpoint(runtime.enterprise.azureEndpoint);
-                return getEnterpriseAIModel(
-                  runtime.provider,
-                  runtime.model,
-                  runtime.apiKey,
-                  runtime.enterprise
-                );
-              }, abortSignal);
-            const generate = (model, abortSignal, disableNestedRetries = false) => {
-              return generateText({
-                model,
-                system: config?.systemPrompt || "",
-                prompt: text,
-                maxOutputTokens: config?.maxTokens || 4096,
-                ...(useTemperature ? { temperature: config?.temperature ?? 0.3 } : {}),
-                abortSignal,
-                ...(disableNestedRetries ? { maxRetries: 0 } : {}),
-              });
-            };
-            let result;
-            if (isBedrockCleanup) {
-              result = await runBedrockRequest(
-                async () => {
-                  const abortSignal = AbortSignal.any([
-                    controller.signal,
-                    AbortSignal.timeout(timeoutMs),
-                  ]);
-                  const model = await resolveModel(abortSignal);
-                  return generate(model, abortSignal, true);
-                },
-                { signal: controller.signal }
-              );
-            } else {
-              const model = await resolveModel();
-              result = await generate(model, AbortSignal.timeout(timeoutMs));
-            }
-            const { text: generated, finishReason } = result;
-
-            if (
-              config?.requireCompleteOutput &&
-              ["length", "max-tokens", "max_tokens"].includes(finishReason)
-            ) {
-              throw new Error("Model output was truncated before the selection edit completed");
-            }
-
-            return { success: true, text: (generated || "").trim() };
-          } finally {
-            if (controller) {
-              sender.removeListener("destroyed", cancelSenderRequests);
-              this._enterpriseReasoningRequests.complete(senderId, requestId, controller);
-            }
-          }
-        } catch (err) {
-          debugLogger.error("Enterprise reasoning error:", err);
-          const mappingConfig =
-            runtime?.provider === "bedrock" && runtime.enterprise?.bedrockRegion
-              ? { ...(config || {}), bedrockRegion: runtime.enterprise.bedrockRegion }
-              : config || {};
-          const mapped = mapEnterpriseError(provider, err, mappingConfig);
-          return {
-            success: false,
-            error: mapped.message,
-            messageKey: mapped.messageKey,
-            messageParams: mapped.messageParams,
-            action: mapped.action,
-            actionKey: mapped.actionKey,
-            copyCommand: mapped.copyCommand,
-            retryable: mapped.retryable,
-            technicalDetails: mapped.technicalDetails,
-          };
-        }
-      }
-    );
-
-    ipcMain.on("enterprise-reasoning-cancel", (event) => {
-      this._enterpriseReasoningRequests.cancelSender(event.sender.id);
-    });
-
-    // Runs doStream for the renderer's enterprise chat model shim; parts are
-    // relayed verbatim over enterprise-stream-part, ending with {done}/{error}.
-    this.enterpriseStreamAborts = new Map();
-    ipcMain.handle("enterprise-stream-start", async (event, payload) => {
-      const {
-        isEnterpriseProvider,
-        mapEnterpriseError,
-        validateEnterpriseEndpoint,
-      } = require("./enterpriseProviderErrors");
-      const { streamId, provider, modelId, config, options } = payload || {};
-      let runtime;
-      const send = (message) => {
-        if (!event.sender.isDestroyed()) {
-          event.sender.send("enterprise-stream-part", { streamId, ...message });
-        }
-      };
-      const abortController = new AbortController();
-      this.enterpriseStreamAborts.set(streamId, abortController);
-      // isDestroyed() stays false across reload/navigation, which wipes the
-      // renderer listeners — abort so the provider request isn't billed for
-      // a generation nobody receives.
-      const abortOnGone = (_event, _url, isInPlace, isMainFrame) => {
-        if (isMainFrame && !isInPlace) abortController.abort();
-      };
-      const abortOnDestroyed = () => abortController.abort();
-      event.sender.on("did-start-navigation", abortOnGone);
-      event.sender.once("destroyed", abortOnDestroyed);
-      try {
-        if (!streamId || !isEnterpriseProvider(provider)) {
-          throw new Error(`Unsupported enterprise provider: ${provider}`);
-        }
-        runtime = resolveEnterpriseRuntime(provider, modelId, config || {});
-        if (!runtime.model) throw new Error("No model specified for enterprise streaming");
-        validateEnterpriseEndpoint(runtime.enterprise.azureEndpoint);
-
-        const { getEnterpriseAIModel } = require("./enterpriseAiProviders");
-        const model = await getEnterpriseAIModel(
-          runtime.provider,
-          runtime.model,
-          runtime.apiKey,
-          runtime.enterprise
-        );
-
-        const { stream } = await model.doStream({
-          ...options,
-          abortSignal: abortController.signal,
-        });
-        const reader = stream.getReader();
-        try {
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (event.sender.isDestroyed()) {
-              abortController.abort();
-              break;
-            }
-            send({ part: value });
-          }
-        } finally {
-          reader.releaseLock();
-        }
-        send({ done: true });
-        return { success: true };
-      } catch (err) {
-        debugLogger.error("Enterprise stream error:", err);
-        const mappingConfig =
-          runtime?.provider === "bedrock" && runtime.enterprise?.bedrockRegion
-            ? { ...(config || {}), bedrockRegion: runtime.enterprise.bedrockRegion }
-            : config || {};
-        const mapped = mapEnterpriseError(provider, err, mappingConfig);
-        send({ error: mapped.message });
-        return { success: false, error: mapped.message };
-      } finally {
-        this.enterpriseStreamAborts.delete(streamId);
-        if (!event.sender.isDestroyed()) {
-          event.sender.removeListener("did-start-navigation", abortOnGone);
-          event.sender.removeListener("destroyed", abortOnDestroyed);
-        }
-      }
-    });
-
-    ipcMain.handle("enterprise-stream-cancel", async (event, streamId) => {
-      this.enterpriseStreamAborts.get(streamId)?.abort();
-      this.enterpriseStreamAborts.delete(streamId);
-    });
-
     // Lists the text models the account serves in the selected region,
     // resolved to invocable IDs (bare on-demand or geo-scoped profile IDs).
     ipcMain.handle("bedrock-list-models", async (event, config) => {
@@ -2705,117 +2523,6 @@ class IPCHandlers {
       }
 
       this._syncStartupEnv(setVars, clearVars);
-    });
-
-    ipcMain.handle("process-local-reasoning", async (event, text, modelId, _agentName, config) => {
-      try {
-        const LocalReasoningService = require("../services/localReasoningBridge").default;
-        const result = await LocalReasoningService.processText(text, modelId, config);
-        return { success: true, text: result };
-      } catch (error) {
-        // code/details carry the machine-readable failure across to the
-        // renderer, which owns the translation keys. Flattening to a bare
-        // string is how llama.cpp JSON used to reach users (#2142).
-        return {
-          success: false,
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        };
-      }
-    });
-
-    ipcMain.handle(
-      "process-anthropic-reasoning",
-      async (event, text, modelId, _agentName, config) => {
-        try {
-          const apiKey = this.environmentManager.getAnthropicKey();
-
-          if (!apiKey) {
-            throw new Error("Anthropic API key not configured");
-          }
-
-          const systemPrompt = config?.systemPrompt || "";
-          const userPrompt = text;
-
-          if (!modelId) {
-            throw new Error("No model specified for Anthropic API call");
-          }
-
-          const screenContext = config?.screenContext;
-          const userContent = screenContext
-            ? [
-                { type: "text", text: userPrompt },
-                {
-                  type: "image",
-                  source: {
-                    type: "base64",
-                    media_type: screenContext.mediaType,
-                    data: screenContext.data,
-                  },
-                },
-              ]
-            : userPrompt;
-
-          // Claude models from Opus 4.7 onward reject `temperature` with a 400;
-          // the renderer derives support from the model registry.
-          const useTemperature = config?.supportsTemperature === true;
-          const requestBody = {
-            model: modelId,
-            messages: [{ role: "user", content: userContent }],
-            system: systemPrompt,
-            max_tokens: config?.maxTokens || Math.max(100, Math.min(text.length * 2, 4096)),
-            ...(useTemperature ? { temperature: config?.temperature ?? 0.3 } : {}),
-          };
-
-          const response = await proxyFetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": apiKey,
-              "anthropic-version": "2023-06-01",
-            },
-            body: JSON.stringify(requestBody),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            let errorData = { error: response.statusText };
-            try {
-              errorData = JSON.parse(errorText);
-            } catch {
-              errorData = { error: errorText || response.statusText };
-            }
-            throw new Error(
-              errorData.error?.message ||
-                errorData.error ||
-                `Anthropic API error: ${response.status}`
-            );
-          }
-
-          const data = await response.json();
-          if (config?.requireCompleteOutput && data.stop_reason === "max_tokens") {
-            throw new Error("Model output was truncated before the selection edit completed");
-          }
-          const outputText = extractAnthropicText(data);
-          if (outputText === null) {
-            throw new Error(describeMissingAnthropicText(data));
-          }
-          return { success: true, text: outputText };
-        } catch (error) {
-          debugLogger.error("Anthropic reasoning error:", error);
-          return { success: false, error: error.message };
-        }
-      }
-    );
-
-    ipcMain.handle("check-local-reasoning-available", async () => {
-      try {
-        const LocalReasoningService = require("../services/localReasoningBridge").default;
-        return await LocalReasoningService.isAvailable();
-      } catch (error) {
-        return false;
-      }
     });
 
     ipcMain.handle("llama-cpp-check", async () => {

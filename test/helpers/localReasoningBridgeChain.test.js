@@ -19,7 +19,7 @@ const { buildGguf, LLAMA_3_2_3B_ENTRIES } = require("./harness/ggufFixtures");
 
 const originalLoad = Module._load;
 const CHAIN_MODULES = [
-  "../../src/services/localReasoningBridge.js",
+  "../../src/services/localReasoningBridge.ts",
   "../../src/helpers/modelManagerBridge.js",
   "../../src/helpers/modelDirUtils.js",
   "../../src/helpers/llamaServer.js",
@@ -45,7 +45,7 @@ function loadChain() {
 
   try {
     require("../../src/helpers/modelDirUtils.js");
-    const bridge = require("../../src/services/localReasoningBridge.js").default;
+    const bridge = require("../../src/services/localReasoningBridge.ts").default;
     const modelManager = require("../../src/helpers/modelManagerBridge.js").default;
     return { bridge, modelManager };
   } finally {

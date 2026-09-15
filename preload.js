@@ -8,6 +8,7 @@ const { createActionsBridge } = require("./src/preload/actionsBridge");
 const { createLocalFileTranscriptionBridge } = require("./src/preload/localFileTranscriptionBridge");
 const { createUploadTranscriptionBridge } = require("./src/preload/uploadTranscriptionBridge");
 const { createCalendarAvailabilityBridge } = require("./src/preload/calendarAvailabilityBridge");
+const { createReasoningBridge } = require("./src/preload/reasoningBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -67,6 +68,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createLocalFileTranscriptionBridge(ipcRenderer),
   ...createUploadTranscriptionBridge(ipcRenderer),
   ...createCalendarAvailabilityBridge(ipcRenderer),
+  ...createReasoningBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -374,26 +376,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveAllKeysToEnv: () => ipcRenderer.invoke("save-all-keys-to-env"),
   syncStartupPreferences: (prefs) => ipcRenderer.invoke("sync-startup-preferences", prefs),
 
-  // Local reasoning
-  processLocalReasoning: (text, modelId, agentName, config) =>
-    ipcRenderer.invoke("process-local-reasoning", text, modelId, agentName, config),
-  checkLocalReasoningAvailable: () => ipcRenderer.invoke("check-local-reasoning-available"),
+  // Local, Anthropic and enterprise one-shot reasoning plus the enterprise
+  // stream lifecycle come from the typed reasoningBridge above.
 
-  // Anthropic reasoning
-  processAnthropicReasoning: (text, modelId, agentName, config) =>
-    ipcRenderer.invoke("process-anthropic-reasoning", text, modelId, agentName, config),
-
-  // Enterprise reasoning (Bedrock, Azure, Vertex) — runs in main process so
-  // Node-only SDKs (AWS/Azure/Google credential providers) can resolve.
-  processEnterpriseReasoning: (text, modelId, agentName, config) =>
-    ipcRenderer.invoke("process-enterprise-reasoning", text, modelId, agentName, config),
-  cancelEnterpriseReasoning: () => ipcRenderer.send("enterprise-reasoning-cancel"),
-  enterpriseStreamStart: (payload) => ipcRenderer.invoke("enterprise-stream-start", payload),
-  enterpriseStreamCancel: (streamId) => ipcRenderer.invoke("enterprise-stream-cancel", streamId),
-  onEnterpriseStreamPart: registerListener(
-    "enterprise-stream-part",
-    (callback) => (_event, payload) => callback(payload)
-  ),
+  // Enterprise reasoning (Bedrock, Azure, Vertex) and its streams live in the
+  // typed reasoningBridge above.
   listBedrockModels: (config) => ipcRenderer.invoke("bedrock-list-models", config),
   // llama.cpp
   llamaCppCheck: () => ipcRenderer.invoke("llama-cpp-check"),

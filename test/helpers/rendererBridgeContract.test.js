@@ -9,6 +9,10 @@ const bundledPreload = path.join(root, "dist-main", "preload.js");
 function loadBridge() {
   let api;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
+    // The bundle keeps CJS interop for hybrid manifest modules, so the
+    // sandbox needs the same bindings Node's CJS loader provides.
+    module: { exports: {} },
+    exports: {},
     require(name) {
       assert.equal(name, "electron");
       return {

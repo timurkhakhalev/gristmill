@@ -862,6 +862,31 @@ class IPCHandlers {
     // transcription, diarization and transport registered under the id.
     registerUploadCancelHandler(ipcMain, { uploadCancelRegistry: this._uploadCancelRegistry });
 
+    // File diarization + speaker-text merge live in the typed module; the
+    // shared cancel registry is the same instance transcription uses.
+    registerFileDiarizationHandlers(ipcMain, {
+      diarizationManager: this.diarizationManager,
+      resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
+      convertToWav: (inputPath, outputPath, options) =>
+        require("./ffmpegUtils").convertToWav(inputPath, outputPath, options),
+      createTempWavPath: () =>
+        path.join(require("./safeTempDir").getSafeTempDir(), `ow-diarize-${Date.now()}.wav`),
+      fileSize: (filePath) => fs.statSync(filePath).size,
+      resolveClusterThreshold: (durationSeconds, requestedThreshold) =>
+        require("./diarizationPolicy").resolveClusterThreshold(durationSeconds, requestedThreshold),
+      dropNegligibleClusters: (segments) =>
+        require("./diarizationPolicy").dropNegligibleClusters(segments),
+      pcm16Mono16kBytesPerSecond: require("./transcriptionTimeout").PCM16_MONO_16K_BYTES_PER_SECOND,
+      maxSpeakerCount: MAX_SPEAKER_COUNT,
+      removeFile: (filePath) => fs.unlinkSync(filePath),
+      mergeSpeakersWithText: (segments, text, duration) =>
+        require("./speakerMerge").mergeSpeakersWithText(segments, text, duration),
+      formatSpeakerTranscript: (merged) => require("./speakerMerge").formatSpeakerTranscript(merged),
+      uploadCancelRegistry: this._uploadCancelRegistry,
+      logDebug: (message, data) => debugLogger.debug(message, data),
+      logError: (message, data) => debugLogger.error(message, data),
+    });
+
     // Main-owned reasoning lives in the typed module: local/Anthropic/
     // enterprise one-shots plus the sender-scoped enterprise stream
     // lifecycle. Provider factories stay lazy and injected so startup never

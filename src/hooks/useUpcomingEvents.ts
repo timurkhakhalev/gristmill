@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSettingsStore } from "../stores/settingsStore";
-import type { CalendarEvent } from "../types/calendar";
+import type { CalendarEvent } from "../contracts/calendar";
 import { hasOtherAttendees } from "../utils/calendarAttendees";
 
 export interface UseUpcomingEventsReturn {
@@ -36,8 +36,8 @@ export function useUpcomingEvents(): UseUpcomingEventsReturn {
     setIsLoading(true);
     try {
       const windowMinutes = getLookaheadMinutes();
-      const result = await window.electronAPI?.gcalGetUpcomingEvents?.(windowMinutes);
-      if (result?.success && Array.isArray(result.events)) {
+      const result = await window.electronAPI?.gcalGetUpcomingEvents(windowMinutes);
+      if (result?.success) {
         setEvents(result.events.filter(hasOtherAttendees));
       } else {
         setEvents([]);
@@ -57,13 +57,13 @@ export function useUpcomingEvents(): UseUpcomingEventsReturn {
   // Re-fetch when any provider syncs events
   useEffect(() => {
     if (!isConnected) return;
-    const unsubGcal = window.electronAPI?.onGcalEventsSynced?.(() => {
+    const unsubGcal = window.electronAPI?.onGcalEventsSynced(() => {
       fetchEvents();
     });
-    const unsubMcal = window.electronAPI?.onMcalEventsSynced?.(() => {
+    const unsubMcal = window.electronAPI?.onMcalEventsSynced(() => {
       fetchEvents();
     });
-    const unsubAcal = window.electronAPI?.onAcalEventsSynced?.(() => {
+    const unsubAcal = window.electronAPI?.onAcalEventsSynced(() => {
       fetchEvents();
     });
     return () => {

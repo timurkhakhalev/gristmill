@@ -239,7 +239,7 @@ test("malformed envelopes are dropped before the callback", async () => {
   assert.deepEqual(received, [], "no malformed envelope reaches the callback");
 });
 
-test("junk main responses reject at the preload boundary", async (t) => {
+test("junk main responses reject at the preload boundary", async () => {
   await createFixture();
   const realHandlers = new Map(activeHandlers);
   const api = loadBundledPreload({

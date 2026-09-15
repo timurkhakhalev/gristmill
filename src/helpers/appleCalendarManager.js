@@ -3,7 +3,7 @@ const { app } = require("electron");
 const debugLogger = require("./debugLogger");
 const { resolveBundledBinary } = require("./binaryResolver");
 const { extractMeetingUrl } = require("./meetingJoinUrl");
-const { broadcastToWindows } = require("./windowBroadcast");
+const { sendAcalConnectionChanged, sendAcalEventsSynced } = require("./calendarEvents");
 const { FOCUS_SYNC_THROTTLE_MS } = require("./calendarSyncInterval");
 
 const BINARY_NAME = "macos-calendar-listener";
@@ -281,7 +281,7 @@ class AppleCalendarManager {
       }
       if (contacts.length > 0) this.databaseManager.upsertContacts(contacts);
 
-      broadcastToWindows("acal-events-synced", {});
+      sendAcalEventsSynced();
       this.reminderScheduler.reconcileProvider("apple");
       this.reminderScheduler.scheduleNextMeeting();
 
@@ -340,7 +340,7 @@ class AppleCalendarManager {
   }
 
   _broadcastConnectionChanged() {
-    broadcastToWindows("acal-connection-changed", this.getConnectionStatus());
+    sendAcalConnectionChanged(this.getConnectionStatus());
   }
 
   _clearStoredCalendarData() {
@@ -348,7 +348,7 @@ class AppleCalendarManager {
     this.reminderScheduler.reset("apple");
     this.reminderScheduler.scheduleNextMeeting();
     this._broadcastConnectionChanged();
-    broadcastToWindows("acal-events-synced", {});
+    sendAcalEventsSynced();
   }
 }
 

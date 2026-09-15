@@ -4,7 +4,7 @@ const GoogleCalendarOAuth = require("./googleCalendarOAuth");
 const CalendarSyncInterval = require("./calendarSyncInterval");
 const { MAX_BUFFER_MINUTES } = require("./calendarAvailability");
 const { extractMeetingUrl } = require("./meetingJoinUrl");
-const { broadcastToWindows } = require("./windowBroadcast");
+const { sendGcalConnectionChanged, sendGcalEventsSynced } = require("./calendarEvents");
 
 const CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";
 const BUFFER_COVERAGE_MS = MAX_BUFFER_MINUTES * 60 * 1000;
@@ -165,7 +165,7 @@ class GoogleCalendarManager {
       }
     }
 
-    broadcastToWindows("gcal-events-synced", {});
+    sendGcalEventsSynced();
     this.reminderScheduler.scheduleNextMeeting();
   }
 
@@ -331,7 +331,7 @@ class GoogleCalendarManager {
     this.reminderScheduler.reset("google");
     await this.syncEvents();
     this.reminderScheduler.scheduleNextMeeting();
-    broadcastToWindows("gcal-events-synced", {});
+    sendGcalEventsSynced();
   }
 
   async getUpcomingEvents(windowMinutes) {
@@ -352,7 +352,7 @@ class GoogleCalendarManager {
 
   _broadcastAccountsChanged() {
     const accounts = this.getAccounts();
-    broadcastToWindows("gcal-connection-changed", { accounts });
+    sendGcalConnectionChanged({ accounts });
   }
 
   async _apiGet(path, accountEmail = null) {

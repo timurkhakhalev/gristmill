@@ -5,7 +5,7 @@ import { cn } from "../lib/utils";
 import { NOTE_META_CHIP_CLASS } from "./shared";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
 import PersonAvatar from "../ui/PersonAvatar";
-import type { CalendarAttendee } from "../../types/calendar";
+import type { CalendarAttendee } from "../../contracts/calendar";
 import { syncSessionExpectedCountFromParticipants } from "../../stores/meetingRecordingStore";
 
 const MAX_STACKED_AVATARS = 2;

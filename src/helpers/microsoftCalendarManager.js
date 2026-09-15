@@ -4,7 +4,7 @@ const MicrosoftCalendarOAuth = require("./microsoftCalendarOAuth");
 const CalendarSyncInterval = require("./calendarSyncInterval");
 const { MAX_BUFFER_MINUTES } = require("./calendarAvailability");
 const { extractMeetingUrl } = require("./meetingJoinUrl");
-const { broadcastToWindows } = require("./windowBroadcast");
+const { sendMcalConnectionChanged, sendMcalEventsSynced } = require("./calendarEvents");
 
 const GRAPH_API_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -192,7 +192,7 @@ class MicrosoftCalendarManager {
       }
     }
 
-    broadcastToWindows("mcal-events-synced", {});
+    sendMcalEventsSynced();
     this.reminderScheduler.scheduleNextMeeting();
   }
 
@@ -367,7 +367,7 @@ class MicrosoftCalendarManager {
     this.reminderScheduler.reset("microsoft");
     await this.syncEvents();
     this.reminderScheduler.scheduleNextMeeting();
-    broadcastToWindows("mcal-events-synced", {});
+    sendMcalEventsSynced();
   }
 
   _loadAccounts() {
@@ -394,7 +394,7 @@ class MicrosoftCalendarManager {
 
   _broadcastAccountsChanged() {
     const accounts = this.getAccounts();
-    broadcastToWindows("mcal-connection-changed", { accounts });
+    sendMcalConnectionChanged({ accounts });
   }
 
   async _apiGet(path, accountEmail) {

@@ -37,6 +37,8 @@ const serializeIpcError =
   };
 
 const { resolveLocalServerNeeds } = require("./localServerPolicy");
+const { approveAudioPath, resolveAllowedAudioPath } = require("./audioPathAllowlist");
+const { openSystemSettings } = require("./systemSettingsLauncher");
 const { registerNotesHandlers } = require("./notesIpcHandlers");
 const { registerUrlDownloadHandlers } = require("./urlDownloadIpcHandlers");
 const { registerVocabularyHandlers } = require("./vocabularyIpcHandlers");
@@ -141,48 +143,6 @@ const MEETING_SYSTEM_VAD_THRESHOLD = 0.3;
 const CONNECTION_TEST_MAX_OUTPUT_TOKENS = 16;
 
 const { listLocalTranscriptionModels } = require("./localTranscriptionModels");
-
-// Canonicalize allowed dirs so realpath'd inputs match on macOS (/var -> /private/var).
-// Deliberately narrow: user-picked paths anywhere else are approved individually via
-// approvedAudioPaths, so a compromised renderer can't read arbitrary files.
-function getCanonicalAllowedAudioDirs() {
-  const os = require("os");
-  const { getSafeTempDir } = require("./safeTempDir");
-  const dirs = [os.tmpdir(), getSafeTempDir(), app.getPath("userData")];
-  return dirs.map((d) => {
-    try {
-      return fs.realpathSync(d);
-    } catch {
-      return d;
-    }
-  });
-}
-
-// User-picked paths (OS file dialog, real drag-dropped files) may live outside the
-// static dirs (external volumes, /mnt, D:\) and are approved individually.
-const approvedAudioPaths = new Set();
-
-function approveAudioPath(filePath) {
-  if (typeof filePath !== "string" || !filePath) return;
-  try {
-    approvedAudioPaths.add(fs.realpathSync(path.resolve(filePath)));
-  } catch {
-    // File vanished or unreadable; nothing to approve.
-  }
-}
-
-// Returns the realpath'd file path if it lives under an allowed dir, else null.
-function resolveAllowedAudioPath(filePath) {
-  const real = fs.realpathSync(path.resolve(filePath));
-  if (approvedAudioPaths.has(real)) {
-    return real;
-  }
-  const allowed = getCanonicalAllowedAudioDirs();
-  if (allowed.some((dir) => real === dir || real.startsWith(dir + path.sep))) {
-    return real;
-  }
-  return null;
-}
 
 // The multipart transport behind the remote transcription handler. Kept here
 // (not in the typed module) because it owns the Electron net session; the
@@ -2162,52 +2122,6 @@ class IPCHandlers {
       debugLogger.logEntry(entry);
       return { success: true };
     });
-
-    const SYSTEM_SETTINGS_URLS = {
-      darwin: {
-        microphone: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
-        sound: "x-apple.systempreferences:com.apple.preference.sound?input",
-        accessibility:
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-        systemAudio:
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-        screenRecording:
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-        calendars: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars",
-        loginItems: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
-      },
-    };
-
-    const openSystemSettings = async (settingType) => {
-      const platform = process.platform;
-      const urls = SYSTEM_SETTINGS_URLS[platform];
-      const url = urls?.[settingType];
-
-      if (!url) {
-        // macOS is the only supported runtime platform.
-        const messages = {
-          microphone: i18nMain.t("systemSettings.microphone"),
-          sound: i18nMain.t("systemSettings.sound"),
-          accessibility: i18nMain.t("systemSettings.accessibility"),
-          systemAudio: i18nMain.t("systemSettings.systemAudio"),
-          screenRecording: i18nMain.t("systemSettings.screenRecording"),
-          loginItems: i18nMain.t("systemSettings.loginItems"),
-        };
-        return {
-          success: false,
-          error:
-            messages[settingType] || `${settingType} settings are not available on this platform.`,
-        };
-      }
-
-      try {
-        await shell.openExternal(url);
-        return { success: true };
-      } catch (error) {
-        debugLogger.error(`Failed to open ${settingType} settings:`, error);
-        return { success: false, error: error.message };
-      }
-    };
 
     ipcMain.handle("open-microphone-settings", () => openSystemSettings("microphone"));
     ipcMain.handle("open-sound-input-settings", () => openSystemSettings("sound"));

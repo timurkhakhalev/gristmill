@@ -121,6 +121,7 @@ const { registerCalendarIntegrationHandlers } = require("./calendarIpcHandlers")
 const { registerNoteFilesHandlers } = require("./noteFilesIpcHandlers");
 const { registerLocalModelLifecycleHandlers } = require("./localModelLifecycleIpcHandlers");
 const { registerLocalLlmModelHandlers } = require("./localLlmModelIpcHandlers");
+const { registerSpeakerHandlers } = require("./speakerIpcHandlers");
 const { registerRemoteTranscriptionHandler } = require("./remoteTranscriptionIpcHandler");
 const { registerReasoningHandlers, resolveEnterpriseRuntime } = require("./reasoningIpcHandlers");
 const { registerFileDiarizationHandlers } = require("./fileDiarizationIpcHandlers");
@@ -1372,49 +1373,6 @@ class IPCHandlers {
     });
 
     // Diarization model management
-    ipcMain.handle("download-diarization-models", async (event) => {
-      try {
-        const result = await this.diarizationManager.downloadModels((progressData) => {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send("diarization-download-progress", progressData);
-          }
-        });
-        return result;
-      } catch (error) {
-        if (!event.sender.isDestroyed()) {
-          event.sender.send("diarization-download-progress", {
-            type: "error",
-            error: error.message,
-            code: error.code || "DOWNLOAD_FAILED",
-          });
-        }
-        return {
-          success: false,
-          error: error.message,
-          code: error.code || "DOWNLOAD_FAILED",
-        };
-      }
-    });
-
-    ipcMain.handle("get-diarization-model-status", async () => {
-      return {
-        available: this.diarizationManager?.isAvailable() ?? false,
-        modelsDownloaded:
-          (this.diarizationManager?.isModelDownloaded() ?? false) &&
-          (this.diarizationManager?.isVadModelDownloaded() ?? false),
-      };
-    });
-
-    ipcMain.handle("delete-diarization-models", async () => {
-      try {
-        await this.diarizationManager.deleteModels();
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Failed to delete diarization models", { error: error.message });
-        return { success: false, error: error.message };
-      }
-    });
-
     // File diarization + speaker-text merge live in the typed module; the
     // shared cancel registry below is the same instance transcription uses.
     registerFileDiarizationHandlers(ipcMain, {
@@ -1437,10 +1395,6 @@ class IPCHandlers {
       uploadCancelRegistry: this._uploadCancelRegistry,
       logDebug: (message, data) => debugLogger.debug(message, data),
       logError: (message, data) => debugLogger.error(message, data),
-    });
-
-    ipcMain.handle("cancel-diarization-download", async () => {
-      return this.diarizationManager.cancelDownload();
     });
 
     ipcMain.handle("cleanup-app", async (event) => {
@@ -4678,6 +4632,15 @@ class IPCHandlers {
       logError: (message, data) => debugLogger.error(message, data),
     });
 
+    registerSpeakerHandlers(ipcMain, {
+      databaseManager: this.databaseManager,
+      liveSpeakerIdentifier,
+      diarizationManager: this.diarizationManager,
+      retroactiveMapping: (profile) => this._retroactiveMapping(profile),
+      tryAutoLabelOneOnOne: (noteId) => this._tryAutoLabelOneOnOne(noteId),
+      logError: (message, data) => debugLogger.error(message, data, "speaker"),
+    });
+
     registerLocalLlmModelHandlers(ipcMain, {
       modelManager: require("./modelManagerBridge").default,
       llamaCppInstaller: require("./llamaCppInstaller").default,
@@ -4704,24 +4667,6 @@ class IPCHandlers {
       getCalendarEventById: (eventId) => this.databaseManager.getCalendarEventById(eventId),
       openCalendarPrivacySettings: () => openSystemSettings("calendars"),
       logError: (message, data, tag) => debugLogger.error(message, data, tag),
-    });
-
-    ipcMain.handle("search-contacts", async (_event, query) => {
-      try {
-        const contacts = this.databaseManager.searchContacts(query);
-        return { success: true, contacts };
-      } catch (error) {
-        return { success: false, contacts: [] };
-      }
-    });
-
-    ipcMain.handle("upsert-contact", async (_event, contact) => {
-      try {
-        this.databaseManager.upsertContacts([contact]);
-        return { success: true };
-      } catch (error) {
-        return { success: false };
-      }
     });
 
     ipcMain.handle("get-md5-hash", (_event, text) => {
@@ -4845,79 +4790,6 @@ class IPCHandlers {
       this.windowManager?.showNotificationWindow(event.sender);
     });
 
-    ipcMain.handle("get-speaker-mappings", async (_event, noteId) => {
-      return this.databaseManager.getSpeakerMappings(noteId);
-    });
-
-    ipcMain.handle(
-      "set-speaker-mapping",
-      async (_event, noteId, speakerId, displayName, email, profileId) => {
-        const embeddings = this.databaseManager.getNoteSpeakerEmbeddings(noteId);
-        const noteSpeakerEmbedding = embeddings.find((e) => e.speaker_id === speakerId);
-        const liveSpeakerEmbedding = liveSpeakerIdentifier.getSpeakerEmbedding(speakerId);
-        const speakerEmbeddingBuffer =
-          noteSpeakerEmbedding?.embedding ||
-          (liveSpeakerEmbedding ? Buffer.from(liveSpeakerEmbedding.buffer) : null);
-
-        let resolvedProfileId = profileId ?? null;
-        if (speakerEmbeddingBuffer) {
-          const profile = this.databaseManager.upsertSpeakerProfile(
-            displayName,
-            email || null,
-            speakerEmbeddingBuffer,
-            resolvedProfileId
-          );
-          resolvedProfileId = profile.id;
-          this._retroactiveMapping(profile);
-        }
-
-        this.databaseManager.setSpeakerMapping(noteId, speakerId, resolvedProfileId, displayName);
-        liveSpeakerIdentifier.mapSpeaker(speakerId, resolvedProfileId, displayName, noteId);
-        return { success: true, profileId: resolvedProfileId };
-      }
-    );
-
-    ipcMain.handle("remove-speaker-mapping", async (_event, noteId, speakerId) => {
-      this.databaseManager.removeSpeakerMapping(noteId, speakerId);
-      return { success: true };
-    });
-
-    ipcMain.handle("get-speaker-profiles", async () => {
-      return this.databaseManager.getSpeakerProfiles();
-    });
-
-    ipcMain.handle("attach-speaker-email", async (_event, profileId, email) => {
-      try {
-        const profile = this.databaseManager.attachEmailToProfile(profileId, email);
-        this._retroactiveMapping(profile);
-        return {
-          success: true,
-          profile: {
-            id: profile.id,
-            display_name: profile.display_name,
-            email: profile.email,
-            sample_count: profile.sample_count,
-          },
-        };
-      } catch (error) {
-        debugLogger.error(
-          "Failed to attach email to speaker profile",
-          { error: error.message },
-          "speaker"
-        );
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("save-note-speaker-embeddings", async (_event, noteId, embeddingsObj) => {
-      const buffers = {};
-      for (const [speakerId, arr] of Object.entries(embeddingsObj)) {
-        buffers[speakerId] = Buffer.from(new Float32Array(arr).buffer);
-      }
-      this.databaseManager.saveNoteSpeakerEmbeddings(noteId, buffers);
-      this._tryAutoLabelOneOnOne(noteId);
-      return { success: true };
-    });
   }
 
   _retroactiveMapping(profile) {

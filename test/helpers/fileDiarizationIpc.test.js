@@ -27,7 +27,7 @@ fs.writeFileSync(audioFile, Buffer.alloc(2048));
 const PCM16_MONO_16K_BYTES_PER_SECOND = 32000;
 const MAX_SPEAKER_COUNT = 16;
 
-const REAL_MERGE = require("../../src/helpers/speakerMerge");
+const REAL_MERGE = require("../../src/helpers/speakerMerge.ts");
 
 function setup({ manager, convert, diarize } = {}) {
   const registry = createUploadCancelRegistry();

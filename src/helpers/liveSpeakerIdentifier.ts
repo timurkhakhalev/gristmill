@@ -1,11 +1,77 @@
 const fs = require("fs");
-const debugLogger = require("./debugLogger");
-const speakerEmbeddings = require("./speakerEmbeddings");
-const { MAX_EMBEDDING_SECONDS } = speakerEmbeddings;
-const { downsample24kTo16k, pcm16ToFloat32 } = require("../utils/audioUtils");
-const { MAX_SPEAKER_COUNT } = require("../constants/speakerDetection.json");
+const debugLogger = require("./debugLogger.js");
+import type { SpeakerEmbeddings as SpeakerEmbeddingsClass } from "./speakerEmbeddings.js";
+import { MAX_EMBEDDING_SECONDS } from "./speakerEmbeddings.js";
+const speakerEmbeddings = require("./speakerEmbeddings.js") as SpeakerEmbeddingsClass;
+const { downsample24kTo16k, pcm16ToFloat32 } = require("../utils/audioUtils.js") as {
+  downsample24kTo16k: (buffer: Buffer) => Buffer;
+  pcm16ToFloat32: (buffer: Buffer) => Float32Array;
+};
+const { MAX_SPEAKER_COUNT } = require("../constants/speakerDetection.json") as {
+  MAX_SPEAKER_COUNT: number;
+};
 
-function clampMaxSpeakers(value) {
+export interface IdentifiedSpeakerEvent {
+  speakerId: string;
+  displayName: string | null;
+  startTime: number;
+  endTime: number;
+}
+
+export interface SpeakerProfileLike {
+  id: number;
+  display_name: string | null;
+  embedding: Float32Array | number[] | Buffer;
+  [key: string]: unknown;
+}
+
+export interface TransientSpeakerState {
+  embedding: number[];
+  displayName: string | null;
+  profileId: number | null;
+  noteId: number | null;
+}
+
+export interface SpeakerReclusterMerge {
+  keep: string;
+  remove: string;
+  displayName: string | null;
+  similarity: number;
+}
+
+export interface StartOptions {
+  onSpeakerIdentified?: ((event: IdentifiedSpeakerEvent) => void) | null;
+  getSpeakerProfiles?: (() => SpeakerProfileLike[]) | null;
+  maxSpeakers?: number;
+  enabled?: boolean;
+}
+
+// The VAD session surface the identifier uses; onnxruntime-node is optional
+// at runtime, so its types never enter this module's graph.
+interface VadSession {
+  inputNames: readonly string[];
+  outputNames: readonly string[];
+  inputMetadata?: Record<string, { dimensions?: unknown; shape?: unknown } | undefined>;
+  run(feeds: Record<string, unknown>): Promise<Record<string, { data: ArrayLike<number> }>>;
+}
+
+interface OrtRuntime {
+  InferenceSession: {
+    create(modelPath: string, options: Record<string, unknown>): Promise<VadSession>;
+  };
+  Tensor: new (
+    type: "float32" | "int64",
+    data: Float32Array | BigInt64Array,
+    dims: number[]
+  ) => unknown;
+}
+
+interface VadManagerLike {
+  isVadModelDownloaded(): boolean;
+  getVadModelPath(): string;
+}
+
+function clampMaxSpeakers(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return MAX_SPEAKER_COUNT;
   return Math.max(1, Math.min(MAX_SPEAKER_COUNT, Math.floor(n)));
@@ -16,15 +82,15 @@ function clampMaxSpeakers(value) {
 // speaker identification, never fail the meeting start that triggers it.
 let ortLoadFailed = false;
 
-function loadOnnxRuntime() {
+function loadOnnxRuntime(): OrtRuntime | null {
   if (ortLoadFailed) return null;
   try {
-    return require("onnxruntime-node");
+    return require("onnxruntime-node") as OrtRuntime;
   } catch (error) {
     ortLoadFailed = true;
     debugLogger.warn(
       "onnxruntime-node binding failed to load — live speaker identification disabled",
-      { error: error.message, platform: process.platform, arch: process.arch }
+      { error: (error as Error).message, platform: process.platform, arch: process.arch }
     );
     return null;
   }
@@ -57,7 +123,7 @@ const VAD_SESSION_OPTIONS = {
   executionMode: "sequential",
 };
 
-function appendFloat32(existing, next) {
+function appendFloat32(existing: Float32Array, next: Float32Array): Float32Array {
   if (!existing.length) return next;
   if (!next.length) return existing;
 
@@ -67,13 +133,13 @@ function appendFloat32(existing, next) {
   return merged;
 }
 
-function totalSampleCount(chunks) {
+function totalSampleCount(chunks: Float32Array[]): number {
   let total = 0;
   for (const chunk of chunks) total += chunk.length;
   return total;
 }
 
-function concatFloat32Arrays(chunks) {
+function concatFloat32Arrays(chunks: Float32Array[]): Float32Array {
   if (chunks.length === 0) return new Float32Array(0);
   if (chunks.length === 1) return chunks[0];
 
@@ -87,7 +153,7 @@ function concatFloat32Arrays(chunks) {
   return merged;
 }
 
-function trimChunksToMaxSamples(chunks, maxSamples) {
+function trimChunksToMaxSamples(chunks: Float32Array[], maxSamples: number): void {
   let total = totalSampleCount(chunks);
   while (total > maxSamples && chunks.length > 0) {
     total -= chunks[0].length;
@@ -95,7 +161,7 @@ function trimChunksToMaxSamples(chunks, maxSamples) {
   }
 }
 
-function selectBestEmbeddingWindow(samples) {
+function selectBestEmbeddingWindow(samples: Float32Array): Float32Array {
   if (samples.length <= MAX_EMBEDDING_SAMPLES) return samples;
 
   const stride = SAMPLE_RATE;
@@ -116,11 +182,11 @@ function selectBestEmbeddingWindow(samples) {
   return samples.subarray(bestStart, bestStart + MAX_EMBEDDING_SAMPLES);
 }
 
-function cloneFloat32Array(value) {
+function cloneFloat32Array(value: Float32Array): Float32Array {
   return new Float32Array(value);
 }
 
-function normalizeVadShape(shape) {
+function normalizeVadShape(shape: unknown): number[] {
   if (!Array.isArray(shape) || shape.length === 0) {
     return DEFAULT_VAD_STATE_SHAPE;
   }
@@ -128,17 +194,45 @@ function normalizeVadShape(shape) {
   return shape.map((dim) => (typeof dim === "number" && dim > 0 ? dim : 1));
 }
 
-function normalizeVadStateName(name) {
+function normalizeVadStateName(name: unknown): string {
   return String(name || "")
     .replace(/[^a-z0-9]/gi, "")
     .toLowerCase();
 }
 
-function getBufferFloat32View(buffer) {
+function getBufferFloat32View(buffer: Buffer): Float32Array {
   return new Float32Array(buffer.buffer, buffer.byteOffset, buffer.byteLength / 4);
 }
 
-class LiveSpeakerIdentifier {
+export class LiveSpeakerIdentifier {
+  session: VadSession | null;
+  running: boolean;
+  queue: Promise<unknown>;
+  onSpeakerIdentified: ((event: IdentifiedSpeakerEvent) => void) | null;
+  getSpeakerProfiles: (() => SpeakerProfileLike[]) | null;
+  audioRemainder: Float32Array;
+  vadStateInputs: string[];
+  vadStateOutputs: string[];
+  vadStates: Map<string, Float32Array>;
+  speechChunks: Float32Array[];
+  speechActive: boolean;
+  silenceWindows: number;
+  sampleCursor: number;
+  segmentStartSample: number;
+  segmentEndSample: number;
+  transientEmbeddings: Map<string, Float32Array>;
+  transientCounts: Map<string, number>;
+  transientDisplayNames: Map<string, string | null>;
+  transientProfileIds: Map<string, number | null>;
+  transientNoteIds: Map<string, number | null>;
+  nextLiveIndex: number;
+  currentSegmentSpeakerId: string | null;
+  currentSegmentSpeakerName: string | null;
+  lastLiveIdentificationSample: number;
+  _diarizationManager: VadManagerLike | null;
+  maxSpeakers: number;
+  enabled: boolean;
+
   constructor() {
     this.session = null;
     this.running = false;
@@ -169,20 +263,20 @@ class LiveSpeakerIdentifier {
     this.enabled = true;
   }
 
-  setDiarizationManager(manager) {
+  setDiarizationManager(manager: VadManagerLike | null): void {
     this._diarizationManager = manager;
   }
 
-  isAvailable() {
+  isAvailable(): boolean {
     return (
-      this._diarizationManager?.isVadModelDownloaded() &&
-      speakerEmbeddings.isAvailable() &&
+      this._diarizationManager?.isVadModelDownloaded() === true &&
+      speakerEmbeddings.isAvailable() === true &&
       loadOnnxRuntime() !== null
     );
   }
 
-  getTransientState() {
-    const state = {};
+  getTransientState(): Record<string, TransientSpeakerState> {
+    const state: Record<string, TransientSpeakerState> = {};
 
     for (const [speakerId, embedding] of this.transientEmbeddings.entries()) {
       state[speakerId] = {
@@ -196,14 +290,19 @@ class LiveSpeakerIdentifier {
     return state;
   }
 
-  getSpeakerEmbedding(speakerId) {
+  getSpeakerEmbedding(speakerId: string): Float32Array | null {
     const embedding = this.transientEmbeddings.get(speakerId);
     return embedding ? cloneFloat32Array(embedding) : null;
   }
 
-  async start(options = {}, extraOptions = {}) {
-    const resolvedOptions =
-      typeof options === "function" ? { onSpeakerIdentified: options, ...extraOptions } : options;
+  async start(
+    optionsOrCallback: StartOptions | ((event: IdentifiedSpeakerEvent) => void),
+    extraOptions: Omit<StartOptions, "onSpeakerIdentified"> = {}
+  ): Promise<boolean> {
+    const resolvedOptions: StartOptions =
+      typeof optionsOrCallback === "function"
+        ? { onSpeakerIdentified: optionsOrCallback, ...extraOptions }
+        : optionsOrCallback;
     const {
       onSpeakerIdentified = null,
       getSpeakerProfiles = null,
@@ -231,7 +330,7 @@ class LiveSpeakerIdentifier {
     return this.running;
   }
 
-  async stop() {
+  async stop(): Promise<Record<string, TransientSpeakerState>> {
     this.running = false;
     await this.queue;
 
@@ -251,15 +350,15 @@ class LiveSpeakerIdentifier {
     return transientState;
   }
 
-  recluster() {
-    return new Promise((resolve) => {
+  recluster(): Promise<SpeakerReclusterMerge[]> {
+    return new Promise<SpeakerReclusterMerge[]>((resolve) => {
       this.queue = this.queue
         .then(() => resolve(this._performRecluster()))
         .catch(() => resolve([]));
     });
   }
 
-  _performRecluster() {
+  _performRecluster(): SpeakerReclusterMerge[] {
     const speakers = [...this.transientEmbeddings.entries()];
     if (speakers.length < 2) return [];
 
@@ -294,8 +393,9 @@ class LiveSpeakerIdentifier {
           : [speakers[j][0], speakers[i][0]];
         const keepCount = this.transientCounts.get(keepId) || 1;
         const removeCount = this.transientCounts.get(removeId) || 1;
-        const keepEmb = this.transientEmbeddings.get(keepId);
-        const removeEmb = this.transientEmbeddings.get(removeId);
+        // Invariant: both ids are live map entries in this loop.
+        const keepEmb = this.transientEmbeddings.get(keepId) as Float32Array;
+        const removeEmb = this.transientEmbeddings.get(removeId) as Float32Array;
         const totalCount = keepCount + removeCount;
 
         const merged = new Float32Array(keepEmb.length);
@@ -309,17 +409,17 @@ class LiveSpeakerIdentifier {
         this.transientCounts.delete(removeId);
 
         if (!this.transientDisplayNames.get(keepId) && this.transientDisplayNames.get(removeId)) {
-          this.transientDisplayNames.set(keepId, this.transientDisplayNames.get(removeId));
+          this.transientDisplayNames.set(keepId, this.transientDisplayNames.get(removeId) ?? null);
         }
         this.transientDisplayNames.delete(removeId);
 
         if (!this.transientProfileIds.get(keepId) && this.transientProfileIds.get(removeId)) {
-          this.transientProfileIds.set(keepId, this.transientProfileIds.get(removeId));
+          this.transientProfileIds.set(keepId, this.transientProfileIds.get(removeId) ?? null);
         }
         this.transientProfileIds.delete(removeId);
 
         if (!this.transientNoteIds.get(keepId) && this.transientNoteIds.get(removeId)) {
-          this.transientNoteIds.set(keepId, this.transientNoteIds.get(removeId));
+          this.transientNoteIds.set(keepId, this.transientNoteIds.get(removeId) ?? null);
         }
         this.transientNoteIds.delete(removeId);
 
@@ -348,29 +448,34 @@ class LiveSpeakerIdentifier {
     return merges;
   }
 
-  feedAudio(pcmBuffer) {
+  feedAudio(pcmBuffer: Buffer): Promise<unknown> {
     if (!this.running || !pcmBuffer?.length) {
       return Promise.resolve();
     }
 
     this.queue = this.queue
       .then(() => this._processAudio(pcmBuffer))
-      .catch((error) => {
+      .catch((error: Error) => {
         debugLogger.warn("Live speaker identification failed", { error: error.message });
       });
 
     return this.queue;
   }
 
-  setMaxSpeakers(n) {
+  setMaxSpeakers(n: number): void {
     this.maxSpeakers = clampMaxSpeakers(n);
   }
 
-  setEnabled(enabled) {
+  setEnabled(enabled: boolean): void {
     this.enabled = enabled !== false;
   }
 
-  mapSpeaker(liveId, profileId, displayName, noteId) {
+  mapSpeaker(
+    liveId: string,
+    profileId: number | null,
+    displayName: string | null,
+    noteId?: number | null
+  ): boolean {
     if (!liveId || !this.transientEmbeddings.has(liveId)) {
       // Labeling a speaker in a past note routes here with no live session, so
       // only an active session losing a mapping is worth flagging.
@@ -399,11 +504,11 @@ class LiveSpeakerIdentifier {
     return true;
   }
 
-  async _ensureLoaded() {
+  async _ensureLoaded(): Promise<void> {
     if (this.session) return;
 
     const vadModelPath = this._diarizationManager?.getVadModelPath();
-    if (!fs.existsSync(vadModelPath)) {
+    if (!vadModelPath || !fs.existsSync(vadModelPath)) {
       return;
     }
 
@@ -418,7 +523,7 @@ class LiveSpeakerIdentifier {
     this._resetVadRuntimeState();
   }
 
-  _resetMeetingState() {
+  _resetMeetingState(): void {
     this.queue = Promise.resolve();
     this.audioRemainder = new Float32Array(0);
     this.speechChunks = [];
@@ -439,7 +544,7 @@ class LiveSpeakerIdentifier {
     this._resetVadRuntimeState();
   }
 
-  _resetVadRuntimeState() {
+  _resetVadRuntimeState(): void {
     this.vadStates = new Map();
 
     if (!this.session) {
@@ -454,7 +559,7 @@ class LiveSpeakerIdentifier {
     }
   }
 
-  async _processAudio(pcmBuffer) {
+  async _processAudio(pcmBuffer: Buffer): Promise<void> {
     await this._ensureLoaded();
     if (!this.session) return;
 
@@ -476,7 +581,7 @@ class LiveSpeakerIdentifier {
     }
   }
 
-  async _processWindow(window, windowStartSample, windowEndSample) {
+  async _processWindow(window: Float32Array, windowStartSample: number, windowEndSample: number): Promise<void> {
     const probability = await this._getVadProbability(window);
 
     if (this.speechActive) {
@@ -511,12 +616,12 @@ class LiveSpeakerIdentifier {
     this.lastLiveIdentificationSample = 0;
   }
 
-  async _getVadProbability(window) {
+  async _getVadProbability(window: Float32Array): Promise<number> {
     if (!this.session) return 0;
 
     const ort = loadOnnxRuntime();
     if (!ort) return 0;
-    const feeds = {};
+    const feeds: Record<string, unknown> = {};
     const audioInputName = (this.session.inputNames || []).find(
       (name) => !this.vadStateInputs.includes(name) && !/sr|sample.?rate/i.test(name)
     );
@@ -559,7 +664,7 @@ class LiveSpeakerIdentifier {
     return typeof value === "number" ? value : 0;
   }
 
-  _updateVadState(results) {
+  _updateVadState(results: Record<string, { data: ArrayLike<number> }> | null): void {
     if (!results) {
       return;
     }
@@ -577,7 +682,7 @@ class LiveSpeakerIdentifier {
     }
   }
 
-  async _identifyActiveSpeechSegment(force = false) {
+  async _identifyActiveSpeechSegment(force = false): Promise<void> {
     // Runs on every speech window (~31x/sec), so the cheap gates must come
     // first — concatenating up to 32s of float32 per window is ~64 MB/s of
     // wasted main-thread memcpy during continuous speech.
@@ -624,7 +729,7 @@ class LiveSpeakerIdentifier {
     });
   }
 
-  async _finalizeSpeechSegment() {
+  async _finalizeSpeechSegment(): Promise<void> {
     const samples = concatFloat32Arrays(this.speechChunks);
     this.speechChunks = [];
     this.speechActive = false;
@@ -667,7 +772,7 @@ class LiveSpeakerIdentifier {
     this.lastLiveIdentificationSample = 0;
   }
 
-  _findTransientMatch(embedding) {
+  _findTransientMatch(embedding: Float32Array): string | null {
     let bestSpeakerId = null;
     let bestSimilarity = 0;
     let secondBestSimilarity = 0;
@@ -689,17 +794,17 @@ class LiveSpeakerIdentifier {
       : null;
   }
 
-  _findStoredProfileMatch(embedding) {
-    let profiles = [];
+  _findStoredProfileMatch(embedding: Float32Array): SpeakerProfileLike | null {
+    let profiles: SpeakerProfileLike[] = [];
 
     try {
       profiles = this.getSpeakerProfiles?.() || [];
     } catch (error) {
-      debugLogger.debug("Live speaker profile lookup failed", { error: error.message });
+      debugLogger.debug("Live speaker profile lookup failed", { error: (error as Error).message });
       return null;
     }
 
-    let bestProfile = null;
+    let bestProfile: SpeakerProfileLike | null = null;
     let bestSimilarity = 0;
     let secondBestSimilarity = 0;
 
@@ -731,10 +836,13 @@ class LiveSpeakerIdentifier {
       : null;
   }
 
-  _resolveSpeakerForEmbedding(embedding, options = {}) {
+  _resolveSpeakerForEmbedding(
+    embedding: Float32Array,
+    options: { updateCentroid?: boolean } = {}
+  ): { speakerId: string | null; displayName: string | null } {
     const { updateCentroid = false } = options;
 
-    let speakerId = this.currentSegmentSpeakerId || this._findTransientMatch(embedding);
+    let speakerId: string | null = this.currentSegmentSpeakerId || this._findTransientMatch(embedding);
     let displayName = this.currentSegmentSpeakerName || null;
 
     if (speakerId) {
@@ -792,7 +900,9 @@ class LiveSpeakerIdentifier {
     };
   }
 
-  _assignOrForceCluster(embedding) {
+  // Always yields a usable cluster id: at-cap overflow folds onto the nearest
+  // existing cluster, and the under-cap path mints a fresh one.
+  _assignOrForceCluster(embedding: Float32Array): { speakerId: string; forced: boolean } {
     if (this.transientEmbeddings.size >= this.maxSpeakers) {
       const nearest = this._findNearestTransient(embedding);
       if (nearest) {
@@ -806,7 +916,7 @@ class LiveSpeakerIdentifier {
     return { speakerId: this._assignSpeakerId(embedding), forced: false };
   }
 
-  _findNearestTransient(embedding) {
+  _findNearestTransient(embedding: Float32Array): string | null {
     let bestSpeakerId = null;
     let bestSimilarity = -Infinity;
     for (const [speakerId, centroid] of this.transientEmbeddings.entries()) {
@@ -819,7 +929,7 @@ class LiveSpeakerIdentifier {
     return bestSpeakerId;
   }
 
-  _findTransientSpeakerForProfile(profileId) {
+  _findTransientSpeakerForProfile(profileId: number | null): string | null {
     for (const [speakerId, candidateProfileId] of this.transientProfileIds.entries()) {
       if (candidateProfileId === profileId) {
         return speakerId;
@@ -833,7 +943,7 @@ class LiveSpeakerIdentifier {
   // recluster merge are never reused: durable state (note speaker mappings,
   // the renderer's name map) may still reference them, and a recycled id would
   // let a new voice inherit the previous person's identity.
-  _assignSpeakerId(embedding) {
+  _assignSpeakerId(embedding: Float32Array): string {
     const speakerId = `speaker_${this.nextLiveIndex}`;
     this.nextLiveIndex += 1;
     this.transientEmbeddings.set(speakerId, cloneFloat32Array(embedding));
@@ -841,7 +951,8 @@ class LiveSpeakerIdentifier {
     return speakerId;
   }
 
-  _updateCentroid(speakerId, embedding) {
+  _updateCentroid(speakerId: string | null, embedding: Float32Array): void {
+    if (!speakerId) return;
     const centroid = this.transientEmbeddings.get(speakerId);
     if (!centroid) {
       return;

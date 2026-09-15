@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.join(__dirname, "../..");
-const source = fs.readFileSync(path.join(root, "src/helpers/database.js"), "utf8");
+const source = fs.readFileSync(path.join(root, "src/helpers/database.ts"), "utf8");
 
 test("database source defines only the clean local schema", () => {
   for (const name of [

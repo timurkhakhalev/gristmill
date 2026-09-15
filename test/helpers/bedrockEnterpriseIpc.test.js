@@ -54,7 +54,6 @@ const electronStub = {
 
 Module._load = function loadWithMocks(request, parent, isMain) {
   if (request === "electron") return electronStub;
-  if (request === "./tokenStore") return { get: () => "test-token" };
   if (parent?.filename === handlersModulePath) {
     if (request === "./debugLogger") {
       return new Proxy({}, { get: () => () => {} });

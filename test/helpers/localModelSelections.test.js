@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/localModelSelections.js");
+const load = () => import("../../src/helpers/localModelSelections.ts");
 
 const SCOPES = [
   { storeKeys: { mode: "cleanupMode", model: "cleanupModel" } },

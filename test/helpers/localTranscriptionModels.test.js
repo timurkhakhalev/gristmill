@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { listLocalTranscriptionModels } = require("../../src/helpers/localTranscriptionModels.js");
+const { listLocalTranscriptionModels } = require("../../src/helpers/localTranscriptionModels.ts");
 const registry = require("../../src/models/modelRegistryData.json");
 
 const managers = (downloaded) => ({

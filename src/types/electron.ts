@@ -12,6 +12,7 @@ import type { UploadTranscriptionApi } from "../contracts/uploadTranscription";
 import type { ReasoningApi } from "../contracts/reasoning";
 import type { CalendarIntegrationApi } from "../contracts/calendar";
 import type { NoteFilesApi } from "../contracts/noteFiles";
+import type { LocalModelLifecycleApi } from "../contracts/localModelLifecycle";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -699,59 +700,13 @@ declare global {
 
       // Audio
 
-      // Whisper operations (whisper.cpp)
+      // Whisper/Parakeet model lifecycle (downloads, status, servers, VAD
+      // config, diagnostics) comes from the LocalModelLifecycleApi contract.
       transcribeLocalWhisper: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
-      checkWhisperInstallation: () => Promise<WhisperCheckResult>;
-      downloadWhisperModel: (modelName: string) => Promise<WhisperModelResult>;
-      onWhisperDownloadProgress: (
-        callback: (event: any, data: WhisperDownloadProgressData) => void
-      ) => () => void;
-      checkModelStatus: (modelName: string) => Promise<WhisperModelResult>;
-      listWhisperModels: () => Promise<WhisperModelsListResult>;
-      deleteWhisperModel: (modelName: string) => Promise<WhisperModelDeleteResult>;
-      deleteAllWhisperModels: () => Promise<{
-        success: boolean;
-        deleted_count?: number;
-        freed_bytes?: number;
-        freed_mb?: number;
-        error?: string;
-      }>;
-      cancelWhisperDownload: () => Promise<{
-        success: boolean;
-        message?: string;
-        error?: string;
-      }>;
-
-      // Whisper server lifecycle
-      whisperServerStatus: () => Promise<WhisperServerStatus>;
-
-      // Parakeet operations (NVIDIA via sherpa-onnx)
       transcribeLocalParakeet: (
         audioBlob: ArrayBuffer,
         options?: { model?: string; language?: string }
       ) => Promise<ParakeetTranscriptionResult>;
-      checkParakeetInstallation: () => Promise<ParakeetCheckResult>;
-      downloadParakeetModel: (modelName: string) => Promise<ParakeetModelResult>;
-      onParakeetDownloadProgress: (
-        callback: (event: any, data: ParakeetDownloadProgressData) => void
-      ) => () => void;
-      checkParakeetModelStatus: (modelName: string) => Promise<ParakeetModelResult>;
-      listParakeetModels: () => Promise<ParakeetModelsListResult>;
-      deleteParakeetModel: (modelName: string) => Promise<ParakeetModelDeleteResult>;
-      deleteAllParakeetModels: () => Promise<{
-        success: boolean;
-        deleted_count?: number;
-        freed_bytes?: number;
-        freed_mb?: number;
-        error?: string;
-      }>;
-      cancelParakeetDownload: () => Promise<
-        {
-          success: boolean;
-          message?: string;
-        } & PolicyFailureMetadata
-      >;
-      getParakeetDiagnostics: () => Promise<ParakeetDiagnosticsResult>;
 
       // Local AI model management
       modelGetAll: () => Promise<LocalLLMModelStatus[]>;
@@ -998,7 +953,7 @@ declare global {
 
       // FFmpeg availability
       checkFFmpegAvailability: () => Promise<FFmpegAvailabilityResult>;
-      getAudioDiagnostics: () => Promise<AudioDiagnosticsResult>;
+      // getAudioDiagnostics comes from the LocalModelLifecycleApi contract.
 
       // System settings helpers
       requestMicrophoneAccess?: () => Promise<{ granted: boolean }>;
@@ -1242,32 +1197,7 @@ declare global {
         expectedCount: number;
         countIsExplicit?: boolean;
       }) => Promise<{ success: boolean; error?: string }>;
-      getWhisperVadConfig?: () => Promise<{
-        success: boolean;
-        config?: {
-          dictationSileroEnabled: boolean;
-          noteRecordingSileroEnabled: boolean;
-          meetingSileroEnabled: boolean;
-          threshold: number;
-          minSpeechDurationMs: number;
-          minSilenceDurationMs: number;
-          maxSpeechDurationS: number;
-          speechPadMs: number;
-          samplesOverlap: number;
-        };
-        error?: string;
-      }>;
-      setWhisperVadConfig?: (config: {
-        dictationSileroEnabled?: boolean;
-        noteRecordingSileroEnabled?: boolean;
-        meetingSileroEnabled?: boolean;
-        threshold?: number;
-        minSpeechDurationMs?: number;
-        minSilenceDurationMs?: number;
-        maxSpeechDurationS?: number;
-        speechPadMs?: number;
-        samplesOverlap?: number;
-      }) => Promise<{ success: boolean; config?: Record<string, unknown>; error?: string }>;
+      // VAD config comes from the LocalModelLifecycleApi contract.
       onMeetingNotificationData?: (callback: (data: MeetingNotificationData) => void) => () => void;
       onMeetingAutoEndRequested?: (
         callback: (request: MeetingAutoEndRequest) => void
@@ -1299,7 +1229,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

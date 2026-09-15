@@ -9,7 +9,7 @@ function loadTranscription(fetchImpl) {
   delete require.cache[transcriptionModulePath];
 
   Module._load = function loadWithMocks(request, parent, isMain) {
-    if (request === "./tinfoilSecureClient") {
+    if (request === "./tinfoilSecureClient" || request === "./tinfoilSecureClient.js") {
       return { tinfoilSecureFetch: fetchImpl };
     }
     if (request === "./debugLogger") {

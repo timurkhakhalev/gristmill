@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/realtimeTokenProviders.js");
+const load = () => import("../../src/helpers/realtimeTokenProviders.ts");
 
 const jsonResponse = (status, body) => ({
   ok: status >= 200 && status < 300,
@@ -31,6 +31,14 @@ test("provider-less and unknown providers fail closed with the exact #1480 messa
       new Error(`Unsupported realtime token provider: ${provider}`)
     );
   }
+});
+
+test("string-like provider keys use the same coercion for lookup and routing", async () => {
+  const { fetchRealtimeTokenForProvider } = await load();
+  assert.equal(
+    await fetchRealtimeTokenForProvider(Object("openai-realtime"), deps(), { mode: "byok" }),
+    "sk-openai"
+  );
 });
 
 test("openai byok returns the key; dual-stream duplicates it", async () => {

@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const WS = require("ws");
 
-const load = () => import("../../src/helpers/tinfoilRealtimeStreaming.js");
+const load = () => import("../../src/helpers/tinfoilRealtimeStreaming.ts");
 const COMPLETED_EVENT = "conversation.item.input_audio_transcription.completed";
 
 function makeFakeSocket(readyState) {

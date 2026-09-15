@@ -4,8 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { createRequire } = require("node:module");
-const createWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog");
-const micGate = require("../../src/helpers/meetingMicGate");
+const createWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog.ts");
+const micGate = require("../../src/helpers/meetingMicGate.ts");
 
 // Execute the real IPC closures with only their native/network boundaries replaced.
 const ipcPath = path.join(__dirname, "../../src/helpers/ipcHandlers.js");
@@ -40,8 +40,16 @@ function harness({ native = true, local = false } = {}) {
   };
   const context = {
     require: (specifier) => {
-      const imported = createRequire(ipcPath)(specifier);
-      return specifier === "./meetingAudioTimeline"
+      const imported = createRequire(ipcPath)(
+        specifier === "./meetingAudioTimeline" || specifier === "./meetingAudioTimeline.js"
+          ? "./meetingAudioTimeline.ts"
+          : specifier
+      );
+      return (
+        specifier === "./meetingAudioTimeline" ||
+        specifier === "./meetingAudioTimeline.js" ||
+        specifier === "./meetingAudioTimeline.ts"
+      )
         ? () => imported({ now: () => now, wallNow: () => now })
         : imported;
     },
@@ -348,7 +356,7 @@ test("a long recovery uses bounded reusable silence rather than a gap-sized allo
 
 test("recovery silence plus AssemblyAI's pending partial packet stays within its frame limit", () => {
   const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming.ts");
-  const createTimeline = require("../../src/helpers/meetingAudioTimeline");
+  const createTimeline = require("../../src/helpers/meetingAudioTimeline.ts");
   let now = 0;
   const timeline = createTimeline({ now: () => now });
   const streaming = new AssemblyAiStreaming();

@@ -5,7 +5,7 @@ const { once } = require("node:events");
 const { WebSocketServer } = require("ws");
 
 const ParakeetWsServer = require("../../src/helpers/parakeetWsServer");
-const { pcm16ToFloat32 } = require("../../src/utils/audioUtils");
+const { pcm16ToFloat32 } = require("../../src/utils/audioUtils.ts");
 
 // Mock sherpa online WS protocol: float32 binary frames in, JSON results out, "Done"/"Done!" handshake.
 async function startMockOnlineServer({ onBinary, finalSegment = 0 }) {

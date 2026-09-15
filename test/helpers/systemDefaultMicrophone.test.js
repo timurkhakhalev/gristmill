@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const helper = require("../../src/helpers/systemDefaultMicrophone");
+const helper = require("../../src/helpers/systemDefaultMicrophone.ts");
 
 test("parses a WirePlumber default source", () => {
   assert.deepEqual(

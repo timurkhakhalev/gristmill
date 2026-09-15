@@ -66,7 +66,7 @@ const speaker = (deviceId) => ({
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 test("filters output-only changes and keeps a healthy pinned microphone", async () => {
-  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.js");
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   const mediaDevices = new FakeMediaDevices([mic("mic-1")]);
   const original = new FakeStream(new FakeTrack());
   let acquired = 0;
@@ -87,7 +87,7 @@ test("filters output-only changes and keeps a healthy pinned microphone", async 
 });
 
 test("recovers when the system default input changes", async () => {
-  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.js");
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   const mediaDevices = new FakeMediaDevices([mic("default", "group-1", "Mic One")]);
   const original = new FakeStream(new FakeTrack());
   const replacement = new FakeStream(new FakeTrack({ deviceId: "mic-2", groupId: "group-2" }));
@@ -111,7 +111,7 @@ test("recovers when the system default input changes", async () => {
 });
 
 test("track ended triggers recovery without waiting for devicechange", async () => {
-  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.js");
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   const mediaDevices = new FakeMediaDevices([mic("mic-1")]);
   const track = new FakeTrack();
   let acquired = 0;
@@ -132,7 +132,7 @@ test("track ended triggers recovery without waiting for devicechange", async () 
 });
 
 test("an unavailable microphone retries and later recovers", async () => {
-  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.js");
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   const mediaDevices = new FakeMediaDevices([mic("mic-1")]);
   const track = new FakeTrack();
   let attempts = 0;
@@ -159,7 +159,7 @@ test("an unavailable microphone retries and later recovers", async () => {
 });
 
 test("start() with an already-ended track recovers instead of reporting active", async () => {
-  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.js");
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   const mediaDevices = new FakeMediaDevices([mic("mic-1")]);
   const track = new FakeTrack();
   track.readyState = "ended";
@@ -182,7 +182,7 @@ test("start() with an already-ended track recovers instead of reporting active",
 });
 
 test("a stale recovery settling late cannot clobber a newer in-flight recovery", async () => {
-  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.js");
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   const mediaDevices = new FakeMediaDevices([mic("mic-1")]);
   const track1 = new FakeTrack();
   const track2 = new FakeTrack({ deviceId: "mic-2" });
@@ -216,7 +216,7 @@ test("a stale recovery settling late cannot clobber a newer in-flight recovery",
 });
 
 test("stop invalidates an in-flight acquisition and stops its late stream", async () => {
-  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.js");
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   const mediaDevices = new FakeMediaDevices([mic("mic-1")]);
   const track = new FakeTrack();
   const replacementTrack = new FakeTrack({ deviceId: "mic-2" });

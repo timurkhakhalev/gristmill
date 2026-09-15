@@ -1,5 +1,5 @@
-const { execFile } = require("child_process");
-const { resolveBundledBinary } = require("./binaryResolver");
+import { execFile, type ExecFileOptionsWithStringEncoding } from "child_process";
+import { resolveBundledBinary } from "./binaryResolver.js";
 const debugLogger = require("./debugLogger");
 
 const COMMAND_TIMEOUT_MS = 3000;
@@ -93,22 +93,63 @@ Add-Type -TypeDefinition $source
 [OpenHerculesDefaultInput]::GetJson()
 `;
 
-function runFile(command, args, options = {}) {
+type RunFileOptions = Omit<ExecFileOptionsWithStringEncoding, "encoding"> & {
+  encoding?: BufferEncoding;
+};
+
+export interface NativeMicrophoneDescription {
+  name: string;
+  nativeId?: string;
+}
+
+export interface SystemDefaultMicrophoneResult extends NativeMicrophoneDescription {
+  platform: NodeJS.Platform;
+  source: "system" | "unavailable";
+}
+
+export type SystemDefaultMicrophoneRun = (
+  command: string,
+  args: readonly string[],
+  options?: RunFileOptions
+) => Promise<string>;
+
+export interface SystemDefaultMicrophoneResolverOptions {
+  platform?: NodeJS.Platform;
+  run?: SystemDefaultMicrophoneRun;
+  resolveBinary?: (binaryName: string, logContext?: string) => string | null;
+  now?: () => number;
+}
+
+export type SystemDefaultMicrophoneResolver = (options?: {
+  refresh?: boolean;
+}) => Promise<SystemDefaultMicrophoneResult>;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+function runFile(
+  command: string,
+  args: readonly string[],
+  options: RunFileOptions = {}
+): Promise<string> {
   return new Promise((resolve, reject) => {
+    const execOptions: ExecFileOptionsWithStringEncoding = {
+      encoding: options.encoding ?? "utf8",
+      timeout: COMMAND_TIMEOUT_MS,
+      windowsHide: true,
+      maxBuffer: 256 * 1024,
+      ...options,
+    };
     execFile(
       command,
-      args,
-      {
-        encoding: "utf8",
-        timeout: COMMAND_TIMEOUT_MS,
-        windowsHide: true,
-        maxBuffer: 256 * 1024,
-        ...options,
-      },
+      [...args],
+      execOptions,
       (error, stdout, stderr) => {
         if (error) {
-          error.stderr = stderr;
-          reject(error);
+          reject(Object.assign(error, { stderr }));
           return;
         }
         resolve(stdout.trim());
@@ -117,22 +158,22 @@ function runFile(command, args, options = {}) {
   });
 }
 
-function parseJsonResult(output) {
+export function parseJsonResult(output: unknown): NativeMicrophoneDescription | null {
   const line = String(output || "")
     .split(/\r?\n/)
     .map((candidate) => candidate.trim())
     .filter(Boolean)
     .at(-1);
   if (!line) return null;
-  const result = JSON.parse(line);
-  if (!result || typeof result.name !== "string" || !result.name.trim()) return null;
+  const result: unknown = JSON.parse(line);
+  if (!isRecord(result) || typeof result.name !== "string" || !result.name.trim()) return null;
   return {
     name: result.name.trim(),
     nativeId: typeof result.id === "string" && result.id ? result.id : undefined,
   };
 }
 
-function parseWpctlResult(output) {
+export function parseWpctlResult(output: unknown): NativeMicrophoneDescription | null {
   const description = String(output || "").match(
     /^\s*(?:node\.description|device\.description)\s*=\s*"([^"]+)"/m
   )?.[1];
@@ -141,27 +182,38 @@ function parseWpctlResult(output) {
   return label ? { name: label, nativeId: name || undefined } : null;
 }
 
-function parsePactlSources(output, defaultSourceName) {
-  let sources;
+export function parsePactlSources(
+  output: string,
+  defaultSourceName: string
+): NativeMicrophoneDescription | null {
+  let sources: unknown;
   try {
     sources = JSON.parse(output);
   } catch {
     return null;
   }
   if (!Array.isArray(sources)) return null;
-  const source = sources.find((candidate) => candidate?.name === defaultSourceName);
-  if (!source) return null;
-  const label = source.description || source.properties?.["device.description"] || source.name;
+  const source = sources.find(
+    (candidate): candidate is Record<string, unknown> =>
+      isRecord(candidate) && candidate.name === defaultSourceName
+  );
+  if (!source || typeof source.name !== "string") return null;
+  const properties = isRecord(source.properties) ? source.properties : null;
+  const label =
+    (typeof source.description === "string" && source.description) ||
+    (typeof properties?.["device.description"] === "string" &&
+      properties["device.description"]) ||
+    source.name;
   return label ? { name: label, nativeId: source.name } : null;
 }
 
-function createSystemDefaultMicrophoneResolver({
+export function createSystemDefaultMicrophoneResolver({
   platform = process.platform,
   run = runFile,
   resolveBinary = resolveBundledBinary,
   now = Date.now,
-} = {}) {
-  let cache = null;
+}: SystemDefaultMicrophoneResolverOptions = {}): SystemDefaultMicrophoneResolver {
+  let cache: SystemDefaultMicrophoneResult | null = null;
   let cachedAt = 0;
 
   const resolveDarwin = async () => {
@@ -214,10 +266,10 @@ function createSystemDefaultMicrophoneResolver({
         : { name: "", platform, source: "unavailable" };
       cachedAt = now();
       return cache;
-    } catch (error) {
+    } catch (error: unknown) {
       debugLogger.debug(
         "Failed to resolve the system default microphone",
-        { platform, error: error.message },
+        { platform, error: errorMessage(error) },
         "audio"
       );
       cache = { name: "", platform, source: "unavailable" };
@@ -227,10 +279,12 @@ function createSystemDefaultMicrophoneResolver({
   };
 }
 
+export const resolveSystemDefaultMicrophone = createSystemDefaultMicrophoneResolver();
+
 module.exports = {
   createSystemDefaultMicrophoneResolver,
   parseJsonResult,
   parsePactlSources,
   parseWpctlResult,
-  resolveSystemDefaultMicrophone: createSystemDefaultMicrophoneResolver(),
+  resolveSystemDefaultMicrophone,
 };

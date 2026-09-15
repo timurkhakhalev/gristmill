@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const MeetingEchoLeakDetector = require("../../src/helpers/meetingEchoLeakDetector");
+const MeetingEchoLeakDetector = require("../../src/helpers/meetingEchoLeakDetector.ts");
 
 test("shouldSuppressMicSegment keeps bleed evidence even when share stays below render-bleed gate", () => {
   const detector = new MeetingEchoLeakDetector();

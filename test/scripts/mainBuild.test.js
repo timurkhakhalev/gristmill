@@ -186,6 +186,60 @@ test("compiled realtime modules keep their CommonJS consumer shapes", () => {
   });
 });
 
+test("compiled native audio and PCM modules keep their CommonJS consumer shapes", () => {
+  const result = execFileSync(
+    process.execPath,
+    [
+      "-e",
+      `
+    const Module = require('node:module');
+    const originalLoad = Module._load;
+    const logger = { debug() {}, info() {}, warn() {}, error() {} };
+    Module._load = function(request, parent, isMain) {
+      if (request === './debugLogger' || request === './debugLogger.js') return logger;
+      if (request === 'electron') return { app: { getAppPath: () => process.cwd() } };
+      return originalLoad.call(this, request, parent, isMain);
+    };
+    const AudioActivity = require('./dist-main/src/helpers/audioActivityDetector.js');
+    const AudioTap = require('./dist-main/src/helpers/audioTapManager.js');
+    const Aec = require('./dist-main/src/helpers/meetingAecManager.js');
+    const Echo = require('./dist-main/src/helpers/meetingEchoLeakDetector.js');
+    const Watchdog = require('./dist-main/src/helpers/meetingSystemAudioWatchdog.js');
+    const Timeline = require('./dist-main/src/helpers/meetingAudioTimeline.js');
+    const SystemDefault = require('./dist-main/src/helpers/systemDefaultMicrophone.js');
+    const Pcm = require('./dist-main/src/utils/audioUtils.js');
+    console.log(JSON.stringify({
+      direct: {
+        activity: AudioActivity === AudioActivity.AudioActivityDetector,
+        tap: AudioTap === AudioTap.AudioTapManager,
+        aec: Aec === Aec.MeetingAecManager,
+        echo: Echo === Echo.MeetingEchoLeakDetector,
+        watchdog: Watchdog === Watchdog.createMeetingSystemAudioWatchdog,
+        timeline: Timeline === Timeline.createMeetingAudioTimeline,
+      },
+      named: {
+        systemDefault: typeof SystemDefault.resolveSystemDefaultMicrophone === 'function',
+        pcm: typeof Pcm.downsample24kTo16k === 'function' && typeof Pcm.default === 'object',
+      },
+    }));
+  `,
+    ],
+    { cwd: root, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "" } }
+  );
+
+  assert.deepEqual(JSON.parse(result), {
+    direct: {
+      activity: true,
+      tap: true,
+      aec: true,
+      echo: true,
+      watchdog: true,
+      timeline: true,
+    },
+    named: { systemDefault: true, pcm: true },
+  });
+});
+
 test("main compiler rejects a wrong typed argument and renderer-only globals", () => {
   const configPath = path.join(root, "tsconfig.main.json");
   const config = ts.readConfigFile(configPath, ts.sys.readFile);

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const createMeetingSystemAudioWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog");
+const createMeetingSystemAudioWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog.ts");
 
 const { STALL_MS, GONE_QUIET_MS, MAX_RESTARTS, TICK_GAP_MS } = createMeetingSystemAudioWatchdog;
 

@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const providerTest = require("../../src/helpers/providerConnectionTest.js");
+const providerTest = require("../../src/helpers/providerConnectionTest.ts");
 
 const { resolveProviderRequest, testProviderConnection } = providerTest;
 

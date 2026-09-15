@@ -1,4 +1,32 @@
-const ENDPOINTS = {
+import { normalizeBaseUrl, getModelListBaseCandidates } from "../config/constants.mts";
+import { isSecureHttpEndpoint } from "../utils/urlUtils.ts";
+
+export interface ProviderConnectionConfig {
+  provider?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+  scope?: string;
+  clientId?: string;
+  clientSecret?: string;
+  environment?: string;
+  tenant?: string;
+}
+
+export interface ResolvedProviderRequest {
+  endpoint: string;
+  endpoints: string[];
+  headers: Record<string, string>;
+}
+
+export interface ConnectionTestOutcome {
+  success: boolean;
+  errorCode?: string;
+  error?: string;
+  status?: number;
+}
+
+const ENDPOINTS: Record<string, string> = {
   openai: "https://api.openai.com/v1/models",
   groq: "https://api.groq.com/openai/v1/models",
   xai: "https://api.x.ai/v1/models",
@@ -15,146 +43,28 @@ const ENDPOINTS = {
 
 // Neither response is OpenAI-shaped — Deepgram's /v1/models is {stt,tts}-keyed
 // and AssemblyAI returns transcripts — so a 200 is the whole credential signal.
-const MODEL_LIST_UNVERIFIABLE = new Set(["deepgram", "assemblyai"]);
+const MODEL_LIST_UNVERIFIABLE: ReadonlySet<string> = new Set(["deepgram", "assemblyai"]);
 
 // Renderers translate errorCode via onboarding.rehaul.provider.errors.*; the
 // English `error` string stays for logs and older callers.
 class ConnectionTestError extends Error {
-  constructor(errorCode, message) {
+  constructor(
+    readonly errorCode: string,
+    message: string
+  ) {
     super(message);
-    this.errorCode = errorCode;
   }
 }
 
-// --- CommonJS mirror of the URL helpers in src/config/constants.mts ---
-// This file runs in the main process, which cannot import that Vite/TS
-// module (it reads import.meta.env). Keep these in sync with
-// normalizeBaseUrl / getModelListBaseCandidates over there.
-
-// Mirror of isPrivateHost/parseIPv4Literal in src/utils/urlUtils.ts (same
-// main-process constraint as above): the runtime refuses plain HTTP on public
-// hosts via isSecureHttpEndpoint, so the connection test must refuse the same
-// URLs or a passing test commits a config every real request rejects.
-
-function parseIPv4Literal(hostname) {
-  const parts = hostname.split(".");
-  if (parts.length !== 4) return null;
-
-  const octets = [];
-  for (const part of parts) {
-    if (!/^(0|[1-9]\d{0,2})$/.test(part)) return null;
-    const value = Number(part);
-    if (value > 255) return null;
-    octets.push(value);
-  }
-
-  return octets;
+function buildModelEndpoints(base: string): string[] {
+  return getModelListBaseCandidates(base).map((candidate) => `${candidate}/models`);
 }
 
-function isPrivateHost(hostname) {
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-
-  if (h === "localhost" || h === "0.0.0.0") return true;
-  if (h === "::1") return true;
-
-  const ipv4 = parseIPv4Literal(h);
-  if (ipv4) {
-    const [a, b] = ipv4;
-    if (a === 127) return true;
-    if (a === 10) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
-    if (a === 169 && b === 254) return true;
-  }
-
-  const isIPv6 = h.includes(":");
-  if (isIPv6 && (h.startsWith("fe80") || h.startsWith("fc") || h.startsWith("fd"))) return true;
-  if (h.endsWith(".local")) return true;
-  if (h.endsWith(".ts.net")) return true;
-
-  return false;
-}
-
-function splitUrlDecorators(value) {
-  let path = value;
-  let hash = "";
-  const hashIndex = path.indexOf("#");
-  if (hashIndex >= 0) {
-    hash = path.slice(hashIndex);
-    path = path.slice(0, hashIndex);
-  }
-  let query = "";
-  const queryIndex = path.indexOf("?");
-  if (queryIndex >= 0) {
-    query = path.slice(queryIndex);
-    path = path.slice(0, queryIndex);
-  }
-  return { path, query, hash };
-}
-
-function joinUrlDecorators(path, query, hash) {
-  return `${path}${query}${hash}`;
-}
-
-function normalizeBaseUrl(value) {
-  if (!value) return "";
-
-  const trimmed = String(value).trim();
-  if (!trimmed) return "";
-
-  const { path: rawPath, query, hash } = splitUrlDecorators(trimmed);
-  let normalized = rawPath;
-
-  const suffixReplacements = [
-    [/\/v1\/chat\/completions$/i, "/v1"],
-    [/\/chat\/completions$/i, ""],
-    [/\/v1\/responses$/i, "/v1"],
-    [/\/responses$/i, ""],
-    [/\/v1\/models$/i, "/v1"],
-    [/\/models$/i, ""],
-    [/\/v1\/audio\/transcriptions$/i, "/v1"],
-    [/\/audio\/transcriptions$/i, ""],
-    [/\/v1\/audio\/translations$/i, "/v1"],
-    [/\/audio\/translations$/i, ""],
-  ];
-
-  for (const [pattern, replacement] of suffixReplacements) {
-    if (pattern.test(normalized)) {
-      normalized = normalized.replace(pattern, replacement).replace(/\/+$/, "");
-    }
-  }
-
-  return joinUrlDecorators(normalized.replace(/\/+$/, ""), query, hash);
-}
-
-// Reference: getModelListBaseCandidates in src/config/constants.mts.
-// Self-hosted servers (LM Studio, Ollama, vLLM) serve the API under /v1 even
-// when users enter the bare origin, and LM Studio's native REST base
-// (/api/v1 or /api/v0) has its OpenAI-compatible sibling at /v1.
-function getModelListBaseCandidates(base) {
-  const normalized = normalizeBaseUrl(base);
-  if (!normalized) return [];
-  const { path, query, hash } = splitUrlDecorators(normalized);
-  const nativeApiMatch = path.match(/^(.+?)\/api\/v[01]$/i);
-  if (nativeApiMatch) {
-    return [normalized, joinUrlDecorators(`${nativeApiMatch[1]}/v1`, query, hash)];
-  }
-  if (path.endsWith("/v1")) return [normalized];
-  return [normalized, joinUrlDecorators(`${path}/v1`, query, hash)];
-}
-
-function buildModelEndpoints(base) {
-  return getModelListBaseCandidates(base).map((candidate) => {
-    const { path, query, hash } = splitUrlDecorators(candidate);
-    return joinUrlDecorators(`${path}/models`, query, hash);
-  });
-}
-
-function resolveProviderRequest(config) {
+export function resolveProviderRequest(config: ProviderConnectionConfig): ResolvedProviderRequest {
   const provider = String(config?.provider || "").toLowerCase();
   const apiKey = typeof config?.apiKey === "string" ? config.apiKey.trim() : "";
-  let endpoints = ENDPOINTS[provider] ? [ENDPOINTS[provider]] : [];
+  const knownEndpoint = ENDPOINTS[provider];
+  let endpoints: string[] = knownEndpoint ? [knownEndpoint] : [];
 
   if (provider === "openai") {
     const override = normalizeBaseUrl(process.env.OPENAI_BASE_URL);
@@ -172,10 +82,10 @@ function resolveProviderRequest(config) {
     } catch {
       throw new ConnectionTestError("invalidUrl", "The endpoint must be a valid URL.");
     }
-    if (!new Set(["http:", "https:"]).has(parsed.protocol)) {
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new ConnectionTestError("invalidUrl", "The endpoint must use HTTP or HTTPS.");
     }
-    if (parsed.protocol === "http:" && !isPrivateHost(parsed.hostname)) {
+    if (!isSecureHttpEndpoint(parsed.toString())) {
       throw new ConnectionTestError(
         "httpsRequired",
         "Public endpoints must use HTTPS. HTTP is only allowed on private addresses."
@@ -194,7 +104,7 @@ function resolveProviderRequest(config) {
     throw new ConnectionTestError("apiKeyRequired", "Add an API key before testing.");
   }
 
-  const headers = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json" };
   if (apiKey) {
     if (provider === "anthropic") {
       headers["x-api-key"] = apiKey;
@@ -214,7 +124,7 @@ function resolveProviderRequest(config) {
 }
 
 // When several candidate endpoints fail, report the most actionable failure.
-const FAILURE_PRIORITY = {
+const FAILURE_PRIORITY: Record<string, number> = {
   credentialsRejected: 4,
   providerStatus: 3,
   modelNotFound: 2.5,
@@ -223,12 +133,16 @@ const FAILURE_PRIORITY = {
   network: 0,
 };
 
-function pickFailure(current, next) {
+type FailureCandidate = Omit<ConnectionTestOutcome, "success">;
+
+function pickFailure(current: FailureCandidate | null, next: FailureCandidate): FailureCandidate {
   if (!current) return next;
-  return FAILURE_PRIORITY[next.errorCode] > FAILURE_PRIORITY[current.errorCode] ? next : current;
+  return FAILURE_PRIORITY[next.errorCode as string] > FAILURE_PRIORITY[current.errorCode as string]
+    ? next
+    : current;
 }
 
-function describeStatusFailure(status, provider) {
+function describeStatusFailure(status: number, provider: string): FailureCandidate {
   if (status === 401 || status === 403) {
     return {
       errorCode: "credentialsRejected",
@@ -246,28 +160,41 @@ function describeStatusFailure(status, provider) {
   return { errorCode: "providerStatus", error: `The provider returned status ${status}.`, status };
 }
 
-function normalizeModelId(value) {
+function normalizeModelId(value: unknown): string {
   return String(value || "")
     .trim()
     .replace(/^models\//i, "");
 }
 
-function responseModelIds(payload) {
+function responseModelIds(payload: unknown): string[] {
+  const record = payload as
+    | { data?: unknown; models?: unknown }
+    | Array<unknown>
+    | null
+    | undefined;
   const models = Array.isArray(payload)
     ? payload
-    : Array.isArray(payload?.data)
-      ? payload.data
-      : Array.isArray(payload?.models)
-        ? payload.models
+    : Array.isArray(record && !Array.isArray(record) ? record.data : undefined)
+      ? ((record as { data: unknown[] }).data)
+      : Array.isArray(record && !Array.isArray(record) ? record.models : undefined)
+        ? ((record as { models: unknown[] }).models)
         : [];
 
   return models
-    .map((model) => (typeof model === "string" ? model : model?.id || model?.name))
+    .map((model) =>
+      typeof model === "string"
+        ? model
+        : ((model as { id?: unknown; name?: unknown })?.id as string | undefined) ||
+          ((model as { name?: unknown })?.name as string | undefined)
+    )
     .map(normalizeModelId)
     .filter(Boolean);
 }
 
-async function responseOffersModel(response, model) {
+async function responseOffersModel(
+  response: { json(): Promise<unknown> },
+  model: string
+): Promise<boolean> {
   if (!model) return true;
   try {
     const payload = await response.json();
@@ -277,21 +204,30 @@ async function responseOffersModel(response, model) {
   }
 }
 
-async function testProviderConnection(config, fetchImpl = fetch) {
+export type ConnectionTestFetch = (url: string, init?: RequestInit) => Promise<{
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}>;
+
+export async function testProviderConnection(
+  config: ProviderConnectionConfig,
+  fetchImpl: ConnectionTestFetch = fetch as ConnectionTestFetch
+): Promise<ConnectionTestOutcome> {
   let request;
   try {
     request = resolveProviderRequest(config);
   } catch (error) {
     return {
       success: false,
-      errorCode: error.errorCode || "invalidUrl",
-      error: error.message,
+      errorCode: (error as ConnectionTestError).errorCode || "invalidUrl",
+      error: (error as Error).message,
     };
   }
 
   const provider = String(config?.provider || "").toLowerCase();
   const model = String(config?.model || "").trim();
-  let failure = null;
+  let failure: FailureCandidate | null = null;
   for (const endpoint of request.endpoints) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
@@ -312,7 +248,7 @@ async function testProviderConnection(config, fetchImpl = fetch) {
       }
       failure = pickFailure(failure, describeStatusFailure(response.status, provider));
     } catch (error) {
-      if (error?.name === "AbortError") {
+      if ((error as { name?: string })?.name === "AbortError") {
         failure = pickFailure(failure, {
           errorCode: "timeout",
           error: "The connection test timed out.",
@@ -327,7 +263,5 @@ async function testProviderConnection(config, fetchImpl = fetch) {
       clearTimeout(timeout);
     }
   }
-  return { success: false, ...failure };
+  return { success: false, ...(failure || {}) };
 }
-
-module.exports = { resolveProviderRequest, testProviderConnection };

@@ -2,14 +2,16 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 
-const catalogModulePath = require.resolve("../../src/helpers/tinfoilCatalog.js");
+const catalogModulePath = require.resolve("../../src/helpers/tinfoilCatalog.ts");
 const originalLoad = Module._load;
 
 function loadCatalog(fetchImpl) {
   delete require.cache[catalogModulePath];
 
   Module._load = function loadWithMocks(request, parent, isMain) {
-    if (request === "./tinfoilSecureClient") {
+    // The TS emit requires "./tinfoilSecureClient.js"; accept the pre-migration
+    // extensionless specifier too so the hook survives the cutover.
+    if (request === "./tinfoilSecureClient" || request === "./tinfoilSecureClient.js") {
       return { tinfoilSecureFetch: fetchImpl };
     }
     if (request === "./debugLogger") {

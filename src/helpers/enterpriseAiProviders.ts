@@ -8,7 +8,40 @@
 // app startup doesn't eager-load ~100 MB of AWS/Azure/Google SDKs for users
 // who never select an enterprise provider.
 
-async function getEnterpriseAIModel(provider, model, apiKey, enterprise) {
+export interface EnterpriseRuntimeConfig {
+  bedrockRegion?: string;
+  bedrockProfile?: string;
+  bedrockAccessKeyId?: string;
+  bedrockSecretAccessKey?: string;
+  bedrockSessionToken?: string;
+  azureEndpoint?: string;
+  azureApiVersion?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+}
+
+interface StaticAwsCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string | null;
+}
+
+interface AwsCredentialChain {
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  sessionToken?: string;
+}
+
+// The model factories return an AI SDK LanguageModel; the narrow call surface
+// (generateText/doStream) is what callers consume.
+type ProviderModel = unknown;
+
+export async function getEnterpriseAIModel(
+  provider: string,
+  model: string,
+  apiKey: string,
+  enterprise: EnterpriseRuntimeConfig
+): Promise<ProviderModel> {
   switch (provider) {
     case "bedrock":
       return createBedrockModel(model, enterprise);
@@ -21,7 +54,7 @@ async function getEnterpriseAIModel(provider, model, apiKey, enterprise) {
   }
 }
 
-async function createBedrockModel(model, enterprise) {
+async function createBedrockModel(model: string, enterprise: EnterpriseRuntimeConfig): Promise<ProviderModel> {
   const { createAmazonBedrock } = require("@ai-sdk/amazon-bedrock");
   const region = enterprise?.bedrockRegion || "us-east-1";
   const explicitCredentialSource = enterprise?.bedrockProfile
@@ -29,14 +62,14 @@ async function createBedrockModel(model, enterprise) {
     : enterprise?.bedrockAccessKeyId || enterprise?.bedrockSecretAccessKey
       ? "static credentials"
       : null;
-  const credentials = enterprise?.bedrockProfile
+  const credentials: AwsCredentialChain | StaticAwsCredentials | null = enterprise?.bedrockProfile
     ? await require("@aws-sdk/credential-providers").fromNodeProviderChain({
         profile: enterprise.bedrockProfile,
       })()
     : explicitCredentialSource
       ? {
-          accessKeyId: enterprise.bedrockAccessKeyId,
-          secretAccessKey: enterprise.bedrockSecretAccessKey,
+          accessKeyId: enterprise.bedrockAccessKeyId as string,
+          secretAccessKey: enterprise.bedrockSecretAccessKey as string,
           sessionToken: enterprise.bedrockSessionToken,
         }
       : null;
@@ -68,7 +101,11 @@ async function createBedrockModel(model, enterprise) {
   })(model);
 }
 
-function createAzureModel(model, apiKey, enterprise) {
+function createAzureModel(
+  model: string,
+  apiKey: string,
+  enterprise: EnterpriseRuntimeConfig
+): ProviderModel {
   const { createAzure } = require("@ai-sdk/azure");
   return createAzure({
     apiKey,
@@ -77,7 +114,11 @@ function createAzureModel(model, apiKey, enterprise) {
   })(model);
 }
 
-function createVertexModel(model, apiKey, enterprise) {
+function createVertexModel(
+  model: string,
+  apiKey: string,
+  enterprise: EnterpriseRuntimeConfig
+): ProviderModel {
   const { createVertex } = require("@ai-sdk/google-vertex");
   if (apiKey) {
     return createVertex({ apiKey })(model);
@@ -87,5 +128,3 @@ function createVertexModel(model, apiKey, enterprise) {
     location: enterprise?.vertexLocation || "us-central1",
   })(model);
 }
-
-module.exports = { getEnterpriseAIModel };

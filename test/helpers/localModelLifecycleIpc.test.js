@@ -5,6 +5,36 @@ const { localModelChannels } = require("../../src/contracts/localModelLifecycle.
 const {
   registerLocalModelLifecycleHandlers,
 } = require("../../src/helpers/localModelLifecycleIpcHandlers.ts");
+const { sanitizeWhisperVadConfig } = require("../../src/helpers/whisperVadConfig.ts");
+const vadDefaults = require("../../src/constants/whisperVad.json").DEFAULTS;
+
+// Mirrors the production settings owner in ipcHandlers.js: allowed-key filter
+// on write, sanitize/clamp on read, so set() can never surface raw garbage.
+function createVadSettingsStore() {
+  const allowedKeys = new Set([
+    "noteRecordingSileroEnabled",
+    "meetingSileroEnabled",
+    ...Object.keys(vadDefaults),
+  ]);
+  let settings = {};
+  return {
+    get() {
+      return {
+        noteRecordingSileroEnabled: settings.noteRecordingSileroEnabled !== false,
+        meetingSileroEnabled: settings.meetingSileroEnabled !== false,
+        ...sanitizeWhisperVadConfig(settings),
+      };
+    },
+    set(update = {}) {
+      const filtered = {};
+      for (const [k, v] of Object.entries(update)) {
+        if (allowedKeys.has(k)) filtered[k] = v;
+      }
+      settings = { ...this.get(), ...filtered };
+      return this.get();
+    },
+  };
+}
 
 function createHarness(overrides = {}) {
   const handlers = new Map();
@@ -27,6 +57,8 @@ function createHarness(overrides = {}) {
     },
   };
 
+  const vadStore = overrides.vadStore || createVadSettingsStore();
+
   const deps = {
     whisperManager: {
       downloadWhisperModel: async (modelName, onProgress) => {
@@ -44,8 +76,8 @@ function createHarness(overrides = {}) {
     downloadStatus,
     progressSender: { sendToControlPanel: (channel, payload) => sent.push([channel, payload]) },
     updateDownloadStatus: () => ({ sequence: 3 }),
-    getWhisperVadSettings: () => ({ threshold: -22 }),
-    setWhisperVadSettings: (payload) => payload,
+    getWhisperVadSettings: () => vadStore.get(),
+    setWhisperVadSettings: (payload) => vadStore.set(payload),
     persistParakeetProviderSelection: async (modelName) => {
       calls.persist.push(modelName);
     },
@@ -148,11 +180,30 @@ test("invalid model names are rejected before reaching the manager", async () =>
   assert.equal(result.error, "Invalid model name");
 });
 
-test("VAD config set rejects invalid payloads without touching settings", async () => {
+test("VAD config set never rejects: garbage is filtered/clamped into a valid config", async () => {
   const h = createHarness();
   const result = await h.invoke(localModelChannels.whisperVadSetConfig, {
     threshold: "not-a-number",
+    unknownKey: "dropped",
   });
-  assert.equal(result.success, false);
-  assert.equal(result.error, "Invalid VAD configuration");
+
+  // Pre-cutover contract: set always succeeds; the settings owner filters
+  // unknown keys on write and the returned config is the clamped read-back.
+  assert.equal(result.success, true);
+  assert.equal(result.config.unknownKey, undefined);
+  assert.equal(typeof result.config.threshold, "number");
+  assert.ok(result.config.threshold >= 0.1 && result.config.threshold <= 0.95);
+
+  // The read channel mirrors the same sanitized view.
+  const read = await h.invoke(localModelChannels.whisperVadGetConfig);
+  assert.equal(read.success, true);
+  assert.equal(read.config.threshold, result.config.threshold);
+});
+
+test("VAD config set without a payload merges onto defaults", async () => {
+  const h = createHarness();
+  const result = await h.invoke(localModelChannels.whisperVadSetConfig);
+  assert.equal(result.success, true);
+  assert.equal(result.config.noteRecordingSileroEnabled, true);
+  assert.equal(result.config.meetingSileroEnabled, true);
 });

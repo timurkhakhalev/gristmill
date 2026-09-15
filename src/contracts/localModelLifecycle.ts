@@ -48,9 +48,6 @@ export const downloadProgressEventSchema = z.object({
 });
 export type DownloadProgressEvent = z.infer<typeof downloadProgressEventSchema>;
 
-export const whisperVadConfigSchema = z.record(z.string(), z.unknown());
-export type WhisperVadConfigWire = z.infer<typeof whisperVadConfigSchema>;
-
 // Manager result shapes as they cross the wire. The index signature keeps the
 // renderer's non-strict consumers working while pinning the fields every
 // consumer reads.

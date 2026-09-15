@@ -1173,7 +1173,7 @@ positive graph чист. Inventory графа Electron: 80 JS, 105 TS, 1 MTS,
 
 - Новый контракт `src/contracts/localModelLifecycle.ts`: 28 каналов
   (`localModelChannels`), `downloadProgressEventSchema`
-  (sequence-stamped), `whisperVadConfigSchema`, `modelNameSchema` и
+  (sequence-stamped), `modelNameSchema` и
   результатные интерфейсы (`LocalModelStatusRow`, `LocalModelListResult`,
   `LocalModelActionResult`, `InstallCheckResult`, `ServerLifecycleResult`,
   `ServerStatusResult`, `FfmpegAvailabilityResult`, `VadConfigResult`,
@@ -1194,7 +1194,9 @@ positive graph чист. Inventory графа Electron: 80 JS, 105 TS, 1 MTS,
   сохранена посимвольно (status-tracker sequence, complete на успехе,
   подавление error-события при `DOWNLOAD_IN_PROGRESS`). Parakeet server
   start/stop персистит provider selection только при успехе.
-  `whisper-vad-get/set-config` валидируются `whisperVadConfigSchema`.
+  `whisper-vad-get/set-config` сохранён контракт 1:1: set никогда не
+  отвергает — владелец настроек фильтрует allowed keys на записи и
+  sanitize/clamp на чтении (схемной валидации на записи нет, как и до cutover).
   Каналы `transcribe-local-whisper`/`transcribe-local-parakeet` остались
   в `preload.js`/`ipcHandlers.js` — они принадлежат vertical #32.
 - Bridge: `src/preload/localModelLifecycleBridge.ts` (schema-validated
@@ -1210,7 +1212,11 @@ positive graph чист. Inventory графа Electron: 80 JS, 105 TS, 1 MTS,
   (sequence/complete/error события, DOWNLOAD_IN_PROGRESS, persist-on-success,
   invalid model name, invalid VAD payload); strict probes
   `test/scripts/localModelLifecycleTypeProbe.test.js` — коды (2740/2322/2339)
-  сверены фактическим tsc-прогоном.
+  сверены фактическим tsc-прогоном. Fixture `parakeetModelManifest.test.js`
+  переведён с vm-исходника (ломается на ESM-синтаксисе TS) на require под
+  Module._load хуками с tsx; stub `./parakeetServer` — named-export shape
+  (`{ ParakeetServerManager: class ... }`), `AbortSignal.timeout` подменяется
+  глобально на время теста.
 
 Проверка: typecheck 0 ошибок (main/renderer/selectors); lint 0 errors
 (39+2 warnings — baseline, без новых). Inventory графа Electron: 67 JS,

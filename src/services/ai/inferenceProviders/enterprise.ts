@@ -44,7 +44,7 @@ export const enterpriseProvider: InferenceProvider = {
 
     const processingTimeMs = Date.now() - startTime;
 
-    if (!result.success) {
+    if (result.success === false) {
       logger.logReasoning("ENTERPRISE_ERROR", {
         provider: enterpriseId,
         model,

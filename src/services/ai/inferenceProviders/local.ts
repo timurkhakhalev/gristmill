@@ -24,7 +24,7 @@ export const localProvider: InferenceProvider = {
 
     const processingTimeMs = Date.now() - startTime;
 
-    if (!result.success) {
+    if (result.success === false) {
       logger.logReasoning("LOCAL_ERROR", { model, processingTimeMs, error: result.error });
       throw buildLocalInferenceError(result);
     }

@@ -34,7 +34,7 @@ export const anthropicProvider: InferenceProvider = {
 
     const processingTimeMs = Date.now() - startTime;
 
-    if (!result.success) {
+    if (result.success === false) {
       logger.logReasoning("ANTHROPIC_ERROR", { model, processingTimeMs, error: result.error });
       throw new Error(result.error);
     }

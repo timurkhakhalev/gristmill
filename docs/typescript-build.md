@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **111 JS, 71 TS, 1 MTS и 25 JSON**
+а не всеми файлами в каталоге helpers. В нём **108 JS, 74 TS, 1 MTS и 25 JSON**
 (только `src/`; main/preload/worker — отдельные entry points). Entry points:
 main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
@@ -204,8 +204,8 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/cortiAuth.js`
 - `src/helpers/cortiStreaming.js`
 - `src/helpers/cortiTranscription.js`
-- `src/helpers/database.js`
-- `src/helpers/dbTimestamp.js`
+- `src/helpers/database.ts`
+- `src/helpers/dbTimestamp.ts`
 - `src/helpers/debugLogger.js`
 - `src/helpers/deepgramStreaming.js`
 - `src/helpers/devServerManager.js`
@@ -264,7 +264,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/modelManagerBridge.js`
 - `src/helpers/navigationGuard.js`
 - `src/helpers/networkErrors.js`
-- `src/helpers/noteSearch.js`
+- `src/helpers/noteSearch.ts`
 - `src/helpers/notificationTimer.js`
 - `src/helpers/oauthLoopbackFlow.js`
 - `src/helpers/onboardingWindowBounds.js`
@@ -946,3 +946,44 @@ warnings — на одно ниже прежнего baseline: устранён 
 `utils/process`); strict compiler probes в
 `test/scripts/downloadsTypeProbe.test.js` (негативные call sites + полный
 positive graph). Inventory графа Electron: 111 JS, 71 TS, 1 MTS, 25 JSON.
+
+## Этап «SQLite row types и DatabaseManager»
+
+16 сентября 2026 (issue #38). Persistence adapter переведён в strict TS:
+`database.js` → `database.ts` (778 строк), `noteSearch.js`, `dbTimestamp.js`.
+Один DatabaseManager, те же SQL/транзакции/схема; ORM/repository-слоя нет.
+
+- Инвентаризация SQL shapes зафиксирована в типизированных internal row
+  интерфейсах (notes/blank notes, spaces/folders, actions, dictionary/
+  snippets, chat conversations/messages (+message_count/preview), calendar
+  events с dedupe-колонкой, tokens-строки, contacts, speaker profiles/
+  mappings/embeddings, transcriptions): SQLite timestamps остаются строками,
+  integer-booleans — числами, `folder_id`/`embedding` nullable,
+  `lastInsertRowid` — number|bigint с явным Number() там, где он уже был.
+  Internal rows не объявлены публичными DTO: токены и embedding Buffers
+  main-only; shared contracts не расширены.
+- better-sqlite3 types не поставляются и @types не установлен — описан узкий
+  структурный surface (`SqliteDatabase`/`SqliteStatement`/`SqliteRunResult`),
+  который реально использует менеджер; statement results кастуются к row
+  типам только на SQL boundary. Arbitrary JSON (`agent_messages.metadata`)
+  остаётся строкой/null до проверки потребителем.
+- `module.exports = DatabaseManager` сохранён CommonJS-контрактом в конце
+  файла: все существующие require-сайты (main.js, ipcHandlers.js, тесты)
+  продолжают получать класс напрямую и в source (tsx), и в emitted `.js`.
+  Поведение use-after-close стало явным throw "Database is closed" вместо
+  TypeError от null (прежде тоже падало, теперь с диагностикой).
+- Behavior сохранён: миграции/schema/WAL/foreign keys, transaction ordering,
+  note/folder relocation, built-in action overrides, calendar dedup
+  (NUL-подобная `has_synced` проекция), selection/sync storage; отсутствие
+  строки (`null`) и malformed row не смешиваются; пустые no-field обновления
+  возвращают ровно `{success:false}`, как раньше.
+- Тесты: 21 файл с явным `.js`-спецификатором database/noteSearch переведён
+  на `.ts`; strict compiler probes в `test/scripts/databaseTypeProbe.test.js`
+  — негативные коды (2554/2345/2322×7) сверены фактическим tsc-прогоном,
+  positive graph чист под standalone strict.
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors (40+2
+warnings — на 1 ниже прежнего: ушёл unused GENERATE_NOTES_KEY в database);
+runtime-shape smoke: `require('./src/helpers/database.ts')` под tsx возвращает
+класс (function, без .default), noteSearch/dbTimestamp дают прежние
+значения. Inventory графа Electron: 108 JS, 74 TS, 1 MTS, 25 JSON.

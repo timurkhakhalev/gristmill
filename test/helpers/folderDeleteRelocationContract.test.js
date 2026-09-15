@@ -49,7 +49,7 @@ function isNativeBindingUnavailable(error) {
 }
 
 test("deleting a folder keeps its notes and rewrites the released mirrors", async (t) => {
-  const DatabaseManager = require("../../src/helpers/database.js");
+  const DatabaseManager = require("../../src/helpers/database.ts");
   let db;
   try {
     db = new DatabaseManager();

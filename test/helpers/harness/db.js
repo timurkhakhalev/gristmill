@@ -34,7 +34,7 @@ const path = require("node:path");
 const { installElectronStub, setUserDataDir } = require("./electronStub.js");
 
 installElectronStub();
-const DatabaseManager = require("../../../src/helpers/database.js");
+const DatabaseManager = require("../../../src/helpers/database.ts");
 
 // A real DatabaseManager over a private tmpdir. Returns null when the caller
 // must bail because skipOrFail marked the test skipped.

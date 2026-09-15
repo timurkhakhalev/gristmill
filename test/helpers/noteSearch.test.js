@@ -10,9 +10,9 @@ Module._load = function patchedLoad(request, parent, isMain) {
   }
   return originalLoad.call(this, request, parent, isMain);
 };
-const DatabaseManager = require("../../src/helpers/database.js");
+const DatabaseManager = require("../../src/helpers/database.ts");
 Module._load = originalLoad;
-const { buildNoteSearchQuery } = require("../../src/helpers/noteSearch.js");
+const { buildNoteSearchQuery } = require("../../src/helpers/noteSearch.ts");
 
 test("buildNoteSearchQuery builds quoted prefix queries", () => {
   for (const [input, expected] of [

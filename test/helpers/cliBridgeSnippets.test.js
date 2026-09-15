@@ -29,7 +29,7 @@ Module._load = function patchedLoad(request, parent, isMain) {
 
 process.env.NODE_ENV = "test";
 
-const DatabaseManager = require("../../src/helpers/database.js");
+const DatabaseManager = require("../../src/helpers/database.ts");
 const CliBridge = require("../../src/helpers/cliBridge.js");
 
 function isNativeBindingUnavailable(error) {

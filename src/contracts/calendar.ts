@@ -193,7 +193,9 @@ export const calendarAccountsEventSchema = z.object({
 });
 export type CalendarAccountsEvent = z.infer<typeof calendarAccountsEventSchema>;
 
-export const calendarSyncedEventSchema = z.object({});
+// Synced events carry no fields; unknown keys are a malformed payload, so the
+// object must be strict and the bridge drops it instead of delivering.
+export const calendarSyncedEventSchema = z.object({}).strict();
 
 // --- Wire projection helpers ----------------------------------------------------
 

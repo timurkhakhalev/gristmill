@@ -37,7 +37,7 @@ test("M1 main process selects an OpenHercules-only profile and protocol", () => 
 });
 
 test("M1 secrets, local storage, and renderer sessions use OpenHercules namespaces", () => {
-  assert.match(read("src/helpers/secretCrypto.js"), /const SERVICE = "OpenHercules"/);
+  assert.match(read("src/helpers/secretCrypto.ts"), /const SERVICE = "OpenHercules"/);
   assert.match(read("src/lib/authAccountScope.ts"), /openhercules:accountScope/);
   assert.match(read("src/helpers/modelDirUtils.ts"), /\.cache", "openhercules/);
   assert.match(read("src/helpers/cliBridge.ts"), /"\.openhercules"/);

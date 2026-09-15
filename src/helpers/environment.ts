@@ -1,13 +1,27 @@
-const path = require("path");
-const fs = require("fs");
-const fsPromises = require("fs/promises");
-const { app } = require("electron");
-const debugLogger = require("./debugLogger");
-const { normalizeUiLanguage } = require("./i18nMain");
-const secretCrypto = require("./secretCrypto");
-const { BYOK_API_KEYS } = require("../config/secretKeys");
+import path from "path";
+import fs from "fs";
+import fsPromises from "fs/promises";
+import { app } from "electron";
+import debugLogger from "./debugLogger.js";
+import { normalizeUiLanguage } from "./i18nMain.js";
+import * as secretCrypto from "./secretCrypto.js";
+import { BYOK_API_KEYS } from "../config/secretKeys.js";
 
-const SECRET_KEYS = [
+// Env-var names that hold secret values: persisted only as encrypted
+// `<name>.enc` blobs and stripped from the plaintext .env after migration.
+type SecretEnvKey =
+  | (typeof BYOK_API_KEYS)[number]["env"]
+  | "CORTI_CLIENT_ID"
+  | "CORTI_CLIENT_SECRET"
+  | "CUSTOM_TRANSCRIPTION_API_KEY"
+  | "CUSTOM_CLEANUP_API_KEY"
+  | "BEDROCK_ACCESS_KEY_ID"
+  | "BEDROCK_SECRET_ACCESS_KEY"
+  | "BEDROCK_SESSION_TOKEN"
+  | "AZURE_OPENAI_API_KEY"
+  | "VERTEX_API_KEY";
+
+const SECRET_KEYS: readonly SecretEnvKey[] = [
   ...BYOK_API_KEYS.map((k) => k.env),
   "CORTI_CLIENT_ID",
   "CORTI_CLIENT_SECRET",
@@ -20,9 +34,11 @@ const SECRET_KEYS = [
   "VERTEX_API_KEY",
 ];
 
-const SECRET_KEY_SET = new Set(SECRET_KEYS);
+const SECRET_KEY_SET: ReadonlySet<string> = new Set(SECRET_KEYS);
 
-const PERSISTED_KEYS = [
+// Non-secret settings also persisted into .env (order matters: it is the
+// write order of the regenerated file).
+const PERSISTED_KEYS: readonly string[] = [
   ...SECRET_KEYS,
   "LOCAL_TRANSCRIPTION_PROVIDER",
   "PARAKEET_MODEL",
@@ -51,16 +67,20 @@ const PERSISTED_KEYS = [
   "VERTEX_LOCATION",
 ];
 
+interface SaveKeyResult {
+  success: boolean;
+}
+
 // Module-level so writes are serialized across all instances — hotkeyManager
 // creates its own EnvironmentManager alongside the main.js singleton.
-let envWriteQueue = Promise.resolve();
+let envWriteQueue: Promise<unknown> = Promise.resolve();
 
-class EnvironmentManager {
+export class EnvironmentManager {
   constructor() {
     this.loadEnvironmentVariables();
   }
 
-  loadEnvironmentVariables() {
+  loadEnvironmentVariables(): void {
     // App config (.env in userData) takes precedence over system env vars,
     // so keys saved by the user in Settings always win.
     const userDataEnv = path.join(app.getPath("userData"), ".env");
@@ -68,7 +88,9 @@ class EnvironmentManager {
       if (fs.existsSync(userDataEnv)) {
         require("dotenv").config({ path: userDataEnv, override: true });
       }
-    } catch {}
+    } catch {
+      // Unreadable .env: system env stands.
+    }
 
     const fallbackPaths = [
       path.join(app.getAppPath(), ".env"), // Development
@@ -82,7 +104,9 @@ class EnvironmentManager {
         if (fs.existsSync(envPath)) {
           require("dotenv").config({ path: envPath });
         }
-      } catch {}
+      } catch {
+        // Skip unreadable fallbacks.
+      }
     }
   }
 
@@ -90,18 +114,18 @@ class EnvironmentManager {
   // Keychain before any window is visible. Migration and _loadAllSecrets are
   // both no-ops on fresh installs, so neither path triggers Keychain until
   // the user actually saves their first secret.
-  async init() {
+  async init(): Promise<void> {
     if (!fs.existsSync(this._getMigrationSentinelPath())) {
       await this._migrateToSecureStorage();
     }
     await this._loadAllSecrets();
   }
 
-  _getMigrationSentinelPath() {
+  _getMigrationSentinelPath(): string {
     return path.join(this._getSecureKeysDir(), ".migrated");
   }
 
-  _encryptionAvailable() {
+  _encryptionAvailable(): boolean {
     try {
       return secretCrypto.isAvailable();
     } catch {
@@ -109,19 +133,19 @@ class EnvironmentManager {
     }
   }
 
-  _getSecureKeysDir() {
+  _getSecureKeysDir(): string {
     return path.join(app.getPath("userData"), "secure-keys");
   }
 
-  _getSecretFilePath(envVarName) {
+  _getSecretFilePath(envVarName: string): string {
     return path.join(this._getSecureKeysDir(), `${envVarName}.enc`);
   }
 
-  async _loadAllSecrets() {
+  async _loadAllSecrets(): Promise<void> {
     await Promise.all(SECRET_KEYS.map((name) => this._loadSecretKey(name)));
   }
 
-  async _loadSecretKey(envVarName) {
+  async _loadSecretKey(envVarName: string): Promise<void> {
     const filePath = this._getSecretFilePath(envVarName);
     try {
       const buffer = await fsPromises.readFile(filePath);
@@ -129,16 +153,18 @@ class EnvironmentManager {
       process.env[envVarName] = value;
       if (needsReencrypt) await this._saveSecretKey(envVarName, value);
     } catch (error) {
-      if (error.code === "ENOENT") return;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      // Never log the value or the decrypted error detail — only the key
+      // name and code; the user must re-enter the secret.
       debugLogger.error(
         "Failed to decrypt secret — user must re-enter",
-        { key: envVarName, code: error.code, error: error.message },
+        { key: envVarName, code: (error as NodeJS.ErrnoException).code },
         "environment"
       );
     }
   }
 
-  async _saveSecretKey(envVarName, value) {
+  async _saveSecretKey(envVarName: string, value: string): Promise<void> {
     if (!value) {
       await this._deleteSecretKey(envVarName);
       return;
@@ -157,16 +183,16 @@ class EnvironmentManager {
     await fsPromises.rename(tmpPath, filePath);
   }
 
-  async _deleteSecretKey(envVarName) {
+  async _deleteSecretKey(envVarName: string): Promise<void> {
     delete process.env[envVarName];
     try {
       await fsPromises.unlink(this._getSecretFilePath(envVarName));
     } catch (error) {
-      if (error.code !== "ENOENT") throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
 
-  async _migrateToSecureStorage() {
+  async _migrateToSecureStorage(): Promise<void> {
     const dir = this._getSecureKeysDir();
     await fsPromises.mkdir(dir, { recursive: true });
 
@@ -177,7 +203,7 @@ class EnvironmentManager {
     }
     delete process.env.CUSTOM_REASONING_API_KEY;
 
-    const migrated = [];
+    const migrated: string[] = [];
     try {
       for (const name of SECRET_KEYS) {
         const value = process.env[name];
@@ -193,7 +219,7 @@ class EnvironmentManager {
     } catch (error) {
       debugLogger.error(
         "Secret migration aborted — plaintext .env preserved",
-        { error: error.message, migrated },
+        { error: (error as Error).message, migrated },
         "environment"
       );
       return;
@@ -210,14 +236,14 @@ class EnvironmentManager {
     );
   }
 
-  _writeEnvFileAtomic(envPath) {
+  _writeEnvFileAtomic(envPath: string): Promise<unknown> {
     // Concurrent write+rename pairs share the same .env.tmp path, and the
     // loser's rename throws ENOENT (#903).
     envWriteQueue = envWriteQueue.catch(() => {}).then(() => this._writeEnvFile(envPath));
     return envWriteQueue;
   }
 
-  async _writeEnvFile(envPath) {
+  async _writeEnvFile(envPath: string): Promise<void> {
     // Only strip plaintext secrets once migration has fully completed —
     // otherwise a partial-migration recovery can lose unencrypted secrets.
     const stripSecrets =
@@ -234,16 +260,16 @@ class EnvironmentManager {
     await fsPromises.rename(tmpPath, envPath);
   }
 
-  _getKey(envVarName) {
+  _getKey(envVarName: string): string {
     return process.env[envVarName] || "";
   }
 
-  _saveKey(envVarName, key) {
+  _saveKey(envVarName: string, key: string): SaveKeyResult {
     if (SECRET_KEY_SET.has(envVarName) && this._encryptionAvailable()) {
       this._saveSecretKey(envVarName, key).catch((error) => {
         debugLogger.error(
           "Failed to persist encrypted secret",
-          { key: envVarName, error: error.message },
+          { key: envVarName, error: (error as Error).message },
           "environment"
         );
       });
@@ -255,129 +281,129 @@ class EnvironmentManager {
     return { success: true };
   }
 
-  getCortiClientId() {
+  getCortiClientId(): string {
     return this._getKey("CORTI_CLIENT_ID");
   }
 
-  saveCortiClientId(key) {
+  saveCortiClientId(key: string): SaveKeyResult {
     return this._saveKey("CORTI_CLIENT_ID", key);
   }
 
-  getCortiClientSecret() {
+  getCortiClientSecret(): string {
     return this._getKey("CORTI_CLIENT_SECRET");
   }
 
-  saveCortiClientSecret(key) {
+  saveCortiClientSecret(key: string): SaveKeyResult {
     return this._saveKey("CORTI_CLIENT_SECRET", key);
   }
 
-  getCustomTranscriptionKey() {
+  getCustomTranscriptionKey(): string {
     return this._getKey("CUSTOM_TRANSCRIPTION_API_KEY");
   }
 
-  saveCustomTranscriptionKey(key) {
+  saveCustomTranscriptionKey(key: string): SaveKeyResult {
     return this._saveKey("CUSTOM_TRANSCRIPTION_API_KEY", key);
   }
 
-  getCleanupCustomKey() {
+  getCleanupCustomKey(): string {
     // TODO: drop CUSTOM_REASONING_API_KEY fallback after 2 releases.
     return this._getKey("CUSTOM_CLEANUP_API_KEY") || this._getKey("CUSTOM_REASONING_API_KEY");
   }
 
-  saveCleanupCustomKey(key) {
+  saveCleanupCustomKey(key: string): SaveKeyResult {
     delete process.env.CUSTOM_REASONING_API_KEY;
     return this._saveKey("CUSTOM_CLEANUP_API_KEY", key);
   }
 
   // Enterprise providers — AWS Bedrock
-  getBedrockRegion() {
+  getBedrockRegion(): string {
     return this._getKey("BEDROCK_REGION");
   }
-  saveBedrockRegion(value) {
+  saveBedrockRegion(value: string): SaveKeyResult {
     return this._saveKey("BEDROCK_REGION", value);
   }
-  getBedrockProfile() {
+  getBedrockProfile(): string {
     return this._getKey("BEDROCK_PROFILE");
   }
-  saveBedrockProfile(value) {
+  saveBedrockProfile(value: string): SaveKeyResult {
     return this._saveKey("BEDROCK_PROFILE", value);
   }
-  getBedrockAccessKeyId() {
+  getBedrockAccessKeyId(): string {
     return this._getKey("BEDROCK_ACCESS_KEY_ID");
   }
-  saveBedrockAccessKeyId(key) {
+  saveBedrockAccessKeyId(key: string): SaveKeyResult {
     return this._saveKey("BEDROCK_ACCESS_KEY_ID", key);
   }
-  getBedrockSecretAccessKey() {
+  getBedrockSecretAccessKey(): string {
     return this._getKey("BEDROCK_SECRET_ACCESS_KEY");
   }
-  saveBedrockSecretAccessKey(key) {
+  saveBedrockSecretAccessKey(key: string): SaveKeyResult {
     return this._saveKey("BEDROCK_SECRET_ACCESS_KEY", key);
   }
-  getBedrockSessionToken() {
+  getBedrockSessionToken(): string {
     return this._getKey("BEDROCK_SESSION_TOKEN");
   }
-  saveBedrockSessionToken(key) {
+  saveBedrockSessionToken(key: string): SaveKeyResult {
     return this._saveKey("BEDROCK_SESSION_TOKEN", key);
   }
 
   // Enterprise providers — Azure OpenAI
-  getAzureEndpoint() {
+  getAzureEndpoint(): string {
     return this._getKey("AZURE_OPENAI_ENDPOINT");
   }
-  saveAzureEndpoint(value) {
+  saveAzureEndpoint(value: string): SaveKeyResult {
     return this._saveKey("AZURE_OPENAI_ENDPOINT", value);
   }
-  getAzureApiKey() {
+  getAzureApiKey(): string {
     return this._getKey("AZURE_OPENAI_API_KEY");
   }
-  saveAzureApiKey(key) {
+  saveAzureApiKey(key: string): SaveKeyResult {
     return this._saveKey("AZURE_OPENAI_API_KEY", key);
   }
-  getAzureDeployment() {
+  getAzureDeployment(): string {
     return this._getKey("AZURE_OPENAI_DEPLOYMENT");
   }
-  saveAzureDeployment(value) {
+  saveAzureDeployment(value: string): SaveKeyResult {
     return this._saveKey("AZURE_OPENAI_DEPLOYMENT", value);
   }
-  getAzureApiVersion() {
+  getAzureApiVersion(): string {
     return this._getKey("AZURE_OPENAI_API_VERSION");
   }
-  saveAzureApiVersion(value) {
+  saveAzureApiVersion(value: string): SaveKeyResult {
     return this._saveKey("AZURE_OPENAI_API_VERSION", value);
   }
 
   // Enterprise providers — GCP Vertex AI
-  getVertexProject() {
+  getVertexProject(): string {
     return this._getKey("VERTEX_PROJECT");
   }
-  saveVertexProject(value) {
+  saveVertexProject(value: string): SaveKeyResult {
     return this._saveKey("VERTEX_PROJECT", value);
   }
-  getVertexLocation() {
+  getVertexLocation(): string {
     return this._getKey("VERTEX_LOCATION");
   }
-  saveVertexLocation(value) {
+  saveVertexLocation(value: string): SaveKeyResult {
     return this._saveKey("VERTEX_LOCATION", value);
   }
-  getVertexApiKey() {
+  getVertexApiKey(): string {
     return this._getKey("VERTEX_API_KEY");
   }
-  saveVertexApiKey(key) {
+  saveVertexApiKey(key: string): SaveKeyResult {
     return this._saveKey("VERTEX_API_KEY", key);
   }
 
-  getDictationKey() {
+  getDictationKey(): string {
     return this._getKey("DICTATION_KEY");
   }
 
-  saveDictationKey(key) {
+  saveDictationKey(key: string): SaveKeyResult {
     const result = this._saveKey("DICTATION_KEY", key);
     this.saveAllKeysToEnvFile().catch(() => {});
     return result;
   }
 
-  getVoiceAgentKey() {
+  getVoiceAgentKey(): string {
     const key = this._getKey("VOICE_AGENT_KEY");
     if (key) return key;
     // The chat-agent window is gone; its hotkey now opens the assistant by voice.
@@ -389,96 +415,96 @@ class EnvironmentManager {
     return legacy;
   }
 
-  saveVoiceAgentKey(key) {
+  saveVoiceAgentKey(key: string): SaveKeyResult {
     const result = this._saveKey("VOICE_AGENT_KEY", key);
     this.saveAllKeysToEnvFile().catch(() => {});
     return result;
   }
 
-  getTranslationKey() {
+  getTranslationKey(): string {
     return this._getKey("TRANSLATION_KEY");
   }
 
-  saveTranslationKey(key) {
+  saveTranslationKey(key: string): SaveKeyResult {
     const result = this._saveKey("TRANSLATION_KEY", key);
     this.saveAllKeysToEnvFile().catch(() => {});
     return result;
   }
 
-  getMeetingKey() {
+  getMeetingKey(): string {
     return this._getKey("MEETING_KEY");
   }
 
-  saveMeetingKey(key) {
+  saveMeetingKey(key: string): SaveKeyResult {
     const result = this._saveKey("MEETING_KEY", key);
     this.saveAllKeysToEnvFile().catch(() => {});
     return result;
   }
 
-  getActivationMode() {
+  getActivationMode(): "push" | "tap" {
     const mode = this._getKey("ACTIVATION_MODE");
     return mode === "push" ? "push" : "tap";
   }
 
-  saveActivationMode(mode) {
+  saveActivationMode(mode: string): SaveKeyResult {
     const validMode = mode === "push" ? "push" : "tap";
     const result = this._saveKey("ACTIVATION_MODE", validMode);
     this.saveAllKeysToEnvFile().catch(() => {});
     return result;
   }
 
-  getFloatingIconAutoHide() {
+  getFloatingIconAutoHide(): boolean {
     return this._getKey("FLOATING_ICON_AUTO_HIDE") === "true";
   }
 
-  saveFloatingIconAutoHide(enabled) {
+  saveFloatingIconAutoHide(enabled: boolean): SaveKeyResult {
     const result = this._saveKey("FLOATING_ICON_AUTO_HIDE", String(enabled));
     this.saveAllKeysToEnvFile().catch(() => {});
     return result;
   }
 
-  getStartMinimized() {
+  getStartMinimized(): boolean {
     return this._getKey("START_MINIMIZED") === "true";
   }
 
-  saveStartMinimized(enabled) {
+  saveStartMinimized(enabled: boolean): SaveKeyResult {
     const result = this._saveKey("START_MINIMIZED", String(enabled));
     this.saveAllKeysToEnvFile().catch(() => {});
     return result;
   }
 
-  getPanelStartPosition() {
+  getPanelStartPosition(): "bottom-right" | "center" | "bottom-left" {
     const v = this._getKey("PANEL_START_POSITION");
     if (v === "bottom-right" || v === "center" || v === "bottom-left") return v;
     return "bottom-right";
   }
 
-  savePanelStartPosition(position) {
+  savePanelStartPosition(position: string): SaveKeyResult {
     const result = this._saveKey("PANEL_START_POSITION", position);
     this.saveAllKeysToEnvFile().catch(() => {});
     return result;
   }
 
-  getUiLanguage(fallbackLanguage = "") {
+  getUiLanguage(fallbackLanguage = ""): string {
     const language = this._getKey("UI_LANGUAGE") || fallbackLanguage;
     return language ? normalizeUiLanguage(language) : "";
   }
 
-  saveUiLanguage(language) {
+  saveUiLanguage(language: string): SaveKeyResult & { language: string } {
     const normalized = normalizeUiLanguage(language);
     const result = this._saveKey("UI_LANGUAGE", normalized);
     this.saveAllKeysToEnvFile().catch(() => {});
     return { ...result, language: normalized };
   }
 
-  async saveAllKeysToEnvFile() {
+  async saveAllKeysToEnvFile(): Promise<{ success: boolean; path: string }> {
     const envPath = path.join(app.getPath("userData"), ".env");
     await this._writeEnvFileAtomic(envPath);
     require("dotenv").config({ path: envPath });
     return { success: true, path: envPath };
   }
 
-  async clearAllPersistedData() {
+  async clearAllPersistedData(): Promise<{ success: boolean }> {
     for (const envVarName of PERSISTED_KEYS) {
       delete process.env[envVarName];
     }
@@ -495,14 +521,14 @@ class EnvironmentManager {
   // verbatim. saveAllKeysToEnvFile() would instead regenerate the file from
   // PERSISTED_KEYS, dropping hand-added lines (e.g. OPENHERCULES_LOG_LEVEL) and
   // materializing session/shell env values into the file.
-  removeKeyFromEnvFile(key) {
+  removeKeyFromEnvFile(key: string): Promise<unknown> {
     const envPath = path.join(app.getPath("userData"), ".env");
     envWriteQueue = envWriteQueue.catch(() => {}).then(() => this._removeKeyLine(envPath, key));
     return envWriteQueue;
   }
 
-  async _removeKeyLine(envPath, key) {
-    let content;
+  async _removeKeyLine(envPath: string, key: string): Promise<void> {
+    let content: string;
     try {
       content = await fsPromises.readFile(envPath, "utf8");
     } catch {
@@ -520,13 +546,34 @@ class EnvironmentManager {
 
 // Generate the uniform BYOK key accessors (getOpenAIKey/saveOpenAIKey/…) from
 // the shared manifest so each provider is defined in exactly one place.
+// The generated accessors are catalog-driven: the `as const` manifest turns
+// every get/save name into a literal, so the surface below is exactly the
+// methods the loop attaches (no free string index).
+export type ByokGetterName = (typeof BYOK_API_KEYS)[number]["get"];
+export type ByokSetterName = (typeof BYOK_API_KEYS)[number]["save"];
+
+export type ByokAccessorSurface = {
+  [name in ByokGetterName]: () => string;
+} & {
+  [name in ByokSetterName]: (key: string) => SaveKeyResult;
+};
+
+export type EnvironmentManagerWithByok = EnvironmentManager & ByokAccessorSurface;
+
+const managerPrototype = EnvironmentManager.prototype as typeof EnvironmentManager.prototype &
+  Record<string, unknown>;
+
 for (const k of BYOK_API_KEYS) {
-  EnvironmentManager.prototype[k.get] = function () {
+  managerPrototype[k.get] = function (this: EnvironmentManager) {
     return this._getKey(k.env);
   };
-  EnvironmentManager.prototype[k.save] = function (key) {
+  managerPrototype[k.save] = function (this: EnvironmentManager, key = "") {
     return this._saveKey(k.env, key);
   };
 }
 
+// Dual-export contract: the class itself plus the named export so both the
+// legacy `require("./environment")` call sites and emitted cross-module
+// imports construct the same constructor.
 module.exports = EnvironmentManager;
+module.exports.EnvironmentManager = EnvironmentManager;

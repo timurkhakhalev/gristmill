@@ -816,3 +816,9 @@ export class ParakeetManager {
   }
 }
 
+
+
+// Dual export: main.js and legacy tests require this module as the class
+// itself, while the TS graph imports the named export.
+module.exports = ParakeetManager;
+module.exports.ParakeetManager = ParakeetManager;

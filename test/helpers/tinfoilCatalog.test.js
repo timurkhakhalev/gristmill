@@ -9,7 +9,9 @@ function loadCatalog(fetchImpl) {
   delete require.cache[catalogModulePath];
 
   Module._load = function loadWithMocks(request, parent, isMain) {
-    if (request === "./tinfoilSecureClient") {
+    // The TS emit requires "./tinfoilSecureClient.js"; accept the pre-migration
+    // extensionless specifier too so the hook survives the cutover.
+    if (request === "./tinfoilSecureClient" || request === "./tinfoilSecureClient.js") {
       return { tinfoilSecureFetch: fetchImpl };
     }
     if (request === "./debugLogger") {

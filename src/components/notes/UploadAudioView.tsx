@@ -151,6 +151,10 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   // The requestId of the in-flight single upload, so Stop hard-cancels the
   // exact execution (transport + diarization) before the UI resets.
   const singleRequestIdRef = useRef<string | null>(null);
+  // The downloaded temp owned by the in-flight execution while its readers
+  // run: reset() and unmount must not delete the file under them, and the
+  // execution deletes it exactly once at settlement.
+  const executionTempRef = useRef<string | null>(null);
 
   const [urlInput, setUrlInput] = useState("");
   const [downloadProgress, setDownloadProgress] = useState<{
@@ -535,6 +539,30 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     }
   };
 
+  // Settlement of the execution that owned the downloaded temp: the cancel
+  // RPC only confirms the abort signal was sent, not that the readers
+  // finished, so the file is deleted here — after they settled. User-picked
+  // source files are never deleted, only the downloaded temp copy.
+  const releaseExecutionTemp = () => {
+    const tempPath = executionTempRef.current;
+    executionTempRef.current = null;
+    if (!tempPath) return;
+    window.electronAPI.deleteTempFile(tempPath);
+    if (downloadedTempPathRef.current === tempPath) {
+      downloadedTempPathRef.current = null;
+      setDownloadedTempPath(null);
+    }
+  };
+  // A settled error keeps the temp for Retry: hand it back to the view
+  // state, which deletes it on reset or unmount as before.
+  const keepExecutionTempForRetry = () => {
+    const tempPath = executionTempRef.current;
+    executionTempRef.current = null;
+    if (!tempPath) return;
+    downloadedTempPathRef.current = tempPath;
+    setDownloadedTempPath(tempPath);
+  };
+
   const reset = () => {
     if (progressRef.current) clearInterval(progressRef.current);
     if (progressCleanupRef.current) progressCleanupRef.current();
@@ -560,10 +588,11 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   const cancelTranscription = async () => {
     // Hard cancel first: the typed cancel op aborts the transport, decode and
-    // diarization of this request, so the downloaded temp file below is only
-    // deleted after every reader settled. The run-id bump keeps any late
-    // result from touching the reset UI; user-picked source files are never
-    // deleted, only the downloaded temp copy.
+    // diarization of this request. The acknowledgement only confirms the
+    // signal was sent, so the UI may reset here while the downloaded temp is
+    // still owned by the execution — it is deleted when that execution
+    // settles, not by reset(). The run-id bump keeps any late result from
+    // touching the reset UI.
     const requestId = singleRequestIdRef.current;
     runIdRef.current++;
     singleRequestIdRef.current = null;
@@ -584,6 +613,13 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     const runId = ++runIdRef.current;
     const requestId = crypto.randomUUID();
     singleRequestIdRef.current = requestId;
+    // This execution now owns the downloaded temp: reset()/unmount see no
+    // temp until it settles, so a Stop cannot delete it under open readers.
+    executionTempRef.current = currentTempPath;
+    if (currentTempPath) {
+      downloadedTempPathRef.current = null;
+      setDownloadedTempPath(null);
+    }
     setState("transcribing");
     setError(null);
     setProgress(0);
@@ -602,7 +638,11 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       const diarization = await buildDiarizationSettings();
       // The settings preparation is async (lazy model download); a Stop that
       // landed meanwhile must not start the IPC work at all.
-      if (runId !== runIdRef.current) return;
+      if (runId !== runIdRef.current) {
+        // Cancelled before any reader started — the temp is free to delete.
+        releaseExecutionTemp();
+        return;
+      }
       const res: FileTranscriptionResult = await transcribeFileWithSpeakers(
         currentFile.path,
         buildTranscriptionConfig(),
@@ -611,7 +651,11 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         { requestId, timestamps: true }
       );
 
-      if (runId !== runIdRef.current) return;
+      if (runId !== runIdRef.current) {
+        // Readers settled after a Stop: only now is the temp deleted.
+        releaseExecutionTemp();
+        return;
+      }
       singleRequestIdRef.current = null;
 
       if (progressRef.current) clearInterval(progressRef.current);
@@ -633,7 +677,10 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           title = currentFile.name;
         } else {
           const aiTitle = await generateTitle(res.text);
-          if (runId !== runIdRef.current) return;
+          if (runId !== runIdRef.current) {
+            releaseExecutionTemp();
+            return;
+          }
           title = aiTitle || uploadTitleFallback(res.text, currentFile.name);
         }
 
@@ -646,14 +693,15 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           durationSeconds: res.durationSeconds,
           segments: res.segments,
         });
-        if (runId !== runIdRef.current) return;
-        if (noteRes.success && noteRes.note) setNoteId(noteRes.note.id);
-        if (currentTempPath) {
-          window.electronAPI.deleteTempFile(currentTempPath);
-          setDownloadedTempPath(null);
+        if (runId !== runIdRef.current) {
+          releaseExecutionTemp();
+          return;
         }
+        if (noteRes.success && noteRes.note) setNoteId(noteRes.note.id);
+        releaseExecutionTemp();
         setState("complete");
       } else {
+        keepExecutionTempForRetry();
         setProgress(0);
         const errorKey = transcriptionErrorKey(res);
         setError(
@@ -666,7 +714,12 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         setState("error");
       }
     } catch (err) {
-      if (runId !== runIdRef.current) return;
+      if (runId !== runIdRef.current) {
+        // A thrown settlement after a Stop: readers are done, delete the temp.
+        releaseExecutionTemp();
+        return;
+      }
+      keepExecutionTempForRetry();
       singleRequestIdRef.current = null;
       if (progressRef.current) clearInterval(progressRef.current);
       if (progressCleanupRef.current) progressCleanupRef.current();

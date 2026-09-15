@@ -383,7 +383,16 @@ async function startApp() {
   await environmentManager.init();
   registerSidecars();
 
-  cliBridge = new CliBridge(ipcHandlers);
+  cliBridge = new CliBridge({
+    databaseManager: ipcHandlers.databaseManager,
+    deleteNoteInternal: (id) => ipcHandlers.deleteNoteInternal(id),
+    deleteTranscriptionInternal: (id) => ipcHandlers.deleteTranscriptionInternal(id),
+    mirrorWriteNote: (note) => ipcHandlers._asyncMirrorWrite(note),
+    approveAudioPath: (filePath) => ipcHandlers.approveAudioPath(filePath),
+    transcribeLocalFile: (filePath, options) => ipcHandlers.transcribeLocalFile(filePath, options),
+    listLocalTranscriptionModels: () => ipcHandlers.listLocalTranscriptionModels(),
+    audioStorageManager: ipcHandlers.audioStorageManager,
+  });
   cliBridge.start().catch((err) => {
     debugLogger.error("CLI bridge failed to start", { error: err.message });
     cliBridge = null;

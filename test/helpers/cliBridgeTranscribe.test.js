@@ -14,7 +14,7 @@ Module._load = function patchedLoad(request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const CliBridge = require("../../src/helpers/cliBridge.js");
+const CliBridge = require("../../src/helpers/cliBridge.ts");
 
 const MODELS = [
   { provider: "whisper", model: "base", downloaded: true, default: true },
@@ -24,7 +24,7 @@ const MODELS = [
 
 function createBridge(models = MODELS) {
   const calls = { approved: [], transcribed: [] };
-  const bridge = new CliBridge({
+  const operations = {
     databaseManager: {},
     listLocalTranscriptionModels: () => models,
     approveAudioPath: (p) => calls.approved.push(p),
@@ -32,8 +32,9 @@ function createBridge(models = MODELS) {
       calls.transcribed.push({ path: p, options });
       return { success: true, text: "hello from disk" };
     },
-  });
-  return { bridge, calls };
+  };
+  const bridge = new CliBridge(operations);
+  return { bridge, calls, operations };
 }
 
 function call(bridge, method, pathname, body) {
@@ -94,8 +95,8 @@ test("POST /v1/transcribe honors an explicit model and language", async () => {
 });
 
 test("POST /v1/transcribe reports silence as empty text, not an error", async () => {
-  const { bridge } = createBridge();
-  bridge.ipcHandlers.transcribeLocalFile = async () => ({
+  const { bridge, operations } = createBridge();
+  operations.transcribeLocalFile = async () => ({
     success: false,
     code: "NO_SPEECH_DETECTED",
     message: "No audio detected",

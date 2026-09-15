@@ -18,13 +18,24 @@ import { createHash } from "node:crypto";
  * @param {string} text
  * @returns {{ rows: string[][], warnings: Array<{ code: string }> }}
  */
-export function parseCsv(text) {
-  const warnings = [];
+export interface CsvWarning {
+  code: string;
+  row?: number;
+  detail?: string;
+}
+
+export interface ParseCsvResult {
+  rows: string[][];
+  warnings: CsvWarning[];
+}
+
+export function parseCsv(text: unknown): ParseCsvResult {
+  const warnings: CsvWarning[] = [];
   let src = String(text ?? "");
   if (src.charCodeAt(0) === 0xfeff) src = src.slice(1);
 
-  const rows = [];
-  let row = [];
+  const rows: string[][] = [];
+  let row: string[] = [];
   let field = "";
   let inQuotes = false;
 
@@ -72,7 +83,17 @@ export function parseCsv(text) {
 // Reconciled against a real 2026-08-24 export: document_id, user_email,
 // document_title, workspace_name, document_created, summary, notes, transcript.
 // "summary" is the AI notes; "notes" is what the user typed themselves.
-const HEADER_SYNONYMS = {
+export type GranolaField = "id" | "title" | "summary" | "userNotes" | "transcript" | "createdAt" | "attendees";
+
+export type GranolaHeaderMapping = Partial<Record<GranolaField, number>>;
+
+export interface MapHeadersResult {
+  mapping: GranolaHeaderMapping;
+  unknown: string[];
+  warnings: CsvWarning[];
+}
+
+const HEADER_SYNONYMS: Record<GranolaField, string[]> = {
   id: ["id", "noteid", "docid", "documentid"],
   title: ["title", "documenttitle", "notetitle", "name", "meetingtitle"],
   summary: ["summary", "ainotes", "aisummary", "enhancednotes", "content"],
@@ -90,7 +111,7 @@ const HEADER_SYNONYMS = {
   attendees: ["attendees", "participants", "people", "guests"],
 };
 
-const normalizeHeader = (header) =>
+const normalizeHeader = (header: unknown) =>
   String(header ?? "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
@@ -107,13 +128,13 @@ const normalizeHeader = (header) =>
  *   warnings: Array<{ code: string, detail?: string }>,
  * }}
  */
-export function mapHeaders(headerRow) {
-  const warnings = [];
+export function mapHeaders(headerRow: string[]): MapHeadersResult {
+  const warnings: CsvWarning[] = [];
   const normalized = headerRow.map(normalizeHeader);
-  const claimed = new Set();
-  const mapping = {};
+  const claimed = new Set<number>();
+  const mapping: GranolaHeaderMapping = {};
 
-  for (const [field, synonyms] of Object.entries(HEADER_SYNONYMS)) {
+  for (const [field, synonyms] of Object.entries(HEADER_SYNONYMS) as Array<[GranolaField, string[]]>) {
     for (const synonym of synonyms) {
       const index = normalized.findIndex((header, i) => header === synonym && !claimed.has(i));
       if (index !== -1) {
@@ -132,9 +153,9 @@ export function mapHeaders(headerRow) {
   return { mapping, unknown, warnings };
 }
 
-const pad2 = (value) => String(value).padStart(2, "0");
+const pad2 = (value: number) => String(value).padStart(2, "0");
 
-const formatSqliteUtc = (date) =>
+const formatSqliteUtc = (date: Date) =>
   `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())} ` +
   `${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}:${pad2(date.getUTCSeconds())}`;
 
@@ -153,7 +174,7 @@ const US_DATE_RE =
  * @param {unknown} value
  * @returns {string | null}
  */
-export function normalizeDate(value) {
+export function normalizeDate(value: unknown): string | null {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
 
@@ -193,7 +214,16 @@ const SPEAKER_LINE_RE = /^([^:\n]{1,60}):\s+(\S.*)$/;
 const SPEAKER_LINE_RATIO = 0.6;
 const SPEAKER_NAME_MAX_WORDS = 4;
 
-const matchSpeakerLine = (line) => {
+export interface GranolaTranscriptSegment {
+  text: string;
+  source: string;
+  timestamp: number;
+  speakerName?: string;
+  speakerLocked?: boolean;
+  speakerLockSource?: string;
+}
+
+const matchSpeakerLine = (line: string): { speakerName: string; text: string } | null => {
   const match = line.match(SPEAKER_LINE_RE);
   if (!match) return null;
   const speakerName = match[1].trim();
@@ -214,7 +244,10 @@ const matchSpeakerLine = (line) => {
  * @param {number} anchorMs
  * @returns {Array<object>}
  */
-export function parseTranscriptToSegments(text, anchorMs) {
+export function parseTranscriptToSegments(
+  text: unknown,
+  anchorMs: number
+): GranolaTranscriptSegment[] {
   const trimmed = String(text ?? "").trim();
   if (!trimmed) return [];
 
@@ -223,7 +256,9 @@ export function parseTranscriptToSegments(text, anchorMs) {
     .map((line) => line.trim())
     .filter(Boolean);
   const parsedLines = lines.map(matchSpeakerLine);
-  const speakerLines = parsedLines.filter(Boolean);
+  const speakerLines = parsedLines.filter(
+    (line): line is { speakerName: string; text: string } => line !== null
+  );
   const distinctSpeakers = new Set(speakerLines.map((line) => line.speakerName));
 
   const useSpeakerMode =
@@ -232,7 +267,7 @@ export function parseTranscriptToSegments(text, anchorMs) {
     return lines.map((line, i) => ({ text: line, source: "system", timestamp: anchorMs + i }));
   }
 
-  const segments = [];
+  const segments: GranolaTranscriptSegment[] = [];
   lines.forEach((line, i) => {
     const parsed = parsedLines[i];
     if (parsed) {
@@ -261,7 +296,7 @@ export function parseTranscriptToSegments(text, anchorMs) {
  * @param {string} key
  * @returns {string}
  */
-export function deterministicUuid(key) {
+export function deterministicUuid(key: string): string {
   const hex = createHash("sha256").update(`openhercules-granola:${key}`).digest("hex");
   const withVersion = `4${hex.slice(13, 16)}`;
   const variantNibble = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
@@ -269,7 +304,7 @@ export function deterministicUuid(key) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${withVersion}-${withVariant}-${hex.slice(20, 32)}`;
 }
 
-const shortHash = (value) => createHash("sha256").update(value).digest("hex").slice(0, 16);
+const shortHash = (value: string) => createHash("sha256").update(value).digest("hex").slice(0, 16);
 
 /**
  * Allocate stable note keys across every CSV file in one Granola import.
@@ -282,9 +317,17 @@ const shortHash = (value) => createHash("sha256").update(value).digest("hex").sl
  *   rawDate: string,
  * }) => string}
  */
-export function createGranolaNoteKeyAllocator() {
-  const claimedLegacyFallbackKeys = new Set();
-  const fallbackOccurrences = new Map();
+export interface GranolaNoteKeyInput {
+  id: string;
+  title: string;
+  rawDate: string;
+}
+
+export type GranolaNoteKeyAllocator = (fields: GranolaNoteKeyInput) => string;
+
+export function createGranolaNoteKeyAllocator(): GranolaNoteKeyAllocator {
+  const claimedLegacyFallbackKeys = new Set<string>();
+  const fallbackOccurrences = new Map<string, number>();
 
   return ({ id, title, rawDate }) => {
     if (id) return id;
@@ -308,7 +351,12 @@ const BARE_EMAIL_RE = /^\S+@\S+\.\S+$/;
 
 // Consumers of notes.participants require an email (e.g. SpeakerPicker reads
 // p.email unguarded), so name-only tokens are dropped rather than emitted.
-const parseAttendees = (cell) =>
+export interface GranolaAttendee {
+  displayName: string;
+  email: string;
+}
+
+const parseAttendees = (cell: unknown): GranolaAttendee[] =>
   String(cell ?? "")
     .split(/[,;\n]/)
     .map((token) => token.trim())
@@ -336,9 +384,32 @@ const parseAttendees = (cell) =>
  *   warnings: Array<{ code: string, row?: number, detail?: string }>,
  * }}
  */
-export function parseGranolaCsv(text, { allocateNoteKey = createGranolaNoteKeyAllocator() } = {}) {
+export interface GranolaParsedNote {
+  clientNoteId: string;
+  sourceFile: string;
+  title: string;
+  content: string;
+  transcript: string | null;
+  participants: string | null;
+  createdAt: string | null;
+}
+
+export type GranolaParseErrorCode = "EMPTY_FILE" | "HEADERS_UNRECOGNIZED" | "NO_DATA_ROWS";
+
+export interface ParseGranolaCsvResult {
+  ok: boolean;
+  error?: { code: GranolaParseErrorCode };
+  headerInfo: { mapped: Record<string, string>; unknown: string[] };
+  notes: GranolaParsedNote[];
+  warnings: CsvWarning[];
+}
+
+export function parseGranolaCsv(
+  text: unknown,
+  { allocateNoteKey = createGranolaNoteKeyAllocator() }: { allocateNoteKey?: GranolaNoteKeyAllocator } = {}
+): ParseGranolaCsvResult {
   const src = String(text ?? "");
-  const emptyHeaderInfo = { mapped: {}, unknown: [] };
+  const emptyHeaderInfo: ParseGranolaCsvResult["headerInfo"] = { mapped: {}, unknown: [] };
   if (!src.trim()) {
     return {
       ok: false,
@@ -374,7 +445,7 @@ export function parseGranolaCsv(text, { allocateNoteKey = createGranolaNoteKeyAl
     warnings.push({ code: "TRANSCRIPT_COLUMN_MISSING" });
   }
 
-  const notes = [];
+  const notes: GranolaParsedNote[] = [];
   dataRows.forEach((rawRow, i) => {
     const rowNumber = i + 2; // 1-based line number in the CSV, counting the header
     if (rawRow.every((value) => !value.trim())) {
@@ -388,7 +459,7 @@ export function parseGranolaCsv(text, { allocateNoteKey = createGranolaNoteKeyAl
       row = row.slice(0, headerRow.length);
       while (row.length < headerRow.length) row.push("");
     }
-    const cell = (field) =>
+    const cell = (field: GranolaField) =>
       mapping[field] === undefined ? "" : (row[mapping[field]] ?? "").trim();
 
     // AI summary first, the user's own typed notes beneath it; either alone works.

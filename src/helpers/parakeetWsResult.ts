@@ -49,7 +49,7 @@ export function createOnlineAccumulator(): OnlineAccumulator {
 
       if (!parsed.is_final) {
         partialText = finalizedSegments.has(String(parsed.segment)) ? "" : messageText;
-        partialSegment = parsed.segment ?? null;
+        partialSegment = parsed.segment !== undefined ? String(parsed.segment) : null;
         return text();
       }
 

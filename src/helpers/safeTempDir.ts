@@ -2,15 +2,15 @@ const os = require("os");
 const fs = require("fs");
 const path = require("path");
 
-let cachedSafeTempDir = null;
+let cachedSafeTempDir: string | null = null;
 
 // Returns a safe temp directory for native binaries on Windows.
 // Falls back to ProgramData when TEMP contains spaces or non-ASCII characters,
 // as many native binaries (whisper-server, ffmpeg) don't handle these paths correctly.
-function getSafeTempDir() {
+export function getSafeTempDir(): string {
   if (cachedSafeTempDir) return cachedSafeTempDir;
 
-  const systemTemp = os.tmpdir();
+  const systemTemp: string = os.tmpdir();
 
   // On non-Windows platforms, use system temp directly
   // On Windows, check for problematic characters: non-ASCII or spaces
@@ -20,15 +20,15 @@ function getSafeTempDir() {
     return systemTemp;
   }
 
-  const fallbackBase = process.env.ProgramData || "C:\\ProgramData";
-  const fallback = path.join(fallbackBase, "OpenHercules", "temp");
+  const fallbackBase: string = process.env.ProgramData || "C:\\ProgramData";
+  const fallback: string = path.join(fallbackBase, "OpenHercules", "temp");
 
   try {
     fs.mkdirSync(fallback, { recursive: true });
     cachedSafeTempDir = fallback;
     return fallback;
   } catch {
-    const rootFallback = path.join(process.env.SystemDrive || "C:", "OpenHercules", "temp");
+    const rootFallback: string = path.join(process.env.SystemDrive || "C:", "OpenHercules", "temp");
     try {
       fs.mkdirSync(rootFallback, { recursive: true });
       cachedSafeTempDir = rootFallback;
@@ -39,5 +39,3 @@ function getSafeTempDir() {
     }
   }
 }
-
-module.exports = { getSafeTempDir };

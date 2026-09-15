@@ -1,19 +1,23 @@
-const { spawn } = require("child_process");
+import { spawn, type ChildProcess } from "child_process";
 
 /** Terminate a child process on macOS. */
-function killProcess(proc, signal = "SIGTERM") {
+export function killProcess(proc: ChildProcess | null | undefined, signal: NodeJS.Signals = "SIGTERM"): void {
   if (!proc || proc.exitCode !== null) return;
 
   try {
     proc.kill(signal);
-  } catch (e) {
+  } catch {
     // Process may already be dead
   }
 }
 
 // Signal the whole process group so grandchildren get reaped too.
-function killProcessGroup(proc, signal = "SIGTERM") {
+export function killProcessGroup(
+  proc: ChildProcess | null | undefined,
+  signal: NodeJS.Signals = "SIGTERM"
+): void {
   if (!proc || proc.exitCode !== null) return;
+  if (proc.pid === undefined) return;
   try {
     process.kill(-proc.pid, signal);
   } catch {
@@ -22,7 +26,7 @@ function killProcessGroup(proc, signal = "SIGTERM") {
 }
 
 // Timeout constants
-const TIMEOUTS = {
+export const TIMEOUTS = {
   QUICK_CHECK: 5000, // 5 seconds for quick checks
   COMMAND: 30000, // 30 seconds for general commands
   INSTALL: 300000, // 5 minutes for installations
@@ -32,7 +36,7 @@ const TIMEOUTS = {
 };
 
 // Command whitelist for shell operations
-const SAFE_SHELL_COMMANDS = new Set(["brew"]);
+const SAFE_SHELL_COMMANDS: ReadonlySet<string> = new Set(["brew"]);
 
 /**
  * Validate command arguments for safety
@@ -41,7 +45,7 @@ const SAFE_SHELL_COMMANDS = new Set(["brew"]);
  * @param {boolean} shell - Whether shell is being used
  * @throws {Error} If validation fails
  */
-function validateCommand(cmd, args, shell) {
+function validateCommand(cmd: string, args: string[], shell: boolean): void {
   // Reject shell usage for non-whitelisted commands
   if (shell && !SAFE_SHELL_COMMANDS.has(cmd)) {
     throw new Error(`Shell execution not allowed for command: ${cmd}`);
@@ -63,18 +67,32 @@ function validateCommand(cmd, args, shell) {
  * @param {boolean} options.shell - Whether to use shell (avoid unless necessary)
  * @returns {Promise<{success: boolean, output: string}>}
  */
-async function runCommand(cmd, args = [], options = {}) {
+export interface RunCommandOptions {
+  timeout?: number;
+  shell?: boolean;
+}
+
+export interface RunCommandResult {
+  success: boolean;
+  output: string;
+}
+
+export async function runCommand(
+  cmd: string,
+  args: string[] = [],
+  options: RunCommandOptions = {}
+): Promise<RunCommandResult> {
   const { timeout = TIMEOUTS.COMMAND, shell = false } = options;
 
   // Validate command for security
   validateCommand(cmd, args, shell);
 
   return new Promise((resolve, reject) => {
-    let childProc;
+    let childProc: ChildProcess;
     let stdout = "";
     let stderr = "";
     let completed = false;
-    let timer;
+    let timer: NodeJS.Timeout | undefined;
 
     try {
       childProc = spawn(cmd, args, { shell });
@@ -83,10 +101,10 @@ async function runCommand(cmd, args = [], options = {}) {
       return;
     }
 
-    const cleanup = () => {
-      if (timer) {
+    const cleanup = (): void => {
+      if (timer !== null) {
         clearTimeout(timer);
-        timer = null;
+        timer = undefined;
       }
       if (childProc && !completed) {
         completed = true;
@@ -98,23 +116,25 @@ async function runCommand(cmd, args = [], options = {}) {
       }
     };
 
-    timer = setTimeout(() => {
+    const timeoutHandle: NodeJS.Timeout = setTimeout(() => {
       cleanup();
       reject(new Error(`Command timed out after ${timeout}ms`));
     }, timeout);
+    timer = timeoutHandle;
 
-    childProc.stdout.on("data", (data) => {
+
+    childProc.stdout?.on("data", (data: Buffer) => {
       stdout += data.toString();
     });
 
-    childProc.stderr.on("data", (data) => {
+    childProc.stderr?.on("data", (data: Buffer) => {
       stderr += data.toString();
     });
 
     childProc.on("close", (code) => {
       if (completed) return; // Already handled
       completed = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
 
       if (code === 0) {
         resolve({ success: true, output: stdout });
@@ -131,10 +151,3 @@ async function runCommand(cmd, args = [], options = {}) {
     });
   });
 }
-
-module.exports = {
-  runCommand,
-  killProcess,
-  killProcessGroup,
-  TIMEOUTS,
-};

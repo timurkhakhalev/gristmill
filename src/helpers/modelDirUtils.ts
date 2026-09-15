@@ -5,17 +5,17 @@ const path = require("path");
 
 // Same rule as safeTempDir: native whisper/parakeet binaries crash on Windows
 // when model paths contain spaces or non-ASCII (CJK / Cyrillic profile dirs).
-function pathHasProblematicChars(candidate) {
+export function pathHasProblematicChars(candidate: string): boolean {
   return !/^[\x21-\x7E]*$/.test(candidate);
 }
 
-function ensureDir(dir) {
+function ensureDir(dir: string): string {
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function getAsciiSafeFallbackRoot() {
-  const candidates = [
+function getAsciiSafeFallbackRoot(): string | null {
+  const candidates: string[] = [
     path.join(process.env.ProgramData || "C:\\ProgramData", "OpenHercules", "cache"),
     path.join(process.env.SystemDrive || "C:", "OpenHercules", "cache"),
   ];
@@ -30,9 +30,10 @@ function getAsciiSafeFallbackRoot() {
   return null;
 }
 
-function getPreferredCacheRoot(homeCache) {
-  if (process.env.OPENHERCULES_CACHE_ROOT) {
-    return process.env.OPENHERCULES_CACHE_ROOT;
+function getPreferredCacheRoot(homeCache: string): string {
+  const cacheRootEnv = process.env.OPENHERCULES_CACHE_ROOT;
+  if (cacheRootEnv) {
+    return cacheRootEnv;
   }
 
   if (process.platform === "win32") {
@@ -55,11 +56,22 @@ function getPreferredCacheRoot(homeCache) {
 // Only these subdirs resolve through getCacheRoot(). qdrant-data,
 // embedding-models, and yt-dlp are read from the home cache directly by their
 // managers (and tolerate non-ASCII paths), so they must stay put.
-const RELOCATED_SUBDIRS = ["whisper-models", "parakeet-models", "diarization-models", "models"];
+const RELOCATED_SUBDIRS: string[] = [
+  "whisper-models",
+  "parakeet-models",
+  "diarization-models",
+  "models",
+];
 
-let migratedRootPair = null;
+let migratedRootPair: string | null = null;
 
-function rollbackMigration(completedMoves) {
+interface CompletedMove {
+  from: string;
+  to: string;
+  copied: boolean;
+}
+
+function rollbackMigration(completedMoves: CompletedMove[]): void {
   for (const move of completedMoves.reverse()) {
     try {
       if (!fs.existsSync(move.to)) continue;
@@ -74,12 +86,12 @@ function rollbackMigration(completedMoves) {
   }
 }
 
-function migrateLegacyModelDirs(legacyRoot, targetRoot) {
+function migrateLegacyModelDirs(legacyRoot: string, targetRoot: string): boolean {
   const rootPair = `${legacyRoot}\0${targetRoot}`;
   if (migratedRootPair === rootPair) return true;
 
-  const completedMoves = [];
-  let staging = null;
+  const completedMoves: CompletedMove[] = [];
+  let staging: string | null = null;
   try {
     ensureDir(targetRoot);
 
@@ -120,10 +132,10 @@ function migrateLegacyModelDirs(legacyRoot, targetRoot) {
   }
 }
 
-function getCacheRoot() {
-  const homeDir = app?.getPath?.("home") || os.homedir();
+export function getCacheRoot(): string {
+  const homeDir: string = app?.getPath?.("home") || os.homedir();
   const homeCache = path.join(homeDir, ".cache", "openhercules");
-  let targetRoot = getPreferredCacheRoot(homeCache);
+  let targetRoot: string = getPreferredCacheRoot(homeCache);
 
   if (process.platform === "win32" && pathHasProblematicChars(targetRoot)) {
     targetRoot = getAsciiSafeFallbackRoot() || homeCache;
@@ -133,12 +145,6 @@ function getCacheRoot() {
   return migrateLegacyModelDirs(homeCache, targetRoot) ? targetRoot : homeCache;
 }
 
-function getModelsDirForService(service) {
+export function getModelsDirForService(service: string): string {
   return path.join(getCacheRoot(), `${service}-models`);
 }
-
-module.exports = {
-  getCacheRoot,
-  getModelsDirForService,
-  pathHasProblematicChars,
-};

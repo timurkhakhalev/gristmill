@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 
-const transcriptionModulePath = require.resolve("../../src/helpers/tinfoilTranscription.js");
+const transcriptionModulePath = require.resolve("../../src/helpers/tinfoilTranscription.ts");
 const originalLoad = Module._load;
 
 function loadTranscription(fetchImpl) {

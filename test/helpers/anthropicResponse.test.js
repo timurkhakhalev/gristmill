@@ -3,7 +3,7 @@ const assert = require("node:assert");
 const {
   extractAnthropicText,
   describeMissingAnthropicText,
-} = require("../../src/helpers/anthropicResponse.js");
+} = require("../../src/helpers/anthropicResponse.ts");
 
 describe("extractAnthropicText", () => {
   test("returns trimmed text for a normal single text block", () => {

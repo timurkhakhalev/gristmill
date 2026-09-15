@@ -26,7 +26,7 @@ import WebSocket from "ws";
 import ffmpegPath from "ffmpeg-static";
 import tokenProviders from "../src/helpers/realtimeTokenProviders.js";
 import audioUtils from "../src/utils/audioUtils.js";
-import geminiTranscription from "../src/helpers/geminiTranscription.js";
+import geminiTranscription from "../src/helpers/geminiTranscription.ts";
 import geminiLive from "../src/helpers/geminiLiveStreaming.js";
 import AssemblyAiStreaming from "../src/helpers/assemblyAiStreaming.js";
 import DeepgramStreaming from "../src/helpers/deepgramStreaming.js";

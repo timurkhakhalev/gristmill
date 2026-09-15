@@ -1,25 +1,93 @@
 const path = require("path");
 const fs = require("fs");
-const { promises: fsPromises } = require("fs");
+const fsPromises = require("fs").promises;
 const { app } = require("electron");
 const {
   downloadFile: sharedDownloadFile,
   createDownloadSignal,
   cleanupStaleDownloads,
   checkDiskSpace,
-} = require("./downloadUtils");
+} = require("./downloadUtils.js");
 
 const modelRegistryData = require("../models/modelRegistryData.json");
-const LlamaServerManager = require("./llamaServer");
-const debugLogger = require("./debugLogger");
-const { readGgufMetadataFromFile } = require("./ggufMetadata");
-const {
+import { LlamaServerManager, type ChatMessage } from "./llamaServer.js";
+const debugLogger = require("./debugLogger.js");
+import { readGgufMetadataFromFile, type GgufMetadata } from "./ggufMetadata.js";
+import {
   estimateTokens,
   kvBytesPerToken,
   resolveContextCeiling,
   resolveContextSize,
   BASELINE_CONTEXT_SIZE,
-} = require("./llamaContextPolicy");
+  type ContextCeiling,
+} from "./llamaContextPolicy.js";
+
+// Narrow projection of the local LLM entries in modelRegistryData.json. The
+// registry file is the owner; these are the fields the manager actually reads.
+export interface LocalLlmModelEntry {
+  id: string;
+  name: string;
+  fileName: string;
+  hfRepo: string;
+  contextLength?: number;
+  sizeBytes?: number;
+  sizeMb?: number;
+  draftHfRepo?: string;
+  draftFileName?: string;
+  draftSizeBytes?: number;
+  [key: string]: unknown;
+}
+
+interface LocalProviderEntry {
+  id: string;
+  name: string;
+  baseUrl?: string;
+  models: LocalLlmModelEntry[];
+}
+
+export interface ModelManagerModelInfo {
+  model: LocalLlmModelEntry;
+  provider: LocalProviderEntry;
+}
+
+export interface DownloadProgressSnapshot {
+  modelId: string;
+  progress: number;
+  downloadedSize: number;
+  totalSize: number;
+}
+
+export interface ServerOptions {
+  contextSize: number;
+  threads: number;
+  gpuLayers: number;
+  draftModelPath?: string;
+  cacheRamMiB?: number | null;
+}
+
+export interface RunInferenceOptions {
+  maxTokens?: number;
+  temperature?: number;
+  systemPrompt?: string;
+  disableThinking?: boolean;
+  requireCompleteOutput?: boolean;
+  contextSize?: number;
+  [key: string]: unknown;
+}
+
+interface DownloadFailureShape {
+  message: string;
+  isAbort?: boolean;
+  isHttpError?: boolean;
+  statusCode?: number;
+}
+
+interface LlamaInferenceFailureShape {
+  message: string;
+  code?: string;
+  neededTokens?: number;
+  maxContextTokens?: number;
+}
 
 const MIN_FILE_SIZE = 1_000_000; // 1MB minimum for valid model files
 
@@ -36,7 +104,7 @@ const CONTEXT_RESERVE_TOKENS = 512;
 // Context a request must leave free for its own answer. Derived in one place
 // so the size the window is chosen for and the size it is checked against can
 // never drift apart.
-const reserveFor = (maxTokens) => maxTokens + CONTEXT_RESERVE_TOKENS;
+const reserveFor = (maxTokens: number): number => maxTokens + CONTEXT_RESERVE_TOKENS;
 
 // Only measure the prompt exactly when the estimate lands within this factor
 // of the running window. Below that the answer cannot change, and dictation
@@ -49,12 +117,15 @@ const PREFLIGHT_MEASURE_FACTOR = 2;
 // ever made. Below it, refusing beats handing back a sentence and a half.
 const MIN_OUTPUT_TOKENS = 512;
 
-function getLocalProviders() {
-  return modelRegistryData.localProviders || [];
+function getLocalProviders(): LocalProviderEntry[] {
+  return (modelRegistryData.localProviders as LocalProviderEntry[]) || [];
 }
 
-class ModelError extends Error {
-  constructor(message, code, details = {}) {
+export class ModelError extends Error {
+  code: string;
+  details: Record<string, unknown>;
+
+  constructor(message: string, code: string, details: Record<string, unknown> = {}) {
     super(message);
     this.name = "ModelError";
     this.code = code;
@@ -62,19 +133,31 @@ class ModelError extends Error {
   }
 }
 
-class ModelNotFoundError extends ModelError {
-  constructor(modelId) {
+export class ModelNotFoundError extends ModelError {
+  constructor(modelId: string) {
     super(`Model ${modelId} not found`, "MODEL_NOT_FOUND", { modelId });
   }
 }
 
-class ModelManager {
+export class ModelManager {
+  modelsDir: string | null;
+  downloadProgress: Map<string, DownloadProgressSnapshot>;
+  activeDownloads: Map<string, boolean>;
+  downloadReservations: Map<string, number>;
+  // Track HTTP requests for cancellation
+  activeRequests: Map<string, { abort: () => void }>;
+  downloadLifecycleVersion: number;
+  serverManager: LlamaServerManager;
+  currentServerModelId: string | null;
+  _initialized: boolean;
+  _contextCeilingCache?: { modelPath: string; value: ContextCeiling };
+
   constructor() {
     this.modelsDir = null;
     this.downloadProgress = new Map();
     this.activeDownloads = new Map();
     this.downloadReservations = new Map();
-    this.activeRequests = new Map(); // Track HTTP requests for cancellation
+    this.activeRequests = new Map();
     this.downloadLifecycleVersion = 0;
     this.serverManager = new LlamaServerManager();
     this.currentServerModelId = null;
@@ -89,7 +172,7 @@ class ModelManager {
    * Ensures the manager is initialized. Safe to call multiple times.
    * This must be called before any operation that requires modelsDir.
    */
-  ensureInitialized() {
+  ensureInitialized(): void {
     if (this._initialized) return;
 
     // Check if app is ready before accessing app.getPath()
@@ -103,16 +186,16 @@ class ModelManager {
     this.modelsDir = this.getModelsDir();
     this._initialized = true;
     // Don't await - let this run in background
-    this.ensureModelsDirExists();
-    cleanupStaleDownloads(this.modelsDir);
+    void this.ensureModelsDirExists();
+    void cleanupStaleDownloads(this.modelsDir);
   }
 
-  getModelsDir() {
-    const { getCacheRoot } = require("./modelDirUtils");
+  getModelsDir(): string {
+    const { getCacheRoot } = require("./modelDirUtils.js");
     return path.join(getCacheRoot(), "models");
   }
 
-  async ensureModelsDirExists() {
+  async ensureModelsDirExists(): Promise<void> {
     try {
       if (!this.modelsDir) {
         this.ensureInitialized();
@@ -123,7 +206,7 @@ class ModelManager {
     }
   }
 
-  async ensureLlamaCpp() {
+  async ensureLlamaCpp(): Promise<boolean> {
     if (!this.serverManager.isAvailable()) {
       throw new ModelError(
         "llama-server binary not found. Please ensure the app is installed correctly.",
@@ -133,19 +216,28 @@ class ModelManager {
     return true;
   }
 
-  async getAllModels() {
+  async getAllModels(): Promise<Array<LocalLlmModelEntry & {
+    providerId: string;
+    providerName: string;
+    isDownloaded: boolean;
+    isDownloading: boolean;
+    downloadProgress: number;
+    downloadedSize: number;
+    totalSize: number;
+    path: string | null;
+  }>> {
     this.ensureInitialized();
     try {
-      const modelEntries = [];
+      const modelEntries: Array<{ model: LocalLlmModelEntry; provider: LocalProviderEntry; modelPath: string }> = [];
 
       for (const provider of getLocalProviders()) {
         for (const model of provider.models) {
-          const modelPath = path.join(this.modelsDir, model.fileName);
+          const modelPath = path.join(this.modelsDir as string, model.fileName);
           modelEntries.push({ model, provider, modelPath });
         }
       }
 
-      let downloadedStates = [];
+      let downloadedStates: boolean[] = [];
 
       // A download can finish between checking the final file and reading the
       // in-memory active state. Retry when that lifecycle changes so callers
@@ -186,16 +278,16 @@ class ModelManager {
     return this.getAllModels();
   }
 
-  async isModelDownloaded(modelId) {
+  async isModelDownloaded(modelId: string): Promise<boolean> {
     this.ensureInitialized();
     const modelInfo = this.findModelById(modelId);
     if (!modelInfo) return false;
 
-    const modelPath = path.join(this.modelsDir, modelInfo.model.fileName);
+    const modelPath = path.join(this.modelsDir as string, modelInfo.model.fileName);
     return this.checkModelValid(modelPath);
   }
 
-  async checkFileExists(filePath) {
+  async checkFileExists(filePath: string): Promise<boolean> {
     try {
       await fsPromises.access(filePath, fs.constants.F_OK);
       return true;
@@ -204,7 +296,7 @@ class ModelManager {
     }
   }
 
-  async checkModelValid(filePath) {
+  async checkModelValid(filePath: string): Promise<boolean> {
     try {
       const stats = await fsPromises.stat(filePath);
       return stats.size > MIN_FILE_SIZE;
@@ -213,7 +305,7 @@ class ModelManager {
     }
   }
 
-  findModelById(modelId) {
+  findModelById(modelId: string): ModelManagerModelInfo | null {
     for (const provider of getLocalProviders()) {
       const model = provider.models.find((m) => m.id === modelId);
       if (model) {
@@ -223,7 +315,7 @@ class ModelManager {
     return null;
   }
 
-  serverOptions(modelInfo) {
+  serverOptions(modelInfo: ModelManagerModelInfo): ServerOptions {
     return {
       contextSize: Math.min(
         SERVER_CONTEXT_SIZE,
@@ -234,7 +326,10 @@ class ModelManager {
     };
   }
 
-  async serverStartOptions(modelInfo, overrides = {}) {
+  async serverStartOptions(
+    modelInfo: ModelManagerModelInfo,
+    overrides: Partial<ServerOptions> = {}
+  ): Promise<ServerOptions> {
     const options = { ...this.serverOptions(modelInfo), ...overrides };
     const draftPath = await this.resolveDraftPath(modelInfo.model);
     if (draftPath) options.draftModelPath = draftPath;
@@ -242,7 +337,7 @@ class ModelManager {
   }
 
   // Seam so the ceiling can be exercised for any machine size in tests.
-  _systemMemoryBytes() {
+  _systemMemoryBytes(): number {
     return require("os").totalmem();
   }
 
@@ -251,13 +346,13 @@ class ModelManager {
    * bound that goes with it. Memoized per model file: it reads a few MiB off
    * the front of the GGUF, so it must not sit on the hot path.
    */
-  async contextCeiling(modelInfo, modelPath) {
+  async contextCeiling(modelInfo: ModelManagerModelInfo, modelPath: string): Promise<ContextCeiling> {
     if (this._contextCeilingCache?.modelPath === modelPath) {
       return this._contextCeilingCache.value;
     }
 
-    const metadata = await readGgufMetadataFromFile(modelPath);
-    const sizeOf = async (filePath) => {
+    const metadata: GgufMetadata | null = await readGgufMetadataFromFile(modelPath);
+    const sizeOf = async (filePath: string | null): Promise<number> => {
       if (!filePath) return 0;
       try {
         return (await fsPromises.stat(filePath)).size;
@@ -274,7 +369,10 @@ class ModelManager {
       hasRecurrentState: metadata?.hasRecurrentState,
       // The GGUF is the file llama.cpp actually loads, so it outranks the
       // registry, which is wrong for at least the qwen2.5-7b entries.
-      trainedContextTokens: metadata?.contextLength || modelInfo.model.contextLength || 0,
+      trainedContextTokens:
+        (typeof metadata?.contextLength === "number" ? metadata.contextLength : 0) ||
+        modelInfo.model.contextLength ||
+        0,
       // OpenHercules ships the Metal llama-server for Apple Silicon only.
       // Keep the context budget tied to unified system memory.
       discreteGpuUnverified: false,
@@ -291,7 +389,7 @@ class ModelManager {
     return value;
   }
 
-  getReservedDownloadBytes() {
+  getReservedDownloadBytes(): number {
     let reserved = 0;
     for (const [modelId, bytes] of this.downloadReservations) {
       reserved += Math.max(0, bytes - (this.downloadProgress.get(modelId)?.downloadedSize || 0));
@@ -299,7 +397,10 @@ class ModelManager {
     return reserved;
   }
 
-  async downloadModel(modelId, onProgress) {
+  async downloadModel(
+    modelId: string,
+    onProgress?: (progress: number, downloadedSize: number, totalSize: number) => void
+  ): Promise<string> {
     this.ensureInitialized();
     const modelInfo = this.findModelById(modelId);
     if (!modelInfo) {
@@ -307,7 +408,7 @@ class ModelManager {
     }
 
     const { model, provider } = modelInfo;
-    const modelPath = path.join(this.modelsDir, model.fileName);
+    const modelPath = path.join(this.modelsDir as string, model.fileName);
 
     if (await this.checkModelValid(modelPath)) {
       return modelPath;
@@ -329,14 +430,14 @@ class ModelManager {
 
       const hasDrafter = this.modelHasDrafter(model);
 
-      let requiredBytes = model.sizeBytes || model.sizeMb * 1_000_000 || 0;
+      let requiredBytes = model.sizeBytes || (model.sizeMb ?? 0) * 1_000_000 || 0;
       if (requiredBytes > 0 && hasDrafter) {
-        requiredBytes += model.draftSizeBytes;
+        requiredBytes += model.draftSizeBytes ?? 0;
       }
       if (requiredBytes > 0) {
         this.downloadReservations.set(modelId, requiredBytes * 1.2);
         const reservedBytes = this.getReservedDownloadBytes();
-        const spaceCheck = await checkDiskSpace(this.modelsDir, reservedBytes);
+        const spaceCheck = await checkDiskSpace(this.modelsDir as string, reservedBytes);
         if (!spaceCheck.ok) {
           throw new ModelError(
             `Not enough disk space. Need ~${Math.round(reservedBytes / 1_000_000)}MB, ` +
@@ -352,9 +453,9 @@ class ModelManager {
       // With a drafter, weight progress across both files by declared bytes and
       // clamp it so the bar never regresses across the phase boundary. Without a
       // drafter, keep today's single-file progress exactly.
-      const combinedTotal = hasDrafter ? (model.sizeBytes || 0) + model.draftSizeBytes : 0;
+      const combinedTotal = hasDrafter ? (model.sizeBytes || 0) + (model.draftSizeBytes ?? 0) : 0;
       let lastCombined = 0;
-      const emitCombined = (rawCombined) => {
+      const emitCombined = (rawCombined: number) => {
         let combined = Math.min(rawCombined, combinedTotal);
         if (combined < lastCombined) combined = lastCombined;
         else lastCombined = combined;
@@ -371,8 +472,8 @@ class ModelManager {
       await sharedDownloadFile(downloadUrl, modelPath, {
         signal,
         onProgress: hasDrafter
-          ? (downloadedBytes) => emitCombined(downloadedBytes)
-          : (downloadedBytes, totalBytes) => {
+          ? (downloadedBytes: number) => emitCombined(downloadedBytes)
+          : (downloadedBytes: number, totalBytes: number) => {
               const progress = totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0;
               this.downloadProgress.set(modelId, {
                 modelId,
@@ -399,11 +500,11 @@ class ModelManager {
       // Drafter is opportunistic: a failure or cancel here leaves the main model
       // fully usable, so never fail the download or delete the main file.
       if (hasDrafter) {
-        const draftPath = path.join(this.modelsDir, model.draftFileName);
+        const draftPath = path.join(this.modelsDir as string, model.draftFileName as string);
         try {
           await sharedDownloadFile(this.getDraftDownloadUrl(provider, model), draftPath, {
             signal,
-            onProgress: (downloadedBytes) => emitCombined(stats.size + downloadedBytes),
+            onProgress: (downloadedBytes: number) => emitCombined(stats.size + downloadedBytes),
           });
           const draftStats = await fsPromises.stat(draftPath);
           if (draftStats.size < MIN_FILE_SIZE) {
@@ -411,28 +512,30 @@ class ModelManager {
             debugLogger.warn("MTP drafter file too small, keeping model without it", { modelId });
           }
         } catch (draftError) {
+          const draftFailure = draftError as DownloadFailureShape;
           await fsPromises.unlink(draftPath).catch(() => {});
-          if (draftError.isAbort) throw draftError;
+          if (draftFailure.isAbort) throw draftError;
           debugLogger.warn("MTP drafter download failed, keeping model without it", {
             modelId,
-            error: draftError.message,
+            error: draftFailure.message,
           });
         }
       }
 
       return modelPath;
     } catch (error) {
-      if (error.isAbort) {
+      const failure = error as DownloadFailureShape & { code?: string };
+      if (failure.isAbort) {
         throw new ModelError("Download cancelled by user", "DOWNLOAD_CANCELLED", { modelId });
       }
-      if (error.isHttpError) {
-        throw new ModelError(`Download failed with status ${error.statusCode}`, "DOWNLOAD_FAILED", {
-          statusCode: error.statusCode,
+      if (failure.isHttpError) {
+        throw new ModelError(`Download failed with status ${failure.statusCode}`, "DOWNLOAD_FAILED", {
+          statusCode: failure.statusCode,
         });
       }
       if (!(error instanceof ModelError)) {
-        throw new ModelError(`Network error: ${error.message}`, "NETWORK_ERROR", {
-          error: error.message,
+        throw new ModelError(`Network error: ${failure.message}`, "NETWORK_ERROR", {
+          error: failure.message,
         });
       }
       throw error;
@@ -446,30 +549,30 @@ class ModelManager {
     }
   }
 
-  getDownloadUrl(provider, model) {
+  getDownloadUrl(provider: LocalProviderEntry, model: LocalLlmModelEntry): string {
     const baseUrl = provider.baseUrl || "https://huggingface.co";
     return `${baseUrl}/${model.hfRepo}/resolve/main/${model.fileName}`;
   }
 
-  getDraftDownloadUrl(provider, model) {
+  getDraftDownloadUrl(provider: LocalProviderEntry, model: LocalLlmModelEntry): string {
     const baseUrl = provider.baseUrl || "https://huggingface.co";
     return `${baseUrl}/${model.draftHfRepo}/resolve/main/${model.draftFileName}`;
   }
 
-  modelHasDrafter(model) {
+  modelHasDrafter(model: LocalLlmModelEntry): boolean {
     return Boolean(model && model.draftHfRepo && model.draftFileName && model.draftSizeBytes);
   }
 
   // Opportunistic MTP drafter path: only when declared and the file passes the
   // same >1MB validity gate as models. Returns null otherwise (start without MTP).
-  async resolveDraftPath(model) {
+  async resolveDraftPath(model: LocalLlmModelEntry): Promise<string | null> {
     if (!this.modelHasDrafter(model)) return null;
-    const draftPath = path.join(this.modelsDir, model.draftFileName);
+    const draftPath = path.join(this.modelsDir as string, model.draftFileName as string);
     if (await this.checkModelValid(draftPath)) return draftPath;
     return null;
   }
 
-  cancelDownload(modelId) {
+  cancelDownload(modelId: string): boolean {
     const entry = this.activeRequests.get(modelId);
     if (entry) {
       // Keep the guard and status visible until downloadModel's finally block
@@ -480,14 +583,14 @@ class ModelManager {
     return false;
   }
 
-  async deleteModel(modelId) {
+  async deleteModel(modelId: string): Promise<void> {
     this.ensureInitialized();
     const modelInfo = this.findModelById(modelId);
     if (!modelInfo) {
       throw new ModelNotFoundError(modelId);
     }
 
-    const modelPath = path.join(this.modelsDir, modelInfo.model.fileName);
+    const modelPath = path.join(this.modelsDir as string, modelInfo.model.fileName);
 
     if (await this.checkFileExists(modelPath)) {
       await fsPromises.unlink(modelPath);
@@ -495,34 +598,20 @@ class ModelManager {
 
     // Remove the drafter too when present, best effort (ignore ENOENT).
     if (modelInfo.model.draftFileName) {
-      const draftPath = path.join(this.modelsDir, modelInfo.model.draftFileName);
+      const draftPath = path.join(this.modelsDir as string, modelInfo.model.draftFileName);
       await fsPromises.unlink(draftPath).catch(() => {});
     }
   }
 
-  async deleteAllModels() {
+  async deleteAllModels(): Promise<void> {
     this.ensureInitialized();
     try {
-      if (fsPromises.rm) {
-        await fsPromises.rm(this.modelsDir, { recursive: true, force: true });
-      } else {
-        const entries = await fsPromises
-          .readdir(this.modelsDir, { withFileTypes: true })
-          .catch(() => []);
-        for (const entry of entries) {
-          const fullPath = path.join(this.modelsDir, entry.name);
-          if (entry.isDirectory()) {
-            await fsPromises.rmdir(fullPath, { recursive: true }).catch(() => {});
-          } else {
-            await fsPromises.unlink(fullPath).catch(() => {});
-          }
-        }
-      }
+      await fsPromises.rm(this.modelsDir as string, { recursive: true, force: true });
     } catch (error) {
       throw new ModelError(
-        `Failed to delete models directory: ${error.message}`,
+        `Failed to delete models directory: ${(error as Error).message}`,
         "DELETE_ALL_ERROR",
-        { error: error.message }
+        { error: (error as Error).message }
       );
     } finally {
       await this.ensureModelsDirExists();
@@ -549,7 +638,16 @@ class ModelManager {
     contextFloor,
     ceilingFor,
     startServer,
-  }) {
+  }: {
+    modelInfo: ModelManagerModelInfo;
+    messages: ChatMessage[];
+    options: RunInferenceOptions;
+    estimatedTokens: number;
+    maxTokens: number;
+    contextFloor: number;
+    ceilingFor: () => Promise<ContextCeiling>;
+    startServer: (contextSize: number) => Promise<void>;
+  }): Promise<number> {
     const reserveTokens = reserveFor(maxTokens);
     const running = this.serverManager.contextSize || contextFloor;
 
@@ -629,7 +727,7 @@ class ModelManager {
     );
   }
 
-  async runInference(modelId, prompt, options = {}) {
+  async runInference(modelId: string, prompt: string, options: RunInferenceOptions = {}): Promise<string> {
     this.ensureInitialized();
     const startTime = Date.now();
     debugLogger.logReasoning("INFERENCE_START", {
@@ -653,7 +751,7 @@ class ModelManager {
       throw new ModelNotFoundError(modelId);
     }
 
-    const modelPath = path.join(this.modelsDir, modelInfo.model.fileName);
+    const modelPath = path.join(this.modelsDir as string, modelInfo.model.fileName);
     debugLogger.logReasoning("INFERENCE_MODEL_PATH", {
       modelPath,
       modelName: modelInfo.model.name,
@@ -670,7 +768,7 @@ class ModelManager {
     }
 
     // Build messages for chat completion
-    const messages = [
+    const messages: ChatMessage[] = [
       { role: "system", content: options.systemPrompt || "" },
       { role: "user", content: prompt },
     ];
@@ -684,8 +782,8 @@ class ModelManager {
     // raise the floor but never breach the ceiling.
     const contextFloor = Math.max(SERVER_CONTEXT_SIZE, options.contextSize || 0);
 
-    let ceiling = null;
-    const ceilingFor = async () => {
+    let ceiling: ContextCeiling | null = null;
+    const ceilingFor = async (): Promise<ContextCeiling> => {
       if (ceiling === null) ceiling = await this.contextCeiling(modelInfo, modelPath);
       return ceiling;
     };
@@ -707,14 +805,14 @@ class ModelManager {
     // whether by failing to start or by quietly loading something smaller.
     // Retrying it would cost a second model load to learn the same thing.
     let smallestRefusedContextSize = Infinity;
-    const refuse = (size) => {
+    const refuse = (size: number) => {
       smallestRefusedContextSize = Math.min(smallestRefusedContextSize, size);
     };
 
-    const startServer = async (contextSize) => {
+    const startServer = async (contextSize: number): Promise<void> => {
       if (this.serverManager.ready && contextSize >= smallestRefusedContextSize) return;
 
-      const { cacheRamMiB } = ceiling ?? {};
+      const { cacheRamMiB } = (ceiling ?? {}) as Partial<ContextCeiling>;
       // Only a live server already serving THIS model has a window worth
       // coming back to. contextSize outlives a crash — llamaServer clears it
       // in stop() alone, not when a process dies or a health check trips — and
@@ -725,7 +823,7 @@ class ModelManager {
         this.currentServerModelId === modelId
           ? this.serverManager.contextSize
           : null;
-      const startAt = async (size) =>
+      const startAt = async (size: number) =>
         this.serverManager.start(
           modelPath,
           await this.serverStartOptions(modelInfo, { contextSize: size, cacheRamMiB })
@@ -733,7 +831,7 @@ class ModelManager {
       // llama.cpp's startup dump is the diagnostic, so it goes to the log here
       // and nowhere else: details crosses IPC to the renderer, which neither
       // reads it nor should carry a stderr blob and absolute model paths.
-      const unavailable = (cause) => {
+      const unavailable = (cause: Error) => {
         debugLogger.error("llama-server could not be started", {
           model: modelId,
           contextSize,
@@ -748,26 +846,26 @@ class ModelManager {
 
       try {
         await startAt(contextSize);
-        if (this.serverManager.contextSize < contextSize) refuse(contextSize);
+        if ((this.serverManager.contextSize ?? 0) < contextSize) refuse(contextSize);
       } catch (error) {
         refuse(contextSize);
         // start() stops the running server before it spawns, so a grow that
         // dies has already taken a working window with it. Come back at the
         // one that worked rather than leaving the user with no local model.
         if (!restorableContextSize || restorableContextSize >= contextSize) {
-          throw unavailable(error);
+          throw unavailable(error as Error);
         }
 
         debugLogger.warn("llama-server failed to grow; restoring the previous context", {
           model: modelId,
           attempted: contextSize,
           restoring: restorableContextSize,
-          error: error.message,
+          error: (error as Error).message,
         });
         try {
           await startAt(restorableContextSize);
         } catch (restoreError) {
-          throw unavailable(restoreError);
+          throw unavailable(restoreError as Error);
         }
       }
       this.currentServerModelId = modelId;
@@ -832,28 +930,29 @@ class ModelManager {
 
       return result;
     } catch (error) {
+      const failure = error as LlamaInferenceFailureShape;
       const totalTime = Date.now() - startTime;
       debugLogger.logReasoning("INFERENCE_FAILED", {
         totalTimeMs: totalTime,
-        error: error.message,
+        error: failure.message,
       });
       // A typed failure (a context overflow, say) must keep its identity, or
       // the renderer cannot translate it and the user sees raw server text.
-      if (error.code === "CONTEXT_TOO_LARGE") {
-        throw new ModelError(error.message, "CONTEXT_TOO_LARGE", {
+      if (failure.code === "CONTEXT_TOO_LARGE") {
+        throw new ModelError(failure.message, "CONTEXT_TOO_LARGE", {
           modelId,
           modelName: modelInfo.model.name,
-          neededTokens: error.neededTokens ?? null,
-          maxContextTokens: error.maxContextTokens ?? null,
+          neededTokens: failure.neededTokens ?? null,
+          maxContextTokens: failure.maxContextTokens ?? null,
         });
       }
-      throw new ModelError(`Inference failed: ${error.message}`, "INFERENCE_FAILED", {
-        error: error.message,
+      throw new ModelError(`Inference failed: ${failure.message}`, "INFERENCE_FAILED", {
+        error: failure.message,
       });
     }
   }
 
-  async stopServer() {
+  async stopServer(): Promise<void> {
     await this.serverManager.stop();
     this.currentServerModelId = null;
   }
@@ -862,14 +961,14 @@ class ModelManager {
     return this.serverManager.getStatus();
   }
 
-  async prewarmServer(modelId) {
+  async prewarmServer(modelId: string | null): Promise<boolean> {
     if (!modelId) return false;
     this.ensureInitialized();
 
     const modelInfo = this.findModelById(modelId);
     if (!modelInfo) return false;
 
-    const modelPath = path.join(this.modelsDir, modelInfo.model.fileName);
+    const modelPath = path.join(this.modelsDir as string, modelInfo.model.fileName);
     if (!(await this.checkModelValid(modelPath))) return false;
 
     if (!this.serverManager.isAvailable()) return false;
@@ -880,14 +979,21 @@ class ModelManager {
       debugLogger.info("llama-server pre-warmed", { modelId });
       return true;
     } catch (error) {
-      debugLogger.warn("Failed to pre-warm llama-server", { error: error.message });
+      debugLogger.warn("Failed to pre-warm llama-server", { error: (error as Error).message });
       return false;
     }
   }
 }
 
+// One instance. The module.exports shape is the pre-cutover one main.js,
+// ipcHandlers.js and the legacy tests require; the ES default satisfies the
+// compiler. Under tsx the ESM-graph default import resolves to the
+// module.exports wrapper, so TS consumers drill `.default` once more
+// (see localReasoningBridge.ts) — the instance is shared either way.
+const modelManagerSingleton = new ModelManager();
 module.exports = {
-  default: new ModelManager(),
+  default: modelManagerSingleton,
   ModelError,
   ModelNotFoundError,
 };
+export default modelManagerSingleton;

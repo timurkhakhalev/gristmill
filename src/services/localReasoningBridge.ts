@@ -11,7 +11,12 @@ interface LocalModelManager {
   runInference(modelId: string, prompt: string, options: Record<string, unknown>): Promise<string>;
 }
 
-const modelManager = (modelManagerBundle as unknown as { default: LocalModelManager }).default;
+// The bundle's `default` is the singleton under every loader: the tsx ESM
+// graph resolves the default import to module.exports itself, the CJS graphs
+// interop to the same object. Drill in once, here.
+const modelManager: LocalModelManager = (modelManagerBundle as unknown as {
+  default: LocalModelManager;
+}).default;
 
 export class LocalReasoningService {
   private isProcessing = false;

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { readGgufMetadata } = require("../../src/helpers/ggufMetadata");
+const { readGgufMetadata } = require("../../src/helpers/ggufMetadata.ts");
 const { TYPE, buildGguf, bufferReader, LLAMA_3_2_3B_ENTRIES } = require("./harness/ggufFixtures");
 
 const read = (entries, options) => readGgufMetadata(bufferReader(buildGguf(entries, options)));

@@ -76,10 +76,10 @@ interface SaveKeyResult {
 let envWriteQueue: Promise<unknown> = Promise.resolve();
 
 export class EnvironmentManager {
-  // In-flight secret writes keyed by env var name. _saveKey is
-  // fire-and-forget for its IPC caller, but clearAllPersistedData must not
-  // race a pending write (its rename could land after the rm and resurrect
-  // the secret), and the write lifetime stays observable in tests.
+  // Tail of each key's secret-write chain. _saveKey is fire-and-forget for
+  // its IPC caller, but clearAllPersistedData must not race a pending write
+  // (its rename could land after the rm and resurrect the secret), and the
+  // write lifetime stays observable in tests.
   _pendingSecretWrites = new Map<string, Promise<void>>();
 
   constructor() {
@@ -272,7 +272,7 @@ export class EnvironmentManager {
 
   _saveKey(envVarName: string, key: string): SaveKeyResult {
     if (SECRET_KEY_SET.has(envVarName) && this._encryptionAvailable()) {
-      this._trackSecretWrite(envVarName, this._saveSecretKey(envVarName, key));
+      this._trackSecretWrite(envVarName, () => this._saveSecretKey(envVarName, key));
     } else if (key) {
       process.env[envVarName] = key;
     } else {
@@ -281,24 +281,33 @@ export class EnvironmentManager {
     return { success: true };
   }
 
-  // Tracks one fire-and-forget secret write until it settles: failures are
-  // logged exactly as before, completions unregister, and _flushSecretWrites
-  // exposes the lifetime.
-  _trackSecretWrite(envVarName: string, pending: Promise<void>): void {
-    const tracked = pending
-      .catch((error) => {
-        debugLogger.error(
-          "Failed to persist encrypted secret",
-          { key: envVarName, error: (error as Error).message },
-          "environment"
-        );
-      })
-      .then(() => {
-        if (this._pendingSecretWrites.get(envVarName) === tracked) {
-          this._pendingSecretWrites.delete(envVarName);
+  // Tracks one fire-and-forget secret write until it settles. Writes to the
+  // same key run sequentially in call order — they share one .tmp path and
+  // an older save must never overwrite a newer one's file — while different
+  // keys stay independent. Failures are logged exactly as before and never
+  // stall the chain; an older operation settling never unregisters a newer
+  // one; _flushSecretWrites exposes every accepted lifetime.
+  _trackSecretWrite(envVarName: string, start: () => Promise<void>): void {
+    const previous = this._pendingSecretWrites.get(envVarName) ?? Promise.resolve();
+    const tracked = previous
+      .catch(() => {})
+      .then(async () => {
+        try {
+          await start();
+        } catch (error) {
+          debugLogger.error(
+            "Failed to persist encrypted secret",
+            { key: envVarName, error: (error as Error).message },
+            "environment"
+          );
         }
       });
     this._pendingSecretWrites.set(envVarName, tracked);
+    void tracked.then(() => {
+      if (this._pendingSecretWrites.get(envVarName) === tracked) {
+        this._pendingSecretWrites.delete(envVarName);
+      }
+    });
   }
 
   // Resolves when every secret write started so far has settled (written or
@@ -531,15 +540,23 @@ export class EnvironmentManager {
     return { success: true, path: envPath };
   }
 
-  async clearAllPersistedData(): Promise<{ success: boolean }> {
+  _deletePersistedEnvValues(): void {
     for (const envVarName of PERSISTED_KEYS) {
       delete process.env[envVarName];
     }
     delete process.env.CUSTOM_REASONING_API_KEY;
+  }
+
+  async clearAllPersistedData(): Promise<{ success: boolean }> {
+    this._deletePersistedEnvValues();
 
     // A save fired before the clear must not land after the rm and
-    // resurrect its .enc file.
+    // resurrect its .enc file. A write settling during that wait re-runs
+    // _saveSecretKey, which re-sets its env value — so the values are
+    // dropped once more after every write has settled, before the rm.
     await this._flushSecretWrites();
+    this._deletePersistedEnvValues();
+
     await Promise.all([
       fsPromises.rm(path.join(app.getPath("userData"), ".env"), { force: true }),
       fsPromises.rm(this._getSecureKeysDir(), { recursive: true, force: true }),

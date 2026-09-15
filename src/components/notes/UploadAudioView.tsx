@@ -556,10 +556,17 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     }
   };
   // A settled error keeps the temp for Retry: hand it back to the view
-  // state, which deletes it on reset or unmount as before.
+  // state, which deletes it on reset or unmount as before. A view that
+  // unmounted mid-run has no Retry to offer and its cleanup already ran
+  // before the temp was view-owned — the settling execution (readers are
+  // done by now) deletes the file instead, exactly once, or it leaks.
   const keepExecutionTempForRetry = (executionTemp: string | null) => {
     if (!executionTemp || executionTempRef.current !== executionTemp) return;
     executionTempRef.current = null;
+    if (!mountedRef.current) {
+      window.electronAPI.deleteTempFile(executionTemp);
+      return;
+    }
     downloadedTempPathRef.current = executionTemp;
     setDownloadedTempPath(executionTemp);
   };

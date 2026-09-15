@@ -10,6 +10,7 @@ import type { LocalFileTranscriptionApi } from "../contracts/localFileTranscript
 import type { CalendarAvailabilityApi } from "../contracts/calendarAvailability";
 import type { UploadTranscriptionApi } from "../contracts/uploadTranscription";
 import type { ReasoningApi } from "../contracts/reasoning";
+import type { CalendarIntegrationApi } from "../contracts/calendar";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -1075,36 +1076,8 @@ declare global {
       // and the hard cancel of one upload execution come from the shared
       // UploadTranscriptionApi contract (four channels).
 
-      // Google Calendar
-      gcalStartOAuth?: () => Promise<{ success: boolean; email?: string; error?: string }>;
-      gcalDisconnect?: (email?: string) => Promise<{ success: boolean; error?: string }>;
-      gcalGetConnectionStatus?: () => Promise<{
-        connected: boolean;
-        configured: boolean;
-        accounts: Array<{ email: string }>;
-        email: string | null;
-      }>;
-      gcalGetCalendars?: () => Promise<{ success: boolean; calendars: any[] }>;
-      gcalSetCalendarSelection?: (
-        calendarId: string,
-        isSelected: boolean
-      ) => Promise<{ success: boolean; error?: string }>;
-      gcalSetPrimaryOnly?: (value: boolean) => Promise<{ success: boolean; error?: string }>;
-      gcalSyncEvents?: () => Promise<{ success: boolean; error?: string }>;
-      gcalGetUpcomingEvents?: (
-        windowMinutes?: number
-      ) => Promise<{ success: boolean; events: any[] }>;
-      gcalGetEvent?: (eventId: string) => Promise<{
-        success: boolean;
-        event: {
-          id: string;
-          summary: string | null;
-          start_time: string;
-          end_time: string;
-          attendees_count: number;
-          attendees: string | null;
-        } | null;
-      }>;
+      // Google Calendar commands/events live in the shared
+      // CalendarIntegrationApi contract (availability has its own bridge).
 
       // Contacts
       searchContacts: (query: string) => Promise<{
@@ -1278,31 +1251,8 @@ declare global {
         embeddings: Record<string, number[]>
       ) => Promise<{ success: boolean }>;
 
-      // Google Calendar event listeners
-      onGcalConnectionChanged?: (callback: (data: any) => void) => () => void;
-      onGcalEventsSynced?: (callback: (data: any) => void) => () => void;
-
-      // Microsoft Calendar
-      mcalStartOAuth?: () => Promise<{ success: boolean; email?: string; error?: string }>;
-      mcalDisconnect?: (email?: string) => Promise<{ success: boolean; error?: string }>;
-      mcalGetConnectionStatus?: () => Promise<{
-        connected: boolean;
-        configured: boolean;
-        accounts: Array<{ email: string }>;
-      }>;
-      mcalSetPrimaryOnly?: (value: boolean) => Promise<{ success: boolean; error?: string }>;
-      onMcalConnectionChanged?: (callback: (data: any) => void) => () => void;
-      onMcalEventsSynced?: (callback: (data: any) => void) => () => void;
-
-      // Apple Calendar (macOS EventKit)
-      acalConnect?: () => Promise<{ success: boolean; reason?: string; error?: string }>;
-      acalDisconnect?: () => Promise<{ success: boolean; error?: string }>;
-      acalGetConnectionStatus?: () => Promise<{ connected: boolean; sourceNames: string[] }>;
-      openCalendarPrivacySettings?: () => Promise<{ success: boolean; error?: string }>;
-      onAcalConnectionChanged?: (
-        callback: (data: { connected: boolean; sourceNames: string[] }) => void
-      ) => () => void;
-      onAcalEventsSynced?: (callback: (data: any) => void) => () => void;
+      // Google/Microsoft/Apple Calendar commands and their six events come
+      // from the shared CalendarIntegrationApi contract.
 
       meetingDetectionGetPreferences?: () => Promise<{ success: boolean; preferences?: any }>;
       meetingDetectionSetPreferences?: (
@@ -1376,7 +1326,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

@@ -117,6 +117,7 @@ const {
 } = require("./meetingStreamingProviders");
 const { fetchRealtimeTokenForProvider } = require("./realtimeTokenProviders");
 const { registerCalendarAvailabilityHandler } = require("./calendarAvailabilityIpcHandler");
+const { registerCalendarIntegrationHandlers } = require("./calendarIpcHandlers");
 const { registerRemoteTranscriptionHandler } = require("./remoteTranscriptionIpcHandler");
 const { registerReasoningHandlers, resolveEnterpriseRuntime } = require("./reasoningIpcHandlers");
 const { registerFileDiarizationHandlers } = require("./fileDiarizationIpcHandlers");
@@ -2664,8 +2665,6 @@ class IPCHandlers {
     ipcMain.handle("open-screen-recording-settings", () => openSystemSettings("screenRecording"));
     ipcMain.handle("open-login-items-settings", () => openSystemSettings("loginItems"));
 
-    ipcMain.handle("open-calendar-privacy-settings", () => openSystemSettings("calendars"));
-
     ipcMain.handle("show-emoji-panel", () => {
       try {
         if (app.isEmojiPanelSupported()) {
@@ -5001,169 +5000,17 @@ class IPCHandlers {
       logWarn: (message, data, tag) => debugLogger.warn(message, data, tag),
     });
 
-    // Google Calendar
-    ipcMain.handle("gcal-start-oauth", async () => {
-      try {
-        return await this.googleCalendarManager.startOAuth();
-      } catch (error) {
-        debugLogger.error("Google Calendar OAuth failed", { error: error.message }, "calendar");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("gcal-disconnect", async (_event, email) => {
-      try {
-        this.googleCalendarManager.disconnect(email);
-        return { success: true };
-      } catch (error) {
-        debugLogger.error(
-          "Google Calendar disconnect failed",
-          { error: error.message },
-          "calendar"
-        );
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("gcal-get-connection-status", async () => {
-      try {
-        return this.googleCalendarManager.getConnectionStatus();
-      } catch (error) {
-        return { connected: false, email: null };
-      }
-    });
-
-    ipcMain.handle("gcal-get-calendars", async () => {
-      try {
-        return { success: true, calendars: this.googleCalendarManager.getCalendars() };
-      } catch (error) {
-        return { success: false, calendars: [] };
-      }
-    });
-
-    ipcMain.handle("gcal-set-calendar-selection", async (_event, calendarId, isSelected) => {
-      try {
-        await this.googleCalendarManager.setCalendarSelection(calendarId, isSelected);
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("gcal-set-primary-only", async (_event, value) => {
-      try {
-        await this.googleCalendarManager.setPrimaryOnly(value);
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("gcal-sync-events", async () => {
-      try {
-        await this.googleCalendarManager.syncEvents();
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("gcal-get-upcoming-events", async (_event, windowMinutes) => {
-      try {
-        return {
-          success: true,
-          events: await this.googleCalendarManager.getUpcomingEvents(windowMinutes),
-        };
-      } catch (error) {
-        return { success: false, events: [] };
-      }
-    });
-
-    ipcMain.handle("gcal-get-event", async (_event, eventId) => {
-      try {
-        const event = this.databaseManager.getCalendarEventById(eventId);
-        return { success: true, event };
-      } catch (error) {
-        return { success: false, event: null };
-      }
-    });
-
-    // Microsoft Calendar
-    ipcMain.handle("mcal-start-oauth", async () => {
-      try {
-        return await this.microsoftCalendarManager.startOAuth();
-      } catch (error) {
-        debugLogger.error("Microsoft Calendar OAuth failed", { error: error.message }, "calendar");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("mcal-disconnect", async (_event, email) => {
-      try {
-        this.microsoftCalendarManager.disconnect(email);
-        return { success: true };
-      } catch (error) {
-        debugLogger.error(
-          "Microsoft Calendar disconnect failed",
-          { error: error.message },
-          "calendar"
-        );
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("mcal-get-connection-status", async () => {
-      try {
-        return this.microsoftCalendarManager.getConnectionStatus();
-      } catch (error) {
-        debugLogger.error(
-          "Microsoft Calendar connection status failed",
-          { error: error.message },
-          "calendar"
-        );
-        return { connected: false, accounts: [] };
-      }
-    });
-
-    ipcMain.handle("mcal-set-primary-only", async (_event, value) => {
-      try {
-        await this.microsoftCalendarManager.setPrimaryOnly(value);
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    // Apple Calendar (macOS EventKit)
-    ipcMain.handle("acal-connect", async () => {
-      try {
-        return await this.appleCalendarManager.connect();
-      } catch (error) {
-        debugLogger.error("Apple Calendar connect failed", { error: error.message }, "acal");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("acal-disconnect", async () => {
-      try {
-        return this.appleCalendarManager.disconnect();
-      } catch (error) {
-        debugLogger.error("Apple Calendar disconnect failed", { error: error.message }, "acal");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("acal-get-connection-status", async () => {
-      try {
-        return this.appleCalendarManager.getConnectionStatus();
-      } catch (error) {
-        debugLogger.error(
-          "Apple Calendar connection status failed",
-          { error: error.message },
-          "acal"
-        );
-        return { connected: false, sourceNames: [] };
-      }
+    // The calendar integration boundary (connections, sync, selection,
+    // provider-neutral reads and Calendar privacy settings) lives in the
+    // typed module; OAuth/sync/reminders stay inside the managers.
+    registerCalendarIntegrationHandlers(ipcMain, {
+      googleManager: this.googleCalendarManager,
+      microsoftManager: this.microsoftCalendarManager,
+      appleManager: this.appleCalendarManager,
+      getUpcomingEvents: (windowMinutes) => this.googleCalendarManager.getUpcomingEvents(windowMinutes),
+      getCalendarEventById: (eventId) => this.databaseManager.getCalendarEventById(eventId),
+      openCalendarPrivacySettings: () => openSystemSettings("calendars"),
+      logError: (message, data, tag) => debugLogger.error(message, data, tag),
     });
 
     ipcMain.handle("search-contacts", async (_event, query) => {

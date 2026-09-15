@@ -9,6 +9,7 @@ const { createLocalFileTranscriptionBridge } = require("./src/preload/localFileT
 const { createUploadTranscriptionBridge } = require("./src/preload/uploadTranscriptionBridge");
 const { createCalendarAvailabilityBridge } = require("./src/preload/calendarAvailabilityBridge");
 const { createReasoningBridge } = require("./src/preload/reasoningBridge");
+const { createCalendarIntegrationBridge } = require("./src/preload/calendarBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -69,6 +70,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createUploadTranscriptionBridge(ipcRenderer),
   ...createCalendarAvailabilityBridge(ipcRenderer),
   ...createReasoningBridge(ipcRenderer),
+  ...createCalendarIntegrationBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -518,67 +520,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   releaseRecordingLock: (pipeline) => ipcRenderer.invoke("release-recording-lock", pipeline),
 
   // Agent conversation persistence lives in the typed chatBridge above.
-  // Google Calendar
-  gcalStartOAuth: () => ipcRenderer.invoke("gcal-start-oauth"),
-  gcalDisconnect: (email) => ipcRenderer.invoke("gcal-disconnect", email),
-  gcalGetConnectionStatus: () => ipcRenderer.invoke("gcal-get-connection-status"),
-  gcalGetCalendars: () => ipcRenderer.invoke("gcal-get-calendars"),
-  gcalSetCalendarSelection: (calendarId, isSelected) =>
-    ipcRenderer.invoke("gcal-set-calendar-selection", calendarId, isSelected),
-  gcalSetPrimaryOnly: (value) => ipcRenderer.invoke("gcal-set-primary-only", value),
-  gcalSyncEvents: () => ipcRenderer.invoke("gcal-sync-events"),
-  gcalGetUpcomingEvents: (windowMinutes) =>
-    ipcRenderer.invoke("gcal-get-upcoming-events", windowMinutes),
-  // Calendar availability lives in the typed bridge above.
-
-  gcalGetEvent: (eventId) => ipcRenderer.invoke("gcal-get-event", eventId),
-
-  // Microsoft Calendar
-  mcalStartOAuth: () => ipcRenderer.invoke("mcal-start-oauth"),
-  mcalDisconnect: (email) => ipcRenderer.invoke("mcal-disconnect", email),
-  mcalGetConnectionStatus: () => ipcRenderer.invoke("mcal-get-connection-status"),
-  mcalSetPrimaryOnly: (value) => ipcRenderer.invoke("mcal-set-primary-only", value),
-
-  // Apple Calendar (macOS EventKit)
-  acalConnect: () => ipcRenderer.invoke("acal-connect"),
-  acalDisconnect: () => ipcRenderer.invoke("acal-disconnect"),
-  acalGetConnectionStatus: () => ipcRenderer.invoke("acal-get-connection-status"),
-  openCalendarPrivacySettings: () => ipcRenderer.invoke("open-calendar-privacy-settings"),
+  // Google/Microsoft/Apple Calendar commands and events live in the typed
+  // calendarBridge above (availability has its own bridge).
 
   // Contacts
   searchContacts: (query) => ipcRenderer.invoke("search-contacts", query),
   upsertContact: (contact) => ipcRenderer.invoke("upsert-contact", contact),
   getMD5Hash: (text) => ipcRenderer.invoke("get-md5-hash", text),
-
-  // Google Calendar event listeners
-  onGcalConnectionChanged: registerListener(
-    "gcal-connection-changed",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onGcalEventsSynced: registerListener(
-    "gcal-events-synced",
-    (callback) => (_event, data) => callback(data)
-  ),
-
-  // Microsoft Calendar event listeners
-  onMcalConnectionChanged: registerListener(
-    "mcal-connection-changed",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onMcalEventsSynced: registerListener(
-    "mcal-events-synced",
-    (callback) => (_event, data) => callback(data)
-  ),
-
-  // Apple Calendar event listeners
-  onAcalConnectionChanged: registerListener(
-    "acal-connection-changed",
-    (callback) => (_event, data) => callback(data)
-  ),
-  onAcalEventsSynced: registerListener(
-    "acal-events-synced",
-    (callback) => (_event, data) => callback(data)
-  ),
 
   // Meeting detection
   meetingDetectionGetPreferences: () => ipcRenderer.invoke("meeting-detection-get-preferences"),

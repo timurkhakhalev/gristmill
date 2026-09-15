@@ -227,7 +227,7 @@ export default function BackgroundModelDownloadTray({
         error: data.error,
       });
 
-    const normalizeLlm = (_event: unknown, data: LocalLLMDownloadProgressEvent) =>
+    const normalizeLlm = (data: LocalLLMDownloadProgressEvent) =>
       applyProgress({
         kind: "llm",
         id: data.modelId,

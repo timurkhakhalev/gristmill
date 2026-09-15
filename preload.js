@@ -12,6 +12,7 @@ const { createReasoningBridge } = require("./src/preload/reasoningBridge");
 const { createCalendarIntegrationBridge } = require("./src/preload/calendarBridge");
 const { createNoteFilesBridge } = require("./src/preload/noteFilesBridge");
 const { createLocalModelLifecycleBridge } = require("./src/preload/localModelLifecycleBridge");
+const { createLocalLlmModelsBridge } = require("./src/preload/localLlmModelsBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -75,6 +76,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createCalendarIntegrationBridge(ipcRenderer),
   ...createNoteFilesBridge(ipcRenderer),
   ...createLocalModelLifecycleBridge(ipcRenderer),
+  ...createLocalLlmModelsBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -268,17 +270,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // External link opener
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
 
-  // Model management functions
-  modelGetAll: () => ipcRenderer.invoke("model-get-all"),
-  modelGetActiveDownloads: () => ipcRenderer.invoke("model-get-active-downloads"),
-  modelCheck: (modelId) => ipcRenderer.invoke("model-check", modelId),
-  modelDownload: (modelId) => ipcRenderer.invoke("model-download", modelId),
-  modelDelete: (modelId) => ipcRenderer.invoke("model-delete", modelId),
-  modelDeleteAll: () => ipcRenderer.invoke("model-delete-all"),
-  modelCheckRuntime: () => ipcRenderer.invoke("model-check-runtime"),
-  modelCancelDownload: (modelId) => ipcRenderer.invoke("model-cancel-download", modelId),
-  onModelDownloadProgress: registerListener("model-download-progress"),
-
   getUiLanguage: () => ipcRenderer.invoke("get-ui-language"),
   saveUiLanguage: (language) => ipcRenderer.invoke("save-ui-language", language),
   setUiLanguage: (language) => ipcRenderer.invoke("set-ui-language", language),
@@ -347,16 +338,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Enterprise reasoning (Bedrock, Azure, Vertex) and its streams live in the
   // typed reasoningBridge above.
   listBedrockModels: (config) => ipcRenderer.invoke("bedrock-list-models", config),
-  // llama.cpp
-  llamaCppCheck: () => ipcRenderer.invoke("llama-cpp-check"),
-  llamaCppInstall: () => ipcRenderer.invoke("llama-cpp-install"),
-  llamaCppUninstall: () => ipcRenderer.invoke("llama-cpp-uninstall"),
-
-  // llama-server
-  llamaServerStart: (modelId) => ipcRenderer.invoke("llama-server-start", modelId),
-  llamaServerStop: () => ipcRenderer.invoke("llama-server-stop"),
-  llamaServerStatus: () => ipcRenderer.invoke("llama-server-status"),
-
   getLogLevel: () => ipcRenderer.invoke("get-log-level"),
   log: (entry) => ipcRenderer.invoke("app-log", entry),
 

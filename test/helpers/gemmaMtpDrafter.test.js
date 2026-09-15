@@ -5,7 +5,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 
-const modelManagerModulePath = require.resolve("../../src/helpers/modelManagerBridge.js");
+const modelManagerModulePath = require.resolve("../../src/helpers/modelManagerBridge.ts");
 const modelDirUtilsModulePath = require.resolve("../../src/helpers/modelDirUtils.ts");
 const originalLoad = Module._load;
 let electronHome = os.tmpdir();
@@ -37,7 +37,7 @@ function loadModelManager() {
     // the stub and modelsDir resolves inside the per-test temp home instead of
     // the real ~/.cache/openwhispr (where deleteModel would touch real files).
     require("../../src/helpers/modelDirUtils.ts");
-    return require("../../src/helpers/modelManagerBridge.js").default;
+    return require("../../src/helpers/modelManagerBridge.ts").default;
   } finally {
     Module._load = originalLoad;
   }
@@ -127,7 +127,7 @@ test("deleteModel removes the drafter alongside the main file, ignoring a missin
 // test/helpers/llamaServerContext.test.js. Every start() here passes the same
 // (default) context, so this file isolates the model/drafter dimension.
 test("llama-server start restarts only when model or drafter presence changes", async () => {
-  const LlamaServerManager = require("../../src/helpers/llamaServer.js");
+  const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
   const manager = new LlamaServerManager();
 
   const calls = [];
@@ -161,7 +161,7 @@ test("llama-server start restarts only when model or drafter presence changes", 
 });
 
 test("degraded start does not churn on identical requests", async () => {
-  const LlamaServerManager = require("../../src/helpers/llamaServer.js");
+  const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
   const manager = new LlamaServerManager();
 
   let starts = 0;
@@ -184,7 +184,7 @@ test("degraded start does not churn on identical requests", async () => {
 });
 
 test("stop() clears both the requested and active draft paths", async () => {
-  const LlamaServerManager = require("../../src/helpers/llamaServer.js");
+  const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
   const manager = new LlamaServerManager();
 
   manager.draftModelPath = "/models/draft.gguf";

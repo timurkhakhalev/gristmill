@@ -13,6 +13,7 @@ import type { ReasoningApi } from "../contracts/reasoning";
 import type { CalendarIntegrationApi } from "../contracts/calendar";
 import type { NoteFilesApi } from "../contracts/noteFiles";
 import type { LocalModelLifecycleApi } from "../contracts/localModelLifecycle";
+import type { LocalLlmModelsApi } from "../contracts/localLlmModels";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -708,39 +709,9 @@ declare global {
         options?: { model?: string; language?: string }
       ) => Promise<ParakeetTranscriptionResult>;
 
-      // Local AI model management
-      modelGetAll: () => Promise<LocalLLMModelStatus[]>;
-      modelGetActiveDownloads: () => Promise<LocalModelDownloadStatus[]>;
-      modelCheck: (modelId: string) => Promise<boolean>;
-      modelDownload: (modelId: string) => Promise<{
-        success: boolean;
-        path?: string;
-        error?: string;
-        code?: string;
-        details?: string;
-      }>;
-      modelDelete: (modelId: string) => Promise<{
-        success: boolean;
-        error?: string;
-        code?: string;
-        details?: string;
-      }>;
-      modelDeleteAll: () => Promise<{
-        success: boolean;
-        error?: string;
-        code?: string;
-        details?: string;
-      }>;
-      modelCheckRuntime: () => Promise<{
-        available: boolean;
-        error?: string;
-        code?: string;
-        details?: string;
-      }>;
-      modelCancelDownload: (modelId: string) => Promise<{ success: boolean; error?: string }>;
-      onModelDownloadProgress: (
-        callback: (event: any, data: LocalLLMDownloadProgressEvent) => void
-      ) => () => void;
+      // Local LLM model management (catalog, downloads, llama.cpp installer
+      // checks, llama-server lifecycle) comes from the LocalLlmModelsApi
+      // contract.
 
       // Local/Anthropic/enterprise one-shot reasoning, the Bedrock cleanup
       // cancel and the enterprise stream lifecycle come from the shared
@@ -752,17 +723,6 @@ declare global {
         error?: string;
       }>;
 
-      // llama.cpp management
-      llamaCppCheck: () => Promise<{ isInstalled: boolean; version?: string }>;
-      llamaCppInstall: () => Promise<{ success: boolean; error?: string }>;
-      llamaCppUninstall: () => Promise<{ success: boolean; error?: string }>;
-
-      // llama-server
-      llamaServerStart: (
-        modelId: string
-      ) => Promise<{ success: boolean; port?: number; error?: string }>;
-      llamaServerStop: () => Promise<{ success: boolean; error?: string }>;
-      llamaServerStatus: () => Promise<LlamaServerStatus>;
 
       // Window control operations
       windowMinimize: () => Promise<void>;
@@ -1229,7 +1189,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

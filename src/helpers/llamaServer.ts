@@ -1,13 +1,14 @@
+import { spawn, type ChildProcessByStdio } from "child_process";
+import type { Readable } from "stream";
 const { app } = require("electron");
-const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
-const debugLogger = require("./debugLogger");
-const { killProcess } = require("../utils/process");
-const { isPortAvailable } = require("../utils/serverUtils");
-const { getSafeTempDir } = require("./safeTempDir");
-const sidecarPidFile = require("./sidecarPidFile");
+const debugLogger = require("./debugLogger.js");
+import { killProcess } from "../utils/process.js";
+import { isPortAvailable } from "../utils/serverUtils.js";
+import { getSafeTempDir } from "./safeTempDir.js";
+import * as sidecarPidFile from "./sidecarPidFile.js";
 
 // Range kept clear of cliBridge (8200-8219) to avoid port-bind collisions.
 const PORT_RANGE_START = 8221;
@@ -21,28 +22,66 @@ const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_CONTEXT_SIZE = 4096;
 const PREFLIGHT_TIMEOUT_MS = 10000;
 
+export interface LlamaServerOptions {
+  contextSize?: number;
+  threads?: number;
+  gpuLayers?: number;
+  draftModelPath?: string | null;
+  cacheRamMiB?: number | null;
+}
+
+export interface ChatMessage {
+  role: string;
+  content: string;
+}
+
+export interface InferenceOptions {
+  temperature?: number;
+  max_tokens?: number;
+  disableThinking?: boolean;
+  requireCompleteOutput?: boolean;
+}
+
+interface CountPromptTokensOptions {
+  disableThinking?: boolean;
+}
+
+interface ServerBinaryPaths {
+  default: string;
+}
+
+// A typed llama-server failure: CONTEXT_TOO_LARGE carries the two numbers the
+// renderer translates; everything else stays a plain Error.
+export interface LlamaResponseError extends Error {
+  code?: string;
+  neededTokens?: number | null;
+  maxContextTokens?: number | null;
+}
+
 /**
  * llama-server reports a prompt that overflows the context as a 400 whose body
  * is a JSON blob. Surfacing that verbatim is how customers ended up reading
  * llama.cpp internals in a toast (#2142), so it becomes a typed error carrying
  * the two numbers callers actually need.
  */
-function buildResponseError(statusCode, body) {
+function buildResponseError(statusCode: number, body: string): LlamaResponseError {
   if (statusCode === 400) {
     try {
-      const parsed = JSON.parse(body)?.error;
+      const parsed = JSON.parse(body)?.error as
+        | { type?: string; message?: string; n_prompt_tokens?: number; n_ctx?: number }
+        | undefined;
       const isOverflow =
         parsed?.type === "exceed_context_size_error" ||
         /exceeds the available context size/i.test(parsed?.message || "");
 
       if (isOverflow) {
-        const neededTokens = Number(parsed.n_prompt_tokens) || null;
-        const maxContextTokens = Number(parsed.n_ctx) || null;
+        const neededTokens = Number(parsed?.n_prompt_tokens) || null;
+        const maxContextTokens = Number(parsed?.n_ctx) || null;
         const error = new Error(
           neededTokens && maxContextTokens
             ? `The request needs ${neededTokens} tokens of context but the model is running with ${maxContextTokens}.`
             : "The request is longer than the context this model is running with."
-        );
+        ) as LlamaResponseError;
         error.code = "CONTEXT_TOO_LARGE";
         error.neededTokens = neededTokens;
         error.maxContextTokens = maxContextTokens;
@@ -56,21 +95,36 @@ function buildResponseError(statusCode, body) {
   return new Error(`llama-server returned status ${statusCode}: ${body}`);
 }
 
-class LlamaServerManager {
+export class LlamaServerManager {
+  process: ChildProcessByStdio<null, Readable, Readable> | null;
+  port: number | null;
+  ready: boolean;
+  modelPath: string | null;
+  // draftModelPath is the REQUESTED drafter (stable across identical requests, drives
+  // the start() restart check); activeDraftModelPath is the one that actually loaded.
+  draftModelPath: string | null;
+  activeDraftModelPath: string | null;
+  // The context that actually loaded.
+  activeContextSize: number | null;
+  // The context the running server was started with. Grows on demand and is
+  // only reset by stop(), so a short request cannot shrink a window a long
+  // one just paid to open. See #2142.
+  contextSize: number | null;
+  startupPromise: Promise<void> | null;
+  healthCheckInterval: NodeJS.Timeout | null;
+  healthCheckFailures: number;
+  cachedServerBinaryPaths: ServerBinaryPaths | null;
+  activeBackend: string | null;
+  idleTimer: NodeJS.Timeout | null;
+
   constructor() {
     this.process = null;
     this.port = null;
     this.ready = false;
     this.modelPath = null;
-    // draftModelPath is the REQUESTED drafter (stable across identical requests, drives
-    // the start() restart check); activeDraftModelPath is the one that actually loaded.
     this.draftModelPath = null;
     this.activeDraftModelPath = null;
-    // The context that actually loaded.
     this.activeContextSize = null;
-    // The context the running server was started with. Grows on demand and is
-    // only reset by stop(), so a short request cannot shrink a window a long
-    // one just paid to open. See #2142.
     this.contextSize = null;
     this.startupPromise = null;
     this.healthCheckInterval = null;
@@ -80,13 +134,13 @@ class LlamaServerManager {
     this.idleTimer = null;
   }
 
-  getServerBinaryPaths() {
+  getServerBinaryPaths(): ServerBinaryPaths {
     if (this.cachedServerBinaryPaths) return this.cachedServerBinaryPaths;
 
     const platformArch = "darwin-arm64";
 
-    const resolveBinary = (name) => {
-      const candidates = [];
+    const resolveBinary = (name: string): string | null => {
+      const candidates: string[] = [];
       if (process.resourcesPath) {
         candidates.push(path.join(process.resourcesPath, "bin", name));
       }
@@ -107,29 +161,29 @@ class LlamaServerManager {
 
     const defaultBin =
       resolveBinary(`llama-server-${platformArch}`) || resolveBinary("llama-server");
-    const paths = defaultBin ? { default: defaultBin } : {};
+    const paths: ServerBinaryPaths = defaultBin ? { default: defaultBin } : { default: "" };
 
     // Only cache hits: a miss may be transient (binary downloaded after
     // startup), and caching it would require an app restart to recover.
-    if (Object.keys(paths).length > 0) {
+    if (paths.default) {
       this.cachedServerBinaryPaths = paths;
     }
     return paths;
   }
 
-  isAvailable() {
+  isAvailable(): boolean {
     const paths = this.getServerBinaryPaths();
-    return Object.keys(paths).length > 0;
+    return Boolean(paths.default);
   }
 
-  async findAvailablePort() {
+  async findAvailablePort(): Promise<number> {
     for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
       if (await isPortAvailable(port)) return port;
     }
     throw new Error(`No available ports in range ${PORT_RANGE_START}-${PORT_RANGE_END}`);
   }
 
-  async start(modelPath, options = {}) {
+  async start(modelPath: string, options: LlamaServerOptions = {}): Promise<void> {
     if (this.startupPromise) return this.startupPromise;
 
     // A change in drafter presence for the same model must still restart the
@@ -158,7 +212,7 @@ class LlamaServerManager {
     }
   }
 
-  _buildBaseArgs(modelPath, port, options = {}) {
+  _buildBaseArgs(modelPath: string, port: number, options: LlamaServerOptions = {}): string[] {
     const args = [
       "--model",
       modelPath,
@@ -184,9 +238,9 @@ class LlamaServerManager {
     return args;
   }
 
-  async _doStart(modelPath, options = {}) {
+  async _doStart(modelPath: string, options: LlamaServerOptions = {}): Promise<void> {
     const binaryPaths = this.getServerBinaryPaths();
-    if (Object.keys(binaryPaths).length === 0) throw new Error("llama-server binary not found");
+    if (!binaryPaths.default) throw new Error("llama-server binary not found");
     if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
 
     this.port = await this.findAvailablePort();
@@ -232,9 +286,9 @@ class LlamaServerManager {
     });
   }
 
-  _buildEnv(binaryPath) {
+  _buildEnv(binaryPath: string): NodeJS.ProcessEnv {
     const binDir = path.dirname(binaryPath);
-    const env = { ...process.env };
+    const env: NodeJS.ProcessEnv = { ...process.env };
 
     env.DYLD_LIBRARY_PATH = binDir + (env.DYLD_LIBRARY_PATH ? `:${env.DYLD_LIBRARY_PATH}` : "");
 
@@ -245,7 +299,7 @@ class LlamaServerManager {
     return env;
   }
 
-  _startWithBinary(binaryPath, args, env, timeoutMs) {
+  _startWithBinary(binaryPath: string, args: string[], env: NodeJS.ProcessEnv, timeoutMs: number): Promise<void> {
     return new Promise((resolve, reject) => {
       debugLogger.debug("Spawning llama-server", { binary: binaryPath, port: this.port, args });
 
@@ -255,14 +309,14 @@ class LlamaServerManager {
         env,
         detached: true,
       });
-      sidecarPidFile.write("llama", this.process.pid);
+      if (this.process.pid !== undefined) sidecarPidFile.write("llama", this.process.pid);
 
       let stderrBuffer = "";
-      let exitCode = null;
-      let exitSignal = null;
+      let exitCode: number | null = null;
+      let exitSignal: NodeJS.Signals | null = null;
       let settled = false;
 
-      const settle = (fn) => {
+      const settle = (fn: () => void) => {
         if (settled) return;
         settled = true;
         fn();
@@ -284,8 +338,8 @@ class LlamaServerManager {
       });
 
       this.process.on("close", (code, signal) => {
-        exitCode = code;
-        exitSignal = signal;
+        exitCode = code ?? null;
+        exitSignal = signal ?? null;
         debugLogger.debug("llama-server process exited", { code, signal });
         this.ready = false;
         this.process = null;
@@ -304,7 +358,7 @@ class LlamaServerManager {
         if (!this.process || this.process.killed) {
           const info = getProcessInfo();
           const signal = info.exitSignal;
-          const diagParts = [];
+          const diagParts: string[] = [];
           if (signal) diagParts.push(`signal: ${signal}`);
           else if (info.exitCode !== null && info.exitCode !== undefined)
             diagParts.push(`exit code: ${info.exitCode}`);
@@ -343,18 +397,18 @@ class LlamaServerManager {
         setTimeout(poll, STARTUP_POLL_INTERVAL_MS);
       };
 
-      poll();
+      void poll();
     });
   }
 
-  async _killCurrentProcess() {
+  async _killCurrentProcess(): Promise<void> {
     if (!this.process) return;
 
     this.stopHealthCheck();
 
     try {
       killProcess(this.process, "SIGTERM");
-      await new Promise((resolve) => {
+      await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           if (this.process) killProcess(this.process, "SIGKILL");
           resolve();
@@ -371,24 +425,24 @@ class LlamaServerManager {
         }
       });
     } catch (error) {
-      debugLogger.error("Error killing llama-server process", { error: error.message });
+      debugLogger.error("Error killing llama-server process", { error: (error as Error).message });
     }
 
     this.process = null;
     this.ready = false;
   }
 
-  checkHealth() {
+  checkHealth(): Promise<boolean> {
     return new Promise((resolve) => {
       const req = http.request(
         {
           hostname: "127.0.0.1",
-          port: this.port,
+          port: this.port ?? undefined,
           path: "/health",
           method: "GET",
           timeout: HEALTH_CHECK_TIMEOUT_MS,
         },
-        (res) => {
+        (res: import("http").IncomingMessage) => {
           resolve(res.statusCode === 200);
           res.resume();
         }
@@ -403,7 +457,7 @@ class LlamaServerManager {
     });
   }
 
-  startHealthCheck() {
+  startHealthCheck(): void {
     this.stopHealthCheck();
     this.healthCheckFailures = 0;
     this.healthCheckInterval = setInterval(async () => {
@@ -424,30 +478,30 @@ class LlamaServerManager {
           }
         }
       } catch (err) {
-        debugLogger.error("Health check error", { error: err.message });
+        debugLogger.error("Health check error", { error: (err as Error).message });
       }
     }, HEALTH_CHECK_INTERVAL_MS);
   }
 
-  stopHealthCheck() {
+  stopHealthCheck(): void {
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
     }
   }
 
-  resetIdleTimer() {
+  resetIdleTimer(): void {
     this.clearIdleTimer();
     this.idleTimer = setTimeout(() => {
       debugLogger.info("llama-server idle timeout reached, stopping to free VRAM", {
         timeoutMs: IDLE_TIMEOUT_MS,
         model: this.modelPath ? path.basename(this.modelPath) : null,
       });
-      this.stop();
+      void this.stop();
     }, IDLE_TIMEOUT_MS);
   }
 
-  clearIdleTimer() {
+  clearIdleTimer(): void {
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
@@ -461,13 +515,13 @@ class LlamaServerManager {
    * make a decision more precise, so a broken one must degrade to the estimate
    * and never fail the user's request.
    */
-  _requestJson(path, body = null, timeoutMs = PREFLIGHT_TIMEOUT_MS) {
+  _requestJson<T>(path: string, body: unknown = null, timeoutMs = PREFLIGHT_TIMEOUT_MS): Promise<T | null> {
     return new Promise((resolve) => {
       const payload = body === null ? null : JSON.stringify(body);
       const req = http.request(
         {
           hostname: "127.0.0.1",
-          port: this.port,
+          port: this.port ?? undefined,
           path,
           method: payload === null ? "GET" : "POST",
           headers: payload
@@ -478,15 +532,15 @@ class LlamaServerManager {
             : {},
           timeout: timeoutMs,
         },
-        (res) => {
+        (res: import("http").IncomingMessage) => {
           let data = "";
-          res.on("data", (chunk) => {
+          res.on("data", (chunk: Buffer | string) => {
             data += chunk;
           });
           res.on("end", () => {
             if (res.statusCode !== 200) return resolve(null);
             try {
-              resolve(JSON.parse(data));
+              resolve(JSON.parse(data) as T);
             } catch {
               resolve(null);
             }
@@ -509,11 +563,15 @@ class LlamaServerManager {
    * for: a concurrent caller can join an in-flight start that used a smaller
    * size. Returns null when it cannot be read.
    */
-  async usableContextSize() {
+  async usableContextSize(): Promise<number | null> {
     if (!this.ready || !this.process) return null;
-    const props = await this._requestJson("/props");
+    const props = await this._requestJson<{
+      default_generation_settings?: { n_ctx?: number };
+    }>("/props");
     const contextSize = props?.default_generation_settings?.n_ctx;
-    return Number.isFinite(contextSize) && contextSize > 0 ? contextSize : null;
+    return typeof contextSize === "number" && Number.isFinite(contextSize) && contextSize > 0
+      ? contextSize
+      : null;
   }
 
   /**
@@ -521,31 +579,42 @@ class LlamaServerManager {
    * template included. Roughly 15 ms for an 85 KB prompt, which is cheap
    * enough to make the difference between a right-sized window and a 400.
    */
-  async countPromptTokens(messages, options = {}) {
+  async countPromptTokens(messages: ChatMessage[], options: CountPromptTokensOptions = {}): Promise<number | null> {
     if (!this.ready || !this.process) return null;
 
-    const payload = { messages };
+    const payload: {
+      messages: ChatMessage[];
+      chat_template_kwargs?: { enable_thinking: boolean };
+    } = { messages };
     // Must mirror inference() exactly, or we would price a different prompt
     // than the one we go on to send.
     if (options.disableThinking !== false) {
       payload.chat_template_kwargs = { enable_thinking: false };
     }
 
-    const templated = await this._requestJson("/apply-template", payload);
+    const templated = await this._requestJson<{ prompt?: string }>("/apply-template", payload);
     if (typeof templated?.prompt !== "string") return null;
 
-    const tokenized = await this._requestJson("/tokenize", { content: templated.prompt });
+    const tokenized = await this._requestJson<{ tokens?: unknown[] }>("/tokenize", {
+      content: templated.prompt,
+    });
     return Array.isArray(tokenized?.tokens) ? tokenized.tokens.length : null;
   }
 
-  async inference(messages, options = {}) {
+  async inference(messages: ChatMessage[], options: InferenceOptions = {}): Promise<string> {
     if (!this.ready || !this.process) {
       throw new Error("llama-server is not running");
     }
 
     this.clearIdleTimer();
 
-    const requestBody = {
+    const requestBody: {
+      messages: ChatMessage[];
+      temperature: number;
+      max_tokens: number;
+      stream: boolean;
+      chat_template_kwargs?: { enable_thinking: boolean };
+    } = {
       messages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.max_tokens ?? 512,
@@ -560,13 +629,13 @@ class LlamaServerManager {
 
     const body = JSON.stringify(requestBody);
 
-    return new Promise((resolve, reject) => {
+    return new Promise<string>((resolve, reject) => {
       const startTime = Date.now();
 
       const req = http.request(
         {
           hostname: "127.0.0.1",
-          port: this.port,
+          port: this.port ?? undefined,
           path: "/v1/chat/completions",
           method: "POST",
           headers: {
@@ -575,9 +644,9 @@ class LlamaServerManager {
           },
           timeout: 300000,
         },
-        (res) => {
+        (res: import("http").IncomingMessage) => {
           let data = "";
-          res.on("data", (chunk) => {
+          res.on("data", (chunk: Buffer | string) => {
             data += chunk;
           });
           res.on("end", () => {
@@ -587,15 +656,17 @@ class LlamaServerManager {
             });
 
             if (res.statusCode !== 200) {
-              reject(buildResponseError(res.statusCode, data));
+              reject(buildResponseError(res.statusCode ?? 0, data));
               return;
             }
 
             try {
-              const response = JSON.parse(data);
+              const response = JSON.parse(data) as {
+                choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning_content?: string } }>;
+              };
               if (
                 options.requireCompleteOutput &&
-                ["length", "max_tokens"].includes(response.choices?.[0]?.finish_reason)
+                ["length", "max_tokens"].includes(response.choices?.[0]?.finish_reason ?? "")
               ) {
                 reject(new Error("Model output was truncated before the selection edit completed"));
                 return;
@@ -604,13 +675,13 @@ class LlamaServerManager {
               const text = message?.content || message?.reasoning_content || "";
               resolve(text.trim());
             } catch (e) {
-              reject(new Error(`Failed to parse llama-server response: ${e.message}`));
+              reject(new Error(`Failed to parse llama-server response: ${(e as Error).message}`));
             }
           });
         }
       );
 
-      req.on("error", (error) => {
+      req.on("error", (error: Error) => {
         reject(new Error(`llama-server request failed: ${error.message}`));
       });
       req.on("timeout", () => {
@@ -623,7 +694,7 @@ class LlamaServerManager {
     }).finally(() => this.resetIdleTimer());
   }
 
-  async stop() {
+  async stop(): Promise<void> {
     this.clearIdleTimer();
     this.stopHealthCheck();
 
@@ -638,7 +709,7 @@ class LlamaServerManager {
     try {
       killProcess(this.process, "SIGTERM");
 
-      await new Promise((resolve) => {
+      await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           if (this.process) {
             killProcess(this.process, "SIGKILL");
@@ -657,7 +728,7 @@ class LlamaServerManager {
         }
       });
     } catch (error) {
-      debugLogger.error("Error stopping llama-server", { error: error.message });
+      debugLogger.error("Error stopping llama-server", { error: (error as Error).message });
     }
 
     this.process = null;
@@ -671,7 +742,14 @@ class LlamaServerManager {
     this.activeContextSize = null;
   }
 
-  getStatus() {
+  getStatus(): {
+    available: boolean;
+    running: boolean;
+    port: number | null;
+    modelPath: string | null;
+    modelName: string | null;
+    backend: string | null;
+  } {
     return {
       available: this.isAvailable(),
       running: this.ready && this.process !== null,
@@ -681,7 +759,9 @@ class LlamaServerManager {
       backend: this.activeBackend,
     };
   }
-
 }
 
+// Dual export: modelManagerBridge and legacy tests require this module as the
+// class itself, while the TS graph imports the named export.
 module.exports = LlamaServerManager;
+module.exports.LlamaServerManager = LlamaServerManager;

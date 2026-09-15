@@ -120,6 +120,7 @@ const { registerCalendarAvailabilityHandler } = require("./calendarAvailabilityI
 const { registerCalendarIntegrationHandlers } = require("./calendarIpcHandlers");
 const { registerNoteFilesHandlers } = require("./noteFilesIpcHandlers");
 const { registerLocalModelLifecycleHandlers } = require("./localModelLifecycleIpcHandlers");
+const { registerLocalLlmModelHandlers } = require("./localLlmModelIpcHandlers");
 const { registerRemoteTranscriptionHandler } = require("./remoteTranscriptionIpcHandler");
 const { registerReasoningHandlers, resolveEnterpriseRuntime } = require("./reasoningIpcHandlers");
 const { registerFileDiarizationHandlers } = require("./fileDiarizationIpcHandlers");
@@ -1729,148 +1730,9 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("model-get-all", async () => {
-      try {
-        debugLogger.debug("model-get-all called", undefined, "ipc");
-        const modelManager = require("./modelManagerBridge").default;
-        const models = await modelManager.getModelsWithStatus();
-        debugLogger.debug("Returning models", { count: models.length }, "ipc");
-        return models;
-      } catch (error) {
-        debugLogger.error("Error in model-get-all:", error);
-        throw error;
-      }
-    });
 
-    ipcMain.handle("model-get-active-downloads", async () => {
-      return this.localModelDownloadStatus.getActiveDownloads();
-    });
 
-    ipcMain.handle("model-check", async (_, modelId) => {
-      const modelManager = require("./modelManagerBridge").default;
-      return modelManager.isModelDownloaded(modelId);
-    });
 
-    ipcMain.handle("model-download", async (event, modelId) => {
-      if (this.localModelDownloadStatus.has("llm", modelId)) {
-        return {
-          success: false,
-          error: "Model is already being downloaded",
-          code: "DOWNLOAD_IN_PROGRESS",
-          details: { modelId },
-        };
-      }
-      // Claim ownership before the manager's asynchronous filesystem preflight.
-      this.localModelDownloadStatus.start("llm", modelId);
-      try {
-        const modelManager = require("./modelManagerBridge").default;
-        const result = await modelManager.downloadModel(
-          modelId,
-          (progress, downloadedSize, totalSize) => {
-            const status = this.localModelDownloadStatus.update("llm", modelId, {
-              phase: "downloading",
-              progress,
-              downloadedBytes: downloadedSize,
-              totalBytes: totalSize,
-            });
-            this.windowManager.sendToControlPanel("model-download-progress", {
-              modelId,
-              type: "progress",
-              progress,
-              downloadedSize,
-              totalSize,
-              sequence: status.sequence,
-            });
-          }
-        );
-        const status = this.localModelDownloadStatus.finish("llm", modelId);
-        this.windowManager.sendToControlPanel("model-download-progress", {
-          modelId,
-          type: "complete",
-          progress: 100,
-          downloadedSize: status?.downloadedBytes,
-          totalSize: status?.totalBytes,
-          sequence: status?.sequence,
-        });
-        return { success: true, path: result };
-      } catch (error) {
-        const status = this.localModelDownloadStatus.finish("llm", modelId);
-        if (error.code !== "DOWNLOAD_IN_PROGRESS") {
-          this.windowManager.sendToControlPanel("model-download-progress", {
-            modelId,
-            type: "error",
-            error: error.message,
-            code: error.code,
-            details: error.details,
-            sequence: status?.sequence,
-          });
-        }
-        return {
-          success: false,
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        };
-      }
-    });
-
-    ipcMain.handle("model-delete", async (event, modelId) => {
-      try {
-        const modelManager = require("./modelManagerBridge").default;
-        await modelManager.deleteModel(modelId);
-        return { success: true };
-      } catch (error) {
-        return {
-          success: false,
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        };
-      }
-    });
-
-    ipcMain.handle("model-delete-all", async () => {
-      try {
-        const modelManager = require("./modelManagerBridge").default;
-        await modelManager.deleteAllModels();
-        return { success: true };
-      } catch (error) {
-        return {
-          success: false,
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        };
-      }
-    });
-
-    ipcMain.handle("model-cancel-download", async (event, modelId) => {
-      try {
-        const modelManager = require("./modelManagerBridge").default;
-        const cancelled = modelManager.cancelDownload(modelId);
-        return { success: cancelled };
-      } catch (error) {
-        return {
-          success: false,
-          error: error.message,
-        };
-      }
-    });
-
-    ipcMain.handle("model-check-runtime", async (event) => {
-      try {
-        const modelManager = require("./modelManagerBridge").default;
-        await modelManager.ensureLlamaCpp();
-        return { available: true };
-      } catch (error) {
-        return {
-          available: false,
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        };
-      }
-    });
 
     ipcMain.handle(
       "proxy-xai-transcription",
@@ -2336,79 +2198,7 @@ class IPCHandlers {
       this._syncStartupEnv(setVars, clearVars);
     });
 
-    ipcMain.handle("llama-cpp-check", async () => {
-      try {
-        const llamaCppInstaller = require("./llamaCppInstaller").default;
-        const isInstalled = await llamaCppInstaller.isInstalled();
-        const version = isInstalled ? await llamaCppInstaller.getVersion() : null;
-        return { isInstalled, version };
-      } catch (error) {
-        return { isInstalled: false, error: error.message };
-      }
-    });
 
-    ipcMain.handle("llama-cpp-install", async () => {
-      try {
-        const llamaCppInstaller = require("./llamaCppInstaller").default;
-        const result = await llamaCppInstaller.install();
-        return result;
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("llama-cpp-uninstall", async () => {
-      try {
-        const llamaCppInstaller = require("./llamaCppInstaller").default;
-        const result = await llamaCppInstaller.uninstall();
-        return result;
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("llama-server-start", async (event, modelId) => {
-      try {
-        const modelManager = require("./modelManagerBridge").default;
-        modelManager.ensureInitialized();
-        const modelInfo = modelManager.findModelById(modelId);
-        if (!modelInfo) {
-          return { success: false, error: `Model "${modelId}" not found` };
-        }
-
-        const modelPath = require("path").join(modelManager.modelsDir, modelInfo.model.fileName);
-
-        await modelManager.serverManager.start(
-          modelPath,
-          await modelManager.serverStartOptions(modelInfo)
-        );
-        modelManager.currentServerModelId = modelId;
-
-        this.environmentManager.saveAllKeysToEnvFile().catch(() => {});
-        return { success: true, port: modelManager.serverManager.port };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("llama-server-stop", async () => {
-      try {
-        const modelManager = require("./modelManagerBridge").default;
-        await modelManager.stopServer();
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("llama-server-status", async () => {
-      try {
-        const modelManager = require("./modelManagerBridge").default;
-        return modelManager.getServerStatus();
-      } catch (error) {
-        return { available: false, running: false, error: error.message };
-      }
-    });
 
     ipcMain.handle("get-log-level", async () => {
       return debugLogger.getLevel();
@@ -4885,6 +4675,21 @@ class IPCHandlers {
       },
       resolveParakeetProviderName: (modelName) =>
         getModelType(modelName) === "cohere-transcribe" ? "cohere" : "nvidia",
+      logError: (message, data) => debugLogger.error(message, data),
+    });
+
+    registerLocalLlmModelHandlers(ipcMain, {
+      modelManager: require("./modelManagerBridge").default,
+      llamaCppInstaller: require("./llamaCppInstaller").default,
+      downloadStatus: this.localModelDownloadStatus,
+      progressSender: {
+        sendToControlPanel: (channel, payload) =>
+          this.windowManager.sendToControlPanel(channel, payload),
+      },
+      joinPath: (...segments) => path.join(...segments),
+      persistEnvAfterServerStart: () => {
+        this.environmentManager.saveAllKeysToEnvFile().catch(() => {});
+      },
       logError: (message, data) => debugLogger.error(message, data),
     });
 

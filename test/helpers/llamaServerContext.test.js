@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
 
-const LlamaServerManager = require("../../src/helpers/llamaServer.js");
+const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
 
 // A manager whose spawn is stubbed at the _doStart boundary, recording the
 // options each start was asked for.

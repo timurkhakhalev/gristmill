@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const policy = require("../../src/helpers/llamaContextPolicy");
+const policy = require("../../src/helpers/llamaContextPolicy.ts");
 
 // --- estimateTokens ------------------------------------------------------
 //

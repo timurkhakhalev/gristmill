@@ -3,9 +3,9 @@
 // per-key plumbing from this list, so adding a provider is one entry.
 // Pure data so both the main process and the Vite renderer share it.
 // `base` yields the IPC channels `get-<base>-key` / `save-<base>-key`.
-// preload.js can't require local modules under sandbox, so it mirrors the
-// {base, get, save} tuples inline — keep BYOK_KEY_BRIDGES there in sync
-// (guarded by test/helpers/secretKeys.test.js).
+// The desktop settings bridge (src/preload/desktopSettingsBridge.ts) derives
+// its renderer-side methods from this manifest, so a new provider is one
+// entry on both sides of the bridge (guarded by test/helpers/secretKeys.test.js).
 //
 // Secret values never appear here — this catalog is only key *names* and
 // their per-surface plumbing identifiers.

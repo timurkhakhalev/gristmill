@@ -1,5 +1,4 @@
 import type { ModelDefinition } from "../models/ModelRegistry";
-import type { TinfoilCatalogModel } from "../models/tinfoilModels";
 import type { NotesApi } from "../contracts/notes";
 import type { UrlDownloadApi } from "../contracts/urlDownload";
 import type { VocabularyApi } from "../contracts/vocabulary";
@@ -18,11 +17,6 @@ import type { SpeakerApi } from "../contracts/speakerProfiles";
 import type { TranscriptionExecutionApi } from "../contracts/transcriptionExecution";
 import type { DesktopSettingsApi } from "../contracts/desktopSettings";
 import type { TranscriptionDataApi } from "../contracts/transcriptionData";
-import type {
-  LocalTranscriptionProvider,
-  InferenceMode,
-  SelfHostedType,
-} from "../contracts/inferenceSettings";
 
 export type ChineseScriptPreference = "simplified" | "traditional" | "as-transcribed";
 

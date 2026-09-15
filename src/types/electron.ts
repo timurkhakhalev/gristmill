@@ -15,6 +15,8 @@ import type { NoteFilesApi } from "../contracts/noteFiles";
 import type { LocalModelLifecycleApi } from "../contracts/localModelLifecycle";
 import type { LocalLlmModelsApi } from "../contracts/localLlmModels";
 import type { SpeakerApi } from "../contracts/speakerProfiles";
+import type { TranscriptionExecutionApi } from "../contracts/transcriptionExecution";
+import type { TranscriptionDataApi } from "../contracts/transcriptionData";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -542,17 +544,6 @@ declare global {
       // Basic window operations
       setOnboardingWindowMode?: (mode: "compact" | "expanded" | "restore") => Promise<boolean>;
       setOnboardingActive?: (active: boolean) => Promise<boolean>;
-      testProviderConnection?: (config: {
-        scope: "transcription" | "reasoning";
-        provider: string;
-        apiKey?: string;
-        baseUrl?: string;
-        model?: string;
-        clientId?: string;
-        clientSecret?: string;
-        environment?: string;
-        tenant?: string;
-      }) => Promise<{ success: boolean; error?: string; errorCode?: string; status?: number }>;
 
       // Database operations
       saveTranscription: (
@@ -598,33 +589,6 @@ declare global {
         dataRetentionEnabled: boolean;
         localHistoryPolicyResolved: boolean;
       }) => void;
-      retryTranscription: (
-        id: number,
-        settings?: {
-          useLocalWhisper: boolean;
-          localTranscriptionProvider: string;
-          cloudTranscriptionMode: string;
-          cloudTranscriptionProvider: string;
-          cloudTranscriptionModel: string;
-          cloudTranscriptionBaseUrl?: string;
-          cortiEnvironment?: string;
-          cortiTenant?: string;
-          parakeetModel: string;
-          cohereModel: string;
-          whisperModel: string;
-          preferredLanguage?: string;
-          transcriptionMode?: InferenceMode;
-          remoteTranscriptionType?: SelfHostedType;
-          remoteTranscriptionUrl?: string;
-          remoteTranscriptionModel?: string;
-        }
-      ) => Promise<{
-        success: boolean;
-        transcription?: TranscriptionItem;
-        error?: string;
-        code?: TranscriptionErrorCode;
-        messageKey?: string;
-      }>;
       updateTranscriptionText: (
         id: number,
         text: string,
@@ -654,9 +618,6 @@ declare global {
       // Note files / Granola import commands come from the shared
       // NoteFilesApi contract.
 
-      // Audio file operations
-      saveTempAudio: (buffer: ArrayBuffer) => Promise<{ success: boolean; path: string }>;
-      deleteTempAudio: (tempPath: string) => Promise<{ success: boolean; error?: string }>;
       selectAudioFile: (options?: { multiple?: boolean }) => Promise<{
         canceled: boolean;
         filePath?: string;
@@ -704,11 +665,6 @@ declare global {
 
       // Whisper/Parakeet model lifecycle (downloads, status, servers, VAD
       // config, diagnostics) comes from the LocalModelLifecycleApi contract.
-      transcribeLocalWhisper: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
-      transcribeLocalParakeet: (
-        audioBlob: ArrayBuffer,
-        options?: { model?: string; language?: string }
-      ) => Promise<ParakeetTranscriptionResult>;
 
       // Local LLM model management (catalog, downloads, llama.cpp installer
       // checks, llama-server lifecycle) comes from the LocalLlmModelsApi
@@ -718,11 +674,6 @@ declare global {
       // cancel and the enterprise stream lifecycle come from the shared
       // ReasoningApi contract.
 
-      listBedrockModels?: (config: Record<string, unknown>) => Promise<{
-        success: boolean;
-        models?: Array<{ value: string; label: string; vendor: string }>;
-        error?: string;
-      }>;
 
 
       // Window control operations
@@ -775,12 +726,6 @@ declare global {
       // Gemini API key management
       getGeminiKey: () => Promise<string | null>;
       saveGeminiKey: (key: string) => Promise<void>;
-      proxyGeminiTranscription?: (data: {
-        audioBuffer: ArrayBuffer;
-        model?: string;
-        language?: string;
-        keyterms?: string[];
-      }) => Promise<ProxyTranscriptionResult>;
 
       // Groq API key management
       getGroqKey: () => Promise<string | null>;
@@ -791,21 +736,10 @@ declare global {
       // xAI API key management
       getXaiKey?: () => Promise<string | null>;
       saveXaiKey?: (key: string) => Promise<void>;
-      proxyXaiTranscription?: (data: {
-        audioBuffer: ArrayBuffer;
-        language?: string;
-        keyterms?: string[];
-      }) => Promise<ProxyTranscriptionResult>;
 
       // Mistral API key management
       getMistralKey: () => Promise<string | null>;
       saveMistralKey: (key: string) => Promise<void>;
-      proxyMistralTranscription: (data: {
-        audioBuffer: ArrayBuffer;
-        model?: string;
-        language?: string;
-        contextBias?: string[];
-      }) => Promise<ProxyTranscriptionResult>;
 
       // Corti credential management
       getCortiClientId?: () => Promise<string | null>;
@@ -814,20 +748,8 @@ declare global {
       saveCortiClientSecret?: (key: string) => Promise<void>;
       getCortiKey?: () => Promise<string | null>;
       saveCortiKey?: (key: string) => Promise<void>;
-      proxyCortiTranscription?: (data: {
-        audioBuffer: ArrayBuffer;
-        language: string;
-        environment: string;
-        tenant: string;
-      }) => Promise<ProxyTranscriptionResult>;
       getTinfoilKey?: () => Promise<string | null>;
       saveTinfoilKey?: (key: string) => Promise<void>;
-      getTinfoilChatModels?: () => Promise<TinfoilCatalogModel[]>;
-      proxyTinfoilTranscription?: (data: {
-        audioBuffer: ArrayBuffer;
-        language?: string;
-        prompt?: string;
-      }) => Promise<ProxyTranscriptionResult>;
       getDeepgramKey?: () => Promise<string | null>;
       saveDeepgramKey?: (key: string) => Promise<void>;
       getAssemblyAIKey?: () => Promise<string | null>;
@@ -868,24 +790,6 @@ declare global {
       saveVertexLocation?: (value: string) => Promise<void>;
       getVertexApiKey?: () => Promise<string | null>;
       saveVertexApiKey?: (key: string) => Promise<void>;
-      testEnterpriseConnection?: (
-        provider: string,
-        config: Record<string, unknown>
-      ) => Promise<{
-        success: boolean;
-        error?: string;
-        messageKey?: string;
-        messageParams?: Record<string, string | number>;
-        action?: string;
-        actionKey?: string;
-        copyCommand?: string;
-        technicalDetails?: {
-          status?: number;
-          exceptionType?: string;
-          requestId?: string;
-          underlyingError?: string;
-        };
-      }>;
       // Activation mode persistence (file-based for reliable startup)
       getActivationMode?: () => Promise<"tap" | "push">;
       saveActivationMode?: (mode: "tap" | "push") => Promise<void>;
@@ -1128,7 +1032,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

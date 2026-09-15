@@ -14,6 +14,7 @@ const { createNoteFilesBridge } = require("./src/preload/noteFilesBridge");
 const { createLocalModelLifecycleBridge } = require("./src/preload/localModelLifecycleBridge");
 const { createLocalLlmModelsBridge } = require("./src/preload/localLlmModelsBridge");
 const { createSpeakerBridge } = require("./src/preload/speakerBridge");
+const { createTranscriptionExecutionBridge } = require("./src/preload/transcriptionExecutionBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -79,6 +80,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createLocalModelLifecycleBridge(ipcRenderer),
   ...createLocalLlmModelsBridge(ipcRenderer),
   ...createSpeakerBridge(ipcRenderer),
+  ...createTranscriptionExecutionBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -106,10 +108,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     "meeting-speakers-merged",
     (callback) => (_event, data) => callback(data)
   ),
-  testProviderConnection: (config) => ipcRenderer.invoke("test-provider-connection", config),
-
-
-
+  // Provider connection tests, local/remote transcription execution and the
+  // voice-draft temp audio come from the typed transcriptionExecutionBridge
+  // above.
 
   // Database functions
   saveTranscription: (text, rawText, options) =>
@@ -130,7 +131,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAudioStorageUsage: () => ipcRenderer.invoke("get-audio-storage-usage"),
   deleteAllAudio: () => ipcRenderer.invoke("delete-all-audio"),
   syncRetentionSettings: (settings) => ipcRenderer.send("retention-settings-changed", settings),
-  retryTranscription: (id, settings) => ipcRenderer.invoke("retry-transcription", id, settings),
   updateTranscriptionText: (id, text, rawText) =>
     ipcRenderer.invoke("update-transcription-text", id, text, rawText),
   getTranscriptionById: (id) => ipcRenderer.invoke("get-transcription-by-id", id),
@@ -199,16 +199,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readClipboard: () => ipcRenderer.invoke("read-clipboard"),
   writeClipboard: (text) => ipcRenderer.invoke("write-clipboard", text),
 
-  // Voice drafts (chat input recordings)
-  saveTempAudio: (buffer) => ipcRenderer.invoke("save-temp-audio", buffer),
-  deleteTempAudio: (tempPath) => ipcRenderer.invoke("delete-temp-audio", tempPath),
-
   // Local Whisper/Parakeet model lifecycle (downloads, status, servers,
   // VAD config, diagnostics) lives in the typed localModelLifecycleBridge.
-  transcribeLocalWhisper: (audioBlob, options) =>
-    ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),
-  transcribeLocalParakeet: (audioBlob, options) =>
-    ipcRenderer.invoke("transcribe-local-parakeet", audioBlob, options),
 
   onMeetingDiarizationComplete: registerListener(
     "meeting-diarization-complete",
@@ -255,19 +247,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveUiLanguage: (language) => ipcRenderer.invoke("save-ui-language", language),
   setUiLanguage: (language) => ipcRenderer.invoke("set-ui-language", language),
 
-  // xAI / Mistral transcription proxies (keys handled by the manifest bridge)
-  proxyXaiTranscription: (data) => ipcRenderer.invoke("proxy-xai-transcription", data),
-  proxyMistralTranscription: (data) => ipcRenderer.invoke("proxy-mistral-transcription", data),
-  proxyGeminiTranscription: (data) => ipcRenderer.invoke("proxy-gemini-transcription", data),
+  // The xAI/Mistral/Corti/Tinfoil/Gemini transcription proxies and the
+  // Tinfoil chat model catalog come from the typed
+  // transcriptionExecutionBridge above.
 
   // Corti API
   getCortiClientId: () => ipcRenderer.invoke("get-corti-client-id"),
   saveCortiClientId: (key) => ipcRenderer.invoke("save-corti-client-id", key),
   getCortiClientSecret: () => ipcRenderer.invoke("get-corti-client-secret"),
   saveCortiClientSecret: (key) => ipcRenderer.invoke("save-corti-client-secret", key),
-  proxyCortiTranscription: (data) => ipcRenderer.invoke("proxy-corti-transcription", data),
-  getTinfoilChatModels: () => ipcRenderer.invoke("get-tinfoil-chat-models"),
-  proxyTinfoilTranscription: (data) => ipcRenderer.invoke("proxy-tinfoil-transcription", data),
 
   // Custom endpoint API keys
   getCustomTranscriptionKey: () => ipcRenderer.invoke("get-custom-transcription-key"),
@@ -300,8 +288,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveVertexLocation: (value) => ipcRenderer.invoke("save-vertex-location", value),
   getVertexApiKey: () => ipcRenderer.invoke("get-vertex-api-key"),
   saveVertexApiKey: (key) => ipcRenderer.invoke("save-vertex-api-key", key),
-  testEnterpriseConnection: (provider, config) =>
-    ipcRenderer.invoke("test-enterprise-connection", provider, config),
 
   // App metadata
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
@@ -317,8 +303,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // stream lifecycle come from the typed reasoningBridge above.
 
   // Enterprise reasoning (Bedrock, Azure, Vertex) and its streams live in the
-  // typed reasoningBridge above.
-  listBedrockModels: (config) => ipcRenderer.invoke("bedrock-list-models", config),
+  // typed reasoningBridge above; the Bedrock model listing comes from the
+  // transcriptionExecutionBridge.
   getLogLevel: () => ipcRenderer.invoke("get-log-level"),
   log: (entry) => ipcRenderer.invoke("app-log", entry),
 

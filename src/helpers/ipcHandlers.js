@@ -4,7 +4,6 @@ const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
-const { PARAKEET_UNSUPPORTED_OS_CODE } = require("./parakeetCapability");
 const { getModelType, isSherpaLocalProvider } = require("./parakeetModelInfo");
 const { broadcastToWindows } = require("./windowBroadcast");
 const { openExternalUrl } = require("./externalUrlOpener");
@@ -23,19 +22,6 @@ const {
 // packaged, and the route resolver only needs {id, baseUrl} per provider.
 const transcriptionProviderBaseUrls = () =>
   require("../models/modelRegistryData.json").transcriptionProviders;
-// ipcMain.handle keeps only the message when a promise rejects, dropping custom
-// props — proxy handlers return {error, code, messageKey} so the renderer can
-// rebuild the error.
-const serializeIpcError =
-  (fn) =>
-  async (...args) => {
-    try {
-      return await fn(...args);
-    } catch (error) {
-      return { error: error.message, code: error.code, messageKey: error.messageKey };
-    }
-  };
-
 const { resolveLocalServerNeeds } = require("./localServerPolicy");
 const { approveAudioPath, resolveAllowedAudioPath } = require("./audioPathAllowlist");
 const { openSystemSettings } = require("./systemSettingsLauncher");
@@ -57,13 +43,11 @@ const OpenAIRealtimeStreaming = require("./openaiRealtimeStreaming");
 const { getCortiToken } = require("./cortiAuth");
 const { createTinfoilRealtimeSocket } = require("./tinfoilSecureClient");
 const { TINFOIL_REALTIME_MODEL } = require("./tinfoilRealtimeStreaming");
-const { getTinfoilChatModels } = require("./tinfoilCatalog");
 const { transcribeWithTinfoil } = require("./tinfoilTranscription");
 const { transcribeWithGemini } = require("./geminiTranscription");
 const AudioStorageManager = require("./audioStorage");
 const { AgentStreamRequestRegistry } = require("./agentStreamRequestRegistry");
 const { createUploadCancelRegistry } = require("./uploadCancelRegistry");
-const { testProviderConnection } = require("./providerConnectionTest");
 const LocalModelDownloadStatus = require("./localModelDownloadStatus");
 const createMeetingTranscriptionLifecycle = require("./meetingTranscriptionLifecycle");
 const { registerMeetingAutoEndLifecycleHandlers } = require("./meetingAutoEndLifecycle");
@@ -128,6 +112,7 @@ const { registerRemoteTranscriptionHandler } = require("./remoteTranscriptionIpc
 const { registerReasoningHandlers, resolveEnterpriseRuntime } = require("./reasoningIpcHandlers");
 const { registerFileDiarizationHandlers } = require("./fileDiarizationIpcHandlers");
 const { registerUploadCancelHandler } = require("./uploadCancelIpcHandler");
+const { registerTranscriptionExecutionHandlers } = require("./transcriptionExecutionIpcHandlers");
 
 // Meeting capture runs at 24 kHz (see meetingRecordingStore AudioContext); realtime
 // streaming providers must be told the true PCM rate or they misread the audio.
@@ -137,10 +122,6 @@ const MEETING_RECONNECT_BUFFER_MAX_BYTES = MEETING_STREAM_SAMPLE_RATE * 2 * 30;
 // keep mic ambient noise from opening turns. The direct system-audio channel
 // uses a lower threshold so quiet remote speech still opens a turn.
 const MEETING_SYSTEM_VAD_THRESHOLD = 0.3;
-
-// Azure Responses rejects probes with fewer than 16 output tokens. The probe
-// only needs one word, but this is the provider's minimum accepted value.
-const CONNECTION_TEST_MAX_OUTPUT_TOKENS = 16;
 
 const { listLocalTranscriptionModels } = require("./localTranscriptionModels");
 
@@ -601,54 +582,40 @@ class IPCHandlers {
       return this.windowManager.setOnboardingActive(active);
     });
 
-    ipcMain.handle("test-provider-connection", async (_event, config) => {
-      if (config?.provider === "corti" && config?.scope === "transcription") {
-        try {
-          const clientId = String(config.clientId || "").trim();
-          const clientSecret = String(config.clientSecret || "").trim();
-          if (clientId && clientSecret) {
-            await getCortiToken({
-              environment: config.environment || "us",
-              tenant: String(config.tenant || "").trim() || "base",
-              clientId,
-              clientSecret,
-            });
-          } else {
-            await this._mintStoredCortiToken({
-              environment: config.environment,
-              tenant: config.tenant,
-            });
-          }
-          return { success: true };
-        } catch (error) {
-          // errorCode is the machine-readable field the renderer maps to i18n;
-          // the English string stays for logs/back-compat. Only a response
-          // Corti actually sent counts as a rejection (getCortiToken prefixes
-          // those); a fetch that never reached it is a network problem, and
-          // reporting it as "credentials rejected" sends the user to re-type a
-          // key that was never the issue.
-          if (error?.name === "AbortError") {
-            return {
-              success: false,
-              errorCode: "timeout",
-              error: "The connection test timed out.",
-            };
-          }
-          if (!/^(Corti authentication failed|Invalid Corti)/.test(error?.message || "")) {
-            return {
-              success: false,
-              errorCode: "network",
-              error: "The provider could not be reached.",
-            };
-          }
-          return {
-            success: false,
-            errorCode: "credentialsRejected",
-            error: "Corti rejected these credentials.",
-          };
-        }
-      }
-      return testProviderConnection(config);
+    // Provider connection/model discovery and the rest of the non-meeting
+    // transcription execution live in the typed module.
+    registerTranscriptionExecutionHandlers(ipcMain, {
+      whisperManager: this.whisperManager,
+      parakeetManager: this.parakeetManager,
+      resolveWhisperVadOptions: (context) => this._resolveWhisperVadOptions(context),
+      environmentManager: this.environmentManager,
+      proxyFetch: (url, init) => proxyFetch(url, init),
+      transcribeWithCorti: async (args) => {
+        const { transcribeAudio } = require("./cortiTranscription");
+        return transcribeAudio(args);
+      },
+      mintStoredCortiToken: (tokenOptions) => this._mintStoredCortiToken(tokenOptions),
+      generateText: (options) => require("ai").generateText(options),
+      getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
+        require("./enterpriseAiProviders").getEnterpriseAIModel(
+          provider,
+          model,
+          apiKey,
+          enterprise
+        ),
+      bedrockSdk: async () => require("@aws-sdk/client-bedrock"),
+      bedrockProfileCredentials: (profile) =>
+        require("@aws-sdk/credential-providers").fromNodeProviderChain({ profile }),
+      providerBaseUrls: transcriptionProviderBaseUrls,
+      audioStorage: this.audioStorageManager,
+      database: this.databaseManager,
+      broadcast: broadcastToWindows,
+      logger: {
+        log: (message, data) => debugLogger.log(message, data),
+        debug: (message, data) => debugLogger.debug(message, data),
+        warn: (message, data) => debugLogger.warn(message, data),
+        error: (message, data, tag) => debugLogger.error(message, data, tag),
+      },
     });
 
     ipcMain.handle("window-minimize", () => {
@@ -1177,186 +1144,6 @@ class IPCHandlers {
     });
 
 
-    // Voice drafts (chat input): persist a recorded buffer so the file-based
-    // transcription pipeline (all providers) can consume it, then delete it.
-    ipcMain.handle("save-temp-audio", async (_event, buffer) => {
-      const tempPath = path.join(
-        os.tmpdir(),
-        `ow-voice-draft-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.webm`
-      );
-      fs.writeFileSync(tempPath, Buffer.from(buffer));
-      return { success: true, path: tempPath };
-    });
-
-    ipcMain.handle("delete-temp-audio", async (_event, tempPath) => {
-      // Only files this handler family created are deletable.
-      const resolved = path.resolve(tempPath);
-      const validPrefix = path.join(os.tmpdir(), "ow-voice-draft-");
-      if (!resolved.startsWith(validPrefix)) {
-        return { success: false, error: "Invalid temp path" };
-      }
-      try {
-        fs.unlinkSync(resolved);
-      } catch {
-        // Already gone — fine.
-      }
-      return { success: true };
-    });
-
-    ipcMain.handle("transcribe-local-whisper", async (_event, audioBlob, options = {}) => {
-      debugLogger.log("transcribe-local-whisper called", {
-        audioBlobType: typeof audioBlob,
-        audioBlobSize: audioBlob?.byteLength || audioBlob?.length || 0,
-        options,
-      });
-
-      try {
-        // skipVad: dictionary-echo rescue retries decode VAD-free, since VAD
-        // stripping the speech is what turned the transcript into prompt echo.
-        const { skipVad, ...requestOptions } = options;
-        const vadOptions = skipVad
-          ? { vadEnabled: false }
-          : this._resolveWhisperVadOptions("noteRecording");
-        const result = await this.whisperManager.transcribeLocalWhisper(audioBlob, {
-          ...requestOptions,
-          ...vadOptions,
-        });
-
-        debugLogger.log("Whisper result", {
-          success: result.success,
-          hasText: !!result.text,
-          message: result.message,
-          error: result.error,
-        });
-
-        return result;
-      } catch (error) {
-        debugLogger.error("Local Whisper transcription error", error);
-        const errorMessage = error.message || "Unknown error";
-
-        // Return specific error types for better user feedback
-        if (errorMessage.includes("FFmpeg not found")) {
-          return {
-            success: false,
-            error: "ffmpeg_not_found",
-            message: "FFmpeg is missing. Please reinstall the app or install FFmpeg manually.",
-          };
-        }
-        if (
-          errorMessage.includes("FFmpeg conversion failed") ||
-          errorMessage.includes("FFmpeg process error")
-        ) {
-          return {
-            success: false,
-            error: "ffmpeg_error",
-            message: "Audio conversion failed. The recording may be corrupted.",
-          };
-        }
-        if (
-          errorMessage.includes("whisper.cpp not found") ||
-          errorMessage.includes("whisper-cpp")
-        ) {
-          return {
-            success: false,
-            error: "whisper_not_found",
-            message: "Whisper binary is missing. Please reinstall the app.",
-          };
-        }
-        if (
-          errorMessage.includes("Audio buffer is empty") ||
-          errorMessage.includes("Audio data too small")
-        ) {
-          return {
-            success: false,
-            error: "no_audio_data",
-            message: "No audio detected",
-          };
-        }
-        if (errorMessage.includes("model") && errorMessage.includes("not downloaded")) {
-          return {
-            success: false,
-            error: "model_not_found",
-            message: errorMessage,
-          };
-        }
-
-        throw error;
-      }
-    });
-
-    ipcMain.handle("transcribe-local-parakeet", async (_event, audioBlob, options = {}) => {
-      debugLogger.log("transcribe-local-parakeet called", {
-        audioBlobType: typeof audioBlob,
-        audioBlobSize: audioBlob?.byteLength || audioBlob?.length || 0,
-        options,
-      });
-
-      try {
-        const result = await this.parakeetManager.transcribeLocalParakeet(audioBlob, options);
-
-        debugLogger.log("Parakeet result", {
-          success: result.success,
-          hasText: !!result.text,
-          message: result.message,
-          error: result.error,
-        });
-
-        return result;
-      } catch (error) {
-        debugLogger.error("Local Parakeet transcription error", error);
-        const errorMessage = error.message || "Unknown error";
-
-        if (errorMessage.includes("sherpa-onnx") && errorMessage.includes("not found")) {
-          return {
-            success: false,
-            error: "parakeet_not_found",
-            message: "Parakeet binary is missing. Please reinstall the app.",
-          };
-        }
-        if (errorMessage.includes("model") && errorMessage.includes("not downloaded")) {
-          return {
-            success: false,
-            error: "model_not_found",
-            message: errorMessage,
-          };
-        }
-        if (error.code === PARAKEET_UNSUPPORTED_OS_CODE) {
-          return {
-            success: false,
-            error: error.code,
-            message: errorMessage,
-          };
-        }
-
-        throw error;
-      }
-    });
-
-    // Diarization model management
-    // File diarization + speaker-text merge live in the typed module; the
-    // shared cancel registry below is the same instance transcription uses.
-    registerFileDiarizationHandlers(ipcMain, {
-      diarizationManager: this.diarizationManager,
-      resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
-      convertToWav: (inputPath, outputPath, options) => require("./ffmpegUtils").convertToWav(inputPath, outputPath, options),
-      createTempWavPath: () =>
-        path.join(require("./safeTempDir").getSafeTempDir(), `ow-diarize-${Date.now()}.wav`),
-      fileSize: (filePath) => fs.statSync(filePath).size,
-      resolveClusterThreshold: (durationSeconds, requestedThreshold) =>
-        require("./diarizationPolicy").resolveClusterThreshold(durationSeconds, requestedThreshold),
-      dropNegligibleClusters: (segments) =>
-        require("./diarizationPolicy").dropNegligibleClusters(segments),
-      pcm16Mono16kBytesPerSecond: require("./transcriptionTimeout").PCM16_MONO_16K_BYTES_PER_SECOND,
-      maxSpeakerCount: MAX_SPEAKER_COUNT,
-      removeFile: (filePath) => fs.unlinkSync(filePath),
-      mergeSpeakersWithText: (segments, text, duration) =>
-        require("./speakerMerge").mergeSpeakersWithText(segments, text, duration),
-      formatSpeakerTranscript: (merged) => require("./speakerMerge").formatSpeakerTranscript(merged),
-      uploadCancelRegistry: this._uploadCancelRegistry,
-      logDebug: (message, data) => debugLogger.debug(message, data),
-      logError: (message, data) => debugLogger.error(message, data),
-    });
-
     ipcMain.handle("cleanup-app", async (event) => {
       const fs = require("fs");
       const os = require("os");
@@ -1648,82 +1435,6 @@ class IPCHandlers {
 
 
 
-    ipcMain.handle(
-      "proxy-xai-transcription",
-      serializeIpcError(async (event, { audioBuffer, language, keyterms }) => {
-        const apiKey = this.environmentManager.getXaiKey();
-        if (!apiKey) {
-          throw new Error("xAI API key not configured");
-        }
-
-        const formData = new FormData();
-        const audioBlob = new Blob([Buffer.from(audioBuffer)], { type: "audio/webm" });
-        formData.append("file", audioBlob, "audio.webm");
-        const { XAI_STT_LANGUAGES, XAI_STT_URL } = await import("./transcriptionRoute.ts");
-        if (language && language !== "auto" && XAI_STT_LANGUAGES.has(language)) {
-          formData.append("language", language);
-          formData.append("format", "true");
-        }
-        if (keyterms && keyterms.length > 0) {
-          for (const term of keyterms) {
-            formData.append("keyterm", term);
-          }
-        }
-
-        const response = await proxyFetch(XAI_STT_URL, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}` },
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`xAI API Error: ${response.status} ${errorText}`);
-        }
-
-        return await response.json();
-      })
-    );
-
-    ipcMain.handle(
-      "proxy-mistral-transcription",
-      serializeIpcError(async (event, { audioBuffer, model, language, contextBias }) => {
-        const apiKey = this.environmentManager.getMistralKey();
-        if (!apiKey) {
-          throw new Error("Mistral API key not configured");
-        }
-
-        const { MISTRAL_TRANSCRIPTION_URL } = await import("./transcriptionRoute.ts");
-        const formData = new FormData();
-        const audioBlob = new Blob([Buffer.from(audioBuffer)], { type: "audio/webm" });
-        formData.append("file", audioBlob, "audio.webm");
-        formData.append("model", model || "voxtral-mini-latest");
-        if (language && language !== "auto") {
-          formData.append("language", language);
-        }
-        if (contextBias && contextBias.length > 0) {
-          for (const token of contextBias) {
-            formData.append("context_bias", token);
-          }
-        }
-
-        const response = await proxyFetch(MISTRAL_TRANSCRIPTION_URL, {
-          method: "POST",
-          headers: {
-            "x-api-key": apiKey,
-          },
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Mistral API Error: ${response.status} ${errorText}`);
-        }
-
-        return await response.json();
-      })
-    );
-
     ipcMain.handle("get-corti-client-id", async () => {
       return this.environmentManager.getCortiClientId();
     });
@@ -1739,62 +1450,6 @@ class IPCHandlers {
     ipcMain.handle("save-corti-client-secret", async (event, key) => {
       return this.environmentManager.saveCortiClientSecret(key);
     });
-
-    ipcMain.handle(
-      "proxy-corti-transcription",
-      serializeIpcError(async (event, { audioBuffer, language, environment, tenant }) => {
-        const clientId = this.environmentManager.getCortiClientId();
-        const clientSecret = this.environmentManager.getCortiClientSecret();
-        if (!clientId || !clientSecret) {
-          throw new Error("Corti credentials not configured");
-        }
-
-        const { transcribeAudio } = require("./cortiTranscription");
-        return await transcribeAudio({
-          environment,
-          tenant,
-          clientId,
-          clientSecret,
-          audioBuffer,
-          language,
-        });
-      })
-    );
-
-    ipcMain.handle("get-tinfoil-chat-models", async () => {
-      return getTinfoilChatModels();
-    });
-
-    // Enclave attestation is Node-only, so batch transcription is proxied through main.
-    ipcMain.handle(
-      "proxy-tinfoil-transcription",
-      serializeIpcError(async (event, { audioBuffer, language, prompt }) => {
-        return await transcribeWithTinfoil({
-          audioBuffer: Buffer.from(audioBuffer),
-          fileName: "audio.webm",
-          contentType: "audio/webm",
-          language,
-          prompt,
-          apiKey: this.environmentManager.getTinfoilKey(),
-        });
-      })
-    );
-
-    // Gemini's Interactions API takes JSON with inline base64 audio, not
-    // OpenAI-compatible multipart, so batch transcription is proxied through main.
-    ipcMain.handle(
-      "proxy-gemini-transcription",
-      serializeIpcError(async (event, { audioBuffer, model, language, keyterms }) => {
-        return await transcribeWithGemini({
-          audioBuffer: Buffer.from(audioBuffer),
-          model,
-          contentType: "audio/webm",
-          language,
-          keyterms,
-          apiKey: this.environmentManager.getGeminiKey(),
-        });
-      })
-    );
 
     ipcMain.handle("get-custom-transcription-key", async () => {
       return this.environmentManager.getCustomTranscriptionKey();
@@ -1884,130 +1539,6 @@ class IPCHandlers {
     });
     ipcMain.handle("save-vertex-api-key", async (event, key) => {
       return this.environmentManager.saveVertexApiKey(key);
-    });
-
-    // Enterprise provider test connection
-    ipcMain.handle("test-enterprise-connection", async (event, provider, config) => {
-      const {
-        mapEnterpriseError,
-        runAbortableOperation,
-        runBedrockRequest,
-        validateEnterpriseEndpoint,
-      } = require("./enterpriseProviderErrors");
-      let runtime;
-      try {
-        const { generateText } = require("ai");
-        const { getEnterpriseAIModel } = require("./enterpriseAiProviders");
-
-        const resolveModel = (abortSignal) =>
-          runAbortableOperation(async () => {
-            runtime = resolveEnterpriseRuntime(provider, config?.model || "test", config);
-            abortSignal?.throwIfAborted();
-            validateEnterpriseEndpoint(runtime.enterprise.azureEndpoint);
-            return getEnterpriseAIModel(
-              runtime.provider,
-              runtime.model,
-              runtime.apiKey,
-              runtime.enterprise
-            );
-          }, abortSignal);
-
-        if (provider === "bedrock") {
-          await runBedrockRequest(async () => {
-            const abortSignal = AbortSignal.timeout(config?.timeoutMs || 30_000);
-            const model = await resolveModel(abortSignal);
-            return generateText({
-              model,
-              prompt: "Say hello in one word.",
-              maxOutputTokens: CONNECTION_TEST_MAX_OUTPUT_TOKENS,
-              abortSignal,
-              maxRetries: 0,
-            });
-          });
-        } else {
-          const model = await resolveModel();
-          await generateText({
-            model,
-            prompt: "Say hello in one word.",
-            maxOutputTokens: CONNECTION_TEST_MAX_OUTPUT_TOKENS,
-          });
-        }
-
-        return { success: true };
-      } catch (err) {
-        const mappingConfig =
-          runtime?.provider === "bedrock" && runtime.enterprise?.bedrockRegion
-            ? { ...(config || {}), bedrockRegion: runtime.enterprise.bedrockRegion }
-            : config;
-        const mapped = mapEnterpriseError(provider, err, mappingConfig);
-        return {
-          success: false,
-          error: mapped.message,
-          messageKey: mapped.messageKey,
-          messageParams: mapped.messageParams,
-          action: mapped.action,
-          actionKey: mapped.actionKey,
-          copyCommand: mapped.copyCommand,
-          retryable: mapped.retryable,
-          technicalDetails: mapped.technicalDetails,
-        };
-      }
-    });
-
-    // Lists the text models the account serves in the selected region,
-    // resolved to invocable IDs (bare on-demand or geo-scoped profile IDs).
-    ipcMain.handle("bedrock-list-models", async (event, config) => {
-      const { mapEnterpriseError } = require("./enterpriseProviderErrors");
-      try {
-        const runtime = resolveEnterpriseRuntime("bedrock", config?.model || "test", config);
-        const {
-          BedrockClient,
-          ListFoundationModelsCommand,
-          paginateListInferenceProfiles,
-        } = require("@aws-sdk/client-bedrock");
-        const { normalizeBedrockCatalog } = require("./bedrockCatalog");
-
-        const region = runtime.enterprise.bedrockRegion || "us-east-1";
-        let credentials;
-        if (runtime.enterprise.bedrockProfile) {
-          const { fromNodeProviderChain } = require("@aws-sdk/credential-providers");
-          credentials = fromNodeProviderChain({ profile: runtime.enterprise.bedrockProfile });
-        } else if (
-          runtime.enterprise.bedrockAccessKeyId &&
-          runtime.enterprise.bedrockSecretAccessKey
-        ) {
-          credentials = {
-            accessKeyId: runtime.enterprise.bedrockAccessKeyId,
-            secretAccessKey: runtime.enterprise.bedrockSecretAccessKey,
-            sessionToken: runtime.enterprise.bedrockSessionToken || undefined,
-          };
-        }
-        const client = new BedrockClient({ region, ...(credentials ? { credentials } : {}) });
-
-        const [foundationModels, profileSummaries] = await Promise.all([
-          client.send(new ListFoundationModelsCommand({ byOutputModality: "TEXT" })),
-          (async () => {
-            const summaries = [];
-            const paginator = paginateListInferenceProfiles(
-              { client },
-              { typeEquals: "SYSTEM_DEFINED" }
-            );
-            for await (const page of paginator) {
-              summaries.push(...(page.inferenceProfileSummaries || []));
-            }
-            return summaries;
-          })(),
-        ]);
-
-        return {
-          success: true,
-          models: normalizeBedrockCatalog(foundationModels.modelSummaries, profileSummaries),
-        };
-      } catch (err) {
-        debugLogger.error("Bedrock model listing error:", err);
-        const mapped = mapEnterpriseError("bedrock", err, config || {});
-        return { success: false, error: mapped.message };
-      }
     });
 
     ipcMain.handle("get-effective-default-hotkey", async () => {
@@ -2216,172 +1747,6 @@ class IPCHandlers {
         mode: "native",
         strategy: "native",
       });
-    });
-
-    ipcMain.handle("retry-transcription", async (event, id, settings) => {
-      const buffer = this.audioStorageManager.getAudioBuffer(id);
-      if (!buffer) return { success: false, error: "Audio file not found" };
-      try {
-        let result;
-        const preferredLanguage = settings?.preferredLanguage;
-        const language =
-          preferredLanguage && preferredLanguage !== "auto"
-            ? preferredLanguage.split("-")[0]
-            : undefined;
-        const {
-          resolveTranscriptionRoute,
-          byokSizeCapError,
-          MISTRAL_TRANSCRIPTION_URL,
-          XAI_STT_URL,
-        } = await import("./transcriptionRoute.ts");
-        // Renderer pre-flight owns policy; retry re-routes stored audio through
-        // whatever is selected NOW.
-        const route = resolveTranscriptionRoute({
-          settings: settings || {},
-          providers: transcriptionProviderBaseUrls(),
-          request: { effectiveLanguage: language },
-        });
-
-        // A misconfigured direct route fails closed.
-        if (route.transport === "error") {
-          const err = new Error(route.message);
-          if (route.code) err.code = route.code;
-          if (route.messageKey) err.messageKey = route.messageKey;
-          throw err;
-        }
-
-        if (route.transport === "proxied" && route.provider === "tinfoil") {
-          // Attested transport, so this can't reuse the generic fetch below.
-          const { text, model } = await transcribeWithTinfoil({
-            audioBuffer: buffer,
-            fileName: "audio.webm",
-            contentType: "audio/webm",
-            language: route.language,
-            apiKey: this.environmentManager.getTinfoilKey(),
-          });
-          if (text) result = { text, source: "tinfoil", model };
-        } else if (route.transport === "proxied" && route.provider === "corti") {
-          // Corti uses OAuth + an interaction-based REST flow, so it can't use
-          // the generic fetch below.
-          const clientId = this.environmentManager.getCortiClientId();
-          const clientSecret = this.environmentManager.getCortiClientSecret();
-          if (!clientId || !clientSecret) {
-            throw new Error("Corti credentials not configured. Add them in Settings.");
-          }
-          const { transcribeAudio } = require("./cortiTranscription");
-          const { text } = await transcribeAudio({
-            environment: route.cortiEnvironment,
-            tenant: route.cortiTenant,
-            clientId,
-            clientSecret,
-            audioBuffer: buffer,
-            language: route.language,
-          });
-          if (text) result = { text, source: "corti", model: route.model };
-        } else if (route.transport === "proxied" && route.provider === "gemini") {
-          if (route.sizeCapBytes && buffer.byteLength > route.sizeCapBytes) {
-            throw new Error(byokSizeCapError(route.sizeCapBytes));
-          }
-          const { text } = await transcribeWithGemini({
-            audioBuffer: buffer,
-            model: route.model,
-            contentType: "audio/webm",
-            language: route.language,
-            apiKey: this.environmentManager.getGeminiKey(),
-          });
-          if (text) result = { text, source: "gemini", model: route.model };
-        } else {
-          // mistral/xai have no OpenAI-compatible endpoint — main talks to them
-          // directly; everything else consumes the route endpoint as-is.
-          const provider = route.provider;
-          const endpoint =
-            provider === "mistral"
-              ? MISTRAL_TRANSCRIPTION_URL
-              : provider === "xai"
-                ? XAI_STT_URL
-                : route.endpoint;
-          const apiKey =
-            provider === "mistral"
-              ? this.environmentManager.getMistralKey()
-              : provider === "xai"
-                ? this.environmentManager.getXaiKey()
-                : route.auth.keyRef === "custom"
-                  ? this.environmentManager.getCustomTranscriptionKey()
-                  : route.auth.keyRef === "groq"
-                    ? this.environmentManager.getGroqKey()
-                    : this.environmentManager.getOpenAIKey();
-          if (!apiKey && provider !== "custom") {
-            throw new Error(`${provider} API key not configured`);
-          }
-
-          const formData = new FormData();
-          formData.append("file", new Blob([buffer], { type: "audio/webm" }), "audio.webm");
-          if (provider === "xai") {
-            // xAI STT does not accept a model field; the route pre-filters language
-            if (route.language) {
-              formData.append("language", route.language);
-              formData.append("format", "true");
-            }
-          } else {
-            formData.append("model", route.model);
-            if (route.language) formData.append("language", route.language);
-          }
-          const headers = {};
-          if (provider === "mistral") {
-            headers["x-api-key"] = apiKey;
-          } else if (apiKey) {
-            if (route.transport === "http-batch" && route.auth.scheme === "azure-api-key") {
-              headers["api-key"] = apiKey;
-            } else {
-              headers.Authorization = `Bearer ${apiKey}`;
-            }
-          }
-
-          const response = await proxyFetch(endpoint, { method: "POST", headers, body: formData });
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`${provider} API Error: ${response.status} ${errorText}`);
-          }
-          const data = await response.json();
-          if (data?.text) {
-            result = { text: data.text, source: provider, model: route.model };
-          }
-        }
-
-        if (!result?.text) {
-          return { success: false, error: "No transcription engine available" };
-        }
-
-        this.databaseManager.updateTranscriptionText(id, result.text, result.text);
-        this.databaseManager.updateTranscriptionStatus(id, "completed");
-        const providerName = result.source || "local";
-        const modelName = result.model || null;
-        const existingRow = this.databaseManager.getTranscriptionById(id);
-        this.databaseManager.updateTranscriptionAudio(id, {
-          hasAudio: 1,
-          audioDurationMs: existingRow?.audio_duration_ms ?? null,
-          provider: providerName,
-          model: modelName,
-        });
-        const updated = this.databaseManager.getTranscriptionById(id);
-        if (updated) {
-          setImmediate(() => {
-            broadcastToWindows("transcription-updated", updated);
-            // A row that just reached "completed" is newly eligible.
-          });
-        }
-        return { success: true, transcription: updated };
-      } catch (error) {
-        debugLogger.error(
-          "Retry transcription failed",
-          { id, error: error.message, code: error.code },
-          "audio-storage"
-        );
-        if (error.code) {
-          return { success: false, error: error.message, code: error.code, ...error };
-        }
-        return { success: false, error: error.message };
-      }
     });
 
     let meetingTranscriptionStartInProgress = false;

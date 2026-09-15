@@ -219,3 +219,4 @@ export class MicrosoftCalendarOAuth {
 }
 
 module.exports = MicrosoftCalendarOAuth;
+module.exports.MicrosoftCalendarOAuth = MicrosoftCalendarOAuth;

@@ -523,4 +523,5 @@ export class MicrosoftCalendarManager {
 }
 
 module.exports = MicrosoftCalendarManager;
+module.exports.MicrosoftCalendarManager = MicrosoftCalendarManager;
 module.exports.normalizeGraphDateTime = normalizeGraphDateTime;

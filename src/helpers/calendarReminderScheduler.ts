@@ -201,3 +201,4 @@ export class CalendarReminderScheduler {
 }
 
 module.exports = CalendarReminderScheduler;
+module.exports.CalendarReminderScheduler = CalendarReminderScheduler;

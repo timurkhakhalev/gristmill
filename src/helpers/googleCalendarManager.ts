@@ -485,3 +485,4 @@ export class GoogleCalendarManager {
 }
 
 module.exports = GoogleCalendarManager;
+module.exports.GoogleCalendarManager = GoogleCalendarManager;

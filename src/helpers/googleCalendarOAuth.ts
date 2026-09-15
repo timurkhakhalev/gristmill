@@ -203,3 +203,6 @@ export class GoogleCalendarOAuth {
 }
 
 module.exports = GoogleCalendarOAuth;
+// Named export must stay reachable through the CJS surface for the
+// emitted interop requires used by the migrated managers.
+module.exports.GoogleCalendarOAuth = GoogleCalendarOAuth;

@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **130 JS, 43 TS, 1 MTS и 25 JSON**
+а не всеми файлами в каталоге helpers. В нём **130 JS, 48 TS, 1 MTS и 25 JSON**
 (только `src/`; main/preload/worker — отдельные entry points). Entry points:
 main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
@@ -165,13 +165,14 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/contracts/actions.ts`
 - `src/contracts/localFileTranscription.ts`
 - `src/contracts/uploadTranscription.ts`
+- `src/contracts/reasoning.ts`
 - `src/contracts/calendarAvailability.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
 - `src/constants/speakerDetection.json`
 - `src/constants/whisperVad.json`
 - `src/helpers/abortError.js`
-- `src/helpers/agentStreamRequestRegistry.js`
+- `src/helpers/agentStreamRequestRegistry.ts`
 - `src/helpers/anthropicResponse.js`
 - `src/helpers/appleCalendarManager.js`
 - `src/helpers/assemblyAiStreaming.js`
@@ -190,6 +191,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/preload/actionsBridge.ts`
 - `src/preload/localFileTranscriptionBridge.ts`
 - `src/preload/uploadTranscriptionBridge.ts`
+- `src/preload/reasoningBridge.ts`
 - `src/preload/calendarAvailabilityBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
@@ -304,6 +306,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/fileDiarizationIpcHandlers.ts`
 - `src/helpers/uploadCancelIpcHandler.ts`
 - `src/helpers/uploadCancelRegistry.ts`
+- `src/helpers/reasoningIpcHandlers.ts`
 - `src/helpers/calendarAvailability.ts`
 - `src/helpers/calendarAvailabilityService.ts`
 - `src/helpers/calendarAvailabilityIpcHandler.ts`
@@ -347,7 +350,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/locales/zh-TW/prompts.json`
 - `src/locales/zh-TW/translation.json`
 - `src/models/modelRegistryData.json`
-- `src/services/localReasoningBridge.js`
+- `src/services/localReasoningBridge.ts`
 - `src/services/transcriptionBaseUrl.ts`
 - `src/utils/audioUtils.js`
 - `src/utils/process.js`
@@ -647,3 +650,66 @@ smoke. Inventory графа Electron: 131 JS, 37 TS, 1 MTS, 25 JSON.
 `test/stores/batchQueueCancel.test.js` (hard cancel текущего item и
 игнорирование позднего результата). Inventory графа Electron:
 130 JS, 43 TS, 1 MTS, 25 JSON.
+
+## Этап «main-owned reasoning IPC и enterprise streaming»
+
+15 сентября 2026 (issue #33). Оставшаяся main-owned reasoning граница
+переведена в strict TS: локальный one-shot reasoning и его availability,
+Anthropic one-shot proxy, enterprise one-shot reasoning (с sender-scoped
+Bedrock cleanup lifecycle), cancel Bedrock one-shot и полный жизненный цикл
+enterprise stream (start/cancel/part). Контракт `src/contracts/reasoning.ts`
+задаёт channel/event names, точные позиционные аргументы, дискриминированные
+success/failure results и envelope стрима; bridge `src/preload/reasoningBridge.ts`
+валидирует responses и дропает malformed envelopes до callback. Ручные
+reasoning-методы удалены из `preload.js` и `src/types/electron.ts`.
+
+- `src/helpers/agentStreamRequestRegistry.js` → strict TS (+`isActive`):
+  identity — `(senderId, requestId)`; повторный id того же sender абортит
+  прежний stream, complete идентичность-защищён. Глобальный
+  `enterpriseStreamAborts` заменён sender-scoped registry; enterprise
+  streaming использует отдельный экземпляр от Bedrock one-shot cleanup
+  (`_enterpriseReasoningRequests` / `_enterpriseStreams`), cancel одной
+  операции не затрагивает другую. Cancel lookup идёт по sender текущего
+  event; терминальный done/error отправляется только пока живой controller —
+  late terminal заменённого stream не доходит до нового stream с тем же id.
+- `src/services/localReasoningBridge.js` → strict TS (default-instance export
+  сохранён): one-active-request policy, config defaults, complete-output и
+  thinking cleanup без изменений.
+- `src/helpers/reasoningIpcHandlers.ts`: все шесть операций с узкими
+  зависимостями (environment keys, local service, provider model factory,
+  error mapper, retry/timeout helpers, transports, logger). JS provider
+  factories описаны узкими интерфейсами на границе (`EnterpriseStreamModel`
+  с compile-time pin против `LanguageModelV3`); их внутренняя конвертация —
+  отдельный этап. Bedrock retry/timeout/cancel policy, SSRF endpoint
+  validation и provider error mapping сохранены; raw provider errors в
+  renderer-facing result не попадают.
+- Stream parts: main читает `LanguageModelV3StreamPart` (SDK union) и
+  применяет узкий structured-clone adapter — обычные части (tool/input/
+  reasoning/usage/finish, binary, metadata) клонируются как есть, непереносимые
+  `raw`/`error` payload деградируют до описания; JSON-stringify всего part и
+  cast произвольного unknown в SDK part отсутствуют. Envelope-валидация
+  (`streamId` + ровно один из part/done/error) — это проверка конверта, не
+  полей SDK part. Navigation/destroy абортят provider request и снимают
+  listeners; pre-aborted signal не запускает запрос.
+- Renderer: `enterpriseChatModel` подписывается до start, фильтрует по своему
+  streamId, снимает envelope-listener и abort-listener ровно один раз во всех
+  исходах, пересылает AbortSignal в cancel operation, обрабатывает abort
+  между subscribe и start, failed invoke и late terminal events; explicit
+  cancel закрывает локальный поток без ожидания main terminal. Провайдеры
+  local/anthropic/enterprise переведены на контракт (`result.success === false`
+  вместо `!result.success` — в не-strict renderer только равенство сужает
+  дискриминированный union). BYOK/LAN streaming, useChatStreaming, tool
+  registry и chat persistence не рефакторились.
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors (baseline
+47+2 warnings); strict compiler probes в
+`test/scripts/reasoningTypeProbe.test.js` (неполные deps, неверные payloads,
+failure-arm использование, положительный граф). Characterization:
+`test/helpers/agentStreamRequestRegistry.test.js` (sender isolation,
+replacement protection), `reasoningIpc.test.js` (one-shot shapes для
+Local/Anthropic/Bedrock, cancel sender isolation, retry policy, stream
+start/parts/done/error, duplicate id, navigation/destroy, structured-clone
+roundtrip и деградация raw/error), `reasoningBridge.test.js` через bundled
+preload, `test/services/enterpriseChatModel.test.js`. Inventory графа
+Electron: 130 JS, 48 TS, 1 MTS, 25 JSON (оба конвертированных .js не входили
+в tsc-граф — они достижимы только через require; новые .ts вошли).

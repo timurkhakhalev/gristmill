@@ -102,7 +102,7 @@ function anything() {
 }
 
 function buildFakeThis() {
-  const AgentStreamRequestRegistry = require("../../src/helpers/agentStreamRequestRegistry");
+  const { AgentStreamRequestRegistry } = require("../../src/helpers/agentStreamRequestRegistry");
   const target = {
     sessionId: "test-session",
     _enterpriseReasoningRequests: new AgentStreamRequestRegistry(),

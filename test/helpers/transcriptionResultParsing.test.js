@@ -1,8 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const WhisperManager = require("../../src/helpers/whisper.js");
-const ParakeetManager = require("../../src/helpers/parakeet.js");
+const WhisperManager = require("../../src/helpers/whisper.ts");
+const ParakeetManager = require("../../src/helpers/parakeet.ts");
 
 // "No audio detected" must mean exactly that: the engine decoded the recording
 // and found silence. A malformed or error response is an engine failure and has

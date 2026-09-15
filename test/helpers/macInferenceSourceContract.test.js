@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
 test("macOS inference has no CUDA or Vulkan control plane", () => {
   const sources = [
-    read("src/helpers/whisperServer.js"),
+    read("src/helpers/whisperServer.ts"),
     read("src/helpers/ipcHandlers.js"),
     read("preload.js"),
     read("src/types/electron.ts"),

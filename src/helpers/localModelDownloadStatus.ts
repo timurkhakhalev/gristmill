@@ -1,14 +1,22 @@
-class LocalModelDownloadStatus {
-  constructor() {
-    this.downloads = new Map();
-    this.sequence = 0;
-  }
+export interface LocalModelDownloadState {
+  modelType: string;
+  modelId: string;
+  phase: "downloading" | "installing";
+  progress: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  sequence: number;
+}
 
-  _key(modelType, modelId) {
+export class LocalModelDownloadStatus {
+  private downloads = new Map<string, LocalModelDownloadState>();
+  private sequence = 0;
+
+  _key(modelType: string, modelId: string): string {
     return `${modelType}:${modelId}`;
   }
 
-  start(modelType, modelId) {
+  start(modelType: string, modelId: string): LocalModelDownloadState {
     const key = this._key(modelType, modelId);
     const existing = this.downloads.get(key);
     if (existing) return existing;
@@ -16,7 +24,7 @@ class LocalModelDownloadStatus {
     const status = {
       modelType,
       modelId,
-      phase: "downloading",
+      phase: "downloading" as const,
       progress: 0,
       downloadedBytes: 0,
       totalBytes: 0,
@@ -26,11 +34,15 @@ class LocalModelDownloadStatus {
     return status;
   }
 
-  has(modelType, modelId) {
+  has(modelType: string, modelId: string): boolean {
     return this.downloads.has(this._key(modelType, modelId));
   }
 
-  update(modelType, modelId, updates) {
+  update(
+    modelType: string,
+    modelId: string,
+    updates: Partial<Omit<LocalModelDownloadState, "modelType" | "modelId" | "sequence">>
+  ): LocalModelDownloadState {
     const key = this._key(modelType, modelId);
     const current = this.downloads.get(key) || this.start(modelType, modelId);
     const status = {
@@ -44,16 +56,15 @@ class LocalModelDownloadStatus {
     return status;
   }
 
-  finish(modelType, modelId) {
+  finish(modelType: string, modelId: string): LocalModelDownloadState | null {
     const key = this._key(modelType, modelId);
     const current = this.downloads.get(key);
     this.downloads.delete(key);
     return current ? { ...current, sequence: ++this.sequence } : null;
   }
 
-  getActiveDownloads() {
+  getActiveDownloads(): LocalModelDownloadState[] {
     return Array.from(this.downloads.values());
   }
 }
 
-module.exports = LocalModelDownloadStatus;

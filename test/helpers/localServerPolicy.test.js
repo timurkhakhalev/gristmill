@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/localServerPolicy.js");
+const load = () => import("../../src/helpers/localServerPolicy.ts");
 
 const LOCAL_CLEANUP = {
   useCleanupModel: true,

@@ -22,7 +22,7 @@ test("every mapped code resolves to a key that exists in en", async () => {
 
 test("local sherpa silence resolves to the upload no-speech message, while decode failures do not", async () => {
   const { transcriptionErrorKey } = await load();
-  const ParakeetManager = require("../../src/helpers/parakeet.js");
+  const ParakeetManager = require("../../src/helpers/parakeet.ts");
   const manager = new ParakeetManager();
   const silence = manager.parseParakeetResult({ text: "", elapsed: 0 });
 

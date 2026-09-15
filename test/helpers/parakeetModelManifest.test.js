@@ -16,7 +16,7 @@ const manifest = {
   archive_bytes: info.expectedSizeBytes,
   archive_sha256: "a".repeat(64),
 };
-const managerFile = path.resolve(__dirname, "../../src/helpers/parakeet.js");
+const managerFile = path.resolve(__dirname, "../../src/helpers/parakeet.ts");
 
 function setup(t, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "parakeet-manifest-"));

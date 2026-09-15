@@ -1158,3 +1158,60 @@ strict probes `test/scripts/providerAdaptersTypeProbe.test.js` — коды
 (2345×2/2554×4/2322×2/2352/2559) сверены фактическим tsc-прогоном,
 positive graph чист. Inventory графа Electron: 80 JS, 105 TS, 1 MTS,
 25 JSON.
+
+## Этап «локальные Whisper/Parakeet модели: lifecycle и серверы»
+
+16 сентября 2026 (issue #43). Жизненный цикл локальных моделей
+(14 файлов: `whisper`, `whisperServer`, `whisperVadConfig`, `parakeet`,
+`parakeetServer`, `parakeetWsServer`, `parakeetWsResult`,
+`parakeetCapability`, `parakeetModelInfo`, `localTranscriptionModels`,
+`localModelDownloadStatus`, `localModelSelections`, `localServerPolicy`,
+`transcriptionTimeout`) переведён в strict TS; менеджеры Whisper и Parakeet
+остаются раздельными, метаданные — в существующем JSON-реестре
+(`modelRegistryData.json` через `require` + типизированную проекцию
+`WhisperModelRegistryEntry`).
+
+- Новый контракт `src/contracts/localModelLifecycle.ts`: 28 каналов
+  (`localModelChannels`), `downloadProgressEventSchema`
+  (sequence-stamped), `whisperVadConfigSchema`, `modelNameSchema` и
+  результатные интерфейсы (`LocalModelStatusRow`, `LocalModelListResult`,
+  `LocalModelActionResult`, `InstallCheckResult`, `ServerLifecycleResult`,
+  `ServerStatusResult`, `FfmpegAvailabilityResult`, `VadConfigResult`,
+  `DiagnosticsResult`), собранные в `LocalModelLifecycleApi`.
+- `whisper.ts`: типизированный `WhisperManager` (download process, ffmpeg
+  availability cache, rewarm gating через `shouldRewarmOnWake`), опции
+  transcribe `{ signal, vadEnabled, ... }`. `whisperServer.ts`:
+  thread resolution (env/auto/manual с clamp), VAD signature, inference
+  options (`INFERENCE_DECODER_FIELDS`), `waitForReady`. Аргументы сервера
+  собирает `buildWhisperServerArgs`.
+- `parakeet*.ts`: manifest fetch через типизированный `fetchJson`,
+  extraction retry с кодом ошибки, offline/online пути WS-сервера
+  (`parakeetWsServer.ts` с типизированными ws-callbacks),
+  streaming finish через `OnlineAccumulator` (`parakeetWsResult.ts`).
+- IPC: `registerLocalModelLifecycleHandlers` (28 каналов,
+  `src/helpers/localModelLifecycleIpcHandlers.ts`) с узкими
+  `WhisperManagerLike`/`ParakeetManagerLike` deps; download-семантика
+  сохранена посимвольно (status-tracker sequence, complete на успехе,
+  подавление error-события при `DOWNLOAD_IN_PROGRESS`). Parakeet server
+  start/stop персистит provider selection только при успехе.
+  `whisper-vad-get/set-config` валидируются `whisperVadConfigSchema`.
+  Каналы `transcribe-local-whisper`/`transcribe-local-parakeet` остались
+  в `preload.js`/`ipcHandlers.js` — они принадлежат vertical #32.
+- Bridge: `src/preload/localModelLifecycleBridge.ts` (schema-validated
+  `subscribeProgress`, единый boundary-cast `passthroughResult<T>` на
+  десериализации). Слушатели прогресса в renderer принимают `(data)` без
+  `(_event, ...)` (bridge валидирует и передаёт только payload).
+- Экспорт-модель: классы — `export class`, функции — named exports без
+  `module.exports`. Emitted-graph prod-path smoke (tsc --outDir + compiled
+  consumer) — exit 0. `VAD_LIMITS` экспортирован (единственный новый
+  warning устранён).
+- Тесты: спецификаторы `.js`→`.ts` в 8 тест-файлах;
+  characterization `test/helpers/localModelLifecycleIpc.test.js`
+  (sequence/complete/error события, DOWNLOAD_IN_PROGRESS, persist-on-success,
+  invalid model name, invalid VAD payload); strict probes
+  `test/scripts/localModelLifecycleTypeProbe.test.js` — коды (2740/2322/2339)
+  сверены фактическим tsc-прогоном.
+
+Проверка: typecheck 0 ошибок (main/renderer/selectors); lint 0 errors
+(39+2 warnings — baseline, без новых). Inventory графа Electron: 67 JS,
+121 TS, 1 MTS, 25 JSON.

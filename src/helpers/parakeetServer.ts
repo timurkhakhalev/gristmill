@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
-const debugLogger = require("./debugLogger");
-const { getModelsDirForService } = require("./modelDirUtils");
+const debugLogger = require("./debugLogger.js");
+const { getModelsDirForService } = require("./modelDirUtils.js");
 const {
   getFFmpegPath,
   isWavFormat,
@@ -9,16 +9,16 @@ const {
   convertToWav,
   wavToFloat32Samples,
   computeFloat32RMS,
-} = require("./ffmpegUtils");
-const { getSafeTempDir } = require("./safeTempDir");
-const { createAbortError } = require("./abortError");
-const ParakeetWsServer = require("./parakeetWsServer");
-const {
+} = require("./ffmpegUtils.js");
+import { getSafeTempDir } from "./safeTempDir.js";
+import { createAbortError } from "./abortError.js";
+import { ParakeetWsServer } from "./parakeetWsServer.js";
+import {
   getModelRuntime,
   getModelType,
   getRequiredModelFiles,
   resolveModelLanguage,
-} = require("./parakeetModelInfo");
+} from "./parakeetModelInfo.js";
 
 const SAMPLE_RATE = 16000;
 const BYTES_PER_SAMPLE = 4; // float32
@@ -31,28 +31,26 @@ const COHERE_MAX_SEGMENT_SECONDS = 30;
 const ONLINE_MAX_SEGMENT_SECONDS = 600;
 const SILENCE_RMS_THRESHOLD = 0.001;
 
-class ParakeetServerManager {
-  constructor() {
-    this.wsServer = new ParakeetWsServer();
-  }
+export class ParakeetServerManager {
+  wsServer = new ParakeetWsServer();
 
-  getBinaryPath(runtime) {
+  getBinaryPath(runtime: "offline" | "online"): string | null {
     return this.wsServer.getWsBinaryPath(runtime);
   }
 
-  isAvailable(runtime) {
+  isAvailable(runtime: "offline" | "online"): boolean {
     return this.wsServer.isAvailable(runtime);
   }
 
-  hasAnyWsBinary() {
+  hasAnyWsBinary(): boolean {
     return this.wsServer.hasAnyWsBinary();
   }
 
-  getModelsDir() {
+  getModelsDir(): string {
     return getModelsDirForService("parakeet");
   }
 
-  isModelDownloaded(modelName) {
+  isModelDownloaded(modelName: string): boolean {
     const modelDir = path.join(this.getModelsDir(), modelName);
     if (!fs.existsSync(modelDir)) return false;
 
@@ -61,7 +59,7 @@ class ParakeetServerManager {
     );
   }
 
-  async _ensureWav(audioBuffer) {
+  async _ensureWav(audioBuffer: Buffer): Promise<{ wavBuffer: Buffer; filesToCleanup: string[] }> {
     if (isWavFormat(audioBuffer)) {
       const format = parseWavFormat(audioBuffer);
       if (
@@ -98,7 +96,11 @@ class ParakeetServerManager {
     return { wavBuffer, filesToCleanup: [tempInputPath, tempWavPath] };
   }
 
-  async transcribe(audioBuffer, options = {}) {
+  async transcribe(audioBuffer: Buffer, options: {
+    modelName?: string;
+    language?: string | null;
+    signal?: AbortSignal;
+  } = {}): Promise<{ text: string; elapsed: number; truncated?: boolean }> {
     // signal is optional; only cancellable uploads pass one. Aborting stops
     // scheduling further segments — the in-flight one finishes server-side.
     const { modelName = "parakeet-tdt-0.6b-v3", language, signal } = options;
@@ -210,7 +212,7 @@ class ParakeetServerManager {
     }
   }
 
-  _cleanupFiles(filePaths) {
+  _cleanupFiles(filePaths: string[]): void {
     for (const filePath of filePaths) {
       try {
         if (fs.existsSync(filePath)) {
@@ -219,13 +221,13 @@ class ParakeetServerManager {
       } catch (err) {
         debugLogger.warn("Failed to cleanup temp audio file", {
           path: filePath,
-          error: err.message,
+          error: (err as Error).message,
         });
       }
     }
   }
 
-  async startServer(modelName, language) {
+  async startServer(modelName: string, language?: string | null): Promise<{ success: boolean; reason?: string; port?: number }> {
     const runtime = getModelRuntime(modelName);
     if (!this.wsServer.isAvailable(runtime)) {
       return { success: false, reason: "parakeet WS server binary not found" };
@@ -243,24 +245,23 @@ class ParakeetServerManager {
         runtime,
         resolveModelLanguage(modelName, language)
       );
-      return { success: true, port: this.wsServer.port };
+      return { success: true, port: this.wsServer.port ?? undefined };
     } catch (error) {
-      debugLogger.error("Failed to start parakeet WS server", { error: error.message });
-      return { success: false, reason: error.message };
+      debugLogger.error("Failed to start parakeet WS server", { error: (error as Error).message });
+      return { success: false, reason: (error as Error).message };
     }
   }
 
-  async stopServer() {
+  async stopServer(): Promise<void> {
     await this.wsServer.stop();
   }
 
-  getServerStatus() {
+  getServerStatus(): { available: boolean; running: boolean; starting: boolean; port: number | null; modelName: string | null } {
     return this.wsServer.getStatus();
   }
 
-  createOnlineStream(options) {
+  createOnlineStream(options: Record<string, unknown>): unknown {
     return this.wsServer.createOnlineStream(options);
   }
 }
 
-module.exports = ParakeetServerManager;

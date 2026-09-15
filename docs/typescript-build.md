@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **124 JS, 58 TS, 1 MTS и 25 JSON**
+а не всеми файлами в каталоге helpers. В нём **111 JS, 71 TS, 1 MTS и 25 JSON**
 (только `src/`; main/preload/worker — отдельные entry points). Entry points:
 main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
@@ -172,7 +172,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/config/secretKeys.js`
 - `src/constants/speakerDetection.json`
 - `src/constants/whisperVad.json`
-- `src/helpers/abortError.js`
+- `src/helpers/abortError.ts`
 - `src/helpers/agentStreamRequestRegistry.ts`
 - `src/helpers/anthropicResponse.js`
 - `src/helpers/appleCalendarManager.js`
@@ -196,7 +196,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/preload/calendarBridge.ts`
 - `src/preload/calendarAvailabilityBridge.ts`
 - `src/helpers/bedrockCatalog.js`
-- `src/helpers/binaryResolver.js`
+- `src/helpers/binaryResolver.ts`
 - `src/helpers/builtinActions.ts`
 - `src/helpers/calendarReminderScheduler.js`
 - `src/helpers/calendarSyncInterval.js`
@@ -213,14 +213,14 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/diarizationPolicy.js`
 - `src/helpers/dockManager.js`
 - `src/helpers/dockPolicy.js`
-- `src/helpers/downloadUtils.js`
+- `src/helpers/downloadUtils.ts`
 - `src/helpers/dragManager.js`
 - `src/helpers/electronProcessIds.js`
 - `src/helpers/enterpriseAiProviders.js`
 - `src/helpers/enterpriseProviderErrors.js`
 - `src/helpers/environment.js`
 - `src/helpers/externalUrlOpener.js`
-- `src/helpers/ffmpegUtils.js`
+- `src/helpers/ffmpegUtils.ts`
 - `src/helpers/geminiLiveStreaming.js`
 - `src/helpers/geminiTranscription.js`
 - `src/helpers/ggufMetadata.js`
@@ -260,7 +260,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/menuManager.js`
 - `src/helpers/microsoftCalendarManager.js`
 - `src/helpers/microsoftCalendarOAuth.js`
-- `src/helpers/modelDirUtils.js`
+- `src/helpers/modelDirUtils.ts`
 - `src/helpers/modelManagerBridge.js`
 - `src/helpers/navigationGuard.js`
 - `src/helpers/networkErrors.js`
@@ -281,19 +281,19 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/providerConnectionTest.js`
 - `src/helpers/realtimeTokenProviders.js`
 - `src/helpers/retentionSettings.ts`
-- `src/helpers/safeTempDir.js`
+- `src/helpers/safeTempDir.ts`
 - `src/helpers/secretCrypto.js`
 - `src/helpers/selfHostedTranscription.js`
-- `src/helpers/sidecarPidFile.js`
-- `src/helpers/sidecarReaper.js`
-- `src/helpers/sidecarRegistry.js`
+- `src/helpers/sidecarPidFile.ts`
+- `src/helpers/sidecarReaper.ts`
+- `src/helpers/sidecarRegistry.ts`
 - `src/helpers/speakerAssignmentPolicy.js`
 - `src/helpers/speakerCount.ts`
 - `src/helpers/speakerEmbeddings.js`
 - `src/helpers/speakerMerge.js`
 - `src/helpers/stripThinking.js`
 - `src/helpers/systemDefaultMicrophone.js`
-- `src/helpers/systemTar.js`
+- `src/helpers/systemTar.ts`
 - `src/helpers/urlDownloadIpcHandlers.ts`
 - `src/helpers/vocabularyEvents.ts`
 - `src/helpers/vocabularyIpcHandlers.ts`
@@ -324,7 +324,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/transcriptionTimeout.js`
 - `src/helpers/tray.js`
 - `src/helpers/uploadTimestamps.ts`
-- `src/helpers/urlAudioDownloader.js`
+- `src/helpers/urlAudioDownloader.ts`
 - `src/helpers/whisper.js`
 - `src/helpers/whisperServer.js`
 - `src/helpers/whisperVadConfig.js`
@@ -357,8 +357,8 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/services/localReasoningBridge.ts`
 - `src/services/transcriptionBaseUrl.ts`
 - `src/utils/audioUtils.js`
-- `src/utils/process.js`
-- `src/utils/serverUtils.js`
+- `src/utils/process.ts`
+- `src/utils/serverUtils.ts`
 - `src/utils/urlUtils.ts`
 - `src/workers/onnxWorker.js`
 
@@ -902,3 +902,47 @@ TS-источник работает и в emitted Node CJS graph, и в rendere
 42+2); обе armы shared-пробы и entrypoint-проба проходят под CLI-tsc
 эквивалентами. Inventory графа Electron: 124 JS, 58 TS, 1 MTS, 25 JSON; срез `src`:
 133 JS, 0 JSX, 1 MJS (vite.config), 250 TS, 254 TSX, 1 MTS.
+
+## Этап «download/filesystem и sidecar process primitives»
+
+15 сентября 2026 (issue #37). I/O-примитивы, на которых стоят model
+downloads, FFmpeg и native server lifecycle, переведены в strict TS:
+`abortError`, `downloadUtils`, `systemTar`, `ffmpegUtils`, `safeTempDir`,
+`modelDirUtils`, `binaryResolver`, `sidecarPidFile`, `sidecarReaper`,
+`sidecarRegistry`, `utils/process`, `utils/serverUtils` и
+`urlAudioDownloader`. Отдельные functions/modules сохранены; общего job
+runner нет; resource owner и AbortSignal-протяжка — прежние.
+
+- Download/archive: Range/resume, 200-vs-206, retryable codes, TLS/no-retry,
+  stall timer, temp close-before-unlink (cleanup ждёт `close` pending
+  open-а), atomic rename c EXDEV-fallback, stale-tmp sweep и disk-space
+  reservation без изменений; типизированы `DownloadSignal` (структурный
+  сигнал менеджеров, не DOM AbortSignal), `DownloadError` (code/isAbort/
+  isHttpError/isTlsError), progress callback и результат попытки. Транспорт
+  (Electron net / node https) не менялся.
+- `urlAudioDownloader` — та же implementation за типизированным url-download
+  IPC: HTTPS-only, запрет YouTube, DNS/private-address/NAT64 проверки,
+  redirect-лимиты и private-host re-check, 500MiB cap, connect/stall
+  таймауты, temp ownership и close-before-unlink. SSRF policy не смешана с
+  provider endpoint policy. Electron net для proxy-пути — по-прежнему
+  ленивый require с test seam `_setElectronNetForTests`.
+- FFmpeg: типизированы conversion options (`ConvertToWavOptions` с signal из
+  #32), split result, WAV format/samples, segment buffers; аргументы
+  child-процессов остаются массивами execFile/spawn (никаких shell-строк);
+  пути packaged/development без изменений.
+- Sidecar: PID-file читается как unknown и валидируется до использования
+  (integer > 0); name+command matching перед kill, SIGTERM grace → SIGKILL →
+  сохранение surviving PID, shutdown deadline/allSettled, name+command
+  фрагменты — прежние. Новой platform abstraction нет.
+- Интеграция: extensionless CJS-require менеджеров (`whisper.js`,
+  `parakeet.js`, `llamaServer.js`, `modelManagerBridge.js`, `diarization.js`,
+  `appleCalendarManager.js`, `cliBridge.js` и др.) разрешаются в emitted
+  `.js`; тесты с явными `.js`-спецификаторами переведены на `.ts`
+  (downloadUtils/modelDirUtils в 6 файлах + `m1IdentitySourceContract`).
+  Второго wrapper-пути нет.
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors (41+2
+warnings — на одно ниже прежнего baseline: устранён unused `e` в
+`utils/process`); strict compiler probes в
+`test/scripts/downloadsTypeProbe.test.js` (негативные call sites + полный
+positive graph). Inventory графа Electron: 111 JS, 71 TS, 1 MTS, 25 JSON.

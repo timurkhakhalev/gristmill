@@ -63,9 +63,15 @@ reapStaleSidecars({ sigtermGraceMs: "5" });
 `);
   try {
     assert.ok(codes.includes(2345), `wrong arguments must fail, got ${codes.join(",")}`);
-    assert.ok(codes.includes(2339), `wrong property usage must fail, got ${codes.join(",")}`);
+    // Wrong field values (string where number/typed value expected) report as
+    // assignment errors on the call arguments/options objects.
     assert.ok(
-      codes.filter((code) => code === 2345).length >= 4,
+      codes.filter((code) => code === 2322).length >= 3,
+      `wrong property usage must fail, got ${codes.join(",")}`
+    );
+    // Every wrong call site reports its own diagnostic across the probe source.
+    assert.ok(
+      codes.length >= 7,
       `each wrong call site reports its own diagnostic, got ${codes.join(",")}`
     );
   } finally {

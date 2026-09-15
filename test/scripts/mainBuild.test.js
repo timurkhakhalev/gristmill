@@ -137,6 +137,9 @@ test("emitted modules resolve preload beside code and native resources from the 
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(output, "src/helpers/binaryResolver.js"), "utf8"), {
     module,
+    // tsc's CJS emit references the `exports` identifier directly (e.g. the
+    // __esModule marker), so the sandbox needs the same binding Node provides.
+    exports: module.exports,
     __dirname: path.join(output, "src/helpers"),
     process: { resourcesPath: undefined },
     require(name) {

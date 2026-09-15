@@ -16,7 +16,7 @@ import {
 import {
   isSelfHostedTranscription,
   resolveSelfHostedTranscriptionModel,
-} from "./selfHostedTranscription.js";
+} from "./selfHostedTranscription.ts";
 import {
   isTinfoilInferenceUrl,
   TINFOIL_PROXY_REQUIRED_ERROR,

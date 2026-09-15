@@ -1249,10 +1249,11 @@ memory/context constraints.
   reservations, drafter-прогресс с clamp, context ceiling с GGUF-метаданными,
   `_ensurePromptFits` preflight, refuse-ladder при рестартах) +
   `ModelError`/`ModelNotFoundError`. Dual-export `{ default: singleton,
-  ModelError, ModelNotFoundError }` — main.js/ipcHandlers/тесты требуют
-  `.default`; ES default экспортирует тот же singleton (один инстанс) для
-  `localReasoningBridge.ts` (его double-default cast упрощён до прямой
-  типизированной ссылки, объект тот же).
+  ModelError, ModelNotFoundError }` + ES default того же singleton.
+  Интероп-урок: под tsx ESM-граф default-import этого модуля резолвится в
+  САМ объект module.exports (обёртку), а не в singleton — поэтому
+  `localReasoningBridge.ts` сохраняет pre-cutover double-`.default` доступ;
+  инстанс один во всех графах (проверено tsx-ESM/tsx-CJS/tsc-dist).
 - `llamaCppInstaller.ts`: dual-export `{ default: singleton, LlamaCppInstaller }`.
 - `llmRequestTimeout.js` (уже ESM) → `.ts` с типами; TS-импортёры
   (`ReasoningService`, gemini/openai/tinfoil) не изменились.

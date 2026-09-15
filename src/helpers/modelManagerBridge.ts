@@ -985,9 +985,11 @@ export class ModelManager {
   }
 }
 
-// One instance, exported the pre-cutover way (`{ default }` off module.exports
-// for main.js, ipcHandlers.js and the legacy tests) and as the ES default for
-// the TS graph (localReasoningBridge).
+// One instance. The module.exports shape is the pre-cutover one main.js,
+// ipcHandlers.js and the legacy tests require; the ES default satisfies the
+// compiler. Under tsx the ESM-graph default import resolves to the
+// module.exports wrapper, so TS consumers drill `.default` once more
+// (see localReasoningBridge.ts) — the instance is shared either way.
 const modelManagerSingleton = new ModelManager();
 module.exports = {
   default: modelManagerSingleton,

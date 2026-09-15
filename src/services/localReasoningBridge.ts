@@ -1,7 +1,7 @@
 // Main-owned local (llama.cpp) one-shot reasoning. Preserves the JS service's
 // one-active-request policy, config defaults, complete-output behavior and
 // thinking cleanup; the model manager keeps owning llama-server lifecycle.
-import modelManagerSingleton from "../helpers/modelManagerBridge.js";
+import modelManagerBundle from "../helpers/modelManagerBridge.js";
 import debugLogger from "../helpers/debugLogger.js";
 import type { LocalReasoningConfig } from "../contracts/reasoning.js";
 
@@ -11,7 +11,12 @@ interface LocalModelManager {
   runInference(modelId: string, prompt: string, options: Record<string, unknown>): Promise<string>;
 }
 
-const modelManager: LocalModelManager = modelManagerSingleton;
+// The bundle's `default` is the singleton under every loader: the tsx ESM
+// graph resolves the default import to module.exports itself, the CJS graphs
+// interop to the same object. Drill in once, here.
+const modelManager: LocalModelManager = (modelManagerBundle as unknown as {
+  default: LocalModelManager;
+}).default;
 
 export class LocalReasoningService {
   private isProcessing = false;

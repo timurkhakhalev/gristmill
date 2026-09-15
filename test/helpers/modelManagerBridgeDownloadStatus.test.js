@@ -31,7 +31,12 @@ function loadModelManager({ downloadFile, checkDiskSpace } = {}) {
       };
     }
 
-    if (request === "./downloadUtils" && parent?.filename === modelManagerModulePath) {
+    // The TS manager requires "./downloadUtils.js"; accept the pre-migration
+    // extensionless specifier too so the hook survives the cutover.
+    if (
+      (request === "./downloadUtils" || request === "./downloadUtils.js") &&
+      parent?.filename === modelManagerModulePath
+    ) {
       return {
         ...downloadUtils,
         ...(downloadFile ? { downloadFile } : {}),

@@ -130,3 +130,91 @@ test("cancelBatch hard-cancels the current item and discards its late result", a
   assert.equal(after.noteId, undefined);
   assert.equal(globalThis.__hangTranscription.savedNote, undefined);
 });
+
+test("an old cancelled batch settling cannot steal the new batch's cancel slot", async (t) => {
+  // A-cancel → B-start → A-settles → B-cancel: B must still be hard-cancellable
+  // after the cancelled A settles late; late A must not save a note either.
+  const { window } = installBrowserGlobals(t);
+
+  const cancels = [];
+  window.electronAPI.cancelUrlDownload = async () => ({ success: true });
+  window.electronAPI.deleteTempFile = () => {};
+  window.electronAPI.cancelUploadTranscription = async ({ requestId }) => {
+    cancels.push(requestId);
+    return { success: true, cancelled: 1 };
+  };
+
+  const calls = [];
+  globalThis.__twoBatchTranscription = {
+    // Returns the deferred itself so the test settles each execution explicitly.
+    start(requestId) {
+      let resolve;
+      const settled = new Promise((r) => {
+        resolve = r;
+      });
+      calls.push({ id: requestId, resolve });
+      return settled;
+    },
+  };
+  t.after(() => {
+    delete globalThis.__twoBatchTranscription;
+  });
+
+  const vite = await createRendererServer(t, {
+    cachePrefix: "openh-batch-slot-steal-",
+    mockModules: {
+      "/services/fileTranscription": `
+        export function transcribeFileWithSpeakers(_p, _cfg, _diar, _duration, opts) {
+          return globalThis.__twoBatchTranscription.start(opts.requestId);
+        }
+      `,
+      "/components/notes/shared": `
+        export const DOWNLOAD_ERROR_KEYS = {};
+        export function transcriptionErrorKey() { return null; }
+      `,
+      "/services/uploadNotes": `
+        export async function saveUploadNote() {
+          globalThis.__twoBatchTranscription.savedNote = true;
+          return { success: true, note: { id: 1 } };
+        }
+        export function uploadTitleFallback() { return "Uploaded note"; }
+      `,
+      "/stores/settingsStore": "export function getSettings() { return {}; }",
+      "/stores/policyRules": "export function isTranscriptionContextAllowed() { return true; }",
+      "/stores/policyStore": `
+        export const usePolicyStore = { getState() { return {}; } };
+      `,
+    },
+  });
+  const { addFiles, processBatchQueue, cancelBatch } = await vite.ssrLoadModule(
+    "/stores/batchQueueStore.ts"
+  );
+
+  const opts = {
+    transcription: cfg(),
+    folderId: null,
+  };
+  const diarization = { enabled: false, localModelsReady: false, numSpeakers: null };
+
+  addFiles([{ name: "first.wav", path: "/tmp/first.wav", sizeBytes: 100 }]);
+  processBatchQueue(opts, diarization);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 1);
+
+  cancelBatch();
+  addFiles([{ name: "second.wav", path: "/tmp/second.wav", sizeBytes: 100 }]);
+  processBatchQueue(opts, diarization);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 2, "a new run starts after Cancel");
+
+  // The cancelled A settles late, while B owns the active slot.
+  calls[0].resolve({ success: false, code: "UPLOAD_CANCELLED" });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  // B's cancel must reach the transport: the late A settlement above must not
+  // have cleared the slot B claimed.
+  cancelBatch();
+  assert.deepEqual(cancels, calls.map((call) => call.id));
+  assert.equal(globalThis.__twoBatchTranscription.savedNote, undefined, "late A saves no note");
+});

@@ -10,7 +10,7 @@ const {
   clusterThresholdForDuration,
   resolveClusterThreshold,
   dropNegligibleClusters,
-} = require("../../src/helpers/diarizationPolicy");
+} = require("../../src/helpers/diarizationPolicy.ts");
 
 // 0.55 is tuned for short clean audio; on a 73-minute single-mic voice memo one
 // speaker's embeddings spread past it and clustering stopped merging at 46

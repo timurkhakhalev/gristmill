@@ -1,31 +1,92 @@
 const fs = require("fs");
 const fsPromises = require("fs").promises;
 const path = require("path");
-const { spawn } = require("child_process");
-const debugLogger = require("./debugLogger");
-const { runSystemTar } = require("./systemTar");
-const { downloadFile, createDownloadSignal, checkDiskSpace } = require("./downloadUtils");
-const { resolveBinaryPath, gracefulStopProcess } = require("../utils/serverUtils");
-const { getModelsDirForService } = require("./modelDirUtils");
-const { convertToWav } = require("./ffmpegUtils");
-const { getSafeTempDir } = require("./safeTempDir");
-const { applyConfirmedSpeaker } = require("./speakerAssignmentPolicy");
-const sidecarPidFile = require("./sidecarPidFile");
+import { spawn, type ChildProcessByStdio } from "child_process";
+import type { Readable } from "stream";
+const debugLogger = require("./debugLogger.js");
+const { runSystemTar } = require("./systemTar.js");
+const {
+  downloadFile,
+  createDownloadSignal,
+  checkDiskSpace,
+} = require("./downloadUtils.js") as {
+  downloadFile: (
+    url: string,
+    target: string,
+    options: {
+      timeout?: number;
+      signal?: { aborted: boolean; addEventListener?: unknown; removeEventListener?: unknown };
+      onProgress?: (downloadedBytes: number, totalBytes: number) => void;
+    }
+  ) => Promise<unknown>;
+  createDownloadSignal: () => { signal: { aborted: boolean }; abort: () => void };
+  checkDiskSpace: (dir: string, bytes: number) => Promise<{ ok: boolean; availableBytes: number }>;
+};
+const { resolveBinaryPath, gracefulStopProcess } = require("../utils/serverUtils.js") as {
+  resolveBinaryPath: (name: string) => string | null;
+  gracefulStopProcess: (proc: ChildProcessByStdio<null, Readable, Readable>) => Promise<void> | void;
+};
+const { getModelsDirForService } = require("./modelDirUtils.js");
+const { convertToWav } = require("./ffmpegUtils.js");
+const { getSafeTempDir } = require("./safeTempDir.js");
+import { applyConfirmedSpeaker } from "./speakerAssignmentPolicy.js";
+import * as sidecarPidFile from "./sidecarPidFile.js";
 const {
   transcriptsOverlap,
   transcriptsLooselyOverlap,
   buildMergedCandidates,
-} = require("./transcriptText");
+} = require("./transcriptText.js");
 const {
   computeTranscriptionTimeoutMs,
   PCM16_MONO_16K_BYTES_PER_SECOND,
-} = require("./transcriptionTimeout");
+} = require("./transcriptionTimeout.js");
+
+export interface DiarizationSegment {
+  start: number;
+  end: number;
+  speaker: string;
+}
+
+export interface TranscriptSegment {
+  source: string;
+  text?: string | null;
+  timestamp?: number | null;
+  likelyRenderBleed?: boolean;
+  hasBleedEvidence?: boolean;
+  suppressionReason?: string | null;
+  speaker?: string | null;
+  speakerName?: string | null;
+  speakerIsPlaceholder?: boolean;
+  speakerStatus?: string;
+  speakerLocked?: boolean;
+  speakerLockSource?: string | null;
+  suggestedName?: string | null;
+  suggestedProfileId?: number | null;
+  [key: string]: unknown;
+}
+
+export interface DownloadProgressData {
+  type: "progress" | "complete" | "error";
+  stage?: string;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+  percentage?: number;
+  error?: string;
+}
+
+export type DownloadProgressCallback = (data: DownloadProgressData) => void;
+
+export interface DiarizeOptions {
+  numSpeakers?: number;
+  threshold?: number;
+  signal?: AbortSignal | null;
+}
 
 const DIARIZATION_TIMEOUT_MS = 3600000; // 60 minutes
 const POST_MERGE_CONTEXT_WINDOW_MS = 6000;
 const POST_MERGE_CONTEXT_MERGE_LIMIT = 3;
 
-const dedupeMicAgainstSystem = (segments) => {
+const dedupeMicAgainstSystem = (segments: TranscriptSegment[]): TranscriptSegment[] => {
   const systemSegments = segments.filter((seg) => seg.source === "system" && seg.text);
   if (!systemSegments.length) return segments;
 
@@ -47,7 +108,7 @@ const dedupeMicAgainstSystem = (segments) => {
       windowMs: POST_MERGE_CONTEXT_WINDOW_MS,
       mergeLimit: POST_MERGE_CONTEXT_MERGE_LIMIT,
     });
-    return !candidates.some((candidateText) => matcher(seg.text, candidateText));
+    return !candidates.some((candidateText: string) => matcher(seg.text, candidateText));
   });
 };
 
@@ -63,7 +124,14 @@ const SEGMENTATION_ONNX = path.join(SEGMENTATION_DIR, "model.onnx");
 const EMBEDDING_ONNX = "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
 const SILERO_VAD_ONNX = "silero_vad.onnx";
 
-class DiarizationManager {
+type DiarizeChild = ChildProcessByStdio<null, Readable, Readable>;
+type DownloadSignalHandle = { abort: () => void };
+
+export class DiarizationManager {
+  _processes: Set<DiarizeChild>;
+  currentDownloadProcess: { abort: () => void } | null;
+  cachedBinaryPath: string | null;
+
   constructor() {
     // Meeting post-processing and upload/batch diarization can overlap, so
     // track every live process, not a single slot.
@@ -72,7 +140,7 @@ class DiarizationManager {
     this.cachedBinaryPath = null;
   }
 
-  getBinaryPath() {
+  getBinaryPath(): string | null {
     if (this.cachedBinaryPath) return this.cachedBinaryPath;
 
     const platformArch = `${process.platform}-${process.arch}`;
@@ -86,15 +154,15 @@ class DiarizationManager {
     return resolved;
   }
 
-  isAvailable() {
+  isAvailable(): boolean {
     return this.getBinaryPath() !== null && this.isModelDownloaded();
   }
 
-  getModelsDir() {
+  getModelsDir(): string {
     return getModelsDirForService("diarization");
   }
 
-  getBundledModelsDir() {
+  getBundledModelsDir(): string | null {
     if (!process.resourcesPath) {
       return null;
     }
@@ -102,7 +170,7 @@ class DiarizationManager {
     return path.join(process.resourcesPath, "bin", "diarization-models");
   }
 
-  _resolveModelPath(relativePath) {
+  _resolveModelPath(relativePath: string): string {
     const bundledModelsDir = this.getBundledModelsDir();
     if (bundledModelsDir) {
       const bundledPath = path.join(bundledModelsDir, relativePath);
@@ -114,21 +182,21 @@ class DiarizationManager {
     return path.join(this.getModelsDir(), relativePath);
   }
 
-  isModelDownloaded() {
+  isModelDownloaded(): boolean {
     const segPath = this._resolveModelPath(SEGMENTATION_ONNX);
     const embPath = this._resolveModelPath(EMBEDDING_ONNX);
     return fs.existsSync(segPath) && fs.existsSync(embPath);
   }
 
-  getVadModelPath() {
+  getVadModelPath(): string {
     return this._resolveModelPath(SILERO_VAD_ONNX);
   }
 
-  isVadModelDownloaded() {
+  isVadModelDownloaded(): boolean {
     return fs.existsSync(this.getVadModelPath());
   }
 
-  async downloadModels(progressCallback = null) {
+  async downloadModels(progressCallback: DownloadProgressCallback | null = null): Promise<{ success: boolean; path: string }> {
     const modelsDir = this.getModelsDir();
     await fsPromises.mkdir(modelsDir, { recursive: true });
 
@@ -225,11 +293,11 @@ class DiarizationManager {
             },
           });
         } catch (error) {
-          if (error.isAbort) {
+          if ((error as { isAbort?: boolean }).isAbort) {
             throw new Error("Download interrupted by user");
           }
           debugLogger.warn("Silero VAD model download failed", {
-            error: error.message,
+            error: (error as Error).message,
             modelsDir,
           });
         }
@@ -242,11 +310,11 @@ class DiarizationManager {
       debugLogger.info("Diarization models downloaded", { modelsDir });
       return { success: true, path: modelsDir };
     } catch (error) {
-      if (error.isAbort) {
+      if ((error as { isAbort?: boolean }).isAbort) {
         throw new Error("Download interrupted by user");
       }
       if (progressCallback) {
-        progressCallback({ type: "error", error: error.message });
+        progressCallback({ type: "error", error: (error as Error).message });
       }
       throw error;
     } finally {
@@ -254,13 +322,13 @@ class DiarizationManager {
     }
   }
 
-  async _extractTarBz2(archivePath, destDir) {
+  async _extractTarBz2(archivePath: string, destDir: string): Promise<void> {
     try {
       await this._runSystemTar(archivePath, destDir);
       return;
     } catch (err) {
       debugLogger.debug("System tar failed, falling back to JS extraction", {
-        error: err.message,
+        error: (err as Error).message,
       });
     }
 
@@ -270,11 +338,11 @@ class DiarizationManager {
     await pipeline(fs.createReadStream(archivePath), unbzip2(), tar.x({ cwd: destDir }));
   }
 
-  _runSystemTar(archivePath, destDir) {
+  _runSystemTar(archivePath: string, destDir: string): Promise<void> {
     return runSystemTar(archivePath, destDir);
   }
 
-  async cancelDownload() {
+  async cancelDownload(): Promise<{ success: boolean; message?: string; error?: string }> {
     if (this.currentDownloadProcess) {
       this.currentDownloadProcess.abort();
       this.currentDownloadProcess = null;
@@ -283,7 +351,7 @@ class DiarizationManager {
     return { success: false, error: "No active download to cancel" };
   }
 
-  async diarize(wavPath, options = {}) {
+  async diarize(wavPath: string, options: DiarizeOptions = {}): Promise<DiarizationSegment[]> {
     const { numSpeakers = -1, threshold = 0.55, signal = null } = options;
 
     if (signal?.aborted) return [];
@@ -335,7 +403,7 @@ class DiarizationManager {
       // Unreadable WAV: keep the flat cap.
     }
 
-    return new Promise((resolve) => {
+    return new Promise<DiarizationSegment[]>((resolve) => {
       let stdout = "";
       let stderr = "";
 
@@ -346,14 +414,14 @@ class DiarizationManager {
       });
 
       this._processes.add(proc);
-      sidecarPidFile.write("diarization", proc.pid);
+      if (proc.pid !== undefined) sidecarPidFile.write("diarization", proc.pid);
 
       // The single pid-file slot tracks whichever process is still alive; only
       // the reaper consumes it, and the Set is the real shutdown source.
       const untrack = () => {
         this._processes.delete(proc);
         const survivor = this._processes.values().next().value;
-        if (survivor) sidecarPidFile.write("diarization", survivor.pid);
+        if (survivor && survivor.pid !== undefined) sidecarPidFile.write("diarization", survivor.pid);
         else sidecarPidFile.clear("diarization");
       };
 
@@ -372,15 +440,15 @@ class DiarizationManager {
       };
       signal?.addEventListener("abort", onAbort, { once: true });
 
-      proc.stdout.on("data", (data) => {
+      proc.stdout.on("data", (data: Buffer) => {
         stdout += data.toString();
       });
 
-      proc.stderr.on("data", (data) => {
+      proc.stderr.on("data", (data: Buffer) => {
         stderr += data.toString();
       });
 
-      proc.on("close", (code) => {
+      proc.on("close", (code: number | null) => {
         clearTimeout(timeout);
         signal?.removeEventListener("abort", onAbort);
         untrack();
@@ -399,7 +467,7 @@ class DiarizationManager {
         resolve(segments);
       });
 
-      proc.on("error", (err) => {
+      proc.on("error", (err: Error) => {
         clearTimeout(timeout);
         signal?.removeEventListener("abort", onAbort);
         untrack();
@@ -409,7 +477,7 @@ class DiarizationManager {
     });
   }
 
-  _parseOutput(stdout) {
+  _parseOutput(stdout: string): DiarizationSegment[] {
     const segments = [];
     const lineRegex = /^(\d+\.?\d*)\s+--\s+(\d+\.?\d*)\s+(speaker_\d+)$/;
 
@@ -429,7 +497,7 @@ class DiarizationManager {
     return segments;
   }
 
-  capSpeakerClusters(segments, cap) {
+  capSpeakerClusters(segments: DiarizationSegment[], cap: number | null | undefined): DiarizationSegment[] {
     if (!cap || !segments?.length) return segments;
     const totals = new Map();
     for (const s of segments) {
@@ -443,7 +511,11 @@ class DiarizationManager {
     return segments.map((s) => (keep.has(s.speaker) ? s : { ...s, speaker: primary }));
   }
 
-  mergeWithTranscript(transcriptSegments, diarizationSegments, { diarizedSource = "system" } = {}) {
+  mergeWithTranscript(
+    transcriptSegments: TranscriptSegment[],
+    diarizationSegments: DiarizationSegment[],
+    { diarizedSource = "system" }: { diarizedSource?: string } = {}
+  ): TranscriptSegment[] {
     if (!transcriptSegments || transcriptSegments.length === 0) return [];
     const deduped = dedupeMicAgainstSystem(transcriptSegments);
     if (!diarizationSegments || diarizationSegments.length === 0) {
@@ -464,7 +536,7 @@ class DiarizationManager {
     // stays "you" instead of becoming a stranger's speaker_0.
     const micSingleCluster = diarizedSource === "mic" && speakerSet.size === 1;
 
-    const nextTimestampAt = (startIndex, source) => {
+    const nextTimestampAt = (startIndex: number, source: string): number | null => {
       for (let i = startIndex + 1; i < deduped.length; i += 1) {
         const candidate = deduped[i];
         if (candidate.source === source && candidate.timestamp != null) {
@@ -474,7 +546,7 @@ class DiarizationManager {
       return null;
     };
 
-    return deduped.map((seg, index) => {
+    return deduped.map((seg: TranscriptSegment, index: number) => {
       const enriched = { ...seg };
 
       if (seg.source === "mic" && (diarizedSource !== "mic" || micSingleCluster)) {
@@ -530,7 +602,7 @@ class DiarizationManager {
     });
   }
 
-  async convertRawPcmToWav(rawPcmPath, inputSampleRate) {
+  async convertRawPcmToWav(rawPcmPath: string, inputSampleRate: number): Promise<string> {
     const stat = await fsPromises.stat(rawPcmPath);
     if (stat.size === 0) {
       throw new Error("Raw PCM file is empty");
@@ -544,12 +616,12 @@ class DiarizationManager {
 
     // Stream: write 44-byte WAV header, then pipe raw PCM — avoids loading entire file into memory
     const header = this._createWavHeader(stat.size, inputSampleRate, 1);
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const out = fs.createWriteStream(inputWavPath);
       out.write(header);
       const pcmStream = fs.createReadStream(rawPcmPath);
       pcmStream.pipe(out);
-      out.on("finish", resolve);
+      out.on("finish", () => resolve());
       out.on("error", reject);
       pcmStream.on("error", reject);
     });
@@ -568,7 +640,7 @@ class DiarizationManager {
     return wavPath;
   }
 
-  _createWavHeader(dataSize, sampleRate, channels) {
+  _createWavHeader(dataSize: number, sampleRate: number, channels: number): Buffer {
     const bytesPerSample = 2;
     const blockAlign = channels * bytesPerSample;
     const byteRate = sampleRate * blockAlign;
@@ -591,7 +663,7 @@ class DiarizationManager {
     return header;
   }
 
-  async deleteModels() {
+  async deleteModels(): Promise<{ success: boolean }> {
     const modelsDir = this.getModelsDir();
     const segDir = path.join(modelsDir, SEGMENTATION_DIR);
     const embPath = path.join(modelsDir, EMBEDDING_ONNX);
@@ -611,11 +683,14 @@ class DiarizationManager {
     return { success: true };
   }
 
-  async shutdown() {
+  async shutdown(): Promise<void> {
     const procs = [...this._processes];
     this._processes.clear();
     await Promise.all(procs.map((p) => gracefulStopProcess(p)));
   }
 }
 
+// Dual export: main.js requires this module as the class itself, while the TS
+// graph imports the named export.
 module.exports = DiarizationManager;
+module.exports.DiarizationManager = DiarizationManager;

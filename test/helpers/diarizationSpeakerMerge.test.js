@@ -15,7 +15,7 @@ require.cache[require.resolve("electron")] = {
   },
 };
 
-const DiarizationManager = require("../../src/helpers/diarization.js");
+const DiarizationManager = require("../../src/helpers/diarization.ts");
 
 const systemSegment = (timestamp, text) => ({ source: "system", timestamp, text });
 const micSegment = (timestamp, text) => ({ source: "mic", timestamp, text });

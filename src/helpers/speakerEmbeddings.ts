@@ -1,23 +1,29 @@
 const fs = require("fs");
 const path = require("path");
-const debugLogger = require("./debugLogger");
-const { getModelsDirForService } = require("./modelDirUtils");
-const onnxWorkerClient = require("./onnxWorkerClient");
+const debugLogger = require("./debugLogger.js");
+const { getModelsDirForService } = require("./modelDirUtils.js");
+import type { OnnxWorkerClient } from "./onnxWorkerClient.js";
+import type { SpeakerExtractResult } from "../contracts/onnxWorker.js";
 
-const SAMPLE_RATE = 16000;
-const EMBEDDING_DIM = 512;
-const MIN_SEGMENT_SECONDS = 1.5;
-const MIN_SEGMENT_SAMPLES = SAMPLE_RATE * MIN_SEGMENT_SECONDS;
-const MAX_EMBEDDING_SECONDS = 8;
-const MAX_EMBEDDING_SAMPLES = SAMPLE_RATE * MAX_EMBEDDING_SECONDS;
+// The dual-export singleton: require("./onnxWorkerClient") is the instance.
+const onnxWorkerClient = require("./onnxWorkerClient.js") as OnnxWorkerClient;
+
+export const SAMPLE_RATE = 16000;
+export const EMBEDDING_DIM = 512;
+export const MIN_SEGMENT_SECONDS = 1.5;
+export const MIN_SEGMENT_SAMPLES = SAMPLE_RATE * MIN_SEGMENT_SECONDS;
+export const MAX_EMBEDDING_SECONDS = 8;
+export const MAX_EMBEDDING_SAMPLES = SAMPLE_RATE * MAX_EMBEDDING_SECONDS;
 const MODEL_FILE = "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
 
-class SpeakerEmbeddings {
+export class SpeakerEmbeddings {
+  loadPromise: Promise<unknown> | null;
+
   constructor() {
     this.loadPromise = null;
   }
 
-  getModelPath() {
+  getModelPath(): string {
     if (process.resourcesPath) {
       const bundledPath = path.join(process.resourcesPath, "bin", "diarization-models", MODEL_FILE);
       if (fs.existsSync(bundledPath)) {
@@ -28,11 +34,11 @@ class SpeakerEmbeddings {
     return path.join(getModelsDirForService("diarization"), MODEL_FILE);
   }
 
-  isAvailable() {
+  isAvailable(): boolean {
     return fs.existsSync(this.getModelPath());
   }
 
-  _ensureLoaded() {
+  _ensureLoaded(): Promise<unknown> {
     if (this.loadPromise) return this.loadPromise;
     if (!this.isAvailable()) {
       return Promise.reject(
@@ -44,31 +50,31 @@ class SpeakerEmbeddings {
     this.loadPromise = onnxWorkerClient
       .request("speaker.load", { modelPath })
       .then(() => debugLogger.debug("speaker-embeddings model loaded"))
-      .catch((err) => {
+      .catch((err: Error) => {
         this.loadPromise = null;
         throw err;
       });
     return this.loadPromise;
   }
 
-  async _extractEmbeddingFromSamples(samples) {
+  async _extractEmbeddingFromSamples(samples: Float32Array): Promise<Float32Array | null> {
     await this._ensureLoaded();
 
     const samplesBuffer = samples.buffer.slice(
       samples.byteOffset,
       samples.byteOffset + samples.byteLength
-    );
+    ) as ArrayBuffer;
 
     // No transfer-list: MessagePortMain can't transfer ArrayBuffers, so the samples are cloned.
-    const { embeddingBuffer } = await onnxWorkerClient.request("speaker.extract", {
+    const { embeddingBuffer } = (await onnxWorkerClient.request("speaker.extract", {
       samplesBuffer,
-    });
+    })) as SpeakerExtractResult;
 
     if (!embeddingBuffer) return null;
     return new Float32Array(embeddingBuffer);
   }
 
-  async extractEmbeddingFromSamples(samples) {
+  async extractEmbeddingFromSamples(samples: Float32Array): Promise<Float32Array | null> {
     if (samples.length < MIN_SEGMENT_SAMPLES) return null;
     const capped =
       samples.length > MAX_EMBEDDING_SAMPLES
@@ -77,7 +83,7 @@ class SpeakerEmbeddings {
     return this._extractEmbeddingFromSamples(capped);
   }
 
-  async extractEmbedding(wavPath, startSec, endSec) {
+  async extractEmbedding(wavPath: string, startSec: number, endSec: number): Promise<Float32Array | null> {
     if (endSec - startSec < MIN_SEGMENT_SECONDS) return null;
 
     const buf = fs.readFileSync(wavPath);
@@ -103,7 +109,7 @@ class SpeakerEmbeddings {
     return this._extractEmbeddingFromSamples(samples);
   }
 
-  _parseWavHeader(buf) {
+  _parseWavHeader(buf: Buffer): { sampleRate: number; dataOffset: number } {
     let offset = 12;
     let sampleRate = 16000;
     let dataOffset = 44;
@@ -125,7 +131,7 @@ class SpeakerEmbeddings {
     return { sampleRate, dataOffset };
   }
 
-  computeCentroid(embeddings) {
+  computeCentroid(embeddings: Float32Array[]): Float32Array {
     if (embeddings.length === 0) return new Float32Array(EMBEDDING_DIM);
 
     const centroid = new Float32Array(EMBEDDING_DIM);
@@ -140,7 +146,7 @@ class SpeakerEmbeddings {
     return centroid;
   }
 
-  cosineSimilarity(a, b) {
+  cosineSimilarity(a: Float32Array, b: Float32Array): number {
     let dot = 0;
     let normA = 0;
     let normB = 0;

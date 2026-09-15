@@ -1,4 +1,4 @@
-import type { CalendarAttendee, CalendarEvent } from "../types/calendar";
+import type { CalendarAttendee, CalendarEvent } from "../contracts/calendar";
 
 export function parseAttendees(event: CalendarEvent): CalendarAttendee[] {
   if (!event.attendees) return [];

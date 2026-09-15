@@ -1,4 +1,4 @@
-import type { CalendarAttendee } from "../types/calendar";
+import type { CalendarAttendee } from "../contracts/calendar";
 
 interface ParticipantSpeakerCountSyncInput {
   recordingNoteId: number | null;

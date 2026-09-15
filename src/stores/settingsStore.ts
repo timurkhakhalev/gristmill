@@ -11,7 +11,7 @@ import type {
   InferenceMode,
   SelfHostedType,
 } from "../contracts/inferenceSettings";
-import type { CalendarAccount } from "../types/calendar";
+import type { CalendarAccount } from "../contracts/calendar";
 import { PROMPT_KIND_LIST, type PromptKind } from "../config/prompts/registry";
 import { sweepRetiredPromptOverrides } from "../config/retiredPrompts";
 import { sweepRetiredCloudModelSelections } from "../config/retiredCloudModels";

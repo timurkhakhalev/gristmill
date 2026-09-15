@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/micDeviceSelection.js");
+const load = () => import("../../src/helpers/micDeviceSelection.ts");
 
 const mic = (deviceId, label) => ({ kind: "audioinput", deviceId, label });
 

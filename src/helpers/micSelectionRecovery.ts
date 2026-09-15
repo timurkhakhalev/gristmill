@@ -1,13 +1,25 @@
-import { getSettings } from "../stores/settingsStore";
-import logger from "../utils/logger";
-import { resolveMicDeviceSelection } from "./micDeviceSelection";
+import { getSettings } from "../stores/settingsStore.js";
+import logger from "../utils/logger.js";
+import { resolveMicDeviceSelection } from "./micDeviceSelection.js";
+
+export interface MicSelectionRecoverySettings {
+  microphoneSelectionMode?: string;
+  preferBuiltInMic?: boolean;
+  selectedMicDeviceId?: string;
+}
+
+export interface SavedMicSelectionRecovery {
+  deviceId: string | null | undefined;
+  resolved: boolean;
+  labelsAvailable: boolean;
+}
 
 // Chromium's "default" pseudo-device is a follow-the-OS-default selection, not a pin.
 export function followsSystemDefaultMic({
   microphoneSelectionMode,
   preferBuiltInMic,
   selectedMicDeviceId,
-}) {
+}: MicSelectionRecoverySettings): boolean {
   if (microphoneSelectionMode) return microphoneSelectionMode === "system";
   return !preferBuiltInMic && (!selectedMicDeviceId || selectedMicDeviceId === "default");
 }
@@ -19,10 +31,10 @@ export function followsSystemDefaultMic({
  * yet), in which case a failed resolution should not be treated as final.
  */
 export async function reconcileSavedMicSelection(
-  selectedDeviceId,
-  selectedDeviceLabel,
-  logChannel
-) {
+  selectedDeviceId: string | null | undefined,
+  selectedDeviceLabel: string | null | undefined,
+  logChannel?: string
+): Promise<SavedMicSelectionRecovery> {
   const devices = await navigator.mediaDevices.enumerateDevices();
   const { device, status } = resolveMicDeviceSelection(
     devices,

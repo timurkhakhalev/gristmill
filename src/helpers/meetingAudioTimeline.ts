@@ -6,9 +6,28 @@ const SAMPLE_RATE = 24000;
 const SILENCE_SAMPLES = SAMPLE_RATE / 10;
 const SILENCE = Buffer.alloc(SILENCE_SAMPLES * 2);
 
-const createMeetingAudioTimeline = ({ now = () => performance.now(), wallNow = Date.now } = {}) => {
-  let startedAt = null;
-  let wallStartedAt = null;
+export interface MeetingAudioTimelineOptions {
+  now?: () => number;
+  wallNow?: () => number;
+}
+
+export type MeetingAudioTimelineEmitter = (
+  buffer: Buffer,
+  synthetic: boolean,
+  capturedAt: number
+) => void;
+
+export interface MeetingAudioTimeline {
+  markRestart(): void;
+  write(buffer: Buffer, emit: MeetingAudioTimelineEmitter): void;
+}
+
+export const createMeetingAudioTimeline = ({
+  now = () => performance.now(),
+  wallNow = Date.now,
+}: MeetingAudioTimelineOptions = {}): MeetingAudioTimeline => {
+  let startedAt: number | null = null;
+  let wallStartedAt: number | null = null;
   let samples = 0;
   let recovering = false;
 
@@ -16,7 +35,7 @@ const createMeetingAudioTimeline = ({ now = () => performance.now(), wallNow = D
     markRestart() {
       recovering = true;
     },
-    write(buffer, emit) {
+    write(buffer: Buffer, emit: MeetingAudioTimelineEmitter) {
       const receivedAt = now();
       startedAt ??= receivedAt;
       wallStartedAt ??= wallNow();
@@ -45,3 +64,4 @@ const createMeetingAudioTimeline = ({ now = () => performance.now(), wallNow = D
 };
 
 module.exports = createMeetingAudioTimeline;
+module.exports.createMeetingAudioTimeline = createMeetingAudioTimeline;

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { resolveDiarizationInput } = require("../../src/helpers/meetingDiarizationInput");
+const { resolveDiarizationInput } = require("../../src/helpers/meetingDiarizationInput.ts");
 
 test("audible system audio diarizes the system capture", () => {
   const input = resolveDiarizationInput({

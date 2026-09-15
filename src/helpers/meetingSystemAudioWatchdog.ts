@@ -1,17 +1,63 @@
 // The macOS tap helper writes a chunk every period whatever the audio is, so a
 // gap this long means delivery stopped rather than the call going quiet.
-const STALL_MS = 6_000;
+export const STALL_MS = 6_000;
 // Chunks still arriving but silent for this long, after the call was audible at
 // least once. Warning only: a genuinely quiet call looks exactly the same.
-const GONE_QUIET_MS = 180_000;
+export const GONE_QUIET_MS = 180_000;
 // Enough to ride out a route change and its aftershocks without looping if the
 // device is simply gone.
-const MAX_RESTARTS = 3;
+export const MAX_RESTARTS = 3;
 // A tick gap longer than this means the machine slept or the main process
 // blocked. Delivery evidence from before the gap says nothing about now, and
 // node runs the timers phase before the poll phase, so the tick after a block
 // lands before the stdout data it should have been judging.
-const TICK_GAP_MS = 5_000;
+export const TICK_GAP_MS = 5_000;
+
+export type SystemAudioInterruptionReason =
+  | "device_invalidated"
+  | "no_audio_delivered"
+  | "gone_quiet";
+
+export interface SystemAudioInterruption {
+  systemAudioStrategy: string | null;
+  reason: SystemAudioInterruptionReason;
+  recovering: boolean;
+}
+
+export interface MeetingSystemAudioCapture {
+  generation: number;
+  stop(): Promise<void>;
+  start(): Promise<void>;
+}
+
+interface MeetingSystemAudioWatchdogSession {
+  systemAudioStrategy: string | null;
+  watchesDelivery: boolean;
+  lastChunkAt: number | null;
+  lastAudibleAt: number | null;
+  restarts: number;
+  restartInFlight: boolean;
+  replacementStarting: boolean;
+  pendingDeviceInvalidation: boolean;
+  recoveryFailed: boolean;
+  quietReported: boolean;
+}
+
+export interface MeetingSystemAudioWatchdogOptions {
+  now?: () => number;
+  onInterrupted?: (payload: SystemAudioInterruption) => void;
+  onResumed?: () => void;
+}
+
+export interface MeetingSystemAudioWatchdog {
+  start(options?: { systemAudioStrategy?: string | null; watchesDelivery?: boolean }): void;
+  stop(): void;
+  attachCapture(capture: Pick<MeetingSystemAudioCapture, "stop" | "start">): void;
+  detachCapture(): void;
+  recordChunk(audible?: boolean): void;
+  reportDeviceInvalidated(): void;
+  tick(): void;
+}
 
 // The system-audio tap is built once and never follows the machine afterwards,
 // so a route change or a disappearing device can stop capture with the helper
@@ -32,18 +78,26 @@ const TICK_GAP_MS = 5_000;
 //
 // Tick-driven like meetingAutoEndController: every input updates state and the
 // owner calls tick() on an interval, so there is no timer to leak per session.
-const createMeetingSystemAudioWatchdog = ({ now = Date.now, onInterrupted, onResumed }) => {
-  let session = null;
-  let capture = null;
+export const createMeetingSystemAudioWatchdog = ({
+  now = Date.now,
+  onInterrupted,
+  onResumed,
+}: MeetingSystemAudioWatchdogOptions): MeetingSystemAudioWatchdog => {
+  let session: MeetingSystemAudioWatchdogSession | null = null;
+  let capture: MeetingSystemAudioCapture | null = null;
   // Bumped on every attach and detach. A restart suspended between its two
   // halves compares against the value it started with, so a meeting that ends
   // mid-restart cannot leave an orphan helper holding a process tap.
   let generation = 0;
-  let lastTickAt = null;
+  let lastTickAt: number | null = null;
 
-  const notify = (reason, recovering) => {
+  const notify = (
+    active: MeetingSystemAudioWatchdogSession,
+    reason: SystemAudioInterruptionReason,
+    recovering: boolean
+  ) => {
     onInterrupted?.({
-      systemAudioStrategy: session.systemAudioStrategy,
+      systemAudioStrategy: active.systemAudioStrategy,
       reason,
       recovering,
     });
@@ -53,7 +107,7 @@ const createMeetingSystemAudioWatchdog = ({ now = Date.now, onInterrupted, onRes
   // armed. start() must therefore never drop it, and detaching is teardown's
   // job alone: an earlier draft cleared it from the arming path and shipped a
   // watchdog that warned about stalls it could not actually recover from.
-  const attachCapture = ({ stop, start }) => {
+  const attachCapture = ({ stop, start }: Pick<MeetingSystemAudioCapture, "stop" | "start">) => {
     generation += 1;
     capture = { generation, stop, start };
   };
@@ -63,7 +117,7 @@ const createMeetingSystemAudioWatchdog = ({ now = Date.now, onInterrupted, onRes
     capture = null;
   };
 
-  const runRestart = async (active) => {
+  const runRestart = async (active: MeetingSystemAudioWatchdogSession): Promise<void> => {
     if (!capture) {
       return;
     }
@@ -80,7 +134,7 @@ const createMeetingSystemAudioWatchdog = ({ now = Date.now, onInterrupted, onRes
     }
   };
 
-  const requestRestart = (reason) => {
+  const requestRestart = (reason: Exclude<SystemAudioInterruptionReason, "gone_quiet">): void => {
     if (!session || session.recoveryFailed) {
       return;
     }
@@ -99,14 +153,14 @@ const createMeetingSystemAudioWatchdog = ({ now = Date.now, onInterrupted, onRes
       // quiet one, which would otherwise arrive later saying less.
       session.recoveryFailed = true;
       session.quietReported = true;
-      notify(reason, false);
+      notify(session, reason, false);
       return;
     }
 
     const active = session;
     active.restarts += 1;
     active.restartInFlight = true;
-    notify(reason, true);
+    notify(active, reason, true);
 
     Promise.resolve()
       .then(() => runRestart(active))
@@ -131,7 +185,10 @@ const createMeetingSystemAudioWatchdog = ({ now = Date.now, onInterrupted, onRes
       });
   };
 
-  const start = ({ systemAudioStrategy, watchesDelivery = false } = {}) => {
+  const start = ({
+    systemAudioStrategy,
+    watchesDelivery = false,
+  }: { systemAudioStrategy?: string | null; watchesDelivery?: boolean } = {}) => {
     lastTickAt = null;
     session = {
       systemAudioStrategy: systemAudioStrategy ?? null,
@@ -214,7 +271,7 @@ const createMeetingSystemAudioWatchdog = ({ now = Date.now, onInterrupted, onRes
       at - session.lastAudibleAt > GONE_QUIET_MS
     ) {
       session.quietReported = true;
-      notify("gone_quiet", false);
+      notify(session, "gone_quiet", false);
     }
   };
 
@@ -230,6 +287,7 @@ const createMeetingSystemAudioWatchdog = ({ now = Date.now, onInterrupted, onRes
 };
 
 module.exports = createMeetingSystemAudioWatchdog;
+module.exports.createMeetingSystemAudioWatchdog = createMeetingSystemAudioWatchdog;
 module.exports.STALL_MS = STALL_MS;
 module.exports.GONE_QUIET_MS = GONE_QUIET_MS;
 module.exports.MAX_RESTARTS = MAX_RESTARTS;

@@ -2,14 +2,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const Module = require("node:module");
-const createMeetingSystemAudioWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog");
+const createMeetingSystemAudioWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog.ts");
 
 // The tap helper reports a stranded device as a stderr warning rather than by
 // exiting, so the forwarding path is the only thing that can tell the main
 // process capture has stopped (#1990). Warnings must never settle or fail the
 // start handshake either, which is what the mid-handshake test pins.
 
-const managerModulePath = require.resolve("../../src/helpers/audioTapManager");
+const managerModulePath = require.resolve("../../src/helpers/audioTapManager.ts");
 const originalLoad = Module._load;
 
 let lastChild = null;
@@ -37,7 +37,7 @@ function loadManagerClass() {
         },
       };
     }
-    if (request === "./debugLogger") {
+    if (request === "./debugLogger" || request === "./debugLogger.js") {
       return { info() {}, debug() {}, error() {}, warn() {} };
     }
     return originalLoad(request, parent, isMain);

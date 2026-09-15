@@ -1,7 +1,7 @@
-const { app } = require("electron");
-const { spawn } = require("child_process");
-const fs = require("fs");
-const path = require("path");
+import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
+import { app } from "electron";
+import fs from "fs";
+import path from "path";
 const debugLogger = require("./debugLogger");
 
 const START_TIMEOUT_MS = 3000;
@@ -9,8 +9,97 @@ const STOP_TIMEOUT_MS = 2000;
 const SYSTEM_STREAM = 1;
 const MIC_STREAM = 2;
 const SAMPLE_RATE = 24000;
+const MAX_OUTPUT_FRAME_BYTES = SAMPLE_RATE * 2 * 10;
 
-class MeetingAecManager {
+type AecChild = ChildProcessWithoutNullStreams;
+
+export interface MeetingAecWarningMessage {
+  type: "warning";
+  code?: string;
+  reason?: string;
+  message?: string;
+}
+
+export interface MeetingAecErrorMessage {
+  type: "error";
+  code?: string;
+  message?: string;
+  status?: number;
+  operation?: string;
+}
+
+export interface MeetingAecStartMessage {
+  type: "start";
+  sampleRate?: number;
+}
+
+export type MeetingAecMessage =
+  | MeetingAecStartMessage
+  | MeetingAecWarningMessage
+  | MeetingAecErrorMessage;
+
+export interface MeetingAecStartOptions {
+  onMicChunk?: (chunk: Buffer) => void;
+  onError?: (error: Error) => void;
+  onWarning?: (warning: MeetingAecWarningMessage) => void;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+export function parseMeetingAecMessage(value: unknown): MeetingAecMessage | null {
+  if (!isRecord(value)) return null;
+  if (value.type === "start") {
+    if ("sampleRate" in value && typeof value.sampleRate !== "number") return null;
+    return {
+      type: "start",
+      sampleRate: typeof value.sampleRate === "number" ? value.sampleRate : undefined,
+    };
+  }
+  if (value.type === "warning") {
+    if (
+      ("code" in value && typeof value.code !== "string") ||
+      ("reason" in value && typeof value.reason !== "string") ||
+      ("message" in value && typeof value.message !== "string")
+    ) {
+      return null;
+    }
+    return {
+      type: "warning",
+      code: typeof value.code === "string" ? value.code : undefined,
+      reason: typeof value.reason === "string" ? value.reason : undefined,
+      message: typeof value.message === "string" ? value.message : undefined,
+    };
+  }
+  if (value.type === "error") {
+    if (
+      ("code" in value && typeof value.code !== "string") ||
+      ("message" in value && typeof value.message !== "string") ||
+      ("status" in value && typeof value.status !== "number") ||
+      ("operation" in value && typeof value.operation !== "string")
+    ) {
+      return null;
+    }
+    return {
+      type: "error",
+      code: typeof value.code === "string" ? value.code : undefined,
+      message: typeof value.message === "string" ? value.message : undefined,
+      status: typeof value.status === "number" ? value.status : undefined,
+      operation: typeof value.operation === "string" ? value.operation : undefined,
+    };
+  }
+  return null;
+}
+
+export class MeetingAecManager {
+  process: AecChild | null;
+  stdoutBuffer: Buffer;
+  stderrBuffer: string;
+  onMicChunk: ((chunk: Buffer) => void) | null;
+  onError: ((error: Error) => void) | null;
+  onWarning: ((warning: MeetingAecWarningMessage) => void) | null;
+  isStopping: boolean;
+
   constructor() {
     this.process = null;
     this.stdoutBuffer = Buffer.alloc(0);
@@ -21,17 +110,17 @@ class MeetingAecManager {
     this.isStopping = false;
   }
 
-  isSupported() {
+  isSupported(): boolean {
     return (
       process.platform === "darwin" || process.platform === "linux" || process.platform === "win32"
     );
   }
 
-  isAvailable() {
+  isAvailable(): boolean {
     return !!this.resolveBinary();
   }
 
-  resolveBinary() {
+  resolveBinary(): string | null {
     if (!this.isSupported()) {
       return null;
     }
@@ -56,7 +145,7 @@ class MeetingAecManager {
     return null;
   }
 
-  async start({ onMicChunk, onError, onWarning } = {}) {
+  async start({ onMicChunk, onError, onWarning }: MeetingAecStartOptions = {}): Promise<boolean> {
     if (this.process) {
       this.onMicChunk = onMicChunk || null;
       this.onError = onError || null;
@@ -90,7 +179,7 @@ class MeetingAecManager {
     this.onWarning = onWarning || null;
     this.isStopping = false;
 
-    return new Promise((resolve) => {
+    return new Promise<boolean>((resolve) => {
       let settled = false;
       let started = false;
       const timeout = setTimeout(() => {
@@ -98,7 +187,7 @@ class MeetingAecManager {
         void this.stop();
       }, START_TIMEOUT_MS);
 
-      const finish = (result) => {
+      const finish = (result: boolean): void => {
         if (settled) {
           return;
         }
@@ -161,15 +250,15 @@ class MeetingAecManager {
     });
   }
 
-  processSystemBuffer(buffer) {
+  processSystemBuffer(buffer: Buffer | Uint8Array): boolean {
     return this._writeFrame(SYSTEM_STREAM, buffer);
   }
 
-  processMicBuffer(buffer) {
+  processMicBuffer(buffer: Buffer | Uint8Array): boolean {
     return this._writeFrame(MIC_STREAM, buffer);
   }
 
-  async stop() {
+  async stop(): Promise<void> {
     if (!this.process) {
       return;
     }
@@ -177,7 +266,7 @@ class MeetingAecManager {
     const child = this.process;
     this.isStopping = true;
 
-    await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       let settled = false;
       const finish = () => {
         if (settled) {
@@ -215,7 +304,7 @@ class MeetingAecManager {
     this.stderrBuffer = "";
   }
 
-  _writeFrame(type, buffer) {
+  private _writeFrame(type: 1 | 2, buffer: Buffer | Uint8Array): boolean {
     const stdin = this.process?.stdin;
     if (!stdin || stdin.destroyed) {
       return false;
@@ -233,11 +322,16 @@ class MeetingAecManager {
     return true;
   }
 
-  _consumeStdout(chunk) {
+  private _consumeStdout(chunk: Buffer | Uint8Array): void {
     this.stdoutBuffer = Buffer.concat([this.stdoutBuffer, chunk]);
 
     while (this.stdoutBuffer.length >= 4) {
       const frameLength = this.stdoutBuffer.readUInt32LE(0);
+      if (frameLength === 0 || frameLength > MAX_OUTPUT_FRAME_BYTES || frameLength % 2 !== 0) {
+        this.stdoutBuffer = Buffer.alloc(0);
+        this.onError?.(new Error(`Meeting AEC helper emitted an invalid frame length: ${frameLength}`));
+        return;
+      }
       if (this.stdoutBuffer.length < 4 + frameLength) {
         return;
       }
@@ -248,7 +342,10 @@ class MeetingAecManager {
     }
   }
 
-  _consumeStderr(chunk, onMessage) {
+  private _consumeStderr(
+    chunk: Buffer | string | Uint8Array,
+    onMessage: (message: MeetingAecMessage) => void
+  ): void {
     this.stderrBuffer += chunk.toString();
     let newlineIndex = this.stderrBuffer.indexOf("\n");
 
@@ -258,7 +355,9 @@ class MeetingAecManager {
 
       if (line) {
         try {
-          onMessage(JSON.parse(line));
+          const message = parseMeetingAecMessage(JSON.parse(line));
+          if (message) onMessage(message);
+          else debugLogger.warn("[MeetingAecManager] Invalid stderr message", { line }, "meeting");
         } catch {
           debugLogger.warn("[MeetingAecManager] Non-JSON stderr output", { line }, "meeting");
         }
@@ -270,3 +369,5 @@ class MeetingAecManager {
 }
 
 module.exports = MeetingAecManager;
+module.exports.MeetingAecManager = MeetingAecManager;
+module.exports.parseMeetingAecMessage = parseMeetingAecMessage;

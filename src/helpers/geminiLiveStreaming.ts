@@ -25,7 +25,7 @@ const WebSocket: RealtimeSocketConstructor = require("ws");
 const debugLogger = require("./debugLogger");
 const {
   computePcm16Rms,
-}: { computePcm16Rms: (pcmBuffer: Buffer) => number } = require("../utils/audioUtils");
+}: { computePcm16Rms: (pcmBuffer: Buffer) => number } = require("../utils/audioUtils.js");
 
 type Timer = ReturnType<typeof setTimeout>;
 type JsonRecord = Record<string, unknown>;

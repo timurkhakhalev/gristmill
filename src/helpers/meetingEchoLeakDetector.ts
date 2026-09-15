@@ -1,8 +1,8 @@
-const {
+import {
   pcm16ToFloat32,
   MEETING_MIC_ACTIVITY_RMS,
   MEETING_SYSTEM_ACTIVITY_RMS,
-} = require("../utils/audioUtils");
+} from "../utils/audioUtils.js";
 
 const SAMPLE_RATE = 24000;
 const MAX_SYSTEM_HISTORY_MS = 6000;
@@ -36,7 +36,47 @@ const DOUBLE_TALK_EXPLAINED = 0.3;
 const DOUBLE_TALK_RESIDUAL = 0.2;
 const DOUBLE_TALK_MIC_TO_SYSTEM_RATIO = 1.16;
 
-function computeRms(samples) {
+export type EchoAnalysisState =
+  | "clean_local"
+  | "awaiting_reference"
+  | "suspected_render_bleed"
+  | "double_talk";
+
+export interface SystemAudioHistoryEntry {
+  timestampMs: number;
+  samples: Float32Array;
+  durationMs: number;
+  rms: number;
+}
+
+export interface MicEchoAnalysis {
+  timestampMs: number;
+  durationMs: number;
+  rms: number;
+  correlation: number;
+  residualRatio: number;
+  explainedRatio: number;
+  systemRms: number;
+  micToSystemRatio: number | null;
+  state: EchoAnalysisState;
+  shouldMute: boolean;
+}
+
+export interface MicSegmentSuppression {
+  suppress: boolean;
+  reason: "missing_start" | "insufficient_signal" | "double_talk" | "mixed_signal" | "render_bleed" | "weak_match";
+  hasBleedEvidence?: boolean;
+  likelyRenderBleed?: boolean;
+  averageCorrelation?: number;
+  averageResidual?: number;
+  averageExplained?: number;
+  averageMicToSystemRatio?: number | null;
+  bleedMatchCount?: number;
+  sampleCount?: number;
+  systemSpeaking?: boolean;
+}
+
+function computeRms(samples: ArrayLike<number>): number {
   if (!samples.length) {
     return 0;
   }
@@ -49,18 +89,21 @@ function computeRms(samples) {
   return Math.sqrt(sumSq / samples.length);
 }
 
-class MeetingEchoLeakDetector {
+export class MeetingEchoLeakDetector {
+  private systemHistory: SystemAudioHistoryEntry[];
+  private micHistory: MicEchoAnalysis[];
+
   constructor() {
     this.systemHistory = [];
     this.micHistory = [];
   }
 
-  reset() {
+  reset(): void {
     this.systemHistory = [];
     this.micHistory = [];
   }
 
-  recordSystemChunk(buffer, timestampMs = Date.now()) {
+  recordSystemChunk(buffer: Buffer | null | undefined, timestampMs = Date.now()): void {
     if (!buffer?.length) {
       return;
     }
@@ -80,7 +123,10 @@ class MeetingEchoLeakDetector {
     this._trimHistory(timestampMs);
   }
 
-  analyzeMicChunk(buffer, timestampMs = Date.now()) {
+  analyzeMicChunk(
+    buffer: Buffer | null | undefined,
+    timestampMs = Date.now()
+  ): MicEchoAnalysis | null {
     if (!buffer?.length) {
       return null;
     }
@@ -91,7 +137,7 @@ class MeetingEchoLeakDetector {
     }
 
     const rms = computeRms(samples);
-    const analysis = {
+    const analysis: MicEchoAnalysis = {
       timestampMs,
       durationMs: (samples.length / SAMPLE_RATE) * 1000,
       rms,
@@ -173,7 +219,7 @@ class MeetingEchoLeakDetector {
     return analysis;
   }
 
-  isMicProbablyRenderBleed(nowMs = Date.now()) {
+  isMicProbablyRenderBleed(nowMs = Date.now()): boolean {
     const recent = this.micHistory.filter(
       (entry) =>
         nowMs - entry.timestampMs <= PARTIAL_WINDOW_MS &&
@@ -212,7 +258,7 @@ class MeetingEchoLeakDetector {
     );
   }
 
-  isSystemSpeaking(windowStartMs, windowEndMs = Date.now()) {
+  isSystemSpeaking(windowStartMs: number, windowEndMs = Date.now()): boolean {
     for (let i = this.systemHistory.length - 1; i >= 0; i -= 1) {
       const entry = this.systemHistory[i];
       const entryEnd = entry.timestampMs + entry.durationMs;
@@ -226,7 +272,10 @@ class MeetingEchoLeakDetector {
     return false;
   }
 
-  shouldSuppressMicSegment(startedAtMs, endedAtMs = Date.now()) {
+  shouldSuppressMicSegment(
+    startedAtMs: number | null | undefined,
+    endedAtMs = Date.now()
+  ): MicSegmentSuppression {
     if (!startedAtMs) {
       return { suppress: false, reason: "missing_start" };
     }
@@ -342,7 +391,7 @@ class MeetingEchoLeakDetector {
     };
   }
 
-  shouldMuteMicChunk(analysis, nowMs = Date.now()) {
+  shouldMuteMicChunk(analysis: MicEchoAnalysis | null, nowMs = Date.now()): boolean {
     if (!analysis || analysis.state !== "suspected_render_bleed") {
       return false;
     }
@@ -364,7 +413,7 @@ class MeetingEchoLeakDetector {
     );
   }
 
-  _resolveState(analysis) {
+  private _resolveState(analysis: MicEchoAnalysis): EchoAnalysisState {
     const { correlation, residualRatio, explainedRatio, rms, systemRms, micToSystemRatio } =
       analysis;
 
@@ -393,7 +442,7 @@ class MeetingEchoLeakDetector {
     return "clean_local";
   }
 
-  _trimHistory(nowMs) {
+  private _trimHistory(nowMs: number): void {
     const systemCutoff = nowMs - MAX_SYSTEM_HISTORY_MS;
     const micCutoff = nowMs - MAX_MIC_HISTORY_MS;
 
@@ -406,7 +455,7 @@ class MeetingEchoLeakDetector {
     }
   }
 
-  _getSystemWindow() {
+  private _getSystemWindow(): Float32Array {
     const totalLength = this.systemHistory.reduce((sum, entry) => sum + entry.samples.length, 0);
     const merged = new Float32Array(totalLength);
     let offset = 0;
@@ -419,7 +468,7 @@ class MeetingEchoLeakDetector {
     return merged;
   }
 
-  _computeEnergy(samples) {
+  private _computeEnergy(samples: ArrayLike<number>): number {
     let sumSq = 0;
     for (let i = 0; i < samples.length; i += 1) {
       sumSq += samples[i] * samples[i];
@@ -427,7 +476,12 @@ class MeetingEchoLeakDetector {
     return sumSq;
   }
 
-  _matchesBleedProfile(entry, correlationGate, residualGate, explainedGate) {
+  private _matchesBleedProfile(
+    entry: MicEchoAnalysis | null | undefined,
+    correlationGate: number,
+    residualGate: number,
+    explainedGate: number
+  ): boolean {
     return (
       !!entry &&
       entry.rms >= MIN_RMS &&
@@ -438,9 +492,10 @@ class MeetingEchoLeakDetector {
     );
   }
 
-  _maxLagSamples() {
+  private _maxLagSamples(): number {
     return Math.round((MAX_LAG_MS / 1000) * SAMPLE_RATE);
   }
 }
 
 module.exports = MeetingEchoLeakDetector;
+module.exports.MeetingEchoLeakDetector = MeetingEchoLeakDetector;

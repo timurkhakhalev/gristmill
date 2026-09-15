@@ -1,6 +1,6 @@
 // will-navigate also fires for renderer-initiated location.reload() with the
 // window's own URL (appUrl), so that URL must stay allowed.
-function isAllowedAppNavigation(url, appUrl) {
+export function isAllowedAppNavigation(url: string, appUrl?: string | null): boolean {
   if (url.startsWith("devtools://")) return true;
   if (!appUrl) return false;
 
@@ -19,8 +19,6 @@ function isAllowedAppNavigation(url, appUrl) {
   }
 }
 
-function isExternalBrowserUrl(url) {
+export function isExternalBrowserUrl(url: string): boolean {
   return url.startsWith("http://") || url.startsWith("https://");
 }
-
-module.exports = { isAllowedAppNavigation, isExternalBrowserUrl };

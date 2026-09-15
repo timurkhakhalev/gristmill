@@ -29,7 +29,7 @@ require.cache[require.resolve("electron")] = {
   },
 };
 
-const HotkeyManager = require("../../src/helpers/hotkeyManager.js");
+const HotkeyManager = require("../../src/helpers/hotkeyManager.ts");
 
 const noop = () => {};
 

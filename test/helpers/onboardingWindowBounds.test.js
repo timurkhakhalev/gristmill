@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const bounds = require("../../src/helpers/onboardingWindowBounds.js");
+const bounds = require("../../src/helpers/onboardingWindowBounds.ts");
 
 const { centeredBounds, clampedBounds } = bounds;
 

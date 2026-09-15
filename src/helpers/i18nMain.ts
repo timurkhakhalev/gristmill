@@ -1,30 +1,30 @@
-const i18next = require("i18next");
+import i18next from "i18next";
 
-const enTranslation = require("../locales/en/translation.json");
-const arTranslation = require("../locales/ar/translation.json");
-const esTranslation = require("../locales/es/translation.json");
-const frTranslation = require("../locales/fr/translation.json");
-const deTranslation = require("../locales/de/translation.json");
-const ptTranslation = require("../locales/pt/translation.json");
-const itTranslation = require("../locales/it/translation.json");
-const ruTranslation = require("../locales/ru/translation.json");
-const jaTranslation = require("../locales/ja/translation.json");
-const zhCNTranslation = require("../locales/zh-CN/translation.json");
-const zhTWTranslation = require("../locales/zh-TW/translation.json");
+import enTranslation from "../locales/en/translation.json";
+import arTranslation from "../locales/ar/translation.json";
+import esTranslation from "../locales/es/translation.json";
+import frTranslation from "../locales/fr/translation.json";
+import deTranslation from "../locales/de/translation.json";
+import ptTranslation from "../locales/pt/translation.json";
+import itTranslation from "../locales/it/translation.json";
+import ruTranslation from "../locales/ru/translation.json";
+import jaTranslation from "../locales/ja/translation.json";
+import zhCNTranslation from "../locales/zh-CN/translation.json";
+import zhTWTranslation from "../locales/zh-TW/translation.json";
 
-const enPrompts = require("../locales/en/prompts.json");
-const arPrompts = require("../locales/ar/prompts.json");
-const esPrompts = require("../locales/es/prompts.json");
-const frPrompts = require("../locales/fr/prompts.json");
-const dePrompts = require("../locales/de/prompts.json");
-const ptPrompts = require("../locales/pt/prompts.json");
-const itPrompts = require("../locales/it/prompts.json");
-const ruPrompts = require("../locales/ru/prompts.json");
-const jaPrompts = require("../locales/ja/prompts.json");
-const zhCNPrompts = require("../locales/zh-CN/prompts.json");
-const zhTWPrompts = require("../locales/zh-TW/prompts.json");
+import enPrompts from "../locales/en/prompts.json";
+import arPrompts from "../locales/ar/prompts.json";
+import esPrompts from "../locales/es/prompts.json";
+import frPrompts from "../locales/fr/prompts.json";
+import dePrompts from "../locales/de/prompts.json";
+import ptPrompts from "../locales/pt/prompts.json";
+import itPrompts from "../locales/it/prompts.json";
+import ruPrompts from "../locales/ru/prompts.json";
+import jaPrompts from "../locales/ja/prompts.json";
+import zhCNPrompts from "../locales/zh-CN/prompts.json";
+import zhTWPrompts from "../locales/zh-TW/prompts.json";
 
-const SUPPORTED_UI_LANGUAGES = [
+export const SUPPORTED_UI_LANGUAGES: readonly string[] = [
   "en",
   "ar",
   "es",
@@ -38,7 +38,7 @@ const SUPPORTED_UI_LANGUAGES = [
   "zh-TW",
 ];
 
-function normalizeUiLanguage(language) {
+export function normalizeUiLanguage(language: string | null | undefined): string {
   const candidate = (language || "").trim();
 
   // Check full language-region code first (e.g. "zh-CN", "zh-TW")
@@ -65,7 +65,7 @@ function normalizeUiLanguage(language) {
   return SUPPORTED_UI_LANGUAGES.includes(base) ? base : "en";
 }
 
-const i18nMain = i18next.createInstance();
+export const i18nMain = i18next.createInstance();
 
 void i18nMain.init({
   initAsync: false,
@@ -126,7 +126,7 @@ void i18nMain.init({
   returnNull: false,
 });
 
-function changeLanguage(language) {
+export function changeLanguage(language: string | null | undefined): string {
   const normalized = normalizeUiLanguage(language);
 
   if (i18nMain.language !== normalized) {
@@ -135,10 +135,3 @@ function changeLanguage(language) {
 
   return normalized;
 }
-
-module.exports = {
-  i18nMain,
-  changeLanguage,
-  normalizeUiLanguage,
-  SUPPORTED_UI_LANGUAGES,
-};

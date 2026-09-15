@@ -1,5 +1,5 @@
-const { app } = require("electron");
-const { resolveDockVisibility } = require("./dockPolicy");
+import { app } from "electron";
+import { resolveDockVisibility } from "./dockPolicy.js";
 
 // Single owner of the macOS Dock icon. Every caller that wants the icon shown
 // or hidden goes through here, and the icon simply tracks the control panel.
@@ -11,24 +11,22 @@ const { resolveDockVisibility } = require("./dockPolicy");
 // covered by another window, minimized, or on another Space. Deriving from
 // them makes the icon flicker as the user switches windows.
 class DockManager {
-  constructor() {
-    this._controlPanelVisible = false;
-  }
+  private _controlPanelVisible = false;
 
   // Called once at startup, before any window exists: hides the Dock icon
   // until the control panel opens, so tray-only launches never show one.
-  init() {
+  init(): void {
     this._controlPanelVisible = false;
     this._applyVisibility();
   }
 
   // Reported by every path that surfaces or hides the control panel.
-  setControlPanelVisible(visible) {
+  setControlPanelVisible(visible: boolean): void {
     this._controlPanelVisible = !!visible;
     this._applyVisibility();
   }
 
-  _applyVisibility() {
+  private _applyVisibility(): void {
     const visible = resolveDockVisibility({
       platform: process.platform,
       controlPanelVisible: this._controlPanelVisible,
@@ -47,4 +45,6 @@ class DockManager {
   }
 }
 
-module.exports = new DockManager();
+const dockManager = new DockManager();
+export default dockManager;
+module.exports = dockManager;

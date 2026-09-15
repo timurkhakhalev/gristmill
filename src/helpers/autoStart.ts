@@ -1,41 +1,35 @@
-// Launch at login for macOS. Decisions live in autoStartPolicy.js.
+// Launch at login for macOS. Decisions live in autoStartPolicy.ts.
 
-const { app } = require("electron");
-const {
+import { app } from "electron";
+import {
   getLoginItemArgs,
   resolveAutoStartState,
   wasLaunchedHidden,
-} = require("./autoStartPolicy");
+} from "./autoStartPolicy.js";
 
 function readLoginItemSettings() {
   return app.getLoginItemSettings({ args: getLoginItemArgs() });
 }
 
-function writeLoginItem(enabled) {
+function writeLoginItem(enabled: boolean) {
   app.setLoginItemSettings({
     openAtLogin: enabled,
     args: getLoginItemArgs(),
   });
 }
 
-function getAutoStartState() {
+export function getAutoStartState() {
   return resolveAutoStartState({
     loginItemSettings: readLoginItemSettings(),
   });
 }
 
-function setAutoStartEnabled(enabled) {
+export function setAutoStartEnabled(enabled: boolean) {
   writeLoginItem(enabled);
 }
 
-function wasLaunchedAtLoginHidden() {
+export function wasLaunchedAtLoginHidden(): boolean {
   return wasLaunchedHidden({
     loginItemSettings: app.getLoginItemSettings(),
   });
 }
-
-module.exports = {
-  getAutoStartState,
-  setAutoStartEnabled,
-  wasLaunchedAtLoginHidden,
-};

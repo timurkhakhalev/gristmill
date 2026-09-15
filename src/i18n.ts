@@ -28,7 +28,7 @@ export function normalizeUiLanguage(language: string | null | undefined): UiLang
   );
   if (fullMatch) return fullMatch;
 
-  // Keep in sync with src/helpers/i18nMain.js. Chinese is the only UI language
+  // Keep in sync with src/helpers/i18nMain.ts. Chinese is the only UI language
   // that is not the primary subtag; OS/browser tags must map onto zh-CN/zh-TW.
   const lower = normalized.toLowerCase();
   if (lower === "zh" || lower.startsWith("zh-")) {

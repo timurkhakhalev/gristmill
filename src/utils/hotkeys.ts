@@ -15,7 +15,7 @@ export function isGlobeLikeHotkey(hotkey: string): boolean {
  * KEY is itself a valid hotkey (e.g. "Control+,"): no accelerator legitimately
  * ends with "+", so a split segment ending in "+" gets its comma restored.
  *
- * Keep in sync with the main-process twin in src/helpers/hotkeyList.js.
+ * Keep in sync with the main-process twin in src/helpers/hotkeyList.ts.
  */
 export function parseHotkeyList(value?: string | null): string[] {
   if (!value) return [];

@@ -1,8 +1,10 @@
-const fs = require("fs");
-const path = require("path");
-const { app } = require("electron");
+import fs from "fs";
+import path from "path";
+import { app } from "electron";
 
-const LOG_LEVELS = {
+type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
+
+const LOG_LEVELS: Record<LogLevel, number> = {
   trace: 10,
   debug: 20,
   info: 30,
@@ -11,13 +13,13 @@ const LOG_LEVELS = {
   fatal: 60,
 };
 
-const normalizeLevel = (value) => {
+const normalizeLevel = (value: unknown): LogLevel | null => {
   if (!value) return null;
   const lower = String(value).toLowerCase();
-  return Object.prototype.hasOwnProperty.call(LOG_LEVELS, lower) ? lower : null;
+  return Object.prototype.hasOwnProperty.call(LOG_LEVELS, lower) ? (lower as LogLevel) : null;
 };
 
-const readArgLogLevel = () => {
+const readArgLogLevel = (): string | null => {
   const argv = process.argv || [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -31,9 +33,18 @@ const readArgLogLevel = () => {
   return null;
 };
 
-const hasConsoleLogOptIn = () => (process.argv || []).includes("--console-logs");
+const hasConsoleLogOptIn = (): boolean => (process.argv || []).includes("--console-logs");
 
 class DebugLogger {
+  logLevel: LogLevel;
+  levelValue: number;
+  debugMode: boolean;
+  logFile: string | null;
+  logStream: fs.WriteStream | null;
+  fileLoggingEnabled: boolean;
+  fileLoggingPending: boolean;
+  consoleLoggingEnabled: boolean;
+
   constructor() {
     this.logLevel = this.resolveLogLevel();
     this.levelValue = LOG_LEVELS[this.logLevel] || LOG_LEVELS.info;
@@ -49,7 +60,7 @@ class DebugLogger {
     // File logging will be initialized on first log write or via ensureFileLogging().
   }
 
-  initializeFileLogging() {
+  initializeFileLogging(): void {
     if (this.fileLoggingEnabled) return;
 
     // Check if app is ready before accessing app.getPath()
@@ -94,13 +105,13 @@ class DebugLogger {
    * Ensures file logging is initialized if debug mode is enabled.
    * This should be called after app.whenReady() to safely initialize file logging.
    */
-  ensureFileLogging() {
+  ensureFileLogging(): void {
     if (this.fileLoggingPending && !this.fileLoggingEnabled) {
       this.initializeFileLogging();
     }
   }
 
-  resolveLogLevel() {
+  resolveLogLevel(): LogLevel {
     const argLevel = normalizeLevel(readArgLogLevel());
     if (argLevel) {
       return argLevel;
@@ -114,12 +125,12 @@ class DebugLogger {
     return "info";
   }
 
-  resolveConsoleLogging() {
+  resolveConsoleLogging(): boolean {
     // Packaged Windows apps can inherit the launching shell's standard handles.
     return process.platform !== "win32" || !app.isPackaged || hasConsoleLogOptIn();
   }
 
-  refreshLogLevel() {
+  refreshLogLevel(): void {
     const nextLevel = this.resolveLogLevel();
     if (nextLevel === this.logLevel) return;
 
@@ -132,33 +143,34 @@ class DebugLogger {
     }
   }
 
-  getLevel() {
+  getLevel(): LogLevel {
     return this.logLevel;
   }
 
-  isDebugEnabled() {
+  isDebugEnabled(): boolean {
     return this.levelValue <= LOG_LEVELS.debug;
   }
 
-  shouldLog(level) {
-    const normalized = normalizeLevel(level) || "info";
+  shouldLog(level: string): boolean {
+    const normalized: LogLevel = normalizeLevel(level) || "info";
     return LOG_LEVELS[normalized] >= this.levelValue;
   }
 
-  serializeValue(value) {
+  serializeValue(value: unknown): unknown {
     if (value instanceof Error) {
+      const code = (value as NodeJS.ErrnoException).code;
       return {
         name: value.name,
         message: value.message,
-        ...(value.code ? { code: value.code } : {}),
+        ...(code ? { code } : {}),
         ...(value.stack ? { stack: value.stack } : {}),
-        ...value,
+        ...(value as unknown as Record<string, unknown>),
       };
     }
     return value;
   }
 
-  formatArgs(args) {
+  formatArgs(args: unknown[]): string {
     return args
       .map((arg) => {
         if (arg !== null && typeof arg === "object") {
@@ -173,7 +185,7 @@ class DebugLogger {
       .join(" ");
   }
 
-  formatMeta(meta) {
+  formatMeta(meta: unknown): string {
     if (meta === undefined) return "";
     if (typeof meta === "string") return meta;
     try {
@@ -183,7 +195,13 @@ class DebugLogger {
     }
   }
 
-  write(level, message, meta, scope, source) {
+  write(
+    level: string,
+    message: string,
+    meta?: unknown,
+    scope?: string,
+    source?: string
+  ): void {
     const normalized = normalizeLevel(level) || "info";
     if (!this.shouldLog(normalized)) return;
 
@@ -221,53 +239,59 @@ class DebugLogger {
     }
   }
 
-  log(...args) {
+  log(...args: unknown[]): void {
     this.write("debug", this.formatArgs(args));
   }
 
-  debug(message, meta, scope, source) {
+  debug(message: string, meta?: unknown, scope?: string, source?: string): void {
     this.write("debug", message, meta, scope, source);
   }
 
-  trace(message, meta, scope, source) {
+  trace(message: string, meta?: unknown, scope?: string, source?: string): void {
     this.write("trace", message, meta, scope, source);
   }
 
-  info(message, meta, scope, source) {
+  info(message: string, meta?: unknown, scope?: string, source?: string): void {
     this.write("info", message, meta, scope, source);
   }
 
-  warn(message, meta, scope, source) {
+  warn(message: string, meta?: unknown, scope?: string, source?: string): void {
     this.write("warn", message, meta, scope, source);
   }
 
-  logReasoning(stage, details) {
+  logReasoning(stage: string, details: unknown): void {
     this.debug(stage, details, "reasoning");
   }
 
-  error(...args) {
+  error(...args: unknown[]): void {
     const message = `ERROR: ${this.formatArgs(args)}`;
     this.write("error", message);
   }
 
-  fatal(...args) {
+  fatal(...args: unknown[]): void {
     const message = `FATAL: ${this.formatArgs(args)}`;
     this.write("fatal", message);
   }
 
-  logEntry(entry) {
+  logEntry(entry: unknown): void {
     if (!entry || typeof entry !== "object") return;
-    const normalized = normalizeLevel(entry.level) || "info";
-    const message = entry.message ? String(entry.message) : "";
-    const scope = entry.scope ? String(entry.scope) : undefined;
-    const source = entry.source ? String(entry.source) : "renderer";
-    this.write(normalized, message, entry.meta, scope, source);
+    const record = entry as Record<string, unknown>;
+    const normalized =
+      normalizeLevel(typeof record.level === "string" ? record.level : undefined) || "info";
+    const message = record.message ? String(record.message) : "";
+    const scope = record.scope ? String(record.scope) : undefined;
+    const source = record.source ? String(record.source) : "renderer";
+    this.write(normalized, message, record.meta, scope, source);
   }
 
-  logFFmpegDebug(context, ffmpegPath, additionalInfo = {}) {
+  logFFmpegDebug(
+    context: string,
+    ffmpegPath: string | null | undefined,
+    additionalInfo: Record<string, unknown> = {}
+  ): void {
     if (!this.isDebugEnabled()) return;
 
-    const debugInfo = {
+    const debugInfo: Record<string, unknown> = {
       context,
       ffmpegPath,
       exists: ffmpegPath ? fs.existsSync(ffmpegPath) : false,
@@ -288,7 +312,7 @@ class DebugLogger {
           modified: stats.mtime,
         };
       } catch (e) {
-        debugInfo.statError = e.message;
+        debugInfo.statError = (e as Error).message;
       }
     }
 
@@ -300,12 +324,12 @@ class DebugLogger {
         debugInfo.dirReadable = true;
       } catch (e) {
         debugInfo.dirReadable = false;
-        debugInfo.dirError = e.message;
+        debugInfo.dirError = (e as Error).message;
       }
     }
 
     // Platform-specific path checks
-    let possiblePaths = [];
+    let possiblePaths: (string | null | undefined)[] = [];
     if (process.platform === "win32") {
       possiblePaths = [
         ffmpegPath,
@@ -339,21 +363,26 @@ class DebugLogger {
 
     debugInfo.pathChecks = possiblePaths.map((p) => ({
       path: p,
-      exists: fs.existsSync(p),
-      normalized: path.normalize(p),
+      exists: p ? fs.existsSync(p) : false,
+      normalized: p ? path.normalize(p) : "",
     }));
 
     this.debug(`FFmpeg Debug - ${context}`, debugInfo, "ffmpeg");
   }
 
-  logAudioData(context, audioBlob) {
+  logAudioData(context: string, audioBlob: unknown): void {
     if (!this.isDebugEnabled()) return;
 
-    const audioInfo = {
+    const blob = (audioBlob ?? null) as {
+      type?: string;
+      size?: number;
+      constructor?: { name?: string };
+    } | null;
+    const audioInfo: Record<string, unknown> = {
       context,
-      type: audioBlob?.type || "unknown",
-      size: audioBlob?.size || 0,
-      constructor: audioBlob?.constructor?.name || "unknown",
+      type: blob?.type || "unknown",
+      size: blob?.size || 0,
+      constructor: blob?.constructor?.name || "unknown",
     };
 
     if (audioBlob instanceof ArrayBuffer) {
@@ -374,7 +403,11 @@ class DebugLogger {
     this.debug("Audio Data Debug", audioInfo, "audio");
   }
 
-  logProcessStart(command, args, options = {}) {
+  logProcessStart(
+    command: string,
+    args: readonly string[] | string,
+    options: { cwd?: string; env?: Record<string, string | undefined> } = {}
+  ): void {
     if (!this.isDebugEnabled()) return;
 
     this.debug(
@@ -394,7 +427,7 @@ class DebugLogger {
     );
   }
 
-  logProcessOutput(processName, type, data) {
+  logProcessOutput(processName: string, type: string, data: Buffer | string): void {
     if (!this.isDebugEnabled()) return;
 
     const output = data.toString().trim();
@@ -403,25 +436,25 @@ class DebugLogger {
     }
   }
 
-  logWhisperPipeline(stage, details) {
+  logWhisperPipeline(stage: string, details: unknown): void {
     if (!this.isDebugEnabled()) return;
     this.debug(`Whisper Pipeline - ${stage}`, details, "whisper");
   }
 
-  logSTTPipeline(stage, details) {
+  logSTTPipeline(stage: string, details: unknown): void {
     if (!this.isDebugEnabled()) return;
     this.debug(`STT Pipeline - ${stage}`, details, "stt");
   }
 
-  getLogPath() {
+  getLogPath(): string | null {
     return this.logFile;
   }
 
-  isEnabled() {
+  isEnabled(): boolean {
     return this.isDebugEnabled();
   }
 
-  close() {
+  close(): void {
     if (this.logStream) {
       this.log("📝 Debug logger closing");
       this.logStream.end();
@@ -432,5 +465,5 @@ class DebugLogger {
 
 // Singleton instance
 const debugLogger = new DebugLogger();
-
+export default debugLogger;
 module.exports = debugLogger;

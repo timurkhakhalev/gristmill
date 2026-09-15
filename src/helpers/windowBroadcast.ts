@@ -1,6 +1,6 @@
-const { BrowserWindow } = require("electron");
+import { BrowserWindow } from "electron";
 
-function broadcastToWindows(channel, data) {
+export function broadcastToWindows(channel: string, data: unknown): void {
   const windows = BrowserWindow.getAllWindows();
   windows.forEach((win) => {
     if (!win.isDestroyed()) {
@@ -8,5 +8,3 @@ function broadcastToWindows(channel, data) {
     }
   });
 }
-
-module.exports = { broadcastToWindows };

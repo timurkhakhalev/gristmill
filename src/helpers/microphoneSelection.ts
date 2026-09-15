@@ -1,10 +1,52 @@
-import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
-import { resolveMicDeviceSelection } from "./micDeviceSelection";
+import { isBuiltInMicrophone } from "../utils/audioDeviceUtils.js";
+import {
+  resolveMicDeviceSelection,
+  type MicDeviceSelectionStatus,
+  type MicrophoneDeviceLike,
+} from "./micDeviceSelection.js";
 
-export const MICROPHONE_SELECTION_MODES = ["system", "built-in", "specific"];
+export const MICROPHONE_SELECTION_MODES = ["system", "built-in", "specific"] as const;
+export type MicrophoneSelectionMode = (typeof MICROPHONE_SELECTION_MODES)[number];
 
-export function getMicrophoneSelectionMode(settings = {}) {
-  if (MICROPHONE_SELECTION_MODES.includes(settings.microphoneSelectionMode)) {
+export interface MicrophoneSelectionSettings {
+  microphoneSelectionMode?: string;
+  preferBuiltInMic?: boolean;
+  selectedMicDeviceId?: string;
+  selectedMicDeviceLabel?: string;
+  setSelectedMicDevice?: (deviceId: string, label: string) => void;
+}
+
+export interface SystemDefaultMicrophone {
+  name: string;
+  nativeId?: string;
+  platform?: string;
+  source?: "system" | "unavailable";
+}
+
+export type MicrophoneResolutionStatus =
+  | MicDeviceSelectionStatus
+  | "native-exact"
+  | "native-compatible"
+  | "chromium-default-unmatched"
+  | "chromium-default"
+  | "native-unmatched"
+  | "unavailable"
+  | "built-in";
+
+export interface MicrophoneResolution<Device extends MicrophoneDeviceLike> {
+  mode: MicrophoneSelectionMode;
+  device: Device | null;
+  status: MicrophoneResolutionStatus;
+  systemDefault?: SystemDefaultMicrophone | null;
+}
+
+const isMicrophoneSelectionMode = (value: string | undefined): value is MicrophoneSelectionMode =>
+  MICROPHONE_SELECTION_MODES.some((mode) => mode === value);
+
+export function getMicrophoneSelectionMode(
+  settings: MicrophoneSelectionSettings = {}
+): MicrophoneSelectionMode {
+  if (isMicrophoneSelectionMode(settings.microphoneSelectionMode)) {
     return settings.microphoneSelectionMode;
   }
   if (settings.preferBuiltInMic) return "built-in";
@@ -13,7 +55,7 @@ export function getMicrophoneSelectionMode(settings = {}) {
     : "system";
 }
 
-export function normalizeMicrophoneLabel(label = "") {
+export function normalizeMicrophoneLabel(label: string | null | undefined = ""): string {
   return String(label)
     .normalize("NFKC")
     .replace(/^\s*(?:default|communications)\s*-\s*/i, "")
@@ -23,11 +65,14 @@ export function normalizeMicrophoneLabel(label = "") {
     .toLocaleLowerCase();
 }
 
-function comparableLabel(label) {
+function comparableLabel(label: string | null | undefined): string {
   return normalizeMicrophoneLabel(label).replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
-export function resolveSystemDefaultMicDevice(devices, systemDefault) {
+export function resolveSystemDefaultMicDevice<Device extends MicrophoneDeviceLike>(
+  devices: readonly Device[],
+  systemDefault: SystemDefaultMicrophone | null = null
+): Omit<MicrophoneResolution<Device>, "mode"> {
   const inputs = devices.filter((device) => device.kind === "audioinput");
   const chromiumDefault = inputs.find((device) => device.deviceId === "default") || null;
   const physicalInputs = inputs.filter((device) => device.deviceId !== "default");
@@ -70,7 +115,11 @@ export function resolveSystemDefaultMicDevice(devices, systemDefault) {
   };
 }
 
-export function resolveMicrophoneSelection(devices, settings, systemDefault = null) {
+export function resolveMicrophoneSelection<Device extends MicrophoneDeviceLike>(
+  devices: readonly Device[],
+  settings: MicrophoneSelectionSettings,
+  systemDefault: SystemDefaultMicrophone | null = null
+): MicrophoneResolution<Device> {
   const mode = getMicrophoneSelectionMode(settings);
   const inputs = devices.filter((device) => device.kind === "audioinput");
 
@@ -93,7 +142,9 @@ export function resolveMicrophoneSelection(devices, settings, systemDefault = nu
   return { mode, ...selection };
 }
 
-export function isCacheableMicrophoneResolution(resolution) {
+export function isCacheableMicrophoneResolution(
+  resolution: Pick<MicrophoneResolution<MicrophoneDeviceLike>, "device"> | null | undefined
+): boolean {
   const deviceId = resolution?.device?.deviceId;
   return Boolean(deviceId && deviceId !== "default");
 }
@@ -104,8 +155,16 @@ export async function resolvePreferredMicrophone({
   forceSystemDefault = false,
   refreshSystemDefault = false,
   getSystemDefault = (options) => window.electronAPI?.getSystemDefaultMicrophone?.(options),
-}) {
-  const effectiveSettings = forceSystemDefault
+}: {
+  settings: MicrophoneSelectionSettings;
+  mediaDevices?: Pick<MediaDevices, "enumerateDevices">;
+  forceSystemDefault?: boolean;
+  refreshSystemDefault?: boolean;
+  getSystemDefault?: (
+    options: { refresh: boolean }
+  ) => Promise<SystemDefaultMicrophone | null | undefined> | undefined;
+}): Promise<MicrophoneResolution<MediaDeviceInfo>> {
+  const effectiveSettings: MicrophoneSelectionSettings = forceSystemDefault
     ? { ...settings, microphoneSelectionMode: "system", preferBuiltInMic: false }
     : settings;
   const mode = getMicrophoneSelectionMode(effectiveSettings);

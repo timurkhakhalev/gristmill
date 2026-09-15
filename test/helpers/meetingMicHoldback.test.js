@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const {
   partitionPendingMicFinals,
   isWithinRetractWindow,
-} = require("../../src/helpers/meetingMicHoldback");
+} = require("../../src/helpers/meetingMicHoldback.ts");
 
 const NOW = 1_000_000;
 
@@ -232,7 +232,7 @@ const {
   isDuplicateMicSegment,
   selectRacingMicEntryIndices,
   partitionOverlappingPendingMicFinals,
-} = require("../../src/helpers/meetingMicHoldback");
+} = require("../../src/helpers/meetingMicHoldback.ts");
 
 const DUPLICATE_WINDOW = 6000;
 const RETRACT_WINDOW = 4000;

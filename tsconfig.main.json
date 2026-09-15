@@ -16,6 +16,22 @@
     "noEmitOnError": true,
     "types": ["node"]
   },
-  "include": ["main.js", "preload.js", "src/workers/*.ts"],
+  "include": [
+    "main.js",
+    "preload.js",
+    "src/workers/*.ts",
+    "src/utils/audioUtils.ts",
+    "src/helpers/audioActivityDetector.ts",
+    "src/helpers/audioTapManager.ts",
+    "src/helpers/meetingAecManager.ts",
+    "src/helpers/meetingAudioActivityMonitor.ts",
+    "src/helpers/meetingAudioTimeline.ts",
+    "src/helpers/meetingDiarizationInput.ts",
+    "src/helpers/meetingEchoLeakDetector.ts",
+    "src/helpers/meetingMicGate.ts",
+    "src/helpers/meetingMicHoldback.ts",
+    "src/helpers/meetingSystemAudioWatchdog.ts",
+    "src/helpers/systemDefaultMicrophone.ts"
+  ],
   "exclude": ["node_modules", "dist", "dist-main", "src/dist", "test"]
 }

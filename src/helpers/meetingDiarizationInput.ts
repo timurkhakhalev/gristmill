@@ -7,13 +7,30 @@
  * the other is deleted. Call sessions keep today's behavior: any session that
  * heard audible system audio diarizes the system channel.
  */
-function resolveDiarizationInput({
+import type { MeetingAudioSource } from "../utils/audioUtils.js";
+
+export interface DiarizationInputOptions {
+  systemPcmPath?: string | null;
+  micPcmPath?: string | null;
+  systemAudioHeard?: boolean;
+  systemStartedAt?: number | null;
+  micStartedAt?: number | null;
+}
+
+export interface DiarizationInput {
+  pcmPath: string | null;
+  startedAt: number | null;
+  diarizedSource: MeetingAudioSource;
+  cleanupPcmPaths: string[];
+}
+
+export function resolveDiarizationInput({
   systemPcmPath = null,
   micPcmPath = null,
   systemAudioHeard = false,
   systemStartedAt = null,
   micStartedAt = null,
-} = {}) {
+}: DiarizationInputOptions = {}): DiarizationInput {
   if (systemAudioHeard || !micPcmPath) {
     return {
       pcmPath: systemPcmPath,
@@ -30,5 +47,3 @@ function resolveDiarizationInput({
     cleanupPcmPaths: systemPcmPath ? [systemPcmPath] : [],
   };
 }
-
-module.exports = { resolveDiarizationInput };

@@ -5,11 +5,11 @@ const {
   createMeetingAudioActivityMonitor,
   MIC_ACTIVITY_TAIL_MS,
   SYSTEM_ACTIVITY_TAIL_MS,
-} = require("../../src/helpers/meetingAudioActivityMonitor");
+} = require("../../src/helpers/meetingAudioActivityMonitor.ts");
 const {
   MEETING_MIC_ACTIVITY_RMS,
   MEETING_SYSTEM_ACTIVITY_RMS,
-} = require("../../src/utils/audioUtils");
+} = require("../../src/utils/audioUtils.ts");
 
 const START = 1_000_000;
 

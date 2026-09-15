@@ -178,9 +178,9 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/anthropicResponse.ts`
 - `src/helpers/appleCalendarManager.ts`
 - `src/helpers/assemblyAiStreaming.js`
-- `src/helpers/audioActivityDetector.js`
+- `src/helpers/audioActivityDetector.ts`
 - `src/helpers/audioStorage.ts`
-- `src/helpers/audioTapManager.js`
+- `src/helpers/audioTapManager.ts`
 - `src/helpers/autoStart.js`
 - `src/helpers/autoStartPolicy.js`
 - `src/helpers/notesEvents.ts`
@@ -243,20 +243,20 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/localServerPolicy.js`
 - `src/helpers/localTranscriptionModels.js`
 - `src/helpers/markdownMirror.ts`
-- `src/helpers/meetingAecManager.js`
-- `src/helpers/meetingAudioActivityMonitor.js`
-- `src/helpers/meetingAudioTimeline.js`
+- `src/helpers/meetingAecManager.ts`
+- `src/helpers/meetingAudioActivityMonitor.ts`
+- `src/helpers/meetingAudioTimeline.ts`
 - `src/helpers/meetingAutoEndController.js`
 - `src/helpers/meetingAutoEndLifecycle.js`
 - `src/helpers/meetingDetectionEngine.js`
-- `src/helpers/meetingDiarizationInput.js`
-- `src/helpers/meetingEchoLeakDetector.js`
+- `src/helpers/meetingDiarizationInput.ts`
+- `src/helpers/meetingEchoLeakDetector.ts`
 - `src/helpers/meetingJoinUrl.js`
-- `src/helpers/meetingMicGate.js`
-- `src/helpers/meetingMicHoldback.js`
+- `src/helpers/meetingMicGate.ts`
+- `src/helpers/meetingMicHoldback.ts`
 - `src/helpers/meetingProcessDetector.js`
 - `src/helpers/meetingStreamingProviders.js`
-- `src/helpers/meetingSystemAudioWatchdog.js`
+- `src/helpers/meetingSystemAudioWatchdog.ts`
 - `src/helpers/meetingTranscriptionLifecycle.js`
 - `src/helpers/menuManager.js`
 - `src/helpers/microsoftCalendarManager.ts`
@@ -293,7 +293,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/speakerEmbeddings.js`
 - `src/helpers/speakerMerge.js`
 - `src/helpers/stripThinking.js`
-- `src/helpers/systemDefaultMicrophone.js`
+- `src/helpers/systemDefaultMicrophone.ts`
 - `src/helpers/systemTar.ts`
 - `src/helpers/urlDownloadIpcHandlers.ts`
 - `src/helpers/vocabularyEvents.ts`
@@ -357,7 +357,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/models/modelRegistryData.json`
 - `src/services/localReasoningBridge.ts`
 - `src/services/transcriptionBaseUrl.ts`
-- `src/utils/audioUtils.js`
+- `src/utils/audioUtils.ts`
 - `src/utils/process.ts`
 - `src/utils/serverUtils.ts`
 - `src/utils/urlUtils.ts`
@@ -1397,3 +1397,49 @@ path, новые IPC channels/bridge не добавлялись.
 build, pack и isolated Electron smoke остаются за оркестратором. Inventory по
 фактическому `tsc --listFilesOnly`: 43 JS, 150 TS, 1 MTS, 25 JSON; срез source
 `src` без `src/dist`: 51 JS, 0 JSX, 1 MJS, 349 TS, 254 TSX, 1 MTS.
+
+## Этап «native audio capture adapters и PCM policies»
+
+15 сентября 2026 (issue #47). Native tap/AEC wrappers и meeting audio policy
+helpers переведены из JavaScript в TypeScript; последовательность meeting
+orchestration в `ipcHandlers.js` не менялась.
+
+- `AudioTapManager` и `MeetingAecManager` получили явные startup/readiness,
+  permission/status, warning/error и chunk contracts. Newline JSON с partial
+  reads валидируется у stderr boundary; AEC stdout сохраняет split frame
+  buffering и проверяет bounded even PCM16 frame lengths. Таймауты, cleanup,
+  stale child callbacks, exit/error paths, native ABI, sample rate и platform
+  gates сохранены.
+- `AudioActivityDetector`, `ActiveMicRecoveryController` и
+  `MeetingSystemAudioWatchdog` типизируют clocks, generation/retry state,
+  device-change/track callbacks и interruption payloads. Device invalidation,
+  default-input recovery, quiet/degraded states и explicit restart semantics
+  не получили второго runtime path.
+- PCM helpers (`audioUtils`, activity monitor, timeline, echo detector, mic
+  gate, holdback и diarization input) сохраняют исходные 24 kHz/PCM16 sample
+  math, thresholds, bounded 100 ms silence только после `markRestart()`,
+  jitter behavior и source selection. `audioUtils.ts` остаётся browser-shared
+  и не импортирует Node/Electron.
+- Microphone selection/recovery helpers (`micDeviceSelection`,
+  `micSelectionRecovery`, `microphoneSelection`, `systemDefaultMicrophone`)
+  используют симметричную string-нормализацию ключей и сохраняют exact,
+  remapped, ambiguous, native-default и unavailable статусы.
+- Direct CJS consumers сохраняют identity через `module.exports = X` и
+  `module.exports.X = X` (AudioActivityDetector, AudioTapManager,
+  MeetingAecManager, MeetingEchoLeakDetector, timeline, watchdog); watchdog
+  statics и named-object consumers также re-attached. Existing ESM default
+  drills не удалялись. Tests use explicit `.ts` source specifiers and every
+  touched Module._load hook accepts extensionless and `.js` forms; no raw TS is
+  executed through `vm.runInNewContext`.
+- `tsconfig.main.json` теперь явно включает native/PCM main modules in the
+  strict Node graph. Source inventory after this stage: 35 JS, 365 TS,
+  254 TSX, 1 MTS (excluding `src/dist`); the Electron graph is expected to be
+  31 JS, 162 TS, 1 MTS and 25 JSON after the 12 main-target renames.
+
+Проверка исполнителем: `pnpm run typecheck` — 0 ошибок во всех трёх графах;
+`pnpm run lint` — 0 errors, 31 + 2 baseline warnings. Tests, builds, install,
+native rebuild, pack и hardware smoke по ограничению задачи не запускались.
+Оркестратору нужно последовательно выполнить focused tests (включая новый
+AEC framing и mic-selection recovery coverage), `pnpm run build:main`,
+`pnpm run build:renderer`, `pnpm test`, `pnpm run pack` и isolated Electron /
+real mic+system recovery smoke на отдельном профиле.

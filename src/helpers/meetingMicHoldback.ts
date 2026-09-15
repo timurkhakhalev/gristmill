@@ -10,10 +10,56 @@
  * with bleed flags can still be retracted when a matching system transcript
  * arrives late (see removeRacingMicEntriesFor in ipcHandlers.js).
  */
-const partitionPendingMicFinals = ({ pending, now, force = false, isDuplicate }) => {
-  const deferred = [];
-  const duplicates = [];
-  const releases = [];
+export interface MicSuppressionProfile {
+  systemSpeaking?: boolean;
+  reason?: string;
+  hasBleedEvidence?: boolean;
+  likelyRenderBleed?: boolean;
+}
+
+export interface PendingMicFinal {
+  text: string;
+  timestamp: number;
+  releaseAt: number;
+  micSuppression?: MicSuppressionProfile | null;
+}
+
+export interface CommittedMicSegment {
+  source: string;
+  text: string;
+  timestamp?: number | null;
+  committedAt?: number | null;
+  hasBleedEvidence?: boolean;
+  likelyRenderBleed?: boolean;
+  suppressionReason?: string | null;
+}
+
+export interface NearbyTranscriptMatchOptions {
+  relaxed?: boolean;
+  extraSegment?: { text: string; timestamp: number | null };
+}
+
+export type HasNearbyTranscriptMatch = (
+  source: "system",
+  text: string,
+  timestamp: number,
+  options?: NearbyTranscriptMatchOptions
+) => boolean;
+
+export const partitionPendingMicFinals = <Entry extends { releaseAt: number }>({
+  pending,
+  now,
+  force = false,
+  isDuplicate,
+}: {
+  pending: readonly Entry[];
+  now: number;
+  force?: boolean;
+  isDuplicate: (entry: Entry) => boolean;
+}): { deferred: Entry[]; duplicates: Entry[]; releases: Entry[] } => {
+  const deferred: Entry[] = [];
+  const duplicates: Entry[] = [];
+  const releases: Entry[] = [];
 
   for (const entry of pending) {
     if (!force && entry.releaseAt > now) {
@@ -42,7 +88,15 @@ const partitionPendingMicFinals = ({ pending, now, force = false, isDuplicate })
  * never be retracted: the confirming transcript always arrives more than
  * `holdback` away from the capture timestamp.
  */
-const isWithinRetractWindow = ({ candidate, systemTimestamp, windowMs }) => {
+export const isWithinRetractWindow = ({
+  candidate,
+  systemTimestamp,
+  windowMs,
+}: {
+  candidate: Pick<CommittedMicSegment, "timestamp" | "committedAt"> & { timestamp: number };
+  systemTimestamp: number;
+  windowMs: number;
+}): boolean => {
   if (Math.abs(candidate.timestamp - systemTimestamp) <= windowMs) {
     return true;
   }
@@ -61,7 +115,13 @@ const isWithinRetractWindow = ({ candidate, systemTimestamp, windowMs }) => {
  * `systemSpeaking` is sufficient today (design plan D4b tightens this).
  * @returns {boolean|undefined} falsy (may be `undefined`, not `false`) when not risky — callers test truthiness only.
  */
-const isRiskyMicDuplicateProfile = ({ suppression = null, inStartupWarmup = false } = {}) => {
+export const isRiskyMicDuplicateProfile = ({
+  suppression = null,
+  inStartupWarmup = false,
+}: {
+  suppression?: MicSuppressionProfile | null;
+  inStartupWarmup?: boolean;
+} = {}): boolean | undefined => {
   if (inStartupWarmup) {
     return true;
   }
@@ -81,12 +141,17 @@ const isRiskyMicDuplicateProfile = ({ suppression = null, inStartupWarmup = fals
  * evidence exists, relaxed overlap for double-talk. `hasNearbyTranscriptMatch`
  * is ipcHandlers' closure over the committed system segments.
  */
-const isDuplicateMicSegment = ({
+export const isDuplicateMicSegment = ({
   text,
   timestamp,
   suppression = null,
   hasNearbyTranscriptMatch,
-}) => {
+}: {
+  text: string;
+  timestamp: number;
+  suppression?: MicSuppressionProfile | null;
+  hasNearbyTranscriptMatch: HasNearbyTranscriptMatch;
+}): boolean => {
   if (suppression?.likelyRenderBleed || suppression?.hasBleedEvidence) {
     if (hasNearbyTranscriptMatch("system", text, timestamp)) {
       return true;
@@ -107,15 +172,22 @@ const isDuplicateMicSegment = ({
  * ordered, so this is an optimisation that is only unsound under mixed
  * per-candidate windows — see the characterization test).
  */
-const selectRacingMicEntryIndices = ({
+export const selectRacingMicEntryIndices = ({
   segments,
   systemText,
   systemTimestamp,
   hasNearbyTranscriptMatch,
   duplicateWindowMs,
   retractWindowMs,
-}) => {
-  const removedIndices = [];
+}: {
+  segments: readonly CommittedMicSegment[];
+  systemText: string;
+  systemTimestamp: number | null;
+  hasNearbyTranscriptMatch: HasNearbyTranscriptMatch;
+  duplicateWindowMs: number;
+  retractWindowMs: number;
+}): number[] => {
+  const removedIndices: number[] = [];
   for (let i = segments.length - 1; i >= 0; i -= 1) {
     const candidate = segments[i];
     if (candidate.source !== "mic" || candidate.timestamp == null) continue;
@@ -124,7 +196,13 @@ const selectRacingMicEntryIndices = ({
         candidate.hasBleedEvidence || candidate.likelyRenderBleed
           ? duplicateWindowMs
           : retractWindowMs;
-      if (!isWithinRetractWindow({ candidate, systemTimestamp, windowMs })) {
+      if (
+        !isWithinRetractWindow({
+          candidate: { ...candidate, timestamp: candidate.timestamp },
+          systemTimestamp,
+          windowMs,
+        })
+      ) {
         if (candidate.timestamp < systemTimestamp - duplicateWindowMs) break;
         continue;
       }
@@ -153,14 +231,19 @@ const selectRacingMicEntryIndices = ({
  * today — any overlapping pending final is dropped (design plan Phase 2 routes
  * this into the pending pipeline).
  */
-const partitionOverlappingPendingMicFinals = ({
+export const partitionOverlappingPendingMicFinals = <Entry extends PendingMicFinal>({
   pending,
   systemText,
   systemTimestamp,
   hasNearbyTranscriptMatch,
-}) => {
-  const kept = [];
-  const removed = [];
+}: {
+  pending: readonly Entry[];
+  systemText: string;
+  systemTimestamp: number | null;
+  hasNearbyTranscriptMatch: HasNearbyTranscriptMatch;
+}): { kept: Entry[]; removed: Entry[] } => {
+  const kept: Entry[] = [];
+  const removed: Entry[] = [];
   for (const candidate of pending) {
     const overlapsSystem = hasNearbyTranscriptMatch("system", candidate.text, candidate.timestamp, {
       extraSegment: {

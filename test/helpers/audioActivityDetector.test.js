@@ -8,7 +8,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const detectorModulePath = require.resolve("../../src/helpers/audioActivityDetector");
+const detectorModulePath = require.resolve("../../src/helpers/audioActivityDetector.ts");
 const originalLoad = Module._load;
 const originalPlatform = process.platform;
 
@@ -25,7 +25,7 @@ function loadDetector(platform, spawn, exec, logEntries) {
   setPlatform(platform);
 
   Module._load = function loadWithMocks(request, parent, isMain) {
-    if (request === "./debugLogger") {
+    if (request === "./debugLogger" || request === "./debugLogger.js") {
       return {
         info(message, data) {
           logEntries.push({ message, data });
@@ -41,7 +41,7 @@ function loadDetector(platform, spawn, exec, logEntries) {
     // Binary resolution hits the real filesystem, so without this the platform
     // under test would be decided by which listener binaries happen to be built
     // on the host rather than by setPlatform().
-    if (request === "./binaryResolver") {
+    if (request === "./binaryResolver" || request === "./binaryResolver.js") {
       return { resolveBundledBinary: (name) => `/fake/bin/${name}` };
     }
     return originalLoad.call(this, request, parent, isMain);
@@ -713,10 +713,10 @@ test("darwin: native snapshots exclude background speech while preserving meetin
 // The native listeners are edge-triggered: they emit only on state transitions,
 // so an edge swallowed by a gate is never re-delivered. The detector must
 // remember the last known state and re-evaluate it when the gate lifts.
-// Mirrors SUSTAINED_EVENT_DRIVEN_MS and COOLDOWN_MS in audioActivityDetector.js.
+// Mirrors SUSTAINED_EVENT_DRIVEN_MS and COOLDOWN_MS in audioActivityDetector.ts.
 const SUSTAINED_MS = 2 * 1000;
 const COOLDOWN_MS = 5 * 60 * 1000;
-// Mirrors LISTENER_RESPAWN_BASE_MS in audioActivityDetector.js.
+// Mirrors LISTENER_RESPAWN_BASE_MS in audioActivityDetector.ts.
 const RESPAWN_MS = 5 * 1000;
 
 test("darwin: a mic edge swallowed by the recording gate is re-evaluated when recording stops", async (t) => {

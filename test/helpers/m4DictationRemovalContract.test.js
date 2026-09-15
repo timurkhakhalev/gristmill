@@ -67,8 +67,8 @@ test("M4 removes the standalone dictation and voice-assistant surface", () => {
 test("M4 keeps the meeting recorder and Dictionary/Snippets foundations", () => {
   for (const relativePath of [
     "src/stores/meetingRecordingStore.ts",
-    "src/helpers/audioTapManager.js",
-    "src/helpers/meetingSystemAudioWatchdog.js",
+    "src/helpers/audioTapManager.ts",
+    "src/helpers/meetingSystemAudioWatchdog.ts",
     "src/utils/snippets.ts",
   ]) {
     assert.equal(exists(relativePath), true, `${relativePath} is a preserved consumer`);

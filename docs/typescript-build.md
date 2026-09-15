@@ -782,3 +782,78 @@ responses, отсутствие duplicate registrations). Существующи
 (Google sync-token expiry, Microsoft delta, Apple restart/denied/snapshot)
 не менялись — менеджеры продолжают ту же работу через typed senders.
 Inventory графа Electron: 130 JS, 52 TS, 1 MTS, 25 JSON.
+
+## Этап «inventory оставшегося JS и удаление подтверждённых остатков»
+
+15 сентября 2026 (issue #35). Воспроизводимая ревизия достижимости
+оставшегося JS и удаление только доказанно мёртвых исходников.
+
+### Команды и категории
+
+```sh
+# main compiler graph (entry points: main.js, preload.js, ONNX worker)
+./node_modules/.bin/tsc -p tsconfig.main.json --listFilesOnly \
+  | grep -v node_modules | grep -v dist/ | sed 's|.*/openhercules/||' | sort
+
+# tracked runtime-кандидаты (без tests/scripts/tooling)
+git ls-files '*.js' '*.mjs' '*.jsx' | grep -v '^test/' | grep -v '^scripts/' \
+  | grep -v eslint.config.js | grep -v cleanup.js
+
+# референс-свип по каждому basename: импорты/require/dynamic import,
+# worker/config/build/native пути, CLI, тесты
+git grep -ln "<basename>" -- ':!docs' ':!<сам файл>'
+```
+
+Категории: (1) main compiler graph — 130 JS + 52 TS + 1 MTS + 25 JSON;
+(2) renderer-only JS (достижимы из Vite-графа, не в main graph) — живые
+consumers в src; (3) build-scripts (scripts/) — whisperCppRelease и др.;
+(4) tests/scripts/config — не входят в runtime count; (5) подтверждённо
+мёртвые — нет ни одного production caller. Отсутствие файла в main graph
+само по себе dead code не означает: renderer и динамическая загрузка
+учитывались отдельным git grep-свипом по basename по всем tracked-файлам
+(включая строковые require/import, workers, electron-builder.json,
+package.json scripts).
+
+### Удалено (нет production caller; единственные ссылки — собственные тесты)
+
+- `src/helpers/autoLearnSetting.js`, `mainWindowPlacementCoordinator.js`,
+  `onboardingInputPolicy.js`, `smartSpacing.js`, `toastPresentation.js`,
+  `translationChain.js`, `tokenStore.js`, `linuxSession.js`
+  (последний — ни одной ссылки вообще, даже теста; окно-менеджмент читает
+  session-env сам через `resolveOverlayWindowType`);
+- `src/utils/dictionaryEchoFilter.js`, `dictionaryKeywords.js`,
+  `windowSizeLadder.js` (windowSizeLadder — ноль ссылок);
+- `src/hooks/useHotkey.js` (живой остаётся `useHotkeyRegistration.ts`);
+- их монотесты: `autoLearnSetting`, `mainWindowPlacementCoordinator`,
+  `onboardingInputPolicy`, `smartSpacing`, `toastPresentation`,
+  `translationChain`, `dictionaryEchoFilter`, `dictionaryKeywords`
+  (`.test.js`); source-removal контракты не затронуты — их нет по этим
+  файлам;
+- устаревший mock `./tokenStore` в `test/helpers/bedrockEnterpriseIpc.test.js`
+  (ipcHandlers больше ничего не требует оттуда).
+
+### Проверено и оставлено
+
+- `src/helpers/appVersion.js` — оставлен по решению issue: parity-тест
+  `test/helpers/appVersion.test.js` фиксирует совпадение main/renderer
+  валидации версий; в debugLogger поле версии берётся из Electron
+  `app.getVersion()`.
+- `src/helpers/whisperCppRelease.js` — используется
+  `scripts/download-whisper-cpp.js` (production build path prebuild/pack).
+- Остальные 18 renderer-side JS вне main graph (activeMicRecovery,
+  agentNameDictionary, chatRouting, dictionaryImport/Startup/PromptCap,
+  geminiResponse, llmRequestTimeout, localModelSelections,
+  meetingTranscriptionRouting, micDeviceSelection/micSelectionRecovery/
+  microphoneSelection, noteFormattingOverrides, regenerableNoteTitle,
+  useControlPanelWindowDrag, chineseScript, retiredPrompts) — каждый имеет
+  живой consumer в src; владельцы миграции — соответствующие renderer issues
+  roadmap #10.
+- ONNX worker остаётся в graph и в `asarUnpack` (mainBuild.test.js);
+  `appVersion` доступен в dist-main, динамических require путей удалённые
+  файлы не имели.
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors
+(42+2 warnings, без изменений — удалённые файлы предупреждений не несли).
+Graph Electron не изменился: 130 JS, 52 TS, 1 MTS, 25 JSON (ни один
+удалённый файл не входил в main compiler graph). Срез `src` после удаления:
+148 JS, 2 JSX, 1 MJS, 235 TS, 252 TSX, 1 MTS.

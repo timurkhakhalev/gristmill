@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 
-const managerModulePath = require.resolve("../../src/helpers/googleCalendarManager.js");
+const managerModulePath = require.resolve("../../src/helpers/googleCalendarManager.ts");
 const originalLoad = Module._load;
 
 test("getConnectionStatus reports Google OAuth registration state", () => {

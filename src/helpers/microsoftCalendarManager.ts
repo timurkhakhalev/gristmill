@@ -1,10 +1,16 @@
-const { net } = require("electron");
-const debugLogger = require("./debugLogger");
-const MicrosoftCalendarOAuth = require("./microsoftCalendarOAuth");
-const CalendarSyncInterval = require("./calendarSyncInterval");
-const { MAX_BUFFER_MINUTES } = require("./calendarAvailability");
-const { extractMeetingUrl } = require("./meetingJoinUrl");
-const { sendMcalConnectionChanged, sendMcalEventsSynced } = require("./calendarEvents");
+import { net } from "electron";
+import debugLogger from "./debugLogger.js";
+import { MicrosoftCalendarOAuth } from "./microsoftCalendarOAuth.js";
+import { CalendarSyncInterval } from "./calendarSyncInterval.js";
+import { MAX_BUFFER_MINUTES } from "./calendarAvailability.js";
+import { extractMeetingUrl } from "./meetingJoinUrl.js";
+import { sendMcalConnectionChanged, sendMcalEventsSynced } from "./calendarEvents.js";
+import type {
+  CalendarAccountRow,
+  CalendarEventInput,
+  MicrosoftCalendarInput,
+  MicrosoftCalendarRow,
+} from "./database.js";
 
 const GRAPH_API_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -22,7 +28,7 @@ const BACKFILL_RETRY_TTL_MS = 10 * 60 * 1000;
 const BUFFER_COVERAGE_MS = MAX_BUFFER_MINUTES * 60 * 1000;
 const LOOKBACK_SAFETY_MS = 24 * 60 * 60 * 1000;
 
-const AVAILABILITY_STATUS_BY_GRAPH = {
+const AVAILABILITY_STATUS_BY_GRAPH: Record<string, string> = {
   free: "free",
   workingElsewhere: "free",
   tentative: "tentative",
@@ -30,42 +36,112 @@ const AVAILABILITY_STATUS_BY_GRAPH = {
   oof: "unavailable",
 };
 
-const RESPONSE_STATUS_BY_GRAPH = {
+const RESPONSE_STATUS_BY_GRAPH: Record<string, string> = {
   accepted: "accepted",
   declined: "declined",
   tentativelyAccepted: "tentative",
 };
+
+// Raw Graph shapes — only the fields the manager reads.
+interface GraphCalendarItem {
+  id: string;
+  name: string;
+  hexColor?: string;
+  isDefaultCalendar?: boolean;
+}
+
+interface GraphAttendee {
+  emailAddress?: { address?: string; name?: string };
+  status?: { response?: string };
+}
+
+interface GraphEventItem {
+  id: string;
+  seriesMasterId?: string;
+  subject?: string;
+  isAllDay?: boolean;
+  isCancelled?: boolean;
+  showAs?: string;
+  responseStatus?: { response?: string };
+  onlineMeeting?: { joinUrl?: string };
+  onlineMeetingUrl?: string;
+  location?: { displayName?: string };
+  bodyPreview?: string;
+  organizer?: { emailAddress?: { address?: string } };
+  attendees?: GraphAttendee[];
+  start: { dateTime: string };
+  end: { dateTime: string };
+  "@removed"?: unknown;
+}
+
+interface GraphDeltaPage {
+  value?: GraphEventItem[];
+  "@odata.nextLink"?: string;
+  "@odata.deltaLink"?: string;
+}
+
+class ApiGetError extends Error {
+  statusCode?: number;
+}
 
 // Graph returns "2026-07-20T17:00:00.0000000" — no offset, 7-digit fraction —
 // which SQLite's datetime() cannot parse. Events are requested in UTC
 // (Prefer: outlook.timezone), so trim the fraction and append "Z". All-day
 // events come back as midnight in that zone, not as real instants, so keep
 // only the date — date-only rows read as local days, like Google's start.date.
-function normalizeGraphDateTime({ dateTime }, isAllDay = false) {
+export function normalizeGraphDateTime(
+  { dateTime }: { dateTime: string },
+  isAllDay = false
+): string {
   return isAllDay ? dateTime.slice(0, 10) : `${dateTime.slice(0, 19)}Z`;
 }
 
 // calendarView/delta can return recurring-series occurrences as bare
 // { id, type, seriesMasterId, start, end } stubs — no subject, attendees,
 // or meeting link. Those fields live on the series master.
-function isStrippedOccurrence(item) {
+function isStrippedOccurrence(item: GraphEventItem): boolean {
   return item.subject === undefined && Boolean(item.seriesMasterId);
 }
 
-class MicrosoftCalendarManager {
-  constructor(databaseManager, reminderScheduler) {
+export interface MicrosoftManagerDb {
+  getMicrosoftAccounts(): CalendarAccountRow[];
+  removeMicrosoftAccount(email: string): unknown;
+  clearMicrosoftCalendarData(): unknown;
+  saveMicrosoftCalendars(calendars: MicrosoftCalendarInput[], accountEmail: string): unknown;
+  getSelectedMicrosoftCalendars(): MicrosoftCalendarRow[];
+  applyMicrosoftPrimaryOnlyToSelection(primaryOnly: boolean): unknown;
+  removeEventsFromDeselectedCalendars(provider: string): unknown;
+  upsertCalendarEvents(events: CalendarEventInput[]): unknown;
+  removeCalendarEvents(ids: string[]): unknown;
+  removeStaleCalendarEvents(provider: string, calendarId: string, freshIds: string[]): unknown;
+  updateMicrosoftCalendarSyncToken(id: string, token: string, expiresAt: number): unknown;
+  upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
+  getCalendarEventById(id: string): unknown;
+}
+
+export class MicrosoftCalendarManager {
+  private readonly databaseManager: MicrosoftManagerDb &
+    ConstructorParameters<typeof MicrosoftCalendarOAuth>[0];
+  private readonly reminderScheduler: { scheduleNextMeeting(): void; reset(p: string): void };
+  private readonly oauth: MicrosoftCalendarOAuth;
+  private accounts = new Map<string, { email: string }>();
+  private primaryOnly = true;
+  private readonly syncRunner: CalendarSyncInterval;
+
+  constructor(
+    databaseManager: MicrosoftManagerDb & ConstructorParameters<typeof MicrosoftCalendarOAuth>[0],
+    reminderScheduler: { scheduleNextMeeting(): void; reset(p: string): void }
+  ) {
     this.databaseManager = databaseManager;
     this.reminderScheduler = reminderScheduler;
     this.oauth = new MicrosoftCalendarOAuth(databaseManager);
-    this.accounts = new Map();
-    this.primaryOnly = true;
     this.syncRunner = new CalendarSyncInterval(
       () => this.syncEvents().then(() => this.reminderScheduler.scheduleNextMeeting()),
       { intervalMs: 2 * 60 * 1000, maxIntervalMs: 30 * 60 * 1000, logScope: "mcal" }
     );
   }
 
-  start() {
+  start(): void {
     this._loadAccounts();
     if (this.accounts.size === 0) return;
 
@@ -73,29 +149,29 @@ class MicrosoftCalendarManager {
       .then(() => this.syncEvents())
       .then(() => this.reminderScheduler.scheduleNextMeeting())
       .catch((err) =>
-        debugLogger.error("Initial calendar sync failed", { error: err.message }, "mcal")
+        debugLogger.error("Initial calendar sync failed", { error: (err as Error).message }, "mcal")
       );
 
     this.syncRunner.start();
   }
 
-  stop() {
+  stop(): void {
     this.syncRunner.stop();
   }
 
-  isConnected() {
+  isConnected(): boolean {
     return this.accounts.size > 0;
   }
 
-  isConfigured() {
+  isConfigured(): boolean {
     return this.oauth.isConfigured();
   }
 
-  addAccount(email) {
+  addAccount(email: string): void {
     this.accounts.set(email, { email });
   }
 
-  removeAccount(email) {
+  removeAccount(email: string): void {
     this.accounts.delete(email);
     this.databaseManager.removeMicrosoftAccount(email);
     this._broadcastAccountsChanged();
@@ -107,7 +183,7 @@ class MicrosoftCalendarManager {
     }
   }
 
-  async startOAuth() {
+  async startOAuth(): Promise<{ success: boolean; email?: string; error?: string }> {
     const result = await this.oauth.startOAuthFlow();
     this.addAccount(result.email);
 
@@ -122,7 +198,7 @@ class MicrosoftCalendarManager {
 
   // Microsoft has no public token-revocation endpoint for this flow; deleting
   // the local tokens severs access from our side.
-  disconnect(email) {
+  disconnect(email?: string | null): void {
     if (email) {
       this.removeAccount(email);
     } else {
@@ -135,25 +211,31 @@ class MicrosoftCalendarManager {
     }
   }
 
-  getConnectionStatus() {
+  getConnectionStatus(): {
+    connected: boolean;
+    configured: boolean;
+    accounts: CalendarAccountRow[];
+  } {
     const accounts = this.databaseManager.getMicrosoftAccounts();
     return { connected: accounts.length > 0, configured: this.isConfigured(), accounts };
   }
 
-  getAccounts() {
+  getAccounts(): CalendarAccountRow[] {
     return this.databaseManager.getMicrosoftAccounts();
   }
 
-  async fetchCalendars(accountEmail = null) {
+  async fetchCalendars(accountEmail: string | null = null): Promise<MicrosoftCalendarInput[]> {
     const emails = accountEmail ? [accountEmail] : this._getAccountEmails();
-    const allCalendars = [];
+    const allCalendars: MicrosoftCalendarInput[] = [];
 
     for (const email of emails) {
       try {
-        const calendars = [];
-        let url = "/me/calendars?$select=id,name,hexColor,isDefaultCalendar";
+        const calendars: MicrosoftCalendarInput[] = [];
+        let url: string | null = "/me/calendars?$select=id,name,hexColor,isDefaultCalendar";
         while (url) {
-          const data = await this._apiGet(url, email);
+          const data = (await this._apiGet(url, email)) as Partial<GraphDeltaPage> & {
+            value?: GraphCalendarItem[];
+          };
           for (const item of data.value || []) {
             calendars.push({
               id: item.id,
@@ -167,7 +249,7 @@ class MicrosoftCalendarManager {
         this.databaseManager.saveMicrosoftCalendars(calendars, email);
         allCalendars.push(...calendars);
       } catch (err) {
-        debugLogger.error("Error fetching calendars", { email, error: err.message }, "mcal");
+        debugLogger.error("Error fetching calendars", { email, error: (err as Error).message }, "mcal");
       }
     }
 
@@ -176,7 +258,7 @@ class MicrosoftCalendarManager {
     return allCalendars;
   }
 
-  async syncEvents() {
+  async syncEvents(): Promise<void> {
     const selectedCalendars = this.databaseManager.getSelectedMicrosoftCalendars();
     if (selectedCalendars.length === 0) return;
 
@@ -186,7 +268,7 @@ class MicrosoftCalendarManager {
       } catch (err) {
         debugLogger.error(
           "Error syncing calendar",
-          { calendarId: calendar.id, error: err.message },
+          { calendarId: calendar.id, error: (err as Error).message },
           "mcal"
         );
       }
@@ -196,27 +278,27 @@ class MicrosoftCalendarManager {
     this.reminderScheduler.scheduleNextMeeting();
   }
 
-  async _syncCalendar(calendar) {
+  private async _syncCalendar(calendar: MicrosoftCalendarRow): Promise<void> {
     const accountEmail = calendar.account_email;
 
-    const items = [];
-    const toRemove = [];
-    let deltaLink = null;
+    const items: GraphEventItem[] = [];
+    const toRemove: string[] = [];
+    let deltaLink: string | null = null;
 
-    const hasFreshToken = calendar.sync_token && calendar.sync_token_expires_at > Date.now();
+    const hasFreshToken = calendar.sync_token && (calendar.sync_token_expires_at ?? 0) > Date.now();
     let isFullSync = !hasFreshToken;
-    let url = hasFreshToken ? calendar.sync_token : this._deltaUrl(calendar.id);
+    let url: string | null = hasFreshToken ? (calendar.sync_token as string) : this._deltaUrl(calendar.id);
     let tokenExpiresAt = hasFreshToken
-      ? calendar.sync_token_expires_at
+      ? (calendar.sync_token_expires_at as number)
       : Date.now() + DELTA_TOKEN_TTL_MS;
 
     while (url) {
-      let data;
+      let data: GraphDeltaPage;
       try {
-        data = await this._apiGet(url, accountEmail);
+        data = (await this._apiGet(url, accountEmail)) as GraphDeltaPage;
       } catch (err) {
         // 410 Gone means the delta token expired; fall back to a full sync
-        if (err.statusCode === 410 && url === calendar.sync_token) {
+        if ((err as ApiGetError).statusCode === 410 && url === calendar.sync_token) {
           isFullSync = true;
           url = this._deltaUrl(calendar.id);
           tokenExpiresAt = Date.now() + DELTA_TOKEN_TTL_MS;
@@ -239,8 +321,8 @@ class MicrosoftCalendarManager {
       tokenExpiresAt = Math.min(tokenExpiresAt, Date.now() + BACKFILL_RETRY_TTL_MS);
     }
 
-    const toUpsert = [];
-    const contactsToUpsert = [];
+    const toUpsert: CalendarEventInput[] = [];
+    const contactsToUpsert: Array<{ email: string; displayName: string | null }> = [];
     for (const item of events) {
       // An occurrence still stripped after backfill (master fetch failed) has no
       // subject, attendees, or join link. Overwriting a row a previous sync
@@ -283,37 +365,40 @@ class MicrosoftCalendarManager {
   // the occurrence's own id/start/end win. A failed master fetch leaves its
   // occurrences bare instead of failing the calendar's sync; _syncCalendar
   // decides whether a bare stub may be written.
-  async _backfillStrippedOccurrences(items, calendar) {
+  private async _backfillStrippedOccurrences(
+    items: GraphEventItem[],
+    calendar: MicrosoftCalendarRow
+  ): Promise<GraphEventItem[]> {
     const masterIds = new Set(
-      items.filter(isStrippedOccurrence).map((item) => item.seriesMasterId)
+      items.filter(isStrippedOccurrence).map((item) => item.seriesMasterId as string)
     );
     if (masterIds.size === 0) return items;
 
     const calendarPath = encodeURIComponent(calendar.id);
-    const masters = new Map();
+    const masters = new Map<string, GraphEventItem>();
     for (const id of masterIds) {
       try {
-        const master = await this._apiGet(
+        const master = (await this._apiGet(
           `/me/calendars/${calendarPath}/events/${encodeURIComponent(id)}?$select=${SERIES_MASTER_FIELDS}`,
           calendar.account_email
-        );
+        )) as GraphEventItem;
         masters.set(id, master);
       } catch (err) {
         debugLogger.error(
           "Error fetching series master",
-          { seriesMasterId: id, error: err.message },
+          { seriesMasterId: id, error: (err as Error).message },
           "mcal"
         );
       }
     }
 
     return items.map((item) => {
-      const master = isStrippedOccurrence(item) ? masters.get(item.seriesMasterId) : null;
+      const master = isStrippedOccurrence(item) ? masters.get(item.seriesMasterId as string) : null;
       return master ? { ...master, ...item } : item;
     });
   }
 
-  _mapEvent(item, calendar) {
+  private _mapEvent(item: GraphEventItem, calendar: MicrosoftCalendarRow): CalendarEventInput {
     const attendees = item.attendees || [];
     const accountEmail = (calendar.account_email || "").toLowerCase();
     return {
@@ -325,12 +410,14 @@ class MicrosoftCalendarManager {
       end_time: normalizeGraphDateTime(item.end, item.isAllDay),
       is_all_day: item.isAllDay,
       status: item.isCancelled ? "cancelled" : "confirmed",
-      availability_status: AVAILABILITY_STATUS_BY_GRAPH[item.showAs] || "unknown",
-      self_response_status: RESPONSE_STATUS_BY_GRAPH[item.responseStatus?.response] || "unknown",
+      availability_status: AVAILABILITY_STATUS_BY_GRAPH[item.showAs ?? ""] || "unknown",
+      self_response_status:
+        RESPONSE_STATUS_BY_GRAPH[item.responseStatus?.response ?? ""] || "unknown",
       hangout_link:
         item.onlineMeeting?.joinUrl ||
         item.onlineMeetingUrl ||
-        extractMeetingUrl([item.location?.displayName, item.bodyPreview]),
+        extractMeetingUrl([item.location?.displayName, item.bodyPreview]) ||
+        null,
       conference_data: null,
       organizer_email: item.organizer?.emailAddress?.address || null,
       attendees_count: attendees.length,
@@ -339,7 +426,7 @@ class MicrosoftCalendarManager {
             attendees.map((a) => ({
               email: a.emailAddress?.address || null,
               displayName: a.emailAddress?.name || null,
-              responseStatus: RESPONSE_STATUS_BY_GRAPH[a.status?.response] || "needsAction",
+              responseStatus: RESPONSE_STATUS_BY_GRAPH[a.status?.response ?? ""] || "needsAction",
               self: (a.emailAddress?.address || "").toLowerCase() === accountEmail,
             }))
           )
@@ -347,18 +434,20 @@ class MicrosoftCalendarManager {
     };
   }
 
-  onWakeFromSleep() {
+  onWakeFromSleep(): void {
     this.syncEvents()
       .then(() => this.syncRunner.notifySuccess())
-      .catch((err) => debugLogger.error("Post-wake sync failed", { error: err.message }, "mcal"));
+      .catch((err) =>
+        debugLogger.error("Post-wake sync failed", { error: (err as Error).message }, "mcal")
+      );
   }
 
-  syncOnFocus() {
+  syncOnFocus(): void {
     if (!this.isConnected()) return;
     this.syncRunner.syncOnFocus();
   }
 
-  async setPrimaryOnly(value) {
+  async setPrimaryOnly(value: boolean): Promise<void> {
     if (this.primaryOnly === value) return;
     this.primaryOnly = value;
     if (!this.isConnected()) return;
@@ -370,7 +459,7 @@ class MicrosoftCalendarManager {
     sendMcalEventsSynced();
   }
 
-  _loadAccounts() {
+  private _loadAccounts(): void {
     const accounts = this.databaseManager.getMicrosoftAccounts();
     this.accounts.clear();
     for (const account of accounts) {
@@ -378,13 +467,13 @@ class MicrosoftCalendarManager {
     }
   }
 
-  _getAccountEmails() {
+  private _getAccountEmails(): string[] {
     return Array.from(this.accounts.keys());
   }
 
   // calendarView/delta expands recurrences into occurrences and returns a
   // deltaLink for incremental syncs (stored in microsoft_calendars.sync_token).
-  _deltaUrl(calendarId) {
+  private _deltaUrl(calendarId: string): string {
     const params = new URLSearchParams({
       startDateTime: new Date(Date.now() - LOOKBACK_SAFETY_MS - BUFFER_COVERAGE_MS).toISOString(),
       endDateTime: new Date(Date.now() + DELTA_WINDOW_MS).toISOString(),
@@ -392,13 +481,13 @@ class MicrosoftCalendarManager {
     return `/me/calendars/${encodeURIComponent(calendarId)}/calendarView/delta?${params.toString()}`;
   }
 
-  _broadcastAccountsChanged() {
+  private _broadcastAccountsChanged(): void {
     const accounts = this.getAccounts();
     sendMcalConnectionChanged({ accounts });
   }
 
-  async _apiGet(path, accountEmail) {
-    const accessToken = await this.oauth.getValidAccessToken(accountEmail);
+  private async _apiGet(path: string, accountEmail: string | null): Promise<unknown> {
+    const accessToken = await this.oauth.getValidAccessToken(accountEmail as string);
     const urlString = path.startsWith("http") ? path : `${GRAPH_API_BASE}${path}`;
 
     const response = await net.fetch(urlString, {
@@ -409,9 +498,9 @@ class MicrosoftCalendarManager {
       },
       signal: AbortSignal.timeout(10000),
       useSessionCookies: false,
-    });
+    } as RequestInit);
     const text = await response.text();
-    let parsed = null;
+    let parsed: unknown = null;
     try {
       parsed = JSON.parse(text);
     } catch {
@@ -419,7 +508,10 @@ class MicrosoftCalendarManager {
       // status below instead of masking it as a parse failure.
     }
     if (response.status >= 400) {
-      const err = new Error(parsed?.error?.message || `API error ${response.status}`);
+      const err = new ApiGetError(
+        (parsed as { error?: { message?: string } } | null)?.error?.message ||
+          `API error ${response.status}`
+      );
       err.statusCode = response.status;
       throw err;
     }
@@ -431,4 +523,5 @@ class MicrosoftCalendarManager {
 }
 
 module.exports = MicrosoftCalendarManager;
+module.exports.MicrosoftCalendarManager = MicrosoftCalendarManager;
 module.exports.normalizeGraphDateTime = normalizeGraphDateTime;

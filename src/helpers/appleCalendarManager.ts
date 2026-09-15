@@ -1,56 +1,176 @@
-const { spawn } = require("child_process");
-const { app } = require("electron");
-const debugLogger = require("./debugLogger");
-const { resolveBundledBinary } = require("./binaryResolver");
-const { extractMeetingUrl } = require("./meetingJoinUrl");
-const { sendAcalConnectionChanged, sendAcalEventsSynced } = require("./calendarEvents");
-const { FOCUS_SYNC_THROTTLE_MS } = require("./calendarSyncInterval");
+import { spawn, type ChildProcess } from "child_process";
+import { app } from "electron";
+import debugLogger from "./debugLogger.js";
+import { resolveBundledBinary } from "./binaryResolver.js";
+import { extractMeetingUrl } from "./meetingJoinUrl.js";
+import { sendAcalConnectionChanged, sendAcalEventsSynced } from "./calendarEvents.js";
+import { FOCUS_SYNC_THROTTLE_MS } from "./calendarSyncInterval.js";
+import type { AppleCalendarInput, AppleCalendarRow, CalendarEventInput } from "./database.js";
 
 const BINARY_NAME = "macos-calendar-listener";
 const HELPER_RESTART_BASE_MS = 1000;
 const HELPER_RESTART_MAX_MS = 30 * 1000;
-const AVAILABILITY_STATUSES = new Set(["free", "tentative", "busy", "unavailable", "unknown"]);
-const RESPONSE_STATUSES = new Set(["accepted", "declined", "tentative", "needsAction"]);
+const AVAILABILITY_STATUSES: ReadonlySet<string> = new Set([
+  "free",
+  "tentative",
+  "busy",
+  "unavailable",
+  "unknown",
+]);
+const RESPONSE_STATUSES: ReadonlySet<string> = new Set([
+  "accepted",
+  "declined",
+  "tentative",
+  "needsAction",
+]);
+
+// The EventKit helper's newline-delimited JSON messages, validated before any
+// DB mutation.
+interface HelperPermissionMessage {
+  type: "permission";
+  status: string;
+}
+
+interface HelperSnapshotMessage {
+  type: "snapshot";
+  calendars: AppleCalendarInput[];
+  events: HelperSnapshotEvent[];
+}
+
+interface HelperSnapshotEvent {
+  id: string;
+  calendar_id: string;
+  title?: string;
+  start: string;
+  end: string;
+  is_all_day?: boolean;
+  status?: string;
+  availability?: string;
+  url?: string;
+  location?: string;
+  notes_urls?: string[];
+  organizer_email?: string;
+  attendees?: Array<{
+    email?: string;
+    name?: string;
+    status?: string;
+    self?: boolean;
+  }>;
+}
+
+function isPermissionMessage(message: unknown): message is HelperPermissionMessage {
+  const record = message as Record<string, unknown>;
+  return record?.type === "permission" && typeof record.status === "string";
+}
+
+function isSnapshotMessage(message: unknown): message is HelperSnapshotMessage {
+  const record = message as Record<string, unknown>;
+  return (
+    record?.type === "snapshot" &&
+    Array.isArray((record as { calendars?: unknown }).calendars) &&
+    Array.isArray((record as { events?: unknown }).events)
+  );
+}
+
+function isHelperSnapshotEvent(value: unknown): value is HelperSnapshotEvent {
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record?.id === "string" &&
+    typeof record.calendar_id === "string" &&
+    typeof record.start === "string" &&
+    typeof record.end === "string"
+  );
+}
+
+export interface AppleConnectSuccess {
+  success: true;
+}
+
+export type AppleConnectFailureReason =
+  | "unsupported"
+  | "helper-missing"
+  | "denied"
+  | "snapshot-failed";
+
+export interface AppleConnectFailure {
+  success: false;
+  reason: AppleConnectFailureReason;
+}
+
+export type AppleConnectResult = AppleConnectSuccess | AppleConnectFailure;
+
+interface PendingConnect {
+  resolve(result: AppleConnectResult): void;
+  awaitingSnapshot: boolean;
+}
+
+export interface AppleManagerDb {
+  getAppleCalendars(): AppleCalendarRow[];
+  saveAppleCalendars(calendars: AppleCalendarInput[]): unknown;
+  replaceAppleCalendarEvents(events: CalendarEventInput[]): unknown;
+  clearAppleCalendarData(): unknown;
+  upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
+}
 
 // Reads the local EventKit store (all accounts Calendar.app aggregates) via a
 // bundled Swift helper that pushes calendars+events snapshots as line-delimited
 // JSON. "Connected" means apple_calendars has rows — no tokens or settings.
-class AppleCalendarManager {
-  constructor(databaseManager, reminderScheduler) {
+export class AppleCalendarManager {
+  private readonly databaseManager: AppleManagerDb;
+  private readonly reminderScheduler: {
+    reset(provider?: string | null): void;
+    scheduleNextMeeting(): void;
+    reconcileProvider(provider: string): void;
+  };
+  private _helperProcess: ChildProcess | null = null;
+  private _pendingConnect: PendingConnect | null = null;
+  private _lastFocusSync = 0;
+  private _restartTimer: NodeJS.Timeout | null = null;
+  private _restartAttempts = 0;
+
+  constructor(
+    databaseManager: AppleManagerDb,
+    reminderScheduler: {
+      reset(provider?: string | null): void;
+      scheduleNextMeeting(): void;
+      reconcileProvider(provider: string): void;
+    }
+  ) {
     this.databaseManager = databaseManager;
     this.reminderScheduler = reminderScheduler;
-    this._helperProcess = null;
-    this._pendingConnect = null;
-    this._lastFocusSync = 0;
-    this._restartTimer = null;
-    this._restartAttempts = 0;
   }
 
-  isConnected() {
+  isConnected(): boolean {
     return this.databaseManager.getAppleCalendars().length > 0;
   }
 
-  getConnectionStatus() {
+  getConnectionStatus(): { connected: boolean; sourceNames: string[] } {
     const calendars = this.databaseManager.getAppleCalendars();
     return {
       connected: calendars.length > 0,
-      sourceNames: [...new Set(calendars.map((cal) => cal.source_name).filter(Boolean))],
+      sourceNames: [
+        ...new Set(
+          calendars
+            .map((cal) => cal.source_name)
+            .filter((name): name is string => typeof name === "string")
+        ),
+      ],
     };
   }
 
-  start() {
+  start(): void {
     if (process.platform !== "darwin" || !this.isConnected()) return;
     this._spawnHelper(false);
   }
 
   // User-initiated: spawns the helper with --request so the TCC prompt shows.
   // Resolves after the first snapshot lands (success) or access is denied.
-  connect() {
+  connect(): Promise<AppleConnectResult> {
     if (process.platform !== "darwin") {
       return Promise.resolve({ success: false, reason: "unsupported" });
     }
     this._restartAttempts = 0;
-    return new Promise((resolve) => {
+    return new Promise<AppleConnectResult>((resolve) => {
       this._pendingConnect = { resolve, awaitingSnapshot: false };
       if (!this._spawnHelper(true)) {
         this._pendingConnect = null;
@@ -59,13 +179,13 @@ class AppleCalendarManager {
     });
   }
 
-  disconnect() {
+  disconnect(): { success: boolean } {
     this.stop();
     this._clearStoredCalendarData();
     return { success: true };
   }
 
-  stop() {
+  stop(): void {
     if (this._restartTimer) {
       clearTimeout(this._restartTimer);
       this._restartTimer = null;
@@ -74,7 +194,7 @@ class AppleCalendarManager {
     this._stopHelperProcess();
   }
 
-  _stopHelperProcess() {
+  private _stopHelperProcess(): void {
     if (this._helperProcess) {
       const child = this._helperProcess;
       this._helperProcess = null;
@@ -86,7 +206,7 @@ class AppleCalendarManager {
     }
   }
 
-  syncOnFocus() {
+  syncOnFocus(): void {
     if (!this._helperProcess) return;
     const now = Date.now();
     if (now - this._lastFocusSync < FOCUS_SYNC_THROTTLE_MS) return;
@@ -94,19 +214,23 @@ class AppleCalendarManager {
     this._requestSync();
   }
 
-  onWakeFromSleep() {
+  onWakeFromSleep(): void {
     this._requestSync();
   }
 
-  _requestSync() {
+  private _requestSync(): void {
     try {
-      this._helperProcess?.stdin.write("sync\n");
+      this._helperProcess?.stdin?.write("sync\n");
     } catch (err) {
-      debugLogger.debug("Calendar listener sync request failed", { error: err.message }, "acal");
+      debugLogger.debug(
+        "Calendar listener sync request failed",
+        { error: (err as Error).message },
+        "acal"
+      );
     }
   }
 
-  _spawnHelper(requestAccess) {
+  private _spawnHelper(requestAccess: boolean): boolean {
     if (this._restartTimer) {
       clearTimeout(this._restartTimer);
       this._restartTimer = null;
@@ -120,7 +244,7 @@ class AppleCalendarManager {
     }
 
     let command = binaryPath;
-    let args = requestAccess ? ["--request"] : [];
+    let args: string[] = requestAccess ? ["--request"] : [];
     if (!app.isPackaged) {
       // A terminal-launched dev app makes the terminal the helper's TCC
       // "responsible process", and its missing calendar usage strings abort
@@ -148,9 +272,9 @@ class AppleCalendarManager {
       this._helperProcess = child;
 
       let buffer = "";
-      child.stdout.on("data", (data) => {
+      child.stdout?.on("data", (data: Buffer) => {
         buffer += data.toString();
-        let newlineIdx;
+        let newlineIdx: number;
         while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
           const line = buffer.slice(0, newlineIdx).trim();
           buffer = buffer.slice(newlineIdx + 1);
@@ -160,14 +284,14 @@ class AppleCalendarManager {
           } catch (err) {
             debugLogger.warn(
               "Unparseable calendar listener output",
-              { line, error: err.message },
+              { line, error: (err as Error).message },
               "acal"
             );
           }
         }
       });
 
-      child.stderr.on("data", (data) => {
+      child.stderr?.on("data", (data: Buffer) => {
         debugLogger.debug(
           "macos-calendar-listener stderr",
           { output: data.toString().trim() },
@@ -187,12 +311,13 @@ class AppleCalendarManager {
 
       return true;
     } catch (err) {
-      debugLogger.warn("Failed to spawn macos-calendar-listener", { error: err.message }, "acal");
+      debugLogger.warn("Failed to spawn macos-calendar-listener", { error: (err as Error).message }, "acal");
       return false;
     }
   }
 
-  _onHelperGone(child) {
+  // A stale child callback must not own the replacement helper.
+  private _onHelperGone(child: ChildProcess): void {
     if (this._helperProcess !== child) return;
     this._helperProcess = null;
 
@@ -205,7 +330,7 @@ class AppleCalendarManager {
     this._scheduleHelperRestart();
   }
 
-  _scheduleHelperRestart() {
+  private _scheduleHelperRestart(): void {
     if (process.platform !== "darwin" || this._restartTimer || this._helperProcess) return;
 
     try {
@@ -213,7 +338,7 @@ class AppleCalendarManager {
     } catch (err) {
       debugLogger.warn(
         "Could not determine whether calendar listener should restart",
-        { error: err.message },
+        { error: (err as Error).message },
         "acal"
       );
       return;
@@ -236,15 +361,17 @@ class AppleCalendarManager {
     }, delay);
   }
 
-  _handleMessage(message) {
-    if (message.type === "permission") {
+  private _handleMessage(message: unknown): void {
+    if (isPermissionMessage(message)) {
       this._handlePermission(message.status);
-    } else if (message.type === "snapshot") {
+    } else if (isSnapshotMessage(message)) {
       this._applySnapshot(message);
     }
+    // Unknown message types are ignored like before: the helper's protocol
+    // may grow without every consumer needing each message.
   }
 
-  _handlePermission(status) {
+  private _handlePermission(status: string): void {
     debugLogger.info("Calendar permission status", { status }, "acal");
     const pending = this._pendingConnect;
 
@@ -267,16 +394,23 @@ class AppleCalendarManager {
     }
   }
 
-  _applySnapshot({ calendars, events }) {
+  private _applySnapshot(message: HelperSnapshotMessage): void {
+    // External messages are validated before any DB mutation: only fully
+    // shaped calendars and events reach the database.
+    const calendars = message.calendars.filter(
+      (cal): cal is AppleCalendarInput & { id: string; title: string } =>
+        typeof cal?.id === "string" && typeof cal?.title === "string"
+    );
+    const events = message.events.filter(isHelperSnapshotEvent);
     try {
       this._restartAttempts = 0;
       this.databaseManager.saveAppleCalendars(calendars);
       this.databaseManager.replaceAppleCalendarEvents(events.map((event) => this._mapEvent(event)));
 
-      const contacts = [];
+      const contacts: Array<{ email: string; displayName: string | null }> = [];
       for (const event of events) {
         for (const attendee of event.attendees || []) {
-          if (attendee.email) contacts.push({ email: attendee.email, displayName: attendee.name });
+          if (attendee.email) contacts.push({ email: attendee.email, displayName: attendee.name ?? null });
         }
       }
       if (contacts.length > 0) this.databaseManager.upsertContacts(contacts);
@@ -292,7 +426,7 @@ class AppleCalendarManager {
         this._broadcastConnectionChanged();
       }
     } catch (err) {
-      debugLogger.error("Error applying calendar snapshot", { error: err.message }, "acal");
+      debugLogger.error("Error applying calendar snapshot", { error: (err as Error).message }, "acal");
       if (this._pendingConnect) {
         const pending = this._pendingConnect;
         this._pendingConnect = null;
@@ -301,7 +435,7 @@ class AppleCalendarManager {
     }
   }
 
-  _mapEvent(event) {
+  private _mapEvent(event: HelperSnapshotEvent): CalendarEventInput {
     const attendees = event.attendees || [];
     const selfResponseStatus = attendees.find((attendee) => attendee.self === true)?.status;
     return {
@@ -312,13 +446,15 @@ class AppleCalendarManager {
       start_time: event.start,
       end_time: event.end,
       is_all_day: event.is_all_day,
-      status: event.status,
-      availability_status: AVAILABILITY_STATUSES.has(event.availability)
-        ? event.availability
-        : "unknown",
-      self_response_status: RESPONSE_STATUSES.has(selfResponseStatus)
-        ? selfResponseStatus
-        : "unknown",
+      status: event.status || "confirmed",
+      availability_status:
+        event.availability && AVAILABILITY_STATUSES.has(event.availability)
+          ? event.availability
+          : "unknown",
+      self_response_status:
+        selfResponseStatus && RESPONSE_STATUSES.has(selfResponseStatus)
+          ? selfResponseStatus
+          : "unknown",
       hangout_link:
         extractMeetingUrl([event.url, event.location, ...(event.notes_urls || [])]) ??
         // Generic fallback only for the event's own URL field
@@ -339,11 +475,11 @@ class AppleCalendarManager {
     };
   }
 
-  _broadcastConnectionChanged() {
+  private _broadcastConnectionChanged(): void {
     sendAcalConnectionChanged(this.getConnectionStatus());
   }
 
-  _clearStoredCalendarData() {
+  private _clearStoredCalendarData(): void {
     this.databaseManager.clearAppleCalendarData();
     this.reminderScheduler.reset("apple");
     this.reminderScheduler.scheduleNextMeeting();
@@ -353,3 +489,4 @@ class AppleCalendarManager {
 }
 
 module.exports = AppleCalendarManager;
+module.exports.AppleCalendarManager = AppleCalendarManager;

@@ -4,7 +4,16 @@
 // (gpt-4o-transcribe rejects verbose_json; custom/self-hosted servers may
 // 400 on unknown fields) must keep the plain-text request untouched — a
 // missing timestamp is a degraded export, never a failed upload.
-function timestampRequestFields(provider, model) {
+export interface VerboseTranscriptionSegment {
+  text: string;
+  start: number;
+  end: number;
+}
+
+export function timestampRequestFields(
+  provider: string,
+  model: string | null
+): Record<string, string> | null {
   if (provider === "openai" && model === "whisper-1") {
     return { response_format: "verbose_json" };
   }
@@ -20,8 +29,11 @@ function timestampRequestFields(provider, model) {
 // verbose_json (OpenAI/Groq) and Mistral's segment granularity both carry
 // `segments: [{ text, start, end }]`. Null when the response has nothing
 // usable, so callers fall back to the plain transcript.
-function mapVerboseSegments(responseData) {
-  const segments = responseData?.segments;
+export function mapVerboseSegments(responseData: unknown): VerboseTranscriptionSegment[] | null {
+  const segments =
+    (typeof responseData === "object" && responseData !== null
+      ? (responseData as { segments?: unknown }).segments
+      : undefined);
   if (!Array.isArray(segments)) return null;
 
   const mapped = [];
@@ -39,5 +51,3 @@ function mapVerboseSegments(responseData) {
   }
   return mapped.length ? mapped : null;
 }
-
-module.exports = { timestampRequestFields, mapVerboseSegments };

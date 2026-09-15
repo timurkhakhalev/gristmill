@@ -63,9 +63,12 @@ export class LocalReasoningService {
 
       const result = await modelManager.runInference(modelId, text, inferenceConfig);
       const stripThinking = config.disableThinking !== false;
-      const cleanResult = stripThinking
+      const stripped: unknown = stripThinking
         ? (await import("../helpers/stripThinking.js")).stripThinkingTags(result)
         : result.trim();
+      // runInference returns text; the guard only keeps the historical
+      // pass-through from producing a non-string return type.
+      const cleanResult = typeof stripped === "string" ? stripped : result.trim();
 
       const processingTime = Date.now() - startTime;
 

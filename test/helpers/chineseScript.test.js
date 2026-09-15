@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 async function load() {
-  return import("../../src/utils/chineseScript.js");
+  return import("../../src/utils/chineseScript.ts");
 }
 
 test("normalizeChineseScriptPreference defaults unknown values", async () => {
@@ -133,7 +133,7 @@ test("Whisper prompt bias and merge", async () => {
 
 test("mergeWhisperPrompt puts the bias first so prompt truncation keeps it", async () => {
   const { mergeWhisperPrompt, getChineseScriptPromptBias } = await load();
-  const { GROQ_PROMPT_CHARS } = await import("../../src/utils/dictionaryPromptCap.js");
+  const { GROQ_PROMPT_CHARS } = await import("../../src/utils/dictionaryPromptCap.ts");
   const bias = getChineseScriptPromptBias("simplified");
   const dictionary = Array.from({ length: 400 }, (_, i) => `term${i}`).join(", ");
   const prompt = mergeWhisperPrompt(dictionary, "simplified");

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/stripThinking.js");
+const load = () => import("../../src/helpers/stripThinking.ts");
 
 test("removes a well-formed think block and keeps the answer", async () => {
   const { stripThinkingTags } = await load();

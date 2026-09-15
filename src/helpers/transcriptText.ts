@@ -77,14 +77,27 @@ const LOW_SIGNAL_TOKENS = new Set([
   "your",
 ]);
 
-const normalizeTranscriptText = (text) =>
+export interface TranscriptCandidateSegment {
+  text: string;
+  timestamp?: number | null;
+}
+
+export interface MergedCandidatesInput {
+  segments: TranscriptCandidateSegment[];
+  timestamp: number | null;
+  windowMs: number;
+  mergeLimit: number;
+  extraSegment?: TranscriptCandidateSegment | null;
+}
+
+const normalizeTranscriptText = (text: string): string =>
   String(text || "")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-const longestCommonTokenSubsequence = (a, b) => {
+const longestCommonTokenSubsequence = (a: string[], b: string[]): number => {
   const dp = Array.from({ length: a.length + 1 }, () => new Uint16Array(b.length + 1));
 
   for (let i = 1; i <= a.length; i += 1) {
@@ -100,7 +113,7 @@ const longestCommonTokenSubsequence = (a, b) => {
   return dp[a.length][b.length];
 };
 
-const countCommonTokens = (a, b) => {
+const countCommonTokens = (a: string[], b: string[]): number => {
   const counts = new Map();
   let common = 0;
 
@@ -118,13 +131,16 @@ const countCommonTokens = (a, b) => {
   return common;
 };
 
-const toMeaningfulTokens = (text) =>
+const toMeaningfulTokens = (text: string): string[] =>
   text
     .split(" ")
     .filter(Boolean)
     .filter((token) => token.length > 1 && !LOW_SIGNAL_TOKENS.has(token));
 
-const transcriptsOverlap = (a, b) => {
+export const transcriptsOverlap = (
+  a: string | null | undefined,
+  b: string | null | undefined
+): boolean => {
   const normalizedA = typeof a === "string" ? normalizeTranscriptText(a) : a;
   const normalizedB = typeof b === "string" ? normalizeTranscriptText(b) : b;
   if (!normalizedA || !normalizedB) return false;
@@ -145,7 +161,10 @@ const transcriptsOverlap = (a, b) => {
   return sequence / shorter >= TOKEN_SEQUENCE_THRESHOLD;
 };
 
-const transcriptsLooselyOverlap = (a, b) => {
+export const transcriptsLooselyOverlap = (
+  a: string | null | undefined,
+  b: string | null | undefined
+): boolean => {
   const normalizedA = typeof a === "string" ? normalizeTranscriptText(a) : a;
   const normalizedB = typeof b === "string" ? normalizeTranscriptText(b) : b;
   if (!normalizedA || !normalizedB) return false;
@@ -166,13 +185,13 @@ const transcriptsLooselyOverlap = (a, b) => {
   return sequence / shorter >= MEANINGFUL_TOKEN_SEQUENCE_THRESHOLD;
 };
 
-const buildMergedCandidates = ({
+export const buildMergedCandidates = ({
   segments,
   timestamp,
   windowMs,
   mergeLimit,
   extraSegment = null,
-}) => {
+}: MergedCandidatesInput): string[] => {
   const nearby = segments.filter(
     (seg) =>
       seg.text &&
@@ -199,7 +218,5 @@ const buildMergedCandidates = ({
     }
   }
 
-  return [...texts];
+  return [...(texts as Set<string>)];
 };
-
-module.exports = { transcriptsOverlap, transcriptsLooselyOverlap, buildMergedCandidates };

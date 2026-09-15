@@ -4,7 +4,11 @@
 // the user typed their own.
 const BUILTIN_PLACEHOLDERS = ["untitled note", "untitled", "new note"];
 
-export function isRegenerableNoteTitle(title, placeholders = [], calendarEventName = null) {
+export function isRegenerableNoteTitle(
+  title: unknown,
+  placeholders: string[] = [],
+  calendarEventName: string | null = null
+): boolean {
   const trimmed = typeof title === "string" ? title.trim() : "";
   if (trimmed === "") return true;
 

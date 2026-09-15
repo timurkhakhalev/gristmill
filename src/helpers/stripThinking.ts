@@ -2,7 +2,9 @@
 // reasoning models. Innermost closed pairs are removed first so nested blocks
 // cannot leave a stray </think>, then a trailing unterminated <think> is removed,
 // and finally any orphan </think> tags are stripped.
-export function stripThinkingTags(text) {
+// Callers pass inference output (string); the runtime guard keeps the old
+// pass-through for anything else instead of rejecting.
+export function stripThinkingTags(text: unknown): unknown {
   if (typeof text !== "string") return text;
   const innermostClosed = /<think>(?:(?!<think>)[\s\S])*?<\/think>/i;
   let out = text;

@@ -29,12 +29,21 @@ const SIMPLIFIED_CHINESE_VARIANT_RE =
 const TRADITIONAL_CHINESE_VARIANT_RE =
   /[這們嗎體說發據實讓邊遲應氣條聽讀寫賣兒經廣樂觀號國學會產歷壓總處證驗權轉傳豐圖錄價關辦覺壞變刪]/;
 
-/** @typedef {"simplified" | "traditional" | "as-transcribed"} ChineseScriptPreference */
-/** @typedef {"simplified" | "traditional"} ChineseScriptTarget */
+export type ChineseScriptPreference = "simplified" | "traditional" | "as-transcribed";
+export type ChineseScriptTarget = "simplified" | "traditional";
 
-const VALID_PREFERENCES = new Set(["simplified", "traditional", "as-transcribed"]);
+const VALID_PREFERENCES: ReadonlySet<string> = new Set([
+  "simplified",
+  "traditional",
+  "as-transcribed",
+]);
 
-let convertersPromise = null;
+interface OpenCCConverters {
+  toSimplified: (text: string) => string;
+  toTraditional: (text: string) => string;
+}
+
+let convertersPromise: Promise<OpenCCConverters> | null = null;
 
 // opencc-js ships ~1.2 MB of dictionaries. Import it on first conversion rather
 // than at module load, so the renderer bundle stays lean for everyone who never
@@ -50,12 +59,12 @@ function getConverters() {
   return convertersPromise;
 }
 
-/**
- * @param {string | null | undefined} value
- * @returns {ChineseScriptPreference}
- */
-export function normalizeChineseScriptPreference(value) {
-  if (VALID_PREFERENCES.has(value)) return value;
+export function normalizeChineseScriptPreference(
+  value: string | null | undefined
+): ChineseScriptPreference {
+  if (typeof value === "string" && VALID_PREFERENCES.has(value)) {
+    return value as ChineseScriptPreference;
+  }
   return "as-transcribed";
 }
 
@@ -63,11 +72,8 @@ export function normalizeChineseScriptPreference(value) {
  * Whether text has positive evidence of being Chinese rather than merely
  * containing Han. Kana/Hangul rule it out, while short or mixed-script text with
  * no Chinese-specific variants/phrases stays ambiguous and is left untouched.
- *
- * @param {string | null | undefined} text
- * @returns {boolean}
  */
-export function isChineseText(text) {
+export function isChineseText(text: string | null | undefined): boolean {
   if (!text) return false;
   if (KANA_RE.test(text) || HANGUL_RE.test(text)) return false;
   return SIMPLIFIED_CHINESE_VARIANT_RE.test(text) || TRADITIONAL_CHINESE_VARIANT_RE.test(text);
@@ -83,13 +89,12 @@ export function isChineseText(text) {
  * Omit `text` when no transcript exists yet (Whisper prompt building): without
  * it only an explicit language can be trusted, since biasing the prompt toward
  * Chinese would corrupt the very auto-detection it is scoped to.
- *
- * @param {string | null | undefined} preferredLanguage
- * @param {string | null | undefined} chineseScriptPreference
- * @param {string | null | undefined} [text]
- * @returns {ChineseScriptTarget | null}
  */
-export function resolveChineseScriptTarget(preferredLanguage, chineseScriptPreference, text) {
+export function resolveChineseScriptTarget(
+  preferredLanguage: string | null | undefined,
+  chineseScriptPreference: string | null | undefined,
+  text?: string | null
+): ChineseScriptTarget | null {
   if (preferredLanguage === "zh-CN") return "simplified";
   if (preferredLanguage === "zh-TW") return "traditional";
 
@@ -107,22 +112,18 @@ export function resolveChineseScriptTarget(preferredLanguage, chineseScriptPrefe
  * zh-CN / zh-TW tells cleanup to write its entire response in Chinese, which is
  * unsafe before the transcription language is known. The deterministic final
  * conversion still applies the selected script to likely-Chinese output.
- *
- * @param {string | null | undefined} preferredLanguage
- * @returns {string}
  */
-export function resolveCleanupLanguage(preferredLanguage) {
+export function resolveCleanupLanguage(
+  preferredLanguage: string | null | undefined
+): string {
   if (preferredLanguage && preferredLanguage !== "auto") return preferredLanguage;
   return "auto";
 }
 
 /**
  * Short Whisper prompt bias so the model prefers the target character set.
- *
- * @param {ChineseScriptTarget | null} target
- * @returns {string | null}
  */
-export function getChineseScriptPromptBias(target) {
+export function getChineseScriptPromptBias(target: ChineseScriptTarget | null): string | null {
   if (target === "simplified") {
     return "以下是简体中文。语言、学习、软件、网络。";
   }
@@ -132,12 +133,10 @@ export function getChineseScriptPromptBias(target) {
   return null;
 }
 
-/**
- * @param {string | null | undefined} text
- * @param {ChineseScriptTarget | null} target
- * @returns {Promise<string>}
- */
-export async function applyChineseScript(text, target) {
+export async function applyChineseScript(
+  text: string | null | undefined,
+  target: ChineseScriptTarget | null
+): Promise<string> {
   if (!text || !target) return text || "";
   if (!HAN_RE.test(text)) return text;
 
@@ -147,12 +146,11 @@ export async function applyChineseScript(text, target) {
 
 /**
  * Merge dictionary words with an optional Chinese script bias for Whisper prompts.
- *
- * @param {string | null | undefined} dictionaryPrompt
- * @param {ChineseScriptTarget | null} target
- * @returns {string | null}
  */
-export function mergeWhisperPrompt(dictionaryPrompt, target) {
+export function mergeWhisperPrompt(
+  dictionaryPrompt: string | null | undefined,
+  target: ChineseScriptTarget | null
+): string | null {
   const bias = getChineseScriptPromptBias(target);
   const dict = typeof dictionaryPrompt === "string" ? dictionaryPrompt.trim() : "";
   if (bias && dict) return `${bias} ${dict}`;

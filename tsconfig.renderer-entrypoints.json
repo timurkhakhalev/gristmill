@@ -1,0 +1,8 @@
+{
+  "extends": "./src/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true
+  },
+  "include": ["src/main.tsx", "src/AppRouter.tsx", "src/vite-env.d.ts"]
+}

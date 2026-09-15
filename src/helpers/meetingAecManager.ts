@@ -44,6 +44,10 @@ export interface MeetingAecStartOptions {
   onWarning?: (warning: MeetingAecWarningMessage) => void;
 }
 
+export interface MeetingAecManagerOptions {
+  spawnImpl?: typeof spawn;
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -92,6 +96,7 @@ export function parseMeetingAecMessage(value: unknown): MeetingAecMessage | null
 }
 
 export class MeetingAecManager {
+  spawnImpl: typeof spawn;
   process: AecChild | null;
   stdoutBuffer: Buffer;
   stderrBuffer: string;
@@ -100,7 +105,8 @@ export class MeetingAecManager {
   onWarning: ((warning: MeetingAecWarningMessage) => void) | null;
   isStopping: boolean;
 
-  constructor() {
+  constructor({ spawnImpl = spawn }: MeetingAecManagerOptions = {}) {
+    this.spawnImpl = spawnImpl;
     this.process = null;
     this.stdoutBuffer = Buffer.alloc(0);
     this.stderrBuffer = "";
@@ -166,7 +172,7 @@ export class MeetingAecManager {
       }
     }
 
-    const child = spawn(binaryPath, ["--sample-rate", String(SAMPLE_RATE)], {
+    const child = this.spawnImpl(binaryPath, ["--sample-rate", String(SAMPLE_RATE)], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });

@@ -31,7 +31,14 @@ function entrypointDiagnostics({ patch } = {}) {
     }
     return readSource(file, languageVersion, ...args);
   };
-  const program = ts.createProgram(ENTRYPOINTS, { ...parsed.options, noEmit: true }, host);
+  const program = ts.createProgram(
+    // The include list (not just the two entrypoints) must be the program roots:
+    // src/vite-env.d.ts carries the vite/client ambient declarations that make
+    // import.meta.hot and side-effect CSS imports typecheck.
+    parsed.fileNames,
+    { ...parsed.options, noEmit: true },
+    host
+  );
   return ts
     .getPreEmitDiagnostics(program)
     .filter((diagnostic) => {

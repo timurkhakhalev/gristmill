@@ -71,6 +71,8 @@ function buildSandbox({ deletes }) {
     downloadedTempPathRef: { current: null },
     progressRef: { current: null },
     progressCleanupRef: { current: null },
+    urlDownloadActiveRef: { current: false },
+    mountedRef: { current: true },
     // state
     downloadedTempPath: null,
     file: null,
@@ -123,7 +125,32 @@ function buildSandbox({ deletes }) {
     }).outputText;
     sandbox[name] = vm.runInNewContext(expression, sandbox);
   }
+
+  // The mount effect owns the real unmount cleanup (mountedRef flip +
+  // view-owned temp deletion); expose it so tests unmount through the real
+  // component path instead of poking mountedRef directly.
+  const mountEffects = [];
+  const visitEffects = (node) => {
+    if (ts.isCallExpression(node) && node.expression.getText(tree) === "useEffect") {
+      const arg = node.arguments[0];
+      if (arg && arg.getText(tree).includes("mountedRef.current = true")) {
+        mountEffects.push(arg.getText(tree));
+      }
+    }
+    ts.forEachChild(node, visitEffects);
+  };
+  visitEffects(tree);
+  assert.equal(mountEffects.length, 1, "the mount effect with the unmount cleanup is unique");
+  sandbox.runMountEffect = vm.runInNewContext(`(${mountEffects[0]})`, sandbox);
   return sandbox;
+}
+
+// Drives the component's real mount effect and its cleanup, exactly like
+// React would on unmount.
+function unmountView(sandbox) {
+  sandbox.mountedRef.current = true;
+  const cleanup = sandbox.runMountEffect();
+  cleanup();
 }
 
 // Real main-side cancel: the handler aborts the registry registration, whose
@@ -257,4 +284,65 @@ test("a user-picked source file is never deleted, including by a Stop", async ()
   await run;
   await tick();
   assert.deepEqual(deletes, [], "user-picked files are out of the temp lifetime");
+});
+
+// Issue #71: a failure settling after unmount used to hand the temp back to
+// a view that no longer exists — its unmount cleanup had already run and
+// found no view-owned temp, so nothing ever deleted the file.
+test("a failure settling after unmount deletes the temp instead of leaking it", async () => {
+  const deletes = [];
+  const sandbox = buildSandbox({ deletes });
+  sandbox.downloadedTempPath = "/tmp/dl-4.wav";
+  sandbox.downloadedTempPathRef.current = "/tmp/dl-4.wav";
+  sandbox.file = fromUrlFile("/tmp/dl-4.wav");
+
+  const gate = deferred();
+  sandbox.transcribeFileWithSpeakers = async () => {
+    await gate.promise;
+    return { success: false, code: "PROVIDER_ERROR" };
+  };
+  const run = sandbox.handleTranscribe();
+  await tick();
+  assert.equal(sandbox.executionTempRef.current, "/tmp/dl-4.wav", "the execution owns the temp");
+
+  // Real unmount while the readers are open: the cleanup finds no
+  // view-owned temp and must not delete the execution's file early.
+  unmountView(sandbox);
+  assert.equal(sandbox.mountedRef.current, false);
+  assert.deepEqual(deletes, [], "the in-flight temp is not view-owned, cleanup deletes nothing");
+
+  gate.resolve();
+  await run;
+  await tick();
+  assert.deepEqual(
+    deletes,
+    ["/tmp/dl-4.wav"],
+    "the settling failure deletes the temp exactly once, after the readers finished"
+  );
+  assert.equal(sandbox.executionTempRef.current, null);
+  assert.equal(sandbox.downloadedTempPath, null, "no Retry hand-back to the unmounted view");
+});
+
+test("a thrown settlement after unmount deletes the temp instead of leaking it", async () => {
+  const deletes = [];
+  const sandbox = buildSandbox({ deletes });
+  sandbox.downloadedTempPath = "/tmp/dl-5.wav";
+  sandbox.downloadedTempPathRef.current = "/tmp/dl-5.wav";
+  sandbox.file = fromUrlFile("/tmp/dl-5.wav");
+
+  const gate = deferred();
+  sandbox.transcribeFileWithSpeakers = async () => {
+    await gate.promise;
+    throw new Error("reader blew up");
+  };
+  const run = sandbox.handleTranscribe();
+  await tick();
+  unmountView(sandbox);
+  assert.deepEqual(deletes, []);
+
+  gate.resolve();
+  await run;
+  await tick();
+  assert.deepEqual(deletes, ["/tmp/dl-5.wav"], "the thrown settlement still cleans the temp up");
+  assert.equal(sandbox.downloadedTempPath, null);
 });

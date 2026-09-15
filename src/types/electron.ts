@@ -16,6 +16,7 @@ import type { LocalModelLifecycleApi } from "../contracts/localModelLifecycle";
 import type { LocalLlmModelsApi } from "../contracts/localLlmModels";
 import type { SpeakerApi } from "../contracts/speakerProfiles";
 import type { TranscriptionExecutionApi } from "../contracts/transcriptionExecution";
+import type { DesktopSettingsApi } from "../contracts/desktopSettings";
 import type { TranscriptionDataApi } from "../contracts/transcriptionData";
 import type {
   LocalTranscriptionProvider,
@@ -520,10 +521,9 @@ export interface OnboardingDemoEvent {
 declare global {
   interface Window {
     electronAPI: {
-      // Basic window operations
-      setOnboardingWindowMode?: (mode: "compact" | "expanded" | "restore") => Promise<boolean>;
-      setOnboardingActive?: (active: boolean) => Promise<boolean>;
-
+      // Onboarding/window controls, credentials, hotkeys, language, logging,
+      // clipboard, permissions, cleanup and app metadata come from the shared
+      // DesktopSettingsApi contract.
 
 
       // Vocabulary operations come from the shared VocabularyApi contract
@@ -541,36 +541,12 @@ declare global {
       // NoteFilesApi contract.
 
       getPathForFile: (file: File) => string;
+      getPlatform: () => string;
 
       // URL audio download operations come from the shared UrlDownloadApi
       // contract (three operations + the progress subscription).
       onFolderDeleted?: (callback: (payload: { id: number }) => void) => () => void;
 
-
-      // API key management
-      getOpenAIKey: () => Promise<string>;
-      saveOpenAIKey: (key: string) => Promise<{ success: boolean }>;
-      getAnthropicKey: () => Promise<string | null>;
-      saveAnthropicKey: (key: string) => Promise<void>;
-      getUiLanguage: () => Promise<string>;
-      saveUiLanguage: (language: string) => Promise<{ success: boolean; language: string }>;
-      setUiLanguage: (language: string) => Promise<{ success: boolean; language: string }>;
-      saveAllKeysToEnv: () => Promise<{ success: boolean; path: string }>;
-      syncStartupPreferences: (prefs: {
-        useLocalWhisper: boolean;
-        localTranscriptionProvider: LocalTranscriptionProvider;
-        model?: string;
-        language?: string;
-        useCleanupModel: boolean;
-        cleanupMode: InferenceMode;
-        cleanupModel?: string;
-      }) => Promise<void>;
-
-      // Clipboard operations
-      checkAccessibilityPermission: (silent?: boolean) => Promise<boolean>;
-      promptAccessibilityPermission: () => Promise<boolean>;
-      readClipboard: () => Promise<string>;
-      writeClipboard: (text: string) => Promise<{ success: boolean }>;
 
       // Audio
 
@@ -586,36 +562,6 @@ declare global {
       // ReasoningApi contract.
 
 
-
-      // Window control operations
-      windowMinimize: () => Promise<void>;
-      windowMaximize: () => Promise<void>;
-      windowClose: () => Promise<void>;
-      windowIsMaximized: () => Promise<boolean>;
-      snapToMeetingMode: () => Promise<void>;
-      restoreFromMeetingMode: () => Promise<void>;
-      getPlatform: () => string;
-      startControlPanelDrag: () => Promise<void>;
-      stopControlPanelDrag: () => Promise<void>;
-      setNotificationInteractivity: (interactive: boolean) => Promise<void>;
-
-      // App management
-      cleanupApp: () => Promise<{ success: boolean; message: string; errors?: string[] }>;
-
-      getOAuthProtocolRegistered: () => Promise<boolean>;
-      getOAuthProtocol: () => Promise<string>;
-      getAppVersion: () => Promise<{ version: string }>;
-
-      openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
-      setHotkeyListeningMode?: (enabled: boolean) => Promise<{ success: boolean }>;
-      getHotkeyModeInfo?: (hotkey?: string) => Promise<{
-        isUsingGnome: boolean;
-        isUsingHyprland: boolean;
-        isUsingKDE: boolean;
-        isUsingNativeShortcut: boolean;
-        supportsPushToTalk: boolean;
-        pushToTalkUnavailableReason: string | null;
-      }>;
 
       // Globe key listener for hotkey capture (macOS only)
       onGlobeKeyPressed?: (callback: () => void) => () => void;
@@ -634,123 +580,9 @@ declare global {
       onShowSettings?: (callback: () => void) => () => void;
       onAccessibilityMissing?: (callback: () => void) => () => void;
 
-      // Gemini API key management
-      getGeminiKey: () => Promise<string | null>;
-      saveGeminiKey: (key: string) => Promise<void>;
-
-      // Groq API key management
-      getGroqKey: () => Promise<string | null>;
-      saveGroqKey: (key: string) => Promise<void>;
-      getOpenrouterKey: () => Promise<string | null>;
-      saveOpenrouterKey: (key: string) => Promise<void>;
-
-      // xAI API key management
-      getXaiKey?: () => Promise<string | null>;
-      saveXaiKey?: (key: string) => Promise<void>;
-
-      // Mistral API key management
-      getMistralKey: () => Promise<string | null>;
-      saveMistralKey: (key: string) => Promise<void>;
-
-      // Corti credential management
-      getCortiClientId?: () => Promise<string | null>;
-      saveCortiClientId?: (key: string) => Promise<void>;
-      getCortiClientSecret?: () => Promise<string | null>;
-      saveCortiClientSecret?: (key: string) => Promise<void>;
-      getCortiKey?: () => Promise<string | null>;
-      saveCortiKey?: (key: string) => Promise<void>;
-      getTinfoilKey?: () => Promise<string | null>;
-      saveTinfoilKey?: (key: string) => Promise<void>;
-      getDeepgramKey?: () => Promise<string | null>;
-      saveDeepgramKey?: (key: string) => Promise<void>;
-      getAssemblyAIKey?: () => Promise<string | null>;
-      saveAssemblyAIKey?: (key: string) => Promise<void>;
-
-      // Custom endpoint API keys
-      getCustomTranscriptionKey?: () => Promise<string | null>;
-      saveCustomTranscriptionKey?: (key: string) => Promise<void>;
-      getCleanupCustomKey?: () => Promise<string | null>;
-      saveCleanupCustomKey?: (key: string) => Promise<void>;
-      getNoteFormattingCustomKey?: () => Promise<string | null>;
-      saveNoteFormattingCustomKey?: (key: string) => Promise<void>;
-      getChatAgentCustomKey?: () => Promise<string | null>;
-      saveChatAgentCustomKey?: (key: string) => Promise<void>;
-
-      // Enterprise provider key persistence
-      getBedrockRegion?: () => Promise<string | null>;
-      saveBedrockRegion?: (value: string) => Promise<void>;
-      getBedrockProfile?: () => Promise<string | null>;
-      saveBedrockProfile?: (value: string) => Promise<void>;
-      getBedrockAccessKeyId?: () => Promise<string | null>;
-      saveBedrockAccessKeyId?: (key: string) => Promise<void>;
-      getBedrockSecretAccessKey?: () => Promise<string | null>;
-      saveBedrockSecretAccessKey?: (key: string) => Promise<void>;
-      getBedrockSessionToken?: () => Promise<string | null>;
-      saveBedrockSessionToken?: (key: string) => Promise<void>;
-      getAzureEndpoint?: () => Promise<string | null>;
-      saveAzureEndpoint?: (value: string) => Promise<void>;
-      getAzureApiKey?: () => Promise<string | null>;
-      saveAzureApiKey?: (key: string) => Promise<void>;
-      getAzureDeployment?: () => Promise<string | null>;
-      saveAzureDeployment?: (value: string) => Promise<void>;
-      getAzureApiVersion?: () => Promise<string | null>;
-      saveAzureApiVersion?: (value: string) => Promise<void>;
-      getVertexProject?: () => Promise<string | null>;
-      saveVertexProject?: (value: string) => Promise<void>;
-      getVertexLocation?: () => Promise<string | null>;
-      saveVertexLocation?: (value: string) => Promise<void>;
-      getVertexApiKey?: () => Promise<string | null>;
-      saveVertexApiKey?: (key: string) => Promise<void>;
-      // Activation mode persistence (file-based for reliable startup)
-      getActivationMode?: () => Promise<"tap" | "push">;
-      saveActivationMode?: (mode: "tap" | "push") => Promise<void>;
-
-      // Debug logging
-      getLogLevel?: () => Promise<string>;
-      log?: (entry: {
-        level: string;
-        message: string;
-        meta?: any;
-        scope?: string;
-        source?: string;
-      }) => Promise<void>;
-      getDebugState: () => Promise<{
-        enabled: boolean;
-        logPath: string | null;
-        logLevel: string;
-      }>;
-      setDebugLogging: (enabled: boolean) => Promise<{
-        success: boolean;
-        enabled?: boolean;
-        logPath?: string | null;
-        error?: string;
-      }>;
-      openLogsFolder: () => Promise<{ success: boolean; error?: string }>;
-
       // FFmpeg availability
       checkFFmpegAvailability: () => Promise<FFmpegAvailabilityResult>;
       // getAudioDiagnostics comes from the LocalModelLifecycleApi contract.
-
-      // System settings helpers
-      requestMicrophoneAccess?: () => Promise<{ granted: boolean }>;
-      checkMicrophoneAccess?: () => Promise<{ granted: boolean; status: string }>;
-      getSystemDefaultMicrophone?: (options?: { refresh?: boolean }) => Promise<{
-        name: string;
-        nativeId?: string;
-        platform: string;
-        source: "system" | "unavailable";
-      }>;
-      checkSystemAudioAccess?: () => Promise<SystemAudioAccessResult>;
-      requestSystemAudioAccess?: () => Promise<SystemAudioAccessResult>;
-      openMicrophoneSettings?: () => Promise<{ success: boolean; error?: string }>;
-      openSoundInputSettings?: () => Promise<{ success: boolean; error?: string }>;
-      openAccessibilitySettings?: () => Promise<{ success: boolean; error?: string }>;
-      openSystemAudioSettings?: () => Promise<{ success: boolean; error?: string }>;
-      openScreenRecordingSettings?: () => Promise<{ success: boolean; error?: string }>;
-      openLoginItemsSettings?: () => Promise<{ success: boolean; error?: string }>;
-      showEmojiPanel?: () => Promise<boolean>;
-      getModelCacheRoot?: () => Promise<string>;
-      openWhisperModelsFolder?: () => Promise<{ success: boolean; error?: string }>;
 
       // Windows Push-to-Talk notifications
       notifyActivationModeChanged?: (mode: "tap" | "push") => void;
@@ -770,12 +602,6 @@ declare global {
         }) => void
       ) => () => void;
 
-      // Auto-start at login. requiresApproval is macOS-only: SMAppService can
-      // register the login item and still leave it awaiting approval in System
-      // Settings, which otherwise looks like a toggle that will not stick.
-      getAutoStartEnabled?: () => Promise<{ enabled: boolean; requiresApproval: boolean }>;
-      setAutoStartEnabled?: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
-
       // BYOK audio file transcription, file diarization, speaker-text merge
       // and the hard cancel of one upload execution come from the shared
       // UploadTranscriptionApi contract (four channels).
@@ -784,7 +610,6 @@ declare global {
       // CalendarIntegrationApi contract (availability has its own bridge).
 
 
-      getMD5Hash: (text: string) => Promise<string>;
 
       // Meeting transcription (streaming, dual-channel)
       meetingTranscriptionPrepare?: (options: {
@@ -900,9 +725,6 @@ declare global {
       meetingDetectionSetPreferences?: (
         prefs: Record<string, boolean>
       ) => Promise<{ success: boolean }>;
-      syncNotificationPreferences?: (
-        prefs: Record<string, boolean>
-      ) => Promise<{ success: boolean }>;
       setSpeakerDiarizationEnabled?: (
         enabled: boolean
       ) => Promise<{ success: boolean; error?: string }>;
@@ -938,7 +760,7 @@ declare global {
         trigger?: "hotkey" | "manual" | "calendar-join";
       } | null>;
       onMeetingNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi & DesktopSettingsApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

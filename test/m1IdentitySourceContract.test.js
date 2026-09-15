@@ -40,7 +40,7 @@ test("M1 secrets, local storage, and renderer sessions use OpenHercules namespac
   assert.match(read("src/helpers/secretCrypto.js"), /const SERVICE = "OpenHercules"/);
   assert.match(read("src/lib/authAccountScope.ts"), /openhercules:accountScope/);
   assert.match(read("src/helpers/modelDirUtils.ts"), /\.cache", "openhercules/);
-  assert.match(read("src/helpers/cliBridge.js"), /"\.openhercules"/);
+  assert.match(read("src/helpers/cliBridge.ts"), /"\.openhercules"/);
   assert.match(read("src/helpers/windowConfig.js"), /persist:openhercules/);
   assert.match(read("src/helpers/windowConfig.js"), /partition: OPENHERCULES_SESSION_PARTITION/);
 });

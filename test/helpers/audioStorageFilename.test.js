@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { installElectronStub } = require("./harness/electronStub.js");
 
 installElectronStub();
-const AudioStorageManager = require("../../src/helpers/audioStorage.js");
+const AudioStorageManager = require("../../src/helpers/audioStorage.ts");
 
 // Saved audio is named after the dictation's wall clock, so the name has to be
 // read in the user's zone. transcriptions.timestamp comes in two shapes: the

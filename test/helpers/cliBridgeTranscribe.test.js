@@ -14,7 +14,7 @@ Module._load = function patchedLoad(request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const CliBridge = require("../../src/helpers/cliBridge.js");
+const CliBridge = require("../../src/helpers/cliBridge.ts");
 
 const MODELS = [
   { provider: "whisper", model: "base", downloaded: true, default: true },

@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **108 JS, 74 TS, 1 MTS и 25 JSON**
+а не всеми файлами в каталоге helpers. В нём **104 JS, 81 TS, 1 MTS и 25 JSON**
 (только `src/`; main/preload/worker — отдельные entry points). Entry points:
 main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
@@ -178,7 +178,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/appleCalendarManager.js`
 - `src/helpers/assemblyAiStreaming.js`
 - `src/helpers/audioActivityDetector.js`
-- `src/helpers/audioStorage.js`
+- `src/helpers/audioStorage.ts`
 - `src/helpers/audioTapManager.js`
 - `src/helpers/autoStart.js`
 - `src/helpers/autoStartPolicy.js`
@@ -200,7 +200,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/builtinActions.ts`
 - `src/helpers/calendarReminderScheduler.js`
 - `src/helpers/calendarSyncInterval.js`
-- `src/helpers/cliBridge.js`
+- `src/helpers/cliBridge.ts`
 - `src/helpers/cortiAuth.js`
 - `src/helpers/cortiStreaming.js`
 - `src/helpers/cortiTranscription.js`
@@ -227,7 +227,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/globeKeyManager.js`
 - `src/helpers/googleCalendarManager.js`
 - `src/helpers/googleCalendarOAuth.js`
-- `src/helpers/granolaImport.js`
+- `src/helpers/granolaImport.ts`
 - `src/helpers/hotkeyList.js`
 - `src/helpers/hotkeyManager.js`
 - `src/helpers/hotkeyRepeatGate.js`
@@ -241,7 +241,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/localModelDownloadStatus.js`
 - `src/helpers/localServerPolicy.js`
 - `src/helpers/localTranscriptionModels.js`
-- `src/helpers/markdownMirror.js`
+- `src/helpers/markdownMirror.ts`
 - `src/helpers/meetingAecManager.js`
 - `src/helpers/meetingAudioActivityMonitor.js`
 - `src/helpers/meetingAudioTimeline.js`
@@ -987,3 +987,44 @@ warnings — на 1 ниже прежнего: ушёл unused GENERATE_NOTES_KE
 runtime-shape smoke: `require('./src/helpers/database.ts')` под tsx возвращает
 класс (function, без .default), noteSearch/dbTimestamp дают прежние
 значения. Inventory графа Electron: 108 JS, 74 TS, 1 MTS, 25 JSON.
+
+## Этап «note files, Granola import, audio storage и CLI bridge»
+
+16 сентября 2026 (issue #39). Локальные file/CLI adapters переведены в
+strict TS, file/import-каналы получили общий contract + typed handler +
+bundled bridge.
+
+- `audioStorage.js` → `audioStorage.ts`: file naming (wall-clock из
+  `parseDbTimestamp`), retention cleanup (`cleanupExpiredAudio` + callers),
+  `deleteAllAudio` без изменений; cleanup-колонки/ID-парсинг прежние.
+  CommonJS-контракт `module.exports = AudioStorageManager` сохранён.
+- `markdownMirror.js` → `markdownMirror.ts` (singleton через
+  `module.exports = new MarkdownMirror()`): encode-префикс `__ow-`,
+  Windows-reserved, symlink-гварды, frontmatter YAML-экранирование,
+  rename/delete propagation, rebuild и note-vs-transcript globbing без
+  изменений; типы `MirroredNote`/`MirrorSpeakerMapping`.
+- `granolaImport.js` → `granolaImport.ts` (уже ESM): RFC-4180 tokenizer,
+  header synonyms, date normalization (UTC/US/month-first), speaker-line
+  режим, deterministic UUID и note-key allocator — поведение 1:1; типы
+  `GranolaParsedNote`/`CsvWarning`/парсинг-результаты.
+- `cliBridge.js` → `cliBridge.ts`: та же route table, discovery file
+  (version 1, порты 8200–8219, 127.0.0.1, random token, mode 0600),
+  timingSafeEqual bearer, loopback-фильтр, 1MiB body cap, UTF-8 decode
+  после concat, error/status/204 shapes, lifecycle. Вместо непроверяемого
+  `IPCHandlers` — узкий `CliBridgeOperations` (databaseManager-slice +
+  существующие операции и event senders); wiring в main.js явный. Удалён
+  мёртвый вызов `_asyncVectorUpsert` (метод исчез из IPCHandlers при
+  cleanup векторного стора — CLI create/update ноты падал бы 500).
+- Note-files/granola cutover: `src/contracts/noteFiles.ts` (9 каналов,
+  аргументы, дискриминированный preview/result, без путей через bridge),
+  `src/helpers/noteFilesIpcHandlers.ts` (deps: mirror, dialogs, fs,
+  importNotes, granola preview→run state остаётся в main),
+  `src/preload/noteFilesBridge.ts`; ручные entries удалены из `preload.js`
+  и `src/types/electron.ts`. `importNotes` errors — `{error}` (не
+  `{clientNoteId, error}`, как в реальном DB-результате).
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors (39+2
+warnings — на 1 ниже прежнего); strict probes
+`test/scripts/noteFilesTypeProbe.test.js` (коды 2345×3/2339×2/2353
+сверены фактическим tsc-прогоном; positive graph чист). Inventory графа
+Electron: 104 JS, 81 TS, 1 MTS, 25 JSON.

@@ -6,13 +6,30 @@ const debugLogger = require("./debugLogger");
 const ENCODED_FOLDER_PREFIX = "__ow-";
 const WINDOWS_RESERVED_FOLDER = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
 
-class MarkdownMirror {
-  constructor() {
-    this._basePath = null;
-    this._baseRealPath = null;
-  }
+// The mirror projects notes/transcript rows the DB already owns.
+export interface MirroredNote {
+  id: number;
+  title: string | null | undefined;
+  note_type: string | null | undefined;
+  created_at: string | null | undefined;
+  updated_at: string | null | undefined;
+  enhanced_content?: string | null;
+  content?: string | null;
+  transcript?: string | null;
+  folder_id?: number | null;
+}
 
-  init(basePath) {
+export interface MirrorSpeakerMapping {
+  [speakerId: string]: string;
+}
+
+export class MarkdownMirror {
+  _basePath: string | null = null;
+  _baseRealPath: string | null = null;
+
+  constructor() {}
+
+  init(basePath: string): void {
     this._basePath = basePath;
     this._baseRealPath = null;
     try {
@@ -20,15 +37,19 @@ class MarkdownMirror {
       this._baseRealPath = fs.realpathSync(basePath);
       debugLogger.debug("Markdown mirror initialized", { basePath }, "note-files");
     } catch (err) {
-      debugLogger.error("Failed to init markdown mirror", { error: err.message }, "note-files");
+      debugLogger.error(
+        "Failed to init markdown mirror",
+        { error: (err as Error).message },
+        "note-files"
+      );
     }
   }
 
-  getBasePath() {
+  getBasePath(): string | null {
     return this._basePath;
   }
 
-  _safeFolderName(folderName) {
+  _safeFolderName(folderName: unknown): string {
     const raw = String(folderName || "Personal");
     const requiresEncoding =
       raw === "." ||
@@ -44,7 +65,7 @@ class MarkdownMirror {
     return `${ENCODED_FOLDER_PREFIX}${digest}`;
   }
 
-  _isInsideBase(candidatePath) {
+  _isInsideBase(candidatePath: string): boolean {
     if (!this._baseRealPath) return false;
     const relative = path.relative(this._baseRealPath, candidatePath);
     return (
@@ -55,17 +76,17 @@ class MarkdownMirror {
     );
   }
 
-  _folderCandidatePath(folderName) {
+  _folderCandidatePath(folderName: unknown): string | null {
     if (!this._baseRealPath) return null;
     return path.join(this._baseRealPath, this._safeFolderName(folderName));
   }
 
-  _displayPath(canonicalPath) {
+  _displayPath(canonicalPath: string): string {
     const relative = path.relative(this._baseRealPath, canonicalPath);
     return path.join(this._basePath, relative);
   }
 
-  _resolveExistingFolderPath(candidatePath) {
+  _resolveExistingFolderPath(candidatePath: string): string {
     const stats = fs.lstatSync(candidatePath);
     if (stats.isSymbolicLink() || !stats.isDirectory()) {
       throw new Error("Markdown mirror folder is not a regular directory");
@@ -78,7 +99,7 @@ class MarkdownMirror {
     return realPath;
   }
 
-  _resolveFolderPath(folderName, { create = false } = {}) {
+  _resolveFolderPath(folderName: unknown, { create = false }: { create?: boolean } = {}): string | null {
     const candidatePath = this._folderCandidatePath(folderName);
     if (!candidatePath) return null;
 
@@ -89,7 +110,7 @@ class MarkdownMirror {
     return this._resolveExistingFolderPath(candidatePath);
   }
 
-  _assertWritableFilePath(filePath) {
+  _assertWritableFilePath(filePath: string): void {
     if (!fs.existsSync(filePath)) return;
     const stats = fs.lstatSync(filePath);
     if (stats.isSymbolicLink() || !stats.isFile()) {
@@ -97,7 +118,7 @@ class MarkdownMirror {
     }
   }
 
-  _slugify(title) {
+  _slugify(title: string | null | undefined): string {
     return (title || "Untitled")
       .replace(/[/\\?%*:|"<>]/g, "-")
       .trim()
@@ -106,8 +127,8 @@ class MarkdownMirror {
       .slice(0, 60);
   }
 
-  _buildFrontmatter(note, folderName) {
-    const escYaml = (str) => {
+  _buildFrontmatter(note: MirroredNote, folderName: string | null | undefined): string {
+    const escYaml = (str: string | null | undefined): string => {
       if (!str) return '""';
       // A control character (newline, carriage return, tab) in a title splits the
       // mapping onto a bare line and makes the whole frontmatter block unparseable,
@@ -141,7 +162,7 @@ class MarkdownMirror {
     return lines.join("\n");
   }
 
-  writeNote(note, folderName) {
+  writeNote(note: MirroredNote, folderName: string | null | undefined): void {
     if (!this._baseRealPath) return;
     try {
       const dirPath = this._resolveFolderPath(folderName, { create: true });
@@ -167,13 +188,17 @@ class MarkdownMirror {
     } catch (err) {
       debugLogger.error(
         "Failed to write note file",
-        { noteId: note.id, error: err.message },
+        { noteId: note.id, error: (err as Error).message },
         "note-files"
       );
     }
   }
 
-  writeTranscript(note, folderName, speakerMappings) {
+  writeTranscript(
+    note: MirroredNote,
+    folderName: string | null | undefined,
+    speakerMappings: MirrorSpeakerMapping | null | undefined
+  ): void {
     if (!this._baseRealPath) return;
     try {
       const segments = JSON.parse(note.transcript || "[]");
@@ -201,13 +226,13 @@ class MarkdownMirror {
     } catch (err) {
       debugLogger.error(
         "Failed to write transcript file",
-        { noteId: note.id, error: err.message },
+        { noteId: note.id, error: (err as Error).message },
         "note-files"
       );
     }
   }
 
-  deleteNote(noteId) {
+  deleteNote(noteId: number): void {
     if (!this._baseRealPath) return;
     try {
       const files = [...this._globNoteFiles(noteId), ...this._globTranscriptFiles(noteId)];
@@ -220,30 +245,34 @@ class MarkdownMirror {
         } catch (err) {
           debugLogger.error(
             "Failed to delete note file",
-            { noteId, file: f, error: err.message },
+            { noteId, file: f, error: (err as Error).message },
             "note-files"
           );
         }
       }
     } catch (err) {
-      debugLogger.error("Failed to delete note file", { noteId, error: err.message }, "note-files");
+      debugLogger.error(
+        "Failed to delete note file",
+        { noteId, error: (err as Error).message },
+        "note-files"
+      );
     }
   }
 
-  ensureFolder(folderName) {
+  ensureFolder(folderName: string): void {
     if (!this._baseRealPath) return;
     try {
       this._resolveFolderPath(folderName, { create: true });
     } catch (err) {
       debugLogger.error(
         "Failed to ensure folder",
-        { folderName, error: err.message },
+        { folderName, error: (err as Error).message },
         "note-files"
       );
     }
   }
 
-  renameFolder(oldName, newName) {
+  renameFolder(oldName: string, newName: string): void {
     if (!this._baseRealPath) return;
     try {
       const oldPath = this._resolveFolderPath(oldName);
@@ -255,13 +284,13 @@ class MarkdownMirror {
     } catch (err) {
       debugLogger.error(
         "Failed to rename folder",
-        { oldName, newName, error: err.message },
+        { oldName, newName, error: (err as Error).message },
         "note-files"
       );
     }
   }
 
-  deleteFolder(folderName) {
+  deleteFolder(folderName: string): void {
     if (!this._baseRealPath) return;
     try {
       const dirPath = this._resolveFolderPath(folderName);
@@ -269,17 +298,21 @@ class MarkdownMirror {
     } catch (err) {
       debugLogger.error(
         "Failed to delete folder",
-        { folderName, error: err.message },
+        { folderName, error: (err as Error).message },
         "note-files"
       );
     }
   }
 
-  rebuildAll(notes, folderMap, speakerMappingsMap) {
+  rebuildAll(
+    notes: MirroredNote[],
+    folderMap: Record<number, string>,
+    speakerMappingsMap: Record<number, MirrorSpeakerMapping> | null | undefined
+  ): void {
     if (!this._baseRealPath) return;
     try {
       for (const note of notes) {
-        const folderName = folderMap[note.folder_id] || "Personal";
+        const folderName = (note.folder_id != null ? folderMap[note.folder_id] : undefined) || "Personal";
         this.writeNote(note, folderName);
         if (note.transcript) {
           this.writeTranscript(note, folderName, speakerMappingsMap?.[note.id] || {});
@@ -287,17 +320,21 @@ class MarkdownMirror {
       }
       debugLogger.info("Markdown mirror rebuild complete", { count: notes.length }, "note-files");
     } catch (err) {
-      debugLogger.error("Failed to rebuild all note files", { error: err.message }, "note-files");
+      debugLogger.error(
+        "Failed to rebuild all note files",
+        { error: (err as Error).message },
+        "note-files"
+      );
     }
   }
 
-  getNotePath(noteId) {
+  getNotePath(noteId: number): string | null {
     if (!this._baseRealPath) return null;
     const files = this._globNoteFiles(noteId);
     return files.length > 0 ? this._displayPath(files[0]) : null;
   }
 
-  getFolderPath(folderName) {
+  getFolderPath(folderName: string): string | null {
     if (!this._baseRealPath) return null;
     try {
       const canonicalPath = this._resolveFolderPath(folderName);
@@ -310,8 +347,8 @@ class MarkdownMirror {
   // Note markdown opens with the frontmatter this mirror writes; transcript
   // companions open with "# <title>". BOM and CRLF are tolerated so a note an
   // external editor re-saved is still recognised.
-  _isNoteMarkdownFile(filePath) {
-    let fd;
+  _isNoteMarkdownFile(filePath: string): boolean {
+    let fd: number | undefined;
     try {
       const stats = fs.lstatSync(filePath);
       if (stats.isSymbolicLink() || !stats.isFile()) return false;
@@ -326,7 +363,7 @@ class MarkdownMirror {
     }
   }
 
-  _globNoteFiles(noteId) {
+  _globNoteFiles(noteId: number): string[] {
     if (!this._baseRealPath) return [];
     const results = [];
     try {
@@ -356,7 +393,7 @@ class MarkdownMirror {
     return results;
   }
 
-  _globTranscriptFiles(noteId) {
+  _globTranscriptFiles(noteId: number): string[] {
     if (!this._baseRealPath) return [];
     const results = [];
     try {
@@ -393,4 +430,6 @@ class MarkdownMirror {
   }
 }
 
+// CommonJS passthrough: the original module exported the singleton instance,
+// and every require site (ipcHandlers.js, cliBridge, tests) uses it directly.
 module.exports = new MarkdownMirror();

@@ -11,7 +11,7 @@ const path = require("path");
 test("debug log System Info header includes the app version", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "debugLogger-test-"));
   const electronPath = require.resolve("electron");
-  const debugLoggerPath = require.resolve("../../src/helpers/debugLogger.js");
+  const debugLoggerPath = require.resolve("../../src/helpers/debugLogger.ts");
   const originalElectronCache = require.cache[electronPath];
   const originalLoggerCache = require.cache[debugLoggerPath];
 

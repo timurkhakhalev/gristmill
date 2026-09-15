@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { parseHotkeyList, serializeHotkeyList } = require("../../src/helpers/hotkeyList.js");
+const { parseHotkeyList, serializeHotkeyList } = require("../../src/helpers/hotkeyList.ts");
 
 test("parses a legacy single hotkey into a one-element list", () => {
   assert.deepEqual(parseHotkeyList("Control+Shift+R"), ["Control+Shift+R"]);

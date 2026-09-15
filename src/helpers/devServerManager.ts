@@ -1,5 +1,7 @@
+import http from "http";
+
 const DEFAULT_DEV_SERVER_PORT = 5183;
-const parseDevServerPort = () => {
+const parseDevServerPort = (): number => {
   const raw =
     process.env.VITE_DEV_SERVER_PORT ||
     String(DEFAULT_DEV_SERVER_PORT);
@@ -15,23 +17,35 @@ const parseDevServerPort = () => {
 const DEV_SERVER_PORT = parseDevServerPort();
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}/`;
 
-class DevServerManager {
-  static async waitForDevServer(url = DEV_SERVER_URL, maxAttempts = 30, delay = 1000) {
+export interface AppFilePathInfo {
+  path: string;
+  query: Record<string, string>;
+}
+
+export class DevServerManager {
+  static DEV_SERVER_PORT: number = DEV_SERVER_PORT;
+  static DEV_SERVER_URL: string = DEV_SERVER_URL;
+
+  static async waitForDevServer(
+    url: string = DEV_SERVER_URL,
+    maxAttempts = 30,
+    delay = 1000
+  ): Promise<boolean> {
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        const http = require("http");
         const urlObj = new URL(url);
 
-        const result = await new Promise((resolve) => {
+        const result = await new Promise<boolean>((resolve) => {
           const req = http.get(
             {
               hostname: urlObj.hostname,
-              port: urlObj.port || 80,
+              port: Number(urlObj.port) || 80,
               path: urlObj.pathname,
               timeout: 2000,
             },
             (res) => {
-              resolve(res.statusCode >= 200 && res.statusCode < 400);
+              const code = res.statusCode ?? 0;
+              resolve(code >= 200 && code < 400);
             }
           );
 
@@ -53,7 +67,7 @@ class DevServerManager {
     return false;
   }
 
-  static getAppUrl(isControlPanel = false) {
+  static getAppUrl(isControlPanel = false): string | null {
     if (process.env.NODE_ENV === "development") {
       return isControlPanel ? `${DEV_SERVER_URL}?panel=true` : DEV_SERVER_URL;
     } else {
@@ -65,10 +79,8 @@ class DevServerManager {
   /**
    * Get the path to the index.html file for production builds.
    * In Electron 36+, loadFile() is preferred over loadURL() with file:// protocol.
-   * @param {boolean} isControlPanel - Whether this is for the control panel
-   * @returns {{ path: string, query: object } | null} - Path info for loadFile() or null for dev
    */
-  static getAppFilePath(isControlPanel = false) {
+  static getAppFilePath(isControlPanel = false): AppFilePathInfo | null {
     if (process.env.NODE_ENV === "development") {
       return null; // Use getAppUrl() for dev server
     }
@@ -88,5 +100,6 @@ class DevServerManager {
 }
 
 module.exports = DevServerManager;
+module.exports.DevServerManager = DevServerManager;
 module.exports.DEV_SERVER_PORT = DEV_SERVER_PORT;
 module.exports.DEV_SERVER_URL = DEV_SERVER_URL;

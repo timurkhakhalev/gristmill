@@ -3,11 +3,27 @@
 // A login launch should come up in the tray. macOS reports it through
 // wasOpenedAtLogin.
 
-function getLoginItemArgs() {
+// Structural slice of Electron's LoginItemSettings the policy reads.
+export interface LoginItemSettingsLike {
+  openAtLogin?: boolean;
+  status?: string;
+  wasOpenedAtLogin?: boolean;
+}
+
+export function getLoginItemArgs(): string[] {
   return [];
 }
 
-function resolveAutoStartState({ loginItemSettings }) {
+export interface AutoStartState {
+  enabled: boolean;
+  requiresApproval: boolean;
+}
+
+export function resolveAutoStartState({
+  loginItemSettings,
+}: {
+  loginItemSettings: LoginItemSettingsLike;
+}): AutoStartState {
   return {
     enabled: !!loginItemSettings.openAtLogin,
     // macOS 13+ routes login items through SMAppService, which can register an
@@ -22,12 +38,10 @@ function resolveAutoStartState({ loginItemSettings }) {
 // showing. Rewriting reuses the same registry value name, so it re-points that
 // entry rather than adding a second one.
 // Whether the session started this process rather than the user.
-function wasLaunchedHidden({ loginItemSettings }) {
+export function wasLaunchedHidden({
+  loginItemSettings,
+}: {
+  loginItemSettings: LoginItemSettingsLike;
+}): boolean {
   return !!loginItemSettings.wasOpenedAtLogin;
 }
-
-module.exports = {
-  getLoginItemArgs,
-  resolveAutoStartState,
-  wasLaunchedHidden,
-};

@@ -1,25 +1,32 @@
-const path = require("path");
+import path from "path";
+import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
+import type { WindowBounds, WindowSize } from "./onboardingWindowBounds.js";
+
 // Kept only for legacy resize IPC responses while old preload bundles drain.
 // No assistant or dictation window is created by the current renderer.
-const ASSISTANT_PANEL_SIZE_LIMITS = Object.freeze({
+const ASSISTANT_PANEL_SIZE_LIMITS = {
   ratioWidth: 760,
   ratioHeight: 520,
   gutter: 24,
   minSurfaceWidth: 320,
   maxSurfaceWidth: 760,
   minSurfaceHeight: 120,
-});
+};
 
 // All renderer windows share an app-owned persisted session. The explicit
 // partition prevents Electron from ever reusing a profile created by the
 // imported application when the user runs both apps side by side.
-const OPENHERCULES_SESSION_PARTITION = "persist:openhercules";
+export const OPENHERCULES_SESSION_PARTITION = "persist:openhercules";
 
-function resolveOverlayWindowType() {
+export function resolveOverlayWindowType(_input?: {
+  role?: string;
+  platform?: string;
+  linuxSession?: string;
+}): "panel" {
   return "panel";
 }
 
-const OVERLAY_WINDOW_TYPES = { main: "panel", notification: "panel" };
+const OVERLAY_WINDOW_TYPES = { main: "panel", notification: "panel" } as const;
 
 const ASSISTANT_WINDOW_SIZE = {
   width: ASSISTANT_PANEL_SIZE_LIMITS.ratioWidth + ASSISTANT_PANEL_SIZE_LIMITS.gutter,
@@ -32,7 +39,10 @@ const DICTATION_ERROR_WINDOW_LIMITS = {
   minSurfaceHeight: 88,
 };
 
-function fitAssistantWindowToWorkArea(requestedSize, workArea) {
+export function fitAssistantWindowToWorkArea(
+  requestedSize: WindowSize,
+  workArea: WindowBounds
+): WindowSize {
   const limits = ASSISTANT_PANEL_SIZE_LIMITS;
   const ratio = limits.ratioWidth / limits.ratioHeight;
   const availableSurfaceWidth = Math.max(1, workArea.width - limits.gutter);
@@ -63,10 +73,10 @@ function fitAssistantWindowToWorkArea(requestedSize, workArea) {
 // height between the limits' floor and the caller's ceiling, then add the
 // gutter frame back around the surface.
 function fitContentWindowToWorkArea(
-  limits,
-  requestedSurfaceHeight,
-  { width, maximumSurfaceHeight }
-) {
+  limits: { minSurfaceHeight: number; gutter: number },
+  requestedSurfaceHeight: unknown,
+  { width, maximumSurfaceHeight }: { width: number; maximumSurfaceHeight: number }
+): WindowSize {
   const minimumSurfaceHeight = Math.min(limits.minSurfaceHeight, maximumSurfaceHeight);
   const numericHeight = Number(requestedSurfaceHeight);
   const safeHeight = Number.isFinite(numericHeight)
@@ -80,7 +90,10 @@ function fitContentWindowToWorkArea(
   };
 }
 
-function fitAssistantContentWindowToWorkArea(requestedSurfaceHeight, workArea) {
+export function fitAssistantContentWindowToWorkArea(
+  requestedSurfaceHeight: unknown,
+  workArea: WindowBounds
+): WindowSize {
   const limits = ASSISTANT_PANEL_SIZE_LIMITS;
   const maximumWindow = fitAssistantWindowToWorkArea(ASSISTANT_WINDOW_SIZE, workArea);
   return fitContentWindowToWorkArea(limits, requestedSurfaceHeight, {
@@ -89,7 +102,10 @@ function fitAssistantContentWindowToWorkArea(requestedSurfaceHeight, workArea) {
   });
 }
 
-function fitDictationErrorContentWindowToWorkArea(requestedSurfaceHeight, workArea) {
+export function fitDictationErrorContentWindowToWorkArea(
+  requestedSurfaceHeight: unknown,
+  workArea: WindowBounds
+): WindowSize {
   const limits = DICTATION_ERROR_WINDOW_LIMITS;
   const fitted = fitContentWindowToWorkArea(limits, requestedSurfaceHeight, {
     width: fitAssistantWindowToWorkArea(ASSISTANT_WINDOW_SIZE, workArea).width,
@@ -98,7 +114,10 @@ function fitDictationErrorContentWindowToWorkArea(requestedSurfaceHeight, workAr
   return { ...fitted, height: Math.min(workArea.height, fitted.height) };
 }
 
-function fitDictationErrorWindowToWorkArea(requestedSize, workArea) {
+export function fitDictationErrorWindowToWorkArea(
+  requestedSize: { height: unknown },
+  workArea: WindowBounds
+): WindowSize {
   const width = fitAssistantWindowToWorkArea(ASSISTANT_WINDOW_SIZE, workArea).width;
   const numericHeight = Number(requestedSize.height);
   const safeHeight = Number.isFinite(numericHeight) ? Math.round(numericHeight) : 1;
@@ -120,7 +139,7 @@ function fitDictationErrorWindowToWorkArea(requestedSize, workArea) {
 // contract, and the only place they are defined.
 const PILL_WINDOW_SIZE = { width: 208, height: 120 };
 
-const WINDOW_SIZES = {
+export const WINDOW_SIZES = {
   // BASE and RECORDING are deliberately the same box. Resizing a transparent
   // always-on-top window paints one compositor frame of the stale texture
   // inside the new bounds before the renderer catches up — no resize mask can
@@ -140,12 +159,33 @@ const WINDOW_SIZES = {
   ASSISTANT: ASSISTANT_WINDOW_SIZE,
 };
 
+// Meeting/notification prompt payloads cross the window boundary as plain
+// data. The engine builds detection prompts incrementally, and tests exercise
+// partial payloads, so every field stays optional — `kind` only selects the
+// auto-end size/timeout path.
+export interface MeetingNotificationPrompt {
+  kind?: "detection" | "auto-end";
+  detectionId?: string;
+  sessionId?: string;
+  expiresAt?: number;
+  reason?: string;
+  source?: string | null;
+  key?: string;
+  variant?: string;
+  joinUrl?: string | null;
+  event?: unknown;
+}
+
 /**
  * Resolve the horizontal voice-animation origin from where the native overlay
  * actually sits. The saved preference is only a fallback for an exact center
  * or unavailable geometry; dragging the pill must be able to override it.
  */
-function resolveHorizontalWindowDirection(bounds, display, preferredPosition = "bottom-right") {
+export function resolveHorizontalWindowDirection(
+  bounds?: Partial<WindowBounds> | null,
+  display?: { workArea?: WindowBounds | null; bounds?: WindowBounds | null } | null,
+  preferredPosition: string = "bottom-right"
+): "left" | "right" {
   if (preferredPosition === "center") return "right";
 
   const workArea = display?.workArea || display?.bounds;
@@ -160,9 +200,18 @@ function resolveHorizontalWindowDirection(bounds, display, preferredPosition = "
   return windowCenter < displayCenter ? "left" : "right";
 }
 
+// Electron ignores the two extra keys (visibleOnAllWorkspaces is window
+// methods, acceptsFirstMouse predates the correct acceptFirstMouse spelling);
+// they stay so the shipped configs remain byte-identical.
+type LegacyWindowConfig = BrowserWindowConstructorOptions & {
+  acceptsFirstMouse?: boolean;
+  visibleOnAllWorkspaces?: boolean;
+  fullScreenable?: boolean;
+};
+
 // Legacy hidden renderer configuration. The visible application is the control
 // panel; this window remains inert for an upgrade-safe main-process cutover.
-const MAIN_WINDOW_CONFIG = {
+export const MAIN_WINDOW_CONFIG: LegacyWindowConfig = {
   width: WINDOW_SIZES.BASE.width,
   height: WINDOW_SIZES.BASE.height,
   title: "OpenHercules",
@@ -193,13 +242,13 @@ const MAIN_WINDOW_CONFIG = {
 // The expanded flow deliberately uses a denser frame than the main control
 // panel. Its typography, cards and spacing are sized for this 1000x740 canvas;
 // clampedBounds still handles displays whose work area is smaller.
-const ONBOARDING_WINDOW_SIZES = {
+export const ONBOARDING_WINDOW_SIZES = {
   COMPACT: { width: 480, height: 624 },
   EXPANDED: { width: 1000, height: 740 },
 };
 
 // Control panel window configuration
-const CONTROL_PANEL_CONFIG = {
+export const CONTROL_PANEL_CONFIG: LegacyWindowConfig = {
   width: 1200,
   height: 800,
   // Fully transparent so nothing paints into the compact onboarding frame's
@@ -242,9 +291,12 @@ const CONTROL_PANEL_CONFIG = {
   type: "normal",
 };
 
-const NOTIFICATION_WINDOW_CONFIG = {
-  width: 392,
-  height: 92,
+const NOTIFICATION_WINDOW_WIDTH = 392;
+const NOTIFICATION_WINDOW_HEIGHT = 92;
+
+export const NOTIFICATION_WINDOW_CONFIG: LegacyWindowConfig = {
+  width: NOTIFICATION_WINDOW_WIDTH,
+  height: NOTIFICATION_WINDOW_HEIGHT,
   frame: false,
   transparent: true,
   alwaysOnTop: true,
@@ -265,28 +317,52 @@ const NOTIFICATION_WINDOW_CONFIG = {
   type: OVERLAY_WINDOW_TYPES.notification,
 };
 
-const AUTO_END_NOTIFICATION_WINDOW_SIZE = {
+export const AUTO_END_NOTIFICATION_WINDOW_SIZE = {
   width: 480,
   height: 128,
 };
 
-function getMeetingNotificationWindowSize(promptData) {
+export function getMeetingNotificationWindowSize(
+  promptData?: MeetingNotificationPrompt | null
+): WindowSize {
   if (promptData?.kind === "auto-end") {
     return AUTO_END_NOTIFICATION_WINDOW_SIZE;
   }
   return {
-    width: NOTIFICATION_WINDOW_CONFIG.width,
-    height: NOTIFICATION_WINDOW_CONFIG.height,
+    width: NOTIFICATION_WINDOW_WIDTH,
+    height: NOTIFICATION_WINDOW_HEIGHT,
   };
 }
 
-class WindowPositionUtil {
-  static getMainWindowPosition(display, customSize = null, position = "bottom-right") {
+// Structural slice of Electron's Display the position helpers read. Tests
+// drive them with partial display fakes, and the Electron object always
+// satisfies this shape.
+export interface DisplayGeometry {
+  workArea?: WindowBounds;
+  bounds?: WindowBounds;
+}
+
+type AlwaysOnTopLevel =
+  | "floating"
+  | "torn-off-menu"
+  | "modal-panel"
+  | "main-menu"
+  | "status"
+  | "pop-up-menu"
+  | "screen-saver";
+
+export class WindowPositionUtil {
+  static getMainWindowPosition(
+    display: DisplayGeometry,
+    customSize: WindowSize | null = null,
+    position: string = "bottom-right"
+  ): WindowBounds {
     const { width, height } = customSize || WINDOW_SIZES.BASE;
     const MARGIN = 4;
-    const workArea = display.workArea || display.bounds;
+    const workArea = (display.workArea || display.bounds) as WindowBounds;
 
-    let x, y;
+    let x: number;
+    let y: number;
     if (position === "bottom-left") {
       x = workArea.x + MARGIN;
       y = workArea.y + workArea.height - height - MARGIN;
@@ -312,18 +388,22 @@ class WindowPositionUtil {
   // Keeps a window's whole frame inside one display's work area. Displays of
   // different sizes leave dead space beside the smaller one, and a window parked
   // there is invisible even though the window server still reports it on screen.
-  static clampToWorkArea(bounds, display) {
-    const workArea = display.workArea || display.bounds;
+  static clampToWorkArea(bounds: WindowBounds, display: DisplayGeometry): { x: number; y: number } {
+    const workArea = (display.workArea || display.bounds) as WindowBounds;
     return {
       x: Math.max(workArea.x, Math.min(bounds.x, workArea.x + workArea.width - bounds.width)),
       y: Math.max(workArea.y, Math.min(bounds.y, workArea.y + workArea.height - bounds.height)),
     };
   }
 
-  static getNotificationPosition(display, customSize = null) {
-    const { width, height } = customSize || NOTIFICATION_WINDOW_CONFIG;
+  static getNotificationPosition(
+    display: DisplayGeometry,
+    customSize: WindowSize | null = null
+  ): WindowBounds {
+    const { width, height } =
+      customSize || { width: NOTIFICATION_WINDOW_WIDTH, height: NOTIFICATION_WINDOW_HEIGHT };
     const MARGIN = 16;
-    const workArea = display.workArea || display.bounds;
+    const workArea = (display.workArea || display.bounds) as WindowBounds;
     // Same negative-origin trap as getMainWindowPosition: clamp to the display,
     // not to zero, or a monitor above the primary one puts the prompt nowhere.
     const bounds = {
@@ -335,7 +415,10 @@ class WindowPositionUtil {
     return { ...WindowPositionUtil.clampToWorkArea(bounds, display), width, height };
   }
 
-  static setupAlwaysOnTop(window, { level = "floating" } = {}) {
+  static setupAlwaysOnTop(
+    window: BrowserWindow,
+    { level = "floating" }: { level?: AlwaysOnTopLevel } = {}
+  ): void {
     window.setAlwaysOnTop(true, level, 1);
     if (!window.isVisibleOnAllWorkspaces()) {
       window.setVisibleOnAllWorkspaces(true, {
@@ -351,22 +434,3 @@ class WindowPositionUtil {
     }
   }
 }
-
-module.exports = {
-  MAIN_WINDOW_CONFIG,
-  CONTROL_PANEL_CONFIG,
-  OPENHERCULES_SESSION_PARTITION,
-  ONBOARDING_WINDOW_SIZES,
-  NOTIFICATION_WINDOW_CONFIG,
-  ASSISTANT_PANEL_SIZE_LIMITS,
-  fitAssistantContentWindowToWorkArea,
-  fitAssistantWindowToWorkArea,
-  fitDictationErrorContentWindowToWorkArea,
-  fitDictationErrorWindowToWorkArea,
-  resolveHorizontalWindowDirection,
-  AUTO_END_NOTIFICATION_WINDOW_SIZE,
-  getMeetingNotificationWindowSize,
-  WINDOW_SIZES,
-  WindowPositionUtil,
-  resolveOverlayWindowType,
-};

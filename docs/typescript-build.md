@@ -1443,3 +1443,86 @@ native rebuild, pack и hardware smoke по ограничению задачи 
 AEC framing и mic-selection recovery coverage), `pnpm run build:main`,
 `pnpm run build:renderer`, `pnpm test`, `pnpm run pack` и isolated Electron /
 real mic+system recovery smoke на отдельном профиле.
+
+## Этап «desktop windows, hotkeys и app shell adapters»
+
+15 сентября 2026 (issue #48). 23 модуля окон, хоткеев и app-shell адаптеров
+переведены в strict TS: `appVersion`, `autoStart`, `autoStartPolicy`,
+`debugLogger`, `devServerManager`, `dockManager`, `dockPolicy`, `dragManager`,
+`externalUrlOpener`, `globeKeyManager`, `hotkeyList`, `hotkeyManager`,
+`hotkeyRepeatGate`, `i18nMain`, `menuManager`, `navigationGuard`,
+`notificationTimer`, `onboardingWindowBounds`, `tray`, `windowBroadcast`,
+`windowConfig`, `windowManager`, `hooks/useControlPanelWindowDrag`.
+Window/hotkey behavior сохранён 1:1; владельцы окон и shortcuts не менялись,
+никакого application framework или DI поверх них.
+
+- Экспорт-контракты восстановлены по фактическим require-сайта (self-audit):
+  классы-как-модуль — dual export `module.exports = X; module.exports.X = X`
+  (HotkeyManager + именованные предикаты, TrayManager, WindowManager,
+  GlobeKeyManager, DevServerManager со статиками, MenuManager, DragManager),
+  синглтоны — `export default instance; module.exports = instance`
+  (debugLogger — 20+ TS-файлов сидят на default-импорте и на CJS-require
+  одновременно; dockManager). Форма `export default` + `module.exports =`
+  проверена на emitted-графе: CJS require, tsx-ESM default и plain-node ESM
+  получают один и тот же экземпляр. Именованные значения — обычные
+  `export` (i18nMain, windowBroadcast, navigationGuard, hotkeyList,
+  notificationTimer, onboardingWindowBounds, windowConfig, autoStartPolicy,
+  appVersion, externalUrlOpener, dockPolicy, hotkeyRepeatGate, autoStart).
+- `windowConfig` владеет общим DTO `MeetingNotificationPrompt` (опциональные
+  поля: kind/detectionId/sessionId/expiresAt/reason/source/key/variant/
+  joinUrl/event — движок строит detection-промпты инкрементально, тесты
+  гоняют частичные payload, поэтому union без дискриминанты). Legacy-инертные
+  ключи конфигов (`acceptsFirstMouse`, `visibleOnAllWorkspaces`,
+  `fullScreenable`) сохранены через intersection с
+  `BrowserWindowConstructorOptions` — отгрузка конфигов байт-в-байт прежняя.
+- `WindowManager` получил узкий `MeetingDetectionEngineCallbacks`
+  (handleNotificationTimeout / handleAutoEndNotificationClosed /
+  handleDetectionNotificationClosed) вместо нетипизированного движка;
+  payload-очереди note navigation остались `unknown` — их форма принадлежит
+  note-вертикали. Tray получает `WindowManager` через type-only import
+  (цикла в рантайме нет). Electron-событие `"destroyed"` (window/tray) не
+  объявлено в типах Electron — точечный cast на `NodeJS.EventEmitter` с
+  комментарием.
+- Урок типизации под два компилятора: файлы helpers компилируются и strict
+  main-графом, и non-strict renderer-графом (`src/tsconfig.json`,
+  `strictNullChecks: false`), где отрицательное сужение размеченных union
+  недоступно — `HotkeyRegistrationResult` сделан плоским интерфейсом
+  (opциональные поля), а не discriminated union; все ветки читают поля без
+  сужения. Behavior не менялся.
+- `hotkeyManager` сохранил slot-модель, rollback/partial-registration,
+  Fn-гейт и dual-export предикатов; ленивые `require("./environment")`
+  типизированы через `new () => EnvironmentManager` ctor-type. i18nMain
+  экспортирует синглтон i18next-инстанса как named export; identity — один
+  инстанс на граф.
+- Тесты: явные `.js`-спецификаторы на мигрированные модули переведены на
+  `.ts` (hotkeySlot*, dockPolicy, hotkeyList, windowConfigTypes,
+  onboardingWindowBounds, windowManagerNavigation, debugLogger*,
+  envSecretStorage, autoStartPolicy, appVersion); мок-хуки Module._load
+  принимают оба спецификатора (`./x` и `./x.js`) — в
+  windowManagerMeetingNotification и globeKeyManager хуки расширены, фейки
+  hotkeyManager/dragManager/menuManager/devServerManager переведены на
+  named-export shape под новые import-формы windowManager;
+  m1IdentitySourceContract читает `windowConfig.ts`. Синхронизирующие
+  комментарии (i18n.ts, utils/hotkeys.ts, index.css) переведены на `.ts`
+  имена.
+
+Проверка исполнителем: `pnpm run typecheck` — 0 ошибок во всех трёх графах;
+`pnpm run lint` — 0 errors, warnings только прежнего baseline (ни одного в
+мигрированных файлах). Tests, builds, install, native rebuild, pack и
+isolated smoke по ограничению задачи не запускались. Оркестратору нужно
+последовательно выполнить focused tests (windowManagerNavigation/
+MeetingNotification, windowConfig*, windowPositionClamp,
+onboardingWindowBounds, globeKeyManager, hotkeySlotRollback/Unregister/
+FnGuard/Validation, dockPolicy, autoStartPolicy, debugLogger, appVersion,
+i18nMain, notificationTimer, hotkeyRepeatGate, m1IdentitySourceContract,
+mainBuild), затем `pnpm run build:main`, `pnpm run build:renderer`,
+`pnpm test`, `pnpm run pack` и isolated Electron smoke (Notes by default,
+onboarding compact/expanded, tray restore, shortcut и notification route) на
+отдельном профиле; после pack — восстановить Node ABI better-sqlite3 перед
+DB-тестами.
+
+Inventory графа Electron по фактическому `tsc --listFilesOnly`: 10 JS,
+184 TS, 1 MTS, 25 JSON. Срез `src` без `src/dist`: 12 JS, 388 TS, 254 TSX,
+1 MTS, 1 MJS (vite.config). Из графа вышли 21 JS-модуль этого issue;
+`appVersion` (потребители только в тестах) впервые включён в strict-граф
+явным include.

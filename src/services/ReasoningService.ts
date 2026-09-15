@@ -929,7 +929,7 @@ class ReasoningService extends BaseReasoningService {
       const openrouterKey = await window.electronAPI?.getOpenrouterKey?.();
       const tinfoilKey = await window.electronAPI?.getTinfoilKey?.();
       const cortiKey = await window.electronAPI?.getCortiKey?.();
-      const localAvailable = await window.electronAPI?.checkLocalReasoningAvailable?.();
+      const localAvailable = await window.electronAPI?.checkLocalReasoningAvailable();
 
       logger.logReasoning("API_KEY_CHECK", {
         hasOpenAI: !!openaiKey,

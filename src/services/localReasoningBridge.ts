@@ -1,12 +1,22 @@
-const modelManager = require("../helpers/modelManagerBridge").default;
-const debugLogger = require("../helpers/debugLogger");
+// Main-owned local (llama.cpp) one-shot reasoning. Preserves the JS service's
+// one-active-request policy, config defaults, complete-output behavior and
+// thinking cleanup; the model manager keeps owning llama-server lifecycle.
+import modelManagerBundle from "../helpers/modelManagerBridge.js";
+import debugLogger from "../helpers/debugLogger.js";
+import type { LocalReasoningConfig } from "../contracts/reasoning.js";
 
-class LocalReasoningService {
-  constructor() {
-    this.isProcessing = false;
-  }
+interface LocalModelManager {
+  ensureLlamaCpp(): Promise<unknown>;
+  getAllModels(): Promise<Array<{ isDownloaded?: boolean }>>;
+  runInference(modelId: string, prompt: string, options: Record<string, unknown>): Promise<string>;
+}
 
-  async isAvailable() {
+const modelManager = (modelManagerBundle as unknown as { default: LocalModelManager }).default;
+
+export class LocalReasoningService {
+  private isProcessing = false;
+
+  async isAvailable(): Promise<boolean> {
     try {
       await modelManager.ensureLlamaCpp();
       const models = await modelManager.getAllModels();
@@ -16,7 +26,7 @@ class LocalReasoningService {
     }
   }
 
-  async processText(text, modelId, config = {}) {
+  async processText(text: string, modelId: string, config: LocalReasoningConfig = {}): Promise<string> {
     debugLogger.logReasoning("LOCAL_BRIDGE_START", {
       modelId,
       textLength: text.length,
@@ -68,13 +78,14 @@ class LocalReasoningService {
 
       return cleanResult;
     } catch (error) {
+      const err = error as { message?: string; stack?: string };
       const processingTime = Date.now() - startTime;
 
       debugLogger.logReasoning("LOCAL_BRIDGE_ERROR", {
         modelId,
         processingTimeMs: processingTime,
-        error: error.message,
-        stack: error.stack,
+        error: err.message,
+        stack: err.stack,
       });
 
       throw error;
@@ -83,11 +94,14 @@ class LocalReasoningService {
     }
   }
 
-  calculateMaxTokens(textLength, minTokens = 512, maxTokens = 2048, multiplier = 2) {
+  calculateMaxTokens(
+    textLength: number,
+    minTokens = 512,
+    maxTokens = 2048,
+    multiplier = 2
+  ): number {
     return Math.max(minTokens, Math.min(textLength * multiplier, maxTokens));
   }
 }
 
-module.exports = {
-  default: new LocalReasoningService(),
-};
+export default new LocalReasoningService();

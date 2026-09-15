@@ -1,9 +1,13 @@
-class AgentStreamRequestRegistry {
-  constructor() {
-    this.requestsBySender = new Map();
-  }
+// Sender-scoped registry of in-flight abortable requests, keyed by
+// (webContents senderId, requestId). One renderer can never abort, replace
+// or complete another renderer's request; a repeated id for the same sender
+// aborts the previous controller so a replacement always starts fresh, and
+// completion is identity-guarded so a late finish never removes a
+// replacement. Pure seam: no Electron imports.
+export class AgentStreamRequestRegistry {
+  private readonly requestsBySender = new Map<number, Map<string, AbortController>>();
 
-  begin(senderId, requestId) {
+  begin(senderId: number, requestId: string): AbortController {
     if (!Number.isInteger(senderId)) {
       throw new TypeError("senderId must be an integer");
     }
@@ -23,9 +27,10 @@ class AgentStreamRequestRegistry {
     return controller;
   }
 
-  cancel(senderId, requestId) {
+  cancel(senderId: number, requestId: string): boolean {
     const senderRequests = this.requestsBySender.get(senderId);
-    const controller = senderRequests?.get(requestId);
+    if (!senderRequests) return false;
+    const controller = senderRequests.get(requestId);
     if (!controller) return false;
 
     controller.abort();
@@ -34,7 +39,7 @@ class AgentStreamRequestRegistry {
     return true;
   }
 
-  complete(senderId, requestId, controller) {
+  complete(senderId: number, requestId: string, controller: AbortController): void {
     const senderRequests = this.requestsBySender.get(senderId);
     if (senderRequests?.get(requestId) !== controller) return;
 
@@ -42,7 +47,12 @@ class AgentStreamRequestRegistry {
     if (senderRequests.size === 0) this.requestsBySender.delete(senderId);
   }
 
-  cancelSender(senderId) {
+  /** Whether this exact controller is still the live entry for the id. */
+  isActive(senderId: number, requestId: string, controller: AbortController): boolean {
+    return this.requestsBySender.get(senderId)?.get(requestId) === controller;
+  }
+
+  cancelSender(senderId: number): number {
     const senderRequests = this.requestsBySender.get(senderId);
     if (!senderRequests) return 0;
 
@@ -52,5 +62,3 @@ class AgentStreamRequestRegistry {
     return cancelledCount;
   }
 }
-
-module.exports = AgentStreamRequestRegistry;

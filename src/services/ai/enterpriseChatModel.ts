@@ -54,16 +54,42 @@ export function createEnterpriseChatModel(
 
     async doStream(options: LanguageModelV3CallOptions) {
       const api = window.electronAPI;
-      if (!api?.enterpriseStreamStart || !api.onEnterpriseStreamPart) {
+      if (
+        !api ||
+        typeof api.enterpriseStreamStart !== "function" ||
+        typeof api.onEnterpriseStreamPart !== "function"
+      ) {
         throw new Error("Enterprise streaming is not available in this environment");
+      }
+
+      // An already-aborted caller must never start a billable provider
+      // request; error the local stream immediately instead.
+      if (options.abortSignal?.aborted) {
+        const aborted = new ReadableStream<LanguageModelV3StreamPart>({
+          start(controller) {
+            controller.error(
+              options.abortSignal?.reason instanceof Error
+                ? options.abortSignal.reason
+                : new Error("Aborted")
+            );
+          },
+        });
+        return { stream: aborted };
       }
 
       const streamId = crypto.randomUUID();
       const config = getEnterpriseCallSettings(provider);
       let unsubscribe: (() => void) | undefined;
-      const stopListening = () => {
+      const onAbort = () => {
+        void api.enterpriseStreamCancel(streamId);
+      };
+      // Removes both the envelope listener and the abort listener; safe to
+      // call repeatedly and used by every terminal outcome (done/error
+      // envelope, failed invoke, consumer cancel, pre-start abort).
+      const cleanup = () => {
         unsubscribe?.();
         unsubscribe = undefined;
+        options.abortSignal?.removeEventListener("abort", onAbort);
       };
 
       const stream = new ReadableStream<LanguageModelV3StreamPart>({
@@ -72,43 +98,57 @@ export function createEnterpriseChatModel(
           const fail = (message: string) => {
             if (settled) return;
             settled = true;
-            stopListening();
+            cleanup();
             controller.error(new Error(message));
           };
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            controller.close();
+          };
 
-          unsubscribe = api.onEnterpriseStreamPart!((payload) => {
-            if (payload.streamId !== streamId) return;
-            if (payload.error) {
-              fail(payload.error);
-            } else if (payload.done) {
-              if (settled) return;
-              settled = true;
-              stopListening();
-              controller.close();
-            } else if (payload.part) {
-              controller.enqueue(payload.part as LanguageModelV3StreamPart);
+          // Subscribed before start, so no part can be missed; the bridge
+          // only forwards well-formed envelopes, filtered again by stream id.
+          unsubscribe = api.onEnterpriseStreamPart((envelope) => {
+            if (envelope.streamId !== streamId) return;
+            if (envelope.error !== undefined) {
+              fail(envelope.error);
+            } else if (envelope.done) {
+              finish();
+            } else if (envelope.part !== undefined) {
+              controller.enqueue(envelope.part as LanguageModelV3StreamPart);
             }
           });
 
-          options.abortSignal?.addEventListener("abort", () => {
-            api.enterpriseStreamCancel?.(streamId);
-          });
+          options.abortSignal?.addEventListener("abort", onAbort, { once: true });
 
-          api.enterpriseStreamStart!({
-            streamId,
-            provider,
-            modelId,
-            config,
-            options: pickSerializableOptions(options),
-          })
+          api
+            .enterpriseStreamStart({
+              streamId,
+              provider,
+              modelId,
+              config,
+              options: pickSerializableOptions(options),
+            })
             .then((result) => {
+              // The abort may have landed between subscribe and start: the
+              // cancel op above found no registered stream yet, so cancel the
+              // now-started one instead of streaming for a dead consumer.
+              if (options.abortSignal?.aborted) {
+                void api.enterpriseStreamCancel(streamId);
+                fail("Aborted");
+                return;
+              }
               if (result && !result.success) fail(result.error || "Enterprise stream failed");
             })
             .catch((error: Error) => fail(error.message));
         },
         cancel: () => {
-          stopListening();
-          api.enterpriseStreamCancel?.(streamId);
+          // Explicit cancel settles the local stream without waiting for a
+          // main terminal event, then aborts the provider request.
+          cleanup();
+          void api.enterpriseStreamCancel(streamId);
         },
       });
 

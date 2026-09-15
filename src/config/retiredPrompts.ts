@@ -13,7 +13,7 @@
 // new hash (the registry test walks the locale bundles and fails until both
 // sides are updated).
 
-export const RETIRED_DEFAULT_PROMPT_HASHES = new Set([
+export const RETIRED_DEFAULT_PROMPT_HASHES: ReadonlySet<string> = new Set([
   //    65ch 28ac9b59 ReasoningService.ts DEFAULT_PROMPTS.regular (+24 more)
   "79abaafa51ba1fe06614d5392d6879f458b3ffc1f9e727528d6a9c896c530365",
   //   173ch 88ce1814 promptData.json LEGACY_PROMPTS.regular (+6 more)
@@ -51,7 +51,7 @@ export const RETIRED_DEFAULT_PROMPT_HASHES = new Set([
 // Hashes of the defaults currently shipped, keyed by locale/bundle key. Not
 // used by the sweep; the registry test compares these against the live locale
 // bundles so a prompt change cannot land without updating the retired set.
-export const CURRENT_DEFAULT_PROMPT_HASHES = {
+export const CURRENT_DEFAULT_PROMPT_HASHES: Record<string, string> = {
   "ar/cleanupPrompt": "6f62d1802de5e49a38bb0a3dbb6bb18afd2b1cd6a9306519b05507014efcd41f",
   "de/cleanupPrompt": "89452bfcce253803ae9fd9b0e9fc3f50afbf9c8d89706ad92dfc48d1e29ec4af",
   "en/cleanupPrompt": "58ed65fbc679a7bac1483ef850c51ac7932a02d17fab9ca688f4d11f6aa9b7e6",
@@ -66,12 +66,19 @@ export const CURRENT_DEFAULT_PROMPT_HASHES = {
   chatAgent: "ca35b88c4f8a0e1fd0b2b6efea1b066c70b772e6a55033e0fca731b2e74fbf06",
 };
 
-export async function hashPromptText(text) {
+export async function hashPromptText(text: string): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function isRetiredDefaultPrompt(text) {
+// localStorage-like storage: the exact surface the sweep reads and writes.
+export interface PromptOverrideStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+export async function isRetiredDefaultPrompt(text: unknown): Promise<boolean> {
   if (typeof text !== "string" || text.length === 0) return false;
   if (!globalThis.crypto?.subtle) return false;
   return RETIRED_DEFAULT_PROMPT_HASHES.has(await hashPromptText(text));
@@ -81,8 +88,11 @@ export async function isRetiredDefaultPrompt(text) {
 // default, archiving each swept value under customPrompt.<kind>.retired.
 // Safe to run on every startup: user-edited prompts never match, and a swept
 // key is simply absent on the next run.
-export async function sweepRetiredPromptOverrides(storage, kinds) {
-  const swept = [];
+export async function sweepRetiredPromptOverrides(
+  storage: PromptOverrideStorage,
+  kinds: readonly string[]
+): Promise<string[]> {
+  const swept: string[] = [];
   for (const kind of kinds) {
     try {
       const key = `customPrompt.${kind}`;

@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
 
-const load = () => import("../../src/config/retiredPrompts.js");
+const load = () => import("../../src/config/retiredPrompts.ts");
 const loadRegistry = () => import("../../src/config/prompts/registry.ts");
 
 // Byte-exact copies of retired shipped defaults, extracted from git history.

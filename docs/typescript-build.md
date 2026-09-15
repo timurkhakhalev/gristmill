@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **130 JS, 52 TS, 1 MTS и 25 JSON**
+а не всеми файлами в каталоге helpers. В нём **124 JS, 58 TS, 1 MTS и 25 JSON**
 (только `src/`; main/preload/worker — отдельные entry points). Entry points:
 main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
@@ -197,7 +197,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/preload/calendarAvailabilityBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
-- `src/helpers/builtinActions.js`
+- `src/helpers/builtinActions.ts`
 - `src/helpers/calendarReminderScheduler.js`
 - `src/helpers/calendarSyncInterval.js`
 - `src/helpers/cliBridge.js`
@@ -280,7 +280,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/processListCache.js`
 - `src/helpers/providerConnectionTest.js`
 - `src/helpers/realtimeTokenProviders.js`
-- `src/helpers/retentionSettings.js`
+- `src/helpers/retentionSettings.ts`
 - `src/helpers/safeTempDir.js`
 - `src/helpers/secretCrypto.js`
 - `src/helpers/selfHostedTranscription.js`
@@ -318,12 +318,12 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/tinfoilRealtimeStreaming.js`
 - `src/helpers/tinfoilSecureClient.js`
 - `src/helpers/tinfoilTranscription.js`
-- `src/helpers/transcriptFormatter.js`
-- `src/helpers/transcriptText.js`
+- `src/helpers/transcriptFormatter.ts`
+- `src/helpers/transcriptText.ts`
 - `src/helpers/transcriptionRoute.ts`
 - `src/helpers/transcriptionTimeout.js`
 - `src/helpers/tray.js`
-- `src/helpers/uploadTimestamps.js`
+- `src/helpers/uploadTimestamps.ts`
 - `src/helpers/urlAudioDownloader.js`
 - `src/helpers/whisper.js`
 - `src/helpers/whisperServer.js`
@@ -857,3 +857,48 @@ package.json scripts).
 Graph Electron не изменился: 130 JS, 52 TS, 1 MTS, 25 JSON (ни один
 удалённый файл не входил в main compiler graph). Срез `src` после удаления:
 148 JS, 2 JSX, 1 MJS, 235 TS, 252 TSX, 1 MTS.
+
+## Этап «общие text/config helpers и renderer entrypoints»
+
+15 сентября 2026 (issue #36). Оставшиеся небольшие shared helpers, два
+renderer entrypoint и конфиг retired-prompts переведены в strict TS; один
+TS-источник работает и в emitted Node CJS graph, и в renderer ESM (Vite).
+Общие модули не импортируют Electron/DOM/`import.meta.env`; boot остаётся
+в renderer graph и не входит в tsconfig.main.
+
+- Helpers: `agentNameDictionary`, `builtinActions` (+`BuiltInAction`),
+  `chatRouting` (+`ChatRoute`), `dictionaryImport`, `dictionaryStartup`,
+  `noteFormattingOverrides` (+типы scope-override), `regenerableNoteTitle`,
+  `retentionSettings` (CJS→ESM exports, узкие deps хендлера), `stripThinking`,
+  `transcriptFormatter` (типы export-сегментов/заметки; NUL speaker-key и
+  вся логика merge/timestamps без изменений), `transcriptText`,
+  `uploadTimestamps` (+тип verbose-сегмента), `config/retiredPrompts`
+  (узкий `PromptOverrideStorage`), `utils/chineseScript` (типизированные
+  script-target/preference; opencc-js грузится динамически как раньше),
+  `utils/dictionaryPromptCap`. Nullable-входы описаны по реальным callers —
+  прежняя нормализация (Array.isArray/typeof-гарды) сохранена, строгих
+  reject нет.
+- Entrypoints: `main.jsx` → `main.tsx`, `AppRouter.jsx` → `AppRouter.tsx`,
+  `index.html` ссылается на `/main.tsx`; отсутствующий root `#root` теперь
+  явный throw. Порядок providers, HMR (`import.meta.hot`), document-language
+  binding, notification route, onboardingCompleted и открытие transcription
+  settings после onboarding не менялись.
+- Strict-область: глобальный renderer остаётся нестрогим; strict для
+  entrypoints обеспечивает `tsconfig.renderer-entrypoints.json` +
+  `test/scripts/rendererEntryTypeProbe.test.js` — компилирует программу
+  entrypoints под strict и требует нуля diagnostics в самих `main.tsx`/
+  `AppRouter.tsx` (strict-ошибки legacy-модулей в замыкании не скрыты и не
+  чинятся здесь; их ~144 строк — предмет будущих renderer issues). Общие
+  helpers проверяются двумя armами `sharedHelpersTypeProbe.test.js`:
+  Node-таргет (NodeNext, `types: node`, без DOM lib — заодно доказывает
+  отсутствие Electron/DOM зависимостей) и renderer-таргет (bundler + DOM),
+  плюс negative-проба.
+- Тесты обновлены на `.ts`-спецификаторы; extensionless CJS-require из
+  `ipcHandlers.js`/`database.js`/`markdownMirror.js`/`diarization.js`
+  разрешаются в emitted `.js` как раньше. JS-файлы удалены (второго
+  execution path нет).
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors (baseline
+42+2); обе armы shared-пробы и entrypoint-проба проходят под CLI-tsc
+эквивалентами. Inventory графа Electron: 124 JS, 58 TS, 1 MTS, 25 JSON; срез `src`:
+133 JS, 0 JSX, 1 MJS (vite.config), 250 TS, 254 TSX, 1 MTS.

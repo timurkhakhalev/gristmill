@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/dictionaryImport.js");
+const load = () => import("../../src/helpers/dictionaryImport.ts");
 
 test("import accepts comma-separated words", async () => {
   const { parseDictionaryImportText } = await load();

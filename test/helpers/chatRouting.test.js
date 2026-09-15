@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/chatRouting.js");
+const load = () => import("../../src/helpers/chatRouting.ts");
 
 test("custom BYOK Chat stays on its provider route", async () => {
   const { resolveChatRoute } = await load();

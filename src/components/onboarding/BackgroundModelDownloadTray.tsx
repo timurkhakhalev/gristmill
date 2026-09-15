@@ -236,10 +236,10 @@ export default function BackgroundModelDownloadTray({
         error: data.type === "error" ? data.error : undefined,
       });
 
-    const disposeWhisper = window.electronAPI?.onWhisperDownloadProgress?.((_event, data) =>
+    const disposeWhisper = window.electronAPI?.onWhisperDownloadProgress?.((data) =>
       normalizeTranscription("whisper", data)
     );
-    const disposeParakeet = window.electronAPI?.onParakeetDownloadProgress?.((_event, data) =>
+    const disposeParakeet = window.electronAPI?.onParakeetDownloadProgress?.((data) =>
       normalizeTranscription("parakeet", data)
     );
     const disposeLlm = window.electronAPI?.onModelDownloadProgress?.(normalizeLlm);

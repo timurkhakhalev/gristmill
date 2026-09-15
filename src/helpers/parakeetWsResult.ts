@@ -1,4 +1,4 @@
-function parseOfflineMessage(message) {
+export function parseOfflineMessage(message: unknown): string {
   const text = String(message || "").trim();
   try {
     const parsed = JSON.parse(text);
@@ -10,13 +10,24 @@ function parseOfflineMessage(message) {
 
 // Latest-wins per finalized segment id (the server refines a segment before its
 // endpoint); text() joins segments in first-arrival order plus the trailing partial.
-function createOnlineAccumulator() {
-  const finalizedSegments = new Map();
+interface OnlineMessage {
+  text?: unknown;
+  is_final?: unknown;
+  segment?: unknown;
+}
+
+export interface OnlineAccumulator {
+  push(message: string): string;
+  text(): string;
+}
+
+export function createOnlineAccumulator(): OnlineAccumulator {
+  const finalizedSegments = new Map<string, string>();
   let partialText = "";
-  let partialSegment = null;
+  let partialSegment: unknown = null;
   let fallbackKey = 0;
 
-  const text = () => {
+  const text = (): string => {
     const finalizedText = Array.from(finalizedSegments.values()).join(" ");
     return finalizedText && partialText
       ? `${finalizedText} ${partialText}`
@@ -24,10 +35,10 @@ function createOnlineAccumulator() {
   };
 
   return {
-    push(message) {
-      let parsed;
+    push(message: string): string {
+      let parsed: OnlineMessage;
       try {
-        parsed = JSON.parse(message);
+        parsed = JSON.parse(message) as OnlineMessage;
       } catch {
         parsed = { text: message };
       }
@@ -37,12 +48,12 @@ function createOnlineAccumulator() {
       if (!messageText) return text();
 
       if (!parsed.is_final) {
-        partialText = finalizedSegments.has(parsed.segment) ? "" : messageText;
-        partialSegment = parsed.segment ?? null;
+        partialText = finalizedSegments.has(String(parsed.segment)) ? "" : messageText;
+        partialSegment = parsed.segment !== undefined ? String(parsed.segment) : null;
         return text();
       }
 
-      const segment = parsed.segment ?? `fallback:${fallbackKey++}`;
+      const segment = parsed.segment !== undefined ? String(parsed.segment) : `fallback:${fallbackKey++}`;
       finalizedSegments.set(segment, messageText);
       if (partialSegment === null || partialSegment === segment) {
         partialText = "";
@@ -54,12 +65,10 @@ function createOnlineAccumulator() {
   };
 }
 
-function parseOnlineMessages(messages) {
+export function parseOnlineMessages(messages: string[]): string {
   const accumulator = createOnlineAccumulator();
   for (const message of messages) {
     accumulator.push(message);
   }
   return accumulator.text();
 }
-
-module.exports = { parseOfflineMessage, parseOnlineMessages, createOnlineAccumulator };

@@ -268,11 +268,11 @@ export function useModelDownload({
   useEffect(() => {
     const dispose =
       modelType === "whisper"
-        ? window.electronAPI?.onWhisperDownloadProgress((_event, data) =>
+        ? window.electronAPI?.onWhisperDownloadProgress((data) =>
             handleNativeProgress(data)
           )
         : modelType === "parakeet"
-          ? window.electronAPI?.onParakeetDownloadProgress((_event, data) =>
+          ? window.electronAPI?.onParakeetDownloadProgress((data) =>
               handleNativeProgress(data)
             )
           : window.electronAPI?.onModelDownloadProgress(handleLLMProgress);

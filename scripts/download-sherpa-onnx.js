@@ -11,10 +11,12 @@ const {
   parseArgs,
   setExecutable,
 } = require("./lib/download-utils");
+// Plain Node (this script runs from the pack hook, not under tsx) still
+// loads the pure-ESM helper via Node type-stripping — same as stt-canary.
 const {
   PARAKEET_MINIMUM_MACOS_VERSION,
   compareVersions,
-} = require("../src/helpers/parakeetCapability");
+} = require("../src/helpers/parakeetCapability.ts");
 
 const SHERPA_ONNX_VERSION = "1.13.4";
 const GITHUB_RELEASE_URL = `https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA_ONNX_VERSION}`;

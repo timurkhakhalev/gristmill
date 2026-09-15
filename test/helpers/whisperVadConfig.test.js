@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 test("sanitizeWhisperVadConfig applies defaults and clamps invalid values", async () => {
   const { DEFAULT_WHISPER_VAD_CONFIG, sanitizeWhisperVadConfig } =
-    await import("../../src/helpers/whisperVadConfig.js");
+    await import("../../src/helpers/whisperVadConfig.ts");
 
   const cfg = sanitizeWhisperVadConfig({
     threshold: 99,
@@ -25,7 +25,7 @@ test("sanitizeWhisperVadConfig applies defaults and clamps invalid values", asyn
 });
 
 test("resolveContextSileroEnabled prefers context value then falls back to per-context default", async () => {
-  const { resolveContextSileroEnabled } = await import("../../src/helpers/whisperVadConfig.js");
+  const { resolveContextSileroEnabled } = await import("../../src/helpers/whisperVadConfig.ts");
 
   assert.equal(resolveContextSileroEnabled({ dictationSileroEnabled: false }, "dictation"), false);
   assert.equal(resolveContextSileroEnabled({ dictationSileroEnabled: true }, "dictation"), true);
@@ -40,7 +40,7 @@ test("resolveContextSileroEnabled prefers context value then falls back to per-c
 // near-silence seeded with the custom-dictionary prompt — the transcript is
 // replaced by dictionary words (#1454). Dictation VAD is opt-in.
 test("resolveContextSileroEnabled defaults dictation off, other contexts on", async () => {
-  const { resolveContextSileroEnabled } = await import("../../src/helpers/whisperVadConfig.js");
+  const { resolveContextSileroEnabled } = await import("../../src/helpers/whisperVadConfig.ts");
 
   assert.equal(resolveContextSileroEnabled({}, "dictation"), false);
   assert.equal(resolveContextSileroEnabled(undefined, "dictation"), false);

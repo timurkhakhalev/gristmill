@@ -11,6 +11,7 @@ const { createCalendarAvailabilityBridge } = require("./src/preload/calendarAvai
 const { createReasoningBridge } = require("./src/preload/reasoningBridge");
 const { createCalendarIntegrationBridge } = require("./src/preload/calendarBridge");
 const { createNoteFilesBridge } = require("./src/preload/noteFilesBridge");
+const { createLocalModelLifecycleBridge } = require("./src/preload/localModelLifecycleBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -73,6 +74,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createReasoningBridge(ipcRenderer),
   ...createCalendarIntegrationBridge(ipcRenderer),
   ...createNoteFilesBridge(ipcRenderer),
+  ...createLocalModelLifecycleBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -197,43 +199,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveTempAudio: (buffer) => ipcRenderer.invoke("save-temp-audio", buffer),
   deleteTempAudio: (tempPath) => ipcRenderer.invoke("delete-temp-audio", tempPath),
 
-  // Local Whisper functions (whisper.cpp)
+  // Local Whisper/Parakeet model lifecycle (downloads, status, servers,
+  // VAD config, diagnostics) lives in the typed localModelLifecycleBridge.
   transcribeLocalWhisper: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),
-  checkWhisperInstallation: () => ipcRenderer.invoke("check-whisper-installation"),
-  downloadWhisperModel: (modelName) => ipcRenderer.invoke("download-whisper-model", modelName),
-  onWhisperDownloadProgress: registerListener("whisper-download-progress"),
-  checkModelStatus: (modelName) => ipcRenderer.invoke("check-model-status", modelName),
-  listWhisperModels: () => ipcRenderer.invoke("list-whisper-models"),
-  deleteWhisperModel: (modelName) => ipcRenderer.invoke("delete-whisper-model", modelName),
-  deleteAllWhisperModels: () => ipcRenderer.invoke("delete-all-whisper-models"),
-  cancelWhisperDownload: () => ipcRenderer.invoke("cancel-whisper-download"),
-  checkFFmpegAvailability: () => ipcRenderer.invoke("check-ffmpeg-availability"),
-  getAudioDiagnostics: () => ipcRenderer.invoke("get-audio-diagnostics"),
-
-  // Whisper server functions (faster repeated transcriptions)
-  whisperServerStart: (modelName) => ipcRenderer.invoke("whisper-server-start", modelName),
-  whisperServerStop: () => ipcRenderer.invoke("whisper-server-stop"),
-  whisperServerStatus: () => ipcRenderer.invoke("whisper-server-status"),
-
-  // Local Parakeet (NVIDIA) functions
   transcribeLocalParakeet: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-local-parakeet", audioBlob, options),
-  checkParakeetInstallation: () => ipcRenderer.invoke("check-parakeet-installation"),
-  downloadParakeetModel: (modelName) => ipcRenderer.invoke("download-parakeet-model", modelName),
-  onParakeetDownloadProgress: registerListener("parakeet-download-progress"),
-  checkParakeetModelStatus: (modelName) =>
-    ipcRenderer.invoke("check-parakeet-model-status", modelName),
-  listParakeetModels: () => ipcRenderer.invoke("list-parakeet-models"),
-  deleteParakeetModel: (modelName) => ipcRenderer.invoke("delete-parakeet-model", modelName),
-  deleteAllParakeetModels: () => ipcRenderer.invoke("delete-all-parakeet-models"),
-  cancelParakeetDownload: () => ipcRenderer.invoke("cancel-parakeet-download"),
-  getParakeetDiagnostics: () => ipcRenderer.invoke("get-parakeet-diagnostics"),
-
-  // Parakeet server functions (faster repeated transcriptions)
-  parakeetServerStart: (modelName) => ipcRenderer.invoke("parakeet-server-start", modelName),
-  parakeetServerStop: () => ipcRenderer.invoke("parakeet-server-stop"),
-  parakeetServerStatus: () => ipcRenderer.invoke("parakeet-server-status"),
 
   // Diarization model management stays here; diarizeAudioFile and
   // mergeSpeakerText come from the typed uploadTranscriptionBridge above.
@@ -530,8 +501,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("meeting-set-speaker-diarization-enabled", { enabled }),
   setMeetingSessionSpeakerConfig: (config) =>
     ipcRenderer.invoke("meeting-set-session-speaker-config", config),
-  getWhisperVadConfig: () => ipcRenderer.invoke("whisper-vad-get-config"),
-  setWhisperVadConfig: (config) => ipcRenderer.invoke("whisper-vad-set-config", config),
   onMeetingNotificationData: registerListener(
     "meeting-notification-data",
     (callback) => (_event, data) => callback(data)

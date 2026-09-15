@@ -119,6 +119,7 @@ const { fetchRealtimeTokenForProvider } = require("./realtimeTokenProviders");
 const { registerCalendarAvailabilityHandler } = require("./calendarAvailabilityIpcHandler");
 const { registerCalendarIntegrationHandlers } = require("./calendarIpcHandlers");
 const { registerNoteFilesHandlers } = require("./noteFilesIpcHandlers");
+const { registerLocalModelLifecycleHandlers } = require("./localModelLifecycleIpcHandlers");
 const { registerRemoteTranscriptionHandler } = require("./remoteTranscriptionIpcHandler");
 const { registerReasoningHandlers, resolveEnterpriseRuntime } = require("./reasoningIpcHandlers");
 const { registerFileDiarizationHandlers } = require("./fileDiarizationIpcHandlers");
@@ -1321,94 +1322,6 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("check-whisper-installation", async (event) => {
-      return this.whisperManager.checkWhisperInstallation();
-    });
-
-    ipcMain.handle("get-audio-diagnostics", async () => {
-      return this.whisperManager.getDiagnostics();
-    });
-
-    ipcMain.handle("download-whisper-model", async (event, modelName) => {
-      const hadActiveDownload = this.localModelDownloadStatus.has("whisper", modelName);
-      this.localModelDownloadStatus.start("whisper", modelName);
-      try {
-        const result = await this.whisperManager.downloadWhisperModel(modelName, (progressData) => {
-          const status = this._updateNativeModelDownloadStatus("whisper", modelName, progressData);
-          this.windowManager.sendToControlPanel("whisper-download-progress", {
-            ...progressData,
-            sequence: status?.sequence,
-          });
-        });
-        const status = this.localModelDownloadStatus.has("whisper", modelName)
-          ? this.localModelDownloadStatus.finish("whisper", modelName)
-          : null;
-        if (status) {
-          this.windowManager.sendToControlPanel("whisper-download-progress", {
-            type: "complete",
-            model: modelName,
-            percentage: 100,
-            sequence: status.sequence,
-          });
-        }
-        return result;
-      } catch (error) {
-        const status = hadActiveDownload
-          ? null
-          : this.localModelDownloadStatus.finish("whisper", modelName);
-        if (!hadActiveDownload && error.code !== "DOWNLOAD_IN_PROGRESS") {
-          this.windowManager.sendToControlPanel("whisper-download-progress", {
-            type: "error",
-            model: modelName,
-            error: error.message,
-            code: error.code || "DOWNLOAD_FAILED",
-            sequence: status?.sequence,
-          });
-        }
-        return {
-          success: false,
-          error: error.message,
-          code: error.code || "DOWNLOAD_FAILED",
-        };
-      }
-    });
-
-    ipcMain.handle("check-model-status", async (event, modelName) => {
-      return this.whisperManager.checkModelStatus(modelName);
-    });
-
-    ipcMain.handle("list-whisper-models", async (event) => {
-      return this.whisperManager.listWhisperModels();
-    });
-
-    ipcMain.handle("delete-whisper-model", async (event, modelName) => {
-      return this.whisperManager.deleteWhisperModel(modelName);
-    });
-
-    ipcMain.handle("delete-all-whisper-models", async () => {
-      return this.whisperManager.deleteAllWhisperModels();
-    });
-
-    ipcMain.handle("cancel-whisper-download", async (event) => {
-      return this.whisperManager.cancelDownload();
-    });
-
-    ipcMain.handle("whisper-server-start", async (event, modelName) => {
-      return this.whisperManager.startServer(modelName);
-    });
-
-    ipcMain.handle("whisper-server-stop", async () => {
-      return this.whisperManager.stopServer();
-    });
-
-    ipcMain.handle("whisper-server-status", async () => {
-      return this.whisperManager.getServerStatus();
-    });
-
-    ipcMain.handle("check-ffmpeg-availability", async (event) => {
-      return this.whisperManager.checkFFmpegAvailability();
-    });
-
     ipcMain.handle("transcribe-local-parakeet", async (_event, audioBlob, options = {}) => {
       debugLogger.log("transcribe-local-parakeet called", {
         audioBlobType: typeof audioBlob,
@@ -1455,110 +1368,6 @@ class IPCHandlers {
 
         throw error;
       }
-    });
-
-    ipcMain.handle("check-parakeet-installation", async () => {
-      return this.parakeetManager.checkInstallation();
-    });
-
-    ipcMain.handle("download-parakeet-model", async (event, modelName) => {
-      const hadActiveDownload = this.localModelDownloadStatus.has("parakeet", modelName);
-      this.localModelDownloadStatus.start("parakeet", modelName);
-      try {
-        const result = await this.parakeetManager.downloadParakeetModel(
-          modelName,
-          (progressData) => {
-            const status = this._updateNativeModelDownloadStatus(
-              "parakeet",
-              modelName,
-              progressData
-            );
-            this.windowManager.sendToControlPanel("parakeet-download-progress", {
-              ...progressData,
-              sequence: status?.sequence,
-            });
-          }
-        );
-        const status = this.localModelDownloadStatus.has("parakeet", modelName)
-          ? this.localModelDownloadStatus.finish("parakeet", modelName)
-          : null;
-        if (status) {
-          this.windowManager.sendToControlPanel("parakeet-download-progress", {
-            type: "complete",
-            model: modelName,
-            percentage: 100,
-            sequence: status.sequence,
-          });
-        }
-        return result;
-      } catch (error) {
-        const status = hadActiveDownload
-          ? null
-          : this.localModelDownloadStatus.finish("parakeet", modelName);
-        if (!hadActiveDownload && error.code !== "DOWNLOAD_IN_PROGRESS") {
-          this.windowManager.sendToControlPanel("parakeet-download-progress", {
-            type: "error",
-            model: modelName,
-            error: error.message,
-            code: error.code || "DOWNLOAD_FAILED",
-            sequence: status?.sequence,
-          });
-        }
-        return {
-          success: false,
-          error: error.message,
-          code: error.code || "DOWNLOAD_FAILED",
-        };
-      }
-    });
-
-    ipcMain.handle("check-parakeet-model-status", async (_event, modelName) => {
-      return this.parakeetManager.checkModelStatus(modelName);
-    });
-
-    ipcMain.handle("list-parakeet-models", async () => {
-      return this.parakeetManager.listParakeetModels();
-    });
-
-    ipcMain.handle("delete-parakeet-model", async (_event, modelName) => {
-      return this.parakeetManager.deleteParakeetModel(modelName);
-    });
-
-    ipcMain.handle("delete-all-parakeet-models", async () => {
-      return this.parakeetManager.deleteAllParakeetModels();
-    });
-
-    ipcMain.handle("cancel-parakeet-download", async () => {
-      return this.parakeetManager.cancelDownload();
-    });
-
-    ipcMain.handle("get-parakeet-diagnostics", async () => {
-      return this.parakeetManager.getDiagnostics();
-    });
-
-    ipcMain.handle("parakeet-server-start", async (event, modelName) => {
-      const result = await this.parakeetManager.startServer(modelName);
-      // Persisting a provider that failed to start would wedge every launch
-      // into a failing pre-warm.
-      if (result.success) {
-        process.env.LOCAL_TRANSCRIPTION_PROVIDER =
-          getModelType(modelName) === "cohere-transcribe" ? "cohere" : "nvidia";
-        process.env.PARAKEET_MODEL = modelName;
-        await this.environmentManager.saveAllKeysToEnvFile();
-      }
-      return result;
-    });
-
-    ipcMain.handle("parakeet-server-stop", async () => {
-      const result = await this.parakeetManager.stopServer();
-      delete process.env.LOCAL_TRANSCRIPTION_PROVIDER;
-      delete process.env.PARAKEET_MODEL;
-      await this.environmentManager.saveAllKeysToEnvFile();
-      return result;
-    });
-
-    ipcMain.handle("parakeet-server-status", async () => {
-      return this.parakeetManager.getServerStatus();
     });
 
     // Diarization model management
@@ -5049,6 +4858,36 @@ class IPCHandlers {
       logError: (message, data, tag) => debugLogger.error(message, data, tag),
     });
 
+    // Local Whisper/Parakeet model lifecycle lives in the typed module;
+    // downloads stay sequence-stamped through the shared status tracker.
+    registerLocalModelLifecycleHandlers(ipcMain, {
+      whisperManager: this.whisperManager,
+      parakeetManager: this.parakeetManager,
+      downloadStatus: this.localModelDownloadStatus,
+      progressSender: {
+        sendToControlPanel: (channel, payload) =>
+          this.windowManager.sendToControlPanel(channel, payload),
+      },
+      updateDownloadStatus: (modelType, modelId, progressData) =>
+        this._updateNativeModelDownloadStatus(modelType, modelId, progressData),
+      getWhisperVadSettings: () => this._getWhisperVadSettings(),
+      setWhisperVadSettings: (payload) => this._setWhisperVadSettings(payload),
+      persistParakeetProviderSelection: async (modelName) => {
+        process.env.LOCAL_TRANSCRIPTION_PROVIDER =
+          getModelType(modelName) === "cohere-transcribe" ? "cohere" : "nvidia";
+        process.env.PARAKEET_MODEL = modelName;
+        await this.environmentManager.saveAllKeysToEnvFile();
+      },
+      clearParakeetProviderSelection: async () => {
+        delete process.env.LOCAL_TRANSCRIPTION_PROVIDER;
+        delete process.env.PARAKEET_MODEL;
+        await this.environmentManager.saveAllKeysToEnvFile();
+      },
+      resolveParakeetProviderName: (modelName) =>
+        getModelType(modelName) === "cohere-transcribe" ? "cohere" : "nvidia",
+      logError: (message, data) => debugLogger.error(message, data),
+    });
+
     // The calendar integration boundary (connections, sync, selection,
     // provider-neutral reads and Calendar privacy settings) lives in the
     // typed module; OAuth/sync/reminders stay inside the managers.
@@ -5133,23 +4972,6 @@ class IPCHandlers {
       try {
         this.speakerDiarizationEnabled = payload?.enabled !== false;
         return { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("whisper-vad-get-config", async () => {
-      try {
-        return { success: true, config: this._getWhisperVadSettings() };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("whisper-vad-set-config", async (_event, payload) => {
-      try {
-        const config = this._setWhisperVadSettings(payload || {});
-        return { success: true, config };
       } catch (error) {
         return { success: false, error: error.message };
       }

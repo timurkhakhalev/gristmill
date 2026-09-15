@@ -4,11 +4,17 @@
 // dictation opens the mic from Chromium's audio service — a child process — so
 // the single --exclude-pid the helper is given can never match it. Without this
 // the app detects its own dictation as third-party mic activity (#1392).
-function getOwnProcessPids() {
-  const pids = new Set([process.pid]);
+interface ElectronAppMetricsLike {
+  getAppMetrics?: () => Array<{ pid?: unknown } | undefined>;
+}
+
+function getOwnProcessPids(): Set<number> {
+  const pids = new Set<number>([process.pid]);
   try {
-    const { app } = require("electron");
-    for (const metric of app.getAppMetrics()) {
+    // Lazy require keeps every non-Electron consumer (unit tests, tooling)
+    // working without the module graph touching electron at load time.
+    const { app } = require("electron") as { app: ElectronAppMetricsLike };
+    for (const metric of app.getAppMetrics?.() ?? []) {
       if (typeof metric?.pid === "number") pids.add(metric.pid);
     }
   } catch {
@@ -17,4 +23,5 @@ function getOwnProcessPids() {
   return pids;
 }
 
+export { getOwnProcessPids };
 module.exports = { getOwnProcessPids };

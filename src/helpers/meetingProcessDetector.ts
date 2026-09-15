@@ -1,10 +1,10 @@
-const EventEmitter = require("events");
-const debugLogger = require("./debugLogger");
-const processListCache = require("./processListCache");
+import { EventEmitter } from "events";
+import debugLogger from "./debugLogger.js";
+import { processListCache } from "./processListCache.js";
 
 const POLL_INTERVAL_MS = 30 * 1000;
 
-const BUNDLE_ID_MAP = {
+const BUNDLE_ID_MAP: Record<string, MeetingProcessKey> = {
   "us.zoom.xos": "zoom",
   "com.microsoft.teams": "teams",
   "com.microsoft.teams2": "teams",
@@ -12,14 +12,22 @@ const BUNDLE_ID_MAP = {
   "com.apple.FaceTime": "facetime",
 };
 
-const BUNDLE_APP_NAMES = {
+const BUNDLE_APP_NAMES: Record<string, string> = {
   zoom: "Zoom",
   teams: "Microsoft Teams",
   webex: "Webex",
   facetime: "FaceTime",
 };
 
-const MEETING_APPS = {
+type MeetingProcessKey = "zoom" | "teams" | "webex" | "facetime";
+
+interface MeetingAppEntry {
+  processKey: MeetingProcessKey;
+  appName: string;
+  imageName: string;
+}
+
+const MEETING_APPS: Record<string, MeetingAppEntry[]> = {
   win32: [
     { processKey: "zoom", appName: "Zoom", imageName: "cpthost.exe" },
     { processKey: "teams", appName: "Microsoft Teams", imageName: "ms-teams_modulehost.exe" },
@@ -31,17 +39,43 @@ const MEETING_APPS = {
   ],
 };
 
-class MeetingProcessDetector extends EventEmitter {
-  constructor() {
-    super();
-    this.pollInterval = null;
-    this.detectedProcesses = new Map();
-    this.dismissedProcesses = new Set();
-    this._polling = false;
-    this._subscriptionIds = [];
-  }
+interface DetectedProcessEntry {
+  detectedAt: number;
+}
 
-  start() {
+export interface DetectedMeetingProcess {
+  processKey: string;
+  appName: string;
+  detectedAt: number;
+}
+
+export interface MeetingProcessDetectedEvent {
+  processKey: string;
+  appName: string;
+  detectedAt: number;
+}
+
+export interface MeetingProcessEndedEvent {
+  processKey: string;
+  appName: string;
+}
+
+interface WorkspaceSubscription {
+  subscribeWorkspaceNotification?(
+    event: string,
+    callback: (_event: unknown, userInfo: { NSApplicationBundleIdentifier?: string } | null) => void
+  ): number;
+  unsubscribeWorkspaceNotification?(id: number): void;
+}
+
+export class MeetingProcessDetector extends EventEmitter {
+  private pollInterval: NodeJS.Timeout | null = null;
+  private detectedProcesses = new Map<string, DetectedProcessEntry>();
+  private dismissedProcesses = new Set<string>();
+  private _polling = false;
+  private _subscriptionIds: number[] = [];
+
+  start(): void {
     if (this.pollInterval || this._subscriptionIds.length > 0) return;
 
     if (process.platform === "darwin") {
@@ -57,13 +91,13 @@ class MeetingProcessDetector extends EventEmitter {
         },
         "meeting"
       );
-      this._poll();
-      this.pollInterval = setInterval(() => this._poll(), POLL_INTERVAL_MS);
+      void this._poll();
+      this.pollInterval = setInterval(() => void this._poll(), POLL_INTERVAL_MS);
     }
   }
 
-  _startDarwin() {
-    let systemPreferences;
+  _startDarwin(): void {
+    let systemPreferences: WorkspaceSubscription | undefined;
     try {
       systemPreferences = require("electron").systemPreferences;
     } catch {
@@ -72,7 +106,7 @@ class MeetingProcessDetector extends EventEmitter {
       return;
     }
 
-    if (!systemPreferences.subscribeWorkspaceNotification) {
+    if (!systemPreferences?.subscribeWorkspaceNotification) {
       debugLogger.warn(
         "subscribeWorkspaceNotification unavailable, falling back to polling",
         {},
@@ -82,14 +116,24 @@ class MeetingProcessDetector extends EventEmitter {
       return;
     }
 
+    const processKeyFrom = (
+      userInfo: { NSApplicationBundleIdentifier?: string } | null | undefined
+    ): MeetingProcessKey | null => {
+      const bundleId = userInfo?.NSApplicationBundleIdentifier;
+      return bundleId ? BUNDLE_ID_MAP[bundleId] ?? null : null;
+    };
+
     const launchId = systemPreferences.subscribeWorkspaceNotification(
       "NSWorkspaceDidLaunchApplicationNotification",
       (_event, userInfo) => {
-        const bundleId = userInfo?.NSApplicationBundleIdentifier;
-        const processKey = bundleId ? BUNDLE_ID_MAP[bundleId] : null;
+        const processKey = processKeyFrom(userInfo);
         if (processKey) {
           const appName = BUNDLE_APP_NAMES[processKey] || processKey;
-          debugLogger.debug("Workspace app launched", { bundleId, processKey }, "meeting");
+          debugLogger.debug(
+            "Workspace app launched",
+            { bundleId: userInfo?.NSApplicationBundleIdentifier, processKey },
+            "meeting"
+          );
           this._updateDetection(processKey, appName, true);
         }
       }
@@ -98,11 +142,14 @@ class MeetingProcessDetector extends EventEmitter {
     const terminateId = systemPreferences.subscribeWorkspaceNotification(
       "NSWorkspaceDidTerminateApplicationNotification",
       (_event, userInfo) => {
-        const bundleId = userInfo?.NSApplicationBundleIdentifier;
-        const processKey = bundleId ? BUNDLE_ID_MAP[bundleId] : null;
+        const processKey = processKeyFrom(userInfo);
         if (processKey) {
           const appName = BUNDLE_APP_NAMES[processKey] || processKey;
-          debugLogger.debug("Workspace app terminated", { bundleId, processKey }, "meeting");
+          debugLogger.debug(
+            "Workspace app terminated",
+            { bundleId: userInfo?.NSApplicationBundleIdentifier, processKey },
+            "meeting"
+          );
           this._updateDetection(processKey, appName, false);
         }
       }
@@ -120,17 +167,17 @@ class MeetingProcessDetector extends EventEmitter {
       "meeting"
     );
 
-    this._initialScanDarwin();
+    void this._initialScanDarwin();
   }
 
-  async _initialScanDarwin() {
+  async _initialScanDarwin(): Promise<void> {
     try {
       const processList = await processListCache.getProcessList();
       const darwinProcessNames = [
-        { match: "zoom.us", processKey: "zoom" },
-        { match: "microsoft teams", processKey: "teams" },
-        { match: "webex", processKey: "webex" },
-        { match: "facetime", processKey: "facetime" },
+        { match: "zoom.us", processKey: "zoom" as MeetingProcessKey },
+        { match: "microsoft teams", processKey: "teams" as MeetingProcessKey },
+        { match: "webex", processKey: "webex" as MeetingProcessKey },
+        { match: "facetime", processKey: "facetime" as MeetingProcessKey },
       ];
       for (const { match, processKey } of darwinProcessNames) {
         if (processList.some((p) => p.includes(match))) {
@@ -140,11 +187,15 @@ class MeetingProcessDetector extends EventEmitter {
         }
       }
     } catch (err) {
-      debugLogger.warn("Initial scan failed", { error: err.message }, "meeting");
+      debugLogger.warn(
+        "Initial scan failed",
+        { error: err instanceof Error ? err.message : String(err) },
+        "meeting"
+      );
     }
   }
 
-  _startPollingFallback() {
+  _startPollingFallback(): void {
     const apps = MEETING_APPS.linux || [];
     debugLogger.info(
       "Process detector started (polling fallback)",
@@ -155,11 +206,11 @@ class MeetingProcessDetector extends EventEmitter {
       },
       "meeting"
     );
-    this._poll();
-    this.pollInterval = setInterval(() => this._poll(), POLL_INTERVAL_MS);
+    void this._poll();
+    this.pollInterval = setInterval(() => void this._poll(), POLL_INTERVAL_MS);
   }
 
-  stop() {
+  stop(): void {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
@@ -167,9 +218,11 @@ class MeetingProcessDetector extends EventEmitter {
 
     if (this._subscriptionIds.length > 0) {
       try {
-        const { systemPreferences } = require("electron");
+        const { systemPreferences } = require("electron") as {
+          systemPreferences?: WorkspaceSubscription;
+        };
         for (const id of this._subscriptionIds) {
-          systemPreferences.unsubscribeWorkspaceNotification(id);
+          systemPreferences?.unsubscribeWorkspaceNotification?.(id);
         }
       } catch {
         // electron may not be available during cleanup
@@ -182,12 +235,12 @@ class MeetingProcessDetector extends EventEmitter {
     debugLogger.info("Stopped meeting process detector", {}, "meeting");
   }
 
-  dismiss(processKey) {
+  dismiss(processKey: string): void {
     this.dismissedProcesses.add(processKey);
     debugLogger.info("Process detection dismissed", { processKey }, "meeting");
   }
 
-  getDetectedProcesses() {
+  getDetectedProcesses(): DetectedMeetingProcess[] {
     return Array.from(this.detectedProcesses.entries()).map(([processKey, { detectedAt }]) => ({
       processKey,
       appName: this._getAppName(processKey),
@@ -195,7 +248,7 @@ class MeetingProcessDetector extends EventEmitter {
     }));
   }
 
-  _getAppName(processKey) {
+  _getAppName(processKey: string): string {
     if (process.platform === "darwin") {
       return BUNDLE_APP_NAMES[processKey] || processKey;
     }
@@ -204,7 +257,7 @@ class MeetingProcessDetector extends EventEmitter {
     return entry ? entry.appName : processKey;
   }
 
-  async _poll() {
+  async _poll(): Promise<void> {
     if (this._polling) return;
     this._polling = true;
     try {
@@ -216,13 +269,17 @@ class MeetingProcessDetector extends EventEmitter {
         this._updateDetection(processKey, appName, isRunning);
       }
     } catch (err) {
-      debugLogger.warn("Poll error", { error: err.message }, "meeting");
+      debugLogger.warn(
+        "Poll error",
+        { error: err instanceof Error ? err.message : String(err) },
+        "meeting"
+      );
     } finally {
       this._polling = false;
     }
   }
 
-  _updateDetection(processKey, appName, isRunning) {
+  _updateDetection(processKey: string, appName: string, isRunning: boolean): void {
     if (isRunning) {
       if (!this.detectedProcesses.has(processKey) && !this.dismissedProcesses.has(processKey)) {
         const detectedAt = Date.now();
@@ -240,3 +297,4 @@ class MeetingProcessDetector extends EventEmitter {
 }
 
 module.exports = MeetingProcessDetector;
+module.exports.MeetingProcessDetector = MeetingProcessDetector;

@@ -8,7 +8,7 @@ import {
   type ReactElement,
 } from "react";
 import { useTranslation } from "react-i18next";
-import type { MeetingAutoEndAction, MeetingNotificationData } from "../types/electron";
+import type { MeetingAutoEndAction, MeetingNotificationData } from "../contracts/meetingCoordinator";
 import { MeetingNotificationCard } from "./MeetingNotificationCard";
 import {
   getMeetingNotificationPresentation,

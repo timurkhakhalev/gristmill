@@ -1,7 +1,32 @@
-const isValidSessionId = (sessionId) =>
+import type { WebContents } from "electron";
+
+export interface MeetingAutoEndEngineLike {
+  completeAutoEndSession(sessionId: string, sender: WebContents): Promise<boolean> | boolean;
+  respondToAutoEndNotification(
+    sessionId: string,
+    action: "restart" | "dismiss",
+    sender: WebContents
+  ): boolean;
+}
+
+export interface MeetingAutoEndLifecycleResult {
+  success: boolean;
+  reason?: "invalid-session" | "invalid-action" | "stale-session";
+  error?: string;
+}
+
+type IpcMainLike = {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): unknown;
+};
+
+const isValidSessionId = (sessionId: unknown): sessionId is string =>
   typeof sessionId === "string" && sessionId.trim().length > 0;
 
-async function completeMeetingAutoEndSession(engine, sessionId, sender) {
+export async function completeMeetingAutoEndSession(
+  engine: MeetingAutoEndEngineLike | null | undefined,
+  sessionId: unknown,
+  sender: WebContents
+): Promise<MeetingAutoEndLifecycleResult> {
   if (!isValidSessionId(sessionId)) {
     return { success: false, reason: "invalid-session" };
   }
@@ -11,7 +36,12 @@ async function completeMeetingAutoEndSession(engine, sessionId, sender) {
   return { success: true };
 }
 
-function respondToMeetingAutoEndNotification(engine, sessionId, action, sender) {
+export function respondToMeetingAutoEndNotification(
+  engine: MeetingAutoEndEngineLike | null | undefined,
+  sessionId: unknown,
+  action: unknown,
+  sender: WebContents
+): MeetingAutoEndLifecycleResult {
   if (!isValidSessionId(sessionId)) {
     return { success: false, reason: "invalid-session" };
   }
@@ -24,30 +54,33 @@ function respondToMeetingAutoEndNotification(engine, sessionId, action, sender) 
   return { success: true };
 }
 
-function getErrorMessage(error) {
+function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function registerMeetingAutoEndLifecycleHandlers(ipcMain, getMeetingDetectionEngine) {
+export function registerMeetingAutoEndLifecycleHandlers(
+  ipcMain: IpcMainLike,
+  getMeetingDetectionEngine: () => MeetingAutoEndEngineLike | null | undefined
+): void {
   ipcMain.handle("meeting-auto-end-completed", async (event, sessionId) => {
     try {
       return await completeMeetingAutoEndSession(
         getMeetingDetectionEngine(),
         sessionId,
-        event.sender
+        (event as { sender: WebContents }).sender
       );
     } catch (error) {
       return { success: false, error: getErrorMessage(error) };
     }
   });
 
-  ipcMain.handle("meeting-auto-end-respond", async (event, sessionId, action) => {
+  ipcMain.handle("meeting-auto-end-respond", (event, sessionId, action) => {
     try {
       return respondToMeetingAutoEndNotification(
         getMeetingDetectionEngine(),
         sessionId,
         action,
-        event.sender
+        (event as { sender: WebContents }).sender
       );
     } catch (error) {
       return { success: false, error: getErrorMessage(error) };

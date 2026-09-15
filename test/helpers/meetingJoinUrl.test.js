@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/meetingJoinUrl.js");
+const load = () => import("../../src/helpers/meetingJoinUrl.ts");
 
 test("prefers hangout_link when present", async () => {
   const { getMeetingJoinUrl } = await load();

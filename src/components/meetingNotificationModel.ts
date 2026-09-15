@@ -1,4 +1,4 @@
-import type { MeetingAutoEndReason, MeetingNotificationData } from "../types/electron";
+import type { MeetingAutoEndReason, MeetingNotificationData } from "../contracts/meetingCoordinator";
 
 type AutoEndBodyKey =
   | "meetingNotification.autoEnd.body.micReleased"

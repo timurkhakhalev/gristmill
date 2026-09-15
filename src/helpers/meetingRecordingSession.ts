@@ -1,5 +1,5 @@
 import type { StartRecordingArgs, TranscriptSegment } from "../stores/meetingRecordingStore";
-import type { MeetingAutoEndRestartRequest } from "../types/electron";
+import type { MeetingAutoEndRestartRequest } from "../contracts/meetingCoordinator";
 import type { NoteItem } from "../contracts/notes";
 
 export function createMeetingRecordingSessionId(

@@ -174,6 +174,7 @@ const {
   collectAudioCaptureHelperPids,
   createExcludedProcessIdProvider,
 } = require("./src/helpers/electronProcessIds");
+const { registerMeetingHotkeyHandler } = require("./src/helpers/meetingHotkeyIpcHandler");
 const AudioTapManager = require("./src/helpers/audioTapManager");
 const MeetingAecManager = require("./src/helpers/meetingAecManager");
 const MeetingDetectionEngine = require("./src/helpers/meetingDetectionEngine");
@@ -433,6 +434,16 @@ async function startApp() {
     meetingDetectionEngine?.startManualMeeting();
   };
 
+  // The re-registration handler (settings UI path) lives in the typed owner;
+  // the bootstrap slot registration below and the shared callback stay here,
+  // along with the menu/tray/window wiring and the onboarding gate.
+  registerMeetingHotkeyHandler({
+    ipcMain,
+    hotkeyManager,
+    environmentManager,
+    meetingHotkeyCallback,
+  });
+
   const savedMeetingKey = environmentManager.getMeetingKey?.() || "";
   if (savedMeetingKey) {
     const result = await hotkeyManager.registerSlot(
@@ -446,23 +457,6 @@ async function startApp() {
       "meeting"
     );
   }
-
-  ipcMain.handle("register-meeting-hotkey", async (_event, hotkey) => {
-    if (hotkey) {
-      const result = await hotkeyManager.registerSlot("meeting", hotkey, meetingHotkeyCallback, {
-        atomic: true,
-      });
-      if (result.success) {
-        environmentManager.saveMeetingKey(hotkey);
-        return { success: true };
-      }
-      return { success: false, message: result.error };
-    } else {
-      hotkeyManager.unregisterSlot("meeting");
-      environmentManager.saveMeetingKey("");
-      return { success: true };
-    }
-  });
 
   // Phase 2: Initialize remaining managers after windows are visible
   initializeDeferredManagers();

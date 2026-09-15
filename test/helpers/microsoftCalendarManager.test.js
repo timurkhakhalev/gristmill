@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 
-const managerModulePath = require.resolve("../../src/helpers/microsoftCalendarManager.js");
+const managerModulePath = require.resolve("../../src/helpers/microsoftCalendarManager.ts");
 const originalLoad = Module._load;
 
 test("getConnectionStatus reports Microsoft OAuth registration state", () => {

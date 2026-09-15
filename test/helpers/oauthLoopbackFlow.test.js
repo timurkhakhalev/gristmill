@@ -4,7 +4,7 @@ const http = require("node:http");
 const net = require("node:net");
 const Module = require("node:module");
 
-const loopbackModulePath = require.resolve("../../src/helpers/oauthLoopbackFlow.js");
+const loopbackModulePath = require.resolve("../../src/helpers/oauthLoopbackFlow.ts");
 const originalLoad = Module._load;
 
 function loadLoopback() {

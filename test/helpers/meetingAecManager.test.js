@@ -48,14 +48,14 @@ function loadManagerClass() {
     }
     return originalLoad(request, parent, isMain);
   };
-  try {
-    return require(managerModulePath);
-  } finally {
-    Module._load = originalLoad;
-  }
+  return require(managerModulePath);
 }
 
 const MeetingAecManager = loadManagerClass();
+
+test.after(() => {
+  Module._load = originalLoad;
+});
 
 function createManager() {
   const manager = new MeetingAecManager();

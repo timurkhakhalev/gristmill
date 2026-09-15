@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { TranscriptionItem } from "../types/electron";
+import type { TranscriptionItem } from "../contracts/transcriptionData";
 
 interface TranscriptionState {
   transcriptions: TranscriptionItem[];

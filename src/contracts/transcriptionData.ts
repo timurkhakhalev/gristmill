@@ -99,7 +99,8 @@ export type MergeAudioSegmentsArgs = z.infer<typeof mergeAudioSegmentsArgsSchema
 export const mergeAudioSegmentsResultSchema = z.union([
   z.object({
     success: z.literal(true),
-    buffer: binaryLikeSchema,
+    // The handler slices a real ArrayBuffer out of the merged Buffer.
+    buffer: z.instanceof(ArrayBuffer),
     mimeType: z.literal("audio/webm"),
   }),
   z.object({
@@ -196,6 +197,7 @@ export const transcriptionDataEventChannels = {
   transcriptionUpdated: "transcription-updated",
   transcriptionDeleted: "transcription-deleted",
   transcriptionsCleared: "transcriptions-cleared",
+  noteNavigationPending: "note-navigation-pending",
 } as const;
 
 // ---- renderer-facing surface ------------------------------------------------
@@ -257,6 +259,7 @@ export interface TranscriptionDataApi {
   }>;
   getFileSize?(filePath: string): Promise<number>;
   getPendingNoteNavigation?(): Promise<PendingNoteNavigation>;
+  onNoteNavigationPending?(callback: () => void): () => void;
   onTranscriptionAdded?(callback: (item: TranscriptionItem) => void): () => void;
   onTranscriptionUpdated?(callback: (item: TranscriptionItem) => void): () => void;
   onTranscriptionDeleted?(callback: (payload: { id: number }) => void): () => void;

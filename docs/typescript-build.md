@@ -1521,8 +1521,13 @@ onboarding compact/expanded, tray restore, shortcut и notification route) на
 отдельном профиле; после pack — восстановить Node ABI better-sqlite3 перед
 DB-тестами.
 
-Inventory графа Electron по фактическому `tsc --listFilesOnly`: 10 JS,
-184 TS, 1 MTS, 25 JSON. Срез `src` без `src/dist`: 12 JS, 388 TS, 254 TSX,
-1 MTS, 1 MJS (vite.config). Из графа вышли 21 JS-модуль этого issue;
-`appVersion` (потребители только в тестах) впервые включён в strict-граф
-явным include.
+Inventory графа Electron по фактическому `tsc -p tsconfig.main.json
+--listFilesOnly` (пересчитано на main `4c4f6faf` после фиксов #61): **12 JS,
+184 TS, 1 MTS, 25 JSON**. В граф входят 12 JS, а не 10: root `main.js` и
+`preload.js` — такие же entry points компилятора, как ONNX worker, и
+считаются вместе с 10 JS-модулями в `src/helpers`. Runtime-inventory
+отделяется от tooling: в срезе `src` без `src/dist` — 12 JS, 388 TS, 254 TSX,
+1 MTS, 1 MJS (vite.config), из них `src/helpers/whisperCppRelease.js` —
+build-tooling (используется только `scripts/download-whisper-cpp.js` перед
+pack), а `src/eslint.config.js` — конфигурация lint; исполняемого
+приложением JS вне графа не остаётся.

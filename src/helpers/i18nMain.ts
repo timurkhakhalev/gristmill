@@ -65,6 +65,13 @@ export function normalizeUiLanguage(language: string | null | undefined): string
   return SUPPORTED_UI_LANGUAGES.includes(base) ? base : "en";
 }
 
+// This module also compiles into the renderer shared graph, where Node's
+// `process` does not exist. The startup language still comes from the
+// main-process environment; anywhere else the lookup resolves to undefined
+// and the normalizer falls back to "en".
+const processEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+  .process?.env;
+
 export const i18nMain = i18next.createInstance();
 
 void i18nMain.init({
@@ -115,7 +122,7 @@ void i18nMain.init({
       prompts: zhTWPrompts,
     },
   },
-  lng: normalizeUiLanguage(process.env.UI_LANGUAGE),
+  lng: normalizeUiLanguage(processEnv?.UI_LANGUAGE),
   fallbackLng: "en",
   ns: ["translation", "prompts"],
   defaultNS: "translation",

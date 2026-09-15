@@ -76,6 +76,12 @@ interface SaveKeyResult {
 let envWriteQueue: Promise<unknown> = Promise.resolve();
 
 export class EnvironmentManager {
+  // In-flight secret writes keyed by env var name. _saveKey is
+  // fire-and-forget for its IPC caller, but clearAllPersistedData must not
+  // race a pending write (its rename could land after the rm and resurrect
+  // the secret), and the write lifetime stays observable in tests.
+  _pendingSecretWrites = new Map<string, Promise<void>>();
+
   constructor() {
     this.loadEnvironmentVariables();
   }
@@ -266,19 +272,40 @@ export class EnvironmentManager {
 
   _saveKey(envVarName: string, key: string): SaveKeyResult {
     if (SECRET_KEY_SET.has(envVarName) && this._encryptionAvailable()) {
-      this._saveSecretKey(envVarName, key).catch((error) => {
-        debugLogger.error(
-          "Failed to persist encrypted secret",
-          { key: envVarName, error: (error as Error).message },
-          "environment"
-        );
-      });
+      this._trackSecretWrite(envVarName, this._saveSecretKey(envVarName, key));
     } else if (key) {
       process.env[envVarName] = key;
     } else {
       delete process.env[envVarName];
     }
     return { success: true };
+  }
+
+  // Tracks one fire-and-forget secret write until it settles: failures are
+  // logged exactly as before, completions unregister, and _flushSecretWrites
+  // exposes the lifetime.
+  _trackSecretWrite(envVarName: string, pending: Promise<void>): void {
+    const tracked = pending
+      .catch((error) => {
+        debugLogger.error(
+          "Failed to persist encrypted secret",
+          { key: envVarName, error: (error as Error).message },
+          "environment"
+        );
+      })
+      .then(() => {
+        if (this._pendingSecretWrites.get(envVarName) === tracked) {
+          this._pendingSecretWrites.delete(envVarName);
+        }
+      });
+    this._pendingSecretWrites.set(envVarName, tracked);
+  }
+
+  // Resolves when every secret write started so far has settled (written or
+  // logged). Ordering guarantee for clearAllPersistedData and the observable
+  // completion seam for tests.
+  async _flushSecretWrites(): Promise<void> {
+    await Promise.all([...this._pendingSecretWrites.values()]);
   }
 
   getCortiClientId(): string {
@@ -510,6 +537,9 @@ export class EnvironmentManager {
     }
     delete process.env.CUSTOM_REASONING_API_KEY;
 
+    // A save fired before the clear must not land after the rm and
+    // resurrect its .enc file.
+    await this._flushSecretWrites();
     await Promise.all([
       fsPromises.rm(path.join(app.getPath("userData"), ".env"), { force: true }),
       fsPromises.rm(this._getSecureKeysDir(), { recursive: true, force: true }),

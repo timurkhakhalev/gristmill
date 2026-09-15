@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/agentNameDictionary.js");
+const load = () => import("../../src/helpers/agentNameDictionary.ts");
 
 // An empty delta means no write at all, which is what stops startup from
 // touching the dictionary when the renderer cache is stale (#1295).

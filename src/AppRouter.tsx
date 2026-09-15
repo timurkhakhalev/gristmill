@@ -1,11 +1,11 @@
 import React, { Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import MeetingNotificationOverlay from "./components/MeetingNotificationOverlay.tsx";
+import MeetingNotificationOverlay from "./components/MeetingNotificationOverlay";
 import { useTheme } from "./hooks/useTheme";
 import { useControlPanelWindowDrag } from "./hooks/useControlPanelWindowDrag";
 
-const ControlPanel = React.lazy(() => import("./components/ControlPanel.tsx"));
-const OnboardingFlow = React.lazy(() => import("./components/OnboardingFlow.tsx"));
+const ControlPanel = React.lazy(() => import("./components/ControlPanel"));
+const OnboardingFlow = React.lazy(() => import("./components/OnboardingFlow"));
 
 export default function AppRouter() {
   useTheme();
@@ -24,15 +24,19 @@ function MainApp() {
   const [showOnboarding, setShowOnboarding] = useState(
     () => localStorage.getItem("onboardingCompleted") !== "true"
   );
-  const [postOnboardingSettingsSection, setPostOnboardingSettingsSection] = useState();
+  const [postOnboardingSettingsSection, setPostOnboardingSettingsSection] = useState<
+    string | undefined
+  >();
 
   useEffect(() => {
     window.electronAPI?.setOnboardingActive?.(showOnboarding);
     void window.electronAPI?.setOnboardingWindowMode?.(showOnboarding ? "compact" : "restore");
-    return () => window.electronAPI?.setOnboardingActive?.(true);
+    return () => {
+      void window.electronAPI?.setOnboardingActive?.(true);
+    };
   }, [showOnboarding]);
 
-  const handleOnboardingComplete = (options) => {
+  const handleOnboardingComplete = (options?: { openSettings?: boolean }) => {
     if (options?.openSettings) setPostOnboardingSettingsSection("transcription");
     localStorage.setItem("onboardingCompleted", "true");
     setShowOnboarding(false);

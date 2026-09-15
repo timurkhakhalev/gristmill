@@ -31,7 +31,17 @@ export const TRANSCRIBE_PROMPT_CHARS = 8000;
 // back to the Whisper budget on purpose: custom and self-hosted endpoints take
 // whatever model name the user typed, and most of those servers are
 // Whisper-family under a name that never says "whisper".
-export function dictionaryPromptLimit({ provider = "", endpoint = "", model = "" } = {}) {
+export interface DictionaryPromptLimitInput {
+  provider?: string;
+  endpoint?: string;
+  model?: string;
+}
+
+export function dictionaryPromptLimit({
+  provider = "",
+  endpoint = "",
+  model = "",
+}: DictionaryPromptLimitInput = {}): number {
   if (provider === "groq" || endpoint.includes("api.groq.com")) return GROQ_PROMPT_CHARS;
   if (model.toLowerCase().startsWith("gpt-4o")) return TRANSCRIBE_PROMPT_CHARS;
   return WHISPER_PROMPT_CHARS;
@@ -42,7 +52,13 @@ export function dictionaryPromptLimit({ provider = "", endpoint = "", model = ""
 // Callers must classify dictionary echoes against the returned prompt, not the
 // original: the echo filter needs 70% of the prompt's words back, which a full
 // echo of a trimmed prompt only clears when measured against the same string.
-export function trimDictionaryPrompt(prompt, maxChars) {
+export interface TrimmedDictionaryPrompt {
+  prompt: string;
+  originalLength: number;
+  truncated: boolean;
+}
+
+export function trimDictionaryPrompt(prompt: string, maxChars: number): TrimmedDictionaryPrompt {
   if (!prompt || prompt.length <= maxChars) {
     return { prompt, originalLength: prompt ? prompt.length : 0, truncated: false };
   }

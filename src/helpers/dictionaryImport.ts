@@ -5,7 +5,7 @@
  * @param {string} text
  * @returns {string[]}
  */
-export function parseDictionaryImportText(text) {
+export function parseDictionaryImportText(text: unknown): string[] {
   return String(text ?? "")
     .split(/[,\n]/)
     .map((w) => w.trim())

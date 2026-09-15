@@ -1,6 +1,27 @@
-const { i18nMain } = require("./i18nMain");
+import { i18nMain } from "./i18nMain.js";
 
-function resolveSpeaker(seg, speakerMappings) {
+// The export formats read whatever the note/segment producers actually store:
+// speaker fields are optional (uploads have none), timestamps may be missing,
+// and SQLite dates arrive as UTC-without-suffix strings.
+export interface TranscriptExportSegment {
+  text: string;
+  timestamp?: number | null;
+  endTimestamp?: number | null;
+  speaker?: string | null;
+  speakerName?: string | null;
+  speakerIsPlaceholder?: boolean | null;
+  source?: string | null;
+}
+
+export interface TranscriptExportNote {
+  title?: string | null;
+  created_at?: string | number | null;
+  participants?: string | null;
+}
+
+export type SpeakerMappings = Record<string, string>;
+
+function resolveSpeaker(seg: TranscriptExportSegment, speakerMappings: SpeakerMappings): string {
   if (seg.speakerName && !seg.speakerIsPlaceholder) return seg.speakerName;
   if (seg.speaker && speakerMappings[seg.speaker]) return speakerMappings[seg.speaker];
   if (seg.speaker === "you") return i18nMain.t("transcript.speaker.you");
@@ -16,12 +37,12 @@ function resolveSpeaker(seg, speakerMappings) {
 // Segments merge only when they resolve to the same display name, so the key has
 // to cover every field resolveSpeaker reads — a manually named segment would
 // otherwise absorb the un-named one beside it.
-function speakerKey(seg) {
+function speakerKey(seg: TranscriptExportSegment): string {
   const named = seg.speakerName && !seg.speakerIsPlaceholder ? seg.speakerName : "";
   return [seg.speaker || "", named, seg.speaker ? "" : seg.source || ""].join("\u0000");
 }
 
-function parseNoteDate(createdAt) {
+export function parseNoteDate(createdAt: string | number | null | undefined): Date {
   if (createdAt == null || createdAt === "") {
     return new Date(NaN);
   }
@@ -38,21 +59,21 @@ function parseNoteDate(createdAt) {
   return new Date(value.includes("T") ? `${value}Z` : `${value.replace(" ", "T")}Z`);
 }
 
-function resolveRecordingStartMs(segments, note) {
+export function normalizeSegmentTimestamps(
+  segments: TranscriptExportSegment[],
+  note: TranscriptExportNote | null | undefined
+): TranscriptExportSegment[] {
   const segmentTimestamps = segments
     .map((seg) => seg.timestamp)
-    .filter((ts) => typeof ts === "number" && Number.isFinite(ts));
+    .filter((ts): ts is number => typeof ts === "number" && Number.isFinite(ts));
 
+  let startMs: number | null = null;
   if (segmentTimestamps.length > 0) {
-    return Math.min(...segmentTimestamps);
+    startMs = Math.min(...segmentTimestamps);
+  } else {
+    const noteDate = parseNoteDate(note?.created_at);
+    startMs = Number.isNaN(noteDate.getTime()) ? null : noteDate.getTime();
   }
-
-  const noteDate = parseNoteDate(note?.created_at);
-  return Number.isNaN(noteDate.getTime()) ? null : noteDate.getTime();
-}
-
-function normalizeSegmentTimestamps(segments, note) {
-  const startMs = resolveRecordingStartMs(segments, note);
   if (startMs == null || startMs <= 1e9) {
     return segments;
   }
@@ -69,14 +90,24 @@ function normalizeSegmentTimestamps(segments, note) {
   });
 }
 
-function mergeSegments(segments) {
-  const merged = [];
-  let lastTimestamp = null;
+interface MergedSegment {
+  text: string;
+  timestamp: number;
+  endTimestamp: number;
+  speaker?: string | null;
+  speakerName?: string | null;
+  speakerIsPlaceholder?: boolean | null;
+  source?: string | null;
+}
+
+function mergeSegments(segments: TranscriptExportSegment[]): MergedSegment[] {
+  const merged: MergedSegment[] = [];
+  let lastTimestamp: number | null = null;
   for (const seg of segments) {
     if (!seg.text?.trim()) continue;
     const ts = seg.timestamp || 0;
     const last = merged[merged.length - 1];
-    if (last && speakerKey(last) === speakerKey(seg) && ts - lastTimestamp < 2) {
+    if (last && speakerKey(last) === speakerKey(seg) && ts - (lastTimestamp as number) < 2) {
       last.text = last.text + " " + seg.text.trim();
       last.endTimestamp = ts;
     } else {
@@ -87,7 +118,7 @@ function mergeSegments(segments) {
   return merged;
 }
 
-function formatTimestamp(seconds) {
+function formatTimestamp(seconds: number): string {
   const s = Math.floor(seconds);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -95,7 +126,7 @@ function formatTimestamp(seconds) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-function formatSrtTimestamp(seconds) {
+function formatSrtTimestamp(seconds: number): string {
   const totalMs = Math.round(seconds * 1000);
   const ms = totalMs % 1000;
   const s = Math.floor(totalMs / 1000);
@@ -105,7 +136,11 @@ function formatSrtTimestamp(seconds) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
 }
 
-function extractMetadata(note) {
+function extractMetadata(note: TranscriptExportNote): {
+  title: string;
+  dateStr: string;
+  participants: string[];
+} {
   const title = note.title || "Untitled";
   const noteDate = parseNoteDate(note.created_at);
   const dateStr =
@@ -113,16 +148,25 @@ function extractMetadata(note) {
     " " +
     noteDate.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
-  let participants = [];
+  let participants: string[] = [];
   try {
-    const parsed = JSON.parse(note.participants || "[]");
-    participants = parsed.map((p) => p.displayName || p.email).filter(Boolean);
-  } catch {}
+    const parsed = JSON.parse(note.participants || "[]") as Array<{
+      displayName?: string | null;
+      email?: string | null;
+    }>;
+    participants = parsed.map((p) => p.displayName || p.email || "").filter(Boolean);
+  } catch {
+    // Malformed participants stay out of the export header.
+  }
 
   return { title, dateStr, participants };
 }
 
-function formatTxt(note, segments, speakerMappings) {
+export function formatTxt(
+  note: TranscriptExportNote,
+  segments: TranscriptExportSegment[],
+  speakerMappings: SpeakerMappings
+): string {
   const merged = mergeSegments(normalizeSegmentTimestamps(segments, note));
   const { title, dateStr, participants } = extractMetadata(note);
 
@@ -138,13 +182,17 @@ function formatTxt(note, segments, speakerMappings) {
   return lines.join("\n");
 }
 
-function formatSrt(segments, speakerMappings, note = {}) {
+export function formatSrt(
+  segments: TranscriptExportSegment[],
+  speakerMappings: SpeakerMappings,
+  note: TranscriptExportNote = {}
+): string {
   const merged = mergeSegments(normalizeSegmentTimestamps(segments, note));
   // Upload transcripts carry no speaker identity at all; prefixing every cue
   // with "Unknown Speaker:" would defeat the subtitle use case. Meeting
   // segments always serialize a source, so they keep their labels.
   const hasSpeakerIdentity = merged.some((seg) => seg.speaker || seg.speakerName || seg.source);
-  const entries = [];
+  const entries: string[] = [];
   for (let i = 0; i < merged.length; i++) {
     const seg = merged[i];
     const nextTs = i + 1 < merged.length ? merged[i + 1].timestamp : seg.endTimestamp + 3;
@@ -158,11 +206,15 @@ function formatSrt(segments, speakerMappings, note = {}) {
   return entries.join("\n");
 }
 
-function formatJson(note, segments, speakerMappings) {
+export function formatJson(
+  note: TranscriptExportNote,
+  segments: TranscriptExportSegment[],
+  speakerMappings: SpeakerMappings
+): string {
   const merged = mergeSegments(normalizeSegmentTimestamps(segments, note));
   const { title, dateStr } = extractMetadata(note);
 
-  const speakersSet = new Set();
+  const speakersSet = new Set<string>();
   for (const seg of merged) speakersSet.add(resolveSpeaker(seg, speakerMappings));
   const lastSeg = merged[merged.length - 1];
 
@@ -187,7 +239,11 @@ function formatJson(note, segments, speakerMappings) {
   );
 }
 
-function formatMd(note, segments, speakerMappings) {
+export function formatMd(
+  note: TranscriptExportNote,
+  segments: TranscriptExportSegment[],
+  speakerMappings: SpeakerMappings
+): string {
   const merged = mergeSegments(normalizeSegmentTimestamps(segments, note));
   const { title, dateStr, participants } = extractMetadata(note);
 
@@ -201,12 +257,3 @@ function formatMd(note, segments, speakerMappings) {
   }
   return lines.join("\n");
 }
-
-module.exports = {
-  formatTxt,
-  formatSrt,
-  formatJson,
-  formatMd,
-  parseNoteDate,
-  normalizeSegmentTimestamps,
-};

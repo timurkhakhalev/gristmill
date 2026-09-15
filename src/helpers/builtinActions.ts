@@ -107,7 +107,19 @@ Open questions
 
 Omit any section that has no supported content. Return only the email.`;
 
-export const BUILTIN_ACTIONS = [
+export interface BuiltInAction {
+  translationKey: string;
+  name: string;
+  description: string;
+  prompt: string;
+  // A prompt byte-matching a previous default is safe to reseed; the
+  // database never rewrites anything else.
+  previousPrompts: string[];
+  icon: string;
+  sortOrder: number;
+}
+
+export const BUILTIN_ACTIONS: BuiltInAction[] = [
   {
     translationKey: GENERATE_NOTES_KEY,
     name: "Generate Notes",

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/noteFormattingOverrides.js");
+const load = () => import("../../src/helpers/noteFormattingOverrides.ts");
 
 test("cloud mode leaves provider selection to the configured note-formatting scope", async () => {
   const { buildNoteFormattingOverrides } = await load();

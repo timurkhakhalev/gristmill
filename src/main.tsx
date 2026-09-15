@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
-import AppRouter from "./AppRouter.jsx";
+import AppRouter from "./AppRouter";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import CleanupFailureToastListener from "./components/CleanupFailureToastListener.tsx";
 import TinfoilModelSwitchToastListener from "./components/TinfoilModelSwitchToastListener.tsx";
@@ -22,7 +22,12 @@ import "./index.css";
 
 bindDocumentLanguage(i18n, document.documentElement, import.meta.hot);
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Renderer root element #root is missing from index.html");
+}
+
+const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <ErrorBoundary>

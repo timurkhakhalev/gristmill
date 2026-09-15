@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
 const {
   resolveMeetingTranscriptionOptions,
-} = require("../../src/helpers/meetingTranscriptionRouting.js");
+} = require("../../src/helpers/meetingTranscriptionRouting.ts");
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 
 // migrateMeetingFollowFlags() copies the legacy transcription and reasoning

@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const load = () => import("../../src/helpers/meetingTranscriptionRouting.js");
+const load = () => import("../../src/helpers/meetingTranscriptionRouting.ts");
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 
 // Sentinels this module throws, paired with the MEETING_ERROR_KEYS entry that

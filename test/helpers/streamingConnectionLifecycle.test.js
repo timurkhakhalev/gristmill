@@ -1,10 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming");
-const CortiStreaming = require("../../src/helpers/cortiStreaming");
-const DeepgramStreaming = require("../../src/helpers/deepgramStreaming");
-const OpenAIRealtimeStreaming = require("../../src/helpers/openaiRealtimeStreaming");
+const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming.ts");
+const CortiStreaming = require("../../src/helpers/cortiStreaming.ts");
+const DeepgramStreaming = require("../../src/helpers/deepgramStreaming.ts");
+const OpenAIRealtimeStreaming = require("../../src/helpers/openaiRealtimeStreaming.ts");
 
 const clients = [
   ["OpenAI", OpenAIRealtimeStreaming, "_notifyConnectionLost"],

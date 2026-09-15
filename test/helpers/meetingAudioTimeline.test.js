@@ -122,7 +122,7 @@ function harness({ native = true, local = false } = {}) {
 const bytes = (buffers) => buffers.reduce((total, buffer) => total + buffer.length, 0);
 
 function createTimestampedStream(provider, connectedAt) {
-  const StreamingClient = require(`../../src/helpers/${provider}Streaming`);
+  const StreamingClient = require(`../../src/helpers/${provider}Streaming.ts`);
   const streaming = new StreamingClient();
   const frames = [];
   const timestamps = [];
@@ -347,7 +347,7 @@ test("a long recovery uses bounded reusable silence rather than a gap-sized allo
 });
 
 test("recovery silence plus AssemblyAI's pending partial packet stays within its frame limit", () => {
-  const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming");
+  const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming.ts");
   const createTimeline = require("../../src/helpers/meetingAudioTimeline");
   let now = 0;
   const timeline = createTimeline({ now: () => now });

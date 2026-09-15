@@ -9,12 +9,12 @@
 
 const EXPLICIT_TIME_ZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 
-function hasExplicitTimeZone(value) {
+export function hasExplicitTimeZone(value: unknown): boolean {
   return typeof value === "string" && EXPLICIT_TIME_ZONE.test(value.trim());
 }
 
 /** Returns null for anything unreadable, so callers can fall back explicitly. */
-function parseDbTimestamp(value) {
+export function parseDbTimestamp(value: unknown): Date | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -34,8 +34,6 @@ function parseDbTimestamp(value) {
  * above every other row from the same day. Returns null for anything
  * unreadable, so callers can fall back to CURRENT_TIMESTAMP.
  */
-function toDbTimestamp(value) {
+export function toDbTimestamp(value: unknown): string | null {
   return parseDbTimestamp(value)?.toISOString().replace("T", " ") ?? null;
 }
-
-module.exports = { hasExplicitTimeZone, parseDbTimestamp, toDbTimestamp };

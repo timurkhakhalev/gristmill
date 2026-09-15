@@ -1531,3 +1531,96 @@ Inventory графа Electron по фактическому `tsc -p tsconfig.mai
 build-tooling (используется только `scripts/download-whisper-cpp.js` перед
 pack), а `src/eslint.config.js` — конфигурация lint; исполняемого
 приложением JS вне графа не остаётся.
+
+## Этап «non-meeting IPC: transcription execution, data/files, desktop/settings»
+
+15 сентября 2026 (issue #67). Оставшийся non-meeting IPC вынесен из
+`src/helpers/ipcHandlers.js` в три typed-вертикали по действующим операциям;
+`src/contracts` → typed handler registration → `src/preload` bridge →
+`src/types/electron.ts`, как в предыдущих вертикалях. Каналы, аргументы,
+результаты, события и ошибки не менялись; недоверенные payloads парсятся на
+границе (Zod), дальше в managers идут только проверенные значения. Никакого
+общего RPC framework, service container или provider router не появилось.
+
+- `src/contracts/transcriptionExecution.ts` +
+  `src/helpers/transcriptionExecutionIpcHandlers.ts` +
+  `src/preload/transcriptionExecutionBridge.ts` — `transcribe-local-whisper`,
+  `transcribe-local-parakeet`, пять провайдерских прокси
+  (`proxy-xai/mistral/corti/tinfoil/gemini-transcription`), `retry-transcription`,
+  voice-draft temp audio (`save/delete-temp-audio`), provider connection/model
+  discovery (`test-provider-connection`, `test-enterprise-connection`,
+  `bedrock-list-models`, `get-tinfoil-chat-models`). Переиспользованы схемы
+  ответа из `contracts/localFileTranscription.ts`; тяжелые SDK (`ai`, AWS) и
+  Corti-клиент остаются ленивыми фабриками в composition root.
+- `src/contracts/transcriptionData.ts` +
+  `src/helpers/transcriptionDataIpcHandlers.ts` +
+  `src/preload/transcriptionDataBridge.ts` — `db-*-transcription`,
+  `get-transcription-by-id`, `update-transcription-text`, аудио-хранилище
+  (`save/get/show/delete/merge/delete-all/usage`), `retention-settings-changed`,
+  экспорты (`export-note/transcript/dictionary`), выбор/одобрение/размер файлов
+  (`select-audio-file`, `approve-audio-path`, `get-file-size`),
+  `agent-open-note` и обычная (non-meeting) навигация `get-pending-note-navigation`
+  + подписка `note-navigation-pending`. Четыре события
+  (`transcription-added/updated/deleted`, `transcriptions-cleared`) валидируются
+  на preload-границе и дропают malformed payloads; unsubscribe снимает ровно
+  свою подписку. Разрешение/одобрение аудио-путей вынесено в
+  `src/helpers/audioPathAllowlist.ts` — общий с JS-rootом allowlist.
+- `src/contracts/desktopSettings.ts` +
+  `src/helpers/desktopSettingsIpcHandlers.ts` +
+  `src/preload/desktopSettingsBridge.ts` — onboarding/window controls
+  (`onboarding-*`, `window-*`, `snap/restore-from-meeting-mode`,
+  `set-notification-interactivity`), credential-поверхность (BYOK
+  `get-/save-<base>-key` из манифеста, Corti client id/secret, custom-endpoint
+  ключи, Bedrock/Azure/Vertex ключи, `save-all-keys-to-env`), startup/hotkeys
+  (`set-hotkey-listening-mode`, `get-hotkey-mode-info`,
+  `register/unregister-cancel-hotkey`, `get-effective-default-hotkey`,
+  activation mode, `sync-startup-preferences`, auto-start), drag
+  (`start/stop-control-panel-drag`), `open-external`, language
+  (`get/save/set-ui-language`), logging/debug (`get-log-level`, `app-log`,
+  `get-debug-state`, `set-debug-logging`, `open-logs-folder`),
+  permissions/system settings (microphone/system audio/accessibility,
+  `open-*-settings`, `show-emoji-panel`, `get-system-default-microphone`),
+  clipboard, `cleanup-app`, app/OAuth metadata (`get-app-version`,
+  `get-oauth-protocol*`), model folders (`get-model-cache-root`,
+  `open-whisper-models-folder`), `get-md5-hash` и
+  `sync-notification-preferences`. Ручные `BYOK_KEY_BRIDGES` в preload.js
+  заменены мостом, генерируемым из `config/secretKeys.ts`; открытие System
+  Settings вынесено в `src/helpers/systemSettingsLauncher.ts` (общий с
+  calendar-вертикалью).
+- Владелец оставшегося `src/helpers/ipcHandlers.js` — meeting coordinator
+  (meeting prepare/start/send/stop/cancel, detection/auto-end/join, session
+  speaker config, `mic-warm-hold-changed`, recording locks, все их callbacks
+  и state) плюс composition root: регистрации typed-вертикалей с узкими
+  callbacks. `set-meeting-mode-active` и notification-detection gate проходят
+  через два узких замыкания — lifecycle встречи не переносился.
+- Подозрительно неиспользуемые renderer'ом каналы (например `retry-transcription`,
+  `db-*`, `cleanup-app`, `agent-open-note` после удаления Home/Insights)
+  сохранены: consumer-проверка показала только отсутствие renderer-вызовов,
+  динамических регистраций и main-вызовов нет, но удаление поверхности —
+  отдельное продуктовое решение, не часть миграции.
+- Тесты: `retryTranscriptionHandler.test.js` разбит на два харнесса — typed
+  execution-модуль (retry + proxy structured errors; моки инжектируются deps,
+  Module._load остаётся для upload-харнесса ipcHandlers.js) и прежний
+  fake-this для BYOK upload. `deviceCleanupContract.test.js` читает исходник
+  `desktopSettingsIpcHandlers.ts` + проверяет cleanup-seams в composition
+  root. `secretKeys.test.js` проверяет manifest-генерацию моста вместо
+  инлайн-тюплов preload.js.
+
+Инвентарь графа на этой ветке: JS в графе по-прежнему 12 (root `main.js`,
+`preload.js` и 10 JS в `src/helpers` — весь non-meeting IPC из
+`ipcHandlers.js` убран, файл остался meeting coordinator + composition root),
+TS — +11 модулей к срезу `4c4f6faf` (три contracts/handlers/bridges-тройки,
+`audioPathAllowlist`, `systemSettingsLauncher`).
+
+Проверка исполнителем: `pnpm run typecheck` — 0 ошибок во всех трёх графах;
+`pnpm run lint` — 0 errors, warnings только прежнего baseline (ни одного в
+новых файлах). Tests, builds, install, native rebuild, pack и smoke по
+ограничению задачи не запускались. Оркестратору нужно последовательно
+выполнить `pnpm run build:main`, `pnpm run build:renderer`, focused tests
+(retryTranscriptionHandler, deviceCleanupContract, secretKeys,
+bedrockEnterpriseIpc, preloadOnboardingBridge, retentionSettings,
+meetingStreamingWiring, macInferenceSourceContract, m1IdentitySourceContract,
+granolaImportIpc, mainProcessEsmEntries, mainBuild), затем `pnpm test` и
+isolated smoke (Settings: ключи/провайдеры/hotkeys/language/debug;
+upload/diarization; onboarding; Notes) на отдельном профиле; после pack —
+восстановить Node ABI better-sqlite3 перед DB-тестами.

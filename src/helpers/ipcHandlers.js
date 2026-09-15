@@ -1,17 +1,14 @@
-const { ipcMain, app, shell, BrowserWindow, systemPreferences, net, clipboard } = require("electron");
+const { ipcMain, app, shell, BrowserWindow, net } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
-const { PARAKEET_UNSUPPORTED_OS_CODE } = require("./parakeetCapability");
 const { getModelType, isSherpaLocalProvider } = require("./parakeetModelInfo");
 const { broadcastToWindows } = require("./windowBroadcast");
-const { openExternalUrl } = require("./externalUrlOpener");
 const { BYOK_API_KEYS } = require("../config/secretKeys");
 const { extractAnthropicText, describeMissingAnthropicText } = require("./anthropicResponse");
 const { classifyAndLog } = require("./networkErrors");
-const { resolveSystemDefaultMicrophone } = require("./systemDefaultMicrophone");
 const {
   isEnterpriseProvider,
   mapEnterpriseError,
@@ -23,20 +20,9 @@ const {
 // packaged, and the route resolver only needs {id, baseUrl} per provider.
 const transcriptionProviderBaseUrls = () =>
   require("../models/modelRegistryData.json").transcriptionProviders;
-// ipcMain.handle keeps only the message when a promise rejects, dropping custom
-// props — proxy handlers return {error, code, messageKey} so the renderer can
-// rebuild the error.
-const serializeIpcError =
-  (fn) =>
-  async (...args) => {
-    try {
-      return await fn(...args);
-    } catch (error) {
-      return { error: error.message, code: error.code, messageKey: error.messageKey };
-    }
-  };
-
 const { resolveLocalServerNeeds } = require("./localServerPolicy");
+const { approveAudioPath, resolveAllowedAudioPath } = require("./audioPathAllowlist");
+const { openSystemSettings } = require("./systemSettingsLauncher");
 const { registerNotesHandlers } = require("./notesIpcHandlers");
 const { registerUrlDownloadHandlers } = require("./urlDownloadIpcHandlers");
 const { registerVocabularyHandlers } = require("./vocabularyIpcHandlers");
@@ -45,9 +31,7 @@ const { registerChatPersistenceHandlers } = require("./chatPersistenceIpcHandler
 const { registerActionsHandlers } = require("./actionsIpcHandlers");
 const { registerLocalFileTranscriptionHandler } = require("./localFileTranscriptionIpcHandler");
 const { sendNoteAdded, sendNoteUpdated, sendNoteDeleted } = require("./notesEvents");
-const autoStart = require("./autoStart");
 const AssemblyAiStreaming = require("./assemblyAiStreaming");
-const { i18nMain, changeLanguage } = require("./i18nMain");
 const DeepgramStreaming = require("./deepgramStreaming");
 const { GeminiLiveStreaming, GEMINI_LIVE_MODEL } = require("./geminiLiveStreaming");
 const CortiStreaming = require("./cortiStreaming");
@@ -55,13 +39,11 @@ const OpenAIRealtimeStreaming = require("./openaiRealtimeStreaming");
 const { getCortiToken } = require("./cortiAuth");
 const { createTinfoilRealtimeSocket } = require("./tinfoilSecureClient");
 const { TINFOIL_REALTIME_MODEL } = require("./tinfoilRealtimeStreaming");
-const { getTinfoilChatModels } = require("./tinfoilCatalog");
 const { transcribeWithTinfoil } = require("./tinfoilTranscription");
 const { transcribeWithGemini } = require("./geminiTranscription");
 const AudioStorageManager = require("./audioStorage");
 const { AgentStreamRequestRegistry } = require("./agentStreamRequestRegistry");
 const { createUploadCancelRegistry } = require("./uploadCancelRegistry");
-const { testProviderConnection } = require("./providerConnectionTest");
 const LocalModelDownloadStatus = require("./localModelDownloadStatus");
 const createMeetingTranscriptionLifecycle = require("./meetingTranscriptionLifecycle");
 const { registerMeetingAutoEndLifecycleHandlers } = require("./meetingAutoEndLifecycle");
@@ -126,6 +108,9 @@ const { registerRemoteTranscriptionHandler } = require("./remoteTranscriptionIpc
 const { registerReasoningHandlers, resolveEnterpriseRuntime } = require("./reasoningIpcHandlers");
 const { registerFileDiarizationHandlers } = require("./fileDiarizationIpcHandlers");
 const { registerUploadCancelHandler } = require("./uploadCancelIpcHandler");
+const { registerTranscriptionExecutionHandlers } = require("./transcriptionExecutionIpcHandlers");
+const { registerTranscriptionDataHandlers } = require("./transcriptionDataIpcHandlers");
+const { registerDesktopSettingsHandlers } = require("./desktopSettingsIpcHandlers");
 
 // Meeting capture runs at 24 kHz (see meetingRecordingStore AudioContext); realtime
 // streaming providers must be told the true PCM rate or they misread the audio.
@@ -136,53 +121,7 @@ const MEETING_RECONNECT_BUFFER_MAX_BYTES = MEETING_STREAM_SAMPLE_RATE * 2 * 30;
 // uses a lower threshold so quiet remote speech still opens a turn.
 const MEETING_SYSTEM_VAD_THRESHOLD = 0.3;
 
-// Azure Responses rejects probes with fewer than 16 output tokens. The probe
-// only needs one word, but this is the provider's minimum accepted value.
-const CONNECTION_TEST_MAX_OUTPUT_TOKENS = 16;
-
 const { listLocalTranscriptionModels } = require("./localTranscriptionModels");
-
-// Canonicalize allowed dirs so realpath'd inputs match on macOS (/var -> /private/var).
-// Deliberately narrow: user-picked paths anywhere else are approved individually via
-// approvedAudioPaths, so a compromised renderer can't read arbitrary files.
-function getCanonicalAllowedAudioDirs() {
-  const os = require("os");
-  const { getSafeTempDir } = require("./safeTempDir");
-  const dirs = [os.tmpdir(), getSafeTempDir(), app.getPath("userData")];
-  return dirs.map((d) => {
-    try {
-      return fs.realpathSync(d);
-    } catch {
-      return d;
-    }
-  });
-}
-
-// User-picked paths (OS file dialog, real drag-dropped files) may live outside the
-// static dirs (external volumes, /mnt, D:\) and are approved individually.
-const approvedAudioPaths = new Set();
-
-function approveAudioPath(filePath) {
-  if (typeof filePath !== "string" || !filePath) return;
-  try {
-    approvedAudioPaths.add(fs.realpathSync(path.resolve(filePath)));
-  } catch {
-    // File vanished or unreadable; nothing to approve.
-  }
-}
-
-// Returns the realpath'd file path if it lives under an allowed dir, else null.
-function resolveAllowedAudioPath(filePath) {
-  const real = fs.realpathSync(path.resolve(filePath));
-  if (approvedAudioPaths.has(real)) {
-    return real;
-  }
-  const allowed = getCanonicalAllowedAudioDirs();
-  if (allowed.some((dir) => real === dir || real.startsWith(dir + path.sep))) {
-    return real;
-  }
-  return null;
-}
 
 // The multipart transport behind the remote transcription handler. Kept here
 // (not in the typed module) because it owns the Electron net session; the
@@ -632,224 +571,53 @@ class IPCHandlers {
   setupHandlers() {
     const proxyFetch = (url, init = {}) => net.fetch(url, { ...init, useSessionCookies: false });
 
-    ipcMain.handle("onboarding-set-window-mode", (_event, mode) =>
-      this.windowManager.setOnboardingWindowMode(mode)
-    );
-
-    ipcMain.handle("onboarding-set-active", (_event, active) => {
-      if (typeof active !== "boolean") return false;
-      return this.windowManager.setOnboardingActive(active);
+    // Local/remote transcription execution, temp audio, retry and provider
+    // connection/model discovery live in the typed module. Heavy SDKs and the
+    // Corti client stay lazy behind these factories.
+    registerTranscriptionExecutionHandlers(ipcMain, {
+      whisperManager: this.whisperManager,
+      parakeetManager: this.parakeetManager,
+      resolveWhisperVadOptions: (context) => this._resolveWhisperVadOptions(context),
+      environmentManager: this.environmentManager,
+      proxyFetch: (url, init) => proxyFetch(url, init),
+      transcribeWithCorti: async (args) => {
+        const { transcribeAudio } = require("./cortiTranscription");
+        return transcribeAudio(args);
+      },
+      mintStoredCortiToken: (tokenOptions) => this._mintStoredCortiToken(tokenOptions),
+      generateText: (options) => require("ai").generateText(options),
+      getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
+        require("./enterpriseAiProviders").getEnterpriseAIModel(
+          provider,
+          model,
+          apiKey,
+          enterprise
+        ),
+      bedrockSdk: async () => require("@aws-sdk/client-bedrock"),
+      bedrockProfileCredentials: (profile) =>
+        require("@aws-sdk/credential-providers").fromNodeProviderChain({ profile }),
+      providerBaseUrls: transcriptionProviderBaseUrls,
+      audioStorage: this.audioStorageManager,
+      database: this.databaseManager,
+      broadcast: broadcastToWindows,
+      logger: {
+        log: (message, data) => debugLogger.log(message, data),
+        debug: (message, data) => debugLogger.debug(message, data),
+        warn: (message, data) => debugLogger.warn(message, data),
+        error: (message, data, tag) => debugLogger.error(message, data, tag),
+      },
     });
 
-    ipcMain.handle("test-provider-connection", async (_event, config) => {
-      if (config?.provider === "corti" && config?.scope === "transcription") {
-        try {
-          const clientId = String(config.clientId || "").trim();
-          const clientSecret = String(config.clientSecret || "").trim();
-          if (clientId && clientSecret) {
-            await getCortiToken({
-              environment: config.environment || "us",
-              tenant: String(config.tenant || "").trim() || "base",
-              clientId,
-              clientSecret,
-            });
-          } else {
-            await this._mintStoredCortiToken({
-              environment: config.environment,
-              tenant: config.tenant,
-            });
-          }
-          return { success: true };
-        } catch (error) {
-          // errorCode is the machine-readable field the renderer maps to i18n;
-          // the English string stays for logs/back-compat. Only a response
-          // Corti actually sent counts as a rejection (getCortiToken prefixes
-          // those); a fetch that never reached it is a network problem, and
-          // reporting it as "credentials rejected" sends the user to re-type a
-          // key that was never the issue.
-          if (error?.name === "AbortError") {
-            return {
-              success: false,
-              errorCode: "timeout",
-              error: "The connection test timed out.",
-            };
-          }
-          if (!/^(Corti authentication failed|Invalid Corti)/.test(error?.message || "")) {
-            return {
-              success: false,
-              errorCode: "network",
-              error: "The provider could not be reached.",
-            };
-          }
-          return {
-            success: false,
-            errorCode: "credentialsRejected",
-            error: "Corti rejected these credentials.",
-          };
-        }
-      }
-      return testProviderConnection(config);
-    });
-
-    ipcMain.handle("window-minimize", () => {
-      if (this.windowManager.controlPanelWindow) {
-        this.windowManager.controlPanelWindow.minimize();
-      }
-    });
-
-    ipcMain.handle("window-maximize", () => {
-      if (this.windowManager.controlPanelWindow) {
-        if (this.windowManager.controlPanelWindow.isMaximized()) {
-          this.windowManager.controlPanelWindow.unmaximize();
-        } else {
-          this.windowManager.controlPanelWindow.maximize();
-        }
-      }
-    });
-
-    ipcMain.handle("window-close", () => {
-      if (this.windowManager.controlPanelWindow) {
-        this.windowManager.controlPanelWindow.close();
-      }
-    });
-
-    ipcMain.handle("window-is-maximized", () => {
-      if (this.windowManager.controlPanelWindow) {
-        return this.windowManager.controlPanelWindow.isMaximized();
-      }
-      return false;
-    });
-
-    ipcMain.handle("snap-to-meeting-mode", () => {
-      this.windowManager.snapControlPanelToMeetingMode();
-    });
-
-    ipcMain.handle("restore-from-meeting-mode", () => {
-      this.windowManager.restoreControlPanelFromMeetingMode();
-      this.meetingDetectionEngine?.setMeetingModeActive(false);
-    });
-
-    ipcMain.handle("set-notification-interactivity", (event, interactive) => {
-      this.windowManager.setNotificationInteractivity(event.sender, Boolean(interactive));
-      return { success: true };
-    });
-
-    for (const k of BYOK_API_KEYS) {
-      ipcMain.handle(`get-${k.base}-key`, () => this.environmentManager[k.get]());
-      ipcMain.handle(`save-${k.base}-key`, (event, key) => this.environmentManager[k.save](key));
-    }
-
-    ipcMain.handle("db-save-transcription", async (event, text, rawText, options) => {
-      const result = this.databaseManager.saveTranscription(text, rawText, options);
-      if (result?.success && result?.transcription) {
-        setImmediate(() => {
-          broadcastToWindows("transcription-added", result.transcription);
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-get-transcriptions", async (event, limit = 50, options = {}) => {
-      return this.databaseManager.getTranscriptions(limit, options);
-    });
-
-    ipcMain.handle("db-clear-transcriptions", async (event) => {
-      this.audioStorageManager.deleteAllAudio();
-      const result = this.databaseManager.clearTranscriptions();
-      if (result?.success) {
-        setImmediate(() => {
-          broadcastToWindows("transcriptions-cleared", {
-            cleared: result.cleared,
-          });
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-delete-transcription", async (event, id) => {
-      return this.deleteTranscriptionInternal(id);
-    });
-
-    // Audio storage handlers
-    ipcMain.handle("save-transcription-audio", async (event, id, audioBuffer, metadata) => {
-      const transcription = this.databaseManager.getTranscriptionById(id);
-      const timestamp = transcription?.timestamp || null;
-      const result = this.audioStorageManager.saveAudio(id, Buffer.from(audioBuffer), timestamp);
-      if (result.success) {
-        this.databaseManager.updateTranscriptionAudio(id, {
-          hasAudio: 1,
-          audioDurationMs: metadata?.durationMs || null,
-          provider: metadata?.provider || null,
-          model: metadata?.model || null,
-        });
-        const updated = this.databaseManager.getTranscriptionById(id);
-        if (updated) broadcastToWindows("transcription-updated", updated);
-      }
-      return result;
-    });
-
-    ipcMain.handle("merge-audio-segments", async (_event, segments) => {
-      try {
-        if (!Array.isArray(segments) || segments.length < 2 || segments.length > 100) {
-          throw new Error("Invalid audio segment count");
-        }
-        const normalized = segments.map((segment) => {
-          if (!segment?.buffer || typeof segment.mimeType !== "string") {
-            throw new Error("Invalid audio segment");
-          }
-          return { buffer: Buffer.from(segment.buffer), mimeType: segment.mimeType };
-        });
-        const { mergeAudioSegments } = require("./ffmpegUtils");
-        const buffer = await mergeAudioSegments(normalized);
-        // Slice to a real ArrayBuffer: Buffers sent over IPC arrive as Uint8Array,
-        // and pooled Buffers share a larger underlying allocation.
-        return {
-          success: true,
-          buffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
-          mimeType: "audio/webm",
-        };
-      } catch (error) {
-        debugLogger.error("Failed to merge recovered audio segments", { error: error.message });
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("get-audio-path", async (event, id) => {
-      return this.audioStorageManager.getAudioPath(id);
-    });
-
-    ipcMain.handle("show-audio-in-folder", async (event, id) => {
-      const filePath = this.audioStorageManager.getAudioPath(id);
-      if (!filePath) return { success: false };
-      shell.showItemInFolder(filePath);
-      return { success: true };
-    });
-
-    ipcMain.handle("get-audio-buffer", async (event, id) => {
-      const buffer = this.audioStorageManager.getAudioBuffer(id);
-      return buffer ? buffer.buffer : null;
-    });
-
-    ipcMain.handle("delete-transcription-audio", async (event, id) => {
-      const result = this.audioStorageManager.deleteAudio(id);
-      if (result.success) {
-        this.databaseManager.updateTranscriptionAudio(id, {
-          hasAudio: 0,
-          audioDurationMs: null,
-          provider: null,
-          model: null,
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("get-audio-storage-usage", async () => {
-      return this.audioStorageManager.getStorageUsage();
-    });
-
-    ipcMain.on(
-      "retention-settings-changed",
-      createRetentionSettingsHandler({
+    // Transcription records, audio storage, exports, file selection and the
+    // pending (non-meeting) note navigation live in the typed module.
+    registerTranscriptionDataHandlers(ipcMain, {
+      database: this.databaseManager,
+      audioStorage: this.audioStorageManager,
+      deleteTranscriptionInternal: (id) => this.deleteTranscriptionInternal(id),
+      buildSpeakerMappings: (noteId) => this._buildSpeakerMappings(noteId),
+      queueNoteNavigation: (payload) => this.windowManager.queueNoteNavigation(payload),
+      consumePendingNoteNavigation: () => this.windowManager.consumePendingNoteNavigation(),
+      retention: {
         getCurrentSettings: () => this._retentionSettings,
         getOwner: () => this.windowManager.mainWindow?.webContents,
         hasSynced: () => this._retentionSettingsSynced,
@@ -861,30 +629,106 @@ class IPCHandlers {
           // After the sweep, so expired transcripts are gone before they can be
           // reconstructed into counters the sweep would only have to purge.
         },
-      })
-    );
-
-    ipcMain.handle("delete-all-audio", async () => {
-      const result = this.audioStorageManager.deleteAllAudio();
-      try {
-        const rows = this.databaseManager.db
-          .prepare("SELECT id FROM transcriptions WHERE has_audio = 1")
-          .all();
-        if (rows.length > 0) {
-          this.databaseManager.clearAudioFlags(rows.map((r) => r.id));
-        }
-      } catch (error) {
-        debugLogger.error(
-          "Failed to clear audio flags after delete-all",
-          { error: error.message },
-          "audio-storage"
-        );
-      }
-      return result;
+      },
+      broadcast: broadcastToWindows,
+      logger: {
+        log: (message, data) => debugLogger.log(message, data),
+        debug: (message, data) => debugLogger.debug(message, data),
+        warn: (message, data) => debugLogger.warn(message, data),
+        error: (message, data, tag) => debugLogger.error(message, data, tag),
+      },
     });
 
-    ipcMain.handle("get-transcription-by-id", async (event, id) => {
-      return this.databaseManager.getTranscriptionById(id);
+    // Onboarding/window controls, credentials, hotkeys, language, debug,
+    // permissions, cleanup and app metadata live in the typed module; meeting
+    // coordinator seams stay behind the two narrow gates below.
+    registerDesktopSettingsHandlers(ipcMain, {
+      windowManager: this.windowManager,
+      setMeetingModeActive: (active) => this.meetingDetectionEngine?.setMeetingModeActive(active),
+      setDetectionGateForNotifications: (enabled) =>
+        this.meetingDetectionEngine?.setPreferences({ audioDetection: enabled }),
+      environment: {
+        byokGet: (name) => this.environmentManager[name](),
+        byokSave: (name, key) => this.environmentManager[name](key),
+        getCortiClientId: () => this.environmentManager.getCortiClientId(),
+        saveCortiClientId: (key) => this.environmentManager.saveCortiClientId(key),
+        getCortiClientSecret: () => this.environmentManager.getCortiClientSecret(),
+        saveCortiClientSecret: (key) => this.environmentManager.saveCortiClientSecret(key),
+        getCustomTranscriptionKey: () => this.environmentManager.getCustomTranscriptionKey(),
+        saveCustomTranscriptionKey: (key) =>
+          this.environmentManager.saveCustomTranscriptionKey(key),
+        getCleanupCustomKey: () => this.environmentManager.getCleanupCustomKey(),
+        saveCleanupCustomKey: (key) => this.environmentManager.saveCleanupCustomKey(key),
+        getBedrockRegion: () => this.environmentManager.getBedrockRegion(),
+        saveBedrockRegion: (value) => this.environmentManager.saveBedrockRegion(value),
+        getBedrockProfile: () => this.environmentManager.getBedrockProfile(),
+        saveBedrockProfile: (value) => this.environmentManager.saveBedrockProfile(value),
+        getBedrockAccessKeyId: () => this.environmentManager.getBedrockAccessKeyId(),
+        saveBedrockAccessKeyId: (key) => this.environmentManager.saveBedrockAccessKeyId(key),
+        getBedrockSecretAccessKey: () => this.environmentManager.getBedrockSecretAccessKey(),
+        saveBedrockSecretAccessKey: (key) =>
+          this.environmentManager.saveBedrockSecretAccessKey(key),
+        getBedrockSessionToken: () => this.environmentManager.getBedrockSessionToken(),
+        saveBedrockSessionToken: (key) => this.environmentManager.saveBedrockSessionToken(key),
+        getAzureEndpoint: () => this.environmentManager.getAzureEndpoint(),
+        saveAzureEndpoint: (value) => this.environmentManager.saveAzureEndpoint(value),
+        getAzureApiKey: () => this.environmentManager.getAzureApiKey(),
+        saveAzureApiKey: (key) => this.environmentManager.saveAzureApiKey(key),
+        getAzureDeployment: () => this.environmentManager.getAzureDeployment(),
+        saveAzureDeployment: (value) => this.environmentManager.saveAzureDeployment(value),
+        getAzureApiVersion: () => this.environmentManager.getAzureApiVersion(),
+        saveAzureApiVersion: (value) => this.environmentManager.saveAzureApiVersion(value),
+        getVertexProject: () => this.environmentManager.getVertexProject(),
+        saveVertexProject: (value) => this.environmentManager.saveVertexProject(value),
+        getVertexLocation: () => this.environmentManager.getVertexLocation(),
+        saveVertexLocation: (value) => this.environmentManager.saveVertexLocation(value),
+        getVertexApiKey: () => this.environmentManager.getVertexApiKey(),
+        saveVertexApiKey: (key) => this.environmentManager.saveVertexApiKey(key),
+        getActivationMode: () => this.environmentManager.getActivationMode(),
+        saveActivationMode: (mode) => this.environmentManager.saveActivationMode(mode),
+        getUiLanguage: () => this.environmentManager.getUiLanguage(),
+        saveUiLanguage: (language) => this.environmentManager.saveUiLanguage(language),
+        saveAllKeysToEnvFile: () => this.environmentManager.saveAllKeysToEnvFile(),
+        clearAllPersistedData: () => this.environmentManager.clearAllPersistedData(),
+      },
+      audioTap: {
+        isSupported: () => this.audioTapManager?.isSupported(),
+        checkAccess: () => this.audioTapManager.checkAccess(),
+        requestAccess: () => this.audioTapManager.requestAccess(),
+        getPermissionStatus: () => this.audioTapManager.getPermissionStatus(),
+      },
+      oauthProtocolRegistered: this.oauthProtocolRegistered,
+      oauthProtocol: this.oauthProtocol,
+      getTrayManager: () => this.getTrayManager(),
+      sendToMainWindow: (channel) => this.windowManager.mainWindow?.webContents?.send(channel),
+      stopWhisperServer: () => this.whisperManager.stopServer(),
+      stopParakeetServer: () => this.parakeetManager.stopServer(),
+      stopLlamaServer: () => require("./modelManagerBridge").default.stopServer(),
+      cleanup: {
+        stopParakeetServer: () => this.parakeetManager.stopServer(),
+        stopWhisperServer: () => this.whisperManager.stopServer(),
+        stopGoogleCalendar: () => this.googleCalendarManager.stop(),
+        stopMicrosoftCalendar: () => this.microsoftCalendarManager.stop(),
+        stopAppleCalendar: () => this.appleCalendarManager.stop(),
+        shutdownDiarization: () => this.diarizationManager.shutdown(),
+        revokeGoogleTokens: () => this.googleCalendarManager.revokeAllTokens(),
+        closeDatabase: () => this.databaseManager.db.close(),
+        deleteAllAudio: () => this.audioStorageManager.deleteAllAudio(),
+        deleteWhisperModels: () => {
+          const { getModelsDirForService } = require("./modelDirUtils");
+          const whisperDir = getModelsDirForService("whisper");
+          if (fs.existsSync(whisperDir)) fs.rmSync(whisperDir, { recursive: true, force: true });
+        },
+        deleteParakeetModels: () => this.parakeetManager.deleteAllParakeetModels(),
+        deleteDiarizationModels: () => this.diarizationManager.deleteModels(),
+        deleteLlmModels: () => require("./modelManagerBridge").default.deleteAllModels(),
+      },
+      logger: {
+        log: (message, data) => debugLogger.log(message, data),
+        debug: (message, data) => debugLogger.debug(message, data),
+        warn: (message, data) => debugLogger.warn(message, data),
+        error: (message, data, tag) => debugLogger.error(message, data, tag),
+      },
     });
 
     // Every window's AudioManager can hold the mic open outside a recording, so
@@ -960,157 +804,6 @@ class IPCHandlers {
       database: this.databaseManager,
     });
 
-    ipcMain.handle("export-note", async (event, noteId, format) => {
-      try {
-        const note = this.databaseManager.getNote(noteId);
-        if (!note) return { success: false, error: "Note not found" };
-
-        const { dialog } = require("electron");
-        const fs = require("fs");
-        const ext = format === "txt" ? "txt" : "md";
-        const safeName = (note.title || "Untitled").replace(/[/\\?%*:|"<>]/g, "-");
-
-        const result = await dialog.showSaveDialog({
-          defaultPath: `${safeName}.${ext}`,
-          filters: [
-            { name: "Markdown", extensions: ["md"] },
-            { name: "Text", extensions: ["txt"] },
-          ],
-        });
-
-        if (result.canceled || !result.filePath) return { success: false };
-
-        let exportContent;
-        if (format === "txt") {
-          exportContent = (note.content || "")
-            .replace(/#{1,6}\s+/g, "")
-            .replace(/[*_~`]+/g, "")
-            .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-            .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
-            .replace(/^>\s+/gm, "")
-            .trim();
-        } else {
-          exportContent = note.enhanced_content || note.content;
-        }
-
-        fs.writeFileSync(result.filePath, exportContent, "utf-8");
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Error exporting note", { error: error.message }, "notes");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("export-transcript", async (event, noteId, format) => {
-      try {
-        const note = this.databaseManager.getNote(noteId);
-        if (!note) return { success: false, error: "Note not found" };
-
-        const segments = JSON.parse(note.transcript || "[]");
-        if (!segments.length) return { success: false, error: "No transcript available" };
-
-        const speakerMappings = this._buildSpeakerMappings(noteId);
-
-        const { dialog } = require("electron");
-        const fs = require("fs");
-        const extMap = { srt: "srt", json: "json", md: "md" };
-        const ext = extMap[format] || "txt";
-        const safeName = (note.title || "Untitled").replace(/[/\\?%*:|"<>]/g, "-");
-
-        const result = await dialog.showSaveDialog({
-          defaultPath: `${safeName}.${ext}`,
-          filters: [
-            { name: "Text", extensions: ["txt"] },
-            { name: "SubRip Subtitles", extensions: ["srt"] },
-            { name: "JSON", extensions: ["json"] },
-            { name: "Markdown", extensions: ["md"] },
-          ],
-        });
-
-        if (result.canceled || !result.filePath) return { success: false };
-
-        const transcriptFormatter = require("./transcriptFormatter");
-        let exportContent;
-        if (format === "txt") {
-          exportContent = transcriptFormatter.formatTxt(note, segments, speakerMappings);
-        } else if (format === "srt") {
-          exportContent = transcriptFormatter.formatSrt(segments, speakerMappings, note);
-        } else if (format === "md") {
-          exportContent = transcriptFormatter.formatMd(note, segments, speakerMappings);
-        } else {
-          exportContent = transcriptFormatter.formatJson(note, segments, speakerMappings);
-        }
-
-        fs.writeFileSync(result.filePath, exportContent, "utf-8");
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Error exporting transcript", { error: error.message }, "notes");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("export-dictionary", async (event, words) => {
-      try {
-        const { dialog } = require("electron");
-        const fs = require("fs");
-
-        const result = await dialog.showSaveDialog({
-          defaultPath: "dictionary.txt",
-          filters: [{ name: "Text", extensions: ["txt"] }],
-        });
-
-        if (result.canceled || !result.filePath) return { success: false };
-
-        fs.writeFileSync(result.filePath, words.join("\n"), "utf-8");
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Error exporting dictionary", { error: error.message }, "dictionary");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("select-audio-file", async (event, options = {}) => {
-      const { dialog } = require("electron");
-      const properties = ["openFile"];
-      if (options.multiple === true) properties.push("multiSelections");
-      const result = await dialog.showOpenDialog({
-        properties,
-        filters: [
-          {
-            name: "Audio Files",
-            extensions: ["mp3", "wav", "m4a", "webm", "ogg", "oga", "flac", "aac", "opus"],
-          },
-        ],
-      });
-      if (result.canceled || !result.filePaths.length) {
-        return { canceled: true };
-      }
-      result.filePaths.forEach(approveAudioPath);
-      if (options.multiple === true) {
-        return { canceled: false, filePaths: result.filePaths };
-      }
-      return { canceled: false, filePath: result.filePaths[0] };
-    });
-
-    // Fired by the preload's getPathForFile for real drag-dropped files; a
-    // renderer-constructed File yields "" there, so this can't be forged.
-    ipcMain.on("approve-audio-path", (_event, filePath) => {
-      approveAudioPath(filePath);
-    });
-
-    ipcMain.handle("get-file-size", async (_event, filePath) => {
-      const fs = require("fs");
-      try {
-        if (typeof filePath !== "string") return 0;
-        const real = resolveAllowedAudioPath(filePath);
-        if (!real) return 0;
-        const stats = fs.statSync(real);
-        return stats.size;
-      } catch {
-        return 0;
-      }
-    });
-
     // URL download channels live in the typed module, per-registration state
     // included. Only the downloader and logging are shared.
     const urlDownloader = require("./urlAudioDownloader");
@@ -1169,6 +862,31 @@ class IPCHandlers {
     // transcription, diarization and transport registered under the id.
     registerUploadCancelHandler(ipcMain, { uploadCancelRegistry: this._uploadCancelRegistry });
 
+    // File diarization + speaker-text merge live in the typed module; the
+    // shared cancel registry is the same instance transcription uses.
+    registerFileDiarizationHandlers(ipcMain, {
+      diarizationManager: this.diarizationManager,
+      resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
+      convertToWav: (inputPath, outputPath, options) =>
+        require("./ffmpegUtils").convertToWav(inputPath, outputPath, options),
+      createTempWavPath: () =>
+        path.join(require("./safeTempDir").getSafeTempDir(), `ow-diarize-${Date.now()}.wav`),
+      fileSize: (filePath) => fs.statSync(filePath).size,
+      resolveClusterThreshold: (durationSeconds, requestedThreshold) =>
+        require("./diarizationPolicy").resolveClusterThreshold(durationSeconds, requestedThreshold),
+      dropNegligibleClusters: (segments) =>
+        require("./diarizationPolicy").dropNegligibleClusters(segments),
+      pcm16Mono16kBytesPerSecond: require("./transcriptionTimeout").PCM16_MONO_16K_BYTES_PER_SECOND,
+      maxSpeakerCount: MAX_SPEAKER_COUNT,
+      removeFile: (filePath) => fs.unlinkSync(filePath),
+      mergeSpeakersWithText: (segments, text, duration) =>
+        require("./speakerMerge").mergeSpeakersWithText(segments, text, duration),
+      formatSpeakerTranscript: (merged) => require("./speakerMerge").formatSpeakerTranscript(merged),
+      uploadCancelRegistry: this._uploadCancelRegistry,
+      logDebug: (message, data) => debugLogger.debug(message, data),
+      logError: (message, data) => debugLogger.error(message, data),
+    });
+
     // Main-owned reasoning lives in the typed module: local/Anthropic/
     // enterprise one-shots plus the sender-scoped enterprise stream
     // lifecycle. Provider factories stay lazy and injected so startup never
@@ -1195,1279 +913,6 @@ class IPCHandlers {
       bedrockCleanupRequests: this._enterpriseReasoningRequests,
       enterpriseStreams: this._enterpriseStreams,
       logError: (message, data) => debugLogger.error(message, data),
-    });
-
-    ipcMain.handle("check-accessibility-permission", async () => {
-      return systemPreferences.isTrustedAccessibilityClient(false);
-    });
-
-    // Passes `true` to isTrustedAccessibilityClient to trigger the macOS system prompt
-    ipcMain.handle("prompt-accessibility-permission", async () => {
-      return systemPreferences.isTrustedAccessibilityClient(true);
-    });
-
-    ipcMain.handle("read-clipboard", async (event) => {
-      return clipboard.readText();
-    });
-
-    ipcMain.handle("write-clipboard", async (_event, text) => {
-      if (typeof text !== "string") throw new TypeError("Clipboard text must be a string");
-      clipboard.writeText(text);
-      return { success: true };
-    });
-
-
-    // Voice drafts (chat input): persist a recorded buffer so the file-based
-    // transcription pipeline (all providers) can consume it, then delete it.
-    ipcMain.handle("save-temp-audio", async (_event, buffer) => {
-      const tempPath = path.join(
-        os.tmpdir(),
-        `ow-voice-draft-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.webm`
-      );
-      fs.writeFileSync(tempPath, Buffer.from(buffer));
-      return { success: true, path: tempPath };
-    });
-
-    ipcMain.handle("delete-temp-audio", async (_event, tempPath) => {
-      // Only files this handler family created are deletable.
-      const resolved = path.resolve(tempPath);
-      const validPrefix = path.join(os.tmpdir(), "ow-voice-draft-");
-      if (!resolved.startsWith(validPrefix)) {
-        return { success: false, error: "Invalid temp path" };
-      }
-      try {
-        fs.unlinkSync(resolved);
-      } catch {
-        // Already gone — fine.
-      }
-      return { success: true };
-    });
-
-    ipcMain.handle("transcribe-local-whisper", async (_event, audioBlob, options = {}) => {
-      debugLogger.log("transcribe-local-whisper called", {
-        audioBlobType: typeof audioBlob,
-        audioBlobSize: audioBlob?.byteLength || audioBlob?.length || 0,
-        options,
-      });
-
-      try {
-        // skipVad: dictionary-echo rescue retries decode VAD-free, since VAD
-        // stripping the speech is what turned the transcript into prompt echo.
-        const { skipVad, ...requestOptions } = options;
-        const vadOptions = skipVad
-          ? { vadEnabled: false }
-          : this._resolveWhisperVadOptions("noteRecording");
-        const result = await this.whisperManager.transcribeLocalWhisper(audioBlob, {
-          ...requestOptions,
-          ...vadOptions,
-        });
-
-        debugLogger.log("Whisper result", {
-          success: result.success,
-          hasText: !!result.text,
-          message: result.message,
-          error: result.error,
-        });
-
-        return result;
-      } catch (error) {
-        debugLogger.error("Local Whisper transcription error", error);
-        const errorMessage = error.message || "Unknown error";
-
-        // Return specific error types for better user feedback
-        if (errorMessage.includes("FFmpeg not found")) {
-          return {
-            success: false,
-            error: "ffmpeg_not_found",
-            message: "FFmpeg is missing. Please reinstall the app or install FFmpeg manually.",
-          };
-        }
-        if (
-          errorMessage.includes("FFmpeg conversion failed") ||
-          errorMessage.includes("FFmpeg process error")
-        ) {
-          return {
-            success: false,
-            error: "ffmpeg_error",
-            message: "Audio conversion failed. The recording may be corrupted.",
-          };
-        }
-        if (
-          errorMessage.includes("whisper.cpp not found") ||
-          errorMessage.includes("whisper-cpp")
-        ) {
-          return {
-            success: false,
-            error: "whisper_not_found",
-            message: "Whisper binary is missing. Please reinstall the app.",
-          };
-        }
-        if (
-          errorMessage.includes("Audio buffer is empty") ||
-          errorMessage.includes("Audio data too small")
-        ) {
-          return {
-            success: false,
-            error: "no_audio_data",
-            message: "No audio detected",
-          };
-        }
-        if (errorMessage.includes("model") && errorMessage.includes("not downloaded")) {
-          return {
-            success: false,
-            error: "model_not_found",
-            message: errorMessage,
-          };
-        }
-
-        throw error;
-      }
-    });
-
-    ipcMain.handle("transcribe-local-parakeet", async (_event, audioBlob, options = {}) => {
-      debugLogger.log("transcribe-local-parakeet called", {
-        audioBlobType: typeof audioBlob,
-        audioBlobSize: audioBlob?.byteLength || audioBlob?.length || 0,
-        options,
-      });
-
-      try {
-        const result = await this.parakeetManager.transcribeLocalParakeet(audioBlob, options);
-
-        debugLogger.log("Parakeet result", {
-          success: result.success,
-          hasText: !!result.text,
-          message: result.message,
-          error: result.error,
-        });
-
-        return result;
-      } catch (error) {
-        debugLogger.error("Local Parakeet transcription error", error);
-        const errorMessage = error.message || "Unknown error";
-
-        if (errorMessage.includes("sherpa-onnx") && errorMessage.includes("not found")) {
-          return {
-            success: false,
-            error: "parakeet_not_found",
-            message: "Parakeet binary is missing. Please reinstall the app.",
-          };
-        }
-        if (errorMessage.includes("model") && errorMessage.includes("not downloaded")) {
-          return {
-            success: false,
-            error: "model_not_found",
-            message: errorMessage,
-          };
-        }
-        if (error.code === PARAKEET_UNSUPPORTED_OS_CODE) {
-          return {
-            success: false,
-            error: error.code,
-            message: errorMessage,
-          };
-        }
-
-        throw error;
-      }
-    });
-
-    // Diarization model management
-    // File diarization + speaker-text merge live in the typed module; the
-    // shared cancel registry below is the same instance transcription uses.
-    registerFileDiarizationHandlers(ipcMain, {
-      diarizationManager: this.diarizationManager,
-      resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
-      convertToWav: (inputPath, outputPath, options) => require("./ffmpegUtils").convertToWav(inputPath, outputPath, options),
-      createTempWavPath: () =>
-        path.join(require("./safeTempDir").getSafeTempDir(), `ow-diarize-${Date.now()}.wav`),
-      fileSize: (filePath) => fs.statSync(filePath).size,
-      resolveClusterThreshold: (durationSeconds, requestedThreshold) =>
-        require("./diarizationPolicy").resolveClusterThreshold(durationSeconds, requestedThreshold),
-      dropNegligibleClusters: (segments) =>
-        require("./diarizationPolicy").dropNegligibleClusters(segments),
-      pcm16Mono16kBytesPerSecond: require("./transcriptionTimeout").PCM16_MONO_16K_BYTES_PER_SECOND,
-      maxSpeakerCount: MAX_SPEAKER_COUNT,
-      removeFile: (filePath) => fs.unlinkSync(filePath),
-      mergeSpeakersWithText: (segments, text, duration) =>
-        require("./speakerMerge").mergeSpeakersWithText(segments, text, duration),
-      formatSpeakerTranscript: (merged) => require("./speakerMerge").formatSpeakerTranscript(merged),
-      uploadCancelRegistry: this._uploadCancelRegistry,
-      logDebug: (message, data) => debugLogger.debug(message, data),
-      logError: (message, data) => debugLogger.error(message, data),
-    });
-
-    ipcMain.handle("cleanup-app", async (event) => {
-      const fs = require("fs");
-      const os = require("os");
-      const errors = [];
-      const mainWindow = this.windowManager.mainWindow;
-
-      // Stop services before deleting files they hold open
-      try {
-        await this.parakeetManager?.stopServer();
-      } catch (e) {
-        errors.push(`Parakeet stop: ${e.message}`);
-      }
-      try {
-        this.whisperManager?.stopServer();
-      } catch (e) {
-        errors.push(`Whisper stop: ${e.message}`);
-      }
-      try {
-        this.googleCalendarManager?.stop();
-      } catch (e) {
-        errors.push(`GCal stop: ${e.message}`);
-      }
-      try {
-        this.microsoftCalendarManager?.stop();
-      } catch (e) {
-        errors.push(`MCal stop: ${e.message}`);
-      }
-      try {
-        this.appleCalendarManager?.stop();
-      } catch (e) {
-        errors.push(`ACal stop: ${e.message}`);
-      }
-      try {
-        await this.diarizationManager?.shutdown();
-      } catch (e) {
-        errors.push(`Diarization stop: ${e.message}`);
-      }
-      // Revoke Google OAuth tokens before DB is closed
-      try {
-        await this.googleCalendarManager?.revokeAllTokens();
-      } catch (e) {
-        errors.push(`GCal revoke: ${e.message}`);
-      }
-
-      // Close DB connection before deleting the file
-      try {
-        this.databaseManager?.db?.close();
-      } catch (e) {
-        errors.push(`DB close: ${e.message}`);
-      }
-
-      // Delete audio files
-      try {
-        this.audioStorageManager.deleteAllAudio();
-      } catch (e) {
-        errors.push(`Audio delete: ${e.message}`);
-      }
-
-      // Delete downloaded models
-      try {
-        const { getModelsDirForService } = require("./modelDirUtils");
-        const whisperDir = getModelsDirForService("whisper");
-        if (fs.existsSync(whisperDir)) fs.rmSync(whisperDir, { recursive: true, force: true });
-      } catch (e) {
-        errors.push(`Whisper models: ${e.message}`);
-      }
-      try {
-        await this.parakeetManager?.deleteAllParakeetModels();
-      } catch (e) {
-        errors.push(`Parakeet models: ${e.message}`);
-      }
-      try {
-        await this.diarizationManager?.deleteModels();
-      } catch (e) {
-        errors.push(`Diarization models: ${e.message}`);
-      }
-      try {
-        const modelManager = require("./modelManagerBridge").default;
-        await modelManager.deleteAllModels();
-      } catch (e) {
-        errors.push(`LLM models: ${e.message}`);
-      }
-
-      // These caches are not owned by one account. Remove them only through
-      // the explicit device-erasure path, never during normal account deletion.
-      const homeCacheRoot = path.join(os.homedir(), ".cache", "openhercules");
-      for (const cacheName of []) {
-        try {
-          fs.rmSync(path.join(homeCacheRoot, cacheName), { recursive: true, force: true });
-        } catch (e) {
-          errors.push(`${cacheName} cache: ${e.message}`);
-        }
-      }
-
-      // Delete database file + WAL/SHM
-      try {
-        const dbPath = path.join(
-          app.getPath("userData"),
-          process.env.NODE_ENV === "development" ? "transcriptions-dev.db" : "transcriptions.db"
-        );
-        if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
-        if (fs.existsSync(dbPath + "-wal")) fs.unlinkSync(dbPath + "-wal");
-        if (fs.existsSync(dbPath + "-shm")) fs.unlinkSync(dbPath + "-shm");
-      } catch (e) {
-        errors.push(`DB file: ${e.message}`);
-      }
-
-      // Delete device-wide settings and encrypted credentials.
-      try {
-        await this.environmentManager?.clearAllPersistedData();
-      } catch (e) {
-        errors.push(`Environment settings: ${e.message}`);
-      }
-      try {
-        for (const fileName of [
-          "globe-preference-state.json",
-          ".system-audio-permission",
-        ]) {
-          fs.rmSync(path.join(app.getPath("userData"), fileName), { force: true });
-        }
-      } catch (e) {
-        errors.push(`Device setting files: ${e.message}`);
-      }
-      for (const directoryName of ["bin", "llama-cpp"]) {
-        try {
-          fs.rmSync(path.join(app.getPath("userData"), directoryName), {
-            recursive: true,
-            force: true,
-          });
-        } catch (e) {
-          errors.push(`${directoryName} runtime: ${e.message}`);
-        }
-      }
-      try {
-        autoStart.setAutoStartEnabled(false);
-      } catch (e) {
-        errors.push(`Launch at login: ${e.message}`);
-      }
-
-      // Clear browser-held account/session state, including cookies, IndexedDB,
-      // Cache Storage and localStorage persisted by any app window.
-      try {
-        const win = BrowserWindow.fromWebContents(event.sender);
-        if (win) {
-          await win.webContents.session.clearStorageData();
-          await win.webContents.session.clearCache();
-        }
-      } catch (e) {
-        errors.push(`Browser data: ${e.message}`);
-      }
-
-      // Clear localStorage
-      if (mainWindow?.webContents) {
-        try {
-          await mainWindow.webContents.executeJavaScript("localStorage.clear()");
-        } catch (e) {
-          errors.push(`localStorage: ${e.message}`);
-        }
-      }
-
-      if (errors.length > 0) {
-        debugLogger.warn("Cleanup completed with errors", { errors }, "cleanup");
-      }
-
-      return { success: errors.length === 0, message: "Cleanup completed", errors };
-    });
-
-    ipcMain.handle("set-hotkey-listening-mode", async (_event, enabled) => {
-      if (this._hotkeyCaptureMode === enabled) return { success: true, skipped: true };
-      this._hotkeyCaptureMode = enabled;
-      this.windowManager.setHotkeyListeningMode(enabled);
-      ipcMain.emit("hotkey-listening-mode-changed", null, enabled);
-      const hotkeyManager = this.windowManager.hotkeyManager;
-
-      if (enabled) {
-        // Entering capture mode — unregister ALL slots so none intercept keypresses.
-        // Dictation is always active; meeting and agent may or may not be set.
-        const allSlots = hotkeyManager.slots;
-        for (const [slot, info] of allSlots) {
-          // Native-listener entries (null accelerator) are handled by the
-          // platform hotkey manager.
-          for (const accel of info?.accelerators || []) {
-            if (!accel) continue;
-            debugLogger.log(
-              `[IPC] Unregistering globalShortcut "${accel}" (slot "${slot}") for capture mode`
-            );
-            const { globalShortcut } = require("electron");
-            try {
-              globalShortcut.unregister(accel);
-            } catch {}
-          }
-        }
-
-      } else {
-        // Exiting capture mode — re-register globalShortcut-backed hotkeys.
-        // Re-register non-dictation slots (meeting, agent) that were unregistered on capture enter
-        for (const [slot, info] of hotkeyManager.slots) {
-          const hotkeys = info?.hotkeys || [];
-          if (hotkeys.length === 0 || !info?.callback)
-            continue;
-          debugLogger.log(
-            `[IPC] Re-registering slot "${slot}" ("${hotkeys.join(", ")}") after capture mode`
-          );
-          await hotkeyManager.registerSlot(slot, hotkeys, info.callback).catch((err) => {
-            debugLogger.warn(`[IPC] Failed to re-register slot "${slot}":`, err.message);
-          });
-        }
-      }
-
-      return { success: true };
-    });
-
-    ipcMain.handle("get-hotkey-mode-info", async (_event, requestedHotkey) => {
-      const hotkeyManager = this.windowManager.hotkeyManager;
-      const hotkey =
-        typeof requestedHotkey === "string" && requestedHotkey.trim()
-          ? requestedHotkey.split(",")[0].trim()
-          : hotkeyManager.getCurrentHotkey();
-      const isUsingNativeShortcut = this.windowManager.isUsingNativeShortcutHotkeys();
-      const supportsPushToTalk = hotkeyManager.supportsPushToTalk(hotkey);
-
-      return {
-        isUsingGnome: false,
-        isUsingHyprland: false,
-        isUsingKDE: false,
-        isUsingNativeShortcut,
-        supportsPushToTalk,
-        pushToTalkUnavailableReason: supportsPushToTalk
-          ? null
-          : hotkeyManager.getPushToTalkUnavailableReason(hotkey),
-      };
-    });
-
-    ipcMain.handle("register-cancel-hotkey", async (event, key) => {
-      const hotkeyManager = this.windowManager.hotkeyManager;
-      const mainWindow = this.windowManager.mainWindow;
-      return hotkeyManager.registerSlot("cancel", key, () => {
-        mainWindow?.webContents?.send("cancel-hotkey-pressed");
-      });
-    });
-
-    ipcMain.handle("unregister-cancel-hotkey", async () => {
-      this.windowManager.hotkeyManager.unregisterSlot("cancel");
-      return { success: true };
-    });
-
-    ipcMain.handle("start-control-panel-drag", async () => {
-      return await this.windowManager.startControlPanelDrag();
-    });
-
-    ipcMain.handle("stop-control-panel-drag", async () => {
-      return await this.windowManager.stopControlPanelDrag();
-    });
-
-    ipcMain.handle("open-external", async (event, url) => {
-      try {
-        const { protocol } = new URL(url);
-        if (!["http:", "https:", "mailto:"].includes(protocol)) {
-          return { success: false, error: `Blocked URL scheme: ${protocol}` };
-        }
-        await openExternalUrl(url);
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("get-auto-start-enabled", async () => {
-      try {
-        return autoStart.getAutoStartState();
-      } catch (error) {
-        debugLogger.error("Error getting auto-start status:", error);
-        return { enabled: false, requiresApproval: false };
-      }
-    });
-
-    ipcMain.handle("set-auto-start-enabled", async (event, enabled) => {
-      try {
-        autoStart.setAutoStartEnabled(enabled);
-        debugLogger.debug("Auto-start setting updated", { enabled });
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Error setting auto-start:", error);
-        return { success: false, error: error.message };
-      }
-    });
-
-
-
-
-
-    ipcMain.handle(
-      "proxy-xai-transcription",
-      serializeIpcError(async (event, { audioBuffer, language, keyterms }) => {
-        const apiKey = this.environmentManager.getXaiKey();
-        if (!apiKey) {
-          throw new Error("xAI API key not configured");
-        }
-
-        const formData = new FormData();
-        const audioBlob = new Blob([Buffer.from(audioBuffer)], { type: "audio/webm" });
-        formData.append("file", audioBlob, "audio.webm");
-        const { XAI_STT_LANGUAGES, XAI_STT_URL } = await import("./transcriptionRoute.ts");
-        if (language && language !== "auto" && XAI_STT_LANGUAGES.has(language)) {
-          formData.append("language", language);
-          formData.append("format", "true");
-        }
-        if (keyterms && keyterms.length > 0) {
-          for (const term of keyterms) {
-            formData.append("keyterm", term);
-          }
-        }
-
-        const response = await proxyFetch(XAI_STT_URL, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}` },
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`xAI API Error: ${response.status} ${errorText}`);
-        }
-
-        return await response.json();
-      })
-    );
-
-    ipcMain.handle(
-      "proxy-mistral-transcription",
-      serializeIpcError(async (event, { audioBuffer, model, language, contextBias }) => {
-        const apiKey = this.environmentManager.getMistralKey();
-        if (!apiKey) {
-          throw new Error("Mistral API key not configured");
-        }
-
-        const { MISTRAL_TRANSCRIPTION_URL } = await import("./transcriptionRoute.ts");
-        const formData = new FormData();
-        const audioBlob = new Blob([Buffer.from(audioBuffer)], { type: "audio/webm" });
-        formData.append("file", audioBlob, "audio.webm");
-        formData.append("model", model || "voxtral-mini-latest");
-        if (language && language !== "auto") {
-          formData.append("language", language);
-        }
-        if (contextBias && contextBias.length > 0) {
-          for (const token of contextBias) {
-            formData.append("context_bias", token);
-          }
-        }
-
-        const response = await proxyFetch(MISTRAL_TRANSCRIPTION_URL, {
-          method: "POST",
-          headers: {
-            "x-api-key": apiKey,
-          },
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Mistral API Error: ${response.status} ${errorText}`);
-        }
-
-        return await response.json();
-      })
-    );
-
-    ipcMain.handle("get-corti-client-id", async () => {
-      return this.environmentManager.getCortiClientId();
-    });
-
-    ipcMain.handle("save-corti-client-id", async (event, key) => {
-      return this.environmentManager.saveCortiClientId(key);
-    });
-
-    ipcMain.handle("get-corti-client-secret", async () => {
-      return this.environmentManager.getCortiClientSecret();
-    });
-
-    ipcMain.handle("save-corti-client-secret", async (event, key) => {
-      return this.environmentManager.saveCortiClientSecret(key);
-    });
-
-    ipcMain.handle(
-      "proxy-corti-transcription",
-      serializeIpcError(async (event, { audioBuffer, language, environment, tenant }) => {
-        const clientId = this.environmentManager.getCortiClientId();
-        const clientSecret = this.environmentManager.getCortiClientSecret();
-        if (!clientId || !clientSecret) {
-          throw new Error("Corti credentials not configured");
-        }
-
-        const { transcribeAudio } = require("./cortiTranscription");
-        return await transcribeAudio({
-          environment,
-          tenant,
-          clientId,
-          clientSecret,
-          audioBuffer,
-          language,
-        });
-      })
-    );
-
-    ipcMain.handle("get-tinfoil-chat-models", async () => {
-      return getTinfoilChatModels();
-    });
-
-    // Enclave attestation is Node-only, so batch transcription is proxied through main.
-    ipcMain.handle(
-      "proxy-tinfoil-transcription",
-      serializeIpcError(async (event, { audioBuffer, language, prompt }) => {
-        return await transcribeWithTinfoil({
-          audioBuffer: Buffer.from(audioBuffer),
-          fileName: "audio.webm",
-          contentType: "audio/webm",
-          language,
-          prompt,
-          apiKey: this.environmentManager.getTinfoilKey(),
-        });
-      })
-    );
-
-    // Gemini's Interactions API takes JSON with inline base64 audio, not
-    // OpenAI-compatible multipart, so batch transcription is proxied through main.
-    ipcMain.handle(
-      "proxy-gemini-transcription",
-      serializeIpcError(async (event, { audioBuffer, model, language, keyterms }) => {
-        return await transcribeWithGemini({
-          audioBuffer: Buffer.from(audioBuffer),
-          model,
-          contentType: "audio/webm",
-          language,
-          keyterms,
-          apiKey: this.environmentManager.getGeminiKey(),
-        });
-      })
-    );
-
-    ipcMain.handle("get-custom-transcription-key", async () => {
-      return this.environmentManager.getCustomTranscriptionKey();
-    });
-
-    ipcMain.handle("save-custom-transcription-key", async (event, key) => {
-      return this.environmentManager.saveCustomTranscriptionKey(key);
-    });
-
-    ipcMain.handle("get-cleanup-custom-key", async () => {
-      return this.environmentManager.getCleanupCustomKey();
-    });
-
-    ipcMain.handle("save-cleanup-custom-key", async (event, key) => {
-      return this.environmentManager.saveCleanupCustomKey(key);
-    });
-
-    // Enterprise provider key handlers
-    ipcMain.handle("get-bedrock-region", async () => {
-      return this.environmentManager.getBedrockRegion();
-    });
-    ipcMain.handle("save-bedrock-region", async (event, value) => {
-      return this.environmentManager.saveBedrockRegion(value);
-    });
-    ipcMain.handle("get-bedrock-profile", async () => {
-      return this.environmentManager.getBedrockProfile();
-    });
-    ipcMain.handle("save-bedrock-profile", async (event, value) => {
-      return this.environmentManager.saveBedrockProfile(value);
-    });
-    ipcMain.handle("get-bedrock-access-key-id", async () => {
-      return this.environmentManager.getBedrockAccessKeyId();
-    });
-    ipcMain.handle("save-bedrock-access-key-id", async (event, key) => {
-      return this.environmentManager.saveBedrockAccessKeyId(key);
-    });
-    ipcMain.handle("get-bedrock-secret-access-key", async () => {
-      return this.environmentManager.getBedrockSecretAccessKey();
-    });
-    ipcMain.handle("save-bedrock-secret-access-key", async (event, key) => {
-      return this.environmentManager.saveBedrockSecretAccessKey(key);
-    });
-    ipcMain.handle("get-bedrock-session-token", async () => {
-      return this.environmentManager.getBedrockSessionToken();
-    });
-    ipcMain.handle("save-bedrock-session-token", async (event, key) => {
-      return this.environmentManager.saveBedrockSessionToken(key);
-    });
-    ipcMain.handle("get-azure-endpoint", async () => {
-      return this.environmentManager.getAzureEndpoint();
-    });
-    ipcMain.handle("save-azure-endpoint", async (event, value) => {
-      return this.environmentManager.saveAzureEndpoint(value);
-    });
-    ipcMain.handle("get-azure-api-key", async () => {
-      return this.environmentManager.getAzureApiKey();
-    });
-    ipcMain.handle("save-azure-api-key", async (event, key) => {
-      return this.environmentManager.saveAzureApiKey(key);
-    });
-    ipcMain.handle("get-azure-deployment", async () => {
-      return this.environmentManager.getAzureDeployment();
-    });
-    ipcMain.handle("save-azure-deployment", async (event, value) => {
-      return this.environmentManager.saveAzureDeployment(value);
-    });
-    ipcMain.handle("get-azure-api-version", async () => {
-      return this.environmentManager.getAzureApiVersion();
-    });
-    ipcMain.handle("save-azure-api-version", async (event, value) => {
-      return this.environmentManager.saveAzureApiVersion(value);
-    });
-    ipcMain.handle("get-vertex-project", async () => {
-      return this.environmentManager.getVertexProject();
-    });
-    ipcMain.handle("save-vertex-project", async (event, value) => {
-      return this.environmentManager.saveVertexProject(value);
-    });
-    ipcMain.handle("get-vertex-location", async () => {
-      return this.environmentManager.getVertexLocation();
-    });
-    ipcMain.handle("save-vertex-location", async (event, value) => {
-      return this.environmentManager.saveVertexLocation(value);
-    });
-    ipcMain.handle("get-vertex-api-key", async () => {
-      return this.environmentManager.getVertexApiKey();
-    });
-    ipcMain.handle("save-vertex-api-key", async (event, key) => {
-      return this.environmentManager.saveVertexApiKey(key);
-    });
-
-    // Enterprise provider test connection
-    ipcMain.handle("test-enterprise-connection", async (event, provider, config) => {
-      const {
-        mapEnterpriseError,
-        runAbortableOperation,
-        runBedrockRequest,
-        validateEnterpriseEndpoint,
-      } = require("./enterpriseProviderErrors");
-      let runtime;
-      try {
-        const { generateText } = require("ai");
-        const { getEnterpriseAIModel } = require("./enterpriseAiProviders");
-
-        const resolveModel = (abortSignal) =>
-          runAbortableOperation(async () => {
-            runtime = resolveEnterpriseRuntime(provider, config?.model || "test", config);
-            abortSignal?.throwIfAborted();
-            validateEnterpriseEndpoint(runtime.enterprise.azureEndpoint);
-            return getEnterpriseAIModel(
-              runtime.provider,
-              runtime.model,
-              runtime.apiKey,
-              runtime.enterprise
-            );
-          }, abortSignal);
-
-        if (provider === "bedrock") {
-          await runBedrockRequest(async () => {
-            const abortSignal = AbortSignal.timeout(config?.timeoutMs || 30_000);
-            const model = await resolveModel(abortSignal);
-            return generateText({
-              model,
-              prompt: "Say hello in one word.",
-              maxOutputTokens: CONNECTION_TEST_MAX_OUTPUT_TOKENS,
-              abortSignal,
-              maxRetries: 0,
-            });
-          });
-        } else {
-          const model = await resolveModel();
-          await generateText({
-            model,
-            prompt: "Say hello in one word.",
-            maxOutputTokens: CONNECTION_TEST_MAX_OUTPUT_TOKENS,
-          });
-        }
-
-        return { success: true };
-      } catch (err) {
-        const mappingConfig =
-          runtime?.provider === "bedrock" && runtime.enterprise?.bedrockRegion
-            ? { ...(config || {}), bedrockRegion: runtime.enterprise.bedrockRegion }
-            : config;
-        const mapped = mapEnterpriseError(provider, err, mappingConfig);
-        return {
-          success: false,
-          error: mapped.message,
-          messageKey: mapped.messageKey,
-          messageParams: mapped.messageParams,
-          action: mapped.action,
-          actionKey: mapped.actionKey,
-          copyCommand: mapped.copyCommand,
-          retryable: mapped.retryable,
-          technicalDetails: mapped.technicalDetails,
-        };
-      }
-    });
-
-    // Lists the text models the account serves in the selected region,
-    // resolved to invocable IDs (bare on-demand or geo-scoped profile IDs).
-    ipcMain.handle("bedrock-list-models", async (event, config) => {
-      const { mapEnterpriseError } = require("./enterpriseProviderErrors");
-      try {
-        const runtime = resolveEnterpriseRuntime("bedrock", config?.model || "test", config);
-        const {
-          BedrockClient,
-          ListFoundationModelsCommand,
-          paginateListInferenceProfiles,
-        } = require("@aws-sdk/client-bedrock");
-        const { normalizeBedrockCatalog } = require("./bedrockCatalog");
-
-        const region = runtime.enterprise.bedrockRegion || "us-east-1";
-        let credentials;
-        if (runtime.enterprise.bedrockProfile) {
-          const { fromNodeProviderChain } = require("@aws-sdk/credential-providers");
-          credentials = fromNodeProviderChain({ profile: runtime.enterprise.bedrockProfile });
-        } else if (
-          runtime.enterprise.bedrockAccessKeyId &&
-          runtime.enterprise.bedrockSecretAccessKey
-        ) {
-          credentials = {
-            accessKeyId: runtime.enterprise.bedrockAccessKeyId,
-            secretAccessKey: runtime.enterprise.bedrockSecretAccessKey,
-            sessionToken: runtime.enterprise.bedrockSessionToken || undefined,
-          };
-        }
-        const client = new BedrockClient({ region, ...(credentials ? { credentials } : {}) });
-
-        const [foundationModels, profileSummaries] = await Promise.all([
-          client.send(new ListFoundationModelsCommand({ byOutputModality: "TEXT" })),
-          (async () => {
-            const summaries = [];
-            const paginator = paginateListInferenceProfiles(
-              { client },
-              { typeEquals: "SYSTEM_DEFINED" }
-            );
-            for await (const page of paginator) {
-              summaries.push(...(page.inferenceProfileSummaries || []));
-            }
-            return summaries;
-          })(),
-        ]);
-
-        return {
-          success: true,
-          models: normalizeBedrockCatalog(foundationModels.modelSummaries, profileSummaries),
-        };
-      } catch (err) {
-        debugLogger.error("Bedrock model listing error:", err);
-        const mapped = mapEnterpriseError("bedrock", err, config || {});
-        return { success: false, error: mapped.message };
-      }
-    });
-
-    ipcMain.handle("get-effective-default-hotkey", async () => {
-      return this.windowManager?.hotkeyManager?.getEffectiveDefaultHotkey() ?? null;
-    });
-
-    ipcMain.handle("get-activation-mode", async () => {
-      return this.environmentManager.getActivationMode();
-    });
-
-    ipcMain.handle("save-activation-mode", async (event, mode) => {
-      return this.environmentManager.saveActivationMode(mode);
-    });
-
-    ipcMain.handle("get-ui-language", async () => {
-      return this.environmentManager.getUiLanguage();
-    });
-
-    ipcMain.handle("save-ui-language", async (event, language) => {
-      return this.environmentManager.saveUiLanguage(language);
-    });
-
-    ipcMain.handle("set-ui-language", async (event, language) => {
-      const result = this.environmentManager.saveUiLanguage(language);
-      process.env.UI_LANGUAGE = result.language;
-      changeLanguage(result.language);
-      this.windowManager?.refreshLocalizedUi?.();
-      this.getTrayManager?.()?.updateTrayMenu?.();
-      return { success: true, language: result.language };
-    });
-
-    ipcMain.handle("save-all-keys-to-env", async () => {
-      return this.environmentManager.saveAllKeysToEnvFile();
-    });
-
-    ipcMain.handle("sync-startup-preferences", async (event, prefs) => {
-      const setVars = {};
-      const clearVars = [];
-
-      if (prefs.useLocalWhisper && prefs.model) {
-        // Local mode with model selected - set provider and model for pre-warming
-        setVars.LOCAL_TRANSCRIPTION_PROVIDER = prefs.localTranscriptionProvider;
-        if (prefs.language) setVars.DICTATION_LANGUAGE = prefs.language;
-        if (isSherpaLocalProvider(prefs.localTranscriptionProvider)) {
-          setVars.PARAKEET_MODEL = prefs.model;
-          clearVars.push("LOCAL_WHISPER_MODEL");
-          this.whisperManager.stopServer().catch((err) => {
-            debugLogger.error("Failed to stop whisper-server on provider switch", {
-              error: err.message,
-            });
-          });
-        } else {
-          setVars.LOCAL_WHISPER_MODEL = prefs.model;
-          clearVars.push("PARAKEET_MODEL");
-          this.parakeetManager.stopServer().catch((err) => {
-            debugLogger.error("Failed to stop parakeet-server on provider switch", {
-              error: err.message,
-            });
-          });
-        }
-      } else if (prefs.useLocalWhisper) {
-        // Local mode enabled but no model selected - clear pre-warming vars
-        clearVars.push("LOCAL_TRANSCRIPTION_PROVIDER", "PARAKEET_MODEL", "LOCAL_WHISPER_MODEL");
-      } else {
-        // Direct mode - stop local servers when unused
-        clearVars.push("LOCAL_TRANSCRIPTION_PROVIDER", "PARAKEET_MODEL", "LOCAL_WHISPER_MODEL");
-        this.whisperManager.stopServer().catch((err) => {
-          debugLogger.error("Failed to stop whisper-server after direct-mode switch", {
-            error: err.message,
-          });
-        });
-        this.parakeetManager.stopServer().catch((err) => {
-          debugLogger.error("Failed to stop parakeet-server on cloud switch", {
-            error: err.message,
-          });
-        });
-      }
-
-      const localServer = resolveLocalServerNeeds(prefs);
-
-      if (localServer.cleanup) {
-        setVars.CLEANUP_PROVIDER = "local";
-        setVars.LOCAL_CLEANUP_MODEL = localServer.cleanup;
-      } else {
-        clearVars.push("CLEANUP_PROVIDER", "LOCAL_CLEANUP_MODEL");
-      }
-      // TODO: drop legacy REASONING_PROVIDER / LOCAL_REASONING_MODEL clears once
-      // the read fallback is removed (~2 releases after this lands).
-      clearVars.push("REASONING_PROVIDER", "LOCAL_REASONING_MODEL");
-
-      // Stop the shared llama-server only when neither scope still needs it, so
-      // the active scope keeps its server when the other one switches away.
-      if (localServer.stopServer) {
-        const modelManager = require("./modelManagerBridge").default;
-        modelManager.stopServer().catch((err) => {
-          debugLogger.error("Failed to stop llama-server on provider switch", {
-            error: err.message,
-          });
-        });
-      }
-
-      this._syncStartupEnv(setVars, clearVars);
-    });
-
-
-
-    ipcMain.handle("get-log-level", async () => {
-      return debugLogger.getLevel();
-    });
-
-    ipcMain.handle("app-log", async (event, entry) => {
-      debugLogger.logEntry(entry);
-      return { success: true };
-    });
-
-    const SYSTEM_SETTINGS_URLS = {
-      darwin: {
-        microphone: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
-        sound: "x-apple.systempreferences:com.apple.preference.sound?input",
-        accessibility:
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-        systemAudio:
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-        screenRecording:
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-        calendars: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars",
-        loginItems: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
-      },
-    };
-
-    const openSystemSettings = async (settingType) => {
-      const platform = process.platform;
-      const urls = SYSTEM_SETTINGS_URLS[platform];
-      const url = urls?.[settingType];
-
-      if (!url) {
-        // macOS is the only supported runtime platform.
-        const messages = {
-          microphone: i18nMain.t("systemSettings.microphone"),
-          sound: i18nMain.t("systemSettings.sound"),
-          accessibility: i18nMain.t("systemSettings.accessibility"),
-          systemAudio: i18nMain.t("systemSettings.systemAudio"),
-          screenRecording: i18nMain.t("systemSettings.screenRecording"),
-          loginItems: i18nMain.t("systemSettings.loginItems"),
-        };
-        return {
-          success: false,
-          error:
-            messages[settingType] || `${settingType} settings are not available on this platform.`,
-        };
-      }
-
-      try {
-        await shell.openExternal(url);
-        return { success: true };
-      } catch (error) {
-        debugLogger.error(`Failed to open ${settingType} settings:`, error);
-        return { success: false, error: error.message };
-      }
-    };
-
-    ipcMain.handle("open-microphone-settings", () => openSystemSettings("microphone"));
-    ipcMain.handle("open-sound-input-settings", () => openSystemSettings("sound"));
-    ipcMain.handle("get-system-default-microphone", (_event, options = {}) =>
-      resolveSystemDefaultMicrophone({ refresh: options?.refresh === true })
-    );
-    ipcMain.handle("open-accessibility-settings", () => openSystemSettings("accessibility"));
-    ipcMain.handle("open-system-audio-settings", () => openSystemSettings("systemAudio"));
-    ipcMain.handle("open-screen-recording-settings", () => openSystemSettings("screenRecording"));
-    ipcMain.handle("open-login-items-settings", () => openSystemSettings("loginItems"));
-
-    ipcMain.handle("show-emoji-panel", () => {
-      try {
-        if (app.isEmojiPanelSupported()) {
-          app.showEmojiPanel();
-          return true;
-        }
-      } catch (error) {
-        debugLogger.error("Failed to show native emoji panel:", error);
-      }
-      return false;
-    });
-
-
-
-
-    ipcMain.handle("request-microphone-access", async () => {
-      const granted = await systemPreferences.askForMediaAccess("microphone");
-      return { granted };
-    });
-
-    ipcMain.handle("check-microphone-access", () => {
-      const status = systemPreferences.getMediaAccessStatus("microphone");
-      return { granted: status === "granted", status };
-    });
-
-    const buildSystemAudioAccess = (partial = {}) => ({
-      granted: false,
-      status: "unsupported",
-      mode: "unsupported",
-      supportsPersistentGrant: false,
-      supportsPersistentPortalGrant: false,
-      supportsNativeCapture: false,
-      supportsOnboardingGrant: false,
-      requiresRuntimeSharePrompt: false,
-      strategy: "unsupported",
-      restoreTokenAvailable: false,
-      portalVersion: null,
-      ...partial,
-    });
-
-    const getSystemAudioAccess = async () => {
-      if (!this.audioTapManager?.isSupported()) {
-        return buildSystemAudioAccess();
-      }
-
-      const result = this.audioTapManager.checkAccess();
-      return buildSystemAudioAccess({
-        granted: result.granted,
-        status: result.status,
-        mode: "native",
-        strategy: "native",
-      });
-    };
-
-    ipcMain.handle("check-system-audio-access", () => getSystemAudioAccess());
-
-    ipcMain.handle("request-system-audio-access", async () => {
-      if (!this.audioTapManager?.isSupported()) {
-        return buildSystemAudioAccess();
-      }
-
-      try {
-        const result = await this.audioTapManager.requestAccess();
-        if (result.granted) {
-          return buildSystemAudioAccess({
-            granted: true,
-            status: "granted",
-            mode: "native",
-            strategy: "native",
-          });
-        }
-      } catch {
-        // Falls through to opening System Settings
-      }
-
-      await openSystemSettings("systemAudio");
-      const status = this.audioTapManager.getPermissionStatus();
-      return buildSystemAudioAccess({
-        granted: false,
-        status,
-        mode: "native",
-        strategy: "native",
-      });
-    });
-
-    ipcMain.handle("retry-transcription", async (event, id, settings) => {
-      const buffer = this.audioStorageManager.getAudioBuffer(id);
-      if (!buffer) return { success: false, error: "Audio file not found" };
-      try {
-        let result;
-        const preferredLanguage = settings?.preferredLanguage;
-        const language =
-          preferredLanguage && preferredLanguage !== "auto"
-            ? preferredLanguage.split("-")[0]
-            : undefined;
-        const {
-          resolveTranscriptionRoute,
-          byokSizeCapError,
-          MISTRAL_TRANSCRIPTION_URL,
-          XAI_STT_URL,
-        } = await import("./transcriptionRoute.ts");
-        // Renderer pre-flight owns policy; retry re-routes stored audio through
-        // whatever is selected NOW.
-        const route = resolveTranscriptionRoute({
-          settings: settings || {},
-          providers: transcriptionProviderBaseUrls(),
-          request: { effectiveLanguage: language },
-        });
-
-        // A misconfigured direct route fails closed.
-        if (route.transport === "error") {
-          const err = new Error(route.message);
-          if (route.code) err.code = route.code;
-          if (route.messageKey) err.messageKey = route.messageKey;
-          throw err;
-        }
-
-        if (route.transport === "proxied" && route.provider === "tinfoil") {
-          // Attested transport, so this can't reuse the generic fetch below.
-          const { text, model } = await transcribeWithTinfoil({
-            audioBuffer: buffer,
-            fileName: "audio.webm",
-            contentType: "audio/webm",
-            language: route.language,
-            apiKey: this.environmentManager.getTinfoilKey(),
-          });
-          if (text) result = { text, source: "tinfoil", model };
-        } else if (route.transport === "proxied" && route.provider === "corti") {
-          // Corti uses OAuth + an interaction-based REST flow, so it can't use
-          // the generic fetch below.
-          const clientId = this.environmentManager.getCortiClientId();
-          const clientSecret = this.environmentManager.getCortiClientSecret();
-          if (!clientId || !clientSecret) {
-            throw new Error("Corti credentials not configured. Add them in Settings.");
-          }
-          const { transcribeAudio } = require("./cortiTranscription");
-          const { text } = await transcribeAudio({
-            environment: route.cortiEnvironment,
-            tenant: route.cortiTenant,
-            clientId,
-            clientSecret,
-            audioBuffer: buffer,
-            language: route.language,
-          });
-          if (text) result = { text, source: "corti", model: route.model };
-        } else if (route.transport === "proxied" && route.provider === "gemini") {
-          if (route.sizeCapBytes && buffer.byteLength > route.sizeCapBytes) {
-            throw new Error(byokSizeCapError(route.sizeCapBytes));
-          }
-          const { text } = await transcribeWithGemini({
-            audioBuffer: buffer,
-            model: route.model,
-            contentType: "audio/webm",
-            language: route.language,
-            apiKey: this.environmentManager.getGeminiKey(),
-          });
-          if (text) result = { text, source: "gemini", model: route.model };
-        } else {
-          // mistral/xai have no OpenAI-compatible endpoint — main talks to them
-          // directly; everything else consumes the route endpoint as-is.
-          const provider = route.provider;
-          const endpoint =
-            provider === "mistral"
-              ? MISTRAL_TRANSCRIPTION_URL
-              : provider === "xai"
-                ? XAI_STT_URL
-                : route.endpoint;
-          const apiKey =
-            provider === "mistral"
-              ? this.environmentManager.getMistralKey()
-              : provider === "xai"
-                ? this.environmentManager.getXaiKey()
-                : route.auth.keyRef === "custom"
-                  ? this.environmentManager.getCustomTranscriptionKey()
-                  : route.auth.keyRef === "groq"
-                    ? this.environmentManager.getGroqKey()
-                    : this.environmentManager.getOpenAIKey();
-          if (!apiKey && provider !== "custom") {
-            throw new Error(`${provider} API key not configured`);
-          }
-
-          const formData = new FormData();
-          formData.append("file", new Blob([buffer], { type: "audio/webm" }), "audio.webm");
-          if (provider === "xai") {
-            // xAI STT does not accept a model field; the route pre-filters language
-            if (route.language) {
-              formData.append("language", route.language);
-              formData.append("format", "true");
-            }
-          } else {
-            formData.append("model", route.model);
-            if (route.language) formData.append("language", route.language);
-          }
-          const headers = {};
-          if (provider === "mistral") {
-            headers["x-api-key"] = apiKey;
-          } else if (apiKey) {
-            if (route.transport === "http-batch" && route.auth.scheme === "azure-api-key") {
-              headers["api-key"] = apiKey;
-            } else {
-              headers.Authorization = `Bearer ${apiKey}`;
-            }
-          }
-
-          const response = await proxyFetch(endpoint, { method: "POST", headers, body: formData });
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`${provider} API Error: ${response.status} ${errorText}`);
-          }
-          const data = await response.json();
-          if (data?.text) {
-            result = { text: data.text, source: provider, model: route.model };
-          }
-        }
-
-        if (!result?.text) {
-          return { success: false, error: "No transcription engine available" };
-        }
-
-        this.databaseManager.updateTranscriptionText(id, result.text, result.text);
-        this.databaseManager.updateTranscriptionStatus(id, "completed");
-        const providerName = result.source || "local";
-        const modelName = result.model || null;
-        const existingRow = this.databaseManager.getTranscriptionById(id);
-        this.databaseManager.updateTranscriptionAudio(id, {
-          hasAudio: 1,
-          audioDurationMs: existingRow?.audio_duration_ms ?? null,
-          provider: providerName,
-          model: modelName,
-        });
-        const updated = this.databaseManager.getTranscriptionById(id);
-        if (updated) {
-          setImmediate(() => {
-            broadcastToWindows("transcription-updated", updated);
-            // A row that just reached "completed" is newly eligible.
-          });
-        }
-        return { success: true, transcription: updated };
-      } catch (error) {
-        debugLogger.error(
-          "Retry transcription failed",
-          { id, error: error.message, code: error.code },
-          "audio-storage"
-        );
-        if (error.code) {
-          return { success: false, error: error.message, code: error.code, ...error };
-        }
-        return { success: false, error: error.message };
-      }
     });
 
     let meetingTranscriptionStartInProgress = false;
@@ -4392,141 +2837,6 @@ class IPCHandlers {
       }
     );
 
-    ipcMain.handle("update-transcription-text", async (_event, id, text, rawText) => {
-      try {
-        this.databaseManager.updateTranscriptionText(id, text, rawText);
-        const updated = this.databaseManager.getTranscriptionById(id);
-        return { success: true, transcription: updated };
-      } catch (error) {
-        debugLogger.error(
-          "Failed to update transcription text",
-          { id, error: error.message },
-          "audio-storage"
-        );
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("agent-open-note", async (_event, noteId) => {
-      try {
-        const note = this.databaseManager.getNote(noteId);
-        await this.windowManager.queueNoteNavigation({
-          noteId,
-          folderId: note?.folder_id ?? null,
-        });
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Failed to open note from agent:", error);
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("get-model-cache-root", () => {
-      const { getCacheRoot } = require("./modelDirUtils");
-      return getCacheRoot();
-    });
-
-    ipcMain.handle("open-whisper-models-folder", async () => {
-      try {
-        const { getCacheRoot } = require("./modelDirUtils");
-        const cacheRoot = getCacheRoot();
-        await fs.promises.mkdir(cacheRoot, { recursive: true });
-        const errMsg = await shell.openPath(cacheRoot);
-        if (errMsg) return { success: false, error: errMsg };
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Failed to open model cache folder:", error);
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("get-debug-state", async () => {
-      try {
-        return {
-          enabled: debugLogger.isEnabled(),
-          logPath: debugLogger.getLogPath(),
-          logLevel: debugLogger.getLevel(),
-        };
-      } catch (error) {
-        debugLogger.error("Failed to get debug state:", error);
-        return { enabled: false, logPath: null, logLevel: "info" };
-      }
-    });
-
-    ipcMain.handle("set-debug-logging", async (event, enabled) => {
-      try {
-        const path = require("path");
-        const fs = require("fs");
-        const envPath = path.join(app.getPath("userData"), ".env");
-
-        // Read current .env content
-        let envContent = "";
-        if (fs.existsSync(envPath)) {
-          envContent = fs.readFileSync(envPath, "utf8");
-        }
-
-        // Parse lines
-        const lines = envContent.split("\n");
-        const logLevelIndex = lines.findIndex((line) =>
-          line.trim().startsWith("OPENHERCULES_LOG_LEVEL=")
-        );
-
-        if (enabled) {
-          // Set to debug
-          if (logLevelIndex !== -1) {
-            lines[logLevelIndex] = "OPENHERCULES_LOG_LEVEL=debug";
-          } else {
-            // Add new line
-            if (lines.length > 0 && lines[lines.length - 1] !== "") {
-              lines.push("");
-            }
-            lines.push("# Debug logging setting");
-            lines.push("OPENHERCULES_LOG_LEVEL=debug");
-          }
-        } else {
-          // Remove or set to info
-          if (logLevelIndex !== -1) {
-            lines[logLevelIndex] = "OPENHERCULES_LOG_LEVEL=info";
-          }
-        }
-
-        // Write back
-        fs.writeFileSync(envPath, lines.join("\n"), "utf8");
-
-        // Update environment variable
-        process.env.OPENHERCULES_LOG_LEVEL = enabled ? "debug" : "info";
-
-        // Refresh logger state
-        debugLogger.refreshLogLevel();
-
-        return {
-          success: true,
-          enabled: debugLogger.isEnabled(),
-          logPath: debugLogger.getLogPath(),
-        };
-      } catch (error) {
-        debugLogger.error("Failed to set debug logging:", error);
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("open-logs-folder", async () => {
-      try {
-        const logsDir = path.join(app.getPath("userData"), "logs");
-        await shell.openPath(logsDir);
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Failed to open logs folder:", error);
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("get-oauth-protocol-registered", () => this.oauthProtocolRegistered);
-
-    ipcMain.handle("get-oauth-protocol", () => this.oauthProtocol);
-
-    ipcMain.handle("get-app-version", () => ({ version: app.getVersion() }));
-
     ipcMain.handle("acquire-recording-lock", async (_event, pipeline) => {
       if (this._activeRecordingPipeline && this._activeRecordingPipeline !== pipeline) {
         return { success: false, holder: this._activeRecordingPipeline };
@@ -4669,10 +2979,6 @@ class IPCHandlers {
       logError: (message, data, tag) => debugLogger.error(message, data, tag),
     });
 
-    ipcMain.handle("get-md5-hash", (_event, text) => {
-      return crypto.createHash("md5").update(text.toLowerCase().trim()).digest("hex");
-    });
-
     ipcMain.handle("meeting-detection-get-preferences", async () => {
       try {
         return { success: true, preferences: this.meetingDetectionEngine.getPreferences() };
@@ -4684,34 +2990,6 @@ class IPCHandlers {
     ipcMain.handle("meeting-detection-set-preferences", async (_event, prefs) => {
       try {
         this.meetingDetectionEngine.setPreferences(prefs);
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    const NOTIFICATION_PREF_KEYS = new Set([
-      "notificationsEnabled",
-      "notifyMeetingDetection",
-      "notifyCalendarReminders",
-    ]);
-
-    ipcMain.handle("sync-notification-preferences", async (_event, prefs) => {
-      try {
-        if (!prefs || typeof prefs !== "object") {
-          return { success: false, error: "Invalid preferences" };
-        }
-        for (const [k, v] of Object.entries(prefs)) {
-          if (NOTIFICATION_PREF_KEYS.has(k)) {
-            this.windowManager.notificationPrefs[k] = !!v;
-          }
-        }
-        // Detection only serves the notification, so the toggle also gates the detector.
-        const { notificationsEnabled, notifyMeetingDetection } =
-          this.windowManager.notificationPrefs;
-        this.meetingDetectionEngine?.setPreferences({
-          audioDetection: notificationsEnabled && notifyMeetingDetection,
-        });
         return { success: true };
       } catch (error) {
         return { success: false, error: error.message };
@@ -4780,10 +3058,6 @@ class IPCHandlers {
 
     ipcMain.handle("get-pending-meeting-note-navigation", async () => {
       return this.windowManager?.consumePendingMeetingNoteNavigation() ?? null;
-    });
-
-    ipcMain.handle("get-pending-note-navigation", async () => {
-      return this.windowManager?.consumePendingNoteNavigation() ?? null;
     });
 
     ipcMain.handle("meeting-notification-ready", async (event) => {

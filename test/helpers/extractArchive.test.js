@@ -23,7 +23,7 @@ function writeZip(dir, name, buf) {
   return p;
 }
 
-const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.js");
+const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.ts");
 const originalLoad = Module._load;
 
 function freshRequire({ runSystemTar } = {}) {
@@ -31,12 +31,16 @@ function freshRequire({ runSystemTar } = {}) {
 
   Module._load = function loadWithMocks(request, parent, isMain) {
     if (request === "electron") return { net: {} };
-    if (request === "./systemTar" && runSystemTar) return { runSystemTar };
+    // The TS emit requires "./systemTar.js"; the pre-migration JS required
+    // "./systemTar". Accept both so the hook survives the extension cutover.
+    if ((request === "./systemTar" || request === "./systemTar.js") && runSystemTar) {
+      return { runSystemTar };
+    }
     return originalLoad.call(this, request, parent, isMain);
   };
 
   try {
-    return require("../../src/helpers/downloadUtils.js");
+    return require("../../src/helpers/downloadUtils.ts");
   } finally {
     Module._load = originalLoad;
   }

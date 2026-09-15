@@ -1,22 +1,28 @@
-const { app } = require("electron");
-const fs = require("fs");
-const net = require("net");
-const path = require("path");
-const { killProcessGroup } = require("./process");
+import { app } from "electron";
+import fs from "fs";
+import net from "net";
+import path from "path";
+import { killProcessGroup } from "./process.js";
+import type { ChildProcess } from "child_process";
 
 const GRACEFUL_STOP_TIMEOUT_MS = 5000;
 
-function tryBind(port, host) {
-  return new Promise((resolve) => {
+function tryBind(port: number, host: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
     const s = net.createServer();
     // A host whose address family is absent (e.g. IPv6 disabled) can't conflict on the port.
-    s.once("error", (err) => resolve(err.code === "EADDRNOTAVAIL" || err.code === "EAFNOSUPPORT"));
+    s.once("error", (err) =>
+      resolve(
+        (err as NodeJS.ErrnoException).code === "EADDRNOTAVAIL" ||
+          (err as NodeJS.ErrnoException).code === "EAFNOSUPPORT"
+      )
+    );
     s.once("listening", () => s.close(() => resolve(true)));
     s.listen(port, host);
   });
 }
 
-async function isPortAvailable(port) {
+export async function isPortAvailable(port: number): Promise<boolean> {
   return (
     (await tryBind(port, "0.0.0.0")) &&
     (await tryBind(port, "::")) &&
@@ -24,15 +30,15 @@ async function isPortAvailable(port) {
   );
 }
 
-async function findAvailablePort(rangeStart, rangeEnd) {
+export async function findAvailablePort(rangeStart: number, rangeEnd: number): Promise<number> {
   for (let port = rangeStart; port <= rangeEnd; port++) {
     if (await isPortAvailable(port)) return port;
   }
   throw new Error(`No available ports in range ${rangeStart}-${rangeEnd}`);
 }
 
-function resolveBinaryPath(binaryName) {
-  const candidates = [];
+export function resolveBinaryPath(binaryName: string): string | null {
+  const candidates: string[] = [];
 
   if (process.resourcesPath) {
     candidates.push(path.join(process.resourcesPath, "bin", binaryName));
@@ -55,10 +61,10 @@ function resolveBinaryPath(binaryName) {
   return null;
 }
 
-async function gracefulStopProcess(proc) {
+export async function gracefulStopProcess(proc: ChildProcess | null): Promise<void> {
   killProcessGroup(proc, "SIGTERM");
 
-  await new Promise((resolve) => {
+  await new Promise<void>((resolve) => {
     const timeout = setTimeout(() => {
       if (proc) killProcessGroup(proc, "SIGKILL");
       resolve();
@@ -75,10 +81,3 @@ async function gracefulStopProcess(proc) {
     }
   });
 }
-
-module.exports = {
-  findAvailablePort,
-  isPortAvailable,
-  resolveBinaryPath,
-  gracefulStopProcess,
-};

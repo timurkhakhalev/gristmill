@@ -21,7 +21,7 @@ const originalLoad = Module._load;
 const CHAIN_MODULES = [
   "../../src/services/localReasoningBridge.ts",
   "../../src/helpers/modelManagerBridge.js",
-  "../../src/helpers/modelDirUtils.js",
+  "../../src/helpers/modelDirUtils.ts",
   "../../src/helpers/llamaServer.js",
 ].map((relative) => require.resolve(relative));
 let electronHome = os.tmpdir();
@@ -44,7 +44,7 @@ function loadChain() {
   };
 
   try {
-    require("../../src/helpers/modelDirUtils.js");
+    require("../../src/helpers/modelDirUtils.ts");
     const bridge = require("../../src/services/localReasoningBridge.ts").default;
     const modelManager = require("../../src/helpers/modelManagerBridge.js").default;
     return { bridge, modelManager };

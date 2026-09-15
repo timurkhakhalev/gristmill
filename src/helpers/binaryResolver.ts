@@ -6,8 +6,8 @@ const debugLogger = require("./debugLogger");
 // Resolves a bundled helper binary across the dev layout (resources/) and the
 // packaged layouts (process.resourcesPath, asar-unpacked). Returns null when
 // no executable candidate exists so callers can fall back gracefully.
-function resolveBundledBinary(binaryName, logContext) {
-  const candidates = [
+export function resolveBundledBinary(binaryName: string, logContext?: string): string | null {
+  const candidates: string[] = [
     path.join(app.getAppPath(), "resources", "bin", binaryName),
     path.join(app.getAppPath(), "resources", binaryName),
   ];
@@ -34,5 +34,3 @@ function resolveBundledBinary(binaryName, logContext) {
   }
   return null;
 }
-
-module.exports = { resolveBundledBinary };

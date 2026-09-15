@@ -1,10 +1,10 @@
-const path = require("path");
-const { spawn } = require("child_process");
-const { TIMEOUTS, killProcess } = require("../utils/process");
+import path from "path";
+import { spawn } from "child_process";
+import { TIMEOUTS, killProcess } from "../utils/process.js";
 
 const TAR_KILL_GRACE_MS = 1000;
 
-function tarExtractionFlags(archivePath) {
+function tarExtractionFlags(archivePath: string): string {
   const lower = archivePath.toLowerCase();
   if (lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2")) return "-xjf";
   if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return "-xzf";
@@ -12,11 +12,17 @@ function tarExtractionFlags(archivePath) {
   return "-xf";
 }
 
-function resolveSystemTarExecutable({
+export interface SystemTarEnvironment {
+  platform?: NodeJS.Platform;
+  arch?: string;
+  env?: Record<string, string | undefined>;
+}
+
+export function resolveSystemTarExecutable({
   platform = process.platform,
   arch = process.arch,
   env = process.env,
-} = {}) {
+}: SystemTarEnvironment = {}): string {
   if (platform !== "win32") return "tar";
 
   const windowsDir = env.SystemRoot || env.SYSTEMROOT || env.WINDIR || env.windir || "C:\\Windows";
@@ -27,9 +33,22 @@ function resolveSystemTarExecutable({
   return path.win32.join(windowsDir, systemDir, "tar.exe");
 }
 
-function runSystemTar(
-  archivePath,
-  destDir,
+import type { ChildProcess } from "child_process";
+
+type SpawnLike = typeof spawn;
+
+export interface RunSystemTarOptions {
+  platform?: NodeJS.Platform;
+  arch?: string;
+  env?: Record<string, string | undefined>;
+  timeoutMs?: number;
+  killGraceMs?: number;
+  spawnImpl?: SpawnLike;
+}
+
+export function runSystemTar(
+  archivePath: string,
+  destDir: string,
   {
     platform = process.platform,
     arch = process.arch,
@@ -37,8 +56,8 @@ function runSystemTar(
     timeoutMs = TIMEOUTS.INSTALL,
     killGraceMs = TAR_KILL_GRACE_MS,
     spawnImpl = spawn,
-  } = {}
-) {
+  }: RunSystemTarOptions = {}
+): Promise<void> {
   // Windows' bundled bsdtar can lack bz2lib and hang while invoking an
   // external bzip2 from PATH. Callers already provide a bundled JS fallback.
   if (platform === "win32" && tarExtractionFlags(archivePath) === "-xjf") {
@@ -55,7 +74,7 @@ function runSystemTar(
     const cwd = pathApi.dirname(archivePath);
     const archiveArg = pathApi.basename(archivePath);
     const destArg = pathApi.relative(cwd, destDir) || ".";
-    let tarProcess;
+    let tarProcess: ChildProcess;
 
     try {
       tarProcess = spawnImpl(
@@ -68,55 +87,56 @@ function runSystemTar(
         }
       );
     } catch (err) {
-      reject(new Error(`Failed to start tar process: ${err.message}`));
+      reject(new Error(`Failed to start tar process: ${(err as Error).message}`));
       return;
     }
 
     let stderr = "";
     let settled = false;
     let timedOut = false;
-    let killGraceTimer = null;
+    let killGraceTimer: NodeJS.Timeout | null = null;
 
-    const finish = (callback, value) => {
+    const finish = (settle: () => void): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutTimer);
       if (killGraceTimer) clearTimeout(killGraceTimer);
-      callback(value);
+      settle();
     };
 
     const timeoutError = () => new Error(`tar extraction timed out after ${timeoutMs}ms`);
 
-    const timeoutTimer = setTimeout(() => {
+    const timeoutTimer: NodeJS.Timeout = setTimeout(() => {
       timedOut = true;
       killProcess(tarProcess, "SIGKILL");
 
       // Normally close follows kill immediately. Do not let a broken process
       // implementation turn the safety timeout into another indefinite wait.
-      killGraceTimer = setTimeout(() => finish(reject, timeoutError()), killGraceMs);
+      killGraceTimer = setTimeout(() => finish(() => reject(timeoutError())), killGraceMs);
     }, timeoutMs);
 
-    tarProcess.stderr.on("data", (data) => {
+    const stderrStream = tarProcess.stderr;
+    if (!stderrStream) {
+      finish(() => reject(new Error("tar process produced no stderr stream")));
+      return;
+    }
+    stderrStream.on("data", (data: Buffer) => {
       stderr += data.toString();
     });
 
     tarProcess.on("close", (code) => {
       if (timedOut) {
-        finish(reject, timeoutError());
+        finish(() => reject(timeoutError()));
       } else if (code === 0) {
-        finish(resolve);
+        finish(() => resolve());
       } else {
-        finish(reject, new Error(`tar extraction failed with code ${code}: ${stderr}`));
+        finish(() => reject(new Error(`tar extraction failed with code ${code}: ${stderr}`)));
       }
     });
 
     tarProcess.on("error", (err) => {
-      finish(reject, new Error(`Failed to start tar process: ${err.message}`));
+      finish(() => reject(new Error(`Failed to start tar process: ${(err as Error).message}`)));
     });
   });
 }
 
-module.exports = {
-  resolveSystemTarExecutable,
-  runSystemTar,
-};

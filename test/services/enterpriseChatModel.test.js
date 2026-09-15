@@ -147,6 +147,55 @@ test("abort between subscribe and start cancels the started stream", async (t) =
   assert.deepEqual(state.cancels, [state.starts[0].streamId, state.starts[0].streamId]);
 });
 
+test("abort settles the local read immediately while the start invoke is pending", async (t) => {
+  const { api, state } = stubApi();
+  let releaseStart;
+  const gate = new Promise((resolve) => (releaseStart = resolve));
+  api.startBehavior = async () => {
+    await gate;
+    return { success: true };
+  };
+  installBrowserGlobals(t, { window: { electronAPI: api } });
+  const { createEnterpriseChatModel } = await loadModel(t);
+
+  const controller = new AbortController();
+  const model = createEnterpriseChatModel("bedrock", "m");
+  const { stream } = await model.doStream({ prompt: [], abortSignal: controller.signal });
+  const reader = stream.getReader();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(state.starts.length, 1);
+
+  let settled = false;
+  const read = reader.read().then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    }
+  );
+
+  // Abort while the start invoke is still pending: the read must settle and
+  // the envelope listener must go without waiting for main.
+  controller.abort();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(
+    { settled, unsubscribed: state.unsubscribed, cancels: state.cancels },
+    { settled: true, unsubscribed: 1, cancels: [state.starts[0].streamId] }
+  );
+
+  // The late main resolution and any late envelopes must not enqueue, close
+  // or error the already-settled stream a second time.
+  api.push({ streamId: state.starts[0].streamId, part: { type: "text-delta", text: "late" } });
+  api.push({ streamId: state.starts[0].streamId, done: true });
+  releaseStart();
+  await read;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, true, "still settled exactly once");
+  assert.equal(state.unsubscribed, 1, "cleanup ran exactly once");
+  await assert.rejects(reader.read(), /Aborted/, "the stream stays errored");
+});
+
 test("explicit consumer cancel settles locally and aborts main", async (t) => {
   const { api, state } = stubApi();
   installBrowserGlobals(t, { window: { electronAPI: api } });

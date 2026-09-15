@@ -149,6 +149,8 @@ export function processBatchQueue(
     let noteName = item.name;
     let sizeBytes = item.sizeBytes;
     let durationSeconds: number | null = null;
+    // The requestId this execution claimed in the module-scoped slot, if any.
+    let claimedRequestId: string | null = null;
 
     try {
       if (item.source === "url" && item.url) {
@@ -201,6 +203,7 @@ export function processBatchQueue(
 
       const requestId = crypto.randomUUID();
       activeRequestId = requestId;
+      claimedRequestId = requestId;
       const transcriptionResult = await transcribeFileWithSpeakers(
         filePath,
         transcription,
@@ -263,9 +266,12 @@ export function processBatchQueue(
           transcriptionErrorKey(err) || (err instanceof Error ? err.message : "batchUnknownError"),
       });
     } finally {
-      // Release the active-id slot (a cancelBatch may have cleared it
-      // already) and the temp file: nothing else owns either.
-      activeRequestId = null;
+      // Release the active-id slot only if this execution still owns it: a
+      // newer batch may have claimed the slot while this one was settling,
+      // and clearing it would leave that batch impossible to hard-cancel.
+      if (activeRequestId === claimedRequestId) {
+        activeRequestId = null;
+      }
       if (tempPath) {
         window.electronAPI.deleteTempFile(tempPath);
       }

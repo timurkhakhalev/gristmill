@@ -80,9 +80,11 @@ export function createEnterpriseChatModel(
       const streamId = crypto.randomUUID();
       const config = getEnterpriseCallSettings(provider);
       let unsubscribe: (() => void) | undefined;
-      const onAbort = () => {
-        void api.enterpriseStreamCancel(streamId);
-      };
+      let settled = false;
+      // Assigned once the stream exists; abort cannot fire before that
+      // (the listener is registered inside start), the initial no-op only
+      // keeps the binding total.
+      let errorLocally: (message: string) => void = () => {};
       // Removes both the envelope listener and the abort listener; safe to
       // call repeatedly and used by every terminal outcome (done/error
       // envelope, failed invoke, consumer cancel, pre-start abort).
@@ -92,15 +94,23 @@ export function createEnterpriseChatModel(
         options.abortSignal?.removeEventListener("abort", onAbort);
       };
 
+      const onAbort = () => {
+        void api.enterpriseStreamCancel(streamId);
+        // Renderer cancellation must complete independently of the main
+        // terminal event (#33): settle the local stream and clean up now,
+        // while the start invoke may still be pending.
+        errorLocally("Aborted");
+      };
+
       const stream = new ReadableStream<LanguageModelV3StreamPart>({
         start: (controller) => {
-          let settled = false;
           const fail = (message: string) => {
             if (settled) return;
             settled = true;
             cleanup();
             controller.error(new Error(message));
           };
+          errorLocally = fail;
           const finish = () => {
             if (settled) return;
             settled = true;

@@ -489,3 +489,4 @@ export class AppleCalendarManager {
 }
 
 module.exports = AppleCalendarManager;
+module.exports.AppleCalendarManager = AppleCalendarManager;

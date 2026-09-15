@@ -99,4 +99,5 @@ export class CalendarSyncInterval {
 }
 
 module.exports = CalendarSyncInterval;
+module.exports.CalendarSyncInterval = CalendarSyncInterval;
 module.exports.FOCUS_SYNC_THROTTLE_MS = FOCUS_SYNC_THROTTLE_MS;

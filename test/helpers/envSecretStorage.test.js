@@ -253,17 +253,36 @@ test("clearAllPersistedData removes .env and the secure-keys directory", async (
   try {
     const manager = new fx.EnvironmentManager();
     manager.saveOpenAIKey("to-be-erased");
-    // _saveKey persists asynchronously (keychain init + mkdir + write + rename);
-    // wait until the blob lands instead of assuming a fixed number of ticks.
+    // _saveKey persists asynchronously (keychain init + mkdir + write +
+    // rename); the pending-write seam makes completion observable instead of
+    // guessing at a number of ticks.
+    await manager._flushSecretWrites();
     const encPath = path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc");
-    for (let i = 0; i < 50 && !fs.existsSync(encPath); i += 1) {
-      await new Promise((resolve) => setImmediate(resolve));
-    }
     assert.ok(fs.existsSync(encPath));
 
     const result = await manager.clearAllPersistedData();
     assert.deepEqual(result, { success: true });
     assert.equal(fs.existsSync(path.join(fx.userData, "secure-keys")), false);
+    assert.equal(process.env.OPENAI_API_KEY, undefined);
+  } finally {
+    fx.restore();
+  }
+});
+
+test("a save fired before clearAllPersistedData cannot resurrect the secret", async () => {
+  const fx = createFixture();
+  try {
+    const manager = new fx.EnvironmentManager();
+    manager.saveOpenAIKey("must-not-survive");
+    // Deliberately no seam await: the clear races the in-flight write.
+    const result = await manager.clearAllPersistedData();
+    assert.deepEqual(result, { success: true });
+    await manager._flushSecretWrites();
+    assert.equal(
+      fs.existsSync(path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc")),
+      false,
+      "a pending write must not land after the rm"
+    );
     assert.equal(process.env.OPENAI_API_KEY, undefined);
   } finally {
     fx.restore();

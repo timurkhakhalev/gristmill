@@ -118,6 +118,7 @@ const {
 const { fetchRealtimeTokenForProvider } = require("./realtimeTokenProviders");
 const { registerCalendarAvailabilityHandler } = require("./calendarAvailabilityIpcHandler");
 const { registerCalendarIntegrationHandlers } = require("./calendarIpcHandlers");
+const { registerNoteFilesHandlers } = require("./noteFilesIpcHandlers");
 const { registerRemoteTranscriptionHandler } = require("./remoteTranscriptionIpcHandler");
 const { registerReasoningHandlers, resolveEnterpriseRuntime } = require("./reasoningIpcHandlers");
 const { registerFileDiarizationHandlers } = require("./fileDiarizationIpcHandlers");
@@ -5000,6 +5001,54 @@ class IPCHandlers {
       logWarn: (message, data, tag) => debugLogger.warn(message, data, tag),
     });
 
+    // Note files (markdown mirror), reveal and Granola import live in the
+    // typed module; the mirror stays a projection of SQLite-owned content.
+    const ipcInstance = this;
+    registerNoteFilesHandlers(ipcMain, {
+      mirror: require("./markdownMirror"),
+      getDefaultNotesPath: () => path.join(app.getPath("userData"), "notes"),
+      setNoteFilesEnabled: (enabled) => {
+        this._noteFilesEnabled = !!enabled;
+      },
+      isNoteFilesEnabled: () => this._noteFilesEnabled,
+      rebuildMirror: (basePath) => this._rebuildMirror(basePath),
+      showItemInFolder: (filePath) => shell.showItemInFolder(filePath),
+      openPath: (dirPath) => shell.openPath(dirPath),
+      pickFolder: async () => {
+        const { dialog } = require("electron");
+        const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+        if (result.canceled || !result.filePaths.length) return { canceled: true };
+        return { canceled: false, path: result.filePaths[0] };
+      },
+      pickGranolaCsvFiles: async (event) => {
+        const { dialog } = require("electron");
+        // Parent the dialog so it opens as a sheet on the settings window —
+        // a parentless panel can land invisible on another display/Space.
+        const parentWindow = BrowserWindow.fromWebContents(event?.sender);
+        const dialogOptions = {
+          properties: ["openFile", "multiSelections"],
+          filters: [{ name: "CSV", extensions: ["csv"] }],
+        };
+        const result = parentWindow
+          ? await dialog.showOpenDialog(parentWindow, dialogOptions)
+          : await dialog.showOpenDialog(dialogOptions);
+        if (result.canceled || !result.filePaths.length) return { canceled: true, filePaths: [] };
+        return { canceled: false, filePaths: result.filePaths };
+      },
+      readFileUtf8: (filePath) => fs.readFileSync(filePath, "utf8"),
+      fileSize: (filePath) => fs.statSync(filePath).size,
+      importNotes: (notes) => this.databaseManager.importNotes(notes),
+      granolaState: {
+        get pending() {
+          return ipcInstance._granolaImportPending;
+        },
+        set pending(value) {
+          ipcInstance._granolaImportPending = value;
+        },
+      },
+      logError: (message, data, tag) => debugLogger.error(message, data, tag),
+    });
+
     // The calendar integration boundary (connections, sync, selection,
     // provider-neutral reads and Calendar privacy settings) lives in the
     // typed module; OAuth/sync/reminders stay inside the managers.
@@ -5167,197 +5216,6 @@ class IPCHandlers {
 
     ipcMain.handle("meeting-notification-ready", async (event) => {
       this.windowManager?.showNotificationWindow(event.sender);
-    });
-
-    // Note files (markdown mirror) handlers
-    ipcMain.handle("note-files-set-enabled", async (_event, enabled, customPath, options) => {
-      try {
-        this._noteFilesEnabled = !!enabled;
-        if (!enabled) return { success: true };
-        const basePath = customPath || path.join(app.getPath("userData"), "notes");
-        if (options?.skipRebuild) {
-          require("./markdownMirror").init(basePath);
-        } else {
-          this._rebuildMirror(basePath);
-        }
-        return { success: true };
-      } catch (error) {
-        debugLogger.error(
-          "Failed to set note-files enabled",
-          { error: error.message },
-          "note-files"
-        );
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("note-files-set-path", async (_event, newPath) => {
-      try {
-        if (!this._noteFilesEnabled) return { success: false, error: "Note files not enabled" };
-        this._rebuildMirror(newPath);
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Failed to set note-files path", { error: error.message }, "note-files");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("note-files-rebuild", async () => {
-      try {
-        if (!this._noteFilesEnabled) return { success: false, error: "Note files not enabled" };
-        this._rebuildMirror();
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Failed to rebuild note files", { error: error.message }, "note-files");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("note-files-get-default-path", async () => {
-      return path.join(app.getPath("userData"), "notes");
-    });
-
-    ipcMain.handle("show-note-file", async (_event, noteId) => {
-      try {
-        const markdownMirror = require("./markdownMirror");
-        const filePath = markdownMirror.getNotePath(noteId);
-        if (!filePath) return { success: false };
-        shell.showItemInFolder(filePath);
-        return { success: true };
-      } catch (error) {
-        debugLogger.error(
-          "Failed to show note file",
-          { noteId, error: error.message },
-          "note-files"
-        );
-        return { success: false };
-      }
-    });
-
-    ipcMain.handle("show-folder-in-explorer", async (_event, folderName) => {
-      try {
-        const markdownMirror = require("./markdownMirror");
-        const dirPath = markdownMirror.getFolderPath(folderName);
-        if (!dirPath) return { success: false };
-        await shell.openPath(dirPath);
-        return { success: true };
-      } catch (error) {
-        debugLogger.error(
-          "Failed to show folder",
-          { folderName, error: error.message },
-          "note-files"
-        );
-        return { success: false };
-      }
-    });
-
-    ipcMain.handle("note-files-pick-folder", async () => {
-      try {
-        const { dialog } = require("electron");
-        const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
-        if (result.canceled || !result.filePaths.length) {
-          return { canceled: true };
-        }
-        return { canceled: false, path: result.filePaths[0] };
-      } catch (error) {
-        debugLogger.error("Failed to pick folder", { error: error.message }, "note-files");
-        return { canceled: true };
-      }
-    });
-
-    ipcMain.handle("granola-import-pick-and-preview", async (event) => {
-      try {
-        const { dialog } = require("electron");
-        // Parent the dialog so it opens as a sheet on the settings window —
-        // a parentless panel can land invisible on another display/Space.
-        const parentWindow = BrowserWindow.fromWebContents(event.sender);
-        // Granola chunks large exports into numbered files (…-000.csv, -001, …),
-        // so let the user grab the whole set in one pick.
-        const dialogOptions = {
-          properties: ["openFile", "multiSelections"],
-          filters: [{ name: "CSV", extensions: ["csv"] }],
-        };
-        const result = parentWindow
-          ? await dialog.showOpenDialog(parentWindow, dialogOptions)
-          : await dialog.showOpenDialog(dialogOptions);
-        if (result.canceled || !result.filePaths.length) {
-          return { canceled: true };
-        }
-        const filePaths = [...result.filePaths].sort();
-        const MAX_IMPORT_BYTES = 200 * 1024 * 1024;
-        const { createGranolaNoteKeyAllocator, parseGranolaCsv } =
-          await import("./granolaImport.js");
-        const allocateNoteKey = createGranolaNoteKeyAllocator();
-        const notes = [];
-        const seenSourceFiles = new Set();
-        let rowIssueCount = 0;
-        for (const filePath of filePaths) {
-          if (fs.statSync(filePath).size > MAX_IMPORT_BYTES) {
-            return { canceled: false, success: false, error: "FILE_TOO_LARGE" };
-          }
-          const parsed = parseGranolaCsv(fs.readFileSync(filePath, "utf8"), {
-            allocateNoteKey,
-          });
-          if (!parsed.ok) {
-            return { canceled: false, success: false, error: parsed.error.code };
-          }
-          // File-level warnings (e.g. ignored columns) are expected on every
-          // real export; only row-scoped problems belong in the issue count.
-          rowIssueCount += parsed.warnings.filter((warning) => warning.row != null).length;
-          for (const note of parsed.notes) {
-            // Granola's source key is deterministic and local. It is enough
-            // to avoid showing the same row twice when a chunked export is
-            // selected twice, without consulting a server identity column.
-            const sourceFile = typeof note.sourceFile === "string" ? note.sourceFile : null;
-            if (!sourceFile || !seenSourceFiles.has(sourceFile)) {
-              if (sourceFile) seenSourceFiles.add(sourceFile);
-              notes.push(note);
-            }
-          }
-        }
-        // The run handler only ever imports what this preview parsed — the
-        // renderer never sends a file path across the bridge.
-        this._granolaImportPending = { notes };
-        return {
-          canceled: false,
-          success: true,
-          fileName: filePaths.map((p) => path.basename(p)).join(", "),
-          total: notes.length,
-          newCount: notes.length,
-          duplicateCount: 0,
-          sampleTitles: notes.slice(0, 5).map((n) => n.title),
-          rowIssueCount,
-        };
-      } catch (error) {
-        debugLogger.error(
-          "Granola import preview failed",
-          { error: error.message },
-          "granola-import"
-        );
-        return { canceled: false, success: false, error: "READ_FAILED" };
-      }
-    });
-
-    ipcMain.handle("granola-import-run", async () => {
-      const pending = this._granolaImportPending;
-      this._granolaImportPending = null;
-      if (!pending) return { success: false, error: "NO_PENDING_IMPORT" };
-      try {
-        const result = this.databaseManager.importNotes(pending.notes);
-        if (result.imported > 0) {
-          const importedIds = result.noteIds;
-          if (this._noteFilesEnabled) this._rebuildMirror();
-        }
-        return {
-          success: true,
-          imported: result.imported,
-          skipped: result.skipped,
-          errors: result.errors,
-        };
-      } catch (error) {
-        debugLogger.error("Granola import failed", { error: error.message }, "granola-import");
-        return { success: false, error: "IMPORT_FAILED" };
-      }
     });
 
     ipcMain.handle("get-speaker-mappings", async (_event, noteId) => {

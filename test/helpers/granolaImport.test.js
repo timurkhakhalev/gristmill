@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const load = () => import("../../src/helpers/granolaImport.js");
+const load = () => import("../../src/helpers/granolaImport.ts");
 
 // ---------------------------------------------------------------------------
 // parseCsv — RFC-4180 tokenizer

@@ -10,6 +10,7 @@ const { createUploadTranscriptionBridge } = require("./src/preload/uploadTranscr
 const { createCalendarAvailabilityBridge } = require("./src/preload/calendarAvailabilityBridge");
 const { createReasoningBridge } = require("./src/preload/reasoningBridge");
 const { createCalendarIntegrationBridge } = require("./src/preload/calendarBridge");
+const { createNoteFilesBridge } = require("./src/preload/noteFilesBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -71,6 +72,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createCalendarAvailabilityBridge(ipcRenderer),
   ...createReasoningBridge(ipcRenderer),
   ...createCalendarIntegrationBridge(ipcRenderer),
+  ...createNoteFilesBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -141,17 +143,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // typed containersBridge above. onSpacePurged has no main-side producer and
   // is not exposed.
 
-  // Note files (markdown mirror) functions
-  noteFilesSetEnabled: (enabled, customPath, options) =>
-    ipcRenderer.invoke("note-files-set-enabled", enabled, customPath, options),
-  noteFilesSetPath: (path) => ipcRenderer.invoke("note-files-set-path", path),
-  noteFilesRebuild: () => ipcRenderer.invoke("note-files-rebuild"),
-  noteFilesGetDefaultPath: () => ipcRenderer.invoke("note-files-get-default-path"),
-  noteFilesPickFolder: () => ipcRenderer.invoke("note-files-pick-folder"),
-  granolaImportPickAndPreview: () => ipcRenderer.invoke("granola-import-pick-and-preview"),
-  granolaImportRun: () => ipcRenderer.invoke("granola-import-run"),
-  showNoteFile: (noteId) => ipcRenderer.invoke("show-note-file", noteId),
-  showFolderInExplorer: (folderName) => ipcRenderer.invoke("show-folder-in-explorer", folderName),
+  // Note files / Granola import live in the typed noteFilesBridge above.
 
   // AI Actions catalog lives in the typed actionsBridge above.
 

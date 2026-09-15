@@ -3,12 +3,16 @@ const assert = require("node:assert/strict");
 const Module = require("node:module");
 
 const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
+const execModuleSpecifier = "../../src/helpers/transcriptionExecutionIpcHandlers";
 const { createUploadCancelRegistry } = require("../../src/helpers/uploadCancelRegistry");
 const originalLoad = Module._load;
 
 // Captures every ipcMain.handle registration and every net.fetch request so the
-// registered handler closures can be invoked directly against a fake `this`.
+// registered handler closures can be invoked directly. `handlers` holds the
+// channels still registered from ipcHandlers.js (the BYOK upload path);
+// `execHandlers` holds the typed transcription execution module's channels.
 const handlers = new Map();
+const execHandlers = new Map();
 const fetches = [];
 let fetchResponse = () => ({
   ok: true,
@@ -91,7 +95,7 @@ Module._load = function loadWithMocks(request, parent, isMain) {
 };
 
 // A permissive `this` for setupHandlers: registration only stores closures, so
-// any manager not exercised by the retry handler can be an inert stub.
+// any manager not exercised by the upload handler can be an inert stub.
 function anything() {
   return new Proxy(function () {}, {
     get: (t, prop) => {
@@ -103,27 +107,59 @@ function anything() {
   });
 }
 
-function buildFakeThis() {
+// The typed transcription execution module's deps: the same key fixtures the
+// old fake-this carried, now passed explicitly to the register function.
+function buildExecutionDeps() {
   const dbRows = new Map([[7, { id: 7, audio_duration_ms: 1200 }]]);
-  const target = {
-    sessionId: "test-session",
-    audioStorageManager: { getAudioBuffer: (id) => (id === 7 ? Buffer.from([1, 2, 3]) : null) },
-    databaseManager: {
-      updateTranscriptionText: () => {},
-      updateTranscriptionStatus: () => {},
-      updateTranscriptionAudio: () => {},
-      getTranscriptionById: (id) => dbRows.get(id),
-    },
+  return {
+    whisperManager: { transcribeLocalWhisper: async () => ({ success: true, text: "" }) },
+    parakeetManager: { transcribeLocalParakeet: async () => ({ success: true, text: "" }) },
+    resolveWhisperVadOptions: () => ({ vadEnabled: false }),
     environmentManager: {
       getOpenAIKey: () => "sk-openai",
       getGroqKey: () => "gk-groq",
       getMistralKey: () => "mk-mistral",
       getXaiKey: () => "xk-xai",
       getTinfoilKey: () => "tk-tinfoil",
+      getGeminiKey: () => "gk-gemini",
       getCustomTranscriptionKey: () => "ck-custom",
       getCortiClientId: () => "corti-id",
       getCortiClientSecret: () => "corti-secret",
     },
+    proxyFetch: async (url, init) => {
+      fetches.push({ url: String(url), init });
+      return fetchResponse(String(url), init);
+    },
+    transcribeWithCorti: async (opts) => {
+      cortiCalls.push(opts);
+      return cortiBehavior(opts);
+    },
+    mintStoredCortiToken: async () => ({ token: "test-token" }),
+    generateText: async () => ({}),
+    getEnterpriseAIModel: () => ({}),
+    bedrockSdk: async () => {
+      throw new Error("AWS SDK is lazy and not exercised by these tests");
+    },
+    bedrockProfileCredentials: () => null,
+    providerBaseUrls: () =>
+      require("../../src/models/modelRegistryData.json").transcriptionProviders,
+    audioStorage: { getAudioBuffer: (id) => (id === 7 ? Buffer.from([1, 2, 3]) : null) },
+    database: {
+      updateTranscriptionText: () => {},
+      updateTranscriptionStatus: () => {},
+      updateTranscriptionAudio: () => {},
+      getTranscriptionById: (id) => dbRows.get(id) ?? null,
+    },
+    broadcast: () => {},
+    logger: { log: () => {}, debug: () => {}, warn: () => {}, error: () => {} },
+  };
+}
+
+// The upload path still registers through ipcHandlers.js; its harness is the
+// same fake-this the file always used.
+function buildUploadFakeThis() {
+  const target = {
+    sessionId: "test-session",
     // The real registry: the extracted byok handler registers every upload
     // here, and a proxy stub would fake a permanently-aborted signal.
     _uploadCancelRegistry: createUploadCancelRegistry(),
@@ -133,13 +169,22 @@ function buildFakeThis() {
   });
 }
 
-let retryHandler;
 test.before(() => {
   delete require.cache[handlersModulePath];
   const IPCHandlers = require(handlersModulePath);
   const Ctor = IPCHandlers.default || IPCHandlers;
-  Ctor.prototype.setupHandlers.call(buildFakeThis());
-  retryHandler = handlers.get("retry-transcription");
+  Ctor.prototype.setupHandlers.call(buildUploadFakeThis());
+});
+
+// The retry/proxy/model-discovery channels register through the typed module.
+let retryHandler;
+test.before(() => {
+  const { registerTranscriptionExecutionHandlers } = require(execModuleSpecifier);
+  registerTranscriptionExecutionHandlers(
+    { handle: (channel, fn) => execHandlers.set(channel, fn) },
+    buildExecutionDeps()
+  );
+  retryHandler = execHandlers.get("retry-transcription");
   assert.ok(retryHandler, "retry-transcription must be registered");
 });
 
@@ -256,7 +301,7 @@ test("proxy transcription handlers resolve to structured errors instead of rejec
       "proxy-xai-transcription",
       "proxy-corti-transcription",
     ]) {
-      const fn = handlers.get(channel);
+      const fn = execHandlers.get(channel);
       assert.ok(fn, `${channel} must be registered`);
       const result = await fn({ sender: {} }, { audioBuffer: new ArrayBuffer(4) });
       assert.equal(typeof result.error, "string", channel);

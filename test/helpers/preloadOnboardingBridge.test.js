@@ -32,6 +32,10 @@ function loadPreloadApi() {
   };
   const source = fs.readFileSync(path.join(__dirname, "../../dist-main/preload.js"), "utf8");
   vm.runInNewContext(source, {
+    // The bundle keeps CJS interop for hybrid manifest modules, so the
+    // sandbox needs the same bindings Node's CJS loader provides.
+    module: { exports: {} },
+    exports: {},
     require: (specifier) => {
       if (specifier === "electron") return electron;
       throw new Error(`Unexpected preload dependency: ${specifier}`);

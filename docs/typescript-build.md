@@ -1221,3 +1221,67 @@ positive graph чист. Inventory графа Electron: 80 JS, 105 TS, 1 MTS,
 Проверка: typecheck 0 ошибок (main/renderer/selectors); lint 0 errors
 (39+2 warnings — baseline, без новых). Inventory графа Electron: 67 JS,
 121 TS, 1 MTS, 25 JSON.
+
+## Этап «local LLM model manager и llama-server»
+
+17 сентября 2026 (issue #44). Local LLM lifecycle (6 файлов:
+`modelManagerBridge`, `llamaServer`, `llamaCppInstaller`, `ggufMetadata`,
+`llamaContextPolicy`, `llmRequestTimeout`) переведён в strict TS за новый
+контракт `localLlmModels`. ModelManagerBridge и LlamaServerManager остаются
+действующими owners; registry JSON и GGUF metadata по-прежнему определяют
+memory/context constraints.
+
+- `ggufMetadata.ts`: типизированный `HeaderCursor` (bounds checks сохранены),
+  `GgufSource`/`GgufMetadata` — absent-метаданные это `undefined`, не
+  придуманный default. `llamaContextPolicy.ts`: `GgufArchitectureMetadata`
+  (scalars + GGUF per-layer arrays), `scalarValue` сужает не-number поля в
+  unknown → тот же fallback, что и до cutover (NaN-путь). Все 15 экспортов
+  прежние.
+- `llamaServer.ts`: `export class LlamaServerManager` с типизированными
+  полями (process/port/contextSize/draft paths/timers), `LlamaServerOptions`,
+  `ChatMessage`, `InferenceOptions`, `LlamaResponseError`; typed
+  `_requestJson<T>`, `buildResponseError` (CONTEXT_TOO_LARGE с
+  neededTokens/maxContextTokens), grow-only restart, idle/health checks
+  сохранены. Dual-export: `module.exports = LlamaServerManager` +
+  `module.exports.LlamaServerManager` (modelManagerBridge и legacy-тесты
+  требуют класс).
+- `modelManagerBridge.ts`: типизированный `ModelManager` (download
+  reservations, drafter-прогресс с clamp, context ceiling с GGUF-метаданными,
+  `_ensurePromptFits` preflight, refuse-ladder при рестартах) +
+  `ModelError`/`ModelNotFoundError`. Dual-export `{ default: singleton,
+  ModelError, ModelNotFoundError }` — main.js/ipcHandlers/тесты требуют
+  `.default`; ES default экспортирует тот же singleton (один инстанс) для
+  `localReasoningBridge.ts` (его double-default cast упрощён до прямой
+  типизированной ссылки, объект тот же).
+- `llamaCppInstaller.ts`: dual-export `{ default: singleton, LlamaCppInstaller }`.
+- `llmRequestTimeout.js` (уже ESM) → `.ts` с типами; TS-импортёры
+  (`ReasoningService`, gemini/openai/tinfoil) не изменились.
+- IPC: `registerLocalLlmModelHandlers` (14 каналов,
+  `src/helpers/localLlmModelIpcHandlers.ts`) с узким `LlmModelManagerLike`/
+  `LlamaCppInstallerLike`; download-семантика 1:1 (tracker sequence на
+  progress/complete/error, подавление error-события при
+  DOWNLOAD_IN_PROGRESS, raw modelId passthrough — менеджер отвечает типами
+  MODEL_NOT_FOUND и т.п., без новой валидации). `llama-cpp-check` сохраняет
+  pre-cutover баг 1:1: `getVersion` на инсталлере не существует → installed
+  binary проходит через catch в `{ isInstalled: false, error }` (пин в
+  тестах; не «чинился» — это изменение поведения, не входящее в issue).
+  `llama-server-start` персистит env только при успехе.
+- Контракт `src/contracts/localLlmModels.ts`: 14 каналов + event,
+  `llmDownloadProgressEventSchema`, результатные интерфейсы
+  (`LocalLlmModelStatus` — зеркало registry-полей без импорта renderer-графа,
+  `LlmDownloadResult`, `LlamaServerStatusRow` и др.), `LocalLlmModelsApi`.
+  Bridge `src/preload/localLlmModelsBridge.ts` (schema-validated
+  `onModelDownloadProgress` — слушатели renderer теперь `(data)`).
+- Тесты: спецификаторы `.js`→`.ts` в 8 файлах; characterization
+  `test/helpers/localLlmModelIpc.test.js` (10 тестов: события sequence,
+  DOWNLOAD_IN_PROGRESS оба пути, getVersion-баг, persist-on-success,
+  tracker-последовательности);
+  `modelManagerBridgeDownloadStatus.test.js` переведён с vm-слайса исходника
+  ipcHandlers.js (handler переехал) на прямую регистрацию
+  `registerLocalLlmModelHandlers` с реальным трекером; strict probes
+  `test/scripts/localLlmModelsTypeProbe.test.js` — коды (2739×2+2740/2322/2322)
+  сверены фактическим tsc-прогоном. Emitted-graph smoke: dual-export формы
+  (класс / `{default}` / named) под plain node CJS и под tsx — exit 0.
+
+Проверка: typecheck ×3 — 0 ошибок; lint 0 errors (39+2 warnings — baseline,
+без новых). Inventory графа Electron: 62 JS, 129 TS, 1 MTS, 25 JSON.

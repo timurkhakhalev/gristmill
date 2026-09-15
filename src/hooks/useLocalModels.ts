@@ -38,7 +38,7 @@ export function useLocalModels() {
   useEffect(() => {
     loadModels();
 
-    const handleProgress = (_event: any, data: LLMDownloadProgressEvent) => {
+    const handleProgress = (data: LLMDownloadProgressEvent) => {
       setProgressMap((prev) => new Map(prev).set(data.modelId, data));
     };
 

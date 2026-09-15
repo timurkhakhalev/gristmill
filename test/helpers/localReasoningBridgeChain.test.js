@@ -20,9 +20,9 @@ const { buildGguf, LLAMA_3_2_3B_ENTRIES } = require("./harness/ggufFixtures");
 const originalLoad = Module._load;
 const CHAIN_MODULES = [
   "../../src/services/localReasoningBridge.ts",
-  "../../src/helpers/modelManagerBridge.js",
+  "../../src/helpers/modelManagerBridge.ts",
   "../../src/helpers/modelDirUtils.ts",
-  "../../src/helpers/llamaServer.js",
+  "../../src/helpers/llamaServer.ts",
 ].map((relative) => require.resolve(relative));
 let electronHome = os.tmpdir();
 
@@ -46,7 +46,7 @@ function loadChain() {
   try {
     require("../../src/helpers/modelDirUtils.ts");
     const bridge = require("../../src/services/localReasoningBridge.ts").default;
-    const modelManager = require("../../src/helpers/modelManagerBridge.js").default;
+    const modelManager = require("../../src/helpers/modelManagerBridge.ts").default;
     return { bridge, modelManager };
   } finally {
     Module._load = originalLoad;

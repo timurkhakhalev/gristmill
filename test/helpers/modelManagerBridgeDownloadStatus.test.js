@@ -4,14 +4,14 @@ const Module = require("node:module");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const vm = require("node:vm");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 const downloadUtils = require("../../src/helpers/downloadUtils");
-const LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus");
+const LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus.ts");
+const { registerLocalLlmModelHandlers } = require("../../src/helpers/localLlmModelIpcHandlers.ts");
 
 const originalLoad = Module._load;
-const modelManagerModulePath = require.resolve("../../src/helpers/modelManagerBridge.js");
+const modelManagerModulePath = require.resolve("../../src/helpers/modelManagerBridge.ts");
 const modelDirUtilsModulePath = require.resolve("../../src/helpers/modelDirUtils.ts");
 let electronHome = os.tmpdir();
 
@@ -48,7 +48,7 @@ function loadModelManager({ downloadFile, checkDiskSpace } = {}) {
     // this manager to the test home so host XDG/OPENWHISPR cache overrides
     // cannot expose real downloaded models to the test.
     require("../../src/helpers/modelDirUtils.ts");
-    const modelManager = require("../../src/helpers/modelManagerBridge.js").default;
+    const modelManager = require("../../src/helpers/modelManagerBridge.ts").default;
     modelManager.getModelsDir = () => path.join(electronHome, ".cache", "openwhispr", "models");
     return modelManager;
   } finally {
@@ -56,37 +56,34 @@ function loadModelManager({ downloadFile, checkDiskSpace } = {}) {
   }
 }
 
+// The production registration moved behind the typed handler module; drive
+// it directly instead of slicing the handler source out of ipcHandlers.js.
 async function loadModelDownloadHandler(modelManager) {
-  const source = await fs.readFile(require.resolve("../../src/helpers/ipcHandlers.js"), "utf8");
-  const start = source.indexOf('    ipcMain.handle("model-download",');
-  const end = source.indexOf('    ipcMain.handle("model-delete",', start);
-  assert.ok(start >= 0 && end > start, "the model-download handler must be registered");
-
   const events = [];
   const status = new LocalModelDownloadStatus();
-  const context = {
-    localModelDownloadStatus: status,
-    windowManager: {
-      sendToControlPanel(channel, data) {
-        events.push({ channel, ...data });
-      },
-    },
-  };
-  let handleDownload;
-  // Execute the production registration without booting unrelated Electron services.
-  vm.runInNewContext(`(function () { ${source.slice(start, end)} }).call(context)`, {
-    context,
-    ipcMain: {
+  const handlers = new Map();
+  registerLocalLlmModelHandlers(
+    {
       handle(channel, handler) {
-        assert.equal(channel, "model-download");
-        handleDownload = handler;
+        handlers.set(channel, handler);
       },
     },
-    require(request) {
-      assert.equal(request, "./modelManagerBridge");
-      return { default: modelManager };
-    },
-  });
+    {
+      modelManager,
+      llamaCppInstaller: {},
+      downloadStatus: status,
+      progressSender: {
+        sendToControlPanel(channel, data) {
+          events.push({ channel, ...data });
+        },
+      },
+      joinPath: (...segments) => segments.join("/"),
+      persistEnvAfterServerStart: () => {},
+      logError: () => {},
+    }
+  );
+  const handleDownload = handlers.get("model-download");
+  assert.ok(handleDownload, "the model-download handler must be registered");
   return { handleDownload, events, status };
 }
 

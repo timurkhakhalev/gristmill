@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { WebSocketServer } = require("ws");
 
-const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming");
+const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming.ts");
 const { deferred } = require("./harness/deferred");
 
 async function withPrematureCloseServer(run) {
@@ -118,6 +118,43 @@ test("managed mode is rejected before opening a socket", async () => {
     () => streaming.warmup({ token: "managed-token", mode: "openwhispr" }),
     /requires a direct provider API key/
   );
+});
+
+test("Turn fixtures preserve partial, final, and formatted replacement callbacks", () => {
+  const streaming = new AssemblyAiStreaming();
+  const partials = [];
+  const finals = [];
+  streaming.onPartialTranscript = (text) => partials.push(text);
+  streaming.onFinalTranscript = (text, startedAt) => finals.push({ text, startedAt });
+
+  streaming.handleMessage(Buffer.from("{"));
+  streaming.handleMessage(
+    Buffer.from(JSON.stringify({ type: "Turn", transcript: { malformed: true } }))
+  );
+  streaming.handleMessage(
+    Buffer.from(JSON.stringify({ type: "Turn", transcript: "Hello", end_of_turn: false }))
+  );
+  streaming.speechStartedAt = 1_000;
+  streaming.handleMessage(
+    Buffer.from(JSON.stringify({ type: "Turn", transcript: "Hello.", end_of_turn: true }))
+  );
+  streaming.handleMessage(
+    Buffer.from(
+      JSON.stringify({
+        type: "Turn",
+        transcript: "Hello!",
+        end_of_turn: true,
+        turn_is_formatted: true,
+      })
+    )
+  );
+
+  assert.deepEqual(partials, ["Hello"]);
+  assert.deepEqual(finals, [
+    { text: "Hello.", startedAt: 1_000 },
+    { text: "Hello!", startedAt: 1_000 },
+  ]);
+  assert.deepEqual(streaming.completedSegments, ["Hello!"]);
 });
 
 test("a warm connection opened for another speech model is not reused", async () => {

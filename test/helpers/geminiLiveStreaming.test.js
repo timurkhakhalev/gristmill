@@ -5,7 +5,7 @@ const { WebSocketServer } = require("ws");
 const {
   GeminiLiveStreaming,
   buildGeminiLiveUrl,
-} = require("../../src/helpers/geminiLiveStreaming");
+} = require("../../src/helpers/geminiLiveStreaming.ts");
 
 const FRAME = Buffer.alloc(1600); // one 50ms worklet frame at 16kHz s16le (silence)
 const LOUD_FRAME = Buffer.alloc(1600, 0x20); // same frame at speech level (~0.25 RMS)

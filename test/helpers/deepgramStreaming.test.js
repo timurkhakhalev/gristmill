@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { WebSocketServer } = require("ws");
 
-const DeepgramStreaming = require("../../src/helpers/deepgramStreaming");
+const DeepgramStreaming = require("../../src/helpers/deepgramStreaming.ts");
 
 // Loopback Deepgram: warmup resolves on the socket opening, connect on the
 // first server message, so every accepted socket answers with Metadata.
@@ -30,6 +30,47 @@ test("managed mode is rejected before opening a socket", async () => {
     () => streaming.warmup({ token: "managed-token", mode: "openwhispr" }),
     /requires a direct provider API key/
   );
+});
+
+test("Results fixtures preserve partial, final, and session-relative timing callbacks", () => {
+  const streaming = new DeepgramStreaming();
+  const partials = [];
+  const finals = [];
+  streaming.sessionStartedAt = 2_000;
+  streaming.onPartialTranscript = (text) => partials.push(text);
+  streaming.onFinalTranscript = (text, startedAt) => finals.push({ text, startedAt });
+
+  streaming.handleMessage(Buffer.from("{"));
+  streaming.handleMessage(
+    Buffer.from(
+      JSON.stringify({
+        type: "Results",
+        channel: { alternatives: [{ transcript: { malformed: true } }] },
+      })
+    )
+  );
+  streaming.handleMessage(
+    Buffer.from(
+      JSON.stringify({
+        type: "Results",
+        channel: { alternatives: [{ transcript: "Hello" }] },
+      })
+    )
+  );
+  streaming.handleMessage(
+    Buffer.from(
+      JSON.stringify({
+        type: "Results",
+        is_final: true,
+        start: 1.25,
+        channel: { alternatives: [{ transcript: "Hello world" }] },
+      })
+    )
+  );
+
+  assert.deepEqual(partials, ["Hello"]);
+  assert.deepEqual(finals, [{ text: "Hello world", startedAt: 3_250 }]);
+  assert.deepEqual(streaming.completedSegments, ["Hello world"]);
 });
 
 // Keeps the real query string (language, keyterms) while dialing the loopback server.

@@ -1,6 +1,6 @@
 /**
  * Live STT canary. Per keyed provider, acquires a session credential through
- * the app's REAL token registry (realtimeTokenProviders.js) and, where the
+ * the app's REAL token registry (realtimeTokenProviders.ts) and, where the
  * transport is a plain WebSocket, performs a live handshake against the same
  * endpoint the app dials — so a provider changing its auth, endpoint, or
  * handshake surfaces here on a schedule instead of in a customer report
@@ -11,7 +11,7 @@
  * batch default is posted the way the app builds it so a retired model or
  * field surfaces here too.
  *
- * Run: node scripts/stt-canary.mjs
+ * Run: node --import tsx scripts/stt-canary.mjs
  * Keys come from STT_CANARY_<PROVIDER>_KEY env vars; providers without a key
  * are skipped and listed. Exit 1 when any probe on a keyed provider fails, or
  * when no key is configured at all — an all-skip run probed nothing and must
@@ -24,12 +24,12 @@ import os from "os";
 import path from "path";
 import WebSocket from "ws";
 import ffmpegPath from "ffmpeg-static";
-import tokenProviders from "../src/helpers/realtimeTokenProviders.js";
+import tokenProviders from "../src/helpers/realtimeTokenProviders.ts";
 import audioUtils from "../src/utils/audioUtils.js";
 import { transcribeWithGemini } from "../src/helpers/geminiTranscription.ts";
-import geminiLive from "../src/helpers/geminiLiveStreaming.js";
-import AssemblyAiStreaming from "../src/helpers/assemblyAiStreaming.js";
-import DeepgramStreaming from "../src/helpers/deepgramStreaming.js";
+import geminiLive from "../src/helpers/geminiLiveStreaming.ts";
+import AssemblyAiStreaming from "../src/helpers/assemblyAiStreaming.ts";
+import DeepgramStreaming from "../src/helpers/deepgramStreaming.ts";
 import modelRegistryData from "../src/models/modelRegistryData.json" with { type: "json" };
 
 const { fetchRealtimeTokenForProvider } = tokenProviders;
@@ -47,7 +47,7 @@ const HANDSHAKE_TIMEOUT_MS = 15000;
 // decode the container, short enough to stay far inside every request cap.
 const SILENT_WAV = () => pcm16ToWav(Buffer.alloc(16000));
 
-// Mirrors the app's dial: openaiRealtimeStreaming.js connects with a bare
+// Mirrors the app's dial: openaiRealtimeStreaming.ts connects with a bare
 // Bearer header; a null token means the credential already rides in the URL
 // (AssemblyAI). `authorization` overrides both, for a provider whose scheme is
 // not Bearer; passing the client's own header keeps the probe from drifting.

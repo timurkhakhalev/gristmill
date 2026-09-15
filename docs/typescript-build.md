@@ -50,7 +50,8 @@ Renderer по-прежнему собирается в `src/dist`; native binari
   (`tsconfig.settings-selectors.json`, `types: []`) над чистым графом
   provider-настроек: `contracts/inferenceSettings.ts`,
   `config/settingsSelectors.ts`, `config/inferenceScopes.ts`,
-  `config/transcriptionCapabilities.ts`, `helpers/reasoningRouting.ts`.
+  `config/transcriptionCapabilities.ts`, `helpers/reasoningRouting.ts`,
+  `helpers/meetingTranscriptionRouting.ts`.
   Граф не импортирует store/Zustand/localStorage/i18n/Electron — только
   contracts и статические capabilities; compiler probes в
   `test/helpers/settingsSelectorsTypes.test.js` проверяют отказ на неверный
@@ -745,7 +746,7 @@ contacts), consumers обновлены без compatibility re-export.
   остаются JS. Invalid window/event ID/selection args отклоняются до
   manager/DB call.
 - Status DTO фиксирует absence-vs-false: Google fallback — `{connected:false,
-  email:null}` без `configured/accounts`; Microsoft fallback — без
+email:null}` без `configured/accounts`; Microsoft fallback — без
   `configured`; Apple fallback — `{connected:false, sourceNames:[]}`.
   Malformed успешный status не проходит как валидный (parse-fallback на
   disconnected-форму).
@@ -1085,14 +1086,14 @@ persistence переведены в strict TS: `environment.js`(532) → `.ts`,
   описывает legacy-blob recovery.
 - Behavior сохранён: env precedence (userData `.env` override → fallback
   paths), ленивая инициализация crypto, migration sentinel (`secure-keys/
-  .migrated` пишется до strip plaintext, failed migration сохраняет .env и
+.migrated` пишется до strip plaintext, failed migration сохраняет .env и
   НЕ пишет sentinel), round-trip verification, atomic tmp+rename записи
   (`.enc` и `.env`, сериализованные общим envWriteQueue), rename fallback
   CUSTOM_REASONING→CUSTOM_CLEANUP, clearAllPersistedData, BYOK accessors,
   генерируемые из каталога на prototype. `.env`-значения секретов не
   логируются (в error-логе только key name + code).
 - Catalog: `BYOK_API_KEYS` теперь `as const satisfies readonly
-  ByokApiKeyEntry[]` — literal имена get/save делают сгенерированную
+ByokApiKeyEntry[]` — literal имена get/save делают сгенерированную
   поверхность типизированной (`EnvironmentManagerWithByok` для typed
   consumers; runtime-аттачмент на prototype как раньше). Dual-export
   паттерн везде явный: `module.exports = X; module.exports.X = X` —
@@ -1249,7 +1250,7 @@ memory/context constraints.
   reservations, drafter-прогресс с clamp, context ceiling с GGUF-метаданными,
   `_ensurePromptFits` preflight, refuse-ladder при рестартах) +
   `ModelError`/`ModelNotFoundError`. Dual-export `{ default: singleton,
-  ModelError, ModelNotFoundError }` + ES default того же singleton.
+ModelError, ModelNotFoundError }` + ES default того же singleton.
   Интероп-урок: под tsx ESM-граф default-import этого модуля резолвится в
   САМ объект module.exports (обёртку), а не в singleton — поэтому
   `localReasoningBridge.ts` сохраняет pre-cutover double-`.default` доступ;
@@ -1307,10 +1308,10 @@ worker-контрактом и speaker-контрактом IPC.
   слайс onnxruntime (без pull типов пакета в utility process), dispatch через
   контракт. tsconfig.main.json include для worker-entries обновлён
   `src/workers/*.js` → `*.ts`; mainBuild-ассерты (`dist-main/src/workers/
-  onnxWorker.js`, asarUnpack) остаются валидны; fork остаётся по
+onnxWorker.js`, asarUnpack) остаются валидны; fork остаётся по
   asar-virtual `.js` пути — исходный `.ts` в Electron не запускается.
 - `onnxWorkerClient.ts` strict: dual-export singleton (`module.exports =
-  instance` + `OnnxWorkerClient`/`WorkerCrashedError`/`WorkerOverloadedError`
+instance` + `OnnxWorkerClient`/`WorkerCrashedError`/`WorkerOverloadedError`
   re-attach). `speakerEmbeddings.ts` strict: dual-export singleton +
   `MAX_EMBEDDING_SECONDS` static; PCM-буферы клонируются (без transferList),
   как и раньше.
@@ -1346,3 +1347,53 @@ worker-контрактом и speaker-контрактом IPC.
 Проверка: typecheck ×3 — 0 ошибок; lint 0 errors (39+2 baseline). Inventory
 графа Electron: 53 JS, 142 TS, 1 MTS, 25 JSON. Pack-проверка packaged
 utilityProcess ping/load (native runtime) — за оркестратором.
+
+## Этап «realtime provider clients и token routing»
+
+15 сентября 2026 (issue #46). Шесть действующих realtime transport clients
+(`openaiRealtimeStreaming`, `assemblyAiStreaming`, `deepgramStreaming`,
+`cortiStreaming`, `tinfoilRealtimeStreaming`, `geminiLiveStreaming`) и три
+статических routing-модуля (`meetingStreamingProviders`,
+`realtimeTokenProviders`, `meetingTranscriptionRouting`) переведены в strict
+TS. JS counterparts удалены; токены остались во внутреннем main credential
+path, новые IPC channels/bridge не добавлялись.
+
+- Каждый wire protocol сужает распарсенный JSON из `unknown` локально, рядом
+  с обработкой provider message. Общая выдуманная union внешних payload не
+  вводилась. Endpoint, auth dialect, model/language/environment/tenant,
+  keyterms, audio framing, warm/reconnect, commit/flush и disconnect budgets
+  сохранены.
+- Для `ws` используются минимальные структурные socket interfaces по реально
+  вызываемым методам; новая зависимость `@types/ws` не понадобилась, поэтому
+  `package.json` и `pnpm-lock.yaml` не менялись.
+- `STREAMING_CLIENT_BY_PROVIDER` остаётся конечной typed map из пяти meeting
+  transports. `MeetingStreamingProvider` и allow-list выводятся из неё;
+  Gemini остаётся dictation-only и не попадает в Note Recording. Lookup
+  неизвестного provider fail-closed; string-like ключ приводится один раз и
+  тем же значением участвует в lookup и сообщении ошибки.
+- Token registry выводит конечный `RealtimeTokenProvider`; overload различает
+  одиночный token и tuple двух streams. BYOK-only проверки, AssemblyAI token
+  mint per stream, Corti single mint и duplicate raw keys не менялись.
+- Реальные meeting callers сведены к `MeetingStreamingClient`; отдельные
+  provider option interfaces сохраняют различия transport-параметров.
+  `meetingTranscriptionRouting.ts` также включён в strict selector graph, а
+  `ModelRegistry` возвращает суженный meeting-provider список.
+- Runtime exports следуют фактическим consumers: OpenAI/AssemblyAI/Deepgram/
+  Corti имеют `module.exports = Class` + named property (и Deepgram static),
+  Gemini/Tinfoil/registry/token сохраняют named-object shape. Существующие
+  tsx default-import drills не упрощались. Source fixtures и `stt-canary`
+  используют явные `.ts` specifiers; production CJS imports продолжают
+  резолвить emitted `.js`.
+- Characterization добавляет raw partial/final/malformed fixtures для
+  AssemblyAI/Deepgram/Corti, Corti flush и cancel-before-ready, timestamp
+  contract для live speaker labels и emitted CommonJS smoke. Strict probe
+  фиксирует отсутствие Gemini в meeting registry, tuple-result двух токенов
+  и positive full graph. `Module._load` stubs принимают оба варианта локальных
+  specifiers; raw `.ts` через `vm.runInNewContext` не исполняется.
+
+Проверка исполнителем: `pnpm run typecheck` — 0 ошибок во всех трёх графах;
+`pnpm run lint` — 0 errors, 31+2 baseline warnings. Tests/build/install по
+явному ограничению этой сессии не запускались; focused, full test, emitted
+build, pack и isolated Electron smoke остаются за оркестратором. Inventory по
+фактическому `tsc --listFilesOnly`: 43 JS, 150 TS, 1 MTS, 25 JSON; срез source
+`src` без `src/dist`: 51 JS, 0 JSX, 1 MJS, 349 TS, 254 TSX, 1 MTS.

@@ -1,5 +1,75 @@
-const WebSocket = require("ws");
+interface SocketData {
+  toString(): string;
+}
+
+interface RealtimeSocket {
+  readyState: number;
+  on(event: "open", listener: () => void): this;
+  on(event: "message", listener: (data: SocketData) => void): this;
+  on(event: "error", listener: (error: Error) => void): this;
+  on(event: "close", listener: (code: number, reason?: SocketData) => void): this;
+  removeAllListeners(event: string): this;
+  send(data: string | Buffer): void;
+  close(code?: number): void;
+  ping(): void;
+}
+
+interface RealtimeSocketConstructor {
+  new (url: string): RealtimeSocket;
+  readonly OPEN: number;
+}
+
+const WebSocket: RealtimeSocketConstructor = require("ws");
 const debugLogger = require("./debugLogger");
+
+type Timer = ReturnType<typeof setTimeout>;
+type JsonRecord = Record<string, unknown>;
+
+export interface AssemblyAiStreamingOptions {
+  token?: string | null;
+  mode?: string;
+  sampleRate?: number;
+  model?: string | null;
+  minTurnSilence?: number;
+  maxTurnSilence?: number;
+  keyterms?: readonly string[];
+}
+
+interface TranscriptResult {
+  text: string;
+  audioDuration?: number;
+}
+
+interface CompletedTurn {
+  text: string;
+  normalized: string;
+  startedAt: number;
+}
+
+const isRecord = (value: unknown): value is JsonRecord =>
+  typeof value === "object" && value !== null;
+
+const recordField = (record: JsonRecord, key: string): JsonRecord | undefined => {
+  const value = record[key];
+  return isRecord(value) ? value : undefined;
+};
+
+const stringField = (record: JsonRecord | undefined, key: string): string | undefined => {
+  const value = record?.[key];
+  return typeof value === "string" ? value : undefined;
+};
+
+const numberField = (record: JsonRecord, key: string): number | undefined => {
+  const value = record[key];
+  return typeof value === "number" ? value : undefined;
+};
+
+const errorMessage = (error: unknown): string | undefined =>
+  error instanceof Error
+    ? error.message
+    : isRecord(error)
+      ? stringField(error, "message")
+      : undefined;
 
 const SAMPLE_RATE = 16000;
 const WEBSOCKET_TIMEOUT_MS = 30000;
@@ -17,10 +87,46 @@ const MAX_FRAME_MS = 250;
 // Both bounds follow the rate the socket opened at: Note Recording streams at
 // 24 kHz, where a frame sized against this module's 16 kHz default lasts only
 // 33 ms (#2140).
-const minFrameBytes = (sampleRate) => Math.ceil((sampleRate * 2 * MIN_FRAME_MS) / 1000);
-const maxFrameBytes = (sampleRate) => Math.floor((sampleRate * 2 * MAX_FRAME_MS) / 1000);
+const minFrameBytes = (sampleRate: number): number =>
+  Math.ceil((sampleRate * 2 * MIN_FRAME_MS) / 1000);
+const maxFrameBytes = (sampleRate: number): number =>
+  Math.floor((sampleRate * 2 * MAX_FRAME_MS) / 1000);
 
-class AssemblyAiStreaming {
+export class AssemblyAiStreaming {
+  declare ws: RealtimeSocket | null;
+  declare sessionId: string | null;
+  declare isConnected: boolean;
+  declare onPartialTranscript: ((text: string) => void) | null;
+  declare onFinalTranscript: ((text: string, startedAt: number) => void) | null;
+  declare onError: ((error: Error) => void) | null;
+  declare onSessionEnd: ((result: TranscriptResult) => void) | null;
+  declare onConnectionLost: ((error: Error) => void) | null;
+  declare connectionLossNotified: boolean;
+  declare pendingResolve: (() => void) | null;
+  declare pendingReject: ((reason?: unknown) => void) | null;
+  declare connectionTimeout: Timer | null;
+  declare accumulatedText: string;
+  declare lastTurnText: string;
+  declare turns: CompletedTurn[];
+  declare terminationResolve: ((result: TranscriptResult) => void) | null;
+  declare cachedToken: string | null;
+  declare tokenFetchedAt: number | null;
+  declare mode: "byok" | null;
+  declare warmConnection: RealtimeSocket | null;
+  declare warmConnectionReady: boolean;
+  declare warmConnectionOptions: AssemblyAiStreamingOptions | null;
+  declare warmSessionId: string | null;
+  declare requestedModel: string | null;
+  declare sessionSampleRate: number;
+  declare rewarmAttempts: number;
+  declare rewarmTimer: Timer | null;
+  declare keepAliveInterval: Timer | null;
+  declare isDisconnecting: boolean;
+  declare pendingAudio: Buffer[];
+  declare pendingAudioBytes: number;
+  declare completedSegments: string[];
+  declare speechStartedAt: number | null;
+
   constructor() {
     this.ws = null;
     this.sessionId = null;
@@ -57,7 +163,7 @@ class AssemblyAiStreaming {
     this.speechStartedAt = null;
   }
 
-  buildWebSocketUrl(options) {
+  buildWebSocketUrl(options: AssemblyAiStreamingOptions & { token: string }): string {
     const sampleRate = options.sampleRate || SAMPLE_RATE;
     this.sessionSampleRate = sampleRate;
     const params = new URLSearchParams({
@@ -82,7 +188,7 @@ class AssemblyAiStreaming {
     return `wss://streaming.assemblyai.com/v3/ws?${params.toString()}`;
   }
 
-  cacheToken(token) {
+  cacheToken(token: string): void {
     this.cachedToken = token;
     this.tokenFetchedAt = Date.now();
     debugLogger.debug("AssemblyAI token cached", { expiresIn: TOKEN_EXPIRY_MS });
@@ -91,7 +197,7 @@ class AssemblyAiStreaming {
   // A token or warm socket minted under one direct credential must never serve
   // another connection. Callers that read the cache before connecting adopt
   // the direct mode first.
-  adoptMode(options) {
+  adoptMode(options: AssemblyAiStreamingOptions): void {
     if (options.mode !== "byok") {
       throw new Error("AssemblyAI realtime requires a direct provider API key");
     }
@@ -108,24 +214,24 @@ class AssemblyAiStreaming {
     this.mode = mode;
   }
 
-  isTokenValid() {
+  isTokenValid(): boolean {
     if (!this.cachedToken || !this.tokenFetchedAt) return false;
     const age = Date.now() - this.tokenFetchedAt;
     return age < TOKEN_EXPIRY_MS - TOKEN_REFRESH_BUFFER_MS;
   }
 
-  getCachedToken() {
+  getCachedToken(): string | null {
     return this.isTokenValid() ? this.cachedToken : null;
   }
 
-  startKeepAlive() {
+  startKeepAlive(): void {
     this.stopKeepAlive();
     this.keepAliveInterval = setInterval(() => {
       if (this.warmConnection && this.warmConnection.readyState === WebSocket.OPEN) {
         try {
           this.warmConnection.ping();
         } catch (err) {
-          debugLogger.debug("AssemblyAI keep-alive ping failed", { error: err.message });
+          debugLogger.debug("AssemblyAI keep-alive ping failed", { error: errorMessage(err) });
           this.cleanupWarmConnection();
         }
       } else {
@@ -134,14 +240,14 @@ class AssemblyAiStreaming {
     }, KEEPALIVE_INTERVAL_MS);
   }
 
-  stopKeepAlive() {
+  stopKeepAlive(): void {
     if (this.keepAliveInterval) {
       clearInterval(this.keepAliveInterval);
       this.keepAliveInterval = null;
     }
   }
 
-  async warmup(options = {}) {
+  async warmup(options: AssemblyAiStreamingOptions = {}): Promise<void> {
     const { token } = options;
     if (!token) {
       throw new Error("Streaming token is required for warmup");
@@ -164,10 +270,10 @@ class AssemblyAiStreaming {
     this.warmConnectionOptions = options;
     this.rewarmAttempts = 0;
 
-    const url = this.buildWebSocketUrl(options);
+    const url = this.buildWebSocketUrl({ ...options, token });
     debugLogger.debug("AssemblyAI warming up connection");
 
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       let settled = false;
       const warmupTimeout = setTimeout(() => {
         if (settled) return;
@@ -184,18 +290,18 @@ class AssemblyAiStreaming {
 
       this.warmConnection.on("message", (data) => {
         try {
-          const message = JSON.parse(data.toString());
-          if (message.type === "Begin" && !settled) {
+          const parsed: unknown = JSON.parse(data.toString());
+          if (isRecord(parsed) && parsed.type === "Begin" && !settled) {
             settled = true;
             clearTimeout(warmupTimeout);
             this.warmConnectionReady = true;
-            this.warmSessionId = message.id || null;
+            this.warmSessionId = stringField(parsed, "id") || null;
             this.startKeepAlive();
-            debugLogger.debug("AssemblyAI connection warmed up", { sessionId: message.id });
+            debugLogger.debug("AssemblyAI connection warmed up", { sessionId: parsed.id });
             resolve();
           }
         } catch (err) {
-          debugLogger.error("AssemblyAI warmup message parse error", { error: err.message });
+          debugLogger.error("AssemblyAI warmup message parse error", { error: errorMessage(err) });
         }
       });
 
@@ -233,7 +339,7 @@ class AssemblyAiStreaming {
     });
   }
 
-  scheduleRewarm() {
+  scheduleRewarm(): void {
     if (this.rewarmAttempts >= MAX_REWARM_ATTEMPTS) {
       debugLogger.debug("AssemblyAI max re-warm attempts reached, will cold-start next recording");
       return;
@@ -254,17 +360,17 @@ class AssemblyAiStreaming {
       attempt: this.rewarmAttempts,
       delayMs: delay,
     });
-    clearTimeout(this.rewarmTimer);
+    if (this.rewarmTimer) clearTimeout(this.rewarmTimer);
     this.rewarmTimer = setTimeout(() => {
       this.rewarmTimer = null;
       if (this.hasWarmConnection() || this.isConnected) return;
       this.warmup({ ...this.warmConnectionOptions, token }).catch((err) => {
-        debugLogger.debug("AssemblyAI auto re-warm failed", { error: err.message });
+        debugLogger.debug("AssemblyAI auto re-warm failed", { error: errorMessage(err) });
       });
     }, delay);
   }
 
-  useWarmConnection() {
+  useWarmConnection(): boolean {
     if (!this.warmConnection || !this.warmConnectionReady) {
       return false;
     }
@@ -318,12 +424,12 @@ class AssemblyAiStreaming {
     return true;
   }
 
-  cleanupWarmConnection() {
+  cleanupWarmConnection(): void {
     this.stopKeepAlive();
     if (this.warmConnection) {
       try {
         this.warmConnection.close();
-      } catch (err) {
+      } catch {
         // Ignore
       }
       this.warmConnection = null;
@@ -333,7 +439,7 @@ class AssemblyAiStreaming {
     this.warmSessionId = null;
   }
 
-  hasWarmConnection() {
+  hasWarmConnection(): boolean {
     return (
       this.warmConnection !== null &&
       this.warmConnectionReady &&
@@ -341,7 +447,7 @@ class AssemblyAiStreaming {
     );
   }
 
-  async connect(options = {}) {
+  async connect(options: AssemblyAiStreamingOptions = {}): Promise<void> {
     const { token } = options;
     if (!token) {
       throw new Error("Streaming token is required");
@@ -364,14 +470,14 @@ class AssemblyAiStreaming {
     // warning could never fire for the model actually requested.
     if (
       this.hasWarmConnection() &&
-      ((this.warmConnectionOptions.model || null) !== (options.model || null) ||
-        (this.warmConnectionOptions.sampleRate || SAMPLE_RATE) !==
+      ((this.warmConnectionOptions?.model || null) !== (options.model || null) ||
+        (this.warmConnectionOptions?.sampleRate || SAMPLE_RATE) !==
           (options.sampleRate || SAMPLE_RATE))
     ) {
       debugLogger.debug("AssemblyAI warm connection differs, cold-starting", {
-        warm: this.warmConnectionOptions.model || null,
+        warm: this.warmConnectionOptions?.model || null,
         requested: options.model || null,
-        warmSampleRate: this.warmConnectionOptions.sampleRate || SAMPLE_RATE,
+        warmSampleRate: this.warmConnectionOptions?.sampleRate || SAMPLE_RATE,
         requestedSampleRate: options.sampleRate || SAMPLE_RATE,
       });
       this.cleanupWarmConnection();
@@ -385,10 +491,10 @@ class AssemblyAiStreaming {
       }
     }
 
-    const url = this.buildWebSocketUrl(options);
+    const url = this.buildWebSocketUrl({ ...options, token });
     debugLogger.debug("AssemblyAI streaming connecting (cold start)");
 
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       this.pendingResolve = resolve;
       this.pendingReject = reject;
 
@@ -443,7 +549,7 @@ class AssemblyAiStreaming {
     });
   }
 
-  notifyConnectionLost(error) {
+  notifyConnectionLost(error: Error): void {
     if (this.connectionLossNotified) return;
     this.connectionLossNotified = true;
     if (this.onConnectionLost) {
@@ -453,26 +559,31 @@ class AssemblyAiStreaming {
     }
   }
 
-  handleMessage(data) {
+  handleMessage(data: SocketData): void {
     try {
-      const message = JSON.parse(data.toString());
+      const parsed: unknown = JSON.parse(data.toString());
+      if (!isRecord(parsed)) return;
+      const message = parsed;
 
       switch (message.type) {
         case "Begin":
-          this.sessionId = message.id;
+          this.sessionId = stringField(message, "id") || null;
           this.isConnected = true;
-          clearTimeout(this.connectionTimeout);
+          if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
           debugLogger.debug("AssemblyAI session started", { sessionId: this.sessionId });
           // AssemblyAI ignores unrecognized query params instead of rejecting them,
           // so a bad speech_model silently downgrades the session.
           if (
-            message.configuration?.model &&
+            stringField(recordField(message, "configuration"), "model") &&
             this.requestedModel &&
-            message.configuration.model !== this.requestedModel
+            stringField(recordField(message, "configuration"), "model") !== this.requestedModel
           ) {
             debugLogger.warn(
               "AssemblyAI applied a different speech model than requested",
-              { requested: this.requestedModel, applied: message.configuration.model },
+              {
+                requested: this.requestedModel,
+                applied: stringField(recordField(message, "configuration"), "model"),
+              },
               "transcription"
             );
           }
@@ -484,10 +595,11 @@ class AssemblyAiStreaming {
           break;
 
         case "Turn":
-          if (message.transcript) {
+          if (stringField(message, "transcript")) {
+            const transcript = stringField(message, "transcript") || "";
             if (message.end_of_turn) {
               // Turn has ended - append once, then replace with formatted variant if needed
-              const trimmedTranscript = message.transcript.trim();
+              const trimmedTranscript = transcript.trim();
               const normalizedTranscript = this.normalizeTurnText(trimmedTranscript);
               const previousTurn = this.turns[this.turns.length - 1];
 
@@ -528,33 +640,33 @@ class AssemblyAiStreaming {
               this.accumulatedText = this.turns.map((turn) => turn.text).join(" ");
               this.onFinalTranscript?.(this.accumulatedText, speechTimestamp);
               debugLogger.debug("AssemblyAI final transcript (end_of_turn)", {
-                text: message.transcript.slice(0, 100),
+                text: transcript.slice(0, 100),
                 totalAccumulated: this.accumulatedText.length,
               });
             } else if (message.turn_is_formatted) {
               // Formatted but turn not ended yet - show as preview without accumulating
-              this.onPartialTranscript?.(message.transcript);
+              this.onPartialTranscript?.(transcript);
             } else {
               // Partial transcript - show real-time updates (current turn only)
-              this.onPartialTranscript?.(message.transcript);
+              this.onPartialTranscript?.(transcript);
             }
           }
           break;
 
         case "Termination":
           debugLogger.debug("AssemblyAI session terminated", {
-            audioDuration: message.audio_duration_seconds,
+            audioDuration: numberField(message, "audio_duration_seconds"),
           });
           // Resolve any pending termination wait
           if (this.terminationResolve) {
             this.terminationResolve({
-              audioDuration: message.audio_duration_seconds,
+              audioDuration: numberField(message, "audio_duration_seconds"),
               text: this.accumulatedText,
             });
             this.terminationResolve = null;
           }
           this.onSessionEnd?.({
-            audioDuration: message.audio_duration_seconds,
+            audioDuration: numberField(message, "audio_duration_seconds"),
             text: this.accumulatedText,
           });
           this.cleanup();
@@ -562,7 +674,7 @@ class AssemblyAiStreaming {
 
         case "Error":
           debugLogger.error("AssemblyAI streaming error", { error: message.error });
-          this.onError?.(new Error(message.error));
+          this.onError?.(new Error(stringField(message, "error")));
           break;
 
         case "SpeechStarted":
@@ -573,11 +685,11 @@ class AssemblyAiStreaming {
           debugLogger.debug("AssemblyAI unknown message type", { type: message.type });
       }
     } catch (err) {
-      debugLogger.error("AssemblyAI message parse error", { error: err.message });
+      debugLogger.error("AssemblyAI message parse error", { error: errorMessage(err) });
     }
   }
 
-  normalizeTurnText(text) {
+  normalizeTurnText(text: string): string {
     return text
       .toLowerCase()
       .replace(/[^\p{L}\p{N}\s]/gu, " ")
@@ -585,7 +697,7 @@ class AssemblyAiStreaming {
       .trim();
   }
 
-  sendAudio(pcmBuffer) {
+  sendAudio(pcmBuffer: Buffer): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return false;
     }
@@ -619,7 +731,7 @@ class AssemblyAiStreaming {
     return true;
   }
 
-  forceEndpoint() {
+  forceEndpoint(): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return false;
     }
@@ -629,7 +741,7 @@ class AssemblyAiStreaming {
     return true;
   }
 
-  async disconnect(terminate = true) {
+  async disconnect(terminate = true): Promise<TranscriptResult> {
     if (!this.ws) return { text: this.accumulatedText };
 
     this.isDisconnecting = true;
@@ -638,12 +750,12 @@ class AssemblyAiStreaming {
       try {
         this.ws.send(JSON.stringify({ type: "Terminate" }));
 
-        let timeoutId;
+        let timeoutId: Timer | undefined;
         const result = await Promise.race([
-          new Promise((resolve) => {
+          new Promise<TranscriptResult>((resolve) => {
             this.terminationResolve = resolve;
           }),
-          new Promise((resolve) => {
+          new Promise<TranscriptResult>((resolve) => {
             timeoutId = setTimeout(() => {
               debugLogger.debug("AssemblyAI termination timeout, using accumulated text");
               resolve({ text: this.accumulatedText });
@@ -657,7 +769,7 @@ class AssemblyAiStreaming {
         this.isDisconnecting = false;
         return result;
       } catch (err) {
-        debugLogger.debug("AssemblyAI terminate send failed", { error: err.message });
+        debugLogger.debug("AssemblyAI terminate send failed", { error: errorMessage(err) });
       }
     }
 
@@ -667,8 +779,8 @@ class AssemblyAiStreaming {
     return result;
   }
 
-  cleanup() {
-    clearTimeout(this.connectionTimeout);
+  cleanup(): void {
+    if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
     this.connectionTimeout = null;
 
     this.pendingAudio = [];
@@ -679,7 +791,7 @@ class AssemblyAiStreaming {
     if (this.ws) {
       try {
         this.ws.close();
-      } catch (err) {
+      } catch {
         // Ignore close errors
       }
       this.ws = null;
@@ -690,10 +802,10 @@ class AssemblyAiStreaming {
     this.terminationResolve = null;
   }
 
-  cleanupAll() {
+  cleanupAll(): void {
     this.cleanup();
     this.cleanupWarmConnection();
-    clearTimeout(this.rewarmTimer);
+    if (this.rewarmTimer) clearTimeout(this.rewarmTimer);
     this.rewarmTimer = null;
     this.cachedToken = null;
     this.tokenFetchedAt = null;
@@ -701,7 +813,12 @@ class AssemblyAiStreaming {
     this.turns = [];
   }
 
-  getStatus() {
+  getStatus(): {
+    isConnected: boolean;
+    sessionId: string | null;
+    hasWarmConnection: boolean;
+    hasValidToken: boolean;
+  } {
     return {
       isConnected: this.isConnected,
       sessionId: this.sessionId,
@@ -712,3 +829,4 @@ class AssemblyAiStreaming {
 }
 
 module.exports = AssemblyAiStreaming;
+module.exports.AssemblyAiStreaming = AssemblyAiStreaming;

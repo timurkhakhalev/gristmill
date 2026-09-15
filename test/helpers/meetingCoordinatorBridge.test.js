@@ -144,7 +144,9 @@ async function createFixture({ responses = {}, engine } = {}) {
     const handler = handlers.get(channel);
     if (!handler) throw new Error(`No handler for ${channel}`);
     if (channel in responses) return responses[channel](...args);
-    return handler(null, ...args);
+    // Sender-scoped channels (auto-end ack/respond) read event.sender; the
+    // fixture's engine fakes ignore it.
+    return handler({ sender: null }, ...args);
   };
   const transport = {
     invoke: invokeHandler,
@@ -220,13 +222,18 @@ test("event payloads reach callbacks and malformed ones are dropped", async () =
   pushEvent("meeting-transcription-segment", null);
 
   assert.equal(segments.length, 1);
-  assert.deepEqual(segments[0], { text: "hello", source: "mic", type: "final", timestamp: 12 });
+  assert.deepEqual(plain(segments[0]), {
+    text: "hello",
+    source: "mic",
+    type: "final",
+    timestamp: 12,
+  });
 
   const autoEnd = [];
   const unsubscribeAutoEnd = api.onMeetingAutoEndRequested?.((request) => autoEnd.push(request));
   pushEvent("meeting-auto-end-requested", { sessionId: "s1", reason: "silence" });
   pushEvent("meeting-auto-end-requested", { sessionId: 7 });
-  assert.deepEqual(autoEnd, [{ sessionId: "s1", reason: "silence" }]);
+  assert.deepEqual(plain(autoEnd), [{ sessionId: "s1", reason: "silence" }]);
 
   unsubscribe?.();
   unsubscribeAutoEnd?.();

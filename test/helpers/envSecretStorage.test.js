@@ -119,6 +119,26 @@ test.afterEach(() => {
   delete process.env.CUSTOM_REASONING_API_KEY;
 });
 
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+
+// Gates writes through the manager's real persistence path: `start` decides
+// which calls block on a test-controlled promise before touching the disk.
+function gateSaveSecretKey(manager, shouldGate) {
+  const originalSave = manager._saveSecretKey.bind(manager);
+  manager._saveSecretKey = async (name, value) => {
+    const gate = shouldGate(name, value);
+    if (gate) await gate.promise;
+    await originalSave(name, value);
+  };
+}
+
 test("keychain backend round-trips a secret and persists the master key", () => {
   const fx = createFixture();
   try {
@@ -284,6 +304,146 @@ test("a save fired before clearAllPersistedData cannot resurrect the secret", as
       "a pending write must not land after the rm"
     );
     assert.equal(process.env.OPENAI_API_KEY, undefined);
+  } finally {
+    fx.restore();
+  }
+});
+
+// Issue #71: the pending-write map used to hold one promise per key, so a
+// second save replaced the first and the clear only waited out the newest —
+// the older save could land after the rm and resurrect its .enc file.
+test("clear waits for every queued write of a key, not just the newest", async () => {
+  const fx = createFixture();
+  try {
+    const manager = new fx.EnvironmentManager();
+    const gateA = deferred();
+    const started = [];
+    gateSaveSecretKey(manager, (name, value) => {
+      started.push(`${name}:${value}`);
+      return started.length === 1 ? gateA : null;
+    });
+
+    manager.saveOpenAIKey("gated-value");
+    manager.saveOpenAIKey("queued-value");
+    await tick();
+    assert.deepEqual(
+      started,
+      ["OPENAI_API_KEY:gated-value"],
+      "the queued write runs after the first one settles, not concurrently"
+    );
+
+    const clearPromise = manager.clearAllPersistedData();
+    let cleared = false;
+    void clearPromise.then(() => {
+      cleared = true;
+    });
+    await tick();
+    assert.equal(cleared, false, "clear must not complete while the first write is pending");
+
+    gateA.resolve();
+    assert.deepEqual(await clearPromise, { success: true });
+    await manager._flushSecretWrites();
+    assert.equal(
+      fs.existsSync(path.join(fx.userData, "secure-keys")),
+      false,
+      "neither write resurrects a .enc file after the rm"
+    );
+    assert.equal(process.env.OPENAI_API_KEY, undefined, "no env value is restored");
+  } finally {
+    fx.restore();
+  }
+});
+
+test("different keys write independently and clear waits for all of them", async () => {
+  const fx = createFixture();
+  try {
+    const manager = new fx.EnvironmentManager();
+    const gates = new Map();
+    gateSaveSecretKey(manager, (name) => gates.get(name) ?? null);
+    gates.set("OPENAI_API_KEY", deferred());
+    gates.set("CUSTOM_CLEANUP_API_KEY", deferred());
+
+    manager.saveOpenAIKey("openai-value");
+    manager.saveCleanupCustomKey("cleanup-value");
+    await tick();
+
+    const clearPromise = manager.clearAllPersistedData();
+    let cleared = false;
+    void clearPromise.then(() => {
+      cleared = true;
+    });
+    await tick();
+    assert.equal(cleared, false);
+
+    gates.get("OPENAI_API_KEY").resolve();
+    await tick();
+    assert.equal(cleared, false, "clear still waits for the second key's write");
+
+    gates.get("CUSTOM_CLEANUP_API_KEY").resolve();
+    assert.deepEqual(await clearPromise, { success: true });
+    assert.equal(fs.existsSync(path.join(fx.userData, "secure-keys")), false);
+    assert.equal(process.env.OPENAI_API_KEY, undefined);
+    assert.equal(process.env.CUSTOM_CLEANUP_API_KEY, undefined);
+  } finally {
+    fx.restore();
+  }
+});
+
+test("a queued delete runs after its save and leaves no artifact", async () => {
+  const fx = createFixture();
+  try {
+    const manager = new fx.EnvironmentManager();
+    const encPath = path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc");
+    const gate = deferred();
+    let gated = true;
+    gateSaveSecretKey(manager, () => {
+      if (!gated) return null;
+      gated = false;
+      return gate;
+    });
+
+    manager.saveOpenAIKey("temp-value");
+    manager.saveOpenAIKey("");
+    await tick();
+    gate.resolve();
+    await manager._flushSecretWrites();
+
+    assert.equal(fs.existsSync(encPath), false, "the delete landed after the save, not before");
+    assert.equal(process.env.OPENAI_API_KEY, undefined);
+  } finally {
+    fx.restore();
+  }
+});
+
+test("a failed write is logged without the value and the next write still lands", async () => {
+  const fx = createFixture();
+  try {
+    const manager = new fx.EnvironmentManager();
+    const encPath = path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc");
+    const originalEncrypt = fx.secretCrypto.encrypt;
+    fx.secretCrypto.encrypt = () => {
+      throw new Error("encrypt exploded");
+    };
+
+    manager.saveOpenAIKey("doomed-value");
+    await manager._flushSecretWrites();
+    assert.equal(fs.existsSync(encPath), false, "the failed write left no artifact");
+    assert.ok(
+      fx.logs.error.some(
+        (entry) => entry.d?.key === "OPENAI_API_KEY" && /encrypt exploded/.test(entry.d?.error)
+      ),
+      "the failure is logged with the key and error, never the value"
+    );
+    assert.ok(!allLogText(fx.logs).includes("doomed-value"));
+
+    fx.secretCrypto.encrypt = originalEncrypt;
+    manager.saveOpenAIKey("recovered-value");
+    await manager._flushSecretWrites();
+    assert.equal(fs.existsSync(encPath), true, "the queue continued after the failure");
+    assert.equal(process.env.OPENAI_API_KEY, "recovered-value");
+
+    assert.deepEqual(await manager.clearAllPersistedData(), { success: true });
+    assert.equal(fs.existsSync(encPath), false);
   } finally {
     fx.restore();
   }

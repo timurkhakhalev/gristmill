@@ -1,7 +1,7 @@
-const PARAKEET_MINIMUM_MACOS_VERSION = "15.5";
-const PARAKEET_UNSUPPORTED_OS_CODE = "PARAKEET_UNSUPPORTED_OS";
+export const PARAKEET_MINIMUM_MACOS_VERSION = "15.5";
+export const PARAKEET_UNSUPPORTED_OS_CODE = "PARAKEET_UNSUPPORTED_OS";
 
-function compareVersions(left, right) {
+export function compareVersions(left: string, right: string): number {
   const leftParts = String(left).split(".").map(Number);
   const rightParts = String(right).split(".").map(Number);
   const length = Math.max(leftParts.length, rightParts.length);
@@ -14,12 +14,29 @@ function compareVersions(left, right) {
   return 0;
 }
 
-function getParakeetCapability({ platform = process.platform, systemVersion } = {}) {
+export interface ParakeetCapabilityOptions {
+  platform?: NodeJS.Platform;
+  systemVersion?: string | null;
+}
+
+export interface ParakeetCapability {
+  supported: boolean;
+  code?: string;
+  message?: string;
+  minimumMacOSVersion?: string;
+}
+
+export function getParakeetCapability({
+  platform = process.platform,
+  systemVersion,
+}: ParakeetCapabilityOptions = {}): ParakeetCapability {
   if (platform !== "darwin") return { supported: true };
 
   const detectedVersion =
     systemVersion ??
-    (typeof process.getSystemVersion === "function" ? process.getSystemVersion() : null);
+    (typeof (process as { getSystemVersion?: () => string }).getSystemVersion === "function"
+      ? (process as { getSystemVersion: () => string }).getSystemVersion()
+      : null);
 
   // Plain Node does not expose Electron's system-version API. Production main-process
   // calls always provide it; allowing Node keeps build tooling and unit tests portable.
@@ -35,20 +52,12 @@ function getParakeetCapability({ platform = process.platform, systemVersion } = 
   };
 }
 
-function assertParakeetSupported(options) {
+export function assertParakeetSupported(options?: ParakeetCapabilityOptions): void {
   const capability = getParakeetCapability(options);
   if (capability.supported) return;
 
-  throw Object.assign(new Error(capability.message), {
+  throw Object.assign(new Error(capability.message as string), {
     code: capability.code,
     minimumMacOSVersion: capability.minimumMacOSVersion,
   });
 }
-
-module.exports = {
-  PARAKEET_MINIMUM_MACOS_VERSION,
-  PARAKEET_UNSUPPORTED_OS_CODE,
-  compareVersions,
-  getParakeetCapability,
-  assertParakeetSupported,
-};

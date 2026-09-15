@@ -3,8 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const vm = require("node:vm");
-const { createRequire } = require("node:module");
+const Module = require("node:module");
 const registry = require("../../src/models/modelRegistryData.json");
 const { getRequiredModelFiles } = require("../../src/helpers/parakeetModelInfo");
 
@@ -16,13 +15,12 @@ const manifest = {
   archive_bytes: info.expectedSizeBytes,
   archive_sha256: "a".repeat(64),
 };
-const managerFile = path.resolve(__dirname, "../../src/helpers/parakeet.js");
+const managerFile = path.resolve(__dirname, "../../src/helpers/parakeet.ts");
 
 function setup(t, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "parakeet-manifest-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const calls = { downloads: [], manifests: [], events: [], errors: [], warms: 0, timeouts: [] };
-  const realRequire = createRequire(managerFile);
   const timeout = new AbortController();
   let downloadControl;
   const fakeFs = options.writeError
@@ -46,21 +44,28 @@ function setup(t, options = {}) {
       },
     },
     "./modelDirUtils": { getModelsDirForService: () => root },
-    "./parakeetCapability": { assertParakeetSupported() {} },
-    "./parakeetServer": class {
-      isModelDownloaded(name) {
-        return fs.existsSync(path.join(root, name, "tokens.txt"));
-      }
-      getServerStatus() {
-        return { running: !!options.running, starting: false };
-      }
-      isAvailable() {
-        return true;
-      }
-      async startServer() {
-        calls.warms++;
-        calls.events.push("warm");
-      }
+    "./parakeetCapability": {
+      assertParakeetSupported() {},
+      getParakeetCapability: () => ({ supported: true }),
+    },
+    "./parakeetServer": {
+      // Named-export shape: the TS manager imports
+      // `import { ParakeetServerManager } from "./parakeetServer.js"`.
+      ParakeetServerManager: class {
+        isModelDownloaded(name) {
+          return fs.existsSync(path.join(root, name, "tokens.txt"));
+        }
+        getServerStatus() {
+          return { running: !!options.running, starting: false };
+        }
+        isAvailable() {
+          return true;
+        }
+        async startServer() {
+          calls.warms++;
+          calls.events.push("warm");
+        }
+      },
     },
     "./downloadUtils": {
       async downloadFile(url, target, { signal }) {
@@ -84,6 +89,7 @@ function setup(t, options = {}) {
         return downloadControl;
       },
       createDownloadInProgressError: () => new Error("download already running"),
+      cleanupStaleDownloads: async () => {},
       checkDiskSpace: async () => ({ ok: true }),
       // Mirrors the real helper's contract (test/helpers/downloadUtils.test.js):
       // non-2xx rejects, otherwise the parsed body comes back.
@@ -101,26 +107,40 @@ function setup(t, options = {}) {
       },
     },
   };
-  const exports = { exports: {} };
-  vm.runInNewContext(
-    fs.readFileSync(managerFile, "utf8"),
-    {
-      require: (name) => stubs[name] || realRequire(name),
-      module: exports,
-      URL,
-      AbortSignal: {
-        timeout(ms) {
-          calls.timeouts.push(ms);
-          return timeout.signal;
-        },
-      },
-      process,
-      Buffer,
-      console,
+
+  // tsx compiles the TS manager to CJS on require, so every internal module
+  // request (specifiers now carry the post-cutover .js extension) routes
+  // through Module._load and can be stubbed per test.
+  const originalLoad = Module._load;
+  const stubFor = (request) => {
+    if (request === "fs") return stubs.fs;
+    if (request.startsWith("./") || request.startsWith("../")) {
+      return stubs[request.replace(/\.js$/, "")];
+    }
+    return undefined;
+  };
+  Module._load = function (request, parent, isMain) {
+    return stubFor(request) || originalLoad.call(this, request, parent, isMain);
+  };
+  const realAbortSignal = globalThis.AbortSignal;
+  globalThis.AbortSignal = Object.assign(Object.create(realAbortSignal), {
+    timeout(ms) {
+      calls.timeouts.push(ms);
+      return timeout.signal;
     },
-    { filename: managerFile }
-  );
-  const manager = new exports.exports();
+  });
+  t.after(() => {
+    Module._load = originalLoad;
+    globalThis.AbortSignal = realAbortSignal;
+  });
+  delete require.cache[managerFile];
+  let ParakeetManager;
+  try {
+    ({ ParakeetManager } = require(managerFile));
+  } finally {
+    Module._load = originalLoad;
+  }
+  const manager = new ParakeetManager();
   let extracts = 0;
   manager._runTarExtract = async (_archive, destination) => {
     extracts++;

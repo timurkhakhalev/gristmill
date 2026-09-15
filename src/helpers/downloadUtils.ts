@@ -330,6 +330,10 @@ function downloadAttempt(
 export interface FetchJsonOptions {
   headers?: Record<string, string>;
   signal?: unknown;
+  // Passthrough request options the manifest probe relies on (cookies/cache
+  // semantics); forwarded to net.fetch unchanged.
+  credentials?: string;
+  cache?: string;
 }
 
 export async function fetchJson<T = unknown>(url: string, options: FetchJsonOptions = {}): Promise<T> {

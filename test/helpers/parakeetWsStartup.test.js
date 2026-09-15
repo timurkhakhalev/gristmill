@@ -1,32 +1,33 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
-const { createRequire } = require("node:module");
-const fs = require("node:fs");
+const Module = require("node:module");
 const os = require("node:os");
 const path = require("node:path");
-const vm = require("node:vm");
 const modelData = require("../../src/models/modelRegistryData.json");
 
+// tsx compiles the TS helper to CJS on require, so its internal module
+// requests (post-cutover specifiers carry a .js extension) route through
+// Module._load. Mock keys stay extensionless; the hook strips the emitted
+// ".js" suffix before matching.
 function loadHelper(name, mocks) {
   const filename = require.resolve(`../../src/helpers/${name}`);
-  const localRequire = createRequire(filename);
-  const module = { exports: {} };
-  vm.runInNewContext(
-    fs.readFileSync(filename, "utf8"),
-    {
-      module,
-      require: (request) => mocks[request] ?? localRequire(request),
-      process,
-      Buffer,
-      setTimeout,
-      clearTimeout,
-      setInterval,
-      clearInterval,
-    },
-    { filename }
-  );
-  return module.exports;
+  const originalLoad = Module._load;
+  const mockFor = (request) => {
+    if (Object.prototype.hasOwnProperty.call(mocks, request)) return mocks[request];
+    const stripped = request.replace(/\.js$/, "");
+    if (Object.prototype.hasOwnProperty.call(mocks, stripped)) return mocks[stripped];
+    return undefined;
+  };
+  delete require.cache[filename];
+  Module._load = function (request, parent, isMain) {
+    return mockFor(request) || originalLoad.call(this, request, parent, isMain);
+  };
+  try {
+    return require(filename);
+  } finally {
+    Module._load = originalLoad;
+  }
 }
 
 async function startupArgs(modelName, runtime = "offline", language = null, registry = modelData) {

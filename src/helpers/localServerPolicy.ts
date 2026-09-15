@@ -4,11 +4,17 @@
 // A scope stores its local selection as a catalog family id (qwen, gemma, …),
 // never the literal "local", so only the scope's mode says whether it runs
 // locally. A scope that is switched off never runs, so it needs no server.
+export interface LocalServerNeedsInput {
+  useCleanupModel: boolean;
+  cleanupMode?: string | null;
+  cleanupModel?: string | null;
+}
+
 export function resolveLocalServerNeeds({
   useCleanupModel,
   cleanupMode,
   cleanupModel,
-}) {
+}: LocalServerNeedsInput): { cleanup: string; stopServer: boolean } {
   const cleanup = useCleanupModel && cleanupMode === "local" ? cleanupModel?.trim() || "" : "";
   return { cleanup, stopServer: !cleanup };
 }

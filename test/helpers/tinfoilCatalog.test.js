@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 
-const catalogModulePath = require.resolve("../../src/helpers/tinfoilCatalog.js");
+const catalogModulePath = require.resolve("../../src/helpers/tinfoilCatalog.ts");
 const originalLoad = Module._load;
 
 function loadCatalog(fetchImpl) {

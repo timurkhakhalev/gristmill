@@ -1,4 +1,10 @@
-export function isSelfHostedTranscription(settings) {
+export interface SelfHostedTranscriptionSettings {
+  transcriptionMode?: unknown;
+  remoteTranscriptionUrl?: unknown;
+  remoteTranscriptionModel?: unknown;
+}
+
+export function isSelfHostedTranscription(settings: SelfHostedTranscriptionSettings | null | undefined): boolean {
   const mode =
     typeof settings?.transcriptionMode === "string" ? settings.transcriptionMode.trim() : "";
   const remoteUrl =
@@ -8,7 +14,9 @@ export function isSelfHostedTranscription(settings) {
   return mode === "self-hosted" && remoteUrl.length > 0;
 }
 
-export function resolveSelfHostedTranscriptionModel(settings) {
+export function resolveSelfHostedTranscriptionModel(
+  settings: SelfHostedTranscriptionSettings | null | undefined
+): string | null {
   if (!isSelfHostedTranscription(settings)) return null;
   const model =
     typeof settings?.remoteTranscriptionModel === "string"

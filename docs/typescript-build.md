@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **93 JS, 92 TS, 1 MTS и 25 JSON**
+а не всеми файлами в каталоге helpers. В нём **80 JS, 105 TS, 1 MTS и 25 JSON**
 (только `src/`; main/preload/worker — отдельные entry points). Entry points:
 main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
@@ -174,7 +174,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/constants/whisperVad.json`
 - `src/helpers/abortError.ts`
 - `src/helpers/agentStreamRequestRegistry.ts`
-- `src/helpers/anthropicResponse.js`
+- `src/helpers/anthropicResponse.ts`
 - `src/helpers/appleCalendarManager.ts`
 - `src/helpers/assemblyAiStreaming.js`
 - `src/helpers/audioActivityDetector.js`
@@ -195,15 +195,15 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/preload/reasoningBridge.ts`
 - `src/preload/calendarBridge.ts`
 - `src/preload/calendarAvailabilityBridge.ts`
-- `src/helpers/bedrockCatalog.js`
+- `src/helpers/bedrockCatalog.ts`
 - `src/helpers/binaryResolver.ts`
 - `src/helpers/builtinActions.ts`
 - `src/helpers/calendarReminderScheduler.ts`
 - `src/helpers/calendarSyncInterval.ts`
 - `src/helpers/cliBridge.ts`
-- `src/helpers/cortiAuth.js`
+- `src/helpers/cortiAuth.ts`
 - `src/helpers/cortiStreaming.js`
-- `src/helpers/cortiTranscription.js`
+- `src/helpers/cortiTranscription.ts`
 - `src/helpers/database.ts`
 - `src/helpers/dbTimestamp.ts`
 - `src/helpers/debugLogger.js`
@@ -216,13 +216,13 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/downloadUtils.ts`
 - `src/helpers/dragManager.js`
 - `src/helpers/electronProcessIds.js`
-- `src/helpers/enterpriseAiProviders.js`
+- `src/helpers/enterpriseAiProviders.ts`
 - `src/helpers/enterpriseProviderErrors.js`
 - `src/helpers/environment.ts`
 - `src/helpers/externalUrlOpener.js`
 - `src/helpers/ffmpegUtils.ts`
 - `src/helpers/geminiLiveStreaming.js`
-- `src/helpers/geminiTranscription.js`
+- `src/helpers/geminiTranscription.ts`
 - `src/helpers/ggufMetadata.js`
 - `src/helpers/globeKeyManager.js`
 - `src/helpers/googleCalendarManager.ts`
@@ -263,7 +263,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/modelDirUtils.ts`
 - `src/helpers/modelManagerBridge.js`
 - `src/helpers/navigationGuard.js`
-- `src/helpers/networkErrors.js`
+- `src/helpers/networkErrors.ts`
 - `src/helpers/noteSearch.ts`
 - `src/helpers/notificationTimer.js`
 - `src/helpers/oauthLoopbackFlow.ts`
@@ -278,12 +278,12 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/parakeetWsResult.js`
 - `src/helpers/parakeetWsServer.js`
 - `src/helpers/processListCache.js`
-- `src/helpers/providerConnectionTest.js`
+- `src/helpers/providerConnectionTest.ts`
 - `src/helpers/realtimeTokenProviders.js`
 - `src/helpers/retentionSettings.ts`
 - `src/helpers/safeTempDir.ts`
 - `src/helpers/secretCrypto.ts`
-- `src/helpers/selfHostedTranscription.js`
+- `src/helpers/selfHostedTranscription.ts`
 - `src/helpers/sidecarPidFile.ts`
 - `src/helpers/sidecarReaper.ts`
 - `src/helpers/sidecarRegistry.ts`
@@ -314,10 +314,10 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/calendarAvailability.ts`
 - `src/helpers/calendarAvailabilityService.ts`
 - `src/helpers/calendarAvailabilityIpcHandler.ts`
-- `src/helpers/tinfoilCatalog.js`
+- `src/helpers/tinfoilCatalog.ts`
 - `src/helpers/tinfoilRealtimeStreaming.js`
-- `src/helpers/tinfoilSecureClient.js`
-- `src/helpers/tinfoilTranscription.js`
+- `src/helpers/tinfoilSecureClient.ts`
+- `src/helpers/tinfoilTranscription.ts`
 - `src/helpers/transcriptFormatter.ts`
 - `src/helpers/transcriptText.ts`
 - `src/helpers/transcriptionRoute.ts`
@@ -1112,3 +1112,49 @@ migration preserves plaintext, clearAllPersistedData, секреты не поп
 в логи); strict probes `test/scripts/envSecretTypeProbe.test.js` — коды
 (2345/2322/2554×2/2339) сверены фактическим tsc-прогоном, positive graph
 чист. Inventory графа Electron: 93 JS, 92 TS, 1 MTS, 25 JSON.
+
+## Этап «provider factories, response adapters и connection checks»
+
+16 сентября 2026 (issue #42). Оставшийся unchecked JS за typed
+upload/reasoning boundary переведён в strict TS (14 файлов) и убрано
+дублирование endpoint policy.
+
+- Factories/errors: `enterpriseAiProviders.ts` (узкие
+  `EnterpriseRuntimeConfig`/credential-chain types, lazy requires прежние),
+  `enterpriseProviderErrors.ts` — mapped error union (`MappedEnterpriseError`
+  с technicalDetails), Bedrock retry/abort options, SSRF endpoint guard;
+  SDK raw errors сужаются через `asErrorRecord` без any. Приоритеты
+  retry/failure, messageKey/messageParams и retryable — без изменений.
+- Upload adapters: `cortiAuth.ts` (token cache keying по digest секрета,
+  timeout/`AbortSignal.any`), `cortiTranscription.ts` (interaction REST flow,
+  cleanup на собственном timeout), `tinfoilSecureClient.ts` (attested client
+  per session), `tinfoilTranscription.ts`, `geminiTranscription.ts`
+  (Interactions API, 400+API_KEY_INVALID fallback), `geminiResponse.ts`,
+  `selfHostedTranscription.ts`, `anthropicResponse.ts`, `networkErrors.ts`,
+  `bedrockCatalog.ts`, `tinfoilCatalog.ts` — все auth dialects, cancellation,
+  malformed-response handling сохранены; contracts #32/#33 deps
+  (`transcribeWithCorti/Tinfoil/Gemini` сигнатуры) уже совпадают.
+- URL policy dedup: characterization-parity тест
+  `test/helpers/providerUrlPolicyParity.test.js` (private-LAN HTTP,
+  public HTTP denial, IPv4/IPv6/.local/.ts.net, decorators, suffixes,
+  model-list candidates, custom-endpoint private-HTTP rule) — после него
+  CJS-зеркала в `providerConnectionTest.ts` удалены; модуль импортирует
+  `normalizeBaseUrl`/`getModelListBaseCandidates` из `constants.mts` и
+  `isSecureHttpEndpoint` из `urlUtils.ts` (Vite-модуль в main не
+  импортируется). Deepgram/AssemblyAI 200-only probe и
+  MODEL_LIST_UNVERIFIABLE semantics сохранены.
+- Экспорт-модель: все 14 модулей — named ESM exports без `module.exports`
+  (consumers деструктурируют именованные функции; класс-паттерн #57 здесь не
+  нужен). Emitted-graph prod-path smoke (tsc --outDir + compiled consumer с
+  cross-module named imports) — exit 0. `scripts/stt-canary.mjs` переведён на
+  `.ts`-спецификатор geminiTranscription (Node 24 type-stripping).
+- Connection-check IPC остался в текущих каналах (`test-provider-connection`
+  / `test-enterprise-connection`) — их vertical не входит в этот issue;
+  типизированные результаты уже описаны в reasoning/upload contracts.
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors (39+2
+warnings — baseline, без новых);
+strict probes `test/scripts/providerAdaptersTypeProbe.test.js` — коды
+(2345×2/2554×4/2322×2/2352/2559) сверены фактическим tsc-прогоном,
+positive graph чист. Inventory графа Electron: 80 JS, 105 TS, 1 MTS,
+25 JSON.

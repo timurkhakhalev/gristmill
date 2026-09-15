@@ -1,7 +1,7 @@
 const { test, describe } = require("node:test");
 const assert = require("node:assert");
 
-const load = () => import("../../src/helpers/geminiResponse.js");
+const load = () => import("../../src/helpers/geminiResponse.ts");
 
 describe("extractGeminiText", () => {
   test("returns trimmed text for a normal single text part", async () => {

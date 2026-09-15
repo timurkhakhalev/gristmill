@@ -571,6 +571,43 @@ class IPCHandlers {
   setupHandlers() {
     const proxyFetch = (url, init = {}) => net.fetch(url, { ...init, useSessionCookies: false });
 
+    // Local/remote transcription execution, temp audio, retry and provider
+    // connection/model discovery live in the typed module. Heavy SDKs and the
+    // Corti client stay lazy behind these factories.
+    registerTranscriptionExecutionHandlers(ipcMain, {
+      whisperManager: this.whisperManager,
+      parakeetManager: this.parakeetManager,
+      resolveWhisperVadOptions: (context) => this._resolveWhisperVadOptions(context),
+      environmentManager: this.environmentManager,
+      proxyFetch: (url, init) => proxyFetch(url, init),
+      transcribeWithCorti: async (args) => {
+        const { transcribeAudio } = require("./cortiTranscription");
+        return transcribeAudio(args);
+      },
+      mintStoredCortiToken: (tokenOptions) => this._mintStoredCortiToken(tokenOptions),
+      generateText: (options) => require("ai").generateText(options),
+      getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
+        require("./enterpriseAiProviders").getEnterpriseAIModel(
+          provider,
+          model,
+          apiKey,
+          enterprise
+        ),
+      bedrockSdk: async () => require("@aws-sdk/client-bedrock"),
+      bedrockProfileCredentials: (profile) =>
+        require("@aws-sdk/credential-providers").fromNodeProviderChain({ profile }),
+      providerBaseUrls: transcriptionProviderBaseUrls,
+      audioStorage: this.audioStorageManager,
+      database: this.databaseManager,
+      broadcast: broadcastToWindows,
+      logger: {
+        log: (message, data) => debugLogger.log(message, data),
+        debug: (message, data) => debugLogger.debug(message, data),
+        warn: (message, data) => debugLogger.warn(message, data),
+        error: (message, data, tag) => debugLogger.error(message, data, tag),
+      },
+    });
+
     // Transcription records, audio storage, exports, file selection and the
     // pending (non-meeting) note navigation live in the typed module.
     registerTranscriptionDataHandlers(ipcMain, {

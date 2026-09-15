@@ -35,32 +35,29 @@ function createFakeChild() {
 function loadManagerClass() {
   delete require.cache[managerModulePath];
   Module._load = function loadWithMocks(request, parent, isMain) {
-    if (request === "child_process") {
-      return {
-        spawn: () => {
-          lastChild = createFakeChild();
-          return lastChild;
-        },
-      };
-    }
     if (request === "./debugLogger" || request === "./debugLogger.js") {
       return { info() {}, debug() {}, error() {}, warn() {} };
     }
     return originalLoad(request, parent, isMain);
   };
-  return require(managerModulePath);
+  try {
+    return require(managerModulePath);
+  } finally {
+    Module._load = originalLoad;
+  }
 }
 
 const MeetingAecManager = loadManagerClass();
 
-test.after(() => {
-  Module._load = originalLoad;
-});
-
 function createManager() {
-  const manager = new MeetingAecManager();
+  const manager = new MeetingAecManager({
+    spawnImpl: () => {
+      lastChild = createFakeChild();
+      return lastChild;
+    },
+  });
   manager.isSupported = () => true;
-  manager.resolveBinary = () => "/fake/meeting-aec-helper";
+  manager.resolveBinary = () => process.execPath;
   return manager;
 }
 

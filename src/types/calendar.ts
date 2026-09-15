@@ -1,54 +1,10 @@
-export interface GoogleCalendar {
-  id: string;
-  summary: string;
-  description: string | null;
-  background_color: string | null;
-  is_selected: number;
-  is_primary: number;
-  sync_token: string | null;
-}
-
-export type CalendarResponseStatus = "needsAction" | "declined" | "tentative" | "accepted";
-
-export interface CalendarEvent {
-  id: string;
-  calendar_id: string;
-  provider: string;
-  summary: string | null;
-  start_time: string;
-  end_time: string;
-  is_all_day: number;
-  status: string;
-  hangout_link: string | null;
-  conference_data: string | null;
-  organizer_email: string | null;
-  attendees_count: number;
-  attendees: string | null;
-  availability_status: CalendarAvailabilityStatus;
-  self_response_status: CalendarResponseStatus | "unknown";
-}
-
-export type CalendarAvailabilityStatus = "free" | "tentative" | "busy" | "unavailable" | "unknown";
-
-export interface CalendarAccount {
-  email: string;
-}
-
-export interface CalendarConnectionStatus {
-  connected: boolean;
-  email: string | null;
-}
-
+// Meeting-detection and contacts types. The calendar event, account, status
+// and attendee DTO moved to the shared wire contract
+// (src/contracts/calendar.ts) together with the calendar IPC boundary;
+// provider ingestion types stay inside the managers.
 export interface MeetingDetectionPreferences {
   processDetection: boolean;
   audioDetection: boolean;
-}
-
-export interface CalendarAttendee {
-  email: string;
-  displayName: string | null;
-  responseStatus: CalendarResponseStatus | null;
-  self: boolean;
 }
 
 export interface Contact {

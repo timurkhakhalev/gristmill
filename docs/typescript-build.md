@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **130 JS, 48 TS, 1 MTS и 25 JSON**
+а не всеми файлами в каталоге helpers. В нём **130 JS, 52 TS, 1 MTS и 25 JSON**
 (только `src/`; main/preload/worker — отдельные entry points). Entry points:
 main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
@@ -166,6 +166,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/contracts/localFileTranscription.ts`
 - `src/contracts/uploadTranscription.ts`
 - `src/contracts/reasoning.ts`
+- `src/contracts/calendar.ts`
 - `src/contracts/calendarAvailability.ts`
 - `src/config/constants.mts`
 - `src/config/secretKeys.js`
@@ -192,6 +193,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/preload/localFileTranscriptionBridge.ts`
 - `src/preload/uploadTranscriptionBridge.ts`
 - `src/preload/reasoningBridge.ts`
+- `src/preload/calendarBridge.ts`
 - `src/preload/calendarAvailabilityBridge.ts`
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.js`
@@ -307,6 +309,8 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/uploadCancelIpcHandler.ts`
 - `src/helpers/uploadCancelRegistry.ts`
 - `src/helpers/reasoningIpcHandlers.ts`
+- `src/helpers/calendarIpcHandlers.ts`
+- `src/helpers/calendarEvents.ts`
 - `src/helpers/calendarAvailability.ts`
 - `src/helpers/calendarAvailabilityService.ts`
 - `src/helpers/calendarAvailabilityIpcHandler.ts`
@@ -675,7 +679,9 @@ reasoning-методы удалены из `preload.js` и `src/types/electron.t
 - `src/services/localReasoningBridge.js` → strict TS (default-instance export
   сохранён): one-active-request policy, config defaults, complete-output и
   thinking cleanup без изменений.
-- `src/helpers/reasoningIpcHandlers.ts`: все шесть операций с узкими
+- `src/helpers/reasoningIpcHandlers.ts`
+- `src/helpers/calendarIpcHandlers.ts`
+- `src/helpers/calendarEvents.ts`: все шесть операций с узкими
   зависимостями (environment keys, local service, provider model factory,
   error mapper, retry/timeout helpers, transports, logger). JS provider
   factories описаны узкими интерфейсами на границе (`EnterpriseStreamModel`
@@ -713,3 +719,66 @@ roundtrip и деградация raw/error), `reasoningBridge.test.js` чере
 preload, `test/services/enterpriseChatModel.test.js`. Inventory графа
 Electron: 130 JS, 48 TS, 1 MTS, 25 JSON (оба конвертированных .js не входили
 в tsc-граф — они достижимы только через require; новые .ts вошли).
+
+## Этап «calendar connections, sync и renderer contract»
+
+15 сентября 2026 (issue #34). Оставшаяся calendar-граница вокруг уже
+типизированной availability переведена в strict TS: Google/Microsoft/Apple
+connection status, accounts, calendar list/selection, provider-neutral
+upcoming/event reads, sync/подключение-события, Apple connect/disconnect и
+Calendar privacy settings. Контракт `src/contracts/calendar.ts` владеет
+channel/event names (существующие имена без aliases), аргументами,
+дискриминированными results и event payload-схемами; bridge
+`src/preload/calendarBridge.ts` валидирует responses и дропает malformed
+events до callback, подписки возвращают idempotent unsubscribe. Ручные
+calendar entries/listeners удалены из `preload.js` и `src/types/electron.ts`;
+`CalendarEvent`/account/status/attendee типы переехали из
+`src/types/calendar.ts` в контракт (там остались только meeting-detection и
+contacts), consumers обновлены без compatibility re-export.
+
+- `src/helpers/calendarIpcHandlers.ts`: один registration module с узкими
+  Google/Microsoft/Apple manager interfaces (обязательные методы — required
+  dependencies), отдельными `getUpcomingEvents`/`getCalendarEventById`
+  callback-ами (текущие владельцы: Google manager над общей `calendar_events`
+  таблицей и прямой DB lookup), injected opener для Calendar privacy и
+  logger. OAuth/sync/reminders/data cleanup остаются в менеджерах; managers
+  остаются JS. Invalid window/event ID/selection args отклоняются до
+  manager/DB call.
+- Status DTO фиксирует absence-vs-false: Google fallback — `{connected:false,
+  email:null}` без `configured/accounts`; Microsoft fallback — без
+  `configured`; Apple fallback — `{connected:false, sourceNames:[]}`.
+  Malformed успешный status не проходит как валидный (parse-fallback на
+  disconnected-форму).
+- Wire projection: `projectCalendarEvent` — allowlist из 14 полей
+  `calendar_events`, используемых UpcomingMeetings/useUpcomingEvents/
+  calendarTool/note metadata lookup (all-day локальные даты и SQLite
+  timestamps остаются в stored строковой форме); `synced_at` не пересекает
+  preload. `projectGoogleCalendarSummary` убирает `sync_token`/
+  `sync_token_expires_at`/`created_at` (sync tokens остаются только в
+  хранении). OAuth/access/refresh tokens и raw provider responses в renderer
+  DTO не входят. Malformed row дропается, валидные сохраняются.
+- `src/helpers/calendarEvents.ts` — typed senders для шести событий;
+  менеджеры (google/microsoft/appleCalendarManager.js) вызывают их вместо
+  raw `broadcastToWindows`, malformed payload дропается с диагностикой до
+  отправки.
+- Renderer: `useUpcomingEvents`, UpcomingMeetings, IntegrationsView,
+  CalendarConnectionsStep, settingsStore, `calendarTool` (типизированная
+  projection над validated DTO вместо map по `Record<string,unknown>`) и
+  PersonalNotesView на shared типах. `join-calendar-meeting` остался в
+  meeting-detection boundary; availability contract не объединён с
+  connection management.
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors
+(42+2 warnings — ниже прежнего baseline 47+2: часть предупреждений ушла с
+удалённым кодом); strict compiler probes в
+`test/scripts/calendarTypeProbe.test.js`. Characterization:
+`test/helpers/calendarIpc.test.js` (configured/unconfigured absence forms,
+OAuth/disconnect failure detail, selection/primary-only валидация,
+provider-neutral reads с invalid-input и malformed-row деградацией,
+privacy opener), `calendarEvents.test.js` (senders: валидные broadcast,
+malformed дропаются), `calendarBridge.test.js` через bundled preload
+(все три провайдера, malformed events, idempotent unsubscribe, junk
+responses, отсутствие duplicate registrations). Существующие manager tests
+(Google sync-token expiry, Microsoft delta, Apple restart/denied/snapshot)
+не менялись — менеджеры продолжают ту же работу через typed senders.
+Inventory графа Electron: 130 JS, 52 TS, 1 MTS, 25 JSON.

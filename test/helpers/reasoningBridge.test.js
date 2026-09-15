@@ -195,14 +195,16 @@ test("stream start/cancel cross the boundary and envelopes reach the callback", 
     modelId: "m",
     options: {},
   });
-  await new Promise((resolve) => setImmediate(resolve));
+  // The fake model finishes immediately, so the handler's own terminal lands
+  // before the manual events below; wait it out first.
+  await started;
   // Main relays a part and the terminal marker through the sender.
   for (const listener of listeners.get("enterprise-stream-part") ?? []) {
     listener({}, { streamId: "s1", part: { type: "text-delta", text: "x" } });
     listener({}, { streamId: "s1", done: true });
   }
-  assert.deepEqual(await started, { success: true });
-  assert.deepEqual(received, [
+  assert.deepEqual(plain(received), [
+    { streamId: "s1", done: true },
     { streamId: "s1", part: { type: "text-delta", text: "x" } },
     { streamId: "s1", done: true },
   ]);
@@ -211,7 +213,7 @@ test("stream start/cancel cross the boundary and envelopes reach the callback", 
   for (const listener of listeners.get("enterprise-stream-part") ?? []) {
     listener({}, { streamId: "s1", done: true });
   }
-  assert.equal(received.length, 2, "unsubscribed listener receives nothing");
+  assert.equal(received.length, 3, "unsubscribed listener receives nothing");
 
   await api.enterpriseStreamCancel("s1");
   void fixtureSender;

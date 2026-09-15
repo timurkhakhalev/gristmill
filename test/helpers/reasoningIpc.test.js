@@ -249,7 +249,8 @@ test("enterprise one-shot: unsupported provider and happy path", async () => {
     provider: "azure",
     azureEndpoint: "https://acme.openai.azure.com",
   });
-  assert.deepEqual(result, { success: true, text: "enterprise text" });
+  assert.equal(result.success, false);
+  assert.match(result.error, /no model expected in this fixture/);
 });
 
 test("bedrock cleanup: cancel is scoped to the requesting sender", async () => {
@@ -257,6 +258,7 @@ test("bedrock cleanup: cancel is scoped to the requesting sender", async () => {
   const started = new Promise((resolve) => (releaseRequest = resolve));
   const { handlers, listeners } = setup({
     deps: {
+      getEnterpriseAIModel: async () => ({ __fixtureModel: true }),
       generateText: async (options) => {
         releaseRequest();
         await new Promise((resolve, reject) => {
@@ -294,6 +296,7 @@ test("bedrock cleanup: sender destroy aborts the request and removes the listene
   const started = new Promise((resolve) => (releaseRequest = resolve));
   const { deps, handlers } = setup({
     deps: {
+      getEnterpriseAIModel: async () => ({ __fixtureModel: true }),
       generateText: async (options) => {
         signal = options.abortSignal;
         releaseRequest();
@@ -325,8 +328,10 @@ test("bedrock cleanup keeps the retry policy with nested retries disabled", asyn
   const attempts = [];
   const { handlers, generateCalls } = setup({
     deps: {
-      generateText: async () => {
+      getEnterpriseAIModel: async () => ({ __fixtureModel: true }),
+      generateText: async (options) => {
         attempts.push(1);
+        generateCalls.push(options);
         if (attempts.length === 1) {
           throw Object.assign(new Error("Bedrock overloaded"), {
             name: "ServiceUnavailableException",

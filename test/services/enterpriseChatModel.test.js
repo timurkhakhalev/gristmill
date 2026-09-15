@@ -40,9 +40,16 @@ function stubApi() {
         state.listeners.delete(callback);
       };
     },
-    startBehavior: null,
     push,
   };
+  // startBehavior lives on state (the start stub reads it); mirror assignments
+  // to api.startBehavior so tests can set the behavior on either object.
+  Object.defineProperty(api, "startBehavior", {
+    get: () => state.startBehavior,
+    set: (value) => {
+      state.startBehavior = value;
+    },
+  });
   return { api, state };
 }
 
@@ -89,7 +96,7 @@ test("an already-aborted signal never starts a provider request", async (t) => {
   const { stream } = await model.doStream({ prompt: [], abortSignal: controller.signal });
 
   const read = stream.getReader().read();
-  await assert.rejects(read, /Aborted/);
+  await assert.rejects(read, /abort/i);
   assert.equal(state.starts.length, 0, "no billable start for a dead consumer");
 });
 

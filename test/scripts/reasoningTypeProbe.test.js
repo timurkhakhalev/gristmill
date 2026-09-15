@@ -173,6 +173,10 @@ async function useAll(): Promise<string> {
     void envelope.part;
   });
   unsubscribe();
+  // Success-arm text access requires the discriminated narrowing to hold.
+  if (!local.success || !anthropic.success || !enterprise.success || !started.success) {
+    return "";
+  }
   return [
     local.text ?? "",
     String(available),
@@ -183,7 +187,7 @@ async function useAll(): Promise<string> {
 }
 void useAll;
 
-const cloneable = toCloneableStreamPart({ type: "text-delta", id: "t", text: "x" });
+const cloneable = toCloneableStreamPart({ type: "text-delta", id: "t", delta: "x" });
 void cloneable;
 `);
   try {

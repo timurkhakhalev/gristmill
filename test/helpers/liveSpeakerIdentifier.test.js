@@ -24,7 +24,7 @@ function loadIdentifier(options = {}) {
   const interceptsOrt = "ort" in options;
 
   Module._load = function loadWithMocks(request, parent, isMain) {
-    if (request === "./debugLogger") {
+    if (request === "./debugLogger" || request === "./debugLogger.js") {
       return {
         info() {},
         warn(message, data) {
@@ -34,7 +34,7 @@ function loadIdentifier(options = {}) {
         error() {},
       };
     }
-    if (request === "./speakerEmbeddings") {
+    if (request === "./speakerEmbeddings" || request === "./speakerEmbeddings.js") {
       return {
         MAX_EMBEDDING_SECONDS: 8,
         isAvailable: () => true,

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/liveSpeakerIdPolicy.js");
+const load = () => import("../../src/helpers/liveSpeakerIdPolicy.ts");
 
 test("native system audio (macOS tap) supports live speaker identification", async () => {
   const { supportsLiveSpeakerIdentification } = await load();

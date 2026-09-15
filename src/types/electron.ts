@@ -14,6 +14,7 @@ import type { CalendarIntegrationApi } from "../contracts/calendar";
 import type { NoteFilesApi } from "../contracts/noteFiles";
 import type { LocalModelLifecycleApi } from "../contracts/localModelLifecycle";
 import type { LocalLlmModelsApi } from "../contracts/localLlmModels";
+import type { SpeakerApi } from "../contracts/speakerProfiles";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -967,15 +968,7 @@ declare global {
       // Google Calendar commands/events live in the shared
       // CalendarIntegrationApi contract (availability has its own bridge).
 
-      // Contacts
-      searchContacts: (query: string) => Promise<{
-        success: boolean;
-        contacts: Array<{ email: string; display_name: string | null }>;
-      }>;
-      upsertContact: (contact: {
-        email: string;
-        displayName?: string | null;
-      }) => Promise<{ success: boolean }>;
+
       getMD5Hash: (text: string) => Promise<string>;
 
       // Meeting transcription (streaming, dual-channel)
@@ -1057,21 +1050,10 @@ declare global {
       ) => () => void;
       onMeetingSystemAudioResumed?: (callback: () => void) => () => void;
 
-      // Speaker diarization
-      downloadDiarizationModels?: () => Promise<{ success: boolean; error?: string }>;
-      getDiarizationModelStatus?: () => Promise<{
-        available: boolean;
-        modelsDownloaded: boolean;
-      }>;
-      deleteDiarizationModels?: () => Promise<{ success: boolean }>;
-      cancelDiarizationDownload?: () => Promise<{
-        success: boolean;
-        message?: string;
-        error?: string;
-      }>;
+      // Diarization model management, the speaker mapping/profile/embedding
+      // commands and contacts come from the shared SpeakerApi contract.
       // mergeSpeakerText and diarizeAudioFile come from the shared
       // UploadTranscriptionApi contract.
-      onDiarizationDownloadProgress?: (callback: (data: any) => void) => () => void;
       onMeetingDiarizationComplete?: (
         callback: (data: {
           sessionId?: string;
@@ -1094,50 +1076,7 @@ declare global {
         }) => void
       ) => () => void;
 
-      // Speaker name mapping
-      getSpeakerMappings?: (noteId: number) => Promise<
-        Array<{
-          note_id: number;
-          speaker_id: string;
-          profile_id: number | null;
-          display_name: string;
-        }>
-      >;
-      setSpeakerMapping?: (
-        noteId: number,
-        speakerId: string,
-        displayName: string,
-        email?: string | null,
-        profileId?: number | null
-      ) => Promise<{ success: boolean; profileId: number | null }>;
-      removeSpeakerMapping?: (noteId: number, speakerId: string) => Promise<{ success: boolean }>;
-      getSpeakerProfiles?: () => Promise<
-        Array<{
-          id: number;
-          display_name: string;
-          email: string | null;
-          sample_count: number;
-          created_at: string;
-          updated_at: string;
-        }>
-      >;
-      attachSpeakerEmail?: (
-        profileId: number,
-        email: string | null
-      ) => Promise<{
-        success: boolean;
-        error?: string;
-        profile?: {
-          id: number;
-          display_name: string;
-          email: string | null;
-          sample_count: number;
-        };
-      }>;
-      saveNoteSpeakerEmbeddings?: (
-        noteId: number,
-        embeddings: Record<string, number[]>
-      ) => Promise<{ success: boolean }>;
+
 
       // Google/Microsoft/Apple Calendar commands and their six events come
       // from the shared CalendarIntegrationApi contract.
@@ -1189,7 +1128,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

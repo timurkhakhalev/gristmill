@@ -93,7 +93,7 @@ async function createFixture() {
   const { registerFileDiarizationHandlers } = await import(
     "../../src/helpers/fileDiarizationIpcHandlers.ts"
   );
-  const { mergeSpeakersWithText, formatSpeakerTranscript } = require("../../src/helpers/speakerMerge");
+  const { mergeSpeakersWithText, formatSpeakerTranscript } = require("../../src/helpers/speakerMerge.ts");
 
   const registry = createUploadCancelRegistry();
   registerUploadCancelHandler(ipcMain, { uploadCancelRegistry: registry });

@@ -13,6 +13,7 @@ const { createCalendarIntegrationBridge } = require("./src/preload/calendarBridg
 const { createNoteFilesBridge } = require("./src/preload/noteFilesBridge");
 const { createLocalModelLifecycleBridge } = require("./src/preload/localModelLifecycleBridge");
 const { createLocalLlmModelsBridge } = require("./src/preload/localLlmModelsBridge");
+const { createSpeakerBridge } = require("./src/preload/speakerBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -77,6 +78,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createNoteFilesBridge(ipcRenderer),
   ...createLocalModelLifecycleBridge(ipcRenderer),
   ...createLocalLlmModelsBridge(ipcRenderer),
+  ...createSpeakerBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -208,32 +210,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   transcribeLocalParakeet: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-local-parakeet", audioBlob, options),
 
-  // Diarization model management stays here; diarizeAudioFile and
-  // mergeSpeakerText come from the typed uploadTranscriptionBridge above.
-  downloadDiarizationModels: () => ipcRenderer.invoke("download-diarization-models"),
-  getDiarizationModelStatus: () => ipcRenderer.invoke("get-diarization-model-status"),
-  deleteDiarizationModels: () => ipcRenderer.invoke("delete-diarization-models"),
-  cancelDiarizationDownload: () => ipcRenderer.invoke("cancel-diarization-download"),
-  onDiarizationDownloadProgress: registerListener(
-    "diarization-download-progress",
-    (callback) => (_event, data) => callback(data)
-  ),
   onMeetingDiarizationComplete: registerListener(
     "meeting-diarization-complete",
     (callback) => (_event, data) => callback(data)
   ),
 
-  // Speaker name mapping
-  getSpeakerMappings: (noteId) => ipcRenderer.invoke("get-speaker-mappings", noteId),
-  setSpeakerMapping: (noteId, speakerId, displayName, email, profileId) =>
-    ipcRenderer.invoke("set-speaker-mapping", noteId, speakerId, displayName, email, profileId),
-  removeSpeakerMapping: (noteId, speakerId) =>
-    ipcRenderer.invoke("remove-speaker-mapping", noteId, speakerId),
-  getSpeakerProfiles: () => ipcRenderer.invoke("get-speaker-profiles"),
-  attachSpeakerEmail: (profileId, email) =>
-    ipcRenderer.invoke("attach-speaker-email", profileId, email),
-  saveNoteSpeakerEmbeddings: (noteId, embeddings) =>
-    ipcRenderer.invoke("save-note-speaker-embeddings", noteId, embeddings),
 
   // Window control functions
   windowMinimize: () => ipcRenderer.invoke("window-minimize"),
@@ -468,8 +449,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // calendarBridge above (availability has its own bridge).
 
   // Contacts
-  searchContacts: (query) => ipcRenderer.invoke("search-contacts", query),
-  upsertContact: (contact) => ipcRenderer.invoke("upsert-contact", contact),
+
   getMD5Hash: (text) => ipcRenderer.invoke("get-md5-hash", text),
 
   // Meeting detection

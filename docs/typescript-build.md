@@ -1286,3 +1286,63 @@ memory/context constraints.
 
 Проверка: typecheck ×3 — 0 ошибок; lint 0 errors (39+2 warnings — baseline,
 без новых). Inventory графа Electron: 62 JS, 129 TS, 1 MTS, 25 JSON.
+
+## Этап «diarization, speaker profiles и ONNX worker boundary»
+
+17 сентября 2026 (issue #45). Диаризация/спикерная вертикаль (9 файлов:
+`diarization`, `diarizationPolicy`, `speakerEmbeddings`, `onnxWorkerClient`,
+`liveSpeakerIdentifier`, `liveSpeakerIdPolicy`, `speakerAssignmentPolicy`,
+`speakerMerge`, `src/workers/onnxWorker`) переведена в strict TS за новым
+worker-контрактом и speaker-контрактом IPC.
+
+- Worker contract `src/contracts/onnxWorker.ts`: environment-neutral
+  discriminated union по method/id (`ping`/`speaker.load`/`speaker.extract`/
+  `shutdown`), `parseOnnxWorkerRequest`/`parseOnnxWorkerReply` проверяют
+  unknown-сообщения на обеих сторонах ДО model invocation/pending resolution
+  (malformed reply не трогает pending; unknown request получает прежний
+  `unknown method` error-reply). Error serialization, timeout 30s, queue limit
+  1000, respawn backoff/max attempts, shutdown и late-reply-безопасность
+  сохранены 1:1.
+- `onnxWorker.ts` strict: типизированные fbank/FFT подсчёты, узкий локальный
+  слайс onnxruntime (без pull типов пакета в utility process), dispatch через
+  контракт. tsconfig.main.json include для worker-entries обновлён
+  `src/workers/*.js` → `*.ts`; mainBuild-ассерты (`dist-main/src/workers/
+  onnxWorker.js`, asarUnpack) остаются валидны; fork остаётся по
+  asar-virtual `.js` пути — исходный `.ts` в Electron не запускается.
+- `onnxWorkerClient.ts` strict: dual-export singleton (`module.exports =
+  instance` + `OnnxWorkerClient`/`WorkerCrashedError`/`WorkerOverloadedError`
+  re-attach). `speakerEmbeddings.ts` strict: dual-export singleton +
+  `MAX_EMBEDDING_SECONDS` static; PCM-буферы клонируются (без transferList),
+  как и раньше.
+- `diarization.ts` strict: типизированные `DiarizationSegment`/
+  `TranscriptSegment`/прогресс, tar-fallback, каскадный shutdown через
+  pid-file Set, dual-export класс (main.js требует класс).
+  `liveSpeakerIdentifier.ts` strict: typed transient state (embeddings/
+  counts/names/profiles/noteIds), VAD-session слайс, recluster-мержи,
+  at-cap fold, confirmed-distinct защиты — thresholds/sample rates/
+  normalization не изменены. dual-export singleton. Политики и speakerMerge —
+  named exports (все прежние имена), `speakerAssignmentPolicy` generic по
+  сегменту.
+- IPC: контракт `src/contracts/speakerProfiles.ts` (13 каналов + progress
+  event со схемой) + `registerSpeakerHandlers`
+  (`src/helpers/speakerIpcHandlers.ts`) с узкими database/live/diarization
+  deps; 12 хендлеров ушли из ipcHandlers.js (contacts 2, speaker 6,
+  diarization models 4). Public DTO без DB Buffer-embedding; retroactive
+  mapping/auto-label внедряются deps-ами; download-progress идёт в
+  запрашивающее окно с isDestroyed-гейтом 1:1. Bridge
+  `src/preload/speakerBridge.ts` (schema-validated
+  `onDiarizationDownloadProgress`).
+- Тесты: новые `onnxWorkerClient.test.js` (8: malformed replies, foreign/late
+  id, crash с pending, stop-during-spawn, queue-limit eviction, shutdown
+  rpc с grace period), `onnxWorkerProtocol.test.js` (5: конечная карта
+  методов, per-method payload-парсинг, malformed/unknown rejection),
+  `speakerIpc.test.js` (12: embedding→profile промоушен note/live, DTO
+  projection, destroyed-sender, кодированные ошибки), strict probes
+  `speakerOnnxTypeProbe.test.js` (коды 2345/2739+2740×2/2322 сверены tsc).
+  Спецификаторы тестов обновлены (.js→.ts, 8 файлов), мок-хуки — dual
+  specifiers. Emitted smoke: worker бутится под parentPort-shim и игнорирует
+  мусор; dual-export формы под plain node и tsx.
+
+Проверка: typecheck ×3 — 0 ошибок; lint 0 errors (39+2 baseline). Inventory
+графа Electron: 53 JS, 142 TS, 1 MTS, 25 JSON. Pack-проверка packaged
+utilityProcess ping/load (native runtime) — за оркестратором.

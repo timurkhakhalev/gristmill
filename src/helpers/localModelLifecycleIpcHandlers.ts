@@ -7,7 +7,6 @@
 import {
   localModelChannels,
   modelNameSchema,
-  whisperVadConfigSchema,
   type DiagnosticsResult,
   type DownloadProgressEvent,
   type FfmpegAvailabilityResult,
@@ -205,13 +204,14 @@ export function registerLocalModelLifecycleHandlers(
     }
   });
 
+  // Pre-cutover contract, kept 1:1: set never rejects — the settings owner
+  // filters allowed keys on write and sanitizes/clamps on read, so the
+  // returned config is always a valid merged view.
   ipcMain.handle(c.whisperVadSetConfig, async (_event, ...args: unknown[]) => {
     try {
-      const parsed = whisperVadConfigSchema.safeParse(args[0] ?? {});
-      if (!parsed.success) {
-        return { success: false, error: "Invalid VAD configuration" };
-      }
-      const config = deps.setWhisperVadSettings(parsed.data);
+      const config = deps.setWhisperVadSettings(
+        (args[0] as Record<string, unknown> | null | undefined) ?? {}
+      );
       return { success: true, config };
     } catch (error) {
       return { success: false, error: (error as Error).message };

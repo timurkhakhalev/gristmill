@@ -198,9 +198,9 @@ test("events reach callbacks for all three providers; malformed payloads are dro
   pushEvent("gcal-events-synced", { unexpected: true });
   pushEvent("gcal-events-synced", null);
 
-  assert.deepEqual(received.gcal, [{ accounts: [{ email: "g@x.io" }] }]);
-  assert.deepEqual(received.mcal, [{ accounts: [] }]);
-  assert.deepEqual(received.acal, [{ connected: true, sourceNames: ["iCloud"] }]);
+  assert.deepEqual(plain(received.gcal), [{ accounts: [{ email: "g@x.io" }] }]);
+  assert.deepEqual(plain(received.mcal), [{ accounts: [] }]);
+  assert.deepEqual(plain(received.acal), [{ connected: true, sourceNames: ["iCloud"] }]);
   assert.equal(received.synced, 1);
 
   // Unsubscribe is idempotent and stops delivery.

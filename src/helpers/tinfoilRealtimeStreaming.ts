@@ -31,18 +31,6 @@ const stringField = (record: JsonRecord | undefined, key: string): string | unde
   return typeof value === "string" ? value : undefined;
 };
 
-const isRealtimeSocket = (value: unknown): value is RealtimeSocket =>
-  isRecord(value) &&
-  typeof value.on === "function" &&
-  typeof value.send === "function" &&
-  typeof value.close === "function";
-
-const createDefaultSocket: TinfoilSocketFactory = async ({ model, apiKey }) => {
-  const socket = await createTinfoilRealtimeSocket({ model, apiKey });
-  if (!isRealtimeSocket(socket)) throw new Error("Tinfoil realtime socket is unavailable");
-  return socket;
-};
-
 const errorMessage = (error: unknown): string | undefined =>
   error instanceof Error
     ? error.message
@@ -100,7 +88,12 @@ export class TinfoilRealtimeStreaming extends OpenAIRealtimeStreaming {
   declare _turnHasAudio: boolean;
   declare _recoveryRequested: boolean;
 
-  constructor(createSocketImpl: TinfoilSocketFactory = createDefaultSocket) {
+  constructor(
+    // SAFETY: the attested SDK factory returns its WebSocket transport; the local SDK boundary
+    // uses unknown because the package does not expose a compatible socket type.
+    createSocketImpl: TinfoilSocketFactory =
+      createTinfoilRealtimeSocket as TinfoilSocketFactory
+  ) {
     super();
     this.providerLabel = "Tinfoil Realtime";
     this._createSocketImpl = createSocketImpl;

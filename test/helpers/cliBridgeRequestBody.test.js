@@ -18,7 +18,7 @@ Module._load = function patchedLoad(request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const CliBridge = require("../../src/helpers/cliBridge.js");
+const CliBridge = require("../../src/helpers/cliBridge.ts");
 
 Module._load = originalLoad;
 
@@ -68,8 +68,7 @@ test("CLI request body limit counts UTF-8 bytes, not JavaScript characters", asy
         return { success: true, note: { id: 1 } };
       },
     },
-    _asyncVectorUpsert() {},
-    _asyncMirrorWrite() {},
+    mirrorWriteNote() {},
   });
   bridge.token = "test-token";
   bridge.port = 8200;
@@ -122,8 +121,7 @@ test("multibyte content split across request chunks is preserved", async () => {
         };
       },
     },
-    _asyncVectorUpsert() {},
-    _asyncMirrorWrite() {},
+    mirrorWriteNote() {},
   });
   bridge.token = "test-token";
   bridge.port = 8200;
@@ -150,8 +148,7 @@ test("a JSON body exactly at the byte limit is accepted", async () => {
         return { success: true, note: { id: 1 } };
       },
     },
-    _asyncVectorUpsert() {},
-    _asyncMirrorWrite() {},
+    mirrorWriteNote() {},
   });
   bridge.token = "test-token";
   bridge.port = 8200;

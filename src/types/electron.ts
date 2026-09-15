@@ -11,6 +11,7 @@ import type { CalendarAvailabilityApi } from "../contracts/calendarAvailability"
 import type { UploadTranscriptionApi } from "../contracts/uploadTranscription";
 import type { ReasoningApi } from "../contracts/reasoning";
 import type { CalendarIntegrationApi } from "../contracts/calendar";
+import type { NoteFilesApi } from "../contracts/noteFiles";
 import type {
   LocalTranscriptionProvider,
   InferenceMode,
@@ -647,36 +648,8 @@ declare global {
       ) => Promise<{ success: boolean; error?: string }>;
       exportDictionary: (words: string[]) => Promise<{ success: boolean; error?: string }>;
 
-      // Note files (markdown mirror)
-      noteFilesSetEnabled?: (
-        enabled: boolean,
-        customPath?: string,
-        options?: { skipRebuild?: boolean }
-      ) => Promise<{ success: boolean; error?: string }>;
-      noteFilesSetPath?: (path: string) => Promise<{ success: boolean; error?: string }>;
-      noteFilesRebuild?: () => Promise<{ success: boolean; error?: string }>;
-      noteFilesGetDefaultPath?: () => Promise<string>;
-      noteFilesPickFolder?: () => Promise<{ canceled: boolean; path?: string }>;
-      granolaImportPickAndPreview?: () => Promise<{
-        canceled: boolean;
-        success?: boolean;
-        error?: string;
-        fileName?: string;
-        total?: number;
-        newCount?: number;
-        duplicateCount?: number;
-        sampleTitles?: string[];
-        rowIssueCount?: number;
-      }>;
-      granolaImportRun?: () => Promise<{
-        success: boolean;
-        error?: string;
-        imported?: number;
-        skipped?: number;
-        errors?: Array<{ clientNoteId: string; error: string }>;
-      }>;
-      showNoteFile?: (noteId: number) => Promise<{ success: boolean }>;
-      showFolderInExplorer?: (folderName: string) => Promise<{ success: boolean }>;
+      // Note files / Granola import commands come from the shared
+      // NoteFilesApi contract.
 
       // Audio file operations
       saveTempAudio: (buffer: ArrayBuffer) => Promise<{ success: boolean; path: string }>;
@@ -1326,7 +1299,7 @@ declare global {
         folderId: number | null;
       } | null>;
       onNoteNavigationPending?: (callback: () => void) => () => void;
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi;
+    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

@@ -4,31 +4,37 @@ const { app } = require("electron");
 const debugLogger = require("./debugLogger");
 const { parseDbTimestamp } = require("./dbTimestamp");
 
-class AudioStorageManager {
+export interface AudioCleanupDatabase {
+  clearAudioFlags(ids: string[]): unknown;
+}
+
+export class AudioStorageManager {
+  readonly audioDir: string;
+
   constructor() {
     this.audioDir = path.join(app.getPath("userData"), "audio");
     this.ensureAudioDir();
   }
 
-  ensureAudioDir() {
+  ensureAudioDir(): void {
     try {
       fs.mkdirSync(this.audioDir, { recursive: true });
     } catch (error) {
       debugLogger.error(
         "Failed to create audio directory",
-        { error: error.message },
+        { error: (error as Error).message },
         "audio-storage"
       );
     }
   }
 
-  _buildFilename(transcriptionId, timestamp) {
+  _buildFilename(transcriptionId: number, timestamp: string | null | undefined): string {
     if (timestamp) {
       // Named in the user's own wall clock, so the stored instant has to be
       // resolved before it is read -- a bare SQLite timestamp is UTC, not local.
       const d = parseDbTimestamp(timestamp);
       if (d) {
-        const pad = (n) => String(n).padStart(2, "0");
+        const pad = (n: number) => String(n).padStart(2, "0");
         const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
         const time = `${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
         return `OpenHercules-${date}-${time}-${transcriptionId}.webm`;
@@ -37,7 +43,11 @@ class AudioStorageManager {
     return `OpenHercules-${transcriptionId}.webm`;
   }
 
-  saveAudio(transcriptionId, audioBuffer, timestamp) {
+  saveAudio(
+    transcriptionId: number,
+    audioBuffer: Buffer,
+    timestamp?: string | null
+  ): { success: boolean; path?: string } {
     try {
       const filename = this._buildFilename(transcriptionId, timestamp);
       const filePath = path.join(this.audioDir, filename);
@@ -51,16 +61,16 @@ class AudioStorageManager {
     } catch (error) {
       debugLogger.error(
         "Failed to save audio",
-        { transcriptionId, error: error.message },
+        { transcriptionId, error: (error as Error).message },
         "audio-storage"
       );
       return { success: false };
     }
   }
 
-  getAudioPath(transcriptionId) {
+  getAudioPath(transcriptionId: number): string | null {
     try {
-      const files = fs.readdirSync(this.audioDir);
+      const files: string[] = fs.readdirSync(this.audioDir);
       const match = files.find(
         (f) => f.endsWith(`-${transcriptionId}.webm`) || f === `${transcriptionId}.webm`
       );
@@ -69,7 +79,7 @@ class AudioStorageManager {
     return null;
   }
 
-  getAudioBuffer(transcriptionId) {
+  getAudioBuffer(transcriptionId: number): Buffer | null {
     const filePath = this.getAudioPath(transcriptionId);
     if (!filePath) return null;
     try {
@@ -77,14 +87,14 @@ class AudioStorageManager {
     } catch (error) {
       debugLogger.error(
         "Failed to read audio",
-        { transcriptionId, error: error.message },
+        { transcriptionId, error: (error as Error).message },
         "audio-storage"
       );
       return null;
     }
   }
 
-  deleteAudio(transcriptionId) {
+  deleteAudio(transcriptionId: number): { success: boolean } {
     try {
       const filePath = this.getAudioPath(transcriptionId);
       if (filePath) {
@@ -95,17 +105,20 @@ class AudioStorageManager {
     } catch (error) {
       debugLogger.error(
         "Failed to delete audio",
-        { transcriptionId, error: error.message },
+        { transcriptionId, error: (error as Error).message },
         "audio-storage"
       );
       return { success: false };
     }
   }
 
-  cleanupExpiredAudio(retentionDays, databaseManager) {
+  cleanupExpiredAudio(
+    retentionDays: number,
+    databaseManager?: AudioCleanupDatabase | null
+  ): { deleted: number; kept: number } {
     try {
       const cutoffMs = Date.now() - retentionDays * 86400000;
-      const files = fs.readdirSync(this.audioDir).filter((f) => f.endsWith(".webm"));
+      const files = fs.readdirSync(this.audioDir).filter((f: string) => f.endsWith(".webm"));
       const expiredIds = [];
       let kept = 0;
 
@@ -126,7 +139,7 @@ class AudioStorageManager {
         } catch (error) {
           debugLogger.error(
             "Failed to process audio file during cleanup",
-            { file, error: error.message },
+            { file, error: (error as Error).message },
             "audio-storage"
           );
         }
@@ -143,21 +156,25 @@ class AudioStorageManager {
       );
       return { deleted: expiredIds.length, kept };
     } catch (error) {
-      debugLogger.error("Audio cleanup failed", { error: error.message }, "audio-storage");
+      debugLogger.error(
+        "Audio cleanup failed",
+        { error: (error as Error).message },
+        "audio-storage"
+      );
       return { deleted: 0, kept: 0 };
     }
   }
 
-  deleteAllAudio() {
+  deleteAllAudio(): { deleted: number } {
     try {
-      const files = fs.readdirSync(this.audioDir).filter((f) => f.endsWith(".webm"));
+      const files = fs.readdirSync(this.audioDir).filter((f: string) => f.endsWith(".webm"));
       for (const file of files) {
         try {
           fs.unlinkSync(path.join(this.audioDir, file));
         } catch (error) {
           debugLogger.error(
             "Failed to delete audio file",
-            { file, error: error.message },
+            { file, error: (error as Error).message },
             "audio-storage"
           );
         }
@@ -165,14 +182,18 @@ class AudioStorageManager {
       debugLogger.info("All audio deleted", { count: files.length }, "audio-storage");
       return { deleted: files.length };
     } catch (error) {
-      debugLogger.error("Failed to delete all audio", { error: error.message }, "audio-storage");
+      debugLogger.error(
+        "Failed to delete all audio",
+        { error: (error as Error).message },
+        "audio-storage"
+      );
       return { deleted: 0 };
     }
   }
 
-  getStorageUsage() {
+  getStorageUsage(): { fileCount: number; totalBytes: number } {
     try {
-      const files = fs.readdirSync(this.audioDir).filter((f) => f.endsWith(".webm"));
+      const files = fs.readdirSync(this.audioDir).filter((f: string) => f.endsWith(".webm"));
       let totalBytes = 0;
       for (const file of files) {
         try {
@@ -184,10 +205,16 @@ class AudioStorageManager {
       }
       return { fileCount: files.length, totalBytes };
     } catch (error) {
-      debugLogger.error("Failed to get storage usage", { error: error.message }, "audio-storage");
+      debugLogger.error(
+        "Failed to get storage usage",
+        { error: (error as Error).message },
+        "audio-storage"
+      );
       return { fileCount: 0, totalBytes: 0 };
     }
   }
 }
 
+// CommonJS passthrough: the original module exported the class itself and
+// every require site (ipcHandlers.js, main.js, tests) invokes it directly.
 module.exports = AudioStorageManager;

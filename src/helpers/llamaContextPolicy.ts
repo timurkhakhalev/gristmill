@@ -11,15 +11,28 @@
  * without a GPU, a model file, or a spawned process.
  */
 
+// Raw GGUF values: scalars are numbers, but GGUF also permits per-layer
+// arrays (real files use them for attention.head_count_kv). Absent metadata is
+// undefined — never a default invented here, so callers cannot mistake
+// "unknown" for "zero".
+export interface GgufArchitectureMetadata {
+  blockCount?: number | number[] | boolean;
+  embeddingLength?: number | number[] | boolean;
+  headCount?: number | number[] | boolean;
+  headCountKv?: number | number[] | boolean;
+  keyLength?: number | number[] | boolean;
+  valueLength?: number | number[] | boolean;
+}
+
 // Latin text tokenizes at roughly 3.5-4.2 chars/token on the Qwen/Llama BPEs
 // used here (measured: 4.16 on a synthetic English transcript). 3 leaves
 // headroom, because under-estimating is the bug and over-estimating only costs
 // KV bytes that the ceiling already bounds.
-const LATIN_CHARS_PER_TOKEN = 3;
+export const LATIN_CHARS_PER_TOKEN = 3;
 
 // CJK runs about 1-1.5 chars/token. Charging 1 keeps the estimate on the safe
 // side for the ja / zh-CN / zh-TW locales the app ships.
-const CJK_RANGES = [
+const CJK_RANGES: ReadonlyArray<readonly [number, number]> = [
   [0x1100, 0x11ff], // Hangul Jamo
   [0x3000, 0x303f], // CJK symbols and punctuation
   [0x3040, 0x30ff], // Hiragana + Katakana
@@ -31,7 +44,7 @@ const CJK_RANGES = [
   [0x20000, 0x3ffff], // CJK Unified Ideographs Extensions B and beyond
 ];
 
-function isCjkCodePoint(codePoint) {
+function isCjkCodePoint(codePoint: number): boolean {
   for (const [start, end] of CJK_RANGES) {
     if (codePoint >= start && codePoint <= end) return true;
   }
@@ -45,13 +58,13 @@ function isCjkCodePoint(codePoint) {
  * running, POST /tokenize returns the exact count in ~13 ms and supersedes
  * this; the estimate just avoids paying a restart in the common case.
  */
-function estimateTokens(text) {
+export function estimateTokens(text: string): number {
   if (typeof text !== "string" || text.length === 0) return 0;
 
   let cjkCount = 0;
   let otherCount = 0;
   for (const character of text) {
-    if (isCjkCodePoint(character.codePointAt(0))) cjkCount += 1;
+    if (isCjkCodePoint(character.codePointAt(0) ?? 0)) cjkCount += 1;
     else otherCount += 1;
   }
 
@@ -59,24 +72,39 @@ function estimateTokens(text) {
 }
 
 // K and V are cached as f16 by default (llama.cpp --cache-type-k/-v).
-const KV_ELEMENT_BYTES = 2;
+export const KV_ELEMENT_BYTES = 2;
 
-function resolveHeadCountKv(metadata) {
+// GGUF arrays carry per-layer values; only scalars are usable here. A scalar
+// read out of an array-declared field would price garbage, so arrays surface
+// as unknown (null) exactly like absent metadata.
+function scalarValue(raw: number | number[] | boolean | undefined): number | null {
+  return typeof raw === "number" && raw > 0 ? raw : null;
+}
+
+function resolveHeadCountKv(metadata: GgufArchitectureMetadata): number | null {
   const raw = metadata.headCountKv;
   // GGUF permits a per-layer array. The widest layer is the safe reading.
   if (Array.isArray(raw)) {
     const widest = raw.reduce((max, value) => (value > max ? value : max), 0);
     return widest > 0 ? widest : null;
   }
-  return typeof raw === "number" && raw > 0 ? raw : null;
+  return scalarValue(raw);
 }
 
-function resolveHeadWidths(metadata) {
-  const { keyLength, valueLength, embeddingLength, headCount } = metadata;
-  if (keyLength > 0 && valueLength > 0) return { keyLength, valueLength };
+interface HeadWidths {
+  keyLength: number;
+  valueLength: number;
+}
+
+function resolveHeadWidths(metadata: GgufArchitectureMetadata): HeadWidths | null {
+  const keyLength = scalarValue(metadata.keyLength);
+  const valueLength = scalarValue(metadata.valueLength);
+  if (keyLength !== null && valueLength !== null) return { keyLength, valueLength };
 
   // llama.cpp's own fallback when the widths are not declared.
-  if (embeddingLength > 0 && headCount > 0) {
+  const embeddingLength = scalarValue(metadata.embeddingLength);
+  const headCount = scalarValue(metadata.headCount);
+  if (embeddingLength !== null && headCount !== null) {
     const width = embeddingLength / headCount;
     if (Number.isInteger(width) && width > 0) return { keyLength: width, valueLength: width };
   }
@@ -92,11 +120,11 @@ function resolveHeadWidths(metadata) {
  * Returns null when the architecture cannot be read. Callers must treat null
  * as "fall back to the historical 16384", never as "assume it is cheap".
  */
-function kvBytesPerToken(metadata) {
+export function kvBytesPerToken(metadata: GgufArchitectureMetadata | null): number | null {
   if (!metadata || typeof metadata !== "object") return null;
 
-  const blockCount = metadata.blockCount;
-  if (!(blockCount > 0)) return null;
+  const blockCount = scalarValue(metadata.blockCount);
+  if (blockCount === null) return null;
 
   const headCountKv = resolveHeadCountKv(metadata);
   if (headCountKv === null) return null;
@@ -109,43 +137,59 @@ function kvBytesPerToken(metadata) {
 
 // The historical cap (#1236). Now the floor and the universal fallback rather
 // than the ceiling, so no configuration that works today can get smaller.
-const BASELINE_CONTEXT_SIZE = 16384;
+export const BASELINE_CONTEXT_SIZE = 16384;
 
 // Half the machine, minus a fixed slice for the OS itself. Deliberately ~1.7x
 // tighter than llama.cpp's own --fit, which would permit ~9.6 GiB of wired
 // memory on the 16 GB Mac that panicked in #1203.
-const USABLE_MEMORY_FRACTION = 0.5;
-const FIXED_OS_RESERVE_BYTES = 2 * 1024 * 1024 * 1024;
+export const USABLE_MEMORY_FRACTION = 0.5;
+export const FIXED_OS_RESERVE_BYTES = 2 * 1024 * 1024 * 1024;
 
 // Compute buffers also grow with context: measured 144 MiB total at 16384 and
 // 240 MiB at 65536 for a 9B, i.e. ~2 KiB/token plus a fixed base. Doubled for
 // margin, and the base sized for the 31B-class graphs.
-const COMPUTE_FIXED_BYTES = 384 * 1024 * 1024;
-const COMPUTE_BYTES_PER_TOKEN = 4096;
+export const COMPUTE_FIXED_BYTES = 384 * 1024 * 1024;
+export const COMPUTE_BYTES_PER_TOKEN = 4096;
 
 // Hybrid models (Qwen3.5, LFM2) carry recurrent state that is not part of the
 // KV cache and does not scale with context.
-const RECURRENT_STATE_BYTES = 512 * 1024 * 1024;
+export const RECURRENT_STATE_BYTES = 512 * 1024 * 1024;
 
 // A discrete GPU's VRAM is not system RAM and we do not probe it. Until a real
 // measurement exists, stay modest and let the existing GPU fallback ladder
 // handle anything that still will not fit.
-const UNVERIFIED_GPU_CEILING = 65536;
+export const UNVERIFIED_GPU_CEILING = 65536;
 
 // Contexts are aligned down to a round number so that near-identical requests
 // land on the same value and cannot cause a second restart.
-const CONTEXT_ALIGNMENT = 512;
+export const CONTEXT_ALIGNMENT = 512;
 
 const MIB = 1024 * 1024;
 const MIN_CACHE_RAM_MIB = 512;
 const MAX_CACHE_RAM_MIB = 2048;
 
-function clamp(value, low, high) {
+function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value));
 }
 
-function fallbackCeiling(reason) {
+export interface ContextCeiling {
+  ceiling: number;
+  reason: string;
+  cacheRamMiB: number;
+}
+
+function fallbackCeiling(reason: string): ContextCeiling {
   return { ceiling: BASELINE_CONTEXT_SIZE, reason, cacheRamMiB: MIN_CACHE_RAM_MIB };
+}
+
+export interface ContextCeilingInput {
+  totalMemoryBytes: number;
+  weightsBytes?: number;
+  draftWeightsBytes?: number;
+  kvBytesPerToken: number | null;
+  hasRecurrentState?: boolean;
+  trainedContextTokens?: number;
+  discreteGpuUnverified?: boolean;
 }
 
 /**
@@ -154,7 +198,7 @@ function fallbackCeiling(reason) {
  * Every path that cannot answer confidently returns BASELINE_CONTEXT_SIZE, so
  * the worst case of this whole mechanism is the behaviour that ships today.
  */
-function resolveContextCeiling({
+export function resolveContextCeiling({
   totalMemoryBytes,
   weightsBytes = 0,
   draftWeightsBytes = 0,
@@ -162,11 +206,11 @@ function resolveContextCeiling({
   hasRecurrentState = false,
   trainedContextTokens = 0,
   discreteGpuUnverified = false,
-}) {
+}: ContextCeilingInput): ContextCeiling {
   if (!Number.isFinite(totalMemoryBytes) || totalMemoryBytes <= 0) {
     return fallbackCeiling("no-memory-info");
   }
-  if (!Number.isFinite(kvBytesPerToken) || kvBytesPerToken <= 0) {
+  if (!Number.isFinite(kvBytesPerToken) || kvBytesPerToken === null || kvBytesPerToken <= 0) {
     return fallbackCeiling("unknown-kv-cost");
   }
 
@@ -210,7 +254,13 @@ function resolveContextCeiling({
 // Quantizing the chosen context bounds how many distinct restarts a session can
 // cause: at most one per rung per model, however many differently-sized
 // requests arrive.
-const CONTEXT_STEPS = [16384, 32768, 65536, 131072, 262144];
+export const CONTEXT_STEPS: readonly number[] = [16384, 32768, 65536, 131072, 262144];
+
+export interface ContextSizeInput {
+  needed?: number;
+  floor?: number;
+  ceiling?: number;
+}
 
 /**
  * The context size to start (or grow) the server at for a request needing
@@ -219,27 +269,13 @@ const CONTEXT_STEPS = [16384, 32768, 65536, 131072, 262144];
  * The ceiling always wins: it is the memory guarantee, and it is not
  * necessarily on a rung.
  */
-function resolveContextSize({ needed = 0, floor = 0, ceiling = BASELINE_CONTEXT_SIZE }) {
+export function resolveContextSize({
+  needed = 0,
+  floor = 0,
+  ceiling = BASELINE_CONTEXT_SIZE,
+}: ContextSizeInput): number {
   const target = Math.max(needed || 0, floor || 0, BASELINE_CONTEXT_SIZE);
   const rung = CONTEXT_STEPS.find((step) => step >= target) ?? Number.POSITIVE_INFINITY;
   const bounded = Math.min(rung, Math.max(ceiling, BASELINE_CONTEXT_SIZE));
   return Math.max(bounded, BASELINE_CONTEXT_SIZE);
 }
-
-module.exports = {
-  LATIN_CHARS_PER_TOKEN,
-  KV_ELEMENT_BYTES,
-  estimateTokens,
-  kvBytesPerToken,
-  resolveContextCeiling,
-  resolveContextSize,
-  CONTEXT_STEPS,
-  BASELINE_CONTEXT_SIZE,
-  USABLE_MEMORY_FRACTION,
-  FIXED_OS_RESERVE_BYTES,
-  COMPUTE_FIXED_BYTES,
-  COMPUTE_BYTES_PER_TOKEN,
-  RECURRENT_STATE_BYTES,
-  UNVERIFIED_GPU_CEILING,
-  CONTEXT_ALIGNMENT,
-};

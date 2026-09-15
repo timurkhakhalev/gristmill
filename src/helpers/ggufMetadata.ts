@@ -71,16 +71,27 @@ const WANTED_SUFFIXES = [
   ".attention.value_length",
 ];
 
+/** A byte source over the front of a GGUF file (file handle or fixture). */
+export interface GgufSource {
+  read(offset: number, length: number): Promise<Buffer>;
+  size?: number;
+}
+
 /** Forward-only cursor over the front of the file, buffered in chunks. */
 class HeaderCursor {
-  constructor(source) {
+  source: GgufSource;
+  chunk: Buffer;
+  chunkStart: number;
+  position: number;
+
+  constructor(source: GgufSource) {
     this.source = source;
     this.chunk = Buffer.alloc(0);
     this.chunkStart = 0;
     this.position = 0;
   }
 
-  async ensure(length) {
+  async ensure(length: number): Promise<void> {
     if (this.position + length > MAX_METADATA_BYTES) {
       throw new Error("gguf metadata section is implausibly large");
     }
@@ -95,7 +106,7 @@ class HeaderCursor {
     this.chunkStart = this.position;
   }
 
-  async take(length) {
+  async take(length: number): Promise<Buffer> {
     await this.ensure(length);
     const start = this.position - this.chunkStart;
     this.position += length;
@@ -103,34 +114,34 @@ class HeaderCursor {
   }
 
   /** Advances without reading, so huge arrays cost nothing. */
-  skip(length) {
+  skip(length: number): void {
     if (length < 0) throw new Error("negative skip in gguf header");
     this.position += length;
   }
 
-  async readUint32() {
+  async readUint32(): Promise<number> {
     return (await this.take(4)).readUInt32LE(0);
   }
 
-  async readUint64() {
+  async readUint64(): Promise<number> {
     const value = (await this.take(8)).readBigUInt64LE(0);
     if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("gguf length out of range");
     return Number(value);
   }
 
-  async readString() {
+  async readString(): Promise<string> {
     const length = await this.readUint64();
     if (length > MAX_STRING_BYTES) throw new Error("gguf string is implausibly long");
     return (await this.take(length)).toString("utf8");
   }
 
-  async skipString() {
+  async skipString(): Promise<void> {
     const length = await this.readUint64();
     if (length > MAX_STRING_BYTES) throw new Error("gguf string is implausibly long");
     this.skip(length);
   }
 
-  async readScalar(type) {
+  async readScalar(type: number): Promise<number | boolean> {
     const buffer = await this.take(SCALAR_BYTES[type]);
     switch (type) {
       case TYPE.UINT8:
@@ -161,7 +172,9 @@ class HeaderCursor {
   }
 }
 
-async function readArray(cursor, capture) {
+type GgufValue = number | boolean | string | Array<number | boolean>;
+
+async function readArray(cursor: HeaderCursor, capture: boolean): Promise<GgufValue | null> {
   const elementType = await cursor.readUint32();
   const length = await cursor.readUint64();
 
@@ -185,7 +198,7 @@ async function readArray(cursor, capture) {
   return values;
 }
 
-async function readValue(cursor, type, capture) {
+async function readValue(cursor: HeaderCursor, type: number, capture: boolean): Promise<GgufValue | null> {
   if (type === TYPE.STRING) {
     if (capture) return cursor.readString();
     await cursor.skipString();
@@ -200,20 +213,36 @@ async function readValue(cursor, type, capture) {
   return null;
 }
 
-function isWantedKey(key) {
+function isWantedKey(key: string): boolean {
   if (key === "general.architecture") return true;
   return WANTED_SUFFIXES.some((suffix) => key.endsWith(suffix));
 }
 
-function pick(entries, architecture, suffix) {
-  return entries.get(`${architecture}${suffix}`);
+// Suffixes whose values decide KV cost are numeric per the GGUF spec; only
+// `general.architecture` (excluded here) is a string.
+function pick(
+  entries: Map<string, GgufValue>,
+  architecture: string,
+  suffix: string
+): number | number[] | boolean | undefined {
+  return entries.get(`${architecture}${suffix}`) as number | number[] | boolean | undefined;
 }
 
-/**
- * @param source {{ read: (offset: number, length: number) => Promise<Buffer>, size?: number }}
- * @returns the architecture fields needed to price the KV cache, or null.
- */
-async function readGgufMetadata(source) {
+/** The architecture fields needed to price the KV cache. Null fields mean the
+ * GGUF does not declare them; callers must treat them as unknown, not zero. */
+export interface GgufMetadata {
+  architecture: string;
+  blockCount: number | number[] | boolean | undefined;
+  contextLength: number | number[] | boolean | undefined;
+  embeddingLength: number | number[] | boolean | undefined;
+  headCount: number | number[] | boolean | undefined;
+  headCountKv: number | number[] | boolean | undefined;
+  keyLength: number | number[] | boolean | undefined;
+  valueLength: number | number[] | boolean | undefined;
+  hasRecurrentState: boolean;
+}
+
+export async function readGgufMetadata(source: GgufSource): Promise<GgufMetadata | null> {
   try {
     const cursor = new HeaderCursor(source);
 
@@ -225,7 +254,7 @@ async function readGgufMetadata(source) {
     const kvCount = await cursor.readUint64();
     if (kvCount > MAX_KV_COUNT) return null;
 
-    const entries = new Map();
+    const entries = new Map<string, GgufValue>();
     let hasRecurrentState = false;
 
     for (let index = 0; index < kvCount; index += 1) {
@@ -257,12 +286,13 @@ async function readGgufMetadata(source) {
 }
 
 /** Convenience wrapper over a file on disk. */
-async function readGgufMetadataFromFile(filePath) {
-  let handle = null;
+export async function readGgufMetadataFromFile(filePath: string): Promise<GgufMetadata | null> {
+  let handle: import("fs").promises.FileHandle | null = null;
   try {
-    handle = await fs.promises.open(filePath, "r");
-    const { size } = await handle.stat();
-    const file = handle;
+    const opened = await fs.promises.open(filePath, "r");
+    handle = opened;
+    const { size } = await opened.stat();
+    const file = opened;
     return await readGgufMetadata({
       size,
       read: async (offset, length) => {
@@ -278,5 +308,3 @@ async function readGgufMetadataFromFile(filePath) {
     await handle?.close().catch(() => {});
   }
 }
-
-module.exports = { readGgufMetadata, readGgufMetadataFromFile };

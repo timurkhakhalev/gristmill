@@ -1,8 +1,8 @@
-const { spawn } = require("child_process");
+import { spawn, type ChildProcess } from "child_process";
 const { app } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const { promises: fsPromises } = require("fs");
+const fsPromises = require("fs").promises;
 
 /**
  * LlamaCppInstaller - Manages llama-server binary availability
@@ -10,7 +10,13 @@ const { promises: fsPromises } = require("fs");
  * Note: This module is kept for backwards compatibility and system installation checks.
  * The bundled llama-server binary is primarily managed by LlamaServerManager.
  */
-class LlamaCppInstaller {
+export class LlamaCppInstaller {
+  installDir: string | null;
+  binPath: string | null;
+  platform: NodeJS.Platform;
+  arch: string;
+  _initialized: boolean;
+
   constructor() {
     // IMPORTANT: Do NOT call app.getPath() here!
     // It can hang or fail before app.whenReady() in Electron 36+.
@@ -24,7 +30,7 @@ class LlamaCppInstaller {
   /**
    * Ensures the installer is initialized. Safe to call multiple times.
    */
-  ensureInitialized() {
+  ensureInitialized(): void {
     if (this._initialized) return;
 
     if (!app.isReady()) {
@@ -38,22 +44,22 @@ class LlamaCppInstaller {
     this._initialized = true;
   }
 
-  async ensureInstallDir() {
+  async ensureInstallDir(): Promise<void> {
     this.ensureInitialized();
     await fsPromises.mkdir(this.installDir, { recursive: true });
   }
 
-  getBinaryName() {
+  getBinaryName(): string {
     // llama-server binary name
     return this.platform === "win32" ? "llama-server.exe" : "llama-server";
   }
 
-  getInstalledBinaryPath() {
+  getInstalledBinaryPath(): string {
     this.ensureInitialized();
-    return path.join(this.installDir, this.getBinaryName());
+    return path.join(this.installDir as string, this.getBinaryName());
   }
 
-  async isInstalled() {
+  async isInstalled(): Promise<boolean> {
     try {
       // First check for system installation
       const systemPath = await this.getSystemBinaryPath();
@@ -72,7 +78,7 @@ class LlamaCppInstaller {
     }
   }
 
-  async getSystemBinaryPath() {
+  async getSystemBinaryPath(): Promise<string | null> {
     return new Promise((resolve) => {
       const checkCmd = this.platform === "win32" ? "where.exe" : "which";
       const binaryNames = this.platform === "win32" ? ["llama-server.exe"] : ["llama-server"];
@@ -81,13 +87,13 @@ class LlamaCppInstaller {
       let remaining = binaryNames.length;
 
       for (const name of binaryNames) {
-        const proc = spawn(checkCmd, [name], {
+        const proc: ChildProcess = spawn(checkCmd, [name], {
           windowsHide: true,
           stdio: "pipe",
         });
 
         let output = "";
-        proc.stdout.on("data", (data) => {
+        proc.stdout?.on("data", (data) => {
           output += data.toString();
         });
 
@@ -112,12 +118,12 @@ class LlamaCppInstaller {
     });
   }
 
-  async checkSystemInstallation() {
+  async checkSystemInstallation(): Promise<boolean> {
     const systemPath = await this.getSystemBinaryPath();
     return systemPath !== null;
   }
 
-  async install() {
+  async install(): Promise<{ success: boolean; message?: string }> {
     try {
       await this.ensureInstallDir();
 
@@ -132,12 +138,12 @@ class LlamaCppInstaller {
     } catch (error) {
       return {
         success: false,
-        message: `Installation failed: ${error.message}`,
+        message: `Installation failed: ${(error as Error).message}`,
       };
     }
   }
 
-  async uninstall() {
+  async uninstall(): Promise<{ success: boolean; message?: string }> {
     try {
       const binaryPath = this.getInstalledBinaryPath();
       await fsPromises.unlink(binaryPath);
@@ -146,12 +152,12 @@ class LlamaCppInstaller {
     } catch (error) {
       return {
         success: false,
-        message: `Uninstall failed: ${error.message}`,
+        message: `Uninstall failed: ${(error as Error).message}`,
       };
     }
   }
 
-  async getBinaryPath() {
+  async getBinaryPath(): Promise<string> {
     if (this.binPath) {
       return this.binPath;
     }
@@ -168,4 +174,6 @@ class LlamaCppInstaller {
   }
 }
 
-module.exports = { default: new LlamaCppInstaller() };
+// Dual export: ipcHandlers.js requires this module as `{ default }`; the TS
+// graph imports the class by name. One instance, exactly as before.
+module.exports = { default: new LlamaCppInstaller(), LlamaCppInstaller };

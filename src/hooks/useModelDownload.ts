@@ -239,7 +239,7 @@ export function useModelDownload({
   );
 
   const handleLLMProgress = useCallback(
-    (_event: unknown, data: LLMDownloadProgressData) => {
+    (data: LLMDownloadProgressData) => {
       if (data.type === "complete") {
         void handleTerminalDownload(data.modelId, data.type, undefined, undefined, data.sequence);
         return;

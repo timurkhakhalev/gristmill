@@ -1,31 +1,47 @@
-const debugLogger = require("./debugLogger");
-const { getMeetingJoinUrl } = require("./meetingJoinUrl");
+import debugLogger from "./debugLogger.js";
+import { getMeetingJoinUrl } from "./meetingJoinUrl.js";
+import type { CalendarEventRow } from "./database.js";
 
 const MEETING_REMINDER_LEAD_MS = 60 * 1000;
 
-function notificationKey(event) {
+function notificationKey(event: Pick<CalendarEventRow, "provider" | "id">): string {
   return `${event.provider || "google"}:${event.id}`;
 }
 
 // A solo event with no invitees and no meeting link is a time block (focus
 // time, a personal reminder), not a meeting — every provider syncs those.
-function isReminderEligible(event) {
-  return event.attendees_count > 0 || getMeetingJoinUrl(event);
+function isReminderEligible(event: CalendarEventRow): boolean {
+  return (
+    (event.attendees_count ?? 0) > 0 ||
+    getMeetingJoinUrl(event as never) !== null
+  );
+}
+
+export interface ReminderSchedulerDb {
+  getUpcomingEvents(windowMinutes?: number): CalendarEventRow[];
+  getActiveEvents(): CalendarEventRow[];
+}
+
+export interface MeetingDetectionEngine {
+  handleCalendarReminder(event: CalendarEventRow): unknown;
 }
 
 // Provider-agnostic meeting reminder scheduling. Reads only the shared
 // calendar_events table (deduped across providers), so a single scheduler
 // serves both calendar managers without double-firing reminders.
-class CalendarReminderScheduler {
-  constructor(databaseManager) {
+export class CalendarReminderScheduler {
+  private readonly databaseManager: ReminderSchedulerDb;
+  meetingDetectionEngine: MeetingDetectionEngine | null = null;
+  private nextMeetingTimer: NodeJS.Timeout | null = null;
+  private meetingEndTimer: NodeJS.Timeout | null = null;
+  private activeMeeting: CalendarEventRow | null = null;
+  private notifiedMeetings = new Set<string>();
+
+  constructor(databaseManager: ReminderSchedulerDb) {
     this.databaseManager = databaseManager;
-    this.nextMeetingTimer = null;
-    this.meetingEndTimer = null;
-    this.activeMeeting = null;
-    this.notifiedMeetings = new Set();
   }
 
-  scheduleNextMeeting() {
+  scheduleNextMeeting(): void {
     if (this.nextMeetingTimer) {
       clearTimeout(this.nextMeetingTimer);
       this.nextMeetingTimer = null;
@@ -48,7 +64,7 @@ class CalendarReminderScheduler {
     }, delay);
   }
 
-  onMeetingStart(event) {
+  onMeetingStart(event: CalendarEventRow): void {
     if (!isReminderEligible(event)) {
       this.scheduleNextMeeting();
       return;
@@ -77,7 +93,7 @@ class CalendarReminderScheduler {
     this.scheduleNextMeeting();
   }
 
-  onMeetingEnd() {
+  onMeetingEnd(): void {
     debugLogger.info(
       "Calendar meeting ended",
       { summary: this.activeMeeting?.summary },
@@ -88,7 +104,7 @@ class CalendarReminderScheduler {
     this.scheduleNextMeeting();
   }
 
-  onWakeFromSleep() {
+  onWakeFromSleep(): void {
     const activeEvents = this.databaseManager.getActiveEvents();
     if (activeEvents.length > 0 && !this.activeMeeting) {
       this.onMeetingStart(activeEvents[0]);
@@ -96,7 +112,11 @@ class CalendarReminderScheduler {
     this.scheduleNextMeeting();
   }
 
-  getActiveMeetingState() {
+  getActiveMeetingState(): {
+    activeMeeting: CalendarEventRow | null;
+    activeEvents: CalendarEventRow[];
+    upcomingEvents: CalendarEventRow[];
+  } {
     return {
       activeMeeting: this.activeMeeting,
       activeEvents: this.databaseManager.getActiveEvents(),
@@ -107,7 +127,7 @@ class CalendarReminderScheduler {
   // Refresh or clear the cached active event after a provider replaces its
   // rows. Keep notifiedMeetings intact so periodic snapshots cannot re-fire a
   // reminder that was already delivered.
-  reconcileProvider(provider) {
+  reconcileProvider(provider: string): void {
     if (!this.activeMeeting || this.activeMeeting.provider !== provider) return;
 
     const key = notificationKey(this.activeMeeting);
@@ -126,7 +146,7 @@ class CalendarReminderScheduler {
     this._scheduleMeetingEnd(currentEvent);
   }
 
-  _scheduleMeetingEnd(event) {
+  private _scheduleMeetingEnd(event: CalendarEventRow): void {
     this._clearMeetingEndTimer();
     const endDelay = new Date(event.end_time).getTime() - Date.now();
     if (endDelay > 0) {
@@ -136,14 +156,14 @@ class CalendarReminderScheduler {
     }
   }
 
-  _clearMeetingEndTimer() {
+  private _clearMeetingEndTimer(): void {
     if (this.meetingEndTimer) {
       clearTimeout(this.meetingEndTimer);
       this.meetingEndTimer = null;
     }
   }
 
-  stop() {
+  stop(): void {
     if (this.nextMeetingTimer) {
       clearTimeout(this.nextMeetingTimer);
       this.nextMeetingTimer = null;
@@ -154,7 +174,7 @@ class CalendarReminderScheduler {
 
   // Re-arm after one provider's data changes without forgetting reminders
   // already delivered by the other provider.
-  reset(provider = null) {
+  reset(provider: string | null = null): void {
     if (!provider) {
       this.stop();
       this.notifiedMeetings.clear();

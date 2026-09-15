@@ -137,7 +137,7 @@ characterization-тестами `test/helpers/settingsSelectors*.test.js` с п�
 ## Inventory на первом шаге
 
 Срез определяется реальным графом `tsc -p tsconfig.main.json --listFilesOnly`,
-а не всеми файлами в каталоге helpers. В нём **104 JS, 81 TS, 1 MTS и 25 JSON**
+а не всеми файлами в каталоге helpers. В нём **96 JS, 89 TS, 1 MTS и 25 JSON**
 (только `src/`; main/preload/worker — отдельные entry points). Entry points:
 main, preload и ONNX worker. Тесты и tooling в граф не входят.
 Модули helpers, которые используются только renderer, остаются в Vite-графе.
@@ -175,7 +175,7 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/abortError.ts`
 - `src/helpers/agentStreamRequestRegistry.ts`
 - `src/helpers/anthropicResponse.js`
-- `src/helpers/appleCalendarManager.js`
+- `src/helpers/appleCalendarManager.ts`
 - `src/helpers/assemblyAiStreaming.js`
 - `src/helpers/audioActivityDetector.js`
 - `src/helpers/audioStorage.ts`
@@ -198,8 +198,8 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/bedrockCatalog.js`
 - `src/helpers/binaryResolver.ts`
 - `src/helpers/builtinActions.ts`
-- `src/helpers/calendarReminderScheduler.js`
-- `src/helpers/calendarSyncInterval.js`
+- `src/helpers/calendarReminderScheduler.ts`
+- `src/helpers/calendarSyncInterval.ts`
 - `src/helpers/cliBridge.ts`
 - `src/helpers/cortiAuth.js`
 - `src/helpers/cortiStreaming.js`
@@ -225,8 +225,8 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/geminiTranscription.js`
 - `src/helpers/ggufMetadata.js`
 - `src/helpers/globeKeyManager.js`
-- `src/helpers/googleCalendarManager.js`
-- `src/helpers/googleCalendarOAuth.js`
+- `src/helpers/googleCalendarManager.ts`
+- `src/helpers/googleCalendarOAuth.ts`
 - `src/helpers/granolaImport.ts`
 - `src/helpers/hotkeyList.js`
 - `src/helpers/hotkeyManager.js`
@@ -258,15 +258,15 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/meetingSystemAudioWatchdog.js`
 - `src/helpers/meetingTranscriptionLifecycle.js`
 - `src/helpers/menuManager.js`
-- `src/helpers/microsoftCalendarManager.js`
-- `src/helpers/microsoftCalendarOAuth.js`
+- `src/helpers/microsoftCalendarManager.ts`
+- `src/helpers/microsoftCalendarOAuth.ts`
 - `src/helpers/modelDirUtils.ts`
 - `src/helpers/modelManagerBridge.js`
 - `src/helpers/navigationGuard.js`
 - `src/helpers/networkErrors.js`
 - `src/helpers/noteSearch.ts`
 - `src/helpers/notificationTimer.js`
-- `src/helpers/oauthLoopbackFlow.js`
+- `src/helpers/oauthLoopbackFlow.ts`
 - `src/helpers/onboardingWindowBounds.js`
 - `src/helpers/onnxWorkerClient.js`
 - `src/helpers/openaiRealtimeStreaming.js`
@@ -1028,3 +1028,43 @@ warnings — на 1 ниже прежнего); strict probes
 `test/scripts/noteFilesTypeProbe.test.js` (коды 2345×3/2339×2/2353
 сверены фактическим tsc-прогоном; positive graph чист). Inventory графа
 Electron: 104 JS, 81 TS, 1 MTS, 25 JSON.
+
+## Этап «calendar managers, OAuth transport и reminders»
+
+16 сентября 2026 (issue #40). Реальные implementation за контрактом #34
+переведены в strict TS: три managers остаются отдельными, универсального
+provider framework нет.
+
+- `oauthLoopbackFlow` → TS: типизированы callback-result/state/PKCE,
+  timeout/cancel, первый-terminal-callback claim и server cleanup;
+  redirect/scopes/PKCE/multi-account/token persistence — прежние.
+  `googleCalendarOAuth`/`microsoftCalendarOAuth` → TS: token responses
+  (error/description pair, rotated refresh), email resolution (Google
+  id_token, Microsoft preferred_username + Graph /me fallback),
+  in-flight refresh dedupe Microsoft, revocation Google. Credentials не
+  регистрируются и не менялись.
+- `googleCalendarManager` → TS: pagination, sync-token TTL/full-window
+  pruning (410 fallback), selected calendars, primary-only, contacts
+  upsert; provider payload — unknown → `GoogleEventItem` parser →
+  internal rows. `microsoftCalendarManager` → TS: delta links,
+  series-master backfill (bare-stub keep-stored-row policy), сокращённый
+  TTL при неудачном backfill без потери старого cache, Graph datetime
+  normalization (все windows разные, алгоритмы не унифицированы).
+- `appleCalendarManager` → TS: newline JSON протокол EventKit child
+  описан типами; внешние сообщения валидируются (`isPermissionMessage`/
+  `isSnapshotMessage`/`isHelperSnapshotEvent`) до DB mutations; connect
+  result — дискриминированное union (unsupported/helper-missing/denied/
+  snapshot-failed); first-snapshot promise, restart backoff, stale child
+  callbacks не владеют replacement (`_onHelperGone` identity check).
+- `calendarReminderScheduler` → TS: dedupe/reschedule/disconnect/reconcile
+  semantics прежние; `calendarSyncInterval` → TS (backoff/focus throttle).
+  Handler #34 не дублирует manager side effects. CommonJS-контракты всех
+  восьми модулей сохранены (`module.exports = Class[+helpers]`), wiring в
+  main.js/ipcHandlers.js не менялся.
+
+Проверка: `pnpm run typecheck` 0 ошибок; `pnpm run lint` 0 errors (39+2
+warnings — на 1 ниже); runtime-shape smoke под tsx (все 8 модулей:
+class/function + helpers на месте); strict probes
+`test/scripts/calendarManagersTypeProbe.test.js` — коды 2345×5/2554×3
+сверены фактическим tsc-прогоном, positive graph чист. Inventory графа
+Electron: 96 JS, 89 TS, 1 MTS, 25 JSON.

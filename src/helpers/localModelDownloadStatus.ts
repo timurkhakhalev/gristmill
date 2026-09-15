@@ -68,3 +68,9 @@ export class LocalModelDownloadStatus {
   }
 }
 
+
+
+// Dual export: ipcHandlers.js requires this module as the class itself,
+// while the TS graph imports the named export.
+module.exports = LocalModelDownloadStatus;
+module.exports.LocalModelDownloadStatus = LocalModelDownloadStatus;

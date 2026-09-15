@@ -968,3 +968,10 @@ export class WhisperManager {
   }
 }
 
+
+
+// Dual export: main.js and legacy tests require this module as the class
+// itself, while the TS graph imports the named export.
+module.exports = WhisperManager;
+module.exports.WhisperManager = WhisperManager;
+module.exports.shouldRewarmOnWake = shouldRewarmOnWake;

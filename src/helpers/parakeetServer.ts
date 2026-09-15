@@ -265,3 +265,9 @@ export class ParakeetServerManager {
   }
 }
 
+
+
+// Dual export: legacy tests require this module as the class itself, while
+// the TS graph imports the named export.
+module.exports = ParakeetServerManager;
+module.exports.ParakeetServerManager = ParakeetServerManager;

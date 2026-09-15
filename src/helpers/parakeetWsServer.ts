@@ -618,3 +618,9 @@ export class ParakeetWsServer {
   }
 }
 
+
+
+// Dual export: legacy tests require this module as the class itself, while
+// the TS graph imports the named export.
+module.exports = ParakeetWsServer;
+module.exports.ParakeetWsServer = ParakeetWsServer;

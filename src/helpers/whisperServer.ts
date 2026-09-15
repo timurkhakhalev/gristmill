@@ -903,3 +903,14 @@ export class WhisperServerManager extends EventEmitter {
   }
 }
 
+
+
+// Dual export: legacy tests require this module as the class and read the
+// argv/thread/VAD helpers as its statics, while the TS graph imports the
+// named exports.
+module.exports = WhisperServerManager;
+module.exports.WhisperServerManager = WhisperServerManager;
+module.exports.buildWhisperServerArgs = buildWhisperServerArgs;
+module.exports.INFERENCE_DECODER_FIELDS = INFERENCE_DECODER_FIELDS;
+module.exports.getVadSignature = getVadSignature;
+module.exports.resolveWhisperThreads = resolveWhisperThreads;

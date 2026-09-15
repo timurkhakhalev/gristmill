@@ -69,14 +69,14 @@ function createFixture({
         },
       };
     }
-    if (parent?.filename === secretCryptoModulePath && request === "./debugLogger") {
+    if (parent?.filename === secretCryptoModulePath && (request === "./debugLogger" || request === "./debugLogger.js")) {
       return {
         warn: (m, d) => logs.warn.push({ m, d }),
         error: (m, d) => logs.error.push({ m, d }),
         info: (m, d) => logs.info.push({ m, d }),
       };
     }
-    if (parent?.filename === environmentModulePath && request === "./debugLogger") {
+    if (parent?.filename === environmentModulePath && (request === "./debugLogger" || request === "./debugLogger.js")) {
       return {
         warn: (m, d) => logs.warn.push({ m, d }),
         error: (m, d) => logs.error.push({ m, d }),
@@ -253,8 +253,13 @@ test("clearAllPersistedData removes .env and the secure-keys directory", async (
   try {
     const manager = new fx.EnvironmentManager();
     manager.saveOpenAIKey("to-be-erased");
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(fs.existsSync(path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc")));
+    // _saveKey persists asynchronously (keychain init + mkdir + write + rename);
+    // wait until the blob lands instead of assuming a fixed number of ticks.
+    const encPath = path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc");
+    for (let i = 0; i < 50 && !fs.existsSync(encPath); i += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.ok(fs.existsSync(encPath));
 
     const result = await manager.clearAllPersistedData();
     assert.deepEqual(result, { success: true });

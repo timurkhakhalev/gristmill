@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/dictionaryStartup.js");
+const load = () => import("../../src/helpers/dictionaryStartup.ts");
 
 test("startup prefers SQLite when the DB is ahead of the renderer cache (#1295)", async () => {
   const { chooseDictionaryStartupAction } = await load();

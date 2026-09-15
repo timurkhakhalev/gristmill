@@ -352,7 +352,7 @@ export async function transcribeAudioFileByok(
     } else if (payload.timestamps === true) {
       // Providers/models that don't support the request keep the
       // plain-text request untouched (helper returns null).
-      const fields = timestampRequestFields(route.provider, route.model ?? undefined);
+      const fields = timestampRequestFields(route.provider, route.model ?? null);
       if (fields) Object.assign(multipartFields, fields);
     }
 

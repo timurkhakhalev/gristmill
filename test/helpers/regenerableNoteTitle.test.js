@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/regenerableNoteTitle.js");
+const load = () => import("../../src/helpers/regenerableNoteTitle.ts");
 const LABELS = ["Untitled Note", "New note", "New note"]; // typical localized labels
 
 test("empty / whitespace title is regenerable", async () => {

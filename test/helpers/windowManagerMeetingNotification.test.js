@@ -86,26 +86,42 @@ Module._load = function loadWindowManagerWithStubs(request, parent, isMain) {
       dialog: {},
     };
   }
-  if (request === "./debugLogger") return { warn: () => undefined };
-  if (request === "./hotkeyManager") return FakeHotkeyManager;
-  if (request === "./dragManager") return FakeDragManager;
-  if (request === "./menuManager") return {};
-  if (request === "./devServerManager") {
+  if (request === "./debugLogger" || request === "./debugLogger.js") {
+    return { warn: () => undefined };
+  }
+  if (request === "./hotkeyManager" || request === "./hotkeyManager.js") {
+    return { HotkeyManager: FakeHotkeyManager };
+  }
+  if (request === "./dragManager" || request === "./dragManager.js") {
+    return { DragManager: FakeDragManager };
+  }
+  if (request === "./menuManager" || request === "./menuManager.js") {
+    return { MenuManager: { setupMainMenu() {}, setupControlPanelMenu() {} } };
+  }
+  if (request === "./devServerManager" || request === "./devServerManager.js") {
     return {
-      DEV_SERVER_PORT: 5173,
-      DEV_SERVER_URL: "http://localhost:5173",
-      getAppFilePath: () => ({ path: "/app/index.html", query: {} }),
-      waitForDevServer: () => devServerWaitPromise,
+      DevServerManager: {
+        DEV_SERVER_PORT: 5173,
+        DEV_SERVER_URL: "http://localhost:5173",
+        getAppFilePath: () => ({ path: "/app/index.html", query: {} }),
+        waitForDevServer: () => devServerWaitPromise,
+      },
     };
   }
-  if (request === "./dockManager") return {};
-  if (request === "./i18nMain") return { i18nMain: { t: (key) => key } };
-  if (request === "./windowConfig") {
+  if (request === "./dockManager" || request === "./dockManager.js") return {};
+  if (request === "./i18nMain" || request === "./i18nMain.js") {
+    return { i18nMain: { t: (key) => key } };
+  }
+  if (request === "./windowConfig" || request === "./windowConfig.js") {
     const detectionSize = { width: 392, height: 92 };
     const autoEndSize = { width: 620, height: 116 };
     return {
       MAIN_WINDOW_CONFIG: {},
-      CONTROL_PANEL_CONFIG: {},
+      CONTROL_PANEL_CONFIG: { width: 1200, height: 800 },
+      ONBOARDING_WINDOW_SIZES: {
+        COMPACT: { width: 480, height: 624 },
+        EXPANDED: { width: 1000, height: 740 },
+      },
       NOTIFICATION_WINDOW_CONFIG: { ...detectionSize, acceptFirstMouse: true },
       AUTO_END_NOTIFICATION_WINDOW_SIZE: autoEndSize,
       getMeetingNotificationWindowSize: (data) =>

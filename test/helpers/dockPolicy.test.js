@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/helpers/dockPolicy.js");
+const load = () => import("../../src/helpers/dockPolicy.ts");
 
 test("the Dock icon follows the control panel", async () => {
   const { resolveDockVisibility } = await load();

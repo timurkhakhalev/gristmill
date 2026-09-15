@@ -1,24 +1,27 @@
-const { screen } = require("electron");
-const { WindowPositionUtil } = require("./windowConfig");
-const debugLogger = require("./debugLogger");
+import { screen, BrowserWindow } from "electron";
+import { WindowPositionUtil } from "./windowConfig.js";
+import debugLogger from "./debugLogger.js";
 
-class DragManager {
-  constructor() {
-    this.isDragging = false;
-    this.dragOffset = { x: 0, y: 0 };
-    this.mouseTrackingInterval = null;
-    this.targetWindow = null;
-    this.activeWindow = null;
-  }
+export interface DragOperationResult {
+  success: boolean;
+  message?: string;
+}
 
-  setTargetWindow(window) {
+export class DragManager {
+  isDragging = false;
+  dragOffset = { x: 0, y: 0 };
+  mouseTrackingInterval: NodeJS.Timeout | null = null;
+  targetWindow: BrowserWindow | null = null;
+  activeWindow: BrowserWindow | null = null;
+
+  setTargetWindow(window: BrowserWindow | null): void {
     this.targetWindow = window;
   }
 
   /** Drags the configured target window by default; a caller that owns a
    *  different frameless window (the control panel's manual titlebar) passes
    *  it explicitly for the duration of one drag. */
-  async startWindowDrag(windowOverride = null) {
+  async startWindowDrag(windowOverride: BrowserWindow | null = null): Promise<DragOperationResult> {
     const win = windowOverride || this.targetWindow;
     if (!win || win.isDestroyed()) {
       return { success: false, message: "Window not available" };
@@ -46,11 +49,11 @@ class DragManager {
     } catch (error) {
       console.error("Failed to start window drag:", error);
       this.isDragging = false;
-      return { success: false, message: error.message };
+      return { success: false, message: (error as Error).message };
     }
   }
 
-  async stopWindowDrag() {
+  async stopWindowDrag(): Promise<DragOperationResult> {
     try {
       this.isDragging = false;
       this.activeWindow = null;
@@ -59,11 +62,11 @@ class DragManager {
       return { success: true };
     } catch (error) {
       console.error("Failed to stop window drag:", error);
-      return { success: false, message: error.message };
+      return { success: false, message: (error as Error).message };
     }
   }
 
-  setupMouseTracking() {
+  setupMouseTracking(): void {
     if (this.mouseTrackingInterval) {
       clearInterval(this.mouseTrackingInterval);
     }
@@ -75,10 +78,11 @@ class DragManager {
     }, 16); // ~60fps
   }
 
-  updateWindowPosition() {
+  updateWindowPosition(): void {
     try {
       const cursorPos = screen.getCursorScreenPoint();
-      const { width, height } = this.activeWindow.getBounds();
+      // Only the tracking interval calls this, and it checks activeWindow first.
+      const { width, height } = this.activeWindow!.getBounds();
       const x = cursorPos.x - this.dragOffset.x;
       const y = cursorPos.y - this.dragOffset.y;
 
@@ -91,32 +95,33 @@ class DragManager {
       });
       const clamped = WindowPositionUtil.clampToWorkArea({ x, y, width, height }, display);
 
-      this.activeWindow.setPosition(clamped.x, clamped.y);
+      this.activeWindow!.setPosition(clamped.x, clamped.y);
     } catch (error) {
       console.error("Error updating window position:", error);
       this.stopWindowDrag();
     }
   }
 
-  stopMouseTracking() {
+  stopMouseTracking(): void {
     if (this.mouseTrackingInterval) {
       clearInterval(this.mouseTrackingInterval);
       this.mouseTrackingInterval = null;
     }
   }
 
-  isDragActive() {
+  isDragActive(): boolean {
     return this.isDragging;
   }
 
-  getDragOffset() {
+  getDragOffset(): { x: number; y: number } {
     return { ...this.dragOffset };
   }
 
-  cleanup() {
+  cleanup(): void {
     this.stopWindowDrag();
     this.targetWindow = null;
   }
 }
 
 module.exports = DragManager;
+module.exports.DragManager = DragManager;

@@ -8,9 +8,17 @@
 // outright rather than minimized into the Dock, so there is nothing to restore
 // from there.
 
+export interface DockVisibilityInput {
+  platform: string;
+  controlPanelVisible?: boolean | null;
+}
+
 // Whether the Dock icon should be visible right now.
 // Returns null off macOS, where there is no Dock to act on.
-export function resolveDockVisibility({ platform, controlPanelVisible }) {
+export function resolveDockVisibility({
+  platform,
+  controlPanelVisible,
+}: DockVisibilityInput): boolean | null {
   if (platform !== "darwin") return null;
   return !!controlPanelVisible;
 }

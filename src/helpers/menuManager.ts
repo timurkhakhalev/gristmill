@@ -1,9 +1,9 @@
-const { Menu } = require("electron");
-const { i18nMain } = require("./i18nMain");
+import { Menu, BrowserWindow, type MenuItemConstructorOptions } from "electron";
+import { i18nMain } from "./i18nMain.js";
 
-class MenuManager {
-  static setupMainMenu(onOpenSettings) {
-    const template = [
+export class MenuManager {
+  static setupMainMenu(onOpenSettings?: () => void): void {
+    const template: MenuItemConstructorOptions[] = [
         {
           label: i18nMain.t("menu.appLabel"),
           submenu: [
@@ -29,9 +29,12 @@ class MenuManager {
     Menu.setApplicationMenu(menu);
   }
 
-  static setupControlPanelMenu(controlPanelWindow, onOpenSettings) {
+  static setupControlPanelMenu(
+    controlPanelWindow: BrowserWindow,
+    onOpenSettings?: () => void
+  ): void {
     // OpenHercules targets macOS only, so the application menu is always used.
-    const template = [
+    const template: MenuItemConstructorOptions[] = [
         {
           label: i18nMain.t("menu.appLabel"),
           submenu: [
@@ -104,3 +107,4 @@ class MenuManager {
 }
 
 module.exports = MenuManager;
+module.exports.MenuManager = MenuManager;

@@ -83,7 +83,7 @@ function loadManager({ markerExists = true } = {}) {
 
   Module._load = function loadWithMocks(request, parent, isMain) {
     if (request === "electron") return { app: { getAppPath: () => path.resolve(__dirname, "../..") } };
-    if (request === "./debugLogger") {
+    if (request === "./debugLogger" || request === "./debugLogger.js") {
       return { info() {}, warn() {}, debug() {}, error() {} };
     }
     if (request === "child_process") {

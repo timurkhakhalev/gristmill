@@ -8,39 +8,41 @@ const CALENDAR_TIMEOUT_MS = 2 * 60 * 1000;
 // 200ms dismiss animation delays the response IPC.
 const MIN_RESUME_MS = 5 * 1000;
 
-function getNotificationTimeoutMs(source) {
+export function getNotificationTimeoutMs(source?: string | null): number {
   return source === "calendar" ? CALENDAR_TIMEOUT_MS : DETECTION_TIMEOUT_MS;
 }
 
 // Auto-dismiss countdown for the meeting notification overlay, pausable while
 // the user is interacting with the card.
-class NotificationDismissTimer {
-  constructor(onTimeout) {
+export class NotificationDismissTimer {
+  private _onTimeout: () => void;
+  private _timer: NodeJS.Timeout | null = null;
+  private _deadline: number | null = null;
+  private _pausedRemainingMs: number | null = null;
+
+  constructor(onTimeout: () => void) {
     this._onTimeout = onTimeout;
-    this._timer = null;
-    this._deadline = null;
-    this._pausedRemainingMs = null;
   }
 
-  start(durationMs) {
+  start(durationMs: number): void {
     this.cancel();
     this._arm(durationMs);
   }
 
-  pause() {
+  pause(): void {
     if (!this._timer) return;
     clearTimeout(this._timer);
     this._timer = null;
-    this._pausedRemainingMs = Math.max(0, this._deadline - Date.now());
+    this._pausedRemainingMs = Math.max(0, (this._deadline ?? 0) - Date.now());
     this._deadline = null;
   }
 
-  resume() {
+  resume(): void {
     if (this._pausedRemainingMs === null) return;
     this._arm(Math.max(this._pausedRemainingMs, MIN_RESUME_MS));
   }
 
-  cancel() {
+  cancel(): void {
     if (this._timer) {
       clearTimeout(this._timer);
     }
@@ -49,7 +51,7 @@ class NotificationDismissTimer {
     this._pausedRemainingMs = null;
   }
 
-  _arm(durationMs) {
+  private _arm(durationMs: number): void {
     this._pausedRemainingMs = null;
     this._deadline = Date.now() + durationMs;
     this._timer = setTimeout(() => {
@@ -59,5 +61,3 @@ class NotificationDismissTimer {
     }, durationMs);
   }
 }
-
-module.exports = { NotificationDismissTimer, getNotificationTimeoutMs };

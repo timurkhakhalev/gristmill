@@ -1,8 +1,8 @@
-const crypto = require("crypto");
-const fs = require("fs");
-const path = require("path");
-const { app, safeStorage } = require("electron");
-const debugLogger = require("./debugLogger");
+import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import { app, safeStorage } from "electron";
+import debugLogger from "./debugLogger.js";
 
 const SERVICE = "OpenHercules";
 const ACCOUNT = "secrets-master-key";
@@ -12,14 +12,25 @@ const TAG_LEN = 16;
 const KEY_LEN = 32;
 const BACKUP_FILE = "master-key-backup.enc";
 
-let mode = null;
-let masterKey = null;
+// keychain: OS keychain owns a 32-byte master key; AES-256-GCM per secret.
+// safeStorage: every blob goes through Electron's OS encryption directly.
+// unavailable: no backend — reads/writes of secrets fail closed.
+type BackendMode = "keychain" | "safeStorage" | "unavailable";
 
-function _backupPath() {
+let mode: BackendMode | null = null;
+let masterKey: Buffer | null = null;
+
+function _backupPath(): string {
   return path.join(app.getPath("userData"), "secure-keys", BACKUP_FILE);
 }
 
-function _saveMasterKeyBackup() {
+// The narrow @napi-rs/keyring surface this module uses.
+interface KeyringEntry {
+  getPassword(): string | null;
+  setPassword(value: string): void;
+}
+
+function _saveMasterKeyBackup(): void {
   if (!masterKey || !safeStorage.isEncryptionAvailable()) return;
   const target = _backupPath();
   try {
@@ -29,11 +40,15 @@ function _saveMasterKeyBackup() {
     fs.writeFileSync(tmp, encrypted, { mode: 0o600 });
     fs.renameSync(tmp, target);
   } catch (error) {
-    debugLogger.warn("failed to save master key backup", { error: error?.message }, "secretCrypto");
+    debugLogger.warn(
+      "failed to save master key backup",
+      { error: (error as Error)?.message },
+      "secretCrypto"
+    );
   }
 }
 
-function _loadMasterKeyBackup() {
+function _loadMasterKeyBackup(): boolean {
   if (!safeStorage.isEncryptionAvailable()) return false;
   try {
     const buf = fs.readFileSync(_backupPath());
@@ -47,21 +62,27 @@ function _loadMasterKeyBackup() {
   }
 }
 
-function _initKeychain() {
-  let Entry;
+function _initKeychain(): boolean {
+  let Entry: new (service: string, account: string) => KeyringEntry;
   try {
     ({ Entry } = require("@napi-rs/keyring"));
   } catch (error) {
-    debugLogger.warn("@napi-rs/keyring failed to load", { error: error?.message }, "secretCrypto");
+    debugLogger.warn(
+      "@napi-rs/keyring failed to load",
+      { error: (error as Error)?.message },
+      "secretCrypto"
+    );
     return false;
   }
 
   try {
     const entry = new Entry(SERVICE, ACCOUNT);
-    let stored = null;
+    let stored: string | null = null;
     try {
       stored = entry.getPassword();
-    } catch {}
+    } catch {
+      // No entry yet (or unreadable) — generate below.
+    }
     if (stored) {
       const key = Buffer.from(stored, "base64");
       if (key.length !== KEY_LEN) throw new Error("stored key length invalid");
@@ -77,14 +98,14 @@ function _initKeychain() {
   } catch (error) {
     debugLogger.warn(
       "OS keychain unavailable — falling back to safeStorage",
-      { error: error?.message, platform: process.platform },
+      { error: (error as Error)?.message, platform: process.platform },
       "secretCrypto"
     );
     return false;
   }
 }
 
-function _ensureInit() {
+function _ensureInit(): void {
   if (mode) return;
   if (_initKeychain()) {
     mode = "keychain";
@@ -98,14 +119,14 @@ function _ensureInit() {
   mode = safeStorage.isEncryptionAvailable() ? "safeStorage" : "unavailable";
 }
 
-function isAvailable() {
+export function isAvailable(): boolean {
   _ensureInit();
   return mode !== "unavailable";
 }
 
-function encrypt(plaintext) {
+export function encrypt(plaintext: string): Buffer {
   _ensureInit();
-  if (mode === "keychain") {
+  if (mode === "keychain" && masterKey) {
     const iv = crypto.randomBytes(IV_LEN);
     const cipher = crypto.createCipheriv(ALGO, masterKey, iv);
     const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
@@ -115,9 +136,15 @@ function encrypt(plaintext) {
   throw new Error("no encryption backend available");
 }
 
-function decrypt(blob) {
+export interface DecryptResult {
+  value: string;
+  /** Legacy safeStorage blob read while the keychain backend is active. */
+  needsReencrypt: boolean;
+}
+
+export function decrypt(blob: Buffer): DecryptResult {
   _ensureInit();
-  if (mode === "keychain" && blob.length > IV_LEN + TAG_LEN) {
+  if (mode === "keychain" && masterKey && blob.length > IV_LEN + TAG_LEN) {
     try {
       const iv = blob.subarray(0, IV_LEN);
       const tag = blob.subarray(IV_LEN, IV_LEN + TAG_LEN);
@@ -139,4 +166,6 @@ function decrypt(blob) {
   throw new Error("decryption failed: no backend available");
 }
 
+// Dual-export contract: named ESM exports plus the original CommonJS object
+// so both `require("./secretCrypto")` and emitted cross-module imports work.
 module.exports = { encrypt, decrypt, isAvailable };

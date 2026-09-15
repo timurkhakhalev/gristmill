@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const gate = require("../../src/helpers/meetingMicGate");
+const gate = require("../../src/helpers/meetingMicGate.ts");
 const fx = require("./harness/pcmFixtures");
 
 test("computeChunkStats matches the inline RMS/peak math (Int16 / 0x7fff)", () => {

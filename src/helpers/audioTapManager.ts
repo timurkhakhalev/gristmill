@@ -1,11 +1,12 @@
-const { app } = require("electron");
-const { spawn } = require("child_process");
-const fs = require("fs");
-const path = require("path");
+import { spawn, type ChildProcessByStdio } from "child_process";
+import { app } from "electron";
+import fs from "fs";
+import path from "path";
+import type { Readable } from "stream";
 const debugLogger = require("./debugLogger");
-const { compareVersions } = require("./parakeetCapability");
+import { compareVersions } from "./parakeetCapability.js";
 
-const ARCH_CPU_TYPE = {
+const ARCH_CPU_TYPE: Readonly<Record<string, number>> = {
   arm64: 0x0100000c,
   x64: 0x01000007,
 };
@@ -16,7 +17,122 @@ const START_TIMEOUT_MS = 3000;
 const REQUEST_TIMEOUT_MS = 60000;
 const STOP_TIMEOUT_MS = 5000;
 
-class AudioTapManager {
+type AudioTapChild = ChildProcessByStdio<null, Readable, Readable>;
+
+export type AudioTapPermissionStatus = "granted" | "denied" | "unknown";
+export type AudioTapAccessStatus = AudioTapPermissionStatus | "unsupported";
+
+export interface AudioTapAccessResult {
+  granted: boolean;
+  status: AudioTapAccessStatus;
+  error?: string;
+}
+
+export interface AudioTapStartMessage {
+  type: "start";
+  sampleRate?: number;
+  channels?: number;
+  bitsPerChannel?: number;
+}
+
+export interface AudioTapWarningMessage {
+  type: "warning";
+  code?: string;
+  reason?: string;
+  message?: string;
+}
+
+export interface AudioTapErrorMessage {
+  type: "error";
+  code?: string;
+  message?: string;
+  status?: number;
+  operation?: string;
+}
+
+export type AudioTapMessage =
+  | AudioTapStartMessage
+  | AudioTapWarningMessage
+  | AudioTapErrorMessage;
+
+export interface AudioTapProcessError extends Error {
+  code?: string;
+  status?: number;
+  operation?: string;
+}
+
+export interface AudioTapStartOptions {
+  onChunk?: (chunk: Buffer) => void;
+  onError?: (error: Error) => void;
+  onWarning?: (warning: AudioTapWarningMessage) => void;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+export function parseAudioTapMessage(value: unknown): AudioTapMessage | null {
+  if (!isRecord(value)) return null;
+  if (value.type === "start") {
+    if (
+      ("sampleRate" in value && typeof value.sampleRate !== "number") ||
+      ("channels" in value && typeof value.channels !== "number") ||
+      ("bitsPerChannel" in value && typeof value.bitsPerChannel !== "number")
+    ) {
+      return null;
+    }
+    return {
+      type: "start",
+      sampleRate: typeof value.sampleRate === "number" ? value.sampleRate : undefined,
+      channels: typeof value.channels === "number" ? value.channels : undefined,
+      bitsPerChannel:
+        typeof value.bitsPerChannel === "number" ? value.bitsPerChannel : undefined,
+    };
+  }
+  if (value.type === "warning") {
+    if (
+      ("code" in value && typeof value.code !== "string") ||
+      ("reason" in value && typeof value.reason !== "string") ||
+      ("message" in value && typeof value.message !== "string")
+    ) {
+      return null;
+    }
+    return {
+      type: "warning",
+      code: typeof value.code === "string" ? value.code : undefined,
+      reason: typeof value.reason === "string" ? value.reason : undefined,
+      message: typeof value.message === "string" ? value.message : undefined,
+    };
+  }
+  if (value.type === "error") {
+    if (
+      ("code" in value && typeof value.code !== "string") ||
+      ("message" in value && typeof value.message !== "string") ||
+      ("status" in value && typeof value.status !== "number") ||
+      ("operation" in value && typeof value.operation !== "string")
+    ) {
+      return null;
+    }
+    return {
+      type: "error",
+      code: typeof value.code === "string" ? value.code : undefined,
+      message: typeof value.message === "string" ? value.message : undefined,
+      status: typeof value.status === "number" ? value.status : undefined,
+      operation: typeof value.operation === "string" ? value.operation : undefined,
+    };
+  }
+  return null;
+}
+
+export class AudioTapManager {
+  process: AudioTapChild | null;
+  stderrBuffer: string;
+  onChunk: ((chunk: Buffer) => void) | null;
+  onError: ((error: Error) => void) | null;
+  onWarning: ((warning: AudioTapWarningMessage) => void) | null;
+  isStopping: boolean;
+  permissionStatus: AudioTapPermissionStatus;
+  private _requestPromise: Promise<AudioTapAccessResult> | null;
+
   constructor() {
     this.process = null;
     this.stderrBuffer = "";
@@ -28,13 +144,13 @@ class AudioTapManager {
     this._requestPromise = null;
   }
 
-  isSupported() {
+  isSupported(): boolean {
     return (
       process.platform === "darwin" && compareVersions(process.getSystemVersion(), "14.2") >= 0
     );
   }
 
-  isAvailable() {
+  isAvailable(): boolean {
     if (!this.isSupported()) {
       return false;
     }
@@ -45,14 +161,14 @@ class AudioTapManager {
     return !this._checkArchMismatch(binaryPath);
   }
 
-  getPermissionStatus() {
+  getPermissionStatus(): AudioTapPermissionStatus {
     if (this.process) {
       return "granted";
     }
     return this.permissionStatus;
   }
 
-  checkAccess() {
+  checkAccess(): AudioTapAccessResult {
     if (!this.isSupported()) {
       return { granted: false, status: "unsupported" };
     }
@@ -60,12 +176,11 @@ class AudioTapManager {
     return { granted: status === "granted", status };
   }
 
-  _statusFilePath() {
-    const { app } = require("electron");
+  private _statusFilePath(): string {
     return path.join(app.getPath("userData"), ".system-audio-permission");
   }
 
-  _loadPermissionStatus() {
+  private _loadPermissionStatus(): AudioTapPermissionStatus {
     try {
       const status = fs.readFileSync(this._statusFilePath(), "utf8").trim();
       if (status === "granted" || status === "denied") return status;
@@ -75,7 +190,7 @@ class AudioTapManager {
     return "unknown";
   }
 
-  _persistPermissionStatus(status) {
+  private _persistPermissionStatus(status: AudioTapPermissionStatus): void {
     if (status !== "granted" && status !== "denied") return;
     this.permissionStatus = status;
     try {
@@ -85,7 +200,7 @@ class AudioTapManager {
     }
   }
 
-  async requestAccess() {
+  async requestAccess(): Promise<AudioTapAccessResult> {
     if (!this.isSupported()) {
       return { granted: false, status: "unsupported" };
     }
@@ -97,20 +212,25 @@ class AudioTapManager {
       return this._requestPromise;
     }
 
-    this._requestPromise = this._probeForAccess()
-      .catch((error) => {
-        const status = error.code === "permission_denied" ? "denied" : "unknown";
+    const requestPromise = this._probeForAccess()
+      .catch((error: unknown) => {
+        const processError = error instanceof Error ? error : new Error(String(error));
+        const status: "denied" | "unknown" =
+          "code" in processError && processError.code === "permission_denied"
+            ? "denied"
+            : "unknown";
         this._persistPermissionStatus(status);
-        return { granted: false, status, error: error.message };
+        return { granted: false, status, error: processError.message };
       })
       .finally(() => {
         this._requestPromise = null;
       });
+    this._requestPromise = requestPromise;
 
-    return this._requestPromise;
+    return requestPromise;
   }
 
-  async start({ onChunk, onError, onWarning } = {}) {
+  async start({ onChunk, onError, onWarning }: AudioTapStartOptions = {}): Promise<void> {
     if (!this.isSupported()) {
       throw new Error("macOS 14.2 or later is required for native system audio capture.");
     }
@@ -138,26 +258,19 @@ class AudioTapManager {
     );
     this.process = child;
 
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       let settled = false;
       const timeout = setTimeout(() => {
-        finish(
-          reject,
-          new Error("Timed out starting macOS audio tap. Check System Audio permissions."),
-          true
-        );
+        if (!settle()) return;
+        void this.stop();
+        reject(new Error("Timed out starting macOS audio tap. Check System Audio permissions."));
       }, START_TIMEOUT_MS);
 
-      const finish = (callback, value, shouldStop = false) => {
-        if (settled) {
-          return;
-        }
+      const settle = (): boolean => {
+        if (settled) return false;
         settled = true;
         clearTimeout(timeout);
-        if (shouldStop) {
-          void this.stop();
-        }
-        callback(value);
+        return true;
       };
 
       child.stdout.on("data", (chunk) => {
@@ -174,7 +287,7 @@ class AudioTapManager {
         this._consumeStderr(chunk, (message) => {
           if (message.type === "start") {
             this._persistPermissionStatus("granted");
-            finish(resolve);
+            if (settle()) resolve();
             return;
           }
 
@@ -189,7 +302,9 @@ class AudioTapManager {
               this._persistPermissionStatus("denied");
             }
             if (!settled) {
-              finish(reject, error, true);
+              if (!settle()) return;
+              void this.stop();
+              reject(error);
             } else {
               this.onError?.(error);
             }
@@ -201,7 +316,7 @@ class AudioTapManager {
         if (this.process === child) {
           this.process = null;
         }
-        finish(reject, error);
+        if (settle()) reject(error);
       });
 
       child.on("exit", (code, signal) => {
@@ -211,12 +326,13 @@ class AudioTapManager {
         }
 
         if (!settled) {
-          finish(
-            reject,
-            new Error(
-              `macOS audio tap exited before start (code ${code ?? "null"}, signal ${signal ?? "null"}).`
-            )
-          );
+          if (settle()) {
+            reject(
+              new Error(
+                `macOS audio tap exited before start (code ${code ?? "null"}, signal ${signal ?? "null"}).`
+              )
+            );
+          }
           return;
         }
 
@@ -231,7 +347,7 @@ class AudioTapManager {
     });
   }
 
-  async stop() {
+  async stop(): Promise<void> {
     if (!this.process) {
       return;
     }
@@ -239,7 +355,7 @@ class AudioTapManager {
     const child = this.process;
     this.isStopping = true;
 
-    await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       const timeout = setTimeout(() => {
         try {
           child.kill("SIGKILL");
@@ -271,7 +387,7 @@ class AudioTapManager {
     this.isStopping = false;
   }
 
-  async _probeForAccess() {
+  private async _probeForAccess(): Promise<AudioTapAccessResult> {
     const binaryPath = this._prepareBinary();
     const child = spawn(
       binaryPath,
@@ -281,24 +397,25 @@ class AudioTapManager {
 
     let stderrBuffer = "";
 
-    return new Promise((resolve, reject) => {
+    return new Promise<AudioTapAccessResult>((resolve, reject) => {
       let settled = false;
       const timeout = setTimeout(() => {
-        finish(resolve, { granted: false, status: "unknown" }, true);
+        if (!settle()) return;
+        stopChild();
+        resolve({ granted: false, status: "unknown" });
       }, REQUEST_TIMEOUT_MS);
 
-      const finish = (callback, value, shouldStop = false) => {
-        if (settled) {
-          return;
-        }
+      const settle = (): boolean => {
+        if (settled) return false;
         settled = true;
         clearTimeout(timeout);
-        if (shouldStop) {
-          try {
-            child.kill("SIGTERM");
-          } catch {}
-        }
-        callback(value);
+        return true;
+      };
+
+      const stopChild = (): void => {
+        try {
+          child.kill("SIGTERM");
+        } catch {}
       };
 
       child.stderr.on("data", (chunk) => {
@@ -309,10 +426,18 @@ class AudioTapManager {
           stderrBuffer = stderrBuffer.slice(newlineIndex + 1);
           if (line) {
             try {
-              const message = JSON.parse(line);
+              const message = parseAudioTapMessage(JSON.parse(line));
+              if (!message) {
+                debugLogger.warn("[AudioTapManager] Invalid stderr message", { line }, "meeting");
+                newlineIndex = stderrBuffer.indexOf("\n");
+                continue;
+              }
               if (message.type === "start") {
                 this._persistPermissionStatus("granted");
-                finish(resolve, { granted: true, status: "granted" }, true);
+                if (settle()) {
+                  stopChild();
+                  resolve({ granted: true, status: "granted" });
+                }
                 return;
               }
               if (message.type === "error") {
@@ -320,7 +445,10 @@ class AudioTapManager {
                 if (error.code === "permission_denied") {
                   this._persistPermissionStatus("denied");
                 }
-                finish(reject, error, true);
+                if (settle()) {
+                  stopChild();
+                  reject(error);
+                }
                 return;
               }
             } catch {
@@ -332,14 +460,15 @@ class AudioTapManager {
       });
 
       child.on("error", (error) => {
-        finish(reject, error);
+        if (settle()) reject(error);
       });
 
       child.on("exit", (code, signal) => {
         if (settled) {
           return;
         }
-        finish(resolve, {
+        if (!settle()) return;
+        resolve({
           granted: false,
           status: this.permissionStatus === "denied" ? "denied" : "unknown",
           error:
@@ -351,7 +480,7 @@ class AudioTapManager {
     });
   }
 
-  _prepareBinary() {
+  private _prepareBinary(): string {
     const binaryPath = this.resolveBinary();
     if (!binaryPath) {
       throw new Error(
@@ -373,7 +502,7 @@ class AudioTapManager {
     return binaryPath;
   }
 
-  resolveBinary() {
+  resolveBinary(): string | null {
     const candidates = new Set([
       path.join(app.getAppPath(), "resources", "bin", "macos-audio-tap"),
       path.join(app.getAppPath(), "resources", "macos-audio-tap"),
@@ -397,7 +526,10 @@ class AudioTapManager {
     return null;
   }
 
-  _consumeStderr(chunk, onMessage) {
+  private _consumeStderr(
+    chunk: Buffer | string | Uint8Array,
+    onMessage: (message: AudioTapMessage) => void
+  ): void {
     this.stderrBuffer += chunk.toString();
     let newlineIndex = this.stderrBuffer.indexOf("\n");
 
@@ -407,7 +539,9 @@ class AudioTapManager {
 
       if (line) {
         try {
-          onMessage(JSON.parse(line));
+          const message = parseAudioTapMessage(JSON.parse(line));
+          if (message) onMessage(message);
+          else debugLogger.warn("[AudioTapManager] Invalid stderr message", { line }, "meeting");
         } catch {
           debugLogger.warn("[AudioTapManager] Non-JSON stderr output", { line }, "meeting");
         }
@@ -417,15 +551,15 @@ class AudioTapManager {
     }
   }
 
-  _buildProcessError(message) {
-    const error = new Error(message.message || "macOS audio tap failed");
-    error.code = message.code;
-    error.status = message.status;
-    error.operation = message.operation;
-    return error;
+  private _buildProcessError(message: AudioTapErrorMessage): AudioTapProcessError {
+    return Object.assign(new Error(message.message || "macOS audio tap failed"), {
+      code: message.code,
+      status: message.status,
+      operation: message.operation,
+    });
   }
 
-  _checkArchMismatch(binaryPath) {
+  private _checkArchMismatch(binaryPath: string): string | null {
     try {
       const fd = fs.openSync(binaryPath, "r");
       const header = Buffer.alloc(8);
@@ -446,10 +580,10 @@ class AudioTapManager {
       }
 
       return null;
-    } catch (error) {
+    } catch (error: unknown) {
       debugLogger.warn(
         "[AudioTapManager] Could not verify binary architecture",
-        { error: error.message },
+        { error: error instanceof Error ? error.message : String(error) },
         "meeting"
       );
       return null;
@@ -458,3 +592,5 @@ class AudioTapManager {
 }
 
 module.exports = AudioTapManager;
+module.exports.AudioTapManager = AudioTapManager;
+module.exports.parseAudioTapMessage = parseAudioTapMessage;

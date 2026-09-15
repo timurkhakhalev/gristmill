@@ -25,7 +25,7 @@ import path from "path";
 import WebSocket from "ws";
 import ffmpegPath from "ffmpeg-static";
 import tokenProviders from "../src/helpers/realtimeTokenProviders.ts";
-import audioUtils from "../src/utils/audioUtils.js";
+import audioUtils from "../src/utils/audioUtils.ts";
 import { transcribeWithGemini } from "../src/helpers/geminiTranscription.ts";
 import geminiLive from "../src/helpers/geminiLiveStreaming.ts";
 import AssemblyAiStreaming from "../src/helpers/assemblyAiStreaming.ts";

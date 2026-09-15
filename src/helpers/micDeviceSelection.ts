@@ -3,7 +3,25 @@
  * exposes. deviceId is preferred while it remains valid; the label is only a
  * recovery key when exactly one current input has that label.
  */
-export function resolveMicDeviceSelection(devices, selectedDeviceId, selectedDeviceLabel) {
+export interface MicrophoneDeviceLike {
+  kind?: string;
+  deviceId: string;
+  groupId?: string;
+  label: string;
+}
+
+export type MicDeviceSelectionStatus = "default" | "exact" | "missing" | "remapped" | "ambiguous";
+
+export interface MicDeviceSelection<Device extends MicrophoneDeviceLike> {
+  device: Device | null;
+  status: MicDeviceSelectionStatus;
+}
+
+export function resolveMicDeviceSelection<Device extends MicrophoneDeviceLike>(
+  devices: readonly Device[],
+  selectedDeviceId?: string | null,
+  selectedDeviceLabel?: string | null
+): MicDeviceSelection<Device> {
   if (!selectedDeviceId) {
     return { device: null, status: "default" };
   }

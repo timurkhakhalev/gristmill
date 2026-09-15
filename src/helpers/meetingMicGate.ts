@@ -5,14 +5,34 @@
  * streaming path, transcribeLocalMeetingChunk for the local path). Phase 0 keeps
  * today's policy exactly; Phase 1 changes the policy here, behind these tests.
  */
-const MEETING_MIC_SILENCE_RMS = 0.0015;
-const MEETING_MIC_SILENCE_PEAK = 0.05;
-const MEETING_MIC_BLEED_RMS_CEILING = 0.018;
-const MEETING_MIC_BLEED_PEAK_CEILING = 0.07;
+import type { MeetingAudioSource } from "../utils/audioUtils.js";
 
-const SEND = Object.freeze({ action: "send", reason: null });
+export const MEETING_MIC_SILENCE_RMS = 0.0015;
+export const MEETING_MIC_SILENCE_PEAK = 0.05;
+export const MEETING_MIC_BLEED_RMS_CEILING = 0.018;
+export const MEETING_MIC_BLEED_PEAK_CEILING = 0.07;
 
-function computeChunkStats(buffer) {
+export interface MicChunkStats {
+  rms: number;
+  peak: number;
+  sampleCount: number;
+}
+
+export type MicChunkMode = "local" | "streaming";
+export type MicChunkVerdict =
+  | { action: "send"; reason: null }
+  | { action: "zero"; reason: "silence" | "bleed_floor" }
+  | { action: "skip"; reason: "silence" | "system_dominant" };
+
+export interface ResolveMicChunkActionOptions extends MicChunkStats {
+  mode: MicChunkMode;
+  source: MeetingAudioSource;
+  isSystemSpeaking: () => boolean;
+}
+
+const SEND: MicChunkVerdict = Object.freeze({ action: "send", reason: null });
+
+export function computeChunkStats(buffer: Buffer | null | undefined): MicChunkStats {
   if (!buffer || buffer.length < 2) {
     return { rms: 0, peak: 0, sampleCount: 0 };
   }
@@ -28,7 +48,14 @@ function computeChunkStats(buffer) {
   return { rms: Math.sqrt(sumSq / samples.length), peak, sampleCount: samples.length };
 }
 
-function resolveMicChunkAction({ mode, source, rms, peak, sampleCount, isSystemSpeaking }) {
+export function resolveMicChunkAction({
+  mode,
+  source,
+  rms,
+  peak,
+  sampleCount,
+  isSystemSpeaking,
+}: ResolveMicChunkActionOptions): MicChunkVerdict {
   if (!sampleCount) return SEND;
 
   const isMic = source === "mic";
@@ -46,12 +73,3 @@ function resolveMicChunkAction({ mode, source, rms, peak, sampleCount, isSystemS
   if (quiet && isSystemSpeaking()) return { action: "zero", reason: "bleed_floor" };
   return SEND;
 }
-
-module.exports = {
-  MEETING_MIC_SILENCE_RMS,
-  MEETING_MIC_SILENCE_PEAK,
-  MEETING_MIC_BLEED_RMS_CEILING,
-  MEETING_MIC_BLEED_PEAK_CEILING,
-  computeChunkStats,
-  resolveMicChunkAction,
-};

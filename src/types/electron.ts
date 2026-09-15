@@ -25,8 +25,6 @@ import type {
 
 export type ChineseScriptPreference = "simplified" | "traditional" | "as-transcribed";
 
-export type TranscriptionStatus = "completed" | "failed" | "pending" | "discarded";
-
 export interface PolicyFailureMetadata {
   error?: string;
   code?: string;
@@ -150,25 +148,6 @@ export interface ActiveAccountScope {
   authGeneration: number;
 }
 
-export interface TranscriptionItem {
-  id: number;
-  text: string;
-  raw_text: string | null;
-  timestamp: string;
-  created_at: string;
-  has_audio: number;
-  audio_duration_ms: number | null;
-  provider: string | null;
-  model: string | null;
-  status: TranscriptionStatus;
-  error_message: string | null;
-  error_code: TranscriptionErrorCode;
-  route_kind?: string | null;
-  client_transcription_id: string;
-  cloud_id: string | null;
-  sync_status: "synced" | "pending" | "error";
-  deleted_at: string | null;
-}
 
 // NoteItem and the Notes IPC surface live in src/contracts/notes.ts; import
 // from there instead of re-adding row/cloud-era fields here.
@@ -545,55 +524,7 @@ declare global {
       setOnboardingWindowMode?: (mode: "compact" | "expanded" | "restore") => Promise<boolean>;
       setOnboardingActive?: (active: boolean) => Promise<boolean>;
 
-      // Database operations
-      saveTranscription: (
-        text: string,
-        rawText?: string | null,
-        options?: {
-          status?: TranscriptionStatus;
-          errorMessage?: string | null;
-          errorCode?: TranscriptionErrorCode;
-          clientTranscriptionId?: string;
-          analyticsOccurredAt?: string;
-        }
-      ) => Promise<{ id: number; success: boolean; transcription?: TranscriptionItem }>;
-      getTranscriptions: (
-        limit?: number,
-        options?: { includeDiscarded?: boolean }
-      ) => Promise<TranscriptionItem[]>;
-      clearTranscriptions: () => Promise<{ cleared: number; success: boolean }>;
-      deleteTranscription: (id: number) => Promise<{ success: boolean }>;
-      getTranscriptionById: (id: number) => Promise<TranscriptionItem | null>;
 
-      // Audio retention operations
-      saveTranscriptionAudio: (
-        id: number,
-        audioBuffer: ArrayBuffer,
-        metadata?: { durationMs?: number; provider?: string; model?: string }
-      ) => Promise<{ success: boolean; path?: string }>;
-      mergeAudioSegments: (
-        segments: Array<{ buffer: ArrayBuffer; mimeType: string }>
-      ) => Promise<
-        | { success: true; buffer: ArrayBuffer; mimeType: "audio/webm" }
-        | { success: false; error: string }
-      >;
-      getAudioPath: (id: number) => Promise<string | null>;
-      showAudioInFolder: (id: number) => Promise<{ success: boolean }>;
-      getAudioBuffer: (id: number) => Promise<ArrayBuffer | null>;
-      deleteTranscriptionAudio: (id: number) => Promise<{ success: boolean }>;
-      getAudioStorageUsage: () => Promise<{ fileCount: number; totalBytes: number }>;
-      deleteAllAudio: () => Promise<{ deleted: number }>;
-      syncRetentionSettings?: (settings: {
-        audioRetentionDays: number;
-        transcriptRetentionDays: number;
-        dataRetentionEnabled: boolean;
-        localHistoryPolicyResolved: boolean;
-      }) => void;
-      updateTranscriptionText: (
-        id: number,
-        text: string,
-        rawText: string
-      ) => Promise<{ success: boolean; transcription?: TranscriptionItem; error?: string }>;
 
       // Vocabulary operations come from the shared VocabularyApi contract
       // (six renderer operations + the two subscriptions); dictionary export
@@ -605,36 +536,16 @@ declare global {
 
       // Note operations come from the shared NotesApi contract (seven
       // operations + the three note subscriptions); note export stays local.
-      exportNote: (
-        noteId: number,
-        format: "txt" | "md"
-      ) => Promise<{ success: boolean; error?: string }>;
-      exportTranscript: (
-        noteId: number,
-        format: "txt" | "srt" | "json" | "md"
-      ) => Promise<{ success: boolean; error?: string }>;
-      exportDictionary: (words: string[]) => Promise<{ success: boolean; error?: string }>;
 
       // Note files / Granola import commands come from the shared
       // NoteFilesApi contract.
 
-      selectAudioFile: (options?: { multiple?: boolean }) => Promise<{
-        canceled: boolean;
-        filePath?: string;
-        filePaths?: string[];
-      }>;
-      getFileSize?: (filePath: string) => Promise<number>;
       getPathForFile: (file: File) => string;
 
       // URL audio download operations come from the shared UrlDownloadApi
       // contract (three operations + the progress subscription).
       onFolderDeleted?: (callback: (payload: { id: number }) => void) => () => void;
 
-      // Database event listeners
-      onTranscriptionAdded?: (callback: (item: TranscriptionItem) => void) => () => void;
-      onTranscriptionUpdated?: (callback: (item: TranscriptionItem) => void) => () => void;
-      onTranscriptionDeleted?: (callback: (payload: { id: number }) => void) => () => void;
-      onTranscriptionsCleared?: (callback: (payload: { cleared: number }) => void) => () => void;
 
       // API key management
       getOpenAIKey: () => Promise<string>;
@@ -1027,11 +938,6 @@ declare global {
         trigger?: "hotkey" | "manual" | "calendar-join";
       } | null>;
       onMeetingNoteNavigationPending?: (callback: () => void) => () => void;
-      getPendingNoteNavigation?: () => Promise<{
-        noteId: number;
-        folderId: number | null;
-      } | null>;
-      onNoteNavigationPending?: (callback: () => void) => () => void;
     } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi;
 
     api?: {

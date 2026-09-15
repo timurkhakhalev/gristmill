@@ -15,6 +15,7 @@ const { createLocalModelLifecycleBridge } = require("./src/preload/localModelLif
 const { createLocalLlmModelsBridge } = require("./src/preload/localLlmModelsBridge");
 const { createSpeakerBridge } = require("./src/preload/speakerBridge");
 const { createTranscriptionExecutionBridge } = require("./src/preload/transcriptionExecutionBridge");
+const { createTranscriptionDataBridge } = require("./src/preload/transcriptionDataBridge");
 
 // BYOK API-key bridges, built once instead of hand-listed per key. Sandboxed
 // preloads can't require local modules, so the {base, get, save} tuples are
@@ -81,6 +82,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createLocalLlmModelsBridge(ipcRenderer),
   ...createSpeakerBridge(ipcRenderer),
   ...createTranscriptionExecutionBridge(ipcRenderer),
+  ...createTranscriptionDataBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
@@ -112,39 +114,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // voice-draft temp audio come from the typed transcriptionExecutionBridge
   // above.
 
-  // Database functions
-  saveTranscription: (text, rawText, options) =>
-    ipcRenderer.invoke("db-save-transcription", text, rawText, options),
-  getTranscriptions: (limit, options) =>
-    ipcRenderer.invoke("db-get-transcriptions", limit, options),
-  clearTranscriptions: () => ipcRenderer.invoke("db-clear-transcriptions"),
-  deleteTranscription: (id) => ipcRenderer.invoke("db-delete-transcription", id),
-
-  // Audio storage functions
-  saveTranscriptionAudio: (id, audioBuffer, metadata) =>
-    ipcRenderer.invoke("save-transcription-audio", id, audioBuffer, metadata),
-  mergeAudioSegments: (segments) => ipcRenderer.invoke("merge-audio-segments", segments),
-  getAudioPath: (id) => ipcRenderer.invoke("get-audio-path", id),
-  showAudioInFolder: (id) => ipcRenderer.invoke("show-audio-in-folder", id),
-  getAudioBuffer: (id) => ipcRenderer.invoke("get-audio-buffer", id),
-  deleteTranscriptionAudio: (id) => ipcRenderer.invoke("delete-transcription-audio", id),
-  getAudioStorageUsage: () => ipcRenderer.invoke("get-audio-storage-usage"),
-  deleteAllAudio: () => ipcRenderer.invoke("delete-all-audio"),
-  syncRetentionSettings: (settings) => ipcRenderer.send("retention-settings-changed", settings),
-  updateTranscriptionText: (id, text, rawText) =>
-    ipcRenderer.invoke("update-transcription-text", id, text, rawText),
-  getTranscriptionById: (id) => ipcRenderer.invoke("get-transcription-by-id", id),
-
   // Vocabulary functions: getDictionary/setDictionary/applyDictionaryChanges/
   // getSnippets/setSnippets + the two subscriptions come from the typed
   // vocabularyBridge above.
 
   // Note functions: saveNote/getNote/getNotes/getSpaceNotes/updateNote/
   // deleteNote/searchNotes + the three note subscriptions come from the typed
-  // notesBridge above. exportNote/exportTranscript stay here.
-  exportNote: (noteId, format) => ipcRenderer.invoke("export-note", noteId, format),
-  exportTranscript: (noteId, format) => ipcRenderer.invoke("export-transcript", noteId, format),
-  exportDictionary: (words) => ipcRenderer.invoke("export-dictionary", words),
+  // notesBridge above; the record/audio/export/file-selection channels and
+  // the four transcription events come from the typed
+  // transcriptionDataBridge above.
   // Folder/space functions + the onFolderDeleted subscription come from the
   // typed containersBridge above. onSpacePurged has no main-side producer and
   // is not exposed.
@@ -152,11 +130,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Note files / Granola import live in the typed noteFilesBridge above.
 
   // AI Actions catalog lives in the typed actionsBridge above.
-
-  // Audio file operations
-  selectAudioFile: (options) => ipcRenderer.invoke("select-audio-file", options),
-  getFileSize: (filePath) => ipcRenderer.invoke("get-file-size", filePath),
-  // Local file transcription lives in the typed bridge above.
 
   getPathForFile: (file) => {
     const filePath = webUtils.getPathForFile(file);
@@ -169,26 +142,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createUrlDownloadBridge(ipcRenderer),
 
 
-  onTranscriptionAdded: (callback) => {
-    const listener = (_event, transcription) => callback?.(transcription);
-    ipcRenderer.on("transcription-added", listener);
-    return () => ipcRenderer.removeListener("transcription-added", listener);
-  },
-  onTranscriptionDeleted: (callback) => {
-    const listener = (_event, data) => callback?.(data);
-    ipcRenderer.on("transcription-deleted", listener);
-    return () => ipcRenderer.removeListener("transcription-deleted", listener);
-  },
-  onTranscriptionsCleared: (callback) => {
-    const listener = (_event, data) => callback?.(data);
-    ipcRenderer.on("transcriptions-cleared", listener);
-    return () => ipcRenderer.removeListener("transcriptions-cleared", listener);
-  },
-  onTranscriptionUpdated: (callback) => {
-    const listener = (_event, transcription) => callback?.(transcription);
-    ipcRenderer.on("transcription-updated", listener);
-    return () => ipcRenderer.removeListener("transcription-updated", listener);
-  },
   // BYOK API keys (get/save for every provider in the secretKeys manifest)
   ...secretKeyApi,
 
@@ -472,11 +425,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getPendingMeetingNoteNavigation: () => ipcRenderer.invoke("get-pending-meeting-note-navigation"),
   onMeetingNoteNavigationPending: registerListener(
     "meeting-note-navigation-pending",
-    (callback) => () => callback()
-  ),
-  getPendingNoteNavigation: () => ipcRenderer.invoke("get-pending-note-navigation"),
-  onNoteNavigationPending: registerListener(
-    "note-navigation-pending",
     (callback) => () => callback()
   ),
 });

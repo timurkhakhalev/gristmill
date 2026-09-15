@@ -113,6 +113,7 @@ const { registerReasoningHandlers, resolveEnterpriseRuntime } = require("./reaso
 const { registerFileDiarizationHandlers } = require("./fileDiarizationIpcHandlers");
 const { registerUploadCancelHandler } = require("./uploadCancelIpcHandler");
 const { registerTranscriptionExecutionHandlers } = require("./transcriptionExecutionIpcHandlers");
+const { registerTranscriptionDataHandlers } = require("./transcriptionDataIpcHandlers");
 
 // Meeting capture runs at 24 kHz (see meetingRecordingStore AudioContext); realtime
 // streaming providers must be told the true PCM rate or they misread the audio.
@@ -573,6 +574,37 @@ class IPCHandlers {
   setupHandlers() {
     const proxyFetch = (url, init = {}) => net.fetch(url, { ...init, useSessionCookies: false });
 
+    // Transcription records, audio storage, exports, file selection and the
+    // pending (non-meeting) note navigation live in the typed module.
+    registerTranscriptionDataHandlers(ipcMain, {
+      database: this.databaseManager,
+      audioStorage: this.audioStorageManager,
+      deleteTranscriptionInternal: (id) => this.deleteTranscriptionInternal(id),
+      buildSpeakerMappings: (noteId) => this._buildSpeakerMappings(noteId),
+      queueNoteNavigation: (payload) => this.windowManager.queueNoteNavigation(payload),
+      consumePendingNoteNavigation: () => this.windowManager.consumePendingNoteNavigation(),
+      retention: {
+        getCurrentSettings: () => this._retentionSettings,
+        getOwner: () => this.windowManager.mainWindow?.webContents,
+        hasSynced: () => this._retentionSettingsSynced,
+        onSettingsChanged: (settings) => {
+          this._retentionSettings = settings;
+          this._retentionSettingsSynced = true;
+          this._runRetentionCleanup();
+          // First point at which the local-history switch is known to be real.
+          // After the sweep, so expired transcripts are gone before they can be
+          // reconstructed into counters the sweep would only have to purge.
+        },
+      },
+      broadcast: broadcastToWindows,
+      logger: {
+        log: (message, data) => debugLogger.log(message, data),
+        debug: (message, data) => debugLogger.debug(message, data),
+        warn: (message, data) => debugLogger.warn(message, data),
+        error: (message, data, tag) => debugLogger.error(message, data, tag),
+      },
+    });
+
     ipcMain.handle("onboarding-set-window-mode", (_event, mode) =>
       this.windowManager.setOnboardingWindowMode(mode)
     );
@@ -666,154 +698,6 @@ class IPCHandlers {
       ipcMain.handle(`save-${k.base}-key`, (event, key) => this.environmentManager[k.save](key));
     }
 
-    ipcMain.handle("db-save-transcription", async (event, text, rawText, options) => {
-      const result = this.databaseManager.saveTranscription(text, rawText, options);
-      if (result?.success && result?.transcription) {
-        setImmediate(() => {
-          broadcastToWindows("transcription-added", result.transcription);
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-get-transcriptions", async (event, limit = 50, options = {}) => {
-      return this.databaseManager.getTranscriptions(limit, options);
-    });
-
-    ipcMain.handle("db-clear-transcriptions", async (event) => {
-      this.audioStorageManager.deleteAllAudio();
-      const result = this.databaseManager.clearTranscriptions();
-      if (result?.success) {
-        setImmediate(() => {
-          broadcastToWindows("transcriptions-cleared", {
-            cleared: result.cleared,
-          });
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("db-delete-transcription", async (event, id) => {
-      return this.deleteTranscriptionInternal(id);
-    });
-
-    // Audio storage handlers
-    ipcMain.handle("save-transcription-audio", async (event, id, audioBuffer, metadata) => {
-      const transcription = this.databaseManager.getTranscriptionById(id);
-      const timestamp = transcription?.timestamp || null;
-      const result = this.audioStorageManager.saveAudio(id, Buffer.from(audioBuffer), timestamp);
-      if (result.success) {
-        this.databaseManager.updateTranscriptionAudio(id, {
-          hasAudio: 1,
-          audioDurationMs: metadata?.durationMs || null,
-          provider: metadata?.provider || null,
-          model: metadata?.model || null,
-        });
-        const updated = this.databaseManager.getTranscriptionById(id);
-        if (updated) broadcastToWindows("transcription-updated", updated);
-      }
-      return result;
-    });
-
-    ipcMain.handle("merge-audio-segments", async (_event, segments) => {
-      try {
-        if (!Array.isArray(segments) || segments.length < 2 || segments.length > 100) {
-          throw new Error("Invalid audio segment count");
-        }
-        const normalized = segments.map((segment) => {
-          if (!segment?.buffer || typeof segment.mimeType !== "string") {
-            throw new Error("Invalid audio segment");
-          }
-          return { buffer: Buffer.from(segment.buffer), mimeType: segment.mimeType };
-        });
-        const { mergeAudioSegments } = require("./ffmpegUtils");
-        const buffer = await mergeAudioSegments(normalized);
-        // Slice to a real ArrayBuffer: Buffers sent over IPC arrive as Uint8Array,
-        // and pooled Buffers share a larger underlying allocation.
-        return {
-          success: true,
-          buffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
-          mimeType: "audio/webm",
-        };
-      } catch (error) {
-        debugLogger.error("Failed to merge recovered audio segments", { error: error.message });
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("get-audio-path", async (event, id) => {
-      return this.audioStorageManager.getAudioPath(id);
-    });
-
-    ipcMain.handle("show-audio-in-folder", async (event, id) => {
-      const filePath = this.audioStorageManager.getAudioPath(id);
-      if (!filePath) return { success: false };
-      shell.showItemInFolder(filePath);
-      return { success: true };
-    });
-
-    ipcMain.handle("get-audio-buffer", async (event, id) => {
-      const buffer = this.audioStorageManager.getAudioBuffer(id);
-      return buffer ? buffer.buffer : null;
-    });
-
-    ipcMain.handle("delete-transcription-audio", async (event, id) => {
-      const result = this.audioStorageManager.deleteAudio(id);
-      if (result.success) {
-        this.databaseManager.updateTranscriptionAudio(id, {
-          hasAudio: 0,
-          audioDurationMs: null,
-          provider: null,
-          model: null,
-        });
-      }
-      return result;
-    });
-
-    ipcMain.handle("get-audio-storage-usage", async () => {
-      return this.audioStorageManager.getStorageUsage();
-    });
-
-    ipcMain.on(
-      "retention-settings-changed",
-      createRetentionSettingsHandler({
-        getCurrentSettings: () => this._retentionSettings,
-        getOwner: () => this.windowManager.mainWindow?.webContents,
-        hasSynced: () => this._retentionSettingsSynced,
-        onSettingsChanged: (settings) => {
-          this._retentionSettings = settings;
-          this._retentionSettingsSynced = true;
-          this._runRetentionCleanup();
-          // First point at which the local-history switch is known to be real.
-          // After the sweep, so expired transcripts are gone before they can be
-          // reconstructed into counters the sweep would only have to purge.
-        },
-      })
-    );
-
-    ipcMain.handle("delete-all-audio", async () => {
-      const result = this.audioStorageManager.deleteAllAudio();
-      try {
-        const rows = this.databaseManager.db
-          .prepare("SELECT id FROM transcriptions WHERE has_audio = 1")
-          .all();
-        if (rows.length > 0) {
-          this.databaseManager.clearAudioFlags(rows.map((r) => r.id));
-        }
-      } catch (error) {
-        debugLogger.error(
-          "Failed to clear audio flags after delete-all",
-          { error: error.message },
-          "audio-storage"
-        );
-      }
-      return result;
-    });
-
-    ipcMain.handle("get-transcription-by-id", async (event, id) => {
-      return this.databaseManager.getTranscriptionById(id);
-    });
-
     // Every window's AudioManager can hold the mic open outside a recording, so
     // gate the audio-evidence meeting detector until they all release. A
     // renderer that reloads or goes away releases implicitly — otherwise a
@@ -885,157 +769,6 @@ class IPCHandlers {
     // Agent conversation (chat persistence) channels live in the typed module.
     registerChatPersistenceHandlers(ipcMain, {
       database: this.databaseManager,
-    });
-
-    ipcMain.handle("export-note", async (event, noteId, format) => {
-      try {
-        const note = this.databaseManager.getNote(noteId);
-        if (!note) return { success: false, error: "Note not found" };
-
-        const { dialog } = require("electron");
-        const fs = require("fs");
-        const ext = format === "txt" ? "txt" : "md";
-        const safeName = (note.title || "Untitled").replace(/[/\\?%*:|"<>]/g, "-");
-
-        const result = await dialog.showSaveDialog({
-          defaultPath: `${safeName}.${ext}`,
-          filters: [
-            { name: "Markdown", extensions: ["md"] },
-            { name: "Text", extensions: ["txt"] },
-          ],
-        });
-
-        if (result.canceled || !result.filePath) return { success: false };
-
-        let exportContent;
-        if (format === "txt") {
-          exportContent = (note.content || "")
-            .replace(/#{1,6}\s+/g, "")
-            .replace(/[*_~`]+/g, "")
-            .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-            .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
-            .replace(/^>\s+/gm, "")
-            .trim();
-        } else {
-          exportContent = note.enhanced_content || note.content;
-        }
-
-        fs.writeFileSync(result.filePath, exportContent, "utf-8");
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Error exporting note", { error: error.message }, "notes");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("export-transcript", async (event, noteId, format) => {
-      try {
-        const note = this.databaseManager.getNote(noteId);
-        if (!note) return { success: false, error: "Note not found" };
-
-        const segments = JSON.parse(note.transcript || "[]");
-        if (!segments.length) return { success: false, error: "No transcript available" };
-
-        const speakerMappings = this._buildSpeakerMappings(noteId);
-
-        const { dialog } = require("electron");
-        const fs = require("fs");
-        const extMap = { srt: "srt", json: "json", md: "md" };
-        const ext = extMap[format] || "txt";
-        const safeName = (note.title || "Untitled").replace(/[/\\?%*:|"<>]/g, "-");
-
-        const result = await dialog.showSaveDialog({
-          defaultPath: `${safeName}.${ext}`,
-          filters: [
-            { name: "Text", extensions: ["txt"] },
-            { name: "SubRip Subtitles", extensions: ["srt"] },
-            { name: "JSON", extensions: ["json"] },
-            { name: "Markdown", extensions: ["md"] },
-          ],
-        });
-
-        if (result.canceled || !result.filePath) return { success: false };
-
-        const transcriptFormatter = require("./transcriptFormatter");
-        let exportContent;
-        if (format === "txt") {
-          exportContent = transcriptFormatter.formatTxt(note, segments, speakerMappings);
-        } else if (format === "srt") {
-          exportContent = transcriptFormatter.formatSrt(segments, speakerMappings, note);
-        } else if (format === "md") {
-          exportContent = transcriptFormatter.formatMd(note, segments, speakerMappings);
-        } else {
-          exportContent = transcriptFormatter.formatJson(note, segments, speakerMappings);
-        }
-
-        fs.writeFileSync(result.filePath, exportContent, "utf-8");
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Error exporting transcript", { error: error.message }, "notes");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("export-dictionary", async (event, words) => {
-      try {
-        const { dialog } = require("electron");
-        const fs = require("fs");
-
-        const result = await dialog.showSaveDialog({
-          defaultPath: "dictionary.txt",
-          filters: [{ name: "Text", extensions: ["txt"] }],
-        });
-
-        if (result.canceled || !result.filePath) return { success: false };
-
-        fs.writeFileSync(result.filePath, words.join("\n"), "utf-8");
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Error exporting dictionary", { error: error.message }, "dictionary");
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("select-audio-file", async (event, options = {}) => {
-      const { dialog } = require("electron");
-      const properties = ["openFile"];
-      if (options.multiple === true) properties.push("multiSelections");
-      const result = await dialog.showOpenDialog({
-        properties,
-        filters: [
-          {
-            name: "Audio Files",
-            extensions: ["mp3", "wav", "m4a", "webm", "ogg", "oga", "flac", "aac", "opus"],
-          },
-        ],
-      });
-      if (result.canceled || !result.filePaths.length) {
-        return { canceled: true };
-      }
-      result.filePaths.forEach(approveAudioPath);
-      if (options.multiple === true) {
-        return { canceled: false, filePaths: result.filePaths };
-      }
-      return { canceled: false, filePath: result.filePaths[0] };
-    });
-
-    // Fired by the preload's getPathForFile for real drag-dropped files; a
-    // renderer-constructed File yields "" there, so this can't be forged.
-    ipcMain.on("approve-audio-path", (_event, filePath) => {
-      approveAudioPath(filePath);
-    });
-
-    ipcMain.handle("get-file-size", async (_event, filePath) => {
-      const fs = require("fs");
-      try {
-        if (typeof filePath !== "string") return 0;
-        const real = resolveAllowedAudioPath(filePath);
-        if (!real) return 0;
-        const stats = fs.statSync(real);
-        return stats.size;
-      } catch {
-        return 0;
-      }
     });
 
     // URL download channels live in the typed module, per-registration state
@@ -3686,20 +3419,6 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("agent-open-note", async (_event, noteId) => {
-      try {
-        const note = this.databaseManager.getNote(noteId);
-        await this.windowManager.queueNoteNavigation({
-          noteId,
-          folderId: note?.folder_id ?? null,
-        });
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Failed to open note from agent:", error);
-        return { success: false, error: error.message };
-      }
-    });
-
     ipcMain.handle("get-model-cache-root", () => {
       const { getCacheRoot } = require("./modelDirUtils");
       return getCacheRoot();
@@ -4059,10 +3778,6 @@ class IPCHandlers {
 
     ipcMain.handle("get-pending-meeting-note-navigation", async () => {
       return this.windowManager?.consumePendingMeetingNoteNavigation() ?? null;
-    });
-
-    ipcMain.handle("get-pending-note-navigation", async () => {
-      return this.windowManager?.consumePendingNoteNavigation() ?? null;
     });
 
     ipcMain.handle("meeting-notification-ready", async (event) => {

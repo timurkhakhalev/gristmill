@@ -271,6 +271,9 @@ export function createMeetingAutoEndController({
 }
 
 module.exports = createMeetingAutoEndController;
+// Named re-attach: TS consumers (the detection engine) import the factory by
+// name, and without this the CJS module.exports reassignment above hides it.
+module.exports.createMeetingAutoEndController = createMeetingAutoEndController;
 module.exports.SILENCE_WINDOW_MS = SILENCE_WINDOW_MS;
 module.exports.FAST_SILENCE_MS = FAST_SILENCE_MS;
 module.exports.OWNERSHIP_MIN_ACTIVE_MS = OWNERSHIP_MIN_ACTIVE_MS;

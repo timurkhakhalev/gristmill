@@ -83,5 +83,3 @@ export function extractMeetingUrl(candidates: unknown): string | null {
   }
   return null;
 }
-
-module.exports = { getMeetingJoinUrl, extractMeetingUrl, isMeetingUrl };

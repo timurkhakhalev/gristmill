@@ -1665,6 +1665,15 @@ upload/diarization; onboarding; Notes) на отдельном профиле; �
   сбрасывает guards, пока connect ещё выполняется, и допускает второй
   параллельный prepare (last-writer-wins на streaming refs/connection key).
   Hard abort по-прежнему не обещается.
+- `geminiLiveStreaming.ts` больше не входит в main compiler graph: на main
+  файл эмиссился в dist-main только через мёртвый require в старом
+  `ipcHandlers.js` (класс не использовался). Это был графовый артефакт, а не
+  продуктовая потребность — Gemini в meeting registry не входил (#46);
+  runtime-потребители грузят его через Vite (renderer) и tsx (stt-canary),
+  emitted .js не нужен. Соответствующая строка убрана из child-probe
+  mainBuild.test.js; сверка полного emitted-списка с графом подтвердила,
+  что остальные 23 файла `src/helpers` вне main-графа — renderer/canary-only
+  (инвентарь #35) и ни один runtime-модуль эмиссию не потерял.
 
 Проверка исполнителем: `pnpm run typecheck` — 0 ошибок в main и
 settings-selectors, renderer-entrypoints closure побайтово совпадает с

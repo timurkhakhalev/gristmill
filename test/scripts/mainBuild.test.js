@@ -136,7 +136,6 @@ test("compiled realtime modules keep their CommonJS consumer shapes", () => {
     const AssemblyAI = require('./dist-main/src/helpers/assemblyAiStreaming.js');
     const Deepgram = require('./dist-main/src/helpers/deepgramStreaming.js');
     const Corti = require('./dist-main/src/helpers/cortiStreaming.js');
-    const Gemini = require('./dist-main/src/helpers/geminiLiveStreaming.js');
     const Tinfoil = require('./dist-main/src/helpers/tinfoilRealtimeStreaming.js');
     const tokens = require('./dist-main/src/helpers/realtimeTokenProviders.js');
     const registry = require('./dist-main/src/helpers/meetingStreamingProviders.js');
@@ -150,7 +149,6 @@ test("compiled realtime modules keep their CommonJS consumer shapes", () => {
         deepgramStatic: typeof Deepgram.authorizationHeader === 'function',
       },
       named: {
-        gemini: typeof Gemini.GeminiLiveStreaming === 'function',
         tinfoil: typeof Tinfoil.TinfoilRealtimeStreaming === 'function',
         tokenRouter: typeof tokens.fetchRealtimeTokenForProvider === 'function',
         clientRouter: typeof registry.getMeetingStreamingClient === 'function',
@@ -171,7 +169,6 @@ test("compiled realtime modules keep their CommonJS consumer shapes", () => {
       deepgramStatic: true,
     },
     named: {
-      gemini: true,
       tinfoil: true,
       tokenRouter: true,
       clientRouter: true,

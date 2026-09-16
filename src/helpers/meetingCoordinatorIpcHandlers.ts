@@ -12,7 +12,6 @@ import fs from "fs";
 import crypto from "crypto";
 import {
   BrowserWindow,
-  type IpcMain,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   type WebContents,
@@ -206,7 +205,16 @@ interface ReconnectAudioEntry {
   capturedAt: number | null;
 }
 
-type IpcMainLike = Pick<IpcMain, "handle" | "on">;
+// Method syntax on purpose: method members stay parameter-bivariant, so test
+// fixtures may declare wider (unknown-event) listeners than Electron's own.
+// The rest args are any[] for the same reason Electron's own IpcMain types are.
+export type IpcMainLike = {
+  handle(
+    channel: string,
+    listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown
+  ): unknown;
+  on(channel: string, listener: (event: IpcMainEvent, ...args: any[]) => void): unknown;
+};
 
 export interface MeetingCoordinatorRuntime {
   // Recording start links the live session to its note; the notes vertical's

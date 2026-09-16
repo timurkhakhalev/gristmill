@@ -349,7 +349,7 @@ test("cancel refuses while a recording is live", async () => {
   });
 
   // Stop so the local chunking interval does not leak into the next test.
-  const stopped = await invoke(handlers, "meeting-transcription-stop", "meeting-live");
+  const stopped = await invoke(handlers, "meeting-transcription-stop", { sender: null }, "meeting-live");
   assert.equal(stopped.success, true, JSON.stringify(stopped));
 });
 
@@ -368,7 +368,7 @@ test("a local start records the session, and its stop publishes and tears down",
   assert.equal(engine.begunSessions.length, 1);
   assert.equal(engine.userRecording, true);
 
-  const stopped = await invoke(handlers, "meeting-transcription-stop", "meeting-1");
+  const stopped = await invoke(handlers, "meeting-transcription-stop", { sender: null }, "meeting-1");
   assert.equal(stopped.success, true, JSON.stringify(stopped));
   assert.equal(stopped.diarizationSessionId.startsWith("diar-"), true);
   assert.equal(engine.userRecording, false);
@@ -378,7 +378,7 @@ test("a local start records the session, and its stop publishes and tears down",
 test("stop with another session's id is a stale no-op", async () => {
   const { handlers, engine } = buildHarness();
   engine.activeSessionId = "meeting-other";
-  const stopped = await invoke(handlers, "meeting-transcription-stop", "meeting-1");
+  const stopped = await invoke(handlers, "meeting-transcription-stop", { sender: null }, "meeting-1");
   assert.deepEqual(stopped, { success: false, reason: "stale-session" });
   assert.deepEqual(engine.stoppedSessions, []);
 });
@@ -444,14 +444,14 @@ test("system-audio availability rejects a stale session", async () => {
 test("recording lock admits one pipeline and reports the holder", async () => {
   const { handlers } = buildHarness();
 
-  assert.deepEqual(await invoke(handlers, "acquire-recording-lock", "meeting"), { success: true });
-  assert.deepEqual(await invoke(handlers, "acquire-recording-lock", "dictation"), {
+  assert.deepEqual(await invoke(handlers, "acquire-recording-lock", { sender: null }, "meeting"), { success: true });
+  assert.deepEqual(await invoke(handlers, "acquire-recording-lock", { sender: null }, "dictation"), {
     success: false,
     holder: "meeting",
   });
-  assert.deepEqual(await invoke(handlers, "release-recording-lock", "dictation"), { success: true });
-  assert.deepEqual(await invoke(handlers, "release-recording-lock", "meeting"), { success: true });
-  assert.deepEqual(await invoke(handlers, "acquire-recording-lock", "dictation"), { success: true });
+  assert.deepEqual(await invoke(handlers, "release-recording-lock", { sender: null }, "dictation"), { success: true });
+  assert.deepEqual(await invoke(handlers, "release-recording-lock", { sender: null }, "meeting"), { success: true });
+  assert.deepEqual(await invoke(handlers, "acquire-recording-lock", { sender: null }, "dictation"), { success: true });
 });
 
 test("a late diarization result is published to the session that owned the recording", async () => {
@@ -532,7 +532,7 @@ test("a late diarization result is published to the session that owned the recor
     "system"
   );
 
-  const stopped = await invoke(diarizationHarness.handlers, "meeting-transcription-stop", "meeting-A");
+  const stopped = await invoke(diarizationHarness.handlers, "meeting-transcription-stop", { sender: null }, "meeting-A");
   assert.equal(stopped.success, true, JSON.stringify(stopped));
 
   // Session B starts before A's background diarization resolves.
@@ -567,6 +567,6 @@ test("a late diarization result is published to the session that owned the recor
   assert.equal(diarizationHarness.engine.activeSessionId, "meeting-B", "session B keeps recording");
 
   // Stop B so the local chunking interval does not keep the runner alive.
-  const stoppedB = await invoke(diarizationHarness.handlers, "meeting-transcription-stop", "meeting-B");
+  const stoppedB = await invoke(diarizationHarness.handlers, "meeting-transcription-stop", { sender: null }, "meeting-B");
   assert.equal(stoppedB.success, true, JSON.stringify(stoppedB));
 });

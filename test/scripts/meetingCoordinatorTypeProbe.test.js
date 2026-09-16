@@ -33,6 +33,23 @@ function probeDiagnostics(source) {
 }
 
 const FULL_DEPS = `
+async function fetchRealtimeToken(
+  event: { sender: import("electron").WebContents },
+  options: import("./src/helpers/meetingStreamingProviders.js").MeetingConnectionOptions
+): Promise<string>;
+async function fetchRealtimeToken(
+  event: { sender: import("electron").WebContents },
+  options: import("./src/helpers/meetingStreamingProviders.js").MeetingConnectionOptions,
+  extra: { streams: 2 }
+): Promise<[string, string]>;
+async function fetchRealtimeToken(
+  event: { sender: import("electron").WebContents },
+  options: import("./src/helpers/meetingStreamingProviders.js").MeetingConnectionOptions,
+  extra?: { streams: 2 }
+): Promise<string | [string, string]> {
+  return extra?.streams === 2 ? ["a", "b"] : "a";
+}
+
 const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoordinatorDeps = {
   databaseManager: {
     getSpeakerProfiles: () => [],
@@ -66,20 +83,22 @@ const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoor
     getSpeakerEmbedding: () => null,
     mapSpeaker: () => undefined,
   },
-  fetchRealtimeToken: async () => "token",
+  fetchRealtimeToken,
   resolveWhisperVadOptions: () => ({}),
-  speakerEmbeddings: () => ({ cosineSimilarity: () => 0 }),
+  speakerEmbeddings: () => ({
+    isAvailable: () => false,
+    extractEmbedding: async () => null,
+    computeCentroid: (embeddings) => embeddings[0] ?? new Float32Array(),
+    cosineSimilarity: () => 0,
+  }),
 };
 `;
 
 test("an incomplete meeting coordinator dependency set fails compilation", () => {
   const { codes, cleanup } = probeDiagnostics(`
-import { registerMeetingCoordinatorHandlers } from "./src/helpers/meetingCoordinatorIpcHandlers.js";
+import { registerMeetingCoordinatorHandlers, type IpcMainLike } from "./src/helpers/meetingCoordinatorIpcHandlers.js";
 
-declare const ipcMain: {
-  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-};
+declare const ipcMain: IpcMainLike;
 
 registerMeetingCoordinatorHandlers(ipcMain, {
   databaseManager: {},
@@ -89,7 +108,7 @@ registerMeetingCoordinatorHandlers(ipcMain, {
   try {
     assert.ok(codes.length > 0, "missing dependencies must not compile");
     assert.ok(
-      codes.some((code) => [2322, 2345, 2739, 2741].includes(code)),
+      codes.some((code) => [2322, 2345, 2739, 2740, 2741].includes(code)),
       `expected a property/argument diagnostic, got ${codes.join(",")}`
     );
   } finally {
@@ -144,13 +163,10 @@ api.onMeetingAutoEndRequested?.((request) => {
 
 test("the full dependency set and the renderer bridge compile clean under strict", () => {
   const { codes, cleanup } = probeDiagnostics(`
-import { registerMeetingCoordinatorHandlers } from "./src/helpers/meetingCoordinatorIpcHandlers.js";
+import { registerMeetingCoordinatorHandlers, type IpcMainLike } from "./src/helpers/meetingCoordinatorIpcHandlers.js";
 import { createMeetingCoordinatorBridge } from "./src/preload/meetingCoordinatorBridge.js";
 
-declare const ipcMain: {
-  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-};
+declare const ipcMain: IpcMainLike;
 declare const ipcRendererLike: {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
   send(channel: string, ...args: unknown[]): void;

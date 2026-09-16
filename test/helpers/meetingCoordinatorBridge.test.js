@@ -173,7 +173,7 @@ test("command shapes cross the bundled preload and results are passed through", 
   assert.deepEqual(plain(await api.releaseRecordingLock("meeting")), { success: true });
 
   const prefs = await api.meetingDetectionGetPreferences();
-  assert.deepEqual(prefs, { success: true, preferences: { processDetection: true, audioDetection: false } });
+  assert.deepEqual(plain(prefs), { success: true, preferences: { processDetection: true, audioDetection: false } });
 
   assert.deepEqual(plain(await api.setSpeakerDiarizationEnabled(false)), { success: true });
   assert.deepEqual(

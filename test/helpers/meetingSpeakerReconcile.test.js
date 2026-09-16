@@ -144,6 +144,21 @@ function refreshConfig(explicit, { expectedCount = 2, attendees = THREE_ATTENDEE
   };
   broadcasts.length = 0;
 
+  const liveSpeaker = {
+    isAvailable: () => false,
+    start: async () => false,
+    stop: async () => ({}),
+    feedAudio: async () => undefined,
+    recluster: async () => [],
+    setEnabled: () => {},
+    maxSpeakers: 0,
+    setMaxSpeakers(n) {
+      this.maxSpeakers = n;
+    },
+    getSpeakerEmbedding: () => null,
+    mapSpeaker: () => {},
+  };
+
   const handlers = new Map();
   const runtime = registerMeetingCoordinatorHandlers(
     {
@@ -158,20 +173,7 @@ function refreshConfig(explicit, { expectedCount = 2, attendees = THREE_ATTENDEE
       meetingAecManager: null,
       whisperManager: { transcribeLocalWhisper: async () => ({}) },
       parakeetManager: { transcribeLocalParakeet: async () => ({}) },
-      liveSpeakerIdentifier: {
-        isAvailable: () => false,
-        start: async () => false,
-        stop: async () => ({}),
-        feedAudio: async () => undefined,
-        recluster: async () => [],
-        setEnabled: () => {},
-        maxSpeakers: 0,
-        setMaxSpeakers(n) {
-          this.maxSpeakers = n;
-        },
-        getSpeakerEmbedding: () => null,
-        mapSpeaker: () => {},
-      },
+      liveSpeakerIdentifier: liveSpeaker,
       fetchRealtimeToken: async () => "token",
       resolveWhisperVadOptions: () => ({}),
       speakerEmbeddings: fakeEmbeddings,
@@ -189,12 +191,13 @@ function refreshConfig(explicit, { expectedCount = 2, attendees = THREE_ATTENDEE
   runtime.refreshMeetingSpeakerConfigFromNote(NOTE_ID, {
     participants: JSON.stringify(attendees),
   });
-  return { runtime, handlers };
+  return { runtime, handlers, liveSpeaker };
 }
 
 test("roster changes refresh an auto-derived speaker config", () => {
-  refreshConfig(false);
+  const { liveSpeaker } = refreshConfig(false);
 
+  assert.equal(liveSpeaker.maxSpeakers, 3);
   assert.equal(broadcasts.length, 1);
   assert.equal(broadcasts[0].channel, "meeting-session-speaker-config-updated");
   assert.deepEqual(broadcasts[0].payload, { enabled: true, expectedCount: 4 });

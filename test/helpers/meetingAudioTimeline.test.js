@@ -3,18 +3,24 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const { createRequire } = require("node:module");
+const ts = require("typescript");
 const createWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog.ts");
 const micGate = require("../../src/helpers/meetingMicGate.ts");
+const createTimelineModule = require("../../src/helpers/meetingAudioTimeline.ts");
 
-// Execute the real IPC closures with only their native/network boundaries replaced.
-const ipcPath = path.join(__dirname, "../../src/helpers/ipcHandlers.js");
+// Execute the real coordinator closures with only their native/network
+// boundaries replaced. The closures live in the typed coordinator module as
+// TypeScript, so each extracted section is transpiled before it runs in the
+// vm sandbox — the source of truth stays src, not the dist-main emission.
+const ipcPath = path.join(__dirname, "../../src/helpers/meetingCoordinatorIpcHandlers.ts");
 const source = fs.readFileSync(ipcPath, "utf8");
 function section(from, to) {
   const start = source.indexOf(from);
   const end = source.indexOf(to, start);
   assert.ok(start >= 0 && end > start, `Missing section: ${from} → ${to}`);
-  return source.slice(start, end);
+  return ts.transpileModule(source.slice(start, end), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
 }
 function harness({ native = true, local = false } = {}) {
   let now = 0;
@@ -39,20 +45,8 @@ function harness({ native = true, local = false } = {}) {
     recordChunk(audible);
   };
   const context = {
-    require: (specifier) => {
-      const imported = createRequire(ipcPath)(
-        specifier === "./meetingAudioTimeline" || specifier === "./meetingAudioTimeline.js"
-          ? "./meetingAudioTimeline.ts"
-          : specifier
-      );
-      return (
-        specifier === "./meetingAudioTimeline" ||
-        specifier === "./meetingAudioTimeline.js" ||
-        specifier === "./meetingAudioTimeline.ts"
-      )
-        ? () => imported({ now: () => now, wallNow: () => now })
-        : imported;
-    },
+    createMeetingAudioTimeline: () =>
+      createTimelineModule.createMeetingAudioTimeline({ now: () => now, wallNow: () => now }),
     Buffer,
     os: require("node:os"),
     clearMeetingSystemAudioSilenceTimer() {},
@@ -86,7 +80,13 @@ function harness({ native = true, local = false } = {}) {
     meetingLocalMode: local,
     meetingLocalBuffers: { mic: [], system: [] },
     meetingSendCounts: { mic: 0, system: 0 },
-    _meetingSystemStreaming: { sendAudio: (buffer) => streamed.push(buffer) },
+    meetingMicStreaming: null,
+    meetingSystemStreaming: { sendAudio: (buffer) => streamed.push(buffer) },
+    meetingMicStatsLogCount: 0,
+    MEETING_MIC_BLEED_LOOKBACK_MS: 500,
+    meetingPendingMicChunks: [],
+    meetingLocalTranscript: "",
+    meetingLocalWin: null,
     meetingReconnectAudioBuffers: { mic: [], system: [] },
     meetingReconnectAudioBytes: { mic: 0, system: 0 },
     meetingReconnectReplaySources: new Set(),
@@ -169,7 +169,7 @@ for (const provider of ["deepgram", "corti"]) {
     await run.start();
     run.watchdog.start({ systemAudioStrategy: "native", watchesDelivery: true });
     const existing = createTimestampedStream(provider, 0);
-    run.context._meetingSystemStreaming = existing.streaming;
+    run.context.meetingSystemStreaming = existing.streaming;
     run.at(1000);
     run.chunk(1000);
     const previousFrameCount = existing.frames.length;
@@ -191,7 +191,7 @@ for (const provider of ["deepgram", "corti"]) {
     run.at(8000);
     await run.restart();
     const recovered = createTimestampedStream(provider, 8000);
-    run.context._meetingSystemStreaming = recovered.streaming;
+    run.context.meetingSystemStreaming = recovered.streaming;
     run.at(10000);
     run.chunk();
     recovered.finalizeSpeech();
@@ -209,7 +209,7 @@ for (const provider of ["deepgram", "corti"]) {
     run.at(8000);
     await run.restart();
     run.context.meetingReconnectReplaySources.add("system");
-    run.context._meetingSystemStreaming = { sendAudio: () => false };
+    run.context.meetingSystemStreaming = { sendAudio: () => false };
     run.at(10000);
     run.chunk();
     const recovered = createTimestampedStream(provider, 12000);
@@ -228,7 +228,7 @@ for (const provider of ["deepgram", "corti"]) {
     await run.restart();
     run.context.meetingReconnectReplaySources.add("system");
     run.context.MEETING_RECONNECT_BUFFER_MAX_BYTES = 48000;
-    run.context._meetingSystemStreaming = { sendAudio: () => false };
+    run.context.meetingSystemStreaming = { sendAudio: () => false };
     run.at(10000);
     run.chunk();
     const recovered = createTimestampedStream(provider, 12000);

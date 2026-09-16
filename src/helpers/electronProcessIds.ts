@@ -1,22 +1,21 @@
-const { getOwnProcessPids } = require("./ownProcessPids");
+import { getOwnProcessPids } from "./ownProcessPids.js";
 
 // The macOS audio tap helper is a plain child process, so it never appears in the Electron
 // process tree — yet the OS attributes their capture to their own pids.
 // Without excluding them, the app's own system-audio capture reads as an
 // external mic user and auto-end can never arm its end detection.
-function collectAudioCaptureHelperPids(managers) {
+export function collectAudioCaptureHelperPids(
+  managers: Array<{ process?: { pid?: unknown } | null } | null | undefined>
+): number[] {
   return managers
     .map((manager) => manager?.process?.pid)
-    .filter((pid) => Number.isInteger(pid) && pid > 0);
+    .filter((pid): pid is number => Number.isInteger(pid) && (pid as number) > 0);
 }
 
-// Every pid whose mic use is OpenHercules' own: the Electron process tree plus
-// any live capture helper. Evaluated on each call so helpers are covered from
-// the moment they spawn and drop out when they exit.
-function createExcludedProcessIdProvider(
-  getAudioCaptureHelperPids = () => [],
-  getOwnPids = getOwnProcessPids
-) {
+export function createExcludedProcessIdProvider(
+  getAudioCaptureHelperPids: () => number[] = () => [],
+  getOwnPids: () => Set<number> = getOwnProcessPids
+): () => number[] {
   return () => [...getOwnPids(), ...getAudioCaptureHelperPids()];
 }
 

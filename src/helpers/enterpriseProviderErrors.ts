@@ -1,10 +1,10 @@
+import { classifyNetworkError } from "./networkErrors.js";
 /**
  * Maps enterprise provider errors to user-actionable messages.
  * Each mapped error includes a human-readable message and optionally
  * an action hint and a shell command the user can copy-paste.
  */
 
-const { classifyNetworkError } = require("./networkErrors");
 
 export interface MappedEnterpriseError {
   message: string;

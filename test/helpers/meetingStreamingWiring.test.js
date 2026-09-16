@@ -3,16 +3,19 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-// The meeting dispatch/start/teardown paths live inside the IPCHandlers
-// registration closure, so — like ipcPolicyHeaderCoverage.test.js — this pins
-// the wiring at the source level.
-const source = fs.readFileSync(path.join(__dirname, "../../src/helpers/ipcHandlers.js"), "utf8");
+// The meeting dispatch/start/teardown paths live in the typed coordinator
+// module, so — like ipcPolicyHeaderCoverage.test.js — this pins the wiring at
+// the source level.
+const source = fs.readFileSync(
+  path.join(__dirname, "../../src/helpers/meetingCoordinatorIpcHandlers.ts"),
+  "utf8"
+);
 
 test("every meeting realtime connect labels the stream and gives system its own VAD threshold", () => {
   assert.match(source, /const MEETING_SYSTEM_VAD_THRESHOLD = 0\.3;/);
   assert.match(
     source,
-    /withMeetingSourceConnectOpts = \(connectOpts, source\) => \(\{\s*\.\.\.connectOpts,\s*streamLabel: source,\s*\.\.\.\(source === "system" \? \{ vadThreshold: MEETING_SYSTEM_VAD_THRESHOLD \} : \{\}\),\s*\}\)/
+    /withMeetingSourceConnectOpts = \(\s*connectOpts: Record<string, unknown>,\s*source: MeetingAudioSource\s*\) => \(\{\s*\.\.\.connectOpts,\s*streamLabel: source,\s*\.\.\.\(source === "system" \? \{ vadThreshold: MEETING_SYSTEM_VAD_THRESHOLD \} : \{\}\),\s*\}\)/
   );
   // Initial connect and mid-meeting reconnect both go through the helper; a
   // bare ...connectOpts spread would silently drop the system channel's

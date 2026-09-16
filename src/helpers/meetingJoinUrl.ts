@@ -16,18 +16,34 @@ const MEETING_URL_RULES = [
   { hostname: "chime.aws", pathnamePattern: /^\/[^/]+/ },
 ];
 
-function isAllowedHostname(candidateHostname, allowedHostname, allowSubdomains) {
+/** The calendar-event surface the resolvers read; providers pass wider rows. */
+export interface MeetingEventLike {
+  hangout_link?: string | null;
+  conference_data?: string | null;
+}
+
+interface MeetingUrlRule {
+  hostname: string;
+  allowSubdomains?: boolean;
+  pathnamePattern: RegExp;
+}
+
+function isAllowedHostname(
+  candidateHostname: string,
+  allowedHostname: string,
+  allowSubdomains?: boolean
+): boolean {
   return (
     candidateHostname === allowedHostname ||
-    (allowSubdomains && candidateHostname.endsWith(`.${allowedHostname}`))
+    (allowSubdomains === true && candidateHostname.endsWith(`.${allowedHostname}`))
   );
 }
 
-function isMeetingUrl(value) {
+function isMeetingUrl(value: string): boolean {
   try {
     const url = new URL(value);
     return MEETING_URL_RULES.some(
-      ({ hostname, allowSubdomains, pathnamePattern }) =>
+      ({ hostname, allowSubdomains, pathnamePattern }: MeetingUrlRule) =>
         isAllowedHostname(url.hostname, hostname, allowSubdomains) &&
         pathnamePattern.test(url.pathname)
     );
@@ -36,13 +52,15 @@ function isMeetingUrl(value) {
   }
 }
 
-export function getMeetingJoinUrl(event) {
+export function getMeetingJoinUrl(event: MeetingEventLike | null | undefined): string | null {
   if (!event) return null;
   const hangoutLink = event.hangout_link?.trim();
   if (hangoutLink) return hangoutLink;
   if (!event.conference_data) return null;
   try {
-    const data = JSON.parse(event.conference_data);
+    const data = JSON.parse(event.conference_data) as {
+      entryPoints?: Array<{ entryPointType?: string; uri?: string | null }>;
+    };
     const uri = data?.entryPoints
       ?.find((ep) => ep.entryPointType === "video" && ep.uri?.trim())
       ?.uri?.trim();
@@ -54,7 +72,7 @@ export function getMeetingJoinUrl(event) {
 
 // Finds a meeting link in loose text (EventKit has no structured conference
 // data — Zoom/Meet/Teams/Webex links live in url, location, or notes).
-export function extractMeetingUrl(candidates) {
+export function extractMeetingUrl(candidates: unknown): string | null {
   if (!Array.isArray(candidates)) return null;
   for (const candidate of candidates) {
     if (typeof candidate !== "string") continue;

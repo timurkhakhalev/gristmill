@@ -1,8 +1,64 @@
-function createMeetingTranscriptionLifecycle({ start, stop, onError = () => {} }) {
-  let operationTail = Promise.resolve();
-  const sessions = new Map();
+import type { WebContents } from "electron";
 
-  const enqueue = (operation) => {
+export interface MeetingTranscriptionSessionOptions {
+  [key: string]: unknown;
+}
+
+export interface MeetingStartInvocation {
+  sessionId: string;
+  ownerWebContents: WebContents | null;
+  options: MeetingTranscriptionSessionOptions;
+}
+
+export interface MeetingStartResult {
+  success?: boolean;
+  error?: string;
+  reason?: string;
+  sessionId?: string;
+  [key: string]: unknown;
+}
+
+export interface MeetingStopResult {
+  success: boolean;
+  reason?: string;
+  transcript?: string;
+  diarizationSessionId?: string;
+  error?: string;
+}
+
+export interface MeetingLifecycleSession {
+  sessionId: string;
+  ownerWebContents: WebContents | null;
+  state: "queued" | "starting" | "active" | "stopping";
+  startSucceeded: boolean;
+  stopRequested: boolean;
+  stopPromise: Promise<MeetingStopResult> | null;
+  ownerLossHandler: (() => void) | null;
+  ownerNavigationHandler: ((details: { isMainFrame?: boolean; isSameDocument?: boolean }) => void) | null;
+}
+
+export interface MeetingTranscriptionLifecycle {
+  startSession(input: {
+    sessionId: string;
+    ownerWebContents: WebContents | null;
+    options: MeetingTranscriptionSessionOptions;
+  }): Promise<MeetingStartResult>;
+  stopSession(expectedSessionId?: string | null): Promise<MeetingStopResult>;
+}
+
+export function createMeetingTranscriptionLifecycle({
+  start,
+  stop,
+  onError = () => {},
+}: {
+  start: (invocation: MeetingStartInvocation) => Promise<MeetingStartResult>;
+  stop: (sessionId: string) => Promise<MeetingStopResult>;
+  onError?: (error: unknown, sessionId: string) => void;
+}): MeetingTranscriptionLifecycle {
+  let operationTail: Promise<unknown> = Promise.resolve();
+  const sessions = new Map<string, MeetingLifecycleSession>();
+
+  const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
     const pending = operationTail.then(operation, operation);
     operationTail = pending.then(
       () => undefined,
@@ -11,32 +67,36 @@ function createMeetingTranscriptionLifecycle({ start, stop, onError = () => {} }
     return pending;
   };
 
-  const detachOwnerListeners = (session) => {
+  const detachOwnerListeners = (session: MeetingLifecycleSession): void => {
     if (!session.ownerLossHandler) return;
 
     session.ownerWebContents?.removeListener?.("destroyed", session.ownerLossHandler);
     session.ownerWebContents?.removeListener?.("render-process-gone", session.ownerLossHandler);
     session.ownerWebContents?.removeListener?.(
       "did-start-navigation",
-      session.ownerNavigationHandler
+      // The navigation handler takes details; removeListener only compares
+      // identity, so passing it as the stored handler reference is safe.
+      session.ownerNavigationHandler as unknown as () => void
     );
     session.ownerLossHandler = null;
     session.ownerNavigationHandler = null;
   };
 
-  const removeSession = (session) => {
+  const removeSession = (session: MeetingLifecycleSession): void => {
     detachOwnerListeners(session);
     if (sessions.get(session.sessionId) === session) {
       sessions.delete(session.sessionId);
     }
   };
 
-  const resolveSession = (expectedSessionId) => {
+  const resolveSession = (expectedSessionId?: string | null): MeetingLifecycleSession | null => {
     if (expectedSessionId != null) return sessions.get(expectedSessionId) ?? null;
     return sessions.values().next().value ?? null;
   };
 
-  const stopSession = (expectedSessionId) => {
+  const stopSession = (
+    expectedSessionId?: string | null
+  ): Promise<MeetingStopResult> => {
     const session = resolveSession(expectedSessionId);
     if (!session) {
       return Promise.resolve({ success: false, reason: "stale-session" });
@@ -56,7 +116,15 @@ function createMeetingTranscriptionLifecycle({ start, stop, onError = () => {} }
     return session.stopPromise;
   };
 
-  const startSession = ({ sessionId, ownerWebContents, options }) => {
+  const startSession = ({
+    sessionId,
+    ownerWebContents,
+    options,
+  }: {
+    sessionId: string;
+    ownerWebContents: WebContents | null;
+    options: MeetingTranscriptionSessionOptions;
+  }): Promise<MeetingStartResult> => {
     // A renderer that reloads mid-recording forgets its session while this side
     // keeps capturing. The same owner asking to start again can only mean that,
     // so retire its stale sessions instead of refusing every start until restart.
@@ -76,7 +144,7 @@ function createMeetingTranscriptionLifecycle({ start, stop, onError = () => {} }
       return Promise.resolve({ success: false, error: "Operation in progress" });
     }
 
-    const session = {
+    const session: MeetingLifecycleSession = {
       sessionId,
       ownerWebContents,
       state: "queued",
@@ -117,7 +185,7 @@ function createMeetingTranscriptionLifecycle({ start, stop, onError = () => {} }
     };
     // A main-frame navigation (reload, onboarding restart) replaces the renderer
     // that owns the session, so it counts as owner loss too.
-    const handleOwnerNavigation = (details) => {
+    const handleOwnerNavigation = (details?: { isMainFrame?: boolean; isSameDocument?: boolean }) => {
       if (!details?.isMainFrame || details?.isSameDocument) return;
       handleOwnerLoss();
     };
@@ -138,3 +206,4 @@ function createMeetingTranscriptionLifecycle({ start, stop, onError = () => {} }
 }
 
 module.exports = createMeetingTranscriptionLifecycle;
+module.exports.createMeetingTranscriptionLifecycle = createMeetingTranscriptionLifecycle;

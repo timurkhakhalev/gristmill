@@ -13,14 +13,15 @@ function loadEngine() {
     if (request === "electron") {
       return { shell: { openExternal: async () => {} } };
     }
-    if (request === "./debugLogger") {
+    if (request === "./debugLogger" || request === "./debugLogger.js") {
       return { info() {}, warn() {}, debug() {}, error() {} };
     }
-    if (request === "./windowBroadcast") {
+    if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
       return { broadcastToWindows() {} };
     }
-    // ESM module; the app loads it through a transpiling loader.
-    if (request === "./meetingJoinUrl") {
+    // ESM module; the app loads it through a transpiling loader. The engine
+    // imports it with the explicit .js extension TS emits, tests may too.
+    if (request === "./meetingJoinUrl" || request === "./meetingJoinUrl.js") {
       return { getMeetingJoinUrl: (event) => event?.hangout_link ?? null };
     }
     return originalLoad.call(this, request, parent, isMain);

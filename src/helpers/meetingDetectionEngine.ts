@@ -1,26 +1,102 @@
-const debugLogger = require("./debugLogger");
-const { openExternalUrl } = require("./externalUrlOpener");
-const { getMeetingJoinUrl } = require("./meetingJoinUrl");
-const createMeetingAutoEndController = require("./meetingAutoEndController");
-const { createMeetingAudioActivityMonitor } = require("./meetingAudioActivityMonitor");
-const { sendNoteAdded, sendNoteUpdated } = require("./notesEvents");
+import type { WebContents } from "electron";
+import debugLogger from "./debugLogger.js";
+import { openExternalUrl } from "./externalUrlOpener.js";
+import { getMeetingJoinUrl } from "./meetingJoinUrl.js";
+import {
+  createMeetingAutoEndController,
+  type MeetingAutoEndController,
+} from "./meetingAutoEndController.js";
+import {
+  createMeetingAudioActivityMonitor,
+  type MeetingAudioActivityMonitor,
+} from "./meetingAudioActivityMonitor.js";
+import { sendNoteAdded, sendNoteUpdated } from "./notesEvents.js";
+import type { MeetingNotificationPrompt } from "./windowConfig.js";
 
-const IMMINENT_THRESHOLD_MS = 5 * 60 * 1000;
-const AUTO_END_TICK_MS = 1000;
-const AUTO_END_RESTART_WINDOW_MS = 30_000;
+export const IMMINENT_THRESHOLD_MS = 5 * 60 * 1000;
+export const AUTO_END_TICK_MS = 1000;
+export const AUTO_END_RESTART_WINDOW_MS = 30_000;
 // Clicking Restart is the user saying the meeting is still live. Honour that for
 // a while, or the same silence that just ended the recording ends it again a
 // minute later and they have to keep clicking.
-const AUTO_END_RESTART_GRACE_MS = 5 * 60_000;
+export const AUTO_END_RESTART_GRACE_MS = 5 * 60_000;
 // The grace belongs to the recording the user restarted, which starts within a
 // second or two. Main cannot see a restart the renderer drops (its context died
 // with a reload, or a manual recording won the race), so an unclaimed grace has
 // to lapse rather than wait to be taken by whatever recording starts next.
-const AUTO_END_RESTART_CLAIM_MS = 30_000;
+export const AUTO_END_RESTART_CLAIM_MS = 30_000;
 
-const PLACEHOLDER_PREFIX = { __detected__: "detected", __manual__: "manual" };
+/** The calendar-event surface the detection pipeline reads. */
+export interface DetectionCalendarEvent {
+  id: string;
+  calendar_id?: string | null;
+  summary?: string | null;
+  start_time: string;
+  end_time?: string | null;
+  attendees?: unknown;
+  hangout_link?: string | null;
+  conference_data?: string | null;
+  [key: string]: unknown;
+}
 
-function placeholderEvent(calendarId) {
+export type MeetingAutoEndStopReason = "mic-released" | "silence" | "process-exit";
+
+/** The three engine callbacks WindowManager invokes on notification lifecycle. */
+interface EngineNotificationCallbacks {
+  handleNotificationTimeout?(notification?: { kind?: string; sessionId?: string } | null): void;
+  handleAutoEndNotificationClosed?(
+    sessionId: string,
+    options?: { flushQueued?: boolean }
+  ): boolean | void;
+  handleDetectionNotificationClosed?(
+    detectionId: string,
+    options?: { flushQueued?: boolean }
+  ): boolean | void;
+}
+
+interface DetectionData {
+  event?: DetectionCalendarEvent | null;
+  [key: string]: unknown;
+}
+
+interface ActiveDetection {
+  source: "audio" | "calendar";
+  key: string;
+  data: DetectionData;
+  event?: DetectionCalendarEvent;
+}
+
+interface PendingAutoEnd {
+  sessionId: string;
+  reason: MeetingAutoEndStopReason;
+  ownerWebContents: WebContents | null;
+  expiresAt: number | null;
+}
+
+interface AutoEndRestartGrace {
+  suppressUntil: number;
+  claimUntil: number;
+}
+
+interface RecordingSession {
+  sessionId: string;
+  autoEndEligible: boolean;
+  ownerWebContents: WebContents | null;
+  systemAudioAvailable: boolean;
+}
+
+interface NotificationQueueEntry {
+  source: "audio" | "calendar";
+  key: string;
+  data: DetectionData;
+}
+
+const PLACEHOLDER_PREFIX: Record<"__detected__" | "__manual__", string> = {
+  __detected__: "detected",
+  __manual__: "manual",
+};
+
+function placeholderEvent(calendarId: "__detected__" | "__manual__"): DetectionCalendarEvent {
   const now = Date.now();
   return {
     id: `${PLACEHOLDER_PREFIX[calendarId]}-${now}`,
@@ -37,43 +113,125 @@ function placeholderEvent(calendarId) {
   };
 }
 
-class MeetingDetectionEngine {
+export interface MeetingProcessDetectorLike extends NodeJS.EventEmitter {
+  start(): void;
+  stop(): void;
+  getDetectedProcesses?: () => Array<{ processKey: string; appName?: string }>;
+}
+
+export interface AudioActivityDetectorLike extends NodeJS.EventEmitter {
+  start(): unknown;
+  stop(): void;
+  resetPrompt(): void;
+  dismiss(): void;
+  setUserRecording(active: boolean): void;
+  setMicWarmHold(active: boolean): void;
+  notifyMeetingAppsChanged(): void;
+  getExternalMicState(): { reliable: boolean; externalMicActive: boolean };
+}
+
+/** Narrow window-manager surface the engine drives (mirrors WindowManager). */
+export interface MeetingDetectionWindowManager extends EngineNotificationCallbacks {
+  notificationPrefs?: Record<string, boolean | undefined>;
+  showMeetingNotification?(
+    promptData: MeetingNotificationPrompt,
+    options?: { autoDismiss?: boolean; autoDismissAt?: number | null }
+  ): Promise<boolean> | boolean | undefined;
+  dismissMeetingNotification?(options?: { notifyEngine?: boolean; flushQueued?: boolean }): void;
+  showMeetingAutoEndNotification?(payload: {
+    sessionId: string;
+    reason: string;
+    expiresAt: number;
+  }): Promise<boolean> | boolean | undefined;
+  dismissMeetingAutoEndNotification?(sessionId: string): void;
+  isMeetingNotificationSender?(sender: WebContents): boolean | undefined;
+  queueMeetingNoteNavigation?(payload: unknown): Promise<void>;
+}
+
+export interface MeetingDetectionDatabase {
+  saveNote(
+    title: string,
+    content: string,
+    noteType: string
+  ): { note?: { id: number } | null } | null | undefined;
+  getMeetingsFolder?(): { id: number } | null | undefined;
+  getNoteByCalendarEventId?(
+    eventId: string
+  ): { id: number; folder_id?: number | null } | null | undefined;
+  getCalendarEventById?(
+    eventId: string
+  ): (DetectionCalendarEvent & { attendees?: unknown }) | null | undefined;
+  updateNote?(
+    id: number,
+    updates: Record<string, unknown>
+  ): { success?: boolean; note?: DetectionCalendarEvent | null } | null | undefined;
+  getActiveEvents(): DetectionCalendarEvent[];
+}
+
+interface ActiveMeetingState {
+  activeMeeting: DetectionCalendarEvent | null;
+  upcomingEvents?: DetectionCalendarEvent[] | null;
+}
+
+export interface MeetingReminderSchedulerLike {
+  getActiveMeetingState(): ActiveMeetingState;
+}
+
+interface MeetingDetectionEngineOptions {
+  createAutoEndController?: typeof createMeetingAutoEndController;
+  createAudioActivityMonitor?: typeof createMeetingAudioActivityMonitor;
+  now?: () => number;
+  setInterval?: (callback: () => void, ms: number) => NodeJS.Timeout | number;
+  clearInterval?: (timer: NodeJS.Timeout | number) => void;
+}
+
+export class MeetingDetectionEngine {
+  private readonly reminderScheduler: MeetingReminderSchedulerLike;
+  private readonly meetingProcessDetector: MeetingProcessDetectorLike;
+  private readonly audioActivityDetector: AudioActivityDetectorLike;
+  private readonly windowManager: MeetingDetectionWindowManager;
+  private readonly databaseManager: MeetingDetectionDatabase;
+  readonly activeDetections = new Map<string, ActiveDetection>();
+  private preferences = { processDetection: true, audioDetection: true };
+  private _userRecording = false;
+  private _meetingModeActive = false;
+  private _notificationQueue: NotificationQueueEntry[] = [];
+  private _postRecordingCooldown: NodeJS.Timeout | null = null;
+  private _recordingSession: RecordingSession | null = null;
+  private _pendingAutoEnd: PendingAutoEnd | null = null;
+  private _autoEndRestartGrace: AutoEndRestartGrace | null = null;
+  private readonly _now: () => number;
+  private readonly _setInterval: MeetingDetectionEngineOptions["setInterval"];
+  private readonly _clearInterval: MeetingDetectionEngineOptions["clearInterval"];
+  // True only between controller.beginSession and endSession — meeting audio
+  // starts streaming before the session is registered, and chunks fed to the
+  // monitor before the controller exists would leave the two out of sync.
+  private _autoEndActive = false;
+  private _autoEndTicker: NodeJS.Timeout | number | null = null;  private _autoEndController: MeetingAutoEndController;
+  private readonly _audioActivityMonitor: MeetingAudioActivityMonitor;
+
   constructor(
-    reminderScheduler,
-    meetingProcessDetector,
-    audioActivityDetector,
-    windowManager,
-    databaseManager,
+    reminderScheduler: MeetingReminderSchedulerLike,
+    meetingProcessDetector: MeetingProcessDetectorLike,
+    audioActivityDetector: AudioActivityDetectorLike,
+    windowManager: MeetingDetectionWindowManager,
+    databaseManager: MeetingDetectionDatabase,
     {
       createAutoEndController = createMeetingAutoEndController,
       createAudioActivityMonitor = createMeetingAudioActivityMonitor,
       now = Date.now,
-      setInterval = global.setInterval,
-      clearInterval = global.clearInterval,
-    } = {}
+      setInterval: setIntervalFn = global.setInterval,
+      clearInterval: clearIntervalFn = global.clearInterval,
+    }: MeetingDetectionEngineOptions = {}
   ) {
     this.reminderScheduler = reminderScheduler;
     this.meetingProcessDetector = meetingProcessDetector;
     this.audioActivityDetector = audioActivityDetector;
     this.windowManager = windowManager;
     this.databaseManager = databaseManager;
-    this.activeDetections = new Map();
-    this.preferences = { processDetection: true, audioDetection: true };
-    this._userRecording = false;
-    this._meetingModeActive = false;
-    this._notificationQueue = [];
-    this._postRecordingCooldown = null;
-    this._recordingSession = null;
-    this._pendingAutoEnd = null;
-    this._autoEndRestartGrace = null;
     this._now = now;
-    this._setInterval = setInterval;
-    this._clearInterval = clearInterval;
-    // True only between controller.beginSession and endSession — meeting audio
-    // starts streaming before the session is registered, and chunks fed to the
-    // monitor before the controller exists would leave the two out of sync.
-    this._autoEndActive = false;
-    this._autoEndTicker = null;
+    this._setInterval = setIntervalFn;
+    this._clearInterval = clearIntervalFn;
     this._audioActivityMonitor = createAudioActivityMonitor({
       onActivityChanged: (state) => {
         const session = this._recordingSession;
@@ -88,58 +246,67 @@ class MeetingDetectionEngine {
     this._bindListeners();
   }
 
-  _bindListeners() {
+  _bindListeners(): void {
     // Process detection is context-only — a running app never prompts by itself
     // (FaceTime idles in the background), but it corroborates device activity
     // the mic detector could not attribute to a process.
-    this.meetingProcessDetector.on("meeting-process-detected", (data) => {
-      debugLogger.info(
-        "Meeting app running (context only)",
-        { processKey: data.processKey, appName: data.appName },
-        "meeting"
-      );
-      this.audioActivityDetector.notifyMeetingAppsChanged();
-    });
+    this.meetingProcessDetector.on(
+      "meeting-process-detected",
+      (data: { processKey: string; appName: string }) => {
+        debugLogger.info(
+          "Meeting app running (context only)",
+          { processKey: data.processKey, appName: data.appName },
+          "meeting"
+        );
+        this.audioActivityDetector.notifyMeetingAppsChanged();
+      }
+    );
 
-    this.meetingProcessDetector.on("meeting-process-ended", (data) => {
-      this.activeDetections.delete(`process:${data.processKey}`);
+    this.meetingProcessDetector.on(
+      "meeting-process-ended",
+      (data: { processKey: string; appName?: string }) => {
+        this.activeDetections.delete(`process:${data.processKey}`);
 
-      // The detector removes the ended key before emitting, so an empty list
-      // means the last tracked meeting app is gone.
-      const session = this._recordingSession;
-      if (!this._autoEndActive || !session) return;
-      const remaining = this.meetingProcessDetector.getDetectedProcesses?.() ?? [];
-      if (remaining.length > 0) return;
-      debugLogger.info(
-        "Last tracked meeting app exited during recording",
-        { sessionId: session.sessionId, processKey: data.processKey },
-        "meeting"
-      );
-      this._autoEndController.handleMeetingProcessExit({ sessionId: session.sessionId });
-    });
+        // The detector removes the ended key before emitting, so an empty list
+        // means the last tracked meeting app is gone.
+        const session = this._recordingSession;
+        if (!this._autoEndActive || !session) return;
+        const remaining = this.meetingProcessDetector.getDetectedProcesses?.() ?? [];
+        if (remaining.length > 0) return;
+        debugLogger.info(
+          "Last tracked meeting app exited during recording",
+          { sessionId: session.sessionId, processKey: data.processKey },
+          "meeting"
+        );
+        this._autoEndController.handleMeetingProcessExit({ sessionId: session.sessionId });
+      }
+    );
 
-    this.audioActivityDetector.on("sustained-audio-detected", (data) => {
+    this.audioActivityDetector.on("sustained-audio-detected", (data: DetectionData) => {
       this._handleDetection("audio", "sustained-audio", data);
     });
 
-    this.audioActivityDetector.on("external-mic-state-changed", (state) => {
-      const session = this._recordingSession;
-      if (!this._autoEndActive || !session) return;
+    this.audioActivityDetector.on(
+      "external-mic-state-changed",
+      (state: { reliable: boolean; externalMicActive: boolean }) => {
+        const session = this._recordingSession;
+        if (!this._autoEndActive || !session) return;
 
-      debugLogger.debug(
-        "External mic state for auto-end",
-        { sessionId: session.sessionId, ...state },
-        "meeting"
-      );
-      this._autoEndController.handleExternalMicState({
-        sessionId: session.sessionId,
-        reliable: state.reliable,
-        externalMicActive: state.externalMicActive,
-      });
-    });
+        debugLogger.debug(
+          "External mic state for auto-end",
+          { sessionId: session.sessionId, ...state },
+          "meeting"
+        );
+        this._autoEndController.handleExternalMicState({
+          sessionId: session.sessionId,
+          reliable: state.reliable,
+          externalMicActive: state.externalMicActive,
+        });
+      }
+    );
   }
 
-  _requestRecordingStop(sessionId, reason) {
+  _requestRecordingStop(sessionId: string, reason: MeetingAutoEndStopReason): void {
     const session = this._recordingSession;
     if (!session || session.sessionId !== sessionId) return;
 
@@ -163,7 +330,7 @@ class MeetingDetectionEngine {
       this._pendingAutoEnd = null;
       debugLogger.error(
         "Failed to request meeting auto-end from recording renderer",
-        { error: error?.message, sessionId },
+        { error: error instanceof Error ? error.message : undefined, sessionId },
         "meeting"
       );
     }
@@ -174,12 +341,12 @@ class MeetingDetectionEngine {
   // response landing on a replaced card), and this gate holds every meeting
   // prompt. Without the deadline one of those silently kills detection for the
   // rest of the app session.
-  _hasLiveAutoEndOffer() {
+  _hasLiveAutoEndOffer(): boolean {
     const expiresAt = this._pendingAutoEnd?.expiresAt;
     return expiresAt != null && this._now() < expiresAt;
   }
 
-  _clearAutoEndRecovery({ dismiss = true } = {}) {
+  _clearAutoEndRecovery({ dismiss = true }: { dismiss?: boolean } = {}): void {
     const pending = this._pendingAutoEnd;
     this._pendingAutoEnd = null;
     if (dismiss && pending?.expiresAt != null) {
@@ -187,7 +354,10 @@ class MeetingDetectionEngine {
     }
   }
 
-  async completeAutoEndSession(sessionId, ownerWebContents) {
+  async completeAutoEndSession(
+    sessionId: string,
+    ownerWebContents: WebContents
+  ): Promise<boolean> {
     const pending = this._pendingAutoEnd;
     if (
       !pending ||
@@ -228,14 +398,18 @@ class MeetingDetectionEngine {
       }
       debugLogger.error(
         "Failed to show meeting auto-end recovery notification",
-        { error: error?.message, sessionId },
+        { error: error instanceof Error ? error.message : undefined, sessionId },
         "meeting"
       );
       return false;
     }
   }
 
-  respondToAutoEndNotification(sessionId, action, responderWebContents) {
+  respondToAutoEndNotification(
+    sessionId: string,
+    action: "restart" | "dismiss",
+    responderWebContents: WebContents
+  ): boolean {
     if (
       (action !== "restart" && action !== "dismiss") ||
       !this.windowManager.isMeetingNotificationSender?.(responderWebContents)
@@ -278,7 +452,7 @@ class MeetingDetectionEngine {
     } catch (error) {
       debugLogger.error(
         "Failed to request meeting recording restart",
-        { error: error?.message, sessionId },
+        { error: error instanceof Error ? error.message : undefined, sessionId },
         "meeting"
       );
       this._flushNotificationQueue();
@@ -288,7 +462,10 @@ class MeetingDetectionEngine {
 
   // `flushQueued` is false when a replacement notification is already being
   // shown: flushing there would re-enter showMeetingNotification.
-  handleAutoEndNotificationClosed(sessionId, { flushQueued = true } = {}) {
+  handleAutoEndNotificationClosed(
+    sessionId: string,
+    { flushQueued = true }: { flushQueued?: boolean } = {}
+  ): boolean {
     if (this._pendingAutoEnd?.sessionId !== sessionId) return false;
     this._clearAutoEndRecovery({ dismiss: false });
     if (flushQueued) this._flushNotificationQueue();
@@ -296,19 +473,22 @@ class MeetingDetectionEngine {
   }
 
   // Hot path — called for every meeting PCM chunk of both channels.
-  recordMeetingAudioChunk(source, buffer) {
+  recordMeetingAudioChunk(source: string, buffer: Buffer): void {
     if (!this._autoEndActive) return;
-    this._audioActivityMonitor.recordChunk(source, buffer);
+    this._audioActivityMonitor.recordChunk(
+      source as "mic" | "system",
+      buffer
+    );
   }
 
-  _isAutoEndWanted() {
+  _isAutoEndWanted(): boolean {
     return (
       this._recordingSession?.autoEndEligible === true &&
       this._recordingSession.systemAudioAvailable === true
     );
   }
 
-  _syncAudioActivityDetector() {
+  _syncAudioActivityDetector(): unknown {
     if (this.preferences.audioDetection || this._isAutoEndWanted()) {
       return this.audioActivityDetector.start();
     }
@@ -319,7 +499,7 @@ class MeetingDetectionEngine {
 
   // The process-exit fast path needs the detector even when the user has turned
   // process detection off for meeting prompts.
-  _syncMeetingProcessDetector() {
+  _syncMeetingProcessDetector(): void {
     if (this.preferences.processDetection || this._isAutoEndWanted()) {
       this.meetingProcessDetector.start();
       return;
@@ -327,26 +507,28 @@ class MeetingDetectionEngine {
     this.meetingProcessDetector.stop();
   }
 
-  _startAutoEndTicker() {
+  _startAutoEndTicker(): void {
     if (this._autoEndTicker) return;
-    this._autoEndTicker = this._setInterval(() => {
+    this._autoEndTicker = this._setInterval?.(() => {
       // Monitor first so a fresh activity change reaches the controller before
       // it evaluates its windows for this second.
       this._audioActivityMonitor.tick(this._now());
       this._autoEndController.tick();
-    }, AUTO_END_TICK_MS);
-    this._autoEndTicker?.unref?.();
+    }, AUTO_END_TICK_MS) ?? null;
+    if (this._autoEndTicker && typeof this._autoEndTicker === "object") {
+      this._autoEndTicker.unref?.();
+    }
   }
 
-  _stopAutoEndTicker() {
+  _stopAutoEndTicker(): void {
     if (!this._autoEndTicker) return;
-    this._clearInterval(this._autoEndTicker);
+    this._clearInterval?.(this._autoEndTicker);
     this._autoEndTicker = null;
   }
 
   // Ends the controller session for the tracked recording (if any) and stops
   // feeding it audio. Safe to call when nothing is active.
-  _deactivateAutoEnd() {
+  _deactivateAutoEnd(): void {
     const session = this._recordingSession;
     this._autoEndActive = false;
     this._stopAutoEndTicker();
@@ -354,7 +536,7 @@ class MeetingDetectionEngine {
     if (session) this._autoEndController.endSession(session.sessionId);
   }
 
-  async _activateAutoEnd(sessionId) {
+  async _activateAutoEnd(sessionId: string): Promise<void> {
     await this._syncAudioActivityDetector();
     if (this._recordingSession?.sessionId !== sessionId || !this._isAutoEndWanted()) return;
 
@@ -385,7 +567,12 @@ class MeetingDetectionEngine {
     autoEndEligible,
     ownerWebContents,
     systemAudioAvailable = false,
-  }) {
+  }: {
+    sessionId: string;
+    autoEndEligible: boolean;
+    ownerWebContents: WebContents | null;
+    systemAudioAvailable?: boolean;
+  }): Promise<void> {
     this._clearAutoEndRecovery();
     if (this._recordingSession) this._deactivateAutoEnd();
 
@@ -405,7 +592,11 @@ class MeetingDetectionEngine {
     await this._activateAutoEnd(sessionId);
   }
 
-  async setRecordingSystemAudioAvailable(sessionId, available, ownerWebContents) {
+  async setRecordingSystemAudioAvailable(
+    sessionId: string,
+    available: boolean,
+    ownerWebContents: WebContents | null
+  ): Promise<boolean> {
     const session = this._recordingSession;
     if (
       !session ||
@@ -433,7 +624,7 @@ class MeetingDetectionEngine {
   // Returns false only when a *different* session is currently live — the one
   // case where the caller must not tear down shared capture. With no tracked
   // session (e.g. after engine stop at quit) teardown must still proceed.
-  endRecordingSession(expectedSessionId) {
+  endRecordingSession(expectedSessionId?: string | null): boolean {
     const session = this._recordingSession;
     if (!session) return true;
     if (expectedSessionId != null && session.sessionId !== expectedSessionId) {
@@ -464,11 +655,11 @@ class MeetingDetectionEngine {
 
   // Calendar reminders enter the same pipeline as mic detections, so they share
   // the recording gates, queueing, cooldowns, and the overlay window.
-  handleCalendarReminder(event) {
+  handleCalendarReminder(event: DetectionCalendarEvent): void {
     this._handleDetection("calendar", event.id, { event, detectedAt: Date.now() });
   }
 
-  _handleDetection(source, key, data) {
+  _handleDetection(source: "audio" | "calendar", key: string, data: DetectionData): void {
     const detectionId = `${source}:${key}`;
 
     if (source === "audio" && !this.preferences.audioDetection) {
@@ -520,7 +711,7 @@ class MeetingDetectionEngine {
     this._showPrompt(detectionId, source, key, data);
   }
 
-  _notificationsEnabledFor(source) {
+  _notificationsEnabledFor(source: "audio" | "calendar"): boolean {
     const nPrefs = this.windowManager.notificationPrefs || {};
     if (nPrefs.notificationsEnabled === false) return false;
     const prefKey = source === "calendar" ? "notifyCalendarReminders" : "notifyMeetingDetection";
@@ -529,7 +720,7 @@ class MeetingDetectionEngine {
 
   // activeMeeting only means the event's scheduled window is open — actual meeting
   // recordings are tracked by _meetingModeActive.
-  _findCalendarEvent() {
+  _findCalendarEvent(): DetectionCalendarEvent | null {
     const calendarState = this.reminderScheduler.getActiveMeetingState();
     if (calendarState.activeMeeting) return calendarState.activeMeeting;
 
@@ -542,11 +733,16 @@ class MeetingDetectionEngine {
     );
   }
 
-  _showPrompt(detectionId, source, key, data) {
+  _showPrompt(
+    detectionId: string,
+    source: "audio" | "calendar",
+    key: string,
+    data: DetectionData
+  ): void {
     const calendarEvent = data?.event ?? this._findCalendarEvent();
     const event = calendarEvent ?? placeholderEvent("__detected__");
 
-    let variant = "detected";
+    let variant: "detected" | "starting" | "underway" = "detected";
     if (calendarEvent) {
       const started = new Date(calendarEvent.start_time).getTime() <= Date.now();
       variant = started ? "underway" : "starting";
@@ -570,7 +766,7 @@ class MeetingDetectionEngine {
       detection.event = event;
     }
 
-    this.windowManager.showMeetingNotification({
+    void this.windowManager.showMeetingNotification?.({
       kind: "detection",
       detectionId,
       source,
@@ -581,16 +777,16 @@ class MeetingDetectionEngine {
     });
   }
 
-  async handleNotificationResponse(detectionId, action) {
+  async handleNotificationResponse(detectionId: string, action: string): Promise<void> {
     debugLogger.info("Notification response", { detectionId, action }, "meeting");
     try {
       const detection = this.activeDetections.get(detectionId);
 
       if ((action === "start" || action === "join") && detection) {
         if (action === "join") {
-          const joinUrl = getMeetingJoinUrl(detection.event);
+          const joinUrl = getMeetingJoinUrl(detection.event ?? null);
           if (joinUrl) {
-            openExternalUrl(joinUrl).catch((error) =>
+            openExternalUrl(joinUrl).catch((error: Error) =>
               debugLogger.error(
                 "Failed to open meeting link",
                 { error: error.message, joinUrl },
@@ -603,13 +799,16 @@ class MeetingDetectionEngine {
         const eventSummary = detection.event?.summary || "New note";
 
         const isRealEvent =
-          detection.event?.calendar_id &&
+          !!detection.event?.calendar_id &&
           detection.event.calendar_id !== "__detected__" &&
           detection.event.calendar_id !== "__manual__";
+        // The response only reaches a shown detection, whose event the prompt
+        // populated; the local alias keeps the real-event block narrow.
+        const detectionEvent = detection.event as DetectionCalendarEvent;
 
         if (
           isRealEvent &&
-          (await this._resumeExistingEventNote(detection.event, "calendar-join"))
+          (await this._resumeExistingEventNote(detectionEvent, "calendar-join"))
         ) {
           this._meetingModeActive = true;
           this.audioActivityDetector.resetPrompt();
@@ -617,7 +816,7 @@ class MeetingDetectionEngine {
         }
 
         const noteResult = this.databaseManager.saveNote(eventSummary, "", "meeting");
-        const meetingsFolder = this.databaseManager.getMeetingsFolder();
+        const meetingsFolder = this.databaseManager.getMeetingsFolder?.();
 
         if (!noteResult?.note?.id || !meetingsFolder?.id) {
           debugLogger.error(
@@ -633,21 +832,21 @@ class MeetingDetectionEngine {
         sendNoteAdded(noteResult.note);
 
         if (isRealEvent) {
-          const calEvent = this.databaseManager.getCalendarEventById(detection.event.id);
-          const updates = { calendar_event_id: detection.event.id };
+          const calEvent = this.databaseManager.getCalendarEventById?.(detectionEvent.id);
+          const updates: Record<string, unknown> = { calendar_event_id: detectionEvent.id };
           if (calEvent?.attendees) {
             updates.participants = calEvent.attendees;
           }
-          const updateResult = this.databaseManager.updateNote(noteResult.note.id, updates);
+          const updateResult = this.databaseManager.updateNote?.(noteResult.note.id, updates);
           if (updateResult?.success && updateResult?.note) {
             sendNoteUpdated(updateResult.note);
           }
         }
 
-        await this.windowManager.queueMeetingNoteNavigation({
+        await this.windowManager.queueMeetingNoteNavigation?.({
           noteId: noteResult.note.id,
           folderId: meetingsFolder.id,
-          event: detection.event,
+          event: detectionEvent,
           trigger: "calendar-join",
         });
 
@@ -661,18 +860,18 @@ class MeetingDetectionEngine {
       this._meetingModeActive = false;
       debugLogger.error(
         "Error handling notification response",
-        { error: error?.message, detectionId, action },
+        { error: error instanceof Error ? error.message : undefined, detectionId, action },
         "meeting"
       );
     } finally {
       // One overlay at a time — a response settles every pending detection,
       // including any the responded prompt replaced.
       this.activeDetections.clear();
-      this.windowManager.dismissMeetingNotification();
+      this.windowManager.dismissMeetingNotification?.();
     }
   }
 
-  async startManualMeeting() {
+  async startManualMeeting(): Promise<void> {
     debugLogger.info("Starting manual meeting", {}, "meeting");
 
     const activeEvents = this.databaseManager.getActiveEvents();
@@ -684,8 +883,8 @@ class MeetingDetectionEngine {
 
     const event = placeholderEvent("__manual__");
 
-    const noteResult = this.databaseManager.saveNote(event.summary, "", "meeting");
-    const meetingsFolder = this.databaseManager.getMeetingsFolder();
+    const noteResult = this.databaseManager.saveNote(event.summary ?? "New note", "", "meeting");
+    const meetingsFolder = this.databaseManager.getMeetingsFolder?.();
 
     if (!noteResult?.note?.id || !meetingsFolder?.id) {
       debugLogger.error(
@@ -699,7 +898,7 @@ class MeetingDetectionEngine {
 
     sendNoteAdded(noteResult.note);
 
-    await this.windowManager.queueMeetingNoteNavigation({
+    await this.windowManager.queueMeetingNoteNavigation?.({
       noteId: noteResult.note.id,
       folderId: meetingsFolder.id,
       event,
@@ -708,28 +907,34 @@ class MeetingDetectionEngine {
   }
 
   /** Navigates to the note already linked to a calendar event, if any. */
-  async _resumeExistingEventNote(event, trigger) {
-    const existingNote = this.databaseManager.getNoteByCalendarEventId(event.id);
+  async _resumeExistingEventNote(
+    event: DetectionCalendarEvent,
+    trigger: string
+  ): Promise<boolean> {
+    const existingNote = this.databaseManager.getNoteByCalendarEventId?.(event.id);
     if (!existingNote?.id) return false;
     debugLogger.info(
       "Reusing existing note for calendar meeting",
       { eventId: event.id, noteId: existingNote.id, trigger },
       "meeting"
     );
-    await this.windowManager.queueMeetingNoteNavigation({
+    await this.windowManager.queueMeetingNoteNavigation?.({
       noteId: existingNote.id,
-      folderId: existingNote.folder_id ?? this.databaseManager.getMeetingsFolder()?.id,
+      folderId: existingNote.folder_id ?? this.databaseManager.getMeetingsFolder?.()?.id,
       event,
       trigger,
     });
     return true;
   }
 
-  async joinCalendarMeeting(eventId, trigger = "calendar-join") {
+  async joinCalendarMeeting(
+    eventId: string,
+    trigger: "calendar-join" | "hotkey" | string = "calendar-join"
+  ): Promise<void> {
     this._meetingModeActive = true;
     debugLogger.info("Joining calendar meeting", { eventId, trigger }, "meeting");
 
-    const calEvent = this.databaseManager.getCalendarEventById(eventId);
+    const calEvent = this.databaseManager.getCalendarEventById?.(eventId);
     if (!calEvent) {
       debugLogger.error("Calendar event not found", { eventId }, "meeting");
       this._meetingModeActive = false;
@@ -742,7 +947,7 @@ class MeetingDetectionEngine {
     }
 
     const noteResult = this.databaseManager.saveNote(calEvent.summary || "New note", "", "meeting");
-    const meetingsFolder = this.databaseManager.getMeetingsFolder();
+    const meetingsFolder = this.databaseManager.getMeetingsFolder?.();
 
     if (!noteResult?.note?.id || !meetingsFolder?.id) {
       debugLogger.error(
@@ -754,15 +959,15 @@ class MeetingDetectionEngine {
       return;
     }
 
-    const updates = { calendar_event_id: calEvent.id };
+    const updates: Record<string, unknown> = { calendar_event_id: calEvent.id };
     if (calEvent.attendees) {
       updates.participants = calEvent.attendees;
     }
-    const updateResult = this.databaseManager.updateNote(noteResult.note.id, updates);
+    const updateResult = this.databaseManager.updateNote?.(noteResult.note.id, updates);
 
     sendNoteAdded(updateResult?.note || noteResult.note);
 
-    await this.windowManager.queueMeetingNoteNavigation({
+    await this.windowManager.queueMeetingNoteNavigation?.({
       noteId: noteResult.note.id,
       folderId: meetingsFolder.id,
       event: calEvent,
@@ -775,8 +980,11 @@ class MeetingDetectionEngine {
   // response or an expiry which settle every pending one: clearing them all
   // would strand _notificationQueue, whose entries the flush below looks up in
   // activeDetections.
-  handleDetectionNotificationClosed(detectionId, { flushQueued = true } = {}) {
-    if (!this.activeDetections.has(detectionId)) return;
+  handleDetectionNotificationClosed(
+    detectionId: string,
+    { flushQueued = true }: { flushQueued?: boolean } = {}
+  ): boolean {
+    if (!this.activeDetections.has(detectionId)) return false;
     this.activeDetections.delete(detectionId);
     debugLogger.info(
       "Detection notification closed without a response",
@@ -784,11 +992,12 @@ class MeetingDetectionEngine {
       "meeting"
     );
     if (flushQueued) this._flushNotificationQueue();
+    return true;
   }
 
-  handleNotificationTimeout(notification = null) {
+  handleNotificationTimeout(notification: { kind?: string; sessionId?: string } | null = null): void {
     if (notification?.kind === "auto-end") {
-      this.handleAutoEndNotificationClosed(notification.sessionId);
+      this.handleAutoEndNotificationClosed(notification.sessionId as string);
       return;
     }
 
@@ -801,7 +1010,7 @@ class MeetingDetectionEngine {
     debugLogger.info("Notification auto-dismissed, detections cleared", {}, "meeting");
   }
 
-  _flushNotificationQueue() {
+  _flushNotificationQueue(): void {
     if (this._notificationQueue.length === 0) return;
 
     if (this._meetingModeActive) {
@@ -845,11 +1054,11 @@ class MeetingDetectionEngine {
     this._notificationQueue = [];
   }
 
-  _dismiss() {
+  _dismiss(): void {
     this.audioActivityDetector.dismiss();
   }
 
-  setMeetingModeActive(active) {
+  setMeetingModeActive(active: boolean): void {
     this._meetingModeActive = active;
     debugLogger.info("Meeting mode active state changed", { active }, "meeting");
     if (!active) {
@@ -858,7 +1067,7 @@ class MeetingDetectionEngine {
     }
   }
 
-  setUserRecording(active) {
+  setUserRecording(active: boolean): void {
     this._userRecording = active;
     this.audioActivityDetector.setUserRecording(active);
 
@@ -878,11 +1087,11 @@ class MeetingDetectionEngine {
   // Forward-only: unlike setUserRecording there is no cooldown or queue flush —
   // that machinery exists for real recordings, while a warm-hold merely means
   // our own renderer still has the device open.
-  setMicWarmHold(active) {
+  setMicWarmHold(active: boolean): void {
     this.audioActivityDetector.setMicWarmHold(active);
   }
 
-  setPreferences(prefs) {
+  setPreferences(prefs: { processDetection?: boolean; audioDetection?: boolean }): void {
     debugLogger.info("Updating detection preferences", prefs, "meeting");
     if (typeof prefs?.processDetection === "boolean") {
       this.preferences.processDetection = prefs.processDetection;
@@ -895,17 +1104,17 @@ class MeetingDetectionEngine {
     this._syncAudioActivityDetector();
   }
 
-  getPreferences() {
+  getPreferences(): { processDetection: boolean; audioDetection: boolean } {
     return { ...this.preferences };
   }
 
-  start() {
+  start(): void {
     debugLogger.info("Meeting detection engine started", this.preferences, "meeting");
     this._syncMeetingProcessDetector();
     this._syncAudioActivityDetector();
   }
 
-  stop() {
+  stop(): void {
     debugLogger.info("Meeting detection engine stopped", {}, "meeting");
     this._clearAutoEndRecovery();
     this._autoEndRestartGrace = null;

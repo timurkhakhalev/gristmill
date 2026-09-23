@@ -176,7 +176,7 @@ function createDiarizationManagerFake({ available = false } = {}) {
   };
 }
 
-function buildHarness({ diarizationAvailable = false } = {}) {
+function buildHarness({ diarizationAvailable = false, systemAudio = false } = {}) {
   FakeStreamingClient.instances = [];
   currentWindow = fakeWindow();
   const handlers = new Map();
@@ -200,7 +200,7 @@ function buildHarness({ diarizationAvailable = false } = {}) {
     },
     diarizationManager: createDiarizationManagerFake({ available: diarizationAvailable }),
     meetingDetectionEngine: engine,
-    audioTapManager: null,
+    audioTapManager: systemAudio ? { isSupported: () => true } : null,
     meetingAecManager: null,
     whisperManager: { transcribeLocalWhisper: async () => ({ success: true, text: "" }) },
     parakeetManager: { transcribeLocalParakeet: async () => ({ success: true, text: "" }) },
@@ -218,7 +218,7 @@ function buildHarness({ diarizationAvailable = false } = {}) {
       getSpeakerEmbedding: () => null,
       mapSpeaker: () => {},
     },
-    fetchRealtimeToken: async () => "token",
+    fetchRealtimeToken: async () => (systemAudio ? ["mic-token", "system-token"] : "token"),
     resolveWhisperVadOptions: () => ({}),
     speakerEmbeddings: () => ({ cosineSimilarity: () => 0.9 }),
     getControlPanelWindow: () => currentWindow,
@@ -294,39 +294,68 @@ test("a prepare failure resolves with the serialized error", async () => {
   assert.deepEqual(await retry, { success: true });
 });
 
-// CHARACTERIZATION (defect, not fixed by this migration): cancel clears the
-// prepare/start guards while the connect is still running, so a duplicate
-// prepare can interleave with the unresolved connect and the streaming refs /
-// connection key end up last-writer-wins. The migration deliberately does not
-// add a hard abort or change this contract; the fix is a separate decision.
-test("cancel during an in-flight prepare admits a second connect while the first is unresolved", async () => {
+test("cancel keeps prepare exclusive until the late connection is cleaned up", async () => {
   const { handlers } = buildHarness();
   const event = { sender: null };
-
-  const first = invoke(handlers, "meeting-transcription-prepare", event, {
-    provider: "openai-realtime",
-  });
-  await waitFor(() => clientCount() === 1, "the first connect client is constructed");
-
+  const options = { provider: "openai-realtime" };
+  const first = invoke(handlers, "meeting-transcription-prepare", event, options);
+  await waitFor(() => clientCount() === 1, "first connect");
   assert.deepEqual(await invoke(handlers, "meeting-transcription-cancel"), { success: true });
-
-  // The guard is gone, so the second prepare is admitted while the first
-  // connect is still unresolved.
-  const second = invoke(handlers, "meeting-transcription-prepare", event, {
-    provider: "openai-realtime",
+  assert.deepEqual(await first, { success: false, error: "Prepare canceled" });
+  assert.deepEqual(await invoke(handlers, "meeting-transcription-prepare", event, options), {
+    success: false,
+    error: "Operation in progress",
   });
-  await waitFor(() => clientCount() === 2, "two overlapping connects");
-
+  const start = await invoke(handlers, "meeting-transcription-start", event, {
+    ...options,
+    sessionId: "blocked-start",
+  });
+  assert.equal(start.success, false);
+  assert.equal(clientCount(), 1);
   FakeStreamingClient.instances[0].connectDeferred.resolve();
-  assert.deepEqual(await first, { success: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(FakeStreamingClient.instances[0].isConnected, false);
+  const retry = invoke(handlers, "meeting-transcription-prepare", event, options);
+  await waitFor(() => clientCount() === 2, "retry connects instead of reusing canceled client");
   FakeStreamingClient.instances[1].connectDeferred.resolve();
-  assert.deepEqual(await second, { success: true });
+  assert.deepEqual(await retry, { success: true });
+});
 
-  // Last writer wins on the connection key.
-  const warm = await invoke(handlers, "meeting-transcription-prepare", event, {
-    provider: "openai-realtime",
+test("prepare claims the slot before its first async step", async () => {
+  const { handlers } = buildHarness();
+  const event = { sender: null };
+  const options = { provider: "openai-realtime" };
+  const first = invoke(handlers, "meeting-transcription-prepare", event, options);
+  assert.deepEqual(await invoke(handlers, "meeting-transcription-prepare", event, options), {
+    success: false,
+    error: "Operation in progress",
   });
-  assert.deepEqual(warm, { success: true, alreadyPrepared: true });
+  await invoke(handlers, "meeting-transcription-cancel");
+  if (clientCount()) FakeStreamingClient.instances[0].connectDeferred.resolve();
+  assert.equal((await first).success, false);
+  await new Promise((resolve) => setImmediate(resolve));
+});
+
+test("prepare timeout keeps the slot until the underlying connect settles", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { handlers } = buildHarness();
+  const event = { sender: null };
+  const options = { provider: "openai-realtime" };
+  const pending = invoke(handlers, "meeting-transcription-prepare", event, options);
+  await waitFor(() => clientCount() === 1, "connect");
+  t.mock.timers.tick(15000);
+  assert.deepEqual(await pending, { success: false, error: "Prepare timed out" });
+  assert.deepEqual(await invoke(handlers, "meeting-transcription-prepare", event, options), {
+    success: false,
+    error: "Operation in progress",
+  });
+  FakeStreamingClient.instances[0].connectDeferred.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(FakeStreamingClient.instances[0].isConnected, false);
+  const retry = invoke(handlers, "meeting-transcription-prepare", event, options);
+  await waitFor(() => clientCount() === 2, "retry");
+  FakeStreamingClient.instances[1].connectDeferred.resolve();
+  assert.deepEqual(await retry, { success: true });
 });
 
 test("cancel refuses while a recording is live", async () => {
@@ -399,6 +428,16 @@ test("a duplicate start is refused while the first start is in flight", async ()
     sessionId: "meeting-2",
   });
   assert.deepEqual(second, { success: false, error: "Operation in progress" });
+
+  assert.deepEqual(await invoke(handlers, "meeting-transcription-cancel"), {
+    success: false,
+    reason: "recording-active",
+  });
+  assert.deepEqual(await invoke(handlers, "meeting-transcription-prepare", event, START_OPTIONS), {
+    success: false,
+    error: "Operation in progress",
+  });
+  assert.equal(clientCount(), 1);
 
   FakeStreamingClient.instances[0].connectDeferred.resolve();
   const firstResult = await first;
@@ -569,4 +608,26 @@ test("a late diarization result is published to the session that owned the recor
   // Stop B so the local chunking interval does not keep the runner alive.
   const stoppedB = await invoke(diarizationHarness.handlers, "meeting-transcription-stop", { sender: null }, "meeting-B");
   assert.equal(stoppedB.success, true, JSON.stringify(stoppedB));
+});
+
+test("a failed dual-stream prepare waits for the other connection before cleanup", async () => {
+  const { handlers } = buildHarness({ systemAudio: true });
+  const event = { sender: null };
+  const options = { provider: "openai-realtime" };
+  const pending = invoke(handlers, "meeting-transcription-prepare", event, options);
+  await waitFor(() => clientCount() === 2, "both streams connecting");
+  FakeStreamingClient.instances[0].connectDeferred.reject(new Error("mic failed"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(await invoke(handlers, "meeting-transcription-prepare", event, options), {
+    success: false,
+    error: "Operation in progress",
+  });
+  FakeStreamingClient.instances[1].connectDeferred.resolve();
+  assert.deepEqual(await pending, { success: false, error: "mic failed" });
+  assert.equal(FakeStreamingClient.instances[1].isConnected, false);
+  const retry = invoke(handlers, "meeting-transcription-prepare", event, options);
+  await waitFor(() => clientCount() === 4, "fresh pair on retry");
+  FakeStreamingClient.instances[2].connectDeferred.resolve();
+  FakeStreamingClient.instances[3].connectDeferred.resolve();
+  assert.deepEqual(await retry, { success: true });
 });

@@ -1664,7 +1664,11 @@ upload/diarization; onboarding; Notes) на отдельном профиле; �
   и зафиксирован characterization-тестом БЕЗ изменения поведения: cancel
   сбрасывает guards, пока connect ещё выполняется, и допускает второй
   параллельный prepare (last-writer-wins на streaming refs/connection key).
-  Hard abort по-прежнему не обещается.
+  Исправлено последующим lifecycle fix: cancel/timeout сразу завершают IPC-ответ,
+  но guard остаётся до завершения подключения и очистки обоих клиентов.
+  Поздние клиенты не публикуются; start во время очистки отклоняется.
+  Characterization заменён regression-тестами, включая частичный отказ двух
+  потоков. Hard abort сетевого подключения по-прежнему не обещается.
 - `geminiLiveStreaming.ts` больше не входит в main compiler graph: на main
   файл эмиссился в dist-main только через мёртвый require в старом
   `ipcHandlers.js` (класс не использовался). Это был графовый артефакт, а не

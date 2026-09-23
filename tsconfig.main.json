@@ -17,7 +17,7 @@
     "types": ["node"]
   },
   "include": [
-    "main.js",
+    "main.ts",
     "preload.js",
     "src/workers/*.ts",
     "src/utils/audioUtils.ts",

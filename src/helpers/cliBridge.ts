@@ -647,4 +647,5 @@ export class CliBridge {
 // CommonJS passthrough matching the original module shape: the class itself
 // plus the discovery-file path helper on the same exports object.
 module.exports = CliBridge;
+module.exports.CliBridge = CliBridge;
 module.exports.getBridgeFilePath = getBridgeFilePath;

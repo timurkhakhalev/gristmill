@@ -198,7 +198,10 @@ export interface AppleCalendarRow {
   created_at: string;
 }
 
-export interface CalendarEventRow {
+// A type alias, not an interface: type aliases of object literals carry an
+// implicit index signature, so full rows stay assignable to loose engine
+// projections like DetectionCalendarEvent.
+export type CalendarEventRow = {
   id: string;
   calendar_id: string;
   provider: string;
@@ -215,7 +218,7 @@ export interface CalendarEventRow {
   attendees_count: number;
   attendees: string | null;
   synced_at: string;
-}
+};
 
 export interface CalendarAccountRow {
   email: string;
@@ -1879,3 +1882,4 @@ export class DatabaseManager {
 // required value directly. Restore that CommonJS contract — tsc's ESM emit
 // alone would expose only `exports.default`.
 module.exports = DatabaseManager;
+module.exports.DatabaseManager = DatabaseManager;

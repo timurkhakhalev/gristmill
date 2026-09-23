@@ -601,12 +601,7 @@ export class IPCHandlers {
     // Transcription records, audio storage, exports, file selection and the
     // pending (non-meeting) note navigation live in the typed module.
     registerTranscriptionDataHandlers(ipcMain, {
-      // The delete-all seam's getAudioFlaggedIds() has no manager counterpart;
-      // the JS root left it undefined and the handler's try/catch logged the
-      // skip. Preserved 1:1 until the flag-cleanup fix lands.
-      database: this.databaseManager as unknown as Parameters<
-        typeof registerTranscriptionDataHandlers
-      >[1]["database"],
+      database: this.databaseManager,
       audioStorage: this.audioStorageManager,
       deleteTranscriptionInternal: (id) => this.deleteTranscriptionInternal(id),
       buildSpeakerMappings: (noteId) => this._buildSpeakerMappings(noteId),
@@ -1088,10 +1083,7 @@ export class IPCHandlers {
     setImmediate(async () => {
       try {
         const speakerEmbeddings = require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings;
-        // Pinned pre-existing defect (see PR notes): the query returns full
-        // note rows while the lookups below bind a raw id — every iteration
-        // throws into the catch. Preserved 1:1; fixing it is out of scope.
-        const noteIds = this.databaseManager.getNotesWithUnmappedSpeakers() as unknown as number[];
+        const unmappedNotes = this.databaseManager.getNotesWithUnmappedSpeakers();
 
         const profileEmb = new Float32Array(
           profile.embedding.buffer,
@@ -1099,12 +1091,18 @@ export class IPCHandlers {
           profile.embedding.byteLength / 4
         );
 
-        for (const noteId of noteIds) {
+        for (const unmappedNote of unmappedNotes) {
+          const noteId = unmappedNote.id;
           const embeddings = this.databaseManager.getNoteSpeakerEmbeddings(noteId);
           const existing = this.databaseManager.getSpeakerMappings(noteId);
-          const mappedSpeakers = new Set(existing.map((m) => m.speaker_id));
+          // Only genuinely assigned rows block a rewrite: the placeholder
+          // rows (profile_id IS NULL) that brought this note into the
+          // unmapped query are exactly what this pass fills in.
+          const assignedSpeakers = new Set(
+            existing.filter((m) => m.profile_id !== null).map((m) => m.speaker_id)
+          );
           for (const emb of embeddings) {
-            if (mappedSpeakers.has(emb.speaker_id)) continue;
+            if (assignedSpeakers.has(emb.speaker_id)) continue;
 
             const speakerEmb = new Float32Array(
               emb.embedding.buffer,

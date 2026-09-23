@@ -149,6 +149,7 @@ registerRemoteTranscriptionHandler(ipcMain, {
   fileSize: (p: string) => p.length,
   providerBaseUrls: () => [],
   postMultipart: async (url: URL) => ({ statusCode: 200, data: { text: "t" }, url }),
+  postRawAudioFile: async () => ({ statusCode: 200, data: { results: {} } }),
   transcribeWithTinfoil: async () => ({ text: "t" }),
   transcribeWithGemini: async () => ({ text: "t" }),
   transcribeWithCorti: async () => ({ text: "t" }),

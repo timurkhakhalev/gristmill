@@ -164,7 +164,7 @@ test("upload overrides win and empty fields inherit the base scope", async () =>
 
 test("streaming-only base provider is not inherited by upload", async () => {
   const { selectResolvedUploadTranscription } = await loadSelectors();
-  for (const provider of ["deepgram", "assemblyai"]) {
+  for (const provider of ["assemblyai"]) {
     const resolved = selectResolvedUploadTranscription(
       transcriptionFixture({
         cloudTranscriptionProvider: provider,
@@ -179,13 +179,24 @@ test("streaming-only base provider is not inherited by upload", async () => {
   // The streaming-only exception does not extend to base URL or cloud mode.
   const stillInheritsOther = selectResolvedUploadTranscription(
     transcriptionFixture({
-      cloudTranscriptionProvider: "deepgram",
+      cloudTranscriptionProvider: "assemblyai",
       cloudTranscriptionBaseUrl: "https://deepgram.example/v1",
       cloudTranscriptionMode: "byok",
     })
   );
   assert.equal(stillInheritsOther.cloudTranscriptionBaseUrl, "https://deepgram.example/v1");
   assert.equal(stillInheritsOther.cloudTranscriptionMode, "byok");
+
+  const deepgram = selectResolvedUploadTranscription(
+    transcriptionFixture({
+      cloudTranscriptionProvider: "deepgram",
+      cloudTranscriptionModel: "nova-3",
+      uploadCloudTranscriptionProvider: "",
+      uploadCloudTranscriptionModel: "",
+    })
+  );
+  assert.equal(deepgram.cloudTranscriptionProvider, "deepgram");
+  assert.equal(deepgram.cloudTranscriptionModel, "nova-3");
 });
 
 test("an explicit streaming-only upload provider is kept for the route guard", async () => {
@@ -203,7 +214,10 @@ test("an explicit streaming-only upload provider is kept for the route guard", a
 
 test("cleanup and chatIntelligence do not gain a fallback scope", async () => {
   const { selectResolvedLLMConfig } = await loadSelectors();
-  const cleanup = selectResolvedLLMConfig(llmFixture({ cleanupProvider: "", cleanupModel: "" }), "cleanup");
+  const cleanup = selectResolvedLLMConfig(
+    llmFixture({ cleanupProvider: "", cleanupModel: "" }),
+    "cleanup"
+  );
   assert.equal(cleanup.provider, "");
   assert.equal(cleanup.model, "");
   const chat = selectResolvedLLMConfig(
@@ -267,9 +281,7 @@ test("selectResolvedNoteFormatting: own key wins, inherited endpoint borrows the
   const borrowed = selectResolvedNoteFormatting(llmFixture());
   assert.equal(borrowed.customApiKey, "sk-cleanup");
 
-  const own = selectResolvedNoteFormatting(
-    llmFixture({ noteFormattingCustomApiKey: "sk-own" })
-  );
+  const own = selectResolvedNoteFormatting(llmFixture({ noteFormattingCustomApiKey: "sk-own" }));
   assert.equal(own.customApiKey, "sk-own");
 
   // Own endpoint (cloudBaseUrl or remoteUrl set): no borrowed key.
@@ -327,7 +339,10 @@ test("selectResolvedNoteFormatting falls back to empty strings, keeps undefined 
 test("reasoningRouting keeps mirroring undefined routing fields and endpoint rules", async () => {
   const { inheritsFallbackEndpoint, buildReasoningScopePatches } = await loadRouting();
   assert.equal(inheritsFallbackEndpoint({ mode: "providers" }, "providers"), true);
-  assert.equal(inheritsFallbackEndpoint({ mode: "providers", cloudBaseUrl: "" }, "providers"), true);
+  assert.equal(
+    inheritsFallbackEndpoint({ mode: "providers", cloudBaseUrl: "" }, "providers"),
+    true
+  );
   assert.equal(inheritsFallbackEndpoint({ mode: "providers" }, "local"), false);
   assert.equal(inheritsFallbackEndpoint({ mode: "local" }, undefined), false);
   const { noteFormatting } = buildReasoningScopePatches(
@@ -353,10 +368,11 @@ test("selectors import and run without window, with a throwing localStorage", as
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
     if (originalLocalStorage === undefined) delete globalThis.localStorage;
-    else Object.defineProperty(globalThis, "localStorage", {
-      configurable: true,
-      value: originalLocalStorage,
-    });
+    else
+      Object.defineProperty(globalThis, "localStorage", {
+        configurable: true,
+        value: originalLocalStorage,
+      });
   });
 
   const selectors = await loadSelectors();
@@ -364,15 +380,16 @@ test("selectors import and run without window, with a throwing localStorage", as
   assert.equal(resolved.transcriptionMode, "providers");
   const cfg = selectors.selectResolvedLLMConfig(llmFixture(), "noteFormatting");
   assert.equal(cfg.provider, "openai");
-  assert.equal(
-    selectors.selectResolvedNoteFormatting(llmFixture()).customApiKey,
-    "sk-cleanup"
-  );
+  assert.equal(selectors.selectResolvedNoteFormatting(llmFixture()).customApiKey, "sk-cleanup");
 });
 
 test("selectors never mutate the snapshot they read", async () => {
-  const { selectResolvedMeetingTranscription, selectResolvedUploadTranscription,
-    selectResolvedLLMConfig, selectResolvedNoteFormatting } = await loadSelectors();
+  const {
+    selectResolvedMeetingTranscription,
+    selectResolvedUploadTranscription,
+    selectResolvedLLMConfig,
+    selectResolvedNoteFormatting,
+  } = await loadSelectors();
   const snapshot = Object.freeze({ ...transcriptionFixture(), ...llmFixture() });
   assert.doesNotThrow(() => selectResolvedMeetingTranscription(snapshot));
   assert.doesNotThrow(() => selectResolvedUploadTranscription(snapshot));

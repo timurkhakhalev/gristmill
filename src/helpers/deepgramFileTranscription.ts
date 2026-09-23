@@ -1,0 +1,101 @@
+import { formatTimestamp } from "./speakerMerge.js";
+import type { RemoteTranscriptionResult } from "../contracts/uploadTranscription.js";
+
+export function deepgramFileUrl(
+  model: string,
+  language: string | undefined,
+  diarize: boolean
+): URL {
+  const url = new URL("https://api.deepgram.com/v1/listen");
+  url.searchParams.set("model", model);
+  url.searchParams.set("smart_format", "true");
+  url.searchParams.set("utterances", "true");
+  if (diarize) url.searchParams.set("diarize_model", "latest");
+  if (language) url.searchParams.set("language", language);
+  else url.searchParams.set("detect_language", "true");
+  return url;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+export function parseDeepgramFileResponse(
+  raw: unknown,
+  diarize: boolean
+): RemoteTranscriptionResult {
+  const results = record(raw)?.results;
+  const channels = record(results)?.channels;
+  const firstChannel = Array.isArray(channels) ? record(channels[0]) : null;
+  const alternatives = firstChannel?.alternatives;
+  const alternative = Array.isArray(alternatives) ? record(alternatives[0]) : null;
+  const transcript = alternative?.transcript;
+  if (typeof transcript !== "string") {
+    return {
+      success: false,
+      error: "Deepgram returned no transcript",
+      code: "DEEPGRAM_INVALID_RESPONSE",
+    };
+  }
+
+  const utterances = record(results)?.utterances;
+  if (!Array.isArray(utterances)) {
+    return diarize && transcript.trim()
+      ? {
+          success: false,
+          error: "Deepgram returned no speaker data",
+          code: "DEEPGRAM_DIARIZATION_MISSING",
+        }
+      : { success: true, text: transcript };
+  }
+
+  const segments: NonNullable<RemoteTranscriptionResult["segments"]> = [];
+  for (const value of utterances) {
+    const item = record(value);
+    if (
+      !item ||
+      typeof item.transcript !== "string" ||
+      typeof item.start !== "number" ||
+      !Number.isFinite(item.start) ||
+      typeof item.end !== "number" ||
+      !Number.isFinite(item.end) ||
+      item.start < 0 ||
+      item.end < item.start ||
+      (diarize && (!Number.isInteger(item.speaker) || (item.speaker as number) < 0))
+    ) {
+      return {
+        success: false,
+        error: "Deepgram returned invalid speaker or timing data",
+        code: "DEEPGRAM_INVALID_RESPONSE",
+      };
+    }
+    segments.push({
+      ...(diarize ? { speaker: `Speaker ${(item.speaker as number) + 1}` } : {}),
+      text: item.transcript,
+      start: item.start,
+      end: item.end,
+    });
+  }
+
+  if (diarize && transcript.trim() && segments.length === 0) {
+    return {
+      success: false,
+      error: "Deepgram returned no speaker data",
+      code: "DEEPGRAM_DIARIZATION_MISSING",
+    };
+  }
+
+  return {
+    success: true,
+    text: diarize
+      ? segments
+          .map(
+            (s) =>
+              `[${s.speaker}] ${formatTimestamp(s.start)} - ${formatTimestamp(s.end)}\n${s.text}`
+          )
+          .join("\n\n")
+      : transcript,
+    diarized: diarize && segments.length > 0,
+    segments,
+  };
+}

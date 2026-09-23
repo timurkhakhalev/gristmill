@@ -74,6 +74,19 @@ test("proxied providers carry their quirks as route data", async () => {
   assert.equal(tinfoil.transport, "proxied");
   assert.equal(tinfoil.model, null, "tinfoil's attested client resolves its own model");
 
+  const deepgram = await resolve({ cloudTranscriptionProvider: "deepgram" });
+  assert.equal(deepgram.transport, "proxied");
+  assert.equal(deepgram.provider, "deepgram");
+  assert.equal(deepgram.model, "nova-3");
+  assert.equal(deepgram.sizeCapBytes, 2 * 1024 * 1024 * 1024);
+
+  const flux = await resolve({
+    cloudTranscriptionProvider: "deepgram",
+    cloudTranscriptionModel: "flux-general-en",
+  });
+  assert.equal(flux.transport, "error");
+  assert.equal(flux.code, "DEEPGRAM_MODEL_UNSUPPORTED");
+
   const mistral = await resolve({
     cloudTranscriptionProvider: "mistral",
     cloudTranscriptionModel: "voxtral-small-latest",
@@ -111,6 +124,7 @@ test("proxied providers carry their quirks as route data", async () => {
 test("byokFileSizeLimit matches the per-provider route caps", async () => {
   const { byokFileSizeLimit } = await load();
   assert.equal(byokFileSizeLimit("gemini"), 14 * 1024 * 1024);
+  assert.equal(byokFileSizeLimit("deepgram"), 2 * 1024 * 1024 * 1024);
   assert.equal(byokFileSizeLimit("openai"), 25 * 1024 * 1024);
 });
 
@@ -147,9 +161,8 @@ test("custom requires a configured secure endpoint (empty, sentinel, garbage all
 // provider and then uploading or retrying would have POSTed the user's audio to
 // api.openai.com under their OpenAI key.
 test("realtime-only providers fail closed instead of falling through to OpenAI", async () => {
-  const { STREAMING_ONLY_PROVIDERS } = await import(
-    "../../src/config/transcriptionCapabilities.ts"
-  );
+  const { STREAMING_ONLY_PROVIDERS } =
+    await import("../../src/config/transcriptionCapabilities.ts");
   assert.ok(STREAMING_ONLY_PROVIDERS.size > 0);
 
   for (const provider of STREAMING_ONLY_PROVIDERS) {
@@ -179,9 +192,8 @@ test("realtime-only providers fail closed instead of falling through to OpenAI",
 // skipped for want of a key, so the key — not the transport — is the diagnosis
 // there. Retry and upload cannot know about keys and keep the transport error.
 test("realtime-only providers report a missing key ahead of the transport limitation", async () => {
-  const { STREAMING_ONLY_PROVIDERS } = await import(
-    "../../src/config/transcriptionCapabilities.ts"
-  );
+  const { STREAMING_ONLY_PROVIDERS } =
+    await import("../../src/config/transcriptionCapabilities.ts");
 
   for (const provider of STREAMING_ONLY_PROVIDERS) {
     const missingKey = await resolve(

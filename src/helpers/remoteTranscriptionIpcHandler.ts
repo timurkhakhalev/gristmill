@@ -15,6 +15,7 @@ import {
 } from "./transcriptionRoute.js";
 import { timestampRequestFields, mapVerboseSegments } from "./uploadTimestamps.js";
 import { formatTimestamp } from "./speakerMerge.js";
+import { deepgramFileUrl, parseDeepgramFileResponse } from "./deepgramFileTranscription.js";
 import {
   remoteTranscriptionRequestSchema,
   remoteTranscriptionResponseSchema,
@@ -101,6 +102,13 @@ export interface RemoteTranscriptionDeps {
     headers?: Record<string, string>,
     options?: { signal?: AbortSignal }
   ) => Promise<PostMultipartResult>;
+  postRawAudioFile: (
+    url: URL,
+    filePath: string,
+    contentType: string,
+    apiKey: string,
+    options?: { signal?: AbortSignal }
+  ) => Promise<PostMultipartResult>;
   transcribeWithTinfoil: (args: {
     audioBuffer: Buffer;
     fileName: string;
@@ -183,10 +191,14 @@ function formatDiarizedTranscript(
     .join("\n\n");
 }
 
-function errorMessageFromStatus(data: { statusCode: number; data: unknown }, prefix: string): string {
+function errorMessageFromStatus(
+  data: { statusCode: number; data: unknown },
+  prefix: string
+): string {
   const error = asRecord(data.data)?.error;
   const message =
-    (asRecord(error)?.message as string | undefined) || (typeof error === "string" ? error : undefined);
+    (asRecord(error)?.message as string | undefined) ||
+    (typeof error === "string" ? error : undefined);
   return message || `${prefix} ${data.statusCode}`;
 }
 
@@ -241,7 +253,13 @@ export async function transcribeAudioFileByok(
         AUDIO_MIME_TYPES[ext] || "audio/mpeg",
         { model: route.model, language: route.language }
       );
-      const data = await deps.postMultipart(new URL(route.endpoint), body, boundary, {}, { signal });
+      const data = await deps.postMultipart(
+        new URL(route.endpoint),
+        body,
+        boundary,
+        {},
+        { signal }
+      );
       if (data.statusCode !== 200) {
         throw new Error(errorMessageFromStatus(data, "Self-hosted API Error:"));
       }
@@ -251,6 +269,53 @@ export async function transcribeAudioFileByok(
     const fileSize = deps.fileSize(realByok);
     if (route.sizeCapBytes && fileSize > route.sizeCapBytes) {
       return { success: false, error: byokSizeCapError(route.sizeCapBytes) };
+    }
+
+    if (fileSize === 0) {
+      return { success: false, error: "Audio file is empty" };
+    }
+
+    if (route.transport === "proxied" && route.provider === "deepgram") {
+      if (!payload.apiKey) {
+        return {
+          success: false,
+          error: "No Deepgram API key configured. Add your key in Settings.",
+        };
+      }
+      const ext = extname(realByok).toLowerCase().replace(".", "");
+      const data = await deps.postRawAudioFile(
+        deepgramFileUrl(route.model || "nova-3", route.language, payload.diarize === true),
+        realByok,
+        AUDIO_MIME_TYPES[ext] || "application/octet-stream",
+        payload.apiKey,
+        { signal }
+      );
+      if (data.statusCode === 401 || data.statusCode === 403) {
+        return { success: false, error: "Invalid Deepgram API key. Check your key in Settings." };
+      }
+      if (data.statusCode === 413) {
+        return {
+          success: false,
+          error: "Deepgram rejected the audio size. Choose another provider.",
+        };
+      }
+      if (data.statusCode === 429) {
+        return { success: false, error: "Deepgram rate limit exceeded. Please try again later." };
+      }
+      if (data.statusCode === 504) {
+        return {
+          success: false,
+          error: "Deepgram timed out processing this recording. Retry or choose another provider.",
+        };
+      }
+      if (data.statusCode !== 200) {
+        return {
+          success: false,
+          error: errorMessageFromStatus(data, "Deepgram API error:"),
+          code: "DEEPGRAM_API_ERROR",
+        };
+      }
+      return parseResult(parseDeepgramFileResponse(data.data, payload.diarize === true));
     }
 
     if (route.transport === "proxied" && route.provider === "corti") {
@@ -356,7 +421,12 @@ export async function transcribeAudioFileByok(
       if (fields) Object.assign(multipartFields, fields);
     }
 
-    const { body, boundary } = buildMultipartBody(audioBuffer, fileName, contentType, multipartFields);
+    const { body, boundary } = buildMultipartBody(
+      audioBuffer,
+      fileName,
+      contentType,
+      multipartFields
+    );
 
     const url = new URL(transcriptionUrl);
     // Mistral authenticates with x-api-key, not Bearer.
@@ -382,9 +452,8 @@ export async function transcribeAudioFileByok(
     const payloadRecord = asRecord(data.data);
 
     if (diarize && Array.isArray(payloadRecord?.speakers)) {
-      const segments = projectDiarizedSegments(
-        payloadRecord.speakers,
-        (item) => String(item.id || `Speaker ${item.speaker || "?"}`)
+      const segments = projectDiarizedSegments(payloadRecord.speakers, (item) =>
+        String(item.id || `Speaker ${item.speaker || "?"}`)
       );
       return parseResult({
         success: true,
@@ -395,9 +464,8 @@ export async function transcribeAudioFileByok(
     }
 
     if (diarize && Array.isArray(payloadRecord?.segments)) {
-      const segments = projectDiarizedSegments(
-        payloadRecord.segments,
-        (item) => String(item.speaker || "Speaker ?")
+      const segments = projectDiarizedSegments(payloadRecord.segments, (item) =>
+        String(item.speaker || "Speaker ?")
       );
       return parseResult({
         success: true,
@@ -439,17 +507,21 @@ export function registerRemoteTranscriptionHandler(
   ipcMain: { handle(channel: string, listener: IpcEventListener): void },
   deps: RemoteTranscriptionDeps
 ): void {
-  ipcMain.handle(uploadTranscriptionChannels.transcribeAudioFileByok, async (_event, ...args: unknown[]) => {
-    // Invalid payloads are rejected before any path resolution, read or
-    // network call; a non-string filePath keeps the historical message.
-    const parsed = remoteTranscriptionRequestSchema.safeParse(args[0]);
-    if (!parsed.success) {
-      const filePath = asRecord(args[0])?.filePath;
-      return {
-        success: false,
-        error: typeof filePath === "string" ? "Invalid transcription request" : "Invalid file path",
-      };
+  ipcMain.handle(
+    uploadTranscriptionChannels.transcribeAudioFileByok,
+    async (_event, ...args: unknown[]) => {
+      // Invalid payloads are rejected before any path resolution, read or
+      // network call; a non-string filePath keeps the historical message.
+      const parsed = remoteTranscriptionRequestSchema.safeParse(args[0]);
+      if (!parsed.success) {
+        const filePath = asRecord(args[0])?.filePath;
+        return {
+          success: false,
+          error:
+            typeof filePath === "string" ? "Invalid transcription request" : "Invalid file path",
+        };
+      }
+      return transcribeAudioFileByok(deps, parsed.data);
     }
-    return transcribeAudioFileByok(deps, parsed.data);
-  });
+  );
 }

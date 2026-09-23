@@ -1,12 +1,4 @@
-import {
-  app,
-  BrowserWindow,
-  dialog,
-  ipcMain,
-  net,
-  shell,
-  type IpcMainInvokeEvent,
-} from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, shell, type IpcMainInvokeEvent } from "electron";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
@@ -67,10 +59,7 @@ import {
   type MeetingCoordinatorRuntime,
 } from "./meetingCoordinatorIpcHandlers.js";
 import type { DiarizationPublicationDatabase } from "./meetingDiarizationPublication.js";
-import {
-  registerSpeakerHandlers,
-  type SpeakerDatabase,
-} from "./speakerIpcHandlers.js";
+import { registerSpeakerHandlers, type SpeakerDatabase } from "./speakerIpcHandlers.js";
 import { registerRemoteTranscriptionHandler } from "./remoteTranscriptionIpcHandler.js";
 import { registerReasoningHandlers, type EnterpriseStreamModel } from "./reasoningIpcHandlers.js";
 import { registerFileDiarizationHandlers } from "./fileDiarizationIpcHandlers.js";
@@ -81,14 +70,8 @@ import type { LocalModelDownloadState } from "./localModelDownloadStatus.js";
 import type { MergedSpeakerSegment } from "./speakerMerge.js";
 import type { ModelManager } from "./modelManagerBridge.js";
 import type { DiarizationSegment } from "./diarization.js";
-import type {
-  LlmModelManagerLike,
-  LlmDownloadStatusTracker,
-} from "./localLlmModelIpcHandlers.js";
-import type {
-  WhisperManagerLike,
-  ParakeetManagerLike,
-} from "./localModelLifecycleIpcHandlers.js";
+import type { LlmModelManagerLike, LlmDownloadStatusTracker } from "./localLlmModelIpcHandlers.js";
+import type { WhisperManagerLike, ParakeetManagerLike } from "./localModelLifecycleIpcHandlers.js";
 import type { DiarizationPublicationDiarizationManager } from "./meetingDiarizationPublication.js";
 import { registerTranscriptionDataHandlers } from "./transcriptionDataIpcHandlers.js";
 import { registerDesktopSettingsHandlers } from "./desktopSettingsIpcHandlers.js";
@@ -186,6 +169,63 @@ async function postMultipart(
   }
 }
 
+async function postRawAudioFile(
+  url: URL,
+  filePath: string,
+  contentType: string,
+  apiKey: string,
+  { signal }: { signal?: AbortSignal } = {}
+): Promise<{ statusCode: number; data: unknown }> {
+  return new Promise((resolve, reject) => {
+    const request = net.request({
+      method: "POST",
+      url: url.toString(),
+      headers: { Authorization: `Token ${apiKey}`, "Content-Type": contentType },
+    });
+    request.chunkedEncoding = true;
+    const source = fs.createReadStream(filePath);
+    let settled = false;
+    const finish = (error?: Error, result?: { statusCode: number; data: unknown }) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener("abort", abort);
+      source.destroy();
+      if (error) {
+        request.abort();
+        reject(error);
+      } else if (result) resolve(result);
+    };
+    const abort = () => finish(new DOMException("Cancelled", "AbortError"));
+    if (signal?.aborted) return abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    source.on("error", finish);
+    request.on("error", finish);
+    request.on("close", () => {
+      if (!settled) finish(new Error("Deepgram upload closed before a response"));
+    });
+    request.on("response", (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("error", finish);
+      response.on("end", () => {
+        const body = Buffer.concat(chunks).toString();
+        try {
+          finish(undefined, { statusCode: response.statusCode, data: JSON.parse(body) });
+        } catch {
+          finish(undefined, { statusCode: response.statusCode, data: body });
+        }
+      });
+    });
+    void (async () => {
+      for await (const chunk of source) {
+        if (signal?.aborted) return;
+        await new Promise<void>((written) => request.write(chunk, undefined, written));
+      }
+      if (!signal?.aborted) request.end();
+    })().catch(finish);
+  });
+}
+
 export class IPCHandlers {
   environmentManager: EnvironmentManagerWithByok;
   databaseManager: DatabaseManager;
@@ -279,7 +319,12 @@ export class IPCHandlers {
   _updateNativeModelDownloadStatus(
     modelType: string,
     modelId: string,
-    progressData: { type?: string; percentage?: number | null; downloaded_bytes?: number | null; total_bytes?: number | null }
+    progressData: {
+      type?: string;
+      percentage?: number | null;
+      downloaded_bytes?: number | null;
+      total_bytes?: number | null;
+    }
   ): LocalModelDownloadState | null {
     if (progressData.type === "complete") {
       return this.localModelDownloadStatus.finish(modelType, modelId);
@@ -321,7 +366,8 @@ export class IPCHandlers {
     filePath: string,
     options: Record<string, unknown> = {}
   ): Promise<TranscriptionResponse> {
-    const { transcribeLocalFile: execute } = require("./localFileTranscription") as typeof import("./localFileTranscription.js");
+    const { transcribeLocalFile: execute } =
+      require("./localFileTranscription") as typeof import("./localFileTranscription.js");
     return execute(
       {
         readFile: (p: string) => fs.readFileSync(p),
@@ -571,13 +617,16 @@ export class IPCHandlers {
       environmentManager: this.environmentManager,
       proxyFetch: (url, init) => proxyFetch(url, init as RequestInit),
       transcribeWithCorti: async (args) => {
-        const { transcribeAudio } = require("./cortiTranscription") as typeof import("./cortiTranscription.js");
+        const { transcribeAudio } =
+          require("./cortiTranscription") as typeof import("./cortiTranscription.js");
         return transcribeAudio(args as Parameters<typeof transcribeAudio>[0]);
       },
       mintStoredCortiToken: (tokenOptions) => this._mintStoredCortiToken(tokenOptions),
       generateText: (options) => require("ai").generateText(options),
       getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
-        (require("./enterpriseAiProviders") as typeof import("./enterpriseAiProviders.js")).getEnterpriseAIModel(
+        (
+          require("./enterpriseAiProviders") as typeof import("./enterpriseAiProviders.js")
+        ).getEnterpriseAIModel(
           provider,
           model,
           apiKey,
@@ -707,7 +756,8 @@ export class IPCHandlers {
         closeDatabase: () => this.databaseManager.db.close(),
         deleteAllAudio: () => this.audioStorageManager.deleteAllAudio(),
         deleteWhisperModels: () => {
-          const { getModelsDirForService } = require("./modelDirUtils") as typeof import("./modelDirUtils.js");
+          const { getModelsDirForService } =
+            require("./modelDirUtils") as typeof import("./modelDirUtils.js");
           const whisperDir = getModelsDirForService("whisper");
           if (fs.existsSync(whisperDir)) fs.rmSync(whisperDir, { recursive: true, force: true });
         },
@@ -748,8 +798,7 @@ export class IPCHandlers {
       getNote: (id) => this.databaseManager.getNote(id),
       getNotes: (noteType, limit, folderId, spaceId) =>
         this.databaseManager.getNotes(noteType, limit, folderId, spaceId),
-      getNotesForSpace: (spaceId, limit) =>
-        this.databaseManager.getNotesForSpace(spaceId, limit),
+      getNotesForSpace: (spaceId, limit) => this.databaseManager.getNotesForSpace(spaceId, limit),
       updateNote: (id, updates) => this.databaseManager.updateNote(id, updates),
       deleteNoteInternal: (id) => this.deleteNoteInternal(id),
       searchNotes: (query, limit, spaceId, folderId) =>
@@ -783,7 +832,8 @@ export class IPCHandlers {
 
     // URL download channels live in the typed module, per-registration state
     // included. Only the downloader and logging are shared.
-    const urlDownloader = require("./urlAudioDownloader") as typeof import("./urlAudioDownloader.js");
+    const urlDownloader =
+      require("./urlAudioDownloader") as typeof import("./urlAudioDownloader.js");
     registerUrlDownloadHandlers(ipcMain, {
       download: urlDownloader.download,
       sweepStaleTempArtifacts: urlDownloader.sweepStaleTempArtifacts,
@@ -817,12 +867,14 @@ export class IPCHandlers {
       providerBaseUrls: transcriptionProviderBaseUrls,
       postMultipart: (url, body, boundary, headers, options) =>
         postMultipart(url, body, boundary, headers, options),
+      postRawAudioFile,
       transcribeWithTinfoil: (args) => transcribeWithTinfoil(args),
       transcribeWithGemini: (args) => transcribeWithGemini(args),
       // Lazy like the pre-cutover handler: the Corti client is only loaded
       // when its route actually runs.
       transcribeWithCorti: async (args) => {
-        const { transcribeAudio } = require("./cortiTranscription") as typeof import("./cortiTranscription.js");
+        const { transcribeAudio } =
+          require("./cortiTranscription") as typeof import("./cortiTranscription.js");
         return transcribeAudio(args as Parameters<typeof transcribeAudio>[0]);
       },
       getCortiClientId: () => this.environmentManager.getCortiClientId(),
@@ -845,7 +897,11 @@ export class IPCHandlers {
       diarizationManager: this.diarizationManager,
       resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
       convertToWav: (inputPath, outputPath, options) =>
-        (require("./ffmpegUtils") as typeof import("./ffmpegUtils.js")).convertToWav(inputPath, outputPath, options),
+        (require("./ffmpegUtils") as typeof import("./ffmpegUtils.js")).convertToWav(
+          inputPath,
+          outputPath,
+          options
+        ),
       createTempWavPath: () =>
         path.join(
           (require("./safeTempDir") as typeof import("./safeTempDir.js")).getSafeTempDir(),
@@ -853,16 +909,28 @@ export class IPCHandlers {
         ),
       fileSize: (filePath) => fs.statSync(filePath).size,
       resolveClusterThreshold: (durationSeconds, requestedThreshold) =>
-        (require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")).resolveClusterThreshold(durationSeconds, requestedThreshold),
+        (
+          require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")
+        ).resolveClusterThreshold(durationSeconds, requestedThreshold),
       dropNegligibleClusters: (segments) =>
-        (require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")).dropNegligibleClusters(segments) as DiarizationSegment[],
-      pcm16Mono16kBytesPerSecond: (require("./transcriptionTimeout") as typeof import("./transcriptionTimeout.js")).PCM16_MONO_16K_BYTES_PER_SECOND,
+        (
+          require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")
+        ).dropNegligibleClusters(segments) as DiarizationSegment[],
+      pcm16Mono16kBytesPerSecond: (
+        require("./transcriptionTimeout") as typeof import("./transcriptionTimeout.js")
+      ).PCM16_MONO_16K_BYTES_PER_SECOND,
       maxSpeakerCount: MAX_SPEAKER_COUNT,
       removeFile: (filePath) => fs.unlinkSync(filePath),
       mergeSpeakersWithText: (segments, text, duration) =>
-        (require("./speakerMerge") as typeof import("./speakerMerge.js")).mergeSpeakersWithText(segments, text, duration),
+        (require("./speakerMerge") as typeof import("./speakerMerge.js")).mergeSpeakersWithText(
+          segments,
+          text,
+          duration
+        ),
       formatSpeakerTranscript: (merged) =>
-        (require("./speakerMerge") as typeof import("./speakerMerge.js")).formatSpeakerTranscript(merged as MergedSpeakerSegment[]),
+        (require("./speakerMerge") as typeof import("./speakerMerge.js")).formatSpeakerTranscript(
+          merged as MergedSpeakerSegment[]
+        ),
       uploadCancelRegistry: this._uploadCancelRegistry,
       logDebug: (message, data) => debugLogger.debug(message, data),
       logError: (message, data) => debugLogger.error(message, data),
@@ -873,7 +941,9 @@ export class IPCHandlers {
     // lifecycle. Provider factories stay lazy and injected so startup never
     // eager-loads the enterprise SDKs.
     registerReasoningHandlers(ipcMain, {
-      localService: (require("../services/localReasoningBridge") as typeof import("../services/localReasoningBridge.js")).default,
+      localService: (
+        require("../services/localReasoningBridge") as typeof import("../services/localReasoningBridge.js")
+      ).default,
       getAnthropicKey: () => this.environmentManager.getAnthropicKey(),
       proxyFetch: (url, init) => proxyFetch(url, init as RequestInit),
       extractAnthropicText,
@@ -885,7 +955,9 @@ export class IPCHandlers {
       validateEnterpriseEndpoint,
       generateText: (options) => require("ai").generateText(options),
       getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
-        (require("./enterpriseAiProviders") as typeof import("./enterpriseAiProviders.js")).getEnterpriseAIModel(
+        (
+          require("./enterpriseAiProviders") as typeof import("./enterpriseAiProviders.js")
+        ).getEnterpriseAIModel(
           provider,
           model,
           apiKey,
@@ -988,7 +1060,8 @@ export class IPCHandlers {
 
     registerLocalLlmModelHandlers(ipcMain, {
       modelManager: modelManager as unknown as LlmModelManagerLike,
-      llamaCppInstaller: (require("./llamaCppInstaller") as typeof import("./llamaCppInstaller.js")).default,
+      llamaCppInstaller: (require("./llamaCppInstaller") as typeof import("./llamaCppInstaller.js"))
+        .default,
       // Loose tracker typing pinned by the localLlmModels characterization suite.
       downloadStatus: this.localModelDownloadStatus as unknown as LlmDownloadStatusTracker,
       progressSender: {
@@ -1009,12 +1082,12 @@ export class IPCHandlers {
       googleManager: this.googleCalendarManager,
       microsoftManager: this.microsoftCalendarManager,
       appleManager: this.appleCalendarManager,
-      getUpcomingEvents: (windowMinutes) => this.googleCalendarManager.getUpcomingEvents(windowMinutes),
+      getUpcomingEvents: (windowMinutes) =>
+        this.googleCalendarManager.getUpcomingEvents(windowMinutes),
       getCalendarEventById: (eventId) => this.databaseManager.getCalendarEventById(eventId),
       openCalendarPrivacySettings: () => openSystemSettings("calendars"),
       logError: (message, data, tag) => debugLogger.error(message, data, tag),
     });
-
 
     // The meeting coordinator (prepare/start/send/stop/cancel, detection,
     // auto-end, session speaker config, recording locks, mic warm hold and
@@ -1023,23 +1096,32 @@ export class IPCHandlers {
     // speaker verticals need come from its runtime handle.
     this._meetingCoordinator = registerMeetingCoordinatorHandlers(ipcMain, {
       databaseManager: this.databaseManager as unknown as DiarizationPublicationDatabase,
-      diarizationManager: this.diarizationManager as unknown as DiarizationPublicationDiarizationManager,
+      diarizationManager: this
+        .diarizationManager as unknown as DiarizationPublicationDiarizationManager,
       meetingDetectionEngine: this.meetingDetectionEngine,
       audioTapManager: this.audioTapManager,
       meetingAecManager: this.meetingAecManager,
       whisperManager: {
         transcribeLocalWhisper: (audio, options) =>
-          this._transcribeLocalWhisper(audio, options) as Promise<{
-            success?: boolean;
-            text?: string | null;
-          } | null | undefined>,
+          this._transcribeLocalWhisper(audio, options) as Promise<
+            | {
+                success?: boolean;
+                text?: string | null;
+              }
+            | null
+            | undefined
+          >,
       },
       parakeetManager: {
         transcribeLocalParakeet: (audio, options) =>
-          this._transcribeLocalParakeet(audio, options) as Promise<{
-            success?: boolean;
-            text?: string | null;
-          } | null | undefined>,
+          this._transcribeLocalParakeet(audio, options) as Promise<
+            | {
+                success?: boolean;
+                text?: string | null;
+              }
+            | null
+            | undefined
+          >,
       },
       liveSpeakerIdentifier: liveSpeakerIdentifier as CoordinatorLiveSpeakerIdentifier,
       fetchRealtimeToken: ((event, options, extra) =>
@@ -1054,7 +1136,8 @@ export class IPCHandlers {
           extra
         )) as Parameters<typeof registerMeetingCoordinatorHandlers>[1]["fetchRealtimeToken"],
       resolveWhisperVadOptions: (context) => this._resolveWhisperVadOptions(context),
-      speakerEmbeddings: () => require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings,
+      speakerEmbeddings: () =>
+        require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings,
       getControlPanelWindow: () => this.windowManager.controlPanelWindow,
       getMeetingNotificationData: () => this.windowManager._pendingNotificationData ?? null,
       consumePendingMeetingNoteNavigation: () =>
@@ -1069,20 +1152,19 @@ export class IPCHandlers {
       liveSpeakerIdentifier,
       diarizationManager: this.diarizationManager,
       retroactiveMapping: (profile) =>
-        this._retroactiveMapping(profile as { id: number; display_name: string; embedding: Buffer }),
+        this._retroactiveMapping(
+          profile as { id: number; display_name: string; embedding: Buffer }
+        ),
       tryAutoLabelOneOnOne: (noteId) => this._tryAutoLabelOneOnOne(noteId),
       logError: (message, data) => debugLogger.error(message, data, "speaker"),
     });
   }
 
-  _retroactiveMapping(profile: {
-    id: number;
-    display_name: string;
-    embedding: Buffer;
-  }): void {
+  _retroactiveMapping(profile: { id: number; display_name: string; embedding: Buffer }): void {
     setImmediate(async () => {
       try {
-        const speakerEmbeddings = require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings;
+        const speakerEmbeddings =
+          require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings;
         const unmappedNotes = this.databaseManager.getNotesWithUnmappedSpeakers();
 
         const profileEmb = new Float32Array(
@@ -1168,9 +1250,7 @@ export class IPCHandlers {
         const existingMappings = this.databaseManager.getSpeakerMappings(noteId);
         const mappedSpeakers = new Set(existingMappings.map((m) => m.speaker_id));
 
-        const transcript: SpeakerSegment[] = note.transcript
-          ? JSON.parse(note.transcript)
-          : [];
+        const transcript: SpeakerSegment[] = note.transcript ? JSON.parse(note.transcript) : [];
         const systemSpeakers = new Set(
           transcript
             .filter((s) => (s as { source?: string }).source !== "mic" && s.speaker)

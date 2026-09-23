@@ -166,7 +166,8 @@ export default function MeetingNotificationOverlay(): ReactElement {
     [isHovered]
   );
 
-  const title = "title" in presentation ? presentation.title : t(presentation.titleKey);
+  const title =
+    "title" in presentation ? presentation.title : t(presentation.titleKey as string);
   const body =
     "bodyValues" in presentation
       ? t(presentation.bodyKey, presentation.bodyValues)
@@ -206,7 +207,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
         style={motionStyle}
       >
         <MeetingNotificationCard
-          title={title}
+          title={title as string}
           body={body}
           startLabel={t(presentation.actionKey)}
           onStart={handleAction}

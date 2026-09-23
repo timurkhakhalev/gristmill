@@ -38,8 +38,20 @@ export function useLocalModels() {
   useEffect(() => {
     loadModels();
 
-    const handleProgress = (data: LLMDownloadProgressEvent) => {
-      setProgressMap((prev) => new Map(prev).set(data.modelId, data));
+    // The bridge validates payloads before delivery; the narrower local view
+    // is what this hook renders.
+    const handleProgress = (data: {
+      modelId: string;
+      progress?: number;
+      downloadedSize?: number;
+      totalSize?: number;
+      type?: "progress" | "error" | "complete";
+      error?: string;
+      code?: string;
+      details?: unknown;
+      sequence?: number;
+    }) => {
+      setProgressMap((prev) => new Map(prev).set(data.modelId, data as LLMDownloadProgressEvent));
     };
 
     const disposeProgress = window.electronAPI.onModelDownloadProgress(handleProgress);

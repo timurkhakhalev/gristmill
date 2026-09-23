@@ -79,6 +79,7 @@ import { registerTranscriptionExecutionHandlers } from "./transcriptionExecution
 import type { MeetingStreamingProvider } from "./meetingStreamingProviders.js";
 import type { LocalModelDownloadState } from "./localModelDownloadStatus.js";
 import type { MergedSpeakerSegment } from "./speakerMerge.js";
+import type { ModelManager } from "./modelManagerBridge.js";
 import type { DiarizationSegment } from "./diarization.js";
 import type {
   LlmModelManagerLike,
@@ -93,6 +94,7 @@ import { registerTranscriptionDataHandlers } from "./transcriptionDataIpcHandler
 import { registerDesktopSettingsHandlers } from "./desktopSettingsIpcHandlers.js";
 import { listLocalTranscriptionModels } from "./localTranscriptionModels.js";
 import markdownMirror from "./markdownMirror.js";
+import modelManagerBundle from "./modelManagerBridge.js";
 import type { NoteItem } from "../contracts/notes.js";
 import type { TranscriptionResponse } from "../contracts/localFileTranscription.js";
 import type { EnvironmentManagerWithByok } from "./environment.js";
@@ -110,6 +112,12 @@ import type { MeetingAecManager } from "./meetingAecManager.js";
 import type { TrayManager } from "./tray.js";
 
 const transcriptionProviderBaseUrls = () => modelRegistryData.transcriptionProviders;
+
+// The bundle's `default` is the ModelManager singleton under every loader; the
+// default import resolves to the module.exports wrapper, so drill in once
+// (same interop note as localReasoningBridge.ts). Eager is fine: the llm
+// lifecycle deps already materialized the manager during setupHandlers.
+const modelManager = (modelManagerBundle as unknown as { default: ModelManager }).default;
 
 // Meeting capture runs at 24 kHz (see meetingRecordingStore AudioContext); realtime
 // streaming providers must be told the true PCM rate or they misread the audio.
@@ -692,8 +700,7 @@ export class IPCHandlers {
       sendToMainWindow: (channel) => this.windowManager.mainWindow?.webContents?.send(channel),
       stopWhisperServer: () => this.whisperManager.stopServer(),
       stopParakeetServer: () => this.parakeetManager.stopServer(),
-      stopLlamaServer: () =>
-        (require("./modelManagerBridge") as typeof import("./modelManagerBridge.js")).default.stopServer(),
+      stopLlamaServer: () => modelManager.stopServer(),
       cleanup: {
         stopParakeetServer: () => this.parakeetManager.stopServer(),
         stopWhisperServer: () => this.whisperManager.stopServer(),
@@ -715,8 +722,7 @@ export class IPCHandlers {
         deleteDiarizationModels: async () => {
           await this.diarizationManager.deleteModels();
         },
-        deleteLlmModels: () =>
-          (require("./modelManagerBridge") as typeof import("./modelManagerBridge.js")).default.deleteAllModels(),
+        deleteLlmModels: () => modelManager.deleteAllModels(),
       },
       logger: {
         log: (message, data) => debugLogger.log(message, data),
@@ -986,8 +992,7 @@ export class IPCHandlers {
     });
 
     registerLocalLlmModelHandlers(ipcMain, {
-      modelManager: (require("./modelManagerBridge") as typeof import("./modelManagerBridge.js"))
-        .default as unknown as LlmModelManagerLike,
+      modelManager: modelManager as unknown as LlmModelManagerLike,
       llamaCppInstaller: (require("./llamaCppInstaller") as typeof import("./llamaCppInstaller.js")).default,
       // Loose tracker typing pinned by the localLlmModels characterization suite.
       downloadStatus: this.localModelDownloadStatus as unknown as LlmDownloadStatusTracker,

@@ -85,9 +85,7 @@ export function getTranscriptionApiKey(provider: string, keys: TranscriptionApiK
 // Tinfoil-URL and fail-closed custom guards) surface here without an IPC
 // round-trip; the main-process handler re-resolves the same fields as
 // defense in depth.
-export function resolveFileTranscriptionRoute(
-  cfg: FileTranscriptionConfig
-): TranscriptionRoute {
+export function resolveFileTranscriptionRoute(cfg: FileTranscriptionConfig): TranscriptionRoute {
   return resolveTranscriptionRoute({
     settings: {
       transcriptionMode: cfg.transcriptionMode,
@@ -162,7 +160,7 @@ export async function transcribeFile(
   });
 }
 
-// OpenAI/Mistral BYOK handle diarization inside the transcription call itself.
+// OpenAI/Mistral/Deepgram BYOK handle diarization inside the transcription call itself.
 // Self-hosted mode routes to the user's own server, which doesn't — those users
 // get local diarization like everyone else.
 export function shouldUseByokDiarize(
@@ -173,7 +171,9 @@ export function shouldUseByokDiarize(
     diarizationEnabled &&
     !cfg.useLocalWhisper &&
     cfg.transcriptionMode !== "self-hosted" &&
-    (cfg.cloudTranscriptionProvider === "openai" || cfg.cloudTranscriptionProvider === "mistral")
+    (cfg.cloudTranscriptionProvider === "openai" ||
+      cfg.cloudTranscriptionProvider === "mistral" ||
+      cfg.cloudTranscriptionProvider === "deepgram")
   );
 }
 

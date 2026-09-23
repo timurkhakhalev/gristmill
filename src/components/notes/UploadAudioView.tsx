@@ -40,10 +40,7 @@ import {
   getTranscriptionProviders,
   isSherpaLocalProvider,
 } from "../../models/ModelRegistry";
-import {
-  useSettingsStore,
-  getSettings,
-} from "../../stores/settingsStore";
+import { useSettingsStore, getSettings } from "../../stores/settingsStore";
 import { selectResolvedUploadTranscription } from "../../config/settingsSelectors";
 import { useBatchQueue } from "../../stores/batchQueueStore";
 import type { TranscribeOptions } from "../../stores/batchQueueStore";
@@ -271,11 +268,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
     transcriptionMode,
-  } = useSettingsStore(
-    useShallow((settings) =>
-      selectResolvedUploadTranscription(settings)
-    )
-  );
+  } = useSettingsStore(useShallow((settings) => selectResolvedUploadTranscription(settings)));
   const remoteTranscriptionUrl = useSettingsStore((s) => s.remoteTranscriptionUrl);
   const remoteTranscriptionModel = useSettingsStore((s) => s.remoteTranscriptionModel);
 
@@ -293,7 +286,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   // Mode-aware file size validation
   // Local: no limits at all
-  // BYOK: 25 MB hard max regardless of plan (14 MB for Gemini's inline cap)
+  // Direct providers have different file limits; Deepgram can accept larger streamed uploads.
   const byokMaxFileSize = byokFileSizeLimit(cloudTranscriptionProvider);
   const byokMaxFileSizeMb = Math.floor(byokMaxFileSize / (1024 * 1024));
   let byokTooLarge = false;
@@ -899,7 +892,6 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     }
   };
 
-
   const getTranscribingLabel = (): string => {
     if (useLocalWhisper) return t("notes.upload.transcribingLocal");
     if (isSelfHosted) {
@@ -1071,10 +1063,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                       variant="default"
                       size="sm"
                       onClick={startBatchProcessing}
-                      disabled={
-                        state === "downloading" ||
-                        state === "transcribing"
-                      }
+                      disabled={state === "downloading" || state === "transcribing"}
                       className="h-8 text-xs px-5"
                     >
                       {t("notes.upload.transcribe")}
@@ -1267,7 +1256,6 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                 {t("notes.upload.downloadingModels")}
               </p>
             )}
-
 
             {diarizationEnabled && diarizationModelsReady && (
               <div className="mt-2">
@@ -1608,7 +1596,6 @@ function TranscribingView({
   file,
   onCancel,
 }: TranscribingViewProps) {
-
   return (
     <div className="flex flex-col items-center" style={{ animation: "float-up 0.3s ease-out" }}>
       <div className="flex items-end justify-center gap-[3px] h-10 mb-5">

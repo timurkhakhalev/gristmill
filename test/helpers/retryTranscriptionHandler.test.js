@@ -122,6 +122,7 @@ function buildExecutionDeps() {
       getXaiKey: () => "xk-xai",
       getTinfoilKey: () => "tk-tinfoil",
       getGeminiKey: () => "gk-gemini",
+      getDeepgramKey: () => "dk-deepgram",
       getCustomTranscriptionKey: () => "ck-custom",
       getCortiClientId: () => "corti-id",
       getCortiClientSecret: () => "corti-secret",
@@ -283,6 +284,42 @@ test("retry: mistral goes to Mistral with x-api-key", async () => {
   assert.equal(fetches[0].init.headers["x-api-key"], "mk-mistral");
 });
 
+test("retry: Deepgram sends raw audio to its own file endpoint", async () => {
+  fetches.length = 0;
+  fetchResponse = () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      results: {
+        channels: [{ alternatives: [{ transcript: "retried speech" }] }],
+        utterances: [{ start: 0, end: 1, transcript: "retried speech" }],
+      },
+    }),
+    text: async () => "",
+  });
+  try {
+    const result = await invoke({
+      cloudTranscriptionProvider: "deepgram",
+      cloudTranscriptionModel: "nova-3",
+      transcriptionMode: "providers",
+      preferredLanguage: "auto",
+    });
+    assert.equal(result.success, true);
+    assert.equal(new URL(fetches[0].url).origin, "https://api.deepgram.com");
+    assert.equal(new URL(fetches[0].url).searchParams.get("detect_language"), "true");
+    assert.equal(fetches[0].init.headers.Authorization, "Token dk-deepgram");
+    assert.equal(fetches[0].init.headers["Content-Type"], "audio/webm");
+    assert.ok(Buffer.isBuffer(fetches[0].init.body));
+  } finally {
+    fetchResponse = () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ text: "transcribed" }),
+      text: async () => JSON.stringify({ text: "transcribed" }),
+    });
+  }
+});
+
 test("proxy transcription handlers resolve to structured errors instead of rejecting", async () => {
   fetchResponse = () => ({
     ok: false,
@@ -320,6 +357,7 @@ test("proxy transcription handlers resolve to structured errors instead of rejec
 const fsNode = require("node:fs");
 const osNode = require("node:os");
 const pathNode = require("node:path");
+const { EventEmitter } = require("node:events");
 
 const uploadTempFile = pathNode.join(osNode.tmpdir(), "openwhispr-upload-handler-test.webm");
 
@@ -329,6 +367,52 @@ const invokeUpload = (payload) => {
   fsNode.writeFileSync(uploadTempFile, Buffer.from([1, 2, 3, 4]));
   return uploadHandler({ sender: {} }, { filePath: uploadTempFile, ...payload });
 };
+
+test("upload: Deepgram streams raw file bytes through Electron net.request", async () => {
+  fetches.length = 0;
+  const uploaded = [];
+  electronStub.net.request = (options) => {
+    const request = new EventEmitter();
+    request.write = (chunk, _encoding, callback) => {
+      uploaded.push(Buffer.from(chunk));
+      callback();
+    };
+    request.end = () => {
+      const response = new EventEmitter();
+      response.statusCode = 200;
+      queueMicrotask(() => {
+        request.emit("response", response);
+        response.emit(
+          "data",
+          Buffer.from(
+            JSON.stringify({
+              results: {
+                channels: [{ alternatives: [{ transcript: "done" }] }],
+                utterances: [{ start: 0, end: 1, transcript: "done", speaker: 0 }],
+              },
+            })
+          )
+        );
+        response.emit("end");
+        request.emit("close");
+      });
+    };
+    request.abort = () => request.emit("close");
+    assert.equal(new URL(options.url).origin, "https://api.deepgram.com");
+    assert.equal(options.headers.Authorization, "Token dg-key");
+    assert.equal(options.headers["Content-Type"], "audio/webm");
+    return request;
+  };
+  try {
+    const result = await invokeUpload({ provider: "deepgram", apiKey: "dg-key", diarize: true });
+    assert.equal(result.success, true);
+    assert.equal(result.diarized, true);
+    assert.deepEqual(Buffer.concat(uploaded), Buffer.from([1, 2, 3, 4]));
+    assert.equal(fetches.length, 0);
+  } finally {
+    delete electronStub.net.request;
+  }
+});
 
 test("upload: mistral sends x-api-key with a provider-validated model and no language on auto", async () => {
   fetches.length = 0;

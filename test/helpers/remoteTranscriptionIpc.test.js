@@ -13,9 +13,8 @@ let registerRemoteTranscriptionHandler;
 let createUploadCancelRegistry;
 
 test.before(async () => {
-  ({ registerRemoteTranscriptionHandler } = await import(
-    "../../src/helpers/remoteTranscriptionIpcHandler.ts"
-  ));
+  ({ registerRemoteTranscriptionHandler } =
+    await import("../../src/helpers/remoteTranscriptionIpcHandler.ts"));
   ({ createUploadCancelRegistry } = await import("../../src/helpers/uploadCancelRegistry.ts"));
 });
 
@@ -29,6 +28,10 @@ function makeTransport({ statusCode = 200, data = { text: "transcribed" } } = {}
     calls,
     postMultipart: async (url, body, boundary, headers, options) => {
       calls.push({ url: String(url), body, boundary, headers, options });
+      return { statusCode, data };
+    },
+    postRawAudioFile: async (url, filePath, contentType, apiKey, options) => {
+      calls.push({ url: String(url), filePath, contentType, apiKey, options });
       return { statusCode, data };
     },
   };
@@ -61,6 +64,7 @@ function baseDeps(overrides = {}) {
     fileSize: (filePath) => fs.statSync(filePath).size,
     providerBaseUrls: () => [],
     postMultipart: transport.postMultipart,
+    postRawAudioFile: transport.postRawAudioFile,
     transcribeWithTinfoil: async (args) => {
       calls.tinfoil.push(args);
       return { text: "tinfoil text" };
@@ -86,13 +90,91 @@ function baseDeps(overrides = {}) {
   return { deps, calls, transport, registry };
 }
 
+test("Deepgram sends the complete file with its own auth and maps timed speakers", async () => {
+  const transport = makeTransport({
+    data: {
+      results: {
+        channels: [{ alternatives: [{ transcript: "Привет. Ответ." }] }],
+        utterances: [
+          { start: 0.2, end: 0.8, transcript: "Привет.", speaker: 0 },
+          { start: 1, end: 1.6, transcript: "Ответ.", speaker: 1 },
+        ],
+      },
+    },
+  });
+  const { call, calls } = setup({ transport });
+  const result = await call({
+    filePath: audioFile,
+    apiKey: "dg-secret",
+    provider: "deepgram",
+    model: "nova-3",
+    diarize: true,
+    language: "ru",
+    requestId: "deepgram-1",
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.diarized, true);
+  assert.deepEqual(
+    result.segments.map((s) => s.speaker),
+    ["Speaker 1", "Speaker 2"]
+  );
+  assert.match(result.text, /Привет/);
+  assert.equal(transport.calls[0].filePath, audioFile);
+  assert.equal(transport.calls[0].apiKey, "dg-secret");
+  assert.equal(transport.calls[0].contentType, "audio/wav");
+  assert.equal(transport.calls[0].options.signal instanceof AbortSignal, true);
+  assert.equal(calls.reads.length, 0, "the upload streams from disk");
+  const url = new URL(transport.calls[0].url);
+  assert.equal(url.origin, "https://api.deepgram.com");
+  assert.equal(url.pathname, "/v1/listen");
+  assert.equal(url.searchParams.get("model"), "nova-3");
+  assert.equal(url.searchParams.get("diarize_model"), "latest");
+  assert.equal(url.searchParams.get("language"), "ru");
+  assert.equal(url.searchParams.has("multichannel"), false);
+});
+
+test("Deepgram fails closed when speaker data is missing, key is absent, or size exceeds its limit", async () => {
+  const transport = makeTransport({
+    data: { results: { channels: [{ alternatives: [{ transcript: "Hello" }] }] } },
+  });
+  const { call } = setup({ transport });
+  const input = { filePath: audioFile, provider: "deepgram", apiKey: "dg-secret", diarize: true };
+  assert.equal((await call(input)).code, "DEEPGRAM_DIARIZATION_MISSING");
+  assert.equal((await call({ ...input, apiKey: "" })).success, false);
+  const { call: limited, transport: limitedTransport } = setup({
+    deps: { fileSize: () => 2 * 1024 * 1024 * 1024 + 1 },
+  });
+  assert.match((await limited(input)).error, /2048 MB/);
+  assert.equal(limitedTransport.calls.length, 0);
+});
+
+test("Deepgram handles plain transcripts and provider errors without losing the selected route", async () => {
+  const plain = setup({
+    transport: makeTransport({
+      data: { results: { channels: [{ alternatives: [{ transcript: "Plain text" }] }] } },
+    }),
+  });
+  const input = { filePath: audioFile, provider: "deepgram", apiKey: "dg-secret" };
+  assert.deepEqual(await plain.call(input), { success: true, text: "Plain text" });
+  assert.equal(new URL(plain.transport.calls[0].url).searchParams.get("detect_language"), "true");
+
+  const invalid = setup({ transport: makeTransport({ statusCode: 401, data: {} }) });
+  assert.match((await invalid.call(input)).error, /Deepgram API key/);
+
+  const limited = setup({ transport: makeTransport({ statusCode: 413, data: {} }) });
+  assert.match((await limited.call(input)).error, /audio size/);
+
+  const busy = setup({ transport: makeTransport({ statusCode: 429, data: {} }) });
+  assert.match((await busy.call(input)).error, /rate limit/);
+
+  const malformed = setup({ transport: makeTransport({ data: { results: {} } }) });
+  assert.equal((await malformed.call(input)).code, "DEEPGRAM_INVALID_RESPONSE");
+});
+
 function setup(overrides = {}) {
   const { deps, calls, transport, registry } = baseDeps(overrides);
   const handlers = new Map();
-  registerRemoteTranscriptionHandler(
-    { handle: (channel, fn) => handlers.set(channel, fn) },
-    deps
-  );
+  registerRemoteTranscriptionHandler({ handle: (channel, fn) => handlers.set(channel, fn) }, deps);
   const call = (payload) => handlers.get("transcribe-audio-file-byok")(null, payload);
   return { call, calls, transport, registry, handlers };
 }
@@ -339,33 +421,42 @@ test("timestamps request fields and verbose segment mapping stay per provider", 
 
 test("HTTP failure dialects: 401, 429, embedded provider error, non-JSON server error", async () => {
   const unauthorized = setup({ transport: makeTransport({ statusCode: 401, data: {} }) });
-  assert.deepEqual(await unauthorized.call({
-    filePath: audioFile,
-    apiKey: "bad",
-    provider: "openai",
-    language: "",
-    transcriptionMode: "providers",
-  }), { success: false, error: "Invalid API key. Check your key in Settings." });
+  assert.deepEqual(
+    await unauthorized.call({
+      filePath: audioFile,
+      apiKey: "bad",
+      provider: "openai",
+      language: "",
+      transcriptionMode: "providers",
+    }),
+    { success: false, error: "Invalid API key. Check your key in Settings." }
+  );
 
   const limited = setup({ transport: makeTransport({ statusCode: 429, data: {} }) });
-  assert.deepEqual(await limited.call({
-    filePath: audioFile,
-    apiKey: "sk",
-    provider: "openai",
-    language: "",
-    transcriptionMode: "providers",
-  }), { success: false, error: "Rate limit exceeded. Please try again later." });
+  assert.deepEqual(
+    await limited.call({
+      filePath: audioFile,
+      apiKey: "sk",
+      provider: "openai",
+      language: "",
+      transcriptionMode: "providers",
+    }),
+    { success: false, error: "Rate limit exceeded. Please try again later." }
+  );
 
   const providerError = setup({
     transport: makeTransport({ statusCode: 500, data: { error: { message: "boom" } } }),
   });
-  assert.deepEqual(await providerError.call({
-    filePath: audioFile,
-    apiKey: "sk",
-    provider: "openai",
-    language: "",
-    transcriptionMode: "providers",
-  }), { success: false, error: "boom" });
+  assert.deepEqual(
+    await providerError.call({
+      filePath: audioFile,
+      apiKey: "sk",
+      provider: "openai",
+      language: "",
+      transcriptionMode: "providers",
+    }),
+    { success: false, error: "boom" }
+  );
 
   const selfHostedError = setup({
     transport: makeTransport({ statusCode: 502, data: { error: "gateway down" } }),

@@ -7,7 +7,10 @@
 // Routes never carry secrets — `auth.keyRef` names the key slot the executor
 // resolves itself.
 import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constants.mts";
-import { STREAMING_ONLY_PROVIDERS } from "../config/transcriptionCapabilities.ts";
+import {
+  STREAMING_ONLY_PROVIDERS,
+  DEEPGRAM_FILE_SIZE_LIMIT,
+} from "../config/transcriptionCapabilities.ts";
 import {
   isSecureHttpEndpoint,
   isAzureOpenAIEndpoint,
@@ -30,7 +33,11 @@ const BYOK_FILE_SIZE_LIMIT = 25 * 1024 * 1024;
 const GEMINI_FILE_SIZE_LIMIT = 14 * 1024 * 1024;
 
 export function byokFileSizeLimit(provider: string): number {
-  return provider === "gemini" ? GEMINI_FILE_SIZE_LIMIT : BYOK_FILE_SIZE_LIMIT;
+  return provider === "gemini"
+    ? GEMINI_FILE_SIZE_LIMIT
+    : provider === "deepgram"
+      ? DEEPGRAM_FILE_SIZE_LIMIT
+      : BYOK_FILE_SIZE_LIMIT;
 }
 
 // Route caps vary by provider (Gemini's inline-base64 limit is the lowest), so
@@ -93,7 +100,7 @@ export type TranscriptionRoute =
   | { transport: "local" }
   | {
       transport: "proxied";
-      provider: "tinfoil" | "mistral" | "xai" | "corti" | "gemini";
+      provider: "tinfoil" | "mistral" | "xai" | "corti" | "gemini" | "deepgram";
       model: string | null;
       language?: string;
       sizeCapBytes: number;
@@ -272,6 +279,21 @@ export function resolveTranscriptionRoute({
       model,
       language,
       sizeCapBytes: GEMINI_FILE_SIZE_LIMIT,
+    };
+  }
+  if (provider === "deepgram") {
+    if (!model.startsWith("nova-")) {
+      return error(
+        "Deepgram file transcription with diarization requires a Nova model. Select Nova-3.",
+        "DEEPGRAM_MODEL_UNSUPPORTED"
+      );
+    }
+    return {
+      transport: "proxied",
+      provider,
+      model,
+      language,
+      sizeCapBytes: DEEPGRAM_FILE_SIZE_LIMIT,
     };
   }
   if (provider === "corti") {

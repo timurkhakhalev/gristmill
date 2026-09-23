@@ -24,6 +24,7 @@ import { testProviderConnection } from "./providerConnectionTest.js";
 import { getTinfoilChatModels } from "./tinfoilCatalog.js";
 import { transcribeWithTinfoil } from "./tinfoilTranscription.js";
 import { transcribeWithGemini } from "./geminiTranscription.js";
+import { deepgramFileUrl, parseDeepgramFileResponse } from "./deepgramFileTranscription.js";
 import { normalizeBedrockCatalog } from "./bedrockCatalog.js";
 import { resolveEnterpriseRuntime } from "./reasoningIpcHandlers.js";
 import {
@@ -81,6 +82,7 @@ export interface TranscriptionExecutionDeps {
     getMistralKey: () => string;
     getTinfoilKey: () => string;
     getGeminiKey: () => string;
+    getDeepgramKey: () => string;
     getCortiClientId: () => string;
     getCortiClientSecret: () => string;
     getCustomTranscriptionKey: () => string;
@@ -142,12 +144,15 @@ export interface TranscriptionExecutionDeps {
   database: {
     updateTranscriptionText: (id: number, text: string, rawText: string | null) => unknown;
     updateTranscriptionStatus: (id: number, status: string) => unknown;
-    updateTranscriptionAudio: (id: number, update: {
-      hasAudio: number;
-      audioDurationMs: number | null;
-      provider: string | null;
-      model: string | null;
-    }) => unknown;
+    updateTranscriptionAudio: (
+      id: number,
+      update: {
+        hasAudio: number;
+        audioDurationMs: number | null;
+        provider: string | null;
+        model: string | null;
+      }
+    ) => unknown;
     getTranscriptionById: (id: number) => (TranscriptionRow & Record<string, unknown>) | null;
   };
   broadcast: (channel: string, payload: unknown) => void;
@@ -264,7 +269,10 @@ export function registerTranscriptionExecutionHandlers(
             message: "Audio conversion failed. The recording may be corrupted.",
           };
         }
-        if (errorMessage.includes("whisper.cpp not found") || errorMessage.includes("whisper-cpp")) {
+        if (
+          errorMessage.includes("whisper.cpp not found") ||
+          errorMessage.includes("whisper-cpp")
+        ) {
           return {
             success: false,
             error: "whisper_not_found",
@@ -627,6 +635,27 @@ export function registerTranscriptionExecutionHandlers(
             apiKey: deps.environmentManager.getGeminiKey(),
           });
           if (text) result = { text, source: "gemini", model: route.model ?? undefined };
+        } else if (route.transport === "proxied" && route.provider === "deepgram") {
+          if (buffer.byteLength > route.sizeCapBytes) {
+            throw new Error(byokSizeCapError(route.sizeCapBytes));
+          }
+          const apiKey = deps.environmentManager.getDeepgramKey();
+          if (!apiKey) throw new Error("Deepgram API key not configured. Add it in Settings.");
+          const response = await deps.proxyFetch(
+            deepgramFileUrl(route.model || "nova-3", route.language, false),
+            {
+              method: "POST",
+              headers: { Authorization: `Token ${apiKey}`, "Content-Type": "audio/webm" },
+              body: buffer,
+            }
+          );
+          if (!response.ok) {
+            throw new Error(`Deepgram API Error: ${response.status} ${await response.text()}`);
+          }
+          const parsed = parseDeepgramFileResponse(await response.json(), false);
+          if (!parsed.success) throw new Error(parsed.error);
+          if (parsed.text)
+            result = { text: parsed.text, source: "deepgram", model: route.model ?? undefined };
         } else {
           // mistral/xai have no OpenAI-compatible endpoint — main talks to them
           // directly; everything else consumes the route endpoint as-is. The
@@ -783,7 +812,9 @@ export function registerTranscriptionExecutionHandlers(
               error: "The connection test timed out.",
             };
           }
-          if (!/^(Corti authentication failed|Invalid Corti)/.test((error as Error)?.message || "")) {
+          if (
+            !/^(Corti authentication failed|Invalid Corti)/.test((error as Error)?.message || "")
+          ) {
             return {
               success: false,
               errorCode: "network",
@@ -879,7 +910,7 @@ export function registerTranscriptionExecutionHandlers(
       provider: "bedrock",
       config: config ?? {},
     });
-    const bedrockConfig = parsed.success ? parsed.data.config ?? {} : {};
+    const bedrockConfig = parsed.success ? (parsed.data.config ?? {}) : {};
     try {
       const runtime = resolveEnterpriseRuntime(
         "bedrock",
@@ -893,7 +924,10 @@ export function registerTranscriptionExecutionHandlers(
       let credentials: unknown;
       if (runtime.enterprise.bedrockProfile) {
         credentials = deps.bedrockProfileCredentials(runtime.enterprise.bedrockProfile);
-      } else if (runtime.enterprise.bedrockAccessKeyId && runtime.enterprise.bedrockSecretAccessKey) {
+      } else if (
+        runtime.enterprise.bedrockAccessKeyId &&
+        runtime.enterprise.bedrockSecretAccessKey
+      ) {
         credentials = {
           accessKeyId: runtime.enterprise.bedrockAccessKeyId,
           secretAccessKey: runtime.enterprise.bedrockSecretAccessKey,

@@ -238,8 +238,21 @@ export function useModelDownload({
     [handleTerminalDownload, modelType, updateDownload]
   );
 
+  // The bridge validates payloads before delivery; the narrower local view is
+  // what the download UI reads.
   const handleLLMProgress = useCallback(
-    (data: LLMDownloadProgressData) => {
+    (raw: {
+      modelId: string;
+      type?: "progress" | "error" | "complete";
+      progress?: number;
+      downloadedSize?: number;
+      totalSize?: number;
+      error?: string;
+      code?: string;
+      details?: unknown;
+      sequence?: number;
+    }) => {
+      const data = raw as LLMDownloadProgressData;
       if (data.type === "complete") {
         void handleTerminalDownload(data.modelId, data.type, undefined, undefined, data.sequence);
         return;

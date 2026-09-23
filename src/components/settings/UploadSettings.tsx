@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Key, Cpu, Network } from "../icons";
 import { useSettingsStore } from "../../stores/settingsStore";
+import type { LocalTranscriptionProvider } from "../../contracts/inferenceSettings";
 import { InferenceModeSelector } from "../ui/SettingsSection";
 import type { InferenceModeOption } from "../ui/SettingsSection";
 import TranscriptionModelPicker from "../TranscriptionModelPicker";
@@ -97,7 +98,7 @@ export function UploadTranscriptionPanel() {
       }
       onLocalModelSelect={handleLocalTranscriptionModelSelect}
       selectedLocalProvider={uploadLocalTranscriptionProvider}
-      onLocalProviderSelect={setUploadLocalTranscriptionProvider}
+      onLocalProviderSelect={(id) => setUploadLocalTranscriptionProvider(id as LocalTranscriptionProvider)}
       useLocalWhisper={mode === "local"}
       onModeChange={() => {}}
       mode={mode}

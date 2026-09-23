@@ -20,16 +20,16 @@ import { sendActionCreated, sendActionDeleted, sendActionUpdated } from "./actio
 
 export interface ActionsHandlerDeps {
   database: {
-    getActions: () => unknown;
-    getAction: (id: unknown) => unknown;
-    createAction: (
+    getActions(): unknown;
+    getAction(id: unknown): unknown;
+    createAction(
       name: unknown,
       description: unknown,
       prompt: unknown,
       icon: unknown
-    ) => unknown;
-    updateAction: (id: unknown, updates: unknown) => unknown;
-    deleteAction: (id: unknown) => unknown;
+    ): unknown;
+    updateAction(id: unknown, updates: unknown): unknown;
+    deleteAction(id: unknown): unknown;
   };
 }
 

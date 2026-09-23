@@ -46,7 +46,7 @@ export const isExplicitSpeakerCount = (value?: number | null): value is number =
 export const resolveExpectedSpeakerCount = (note?: {
   expected_speaker_count?: number | null;
   participants?: string | null;
-}): number | null => {
+} | null): number | null => {
   if (isExplicitSpeakerCount(note?.expected_speaker_count)) {
     return note.expected_speaker_count;
   }

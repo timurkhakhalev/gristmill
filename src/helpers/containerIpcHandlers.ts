@@ -34,14 +34,14 @@ import {
 
 export interface ContainerHandlerDeps {
   database: {
-    getFolders: (spaceId: unknown) => unknown;
-    createFolder: (name: unknown, spaceId: unknown) => unknown;
-    deleteFolder: (id: unknown) => unknown;
-    renameFolder: (id: unknown, name: unknown) => unknown;
-    moveFolderToSpace: (id: unknown, spaceId: unknown) => unknown;
-    getFolderNoteCounts: () => unknown;
-    getSpaces: () => unknown;
-    updateSpace: (id: unknown, updates: unknown) => unknown;
+    getFolders(spaceId: unknown): unknown;
+    createFolder(name: unknown, spaceId: unknown): unknown;
+    deleteFolder(id: unknown): unknown;
+    renameFolder(id: unknown, name: unknown): unknown;
+    moveFolderToSpace(id: unknown, spaceId: unknown): unknown;
+    getFolderNoteCounts(): unknown;
+    getSpaces(): unknown;
+    updateSpace(id: unknown, updates: unknown): unknown;
   };
   noteFilesEnabled: () => boolean;
   // Mirrors: folder names are resolved before the delete/rename (the row is

@@ -154,7 +154,7 @@ const getMeetingTranscriptionOptions = () => {
 
   return resolveMeetingTranscriptionOptions({
     transcriptionMode: resolved.transcriptionMode,
-    language,
+    language: language ?? "",
     localProvider: resolved.localTranscriptionProvider,
     whisperModel: resolved.whisperModel,
     parakeetModel: resolved.parakeetModel,
@@ -1239,13 +1239,14 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       if (startResult.oneOnOneAttendee) {
         const synthetic: SpeakerIdentification = {
           speakerId: "speaker_0",
-          displayName: startResult.oneOnOneAttendee.displayName,
+          displayName: startResult.oneOnOneAttendee.displayName ?? null,
           startTime: 0,
           endTime: Number.MAX_SAFE_INTEGER,
         };
         reserveSpeakerIndex(synthetic.speakerId);
-        setSystemPartialSpeakerIdentity(synthetic.speakerId, synthetic.displayName);
-        rememberSystemSpeaker(synthetic.speakerId, synthetic.displayName, false, Date.now());
+        const syntheticName = synthetic.displayName ?? null;
+        setSystemPartialSpeakerIdentity(synthetic.speakerId, syntheticName);
+        rememberSystemSpeaker(synthetic.speakerId, syntheticName, false, Date.now());
         speakerIdentifications.push(synthetic);
       }
 
@@ -1356,7 +1357,8 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             logger.info("Meeting microphone capture recovered", {}, "meeting");
           },
         });
-        await micRecovery.start(micStream, {
+        // The recovery callback always supplies a fresh replacement stream.
+        await micRecovery.start(micStream as MediaStream, {
           followDefault: followsSystemDefaultMic(getSettings()),
         });
         if (!isCurrentStart()) {

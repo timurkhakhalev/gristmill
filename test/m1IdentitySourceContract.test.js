@@ -22,7 +22,7 @@ test("M1 build identity belongs to OpenHercules and has no publish destination",
 });
 
 test("M1 main process selects an OpenHercules-only profile and protocol", () => {
-  const source = read("main.js");
+  const source = read("main.ts");
 
   assert.match(source, /OPENHERCULES_CHANNEL/);
   assert.match(source, /openhercules-dev/);
@@ -50,7 +50,7 @@ test("M1 removes updater and old-bundle migration runtime", () => {
   assert.equal(fs.existsSync(path.join(root, "src/hooks/useUpdater.ts")), false);
   assert.equal(fs.existsSync(path.join(root, "src/helpers/postMigrationDetector.js")), false);
   assert.equal(fs.existsSync(path.join(root, "src/components/PostMigrationOnboarding.tsx")), false);
-  assert.doesNotMatch(read("main.js"), /electron-updater|checkForUpdatesOnStartup|UpdateManager/);
-  assert.doesNotMatch(read("preload.js"), /checkForUpdates|downloadUpdate|installUpdate|onUpdateAvailable/);
-  assert.doesNotMatch(read("src/helpers/ipcHandlers.js"), /check-for-updates|download-update|install-update/);
+  assert.doesNotMatch(read("main.ts"), /electron-updater|checkForUpdatesOnStartup|UpdateManager/);
+  assert.doesNotMatch(read("preload.ts"), /checkForUpdates|downloadUpdate|installUpdate|onUpdateAvailable/);
+  assert.doesNotMatch(read("src/helpers/ipcHandlers.ts"), /check-for-updates|download-update|install-update/);
 });

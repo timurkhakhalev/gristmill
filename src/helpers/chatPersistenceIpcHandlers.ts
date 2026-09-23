@@ -30,37 +30,37 @@ import {
 
 export interface ChatPersistenceHandlerDeps {
   database: {
-    createAgentConversation: (
+    createAgentConversation(
       title: unknown,
       noteId: unknown,
       spaceId: unknown,
       folderId: unknown
-    ) => unknown;
-    getConversationsForNote: (noteId: unknown, limit: unknown) => unknown;
-    getConversationsForContainer: (
+    ): unknown;
+    getConversationsForNote(noteId: unknown, limit: unknown): unknown;
+    getConversationsForContainer(
       spaceId: unknown,
       folderId: unknown,
       limit: unknown
-    ) => unknown;
-    getAgentConversations: (limit: unknown) => unknown;
-    getAgentConversation: (id: unknown) => unknown;
-    deleteAgentConversation: (id: unknown) => unknown;
-    updateAgentConversationTitle: (id: unknown, title: unknown) => unknown;
-    addAgentMessage: (
+    ): unknown;
+    getAgentConversations(limit: unknown): unknown;
+    getAgentConversation(id: unknown): unknown;
+    deleteAgentConversation(id: unknown): unknown;
+    updateAgentConversationTitle(id: unknown, title: unknown): unknown;
+    addAgentMessage(
       conversationId: unknown,
       role: unknown,
       content: unknown,
       metadata: unknown
-    ) => unknown;
-    getAgentMessages: (conversationId: unknown) => unknown;
-    getAgentConversationsWithPreview: (
+    ): unknown;
+    getAgentMessages(conversationId: unknown): unknown;
+    getAgentConversationsWithPreview(
       limit: unknown,
       offset: unknown,
       includeArchived: unknown
-    ) => unknown;
-    searchAgentConversations: (query: unknown, limit: unknown) => unknown;
-    archiveAgentConversation: (id: unknown) => unknown;
-    unarchiveAgentConversation: (id: unknown) => unknown;
+    ): unknown;
+    searchAgentConversations(query: unknown, limit: unknown): unknown;
+    archiveAgentConversation(id: unknown): unknown;
+    unarchiveAgentConversation(id: unknown): unknown;
   };
 }
 

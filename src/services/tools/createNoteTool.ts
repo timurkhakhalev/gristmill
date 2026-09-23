@@ -43,7 +43,7 @@ export const createNoteTool: ToolDefinition = {
       const spaces = (await window.electronAPI.getSpaces?.()) ?? [];
       if (spaceName) {
         const resolved = resolveSpace(spaces, spaceName);
-        if (resolved.error) {
+        if (resolved.error !== undefined) {
           return { success: false, data: null, displayText: resolved.error };
         }
         spaceId = resolved.space.id;
@@ -59,7 +59,7 @@ export const createNoteTool: ToolDefinition = {
 
       if (folderName) {
         const resolved = await resolveFolderId(folderName, { createIfMissing: true }, spaceId);
-        if (resolved.error) {
+        if (resolved.error !== undefined) {
           return { success: false, data: null, displayText: resolved.error };
         }
         folderId = resolved.folderId;

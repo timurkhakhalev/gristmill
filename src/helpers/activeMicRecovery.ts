@@ -60,8 +60,12 @@ export const describeAudioInputs = (devices: readonly AudioInputDevice[] = []): 
   return {
     defaultKey: inputs.length > 0 ? deviceKey(inputs[0]) : "",
     keys: new Set(inputs.map(deviceKey)),
-    deviceIds: new Set(inputs.map((device) => device.deviceId).filter(Boolean)),
-    groupIds: new Set(inputs.map((device) => device.groupId).filter(Boolean)),
+    deviceIds: new Set(
+      inputs.map((device) => device.deviceId).filter((id): id is string => Boolean(id))
+    ),
+    groupIds: new Set(
+      inputs.map((device) => device.groupId).filter((id): id is string => Boolean(id))
+    ),
   };
 };
 
@@ -93,9 +97,9 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
   private inputs: AudioInputSnapshot;
   private generation: number;
   private recoveryPromise: Promise<boolean> | null;
-  private debounceTimer: ReturnType<typeof setTimeout> | null;
-  private muteTimer: ReturnType<typeof setTimeout> | null;
-  private retryTimer: ReturnType<typeof setTimeout> | null;
+  private debounceTimer: ReturnType<typeof setTimeout> | undefined;
+  private muteTimer: ReturnType<typeof setTimeout> | undefined;
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private started: boolean;
   private readonly onDeviceChange: () => void;
   private readonly onTrackEnded: () => void;
@@ -125,9 +129,9 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     this.inputs = describeAudioInputs();
     this.generation = 0;
     this.recoveryPromise = null;
-    this.debounceTimer = null;
-    this.muteTimer = null;
-    this.retryTimer = null;
+    this.debounceTimer = undefined;
+    this.muteTimer = undefined;
+    this.retryTimer = undefined;
     this.started = false;
     this.onDeviceChange = () => this.scheduleEvaluation();
     this.onTrackEnded = () => this.recover("ended");
@@ -160,11 +164,12 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     if (!this.started) return;
     // The track may have died (or come up muted) before our listeners attached;
     // those events won't replay, so evaluate the track's state directly.
-    const alive = this.track && this.track.readyState !== "ended";
+    const track = this.track;
+    const alive = track !== null && track.readyState !== "ended";
     this.setStatus(alive ? "active" : "unavailable");
     if (!alive) {
       this.recover("start");
-    } else if (this.track.muted) {
+    } else if (track.muted) {
       this.onTrackMute();
     }
   }
@@ -184,7 +189,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     this.track?.removeEventListener?.("unmute", this.onTrackUnmute);
     this.track = null;
     clearTimeout(this.muteTimer);
-    this.muteTimer = null;
+    this.muteTimer = undefined;
   }
 
   private async refreshInputs(): Promise<AudioInputSnapshot | null> {
@@ -223,7 +228,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     if (this.recoveryPromise) return this.recoveryPromise;
 
     clearTimeout(this.retryTimer);
-    this.retryTimer = null;
+    this.retryTimer = undefined;
     const generation = this.generation;
     const oldStream = this.stream;
     this.setStatus("reconnecting");
@@ -269,7 +274,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
   private scheduleRetry(): void {
     if (!this.started || this.retryTimer) return;
     this.retryTimer = setTimeout(() => {
-      this.retryTimer = null;
+      this.retryTimer = undefined;
       this.recover("retry");
     }, this.retryMs);
   }
@@ -281,8 +286,8 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     this.detachTrack();
     clearTimeout(this.debounceTimer);
     clearTimeout(this.retryTimer);
-    this.debounceTimer = null;
-    this.retryTimer = null;
+    this.debounceTimer = undefined;
+    this.retryTimer = undefined;
     this.recoveryPromise = null;
     this.stream = null;
     this.setStatus("inactive");

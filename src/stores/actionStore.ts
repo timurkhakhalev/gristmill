@@ -76,7 +76,7 @@ export function useActions(): ActionItem[] {
 }
 
 export function getActionName(
-  action: { name: string; translation_key?: string },
+  action: { name: string; translation_key?: string | null },
   t: TFunction
 ): string {
   return action.translation_key
@@ -86,7 +86,7 @@ export function getActionName(
 
 /** Verb-form label for the ask bar button; falls back to the action name. */
 export function getActionCta(
-  action: { name: string; translation_key?: string },
+  action: { name: string; translation_key?: string | null },
   t: TFunction
 ): string {
   return action.translation_key
@@ -95,7 +95,7 @@ export function getActionCta(
 }
 
 export function getActionDescription(
-  action: { description: string; translation_key?: string },
+  action: { description: string; translation_key?: string | null },
   t: TFunction
 ): string {
   return action.translation_key

@@ -227,7 +227,14 @@ export default function BackgroundModelDownloadTray({
         error: data.error,
       });
 
-    const normalizeLlm = (data: LocalLLMDownloadProgressEvent) =>
+    // This view reads a flattened projection of the validated payload; the
+    // remaining optional fields are irrelevant here.
+    const normalizeLlm = (data: {
+      modelId: string;
+      type?: "progress" | "error" | "complete";
+      progress?: number;
+      error?: string;
+    }) =>
       applyProgress({
         kind: "llm",
         id: data.modelId,

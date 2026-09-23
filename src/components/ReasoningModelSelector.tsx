@@ -235,7 +235,7 @@ export default function ReasoningModelSelector({
           <>
             <ProviderTabs
               providers={modeTabs}
-              selectedId={effectiveMode}
+              selectedId={effectiveMode as string}
               onSelect={(id) => handleModeChange(id as "cloud" | "local")}
               renderIcon={renderModeIcon}
               colorScheme="purple"

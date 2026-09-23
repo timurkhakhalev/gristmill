@@ -49,7 +49,7 @@ export default function TestConnectionButton({ provider, getConfig }: TestConnec
             : result?.error || t("reasoning.enterprise.testFailed"),
           action: result?.actionKey ? t(result.actionKey) : result?.action,
           copyCommand: result?.copyCommand,
-          technicalDetails: result?.technicalDetails,
+          technicalDetails: result?.technicalDetails as TechnicalErrorDetailsData | undefined,
         });
       }
     } catch {

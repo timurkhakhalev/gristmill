@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Key, Cpu, Network } from "../icons";
 import { useSettingsStore } from "../../stores/settingsStore";
+import type { LocalTranscriptionProvider } from "../../contracts/inferenceSettings";
 import { InferenceModeSelector, SettingsRow } from "../ui/SettingsSection";
 import type { InferenceModeOption } from "../ui/SettingsSection";
 import { Toggle } from "../ui/toggle";
@@ -116,7 +117,7 @@ export function MeetingTranscriptionPanel() {
       }
       onLocalModelSelect={handleLocalTranscriptionModelSelect}
       selectedLocalProvider={meetingLocalTranscriptionProvider}
-      onLocalProviderSelect={setMeetingLocalTranscriptionProvider}
+      onLocalProviderSelect={(id) => setMeetingLocalTranscriptionProvider(id as LocalTranscriptionProvider)}
       useLocalWhisper={mode === "local"}
       onModeChange={noop}
       mode={mode}

@@ -40,7 +40,10 @@ test("the cleanup seams wire every manager-owned step from the composition root"
   for (const seam of [
     "deleteAllParakeetModels",
     "diarizationManager.deleteModels",
-    "modelManagerBridge\").default.deleteAllModels",
+    // The drilled ModelManager singleton (module.exports wrapper unwrapped
+    // once at the top of the composition root) is what cleanup calls.
+    "const modelManager = (modelManagerBundle as unknown as { default: ModelManager }).default;",
+    "modelManager.deleteAllModels()",
     "environmentManager.clearAllPersistedData",
     "googleCalendarManager.revokeAllTokens",
     "databaseManager.db.close",

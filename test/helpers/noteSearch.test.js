@@ -82,7 +82,9 @@ function createSearchDatabase() {
   }
 
   const manager = Object.create(DatabaseManager.prototype);
-  manager.db = sqlite;
+  // `db` is a getter over the private _db field; seeding the field is the
+  // only seam a prototype-only fixture has.
+  manager._db = sqlite;
   return { manager, sqlite };
 }
 

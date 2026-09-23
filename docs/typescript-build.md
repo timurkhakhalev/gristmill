@@ -1761,9 +1761,12 @@ coordinator-менеджеры.
 
 Оба дефекта, зафиксированных после миграции как «исправление вне миграции»,
 исправлены в issue #78: ретроактивное сопоставление спикеров использует
-`note.id` из `NoteRow[]` без каста, а delete-all-audio опирается на реальный
-`DatabaseManager.getAudioFlaggedIds()` с typed-подключением менеджера в
-registration (regression: `test/helpers/speakerRetroactiveMapping.test.js`,
+`note.id` из `NoteRow[]` без каста, а skip внутри прохода учитывает только
+реально назначенные строки (`profile_id !== null`) — placeholder-строки,
+по которым заметка попала в unmapped-выборку, теперь заменяются. Delete-all-audio
+опирается на реальный `DatabaseManager.getAudioFlaggedIds()` с typed-подключением
+менеджера в registration (regression:
+`test/helpers/speakerRetroactiveMapping.test.js`,
 `test/helpers/transcriptionDataDeleteAllAudio.test.js`).
 
 ### Renderer strict

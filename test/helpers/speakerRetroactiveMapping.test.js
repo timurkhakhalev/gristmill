@@ -119,8 +119,9 @@ test("retroactive mapping never rewrites already-assigned mappings", async (t) =
   if (!db) return;
   const profileA = db.upsertSpeakerProfile("Alice", null, embedding([1, 0, 0]));
   const profileB = db.upsertSpeakerProfile("Bob", null, embedding([0, 1, 0]));
-  // SPEAKER_01 is already mapped to Bob; SPEAKER_00 is unmapped. Both
-  // embeddings match Alice closely, but only the unmapped one may move.
+  // SPEAKER_01 carries a real assignment (profile_id = Bob) and must never be
+  // rewritten even though its embedding matches Alice too. SPEAKER_00 is a
+  // placeholder row (profile_id = NULL) — exactly what the pass may replace.
   const note = unmappedNote(db, null, [1, 0, 0]);
   db.saveNoteSpeakerEmbeddings(note.id, [{ speakerId: "SPEAKER_01", embedding: embedding([1, 0, 0]) }]);
   db.setSpeakerMapping(note.id, "SPEAKER_01", profileB.id, "Bob");

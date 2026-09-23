@@ -1095,9 +1095,14 @@ export class IPCHandlers {
           const noteId = unmappedNote.id;
           const embeddings = this.databaseManager.getNoteSpeakerEmbeddings(noteId);
           const existing = this.databaseManager.getSpeakerMappings(noteId);
-          const mappedSpeakers = new Set(existing.map((m) => m.speaker_id));
+          // Only genuinely assigned rows block a rewrite: the placeholder
+          // rows (profile_id IS NULL) that brought this note into the
+          // unmapped query are exactly what this pass fills in.
+          const assignedSpeakers = new Set(
+            existing.filter((m) => m.profile_id !== null).map((m) => m.speaker_id)
+          );
           for (const emb of embeddings) {
-            if (mappedSpeakers.has(emb.speaker_id)) continue;
+            if (assignedSpeakers.has(emb.speaker_id)) continue;
 
             const speakerEmb = new Float32Array(
               emb.embedding.buffer,

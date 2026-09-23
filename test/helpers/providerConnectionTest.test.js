@@ -27,6 +27,11 @@ test("the realtime STT providers use their own auth schemes, not Bearer", () => 
   assert.equal(deepgram.endpoint.includes("dg-secret"), false);
   assert.equal(deepgram.headers.Authorization, "Token dg-secret");
 
+  const elevenlabs = resolveProviderRequest({ provider: "elevenlabs", apiKey: "el-secret" });
+  assert.equal(elevenlabs.endpoint, "https://api.elevenlabs.io/v1/user");
+  assert.equal(elevenlabs.headers["xi-api-key"], "el-secret");
+  assert.equal(elevenlabs.headers.Authorization, undefined);
+
   const assemblyai = resolveProviderRequest({ provider: "assemblyai", apiKey: "aai-secret" });
   assert.equal(assemblyai.endpoint, "https://api.assemblyai.com/v2/transcript?limit=1");
   assert.equal(assemblyai.endpoint.includes("aai-secret"), false);
@@ -38,6 +43,7 @@ test("the realtime STT providers use their own auth schemes, not Bearer", () => 
 test("a 200 is the whole signal for providers with no OpenAI-shaped model list", async () => {
   for (const [provider, model, payload] of [
     ["deepgram", "nova-3", { stt: [{ name: "nova-3", canonical_name: "nova-3-general" }] }],
+    ["elevenlabs", "scribe_v2", { user_id: "test-user" }],
     ["assemblyai", "universal-streaming-english", { transcripts: [], page_details: {} }],
   ]) {
     assert.deepEqual(

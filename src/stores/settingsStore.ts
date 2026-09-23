@@ -911,6 +911,7 @@ export interface SettingsState
   setCortiApiKey: (key: string) => void;
   setTinfoilApiKey: (key: string) => void;
   setDeepgramApiKey: (key: string) => void;
+  setElevenLabsApiKey: (key: string) => void;
   setAssemblyaiApiKey: (key: string) => void;
   setCustomTranscriptionApiKey: (key: string) => void;
   setCleanupCustomApiKey: (key: string) => void;
@@ -1096,6 +1097,7 @@ const SECRET_IPC_SAVERS = {
   cortiApiKey: "saveCortiKey",
   tinfoil: "saveTinfoilKey",
   deepgram: "saveDeepgramKey",
+  elevenlabs: "saveElevenLabsKey",
   assemblyai: "saveAssemblyAIKey",
   customTranscription: "saveCustomTranscriptionKey",
   cleanupCustom: "saveCleanupCustomKey",
@@ -1142,6 +1144,7 @@ const STALE_SECRET_LOCALSTORAGE_KEYS = [
   "cortiApiKey",
   "tinfoilApiKey",
   "deepgramApiKey",
+  "elevenLabsApiKey",
   "assemblyaiApiKey",
   "customTranscriptionApiKey",
   "customReasoningApiKey",
@@ -1261,6 +1264,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   cortiApiKey: "",
   tinfoilApiKey: "",
   deepgramApiKey: "",
+  elevenLabsApiKey: "",
   assemblyaiApiKey: "",
   customTranscriptionApiKey: "",
   cleanupCustomApiKey: "",
@@ -1737,6 +1741,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setTinfoilApiKey: createSecretSetter("tinfoilApiKey", "tinfoil", "tinfoil"),
   // STT-only, so there is no ReasoningService key cache to invalidate.
   setDeepgramApiKey: createSecretSetter("deepgramApiKey", "deepgram"),
+  setElevenLabsApiKey: createSecretSetter("elevenLabsApiKey", "elevenlabs"),
   setAssemblyaiApiKey: createSecretSetter("assemblyaiApiKey", "assemblyai"),
   setCustomTranscriptionApiKey: (key: string) => {
     set({ customTranscriptionApiKey: key });
@@ -2182,6 +2187,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     if (keys.cortiApiKey !== undefined) s.setCortiApiKey(keys.cortiApiKey);
     if (keys.tinfoilApiKey !== undefined) s.setTinfoilApiKey(keys.tinfoilApiKey);
     if (keys.deepgramApiKey !== undefined) s.setDeepgramApiKey(keys.deepgramApiKey);
+    if (keys.elevenLabsApiKey !== undefined) s.setElevenLabsApiKey(keys.elevenLabsApiKey);
     if (keys.assemblyaiApiKey !== undefined) s.setAssemblyaiApiKey(keys.assemblyaiApiKey);
     if (keys.customTranscriptionApiKey !== undefined)
       s.setCustomTranscriptionApiKey(keys.customTranscriptionApiKey);
@@ -2396,6 +2402,7 @@ export async function initializeSettings(): Promise<void> {
         azureApiKey,
         vertexApiKey,
         deepgram,
+        elevenlabs,
         assemblyai,
       ] = await Promise.all([
         window.electronAPI.getOpenAIKey?.(),
@@ -2419,6 +2426,7 @@ export async function initializeSettings(): Promise<void> {
         window.electronAPI.getAzureApiKey?.(),
         window.electronAPI.getVertexApiKey?.(),
         window.electronAPI.getDeepgramKey?.(),
+        window.electronAPI.getElevenLabsKey?.(),
         window.electronAPI.getAssemblyAIKey?.(),
       ]);
 
@@ -2446,6 +2454,7 @@ export async function initializeSettings(): Promise<void> {
         azureApiKey: azureApiKey || "",
         vertexApiKey: vertexApiKey || "",
         deepgramApiKey: deepgram || "",
+        elevenLabsApiKey: elevenlabs || "",
         assemblyaiApiKey: assemblyai || "",
       });
 

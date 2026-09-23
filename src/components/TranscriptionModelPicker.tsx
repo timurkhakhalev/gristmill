@@ -240,6 +240,7 @@ const CLOUD_PROVIDER_TABS = [
   { id: "corti", name: "Corti" },
   { id: "tinfoil", name: "Tinfoil" },
   { id: "deepgram", name: "Deepgram" },
+  { id: "elevenlabs", name: "ElevenLabs" },
   { id: "assemblyai", name: "AssemblyAI" },
   { id: "custom", name: "Custom" },
 ];
@@ -257,6 +258,7 @@ interface ProviderCredentialField {
     | "cortiTenant"
     | "tinfoilApiKey"
     | "deepgramApiKey"
+    | "elevenLabsApiKey"
     | "assemblyaiApiKey";
   input: "secret" | "text" | "select";
   labelKey?: string;
@@ -317,6 +319,10 @@ const PROVIDER_CREDENTIALS: Record<
   deepgram: {
     consoleUrl: "https://console.deepgram.com/",
     fields: [{ key: "deepgramApiKey", input: "secret" }],
+  },
+  elevenlabs: {
+    consoleUrl: "https://elevenlabs.io/app/settings/api-keys",
+    fields: [{ key: "elevenLabsApiKey", input: "secret" }],
   },
   assemblyai: {
     consoleUrl: "https://www.assemblyai.com/dashboard/api-keys",
@@ -412,6 +418,8 @@ export default function TranscriptionModelPicker({
   const setTinfoilApiKey = useSettingsStore((s) => s.setTinfoilApiKey);
   const deepgramApiKey = useSettingsStore((s) => s.deepgramApiKey);
   const setDeepgramApiKey = useSettingsStore((s) => s.setDeepgramApiKey);
+  const elevenLabsApiKey = useSettingsStore((s) => s.elevenLabsApiKey);
+  const setElevenLabsApiKey = useSettingsStore((s) => s.setElevenLabsApiKey);
   const assemblyaiApiKey = useSettingsStore((s) => s.assemblyaiApiKey);
   const setAssemblyaiApiKey = useSettingsStore((s) => s.setAssemblyaiApiKey);
   const customTranscriptionApiKey = useSettingsStore((s) => s.customTranscriptionApiKey);
@@ -812,6 +820,7 @@ export default function TranscriptionModelPicker({
     cortiTenant,
     tinfoilApiKey,
     deepgramApiKey,
+    elevenLabsApiKey,
     assemblyaiApiKey,
   };
   const credentialSetters: Record<ProviderCredentialField["key"], (value: string) => void> = {
@@ -826,6 +835,7 @@ export default function TranscriptionModelPicker({
     cortiTenant: setCortiTenant,
     tinfoilApiKey: setTinfoilApiKey,
     deepgramApiKey: setDeepgramApiKey,
+    elevenLabsApiKey: setElevenLabsApiKey,
     assemblyaiApiKey: setAssemblyaiApiKey,
   };
 

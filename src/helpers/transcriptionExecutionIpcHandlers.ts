@@ -25,6 +25,12 @@ import { getTinfoilChatModels } from "./tinfoilCatalog.js";
 import { transcribeWithTinfoil } from "./tinfoilTranscription.js";
 import { transcribeWithGemini } from "./geminiTranscription.js";
 import { deepgramFileUrl, parseDeepgramFileResponse } from "./deepgramFileTranscription.js";
+import {
+  ELEVENLABS_TRANSCRIPTION_URL,
+  elevenLabsFields,
+  parseElevenLabsFileResponse,
+} from "./elevenLabsFileTranscription.js";
+import { buildMultipartBody } from "./remoteTranscriptionIpcHandler.js";
 import { normalizeBedrockCatalog } from "./bedrockCatalog.js";
 import { resolveEnterpriseRuntime } from "./reasoningIpcHandlers.js";
 import {
@@ -83,6 +89,7 @@ export interface TranscriptionExecutionDeps {
     getTinfoilKey: () => string;
     getGeminiKey: () => string;
     getDeepgramKey: () => string;
+    getElevenLabsKey: () => string;
     getCortiClientId: () => string;
     getCortiClientSecret: () => string;
     getCustomTranscriptionKey: () => string;
@@ -656,6 +663,33 @@ export function registerTranscriptionExecutionHandlers(
           if (!parsed.success) throw new Error(parsed.error);
           if (parsed.text)
             result = { text: parsed.text, source: "deepgram", model: route.model ?? undefined };
+        } else if (route.transport === "proxied" && route.provider === "elevenlabs") {
+          if (buffer.byteLength > route.sizeCapBytes) {
+            throw new Error(byokSizeCapError(route.sizeCapBytes));
+          }
+          const apiKey = deps.environmentManager.getElevenLabsKey();
+          if (!apiKey) throw new Error("ElevenLabs API key not configured. Add it in Settings.");
+          const { body, boundary } = buildMultipartBody(
+            buffer,
+            "recording.webm",
+            "audio/webm",
+            elevenLabsFields(route.model || "scribe_v2", route.language, false)
+          );
+          const response = await deps.proxyFetch(ELEVENLABS_TRANSCRIPTION_URL, {
+            method: "POST",
+            headers: {
+              "xi-api-key": apiKey,
+              "Content-Type": `multipart/form-data; boundary=${boundary}`,
+            },
+            body,
+          });
+          if (!response.ok) {
+            throw new Error(`ElevenLabs API Error: ${response.status} ${await response.text()}`);
+          }
+          const parsed = parseElevenLabsFileResponse(await response.json(), false);
+          if (!parsed.success) throw new Error(parsed.error);
+          if (parsed.text)
+            result = { text: parsed.text, source: "elevenlabs", model: route.model ?? undefined };
         } else {
           // mistral/xai have no OpenAI-compatible endpoint — main talks to them
           // directly; everything else consumes the route endpoint as-is. The

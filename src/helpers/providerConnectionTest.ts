@@ -37,13 +37,14 @@ const ENDPOINTS: Record<string, string> = {
   corti: "https://ai.eu.corti.app/v1/models",
   tinfoil: "https://inference.tinfoil.sh/v1/models",
   deepgram: "https://api.deepgram.com/v1/models",
+  elevenlabs: "https://api.elevenlabs.io/v1/user",
   // AssemblyAI exposes no model list; listing transcripts is its 200-vs-401 probe.
   assemblyai: "https://api.assemblyai.com/v2/transcript?limit=1",
 };
 
-// Neither response is OpenAI-shaped — Deepgram's /v1/models is {stt,tts}-keyed
-// and AssemblyAI returns transcripts — so a 200 is the whole credential signal.
-const MODEL_LIST_UNVERIFIABLE: ReadonlySet<string> = new Set(["deepgram", "assemblyai"]);
+// These endpoints do not return an OpenAI-shaped model list. A 200 only
+// verifies credentials; it does not prove access to a particular STT model.
+const MODEL_LIST_UNVERIFIABLE: ReadonlySet<string> = new Set(["deepgram", "assemblyai", "elevenlabs"]);
 
 // Renderers translate errorCode via onboarding.rehaul.provider.errors.*; the
 // English `error` string stays for logs and older callers.
@@ -113,6 +114,8 @@ export function resolveProviderRequest(config: ProviderConnectionConfig): Resolv
       headers["x-goog-api-key"] = apiKey;
     } else if (provider === "deepgram") {
       headers.Authorization = `Token ${apiKey}`;
+    } else if (provider === "elevenlabs") {
+      headers["xi-api-key"] = apiKey;
     } else if (provider === "assemblyai") {
       headers.Authorization = apiKey;
     } else {

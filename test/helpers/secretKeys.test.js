@@ -72,6 +72,8 @@ test("the STT accessors keep the spellings their callers use", () => {
   assert.equal(typeof env.saveAssemblyAIKey, "function");
   assert.equal(typeof env.getDeepgramKey, "function");
   assert.equal(typeof env.saveDeepgramKey, "function");
+  assert.equal(typeof env.getElevenLabsKey, "function");
+  assert.equal(typeof env.saveElevenLabsKey, "function");
 });
 
 test("the desktop settings bridge derives its BYOK methods from the manifest", () => {

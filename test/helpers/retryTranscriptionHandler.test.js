@@ -123,6 +123,7 @@ function buildExecutionDeps() {
       getTinfoilKey: () => "tk-tinfoil",
       getGeminiKey: () => "gk-gemini",
       getDeepgramKey: () => "dk-deepgram",
+      getElevenLabsKey: () => "ek-elevenlabs",
       getCustomTranscriptionKey: () => "ck-custom",
       getCortiClientId: () => "corti-id",
       getCortiClientSecret: () => "corti-secret",
@@ -320,6 +321,22 @@ test("retry: Deepgram sends raw audio to its own file endpoint", async () => {
   }
 });
 
+test("retry: ElevenLabs sends Scribe multipart audio with its own key", async () => {
+  fetches.length = 0;
+  const result = await invoke({
+    cloudTranscriptionProvider: "elevenlabs",
+    cloudTranscriptionModel: "scribe_v2",
+    transcriptionMode: "providers",
+    preferredLanguage: "auto",
+  });
+  assert.equal(result.success, true);
+  assert.equal(fetches[0].url, "https://api.elevenlabs.io/v1/speech-to-text");
+  assert.equal(fetches[0].init.headers["xi-api-key"], "ek-elevenlabs");
+  assert.match(fetches[0].init.headers["Content-Type"], /multipart\/form-data/);
+  assert.match(fetches[0].init.body.toString(), /name="model_id"\r\n\r\nscribe_v2/);
+  assert.match(fetches[0].init.body.toString(), /name="diarize"\r\n\r\nfalse/);
+});
+
 test("proxy transcription handlers resolve to structured errors instead of rejecting", async () => {
   fetchResponse = () => ({
     ok: false,
@@ -409,6 +426,43 @@ test("upload: Deepgram streams raw file bytes through Electron net.request", asy
     assert.equal(result.diarized, true);
     assert.deepEqual(Buffer.concat(uploaded), Buffer.from([1, 2, 3, 4]));
     assert.equal(fetches.length, 0);
+  } finally {
+    delete electronStub.net.request;
+  }
+});
+
+test("upload: ElevenLabs streams a complete multipart file with Scribe fields", async () => {
+  const uploaded = [];
+  electronStub.net.request = (options) => {
+    const request = new EventEmitter();
+    request.write = (chunk, _encoding, callback) => {
+      uploaded.push(Buffer.from(chunk));
+      callback();
+    };
+    request.end = () => {
+      const response = new EventEmitter();
+      response.statusCode = 200;
+      queueMicrotask(() => {
+        request.emit("response", response);
+        response.emit("data", Buffer.from(JSON.stringify({ text: "done" })));
+        response.emit("end");
+        request.emit("close");
+      });
+    };
+    request.abort = () => request.emit("close");
+    assert.equal(options.url, "https://api.elevenlabs.io/v1/speech-to-text");
+    assert.equal(options.headers["xi-api-key"], "el-key");
+    assert.match(options.headers["Content-Type"], /multipart\/form-data; boundary=/);
+    return request;
+  };
+  try {
+    const result = await invokeUpload({ provider: "elevenlabs", apiKey: "el-key" });
+    assert.equal(result.success, true);
+    const body = Buffer.concat(uploaded).toString();
+    assert.match(body, /name="file"; filename="[^"]+"/);
+    assert.match(body, /name="model_id"\r\n\r\nscribe_v2/);
+    assert.match(body, /name="diarize"\r\n\r\nfalse/);
+    assert.match(body, /\x01\x02\x03\x04/);
   } finally {
     delete electronStub.net.request;
   }

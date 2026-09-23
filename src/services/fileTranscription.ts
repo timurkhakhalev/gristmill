@@ -52,6 +52,7 @@ export interface TranscriptionApiKeys {
   geminiApiKey: string;
   tinfoilApiKey: string;
   deepgramApiKey: string;
+  elevenLabsApiKey: string;
   assemblyaiApiKey: string;
   customTranscriptionApiKey?: string;
 }
@@ -72,6 +73,8 @@ export function getTranscriptionApiKey(provider: string, keys: TranscriptionApiK
       return keys.tinfoilApiKey;
     case "deepgram":
       return keys.deepgramApiKey;
+    case "elevenlabs":
+      return keys.elevenLabsApiKey;
     case "assemblyai":
       return keys.assemblyaiApiKey;
     case "custom":
@@ -160,7 +163,7 @@ export async function transcribeFile(
   });
 }
 
-// OpenAI/Mistral/Deepgram BYOK handle diarization inside the transcription call itself.
+// These BYOK providers handle diarization inside the transcription call itself.
 // Self-hosted mode routes to the user's own server, which doesn't — those users
 // get local diarization like everyone else.
 export function shouldUseByokDiarize(
@@ -173,7 +176,8 @@ export function shouldUseByokDiarize(
     cfg.transcriptionMode !== "self-hosted" &&
     (cfg.cloudTranscriptionProvider === "openai" ||
       cfg.cloudTranscriptionProvider === "mistral" ||
-      cfg.cloudTranscriptionProvider === "deepgram")
+      cfg.cloudTranscriptionProvider === "deepgram" ||
+      cfg.cloudTranscriptionProvider === "elevenlabs")
   );
 }
 

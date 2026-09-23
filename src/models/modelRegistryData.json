@@ -393,6 +393,19 @@
       ]
     },
     {
+      "id": "elevenlabs",
+      "name": "ElevenLabs",
+      "baseUrl": "https://api.elevenlabs.io/v1",
+      "models": [
+        {
+          "id": "scribe_v2",
+          "name": "Scribe v2",
+          "description": "File transcription with speaker detection",
+          "streaming": false
+        }
+      ]
+    },
+    {
       "id": "assemblyai",
       "name": "AssemblyAI",
       "baseUrl": "https://api.assemblyai.com/v2",

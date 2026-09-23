@@ -164,7 +164,7 @@ export interface MeetingDetectionDatabase {
   updateNote?(
     id: number,
     updates: Record<string, unknown>
-  ): { success?: boolean; note?: DetectionCalendarEvent | null } | null | undefined;
+  ): { success?: boolean; note?: unknown } | null | undefined;
   getActiveEvents(): DetectionCalendarEvent[];
 }
 

@@ -35,13 +35,15 @@ export function parseElevenLabsFileResponse(
       code: "ELEVENLABS_INVALID_RESPONSE",
     };
   }
-  if (!diarize || !response.text.trim()) return { success: true, text: response.text };
+  if (!response.text.trim()) return { success: true, text: response.text };
   if (!Array.isArray(response.words)) {
-    return {
-      success: false,
-      error: "ElevenLabs returned no speaker data",
-      code: "ELEVENLABS_DIARIZATION_MISSING",
-    };
+    return diarize
+      ? {
+          success: false,
+          error: "ElevenLabs returned no speaker data",
+          code: "ELEVENLABS_DIARIZATION_MISSING",
+        }
+      : { success: true, text: response.text };
   }
 
   const segments: NonNullable<RemoteTranscriptionResult["segments"]> = [];
@@ -80,39 +82,53 @@ export function parseElevenLabsFileResponse(
         code: "ELEVENLABS_INVALID_RESPONSE",
       };
     }
-    if (typeof word.speaker_id !== "string" || !word.speaker_id) {
+    if (diarize && (typeof word.speaker_id !== "string" || !word.speaker_id)) {
       return {
         success: false,
         error: "ElevenLabs returned no speaker data",
         code: "ELEVENLABS_DIARIZATION_MISSING",
       };
     }
-    const speakerNumber = /^speaker_(\d+)$/.exec(word.speaker_id);
-    const speaker = speakerNumber ? `Speaker ${Number(speakerNumber[1]) + 1}` : word.speaker_id;
+    const speakerId = diarize ? (word.speaker_id as string) : "";
+    const speakerNumber = /^speaker_(\d+)$/.exec(speakerId);
+    const speaker = diarize
+      ? speakerNumber
+        ? `Speaker ${Number(speakerNumber[1]) + 1}`
+        : speakerId
+      : undefined;
     const previous = segments.at(-1);
-    if (previous?.speaker === speaker) {
+    if (diarize && previous && previous.speaker === speaker) {
       previous.text += word.text;
       previous.end = word.end;
     } else {
-      segments.push({ speaker, text: word.text, start: word.start, end: word.end });
+      segments.push({
+        ...(speaker ? { speaker } : {}),
+        text: word.text,
+        start: word.start,
+        end: word.end,
+      });
     }
   }
   if (segments.length === 0) {
-    return {
-      success: false,
-      error: "ElevenLabs returned no speaker data",
-      code: "ELEVENLABS_DIARIZATION_MISSING",
-    };
+    return diarize
+      ? {
+          success: false,
+          error: "ElevenLabs returned no speaker data",
+          code: "ELEVENLABS_DIARIZATION_MISSING",
+        }
+      : { success: true, text: response.text };
   }
   return {
     success: true,
-    text: segments
-      .map(
-        (s) =>
-          `[${s.speaker}] ${formatTimestamp(s.start)} - ${formatTimestamp(s.end)}\n${s.text.trim()}`
-      )
-      .join("\n\n"),
-    diarized: true,
+    text: diarize
+      ? segments
+          .map(
+            (s) =>
+              `[${s.speaker}] ${formatTimestamp(s.start)} - ${formatTimestamp(s.end)}\n${s.text.trim()}`
+          )
+          .join("\n\n")
+      : response.text,
+    diarized: diarize,
     segments,
   };
 }

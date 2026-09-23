@@ -211,6 +211,43 @@ test("ElevenLabs streams multipart Scribe audio and groups timed speaker words",
   assert.equal(calls.reads.length, 0);
 });
 
+test("ElevenLabs preserves word timestamps without diarization", async () => {
+  const transport = makeTransport({
+    data: {
+      text: "Hello there.",
+      words: [
+        { text: "Hello", start: 0, end: 0.4, type: "word" },
+        { text: " ", type: "spacing" },
+        { text: "there.", start: 0.5, end: 0.9, type: "word" },
+        { text: "[noise]", type: "audio_event" },
+      ],
+    },
+  });
+  const { call } = setup({ transport });
+  const result = await call({ filePath: audioFile, provider: "elevenlabs", apiKey: "el-secret" });
+  assert.equal(result.success, true);
+  assert.equal(result.text, "Hello there.");
+  assert.equal(result.diarized, false);
+  assert.deepEqual(result.segments, [
+    { text: "Hello ", start: 0, end: 0.4 },
+    { text: "there.", start: 0.5, end: 0.9 },
+  ]);
+  assert.equal(transport.calls[0].options.multipart.fields.diarize, "false");
+  assert.equal(transport.calls[0].options.multipart.fields.timestamps_granularity, "word");
+});
+
+test("ElevenLabs keeps plain text when timestamps are absent and rejects invalid timestamps", async () => {
+  const input = { filePath: audioFile, provider: "elevenlabs", apiKey: "el-secret" };
+  const missing = setup({ transport: makeTransport({ data: { text: "Hello" } }) });
+  assert.deepEqual(await missing.call(input), { success: true, text: "Hello" });
+  const invalid = setup({
+    transport: makeTransport({
+      data: { text: "Hello", words: [{ text: "Hello", type: "word", start: 1, end: 0 }] },
+    }),
+  });
+  assert.equal((await invalid.call(input)).code, "ELEVENLABS_INVALID_RESPONSE");
+});
+
 test("ElevenLabs fails closed on missing speakers, invalid words and oversized files", async () => {
   const input = { filePath: audioFile, provider: "elevenlabs", apiKey: "el-secret", diarize: true };
   const missing = setup({ transport: makeTransport({ data: { text: "Hello", words: [] } }) });

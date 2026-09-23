@@ -87,7 +87,7 @@ export interface DiarizationModelsLike {
   isModelDownloaded(): boolean;
   isVadModelDownloaded(): boolean;
   deleteModels(): Promise<unknown>;
-  cancelDownload(): { success: boolean; message?: string; error?: string };
+  cancelDownload(): Promise<{ success: boolean; message?: string; error?: string }>;
 }
 
 export interface SpeakerIpcDeps {

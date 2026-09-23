@@ -51,6 +51,6 @@ test("M1 removes updater and old-bundle migration runtime", () => {
   assert.equal(fs.existsSync(path.join(root, "src/helpers/postMigrationDetector.js")), false);
   assert.equal(fs.existsSync(path.join(root, "src/components/PostMigrationOnboarding.tsx")), false);
   assert.doesNotMatch(read("main.ts"), /electron-updater|checkForUpdatesOnStartup|UpdateManager/);
-  assert.doesNotMatch(read("preload.js"), /checkForUpdates|downloadUpdate|installUpdate|onUpdateAvailable/);
-  assert.doesNotMatch(read("src/helpers/ipcHandlers.js"), /check-for-updates|download-update|install-update/);
+  assert.doesNotMatch(read("preload.ts"), /checkForUpdates|downloadUpdate|installUpdate|onUpdateAvailable/);
+  assert.doesNotMatch(read("src/helpers/ipcHandlers.ts"), /check-for-updates|download-update|install-update/);
 });

@@ -24,13 +24,13 @@ const snippetListSchema = z.array(snippetSchema);
 
 export interface VocabularyHandlerDeps {
   database: {
-    getDictionary: () => unknown;
-    setDictionary: (words: unknown) => unknown;
-    applyDictionaryChanges: (changes: { add?: unknown; remove?: unknown }) => unknown;
-    hardDeleteDictionaryEntry: (id: unknown) => unknown;
-    getSnippets: () => unknown;
-    setSnippets: (snippets: unknown) => unknown;
-    hardDeleteSnippet: (id: unknown) => unknown;
+    getDictionary(): unknown;
+    setDictionary(words: unknown): unknown;
+    applyDictionaryChanges(changes: { add?: unknown; remove?: unknown }): unknown;
+    hardDeleteDictionaryEntry(id: unknown): unknown;
+    getSnippets(): unknown;
+    setSnippets(snippets: unknown): unknown;
+    hardDeleteSnippet(id: unknown): unknown;
   };
   debugLogger: { debug: (message: string, context?: Record<string, unknown>) => void };
 }

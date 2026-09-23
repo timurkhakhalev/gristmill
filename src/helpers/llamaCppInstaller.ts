@@ -176,4 +176,6 @@ export class LlamaCppInstaller {
 
 // Dual export: ipcHandlers.js requires this module as `{ default }`; the TS
 // graph imports the class by name. One instance, exactly as before.
-module.exports = { default: new LlamaCppInstaller(), LlamaCppInstaller };
+const llamaCppInstallerSingleton = new LlamaCppInstaller();
+export default llamaCppInstallerSingleton;
+module.exports = { default: llamaCppInstallerSingleton, LlamaCppInstaller };

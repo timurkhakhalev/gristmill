@@ -971,5 +971,6 @@ export class LiveSpeakerIdentifier {
 }
 
 const instance = new LiveSpeakerIdentifier();
+export default instance;
 module.exports = instance;
 module.exports.LiveSpeakerIdentifier = LiveSpeakerIdentifier;

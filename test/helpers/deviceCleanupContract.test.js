@@ -11,7 +11,7 @@ const desktopSettingsSource = fs.readFileSync(
   "utf8"
 );
 const ipcHandlersSource = fs.readFileSync(
-  path.join(__dirname, "../../src/helpers/ipcHandlers.js"),
+  path.join(__dirname, "../../src/helpers/ipcHandlers.ts"),
   "utf8"
 );
 

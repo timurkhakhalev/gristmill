@@ -105,7 +105,7 @@ export function registerTranscriptionDataHandlers(
     handle(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
     // `never` parameters accept the narrower handler signatures some shared
     // listener factories (retention settings) are typed with.
-    on(channel: string, listener: (event: never, ...args: unknown[]) => void): void;
+    on(channel: string, listener: (event: { sender?: unknown }, ...args: unknown[]) => void): void;
   },
   deps: TranscriptionDataDeps
 ): void {

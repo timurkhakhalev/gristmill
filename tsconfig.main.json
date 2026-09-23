@@ -18,7 +18,7 @@
   },
   "include": [
     "main.ts",
-    "preload.js",
+    "preload.ts",
     "src/workers/*.ts",
     "src/utils/audioUtils.ts",
     "src/helpers/appVersion.ts",

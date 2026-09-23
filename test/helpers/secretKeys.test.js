@@ -85,6 +85,6 @@ test("the desktop settings bridge derives its BYOK methods from the manifest", (
   assert.match(bridgeSrc, /import \{ BYOK_API_KEYS \} from "\.\.\/config\/secretKeys/);
   assert.match(bridgeSrc, /get-\$\{k\.base\}-key/);
   assert.match(bridgeSrc, /save-\$\{k\.base\}-key/);
-  const preloadSrc = fs.readFileSync(path.join(__dirname, "../../preload.js"), "utf8");
+  const preloadSrc = fs.readFileSync(path.join(__dirname, "../../preload.ts"), "utf8");
   assert.doesNotMatch(preloadSrc, /BYOK_KEY_BRIDGES/, "inlined preload tuples removed");
 });

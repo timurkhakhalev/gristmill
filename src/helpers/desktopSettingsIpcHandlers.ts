@@ -23,6 +23,7 @@ import { z } from "zod";
 import debugLogger from "./debugLogger.js";
 import { getAutoStartState, setAutoStartEnabled } from "./autoStart.js";
 import { openSystemSettings } from "./systemSettingsLauncher.js";
+import type { HotkeyActivationCallback, HotkeySlot } from "./hotkeyManager.js";
 import { resolveSystemDefaultMicrophone } from "./systemDefaultMicrophone.js";
 import { resolveLocalServerNeeds } from "./localServerPolicy.js";
 import { isSherpaLocalProvider } from "./parakeetModelInfo.js";
@@ -61,24 +62,17 @@ export interface DesktopSettingsDeps {
     controlPanelWindow: BrowserWindow | null;
     snapControlPanelToMeetingMode: () => void;
     restoreControlPanelFromMeetingMode: () => void;
-    setNotificationInteractivity: (sender: unknown, interactive: boolean) => void;
+    setNotificationInteractivity(sender: unknown, interactive: boolean): void;
     setHotkeyListeningMode: (enabled: boolean) => void;
     isUsingNativeShortcutHotkeys: () => boolean;
     hotkeyManager: {
-      slots: Map<
-        string,
-        {
-          hotkeys?: string[];
-          accelerators?: Array<string | null>;
-          callback?: ((pressedHotkey?: string) => void) | null;
-        }
-      >;
+      slots: Map<string, HotkeySlot>;
       getCurrentHotkey: () => string | null;
-      registerSlot: (
+      registerSlot(
         slotName: string,
         hotkeys: unknown,
-        callback: () => void
-      ) => Promise<unknown>;
+        callback: HotkeyActivationCallback
+      ): Promise<unknown>;
       unregisterSlot: (slotName: string) => void;
       supportsPushToTalk: (hotkey: string | null) => boolean;
       getPushToTalkUnavailableReason: (hotkey: string | null) => string;
@@ -88,7 +82,9 @@ export interface DesktopSettingsDeps {
     stopControlPanelDrag: () => Promise<unknown>;
     notificationPrefs: Record<string, boolean>;
     refreshLocalizedUi?: () => void;
-    mainWindow: BrowserWindow | null;
+    // Never set by the composition root; the settings seams treat the main
+    // window as absent, exactly like the untyped JS did.
+    mainWindow?: BrowserWindow | null;
     sendToMainWindow?: (channel: string) => void;
   };
   // Meeting coordinator seams stay owned by the coordinator; these settings

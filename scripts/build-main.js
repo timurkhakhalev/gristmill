@@ -21,7 +21,7 @@ try {
   execFileSync(
     path.join(root, "node_modules", ".bin", "esbuild"),
     [
-      path.join(root, "preload.js"),
+      path.join(root, "preload.ts"),
       `--outfile=${bundledPreload}`,
       "--bundle",
       "--format=cjs",

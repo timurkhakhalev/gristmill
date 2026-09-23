@@ -67,9 +67,12 @@ const PERSISTED_KEYS: readonly string[] = [
   "VERTEX_LOCATION",
 ];
 
-interface SaveKeyResult {
+// A type alias, not an interface: aliases of object literals carry an
+// implicit index signature, so results stay assignable to the loose
+// `{ [key: string]: unknown; success: boolean }` wire shapes.
+type SaveKeyResult = {
   success: boolean;
-}
+};
 
 // Module-level so writes are serialized across all instances — hotkeyManager
 // creates its own EnvironmentManager alongside the main.js singleton.

@@ -1691,3 +1691,132 @@ rendererBridgeContract, mainProcessEsmEntries, mainBuild, macInferenceSource,
 deviceCleanupContract), затем `pnpm test` и isolated macOS smoke (start/stop,
 mic+system, local/realtime, auto-end/restart, notification join, speaker
 completion) на отдельном профиле.
+
+## Этап «финальный TS cutover: main, preload, ipcHandlers и strict renderer»
+
+23 сентября 2026 (issue #68, база `7ce24a3a`, merge #74). Последние три
+runtime-JS entry/composition файла переведены в strict TS, оба runtime-таргета
+закрыты: `allowJs: false`. Поведение продукта не менялось; известная гонка
+prepare/cancel не трогалась (отдельный fix).
+
+### Инвентарь на старте
+
+Tracked runtime JS — ровно три файла: `main.js`, `preload.js`,
+`src/helpers/ipcHandlers.js` (совпадает с ожиданием issue). Вне графа:
+`src/helpers/whisperCppRelease.js` (tooling download script) и
+`src/eslint.config.js` (конфиг lint) — сознательно не мигрированы.
+Динамических импортов, уводящих модули мимо графа, нет; все require-сиды
+lazy-загрузок (ai, AWS SDK, corti/enterprise клиенты, modelManagerBridge,
+markdownMirror и др.) аудированы: каждый лениво требуемый локальный модуль
+остаётся в программе через `typeof import(...)`-касты, поэтому эмиссия не имеет
+дыр (сверка полного `--listFilesOnly`-списка до/после: отличие — ровно три
+переименования .js → .ts).
+
+### Переводы
+
+- `main.js` → `main.ts`: типизированы process/electron, менеджеры, app events,
+  startup/shutdown. Порядок сохранён: identity/userData до storage/managers,
+  затем protocol registration, TLS CA merge, singleton lock, Notes по умолчанию.
+  Статические связи графа — только ESM import с `.js`-расширением; тяжёлые SDK
+  остаются за ленивыми `require` (типизированы через `typeof import`).
+- `preload.js` → `preload.ts`: типизированный `registerListener<T>`, полезные
+  нагрузки событий перенесены из деклараций renderer'а; bundle-вход в
+  `scripts/build-main.js` обновлён на `preload.ts`, emitted filename прежний
+  (`dist-main/preload.js`, sandbox bundle).
+- `src/helpers/ipcHandlers.js` → `ipcHandlers.ts`: составной корень (composition
+  root) полностью типизирован; владельцы регистрации каналов не менялись —
+  таблица ownership прежняя (typed-вертикали владеют своими каналами,
+  координатор — meeting-каналами, корень только передаёт зависимости).
+  Lazy-require тяжёлых SDK и клиентов сохранён (комментарии на местах).
+
+### Согласование типов (без blanket casts)
+
+- Dual-export re-attach добавлены там, где у модулей появились TS named
+  импорты: `database` (DatabaseManager), `cliBridge` (CliBridge),
+  `audioStorage` (AudioStorageManager); синглтоны `markdownMirror` и
+  `liveSpeakerIdentifier` получили `export default` (паттерн debugLogger);
+  `llamaCppInstaller` — единственный синглтон, `export default` вместо
+  повторного `new`.
+- Небольшие dep-интерфейсы typed-вертикалей переведены с property-fn на
+  method-синтаксис (bivariance), где строгая контравариантность не пропускала
+  реальные менеджеры: vocabulary, containers, actions, chatPersistence,
+  transcriptionData, speaker, localModelLifecycle, localLlmModels,
+  desktopSettings, meetingCoordinator. `DiarizationModelsLike.cancelDownload`
+  стал `Promise` (менеджер всегда был async; хендлер его await'ит).
+- Честные типовые правки: `updateTranscriptionAudio` принимает SQLite 0|1
+  `hasAudio`; `SpeakerProfileRow.embedding` обязательный (NOT NULL);
+  `clearAudioFlags` принимает и строковые id (аудио-имена файлов);
+  `DatabaseManager.db` — публичный геттер с throw после close (семантика
+  use-after-close как у всех методов; тесты `db.db.close()` работают как
+  раньше).
+
+### Документированные boundary casts
+
+Единичные, с комментариями на местах, там, где менеджеры исторически
+типизированы свободнее wire-контрактов: lifecycle-менеджеры
+(`WhisperManagerLike`/`ParakeetManagerLike`/`LlmModelManagerLike`/
+`LlmDownloadStatusTracker` — payload'ы запинены characterization-тестами #43/#44),
+`SpeakerDatabase` (ветка null у upsert недостижима для путей вертикали),
+coordinator-менеджеры, `getAudioFlaggedIds` seam (см. ниже), ретроактивный
+noteId (см. ниже).
+
+### Зафиксированные до-существующие дефекты (исправление — вне миграции)
+
+- Ретроактивное сопоставление спикеров: `getNotesWithUnmappedSpeakers()`
+  возвращает полные строки заметок, а поисковые вызовы биндят сырой id;
+  better-sqlite3 отвергает привязку объекта — каждая итерация падает в catch с
+  warning'ом. Поведение сохранено 1:1 (пин в коде с комментарием).
+- Seam `getAudioFlaggedIds` в delete-all-audio: у менеджера нет такого метода,
+  JS-корень оставлял его undefined — try/catch логировал пропуск. Сохранено
+  1:1.
+
+### Renderer strict
+
+`src/tsconfig.json`: `strict: true`, `allowJs: false`, JS/JSX-паттерны из
+include убраны. 48 реальных strict-диагностик исправлены: сужение nullable
+состояний (noteStore, meetingRecordingStore), сужение bridge-payload на
+границах слушателей (мосты валидируют до доставки), guard'ы дискриминированных
+unions через `error !== undefined` (tools), guard'ы optional-членов API.
+`actionStore`-хелперы и `resolveExpectedSpeakerCount` расширили параметры до
+null-форм wire'а. Casts единичные, целевые, с комментариями; `@ts-nocheck`,
+фиктивные declarations и массовые `any`/non-null не использовались. Корневые
+lint-предупреждения: 12+2 (ниже baseline 15+2 — main/preload ушли из JS lint
+поверхности).
+
+### Итоговый инвентарь (после cutover)
+
+- Tracked runtime JS: **0**. Root: `main.ts`, `preload.ts`;
+  `src/helpers/whisperCppRelease.js` (tooling) и `src/eslint.config.js` (lint)
+  — не runtime.
+- Main compiler graph (`tsc -p tsconfig.main.json --listFilesOnly`, без
+  node_modules/dist): **0 JS, 187 TS + 1 MTS + 2 root entries (main.ts,
+  preload.ts), 25 JSON**; worker `src/workers/onnxWorker.ts` → emitted
+  `dist-main/src/workers/onnxWorker.js` (asarUnpack без изменений).
+- Срез `src` (без `src/dist`): 414 TS, 254 TSX, 1 MTS (constants.mts), 2 JS
+  (tooling/lint, вне таргетов), 0 JSX.
+- Эмиссия: `pnpm run build:main` даёт прежний `dist-main/main.js` +
+  bundled `dist-main/preload.js`; `package.json#main` не менялся; packaging
+  (`electron-builder.json` files/asarUnpack) и `scripts/run-electron.js` без
+  изменений — dev и pack потребляют один и тот же output.
+
+### Команды проверки
+
+```sh
+pnpm run typecheck          # main + renderer + settings-selectors, все strict
+pnpm run lint               # 0 errors
+pnpm run build:main         # tsc + esbuild preload bundle
+node --import tsx --test --test-concurrency=1 --test-timeout=30000 \
+  test/scripts/mainBuild.test.js test/helpers/mainProcessEsmEntries.test.js \
+  test/helpers/retryTranscriptionHandler.test.js \
+  test/m1IdentitySourceContract.test.js test/helpers/macInferenceSourceContract.test.js \
+  test/helpers/deviceCleanupContract.test.js test/helpers/secretKeys.test.js \
+  test/helpers/rendererBridgeContract.test.js
+pnpm test                   # полный прогон
+pnpm run pack               # macOS arm64 .app; затем isolated Electron smoke
+```
+
+Ожидания от mainBuild: emitted graph замкнут (нет runtime-импортов .ts),
+preload sandbox-бандл грузится, route + ESM constants грузятся в plain Node,
+CJS-формы экспортов сохранены, компилятор отвергает неверные аргументы и
+DOM-глобалы в main. После pack — восстановить Node ABI better-sqlite3 перед
+повторными DB-тестами.

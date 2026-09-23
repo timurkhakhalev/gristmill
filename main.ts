@@ -3,6 +3,7 @@ import path from "path";
 import tls from "tls";
 import { createHotkeyRepeatGate } from "./src/helpers/hotkeyRepeatGate.js";
 import debugLogger from "./src/helpers/debugLogger.js";
+import type { EnvironmentManagerWithByok } from "./src/helpers/environment.js";
 import { EnvironmentManager } from "./src/helpers/environment.js";
 import { WindowManager } from "./src/helpers/windowManager.js";
 import { DatabaseManager } from "./src/helpers/database.js";
@@ -12,7 +13,7 @@ import { DiarizationManager } from "./src/helpers/diarization.js";
 import { TrayManager } from "./src/helpers/tray.js";
 import dockManager from "./src/helpers/dockManager.js";
 import { wasLaunchedAtLoginHidden } from "./src/helpers/autoStart.js";
-import IPCHandlers from "./src/helpers/ipcHandlers.js";
+import { IPCHandlers } from "./src/helpers/ipcHandlers.js";
 import { CliBridge } from "./src/helpers/cliBridge.js";
 import { GlobeKeyManager } from "./src/helpers/globeKeyManager.js";
 import { GoogleCalendarManager } from "./src/helpers/googleCalendarManager.js";
@@ -187,7 +188,7 @@ process.on("unhandledRejection", (reason: unknown, promise: Promise<unknown>) =>
 });
 
 // Manager instances - initialized after app.whenReady()
-let environmentManager: EnvironmentManager | null = null;
+let environmentManager: EnvironmentManagerWithByok | null = null;
 let windowManager: WindowManager | null = null;
 let hotkeyManager: WindowManager["hotkeyManager"] | null = null;
 let databaseManager: DatabaseManager | null = null;
@@ -259,7 +260,9 @@ function initializeCoreManagers(): void {
 
   debugLogger.ensureFileLogging();
 
-  const initializedEnvironmentManager = new EnvironmentManager();
+  // The BYOK accessors are generated onto the prototype from the key catalog
+  // at module load; the intersection type makes that surface visible.
+  const initializedEnvironmentManager = new EnvironmentManager() as EnvironmentManagerWithByok;
   environmentManager = initializedEnvironmentManager;
   const uiLanguage = initializedEnvironmentManager.getUiLanguage(app.getLocale());
   changeLanguage(uiLanguage);

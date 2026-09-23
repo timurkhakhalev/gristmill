@@ -98,7 +98,10 @@ export { bad };
 `,
     "notes-type-probe.ts"
   );
-  assert.deepEqual(codes, [2739]);
+  // src/tsconfig.json is strict now: for zod-inferred object types the same
+  // missing-properties rejection is reported as 2740 instead of 2739
+  // (verified both ways; the rejection semantics are unchanged).
+  assert.deepEqual(codes, [2740]);
 });
 
 test("type probe: wrong argument type on saveNote is rejected at compile time", () => {

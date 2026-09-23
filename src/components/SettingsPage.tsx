@@ -157,7 +157,8 @@ function HotkeysSettings() {
   const { meetingKey, setMeetingKey, meetingHotkeyLayoutMode, setMeetingHotkeyLayoutMode } =
     useSettingsStore();
   const { registerHotkey, isRegistering, lastError } = useHotkeyRegistration({
-    registerFn: async (key) => window.electronAPI.registerMeetingHotkey(key),
+    registerFn: async (key) =>
+      (await window.electronAPI.registerMeetingHotkey?.(key)) ?? { success: false },
     onSuccess: setMeetingKey,
   });
   return (
@@ -170,7 +171,9 @@ function HotkeysSettings() {
         value={meetingKey}
         onChange={registerHotkey}
         onClear={async () => {
-          const result = await window.electronAPI.registerMeetingHotkey("");
+          const result = (await window.electronAPI.registerMeetingHotkey?.("")) ?? {
+            success: false,
+          };
           if (result.success) setMeetingKey("");
           return result.success;
         }}

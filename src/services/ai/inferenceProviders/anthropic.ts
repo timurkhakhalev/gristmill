@@ -39,11 +39,13 @@ export const anthropicProvider: InferenceProvider = {
       throw new Error(result.error);
     }
 
+    // success:true results always carry the completed output text.
+    const outputText = result.text as string;
     logger.logReasoning("ANTHROPIC_SUCCESS", {
       model,
       processingTimeMs,
-      resultLength: result.text.length,
+      resultLength: outputText.length,
     });
-    return result.text;
+    return outputText;
   },
 };

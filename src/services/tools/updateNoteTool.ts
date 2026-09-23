@@ -64,7 +64,7 @@ export const updateNoteTool: ToolDefinition = {
           { createIfMissing: true },
           note.space_id
         );
-        if (resolved.error) {
+        if (resolved.error !== undefined) {
           return { success: false, data: null, displayText: resolved.error };
         }
         updates.folder_id = resolved.folderId;

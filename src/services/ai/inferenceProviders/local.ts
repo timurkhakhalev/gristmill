@@ -29,11 +29,13 @@ export const localProvider: InferenceProvider = {
       throw buildLocalInferenceError(result);
     }
 
+    // success:true results always carry the completed output text.
+    const outputText = result.text as string;
     logger.logReasoning("LOCAL_SUCCESS", {
       model,
       processingTimeMs,
-      resultLength: result.text.length,
+      resultLength: outputText.length,
     });
-    return result.text;
+    return outputText;
   },
 };

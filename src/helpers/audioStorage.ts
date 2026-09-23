@@ -218,3 +218,4 @@ export class AudioStorageManager {
 // CommonJS passthrough: the original module exported the class itself and
 // every require site (ipcHandlers.js, main.js, tests) invokes it directly.
 module.exports = AudioStorageManager;
+module.exports.AudioStorageManager = AudioStorageManager;

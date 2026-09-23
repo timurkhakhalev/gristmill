@@ -164,7 +164,7 @@ export interface MeetingDetectionDatabase {
   updateNote?(
     id: number,
     updates: Record<string, unknown>
-  ): { success?: boolean; note?: DetectionCalendarEvent | null } | null | undefined;
+  ): { success?: boolean; note?: unknown } | null | undefined;
   getActiveEvents(): DetectionCalendarEvent[];
 }
 
@@ -1133,6 +1133,9 @@ export class MeetingDetectionEngine {
 }
 
 module.exports = MeetingDetectionEngine;
+// Dual-export contract: bare require returns the class itself, TS named
+// imports (the composition root) drill the same constructor.
+module.exports.MeetingDetectionEngine = MeetingDetectionEngine;
 module.exports.AUTO_END_RESTART_WINDOW_MS = AUTO_END_RESTART_WINDOW_MS;
 module.exports.AUTO_END_RESTART_GRACE_MS = AUTO_END_RESTART_GRACE_MS;
 module.exports.AUTO_END_RESTART_CLAIM_MS = AUTO_END_RESTART_CLAIM_MS;

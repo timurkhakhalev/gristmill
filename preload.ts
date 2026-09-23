@@ -1,29 +1,35 @@
-const { contextBridge, ipcRenderer, webUtils } = require("electron");
-const { createNotesBridge } = require("./src/preload/notesBridge");
-const { createVocabularyBridge } = require("./src/preload/vocabularyBridge");
-const { createContainersBridge } = require("./src/preload/containerBridge");
-const { createChatPersistenceBridge } = require("./src/preload/chatBridge");
-const { createUrlDownloadBridge } = require("./src/preload/urlDownloadBridge");
-const { createActionsBridge } = require("./src/preload/actionsBridge");
-const { createLocalFileTranscriptionBridge } = require("./src/preload/localFileTranscriptionBridge");
-const { createUploadTranscriptionBridge } = require("./src/preload/uploadTranscriptionBridge");
-const { createCalendarAvailabilityBridge } = require("./src/preload/calendarAvailabilityBridge");
-const { createReasoningBridge } = require("./src/preload/reasoningBridge");
-const { createCalendarIntegrationBridge } = require("./src/preload/calendarBridge");
-const { createNoteFilesBridge } = require("./src/preload/noteFilesBridge");
-const { createLocalModelLifecycleBridge } = require("./src/preload/localModelLifecycleBridge");
-const { createLocalLlmModelsBridge } = require("./src/preload/localLlmModelsBridge");
-const { createSpeakerBridge } = require("./src/preload/speakerBridge");
-const { createTranscriptionExecutionBridge } = require("./src/preload/transcriptionExecutionBridge");
-const { createTranscriptionDataBridge } = require("./src/preload/transcriptionDataBridge");
-const { createDesktopSettingsBridge } = require("./src/preload/desktopSettingsBridge");
-const { createMeetingCoordinatorBridge } = require("./src/preload/meetingCoordinatorBridge");
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "electron";
+import { createNotesBridge } from "./src/preload/notesBridge";
+import { createVocabularyBridge } from "./src/preload/vocabularyBridge";
+import { createContainersBridge } from "./src/preload/containerBridge";
+import { createChatPersistenceBridge } from "./src/preload/chatBridge";
+import { createUrlDownloadBridge } from "./src/preload/urlDownloadBridge";
+import { createActionsBridge } from "./src/preload/actionsBridge";
+import { createLocalFileTranscriptionBridge } from "./src/preload/localFileTranscriptionBridge";
+import { createUploadTranscriptionBridge } from "./src/preload/uploadTranscriptionBridge";
+import { createCalendarAvailabilityBridge } from "./src/preload/calendarAvailabilityBridge";
+import { createReasoningBridge } from "./src/preload/reasoningBridge";
+import { createCalendarIntegrationBridge } from "./src/preload/calendarBridge";
+import { createNoteFilesBridge } from "./src/preload/noteFilesBridge";
+import { createLocalModelLifecycleBridge } from "./src/preload/localModelLifecycleBridge";
+import { createLocalLlmModelsBridge } from "./src/preload/localLlmModelsBridge";
+import { createSpeakerBridge } from "./src/preload/speakerBridge";
+import { createTranscriptionExecutionBridge } from "./src/preload/transcriptionExecutionBridge";
+import { createTranscriptionDataBridge } from "./src/preload/transcriptionDataBridge";
+import { createDesktopSettingsBridge } from "./src/preload/desktopSettingsBridge";
+import { createMeetingCoordinatorBridge } from "./src/preload/meetingCoordinatorBridge";
+
+/** Unsubscribe returned to the renderer for every subscription. */
+type Unsubscribe = () => void;
 
 /**
  * Helper to register an IPC listener and return a cleanup function.
  * Ensures renderer code can easily remove listeners to avoid leaks.
  */
-const registerListener = (channel, handlerFactory) => {
+const registerListener = <T>(
+  channel: string,
+  handlerFactory: (callback: (data: T) => void) => (event: IpcRendererEvent, ...args: unknown[]) => void
+): ((callback: (data: T) => void) => Unsubscribe) => {
   return (callback) => {
     if (typeof callback !== "function") {
       return () => {};
@@ -32,7 +38,8 @@ const registerListener = (channel, handlerFactory) => {
     const listener =
       typeof handlerFactory === "function"
         ? handlerFactory(callback)
-        : (event, ...args) => callback(event, ...args);
+        : (event: IpcRendererEvent, ...args: unknown[]) =>
+            (callback as (...args: unknown[]) => void)(event, ...args);
 
     ipcRenderer.on(channel, listener);
     return () => {
@@ -81,7 +88,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // AI Actions catalog lives in the typed actionsBridge above.
 
-  getPathForFile: (file) => {
+  getPathForFile: (file: File): string => {
     const filePath = webUtils.getPathForFile(file);
     // Register real dropped-file paths so the main-process audio allowlist accepts them.
     if (filePath) ipcRenderer.send("approve-audio-path", filePath);
@@ -95,15 +102,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Local Whisper/Parakeet model lifecycle (downloads, status, servers,
   // VAD config, diagnostics) lives in the typed localModelLifecycleBridge.
 
-  getPlatform: () => process.platform,
+  getPlatform: (): string => process.platform,
 
-  onMainWindowHorizontalDirectionChanged: registerListener(
+  onMainWindowHorizontalDirectionChanged: registerListener<"left" | "right">(
     "main-window-horizontal-direction-changed",
-    (callback) => (_event, direction) => callback(direction)
+    (callback) => (_event, direction) => callback(direction as "left" | "right")
   ),
-  onMainWindowWillResize: registerListener(
+  onMainWindowWillResize: registerListener<{
+    bounds: Electron.Rectangle;
+    anchor: "bottom-left" | "bottom-right" | "center";
+  }>(
     "main-window-will-resize",
-    (callback) => (_event, resize) => callback(resize)
+    (callback) => (_event, resize) =>
+      callback(resize as {
+        bounds: Electron.Rectangle;
+        anchor: "bottom-left" | "bottom-right" | "center";
+      })
   ),
   // Audio event listeners
   // The xAI/Mistral/Corti/Tinfoil/Gemini transcription proxies and the
@@ -118,7 +132,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // transcriptionExecutionBridge.
   // BYOK file transcription and its hard cancel come from the typed
   // uploadTranscriptionBridge above.
-  onUploadTranscriptionProgress: registerListener(
+  onUploadTranscriptionProgress: registerListener<unknown>(
     "upload-transcription-progress",
     (callback) => (_event, data) => callback(data)
   ),
@@ -127,61 +141,66 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // events come from the typed meetingCoordinatorBridge above.
 
   // Globe key listener for hotkey capture (macOS only)
-  onGlobeKeyPressed: (callback) => {
+  onGlobeKeyPressed: (callback: (() => void) | undefined): Unsubscribe => {
     const listener = () => callback?.();
     ipcRenderer.on("globe-key-pressed", listener);
     return () => ipcRenderer.removeListener("globe-key-pressed", listener);
   },
-  onGlobeKeyReleased: (callback) => {
+  onGlobeKeyReleased: (callback: (() => void) | undefined): Unsubscribe => {
     const listener = () => callback?.();
     ipcRenderer.on("globe-key-released", listener);
     return () => ipcRenderer.removeListener("globe-key-released", listener);
   },
 
   // Hotkey registration events (for notifying user when hotkey fails)
-  onHotkeyFallbackUsed: (callback) => {
-    const listener = (_event, data) => callback?.(data);
+  onHotkeyFallbackUsed: (callback: ((data: { original: string; fallback: string }) => void) | undefined): Unsubscribe => {
+    const listener = (_event: IpcRendererEvent, data: { original: string; fallback: string }) => callback?.(data);
     ipcRenderer.on("hotkey-fallback-used", listener);
     return () => ipcRenderer.removeListener("hotkey-fallback-used", listener);
   },
-  onHotkeyRegistrationFailed: (callback) => {
-    const listener = (_event, data) => callback?.(data);
+  onHotkeyRegistrationFailed: (
+    callback: ((data: { hotkey: string; error: string; suggestions: string[] }) => void) | undefined
+  ): Unsubscribe => {
+    const listener = (_event: IpcRendererEvent, data: { hotkey: string; error: string; suggestions: string[] }) =>
+      callback?.(data);
     ipcRenderer.on("hotkey-registration-failed", listener);
     return () => ipcRenderer.removeListener("hotkey-registration-failed", listener);
   },
-  onSettingUpdated: (callback) => {
-    const listener = (_event, data) => callback?.(data);
+  onSettingUpdated: (callback: ((data: { key: string; value: unknown }) => void) | undefined): Unsubscribe => {
+    const listener = (_event: IpcRendererEvent, data: { key: string; value: unknown }) => callback?.(data);
     ipcRenderer.on("setting-updated", listener);
     return () => ipcRenderer.removeListener("setting-updated", listener);
   },
   // Settings shortcut (Cmd+, / Ctrl+,)
-  onShowSettings: registerListener("show-settings", (callback) => () => callback()),
+  onShowSettings: registerListener<void>("show-settings", (callback) => () => callback()),
 
   // Accessibility permission events (macOS)
-  onAccessibilityMissing: (callback) => {
+  onAccessibilityMissing: (callback: (() => void) | undefined): Unsubscribe => {
     const listener = () => callback?.();
     ipcRenderer.on("accessibility-missing", listener);
     return () => ipcRenderer.removeListener("accessibility-missing", listener);
   },
 
   // Notify main process of activation mode changes.
-  notifyActivationModeChanged: (mode) => ipcRenderer.send("activation-mode-changed", mode),
-  notifyHotkeyChanged: (hotkey) => ipcRenderer.send("hotkey-changed", hotkey),
+  notifyActivationModeChanged: (mode: "tap" | "push"): void =>
+    ipcRenderer.send("activation-mode-changed", mode),
+  notifyHotkeyChanged: (hotkey: string): void => ipcRenderer.send("hotkey-changed", hotkey),
 
   // Floating icon auto-hide
-  notifyFloatingIconAutoHideChanged: (enabled) =>
+  notifyFloatingIconAutoHideChanged: (enabled: boolean): void =>
     ipcRenderer.send("floating-icon-auto-hide-changed", enabled),
-  onFloatingIconAutoHideChanged: registerListener(
+  onFloatingIconAutoHideChanged: registerListener<boolean>(
     "floating-icon-auto-hide-changed",
-    (callback) => (_event, enabled) => callback(enabled)
+    (callback) => (_event, enabled) => callback(enabled as boolean)
   ),
 
   // Panel start position
-  notifyPanelStartPositionChanged: (position) =>
+  notifyPanelStartPositionChanged: (position: string): void =>
     ipcRenderer.send("panel-start-position-changed", position),
 
   // Start minimized
-  notifyStartMinimizedChanged: (enabled) => ipcRenderer.send("start-minimized-changed", enabled),
+  notifyStartMinimizedChanged: (enabled: boolean): void =>
+    ipcRenderer.send("start-minimized-changed", enabled),
 
   // Agent conversation persistence lives in the typed chatBridge above.
   // Google/Microsoft/Apple Calendar commands and events live in the typed

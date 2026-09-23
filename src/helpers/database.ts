@@ -98,7 +98,9 @@ export interface ActionRow {
   updated_at: string;
 }
 
-export interface TranscriptionRow {
+// A type alias, not an interface: aliases carry an implicit index signature, so full
+// rows stay assignable to the loose wire projections over them.
+export type TranscriptionRow = {
   id: number;
   text: string;
   raw_text: string | null;
@@ -112,7 +114,7 @@ export interface TranscriptionRow {
   error_message: string | null;
   error_code: string | null;
   route_kind: string | null;
-}
+};
 
 export interface AgentConversationRow {
   id: number;
@@ -198,7 +200,10 @@ export interface AppleCalendarRow {
   created_at: string;
 }
 
-export interface CalendarEventRow {
+// A type alias, not an interface: type aliases of object literals carry an
+// implicit index signature, so full rows stay assignable to loose engine
+// projections like DetectionCalendarEvent.
+export type CalendarEventRow = {
   id: string;
   calendar_id: string;
   provider: string;
@@ -215,7 +220,7 @@ export interface CalendarEventRow {
   attendees_count: number;
   attendees: string | null;
   synced_at: string;
-}
+};
 
 export interface CalendarAccountRow {
   email: string;
@@ -350,29 +355,38 @@ function isSqliteUniqueConstraint(error: unknown): boolean {
 // --- Manager -------------------------------------------------------------------
 
 export class DatabaseManager {
-  private db: SqliteDatabase | null = null;
+  private _db: SqliteDatabase | null = null;
 
   constructor() {
     this.initDatabase();
+  }
+
+  // Raw SQLite handle for the few seams that intentionally bypass the manager
+  // methods (composition-root queries, cleanup-app close, test harnesses).
+  // After close() it throws, like every manager method — use-after-close stays
+  // loud instead of returning a silent null handle.
+  get db(): SqliteDatabase {
+    if (this._db === null) throw new Error("Database is closed");
+    return this._db;
   }
 
   // Every method goes through this getter: after close() the old code threw a
   // TypeError reading `null.prepare`; an explicit throw keeps use-after-close
   // loud instead of silently returning empty results.
   private get sql(): SqliteDatabase {
-    if (this.db === null) throw new Error("Database is closed");
-    return this.db;
+    if (this._db === null) throw new Error("Database is closed");
+    return this._db;
   }
 
   initDatabase(): boolean {
     try {
       const fileName =
         process.env.NODE_ENV === "development" ? "transcriptions-dev.db" : "transcriptions.db";
-      this.db = new Database(path.join(app.getPath("userData"), fileName));
-      this.db.pragma("foreign_keys = ON");
-      this.db.pragma("journal_mode = WAL");
+      this._db = new Database(path.join(app.getPath("userData"), fileName));
+      this._db.pragma("foreign_keys = ON");
+      this._db.pragma("journal_mode = WAL");
 
-      this.db.exec(`
+      this._db.exec(`
         CREATE TABLE IF NOT EXISTS transcriptions (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           text TEXT NOT NULL,
@@ -867,7 +881,12 @@ export class DatabaseManager {
       audioDurationMs,
       provider,
       model,
-    }: { hasAudio?: boolean; audioDurationMs?: number | null; provider?: string | null; model?: string | null }
+    }: {
+      hasAudio?: boolean | number;
+      audioDurationMs?: number | null;
+      provider?: string | null;
+      model?: string | null;
+    }
   ): { success: boolean } {
     this.sql
       .prepare(
@@ -904,7 +923,9 @@ export class DatabaseManager {
     );
   }
 
-  clearAudioFlags(ids: number[]): { success: boolean } {
+  // IDs arrive both numeric (DB rows) and string-typed (audio filenames);
+  // SQLite INTEGER affinity coerces either form, as it always has.
+  clearAudioFlags(ids: Array<number | string>): { success: boolean } {
     if (!ids?.length) return { success: true };
     const update = this.sql.prepare("UPDATE transcriptions SET has_audio = 0 WHERE id = ?");
     this.sql.transaction(() => ids.forEach((id) => update.run(id)))();
@@ -1864,9 +1885,9 @@ export class DatabaseManager {
   }
 
   cleanup(): void {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
+    if (this._db) {
+      this._db.close();
+      this._db = null;
     }
   }
   close(): void {
@@ -1879,3 +1900,4 @@ export class DatabaseManager {
 // required value directly. Restore that CommonJS contract — tsc's ESM emit
 // alone would expose only `exports.default`.
 module.exports = DatabaseManager;
+module.exports.DatabaseManager = DatabaseManager;

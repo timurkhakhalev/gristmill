@@ -460,7 +460,7 @@ export function removeNote(id: number): void {
 export async function createFolder(
   name: string,
   spaceId: number
-): Promise<{ success: boolean; folder?: FolderItem; error?: string }> {
+): Promise<{ success: boolean; folder?: FolderItem | null; error?: string }> {
   const result = await window.electronAPI.createFolder(name, spaceId);
   if (result.success && result.folder) {
     await loadFolders();
@@ -471,7 +471,7 @@ export async function createFolder(
 export async function renameFolder(
   id: number,
   name: string
-): Promise<{ success: boolean; folder?: FolderItem; error?: string }> {
+): Promise<{ success: boolean; folder?: FolderItem | null; error?: string }> {
   const result = await window.electronAPI.renameFolder(id, name);
   if (result.success) {
     await loadFolders();
@@ -513,7 +513,7 @@ export async function deleteFolder(id: number): Promise<{ success: boolean; erro
 export async function moveFolderToSpace(
   folderId: number,
   spaceId: number
-): Promise<{ success: boolean; folder?: FolderItem; error?: string }> {
+): Promise<{ success: boolean; folder?: FolderItem | null; error?: string }> {
   const result = await window.electronAPI.moveFolderToSpace(folderId, spaceId);
   if (!result.success) return result;
 
@@ -533,7 +533,7 @@ export async function moveFolderToSpace(
 export async function updateSpaceMeta(
   id: number,
   updates: { name?: string; emoji?: string | null }
-): Promise<{ success: boolean; space?: SpaceItem; error?: string }> {
+): Promise<{ success: boolean; space?: SpaceItem | null; error?: string }> {
   const result = (await window.electronAPI.updateSpace?.(id, updates)) ?? { success: false };
   if (result.success && result.space) {
     const updated = result.space;

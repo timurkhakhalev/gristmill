@@ -432,4 +432,6 @@ export class MarkdownMirror {
 
 // CommonJS passthrough: the original module exported the singleton instance,
 // and every require site (ipcHandlers.js, cliBridge, tests) uses it directly.
-module.exports = new MarkdownMirror();
+const markdownMirrorSingleton = new MarkdownMirror();
+export default markdownMirrorSingleton;
+module.exports = markdownMirrorSingleton;

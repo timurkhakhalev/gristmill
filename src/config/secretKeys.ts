@@ -96,6 +96,13 @@ export const BYOK_API_KEYS = [
     storeKey: "deepgramApiKey",
   },
   {
+    base: "elevenlabs",
+    env: "ELEVENLABS_API_KEY",
+    get: "getElevenLabsKey",
+    save: "saveElevenLabsKey",
+    storeKey: "elevenLabsApiKey",
+  },
+  {
     base: "assemblyai",
     env: "ASSEMBLYAI_API_KEY",
     get: "getAssemblyAIKey",

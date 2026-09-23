@@ -10,6 +10,7 @@ import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constant
 import {
   STREAMING_ONLY_PROVIDERS,
   DEEPGRAM_FILE_SIZE_LIMIT,
+  ELEVENLABS_FILE_SIZE_LIMIT,
 } from "../config/transcriptionCapabilities.ts";
 import {
   isSecureHttpEndpoint,
@@ -35,9 +36,11 @@ const GEMINI_FILE_SIZE_LIMIT = 14 * 1024 * 1024;
 export function byokFileSizeLimit(provider: string): number {
   return provider === "gemini"
     ? GEMINI_FILE_SIZE_LIMIT
-    : provider === "deepgram"
-      ? DEEPGRAM_FILE_SIZE_LIMIT
-      : BYOK_FILE_SIZE_LIMIT;
+    : provider === "elevenlabs"
+      ? ELEVENLABS_FILE_SIZE_LIMIT
+      : provider === "deepgram"
+        ? DEEPGRAM_FILE_SIZE_LIMIT
+        : BYOK_FILE_SIZE_LIMIT;
 }
 
 // Route caps vary by provider (Gemini's inline-base64 limit is the lowest), so
@@ -100,7 +103,7 @@ export type TranscriptionRoute =
   | { transport: "local" }
   | {
       transport: "proxied";
-      provider: "tinfoil" | "mistral" | "xai" | "corti" | "gemini" | "deepgram";
+      provider: "tinfoil" | "mistral" | "xai" | "corti" | "gemini" | "deepgram" | "elevenlabs";
       model: string | null;
       language?: string;
       sizeCapBytes: number;
@@ -165,6 +168,7 @@ export function resolveByokModel(provider: string, configuredModel?: string): st
       (provider === "corti" && trimmed.startsWith("corti-")) ||
       (provider === "gemini" && trimmed.startsWith("gemini-")) ||
       (provider === "deepgram" && (trimmed.startsWith("nova-") || trimmed.startsWith("flux-"))) ||
+      (provider === "elevenlabs" && trimmed === "scribe_v2") ||
       (provider === "assemblyai" &&
         (trimmed.startsWith("universal-") || trimmed.startsWith("slam-")));
     if (matchesProvider) return trimmed;
@@ -175,6 +179,7 @@ export function resolveByokModel(provider: string, configuredModel?: string): st
   if (provider === "corti") return "corti-transcribe";
   if (provider === "gemini") return "gemini-3.5-transcribe";
   if (provider === "deepgram") return "nova-3";
+  if (provider === "elevenlabs") return "scribe_v2";
   if (provider === "assemblyai") return "universal-3-5-pro";
   return "gpt-transcribe";
 }
@@ -294,6 +299,15 @@ export function resolveTranscriptionRoute({
       model,
       language,
       sizeCapBytes: DEEPGRAM_FILE_SIZE_LIMIT,
+    };
+  }
+  if (provider === "elevenlabs") {
+    return {
+      transport: "proxied",
+      provider,
+      model,
+      language,
+      sizeCapBytes: ELEVENLABS_FILE_SIZE_LIMIT,
     };
   }
   if (provider === "corti") {

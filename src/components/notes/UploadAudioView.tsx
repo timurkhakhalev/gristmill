@@ -255,6 +255,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     geminiApiKey,
     tinfoilApiKey,
     deepgramApiKey,
+    elevenLabsApiKey,
     assemblyaiApiKey,
     customTranscriptionApiKey,
   } = apiKeys;
@@ -286,7 +287,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   // Mode-aware file size validation
   // Local: no limits at all
-  // Direct providers have different file limits; Deepgram can accept larger streamed uploads.
+  // Direct providers have different file limits; some accept larger streamed uploads.
   const byokMaxFileSize = byokFileSizeLimit(cloudTranscriptionProvider);
   const byokMaxFileSizeMb = Math.floor(byokMaxFileSize / (1024 * 1024));
   let byokTooLarge = false;
@@ -373,6 +374,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                 geminiApiKey,
                 tinfoilApiKey,
                 deepgramApiKey,
+                elevenLabsApiKey,
                 assemblyaiApiKey,
                 customTranscriptionApiKey,
               })
@@ -412,6 +414,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     geminiApiKey,
     tinfoilApiKey,
     deepgramApiKey,
+    elevenLabsApiKey,
     assemblyaiApiKey,
     customTranscriptionApiKey,
     cortiClientId,

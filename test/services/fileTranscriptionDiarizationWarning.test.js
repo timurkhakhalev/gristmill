@@ -170,23 +170,24 @@ test("fetches the local speaker models before a run that needs them", async (t) 
   assert.deepEqual(settings, { enabled: true, localModelsReady: true, numSpeakers: null });
 });
 
-test("does not fetch local models when Deepgram diarizes server-side", async (t) => {
+test("does not fetch local models when file providers diarize server-side", async (t) => {
   const { resolveDiarizationSettings } = await loadFileTranscription(t);
   let ensureCalls = 0;
 
-  const settings = await resolveDiarizationSettings({
-    enabled: true,
-    modelsReady: false,
-    numSpeakers: 2,
-    config: { ...localConfig(), useLocalWhisper: false, cloudTranscriptionProvider: "deepgram" },
-    ensureModels: async () => {
-      ensureCalls += 1;
-      return true;
-    },
-  });
-
+  for (const provider of ["deepgram", "elevenlabs"]) {
+    const settings = await resolveDiarizationSettings({
+      enabled: true,
+      modelsReady: false,
+      numSpeakers: 2,
+      config: { ...localConfig(), useLocalWhisper: false, cloudTranscriptionProvider: provider },
+      ensureModels: async () => {
+        ensureCalls += 1;
+        return true;
+      },
+    });
+    assert.deepEqual(settings, { enabled: true, localModelsReady: false, numSpeakers: 2 });
+  }
   assert.equal(ensureCalls, 0);
-  assert.deepEqual(settings, { enabled: true, localModelsReady: false, numSpeakers: 2 });
 });
 
 test("does not fetch local models when speaker detection is off", async (t) => {

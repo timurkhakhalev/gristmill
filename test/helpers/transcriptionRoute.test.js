@@ -80,6 +80,11 @@ test("proxied providers carry their quirks as route data", async () => {
   assert.equal(deepgram.model, "nova-3");
   assert.equal(deepgram.sizeCapBytes, 2 * 1024 * 1024 * 1024);
 
+  const elevenlabs = await resolve({ cloudTranscriptionProvider: "elevenlabs" });
+  assert.equal(elevenlabs.transport, "proxied");
+  assert.equal(elevenlabs.model, "scribe_v2");
+  assert.equal(elevenlabs.sizeCapBytes, 3 * 1024 * 1024 * 1024);
+
   const flux = await resolve({
     cloudTranscriptionProvider: "deepgram",
     cloudTranscriptionModel: "flux-general-en",
@@ -125,6 +130,7 @@ test("byokFileSizeLimit matches the per-provider route caps", async () => {
   const { byokFileSizeLimit } = await load();
   assert.equal(byokFileSizeLimit("gemini"), 14 * 1024 * 1024);
   assert.equal(byokFileSizeLimit("deepgram"), 2 * 1024 * 1024 * 1024);
+  assert.equal(byokFileSizeLimit("elevenlabs"), 3 * 1024 * 1024 * 1024);
   assert.equal(byokFileSizeLimit("openai"), 25 * 1024 * 1024);
 });
 

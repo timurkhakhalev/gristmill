@@ -47,6 +47,8 @@ const providerCredential = (provider: string, store: ReturnType<typeof useSettin
       return { value: store.tinfoilApiKey, set: store.setTinfoilApiKey };
     case "deepgram":
       return { value: store.deepgramApiKey, set: store.setDeepgramApiKey };
+    case "elevenlabs":
+      return { value: store.elevenLabsApiKey, set: store.setElevenLabsApiKey };
     default:
       return { value: "", set: () => {} };
   }

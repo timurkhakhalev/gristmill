@@ -17,6 +17,11 @@ import { timestampRequestFields, mapVerboseSegments } from "./uploadTimestamps.j
 import { formatTimestamp } from "./speakerMerge.js";
 import { deepgramFileUrl, parseDeepgramFileResponse } from "./deepgramFileTranscription.js";
 import {
+  ELEVENLABS_TRANSCRIPTION_URL,
+  elevenLabsFields,
+  parseElevenLabsFileResponse,
+} from "./elevenLabsFileTranscription.js";
+import {
   remoteTranscriptionRequestSchema,
   remoteTranscriptionResponseSchema,
   uploadTranscriptionChannels,
@@ -107,7 +112,10 @@ export interface RemoteTranscriptionDeps {
     filePath: string,
     contentType: string,
     apiKey: string,
-    options?: { signal?: AbortSignal }
+    options?: {
+      signal?: AbortSignal;
+      multipart?: { fileName: string; fields: Record<string, string> };
+    }
   ) => Promise<PostMultipartResult>;
   transcribeWithTinfoil: (args: {
     audioBuffer: Buffer;
@@ -316,6 +324,53 @@ export async function transcribeAudioFileByok(
         };
       }
       return parseResult(parseDeepgramFileResponse(data.data, payload.diarize === true));
+    }
+
+    if (route.transport === "proxied" && route.provider === "elevenlabs") {
+      if (!payload.apiKey) {
+        return {
+          success: false,
+          error: "No ElevenLabs API key configured. Add your key in Settings.",
+        };
+      }
+      const ext = extname(realByok).toLowerCase().replace(".", "");
+      const data = await deps.postRawAudioFile(
+        ELEVENLABS_TRANSCRIPTION_URL,
+        realByok,
+        AUDIO_MIME_TYPES[ext] || "application/octet-stream",
+        payload.apiKey,
+        {
+          signal,
+          multipart: {
+            fileName: basename(realByok),
+            fields: elevenLabsFields(
+              route.model || "scribe_v2",
+              route.language,
+              payload.diarize === true
+            ),
+          },
+        }
+      );
+      if (data.statusCode === 401 || data.statusCode === 403) {
+        return { success: false, error: "Invalid ElevenLabs API key. Check your key in Settings." };
+      }
+      if (data.statusCode === 413) {
+        return {
+          success: false,
+          error: "ElevenLabs rejected the audio size. Choose another provider.",
+        };
+      }
+      if (data.statusCode === 429) {
+        return { success: false, error: "ElevenLabs rate limit exceeded. Please try again later." };
+      }
+      if (data.statusCode !== 200) {
+        return {
+          success: false,
+          error: errorMessageFromStatus(data, "ElevenLabs API error:"),
+          code: "ELEVENLABS_API_ERROR",
+        };
+      }
+      return parseResult(parseElevenLabsFileResponse(data.data, payload.diarize === true));
     }
 
     if (route.transport === "proxied" && route.provider === "corti") {

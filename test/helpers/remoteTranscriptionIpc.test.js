@@ -171,6 +171,67 @@ test("Deepgram handles plain transcripts and provider errors without losing the 
   assert.equal((await malformed.call(input)).code, "DEEPGRAM_INVALID_RESPONSE");
 });
 
+test("ElevenLabs streams multipart Scribe audio and groups timed speaker words", async () => {
+  const transport = makeTransport({
+    data: {
+      text: "Hello there. Reply.",
+      words: [
+        { text: "Hello", start: 0, end: 0.4, type: "word", speaker_id: "speaker_0" },
+        { text: " ", type: "spacing" },
+        { text: "there.", start: 0.5, end: 0.9, type: "word", speaker_id: "speaker_0" },
+        { text: " ", type: "spacing" },
+        { text: "Reply.", start: 1.2, end: 1.8, type: "word", speaker_id: "speaker_1" },
+      ],
+    },
+  });
+  const { call, calls } = setup({ transport });
+  const result = await call({
+    filePath: audioFile,
+    apiKey: "el-secret",
+    provider: "elevenlabs",
+    model: "scribe_v2",
+    language: "ru",
+    diarize: true,
+    requestId: "elevenlabs-1",
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.diarized, true);
+  assert.deepEqual(
+    result.segments.map((s) => s.speaker),
+    ["Speaker 1", "Speaker 2"]
+  );
+  assert.equal(result.segments[0].text, "Hello there. ");
+  assert.equal(result.segments[0].end, 0.9);
+  assert.match(result.text, /Hello there\./);
+  assert.equal(transport.calls[0].url, "https://api.elevenlabs.io/v1/speech-to-text");
+  assert.equal(transport.calls[0].apiKey, "el-secret");
+  assert.equal(transport.calls[0].options.multipart.fields.model_id, "scribe_v2");
+  assert.equal(transport.calls[0].options.multipart.fields.diarize, "true");
+  assert.equal(transport.calls[0].options.multipart.fields.language_code, "ru");
+  assert.equal(calls.reads.length, 0);
+});
+
+test("ElevenLabs fails closed on missing speakers, invalid words and oversized files", async () => {
+  const input = { filePath: audioFile, provider: "elevenlabs", apiKey: "el-secret", diarize: true };
+  const missing = setup({ transport: makeTransport({ data: { text: "Hello", words: [] } }) });
+  assert.equal((await missing.call(input)).code, "ELEVENLABS_DIARIZATION_MISSING");
+  const invalid = setup({
+    transport: makeTransport({
+      data: {
+        text: "Hello",
+        words: [{ text: "Hello", type: "word", start: 1, end: 0, speaker_id: "speaker_0" }],
+      },
+    }),
+  });
+  assert.equal((await invalid.call(input)).code, "ELEVENLABS_INVALID_RESPONSE");
+  const limited = setup({ deps: { fileSize: () => 3 * 1024 * 1024 * 1024 + 1 } });
+  assert.match((await limited.call(input)).error, /3072 MB/);
+  assert.equal(limited.transport.calls.length, 0);
+  assert.match((await missing.call({ ...input, apiKey: "" })).error, /ElevenLabs API key/);
+  const unauthorized = setup({ transport: makeTransport({ statusCode: 401 }) });
+  assert.match((await unauthorized.call(input)).error, /Invalid ElevenLabs API key/);
+});
+
 function setup(overrides = {}) {
   const { deps, calls, transport, registry } = baseDeps(overrides);
   const handlers = new Map();

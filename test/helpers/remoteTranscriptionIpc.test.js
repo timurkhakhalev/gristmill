@@ -69,9 +69,9 @@ function baseDeps(overrides = {}) {
       calls.tinfoil.push(args);
       return { text: "tinfoil text" };
     },
-    transcribeWithGemini: async (args) => {
+    transcribeGeminiFile: async (args) => {
       calls.gemini.push(args);
-      return { text: "gemini text" };
+      return { success: true, text: "gemini text" };
     },
     transcribeWithCorti: async (args) => {
       calls.corti.push(args);
@@ -336,7 +336,9 @@ test("self-hosted is exempt from the third-party size cap; byok caps report the 
   assert.match(capped.error, /25 MB/);
   assert.equal(byok.transport.calls.length, 0);
 
-  const geminiCapped = setup();
+  const geminiCapped = setup({
+    deps: { fileSize: () => 2 * 1024 * 1024 * 1024 + 1 },
+  });
   const gemini = await geminiCapped.call({
     filePath: bigFile,
     apiKey: "gk",
@@ -345,7 +347,7 @@ test("self-hosted is exempt from the third-party size cap; byok caps report the 
     transcriptionMode: "providers",
   });
   assert.equal(gemini.success, false);
-  assert.match(gemini.error, /14 MB/);
+  assert.match(gemini.error, /2048 MB/);
   assert.equal(geminiCapped.calls.gemini.length, 0);
 });
 
@@ -382,12 +384,16 @@ test("proxied providers receive the signal: corti, tinfoil, gemini", async () =>
     filePath: audioFile,
     apiKey: "gk",
     provider: "gemini",
+    diarize: true,
     language: "de",
     transcriptionMode: "providers",
     requestId: "gemini-req",
   });
   assert.equal(gemini.calls.gemini[0].signal instanceof AbortSignal, true);
   assert.equal(gemini.calls.gemini[0].apiKey, "gk");
+  assert.equal(gemini.calls.gemini[0].filePath, audioFile);
+  assert.equal(gemini.calls.gemini[0].diarize, true);
+  assert.equal(gemini.calls.reads.length, 0, "Gemini streams the selected file");
 });
 
 test("openai diarization rides the route and projects diarized_json speaker segments", async () => {

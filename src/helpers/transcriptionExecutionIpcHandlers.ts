@@ -31,6 +31,7 @@ import {
   parseElevenLabsFileResponse,
 } from "./elevenLabsFileTranscription.js";
 import { buildMultipartBody } from "./remoteTranscriptionIpcHandler.js";
+import type { RemoteTranscriptionResult } from "../contracts/uploadTranscription.js";
 import { normalizeBedrockCatalog } from "./bedrockCatalog.js";
 import { resolveEnterpriseRuntime } from "./reasoningIpcHandlers.js";
 import {
@@ -111,6 +112,14 @@ export interface TranscriptionExecutionDeps {
     text: () => Promise<string>;
     json: () => Promise<unknown>;
   }>;
+  transcribeGeminiFile: (args: {
+    filePath: string;
+    fileSizeBytes: number;
+    contentType: string;
+    model: string;
+    apiKey: string;
+    diarize: boolean;
+  }) => Promise<RemoteTranscriptionResult>;
   // Lazy Corti client — only loaded when a Corti route actually runs.
   transcribeWithCorti: (args: {
     environment?: string;
@@ -634,14 +643,29 @@ export function registerTranscriptionExecutionHandlers(
           if (route.sizeCapBytes && buffer.byteLength > route.sizeCapBytes) {
             throw new Error(byokSizeCapError(route.sizeCapBytes));
           }
-          const { text } = await transcribeWithGemini({
-            audioBuffer: buffer,
-            model: route.model,
-            contentType: "audio/webm",
-            language: route.language,
-            apiKey: deps.environmentManager.getGeminiKey(),
-          });
-          if (text) result = { text, source: "gemini", model: route.model ?? undefined };
+          const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-gemini-retry-"));
+          try {
+            const filePath = path.join(tempDir, "recording.webm");
+            fs.writeFileSync(filePath, buffer);
+            const transcription = await deps.transcribeGeminiFile({
+              filePath,
+              fileSizeBytes: buffer.byteLength,
+              model: route.model || "gemini-3.5-transcribe",
+              contentType: "audio/webm",
+              apiKey: deps.environmentManager.getGeminiKey(),
+              diarize: false,
+            });
+            if (!transcription.success) {
+              throw Object.assign(new Error(transcription.error || "Gemini transcription failed"), {
+                code: transcription.code,
+              });
+            }
+            if (transcription.text) {
+              result = { text: transcription.text, source: "gemini", model: route.model ?? undefined };
+            }
+          } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+          }
         } else if (route.transport === "proxied" && route.provider === "deepgram") {
           if (buffer.byteLength > route.sizeCapBytes) {
             throw new Error(byokSizeCapError(route.sizeCapBytes));

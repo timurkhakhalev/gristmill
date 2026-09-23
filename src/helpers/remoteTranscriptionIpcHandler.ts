@@ -125,14 +125,15 @@ export interface RemoteTranscriptionDeps {
     apiKey: string;
     signal?: AbortSignal;
   }) => Promise<{ text: string }>;
-  transcribeWithGemini: (args: {
-    audioBuffer: Buffer;
-    model: string | null;
+  transcribeGeminiFile: (args: {
+    filePath: string;
+    fileSizeBytes: number;
+    model: string;
     contentType: string;
-    language?: string;
+    diarize: boolean;
     apiKey: string;
     signal?: AbortSignal;
-  }) => Promise<{ text: string }>;
+  }) => Promise<RemoteTranscriptionResult>;
   transcribeWithCorti: (args: {
     environment?: string;
     tenant?: string;
@@ -406,16 +407,15 @@ export async function transcribeAudioFileByok(
 
     if (route.transport === "proxied" && route.provider === "gemini") {
       const ext = extname(realByok).toLowerCase().replace(".", "");
-      // Deliberately no language hint — same rationale as the multipart
-      // branch below, and Gemini's language_codes is a hard constraint.
-      const { text } = await deps.transcribeWithGemini({
-        audioBuffer: deps.readFile(realByok),
-        model: route.model,
+      return parseResult(await deps.transcribeGeminiFile({
+        filePath: realByok,
+        fileSizeBytes: fileSize,
+        model: route.model || "gemini-3.5-transcribe",
         contentType: AUDIO_MIME_TYPES[ext] || "audio/mpeg",
+        diarize: payload.diarize === true,
         apiKey: payload.apiKey || deps.getGeminiKey(),
         signal,
-      });
-      return parseResult({ success: true, text });
+      }));
     }
 
     const apiKey = payload.apiKey;

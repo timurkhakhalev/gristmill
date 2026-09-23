@@ -174,7 +174,7 @@ test("does not fetch local models when file providers diarize server-side", asyn
   const { resolveDiarizationSettings } = await loadFileTranscription(t);
   let ensureCalls = 0;
 
-  for (const provider of ["deepgram", "elevenlabs"]) {
+  for (const provider of ["deepgram", "elevenlabs", "gemini"]) {
     const settings = await resolveDiarizationSettings({
       enabled: true,
       modelsReady: false,

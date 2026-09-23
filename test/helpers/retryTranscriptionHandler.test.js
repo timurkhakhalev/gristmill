@@ -14,6 +14,7 @@ const originalLoad = Module._load;
 const handlers = new Map();
 const execHandlers = new Map();
 const fetches = [];
+const geminiFileCalls = [];
 let fetchResponse = () => ({
   ok: true,
   status: 200,
@@ -131,6 +132,13 @@ function buildExecutionDeps() {
     proxyFetch: async (url, init) => {
       fetches.push({ url: String(url), init });
       return fetchResponse(String(url), init);
+    },
+    transcribeGeminiFile: async (args) => {
+      geminiFileCalls.push({
+        ...args,
+        bytes: require("node:fs").readFileSync(args.filePath),
+      });
+      return { success: true, text: "Gemini retry text" };
     },
     transcribeWithCorti: async (opts) => {
       cortiCalls.push(opts);
@@ -319,6 +327,21 @@ test("retry: Deepgram sends raw audio to its own file endpoint", async () => {
       text: async () => JSON.stringify({ text: "transcribed" }),
     });
   }
+});
+
+test("retry: Gemini uses the file transcription path and removes its temp file", async () => {
+  geminiFileCalls.length = 0;
+  const result = await invoke({
+    cloudTranscriptionProvider: "gemini",
+    cloudTranscriptionModel: "gemini-3.5-transcribe",
+    transcriptionMode: "providers",
+  });
+  assert.equal(result.success, true);
+  assert.equal(geminiFileCalls.length, 1);
+  assert.equal(geminiFileCalls[0].model, "gemini-3.5-transcribe");
+  assert.deepEqual(geminiFileCalls[0].bytes, Buffer.from([1, 2, 3]));
+  assert.equal(geminiFileCalls[0].diarize, false);
+  assert.equal(require("node:fs").existsSync(geminiFileCalls[0].filePath), false);
 });
 
 test("retry: ElevenLabs sends Scribe multipart audio with its own key", async () => {

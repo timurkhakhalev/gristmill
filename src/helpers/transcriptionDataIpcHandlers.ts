@@ -24,25 +24,24 @@ import {
 import {
   binaryLikeSchema,
   transcriptionDataChannels,
-  type TranscriptionSaveResult,
   type TranscriptionDeleteResult,
 } from "../contracts/transcriptionData.js";
-import type { TranscriptionRow } from "./database.js";
+import type { NoteRow, TranscriptionRow } from "./database.js";
 import type { Logger } from "./transcriptionExecutionIpcHandlers.js";
 
-export interface ExportableNote {
-  title?: string | null;
-  content?: string | null;
-  enhanced_content?: string | null;
-  transcript?: string | null;
-}
-
 export interface TranscriptionDataDeps {
+  // Method syntax keeps parameter checks bivariant so the real
+  // DatabaseManager satisfies this without casts; the handler validates
+  // untrusted IPC payloads itself before any database call.
   database: {
-    saveTranscription: (text: unknown, rawText: unknown, options: unknown) => unknown;
-    getTranscriptions: (limit: unknown, options: unknown) => unknown;
-    clearTranscriptions: () => { success: boolean; cleared: number };
-    deleteTranscription: (id: number) => unknown;
+    saveTranscription(
+      text: unknown,
+      rawText: unknown,
+      options: unknown
+    ): { success: boolean; transcription: TranscriptionRow | null } | null | undefined;
+    getTranscriptions(limit: unknown, options: unknown): TranscriptionRow[];
+    clearTranscriptions(): { success: boolean; cleared: number };
+    deleteTranscription(id: number): unknown;
     updateTranscriptionAudio: (id: number, update: {
       hasAudio: number;
       audioDurationMs: number | null;
@@ -51,11 +50,9 @@ export interface TranscriptionDataDeps {
     }) => unknown;
     getTranscriptionById: (id: number) => (TranscriptionRow & Record<string, unknown>) | null;
     updateTranscriptionText: (id: number, text: string, rawText: string | null) => unknown;
-    // The delete-all path clears the audio flag through the same SQL the
-    // DatabaseManager owns; the id list projection stays main-side.
     getAudioFlaggedIds: () => Array<{ id: number }>;
     clearAudioFlags: (ids: number[]) => unknown;
-    getNote: (id: number) => (ExportableNote & Record<string, unknown>) | null;
+    getNote: (id: number) => NoteRow | null;
   };
   audioStorage: {
     saveAudio: (id: number, audioBuffer: Buffer, timestamp?: string | null) => { success: boolean; path?: string };
@@ -114,9 +111,7 @@ export function registerTranscriptionDataHandlers(
   ipcMain.handle(
     transcriptionDataChannels.saveTranscription,
     async (_event, text: unknown, rawText: unknown, options: unknown) => {
-      const result = database.saveTranscription(text, rawText, options ?? {}) as
-        | (TranscriptionSaveResult & Record<string, unknown>)
-        | null;
+      const result = database.saveTranscription(text, rawText, options ?? {});
       if (result?.success && result?.transcription) {
         setImmediate(() => {
           deps.broadcast("transcription-added", result.transcription);
@@ -471,7 +466,7 @@ export function registerTranscriptionDataHandlers(
       const note = database.getNote(parsed.data);
       await deps.queueNoteNavigation({
         noteId: parsed.data,
-        folderId: (note?.folder_id as number | null | undefined) ?? null,
+        folderId: note?.folder_id ?? null,
       });
       return { success: true };
     } catch (error) {

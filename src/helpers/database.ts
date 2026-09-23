@@ -923,6 +923,12 @@ export class DatabaseManager {
     );
   }
 
+  getAudioFlaggedIds(): Array<{ id: number }> {
+    return this.sql
+      .prepare("SELECT id FROM transcriptions WHERE has_audio = 1")
+      .all() as Array<{ id: number }>;
+  }
+
   // IDs arrive both numeric (DB rows) and string-typed (audio filenames);
   // SQLite INTEGER affinity coerces either form, as it always has.
   clearAudioFlags(ids: Array<number | string>): { success: boolean } {

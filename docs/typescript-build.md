@@ -1757,18 +1757,14 @@ markdownMirror и др.) аудированы: каждый лениво тре�
 (`WhisperManagerLike`/`ParakeetManagerLike`/`LlmModelManagerLike`/
 `LlmDownloadStatusTracker` — payload'ы запинены characterization-тестами #43/#44),
 `SpeakerDatabase` (ветка null у upsert недостижима для путей вертикали),
-coordinator-менеджеры, `getAudioFlaggedIds` seam (см. ниже), ретроактивный
-noteId (см. ниже).
+coordinator-менеджеры.
 
-### Зафиксированные до-существующие дефекты (исправление — вне миграции)
-
-- Ретроактивное сопоставление спикеров: `getNotesWithUnmappedSpeakers()`
-  возвращает полные строки заметок, а поисковые вызовы биндят сырой id;
-  better-sqlite3 отвергает привязку объекта — каждая итерация падает в catch с
-  warning'ом. Поведение сохранено 1:1 (пин в коде с комментарием).
-- Seam `getAudioFlaggedIds` в delete-all-audio: у менеджера нет такого метода,
-  JS-корень оставлял его undefined — try/catch логировал пропуск. Сохранено
-  1:1.
+Оба дефекта, зафиксированных после миграции как «исправление вне миграции»,
+исправлены в issue #78: ретроактивное сопоставление спикеров использует
+`note.id` из `NoteRow[]` без каста, а delete-all-audio опирается на реальный
+`DatabaseManager.getAudioFlaggedIds()` с typed-подключением менеджера в
+registration (regression: `test/helpers/speakerRetroactiveMapping.test.js`,
+`test/helpers/transcriptionDataDeleteAllAudio.test.js`).
 
 ### Renderer strict
 

@@ -35,7 +35,7 @@ import {
 import { sendNoteUpdated, sendNoteDeleted } from "./notesEvents.js";
 import { getCortiToken } from "./cortiAuth.js";
 import { transcribeWithTinfoil } from "./tinfoilTranscription.js";
-import { transcribeWithGemini } from "./geminiTranscription.js";
+import { probeGeminiAudioDuration, transcribeGeminiFile } from "./geminiFileTranscription.js";
 import { AudioStorageManager } from "./audioStorage.js";
 import { AgentStreamRequestRegistry } from "./agentStreamRequestRegistry.js";
 import { createUploadCancelRegistry } from "./uploadCancelRegistry.js";
@@ -251,6 +251,19 @@ async function postRawAudioFile(
         request.end();
       }
     })().catch(finish);
+  });
+}
+
+function runGeminiFile(request: Parameters<typeof transcribeGeminiFile>[0]) {
+  return transcribeGeminiFile(request, {
+    fetch: (url, init) => {
+      const fetchInit: RequestInit & { useSessionCookies?: boolean } = {
+        ...init,
+        useSessionCookies: false,
+      };
+      return net.fetch(url, fetchInit);
+    },
+    probeDuration: probeGeminiAudioDuration,
   });
 }
 
@@ -644,6 +657,7 @@ export class IPCHandlers {
       resolveWhisperVadOptions: (context) => this._resolveWhisperVadOptions(context),
       environmentManager: this.environmentManager,
       proxyFetch: (url, init) => proxyFetch(url, init as RequestInit),
+      transcribeGeminiFile: runGeminiFile,
       transcribeWithCorti: async (args) => {
         const { transcribeAudio } =
           require("./cortiTranscription") as typeof import("./cortiTranscription.js");
@@ -897,7 +911,7 @@ export class IPCHandlers {
         postMultipart(url, body, boundary, headers, options),
       postRawAudioFile,
       transcribeWithTinfoil: (args) => transcribeWithTinfoil(args),
-      transcribeWithGemini: (args) => transcribeWithGemini(args),
+      transcribeGeminiFile: runGeminiFile,
       // Lazy like the pre-cutover handler: the Corti client is only loaded
       // when its route actually runs.
       transcribeWithCorti: async (args) => {

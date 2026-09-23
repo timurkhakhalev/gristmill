@@ -177,7 +177,8 @@ export function shouldUseByokDiarize(
     (cfg.cloudTranscriptionProvider === "openai" ||
       cfg.cloudTranscriptionProvider === "mistral" ||
       cfg.cloudTranscriptionProvider === "deepgram" ||
-      cfg.cloudTranscriptionProvider === "elevenlabs")
+      cfg.cloudTranscriptionProvider === "elevenlabs" ||
+      cfg.cloudTranscriptionProvider === "gemini")
   );
 }
 

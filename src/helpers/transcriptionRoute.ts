@@ -11,6 +11,7 @@ import {
   STREAMING_ONLY_PROVIDERS,
   DEEPGRAM_FILE_SIZE_LIMIT,
   ELEVENLABS_FILE_SIZE_LIMIT,
+  GEMINI_FILE_SIZE_LIMIT,
 } from "../config/transcriptionCapabilities.ts";
 import {
   isSecureHttpEndpoint,
@@ -28,10 +29,6 @@ import {
 } from "../services/transcriptionBaseUrl.ts";
 
 const BYOK_FILE_SIZE_LIMIT = 25 * 1024 * 1024;
-
-// Gemini's Interactions API takes inline base64 audio inside a 20 MB total
-// request cap; base64 inflates 4/3, so cap the raw audio lower.
-const GEMINI_FILE_SIZE_LIMIT = 14 * 1024 * 1024;
 
 export function byokFileSizeLimit(provider: string): number {
   return provider === "gemini"
@@ -278,6 +275,12 @@ export function resolveTranscriptionRoute({
     };
   }
   if (provider === "gemini") {
+    if (model !== "gemini-3.5-transcribe") {
+      return error(
+        "Gemini file transcription requires Gemini 3.5 Transcribe.",
+        "GEMINI_MODEL_UNSUPPORTED"
+      );
+    }
     return {
       transport: "proxied",
       provider,

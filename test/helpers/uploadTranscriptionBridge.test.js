@@ -115,7 +115,7 @@ async function createFixture() {
       },
     }),
     transcribeWithTinfoil: async () => ({ text: "tinfoil" }),
-    transcribeWithGemini: async () => ({ text: "gemini" }),
+    transcribeGeminiFile: async () => ({ success: true, text: "gemini" }),
     transcribeWithCorti: async () => ({ text: "corti" }),
     getCortiClientId: () => "id",
     getCortiClientSecret: () => "secret",

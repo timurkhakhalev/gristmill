@@ -121,14 +121,19 @@ test("proxied providers carry their quirks as route data", async () => {
   assert.equal(gemini.model, "gemini-3.5-transcribe");
   assert.equal(
     gemini.sizeCapBytes,
-    14 * 1024 * 1024,
-    "inline base64 audio must fit Gemini's 20 MB request cap"
+    2 * 1024 * 1024 * 1024,
+    "Gemini Files API accepts up to 2 GB"
   );
+  const geminiLive = await resolve({
+    cloudTranscriptionProvider: "gemini",
+    cloudTranscriptionModel: "gemini-3.5-transcribe-live",
+  });
+  assert.equal(geminiLive.code, "GEMINI_MODEL_UNSUPPORTED");
 });
 
 test("byokFileSizeLimit matches the per-provider route caps", async () => {
   const { byokFileSizeLimit } = await load();
-  assert.equal(byokFileSizeLimit("gemini"), 14 * 1024 * 1024);
+  assert.equal(byokFileSizeLimit("gemini"), 2 * 1024 * 1024 * 1024);
   assert.equal(byokFileSizeLimit("deepgram"), 2 * 1024 * 1024 * 1024);
   assert.equal(byokFileSizeLimit("elevenlabs"), 3 * 1024 * 1024 * 1024);
   assert.equal(byokFileSizeLimit("openai"), 25 * 1024 * 1024);

@@ -263,6 +263,7 @@ export function registerMeetingCoordinatorHandlers(
 
   let meetingTranscriptionStartInProgress = false;
   let meetingTranscriptionPrepareInProgress = false;
+  let prepareAbort: AbortController | null = null;
   let meetingTranscriptionPreparePromise: Promise<{
     success: boolean;
     error?: string;
@@ -977,8 +978,10 @@ export function registerMeetingCoordinatorHandlers(
 
   const connectRealtimeStreaming = async (
     event: { sender: WebContents },
-    options: MeetingConnectionOptions
+    options: MeetingConnectionOptions,
+    signal?: AbortSignal
   ) => {
+    signal?.throwIfAborted();
     const connectionKey = getMeetingConnectionKey(options);
     // Callers validate the provider against ALLOWED_MEETING_PROVIDERS first;
     // the registry lookup fails closed for anything left.
@@ -1025,6 +1028,7 @@ export function registerMeetingCoordinatorHandlers(
       ];
     }
 
+    signal?.throwIfAborted();
     const instances: Record<"mic" | "system", MeetingStreamingClient | null> = {
       mic: null,
       system: null,
@@ -1035,7 +1039,7 @@ export function registerMeetingCoordinatorHandlers(
     }
 
     try {
-      await Promise.all(
+      const connections = await Promise.allSettled(
         pairs.map(({ field, secret, source }) =>
           instances[field]!.connect({
             apiKey: secret,
@@ -1044,6 +1048,10 @@ export function registerMeetingCoordinatorHandlers(
           })
         )
       );
+      signal?.throwIfAborted();
+      for (const connection of connections) {
+        if (connection.status === "rejected") throw connection.reason;
+      }
       if (pairs.some(({ field }) => !instances[field]?.isConnected)) {
         throw new Error("Meeting transcription connection closed during startup.");
       }
@@ -1846,63 +1854,77 @@ export function registerMeetingCoordinatorHandlers(
 
   // ---- prepare / start / send / stop -------------------------------------------
 
-  ipcMain.handle("meeting-transcription-prepare", async (event, options: Record<string, unknown> = {}) => {
-    if (meetingTranscriptionPrepareInProgress || meetingTranscriptionStartInProgress) {
-      debugLogger.debug("Meeting transcription prepare already in progress, ignoring");
-      return { success: false, error: "Operation in progress" };
-    }
-    const provider = typeof options.provider === "string" ? options.provider : undefined;
-    if (!ALLOWED_MEETING_PROVIDERS.has(provider as never)) {
-      return { success: false, error: `Unsupported provider: ${provider}` };
-    }
-    if (provider === "local") return { success: true };
-
-    const { mode: systemAudioMode } = await getMeetingSystemAudioPlan();
-    const requestedConnectionKey = getMeetingConnectionKey(options as MeetingConnectionOptions);
-    if (
-      isMeetingStreamingConnected(systemAudioMode) &&
-      meetingConnectionKey === requestedConnectionKey
-    ) {
-      return { success: true, alreadyPrepared: true };
-    }
-    meetingTranscriptionPrepareInProgress = true;
-    meetingTranscriptionPreparePromise = (async () => {
-      let timeoutHandle: NodeJS.Timeout | undefined;
-      try {
-        await Promise.race([
-          connectRealtimeStreaming(event, options as MeetingConnectionOptions),
-          new Promise((_, reject) => {
-            timeoutHandle = setTimeout(() => reject(new Error("Prepare timed out")), 15000);
-          }),
-        ]);
-        return { success: true };
-      } catch (error) {
-        debugLogger.error("Meeting transcription prepare error", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return { success: false, error: error instanceof Error ? error.message : String(error) };
-      } finally {
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-        meetingTranscriptionPrepareInProgress = false;
-        meetingTranscriptionPreparePromise = null;
+  ipcMain.handle(
+    "meeting-transcription-prepare",
+    async (event, options: Record<string, unknown> = {}) => {
+      if (meetingTranscriptionPrepareInProgress || meetingTranscriptionStartInProgress) {
+        debugLogger.debug("Meeting transcription prepare already in progress, ignoring");
+        return { success: false, error: "Operation in progress" };
       }
-    })();
-    return meetingTranscriptionPreparePromise;
-  });
+      const provider = typeof options.provider === "string" ? options.provider : undefined;
+      if (!ALLOWED_MEETING_PROVIDERS.has(provider as never)) {
+        return { success: false, error: `Unsupported provider: ${provider}` };
+      }
+      if (provider === "local") return { success: true };
+
+      // Claim before the first await. Cancellation/timeout invalidate the result,
+      // but the slot belongs to the operation until its clients finish cleanup.
+      meetingTranscriptionPrepareInProgress = true;
+      const controller = new AbortController();
+      prepareAbort = controller;
+      const operation = (async () => {
+        try {
+          const { mode: systemAudioMode } = await getMeetingSystemAudioPlan();
+          controller.signal.throwIfAborted();
+          const requestedConnectionKey = getMeetingConnectionKey(
+            options as MeetingConnectionOptions
+          );
+          if (
+            isMeetingStreamingConnected(systemAudioMode) &&
+            meetingConnectionKey === requestedConnectionKey
+          ) {
+            return { success: true, alreadyPrepared: true };
+          }
+          await connectRealtimeStreaming(
+            event,
+            options as MeetingConnectionOptions,
+            controller.signal
+          );
+          return { success: true };
+        } finally {
+          meetingTranscriptionPrepareInProgress = false;
+          meetingTranscriptionPreparePromise = null;
+          prepareAbort = null;
+        }
+      })();
+      let onAbort: () => void;
+      const canceled = new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(controller.signal.reason);
+        controller.signal.addEventListener("abort", onAbort, { once: true });
+      });
+      const timeout = setTimeout(() => controller.abort(new Error("Prepare timed out")), 15000);
+      meetingTranscriptionPreparePromise = Promise.race([operation, canceled])
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          debugLogger.error("Meeting transcription prepare error", { error: message });
+          return { success: false, error: message };
+        })
+        .finally(() => {
+          clearTimeout(timeout);
+          controller.signal.removeEventListener("abort", onAbort);
+        });
+      return meetingTranscriptionPreparePromise;
+    }
+  );
 
   ipcMain.handle("meeting-transcription-cancel", async () => {
-    if (isMeetingStreamingConnected() || meetingLocalTimer) {
+    if (prepareAbort) {
+      prepareAbort.abort(new Error("Prepare canceled"));
+      return { success: true };
+    }
+    if (meetingTranscriptionStartInProgress || isMeetingStreamingConnected() || meetingLocalTimer) {
       return { success: false, reason: "recording-active" };
     }
-    // KNOWN LIFECYCLE DEFECT (documented, not changed by this migration): the
-    // flags below are cleared while the operations they guard are still
-    // running. A cancel during an in-flight prepare reports success, drops the
-    // guard, and a duplicate prepare can then interleave with the unresolved
-    // connect (last writer wins on the streaming refs and the connection key).
-    // There is deliberately no hard abort of the connect.
-    meetingTranscriptionPrepareInProgress = false;
-    meetingTranscriptionStartInProgress = false;
-    meetingTranscriptionPreparePromise = null;
     return { success: true };
   });
 
@@ -1921,7 +1943,7 @@ export function registerMeetingCoordinatorHandlers(
     options: Record<string, unknown> = {}
   ) => {
     if (meetingTranscriptionPreparePromise) await meetingTranscriptionPreparePromise;
-    if (meetingTranscriptionStartInProgress) {
+    if (meetingTranscriptionPrepareInProgress || meetingTranscriptionStartInProgress) {
       return { success: false, error: "Operation in progress" };
     }
     const provider = typeof options.provider === "string" ? options.provider : undefined;

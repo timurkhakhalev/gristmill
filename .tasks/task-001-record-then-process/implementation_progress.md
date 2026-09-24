@@ -63,3 +63,17 @@ Verification:
 
 Follow-up commit:
 - `58ef1f5c` — M2: fix capture boundary and IPC assertions.
+
+## M2 root-test follow-up 2
+
+Root's rerun passed all IPC cases but the 16 renderer store cases failed while importing `meetingAudioTimeline.ts`, whose CommonJS footer is still required by the main-build test. The renderer now imports frame-offset math from a small ESM-only utility; the timeline helper re-exports it and retains its existing CommonJS shape for main.
+
+Verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 warnings.
+- `git diff --check` — passed.
+- Renderer-imported meeting helpers/config were checked for CommonJS footers; none remain on the renderer path. The timeline's footer remains for main-build consumers.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+
+Follow-up commit:
+- `30ce4434` — M2: keep meeting timeline renderer import ESM-safe.

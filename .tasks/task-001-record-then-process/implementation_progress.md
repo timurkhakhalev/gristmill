@@ -194,3 +194,29 @@ Verification:
 
 Commit:
 - `bb69d9c7` — M4: satisfy persisted transcript prerequisites.
+
+## M1–M4 integration failure follow-up
+
+Status: done
+
+Fixed the full-run failures caused by stale capture fixtures and contracts, obsolete live-ASR source assertions, SRT end-time selection, delete-all IPC fixture shape, missing Arabic UI strings, and the strict type probes. Extracted the existing provider dispatch into one shared factory and added a main-safe meeting adapter so summary processing stays on the current provider routes while the Electron graph emits every relative import.
+
+Preserved constraints: meeting capture continues to store raw mic/system audio before processing, wait for acknowledged writes and native tail drain, and mark missing system audio incomplete. The old realtime streaming assertions were replaced with checks for post-Stop persisted processing, raw writes, watchdog interruption, and Stop drain. Existing renderer provider behavior, Notes/manual content, Local/Self-Hosted/file-import routes, and deletion/result semantics remain in place.
+
+Issues: root's first full run had 39 failures before these fixes. This worker did not run tests, builds, installs, or native rebuilds. Root must rerun the focused failures and full suite before marking integration verified.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 34 pre-existing warnings in the root lint pass and 2 React-refresh warnings in `src/`; no lint errors.
+- `git diff --check` — passed.
+
+Root-only focused verification:
+- `node --import tsx --test --test-concurrency=1 test/components/fieldDirectionPolicy.test.js test/components/meetingInterruptionWarning.test.js test/helpers/audioTapManagerWarnings.test.js test/helpers/calendarAvailabilityBridge.test.js test/helpers/localFileTranscriptionBridge.test.js test/helpers/meetingCoordinatorBridge.test.js test/helpers/meetingStreamingWiring.test.js test/helpers/transcriptFormatter.test.js test/helpers/transcriptionDataDeleteAllAudio.test.js test/locales/translationCoverage.test.js test/scripts/meetingCoordinatorTypeProbe.test.js test/scripts/noteFilesTypeProbe.test.js test/stores/meetingRecordingStoreDiarizationPublish.test.js test/stores/meetingRecordingStoreSystemAudioDegraded.test.js test/stores/meetingRecordingStoreSystemAudioSilence.test.js`
+- `pnpm run build:main` followed by `node --import tsx --test --test-concurrency=1 test/scripts/mainBuild.test.js`
+- After focused fixes pass, `pnpm test` (its `pretest` builds the main graph).
+
+Commits:
+- `8534657f` — M4: preserve merged SRT cue end times.
+- `f7823d59` — M4: keep meeting summary providers in the main graph.
+- `d9b022b7` — M4: align integration fixtures with record-first capture.
+- `dbada7c1` — M4: complete meeting Arabic and input direction coverage.

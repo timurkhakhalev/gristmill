@@ -180,4 +180,17 @@ Verification:
 
 Commits:
 - `cbc2c026` — M4: fix retention test fixtures.
-- Progress update — pending.
+- `0798ff68` — M4: record retention fixture verification.
+
+## M4 root-test follow-up 2
+
+Root's next retention run passed 29/32. The remaining three failures tried to attach a transcript directly to a run, but M3 persists the immutable provider response before transcript normalization. The retention fixtures now follow that persisted artifact order and verify provider-response JSON survives audio-only deletion alongside transcript text.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings; no warnings on changed files.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingRetention.test.js test/services/meetingResults.test.js test/services/uploadNotes.test.js test/helpers/retentionSettings.test.js`.
+
+Commit:
+- `bb69d9c7` — M4: satisfy persisted transcript prerequisites.

@@ -58,7 +58,7 @@ export interface CliBridgeOperations {
       audio: { hasAudio?: boolean | number; audioDurationMs?: number | null; provider?: string | null; model?: string | null }
     ): { success: boolean };
   };
-  deleteNoteInternal(id: number): { success: boolean };
+  deleteNoteInternal(id: number): Promise<{ success: boolean }>;
   deleteTranscriptionInternal(id: number): { success: boolean };
   mirrorWriteNote(note: NoteRow): unknown;
   approveAudioPath(filePath: string): void;
@@ -504,9 +504,9 @@ export class CliBridge {
         ipc.mirrorWriteNote(note);
         return { data: note };
       }),
-      param("DELETE", "/v1/notes/", "", "id", ({ params }) => {
+      param("DELETE", "/v1/notes/", "", "id", async ({ params }) => {
         const id = requireId(params, "note");
-        const result = ipc.deleteNoteInternal(id);
+        const result = await ipc.deleteNoteInternal(id);
         requireSuccess(result, `Note ${id} not found`);
         return NO_CONTENT;
       }),

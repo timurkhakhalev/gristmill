@@ -30,6 +30,7 @@ import {
   meetingSystemAudioInterruptedEventSchema,
   meetingAutoEndRequestEventSchema,
   meetingAutoEndRestartRequestEventSchema,
+  meetingStopRequestedEventSchema,
   type MeetingCoordinatorApi,
   type MeetingNotificationData,
 } from "../contracts/meetingCoordinator.js";
@@ -209,7 +210,7 @@ export function createMeetingCoordinatorBridge(
       subscribe(
         ipcRenderer,
         meetingCoordinatorEventChannels.meetingTranscriptionStopRequested,
-        z.string(),
+        meetingStopRequestedEventSchema,
         callback
       ),
     onMeetingSpeakerIdentified: (callback) =>

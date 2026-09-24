@@ -6,8 +6,9 @@ export function parseTranscriptSegments(raw: string): TranscriptSegment[] {
   try {
     const parsed = JSON.parse(raw) as Array<{
       text: string;
-      source: "mic" | "system";
+      source?: "mic" | "system";
       timestamp?: number;
+      endTimestamp?: number;
       speaker?: string;
       speakerName?: string;
       speakerIsPlaceholder?: boolean;
@@ -23,6 +24,7 @@ export function parseTranscriptSegments(raw: string): TranscriptSegment[] {
         text: s.text,
         source: s.source,
         timestamp: s.timestamp,
+        endTimestamp: s.endTimestamp,
         speaker: s.speaker,
         speakerName: s.speakerName,
         speakerIsPlaceholder: s.speakerIsPlaceholder,

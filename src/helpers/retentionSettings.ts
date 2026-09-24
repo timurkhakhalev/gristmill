@@ -16,7 +16,7 @@ export interface RetentionSettings {
 }
 
 export const DEFAULT_RETENTION_SETTINGS: RetentionSettings = {
-  audioRetentionDays: 30,
+  audioRetentionDays: 7,
   transcriptRetentionDays: 0, // 0 = keep transcripts forever
   dataRetentionEnabled: true,
   localHistoryPolicyResolved: false,

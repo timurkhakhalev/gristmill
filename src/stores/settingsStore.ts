@@ -1320,7 +1320,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     return "auto" as const;
   })(),
   telemetryEnabled: readBoolean("telemetryEnabled", false),
-  audioRetentionDays: readNumber("audioRetentionDays", 30),
+  audioRetentionDays: readNumber("audioRetentionDays", 7),
   transcriptRetentionDays: readNumber("transcriptRetentionDays", 0),
   dataRetentionEnabled: readBoolean("dataRetentionEnabled", true),
   saveDiscardedTranscriptions: readBoolean("saveDiscardedTranscriptions", false),
@@ -2726,7 +2726,7 @@ export async function initializeSettings(): Promise<void> {
       const parsed = Number(newValue);
       if (Number.isNaN(parsed)) {
         value =
-          key === "audioRetentionDays" ? 30 : (state as unknown as Record<string, unknown>)[key];
+          key === "audioRetentionDays" ? 7 : (state as unknown as Record<string, unknown>)[key];
       } else if (key === "audioRetentionDays") {
         value = Math.round(parsed);
       } else if (key === "micWarmHoldSeconds") {

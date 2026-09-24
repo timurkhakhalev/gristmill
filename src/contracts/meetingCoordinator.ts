@@ -179,6 +179,7 @@ export interface MeetingCaptureStopRequest {
   lastSequence: Partial<Record<MeetingSource, number>>;
   incomplete?: boolean;
   errorCode?: string;
+  suppressProcessing?: boolean;
 }
 
 export const meetingCaptureStopRequestSchema = z.object({
@@ -189,6 +190,7 @@ export const meetingCaptureStopRequestSchema = z.object({
   }),
   incomplete: z.boolean().optional(),
   errorCode: z.string().optional(),
+  suppressProcessing: z.boolean().optional(),
 });
 
 // ipcMain.handle keeps only the message when a promise rejects, so failures
@@ -419,6 +421,11 @@ export const meetingAutoEndRequestEventSchema = z.object({
   reason: z.enum(["mic-released", "silence", "process-exit"]).optional(),
 });
 
+export const meetingStopRequestedEventSchema = z.object({
+  sessionId: z.string().min(1),
+  suppressProcessing: z.boolean().optional(),
+});
+
 export const meetingAutoEndRestartRequestEventSchema = z.object({
   sessionId: z.string(),
 });
@@ -473,7 +480,7 @@ export interface MeetingCoordinatorApi {
   onMeetingTranscriptionSegment?(
     callback: (data: MeetingSegmentEvent) => void
   ): () => void;
-  onMeetingTranscriptionStopRequested?(callback: (sessionId: string) => void): () => void;
+  onMeetingTranscriptionStopRequested?(callback: (request: z.infer<typeof meetingStopRequestedEventSchema>) => void): () => void;
   onMeetingSpeakerIdentified?(
     callback: (data: MeetingSpeakerIdentifiedEvent) => void
   ): () => void;

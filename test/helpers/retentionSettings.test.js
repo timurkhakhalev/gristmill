@@ -27,10 +27,27 @@ test("reports a change when a retention period is shortened", () => {
 
 test("is idempotent when both values are unchanged — dual-window mount sync", () => {
   const { changed } = applyRetentionSettings(DEFAULT_RETENTION_SETTINGS, {
+    audioRetentionDays: DEFAULT_RETENTION_SETTINGS.audioRetentionDays,
+    transcriptRetentionDays: DEFAULT_RETENTION_SETTINGS.transcriptRetentionDays,
+  });
+  assert.equal(changed, false);
+});
+
+test("default is seven days while persisted 30-day and unlimited settings remain explicit", () => {
+  assert.equal(DEFAULT_RETENTION_SETTINGS.audioRetentionDays, 7);
+  const saved = applyRetentionSettings(DEFAULT_RETENTION_SETTINGS, {
     audioRetentionDays: 30,
     transcriptRetentionDays: 0,
   });
-  assert.equal(changed, false);
+  assert.equal(saved.settings.audioRetentionDays, 30);
+  assert.equal(saved.settings.transcriptRetentionDays, 0);
+  assert.equal(saved.changed, true);
+  const unlimited = applyRetentionSettings(saved.settings, {
+    audioRetentionDays: 0,
+    transcriptRetentionDays: 0,
+  });
+  assert.equal(unlimited.settings.audioRetentionDays, 0);
+  assert.equal(unlimited.changed, true);
 });
 
 test("keeps the current value when an incoming value is missing or unusable", () => {

@@ -11,6 +11,7 @@ import { buildNoteSearchQuery } from "./noteSearch.js";
 import { parseEventTime } from "./calendarAvailability.js";
 import { toDbTimestamp } from "./dbTimestamp.js";
 import { BUILTIN_ACTIONS } from "./builtinActions.js";
+import { noteContentHash } from "../utils/noteContentHash.js";
 import {
   meetingProcessingConfigSchema,
   meetingProcessingConfigErrorSchema,
@@ -999,6 +1000,12 @@ export class DatabaseManager {
       .all(noteId) as MeetingRecordingDbRow[]).map(toMeetingRecordingDto);
   }
 
+  listAllMeetingRecordings(): MeetingRecordingDto[] {
+    return (this.sql
+      .prepare("SELECT * FROM meeting_recordings ORDER BY started_at, id")
+      .all() as MeetingRecordingDbRow[]).map(toMeetingRecordingDto);
+  }
+
   createMeetingRecordingEpoch(
     recordingId: string,
     source: MeetingSource,
@@ -1414,14 +1421,46 @@ export class DatabaseManager {
     meetingRecordingIdSchema.parse(runId);
     const run = this.getMeetingProcessingRun(runId);
     if (!run || !speakerId.trim() || !displayName.trim()) return { success: false };
-    const noteId = (this.sql
-      .prepare("SELECT note_id FROM meeting_recordings WHERE id = ?")
-      .get(run.recordingId) as { note_id: number } | undefined)?.note_id;
-    if (noteId === undefined || this.isMeetingNoteDeletionPending(noteId)) return { success: false };
-    this.sql.prepare(
-      "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name) VALUES (?, ?, ?, ?) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name"
-    ).run(runId, speakerId, profileId, displayName.trim());
-    return { success: true };
+    if (profileId !== null && (!Number.isSafeInteger(profileId) || profileId < 1)) return { success: false };
+    const transaction = this.sql.transaction(() => {
+      const recording = this.sql
+        .prepare("SELECT note_id, current_run_id FROM meeting_recordings WHERE id = ?")
+        .get(run.recordingId) as { note_id: number; current_run_id: string | null } | undefined;
+      if (!recording || this.isMeetingNoteDeletionPending(recording.note_id)) return false;
+      this.sql.prepare(
+        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name) VALUES (?, ?, ?, ?) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name"
+      ).run(runId, speakerId, profileId, displayName.trim());
+      if (recording.current_run_id === runId) {
+        const note = this.sql
+          .prepare("SELECT content, transcript FROM notes WHERE id = ?")
+          .get(recording.note_id) as { content: string; transcript: string | null } | undefined;
+        if (note?.transcript) {
+          try {
+            const segments = JSON.parse(note.transcript) as Array<Record<string, unknown>>;
+            let changed = false;
+            for (const segment of segments) {
+              if (segment.speaker !== speakerId) continue;
+              segment.speakerName = displayName.trim();
+              segment.speakerIsPlaceholder = false;
+              segment.speakerStatus = "locked";
+              segment.speakerLocked = true;
+              segment.speakerLockSource = "user";
+              changed = true;
+            }
+            if (changed) {
+              const transcript = JSON.stringify(segments);
+              this.sql.prepare(
+                "UPDATE notes SET transcript = ?, enhanced_at_content_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+              ).run(transcript, noteContentHash(`${note.content}\n${transcript}`), recording.note_id);
+            }
+          } catch (error) {
+            throw new Error("Meeting transcript projection is invalid", { cause: error });
+          }
+        }
+      }
+      return true;
+    });
+    return { success: transaction() };
   }
 
   getMeetingRunSpeakerCorrections(runId: string): Array<{ speakerId: string; profileId: number | null; displayName: string }> {
@@ -1433,6 +1472,43 @@ export class DatabaseManager {
       profileId: row.profile_id,
       displayName: row.display_name,
     }));
+  }
+
+  selectMeetingProcessingRun(
+    recordingId: string,
+    runId: string,
+    projection: { transcript: string; summary: string | null; summaryPrompt: string | null } | null
+  ): { success: boolean; noteId?: number } {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingRecordingIdSchema.parse(runId);
+    const transaction = this.sql.transaction(() => {
+      const row = this.sql.prepare(
+        "SELECT r.note_id FROM meeting_recordings r JOIN meeting_processing_runs p ON p.recording_id = r.id WHERE r.id = ? AND p.id = ? AND NOT EXISTS (SELECT 1 FROM meeting_deletion_intents d WHERE d.note_id = r.note_id AND d.kind = 'note')"
+      ).get(recordingId, runId) as { note_id: number } | undefined;
+      if (!row) return { success: false as const };
+      if (projection) {
+        const note = this.sql.prepare("SELECT content FROM notes WHERE id = ?").get(row.note_id) as
+          | { content: string }
+          | undefined;
+        if (!note) throw new Error("Meeting note not found");
+        this.sql.prepare(
+          "UPDATE notes SET transcript = ?, enhanced_content = ?, enhancement_prompt = ?, enhanced_at_content_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(
+          projection.transcript,
+          projection.summary,
+          projection.summaryPrompt,
+          projection.summary === null
+            ? null
+            : noteContentHash(`${note.content}\n${projection.transcript}`),
+          row.note_id
+        );
+      }
+      this.sql.prepare(
+        "UPDATE meeting_recordings SET current_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      ).run(runId, recordingId);
+      return { success: true as const, noteId: row.note_id };
+    });
+    return transaction();
   }
 
   isMeetingNoteDeletionPending(noteId: number): boolean {

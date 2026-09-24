@@ -217,10 +217,18 @@ export type MeetingTranscriptArtifact = z.infer<typeof meetingTranscriptArtifact
 export const meetingSummaryArtifactSchema = z.object({ text: z.string() });
 export type MeetingSummaryArtifact = z.infer<typeof meetingSummaryArtifactSchema>;
 
+export const meetingSpeakerCorrectionSchema = z.object({
+  speakerId: z.string().min(1).max(200),
+  profileId: z.number().int().positive().nullable(),
+  displayName: z.string().min(1).max(200),
+});
+export type MeetingSpeakerCorrection = z.infer<typeof meetingSpeakerCorrectionSchema>;
+
 export const meetingProcessingResultDtoSchema = z.object({
   run: meetingProcessingRunDtoSchema,
   transcript: meetingTranscriptArtifactSchema.nullable(),
   summary: meetingSummaryArtifactSchema.nullable(),
+  speakerCorrections: z.array(meetingSpeakerCorrectionSchema),
 });
 export type MeetingProcessingResultDto = z.infer<typeof meetingProcessingResultDtoSchema>;
 

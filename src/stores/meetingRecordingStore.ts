@@ -49,8 +49,9 @@ import {
 export interface TranscriptSegment {
   id: string;
   text: string;
-  source: "mic" | "system";
+  source?: "mic" | "system";
   timestamp?: number;
+  endTimestamp?: number;
   speaker?: string;
   speakerName?: string;
   speakerIsPlaceholder?: boolean;
@@ -514,6 +515,7 @@ let sessionSystemAudioActive = false;
 let captureEpochIndices: Record<"mic" | "system", number> = { mic: 0, system: 0 };
 let captureLastSequences: Record<"mic" | "system", number> = { mic: -1, system: -1 };
 let captureDrainErrorCode: string | null = null;
+let suppressInitialProcessingForStop = false;
 
 export const useMeetingRecordingStore = create<MeetingRecordingState>()(() => ({
   isRecording: false,
@@ -822,6 +824,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           lastSequence: captureLastSequences,
           incomplete: true,
           errorCode: captureDrainErrorCode ?? "capture-start-canceled",
+          suppressProcessing: suppressInitialProcessingForStop,
         }).catch(() => undefined);
         if (result?.success) {
           useMeetingRecordingStore.setState({
@@ -861,6 +864,10 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           publishSystemAudioInterruption(data);
         }
       });
+      const stopRequestedCleanup = window.electronAPI?.onMeetingTranscriptionStopRequested?.((request) => {
+        if (request.sessionId !== sessionId || activeRecordingSessionId !== sessionId) return;
+        void stopRecording(sessionId, { suppressProcessing: request.suppressProcessing === true });
+      });
       const resumedCleanup = window.electronAPI?.onMeetingSystemAudioResumed?.(() => {
         if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return;
         useMeetingRecordingStore.setState({ systemCaptureStatus: "active" });
@@ -875,6 +882,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         pendingSystemAudioInterruption = null;
         interruptedCleanup?.();
         resumedCleanup?.();
+        stopRequestedCleanup?.();
       });
 
       if (preparePromise) {
@@ -1328,9 +1336,13 @@ export interface StopRecordingResult {
   stopped: boolean;
 }
 
-export async function stopRecording(expectedSessionId?: string): Promise<StopRecordingResult> {
+export async function stopRecording(
+  expectedSessionId?: string,
+  options: { suppressProcessing?: boolean } = {}
+): Promise<StopRecordingResult> {
   const canceledStart = meetingRecordingStartCoordinator.cancelActiveStart(expectedSessionId);
   if (canceledStart) {
+    suppressInitialProcessingForStop = options.suppressProcessing === true;
     isRecordingFlag = false;
     isStartingFlag = false;
     useMeetingRecordingStore.setState({
@@ -1339,6 +1351,7 @@ export async function stopRecording(expectedSessionId?: string): Promise<StopRec
       capturePhase: "saving",
     });
     await canceledStart;
+    suppressInitialProcessingForStop = false;
     useMeetingRecordingStore.setState({
       micPartial: "",
       systemPartial: "",
@@ -1383,6 +1396,7 @@ export async function stopRecording(expectedSessionId?: string): Promise<StopRec
         sessionId,
         lastSequence: captureLastSequences,
         incomplete: finalErrorCode !== null,
+        suppressProcessing: options.suppressProcessing === true,
         ...(finalErrorCode ? { errorCode: finalErrorCode } : {}),
       });
       if (result?.success) {

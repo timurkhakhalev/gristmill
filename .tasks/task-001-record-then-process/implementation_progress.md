@@ -29,3 +29,24 @@ Follow-up verification:
 
 Follow-up commits:
 - `0e0f08fd` — M1: correct recovery and deleted-audio expectations.
+
+## M2 implementation progress
+
+Status: done
+
+Implemented local capture with a pre-capture settings snapshot, main-owned immutable mic/system raw writes, bounded per-source renderer queues, ack-after-write, epoch offsets, and explicit flush/drain before finalization. Removed live meeting transcript publication from the capture flow, added Notes/tray capture states, and added safe quit confirmation that leaves capture and hotkeys active when canceled.
+
+Preserved constraints: recording is independent of network/provider availability; raw mic and system audio remain separate and are written before any processing; source restarts retain gaps; missing or failed sources finalize incomplete; native system Stop waits for tap close; note text and existing transcript remain untouched.
+
+Issues: native tap output is main-owned and does not have a renderer sequence number. Finalization now relies on its awaited process close for that source, while still checking renderer sequence numbers; a regression case also covers stdout chunks larger than 100 ms. The code commit is complete; tests and macOS hardware smoke remain root-only verification gates.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors; 36 warnings remain, including unreachable legacy meeting helpers exposed by the capture cutover and unrelated existing warnings.
+- `git diff --check` and staged diff check — passed.
+- Tests were not run by this worker, per the root-only execution constraint.
+- Root focused command, including added quit-flow coverage: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+- Root hardware smoke: use an isolated macOS arm64 user-data profile; record known continuous signals to mic and system audio offline; verify hide/reopen, Stop mid-speech, quit/cancel, device restart, and process kills at several points; compare recovered tails and durations against the reference and record bytes/durations/loss. Normal Stop must have no tail loss and each crash-recovered track must lose at most 1 second.
+
+Commits:
+- `9028b992` — M2: implement record-first capture and safe Stop.

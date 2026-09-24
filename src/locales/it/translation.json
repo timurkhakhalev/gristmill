@@ -61,7 +61,9 @@
     "openControlPanel": "Apri pannello di controllo",
     "hideControlPanel": "Nascondi pannello di controllo",
     "quit": "Esci da OpenHercules",
-    "tooltip": "OpenHercules"
+    "tooltip": "OpenHercules",
+    "recordingStatus": "Registrazione in corso",
+    "stopRecording": "Interrompi registrazione"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -91,6 +93,13 @@
         "url": "URL: {{url}}",
         "hint": "Prova a reinstallare l'app o ad avviarla con --log-level=debug."
       }
+    },
+    "meetingQuit": {
+      "title": "Registrazione in corso",
+      "message": "Interrompere e salvare la registrazione prima di uscire?",
+      "stopAndQuit": "Interrompi ed esci",
+      "cancel": "Annulla",
+      "stopFailed": "La registrazione non è ancora stata salvata. OpenHercules resterà aperto."
     }
   },
   "startup": {
@@ -1094,7 +1103,21 @@
         "description": "Set audio and transcript retention periods. Zero means keep indefinitely."
       },
       "audioRetention": "Audio retention (days)",
-      "transcriptRetention": "Transcript retention (days)"
+      "transcriptRetention": "Transcript retention (days)",
+      "audioRetentionLabel": "Conservazione dell’audio delle riunioni",
+      "audioRetentionDescription": "Giorni di conservazione dell’audio originale. 0 significa fino all’eliminazione manuale.",
+      "retentionDecreaseTitle": "Ridurre la conservazione audio?",
+      "retentionDecreaseDescription": "Le registrazioni più vecchie di {{days}} giorni saranno eliminate alla prossima pulizia.",
+      "retentionDecreaseConfirm": "Riduci conservazione",
+      "days": "giorni",
+      "deleteAllAudioLabel": "Elimina l’audio salvato",
+      "deleteAllAudioDescription": "Elimina tracce delle riunioni e vecchie registrazioni. Note, trascrizioni e riepiloghi restano su questo dispositivo.",
+      "deleteAllAudioButton": "Elimina tutto l’audio",
+      "deleteAllAudioTitle": "Eliminare tutto l’audio salvato?",
+      "deleteAllAudioConfirmDescription": "La registrazione in corso verrà interrotta in sicurezza senza avviare la trascrizione. Poi l’audio salvato verrà eliminato.",
+      "deleteAllAudioConfirm": "Elimina tutto l’audio",
+      "deleteAllAudioDone": "Eliminati {{count}} elemento/i audio.",
+      "deleteAllAudioFailed": "Impossibile eliminare {{count}} elemento/i audio. Riprova."
     },
     "prompts": {
       "description": "Visualizza, personalizza e testa il prompt di sistema unificato che gestisce la correzione del testo e il rilevamento delle istruzioni",
@@ -1441,7 +1464,23 @@
       "conversationWillAppear": "La conversazione apparirà qui...",
       "linkedEvent": "Evento collegato",
       "noFolder": "Nessuna cartella",
-      "participants": "Partecipanti"
+      "participants": "Partecipanti",
+      "capture": {
+        "preparing": "Preparazione della registrazione locale…",
+        "recording": "Registrazione audio in corso",
+        "saving": "Salvataggio della parte finale…",
+        "saved": "Registrazione audio salvata",
+        "incomplete": "Registrazione salvata con audio mancante",
+        "failed": "Impossibile avviare la registrazione",
+        "mic": "Microfono",
+        "system": "Audio di sistema",
+        "active": "Acquisizione audio",
+        "reconnecting": "Riconnessione",
+        "unavailable": "Non disponibile",
+        "inactive": "Non avviato",
+        "writingToDisk": "Scrittura su disco",
+        "incompleteReason": "Potrebbe mancare parte dell’audio. Quello salvato prima del problema viene conservato."
+      }
     },
     "participants": {
       "attendee": "partecipante",
@@ -2142,5 +2181,56 @@
     "systemAudio": "System audio",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
+  },
+  "meetingResults": {
+    "title": "Registrazione della riunione",
+    "loadError": "Impossibile caricare la cronologia.",
+    "selectError": "Impossibile selezionare il risultato.",
+    "createError": "Impossibile creare un’esecuzione di elaborazione.",
+    "retryError": "Impossibile riprovare questa esecuzione.",
+    "exportError": "Esportazione audio non riuscita.",
+    "exported": "Audio esportato.",
+    "speakerError": "Impossibile salvare la correzione del parlante.",
+    "deleteError": "Eliminazione audio non riuscita. Puoi riprovare.",
+    "version": "Versione del risultato",
+    "newAsr": "Nuova trascrizione",
+    "newSummary": "Nuovo riepilogo",
+    "retry": "Riprova",
+    "deleteAudio": "Elimina audio",
+    "retryDelete": "Riprova eliminazione audio",
+    "deleteAudioTitle": "Eliminare l’audio originale?",
+    "deleteAudioDescription": "Verranno rimosse le tracce salvate di microfono e sistema. Trascrizioni e riepiloghi già salvati in Note restano disponibili.",
+    "deleteAudioConfirm": "Elimina audio",
+    "audioUnavailable": "L’audio originale è stato eliminato o non è disponibile. Trascrizione, riproduzione ed esportazione sono disattivate.",
+    "exportMixed": "Esporta WAV mixato",
+    "exportMic": "Esporta WAV del microfono",
+    "exportSystem": "Esporta WAV di sistema",
+    "saveSpeaker": "Salva parlante",
+    "speakerProfile": "Profilo del parlante",
+    "noSpeakerProfile": "Nessun profilo",
+    "captureIncomplete": "La registrazione è terminata in anticipo; audio e risultati salvati sono conservati.",
+    "deleteActiveNoteTitle": "Interrompere ed eliminare questa registrazione?",
+    "deleteActiveNoteDescription": "La registrazione si fermerà senza avviare la trascrizione, poi verranno eliminati nota, audio e cronologia.",
+    "stopBeforeDeleteError": "Impossibile interrompere la registrazione in sicurezza. La nota è stata conservata.",
+    "stage": {
+      "prepare": "Preparazione dell’audio",
+      "asr": "Trascrizione in corso",
+      "normalize": "Salvataggio della trascrizione",
+      "summary": "Scrittura del riepilogo"
+    },
+    "status": {
+      "pending": "In attesa",
+      "running": "In corso",
+      "blocked": "Bloccato",
+      "failed": "Non riuscito",
+      "cancelled": "Annullato",
+      "complete": "Completato"
+    },
+    "capture": {
+      "recording": "Registrazione",
+      "finalizing": "Salvataggio della registrazione",
+      "ready": "Salvato",
+      "incomplete": "Incompleto"
+    }
   }
 }

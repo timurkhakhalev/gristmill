@@ -16,6 +16,7 @@ const START_ARGS = {
   folderId: null,
   autoEndEligible: false,
 };
+const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
 
 function createElectronAPI({ systemAudioMode, systemAudioStrategy }) {
   const listeners = { systemAudioInterrupted: null, systemAudioResumed: null };
@@ -29,7 +30,7 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }) {
     }),
     meetingTranscriptionStart: async () => ({
       success: true,
-      recordingId: "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1",
+      recordingId: RECORDING_ID,
       originAt: new Date().toISOString(),
       systemAudioMode,
       systemAudioStrategy,
@@ -151,6 +152,8 @@ test("resumed audio preserves a capture-loss warning buffered during microphone 
 test("a mic-only fallback discards buffered system-audio interruptions", async (t) => {
   const { listeners, store, finishStart } = await startWithPendingMicrophone(t, {
     success: true,
+    recordingId: RECORDING_ID,
+    originAt: new Date().toISOString(),
     systemAudioMode: "unsupported",
     systemAudioStrategy: "unsupported",
   });
@@ -178,6 +181,8 @@ test("failed startup removes early interruption listeners before another session
 
   api.meetingTranscriptionStart = async () => ({
     success: true,
+    recordingId: "c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3",
+    originAt: new Date().toISOString(),
     systemAudioMode: "native",
     systemAudioStrategy: "native",
   });

@@ -77,3 +77,16 @@ Verification:
 
 Follow-up commit:
 - `30ce4434` — M2: keep meeting timeline renderer import ESM-safe.
+
+## M2 root-test follow-up 3
+
+Root's next focused run passed 41/50; the remaining nine store failures came from outdated mocks, not capture behavior. The shared fake AudioContext now reports the requested sample rate, and successful mocked starts in the mic-only fallback and retry cases now include the durable recording ID and origin required by the IPC contract. Production 24 kHz validation and raw capture are unchanged.
+
+Verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 warnings.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+
+Follow-up commit:
+- `b7901205` — M2: align capture store mocks with durable start contract.

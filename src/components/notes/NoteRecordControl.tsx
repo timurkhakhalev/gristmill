@@ -40,6 +40,8 @@ export function RecordingWave({ className }: { className?: string }) {
 interface NoteRecordControlProps {
   isRecording: boolean;
   isProcessing: boolean;
+  capturePhase: "idle" | "preparing" | "recording" | "saving" | "saved" | "incomplete" | "failed";
+  captureStartedAt: number | null;
   disabled?: boolean;
   onStart: () => void;
   onStop: () => void;
@@ -49,6 +51,8 @@ interface NoteRecordControlProps {
 export default function NoteRecordControl({
   isRecording,
   isProcessing,
+  capturePhase,
+  captureStartedAt,
   disabled = false,
   onStart,
   onStop,
@@ -61,18 +65,35 @@ export default function NoteRecordControl({
       setElapsed(0);
       return;
     }
-    const id = setInterval(() => setElapsed((s) => s + 1), 1000);
+    const update = () =>
+      setElapsed(
+        captureStartedAt == null ? 0 : Math.max(0, Math.floor((Date.now() - captureStartedAt) / 1000))
+      );
+    update();
+    const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [isRecording]);
+  }, [captureStartedAt, isRecording]);
+
+  const isCapturePending = capturePhase === "preparing" || capturePhase === "saving";
 
   return (
     <div
       className={cn(
         "h-[30px] shrink-0 overflow-hidden transition-[width] duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]",
-        isRecording ? "w-40" : "w-[30px]"
+        isRecording || isCapturePending ? "w-40" : "w-[30px]"
       )}
     >
-      {isRecording ? (
+      {isCapturePending ? (
+        <span
+          className={cn(
+            "flex h-[30px] w-full items-center justify-center gap-2 rounded-full px-3 text-xs text-foreground/75",
+            RECORDING_SURFACE
+          )}
+        >
+          <Loader2 size={13} className="animate-spin" />
+          {t(`notes.editor.capture.${capturePhase}`)}
+        </span>
+      ) : isRecording ? (
         <button
           type="button"
           onClick={onStop}
@@ -105,7 +126,7 @@ export default function NoteRecordControl({
           type="button"
           onClick={onStart}
           disabled={disabled || isProcessing}
-          aria-label={t("notes.editor.transcribe")}
+          aria-label={t("notes.editor.startRecording")}
           className={cn(
             "flex h-[30px] w-[30px] items-center justify-center rounded-full",
             GRADIENT_CIRCLE,

@@ -60,6 +60,8 @@
   "tray": {
     "openControlPanel": "Открыть панель управления",
     "hideControlPanel": "Скрыть панель управления",
+    "recordingStatus": "Идёт запись",
+    "stopRecording": "Остановить запись",
     "quit": "Закрыть OpenHercules",
     "tooltip": "OpenHercules"
   },
@@ -78,6 +80,13 @@
     "controlPanelTitle": "Панель управления"
   },
   "dialog": {
+    "meetingQuit": {
+      "title": "Идёт запись",
+      "message": "Остановить и сохранить запись перед выходом?",
+      "stopAndQuit": "Остановить и выйти",
+      "cancel": "Отмена",
+      "stopFailed": "Не удалось сохранить запись. OpenHercules останется открытым."
+    },
     "openLink": {
       "title": "Не удалось открыть ссылку",
       "message": "Не удалось открыть ссылку в браузере:\n{{url}}\n\nОшибка: {{error}}"
@@ -1431,8 +1440,8 @@
       "raw": "Исходный",
       "enhanced": "Улучшенный",
       "saving": "Сохранение",
-      "transcriptEmptyTitle": "Пока ничего не записано",
-      "transcriptEmptyDescription": "Нажмите «Запись», чтобы начать транскрипцию. Всё сказанное появится здесь в реальном времени.",
+      "transcriptEmptyTitle": "Расшифровки пока нет",
+      "transcriptEmptyDescription": "Сначала запишите аудио. Расшифровка появится после обработки записи.",
       "startRecording": "Начать запись",
       "generateSummary": "Создать ИИ-сводку",
       "startWriting": "Начните писать...",
@@ -1443,7 +1452,23 @@
       "conversationWillAppear": "Разговор появится здесь...",
       "linkedEvent": "Связанное событие",
       "noFolder": "Без папки",
-      "participants": "Участники"
+      "participants": "Участники",
+      "capture": {
+        "preparing": "Подготовка локальной записи…",
+        "recording": "Запись аудио",
+        "saving": "Сохранение хвоста аудио…",
+        "saved": "Аудиозапись сохранена",
+        "incomplete": "Запись сохранена не полностью",
+        "failed": "Не удалось начать запись",
+        "mic": "Микрофон",
+        "system": "Системный звук",
+        "active": "Записывается",
+        "reconnecting": "Переподключение",
+        "unavailable": "Недоступен",
+        "inactive": "Не запущен",
+        "writingToDisk": "Запись на диск",
+        "incompleteReason": "Часть аудио может отсутствовать. Сохранены данные, полученные до ошибки."
+      }
     },
     "participants": {
       "attendee": "участник",

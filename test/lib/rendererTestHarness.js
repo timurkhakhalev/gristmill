@@ -188,7 +188,16 @@ function installMicCaptureGlobals(t) {
   }
   class FakeAudioWorkletNode {
     constructor() {
-      this.port = { onmessage: null, postMessage() {} };
+      this.port = {
+        onmessage: null,
+        postMessage: (message) => {
+          if (message?.type === "flush") {
+            queueMicrotask(() =>
+              this.port.onmessage?.({ data: { type: "flush-complete", lastSequence: -1 } })
+            );
+          }
+        },
+      };
     }
     connect() {}
     disconnect() {}

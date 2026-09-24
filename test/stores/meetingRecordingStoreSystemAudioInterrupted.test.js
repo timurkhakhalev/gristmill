@@ -11,8 +11,8 @@ const {
 // several times in one call and each break is worth surfacing (#1990).
 
 const START_ARGS = {
-  noteId: null,
-  noteTitle: null,
+  noteId: 11,
+  noteTitle: "Meeting",
   folderId: null,
   autoEndEligible: false,
 };
@@ -29,16 +29,17 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }) {
     }),
     meetingTranscriptionStart: async () => ({
       success: true,
+      recordingId: "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1",
+      originAt: new Date().toISOString(),
       systemAudioMode,
       systemAudioStrategy,
     }),
     meetingTranscriptionSetSystemAudioAvailable: async () => ({ success: true }),
     meetingTranscriptionStop: async () => ({ success: true }),
-    meetingTranscriptionSend: () => {},
-    onMeetingTranscriptionSegment: noopListener,
-    onMeetingSpeakerIdentified: noopListener,
-    onMeetingSpeakersMerged: noopListener,
-    onMeetingSessionSpeakerConfigUpdated: noopListener,
+    meetingTranscriptionSend: async (_buffer, _source, _sessionId, packet) => ({
+      success: true,
+      sequence: packet.sequence,
+    }),
     onMeetingTranscriptionError: noopListener,
     onMeetingTranscriptionFatalError: noopListener,
     onMeetingSystemAudioSilent: noopListener,
@@ -56,6 +57,7 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }) {
         if (listeners.systemAudioResumed === callback) listeners.systemAudioResumed = null;
       };
     },
+    onMeetingTranscriptionStopRequested: noopListener,
   };
   return { api, listeners };
 }

@@ -4,6 +4,7 @@ import fs from "fs";
 import debugLogger from "./debugLogger.js";
 import dockManager from "./dockManager.js";
 import { i18nMain } from "./i18nMain.js";
+import { MenuManager } from "./menuManager.js";
 import type { WindowManager } from "./windowManager.js";
 
 // Minimal structural slice of the lazy "canvas" fallback dependency.
@@ -23,6 +24,15 @@ export class TrayManager {
   windowManager: WindowManager | null = null;
   attachedControlPanels = new WeakSet<BrowserWindow>();
   createControlPanelCallback: (() => Promise<void> | void) | undefined;
+  meetingCaptureActive = false;
+  stopMeetingCapture: (() => void) | null = null;
+
+  setMeetingCaptureStatus(active: boolean, stop?: () => void): void {
+    this.meetingCaptureActive = active;
+    this.stopMeetingCapture = active ? stop ?? null : null;
+    MenuManager.setMeetingCaptureStatus(active, this.stopMeetingCapture ?? undefined);
+    this.updateTrayMenu();
+  }
 
   setWindows(controlPanelWindow: BrowserWindow | null): void {
     this.controlPanelWindow = controlPanelWindow;
@@ -265,6 +275,16 @@ export class TrayManager {
           void this.toggleControlPanelFromTray();
         },
       },
+      ...(this.meetingCaptureActive
+        ? [
+            { label: i18nMain.t("tray.recordingStatus"), enabled: false } as MenuItemConstructorOptions,
+            {
+              label: i18nMain.t("tray.stopRecording"),
+              click: () => this.stopMeetingCapture?.(),
+            } as MenuItemConstructorOptions,
+            { type: "separator" } as MenuItemConstructorOptions,
+          ]
+        : []),
       { type: "separator" },
       {
         label: i18nMain.t("tray.quit"),

@@ -1,8 +1,11 @@
+import type { MeetingRecordingStorage as MeetingRecordingStorageType } from "./meetingRecordingStorage.js";
+
 const fs = require("fs");
 const path = require("path");
 const { app } = require("electron");
 const debugLogger = require("./debugLogger");
 const { parseDbTimestamp } = require("./dbTimestamp");
+const MeetingRecordingStorage = require("./meetingRecordingStorage");
 
 export interface AudioCleanupDatabase {
   clearAudioFlags(ids: string[]): unknown;
@@ -10,9 +13,11 @@ export interface AudioCleanupDatabase {
 
 export class AudioStorageManager {
   readonly audioDir: string;
+  readonly meetingRecordings: MeetingRecordingStorageType;
 
   constructor() {
     this.audioDir = path.join(app.getPath("userData"), "audio");
+    this.meetingRecordings = new MeetingRecordingStorage({ userDataPath: app.getPath("userData") });
     this.ensureAudioDir();
   }
 

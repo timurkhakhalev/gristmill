@@ -116,3 +116,23 @@ Verification:
 
 Follow-up commit:
 - `0f6331de` — M2: assert Stop outcomes and order async test cleanup.
+
+## M3 implementation progress
+
+Status: done
+
+Implemented a persisted main-process worker that resumes and claims SQLite runs after recovery and retention readiness, processes only saved configuration snapshots, prioritizes capture, retains provider responses before parsing, and persists transcript and summary artifacts as separate stages. Added the full-timeline mono WAV mixer, run list/create/retry IPC, existing Local transcription and post-Stop diarization, and summary generation through the existing provider factories and prompts.
+
+Preserved constraints: mic/system epochs and provider responses remain separate and immutable; M3 derives one processing WAV without changing raw tracks; no request is issued while capture is active; issued remote ASR can finish and save raw JSON while normalization/summary wait; no new Self-Hosted meeting route or fallback/splitting was added; manual Notes remain unchanged and run results do not expose raw provider JSON.
+
+Issues: the first Local transcript projection duplicated existing speaker-text merge behavior and omitted speaker labels in its text. Reused the existing `speakerMerge` helpers and added Local-path coverage. Live mic/system tail-loss remains the explicitly deferred M2 hardware check for the final verification pass.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors; 36 warnings remain in pre-existing or unrelated files, including M2's unused realtime-helper warnings after the capture cutover.
+- `git diff --check` and staged diff check — passed.
+- Tests were not run by this worker, per the root-only execution constraint. Root command: `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/remoteTranscriptionIpc.test.js test/helpers/geminiFileTranscription.test.js test/helpers/retryTranscriptionHandler.test.js test/helpers/transcriptionRoute.test.js test/services/fileTranscriptionDiarizationWarning.test.js`.
+- The mixer suite includes a real FFmpeg sample/offset/gap/duration check and skips only when FFmpeg is unavailable. Real provider calls and hardware smoke were not run by this worker.
+
+Commit:
+- `e192dd51` — M3: add durable post-stop meeting processing.

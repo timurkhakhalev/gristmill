@@ -16,3 +16,16 @@ Verification:
 
 Commits:
 - `bd0d603b` — M1: add durable meeting recording storage.
+- `52714ef9` — M1: record implementation verification status.
+
+## M1 verification follow-up
+
+Root's focused run found two issues. The audio deletion test incorrectly expected ASR reprocessing after audio removal; it now verifies that ASR retry is blocked while transcript-backed summary work remains available. The recovery test supplied an odd-length PCM buffer to the append API; it now writes whole frames. Recovery also now always marks an open recording found at startup as incomplete, even when all recovered bytes are complete frames.
+
+Follow-up verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 12 pre-existing warnings; no warnings on M1 files.
+- Tests remain root-only and were not rerun by this worker.
+
+Follow-up commits:
+- `0e0f08fd` — M1: correct recovery and deleted-audio expectations.

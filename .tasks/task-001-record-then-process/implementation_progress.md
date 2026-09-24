@@ -103,3 +103,16 @@ Verification:
 
 Follow-up commit:
 - `beda40d5` — M2: provide shared browser timer cleanup in store tests.
+
+## M2 root-test follow-up 5
+
+Root's 50/50 run still logged Stop errors because pending-start cleanup hooks ran after the fake window had been restored; prior tests discarded the stop result. The SystemAudioInterrupted tests now register awaited cleanup before browser globals, explicitly assert successful Stop results, and assert the canceled-start Stop is a no-op. No production error handling was changed.
+
+Verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 warnings.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+
+Follow-up commit:
+- `0f6331de` — M2: assert Stop outcomes and order async test cleanup.

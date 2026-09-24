@@ -22,11 +22,12 @@ function createFinishedRecording(db, storage, anchor, ageDays) {
   storage.closeEpochWriter(recording.id, "mic", 0);
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, storage.recoverEpoch(recording.id, "mic", 0));
   db.markMeetingRecordingFinalizing(recording.id);
-  db.finalizeMeetingRecording(recording.id, {
+  const finalized = db.finalizeMeetingRecording(recording.id, {
     captureState: "ready",
     endedAt: new Date(anchor - ageDays * DAY).toISOString(),
   });
-  return { note, recording: db.getMeetingRecording(recording.id) };
+  assert.ok(finalized.initialRun, "finalizing a ready recording creates its first processing run");
+  return { note, recording: finalized.recording, initialRun: finalized.initialRun };
 }
 
 function runCleanup(db, storage, settings, overrides = {}) {
@@ -131,6 +132,7 @@ test("note deletion waits for the active reader before removing its Note and run
   storage.writeRunArtifact(initialRun.id, "transcript", { text: "Saved words" });
   assert.equal(db.setMeetingRunArtifact(initialRun.id, "transcript").success, true);
   const intent = db.beginMeetingNoteDeletion(note.id);
+  assert.ok(intent, "note deletion must persist an intent before removing files");
   let releaseReader;
   let readerStarted;
   const readerWait = new Promise((resolve) => { readerStarted = resolve; });

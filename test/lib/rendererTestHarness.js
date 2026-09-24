@@ -169,8 +169,9 @@ function installMicCaptureGlobals(t) {
     smoothingTimeConstant: 0,
   });
   class FakeAudioContext {
-    constructor() {
+    constructor({ sampleRate = 48_000 } = {}) {
       this.state = "running";
+      this.sampleRate = sampleRate;
       this.audioWorklet = { addModule: async () => {} };
       this.destination = {};
     }

@@ -89,8 +89,10 @@ import { generateMeetingSummary } from "./meetingSummary.js";
 import { BYOK_API_KEYS } from "../config/secretKeys.js";
 import { registerDesktopSettingsHandlers } from "./desktopSettingsIpcHandlers.js";
 import { listLocalTranscriptionModels } from "./localTranscriptionModels.js";
+import { getEnterpriseAIModel } from "./enterpriseAiProviders.js";
 import markdownMirror from "./markdownMirror.js";
 import modelManagerBundle from "./modelManagerBridge.js";
+import localReasoningBridge from "../services/localReasoningBridge.js";
 import type { NoteItem } from "../contracts/notes.js";
 import type { TranscriptionResponse } from "../contracts/localFileTranscription.js";
 import type { EnvironmentManagerWithByok } from "./environment.js";
@@ -865,9 +867,7 @@ export class IPCHandlers {
       mintStoredCortiToken: (tokenOptions) => this._mintStoredCortiToken(tokenOptions),
       generateText: (options) => require("ai").generateText(options),
       getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
-        (
-          require("./enterpriseAiProviders") as typeof import("./enterpriseAiProviders.js")
-        ).getEnterpriseAIModel(
+        getEnterpriseAIModel(
           provider,
           model,
           apiKey,
@@ -1183,40 +1183,17 @@ export class IPCHandlers {
           expected && expected > 0 ? expected : MAX_SPEAKER_COUNT
         ).map(({ speaker, start, end }) => ({ speaker, start, end }));
       },
-      summarize: (input, summaryConfig, signal) => {
-        const providers = require("../services/ai/providers") as {
-          getAIModel: (
-            provider: string,
-            model: string,
-            apiKey: string,
-            baseUrl?: string,
-            options?: { disableThinking?: boolean; omitAuthorization?: boolean }
-          ) => Promise<unknown>;
-        };
-        const localBridge = require("../services/localReasoningBridge").default as {
-          processText(
-            input: string,
-            model: string,
-            config: import("../contracts/reasoning.js").LocalReasoningConfig,
-            signal?: AbortSignal
-          ): Promise<string>;
-        };
+      summarize: async (input, summaryConfig, signal) => {
+        const providers = await import("./meetingAiProviders.js");
         return generateMeetingSummary(input, summaryConfig, {
           getAIModel: (provider, model, apiKey, baseUrl, options) =>
-            providers.getAIModel(provider, model, apiKey, baseUrl, options),
+            providers.getMeetingAIModel(provider, model, apiKey, baseUrl, options),
           generateText: (options) => require("ai").generateText(options),
           processLocalText: (text, model, options, abortSignal) =>
-            localBridge.processText(text, model, options as import("../contracts/reasoning.js").LocalReasoningConfig, abortSignal),
+            localReasoningBridge.processText(text, model, options, abortSignal),
           getCredential: getMeetingCredential,
-          getEnterpriseAIModel: (provider, model, apiKey, enterprise) => {
-            const factory = require("./enterpriseAiProviders").getEnterpriseAIModel as (
-              provider: string,
-              model: string,
-              apiKey: string,
-              enterprise: Record<string, unknown>
-            ) => Promise<unknown>;
-            return factory(provider, model, apiKey, enterprise);
-          },
+          getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
+            getEnterpriseAIModel(provider, model, apiKey, enterprise),
           validateEnterpriseEndpoint,
           runBedrockRequest: (operation, options) => runBedrockRequest(operation, options),
         }, signal);
@@ -1313,8 +1290,8 @@ export class IPCHandlers {
     // eager-loads the enterprise SDKs.
     registerReasoningHandlers(ipcMain, {
       localService: (
-        require("../services/localReasoningBridge") as typeof import("../services/localReasoningBridge.js")
-      ).default,
+        localReasoningBridge
+      ),
       getAnthropicKey: () => this.environmentManager.getAnthropicKey(),
       proxyFetch: (url, init) => proxyFetch(url, init as RequestInit),
       extractAnthropicText,
@@ -1326,9 +1303,7 @@ export class IPCHandlers {
       validateEnterpriseEndpoint,
       generateText: (options) => require("ai").generateText(options),
       getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
-        (
-          require("./enterpriseAiProviders") as typeof import("./enterpriseAiProviders.js")
-        ).getEnterpriseAIModel(
+        getEnterpriseAIModel(
           provider,
           model,
           apiKey,

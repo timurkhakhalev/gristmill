@@ -1,4 +1,4 @@
-import { matchesHost } from "../../utils/urlUtils";
+import { matchesHost } from "../../utils/urlUtils.js";
 
 const OPENCODE_HOST = "opencode.ai";
 const SESSION_HEADER = "x-opencode-session";

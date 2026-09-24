@@ -144,6 +144,7 @@ export interface CoordinatorLiveSpeakerIdentifier {
 export interface MeetingCoordinatorDeps {
   databaseManager: DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase;
   meetingRecordingStorage: MeetingCaptureEpochStorage;
+  cancelInitialProcessingRun?: (runId: string) => boolean;
   diarizationManager: import("./meetingDiarizationPublication.js").DiarizationPublicationDiarizationManager;
   meetingDetectionEngine: MeetingDetectionEngine | null;
   audioTapManager: Pick<AudioTapManager, "isSupported" | "start" | "stop"> | null;
@@ -225,7 +226,7 @@ export type IpcMainLike = {
 
 export interface MeetingCoordinatorRuntime {
   isRecording(): boolean;
-  requestSafeStop(): Promise<{ success: boolean; captureState?: "ready" | "incomplete" }>;
+  requestSafeStop(suppressProcessing?: boolean): Promise<{ success: boolean; captureState?: "ready" | "incomplete" }>;
   // Recording start links the live session to its note; the notes vertical's
   // roster refresh only applies while that link is current.
   linkRecordingSessionToNote(noteId: number | null): void;
@@ -2103,6 +2104,7 @@ export function registerMeetingCoordinatorHandlers(
       incomplete?: boolean;
       lastSequence?: Partial<Record<MeetingAudioSource, number>>;
       errorCode?: string;
+      suppressProcessing?: boolean;
     } = {}
   ) => {
     const capture = activeCaptureSession;
@@ -2131,6 +2133,7 @@ export function registerMeetingCoordinatorHandlers(
         lastSequence: options.lastSequence ?? {},
         errorCode: stopError,
       });
+      if (options.suppressProcessing) deps.cancelInitialProcessingRun?.(result.initialRunId);
       activeCaptureSession = null;
       activeCaptureSessionId = null;
       activeCaptureOwner = null;
@@ -2180,7 +2183,7 @@ export function registerMeetingCoordinatorHandlers(
     },
   });
 
-  const requestSafeStop = (): Promise<{
+  const requestSafeStop = (suppressProcessing = false): Promise<{
     success: boolean;
     captureState?: "ready" | "incomplete";
   }> => {
@@ -2205,17 +2208,17 @@ export function registerMeetingCoordinatorHandlers(
       const owner = activeCaptureOwner;
       if (!owner || owner.isDestroyed()) {
         void meetingTranscriptionLifecycle
-          .stopSession(sessionId, { incomplete: true })
+          .stopSession(sessionId, { incomplete: true, suppressProcessing })
           .then((result) => settle({ success: result.success, captureState: result.captureState }));
         return;
       }
 
       timeout = setTimeout(() => {
         void meetingTranscriptionLifecycle
-          .stopSession(sessionId, { incomplete: true })
+          .stopSession(sessionId, { incomplete: true, suppressProcessing })
           .then((result) => settle({ success: result.success, captureState: result.captureState }));
       }, 5000);
-      owner.send("meeting-transcription-stop-requested", sessionId);
+      owner.send("meeting-transcription-stop-requested", { sessionId, suppressProcessing });
     }).finally(() => {
       safeStopPromise = null;
       resolveSafeStop = null;
@@ -2247,6 +2250,7 @@ export function registerMeetingCoordinatorHandlers(
         incomplete: parsed.data.incomplete === true,
         lastSequence: parsed.data.lastSequence,
         errorCode: parsed.data.errorCode,
+        suppressProcessing: parsed.data.suppressProcessing,
       });
     }
   );

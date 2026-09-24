@@ -38,6 +38,7 @@ export interface MeetingLifecycleSession {
   incomplete: boolean;
   lastSequence?: Partial<Record<"mic" | "system", number>>;
   errorCode?: string;
+  suppressProcessing: boolean;
   stopPromise: Promise<MeetingStopResult> | null;
   ownerLossHandler: (() => void) | null;
   ownerNavigationHandler: ((details: { isMainFrame?: boolean; isSameDocument?: boolean }) => void) | null;
@@ -55,6 +56,7 @@ export interface MeetingTranscriptionLifecycle {
       incomplete?: boolean;
       lastSequence?: Partial<Record<"mic" | "system", number>>;
       errorCode?: string;
+      suppressProcessing?: boolean;
     }
   ): Promise<MeetingStopResult>;
 }
@@ -71,6 +73,7 @@ export function createMeetingTranscriptionLifecycle({
       incomplete?: boolean;
       lastSequence?: Partial<Record<"mic" | "system", number>>;
       errorCode?: string;
+      suppressProcessing?: boolean;
     }
   ) => Promise<MeetingStopResult>;
   onError?: (error: unknown, sessionId: string) => void;
@@ -120,6 +123,7 @@ export function createMeetingTranscriptionLifecycle({
       incomplete?: boolean;
       lastSequence?: Partial<Record<"mic" | "system", number>>;
       errorCode?: string;
+      suppressProcessing?: boolean;
     } = {}
   ): Promise<MeetingStopResult> => {
     const session = resolveSession(expectedSessionId);
@@ -130,6 +134,7 @@ export function createMeetingTranscriptionLifecycle({
       session.incomplete ||= options.incomplete === true;
       session.lastSequence ??= options.lastSequence;
       session.errorCode ??= options.errorCode;
+      session.suppressProcessing ||= options.suppressProcessing === true;
       return session.stopPromise;
     }
 
@@ -137,6 +142,7 @@ export function createMeetingTranscriptionLifecycle({
     session.incomplete = options.incomplete === true;
     session.lastSequence = options.lastSequence;
     session.errorCode = options.errorCode;
+    session.suppressProcessing = options.suppressProcessing === true;
     session.state = "stopping";
     session.stopPromise = enqueue(async () => {
       try {
@@ -145,6 +151,7 @@ export function createMeetingTranscriptionLifecycle({
           incomplete: session.incomplete,
           lastSequence: session.lastSequence,
           errorCode: session.errorCode,
+          suppressProcessing: session.suppressProcessing,
         });
       } finally {
         removeSession(session);
@@ -193,6 +200,7 @@ export function createMeetingTranscriptionLifecycle({
       incomplete: false,
       lastSequence: undefined,
       errorCode: undefined,
+      suppressProcessing: false,
       ownerLossHandler: null,
       ownerNavigationHandler: null,
     };

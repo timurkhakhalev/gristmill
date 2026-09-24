@@ -7,6 +7,7 @@ import {
   type MeetingProcessingRunDto,
   type MeetingRecordingDto,
   type MeetingRecordingEpochDto,
+  type MeetingSpeakerCorrection,
   type MeetingTranscriptArtifact,
 } from "../contracts/meetingRecording.js";
 import {
@@ -34,6 +35,7 @@ const RETRY_MAX_SECONDS = 300;
 const GEMINI_MAX_SECONDS = 30 * 60;
 
 export interface MeetingProcessingDatabase {
+  listAllMeetingRecordings(): MeetingRecordingDto[];
   listMeetingRecordingsForNote(noteId: number): MeetingRecordingDto[];
   listMeetingProcessingRuns(recordingId: string): MeetingProcessingRunDto[];
   listAllMeetingProcessingRuns(): MeetingProcessingRunDto[];
@@ -58,6 +60,13 @@ export interface MeetingProcessingDatabase {
   setMeetingRunArtifact(id: string, artifact: "provider-response" | "transcript" | "summary"): { success: boolean };
   retryMeetingProcessingRun(id: string): MeetingProcessingRunDto | null;
   recoverRunningMeetingProcessingRuns(): number;
+  getMeetingRunSpeakerCorrections(runId: string): MeetingSpeakerCorrection[];
+  setMeetingRunSpeakerCorrection(runId: string, speakerId: string, profileId: number | null, displayName: string): { success: boolean };
+  selectMeetingProcessingRun(
+    recordingId: string,
+    runId: string,
+    projection: { transcript: string; summary: string | null; summaryPrompt: string | null } | null
+  ): { success: boolean; noteId?: number };
 }
 
 export interface MeetingProcessingWorkerDeps {
@@ -94,6 +103,14 @@ export interface MeetingProcessingWorkerDeps {
   setTimeout?: typeof setTimeout;
   clearTimeout?: typeof clearTimeout;
   onChanged?: (recordingId: string, runId: string) => void;
+  onNoteProjectionChanged?: (noteId: number) => void;
+  recognizeSpeakers?: (
+    recording: MeetingRecordingDto,
+    run: MeetingProcessingRunDto,
+    transcript: MeetingTranscriptArtifact,
+    audioPath: string,
+    signal: AbortSignal
+  ) => Promise<MeetingSpeakerCorrection[]>;
   mixerDeps?: MeetingAudioMixerDeps;
 }
 
@@ -133,7 +150,7 @@ export class MeetingProcessingWorker {
     if (
       this.active?.stage === "prepare" ||
       (this.active?.stage === "asr" && this.active.mode === "local") ||
-      (this.active?.stage === "normalize" && this.active.mode === "local") ||
+      this.active?.stage === "normalize" ||
       (this.active?.stage === "summary" && this.active.mode === "summary-local")
     ) {
       this.active.controller.abort();
@@ -153,14 +170,76 @@ export class MeetingProcessingWorker {
   }
 
   cancelRun(runId: string): boolean {
-    if (this.active?.runId !== runId) return false;
-    this.active.controller.abort();
+    const run = this.deps.database.getMeetingProcessingRun(runId);
+    if (!run || (run.status !== "pending" && run.status !== "running")) return false;
+    if (this.active?.runId === runId) this.active.controller.abort();
     return this.deps.database.setMeetingProcessingRunState(runId, {
-      stage: this.active.stage,
+      stage: this.active?.runId === runId ? this.active.stage : "prepare",
       status: "cancelled",
       errorCode: "processing-cancelled",
       retryAt: null,
     }).success;
+  }
+
+  async cancelRecordingForDeletion(recordingId: string, includeNonAudio = false): Promise<void> {
+    for (const run of this.deps.database.listMeetingProcessingRuns(recordingId)) {
+      const needsAudio = run.stage === "prepare" || run.stage === "asr" ||
+        (run.stage === "normalize" && run.config?.transcription.mode === "local");
+      const mustCancel = includeNonAudio || needsAudio;
+      if (this.active?.runId === run.id && mustCancel) this.active.controller.abort();
+      if ((run.status === "pending" || run.status === "running") && mustCancel) {
+        this.deps.database.setMeetingProcessingRunState(run.id, {
+          stage: run.stage,
+          status: "cancelled",
+          errorCode: includeNonAudio ? "note-deletion-requested" : "audio-deletion-requested",
+          retryAt: null,
+        });
+      }
+    }
+    await this.work;
+  }
+
+  async selectRun(recordingId: string, runId: string): Promise<{ success: boolean; noteId?: number }> {
+    const recording = this.deps.database.getMeetingRecording(recordingId);
+    const run = this.deps.database.getMeetingProcessingRun(runId);
+    if (!recording || !run || run.recordingId !== recordingId) return { success: false };
+    const result = this.getResult(run);
+    if (!result.transcript) return { success: false };
+    const projection = result.transcript
+      ? {
+          transcript: serializeTranscriptProjection(result.transcript, result.speakerCorrections),
+          summary: result.summary?.text ?? null,
+          summaryPrompt: run.config?.summary?.instruction ?? null,
+        }
+      : null;
+    const selected = this.deps.database.selectMeetingProcessingRun(recordingId, runId, projection);
+    if (selected.success && selected.noteId !== undefined && projection) {
+      this.deps.onNoteProjectionChanged?.(selected.noteId);
+    }
+    this.notify(run);
+    return selected;
+  }
+
+  setSpeakerCorrection(input: { runId: string; speakerId: string; profileId: number | null; displayName: string }): boolean {
+    const run = this.deps.database.getMeetingProcessingRun(input.runId);
+    if (!run) return false;
+    const transcriptRunId = run.kind === "summary" ? run.sourceRunId : run.id;
+    if (!transcriptRunId) return false;
+    const updated = this.deps.database.setMeetingRunSpeakerCorrection(
+      transcriptRunId,
+      input.speakerId,
+      input.profileId,
+      input.displayName
+    );
+    if (!updated.success) return false;
+    const recording = this.deps.database.getMeetingRecording(run.recordingId);
+    if (recording?.currentRunId === run.id || recording?.currentRunId === transcriptRunId) {
+      const currentRunId = recording.currentRunId;
+      if (currentRunId) this.publishCurrentSelection(currentRunId);
+      this.deps.onNoteProjectionChanged?.(recording.noteId);
+    }
+    this.notify(run);
+    return true;
   }
 
   retry(runId: string): MeetingProcessingResultDto | null {
@@ -196,6 +275,7 @@ export class MeetingProcessingWorker {
           captureState: recording.captureState,
           captureErrorCode: recording.captureErrorCode,
           audioState: recording.audioState,
+          audioErrorCode: recording.audioErrorCode,
           currentRunId: recording.currentRunId,
           startedAt: recording.startedAt,
           endedAt: recording.endedAt,
@@ -412,6 +492,24 @@ export class MeetingProcessingWorker {
       this.deps.storage.removeRunArtifact(run.id, "transcript");
       throw new MeetingProcessingFailure("transcript-state-not-saved", "failed");
     }
+    if (this.deps.recognizeSpeakers && recording.audioState === "available" && transcript.segments?.length) {
+      const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id);
+      const corrections = await this.deps.recognizeSpeakers(recording, run, transcript, audioPath, signal);
+      signal.throwIfAborted();
+      for (const correction of corrections) {
+        if (this.deps.database.getMeetingRunSpeakerCorrections(run.id).some((existing) => existing.speakerId === correction.speakerId)) {
+          continue;
+        }
+        this.deps.database.setMeetingRunSpeakerCorrection(
+          run.id,
+          correction.speakerId,
+          correction.profileId,
+          correction.displayName
+        );
+      }
+      if (corrections.length) this.deps.onNoteProjectionChanged?.(recording.noteId);
+    }
+    this.publishCurrentSelection(run.id);
     if (!transcript.text.trim()) this.setState(run.id, "summary", "complete", null, null);
     else if (this.requireConfig(run).summary) this.setState(run.id, "summary", "pending", null, null);
     else this.setState(run.id, "summary", "complete", null, null);
@@ -445,6 +543,7 @@ export class MeetingProcessingWorker {
       this.deps.storage.removeRunArtifact(run.id, "summary");
       throw new MeetingProcessingFailure("summary-state-not-saved", "failed");
     }
+    this.publishCurrentSelection(run.id);
     this.setState(run.id, "summary", "complete", null, null);
   }
 
@@ -528,10 +627,30 @@ export class MeetingProcessingWorker {
 
   private getResult(run: MeetingProcessingRunDto): MeetingProcessingResultDto {
     const transcriptRunId = run.kind === "summary" ? run.sourceRunId : run.id;
-    const transcript = transcriptRunId ? this.readTranscript(transcriptRunId) : null;
+    const rawTranscript = transcriptRunId ? this.readTranscript(transcriptRunId) : null;
+    const speakerCorrections = transcriptRunId
+      ? this.deps.database.getMeetingRunSpeakerCorrections(transcriptRunId)
+      : [];
+    const transcript = rawTranscript;
     const summaryValue = run.hasSummary ? this.deps.storage.readRunArtifact(run.id, "summary") : null;
     const summary = summaryValue === null ? null : meetingSummaryArtifactSchema.parse(summaryValue);
-    return meetingProcessingResultDtoSchema.parse({ run, transcript, summary });
+    return meetingProcessingResultDtoSchema.parse({ run, transcript, summary, speakerCorrections });
+  }
+
+  private publishCurrentSelection(runId: string): void {
+    const run = this.deps.database.getMeetingProcessingRun(runId);
+    const recording = run ? this.deps.database.getMeetingRecording(run.recordingId) : null;
+    if (!run || !recording || recording.currentRunId !== runId) return;
+    const result = this.getResult(run);
+    if (!result.transcript) return;
+    const projection = this.deps.database.selectMeetingProcessingRun(recording.id, run.id, {
+      transcript: serializeTranscriptProjection(result.transcript, result.speakerCorrections),
+      summary: result.summary?.text ?? null,
+      summaryPrompt: run.config?.summary?.instruction ?? null,
+    });
+    if (projection.success && projection.noteId !== undefined) {
+      this.deps.onNoteProjectionChanged?.(projection.noteId);
+    }
   }
 
   private notify(run: MeetingProcessingRunDto): void {
@@ -621,6 +740,35 @@ function supportedProvider(provider: string | undefined, model: string | undefin
 
 function providerModel(model: string | undefined, provider: "deepgram" | "elevenlabs" | "gemini"): string {
   return model || (provider === "deepgram" ? "nova-3" : provider === "elevenlabs" ? "scribe_v2" : "gemini-3.5-transcribe");
+}
+
+function serializeTranscriptProjection(
+  transcript: MeetingTranscriptArtifact,
+  corrections: MeetingSpeakerCorrection[]
+): string {
+  if (!transcript.segments?.length) {
+    return JSON.stringify(transcript.text ? [{ text: transcript.text, timestamp: 0 }] : []);
+  }
+  const correctionsBySpeaker = new Map(corrections.map((correction) => [correction.speakerId, correction]));
+    return JSON.stringify(transcript.segments.map((segment) => {
+      const correction = segment.speaker ? correctionsBySpeaker.get(segment.speaker) : undefined;
+    return {
+      text: segment.text,
+      timestamp: segment.start,
+      endTimestamp: segment.end,
+      ...(segment.speaker ? { speaker: segment.speaker } : {}),
+      ...(correction ? {
+        speakerName: correction.displayName,
+        speakerIsPlaceholder: false,
+        speakerStatus: "locked",
+        speakerLocked: true,
+        speakerLockSource: "user",
+      } : segment.speaker ? {
+        speakerIsPlaceholder: true,
+        speakerStatus: "provisional",
+      } : {}),
+    };
+  }));
 }
 
 function providerFailure(result: RemoteTranscriptionResult): MeetingProcessingFailure {

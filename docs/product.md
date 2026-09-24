@@ -2,14 +2,16 @@
 
 ## Current delivery contract
 
-Cleanup comes first: `removal-plan.md` and `cleanup-m0.md`. Preserve current
-realtime recording, blank notes, folders/editor, full embedded chat, AI Actions,
-all BYOK/Local/supported Self-Hosted providers, all speaker recognition,
-Dictionary/Snippets data/tools/management UI, file/direct URL import and calendars.
-Google/Microsoft OAuth registrations and batch processing come later.
+Cleanup is complete. The M1–M4 record-then-process implementation adds durable
+mic/system tracks, post-Stop processing, saved result versions, selected-result
+Notes projection, playback/export, and configurable audio retention. Final
+integrated verification and live mic/system hardware smoke are still pending;
+see [record-then-process status](record-then-process.md).
 
-Recording principles and failure scenarios below describe the future batch
-stage, not implemented capabilities or acceptance gates for cleanup.
+Preserve Notes (including blank notes and manual text), the embedded chat and
+tools, file/direct URL import, Dictionary/Snippets, calendars, speaker profiles,
+and existing BYOK, Local, Self-Hosted, and direct provider routes. No new
+dashboard or meeting-only replacement for Notes is part of this delivery.
 
 ## Problem
 
@@ -19,7 +21,7 @@ Cloud processing is useful, but capture must not depend on a stable cloud connec
 
 ## Product statement
 
-OpenHercules is a bot-free meeting recorder for macOS. It captures the user's microphone and system audio locally, preserves both sources, and processes the completed meeting through configurable transcription, diarization, note-generation, and chat providers.
+OpenHercules is a bot-free meeting recorder for macOS. During a call it records microphone and system audio locally and preserves both sources. After Stop it finalizes the recording, runs ordinary file transcription with diarization, and generates notes from the final transcript. There is no live transcript or draft. See [the agreed flow and validation hypotheses](record-then-process.md).
 
 ## Primary user
 
@@ -39,7 +41,7 @@ A technical individual user who:
 3. **No silent loss.** Missing or interrupted tracks are persistent, visible states.
 4. **Every derived artifact is replaceable.** Processing can be rerun with another provider.
 5. **Separate tracks stay separate.** Microphone and system audio are not reduced to one mixed file internally.
-6. **Realtime is optional.** Preview may fail without invalidating the final recording.
+6. **Process after Stop.** Capture performs no ASR or diarization. Once audio is finalized, process it through ordinary file requests; network failures leave saved audio available for retry.
 7. **The user owns the files.** Audio, transcripts, and notes are exportable and explicitly deletable.
 8. **No invented identities.** Calendar participants are hints; speaker identity requires evidence or user confirmation.
 
@@ -50,10 +52,10 @@ A technical individual user who:
 3. OpenHercules captures microphone and system audio into separate durable local tracks.
 4. A compact pill shows recording duration and health for both tracks.
 5. If a source stops, OpenHercules shows a persistent warning and records the gap.
-6. When the meeting ends, OpenHercules finalizes the recording locally before making cloud requests.
-7. A durable background pipeline transcribes, diarizes, merges, and generates notes.
-8. The meeting detail view exposes audio, transcript, notes, participants, processing history, and chat.
-9. The user can correct speakers, change a model or template, and rerun an individual stage.
+6. During the call, OpenHercules saves both sources and displays recording duration and capture health. No transcript or draft is generated.
+7. Stop closes the raw source epochs and queues the finalized recording. A single derived mono timeline WAV is processed through the selected existing provider route; the raw provider response is stored before normalization, and summary follows the saved transcript.
+8. Meeting recordings and result history attach to the existing Note. The selected transcript and generated notes project into existing Notes fields; manual content remains separate.
+9. The user can select a completed result version, correct speakers, play/seek and export audio, create an ASR run with another provider/model, or retry summary from a saved transcript.
 
 ## Required capabilities
 
@@ -67,14 +69,17 @@ A technical individual user who:
 - Record device changes, interruptions, gaps, and per-track durations.
 - Never discard a recording because transcription or summary failed.
 
-### Post-meeting processing
+### Processing after the meeting
 
-- Batch transcription after the recording is finalized.
+- Start ordinary non-realtime file transcription only after Stop and durable finalization. No ASR, draft or diarization runs during capture.
+- Persist pending recording-processing jobs across restarts and retry from saved audio after network/provider failures.
+- Prepare one full-timeline mono WAV from saved epochs and preserve raw source tracks separately. Do not require a second full ASR pass or merge independent track transcripts.
+- Storage chunk boundaries do not define ASR requests. Splitting for provider limits requires an explicit completeness and speaker-continuity design.
+- Batch means processing saved audio after the meeting, not a requirement to use a provider Batch API.
 - Configurable language and vocabulary hints, with Russian as a first-class case.
-- Optional diarization of the remote/system track.
-- Deterministic merge of track transcripts and speaker turns.
+- Use the selected route's integrated diarization when available; keep names scoped to a run until corrected or confirmed.
 - Automatic note generation after the final transcript is available.
-- Independent retry of transcription, diarization, merge, and summary.
+- Retry transcription and summary independently. Retry diarization separately only where the chosen provider actually exposes an independent operation; an integrated response is one processing result.
 - Processing history containing provider, model, configuration, status, and errors.
 - Multiple transcript and note revisions without overwriting previous results.
 
@@ -100,7 +105,8 @@ A technical individual user who:
 
 - Google, Microsoft, and Apple Calendar integration.
 - User-defined meeting categories, tags, and note templates.
-- Separate provider and model settings for transcription, diarization, summary, and chat.
+- ElevenLabs, Deepgram and Gemini are included in the first post-Stop implementation, with explicit provider selection and visible capability/limit errors. Comparative evaluation is performed by Timur after implementation.
+- Provider and model settings for transcription, summary, and chat. Integrated diarization belongs to transcription settings; expose a separate diarization selection only for a supported independent path.
 - Preserve all existing direct cloud, bundled Local and supported Self-Hosted implementations.
 
 ## Initial non-goals
@@ -114,12 +120,14 @@ A technical individual user who:
 - Enterprise SSO, SCIM, or organization policies.
 - Windows and Linux clients.
 - Cross-meeting semantic search.
-- A new realtime architecture (current realtime remains during cleanup).
+- Live transcript/draft or ASR during capture; the implemented flow processes after Stop.
 - A marketplace or dynamically installed plugin SDK.
 
 ## Required failure scenarios
 
-The future batch milestone, not cleanup, targets these scenarios:
+These are implementation and verification requirements. M1–M3 focused root gates
+passed. M4 and final integration checks remain root-owned; live mic/system
+tail-loss and restart checks remain unverified.
 
 1. Switching Wi-Fi, hotspot, and VPN during a meeting does not interrupt either local track.
 2. A cloud provider outage leaves the meeting queued and retryable.
@@ -129,10 +137,12 @@ The future batch milestone, not cleanup, targets these scenarios:
 6. A failed summary leaves audio and transcript available and can be retried independently.
 7. Correcting a speaker updates the meeting presentation without mutating raw provider output.
 8. Every displayed transcript segment can be traced to a recording interval and processing run.
+9. Recording starts without a cloud connection or loaded ASR model; no ASR/diarization request or local inference runs during capture.
+10. Stop persists all captured samples before the processing job becomes runnable.
 
 ## Later candidates
 
-- Optional live transcript preview.
+- Live transcript or draft only after a new explicit product decision; excluded from the agreed recording flow.
 - New ASR/diarization/LLM models beyond the preserved local and direct providers.
 - Semantic search (existing local cross-note tools remain).
 - MCP or a public local API.

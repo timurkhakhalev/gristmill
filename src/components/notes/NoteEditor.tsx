@@ -52,6 +52,7 @@ import type { CalendarAttendee } from "../../contracts/calendar";
 import { observeFloatingChatLayout } from "./floatingChatLayout";
 import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } from "./shared";
 import { formatMmSs } from "../../utils/formatDuration";
+import MeetingResultsPanel from "./MeetingResultsPanel";
 
 const SEGMENT_BUTTON_CLASS =
   "relative z-1 flex h-[26px] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors duration-150";
@@ -869,6 +870,7 @@ export default function NoteEditor({
 
         <div className="flex-1 relative min-h-0">
           <div ref={contentScrollRef} className="h-full overflow-y-auto">
+            <MeetingResultsPanel noteId={note.id} locale={locale} />
             {captureHasStatus && (
               <div className="m-4 rounded-xl border border-border bg-surface-2/70 p-4 dark:border-white/10">
                 <div className="flex items-center justify-between gap-3">

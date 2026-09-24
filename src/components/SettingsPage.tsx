@@ -18,6 +18,8 @@ import InferenceConfigEditor from "./settings/InferenceConfigEditor";
 import ChatAgentSettings from "./settings/ChatAgentSettings";
 import { MeetingTranscriptionPanel } from "./settings/MeetingSettings";
 import { UploadTranscriptionPanel } from "./settings/UploadSettings";
+import { ConfirmDialog } from "./ui/dialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 export type SettingsSectionType =
   "general" | "hotkeys" | "speechToText" | "llms" | "privacyData" | "system";
@@ -106,10 +108,114 @@ function GeneralSettings() {
 
 function PrivacySettings() {
   const { t } = useTranslation();
+  const audioRetentionDays = useSettingsStore((s) => s.audioRetentionDays);
+  const setAudioRetentionDays = useSettingsStore((s) => s.setAudioRetentionDays);
+  const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
+  const [audioDeleteMessage, setAudioDeleteMessage] = React.useState("");
+  const [audioRetentionInput, setAudioRetentionInput] = React.useState(String(audioRetentionDays));
+  const [pendingRetentionDays, setPendingRetentionDays] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (pendingRetentionDays === null) setAudioRetentionInput(String(audioRetentionDays));
+  }, [audioRetentionDays, pendingRetentionDays]);
+
+  const saveAudioRetention = (next: number) => {
+    setAudioRetentionDays(next);
+    setAudioRetentionInput(String(next));
+  };
   return (
     <Panel>
       <Header title={t("settingsPage.privacy.title")} />
       <p className="text-sm text-muted-foreground">{t("cleanupSettings.localPrivacy")}</p>
+      <div className="rounded-lg border border-border/70 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground">{t("settingsPage.privacy.audioRetentionLabel")}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("settingsPage.privacy.audioRetentionDescription")}</p>
+          </div>
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              className="h-8 w-24 rounded border bg-background px-2"
+              value={audioRetentionInput}
+              onChange={(event) => {
+                setAudioRetentionInput(event.target.value);
+              }}
+              onBlur={() => {
+                const next = Number(audioRetentionInput);
+                if (!Number.isSafeInteger(next) || next < 0) {
+                  setAudioRetentionInput(String(audioRetentionDays));
+                  return;
+                }
+                if (next >= audioRetentionDays) return saveAudioRetention(next);
+                setPendingRetentionDays(next);
+                showConfirmDialog({
+                  title: t("settingsPage.privacy.retentionDecreaseTitle"),
+                  description: t("settingsPage.privacy.retentionDecreaseDescription", { days: next }),
+                  confirmText: t("settingsPage.privacy.retentionDecreaseConfirm"),
+                  variant: "destructive",
+                  onConfirm: () => {
+                    setPendingRetentionDays(null);
+                    saveAudioRetention(next);
+                  },
+                });
+              }}
+              aria-label={t("settingsPage.privacy.audioRetentionLabel")}
+            />
+            <span>{t("settingsPage.privacy.days")}</span>
+          </label>
+        </div>
+      </div>
+      <div className="rounded-lg border border-border/70 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground">{t("settingsPage.privacy.deleteAllAudioLabel")}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("settingsPage.privacy.deleteAllAudioDescription")}</p>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => showConfirmDialog({
+              title: t("settingsPage.privacy.deleteAllAudioTitle"),
+              description: t("settingsPage.privacy.deleteAllAudioConfirmDescription"),
+              confirmText: t("settingsPage.privacy.deleteAllAudioConfirm"),
+              variant: "destructive",
+              onConfirm: async () => {
+                setAudioDeleteMessage("");
+                try {
+                  const result = await window.electronAPI.deleteAllAudio();
+                  setAudioDeleteMessage(result.failed > 0
+                    ? t("settingsPage.privacy.deleteAllAudioFailed", { count: result.failed })
+                    : t("settingsPage.privacy.deleteAllAudioDone", { count: result.deleted }));
+                } catch (error) {
+                  setAudioDeleteMessage(error instanceof Error ? error.message : String(error));
+                }
+              },
+            })}
+          >
+            {t("settingsPage.privacy.deleteAllAudioButton")}
+          </Button>
+        </div>
+        {audioDeleteMessage && <p className="mt-2 text-xs text-muted-foreground" role="status">{audioDeleteMessage}</p>}
+      </div>
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => {
+          if (open) return;
+          if (pendingRetentionDays !== null) {
+            setPendingRetentionDays(null);
+            setAudioRetentionInput(String(audioRetentionDays));
+          }
+          hideConfirmDialog();
+        }}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        onConfirm={confirmDialog.onConfirm}
+        variant={confirmDialog.variant}
+      />
     </Panel>
   );
 }

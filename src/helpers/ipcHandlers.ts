@@ -76,6 +76,15 @@ import type { WhisperManagerLike, ParakeetManagerLike } from "./localModelLifecy
 import type { DiarizationPublicationDiarizationManager } from "./meetingDiarizationPublication.js";
 import { registerTranscriptionDataHandlers } from "./transcriptionDataIpcHandlers.js";
 import { MeetingProcessingWorker, registerMeetingProcessingHandlers } from "./meetingProcessing.js";
+import {
+  meetingProcessingChannels,
+  meetingRecordingPlaybackRequestSchema,
+  meetingRecordingExportRequestSchema,
+  meetingRecordingAudioRequestSchema,
+} from "../contracts/meetingProcessing.js";
+import { exportMeetingSourceTrack, copyMeetingAudioExport } from "./meetingAudioExport.js";
+import { prepareMeetingAudio } from "./meetingAudioMixer.js";
+import { recognizeMeetingSpeakers } from "./meetingSpeakerRecognition.js";
 import { generateMeetingSummary } from "./meetingSummary.js";
 import { BYOK_API_KEYS } from "../config/secretKeys.js";
 import { registerDesktopSettingsHandlers } from "./desktopSettingsIpcHandlers.js";
@@ -569,18 +578,25 @@ export class IPCHandlers {
 
   _setupRetentionCleanup(): void {
     const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
-    // No sweep at startup: _retentionSettings still holds the 30-day default
+    // No sweep at startup: _retentionSettings still holds an unverified default
     // until the renderer syncs, so sweeping here deletes audio a user set to
     // keep for 60/90 days or forever (#1370). The first sync runs the first
     // sweep instead.
     this._retentionCleanupInterval = setInterval(() => {
-      if (this._retentionSettingsSynced) this._runRetentionCleanup();
+      if (this._retentionSettingsSynced) {
+        void this._runRetentionCleanup().then((ready) => {
+          if (ready) this._meetingProcessing?.onRetentionReady();
+        });
+      }
     }, SIX_HOURS_MS);
   }
 
-  _runRetentionCleanup(): void {
+  async _runRetentionCleanup(): Promise<boolean> {
     const { audioRetentionDays, transcriptRetentionDays } = this._retentionSettings;
     try {
+      // Durable deletion intents from a previous process must settle before the
+      // worker can read any recording or result belonging to them.
+      let ready = await this._processMeetingDeletionIntents();
       if (transcriptRetentionDays > 0) {
         const { ids } =
           this.databaseManager.deleteTranscriptionsExpiredBefore(transcriptRetentionDays);
@@ -591,14 +607,183 @@ export class IPCHandlers {
       }
       if (audioRetentionDays > 0) {
         this.audioStorageManager.cleanupExpiredAudio(audioRetentionDays, this.databaseManager);
+        const cutoff = Date.now() - audioRetentionDays * 86_400_000;
+        for (const recording of this.databaseManager.listAllMeetingRecordings()) {
+          if (recording.audioState !== "available" || recording.captureState === "recording" || recording.captureState === "finalizing") continue;
+          const endedAt = recording.endedAt ? Date.parse(recording.endedAt) : NaN;
+          if (!Number.isFinite(endedAt) || endedAt >= cutoff) continue;
+          const intent = this.databaseManager.beginMeetingAudioDeletion(recording.id);
+          if (intent && !(await this._finishMeetingDeletion(intent))) ready = false;
+        }
       }
+      return ready;
     } catch (error) {
       debugLogger.error(
         "Retention cleanup failed",
         { error: (error as Error).message },
         "audio-storage"
       );
+      return false;
     }
+  }
+
+  async _finishMeetingDeletion(intent: import("../contracts/meetingRecording.js").MeetingDeletionIntentDto): Promise<boolean> {
+    try {
+      if (intent.kind === "audio") {
+        if (!intent.recordingId) throw new Error("Invalid meeting audio deletion intent");
+        await this._meetingProcessing?.cancelRecordingForDeletion(intent.recordingId);
+        this.audioStorageManager.meetingRecordings.removeRecordingAudio(intent.recordingId);
+        if (!this.databaseManager.completeMeetingAudioDeletion(intent.id).success) {
+          throw new Error("Meeting audio deletion state was not completed");
+        }
+        for (const run of this.databaseManager.listMeetingProcessingRuns(intent.recordingId)) {
+          broadcastToWindows("meeting-processing-updated", { recordingId: intent.recordingId, runId: run.id });
+        }
+        return true;
+      }
+
+      const { recordingIds, runIds } = this.databaseManager.getMeetingNoteStorageIds(intent.noteId);
+      for (const recordingId of recordingIds) {
+        await this._meetingProcessing?.cancelRecordingForDeletion(recordingId, true);
+      }
+      this.audioStorageManager.meetingRecordings.removeNoteFiles(recordingIds, runIds);
+      if (!this.databaseManager.completeMeetingNoteDeletion(intent.id).success) {
+        throw new Error("Meeting note deletion state was not completed");
+      }
+      setImmediate(() => sendNoteDeleted({ id: intent.noteId }));
+      this._asyncMirrorDelete(intent.noteId);
+      return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const safeCode = typeof code === "string" && /^[A-Z0-9_]{1,64}$/.test(code)
+        ? code
+        : "file-operation-failed";
+      this.databaseManager.failMeetingDeletion(intent.id, safeCode);
+      debugLogger.error("Meeting recording deletion failed", {
+        intentId: intent.id,
+        kind: intent.kind,
+        error: error instanceof Error ? error.message : String(error),
+      }, "audio-storage");
+      return false;
+    }
+  }
+
+  async _processMeetingDeletionIntents(): Promise<boolean> {
+    let success = true;
+    for (const intent of this.databaseManager.listMeetingDeletionIntents()) {
+      if (!(await this._finishMeetingDeletion(intent))) success = false;
+    }
+    return success;
+  }
+
+  async _deleteAllAudio(): Promise<{ deleted: number; failed: number }> {
+    if (this._meetingCoordinator?.isRecording()) {
+      const stopped = await this._meetingCoordinator.requestSafeStop(true);
+      if (!stopped.success) throw new Error("Active meeting recording could not be stopped safely");
+    }
+    const legacy = this.audioStorageManager.deleteAllAudio();
+    let deleted = legacy.deleted;
+    let failed = legacy.failed;
+    for (const recording of this.databaseManager.listAllMeetingRecordings()) {
+      if (recording.audioState === "deleted") continue;
+      try {
+        const intent = this.databaseManager.beginMeetingAudioDeletion(recording.id);
+        if (!intent || !(await this._finishMeetingDeletion(intent))) failed += 1;
+        else deleted += 1;
+      } catch (error) {
+        failed += 1;
+        debugLogger.error("Failed to delete meeting audio", {
+          recordingId: recording.id,
+          error: error instanceof Error ? error.message : String(error),
+        }, "audio-storage");
+      }
+    }
+    return { deleted, failed };
+  }
+
+  _registerMeetingRecordingAssetHandlers(): void {
+    const storage = this.audioStorageManager.meetingRecordings;
+    const database = this.databaseManager;
+
+    ipcMain.handle(meetingProcessingChannels.getPlaybackPath, async (_event, payload: unknown) => {
+      try {
+        const parsed = meetingRecordingPlaybackRequestSchema.parse(payload);
+        const recording = database.getMeetingRecording(parsed.recordingId);
+        const run = database.getMeetingProcessingRun(parsed.runId);
+        if (!recording || recording.audioState !== "available" || !run || run.recordingId !== recording.id) {
+          return { success: false, error: "meeting-audio-unavailable" };
+        }
+        if (recording.currentRunId !== run.id || !run.hasTranscript) {
+          return { success: false, error: "meeting-result-not-selected" };
+        }
+        let audioPath = storage.getDerivedAudioPath(recording.id, run.id);
+        if (!fs.existsSync(audioPath)) {
+          await prepareMeetingAudio(storage, recording, run.id, database.listMeetingRecordingEpochs(recording.id));
+          audioPath = storage.getDerivedAudioPath(recording.id, run.id);
+        }
+        if (!fs.statSync(audioPath).isFile()) throw new Error("Meeting playback audio is unavailable");
+        approveAudioPath(audioPath);
+        return { success: true, path: audioPath };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle(meetingProcessingChannels.exportAudio, async (_event, payload: unknown) => {
+      try {
+        const parsed = meetingRecordingExportRequestSchema.parse(payload);
+        const recording = database.getMeetingRecording(parsed.recordingId);
+        if (!recording || recording.audioState !== "available") {
+          return { success: false, error: "meeting-audio-unavailable" };
+        }
+        const result = await dialog.showSaveDialog({
+          defaultPath: `OpenHercules-meeting-${parsed.source}.wav`,
+          filters: [{ name: "WAV audio", extensions: ["wav"] }],
+        });
+        if (result.canceled || !result.filePath) return { success: false };
+        const destination = path.resolve(result.filePath);
+        if (!fs.statSync(path.dirname(destination)).isDirectory()) {
+          throw new Error("Selected export folder is unavailable");
+        }
+        if (parsed.source === "mic" || parsed.source === "system") {
+          exportMeetingSourceTrack(
+            storage,
+            recording,
+            parsed.source,
+            database.listMeetingRecordingEpochs(recording.id),
+            destination
+          );
+          return { success: true };
+        }
+        const runId = parsed.runId ?? recording.currentRunId;
+        const run = runId ? database.getMeetingProcessingRun(runId) : null;
+        if (!run || run.recordingId !== recording.id || !run.hasTranscript) {
+          return { success: false, error: "meeting-result-not-selected" };
+        }
+        let sourcePath = storage.getDerivedAudioPath(recording.id, run.id);
+        if (!fs.existsSync(sourcePath)) {
+          await prepareMeetingAudio(storage, recording, run.id, database.listMeetingRecordingEpochs(recording.id));
+          sourcePath = storage.getDerivedAudioPath(recording.id, run.id);
+        }
+        copyMeetingAudioExport(sourcePath, destination);
+        return { success: true };
+      } catch (error) {
+        debugLogger.error("Meeting audio export failed", {
+          error: error instanceof Error ? error.message : String(error),
+        }, "audio-storage");
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    const deleteAudio = async (payload: unknown) => {
+      const parsed = meetingRecordingAudioRequestSchema.parse(payload);
+      const intent = database.beginMeetingAudioDeletion(parsed.recordingId);
+      if (!intent) return { success: false, error: "meeting-audio-unavailable" };
+      const success = await this._finishMeetingDeletion(intent);
+      return { success, ...(success ? {} : { error: "meeting-audio-delete-failed" }) };
+    };
+    ipcMain.handle(meetingProcessingChannels.deleteAudio, (_event, payload: unknown) => deleteAudio(payload));
+    ipcMain.handle(meetingProcessingChannels.retryAudioDeletion, (_event, payload: unknown) => deleteAudio(payload));
   }
 
   _syncStartupEnv(setVars: Record<string, string>, clearVars: string[] = []): void {
@@ -708,6 +893,7 @@ export class IPCHandlers {
     registerTranscriptionDataHandlers(ipcMain, {
       database: this.databaseManager,
       audioStorage: this.audioStorageManager,
+      deleteAllAudio: () => this._deleteAllAudio(),
       deleteTranscriptionInternal: (id) => this.deleteTranscriptionInternal(id),
       buildSpeakerMappings: (noteId) => this._buildSpeakerMappings(noteId),
       queueNoteNavigation: (payload) => this.windowManager.queueNoteNavigation(payload),
@@ -719,8 +905,9 @@ export class IPCHandlers {
         onSettingsChanged: (settings) => {
           this._retentionSettings = settings;
           this._retentionSettingsSynced = true;
-          this._runRetentionCleanup();
-          if (this._meetingRecoveryReady) this._meetingProcessing?.onRetentionReady();
+          void this._runRetentionCleanup().then((ready) => {
+            if (ready) this._meetingProcessing?.onRetentionReady();
+          });
           // First point at which the local-history switch is known to be real.
           // After the sweep, so expired transcripts are gone before they can be
           // reconstructed into counters the sweep would only have to purge.
@@ -811,7 +998,7 @@ export class IPCHandlers {
         shutdownDiarization: () => this.diarizationManager.shutdown(),
         revokeGoogleTokens: () => this.googleCalendarManager.revokeAllTokens(),
         closeDatabase: () => this.databaseManager.db.close(),
-        deleteAllAudio: () => this.audioStorageManager.deleteAllAudio(),
+        deleteAllAudio: () => this._deleteAllAudio(),
         deleteWhisperModels: () => {
           const { getModelsDirForService } =
             require("./modelDirUtils") as typeof import("./modelDirUtils.js");
@@ -1034,12 +1221,42 @@ export class IPCHandlers {
           runBedrockRequest: (operation, options) => runBedrockRequest(operation, options),
         }, signal);
       },
+      recognizeSpeakers: async (recording, run, transcript, audioPath, signal) => {
+        const approvedAudioPath = resolveAllowedAudioPath(audioPath);
+        if (!approvedAudioPath) return [];
+        const tempDir = (require("./safeTempDir") as typeof import("./safeTempDir.js")).getSafeTempDir();
+        const speakerEmbeddings = require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings;
+        const ffmpeg = require("./ffmpegUtils") as typeof import("./ffmpegUtils.js");
+        const corrections = await recognizeMeetingSpeakers(transcript, approvedAudioPath, signal, {
+          speakerEmbeddings,
+          getProfiles: () => this.databaseManager.getSpeakerProfiles(true),
+          convertToWav: (inputPath, outputPath, options) => ffmpeg.convertToWav(inputPath, outputPath, options),
+          createTempPath: () => path.join(tempDir, `meeting-speakers-${crypto.randomUUID()}.wav`),
+          removeFile: (filePath) => fs.rmSync(filePath, { force: true }),
+          logSkipped: (error) => debugLogger.debug("Post-stop speaker recognition skipped", {
+            recordingId: recording.id,
+            runId: run.id,
+            error: error instanceof Error ? error.message : String(error),
+          }, "speaker"),
+        });
+        debugLogger.debug("Post-stop speaker recognition finished", {
+          recordingId: recording.id,
+          runId: run.id,
+          recognizedCount: corrections.length,
+        }, "speaker");
+        return corrections;
+      },
       getCredential: getMeetingCredential,
+      onNoteProjectionChanged: (noteId) => {
+        const note = this.databaseManager.getNote(noteId);
+        if (note) sendNoteUpdated(note);
+      },
       onChanged: (recordingId, runId) =>
         broadcastToWindows("meeting-processing-updated", { recordingId, runId }),
     });
     this._meetingProcessing = meetingWorker;
     registerMeetingProcessingHandlers(ipcMain, meetingWorker);
+    this._registerMeetingRecordingAssetHandlers();
 
     // The explicit hard cancel of one managed upload execution: aborts the
     // transcription, diarization and transport registered under the id.
@@ -1251,6 +1468,7 @@ export class IPCHandlers {
     this._meetingCoordinator = registerMeetingCoordinatorHandlers(ipcMain, {
       databaseManager: this.databaseManager as unknown as DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase,
       meetingRecordingStorage: this.audioStorageManager.meetingRecordings,
+      cancelInitialProcessingRun: (runId) => this._meetingProcessing?.cancelRun(runId) ?? false,
       diarizationManager: this
         .diarizationManager as unknown as DiarizationPublicationDiarizationManager,
       meetingDetectionEngine: this.meetingDetectionEngine,
@@ -1496,7 +1714,15 @@ export class IPCHandlers {
     return result;
   }
 
-  deleteNoteInternal(id: number) {
+  async deleteNoteInternal(id: number): Promise<{ success: boolean }> {
+    if (!this.databaseManager.getNote(id)) return { success: false };
+    const recordings = this.databaseManager.listMeetingRecordingsForNote(id);
+    if (recordings.length > 0) {
+      const intent = this.databaseManager.beginMeetingNoteDeletion(id);
+      if (!intent) return { success: false };
+      const success = await this._finishMeetingDeletion(intent);
+      return { success };
+    }
     const result = this.databaseManager.deleteNote(id);
     if (result?.success) {
       setImmediate(() => sendNoteDeleted({ id }));

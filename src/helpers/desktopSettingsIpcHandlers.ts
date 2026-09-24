@@ -157,7 +157,7 @@ export interface DesktopSettingsDeps {
     shutdownDiarization: () => Promise<void>;
     revokeGoogleTokens: () => Promise<void>;
     closeDatabase: () => void;
-    deleteAllAudio: () => void;
+    deleteAllAudio: () => Promise<{ deleted: number; failed: number }>;
     deleteWhisperModels: () => void;
     deleteParakeetModels: () => Promise<void>;
     deleteDiarizationModels: () => Promise<void>;
@@ -889,18 +889,24 @@ export function registerDesktopSettingsHandlers(
       errors.push(`GCal revoke: ${(e as Error).message}`);
     }
 
+    // The durable deletion rows must remain available until every managed audio
+    // file is gone. If any removal fails, keep the database so the user can retry.
+    try {
+      const result = await cleanup.deleteAllAudio();
+      if (result.failed > 0) {
+        errors.push(`Audio delete: ${result.failed} item(s) could not be deleted`);
+        return { success: false, message: "Cleanup stopped because audio deletion failed", errors };
+      }
+    } catch (e) {
+      errors.push(`Audio delete: ${(e as Error).message}`);
+      return { success: false, message: "Cleanup stopped because audio deletion failed", errors };
+    }
+
     // Close DB connection before deleting the file
     try {
       cleanup.closeDatabase();
     } catch (e) {
       errors.push(`DB close: ${(e as Error).message}`);
-    }
-
-    // Delete audio files
-    try {
-      cleanup.deleteAllAudio();
-    } catch (e) {
-      errors.push(`Audio delete: ${(e as Error).message}`);
     }
 
     // Delete downloaded models

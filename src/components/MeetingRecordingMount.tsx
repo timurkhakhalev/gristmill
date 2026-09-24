@@ -69,11 +69,11 @@ export default function MeetingRecordingMount(): null {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = window.electronAPI?.onMeetingTranscriptionStopRequested?.((sessionId) => {
-      void stopRecording(sessionId).catch((error) => {
+    const unsubscribe = window.electronAPI?.onMeetingTranscriptionStopRequested?.((request) => {
+      void stopRecording(request.sessionId, { suppressProcessing: request.suppressProcessing === true }).catch((error) => {
         logger.error(
           "Meeting capture could not drain before quit",
-          { error: error instanceof Error ? error.message : String(error), sessionId },
+          { error: error instanceof Error ? error.message : String(error), sessionId: request.sessionId },
           "meeting"
         );
       });

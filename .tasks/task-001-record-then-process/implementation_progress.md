@@ -167,3 +167,17 @@ Verification:
 Commits:
 - `15717b7a` — M4: add Notes and retention surfaces.
 - M4 verification log — pending.
+
+## M4 root-test follow-up
+
+Root's focused retention run found fixture defects. The retention recording helper discarded the initial run returned by finalization, and the Electron test stub lacked `BrowserWindow.getAllWindows()`, causing real deletion broadcasts to fail after files and SQLite state were already settled. The fixture now returns and asserts the persisted run/intent inputs, and the Electron stub models a process with no open windows. Managed-directory checks and the intentional unsafe-path failure case remain unchanged.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings, all outside the changed files.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingRetention.test.js test/services/meetingResults.test.js test/services/uploadNotes.test.js test/helpers/retentionSettings.test.js`.
+
+Commits:
+- `cbc2c026` — M4: fix retention test fixtures.
+- Progress update — pending.

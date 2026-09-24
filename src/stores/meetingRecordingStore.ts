@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { getSettings } from "./settingsStore";
 import { snapshotMeetingRecordingConfig } from "../helpers/meetingRecordingConfigSnapshot";
 import { MeetingCaptureWriteQueue } from "../helpers/meetingCaptureWriteQueue";
-import { frameOffsetFromSessionOrigin } from "../helpers/meetingAudioTimeline";
+import { frameOffsetFromSessionOrigin } from "../utils/meetingAudioFrameOffset";
 import { followsSystemDefaultMic } from "../helpers/micSelectionRecovery";
 import { resolvePreferredMicrophone } from "../helpers/microphoneSelection";
 import { ActiveMicRecoveryController } from "../helpers/activeMicRecovery";

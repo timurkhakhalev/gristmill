@@ -1,4 +1,9 @@
-const SAMPLE_RATE = 24_000;
+import {
+  frameOffsetFromSessionOrigin,
+  MEETING_AUDIO_SAMPLE_RATE,
+} from "../utils/meetingAudioFrameOffset.js";
+
+export { frameOffsetFromSessionOrigin };
 
 export interface MeetingAudioTimelineOptions {
   originAt?: number;
@@ -17,9 +22,6 @@ export interface MeetingAudioTimeline {
   write(buffer: Buffer, emit: MeetingAudioTimelineEmitter): void;
 }
 
-export const frameOffsetFromSessionOrigin = (originAt: number, sourceStartedAt: number): number =>
-  Math.max(0, Math.round(((sourceStartedAt - originAt) * SAMPLE_RATE) / 1000));
-
 /** Tracks source frame positions; delivery jitter never inserts synthetic PCM. */
 export const createMeetingAudioTimeline = ({
   originAt = Date.now(),
@@ -36,7 +38,7 @@ export const createMeetingAudioTimeline = ({
       return lastPosition;
     },
     write(buffer, emit) {
-      const capturedAt = originAt + (lastPosition * 1000) / SAMPLE_RATE;
+      const capturedAt = originAt + (lastPosition * 1000) / MEETING_AUDIO_SAMPLE_RATE;
       emit(buffer, lastPosition, capturedAt);
       lastPosition += buffer.length / 2;
     },

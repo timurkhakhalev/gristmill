@@ -146,3 +146,24 @@ Verification:
 - `pnpm run lint` — passed with 0 errors and 36 warnings.
 - `git diff --check` — passed.
 - Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/remoteTranscriptionIpc.test.js test/helpers/geminiFileTranscription.test.js test/helpers/retryTranscriptionHandler.test.js test/helpers/transcriptionRoute.test.js test/services/fileTranscriptionDiarizationWarning.test.js`.
+
+## M4 implementation progress
+
+Status: done
+
+Added the Notes result/version panel, selected-run transcript/summary projection notifications, run-scoped speaker correction and existing-profile recognition, mixed playback/seek, and mixed/source WAV export. Added retention controls (7-day default, saved values preserved, 0 means indefinite), confirmed delete-all/note-delete safe Stop, durable retention cleanup ordering/retry, and focused retention/result regressions. Reconciled README/product/architecture/delivery/cutover/removal docs to the implemented contracts and retained chunking research as superseded history.
+
+Preserved constraints: Note content and empty Notes remain intact; no new dashboard or Self-Hosted meeting route; selected results and corrections remain per run; raw provider results and mic/system PCM remain separate/immutable; expiry uses recording end time; audio deletion retains text/history and shared speaker profiles; Note deletion waits for active processing and prevents late publication. The main checkout's dirty README/docs were read only and were not modified. Live mic/system hardware smoke remains explicitly unverified.
+
+Issues: final root-owned focused/full tests, build/packaged smoke, and hardware validation are pending. Typecheck initially caught the async delete-all dependency shape and duplicate Stop option fields; both were corrected. Tests/builds/installs/native rebuilds were not run by this worker.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 34 warnings, all in existing/unrelated files.
+- `git diff --check` and English/Russian locale JSON parse — passed.
+- Root focused suite: `node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingRetention.test.js test/services/meetingResults.test.js test/services/uploadNotes.test.js test/helpers/retentionSettings.test.js` — not run by this worker.
+- Root integration sequence: `pnpm run typecheck`, `pnpm run lint`, `pnpm test`, `pnpm run pack`, `node scripts/smoke-electron.js` — pending. Live isolated macOS mic/system smoke and M2 tail-loss/recovery evidence remain pending.
+
+Commits:
+- `15717b7a` — M4: add Notes and retention surfaces.
+- M4 verification log — pending.

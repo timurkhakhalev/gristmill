@@ -74,10 +74,12 @@ const EXPECTED_SHARED_FIELD_DIRECTIONS = {
 
 const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/CommandSearch.tsx": ["auto"],
+  "src/components/SettingsPage.tsx": ["ltr"],
   "src/components/chat/ChatInput.tsx": ["auto"],
   "src/components/notes/ActionManagerDialog.tsx": ["auto"],
   "src/components/notes/AddNotesToFolderDialog.tsx": ["auto"],
   "src/components/notes/MeetingTranscriptChat.tsx": ["ltr", "auto"],
+  "src/components/notes/MeetingResultsPanel.tsx": ["auto"],
   "src/components/notes/NoteBottomBar.tsx": ["auto"],
   "src/components/notes/NoteEditor.tsx": ["auto", "auto"],
   "src/components/notes/NoteParticipants.tsx": ["auto"],

@@ -90,3 +90,16 @@ Verification:
 
 Follow-up commit:
 - `b7901205` — M2: align capture store mocks with durable start contract.
+
+## M2 root-test follow-up 4
+
+Root's rerun passed 49/51. The last two failures were caused by test windows that supplied `setTimeout` but not `clearTimeout`, so the production flush-barrier cleanup threw while settling. The shared browser harness now supplies both real Node timer methods; affected tests use those shared methods, and the store cleanup hook explicitly awaits Stop.
+
+Verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 warnings.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+
+Follow-up commit:
+- `beda40d5` — M2: provide shared browser timer cleanup in store tests.

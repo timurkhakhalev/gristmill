@@ -92,13 +92,24 @@ const summaryConfigSchema = z.object({
   actionId: z.union([z.string().min(1).max(128), z.number().int().positive()]).optional(),
   templateId: z.union([z.string().min(1).max(128), z.number().int().positive()]).optional(),
   instruction: z.string().max(100_000),
-  reasoningMode: z.enum(["providers", "local", "self-hosted"]),
+  reasoningMode: z.enum(["providers", "local", "self-hosted", "enterprise"]),
   provider: z.string().min(1).max(100).optional(),
   model: z.string().min(1).max(200).optional(),
   cloudBaseUrl: secretFreeEndpointSchema.optional(),
   remoteUrl: secretFreeEndpointSchema.optional(),
   options: inferenceOptionsSchema.optional(),
   credentialRef: credentialRefSchema.optional(),
+  enterprise: z.object({
+    bedrockRegion: z.string().max(200).optional(),
+    bedrockProfile: z.string().max(200).optional(),
+    bedrockAccessKeyRef: credentialRefSchema.optional(),
+    bedrockSecretAccessKeyRef: credentialRefSchema.optional(),
+    bedrockSessionTokenRef: credentialRefSchema.optional(),
+    azureEndpoint: secretFreeEndpointSchema.optional(),
+    azureApiVersion: z.string().max(100).optional(),
+    vertexProject: z.string().max(200).optional(),
+    vertexLocation: z.string().max(200).optional(),
+  }).optional(),
 }).superRefine((config, context) => {
   if (config.reasoningMode === "providers" && !config.provider) {
     context.addIssue({ code: "custom", path: ["provider"], message: "Provider route is required" });
@@ -108,6 +119,12 @@ const summaryConfigSchema = z.object({
   }
   if (config.remoteUrl && config.reasoningMode !== "self-hosted") {
     context.addIssue({ code: "custom", path: ["remoteUrl"], message: "Remote endpoint requires a self-hosted route" });
+  }
+  if (config.reasoningMode === "enterprise" && !["bedrock", "azure", "vertex"].includes(config.provider ?? "")) {
+    context.addIssue({ code: "custom", path: ["provider"], message: "An existing enterprise reasoning provider is required" });
+  }
+  if (config.reasoningMode === "enterprise" && !config.enterprise) {
+    context.addIssue({ code: "custom", path: ["enterprise"], message: "Enterprise reasoning settings are required" });
   }
 });
 

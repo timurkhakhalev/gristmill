@@ -232,7 +232,12 @@ test("the shared main registration registers the availability channel once", asy
       apply: () => anything(),
     });
 
-  const target = { databaseManager: { getCalendarEventsInRange: () => [] } };
+  const target = {
+    databaseManager: {
+      getCalendarEventsInRange: () => [],
+      recoverRunningMeetingProcessingRuns: () => 0,
+    },
+  };
   Ctor.prototype.setupHandlers.call(
     new Proxy(target, {
       get: (value, property) => (property in value ? value[property] : anything()),

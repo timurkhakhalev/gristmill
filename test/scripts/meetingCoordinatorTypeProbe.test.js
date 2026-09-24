@@ -52,6 +52,14 @@ async function fetchRealtimeToken(
 
 const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoordinatorDeps = {
   databaseManager: {
+    createMeetingRecording: () => ({} as import("./src/contracts/meetingRecording.js").MeetingRecordingDto),
+    createMeetingRecordingEpoch: () => undefined,
+    updateMeetingRecordingEpochRecovery: () => undefined,
+    markMeetingRecordingFinalizing: () => undefined,
+    finalizeMeetingRecording: () => ({
+      recording: {} as import("./src/contracts/meetingRecording.js").MeetingRecordingDto,
+      initialRun: { id: "run-1" },
+    }),
     getSpeakerProfiles: () => [],
     getSpeakerMappings: () => [],
     setSpeakerMapping: () => undefined,
@@ -59,6 +67,12 @@ const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoor
     getNote: () => null,
     getGoogleAccounts: () => [],
     upsertSpeakerProfile: () => ({ id: 1 }),
+  },
+  meetingRecordingStorage: {
+    openEpochWriter: () => undefined,
+    appendEpochSamples: () => undefined,
+    closeEpochWriter: () => undefined,
+    recoverEpoch: () => ({ frameCount: 0, ignoredTrailingBytes: 0, errorCode: null }),
   },
   diarizationManager: {
     isAvailable: () => false,
@@ -183,10 +197,9 @@ runtime.resolveOneOnOneOtherParticipant("[]");
 
 const api = createMeetingCoordinatorBridge(ipcRendererLike);
 async function usage(): Promise<void> {
-  const prepared = await api.meetingTranscriptionPrepare?.({ provider: "openai-realtime" });
+  const prepared = await api.meetingTranscriptionPrepare?.();
   if (prepared?.success) {
     const started = await api.meetingTranscriptionStart?.({
-      provider: "openai-realtime",
       sessionId: "meeting-1",
       noteId: null,
       autoEndEligible: true,
@@ -196,9 +209,14 @@ async function usage(): Promise<void> {
         started.systemAudioStrategy;
       void strategy;
     }
-    await api.meetingTranscriptionStop?.("meeting-1");
+    await api.meetingTranscriptionStop?.({ sessionId: "meeting-1", lastSequence: {} });
   }
-  api.meetingTranscriptionSend?.(new ArrayBuffer(4), "mic");
+  api.meetingTranscriptionSend?.(new ArrayBuffer(4), "mic", "meeting-1", {
+    epochIndex: 0,
+    epochStartFrame: 0,
+    sequence: 0,
+    sampleOffset: 0,
+  });
   const unsubscribe = api.onMeetingTranscriptionSegment?.((data) => {
     const source: "mic" | "system" = data.source;
     void source;

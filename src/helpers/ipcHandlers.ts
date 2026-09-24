@@ -26,7 +26,8 @@ import { registerVocabularyHandlers } from "./vocabularyIpcHandlers.js";
 import { registerContainerHandlers } from "./containerIpcHandlers.js";
 import { registerChatPersistenceHandlers } from "./chatPersistenceIpcHandlers.js";
 import { registerActionsHandlers } from "./actionsIpcHandlers.js";
-import { registerLocalFileTranscriptionHandler } from "./localFileTranscriptionIpcHandler.js";
+import { registerLocalFileTranscriptionHandler, type TranscriptionHandlerDeps } from "./localFileTranscriptionIpcHandler.js";
+import { transcribeLocalFile } from "./localFileTranscription.js";
 import {
   applyConfirmedSpeaker,
   canAutoRelabelSpeaker,
@@ -60,7 +61,7 @@ import {
 } from "./meetingCoordinatorIpcHandlers.js";
 import type { DiarizationPublicationDatabase } from "./meetingDiarizationPublication.js";
 import { registerSpeakerHandlers, type SpeakerDatabase } from "./speakerIpcHandlers.js";
-import { registerRemoteTranscriptionHandler } from "./remoteTranscriptionIpcHandler.js";
+import { registerRemoteTranscriptionHandler, transcribeAudioFileByok, type RemoteTranscriptionDeps } from "./remoteTranscriptionIpcHandler.js";
 import { registerReasoningHandlers, type EnterpriseStreamModel } from "./reasoningIpcHandlers.js";
 import { registerFileDiarizationHandlers } from "./fileDiarizationIpcHandlers.js";
 import { registerUploadCancelHandler } from "./uploadCancelIpcHandler.js";
@@ -74,6 +75,9 @@ import type { LlmModelManagerLike, LlmDownloadStatusTracker } from "./localLlmMo
 import type { WhisperManagerLike, ParakeetManagerLike } from "./localModelLifecycleIpcHandlers.js";
 import type { DiarizationPublicationDiarizationManager } from "./meetingDiarizationPublication.js";
 import { registerTranscriptionDataHandlers } from "./transcriptionDataIpcHandlers.js";
+import { MeetingProcessingWorker, registerMeetingProcessingHandlers } from "./meetingProcessing.js";
+import { generateMeetingSummary } from "./meetingSummary.js";
+import { BYOK_API_KEYS } from "../config/secretKeys.js";
 import { registerDesktopSettingsHandlers } from "./desktopSettingsIpcHandlers.js";
 import { listLocalTranscriptionModels } from "./localTranscriptionModels.js";
 import markdownMirror from "./markdownMirror.js";
@@ -302,6 +306,8 @@ export class IPCHandlers {
   _granolaImportPending: import("./noteFilesIpcHandlers.js").GranolaImportState | null;
   whisperVadSettings: Record<string, unknown>;
   _meetingCoordinator: MeetingCoordinatorRuntime | null = null;
+  _meetingProcessing: MeetingProcessingWorker | null = null;
+  _meetingRecoveryReady = false;
 
   constructor(managers: IPCHandlersManagerOptions) {
     this.environmentManager = managers.environmentManager;
@@ -337,6 +343,14 @@ export class IPCHandlers {
       ...DEFAULT_WHISPER_VAD_CONFIG,
     };
     liveSpeakerIdentifier.setDiarizationManager(this.diarizationManager);
+    try {
+      this.audioStorageManager.meetingRecordings.recover(this.databaseManager);
+      this._meetingRecoveryReady = true;
+    } catch (error) {
+      debugLogger.error("Meeting recording recovery failed; background processing is paused", {
+        error: error instanceof Error ? error.message : String(error),
+      }, "meeting");
+    }
     this._setupRetentionCleanup();
     this.setupHandlers();
   }
@@ -706,6 +720,7 @@ export class IPCHandlers {
           this._retentionSettings = settings;
           this._retentionSettingsSynced = true;
           this._runRetentionCleanup();
+          if (this._meetingRecoveryReady) this._meetingProcessing?.onRetentionReady();
           // First point at which the local-history switch is known to be real.
           // After the sweep, so expired transcripts are gone before they can be
           // reconstructed into counters the sweep would only have to purge.
@@ -885,7 +900,7 @@ export class IPCHandlers {
 
     // Local file transcription lives in the typed module; the shared
     // execution below it also serves the CLI bridge.
-    registerLocalFileTranscriptionHandler(ipcMain, {
+    const localFileTranscriptionDeps: TranscriptionHandlerDeps = {
       readFile: (filePath) => fs.readFileSync(filePath),
       resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
       isSherpaLocalProvider: (provider) => isSherpaLocalProvider(provider),
@@ -897,12 +912,13 @@ export class IPCHandlers {
       uploadCancelRegistry: this._uploadCancelRegistry,
       logDebug: (message, data) => debugLogger.debug(message, data),
       logError: (message, data) => debugLogger.error(message, data),
-    });
+    };
+    registerLocalFileTranscriptionHandler(ipcMain, localFileTranscriptionDeps);
 
     // Remote (BYOK/self-hosted) transcription lives in the typed module; the
     // route resolver is re-run there as the trust boundary, and every active
     // transport receives the cancel registry's AbortSignal.
-    registerRemoteTranscriptionHandler(ipcMain, {
+    const remoteTranscriptionDeps: RemoteTranscriptionDeps = {
       resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
       readFile: (filePath) => fs.readFileSync(filePath),
       fileSize: (filePath) => fs.statSync(filePath).size,
@@ -927,7 +943,103 @@ export class IPCHandlers {
       logDebug: (message, data) => debugLogger.debug(message, data),
       logWarn: (message, data) => debugLogger.warn(message, data),
       logError: (message, data) => debugLogger.error(message, data),
+    };
+    registerRemoteTranscriptionHandler(ipcMain, remoteTranscriptionDeps);
+
+    const getMeetingCredential = (reference: string | undefined, provider: string): string => {
+      if (reference === "CUSTOM_TRANSCRIPTION_API_KEY") return this.environmentManager.getCustomTranscriptionKey();
+      if (reference === "CUSTOM_CLEANUP_API_KEY") return this.environmentManager.getCleanupCustomKey();
+      if (reference === "BEDROCK_ACCESS_KEY_ID") return this.environmentManager.getBedrockAccessKeyId();
+      if (reference === "BEDROCK_SECRET_ACCESS_KEY") return this.environmentManager.getBedrockSecretAccessKey();
+      if (reference === "BEDROCK_SESSION_TOKEN") return this.environmentManager.getBedrockSessionToken();
+      if (reference === "AZURE_OPENAI_API_KEY") return this.environmentManager.getAzureApiKey();
+      if (reference === "VERTEX_API_KEY") return this.environmentManager.getVertexApiKey();
+      const key = BYOK_API_KEYS.find((entry) => entry.env === reference) ??
+        BYOK_API_KEYS.find((entry) => entry.base === provider);
+      return key ? this.environmentManager[key.get]() : "";
+    };
+    const meetingWorker = new MeetingProcessingWorker({
+      database: this.databaseManager,
+      storage: this.audioStorageManager.meetingRecordings,
+      isCaptureActive: () => this._meetingCoordinator?.isRecording() === true,
+      transcribeRemote: (request, onRawProviderResponse, signal) =>
+        transcribeAudioFileByok(remoteTranscriptionDeps, request, { onRawProviderResponse, signal }),
+      transcribeLocal: (audioPath, options) => {
+        const approvedPath = resolveAllowedAudioPath(audioPath);
+        if (!approvedPath) {
+          return Promise.resolve({ success: false, error: "File path not allowed", code: "AUDIO_PATH_NOT_ALLOWED" });
+        }
+        return transcribeLocalFile(localFileTranscriptionDeps, approvedPath, options);
+      },
+      diarizeLocal: async (audioPath, options) => {
+        if (!this.diarizationManager.isModelDownloaded()) {
+          throw Object.assign(new Error("Local diarization models are not installed"), {
+            code: "DIARIZATION_MODEL_MISSING",
+          });
+        }
+        const resolveThreshold = (
+          require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")
+        ).resolveClusterThreshold;
+        const dropNegligible = (
+          require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")
+        ).dropNegligibleClusters;
+        const expected = options.expectedSpeakerCount;
+        const diarized = await this.diarizationManager.diarize(audioPath, {
+          numSpeakers: expected && expected > 0 ? expected : -1,
+          threshold: resolveThreshold(options.durationSeconds, undefined),
+          signal: options.signal,
+        });
+        options.signal.throwIfAborted();
+        const meaningful = dropNegligible(diarized) ?? [];
+        return this.diarizationManager.capSpeakerClusters(
+          meaningful,
+          expected && expected > 0 ? expected : MAX_SPEAKER_COUNT
+        ).map(({ speaker, start, end }) => ({ speaker, start, end }));
+      },
+      summarize: (input, summaryConfig, signal) => {
+        const providers = require("../services/ai/providers") as {
+          getAIModel: (
+            provider: string,
+            model: string,
+            apiKey: string,
+            baseUrl?: string,
+            options?: { disableThinking?: boolean; omitAuthorization?: boolean }
+          ) => Promise<unknown>;
+        };
+        const localBridge = require("../services/localReasoningBridge").default as {
+          processText(
+            input: string,
+            model: string,
+            config: import("../contracts/reasoning.js").LocalReasoningConfig,
+            signal?: AbortSignal
+          ): Promise<string>;
+        };
+        return generateMeetingSummary(input, summaryConfig, {
+          getAIModel: (provider, model, apiKey, baseUrl, options) =>
+            providers.getAIModel(provider, model, apiKey, baseUrl, options),
+          generateText: (options) => require("ai").generateText(options),
+          processLocalText: (text, model, options, abortSignal) =>
+            localBridge.processText(text, model, options as import("../contracts/reasoning.js").LocalReasoningConfig, abortSignal),
+          getCredential: getMeetingCredential,
+          getEnterpriseAIModel: (provider, model, apiKey, enterprise) => {
+            const factory = require("./enterpriseAiProviders").getEnterpriseAIModel as (
+              provider: string,
+              model: string,
+              apiKey: string,
+              enterprise: Record<string, unknown>
+            ) => Promise<unknown>;
+            return factory(provider, model, apiKey, enterprise);
+          },
+          validateEnterpriseEndpoint,
+          runBedrockRequest: (operation, options) => runBedrockRequest(operation, options),
+        }, signal);
+      },
+      getCredential: getMeetingCredential,
+      onChanged: (recordingId, runId) =>
+        broadcastToWindows("meeting-processing-updated", { recordingId, runId }),
     });
+    this._meetingProcessing = meetingWorker;
+    registerMeetingProcessingHandlers(ipcMain, meetingWorker);
 
     // The explicit hard cancel of one managed upload execution: aborts the
     // transcription, diarization and transport registered under the id.
@@ -1191,6 +1303,8 @@ export class IPCHandlers {
           active,
           active ? () => this.windowManager.stopMeetingCaptureFromMenu() : undefined
         ),
+      onCaptureStarted: () => this._meetingProcessing?.captureStarted(),
+      onCaptureStopped: () => this._meetingProcessing?.captureStopped(),
     });
     this.windowManager.setMeetingCaptureQuitGuard({
       isRecording: () => this._meetingCoordinator?.isRecording() === true,

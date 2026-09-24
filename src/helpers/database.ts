@@ -992,6 +992,13 @@ export class DatabaseManager {
       .all() as MeetingRecordingDbRow[]).map(toMeetingRecordingDto);
   }
 
+  listMeetingRecordingsForNote(noteId: number): MeetingRecordingDto[] {
+    if (!Number.isSafeInteger(noteId) || noteId < 1) return [];
+    return (this.sql
+      .prepare("SELECT * FROM meeting_recordings WHERE note_id = ? ORDER BY started_at, id")
+      .all(noteId) as MeetingRecordingDbRow[]).map(toMeetingRecordingDto);
+  }
+
   createMeetingRecordingEpoch(
     recordingId: string,
     source: MeetingSource,
@@ -1270,6 +1277,38 @@ export class DatabaseManager {
       .all() as MeetingProcessingRunDbRow[]).map(toMeetingRunDto);
   }
 
+  recoverRunningMeetingProcessingRuns(): number {
+    const result = this.sql.prepare(
+      "UPDATE meeting_processing_runs SET status = 'pending', retry_count = CASE WHEN stage = 'asr' AND raw_response_path IS NULL THEN retry_count + 1 ELSE retry_count END, error_code = CASE WHEN stage = 'asr' AND raw_response_path IS NULL THEN 'asr-outcome-unknown' ELSE NULL END, retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'running' AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL)"
+    ).run();
+    return result.changes;
+  }
+
+  claimMeetingProcessingRun(id: string, now = new Date().toISOString()): boolean {
+    meetingRecordingIdSchema.parse(id);
+    if (!Number.isFinite(Date.parse(now))) throw new RangeError("Invalid meeting processing claim time");
+    const result = this.sql.prepare(
+      "UPDATE meeting_processing_runs SET status = 'running', error_code = NULL, retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending' AND (retry_at IS NULL OR retry_at <= ?) AND NOT EXISTS (SELECT 1 FROM meeting_processing_runs active WHERE active.status = 'running' AND active.id != meeting_processing_runs.id) AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL AND (r.audio_state = 'available' OR meeting_processing_runs.stage IN ('normalize', 'summary')))"
+    ).run(id, now);
+    return result.changes > 0;
+  }
+
+  retryMeetingProcessingRun(id: string): MeetingProcessingRunDto | null {
+    meetingRecordingIdSchema.parse(id);
+    const run = this.getMeetingProcessingRun(id);
+    if (!run || !["blocked", "failed", "cancelled"].includes(run.status)) return null;
+    const recording = this.getMeetingRecording(run.recordingId);
+    if (!recording || this.isMeetingNoteDeletionPending(recording.noteId)) return null;
+    if (recording.audioState !== "available" && !run.hasRawProviderResponse && run.kind !== "summary") {
+      return null;
+    }
+    const stage = run.kind === "summary" ? "summary" : run.hasTranscript ? "summary" : run.hasRawProviderResponse ? "normalize" : "prepare";
+    this.sql.prepare(
+      "UPDATE meeting_processing_runs SET stage = ?, status = 'pending', error_code = NULL, retry_at = NULL, retry_count = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('blocked', 'failed', 'cancelled')"
+    ).run(stage, id);
+    return this.getMeetingProcessingRun(id);
+  }
+
   setMeetingProcessingRunState(
     id: string,
     update: { stage: MeetingRunStage; status: MeetingRunStatus; errorCode?: string | null; retryAt?: string | null; retryCount?: number }
@@ -1281,9 +1320,9 @@ export class DatabaseManager {
     }
     const result = this.sql
       .prepare(
-        "UPDATE meeting_processing_runs SET stage = ?, status = ?, error_code = ?, retry_at = ?, retry_count = COALESCE(?, retry_count), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND (r.audio_state = 'available' OR (meeting_processing_runs.kind = 'summary' AND meeting_processing_runs.stage = 'summary')) AND d.id IS NULL)"
+        "UPDATE meeting_processing_runs SET stage = ?, status = ?, error_code = ?, retry_at = ?, retry_count = COALESCE(?, retry_count), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND (r.audio_state = 'available' OR (? IN ('normalize', 'summary') AND (meeting_processing_runs.raw_response_path IS NOT NULL OR meeting_processing_runs.transcript_path IS NOT NULL OR (meeting_processing_runs.kind = 'summary' AND EXISTS (SELECT 1 FROM meeting_processing_runs source WHERE source.id = meeting_processing_runs.source_run_id AND source.transcript_path IS NOT NULL))))) AND d.id IS NULL)"
       )
-      .run(update.stage, update.status, update.errorCode ?? null, update.retryAt ?? null, update.retryCount ?? null, id);
+      .run(update.stage, update.status, update.errorCode ?? null, update.retryAt ?? null, update.retryCount ?? null, id, update.stage);
     return { success: result.changes > 0 };
   }
 
@@ -1328,8 +1367,8 @@ export class DatabaseManager {
         ? "AND (transcript_path IS NOT NULL OR (kind = 'summary' AND source_run_id IS NOT NULL))"
         : "";
     const result = this.sql.prepare(
-      `UPDATE meeting_processing_runs SET ${column} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND ${column} IS NULL ${prerequisite} AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL)`
-    ).run(name, id);
+      `UPDATE meeting_processing_runs SET ${column} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND ${column} IS NULL ${prerequisite} AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND (? = 0 OR r.audio_state = 'available') AND d.id IS NULL)`
+    ).run(name, id, artifact === "provider-response" ? 1 : 0);
     return { success: result.changes > 0 };
   }
 
@@ -1415,6 +1454,9 @@ export class DatabaseManager {
       this.sql
         .prepare("UPDATE meeting_recordings SET audio_state = 'deleting', audio_error_code = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
         .run(recordingId);
+      this.sql.prepare(
+        "UPDATE meeting_processing_runs SET status = 'cancelled', error_code = 'audio-deletion-requested', retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE recording_id = ? AND status IN ('pending', 'running') AND stage IN ('prepare', 'asr') AND raw_response_path IS NULL"
+      ).run(recordingId);
       const existing = this.sql
         .prepare("SELECT * FROM meeting_deletion_intents WHERE recording_id = ? AND kind = 'audio'")
         .get(recordingId) as MeetingDeletionIntentDbRow | undefined;

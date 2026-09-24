@@ -18,6 +18,7 @@ import type { TranscriptionExecutionApi } from "../contracts/transcriptionExecut
 import type { DesktopSettingsApi } from "../contracts/desktopSettings";
 import type { TranscriptionDataApi } from "../contracts/transcriptionData";
 import type { MeetingCoordinatorApi } from "../contracts/meetingCoordinator";
+import type { MeetingProcessingApi } from "../contracts/meetingProcessing";
 
 export type ChineseScriptPreference = "simplified" | "traditional" | "as-transcribed";
 
@@ -562,7 +563,7 @@ declare global {
       // MeetingCoordinatorApi contract. register-meeting-hotkey lives there
       // too (its handler moved to the typed meetingHotkeyIpcHandler owner).
 
-    } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi & DesktopSettingsApi & MeetingCoordinatorApi;
+      } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi & DesktopSettingsApi & MeetingCoordinatorApi & MeetingProcessingApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

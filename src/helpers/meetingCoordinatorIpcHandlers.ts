@@ -183,6 +183,8 @@ export interface MeetingCoordinatorDeps {
   consumePendingMeetingNoteNavigation?(): unknown;
   showNotificationWindow?(sender: WebContents): void;
   setMeetingCaptureState?(active: boolean): void;
+  onCaptureStarted?(): void;
+  onCaptureStopped?(): void;
 }
 
 interface MeetingSystemAudioPlan {
@@ -1939,6 +1941,7 @@ export function registerMeetingCoordinatorHandlers(
     meetingStartedAt = startedAt.getTime();
     meetingNoteId = noteId;
     linkRecordingSessionToNote(noteId);
+    deps.onCaptureStarted?.();
     meetingDetectionEngine?.setUserRecording(true);
 
     let systemAudioMode: "native" | "unsupported" = "unsupported";
@@ -1991,6 +1994,7 @@ export function registerMeetingCoordinatorHandlers(
       activeCaptureSession = null;
       activeCaptureSessionId = null;
       activeCaptureOwner = null;
+      deps.onCaptureStopped?.();
       deps.setMeetingCaptureState?.(false);
       meetingDetectionEngine?.endRecordingSession(sessionId);
       meetingDetectionEngine?.setUserRecording(false);
@@ -2130,6 +2134,7 @@ export function registerMeetingCoordinatorHandlers(
       activeCaptureSession = null;
       activeCaptureSessionId = null;
       activeCaptureOwner = null;
+      deps.onCaptureStopped?.();
       linkRecordingSessionToNote(null);
       deps.setMeetingCaptureState?.(false);
       resolveSafeStop?.({ success: true, captureState: result.captureState });
@@ -2148,6 +2153,7 @@ export function registerMeetingCoordinatorHandlers(
       activeCaptureSession = null;
       activeCaptureSessionId = null;
       activeCaptureOwner = null;
+      deps.onCaptureStopped?.();
       linkRecordingSessionToNote(null);
       deps.setMeetingCaptureState?.(false);
       resolveSafeStop?.({ success: false });

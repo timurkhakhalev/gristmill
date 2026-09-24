@@ -28,6 +28,7 @@ interface GeminiFileRequest {
   apiKey: string;
   diarize: boolean;
   signal?: AbortSignal;
+  onRawResponse?: (response: unknown) => Promise<void>;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -87,11 +88,7 @@ export function parseGeminiFileResponse(raw: unknown, diarize: boolean): RemoteT
           .map((content) => content!.text as string)
           .join(" ");
   if (!text.trim()) {
-    return {
-      success: false,
-      error: "Gemini returned no transcript",
-      code: "GEMINI_INVALID_RESPONSE",
-    };
+    return { success: true, text: "", diarized: false, segments: [] };
   }
 
   const segments: NonNullable<RemoteTranscriptionResult["segments"]> = [];
@@ -327,6 +324,7 @@ export async function transcribeGeminiFile(
         signal,
       })
     );
+    await request.onRawResponse?.(interaction);
     return parseGeminiFileResponse(interaction, diarize);
   } finally {
     if (name) {

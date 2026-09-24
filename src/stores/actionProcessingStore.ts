@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { STANDALONE_PROMPT_KEYS } from "../helpers/builtinActions";
+import { MEETING_INPUT_PREAMBLE, STANDALONE_PROMPT_KEYS } from "../helpers/builtinActions";
 import reasoningService from "../services/ReasoningService";
 import { getSettings } from "./settingsStore";
 import { selectResolvedNoteFormatting } from "../config/settingsSelectors";
@@ -109,9 +109,6 @@ Instructions: `;
 
 // Standalone built-in prompts are complete instructions, so they only get told
 // how the material is laid out instead of being wrapped in the generic prompts.
-const MEETING_INPUT_PREAMBLE = `The material is laid out as follows. Transcript lines are prefixed with the speaker's label: a real name when known, otherwise "You" (the note owner), "Them", or "Speaker N". A "## Meeting Context" block may identify the note owner and the invited participants; it is reference material, never something to reproduce. Manual notes the user took may precede the transcript.
-
-`;
 const NOTE_INPUT_PREAMBLE = `The material is the user's own notes, possibly voice-transcribed, rough, or unstructured. There is no transcript.
 
 `;

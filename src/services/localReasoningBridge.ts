@@ -31,7 +31,12 @@ export class LocalReasoningService {
     }
   }
 
-  async processText(text: string, modelId: string, config: LocalReasoningConfig = {}): Promise<string> {
+  async processText(
+    text: string,
+    modelId: string,
+    config: LocalReasoningConfig = {},
+    signal?: AbortSignal
+  ): Promise<string> {
     debugLogger.logReasoning("LOCAL_BRIDGE_START", {
       modelId,
       textLength: text.length,
@@ -59,6 +64,7 @@ export class LocalReasoningService {
         // field-by-field is what silently orphaned it before #2142: it was
         // declared, written by selection editing, and never forwarded.
         contextSize: config.contextSize,
+        signal,
       };
 
       debugLogger.logReasoning("LOCAL_BRIDGE_INFERENCE", {

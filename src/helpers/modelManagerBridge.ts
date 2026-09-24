@@ -72,6 +72,7 @@ export interface RunInferenceOptions {
   disableThinking?: boolean;
   requireCompleteOutput?: boolean;
   contextSize?: number;
+  signal?: AbortSignal;
   [key: string]: unknown;
 }
 
@@ -730,11 +731,13 @@ export class ModelManager {
   async runInference(modelId: string, prompt: string, options: RunInferenceOptions = {}): Promise<string> {
     this.ensureInitialized();
     const startTime = Date.now();
+    const { signal, ...loggedOptions } = options;
     debugLogger.logReasoning("INFERENCE_START", {
       modelId,
       promptLength: prompt.length,
-      options: { ...options, systemPrompt: options.systemPrompt ? "[set]" : "[not set]" },
+      options: { ...loggedOptions, systemPrompt: options.systemPrompt ? "[set]" : "[not set]" },
     });
+    if (signal?.aborted) throw Object.assign(new Error("Inference cancelled"), { name: "AbortError" });
 
     // Ensure server is available
     if (!this.serverManager.isAvailable()) {
@@ -904,6 +907,7 @@ export class ModelManager {
       ceilingFor,
       startServer,
     });
+    if (signal?.aborted) throw Object.assign(new Error("Inference cancelled"), { name: "AbortError" });
 
     debugLogger.logReasoning("INFERENCE_SENDING_REQUEST", {
       messageCount: messages.length,
@@ -919,6 +923,7 @@ export class ModelManager {
         max_tokens: grantedMaxTokens,
         disableThinking: options.disableThinking,
         requireCompleteOutput: options.requireCompleteOutput,
+        signal,
       });
 
       const totalTime = Date.now() - startTime;
@@ -931,6 +936,9 @@ export class ModelManager {
       return result;
     } catch (error) {
       const failure = error as LlamaInferenceFailureShape;
+      if (signal?.aborted || (error as Error)?.name === "AbortError") {
+        throw Object.assign(new Error("Inference cancelled"), { name: "AbortError" });
+      }
       const totalTime = Date.now() - startTime;
       debugLogger.logReasoning("INFERENCE_FAILED", {
         totalTimeMs: totalTime,

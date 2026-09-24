@@ -291,6 +291,40 @@ export class MeetingRecordingStorage {
     }
   }
 
+  removeRunArtifact(runId: string, artifact: MeetingRunArtifact): void {
+    meetingRecordingIdSchema.parse(runId);
+    meetingRunArtifactSchema.parse(artifact);
+    const filePath = path.join(this.resultsRoot, runId, artifactFileName(artifact));
+    this.assertSafeFile(filePath);
+    fs.rmSync(filePath, { force: true });
+  }
+
+  getEpochFilePath(recordingId: string, source: MeetingSource, epochIndex: number): string {
+    const filePath = this.epochFilePath(recordingId, source, epochIndex);
+    this.assertSafeFile(filePath);
+    return filePath;
+  }
+
+  getDerivedAudioPath(recordingId: string, runId: string): string {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingRecordingIdSchema.parse(runId);
+    const directory = path.join(this.recordingsRoot, recordingId, "derived");
+    this.ensureManagedDirectory(directory);
+    const filePath = path.join(directory, `${runId}.wav`);
+    this.assertSafeFile(filePath);
+    return filePath;
+  }
+
+  getDerivedAudioTempPath(recordingId: string, runId: string): string {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingRecordingIdSchema.parse(runId);
+    const directory = path.join(this.recordingsRoot, recordingId, "derived");
+    this.ensureManagedDirectory(directory);
+    const filePath = path.join(directory, `.tmp-${runId}-${randomUUID()}.wav`);
+    this.assertSafeFile(filePath);
+    return filePath;
+  }
+
   removeRecordingAudio(recordingId: string): void {
     meetingRecordingIdSchema.parse(recordingId);
     this.closeRecordingWriters(recordingId);

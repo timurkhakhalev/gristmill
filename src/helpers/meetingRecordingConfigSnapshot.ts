@@ -5,7 +5,8 @@ import {
 } from "../contracts/meetingRecording.js";
 import { BYOK_API_KEYS } from "../config/secretKeys.js";
 import { selectResolvedMeetingTranscription, selectResolvedNoteFormatting } from "../config/settingsSelectors.js";
-import { BUILTIN_ACTIONS, DETAILED_NOTES_KEY } from "./builtinActions.js";
+import { BUILTIN_ACTIONS, DETAILED_NOTES_KEY, MEETING_INPUT_PREAMBLE } from "./builtinActions.js";
+import { appendDictionarySuffix } from "../config/prompts.js";
 import { getSettings } from "../stores/settingsStore.js";
 import { getBaseLanguageCode } from "../utils/languageSupport.js";
 
@@ -36,7 +37,7 @@ export function snapshotMeetingRecordingConfig(): {
       mode: "local",
       language,
       dictionaryHints: state.customDictionary ?? [],
-      local: { provider, model },
+      local: { provider, model, options: { diarize: state.speakerDiarizationEnabled !== false } },
     };
   } else if (meeting.transcriptionMode === "providers") {
     transcription = {
@@ -61,11 +62,15 @@ export function snapshotMeetingRecordingConfig(): {
   let summary: Record<string, unknown> | null = null;
   if (
     detailedNotes &&
-    (formatting.mode === "providers" || formatting.mode === "local" || formatting.mode === "self-hosted")
+    (formatting.mode === "providers" || formatting.mode === "local" || formatting.mode === "self-hosted" || formatting.mode === "enterprise")
   ) {
     summary = {
       actionId: DETAILED_NOTES_KEY,
-      instruction: detailedNotes.prompt,
+      instruction: appendDictionarySuffix(
+        MEETING_INPUT_PREAMBLE + detailedNotes.prompt,
+        state.customDictionary ?? [],
+        state.uiLanguage
+      ),
       reasoningMode: formatting.mode,
       ...(formatting.provider ? { provider: formatting.provider } : {}),
       ...(formatting.model ? { model: formatting.model } : {}),
@@ -76,7 +81,36 @@ export function snapshotMeetingRecordingConfig(): {
         ? { remoteUrl: formatting.remoteUrl }
         : {}),
       ...(formatting.mode === "providers" && formatting.provider === "custom"
-        ? { credentialRef: "NOTE_FORMATTING_CUSTOM_API_KEY" }
+        ? { credentialRef: "CUSTOM_CLEANUP_API_KEY" }
+        : {}),
+      ...(formatting.mode === "enterprise"
+        ? {
+            ...(formatting.provider === "azure" ? { credentialRef: "AZURE_OPENAI_API_KEY" } : {}),
+            ...(formatting.provider === "vertex" ? { credentialRef: "VERTEX_API_KEY" } : {}),
+            enterprise: {
+              ...(formatting.provider === "bedrock"
+                ? {
+                    bedrockRegion: state.bedrockRegion,
+                    bedrockProfile: state.bedrockProfile,
+                    bedrockAccessKeyRef: "BEDROCK_ACCESS_KEY_ID",
+                    bedrockSecretAccessKeyRef: "BEDROCK_SECRET_ACCESS_KEY",
+                    bedrockSessionTokenRef: "BEDROCK_SESSION_TOKEN",
+                  }
+                : {}),
+              ...(formatting.provider === "azure"
+                ? {
+                    azureEndpoint: state.azureEndpoint,
+                    azureApiVersion: state.azureApiVersion,
+                  }
+                : {}),
+              ...(formatting.provider === "vertex"
+                ? {
+                    vertexProject: state.vertexProject,
+                    vertexLocation: state.vertexLocation,
+                  }
+                : {}),
+            },
+          }
         : {}),
       options: { disableThinking: state.noteFormattingDisableThinking, cloudMode: formatting.cloudMode },
     };

@@ -218,8 +218,8 @@ M1 → review/verification → M2 → review/verification → M3 → review/veri
 | --- | --- | --- |
 | M1 — Хранение записи и результатов | done | `bd0d603b`, `52714ef9`, `0e0f08fd`, `2ceb4a44` |
 | M2 — Capture и безопасный Stop | done | `9028b992`, `485b17dd`, `58ef1f5c`, `c49cb910`, `30ce4434`, `1485e2fb`, `b7901205`, `e6d99434`, `beda40d5`, `4f157947`, `0f6331de`, `8e99ea4e` |
-| M3 — Обработка после Stop | in progress | |
-| M4 — Notes, retention и итоговая проверка | not started | |
+| M3 — Обработка после Stop | done | `e192dd51`, `7dcf9f86`, `c871bf01` |
+| M4 — Notes, retention и итоговая проверка | in progress | |
 | Reviewer | not started | |
 | Code Reviewer | not started | |
 

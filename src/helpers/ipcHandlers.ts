@@ -1137,7 +1137,8 @@ export class IPCHandlers {
     // only wires its dependencies. The meeting-state callbacks the notes and
     // speaker verticals need come from its runtime handle.
     this._meetingCoordinator = registerMeetingCoordinatorHandlers(ipcMain, {
-      databaseManager: this.databaseManager as unknown as DiarizationPublicationDatabase,
+      databaseManager: this.databaseManager as unknown as DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase,
+      meetingRecordingStorage: this.audioStorageManager.meetingRecordings,
       diarizationManager: this
         .diarizationManager as unknown as DiarizationPublicationDiarizationManager,
       meetingDetectionEngine: this.meetingDetectionEngine,
@@ -1185,6 +1186,18 @@ export class IPCHandlers {
       consumePendingMeetingNoteNavigation: () =>
         this.windowManager.consumePendingMeetingNoteNavigation() ?? null,
       showNotificationWindow: (sender) => this.windowManager.showNotificationWindow(sender),
+      setMeetingCaptureState: (active) =>
+        this.getTrayManager()?.setMeetingCaptureStatus(
+          active,
+          active ? () => this.windowManager.stopMeetingCaptureFromMenu() : undefined
+        ),
+    });
+    this.windowManager.setMeetingCaptureQuitGuard({
+      isRecording: () => this._meetingCoordinator?.isRecording() === true,
+      stop: async () => {
+        const result = await this._meetingCoordinator?.requestSafeStop();
+        return { success: result?.success === true };
+      },
     });
 
     registerSpeakerHandlers(ipcMain, {

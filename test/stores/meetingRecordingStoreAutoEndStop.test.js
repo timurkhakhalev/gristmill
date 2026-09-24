@@ -6,11 +6,8 @@ const {
   installMicCaptureGlobals,
 } = require("../lib/rendererTestHarness");
 
-// `stopped` is what gates the auto-end restart card: true means this call ended
-// a live recording, so resuming its note is safe. It must not be conditioned on
-// main's teardown result — the transcript is written from the renderer before
-// that IPC is even awaited, so a teardown error still leaves a resumable note.
-
+const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
+const RUN_ID = "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2";
 const START_ARGS = {
   noteId: 11,
   noteTitle: "Standup",
@@ -20,113 +17,128 @@ const START_ARGS = {
 
 function createElectronAPI({ stopResult }) {
   const noopListener = () => () => {};
-  const notes = new Map([[11, { id: 11, transcript: "" }]]);
-  return {
-    updatedTranscripts: [],
-    api: {
-      checkSystemAudioAccess: async () => ({
-        granted: true,
-        status: "granted",
-        mode: "native",
-        strategy: "native",
-      }),
-      meetingTranscriptionStart: async () => ({
-        success: true,
-        systemAudioMode: "native",
-        systemAudioStrategy: "native",
-      }),
-      meetingTranscriptionSetSystemAudioAvailable: async () => ({ success: true }),
-      meetingTranscriptionStop: async () => stopResult(),
-      meetingTranscriptionSend: () => {},
-      getNote: async (id) => notes.get(id) ?? null,
-      updateNote: async () => ({ success: true }),
-      onMeetingTranscriptionSegment: noopListener,
-      onMeetingSpeakerIdentified: noopListener,
-      onMeetingSpeakersMerged: noopListener,
-      onMeetingSessionSpeakerConfigUpdated: noopListener,
-      onMeetingTranscriptionError: noopListener,
-      onMeetingTranscriptionFatalError: noopListener,
-      onMeetingSystemAudioSilent: noopListener,
-      onMeetingDiarizationComplete: noopListener,
-    },
+  const notes = new Map([[11, { id: 11, transcript: "Keep this transcript" }]]);
+  const api = {
+    stopRequests: [],
+    noteUpdates: [],
+    api: null,
   };
+  api.api = {
+    checkSystemAudioAccess: async () => ({
+      granted: true,
+      status: "granted",
+      mode: "native",
+      strategy: "native",
+    }),
+    meetingTranscriptionStart: async () => ({
+      success: true,
+      recordingId: RECORDING_ID,
+      originAt: new Date().toISOString(),
+      systemAudioMode: "native",
+      systemAudioStrategy: "native",
+    }),
+    meetingTranscriptionSetSystemAudioAvailable: async () => ({ success: true }),
+    meetingTranscriptionStop: async (request) => {
+      api.stopRequests.push(request);
+      return stopResult();
+    },
+    meetingTranscriptionSend: async (_buffer, _source, _sessionId, packet) => ({
+      success: true,
+      sequence: packet.sequence,
+    }),
+    getNote: async (id) => notes.get(id) ?? null,
+    updateNote: async (id, value) => {
+      api.noteUpdates.push({ id, value });
+      return { success: true };
+    },
+    onMeetingTranscriptionError: noopListener,
+    onMeetingTranscriptionFatalError: noopListener,
+    onMeetingSystemAudioSilent: noopListener,
+    onMeetingDiarizationComplete: noopListener,
+    onMeetingSystemAudioInterrupted: noopListener,
+    onMeetingSystemAudioResumed: noopListener,
+    onMeetingTranscriptionStopRequested: noopListener,
+  };
+  return api;
 }
 
 async function loadStore(t, api) {
   installMicCaptureGlobals(t);
   installBrowserGlobals(t, {
-    window: { electronAPI: api, setTimeout: (fn, ms) => setTimeout(fn, ms) },
+    window: { electronAPI: api.api, setTimeout: (fn, ms) => setTimeout(fn, ms) },
   });
   const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-meeting-auto-end-stop-test-",
+    cachePrefix: "openhercules-meeting-capture-stop-test-",
   });
   return vite.ssrLoadModule("/stores/meetingRecordingStore.ts");
 }
 
-test("a completed stop reports that it ended the recording", async (t) => {
-  const { api } = createElectronAPI({ stopResult: () => ({ success: true }) });
+const finalized = (captureState = "ready") => ({
+  success: true,
+  recordingId: RECORDING_ID,
+  initialRunId: RUN_ID,
+  captureState,
+  errorCode: captureState === "ready" ? null : "system-source-unavailable",
+});
+
+test("normal stop drains and finalizes one raw recording without writing the note transcript", async (t) => {
+  const api = createElectronAPI({ stopResult: () => finalized() });
   const store = await loadStore(t, api);
 
   assert.equal(await store.startRecording(START_ARGS), true);
+  assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "recording");
   const result = await store.stopRecording();
 
   assert.equal(result.stopped, true);
-  assert.equal(store.useMeetingRecordingStore.getState().isRecording, false);
+  assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "saved");
+  assert.equal(api.stopRequests.length, 1);
+  assert.equal(typeof api.stopRequests[0].sessionId, "string");
+  assert.deepEqual(api.stopRequests[0].lastSequence, { mic: -1, system: -1 });
+  assert.equal(api.stopRequests[0].incomplete, false);
+  assert.deepEqual(api.noteUpdates, []);
 });
 
-// The renderer has already run cleanup and written the transcript by the time
-// main's result is read, so a teardown failure must not cost the user their
-// restart offer.
-test("a stop whose main-side teardown fails still reports the recording ended", async (t) => {
-  const { api } = createElectronAPI({
-    stopResult: () => ({ success: false, error: "audio tap teardown failed" }),
+test("a failed main finalization is surfaced as incomplete", async (t) => {
+  const api = createElectronAPI({
+    stopResult: () => ({ success: false, error: "audio tail could not be finalized" }),
   });
   const store = await loadStore(t, api);
 
-  assert.equal(await store.startRecording(START_ARGS), true);
+  await store.startRecording(START_ARGS);
   const result = await store.stopRecording();
 
-  assert.equal(result.stopped, true);
-  assert.equal(store.useMeetingRecordingStore.getState().isRecording, false);
+  assert.equal(result.stopped, false);
+  assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "incomplete");
+  assert.equal(store.useMeetingRecordingStore.getState().captureErrorCode, "capture-finalize-failed");
+  assert.deepEqual(api.noteUpdates, []);
 });
 
-test("a stop main already dropped as stale still reports the recording ended", async (t) => {
-  const { api } = createElectronAPI({
-    stopResult: () => ({ success: false, reason: "stale-session" }),
-  });
-  const store = await loadStore(t, api);
+test("a stale stop and a rejected stop do not claim success", async (t) => {
+  const staleApi = createElectronAPI({ stopResult: () => ({ success: false, reason: "stale-session" }) });
+  const staleStore = await loadStore(t, staleApi);
+  await staleStore.startRecording(START_ARGS);
+  assert.equal((await staleStore.stopRecording()).stopped, false);
 
-  assert.equal(await store.startRecording(START_ARGS), true);
-  assert.equal((await store.stopRecording()).stopped, true);
+  const failedApi = createElectronAPI({ stopResult: () => { throw new Error("ipc channel closed"); } });
+  const failedStore = await loadStore(t, failedApi);
+  await failedStore.startRecording(START_ARGS);
+  assert.equal((await failedStore.stopRecording()).stopped, false);
 });
 
-test("a stop that rejects still reports the recording ended", async (t) => {
-  const { api } = createElectronAPI({
-    stopResult: () => {
-      throw new Error("ipc channel closed");
-    },
-  });
-  const store = await loadStore(t, api);
-
-  assert.equal(await store.startRecording(START_ARGS), true);
-  assert.equal((await store.stopRecording()).stopped, true);
-});
-
-test("stopping when nothing is recording reports no stop happened", async (t) => {
-  const { api } = createElectronAPI({ stopResult: () => ({ success: true }) });
+test("empty stop preserves existing note text and transcript", async (t) => {
+  const api = createElectronAPI({ stopResult: () => finalized() });
   const store = await loadStore(t, api);
 
   assert.equal((await store.stopRecording()).stopped, false);
+  assert.deepEqual(api.noteUpdates, []);
 });
 
-test("a scoped stop for another session reports no stop happened", async (t) => {
-  const { api } = createElectronAPI({ stopResult: () => ({ success: true }) });
+test("a scoped stop for another session leaves capture active", async (t) => {
+  const api = createElectronAPI({ stopResult: () => finalized() });
   const store = await loadStore(t, api);
 
-  assert.equal(await store.startRecording(START_ARGS), true);
-  const result = await store.stopRecording("some-other-session");
-
-  assert.equal(result.stopped, false);
+  await store.startRecording(START_ARGS);
+  assert.equal((await store.stopRecording("some-other-session")).stopped, false);
   assert.equal(store.useMeetingRecordingStore.getState().isRecording, true);
   await store.stopRecording();
 });

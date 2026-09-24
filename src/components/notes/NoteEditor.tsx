@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback, type ComponentProps } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import {
@@ -51,6 +51,7 @@ import NoteParticipants from "./NoteParticipants";
 import type { CalendarAttendee } from "../../contracts/calendar";
 import { observeFloatingChatLayout } from "./floatingChatLayout";
 import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } from "./shared";
+import { formatMmSs } from "../../utils/formatDuration";
 
 const SEGMENT_BUTTON_CLASS =
   "relative z-1 flex h-[26px] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors duration-150";
@@ -105,49 +106,6 @@ function buildKnownSpeakers(
     list.push({ display_name: name, email: null });
   }
   return list;
-}
-
-type LiveMeetingTranscriptChatProps = Omit<
-  ComponentProps<typeof MeetingTranscriptChat>,
-  | "segments"
-  | "micPartial"
-  | "systemPartial"
-  | "systemPartialSpeakerId"
-  | "systemPartialSpeakerName"
-  | "isRecording"
->;
-
-// Subscribes to live transcript state at this leaf so per-update re-renders
-// don't reach the editor/chat (which would drop text selection).
-function LiveMeetingTranscriptChat({
-  speakerProfiles,
-  speakerMappings,
-  ...props
-}: LiveMeetingTranscriptChatProps) {
-  const segments = useMeetingRecordingStore((s) => s.segments);
-  const micPartial = useMeetingRecordingStore((s) => s.micPartial);
-  const systemPartial = useMeetingRecordingStore((s) => s.systemPartial);
-  const systemPartialSpeakerId = useMeetingRecordingStore((s) => s.systemPartialSpeakerId);
-  const systemPartialSpeakerName = useMeetingRecordingStore((s) => s.systemPartialSpeakerName);
-
-  const knownSpeakers = useMemo(
-    () => buildKnownSpeakers(speakerProfiles ?? [], segments, speakerMappings ?? {}),
-    [segments, speakerMappings, speakerProfiles]
-  );
-
-  return (
-    <MeetingTranscriptChat
-      {...props}
-      isRecording
-      segments={segments}
-      micPartial={micPartial}
-      systemPartial={systemPartial}
-      systemPartialSpeakerId={systemPartialSpeakerId}
-      systemPartialSpeakerName={systemPartialSpeakerName}
-      speakerMappings={speakerMappings}
-      speakerProfiles={knownSpeakers}
-    />
-  );
 }
 
 interface NoteEditorProps {
@@ -214,6 +172,24 @@ export default function NoteEditor({
 }: NoteEditorProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
+  const capturePhase = useMeetingRecordingStore((s) =>
+    s.recordingNoteId === note.id ? s.capturePhase : "idle"
+  );
+  const captureStartedAt = useMeetingRecordingStore((s) =>
+    s.recordingNoteId === note.id ? s.captureStartedAt : null
+  );
+  const captureErrorCode = useMeetingRecordingStore((s) =>
+    s.recordingNoteId === note.id ? s.captureErrorCode : null
+  );
+  const micCaptureStatus = useMeetingRecordingStore((s) =>
+    s.recordingNoteId === note.id ? s.micCaptureStatus : "inactive"
+  );
+  const systemCaptureStatus = useMeetingRecordingStore((s) =>
+    s.recordingNoteId === note.id ? s.systemCaptureStatus : "inactive"
+  );
+  const capturePending = capturePhase === "preparing" || capturePhase === "saving";
+  const captureLive = capturePhase === "recording";
+  const captureHasStatus = capturePhase !== "idle";
   const [viewMode, setViewMode] = useState<MeetingViewMode>("raw");
   const [chatMode, setChatMode] = useState<EmbeddedChatMode>("hidden");
   const [folderSearch, setFolderSearch] = useState("");
@@ -863,6 +839,8 @@ export default function NoteEditor({
                   isRecording={isRecording}
                   isProcessing={isProcessing}
                   disabled={!recordingAllowed}
+                  capturePhase={capturePhase}
+                  captureStartedAt={captureStartedAt}
                   onStart={onStartRecording}
                   onStop={onStopRecording}
                 />
@@ -891,23 +869,52 @@ export default function NoteEditor({
 
         <div className="flex-1 relative min-h-0">
           <div ref={contentScrollRef} className="h-full overflow-y-auto">
+            {captureHasStatus && (
+              <div className="m-4 rounded-xl border border-border bg-surface-2/70 p-4 dark:border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    {(capturePending || captureLive) && <RecordingWave className="me-1" />}
+                    {t(`notes.editor.capture.${capturePhase}`)}
+                  </div>
+                  {captureStartedAt != null && (
+                    <span className="text-xs tabular-nums text-foreground/60">
+                      {formatMmSs(Math.max(0, Math.floor((Date.now() - captureStartedAt) / 1000)))}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  {(["mic", "system"] as const).map((source) => {
+                    const status = source === "mic" ? micCaptureStatus : systemCaptureStatus;
+                    return (
+                      <span
+                        key={source}
+                        className={cn(
+                          "rounded-full px-2 py-1",
+                          status === "active"
+                            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                            : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                        )}
+                      >
+                        {t(`notes.editor.capture.${source}`)}: {t(`notes.editor.capture.${status}`)}
+                      </span>
+                    );
+                  })}
+                  {capturePhase === "recording" && (
+                    <span className="rounded-full bg-primary/10 px-2 py-1 text-primary">
+                      {t("notes.editor.capture.writingToDisk")}
+                    </span>
+                  )}
+                </div>
+                {captureErrorCode && (
+                  <p className="mt-2 text-xs text-foreground/60">
+                    {t("notes.editor.capture.incompleteReason")}
+                  </p>
+                )}
+              </div>
+            )}
             {viewMode === "transcript" && (hasChatSegments || isRecording) ? (
               isRecording ? (
-                <LiveMeetingTranscriptChat
-                  speakerMappings={speakerMappings}
-                  speakerProfiles={speakerProfiles}
-                  participants={parsedParticipants}
-                  isDiarizing={isDiarizing}
-                  sessionDiarizationEnabled={sessionDiarizationEnabled}
-                  sessionExpectedCount={sessionExpectedCount}
-                  userTouchedStepper={userTouchedStepper}
-                  onSetSessionDiarizationEnabled={onSetSessionDiarizationEnabled}
-                  onSetSessionExpectedCount={onSetSessionExpectedCount}
-                  onMapSpeaker={handleMapSpeaker}
-                  onConfirmSuggestion={handleConfirmSuggestion}
-                  onDismissSuggestion={handleDismissSuggestion}
-                  onAttachSpeakerEmail={handleAttachSpeakerEmail}
-                />
+                null
               ) : (
                 <MeetingTranscriptChat
                   segments={displaySegments}
@@ -938,7 +945,11 @@ export default function NoteEditor({
                 className="mt-2"
               >
                 {canEditNote && recordingAllowed && (
-                  <Button size="sm" onClick={onStartRecording} disabled={isProcessing}>
+                  <Button
+                    size="sm"
+                    onClick={onStartRecording}
+                    disabled={isProcessing || capturePending || captureLive}
+                  >
                     <Mic size={13} />
                     {t("notes.editor.startRecording")}
                   </Button>

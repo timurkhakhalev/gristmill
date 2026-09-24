@@ -39,6 +39,11 @@ export interface MeetingDetectionEngineCallbacks {
   ): void;
 }
 
+export interface MeetingCaptureQuitGuard {
+  isRecording(): boolean;
+  stop(): Promise<{ success: boolean }>;
+}
+
 interface OnboardingWindowState {
   resizable: boolean;
   minimizable: boolean;
@@ -71,6 +76,8 @@ export class WindowManager {
   hotkeyManager: HotkeyManager;
   dragManager: DragManager;
   isQuitting = false;
+  meetingCaptureQuitGuard: MeetingCaptureQuitGuard | null = null;
+  _quitConfirmationPromise: Promise<void> | null = null;
   loadErrorShown = false;
   _pendingMeetingNoteNavigation: unknown = null;
   _pendingNoteNavigation: unknown = null;
@@ -96,9 +103,61 @@ export class WindowManager {
       }
     });
 
-    app.on("before-quit", () => {
-      this.isQuitting = true;
-      this.hotkeyManager.unregisterAll();
+    app.on("before-quit", (event) => {
+      if (this.isQuitting || !this.meetingCaptureQuitGuard?.isRecording()) {
+        this.isQuitting = true;
+        this.hotkeyManager.unregisterAll();
+        return;
+      }
+
+      event.preventDefault();
+      if (this._quitConfirmationPromise) return;
+      const guard = this.meetingCaptureQuitGuard;
+      this._quitConfirmationPromise = (async () => {
+        const decision = await dialog.showMessageBox({
+          type: "warning",
+          title: i18nMain.t("dialog.meetingQuit.title"),
+          message: i18nMain.t("dialog.meetingQuit.message"),
+          buttons: [i18nMain.t("dialog.meetingQuit.stopAndQuit"), i18nMain.t("dialog.meetingQuit.cancel")],
+          defaultId: 1,
+          cancelId: 1,
+        });
+        if (decision.response !== 0) return;
+
+        const stopped = await guard.stop();
+        if (!stopped.success) {
+          await dialog.showMessageBox({
+            type: "error",
+            message: i18nMain.t("dialog.meetingQuit.stopFailed"),
+            buttons: ["OK"],
+          });
+          return;
+        }
+
+        this.isQuitting = true;
+        this.hotkeyManager.unregisterAll();
+        app.quit();
+      })()
+        .catch((error: unknown) => {
+          debugLogger.error("Meeting recording prevented safe quit", {
+            error: error instanceof Error ? error.message : String(error),
+          }, "meeting");
+        })
+        .finally(() => {
+          this._quitConfirmationPromise = null;
+        });
+    });
+  }
+
+  setMeetingCaptureQuitGuard(guard: MeetingCaptureQuitGuard | null): void {
+    this.meetingCaptureQuitGuard = guard;
+  }
+
+  stopMeetingCaptureFromMenu(): void {
+    void this.meetingCaptureQuitGuard?.stop().catch((error: unknown) => {
+      debugLogger.error("Failed to stop meeting capture from the app menu", {
+        error: error instanceof Error ? error.message : String(error),
+      }, "meeting");
     });
   }
 

@@ -4,64 +4,8 @@ const Module = require("node:module");
 const { EventEmitter } = require("node:events");
 
 const originalLoad = Module._load;
-
-function createDeferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, resolve, reject };
-}
-
-// connectRealtimeStreaming builds its client instances only after
-// `await getMeetingSystemAudioPlan()` and `await fetchRealtimeToken(...)` —
-// the pre-migration order, kept 1:1 — so fixtures must let those microtasks
-// run before observing the construction.
-async function waitFor(condition, label, { attempts = 200 } = {}) {
-  for (let i = 0; i < attempts; i++) {
-    if (await condition()) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  throw new Error(`timeout waiting for: ${label}`);
-}
-
-const clientCount = () => FakeStreamingClient.instances.length;
-
-class FakeStreamingClient {
-  constructor() {
-    FakeStreamingClient.instances.push(this);
-    this.isConnected = false;
-    this.audioBytesSent = 0;
-    this.completedSegments = [];
-    this.onPartialTranscript = null;
-    this.onFinalTranscript = null;
-    this.onError = null;
-    this.onConnectionLost = null;
-    this.sent = [];
-    this.connectDeferred = createDeferred();
-  }
-  async connect() {
-    await this.connectDeferred.promise;
-    this.isConnected = true;
-  }
-  sendAudio(buffer) {
-    this.sent.push(buffer);
-    return true;
-  }
-  async disconnect() {
-    this.isConnected = false;
-    return { text: "" };
-  }
-}
-
-const providersStub = {
-  STREAMING_CLIENT_BY_PROVIDER: { "openai-realtime": FakeStreamingClient },
-  ALLOWED_MEETING_PROVIDERS: new Set(["local", "openai-realtime"]),
-  getMeetingStreamingClient: () => FakeStreamingClient,
-  getMeetingConnectionKey: (options = {}) => JSON.stringify({ provider: options.provider }),
-};
+const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
+const RUN_ID = "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2";
 
 const fakeWindow = () => {
   const win = new EventEmitter();
@@ -74,7 +18,6 @@ const fakeWindow = () => {
 };
 
 let currentWindow = null;
-
 const electronStub = {
   app: {
     getPath: () => "/tmp",
@@ -87,12 +30,8 @@ const electronStub = {
   },
   ipcMain: { handle: () => {}, on: () => {}, removeHandler: () => {} },
   BrowserWindow: class BrowserWindowStub {
-    static fromWebContents() {
-      return currentWindow;
-    }
-    static getAllWindows() {
-      return [];
-    }
+    static fromWebContents() { return currentWindow; }
+    static getAllWindows() { return []; }
   },
   shell: {},
   dialog: {},
@@ -108,9 +47,6 @@ const electronStub = {
 function loadCoordinator() {
   Module._load = function loadWithMocks(request, parent, isMain) {
     if (request === "electron") return electronStub;
-    if (request === "./meetingStreamingProviders" || request === "./meetingStreamingProviders.js") {
-      return providersStub;
-    }
     if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
       return { broadcastToWindows: () => {} };
     }
@@ -123,38 +59,86 @@ function loadCoordinator() {
   }
 }
 
+function createDatabaseFake(events) {
+  return {
+    recordings: new Map(),
+    epochs: [],
+    finalized: [],
+    createMeetingRecording(noteId, input, startedAt, id) {
+      events.push("recording-created");
+      const recording = {
+        id,
+        noteId,
+        config: input.config,
+        startedAt,
+        captureState: "recording",
+        audioState: "available",
+      };
+      this.recordings.set(id, recording);
+      return recording;
+    },
+    createMeetingRecordingEpoch(recordingId, source, epochIndex, startFrame) {
+      this.epochs.push({ recordingId, source, epochIndex, startFrame });
+    },
+    updateMeetingRecordingEpochRecovery(recordingId, source, epochIndex, result) {
+      Object.assign(this.epochs.find((item) => item.recordingId === recordingId && item.source === source && item.epochIndex === epochIndex), result);
+    },
+    markMeetingRecordingFinalizing(recordingId) {
+      this.recordings.get(recordingId).captureState = "finalizing";
+    },
+    finalizeMeetingRecording(recordingId, input) {
+      this.finalized.push({ recordingId, input });
+      const recording = this.recordings.get(recordingId);
+      recording.captureState = input.captureState;
+      recording.captureErrorCode = input.errorCode ?? null;
+      return { recording, initialRun: { id: RUN_ID } };
+    },
+    getGoogleAccounts: () => [],
+    getNote: (noteId) => ({ id: noteId, transcript: "Existing transcript" }),
+    getSpeakerMappings: () => [],
+    setSpeakerMapping: () => {},
+    removeSpeakerMapping: () => {},
+    getSpeakerProfiles: () => [],
+    upsertSpeakerProfile: () => ({ id: 1 }),
+  };
+}
+
+function createStorageFake(events, { failWrite = false } = {}) {
+  return {
+    files: new Map(),
+    openEpochWriter(recordingId, source, epochIndex) {
+      this.files.set(`${recordingId}:${source}:${epochIndex}`, []);
+    },
+    appendEpochSamples(recordingId, source, epochIndex, samples) {
+      if (failWrite) throw new Error("disk full");
+      events.push("pcm-written");
+      this.files.get(`${recordingId}:${source}:${epochIndex}`).push(Buffer.from(samples));
+    },
+    closeEpochWriter() {},
+    recoverEpoch(recordingId, source, epochIndex) {
+      const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`) ?? [];
+      return {
+        frameCount: buffers.reduce((total, buffer) => total + buffer.length / 2, 0),
+        ignoredTrailingBytes: 0,
+        errorCode: null,
+      };
+    },
+  };
+}
+
 function createEngineFake() {
   return {
-    stoppedSessions: [],
     activeSessionId: null,
-    begunSessions: [],
-    userRecording: null,
-    systemAudioResult: true,
-    endRecordingSession(expectedSessionId) {
-      if (expectedSessionId == null) {
-        this.stoppedSessions.push(null);
-        this.activeSessionId = null;
-        return true;
-      }
-      if (this.activeSessionId !== expectedSessionId) {
-        return false;
-      }
-      this.stoppedSessions.push(expectedSessionId);
+    async beginRecordingSession({ sessionId }) { this.activeSessionId = sessionId; },
+    endRecordingSession(sessionId) {
+      if (this.activeSessionId !== sessionId) return false;
       this.activeSessionId = null;
       return true;
     },
-    setUserRecording(active) {
-      this.userRecording = active;
-    },
-    async beginRecordingSession(session) {
-      this.begunSessions.push(session);
-      this.activeSessionId = session.sessionId;
-    },
-    async setRecordingSystemAudioAvailable(sessionId) {
-      return this.activeSessionId === sessionId ? this.systemAudioResult : false;
-    },
+    setUserRecording() {},
     setMicWarmHold() {},
     recordMeetingAudioChunk() {},
+    async setRecordingSystemAudioAvailable(sessionId) { return this.activeSessionId === sessionId; },
     getPreferences: () => ({ processDetection: true, audioDetection: true }),
     setPreferences() {},
     async handleNotificationResponse() {},
@@ -162,472 +146,178 @@ function createEngineFake() {
   };
 }
 
-function createDiarizationManagerFake({ available = false } = {}) {
-  return {
-    isAvailable: () => available,
-    async convertRawPcmToWav() {
-      return "/tmp/fake-diarize.wav";
-    },
-    async diarize() {
-      return [];
-    },
-    capSpeakerClusters: (segments) => segments,
-    mergeWithTranscript: (segments) => segments,
-  };
-}
-
-function buildHarness({ diarizationAvailable = false, systemAudio = false } = {}) {
-  FakeStreamingClient.instances = [];
+function buildHarness({ failWrite = false } = {}) {
   currentWindow = fakeWindow();
   const handlers = new Map();
-  const listenerChannels = new Map();
-  const ipcMainFake = {
-    handle: (channel, listener) => handlers.set(channel, listener),
-    on: (channel, listener) => listenerChannels.set(channel, listener),
-  };
-  const harnessListenerChannels = listenerChannels;
+  const listeners = new Map();
+  const events = [];
+  const databaseManager = createDatabaseFake(events);
+  const meetingRecordingStorage = createStorageFake(events, { failWrite });
   const engine = createEngineFake();
+  let tokenCalls = 0;
+  let asrCalls = 0;
   const coordinator = loadCoordinator();
-  const runtime = coordinator.registerMeetingCoordinatorHandlers(ipcMainFake, {
-    databaseManager: {
-      getGoogleAccounts: () => [],
-      getNote: () => null,
-      getSpeakerMappings: () => [],
-      setSpeakerMapping: () => {},
-      removeSpeakerMapping: () => {},
-      getSpeakerProfiles: () => [],
-      upsertSpeakerProfile: () => ({ id: 1 }),
+  const runtime = coordinator.registerMeetingCoordinatorHandlers(
+    {
+      handle: (channel, listener) => handlers.set(channel, listener),
+      on: (channel, listener) => listeners.set(channel, listener),
     },
-    diarizationManager: createDiarizationManagerFake({ available: diarizationAvailable }),
-    meetingDetectionEngine: engine,
-    audioTapManager: systemAudio ? { isSupported: () => true } : null,
-    meetingAecManager: null,
-    whisperManager: { transcribeLocalWhisper: async () => ({ success: true, text: "" }) },
-    parakeetManager: { transcribeLocalParakeet: async () => ({ success: true, text: "" }) },
-    liveSpeakerIdentifier: {
-      isAvailable: () => false,
-      start: async () => false,
-      stop: async () => ({}),
-      feedAudio: async () => undefined,
-      recluster: async () => [],
-      setEnabled: () => {},
-      maxSpeakers: 0,
-      setMaxSpeakers(n) {
-        this.maxSpeakers = n;
+    {
+      databaseManager,
+      meetingRecordingStorage,
+      diarizationManager: {
+        isAvailable: () => false,
+        async convertRawPcmToWav() { return "/tmp/fake.wav"; },
+        async diarize() { return []; },
+        capSpeakerClusters: (segments) => segments,
+        mergeWithTranscript: (segments) => segments,
       },
-      getSpeakerEmbedding: () => null,
-      mapSpeaker: () => {},
-    },
-    fetchRealtimeToken: async () => (systemAudio ? ["mic-token", "system-token"] : "token"),
-    resolveWhisperVadOptions: () => ({}),
-    speakerEmbeddings: () => ({ cosineSimilarity: () => 0.9 }),
-    getControlPanelWindow: () => currentWindow,
-    getMeetingNotificationData: () => null,
-    consumePendingMeetingNoteNavigation: () => null,
-    showNotificationWindow: () => {},
-  });
-  return { runtime, handlers, listenerChannels: harnessListenerChannels, engine };
+      meetingDetectionEngine: engine,
+      audioTapManager: null,
+      meetingAecManager: null,
+      whisperManager: { transcribeLocalWhisper: async () => { asrCalls += 1; return { success: true, text: "" }; } },
+      parakeetManager: { transcribeLocalParakeet: async () => { asrCalls += 1; return { success: true, text: "" }; } },
+      liveSpeakerIdentifier: {
+        isAvailable: () => false,
+        start: async () => false,
+        stop: async () => ({}),
+        feedAudio: async () => undefined,
+        recluster: async () => [],
+        setEnabled: () => {},
+        maxSpeakers: 0,
+        setMaxSpeakers() {},
+        getSpeakerEmbedding: () => null,
+        mapSpeaker: () => {},
+      },
+      fetchRealtimeToken: async () => { tokenCalls += 1; return "unused-token"; },
+      resolveWhisperVadOptions: () => ({}),
+      speakerEmbeddings: () => ({ cosineSimilarity: () => 0.9 }),
+      getControlPanelWindow: () => currentWindow,
+      getMeetingNotificationData: () => null,
+      consumePendingMeetingNoteNavigation: () => null,
+      showNotificationWindow: () => {},
+    }
+  );
+  return { runtime, handlers, listeners, events, databaseManager, meetingRecordingStorage, tokenCalls: () => tokenCalls, asrCalls: () => asrCalls, engine };
 }
 
-const invoke = (handlers, channel, ...args) => handlers.get(channel)(...args);
+const invoke = (harness, channel, ...args) => harness.handlers.get(channel)(...args);
+const START = {
+  noteId: 11,
+  sessionId: "session-m2",
+  autoEndEligible: false,
+  recordingConfig: { config: null, configError: { code: "missing-config" } },
+};
+const START_EVENT = () => ({ sender: currentWindow.webContents });
 
-const START_OPTIONS = { provider: "openai-realtime", sessionId: "", autoEndEligible: false };
+test("prepare and start need no credentials or model connection and create durable recording first", async () => {
+  const harness = buildHarness();
+  const prepared = await invoke(harness, "meeting-transcription-prepare", { sender: null }, {});
+  assert.deepEqual(prepared, { success: true });
 
-test("prepare rejects unsupported providers and short-circuits the local provider", async () => {
-  const { handlers } = buildHarness();
-  const event = { sender: null };
-
-  const unsupported = await invoke(handlers, "meeting-transcription-prepare", event, {
-    provider: "nope",
-  });
-  assert.deepEqual(unsupported, { success: false, error: "Unsupported provider: nope" });
-
-  const local = await invoke(handlers, "meeting-transcription-prepare", event, {
-    provider: "local",
-  });
-  assert.deepEqual(local, { success: true });
+  const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  assert.equal(started.success, true);
+  assert.equal(started.recordingId, RECORDING_ID);
+  assert.equal(harness.events[0], "recording-created");
+  assert.equal(harness.tokenCalls(), 0);
+  assert.equal(harness.asrCalls(), 0);
+  assert.equal(harness.runtime.isRecording(), true);
 });
 
-test("prepare connects once and reuses the connection for the same key", async () => {
-  const { handlers } = buildHarness();
-  const event = { sender: null };
-  const options = { provider: "openai-realtime" };
-
-  const pending = invoke(handlers, "meeting-transcription-prepare", event, options);
-  await waitFor(() => clientCount() === 1, "the connect client is constructed");
-  FakeStreamingClient.instances[0].connectDeferred.resolve();
-  assert.deepEqual(await pending, { success: true });
-
-  const reuse = await invoke(handlers, "meeting-transcription-prepare", event, options);
-  assert.deepEqual(reuse, { success: true, alreadyPrepared: true });
-  assert.equal(FakeStreamingClient.instances.length, 1, "warm reuse must not reconnect");
-});
-
-test("concurrent prepares keep the single-operation guard", async () => {
-  const { handlers } = buildHarness();
-  const event = { sender: null };
-  const options = { provider: "openai-realtime" };
-
-  const first = invoke(handlers, "meeting-transcription-prepare", event, options);
-  await waitFor(() => clientCount() === 1, "the first prepare is in flight");
-  const second = await invoke(handlers, "meeting-transcription-prepare", event, options);
-  assert.deepEqual(second, { success: false, error: "Operation in progress" });
-
-  FakeStreamingClient.instances[0].connectDeferred.resolve();
-  assert.deepEqual(await first, { success: true });
-});
-
-test("a prepare failure resolves with the serialized error", async () => {
-  const { handlers } = buildHarness();
-  const event = { sender: null };
-  const options = { provider: "openai-realtime" };
-
-  const pending = invoke(handlers, "meeting-transcription-prepare", event, options);
-  await waitFor(() => clientCount() === 1, "the connect client is constructed");
-  FakeStreamingClient.instances[0].connectDeferred.reject(new Error("no route to host"));
-  assert.deepEqual(await pending, { success: false, error: "no route to host" });
-
-  // The guard clears, so a later prepare can try again.
-  const retry = invoke(handlers, "meeting-transcription-prepare", event, options);
-  await waitFor(() => clientCount() === 2, "the retry client is constructed");
-  FakeStreamingClient.instances[1].connectDeferred.resolve();
-  assert.deepEqual(await retry, { success: true });
-});
-
-test("cancel keeps prepare exclusive until the late connection is cleaned up", async () => {
-  const { handlers } = buildHarness();
-  const event = { sender: null };
-  const options = { provider: "openai-realtime" };
-  const first = invoke(handlers, "meeting-transcription-prepare", event, options);
-  await waitFor(() => clientCount() === 1, "first connect");
-  assert.deepEqual(await invoke(handlers, "meeting-transcription-cancel"), { success: true });
-  assert.deepEqual(await first, { success: false, error: "Prepare canceled" });
-  assert.deepEqual(await invoke(handlers, "meeting-transcription-prepare", event, options), {
-    success: false,
-    error: "Operation in progress",
-  });
-  const start = await invoke(handlers, "meeting-transcription-start", event, {
-    ...options,
-    sessionId: "blocked-start",
-  });
-  assert.equal(start.success, false);
-  assert.equal(clientCount(), 1);
-  FakeStreamingClient.instances[0].connectDeferred.resolve();
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(FakeStreamingClient.instances[0].isConnected, false);
-  const retry = invoke(handlers, "meeting-transcription-prepare", event, options);
-  await waitFor(() => clientCount() === 2, "retry connects instead of reusing canceled client");
-  FakeStreamingClient.instances[1].connectDeferred.resolve();
-  assert.deepEqual(await retry, { success: true });
-});
-
-test("prepare claims the slot before its first async step", async () => {
-  const { handlers } = buildHarness();
-  const event = { sender: null };
-  const options = { provider: "openai-realtime" };
-  const first = invoke(handlers, "meeting-transcription-prepare", event, options);
-  assert.deepEqual(await invoke(handlers, "meeting-transcription-prepare", event, options), {
-    success: false,
-    error: "Operation in progress",
-  });
-  await invoke(handlers, "meeting-transcription-cancel");
-  if (clientCount()) FakeStreamingClient.instances[0].connectDeferred.resolve();
-  assert.equal((await first).success, false);
-  await new Promise((resolve) => setImmediate(resolve));
-});
-
-test("prepare timeout keeps the slot until the underlying connect settles", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { handlers } = buildHarness();
-  const event = { sender: null };
-  const options = { provider: "openai-realtime" };
-  const pending = invoke(handlers, "meeting-transcription-prepare", event, options);
-  await waitFor(() => clientCount() === 1, "connect");
-  t.mock.timers.tick(15000);
-  assert.deepEqual(await pending, { success: false, error: "Prepare timed out" });
-  assert.deepEqual(await invoke(handlers, "meeting-transcription-prepare", event, options), {
-    success: false,
-    error: "Operation in progress",
-  });
-  FakeStreamingClient.instances[0].connectDeferred.resolve();
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(FakeStreamingClient.instances[0].isConnected, false);
-  const retry = invoke(handlers, "meeting-transcription-prepare", event, options);
-  await waitFor(() => clientCount() === 2, "retry");
-  FakeStreamingClient.instances[1].connectDeferred.resolve();
-  assert.deepEqual(await retry, { success: true });
-});
-
-test("cancel refuses while a recording is live", async () => {
-  const { handlers, engine } = buildHarness();
-  const event = { sender: null };
-  engine.systemAudioResult = true;
-
-  // Simulate a live local recording (its interval timer counts as activity).
-  const start = invoke(handlers, "meeting-transcription-start", event, {
-    ...START_OPTIONS,
-    provider: "local",
-    sessionId: "meeting-live",
-  });
-  const started = await start;
-  assert.equal(started.success, true, JSON.stringify(started));
-
-  assert.deepEqual(await invoke(handlers, "meeting-transcription-cancel"), {
-    success: false,
-    reason: "recording-active",
-  });
-
-  // Stop so the local chunking interval does not leak into the next test.
-  const stopped = await invoke(handlers, "meeting-transcription-stop", { sender: null }, "meeting-live");
-  assert.equal(stopped.success, true, JSON.stringify(stopped));
-});
-
-test("a local start records the session, and its stop publishes and tears down", async () => {
-  const { handlers, engine } = buildHarness();
-  const event = { sender: null };
-
-  const started = await invoke(handlers, "meeting-transcription-start", event, {
-    provider: "local",
-    sessionId: "meeting-1",
-    noteId: 7,
-    autoEndEligible: false,
-  });
-  assert.equal(started.success, true, JSON.stringify(started));
-  assert.equal(started.sessionId, "meeting-1");
-  assert.equal(engine.begunSessions.length, 1);
-  assert.equal(engine.userRecording, true);
-
-  const stopped = await invoke(handlers, "meeting-transcription-stop", { sender: null }, "meeting-1");
-  assert.equal(stopped.success, true, JSON.stringify(stopped));
-  assert.equal(stopped.diarizationSessionId.startsWith("diar-"), true);
-  assert.equal(engine.userRecording, false);
-  assert.deepEqual(engine.stoppedSessions, [null, "meeting-1"]);
-});
-
-test("stop with another session's id is a stale no-op", async () => {
-  const { handlers, engine } = buildHarness();
-  engine.activeSessionId = "meeting-other";
-  const stopped = await invoke(handlers, "meeting-transcription-stop", { sender: null }, "meeting-1");
-  assert.deepEqual(stopped, { success: false, reason: "stale-session" });
-  assert.deepEqual(engine.stoppedSessions, []);
-});
-
-test("a duplicate start is refused while the first start is in flight", async () => {
-  const { handlers } = buildHarness();
-  const event = { sender: null };
-
-  const first = invoke(handlers, "meeting-transcription-start", event, {
-    ...START_OPTIONS,
-    sessionId: "meeting-1",
-  });
-  // The first start is in flight (blocked inside the realtime connect); the
-  // lifecycle gate must refuse the second one without queueing it.
-  await waitFor(() => clientCount() === 1, "the first start reached its connect");
-  const second = await invoke(handlers, "meeting-transcription-start", event, {
-    ...START_OPTIONS,
-    sessionId: "meeting-2",
-  });
-  assert.deepEqual(second, { success: false, error: "Operation in progress" });
-
-  assert.deepEqual(await invoke(handlers, "meeting-transcription-cancel"), {
-    success: false,
-    reason: "recording-active",
-  });
-  assert.deepEqual(await invoke(handlers, "meeting-transcription-prepare", event, START_OPTIONS), {
-    success: false,
-    error: "Operation in progress",
-  });
-  assert.equal(clientCount(), 1);
-
-  FakeStreamingClient.instances[0].connectDeferred.resolve();
-  const firstResult = await first;
-  assert.equal(firstResult.success, true, JSON.stringify(firstResult));
-});
-
-test("an owner reload tears its recording session down through the lifecycle", async () => {
-  const { handlers, engine } = buildHarness();
-  const owner = new EventEmitter();
-  owner.isDestroyed = () => false;
-  const event = { sender: owner };
-
-  const startPromise = invoke(handlers, "meeting-transcription-start", event, {
-    ...START_OPTIONS,
-    sessionId: "meeting-1",
-  });
-  await waitFor(() => clientCount() === 1, "the start reached its connect");
-  FakeStreamingClient.instances[0].connectDeferred.resolve();
-  const started = await startPromise;
-  assert.equal(started.success, true, JSON.stringify(started));
-  assert.equal(engine.activeSessionId, "meeting-1");
-
-  // Reload / render-process-gone reaches the lifecycle's owner-loss listener.
-  owner.emit("destroyed");
-  await waitFor(() => engine.stoppedSessions.length === 2, "the owner-loss stop ran");
-
-  assert.deepEqual(engine.stoppedSessions, [null, "meeting-1"]);
-  assert.equal(engine.userRecording, false);
-});
-
-test("system-audio availability rejects a stale session", async () => {
-  const { handlers } = buildHarness();
-  const result = await invoke(
-    handlers,
-    "meeting-transcription-set-system-audio-available",
-    { sender: null },
-    "meeting-stale",
-    true
-  );
-  assert.deepEqual(result, { success: false, reason: "stale-session" });
-});
-
-test("recording lock admits one pipeline and reports the holder", async () => {
-  const { handlers } = buildHarness();
-
-  assert.deepEqual(await invoke(handlers, "acquire-recording-lock", { sender: null }, "meeting"), { success: true });
-  assert.deepEqual(await invoke(handlers, "acquire-recording-lock", { sender: null }, "dictation"), {
-    success: false,
-    holder: "meeting",
-  });
-  assert.deepEqual(await invoke(handlers, "release-recording-lock", { sender: null }, "dictation"), { success: true });
-  assert.deepEqual(await invoke(handlers, "release-recording-lock", { sender: null }, "meeting"), { success: true });
-  assert.deepEqual(await invoke(handlers, "acquire-recording-lock", { sender: null }, "dictation"), { success: true });
-});
-
-test("a late diarization result is published to the session that owned the recording", async () => {
-  const diarizeDeferred = createDeferred();
-  const diarizationManager = createDiarizationManagerFake({ available: true });
-  diarizationManager.diarize = () => diarizeDeferred.promise;
-  diarizationManager.mergeWithTranscript = (segments) => segments.map((s) => s);
-
-  buildHarness({ diarizationAvailable: true });
-  // Re-register with the deferred diarizer: buildHarness already created the
-  // registration, so drive a second harness with the fake swapped in.
-  const diarizationHarness = (() => {
-    FakeStreamingClient.instances = [];
-    currentWindow = fakeWindow();
-    const localHandlers = new Map();
-    const localListeners = new Map();
-    const coordinator = loadCoordinator();
-    const localEngine = createEngineFake();
-    coordinator.registerMeetingCoordinatorHandlers(
-      {
-        handle: (channel, listener) => localHandlers.set(channel, listener),
-        on: (channel, listener) => localListeners.set(channel, listener),
-      },
-      {
-        databaseManager: {
-          getGoogleAccounts: () => [],
-          getNote: () => null,
-          getSpeakerMappings: () => [],
-          setSpeakerMapping: () => {},
-          removeSpeakerMapping: () => {},
-          getSpeakerProfiles: () => [],
-          upsertSpeakerProfile: () => ({ id: 1 }),
-        },
-        diarizationManager,
-        meetingDetectionEngine: localEngine,
-        audioTapManager: null,
-        meetingAecManager: null,
-        whisperManager: { transcribeLocalWhisper: async () => ({}) },
-        parakeetManager: { transcribeLocalParakeet: async () => ({}) },
-        liveSpeakerIdentifier: {
-          isAvailable: () => false,
-          start: async () => false,
-          stop: async () => ({}),
-          feedAudio: async () => undefined,
-          recluster: async () => [],
-          setEnabled: () => {},
-          setMaxSpeakers() {},
-          getSpeakerEmbedding: () => null,
-          mapSpeaker: () => {},
-        },
-        fetchRealtimeToken: async () => "token",
-        resolveWhisperVadOptions: () => ({}),
-        speakerEmbeddings: () => ({ cosineSimilarity: () => 0.9 }),
-        getControlPanelWindow: () => currentWindow,
-        getMeetingNotificationData: () => null,
-        consumePendingMeetingNoteNavigation: () => null,
-        showNotificationWindow: () => {},
-      }
-    );
-    return { handlers: localHandlers, listenerChannels: localListeners, engine: localEngine };
-  })();
-
-  const event = { sender: null };
-  const started = await invoke(diarizationHarness.handlers, "meeting-transcription-start", event, {
-    provider: "local",
-    sessionId: "meeting-A",
-    noteId: 42,
-    autoEndEligible: false,
-  });
-  assert.equal(started.success, true, JSON.stringify(started));
-
-  // Feed one system chunk so the raw PCM capture exists for diarization.
-  invoke(
-    diarizationHarness.listenerChannels,
+test("renderer audio is acknowledged only after its raw PCM bytes are written", async () => {
+  const harness = buildHarness();
+  await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  const raw = Buffer.alloc(4_800, 7);
+  const response = await invoke(
+    harness,
     "meeting-transcription-send",
-    null,
-    Buffer.alloc(4),
-    "system"
+    { sender: currentWindow.webContents },
+    raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
+    "mic",
+    START.sessionId,
+    { epochIndex: 0, epochStartFrame: 100, sequence: 0, sampleOffset: 0 }
   );
 
-  const stopped = await invoke(diarizationHarness.handlers, "meeting-transcription-stop", { sender: null }, "meeting-A");
-  assert.equal(stopped.success, true, JSON.stringify(stopped));
-
-  // Session B starts before A's background diarization resolves.
-  const startedB = await invoke(diarizationHarness.handlers, "meeting-transcription-start", event, {
-    provider: "local",
-    sessionId: "meeting-B",
-    noteId: 99,
-    autoEndEligible: false,
-  });
-  assert.equal(startedB.success, true, JSON.stringify(startedB));
-
-  diarizeDeferred.resolve([]);
-
-  // Allow the publication async path to run.
-  await waitFor(
-    () =>
-      currentWindow.messages.filter((m) => m.channel === "meeting-diarization-complete").length ===
-      1,
-    "the diarization completion is published"
-  );
-
-  const completions = currentWindow.messages.filter(
-    (m) => m.channel === "meeting-diarization-complete"
-  );
-  assert.equal(completions.length, 1, "exactly one diarization completion");
-  assert.equal(
-    completions[0].payload.sessionId.startsWith("diar-"),
-    true,
-    "the stop's diarization session id"
-  );
-  assert.equal(completions[0].payload.noteId, 42, "late result routes to session A's note");
-  assert.equal(diarizationHarness.engine.activeSessionId, "meeting-B", "session B keeps recording");
-
-  // Stop B so the local chunking interval does not keep the runner alive.
-  const stoppedB = await invoke(diarizationHarness.handlers, "meeting-transcription-stop", { sender: null }, "meeting-B");
-  assert.equal(stoppedB.success, true, JSON.stringify(stoppedB));
+  assert.deepEqual(response, { success: true, sequence: 0 });
+  assert.deepEqual(harness.events, ["recording-created", "pcm-written"]);
+  assert.equal(harness.meetingRecordingStorage.files.get(`${RECORDING_ID}:mic:0`)[0].equals(raw), true);
 });
 
-test("a failed dual-stream prepare waits for the other connection before cleanup", async () => {
-  const { handlers } = buildHarness({ systemAudio: true });
-  const event = { sender: null };
-  const options = { provider: "openai-realtime" };
-  const pending = invoke(handlers, "meeting-transcription-prepare", event, options);
-  await waitFor(() => clientCount() === 2, "both streams connecting");
-  FakeStreamingClient.instances[0].connectDeferred.reject(new Error("mic failed"));
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(await invoke(handlers, "meeting-transcription-prepare", event, options), {
-    success: false,
-    error: "Operation in progress",
+test("disk errors reject acknowledgement and finalize incomplete", async () => {
+  const harness = buildHarness({ failWrite: true });
+  await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  const raw = Buffer.alloc(4_800, 9);
+
+  await assert.rejects(
+    invoke(
+      harness,
+      "meeting-transcription-send",
+      { sender: currentWindow.webContents },
+      raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
+      "mic",
+      START.sessionId,
+      { epochIndex: 0, epochStartFrame: 0, sequence: 0, sampleOffset: 0 }
+    ),
+    /disk full/
+  );
+  const stopped = await invoke(harness, "meeting-transcription-stop", { sender: currentWindow.webContents }, {
+    sessionId: START.sessionId,
+    lastSequence: { mic: -1, system: -1 },
+    incomplete: true,
+    errorCode: "capture-write-failed",
   });
-  FakeStreamingClient.instances[1].connectDeferred.resolve();
-  assert.deepEqual(await pending, { success: false, error: "mic failed" });
-  assert.equal(FakeStreamingClient.instances[1].isConnected, false);
-  const retry = invoke(handlers, "meeting-transcription-prepare", event, options);
-  await waitFor(() => clientCount() === 4, "fresh pair on retry");
-  FakeStreamingClient.instances[2].connectDeferred.resolve();
-  FakeStreamingClient.instances[3].connectDeferred.resolve();
-  assert.deepEqual(await retry, { success: true });
+
+  assert.equal(stopped.success, true);
+  assert.equal(stopped.captureState, "incomplete");
+  assert.equal(harness.databaseManager.finalized.length, 1);
+});
+
+test("repeated stop cannot create a second initial processing run", async () => {
+  const harness = buildHarness();
+  await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  const request = {
+    sessionId: START.sessionId,
+    lastSequence: { mic: -1, system: -1 },
+    incomplete: true,
+    errorCode: "renderer-lost",
+  };
+  const first = await invoke(harness, "meeting-transcription-stop", { sender: currentWindow.webContents }, request);
+  const second = await invoke(harness, "meeting-transcription-stop", { sender: currentWindow.webContents }, request);
+
+  assert.equal(first.success, true);
+  assert.equal(second.success, false);
+  assert.equal(harness.databaseManager.finalized.length, 1);
+  assert.equal(first.initialRunId, RUN_ID);
+});
+
+test("capture packet validation rejects unknown sources", async () => {
+  const harness = buildHarness();
+  await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  await assert.rejects(
+    invoke(
+      harness,
+      "meeting-transcription-send",
+      { sender: currentWindow.webContents },
+      new ArrayBuffer(4_800),
+      "fallback",
+      START.sessionId,
+      { epochIndex: 0, epochStartFrame: 0, sequence: 0, sampleOffset: 0 }
+    ),
+    /source is invalid/
+  );
+});
+
+test("renderer crash finalizes available capture state as incomplete", async () => {
+  const harness = buildHarness();
+  await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+
+  currentWindow.webContents.emit("render-process-gone");
+  for (let attempt = 0; attempt < 20 && harness.databaseManager.finalized.length === 0; attempt += 1) {
+    await new Promise(setImmediate);
+  }
+
+  assert.equal(harness.databaseManager.finalized.length, 1);
+  assert.equal(harness.databaseManager.finalized[0].input.captureState, "incomplete");
+  assert.equal(harness.databaseManager.finalized[0].input.errorCode, "renderer-lost");
+  assert.equal(harness.runtime.isRecording(), false);
 });

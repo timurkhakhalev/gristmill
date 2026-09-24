@@ -14,6 +14,11 @@ function createDeferred() {
 }
 
 const createdWindows = [];
+const appListeners = new Map();
+const hotkeyManagers = [];
+let appQuitCount = 0;
+let dialogResponse = 1;
+const dialogCalls = [];
 let devServerWaitPromise = Promise.resolve();
 
 class FakeBrowserWindow extends EventEmitter {
@@ -63,7 +68,14 @@ class FakeBrowserWindow extends EventEmitter {
 }
 
 class FakeHotkeyManager {
-  unregisterAll() {}
+  constructor() {
+    this.unregisterCount = 0;
+    hotkeyManagers.push(this);
+  }
+
+  unregisterAll() {
+    this.unregisterCount += 1;
+  }
 
   isInListeningMode() {
     return false;
@@ -76,14 +88,24 @@ class FakeDragManager {
 }
 
 const originalLoad = Module._load;
+const appStub = {
+  on: (event, listener) => appListeners.set(event, listener),
+  quit: () => { appQuitCount += 1; },
+};
+const dialogStub = {
+  showMessageBox: async (options) => {
+    dialogCalls.push(options);
+    return { response: dialogResponse };
+  },
+};
 Module._load = function loadWindowManagerWithStubs(request, parent, isMain) {
   if (request === "electron") {
     return {
-      app: { on: () => undefined },
+      app: appStub,
       screen: { getPrimaryDisplay: () => ({}), on: () => undefined },
       BrowserWindow: FakeBrowserWindow,
       shell: {},
-      dialog: {},
+      dialog: dialogStub,
     };
   }
   if (request === "./debugLogger" || request === "./debugLogger.js") {
@@ -189,6 +211,76 @@ function installFakeTimers() {
 
 test.beforeEach(() => {
   createdWindows.length = 0;
+  appListeners.clear();
+  hotkeyManagers.length = 0;
+  appQuitCount = 0;
+  dialogResponse = 1;
+  dialogCalls.length = 0;
+});
+
+test("canceling quit during capture preserves capture and hotkeys", async () => {
+  const manager = createNormalWindowManager();
+  let stopCount = 0;
+  manager.setMeetingCaptureQuitGuard({
+    isRecording: () => true,
+    stop: async () => { stopCount += 1; return { success: true }; },
+  });
+  let prevented = false;
+
+  appListeners.get("before-quit")({ preventDefault: () => { prevented = true; } });
+  await manager._quitConfirmationPromise;
+
+  assert.equal(prevented, true);
+  assert.equal(manager.isQuitting, false);
+  assert.equal(stopCount, 0);
+  assert.equal(hotkeyManagers[0].unregisterCount, 0);
+  assert.equal(appQuitCount, 0);
+  assert.equal(dialogCalls.length, 1);
+});
+
+test("confirming quit waits for safe capture stop before shutdown", async () => {
+  const manager = createNormalWindowManager();
+  const stopDeferred = createDeferred();
+  let stopCount = 0;
+  manager.setMeetingCaptureQuitGuard({
+    isRecording: () => true,
+    stop: () => { stopCount += 1; return stopDeferred.promise; },
+  });
+  dialogResponse = 0;
+  let prevented = false;
+
+  appListeners.get("before-quit")({ preventDefault: () => { prevented = true; } });
+  const pendingQuit = manager._quitConfirmationPromise;
+  await Promise.resolve();
+
+  assert.equal(prevented, true);
+  assert.equal(stopCount, 1);
+  assert.equal(manager.isQuitting, false);
+  assert.equal(appQuitCount, 0);
+  stopDeferred.resolve({ success: true });
+  await pendingQuit;
+
+  assert.equal(manager.isQuitting, true);
+  assert.equal(hotkeyManagers[0].unregisterCount, 1);
+  assert.equal(appQuitCount, 1);
+});
+
+test("failed safe stop keeps the app open", async () => {
+  const manager = createNormalWindowManager();
+  manager.setMeetingCaptureQuitGuard({
+    isRecording: () => true,
+    stop: async () => ({ success: false }),
+  });
+  dialogResponse = 0;
+
+  appListeners.get("before-quit")({ preventDefault() {} });
+  await manager._quitConfirmationPromise;
+
+  assert.equal(manager.isQuitting, false);
+  assert.equal(hotkeyManagers[0].unregisterCount, 0);
+  assert.equal(appQuitCount, 0);
+  assert.equal(dialogCalls.length, 2);
+  assert.equal(dialogCalls[1].type, "error");
 });
 
 

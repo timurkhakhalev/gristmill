@@ -2,8 +2,28 @@ import { Menu, BrowserWindow, type MenuItemConstructorOptions } from "electron";
 import { i18nMain } from "./i18nMain.js";
 
 export class MenuManager {
+  private static meetingCaptureActive = false;
+  private static stopMeetingCapture: (() => void) | null = null;
+  private static rebuildMenu: (() => void) | null = null;
+
+  static setMeetingCaptureStatus(active: boolean, stop?: () => void): void {
+    this.meetingCaptureActive = active;
+    this.stopMeetingCapture = active ? stop ?? null : null;
+    this.rebuildMenu?.();
+  }
+
+  private static meetingCaptureItems(): MenuItemConstructorOptions[] {
+    if (!this.meetingCaptureActive) return [];
+    return [
+      { label: i18nMain.t("tray.recordingStatus"), enabled: false },
+      { label: i18nMain.t("tray.stopRecording"), click: () => this.stopMeetingCapture?.() },
+      { type: "separator" },
+    ];
+  }
+
   static setupMainMenu(onOpenSettings?: () => void): void {
-    const template: MenuItemConstructorOptions[] = [
+    this.rebuildMenu = () => {
+      const template: MenuItemConstructorOptions[] = [
         {
           label: i18nMain.t("menu.appLabel"),
           submenu: [
@@ -17,6 +37,7 @@ export class MenuManager {
             { type: "separator" },
             { role: "services" },
             { type: "separator" },
+            ...this.meetingCaptureItems(),
             { role: "hide" },
             { role: "hideOthers" },
             { role: "unhide" },
@@ -24,17 +45,20 @@ export class MenuManager {
             { role: "quit", label: i18nMain.t("menu.quit") },
           ],
         },
-    ];
-    const menu = Menu.buildFromTemplate(template);
-    Menu.setApplicationMenu(menu);
+      ];
+      Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    };
+    this.rebuildMenu();
   }
 
   static setupControlPanelMenu(
     controlPanelWindow: BrowserWindow,
-    onOpenSettings?: () => void
+    onOpenSettings?: () => void,
+    onStopMeetingCapture?: () => void
   ): void {
-    // OpenHercules targets macOS only, so the application menu is always used.
-    const template: MenuItemConstructorOptions[] = [
+    this.stopMeetingCapture = this.meetingCaptureActive ? onStopMeetingCapture ?? this.stopMeetingCapture : null;
+    this.rebuildMenu = () => {
+      const template: MenuItemConstructorOptions[] = [
         {
           label: i18nMain.t("menu.appLabel"),
           submenu: [
@@ -48,6 +72,7 @@ export class MenuManager {
             { type: "separator" },
             { role: "services" },
             { type: "separator" },
+            ...this.meetingCaptureItems(),
             { role: "hide" },
             { role: "hideOthers" },
             { role: "unhide" },
@@ -100,9 +125,9 @@ export class MenuManager {
           ],
         },
       ];
-
-    const menu = Menu.buildFromTemplate(template);
-    controlPanelWindow.setMenu(menu);
+      controlPanelWindow.setMenu(Menu.buildFromTemplate(template));
+    };
+    this.rebuildMenu();
   }
 }
 

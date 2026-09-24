@@ -60,6 +60,8 @@
   "tray": {
     "openControlPanel": "Open Control Panel",
     "hideControlPanel": "Hide Control Panel",
+    "recordingStatus": "Recording in progress",
+    "stopRecording": "Stop recording",
     "quit": "Quit OpenHercules",
     "tooltip": "OpenHercules"
   },
@@ -78,6 +80,13 @@
     "controlPanelTitle": "Control Panel"
   },
   "dialog": {
+    "meetingQuit": {
+      "title": "Recording in progress",
+      "message": "Stop and save this recording before quitting?",
+      "stopAndQuit": "Stop and Quit",
+      "cancel": "Cancel",
+      "stopFailed": "The recording could not be saved yet. OpenHercules will stay open."
+    },
     "openLink": {
       "title": "Unable to Open Link",
       "message": "Failed to open the link in your browser:\n{{url}}\n\nError: {{error}}"
@@ -1503,8 +1512,8 @@
       "raw": "Raw",
       "enhanced": "Enhanced",
       "saving": "Saving",
-      "transcriptEmptyTitle": "Nothing recorded yet",
-      "transcriptEmptyDescription": "Hit record to start transcribing. Everything said shows up here as it happens.",
+      "transcriptEmptyTitle": "Transcript not created yet",
+      "transcriptEmptyDescription": "Record audio first. Its transcript will be available after processing.",
       "startRecording": "Start recording",
       "generateSummary": "Generate AI Summary",
       "startWriting": "Start writing...",
@@ -1515,7 +1524,23 @@
       "conversationWillAppear": "Conversation will appear here...",
       "linkedEvent": "Linked event",
       "noFolder": "No folder",
-      "participants": "Participants"
+      "participants": "Participants",
+      "capture": {
+        "preparing": "Preparing local recording…",
+        "recording": "Recording audio",
+        "saving": "Saving audio tail…",
+        "saved": "Audio recording saved",
+        "incomplete": "Recording saved with missing audio",
+        "failed": "Recording could not start",
+        "mic": "Microphone",
+        "system": "System audio",
+        "active": "Capturing",
+        "reconnecting": "Reconnecting",
+        "unavailable": "Unavailable",
+        "inactive": "Not started",
+        "writingToDisk": "Writing to disk",
+        "incompleteReason": "Some audio may be missing. The recording keeps the audio saved before the issue."
+      }
     },
     "participants": {
       "attendee": "attendee",

@@ -4,7 +4,6 @@ const Module = require("node:module");
 const { EventEmitter } = require("node:events");
 
 const originalLoad = Module._load;
-const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
 const RUN_ID = "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2";
 
 const fakeWindow = () => {
@@ -206,7 +205,6 @@ const START = {
   noteId: 11,
   sessionId: "session-m2",
   autoEndEligible: false,
-  recordingConfig: { config: null, configError: { code: "missing-config" } },
 };
 const START_EVENT = () => ({ sender: currentWindow.webContents });
 
@@ -217,7 +215,8 @@ test("prepare and start need no credentials or model connection and create durab
 
   const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
   assert.equal(started.success, true);
-  assert.equal(started.recordingId, RECORDING_ID);
+  assert.match(started.recordingId, /^[0-9a-f-]{36}$/);
+  assert.equal(harness.databaseManager.recordings.has(started.recordingId), true);
   assert.equal(harness.events[0], "recording-created");
   assert.equal(harness.tokenCalls(), 0);
   assert.equal(harness.asrCalls(), 0);
@@ -226,7 +225,7 @@ test("prepare and start need no credentials or model connection and create durab
 
 test("renderer audio is acknowledged only after its raw PCM bytes are written", async () => {
   const harness = buildHarness();
-  await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
   const raw = Buffer.alloc(4_800, 7);
   const response = await invoke(
     harness,
@@ -240,16 +239,17 @@ test("renderer audio is acknowledged only after its raw PCM bytes are written", 
 
   assert.deepEqual(response, { success: true, sequence: 0 });
   assert.deepEqual(harness.events, ["recording-created", "pcm-written"]);
-  assert.equal(harness.meetingRecordingStorage.files.get(`${RECORDING_ID}:mic:0`)[0].equals(raw), true);
+  assert.equal(harness.meetingRecordingStorage.files.get(`${started.recordingId}:mic:0`)[0].equals(raw), true);
 });
 
 test("disk errors reject acknowledgement and finalize incomplete", async () => {
   const harness = buildHarness({ failWrite: true });
-  await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  assert.equal(started.success, true);
   const raw = Buffer.alloc(4_800, 9);
 
   await assert.rejects(
-    invoke(
+    async () => invoke(
       harness,
       "meeting-transcription-send",
       { sender: currentWindow.webContents },
@@ -294,7 +294,7 @@ test("capture packet validation rejects unknown sources", async () => {
   const harness = buildHarness();
   await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
   await assert.rejects(
-    invoke(
+    async () => invoke(
       harness,
       "meeting-transcription-send",
       { sender: currentWindow.webContents },

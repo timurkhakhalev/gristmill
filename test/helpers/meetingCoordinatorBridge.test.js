@@ -139,8 +139,10 @@ async function createFixture({ responses = {}, engine } = {}) {
   });
 
   const sent = [];
+  const invoked = [];
   const listeners = new Map();
   const invokeHandler = async (channel, ...args) => {
+    invoked.push({ channel, args });
     const handler = handlers.get(channel);
     if (!handler) throw new Error(`No handler for ${channel}`);
     if (channel in responses) return responses[channel](...args);
@@ -163,7 +165,7 @@ async function createFixture({ responses = {}, engine } = {}) {
   const pushEvent = (channel, payload) => {
     for (const listener of listeners.get(channel) ?? []) listener({}, payload);
   };
-  return { api, pushEvent, sent, engineFake };
+  return { api, pushEvent, sent, invoked, engineFake };
 }
 
 test("command shapes cross the bundled preload and results are passed through", async () => {
@@ -197,12 +199,27 @@ test("command shapes cross the bundled preload and results are passed through", 
   });
 });
 
-test("binary send crosses as a fire-and-forget command with its source", async () => {
-  const { api, sent } = await createFixture();
-  api.meetingTranscriptionSend(new ArrayBuffer(8), "mic");
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].channel, "meeting-transcription-send");
-  assert.equal(sent[0].args[1], "mic");
+test("capture send crosses with source and sequencing metadata and returns its write acknowledgement", async () => {
+  const { api, invoked } = await createFixture({
+    responses: {
+      "meeting-transcription-send": (_buffer, _source, _sessionId, packet) => ({
+        success: true,
+        sequence: packet.sequence,
+      }),
+    },
+  });
+  const buffer = new ArrayBuffer(8);
+  const sessionId = "capture-session";
+  const packet = { epochIndex: 1, epochStartFrame: 24_000, sequence: 3, sampleOffset: 120 };
+
+  assert.deepEqual(plain(await api.meetingTranscriptionSend(buffer, "mic", sessionId, packet)), {
+    success: true,
+    sequence: 3,
+  });
+  assert.equal(invoked.length, 1);
+  assert.equal(invoked[0].channel, "meeting-transcription-send");
+  assert.equal(invoked[0].args[0], buffer);
+  assert.deepEqual(invoked[0].args.slice(1), ["mic", sessionId, packet]);
 });
 
 test("event payloads reach callbacks and malformed ones are dropped", async () => {

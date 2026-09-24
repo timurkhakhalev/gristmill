@@ -134,7 +134,7 @@ const ops: CliBridgeOperations = {
     getTranscriptionById: () => null,
     updateTranscriptionAudio: () => ({ success: true }),
   },
-  deleteNoteInternal: () => ({ success: true }),
+  deleteNoteInternal: async () => ({ success: true }),
   deleteTranscriptionInternal: () => ({ success: true }),
   mirrorWriteNote: () => undefined,
   approveAudioPath: () => undefined,

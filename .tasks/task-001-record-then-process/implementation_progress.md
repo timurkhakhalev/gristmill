@@ -50,3 +50,16 @@ Verification:
 
 Commits:
 - `9028b992` — M2: implement record-first capture and safe Stop.
+
+## M2 root-test follow-up
+
+Root's focused run reported 20 failures: four IPC assertion issues and sixteen Vite import failures. IPC tests now follow the generated recording ID and wrap synchronous handler throws in a promise assertion. The Vite failure came from `secretKeys.ts` exporting its already-named ESM data with an unconditional CommonJS `module.exports`; that redundant export is removed, keeping the settings snapshot in the renderer where current user settings live while main validates and persists it before capture.
+
+Verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors; 36 warnings.
+- `git diff --check` — passed.
+- Root tests were not run by this worker. Rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+
+Follow-up commit:
+- `58ef1f5c` — M2: fix capture boundary and IPC assertions.

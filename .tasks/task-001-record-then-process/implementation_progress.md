@@ -136,3 +136,13 @@ Verification:
 
 Commit:
 - `e192dd51` — M3: add durable post-stop meeting processing.
+
+## M3 root-test follow-up
+
+Root's focused suite passed 89/90; the FFmpeg mixer case exposed that the disk-space probe used the not-yet-created final WAV path. The mixer now checks available space on the existing containing directory, while retaining the same byte estimate and temporary-file-to-final rename. The injected test verifies the probe receives an existing directory.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/remoteTranscriptionIpc.test.js test/helpers/geminiFileTranscription.test.js test/helpers/retryTranscriptionHandler.test.js test/helpers/transcriptionRoute.test.js test/services/fileTranscriptionDiarizationWarning.test.js`.

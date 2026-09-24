@@ -30,6 +30,13 @@ function createFinishedRecording(db, storage, anchor, ageDays) {
   return { note, recording: finalized.recording, initialRun: finalized.initialRun };
 }
 
+function storeTranscript(db, storage, run, text) {
+  storage.writeRunArtifact(run.id, "provider-response", { runId: run.id });
+  assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
+  storage.writeRunArtifact(run.id, "transcript", { text });
+  assert.equal(db.setMeetingRunArtifact(run.id, "transcript").success, true);
+}
+
 function runCleanup(db, storage, settings, overrides = {}) {
   const context = {
     databaseManager: db,
@@ -62,18 +69,17 @@ test("default 7 days, saved 30 days, and 0-day retention behave independently", 
 
   assert.equal(DEFAULT_RETENTION_SETTINGS.audioRetentionDays, 7);
   const { recording: thirtyDayRecording, initialRun: thirtyDayRun } = createFinishedRecording(db, storage, anchor, 20);
-  storage.writeRunArtifact(thirtyDayRun.id, "transcript", { text: "Saved transcript" });
-  assert.equal(db.setMeetingRunArtifact(thirtyDayRun.id, "transcript").success, true);
+  storeTranscript(db, storage, thirtyDayRun, "Saved transcript");
   assert.equal(await runCleanup(db, storage, { audioRetentionDays: 30, transcriptRetentionDays: 0 }), true);
   assert.equal(db.getMeetingRecording(thirtyDayRecording.id).audioState, "available");
 
   const { recording: sevenDayRecording, initialRun: sevenDayRun } = createFinishedRecording(db, storage, anchor, 8);
-  storage.writeRunArtifact(sevenDayRun.id, "transcript", { text: "Transcript remains" });
-  assert.equal(db.setMeetingRunArtifact(sevenDayRun.id, "transcript").success, true);
+  storeTranscript(db, storage, sevenDayRun, "Transcript remains");
   assert.equal(await runCleanup(db, storage, { audioRetentionDays: 7, transcriptRetentionDays: 0 }), true);
   assert.equal(db.getMeetingRecording(sevenDayRecording.id).audioState, "deleted");
   assert.equal(db.getNote(db.getMeetingRecording(sevenDayRecording.id).noteId).content, "Manual note stays");
   assert.equal(db.getMeetingProcessingRun(sevenDayRun.id).hasTranscript, true);
+  assert.deepEqual(storage.readRunArtifact(sevenDayRun.id, "provider-response"), { runId: sevenDayRun.id });
   assert.deepEqual(storage.readRunArtifact(sevenDayRun.id, "transcript"), { text: "Transcript remains" });
 
   const unlimitedRecording = createFinishedRecording(db, storage, anchor, 400).recording;
@@ -87,8 +93,7 @@ test("delete-all safely stops active capture, waits for processing, and removes 
   const root = getUserDataDir();
   const storage = new MeetingRecordingStorage({ userDataPath: root });
   const { note, recording, initialRun } = createFinishedRecording(db, storage, Date.now(), 1);
-  storage.writeRunArtifact(initialRun.id, "transcript", { text: "Saved words" });
-  assert.equal(db.setMeetingRunArtifact(initialRun.id, "transcript").success, true);
+  storeTranscript(db, storage, initialRun, "Saved words");
   let safeStop = false;
   let waited = false;
   const context = {
@@ -120,6 +125,7 @@ test("delete-all safely stops active capture, waits for processing, and removes 
   assert.deepEqual(result, { deleted: 1, failed: 0 });
   assert.equal(db.getMeetingRecording(recording.id).audioState, "deleted");
   assert.equal(db.getNote(note.id).content, "Manual note stays");
+  assert.deepEqual(storage.readRunArtifact(initialRun.id, "provider-response"), { runId: initialRun.id });
   assert.deepEqual(storage.readRunArtifact(initialRun.id, "transcript"), { text: "Saved words" });
 });
 
@@ -129,8 +135,7 @@ test("note deletion waits for the active reader before removing its Note and run
   const root = getUserDataDir();
   const storage = new MeetingRecordingStorage({ userDataPath: root });
   const { note, recording, initialRun } = createFinishedRecording(db, storage, Date.now(), 1);
-  storage.writeRunArtifact(initialRun.id, "transcript", { text: "Saved words" });
-  assert.equal(db.setMeetingRunArtifact(initialRun.id, "transcript").success, true);
+  storeTranscript(db, storage, initialRun, "Saved words");
   const intent = db.beginMeetingNoteDeletion(note.id);
   assert.ok(intent, "note deletion must persist an intent before removing files");
   let releaseReader;
@@ -154,6 +159,7 @@ test("note deletion waits for the active reader before removing its Note and run
   const deletion = IPCHandlers.prototype._finishMeetingDeletion.call(context, intent);
   await readerWait;
   assert.ok(db.getNote(note.id), "note remains while an active processor is still settling");
+  assert.deepEqual(storage.readRunArtifact(initialRun.id, "provider-response"), { runId: initialRun.id });
   assert.deepEqual(storage.readRunArtifact(initialRun.id, "transcript"), { text: "Saved words" });
   releaseReader();
   assert.equal(await deletion, true);

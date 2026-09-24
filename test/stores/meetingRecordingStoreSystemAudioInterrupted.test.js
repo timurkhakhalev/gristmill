@@ -65,7 +65,7 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }) {
 
 async function loadStore(t, api) {
   installBrowserGlobals(t, {
-    window: { electronAPI: api, setTimeout: (fn, ms) => setTimeout(fn, ms) },
+    window: { electronAPI: api },
   });
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-meeting-system-audio-interrupted-test-",
@@ -215,7 +215,9 @@ test("resumed audio clears only quiet warnings without creating another interrup
     systemAudioStrategy: "native",
   });
   const store = await loadStore(t, api);
-  t.after(() => store.stopRecording());
+  t.after(async () => {
+    await store.stopRecording();
+  });
   await store.startRecording(START_ARGS);
   listeners.systemAudioInterrupted({ ...stoppedCapture, reason: "gone_quiet" });
   const nonce = store.useMeetingRecordingStore.getState().systemAudioInterruptedNonce;

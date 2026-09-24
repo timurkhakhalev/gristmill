@@ -65,7 +65,7 @@ function createElectronAPI({ stopResult }) {
 async function loadStore(t, api) {
   installMicCaptureGlobals(t);
   installBrowserGlobals(t, {
-    window: { electronAPI: api.api, setTimeout: (fn, ms) => setTimeout(fn, ms) },
+    window: { electronAPI: api.api },
   });
   const vite = await createRendererServer(t, {
     cachePrefix: "openhercules-meeting-capture-stop-test-",

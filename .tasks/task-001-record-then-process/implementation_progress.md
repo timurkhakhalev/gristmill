@@ -220,3 +220,18 @@ Commits:
 - `f7823d59` — M4: keep meeting summary providers in the main graph.
 - `d9b022b7` — M4: align integration fixtures with record-first capture.
 - `dbada7c1` — M4: complete meeting Arabic and input direction coverage.
+
+## M1–M4 integration locale follow-up
+
+Status: done
+
+Added the missing meeting recording, safe-quit, audio-retention, capture-status, and processing-result strings in German, Spanish, French, Italian, Japanese, Portuguese, Simplified Chinese, and Traditional Chinese. Existing Arabic and Russian strings were already complete and remain unchanged.
+
+Preserved the English key nesting and all interpolation placeholders. Retention and deletion copy continues to distinguish saved audio from Notes, transcripts, and summaries.
+
+Verification:
+- Read-only key and placeholder parity script over every locale directory — all 10 non-English locales have 0 missing English keys and 0 placeholder mismatches.
+- `git diff --check` — passed.
+- This worker did not run tests, builds, installs, or native rebuilds.
+
+Root-only rerun: `node --import tsx --test --test-concurrency=1 test/locales/translationCoverage.test.js`

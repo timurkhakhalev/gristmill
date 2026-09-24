@@ -61,7 +61,9 @@
     "openControlPanel": "Abrir panel de control",
     "hideControlPanel": "Ocultar panel de control",
     "quit": "Salir de OpenHercules",
-    "tooltip": "OpenHercules"
+    "tooltip": "OpenHercules",
+    "recordingStatus": "Grabación en curso",
+    "stopRecording": "Detener grabación"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -91,6 +93,13 @@
         "url": "URL: {{url}}",
         "hint": "Intenta reinstalar la app o iniciar con --log-level=debug."
       }
+    },
+    "meetingQuit": {
+      "title": "Grabación en curso",
+      "message": "¿Detener y guardar esta grabación antes de salir?",
+      "stopAndQuit": "Detener y salir",
+      "cancel": "Cancelar",
+      "stopFailed": "Aún no se pudo guardar la grabación. OpenHercules seguirá abierto."
     }
   },
   "startup": {
@@ -1094,7 +1103,21 @@
         "description": "Set audio and transcript retention periods. Zero means keep indefinitely."
       },
       "audioRetention": "Audio retention (days)",
-      "transcriptRetention": "Transcript retention (days)"
+      "transcriptRetention": "Transcript retention (days)",
+      "audioRetentionLabel": "Retención del audio de reuniones",
+      "audioRetentionDescription": "Días que se conserva el audio original. 0 significa conservarlo hasta eliminarlo manualmente.",
+      "retentionDecreaseTitle": "¿Reducir la retención de audio?",
+      "retentionDecreaseDescription": "Las grabaciones de más de {{days}} días se eliminarán en la próxima limpieza.",
+      "retentionDecreaseConfirm": "Reducir retención",
+      "days": "días",
+      "deleteAllAudioLabel": "Eliminar el audio guardado",
+      "deleteAllAudioDescription": "Elimina las pistas de reuniones y grabaciones antiguas. Las notas, transcripciones y resúmenes permanecen en este dispositivo.",
+      "deleteAllAudioButton": "Eliminar todo el audio",
+      "deleteAllAudioTitle": "¿Eliminar todo el audio guardado?",
+      "deleteAllAudioConfirmDescription": "La grabación en curso se detendrá de forma segura sin iniciar la transcripción. Después se eliminará el audio guardado.",
+      "deleteAllAudioConfirm": "Eliminar todo el audio",
+      "deleteAllAudioDone": "Se eliminaron {{count}} elemento(s) de audio.",
+      "deleteAllAudioFailed": "No se pudieron eliminar {{count}} elemento(s) de audio. Vuelve a intentarlo."
     },
     "prompts": {
       "description": "Visualiza, personaliza y prueba el prompt de sistema unificado que impulsa la corrección de texto y la detección de instrucciones",
@@ -1441,7 +1464,23 @@
       "conversationWillAppear": "La conversación aparecerá aquí...",
       "linkedEvent": "Evento vinculado",
       "noFolder": "Sin carpeta",
-      "participants": "Participantes"
+      "participants": "Participantes",
+      "capture": {
+        "preparing": "Preparando grabación local…",
+        "recording": "Grabando audio",
+        "saving": "Guardando el tramo final…",
+        "saved": "Grabación de audio guardada",
+        "incomplete": "Grabación guardada con audio faltante",
+        "failed": "No se pudo iniciar la grabación",
+        "mic": "Micrófono",
+        "system": "Audio del sistema",
+        "active": "Capturando audio",
+        "reconnecting": "Reconectando",
+        "unavailable": "No disponible",
+        "inactive": "Sin iniciar",
+        "writingToDisk": "Escribiendo en el disco",
+        "incompleteReason": "Puede faltar audio. Se conserva el audio guardado antes del problema."
+      }
     },
     "participants": {
       "attendee": "asistente",
@@ -2142,5 +2181,56 @@
     "systemAudio": "System audio",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
+  },
+  "meetingResults": {
+    "title": "Grabación de reunión",
+    "loadError": "No se pudo cargar el historial.",
+    "selectError": "No se pudo seleccionar el resultado.",
+    "createError": "No se pudo crear una ejecución de procesamiento.",
+    "retryError": "No se pudo reintentar la ejecución.",
+    "exportError": "Falló la exportación de audio.",
+    "exported": "Audio exportado.",
+    "speakerError": "No se pudo guardar la corrección del hablante.",
+    "deleteError": "Falló la eliminación del audio. Puedes reintentar.",
+    "version": "Versión del resultado",
+    "newAsr": "Nueva transcripción",
+    "newSummary": "Nuevo resumen",
+    "retry": "Reintentar",
+    "deleteAudio": "Eliminar audio",
+    "retryDelete": "Reintentar eliminación de audio",
+    "deleteAudioTitle": "¿Eliminar el audio original?",
+    "deleteAudioDescription": "Se eliminan las pistas guardadas del micrófono y del sistema. Las transcripciones y resúmenes de Notas permanecen disponibles.",
+    "deleteAudioConfirm": "Eliminar audio",
+    "audioUnavailable": "El audio original se eliminó o no está disponible. Se desactivan la transcripción, reproducción y exportación.",
+    "exportMixed": "Exportar WAV mezclado",
+    "exportMic": "Exportar WAV del micrófono",
+    "exportSystem": "Exportar WAV del sistema",
+    "saveSpeaker": "Guardar hablante",
+    "speakerProfile": "Perfil de hablante",
+    "noSpeakerProfile": "Sin perfil",
+    "captureIncomplete": "La grabación terminó antes; se conservan el audio y los resultados guardados.",
+    "deleteActiveNoteTitle": "¿Detener y eliminar esta grabación?",
+    "deleteActiveNoteDescription": "La grabación se detendrá sin iniciar transcripción; después se eliminarán la nota, el audio y el historial.",
+    "stopBeforeDeleteError": "No se pudo detener la grabación de forma segura. Se conservó la nota.",
+    "stage": {
+      "prepare": "Preparando audio",
+      "asr": "Transcribiendo",
+      "normalize": "Guardando transcripción",
+      "summary": "Escribiendo resumen"
+    },
+    "status": {
+      "pending": "En espera",
+      "running": "En curso",
+      "blocked": "Bloqueado",
+      "failed": "Error",
+      "cancelled": "Cancelado",
+      "complete": "Completado"
+    },
+    "capture": {
+      "recording": "Grabando",
+      "finalizing": "Guardando grabación",
+      "ready": "Guardado",
+      "incomplete": "Incompleto"
+    }
   }
 }

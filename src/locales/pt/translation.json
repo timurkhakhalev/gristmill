@@ -61,7 +61,9 @@
     "openControlPanel": "Abrir painel de controle",
     "hideControlPanel": "Ocultar painel de controle",
     "quit": "Sair do OpenHercules",
-    "tooltip": "OpenHercules"
+    "tooltip": "OpenHercules",
+    "recordingStatus": "Gravação em andamento",
+    "stopRecording": "Parar gravação"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -91,6 +93,13 @@
         "url": "URL: {{url}}",
         "hint": "Reinstale o app ou inicie com --log-level=debug."
       }
+    },
+    "meetingQuit": {
+      "title": "Gravação em andamento",
+      "message": "Parar e salvar esta gravação antes de sair?",
+      "stopAndQuit": "Parar e sair",
+      "cancel": "Cancelar",
+      "stopFailed": "A gravação ainda não pôde ser salva. O OpenHercules continuará aberto."
     }
   },
   "startup": {
@@ -1088,7 +1097,21 @@
         "description": "Set audio and transcript retention periods. Zero means keep indefinitely."
       },
       "audioRetention": "Audio retention (days)",
-      "transcriptRetention": "Transcript retention (days)"
+      "transcriptRetention": "Transcript retention (days)",
+      "audioRetentionLabel": "Retenção do áudio de reuniões",
+      "audioRetentionDescription": "Dias para manter o áudio original. 0 significa até você excluí-lo manualmente.",
+      "retentionDecreaseTitle": "Reduzir a retenção de áudio?",
+      "retentionDecreaseDescription": "Gravações com mais de {{days}} dias serão excluídas na próxima limpeza.",
+      "retentionDecreaseConfirm": "Reduzir retenção",
+      "days": "dias",
+      "deleteAllAudioLabel": "Excluir o áudio salvo",
+      "deleteAllAudioDescription": "Exclui faixas de reuniões e gravações antigas. Notas, transcrições e resumos ficam neste dispositivo.",
+      "deleteAllAudioButton": "Excluir todo o áudio",
+      "deleteAllAudioTitle": "Excluir todo o áudio salvo?",
+      "deleteAllAudioConfirmDescription": "A gravação em andamento será parada com segurança sem iniciar a transcrição. Depois, o áudio salvo será excluído.",
+      "deleteAllAudioConfirm": "Excluir todo o áudio",
+      "deleteAllAudioDone": "{{count}} item(ns) de áudio excluído(s).",
+      "deleteAllAudioFailed": "Não foi possível excluir {{count}} item(ns) de áudio. Tente novamente."
     },
     "prompts": {
       "description": "Visualize, personalize e teste o prompt de sistema unificado que alimenta a limpeza de texto e a detecção de instruções",
@@ -1441,7 +1464,23 @@
       "conversationWillAppear": "A conversa aparecerá aqui...",
       "linkedEvent": "Evento vinculado",
       "noFolder": "Sem pasta",
-      "participants": "Participantes"
+      "participants": "Participantes",
+      "capture": {
+        "preparing": "Preparando gravação local…",
+        "recording": "Gravando áudio",
+        "saving": "Salvando o trecho final…",
+        "saved": "Gravação de áudio salva",
+        "incomplete": "Gravação salva com áudio ausente",
+        "failed": "Não foi possível iniciar a gravação",
+        "mic": "Microfone",
+        "system": "Áudio do sistema",
+        "active": "Capturando áudio",
+        "reconnecting": "Reconectando",
+        "unavailable": "Indisponível",
+        "inactive": "Não iniciado",
+        "writingToDisk": "Gravando no disco",
+        "incompleteReason": "Pode faltar áudio. O áudio salvo antes do problema foi mantido."
+      }
     },
     "participants": {
       "attendee": "participante",
@@ -2142,5 +2181,56 @@
     "systemAudio": "System audio",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
+  },
+  "meetingResults": {
+    "title": "Gravação de reunião",
+    "loadError": "Não foi possível carregar o histórico.",
+    "selectError": "Não foi possível selecionar o resultado.",
+    "createError": "Não foi possível criar uma execução de processamento.",
+    "retryError": "Não foi possível tentar novamente.",
+    "exportError": "Falha ao exportar áudio.",
+    "exported": "Áudio exportado.",
+    "speakerError": "Não foi possível salvar a correção do interlocutor.",
+    "deleteError": "Falha ao excluir áudio. Você pode tentar de novo.",
+    "version": "Versão do resultado",
+    "newAsr": "Nova transcrição",
+    "newSummary": "Novo resumo",
+    "retry": "Tentar novamente",
+    "deleteAudio": "Excluir áudio",
+    "retryDelete": "Tentar excluir novamente",
+    "deleteAudioTitle": "Excluir o áudio original?",
+    "deleteAudioDescription": "Isso remove o áudio salvo do microfone e do sistema. Transcrições e resumos salvos em Notas continuam disponíveis.",
+    "deleteAudioConfirm": "Excluir áudio",
+    "audioUnavailable": "O áudio original foi excluído ou está indisponível. Transcrição, reprodução e exportação foram desativadas.",
+    "exportMixed": "Exportar WAV mixado",
+    "exportMic": "Exportar WAV do microfone",
+    "exportSystem": "Exportar WAV do sistema",
+    "saveSpeaker": "Salvar interlocutor",
+    "speakerProfile": "Perfil do interlocutor",
+    "noSpeakerProfile": "Sem perfil",
+    "captureIncomplete": "A gravação terminou antes; o áudio e os resultados salvos foram mantidos.",
+    "deleteActiveNoteTitle": "Parar e excluir esta gravação?",
+    "deleteActiveNoteDescription": "A gravação será parada sem iniciar transcrição; depois, nota, áudio e histórico serão excluídos.",
+    "stopBeforeDeleteError": "Não foi possível parar com segurança. A nota foi mantida.",
+    "stage": {
+      "prepare": "Preparando áudio",
+      "asr": "Transcrevendo",
+      "normalize": "Salvando transcrição",
+      "summary": "Escrevendo resumo"
+    },
+    "status": {
+      "pending": "Aguardando",
+      "running": "Em andamento",
+      "blocked": "Bloqueado",
+      "failed": "Falhou",
+      "cancelled": "Cancelado",
+      "complete": "Concluído"
+    },
+    "capture": {
+      "recording": "Gravando",
+      "finalizing": "Salvando gravação",
+      "ready": "Salvo",
+      "incomplete": "Incompleto"
+    }
   }
 }

@@ -342,7 +342,6 @@ export class MeetingRecordingStorage {
       );
       const startTime = Date.parse(recording.startedAt);
       const endedAt = new Date(startTime + (latestEndFrame / 24_000) * 1000).toISOString();
-      const incomplete = recovered.some((epoch) => epoch.errorCode !== null || epoch.ignoredTrailingBytes > 0);
       const sourceMetadata = {
         ...recording.sourceMetadata,
         recovered: true,
@@ -356,7 +355,9 @@ export class MeetingRecordingStorage {
         })),
       };
       database.finalizeMeetingRecording(recording.id, {
-        captureState: incomplete || totalFrames === 0 ? "incomplete" : "ready",
+        // An open recording found at startup was interrupted, even if its
+        // persisted bytes end on frame boundaries and every epoch is readable.
+        captureState: "incomplete",
         endedAt,
         sourceMetadata,
         errorCode: totalFrames === 0 ? "recording-audio-unavailable" : null,

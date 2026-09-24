@@ -118,7 +118,7 @@ test("missing or invalid processing config records a blocked initial run but pre
   db.close();
 });
 
-test("audio deletion keeps run JSON and transcript; note deletion cleans runs but preserves shared speakers", (t) => {
+test("audio deletion blocks ASR retry but keeps text and summary; note deletion preserves shared speakers", (t) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -140,19 +140,10 @@ test("audio deletion keeps run JSON and transcript; note deletion cleans runs bu
   assert.deepEqual(storage.readRunArtifact(initialRun.id, "provider-response"), { raw: true });
   assert.deepEqual(storage.readRunArtifact(initialRun.id, "transcript"), { text: "Recognized words" });
 
-  const reprocessed = db.createMeetingProcessingRun(recording.id, {
-    kind: "reprocess",
-    config: {
-      transcription: {
-        mode: "providers",
-        provider: "deepgram",
-        model: "nova-3",
-        language: "ru",
-        credentialRef: "DEEPGRAM_API_KEY",
-      },
-    },
-  });
-  assert.notEqual(reprocessed.id, initialRun.id);
+  assert.throws(
+    () => db.createMeetingProcessingRun(recording.id, { kind: "reprocess", config: validConfig }),
+    /audio is unavailable/
+  );
   assert.equal(db.getMeetingProcessingRun(initialRun.id).hasTranscript, true);
 
   const summaryRun = db.createMeetingProcessingRun(recording.id, {

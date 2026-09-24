@@ -84,7 +84,7 @@ test("recovery finalizes both source epochs, keeps timeline gaps, and creates on
   db.createMeetingRecordingEpoch(recording.id, "system", 0, 0);
   const storage = new MeetingRecordingStorage({ userDataPath: root });
   storage.openEpochWriter(recording.id, "mic", 0);
-  storage.appendEpochSamples(recording.id, "mic", 0, Buffer.from([1, 2, 3]));
+  storage.appendEpochSamples(recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
   storage.openEpochWriter(recording.id, "mic", 1);
   storage.appendEpochSamples(recording.id, "mic", 1, Buffer.from([4, 5, 6, 7]));
   storage.openEpochWriter(recording.id, "system", 0);
@@ -109,7 +109,7 @@ test("recovery finalizes both source epochs, keeps timeline gaps, and creates on
       ignoredTrailingBytes,
     })),
     [
-      { source: "mic", epochIndex: 0, startFrame: 0, frameCount: 1, ignoredTrailingBytes: 1 },
+      { source: "mic", epochIndex: 0, startFrame: 0, frameCount: 2, ignoredTrailingBytes: 0 },
       { source: "system", epochIndex: 0, startFrame: 0, frameCount: 2, ignoredTrailingBytes: 0 },
       { source: "mic", epochIndex: 1, startFrame: 8, frameCount: 2, ignoredTrailingBytes: 0 },
     ]

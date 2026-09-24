@@ -216,8 +216,8 @@ M1 → review/verification → M2 → review/verification → M3 → review/veri
 
 | Milestone | Status | Commits |
 | --- | --- | --- |
-| M1 — Хранение записи и результатов | not started | |
-| M2 — Capture и безопасный Stop | not started | |
+| M1 — Хранение записи и результатов | done | `bd0d603b`, `52714ef9`, `0e0f08fd`, `2ceb4a44` |
+| M2 — Capture и безопасный Stop | in progress | |
 | M3 — Обработка после Stop | not started | |
 | M4 — Notes, retention и итоговая проверка | not started | |
 | Reviewer | not started | |

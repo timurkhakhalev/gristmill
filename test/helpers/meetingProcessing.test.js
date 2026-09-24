@@ -619,7 +619,10 @@ test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration",
     {
       deps: {
         ffmpegPath: () => "/test/ffmpeg",
-        availableBytes: () => 1_000_000,
+        availableBytes: (directory) => {
+          assert.equal(fs.statSync(directory).isDirectory(), true);
+          return 1_000_000;
+        },
         spawn: (_command, args) => {
           argsSeen = args;
           queueMicrotask(() => {

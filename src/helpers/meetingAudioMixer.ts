@@ -1,5 +1,6 @@
 import { spawn as spawnChild, type ChildProcess } from "child_process";
 import fs from "fs";
+import path from "path";
 import type { MeetingRecordingDto, MeetingRecordingEpochDto } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { createAbortError } from "./abortError.js";
@@ -89,7 +90,7 @@ export async function prepareMeetingAudio(
 
   const tempPath = storage.getDerivedAudioTempPath(recording.id, runId);
   const estimatedBytes = frameCount * BYTES_PER_FRAME + 44;
-  const availableBytes = (deps.availableBytes ?? getAvailableBytes)(finalPath);
+  const availableBytes = (deps.availableBytes ?? getAvailableBytes)(path.dirname(finalPath));
   if (availableBytes < estimatedBytes) throw new Error("Insufficient disk space for meeting audio preparation");
 
   try {

@@ -134,6 +134,7 @@ function PrivacySettings() {
           </div>
           <label className="flex items-center gap-2 text-xs">
             <input
+              dir="ltr"
               type="number"
               min={0}
               step={1}

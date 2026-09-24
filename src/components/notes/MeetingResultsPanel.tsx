@@ -292,7 +292,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
           {speakers.map((speakerId) => (
             <label key={speakerId} className="flex items-center gap-2 text-xs">
               <span className="shrink-0">{speakerId}</span>
-              <input className="min-w-0 flex-1 rounded border bg-background px-2 py-1" value={speakerNames[speakerId] ?? speakerId} onChange={(event) => {
+              <input dir="auto" className="min-w-0 flex-1 rounded border bg-background px-2 py-1" value={speakerNames[speakerId] ?? speakerId} onChange={(event) => {
                 setSpeakerNames((current) => ({ ...current, [speakerId]: event.target.value }));
                 setSpeakerProfileIds((current) => ({ ...current, [speakerId]: null }));
               }} />

@@ -20,6 +20,12 @@ function installBrowserGlobals(t, { initialStorage = {}, window: windowProps = {
     localStorage: storage,
     addEventListener() {},
     removeEventListener() {},
+    setTimeout(...args) {
+      return globalThis.setTimeout(...args);
+    },
+    clearTimeout(timeoutId) {
+      globalThis.clearTimeout(timeoutId);
+    },
     setInterval() {
       return 1;
     },

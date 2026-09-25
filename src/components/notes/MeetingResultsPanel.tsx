@@ -34,9 +34,17 @@ function latestTranscript(recording: MeetingProcessingRecordingResult): MeetingP
     ?? null;
 }
 
-export default function MeetingResultsPanel({ noteId, locale }: { noteId: number; locale: string }) {
+export default function MeetingResultsPanel({
+  noteId,
+  locale,
+  previewRecordings,
+}: {
+  noteId: number;
+  locale: string;
+  previewRecordings?: MeetingProcessingRecordingResult[];
+}) {
   const { t } = useTranslation();
-  const [recordings, setRecordings] = useState<MeetingProcessingRecordingResult[]>([]);
+  const [recordings, setRecordings] = useState<MeetingProcessingRecordingResult[]>(previewRecordings ?? []);
   const [selectedRecordingId, setSelectedRecordingId] = useState("");
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const [playbackUrl, setPlaybackUrl] = useState<string>("");
@@ -50,6 +58,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
 
   const refresh = useCallback(async () => {
+    if (previewRecordings) return;
     const result = await window.electronAPI.meetingProcessingListForNote(noteId);
     if (!result.success) {
       setMessage(result.error || t("meetingResults.loadError"));
@@ -74,19 +83,21 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
         ? selected
         : preferred?.run.id ?? "")
     );
-  }, [noteId, t]);
+  }, [noteId, previewRecordings, t]);
 
   useEffect(() => {
+    if (previewRecordings) return;
     void refresh();
     const unsubscribe = window.electronAPI.onMeetingProcessingUpdated(() => void refresh());
     return unsubscribe;
-  }, [refresh]);
+  }, [previewRecordings, refresh]);
 
   useEffect(() => {
+    if (previewRecordings) return;
     void window.electronAPI.getSpeakerProfiles?.().then((profiles) => {
       setSpeakerProfiles((profiles ?? []).map((profile) => ({ id: profile.id, display_name: profile.display_name })));
     });
-  }, []);
+  }, [previewRecordings]);
 
   const currentRecording = useMemo(
     () => recordings.find((item) => item.recording.id === selectedRecordingId) ?? newestRecording(recordings),
@@ -102,6 +113,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
   useEffect(() => {
     let cancelled = false;
     setPlaybackUrl("");
+    if (previewRecordings) return;
     if (!selected || selected.recording.recording.audioState !== "available" || !selected.result.run.hasTranscript) return;
     void window.electronAPI.meetingRecordingGetPlaybackPath(selected.recording.recording.id, selected.result.run.id)
       .then((result) => {
@@ -115,7 +127,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
         if (!cancelled) setMessage(t("meetingResults.playbackError"));
       });
     return () => { cancelled = true; };
-  }, [selected, t]);
+  }, [previewRecordings, selected, t]);
 
   useEffect(() => {
     const result = selected?.result;
@@ -153,6 +165,12 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     setSelectedRecordingId(recordingId);
     setSelectedRunId(runId);
     setMessage("");
+    if (previewRecordings) {
+      setRecordings((current) => current.map((item) => item.recording.id === recordingId
+        ? { ...item, recording: { ...item.recording, currentRunId: runId } }
+        : item));
+      return;
+    }
     const result = await window.electronAPI.meetingProcessingSelectRun(recordingId, runId);
     if (!result.success) setMessage(result.error || t("meetingResults.selectError"));
     else void refresh();
@@ -176,6 +194,40 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
         ? selected.result.run.sourceRunId ?? selected.result.run.id
         : selected.result.run.id
       : undefined;
+    if (previewRecordings) {
+      const now = new Date().toISOString();
+      const baseRun = sourceRecording.runs[0]?.run;
+      const nextRun: MeetingProcessingResultDto = {
+        run: {
+          id: crypto.randomUUID(),
+          recordingId: sourceRecording.recording.id,
+          kind,
+          sourceRunId: kind === "summary" ? sourceRunId ?? null : null,
+          provider: baseRun?.provider ?? "deepgram",
+          model: baseRun?.model ?? "nova-3",
+          config: baseRun?.config ?? null,
+          configError: null,
+          stage: kind === "summary" ? "summary" : "prepare",
+          status: "pending",
+          errorCode: null,
+          retryAt: null,
+          retryCount: 0,
+          hasRawProviderResponse: false,
+          hasTranscript: false,
+          hasSummary: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+        transcript: null,
+        summary: null,
+        speakerCorrections: [],
+      };
+      setRecordings((current) => current.map((item) => item.recording.id === sourceRecording.recording.id
+        ? { ...item, runs: [nextRun, ...item.runs] }
+        : item));
+      setMessage("Mock run queued in memory. No provider was called.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -198,6 +250,16 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
 
   const retryRun = async () => {
     if (!latestRun) return;
+    if (previewRecordings) {
+      setRecordings((current) => current.map((item) => ({
+        ...item,
+        runs: item.runs.map((result) => result.run.id === latestRun.run.id
+          ? { ...result, run: { ...result.run, status: "pending", errorCode: null, retryCount: result.run.retryCount + 1 } }
+          : result),
+      })));
+      setMessage("Mock retry queued in memory. No provider was called.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -213,6 +275,10 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
 
   const exportAudio = async (source: "mixed" | "mic" | "system") => {
     if (source === "mixed" && !run) return;
+    if (previewRecordings) {
+      setMessage(`Mock ${source} audio has no file to export.`);
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -232,6 +298,16 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
 
   const updateBlockedRunConfig = async () => {
     if (!latestRun) return;
+    if (previewRecordings) {
+      setRecordings((current) => current.map((item) => ({
+        ...item,
+        runs: item.runs.map((result) => result.run.id === latestRun.run.id
+          ? { ...result, run: { ...result.run, status: "pending", configError: null, errorCode: null } }
+          : result),
+      })));
+      setMessage("Mock settings updated in memory. No provider was called.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -262,6 +338,21 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     const sourceRunId = run.run.kind === "summary" ? run.run.sourceRunId : run.run.id;
     const displayName = speakerNames[speakerId]?.trim();
     if (!sourceRunId || !displayName) return;
+    if (previewRecordings) {
+      setRecordings((current) => current.map((item) => ({
+        ...item,
+        runs: item.runs.map((result) => result.run.id === run.run.id
+          ? {
+              ...result,
+              speakerCorrections: [
+                ...result.speakerCorrections.filter((correction) => correction.speakerId !== speakerId),
+                { speakerId, profileId: speakerProfileIds[speakerId] ?? null, displayName },
+              ],
+            }
+          : result),
+      })));
+      return;
+    }
     const result = await window.electronAPI.meetingProcessingSetSpeakerCorrection({
       runId: sourceRunId,
       speakerId,
@@ -285,6 +376,13 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
           audioRef.current.load();
         }
         setPlaybackUrl("");
+        if (previewRecordings) {
+          setRecordings((current) => current.map((item) => item.recording.id === currentRecording.recording.id
+            ? { ...item, recording: { ...item.recording, audioState: "deleted" } }
+            : item));
+          setMessage("Mock audio marked deleted in memory.");
+          return;
+        }
         setBusy(true);
         const result = currentRecording.recording.audioState === "deleting"
           ? await window.electronAPI.meetingRecordingRetryAudioDeletion(currentRecording.recording.id)
@@ -411,7 +509,10 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
       {run?.transcript?.segments && run.transcript.segments.length > 0 && (
         <div className="mt-3 border-t border-border/60 pt-2">
           {run.transcript.segments.map((segment, index) => (
-            <button key={`${index}-${segment.start}`} type="button" className="block w-full py-1 text-left text-xs text-muted-foreground hover:text-foreground" disabled={!audioRef.current || !audioAvailable} onClick={() => { if (audioRef.current) audioRef.current.currentTime = segment.start; }}>
+            <button key={`${index}-${segment.start}`} type="button" className="block w-full py-1 text-left text-xs text-muted-foreground hover:text-foreground" disabled={(!audioRef.current && !previewRecordings) || !audioAvailable} onClick={() => {
+              if (previewRecordings) setMessage(`Mock playback position: ${Math.floor(segment.start)}s`);
+              else if (audioRef.current) audioRef.current.currentTime = segment.start;
+            }}>
               <span className="me-2 tabular-nums">{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</span>{segment.text}
             </button>
           ))}

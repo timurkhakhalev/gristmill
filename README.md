@@ -42,7 +42,9 @@ Before the full suite, rebuild SQLite for Node with
 `pnpm --dir node_modules/better-sqlite3 exec prebuild-install`; the test command
 checks the binding before starting and requires DB tests to run.
 Build the macOS arm64 app with `pnpm run build:mac:arm64` (Xcode command-line tools required). For an unsigned local build, set `CSC_IDENTITY_AUTO_DISCOVERY=false`.
+Build a separate unsigned development app with `pnpm run pack:dev`. It appears at `dist-dev/mac-arm64/OpenHercules Dev.app`, uses its own `OpenHercules-development` profile, and includes the Notes Debug menu and orange icons. Debug states are interactive and kept in memory; they do not save notes, record audio, or call providers.
 Run `node scripts/smoke-electron.js` after packaging for an isolated-profile smoke test.
+For the development app, pass its executable path and `--dev` to the same smoke script.
 Only the integrator runs tests/build/install, sequentially. Node tests and Electron
 need different SQLite ABIs: run `pnpm --dir node_modules/better-sqlite3 exec prebuild-install`
 before Node tests after packaging. The packaging hook forcibly restores Electron's ABI

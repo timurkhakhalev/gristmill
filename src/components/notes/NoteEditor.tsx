@@ -39,6 +39,7 @@ import EmptyStateCard from "../ui/EmptyStateCard";
 import { Button } from "../ui/button";
 import EmbeddedChat, { type EmbeddedChatMode } from "./EmbeddedChat";
 import { useEmbeddedChat } from "../../hooks/useEmbeddedChat";
+import type { Message } from "../chat/types";
 import { formatNoteDate, formatShortDate } from "../../utils/dateFormatting";
 import { collectKnownPeople } from "../../utils/llmTranscript";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";
@@ -53,6 +54,7 @@ import { observeFloatingChatLayout } from "./floatingChatLayout";
 import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } from "./shared";
 import { formatMmSs } from "../../utils/formatDuration";
 import MeetingResultsPanel from "./MeetingResultsPanel";
+import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 
 const SEGMENT_BUTTON_CLASS =
   "relative z-1 flex h-[26px] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors duration-150";
@@ -139,6 +141,15 @@ interface NoteEditorProps {
   folders?: FolderItem[];
   onMoveToFolder?: (noteId: number, folderId: number) => void;
   onCreateFolderAndMove?: (noteId: number, folderName: string) => void;
+  debugPreview?: {
+    recordings: MeetingProcessingRecordingResult[];
+    capturePhase?: "idle" | "preparing" | "recording" | "saving" | "saved" | "incomplete" | "failed";
+    captureStartedAt?: number;
+    captureErrorCode?: string;
+    micStatus?: "inactive" | "active" | "reconnecting" | "unavailable";
+    systemStatus?: "inactive" | "active" | "reconnecting" | "unavailable";
+    viewMode?: MeetingViewMode;
+  };
 }
 
 export default function NoteEditor({
@@ -170,29 +181,35 @@ export default function NoteEditor({
   folders,
   onMoveToFolder,
   onCreateFolderAndMove,
+  debugPreview,
 }: NoteEditorProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
-  const capturePhase = useMeetingRecordingStore((s) =>
+  const liveCapturePhase = useMeetingRecordingStore((s) =>
     s.recordingNoteId === note.id ? s.capturePhase : "idle"
   );
-  const captureStartedAt = useMeetingRecordingStore((s) =>
+  const capturePhase = debugPreview?.capturePhase ?? liveCapturePhase;
+  const liveCaptureStartedAt = useMeetingRecordingStore((s) =>
     s.recordingNoteId === note.id ? s.captureStartedAt : null
   );
-  const captureErrorCode = useMeetingRecordingStore((s) =>
+  const captureStartedAt = debugPreview?.captureStartedAt ?? liveCaptureStartedAt;
+  const liveCaptureErrorCode = useMeetingRecordingStore((s) =>
     s.recordingNoteId === note.id ? s.captureErrorCode : null
   );
-  const micCaptureStatus = useMeetingRecordingStore((s) =>
+  const captureErrorCode = debugPreview?.captureErrorCode ?? liveCaptureErrorCode;
+  const liveMicCaptureStatus = useMeetingRecordingStore((s) =>
     s.recordingNoteId === note.id ? s.micCaptureStatus : "inactive"
   );
-  const systemCaptureStatus = useMeetingRecordingStore((s) =>
+  const liveSystemCaptureStatus = useMeetingRecordingStore((s) =>
     s.recordingNoteId === note.id ? s.systemCaptureStatus : "inactive"
   );
+  const micCaptureStatus = debugPreview?.micStatus ?? liveMicCaptureStatus;
+  const systemCaptureStatus = debugPreview?.systemStatus ?? liveSystemCaptureStatus;
   const capturePending = capturePhase === "preparing" || capturePhase === "saving";
   const captureLive = capturePhase === "recording";
   const captureHasStatus = capturePending || captureLive || capturePhase === "incomplete" || capturePhase === "failed";
   const [viewMode, setViewMode] = useState<MeetingViewMode>(
-    note.note_type === "upload" && note.transcript ? "transcript" : "raw"
+    debugPreview?.viewMode ?? (note.note_type === "upload" && note.transcript ? "transcript" : "raw")
   );
   const [chatMode, setChatMode] = useState<EmbeddedChatMode>("hidden");
   const [folderSearch, setFolderSearch] = useState("");
@@ -200,7 +217,7 @@ export default function NoteEditor({
   const [newFolderName, setNewFolderName] = useState("");
   const [isDiarizing, setIsDiarizing] = useState(false);
   const canEditNote = true;
-  const canMoveToFolders = true;
+  const canMoveToFolders = !debugPreview;
   const [diarizedSegments, setDiarizedSegments] = useState<TranscriptSegment[] | null>(null);
   const [speakerMappings, setSpeakerMappings] = useState<Record<string, string>>({});
   const [speakerProfiles, setSpeakerProfiles] = useState<
@@ -209,12 +226,23 @@ export default function NoteEditor({
   const editorRef = useRef<Editor | null>(null);
 
   const embeddedChat = useEmbeddedChat({
-    noteId: note.id,
+    noteId: debugPreview ? null : note.id,
+    disabled: Boolean(debugPreview),
     folderId: note.folder_id,
     noteTitle: note.title,
     noteContent: note.content,
     noteTranscript: note.transcript ?? undefined,
   });
+  const [previewChatMessages, setPreviewChatMessages] = useState<Message[]>([]);
+  const sendPreviewMessage = useCallback((text: string) => {
+    setPreviewChatMessages((messages) => [
+      ...messages,
+      { id: crypto.randomUUID(), role: "user", content: text, isStreaming: false },
+      { id: crypto.randomUUID(), role: "assistant", content: "Mock reply. No provider or database was used.", isStreaming: false },
+    ]);
+  }, []);
+  const chatMessages = debugPreview ? previewChatMessages : embeddedChat.messages;
+  const sendChatMessage = debugPreview ? sendPreviewMessage : embeddedChat.sendMessage;
   const titleRef = useRef<HTMLDivElement>(null);
   const prevNoteIdRef = useRef<number>(note.id);
 
@@ -275,6 +303,7 @@ export default function NoteEditor({
   );
 
   const refreshSpeakerProfiles = useCallback(() => {
+    if (debugPreview) return;
     window.electronAPI?.getSpeakerProfiles?.().then((profiles) => {
       setSpeakerProfiles(
         (profiles || []).map((profile) => ({
@@ -284,7 +313,7 @@ export default function NoteEditor({
         }))
       );
     });
-  }, []);
+  }, [debugPreview]);
 
   const updateSegmentIndicator = useCallback(() => {
     const container = segmentContainerRef.current;
@@ -344,13 +373,14 @@ export default function NoteEditor({
   }, [note.id, note.title, scheduleUiUpdate]);
 
   useEffect(() => {
+    if (debugPreview) return;
     window.electronAPI?.getSpeakerMappings?.(note.id).then((mappings) => {
       const map: Record<string, string> = {};
       for (const m of mappings || []) map[m.speaker_id] = m.display_name;
       setSpeakerMappings(map);
     });
     refreshSpeakerProfiles();
-  }, [note.id, refreshSpeakerProfiles]);
+  }, [debugPreview, note.id, refreshSpeakerProfiles]);
 
   useEffect(() => {
     if (titleRef.current && titleRef.current.textContent !== note.title) {
@@ -372,6 +402,7 @@ export default function NoteEditor({
   // (#1495); this only mirrors a published result into the rendered note's UI.
   const completedDiarization = useMeetingRecordingStore((s) => s.completedDiarization);
   useEffect(() => {
+    if (debugPreview) return;
     if (!completedDiarization || completedDiarization.noteId !== note.id) return;
     // Consume so a remount can't repaint this overlay over newer edits; the
     // transcript itself is already persisted.
@@ -389,18 +420,19 @@ export default function NoteEditor({
     if (Object.keys(autoMappings).length > 0) {
       setSpeakerMappings((prev) => ({ ...autoMappings, ...prev }));
     }
-  }, [completedDiarization, note.id]);
+  }, [completedDiarization, debugPreview, note.id]);
 
   const persistDisplaySegments = useCallback(
     async (nextSegments: TranscriptSegment[], updateOverlay = true) => {
-      if (updateOverlay) {
+      if (updateOverlay || debugPreview) {
         setDiarizedSegments(nextSegments);
       }
+      if (debugPreview) return;
       await window.electronAPI?.updateNote(note.id, {
         transcript: serializeTranscriptSegments(nextSegments),
       });
     },
-    [note.id]
+    [debugPreview, note.id]
   );
 
   const handleMapSpeaker = useCallback(
@@ -411,13 +443,15 @@ export default function NoteEditor({
       profileId?: number | null
     ) => {
       setSpeakerMappings((prev) => ({ ...prev, [speakerId]: displayName }));
-      await window.electronAPI?.setSpeakerMapping?.(
-        note.id,
-        speakerId,
-        displayName,
-        email,
-        profileId
-      );
+      if (!debugPreview) {
+        await window.electronAPI?.setSpeakerMapping?.(
+          note.id,
+          speakerId,
+          displayName,
+          email,
+          profileId
+        );
+      }
 
       if (isRecording) {
         onLiveSpeakerLock?.(speakerId, displayName);
@@ -442,6 +476,7 @@ export default function NoteEditor({
     },
     [
       diarizedSegments,
+      debugPreview,
       displaySegments,
       isRecording,
       note.id,
@@ -460,12 +495,13 @@ export default function NoteEditor({
 
   const handleAttachSpeakerEmail = useCallback(
     async (profileId: number, email: string | null) => {
+      if (debugPreview) return;
       const result = await window.electronAPI?.attachSpeakerEmail?.(profileId, email);
       if (result?.success) {
         refreshSpeakerProfiles();
       }
     },
-    [refreshSpeakerProfiles]
+    [debugPreview, refreshSpeakerProfiles]
   );
 
   const handleDismissSuggestion = useCallback(
@@ -598,9 +634,9 @@ export default function NoteEditor({
       if (chatMode === "hidden") {
         setChatMode("floating");
       }
-      embeddedChat.sendMessage(text);
+      sendChatMessage(text);
     },
-    [chatMode, embeddedChat]
+    [chatMode, sendChatMessage]
   );
 
   const handleChatInputFocus = useCallback(() => {
@@ -651,6 +687,7 @@ export default function NoteEditor({
               participants={parsedParticipants}
               dateLabel={shortDate || undefined}
               dateTitle={noteDate}
+              preview={Boolean(debugPreview)}
             />
             {calendarEventName && (
               <span className={cn(NOTE_META_CHIP_CLASS, "cursor-default")}>
@@ -872,7 +909,7 @@ export default function NoteEditor({
 
         <div className="flex-1 relative min-h-0">
           <div ref={contentScrollRef} className="h-full overflow-y-auto agent-chat-scroll">
-            <MeetingResultsPanel noteId={note.id} locale={locale} />
+            <MeetingResultsPanel noteId={note.id} locale={locale} previewRecordings={debugPreview?.recordings} />
             {captureHasStatus && (
               <div className="m-4 rounded-xl border border-border bg-surface-2/70 p-4 dark:border-white/10">
                 <div className="flex items-center justify-between gap-3">
@@ -1007,7 +1044,10 @@ export default function NoteEditor({
             actionPicker={isRecording || !canEditNote ? undefined : actionPicker}
             callout={
               showSummaryCallout && (
-                <Button className="h-9 gap-2 px-4 text-sm" onClick={onGenerateSummary}>
+                <Button className="h-9 gap-2 px-4 text-sm" onClick={() => {
+                  onGenerateSummary?.();
+                  if (debugPreview) setViewMode("enhanced");
+                }}>
                   <AlignLeft size={16} />
                   {t("notes.editor.generateSummary")}
                 </Button>
@@ -1020,14 +1060,16 @@ export default function NoteEditor({
               mode="floating"
               floatingPanelRef={floatingChatPanelRef}
               onModeChange={setChatMode}
-              messages={embeddedChat.messages}
+              messages={chatMessages}
               agentState={embeddedChat.agentState}
-              onTextSubmit={embeddedChat.sendMessage}
-              onCancel={embeddedChat.cancelStream}
-              noteConversations={embeddedChat.noteConversations}
+              onTextSubmit={sendChatMessage}
+              onCancel={debugPreview ? () => {} : embeddedChat.cancelStream}
+              noteConversations={debugPreview ? undefined : embeddedChat.noteConversations}
               activeConversationId={embeddedChat.activeConversationId}
-              onSwitchConversation={embeddedChat.switchConversation}
-              onNewChat={embeddedChat.startNewChat}
+              onSwitchConversation={debugPreview ? undefined : embeddedChat.switchConversation}
+              onNewChat={debugPreview ? undefined : embeddedChat.startNewChat}
+              voiceDraft={!debugPreview}
+              preview={Boolean(debugPreview)}
             />
           )}
         </div>
@@ -1036,14 +1078,16 @@ export default function NoteEditor({
         <EmbeddedChat
           mode="sidebar"
           onModeChange={setChatMode}
-          messages={embeddedChat.messages}
+          messages={chatMessages}
           agentState={embeddedChat.agentState}
-          onTextSubmit={embeddedChat.sendMessage}
-          onCancel={embeddedChat.cancelStream}
-          noteConversations={embeddedChat.noteConversations}
+          onTextSubmit={sendChatMessage}
+          onCancel={debugPreview ? () => {} : embeddedChat.cancelStream}
+          noteConversations={debugPreview ? undefined : embeddedChat.noteConversations}
           activeConversationId={embeddedChat.activeConversationId}
-          onSwitchConversation={embeddedChat.switchConversation}
-          onNewChat={embeddedChat.startNewChat}
+          onSwitchConversation={debugPreview ? undefined : embeddedChat.switchConversation}
+          onNewChat={debugPreview ? undefined : embeddedChat.startNewChat}
+          voiceDraft={!debugPreview}
+          preview={Boolean(debugPreview)}
         />
       )}
     </div>

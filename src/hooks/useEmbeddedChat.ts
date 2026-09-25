@@ -7,6 +7,7 @@ import type { ConversationRow } from "../contracts/chatPersistence";
 
 interface UseEmbeddedChatOptions {
   noteId: number | null;
+  disabled?: boolean;
   folderId: number | null;
   noteTitle: string;
   noteContent: string;
@@ -26,6 +27,7 @@ interface UseEmbeddedChatReturn {
 
 export function useEmbeddedChat({
   noteId,
+  disabled = false,
   folderId,
   noteTitle,
   noteContent,
@@ -58,6 +60,7 @@ export function useEmbeddedChat({
   );
 
   const streaming = useChatStreaming({
+    disabled,
     messages: persistence.messages,
     setMessages: persistence.setMessages,
     noteContext,
@@ -137,9 +140,10 @@ export function useEmbeddedChat({
   });
   const sendMessage = useCallback(
     async (text: string): Promise<void> => {
+      if (disabled) return;
       await sendMessageWithResult(text);
     },
-    [sendMessageWithResult]
+    [disabled, sendMessageWithResult]
   );
 
   return {

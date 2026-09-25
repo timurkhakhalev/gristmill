@@ -1,4 +1,4 @@
-// Run sequentially after packaging: node scripts/smoke-electron.js [app executable].
+// Run sequentially after packaging: node scripts/smoke-electron.js [app executable] [--dev].
 // Uses a new temporary profile, no provider keys, no microphone and no calendar access.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -10,6 +10,7 @@ const { once } = require("node:events");
 const WebSocket = require("ws");
 
 async function main() {
+  const expectDev = process.argv.includes("--dev");
   const executable =
     process.argv[2] ||
     path.resolve(__dirname, "../dist/mac-arm64/OpenHercules.app/Contents/MacOS/OpenHercules");
@@ -113,6 +114,80 @@ async function main() {
     }
     assert.match(text, /Notes/, "Notes opens by default");
     assert.doesNotMatch(text, /OpenWhispr|Sign in|Upgrade to Pro/);
+    if (expectDev) {
+      let debugOpened = false;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        debugOpened = await evaluate(`(() => {
+          const button = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Debug');
+          button?.click(); return !!button;
+        })()`);
+        if (debugOpened) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.ok(debugOpened, "Packaged development app exposes Debug menu");
+      assert.match(await evaluate("document.body.innerText"), /Notes state preview/);
+      const previewOpened = await evaluate(`(() => {
+        const button = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Blank note');
+        button?.click(); return !!button;
+      })()`);
+      assert.ok(previewOpened, "Debug menu includes note states");
+      let previewScenario;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        previewScenario = await evaluate("document.querySelector('[data-notes-debug-scenario]')?.dataset.notesDebugScenario");
+        if (previewScenario === "blank") break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.equal(previewScenario, "blank");
+      const titleEditable = await evaluate(`(() => {
+        const title = document.querySelector('[aria-label="Note title"]');
+        if (!title?.isContentEditable) return false;
+        title.textContent = 'Mock-only title';
+        title.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+        document.querySelector('[data-segment-value="transcript"]')?.click();
+        return true;
+      })()`);
+      assert.ok(titleEditable, "Mock note title is editable");
+      assert.equal(await evaluate("document.querySelector('[aria-label=\"Note title\"]')?.textContent"), "Mock-only title");
+      assert.deepEqual(await evaluate("window.electronAPI.searchNotes('Mock-only title', 20)"), [], "Mock note is not saved");
+      await evaluate(`(() => {
+        const buttons = [...document.querySelectorAll('button')];
+        if (!buttons.some((el) => el.textContent.trim() === 'Processing failed')) {
+          buttons.find((el) => el.textContent.trim() === 'Debug')?.click();
+        }
+      })()`);
+      await evaluate(`(() => {
+        const button = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Processing failed');
+        button?.click(); return !!button;
+      })()`);
+      let retryClicked = false;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        retryClicked = await evaluate(`(() => {
+          const button = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Retry');
+          button?.click(); return !!button;
+        })()`);
+        if (retryClicked) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.ok(retryClicked, "Mock processing controls remain clickable");
+      assert.match(await evaluate("document.body.innerText"), /Mock retry queued in memory/);
+      await evaluate(`(() => {
+        const buttons = [...document.querySelectorAll('button')];
+        if (!buttons.some((el) => el.textContent.trim() === 'Live app')) {
+          buttons.find((el) => el.textContent.trim() === 'Debug')?.click();
+        }
+      })()`);
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const liveOpened = await evaluate(`(() => {
+          const button = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Live app');
+          button?.click(); return !!button;
+        })()`);
+        if (liveOpened) break;
+        if (attempt === 39) throw new Error("Could not return from mock state to live Notes");
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    } else {
+      assert.doesNotMatch(text, /Debug/, "Production app hides Debug menu");
+    }
     for (let attempt = 0; attempt < 60; attempt++) {
       const completed = await evaluate(`(() => {
         const button = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Get Started');
@@ -173,6 +248,7 @@ async function main() {
           checks: [
             "packaged startup",
             "Notes default",
+            expectDev ? "interactive in-memory Notes Debug states" : "Debug menu absent",
             "blank note",
             "folder",
             "note edit",

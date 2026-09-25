@@ -1,4 +1,5 @@
 import { app, globalShortcut, BrowserWindow, dialog, ipcMain, powerMonitor } from "electron";
+import fs from "fs";
 import path from "path";
 import tls from "tls";
 import { createHotkeyRepeatGate } from "./src/helpers/hotkeyRepeatGate.js";
@@ -84,6 +85,19 @@ function inferDefaultChannel(): string {
 }
 
 function resolveAppChannel(): string {
+  if (app.isPackaged) {
+    try {
+      const metadata = JSON.parse(
+        fs.readFileSync(path.join(app.getAppPath(), "package.json"), "utf8")
+      ) as { openherculesChannel?: string };
+      if (metadata.openherculesChannel === "development") return "development";
+    } catch (error) {
+      debugLogger.warn("Could not read packaged app channel", {
+        error: (error as Error).message,
+      });
+    }
+  }
+
   const rawChannel = (process.env.OPENHERCULES_CHANNEL || process.env.VITE_OPENHERCULES_CHANNEL || "")
     .trim()
     .toLowerCase();
@@ -167,9 +181,10 @@ function isLiveWindow(window: BrowserWindow | null): window is BrowserWindow {
   return Boolean(window && !window.isDestroyed());
 }
 
-// Ensure macOS menus use the proper casing for the app name
-if (process.platform === "darwin" && app.getName() !== APP_NAME) {
-  app.setName(APP_NAME);
+// Keep the packaged development app visibly distinct in macOS menus.
+const displayName = app.isPackaged && APP_CHANNEL === "development" ? "OpenHercules Dev" : APP_NAME;
+if (process.platform === "darwin" && app.getName() !== displayName) {
+  app.setName(displayName);
 }
 
 // Add global error handling for uncaught exceptions
@@ -420,6 +435,7 @@ app.on("open-url", (event, url) => {
 
 // Main application startup
 async function startApp(): Promise<void> {
+  dockManager.init();
   // Await so a stale sidecar is confirmed dead before new ones can spawn and
   // contend for its port or storage lock.
   await reapStaleSidecars();
@@ -455,8 +471,6 @@ async function startApp(): Promise<void> {
     initializedEnvironmentManager.saveStartMinimized(enabled);
   });
 
-
-  dockManager.init();
 
   // In development, wait for Vite dev server to be ready
   if (process.env.NODE_ENV === "development") {

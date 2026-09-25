@@ -23,6 +23,8 @@ interface EmbeddedChatProps {
   activeConversationId?: number | null;
   onSwitchConversation?: (id: number) => void;
   onNewChat?: () => void;
+  voiceDraft?: boolean;
+  preview?: boolean;
   /** Floating panel ref; NoteEditor reserves scroll space with it. */
   floatingPanelRef?: React.Ref<HTMLDivElement>;
 }
@@ -49,6 +51,8 @@ export default function EmbeddedChat({
   activeConversationId,
   onSwitchConversation,
   onNewChat,
+  voiceDraft = true,
+  preview = false,
   floatingPanelRef,
 }: EmbeddedChatProps) {
   const { t } = useTranslation();
@@ -132,14 +136,14 @@ export default function EmbeddedChat({
     <>
       {header}
       <div className="flex-1 min-h-0 flex flex-col **:data-chat-bubble:max-w-full">
-        <ChatMessages messages={messages} emptyState={<EmptyState />} onOpenNote={handleOpenNote} />
+        <ChatMessages messages={messages} emptyState={<EmptyState />} onOpenNote={preview ? undefined : handleOpenNote} />
       </div>
       <ChatInput
         agentState={agentState}
         partialTranscript=""
         onTextSubmit={onTextSubmit}
         onCancel={onCancel}
-        voiceDraft
+        voiceDraft={voiceDraft}
       />
     </>
   );

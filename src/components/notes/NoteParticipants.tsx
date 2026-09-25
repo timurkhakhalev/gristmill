@@ -16,6 +16,7 @@ interface NoteParticipantsProps {
   /** When present the capsule leads with the note's date, so date and people read as one fact. */
   dateLabel?: string;
   dateTitle?: string;
+  preview?: boolean;
 }
 
 export default function NoteParticipants({
@@ -23,6 +24,7 @@ export default function NoteParticipants({
   participants,
   dateLabel,
   dateTitle,
+  preview = false,
 }: NoteParticipantsProps) {
   const { t } = useTranslation();
   const [localParticipants, setLocalParticipants] = useState(participants);
@@ -38,6 +40,10 @@ export default function NoteParticipants({
 
   useEffect(() => {
     if (!open) return;
+    if (preview) {
+      setSuggestions([]);
+      return;
+    }
     const query = search.trim();
     window.electronAPI.searchContacts(query).then((result) => {
       if (result.success) {
@@ -45,16 +51,17 @@ export default function NoteParticipants({
         setSuggestions(result.contacts.filter((c) => !existing.has(c.email)));
       }
     });
-  }, [search, open, localParticipants]);
+  }, [search, open, localParticipants, preview]);
 
   const saveParticipants = useCallback(
     (updated: CalendarAttendee[]) => {
+      if (preview) return;
       syncSessionExpectedCountFromParticipants(noteId, updated);
       window.electronAPI.updateNote(noteId, {
         participants: JSON.stringify(updated),
       });
     },
-    [noteId]
+    [noteId, preview]
   );
 
   const addParticipant = useCallback(
@@ -67,10 +74,10 @@ export default function NoteParticipants({
       ];
       setLocalParticipants(updated);
       saveParticipants(updated);
-      window.electronAPI.upsertContact({ email: normalized, displayName: displayName || null });
+      if (!preview) window.electronAPI.upsertContact({ email: normalized, displayName: displayName || null });
       setSearch("");
     },
-    [localParticipants, saveParticipants]
+    [localParticipants, preview, saveParticipants]
   );
 
   const removeParticipant = useCallback(

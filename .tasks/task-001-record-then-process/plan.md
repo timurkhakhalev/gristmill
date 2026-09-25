@@ -259,7 +259,7 @@ M1 → review/verification → M2 → review/verification → M3 → review/veri
 | M3 — Обработка после Stop | done | `e192dd51`, `7dcf9f86`, `c871bf01` |
 | M4 — Notes, retention и итоговая проверка | done | `15717b7a`, `de86d1ce`, `cbc2c026`, `0798ff68`, `bb69d9c7`, `731b8845`, `8534657f`, `f7823d59`, `d9b022b7`, `dbada7c1`, `f2fcc4dd`, `bcdb3332` |
 | M5 — Reviewer Fix 1 | done | `9b4755a6`, `79bdbd77`, `0fbe743f`, `0d2041c1`, `98ef791c`, `fdc7fdbf` |
-| M6 — Reviewer Fix 2 | in progress | |
+| M6 — Reviewer Fix 2 | done | `d0795810`, `baff7416` |
 | Reviewer | not started | `review-1.md` — 4 high, 2 medium; `review-2.md` — 3 high; fix required |
 | Code Reviewer | not started | |
 
@@ -268,3 +268,5 @@ M2 verification: 50/50 focused tests, `pnpm run pack`, and packaged Notes smoke 
 M4 integration verification: `pnpm run typecheck` passed; `pnpm run lint` passed with 0 errors and 36 warnings; focused M4 tests passed 32/32, M2 Stop tests 50/50, translation coverage 8/8, and main build tests 7/7. The sequential full suite passed 2768/2768 tests on 2026-09-25. `pnpm run pack` and `node scripts/smoke-electron.js` passed after integration. Live mic/system hardware verification remains deferred to Timur and is not counted as a pass.
 
 M5 verification: focused tests passed 38/38; `pnpm run typecheck`, `pnpm run lint` (0 errors, 36 warnings), and `pnpm run i18n:check` passed. The sequential full suite passed 2779/2779 on 2026-09-25. `pnpm run pack` and `node scripts/smoke-electron.js` passed. The hardware smoke remains deferred and unverified.
+
+M6 verification: focused tests passed 42/42; `pnpm run typecheck`, `pnpm run lint` (0 errors, 36 warnings), and `pnpm run i18n:check` passed. The sequential full suite passed 2783/2783 on 2026-09-25. `pnpm run pack` and `node scripts/smoke-electron.js` passed. The hardware smoke remains deferred and unverified.

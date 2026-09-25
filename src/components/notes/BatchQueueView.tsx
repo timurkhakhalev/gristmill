@@ -23,9 +23,9 @@ function StatusIcon({ status }: { status: QueueItem["status"] }) {
     case "done":
       return <Check size={12} className="text-success/70" />;
     case "error":
-      return <X size={12} className="text-destructive/70" />;
+      return <X size={12} className="text-danger/70" />;
     case "queued":
-      return <Clock size={12} className="text-foreground/45" />;
+      return <Clock size={12} className="text-muted" />;
     default:
       return <Loader2 size={12} className="text-primary/60 animate-spin" />;
   }
@@ -78,13 +78,13 @@ export default function BatchQueueView({
     <div style={{ animation: "float-up 0.3s ease-out" }}>
       <div className="mb-3">
         <div className="flex items-center justify-between mb-1.5">
-          <p className="text-xs text-foreground/50 font-medium">
+          <p className="text-xs text-muted font-medium">
             {t("notes.upload.queueProgress", {
               completed: completedCount,
               total: totalCount,
             })}
             {failedCount > 0 && (
-              <span className="text-destructive/50 font-normal">
+              <span className="text-danger/50 font-normal">
                 {" · "}
                 {t("notes.upload.queueFailed", { n: failedCount })}
               </span>
@@ -95,13 +95,13 @@ export default function BatchQueueView({
               variant="ghost"
               size="sm"
               onClick={onClearQueue}
-              className="h-6 text-2xs text-foreground/45"
+              className="h-6 text-2xs text-muted"
             >
               {t("notes.upload.clearQueue")}
             </Button>
           )}
         </div>
-        <div className="w-full h-[3px] rounded-full bg-foreground/5 dark:bg-white/5 overflow-hidden">
+        <div className="w-full h-[3px] rounded-full bg-default dark:bg-white/5 overflow-hidden">
           <div
             className="h-full rounded-full bg-primary/50 transition-[width] duration-500 ease-out"
             style={{ width: `${overallProgress}%` }}
@@ -116,14 +116,14 @@ export default function BatchQueueView({
             className={cn(
               "flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs",
               "bg-surface-1/30 dark:bg-white/[0.02] border border-foreground/4 dark:border-white/10",
-              item.status === "error" && "border-destructive/15"
+              item.status === "error" && "border-danger/15"
             )}
           >
             <StatusIcon status={item.status} />
-            <span className="flex-1 truncate text-foreground/60">{item.name}</span>
+            <span dir="auto" className="flex-1 truncate text-muted">{item.name}</span>
 
             {item.status === "downloading" && (
-              <div className="w-16 h-[2px] rounded-full bg-foreground/5 overflow-hidden">
+              <div className="w-16 h-[2px] rounded-full bg-default overflow-hidden">
                 <div
                   className={cn(
                     "h-full rounded-full bg-primary/50 transition-[width] duration-300",
@@ -155,7 +155,7 @@ export default function BatchQueueView({
 
             {item.status === "error" && item.error && (
               <span
-                className="text-2xs text-destructive/50 truncate max-w-20"
+                className="text-2xs text-danger/50 truncate max-w-20"
                 title={t(`notes.upload.${item.error}`, {
                   defaultValue: item.error,
                   size: byokMaxFileSizeMb,
@@ -171,7 +171,7 @@ export default function BatchQueueView({
             {item.status === "queued" && (
               <button
                 onClick={() => onRemoveItem(item.id)}
-                className="text-foreground/45 transition-colors"
+                className="text-muted transition-colors"
                 aria-label={t("notes.upload.removeFromQueue")}
               >
                 <Trash2 size={10} />
@@ -187,7 +187,7 @@ export default function BatchQueueView({
             variant="ghost"
             size="sm"
             onClick={onCancelAll}
-            className="h-7 text-xs text-foreground/45"
+            className="h-7 text-xs text-muted"
           >
             {t("notes.upload.cancelAll")}
           </Button>

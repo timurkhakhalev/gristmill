@@ -375,7 +375,7 @@ export default function OpenAICompatiblePanel({
             {modelsLoading && (
               <p className="text-xs text-primary">{t("reasoning.custom.fetchingModels")}</p>
             )}
-            {modelsError && <p className="text-xs text-destructive">{modelsError}</p>}
+            {modelsError && <p className="text-xs text-danger">{modelsError}</p>}
             {!modelsLoading && !modelsError && modelOptions.length === 0 && (
               <p className="text-xs text-warning">{t("reasoning.custom.noModels")}</p>
             )}

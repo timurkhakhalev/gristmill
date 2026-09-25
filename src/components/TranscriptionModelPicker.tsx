@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { SelectField } from "./ui/SelectField";
 import { Download, Trash2, Cloud, Lock, X } from "./icons";
 import { ProviderIcon } from "./ui/ProviderIcon";
 import { ProviderTabs } from "./ui/ProviderTabs";
@@ -110,11 +110,11 @@ function LocalModelCard({
               className={`w-1.5 h-1.5 rounded-full ${
                 isSelected
                   ? "bg-primary shadow-[0_0_6px_oklch(0.62_0.22_260/0.6)] animate-[pulse-glow_2s_ease-in-out_infinite]"
-                  : "bg-success shadow-[0_0_4px_rgba(34,197,94,0.5)]"
+                  : "bg-success shadow-[0_0_4px_var(--success)]"
               }`}
             />
           ) : isDownloading ? (
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_4px_rgba(245,158,11,0.5)] animate-[spinner-rotate_1s_linear_infinite]" />
+            <div className="w-1.5 h-1.5 rounded-full bg-warning shadow-[0_0_4px_var(--warning)] animate-[spinner-rotate_1s_linear_infinite]" />
           ) : (
             <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/20" />
           )}
@@ -125,14 +125,14 @@ function LocalModelCard({
           <span className="font-semibold text-sm text-foreground truncate tracking-tight">
             {name}
           </span>
-          <span className="text-xs text-muted-foreground/70 tabular-nums shrink-0">
+          <span className="text-xs text-muted tabular-nums shrink-0">
             {actualSizeMb ? `${actualSizeMb}MB` : size}
           </span>
           {recommended && (
             <span className={cardStyles.badges.recommended}>{t("common.recommended")}</span>
           )}
           {languageLabel && (
-            <span className="text-xs text-muted-foreground/70 font-medium shrink-0">
+            <span className="text-xs text-muted font-medium shrink-0">
               {languageLabel}
             </span>
           )}
@@ -153,7 +153,7 @@ function LocalModelCard({
                 }}
                 size="sm"
                 variant="ghost"
-                className="h-6 w-6 p-0 text-muted-foreground/70 hover:text-destructive opacity-0 group-hover:opacity-100 transition-[color,opacity,transform] active:scale-95"
+                className="h-6 w-6 p-0 text-muted hover:text-danger opacity-0 group-hover:opacity-100 transition-[color,opacity,transform] active:scale-95"
               >
                 <Trash2 size={12} />
               </Button>
@@ -167,7 +167,7 @@ function LocalModelCard({
               disabled={isCancelling || isInstalling}
               size="sm"
               variant="outline"
-              className="h-6 px-2.5 text-xs text-destructive border-destructive/25 hover:bg-destructive/8"
+              className="h-6 px-2.5 text-xs text-danger border-danger/25 hover:bg-danger/8"
             >
               <X size={11} className="me-0.5" />
               {isCancelling ? "..." : t("common.cancel")}
@@ -342,7 +342,7 @@ interface ModeToggleProps {
 function ModeToggle({ useLocalWhisper, onModeChange }: ModeToggleProps) {
   const { t } = useTranslation();
   return (
-    <div className="relative flex p-0.5 rounded-lg bg-surface-1/80 backdrop-blur-xl dark:bg-surface-1 border border-border/70 dark:border-white/10 shadow-(--shadow-metallic-light) dark:shadow-(--shadow-metallic-dark)">
+    <div className="relative flex p-0.5 rounded-lg bg-surface-1/80 backdrop-blur-xl dark:bg-surface-1 border border-border shadow-(--shadow-metallic-light) dark:shadow-(--shadow-metallic-dark)">
       <div
         className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md bg-card border border-border/70 dark:border-border-subtle shadow-(--shadow-metallic-light) dark:shadow-(--shadow-metallic-dark) transition-transform duration-200 ease-out ${
           useLocalWhisper
@@ -1098,7 +1098,6 @@ export default function TranscriptionModelPicker({
                           <GetApiKeyLink
                             url={providerCredentials.consoleUrl}
                             labelKey="transcription.getKey"
-                            className="text-xs text-primary/70 hover:text-primary transition-colors cursor-pointer"
                           />
                         )}
                       </div>
@@ -1110,21 +1109,14 @@ export default function TranscriptionModelPicker({
                           helpText=""
                         />
                       ) : field.input === "select" ? (
-                        <Select
+                        <SelectField
                           value={credentialValues[field.key]}
-                          onValueChange={credentialSetters[field.key]}
-                        >
-                          <SelectTrigger className="h-8 text-sm">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {field.options?.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          onChange={credentialSetters[field.key]}
+                          options={(field.options ?? []).map((option) => ({ id: option.value, label: option.label }))}
+                          ariaLabel={field.labelKey ? t(field.labelKey) : t("common.apiKey")}
+                          size="sm"
+                          className="w-full"
+                        />
                       ) : (
                         <Input
                           dir="ltr"
@@ -1150,7 +1142,7 @@ export default function TranscriptionModelPicker({
                       colorScheme="purple"
                     />
                     {displayedCloudProvider === "tinfoil" && (
-                      <p className="text-xs text-muted-foreground/70">
+                      <p className="text-xs text-muted">
                         {t("transcription.tinfoil.transportNote")}{" "}
                         <a
                           href={TINFOIL_AUDIO_DOCS_URL}

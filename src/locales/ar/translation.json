@@ -408,7 +408,7 @@
       "connect": "ربط تقويم Google",
       "connecting": "جاري الربط...",
       "connected": "متصل",
-      "notConfigured": "غير مُكوّن. أضف إعدادات OAuth للاتصال.",
+      "notConfigured": "أضف إعدادات OAuth للاتصال.",
       "addAnother": "إضافة تقويم آخر",
       "primaryOnly": "مزامنة التقويم الأساسي فقط",
       "primaryOnlyDescription": "تجاهل الأحداث من التقاويم المشتركة معك.",
@@ -426,7 +426,7 @@
       "description": "قراءة الاجتماعات من تقويم Outlook أو Microsoft 365 الخاص بك.",
       "connect": "ربط تقويم Microsoft",
       "connected": "متصل",
-      "notConfigured": "غير مُكوّن. أضف إعدادات OAuth للاتصال.",
+      "notConfigured": "أضف إعدادات OAuth للاتصال.",
       "addAnother": "إضافة تقويم آخر",
       "primaryOnly": "مزامنة التقويم الأساسي فقط",
       "primaryOnlyDescription": "تجاهل الأحداث من التقاويم المشتركة معك.",
@@ -456,6 +456,9 @@
     "notABot": {
       "title": "OpenHercules هو مسجل اجتماعات، وليس روبوتًا",
       "description": "يلتقط OpenHercules الصوت مباشرة من نظامك — فهو لا ينضم أبدًا إلى اجتماعاتك كمشارك. ما عليك سوى ربط التقويم الخاص بك وتدوين الملاحظات كالمعتاد."
+    },
+    "status": {
+      "notConfigured": "غير مُكوّن"
     }
   },
   "dictionary": {
@@ -2145,7 +2148,12 @@
     "undock": "إلغاء الإرساء من الشريط الجانبي",
     "close": "إغلاق الدردشة",
     "newChat": "محادثة جديدة",
-    "conversationSelector": "تبديل المحادثة"
+    "conversationSelector": "تبديل المحادثة",
+    "suggestions": {
+      "summary": "لخّص هذه الملاحظة",
+      "actions": "ما هي المهام المطلوبة؟",
+      "decisions": "ما الذي تقرر؟"
+    }
   },
   "transcriptionPreview": {
     "label": "معاينة",

@@ -4,13 +4,9 @@ import { useUiLocale } from "../../hooks/useUiLocale";
 import type { ConversationRow } from "../../contracts/chatPersistence";
 import { formatShortDate } from "../../utils/dateFormatting";
 import { cn } from "../lib/utils";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
+import { Dropdown, Label, Separator } from "@heroui/react";
+
+const NEW_CHAT_KEY = "__new_chat__";
 
 interface ConversationPickerProps {
   conversations: ConversationRow[];
@@ -32,44 +28,46 @@ export function ConversationPicker({
   const activeConversation = conversations.find((item) => item.id === activeConversationId);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="inline-flex items-center gap-1 text-xs font-medium text-foreground/50 hover:text-foreground/70 hover:bg-foreground/5 rounded-md px-1.5 py-0.5 -ms-1.5 transition-colors duration-150 outline-none"
+    <Dropdown>
+      <Dropdown.Trigger
+        className="-ms-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-sm font-medium text-foreground outline-none transition-colors duration-150 hover:bg-default data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus"
+        aria-label={t("embeddedChat.conversationSelector")}
+      >
+        <span className={cn("max-w-40 truncate", titleClassName)}>
+          {activeConversation?.title || t("embeddedChat.newChat")}
+        </span>
+        <ChevronDown size={12} className="shrink-0 text-muted" />
+      </Dropdown.Trigger>
+      <Dropdown.Popover placement="bottom start" className="min-w-52 max-w-64">
+        <Dropdown.Menu
           aria-label={t("embeddedChat.conversationSelector")}
+          selectionMode="single"
+          selectedKeys={activeConversationId != null ? [String(activeConversationId)] : []}
+          onAction={(key) => {
+            if (key === NEW_CHAT_KEY) onNewChat?.();
+            else onSwitchConversation(Number(key));
+          }}
         >
-          <span className={cn("truncate max-w-40", titleClassName)}>
-            {activeConversation?.title || t("embeddedChat.newChat")}
-          </span>
-          <ChevronDown size={10} className="shrink-0 text-foreground/45" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" sideOffset={4} className="min-w-44 max-w-56 p-1">
-        <DropdownMenuItem onClick={onNewChat} className="text-xs gap-2 rounded-md px-2 py-1.5">
-          <Plus size={10} className="text-foreground/45 shrink-0" />
-          {t("embeddedChat.newChat")}
-        </DropdownMenuItem>
-        {conversations.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            {conversations.map((conversation) => (
-              <DropdownMenuItem
-                key={conversation.id}
-                onClick={() => onSwitchConversation(conversation.id)}
-                className={cn(
-                  "text-xs gap-2 rounded-md px-2 py-1.5",
-                  conversation.id === activeConversationId && "bg-foreground/4"
-                )}
-              >
-                <span className="truncate flex-1">{conversation.title}</span>
-                <span className="text-2xs text-foreground/45 shrink-0">
-                  {formatShortDate(conversation.updated_at, locale)}
-                </span>
-              </DropdownMenuItem>
-            ))}
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <Dropdown.Item id={NEW_CHAT_KEY} textValue={t("embeddedChat.newChat")}>
+            <Plus size={14} className="shrink-0 text-muted" />
+            <Label>{t("embeddedChat.newChat")}</Label>
+          </Dropdown.Item>
+          {conversations.length > 0 && <Separator className="my-1" />}
+          {conversations.map((conversation) => (
+            <Dropdown.Item
+              key={conversation.id}
+              id={String(conversation.id)}
+              textValue={conversation.title || t("embeddedChat.newChat")}
+            >
+              <Label className="min-w-0 flex-1 truncate">{conversation.title || t("embeddedChat.newChat")}</Label>
+              <span className="shrink-0 text-2xs text-muted">
+                {formatShortDate(conversation.updated_at, locale)}
+              </span>
+              <Dropdown.ItemIndicator />
+            </Dropdown.Item>
+          ))}
+        </Dropdown.Menu>
+      </Dropdown.Popover>
+    </Dropdown>
   );
 }

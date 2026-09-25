@@ -238,7 +238,7 @@ export default function NotesDebugPreview({
   const { note, recordings } = preview;
   return (
     <div className="flex h-full flex-col" data-notes-debug-scenario={scenario}>
-      <div className="shrink-0 border-b border-orange-500/20 bg-orange-500/10 px-4 py-2 text-xs text-orange-700 dark:text-orange-300">
+      <div className="shrink-0 border-b border-orange-500/20 bg-orange-500/10 px-4 py-2 text-xs leading-snug text-orange-700 dark:text-orange-300">
         Debug preview: {scenario}. In memory only; no database, audio, or provider calls.
       </div>
       {scenario === "onboarding" ? (

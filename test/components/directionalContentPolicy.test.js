@@ -19,7 +19,7 @@ test("dynamic prose and identity values keep their own direction", () => {
       "src/components/notes/UploadAudioView.tsx",
       /<p\s+dir="auto"[^>]*>\s*\{downloadProgress\.title\}/,
     ],
-    ["src/components/notes/UploadAudioView.tsx", /<span\s+dir="auto"[^>]*>\s*\{f\.name\}/],
+    ["src/components/notes/BatchQueueView.tsx", /<span\s+dir="auto"[^>]*>\s*\{item\.name\}/],
   ];
 
   for (const [file, pattern] of expectations) {
@@ -56,7 +56,7 @@ test("technical output values remain LTR inside an Arabic document", () => {
     ["src/components/ui/ModelCardList.tsx", /<span\s+dir="ltr"[\s\S]*?\{model\.label\}/],
     [
       "src/components/onboarding/ProviderSetupStep.tsx",
-      /<span\s+dir="ltr">\s*\{models\.find[\s\S]*?\?\? t\("onboarding\.rehaul\.provider\.modelPlaceholder"\)\}/,
+      /<SelectField[^>]*value=\{selectedModel\}[\s\S]{0,300}?dir="ltr"/,
     ],
   ];
 

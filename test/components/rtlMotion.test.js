@@ -6,6 +6,15 @@ const test = require("node:test");
 const repoRoot = path.join(__dirname, "../..");
 const source = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
+test("nav drawer slides in from the start edge in both document directions", () => {
+  const drawer = source("src/components/ControlPanelNavDrawer.tsx");
+
+  assert.match(drawer, /transition-\[transform,opacity\]/);
+  assert.match(drawer, /-translate-x-full opacity-0 rtl:translate-x-full/);
+  assert.match(drawer, /translate-x-0 opacity-100/);
+  assert.doesNotMatch(drawer, /animate-in|slide-in-from-/);
+});
+
 test("standard toasts enter from the outer edge in both document directions", () => {
   const toast = source("src/components/ui/Toast.tsx");
   const css = source("src/index.css");

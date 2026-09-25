@@ -1955,7 +1955,7 @@
       "connect": "連接 Google 日曆",
       "connecting": "連接中...",
       "connected": "已連接",
-      "notConfigured": "尚未設定。請設定 OAuth 以連接。",
+      "notConfigured": "請設定 OAuth 以連接。",
       "addAnother": "新增其他日曆",
       "primaryOnly": "僅同步主要日曆",
       "primaryOnlyDescription": "忽略他人分享給你的日曆事件。",
@@ -1973,7 +1973,7 @@
       "description": "從 Outlook 或 Microsoft 365 日曆讀取會議。",
       "connect": "連接 Microsoft 日曆",
       "connected": "已連接",
-      "notConfigured": "尚未設定。請設定 OAuth 以連接。",
+      "notConfigured": "請設定 OAuth 以連接。",
       "addAnother": "新增其他日曆",
       "primaryOnly": "僅同步主要日曆",
       "primaryOnlyDescription": "忽略他人分享給你的日曆事件。",
@@ -2003,6 +2003,9 @@
     "notABot": {
       "title": "OpenHercules 是會議錄製工具，不是機器人",
       "description": "OpenHercules 直接從您的系統擷取音訊 — 它不會以參與者身分加入您的會議。只需連接日曆，正常記錄筆記即可。"
+    },
+    "status": {
+      "notConfigured": "尚未設定"
     }
   },
   "calendar": {
@@ -2101,7 +2104,12 @@
     "undock": "從側邊欄取消固定",
     "close": "關閉聊天",
     "newChat": "新對話",
-    "conversationSelector": "切換對話"
+    "conversationSelector": "切換對話",
+    "suggestions": {
+      "summary": "總結這則筆記",
+      "actions": "有哪些待辦事項？",
+      "decisions": "做了哪些決定？"
+    }
   },
   "transcriptionPreview": {
     "label": "預覽",

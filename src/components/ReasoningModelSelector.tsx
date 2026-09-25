@@ -383,7 +383,7 @@ export default function ReasoningModelSelector({
                           </p>
                         )}
                         {!tinfoilModelsLoading && tinfoilModelsError && (
-                          <p className="text-xs text-destructive">
+                          <p className="text-xs text-danger">
                             {t("reasoning.custom.unableToLoadModels")}
                           </p>
                         )}

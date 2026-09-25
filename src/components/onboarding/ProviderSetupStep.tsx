@@ -5,7 +5,7 @@ import ProviderConnectionTest from "./ProviderConnectionTest";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { ProviderIcon } from "../ui/ProviderIcon";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "../ui/select";
+import { SelectField } from "../ui/SelectField";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { getTranscriptionProviders, type TranscriptionProviderData } from "../../models/ModelRegistry";
 import { pickDefaultModelId } from "../../models/providerDefaultModel";
@@ -175,18 +175,28 @@ export function ByokProviderStep({
           </>
         ) : (
           <>
-            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.providerLabel")}</FieldLabel>
-              <Select value={selectedProvider || undefined} onValueChange={chooseProvider}>
-                <SelectTrigger><span>{currentProvider?.name ?? t("onboarding.rehaul.provider.providerPlaceholder")}</span></SelectTrigger>
-                <SelectContent>{providers.map((provider) => <SelectItem key={provider.id} value={provider.id}><span className="flex items-center gap-2"><ProviderIcon provider={provider.id} className="size-4" />{provider.name}</span></SelectItem>)}</SelectContent>
-              </Select>
-            </label>
-            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.modelLabel")}</FieldLabel>
-              <Select value={selectedModel || undefined} onValueChange={(value) => { setSelectedModel(value); setConnected(false); onConnectionChange(false); }} disabled={!selectedProvider}>
-                <SelectTrigger><span dir="ltr">{models.find((model) => model.id === selectedModel)?.name ?? t("onboarding.rehaul.provider.modelPlaceholder")}</span></SelectTrigger>
-                <SelectContent>{models.map((model) => <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </label>
+            <div><FieldLabel>{t("onboarding.rehaul.provider.providerLabel")}</FieldLabel>
+              <SelectField
+                value={selectedProvider}
+                onChange={chooseProvider}
+                ariaLabel={t("onboarding.rehaul.provider.providerLabel")}
+                placeholder={t("onboarding.rehaul.provider.providerPlaceholder")}
+                className="w-full"
+                options={providers.map((provider) => ({ id: provider.id, label: provider.name, icon: <ProviderIcon provider={provider.id} className="size-4" /> }))}
+              />
+            </div>
+            <div><FieldLabel>{t("onboarding.rehaul.provider.modelLabel")}</FieldLabel>
+              <SelectField
+                value={selectedModel}
+                onChange={(value) => { setSelectedModel(value); setConnected(false); onConnectionChange(false); }}
+                isDisabled={!selectedProvider}
+                dir="ltr"
+                ariaLabel={t("onboarding.rehaul.provider.modelLabel")}
+                placeholder={t("onboarding.rehaul.provider.modelPlaceholder")}
+                className="w-full"
+                options={models.map((model) => ({ id: model.id, label: model.name }))}
+              />
+            </div>
             <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel><Input dir="ltr" type="password" value={draftApiKey} onChange={(event) => { setDraftApiKey(event.target.value); setConnected(false); onConnectionChange(false); }} disabled={!selectedProvider} /></label>
           </>
         )}

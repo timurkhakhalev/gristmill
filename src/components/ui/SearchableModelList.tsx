@@ -184,7 +184,7 @@ export default function SearchableModelList({
       <div dir="ltr" className="relative">
         <Search
           size={14}
-          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/70 pointer-events-none"
+          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
         />
         <Input
           dir="ltr"
@@ -227,10 +227,10 @@ export default function SearchableModelList({
                 >
                   {row.type === "header" ? (
                     <div className="flex items-center gap-1.5 px-0.5 pt-2 pb-1">
-                      <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground/70">
+                      <span className="text-2xs font-medium uppercase tracking-wide text-muted">
                         {row.label}
                       </span>
-                      <span className="text-2xs text-muted-foreground/70 tabular-nums">
+                      <span className="text-2xs text-muted tabular-nums">
                         {row.count}
                       </span>
                     </div>

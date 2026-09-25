@@ -111,17 +111,13 @@ async function renderTree(t, direction) {
         export const resolveNotePermission = () => "owner";
         export const sharedNoteBlocksDelete = () => false;
       `,
-      "/ui/dropdown-menu": `
-        export const DropdownMenu = ({ children }) => children;
-        export const DropdownMenuTrigger = ({ children }) => children;
-        export const DropdownMenuContent = () => null;
-        export const DropdownMenuItem = () => null;
-        export const DropdownMenuSub = ({ children }) => children;
-        export const DropdownMenuSubTrigger = () => null;
-        export const DropdownMenuSubContent = () => null;
-        export const DropdownMenuSeparator = () => null;
+      "/ui/dialog": `
+        export const ConfirmDialog = () => null;
+        export const Dialog = ({ children }) => children;
+        export const DialogContent = ({ children }) => children;
+        export const DialogHeader = ({ children }) => children;
+        export const DialogTitle = () => null;
       `,
-      "/ui/dialog": "export const ConfirmDialog = () => null;",
       "/CreateSpaceDialog": "export default function Mock() { return null; }",
       "/DeleteSpaceDialog": "export default function Mock() { return null; }",
       "/SpaceMembersDialog": "export default function Mock() { return null; }",

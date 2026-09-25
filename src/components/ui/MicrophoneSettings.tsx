@@ -135,7 +135,7 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
       label={t("microphoneSettings.inputDevice")}
       description={
         error ? (
-          <span className="text-destructive">{error}</span>
+          <span className="text-danger">{error}</span>
         ) : (
           <>
             {t("microphoneSettings.helpText")}

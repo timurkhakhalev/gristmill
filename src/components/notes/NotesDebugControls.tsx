@@ -64,9 +64,9 @@ export default function NotesDebugControls({
           type="button"
           aria-label="Notes debug states"
           title="Notes debug states"
-          className="flex h-8 items-center gap-1.5 rounded-lg border border-orange-500/35 bg-orange-500/10 px-2.5 text-xs font-medium text-orange-700 hover:bg-orange-500/15 dark:text-orange-300"
+          className="flex h-8 items-center gap-1.5 rounded-lg border border-orange-500/35 bg-orange-500/10 px-2.5 text-xs font-medium text-orange-700 hover:bg-orange-500/15 dark:text-orange-300 @max-[560px]:w-8 @max-[560px]:justify-center @max-[560px]:gap-0 @max-[560px]:px-0"
         >
-          <Bug size={14} /> Debug
+          <Bug size={14} /> <span className="@max-[560px]:hidden">Debug</span>
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-60 max-h-[min(75vh,560px)] overflow-y-auto">
@@ -84,7 +84,7 @@ export default function NotesDebugControls({
                 onChange(id as NotesDebugScenario | null);
                 setOpen(false);
               }}
-              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs hover:bg-foreground/5"
+              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs hover:bg-default"
             >
               {label}
               {scenario === id && <Check size={13} />}

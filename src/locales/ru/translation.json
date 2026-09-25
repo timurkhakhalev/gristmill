@@ -1965,7 +1965,7 @@
       "connect": "Подключить Google Calendar",
       "connecting": "Подключение...",
       "connected": "Подключено",
-      "notConfigured": "Не настроено. Настройте OAuth для подключения.",
+      "notConfigured": "Настройте OAuth для подключения.",
       "addAnother": "Добавить ещё один календарь",
       "primaryOnly": "Синхронизировать только основной календарь",
       "primaryOnlyDescription": "Игнорировать события из календарей, к которым вам открыли доступ.",
@@ -1983,7 +1983,7 @@
       "description": "Читайте встречи из календаря Outlook или Microsoft 365.",
       "connect": "Подключить Microsoft Calendar",
       "connected": "Подключено",
-      "notConfigured": "Не настроено. Настройте OAuth для подключения.",
+      "notConfigured": "Настройте OAuth для подключения.",
       "addAnother": "Добавить ещё один календарь",
       "primaryOnly": "Синхронизировать только основной календарь",
       "primaryOnlyDescription": "Игнорировать события из календарей, к которым вам открыли доступ.",
@@ -2013,6 +2013,9 @@
     "notABot": {
       "title": "OpenHercules — это запись встреч, а не бот",
       "description": "OpenHercules захватывает аудио напрямую из вашей системы — он никогда не присоединяется к встречам как участник. Просто подключите календарь и делайте заметки как обычно."
+    },
+    "status": {
+      "notConfigured": "Не настроено"
     }
   },
   "calendar": {
@@ -2111,7 +2114,12 @@
     "undock": "Открепить от боковой панели",
     "close": "Закрыть чат",
     "newChat": "Новый чат",
-    "conversationSelector": "Сменить беседу"
+    "conversationSelector": "Сменить беседу",
+    "suggestions": {
+      "summary": "Кратко перескажи заметку",
+      "actions": "Какие есть задачи?",
+      "decisions": "Что решили?"
+    }
   },
   "transcriptionPreview": {
     "label": "Предпросмотр",

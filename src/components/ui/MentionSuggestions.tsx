@@ -61,7 +61,7 @@ const MentionSuggestions = forwardRef<MentionSuggestionsHandle, MentionSuggestio
             onMouseEnter={() => setSelectedIndex(index)}
             className={cn(
               "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-xs text-foreground/70 transition-colors cursor-pointer",
-              index === selectedIndex && "bg-foreground/5 text-foreground"
+              index === selectedIndex && "bg-default text-foreground"
             )}
           >
             <PersonAvatar email={item.email} displayName={item.label} size={20} />
@@ -69,7 +69,7 @@ const MentionSuggestions = forwardRef<MentionSuggestionsHandle, MentionSuggestio
               {item.label}
             </span>
             {item.email && (
-              <span dir="ltr" className="truncate text-2xs text-foreground/45">
+              <span dir="ltr" className="truncate text-2xs text-muted">
                 {item.email}
               </span>
             )}

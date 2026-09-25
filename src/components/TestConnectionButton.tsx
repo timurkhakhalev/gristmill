@@ -74,8 +74,8 @@ export default function TestConnectionButton({ provider, getConfig }: TestConnec
         className="w-full"
       >
         {status === "testing" && <Loader2 className="w-3.5 h-3.5 me-1.5 animate-spin" />}
-        {status === "success" && <CheckCircle className="w-3.5 h-3.5 me-1.5 text-green-500" />}
-        {status === "error" && <XCircle className="w-3.5 h-3.5 me-1.5 text-destructive" />}
+        {status === "success" && <CheckCircle className="w-3.5 h-3.5 me-1.5 text-success" />}
+        {status === "error" && <XCircle className="w-3.5 h-3.5 me-1.5 text-danger" />}
         {status === "testing"
           ? t("reasoning.enterprise.testing", { defaultValue: "Testing..." })
           : status === "success"
@@ -84,8 +84,8 @@ export default function TestConnectionButton({ provider, getConfig }: TestConnec
       </Button>
 
       {status === "error" && errorInfo && (
-        <div className="rounded-md bg-destructive/10 border border-destructive/20 p-2.5 space-y-1.5">
-          <p dir="auto" className="text-xs text-destructive font-medium">
+        <div className="rounded-md bg-danger/10 border border-danger/20 p-2.5 space-y-1.5">
+          <p dir="auto" className="text-xs text-danger font-medium">
             {errorInfo.message}
           </p>
           {errorInfo.action && (

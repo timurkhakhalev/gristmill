@@ -255,6 +255,72 @@ test("IPC corrects only a blocked run snapshot after main validation; ordinary r
   assert.deepEqual(db.getMeetingProcessingRun(run.id).config, validConfig);
 });
 
+test("main corrects summary-only configuration and resumes from saved artifacts without another ASR call", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const savedConfig = { ...validConfig, summary: null };
+  const { run } = createFinishedRecording(db, storage, savedConfig);
+  let transcribeCalls = 0;
+  let summaryCalls = 0;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => {
+      transcribeCalls += 1;
+      await saveRaw(elevenResponse);
+      return { success: true, text: "adapter output is not the saved source" };
+    },
+    summarize: async () => {
+      summaryCalls += 1;
+      return "Recovered summary";
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+
+  const blocked = db.getMeetingProcessingRun(run.id);
+  assert.equal(blocked.status, "blocked");
+  assert.equal(blocked.stage, "summary");
+  assert.equal(blocked.errorCode, "missing-summary-config");
+  const rawBefore = storage.readRunArtifact(run.id, "provider-response");
+  const transcriptBefore = storage.readRunArtifact(run.id, "transcript");
+  assert.equal(transcribeCalls, 1);
+  assert.equal(summaryCalls, 0);
+
+  const handlers = new Map();
+  registerMeetingProcessingHandlers({ handle: (channel, handler) => handlers.set(channel, handler) }, worker);
+  const update = handlers.get(meetingProcessingChannels.updateBlockedRunConfig);
+  const changedTranscription = {
+    ...savedConfig,
+    transcription: {
+      ...savedConfig.transcription,
+      provider: "deepgram",
+      model: "nova-3",
+      credentialRef: "DEEPGRAM_API_KEY",
+    },
+    summary: validConfig.summary,
+  };
+  assert.equal((await update(null, { runId: run.id, config: changedTranscription, configError: null })).success, false);
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "blocked");
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), rawBefore);
+  assert.deepEqual(storage.readRunArtifact(run.id, "transcript"), transcriptBefore);
+
+  const corrected = { ...savedConfig, summary: validConfig.summary };
+  const response = await update(null, { runId: run.id, config: corrected, configError: null });
+  assert.equal(response.success, true);
+  await worker.waitForIdle();
+
+  const completed = db.getMeetingProcessingRun(run.id);
+  assert.equal(completed.status, "complete");
+  assert.deepEqual(completed.config.transcription, savedConfig.transcription);
+  assert.deepEqual(completed.config.summary, validConfig.summary);
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), rawBefore);
+  assert.deepEqual(storage.readRunArtifact(run.id, "transcript"), transcriptBefore);
+  assert.deepEqual(storage.readRunArtifact(run.id, "summary"), { text: "Recovered summary" });
+  assert.equal(transcribeCalls, 1);
+  assert.equal(summaryCalls, 1);
+});
+
 test("blocked config correction refuses an unindexed raw response file", async (t) => {
   const db = createDb(t);
   if (!db) return;

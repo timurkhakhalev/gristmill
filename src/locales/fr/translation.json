@@ -2196,6 +2196,7 @@
     "speakerError": "Impossible d’enregistrer la correction du locuteur.",
     "deleteError": "Échec de la suppression audio. Vous pouvez réessayer.",
     "version": "Version du résultat",
+    "recording": "Enregistrement",
     "newAsr": "Nouvelle transcription",
     "newSummary": "Nouveau résumé",
     "retry": "Réessayer",

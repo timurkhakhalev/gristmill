@@ -2196,6 +2196,7 @@
     "speakerError": "无法保存说话人修正。",
     "deleteError": "音频删除失败。你可以重试。",
     "version": "结果版本",
+    "recording": "录音",
     "newAsr": "新转录",
     "newSummary": "新摘要",
     "retry": "重试",

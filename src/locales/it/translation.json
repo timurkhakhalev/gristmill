@@ -2196,6 +2196,7 @@
     "speakerError": "Impossibile salvare la correzione del parlante.",
     "deleteError": "Eliminazione audio non riuscita. Puoi riprovare.",
     "version": "Versione del risultato",
+    "recording": "Registrazione",
     "newAsr": "Nuova trascrizione",
     "newSummary": "Nuovo riepilogo",
     "retry": "Riprova",

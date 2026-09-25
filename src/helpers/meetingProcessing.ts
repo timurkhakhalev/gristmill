@@ -260,16 +260,26 @@ export class MeetingProcessingWorker {
   updateBlockedRunConfig(input: unknown): MeetingProcessingResultDto | null {
     const parsed = meetingProcessingUpdateBlockedRunConfigRequestSchema.parse(input);
     const current = this.deps.database.getMeetingProcessingRun(parsed.runId);
+    const noArtifacts = current &&
+      !current.hasRawProviderResponse &&
+      !current.hasTranscript &&
+      !current.hasSummary &&
+      !this.deps.storage.hasRunArtifact(current.id, "provider-response") &&
+      !this.deps.storage.hasRunArtifact(current.id, "transcript") &&
+      !this.deps.storage.hasRunArtifact(current.id, "summary");
+    const summaryOnlyCorrection = current &&
+      current.stage === "summary" &&
+      current.errorCode === "missing-summary-config" &&
+      current.hasRawProviderResponse &&
+      current.hasTranscript &&
+      !current.hasSummary &&
+      this.deps.storage.hasRunArtifact(current.id, "provider-response") &&
+      this.deps.storage.hasRunArtifact(current.id, "transcript");
     if (
       !current ||
       current.status !== "blocked" ||
       current.kind === "summary" ||
-      current.hasRawProviderResponse ||
-      current.hasTranscript ||
-      current.hasSummary ||
-      this.deps.storage.hasRunArtifact(current.id, "provider-response") ||
-      this.deps.storage.hasRunArtifact(current.id, "transcript") ||
-      this.deps.storage.hasRunArtifact(current.id, "summary")
+      (!noArtifacts && !summaryOnlyCorrection)
     ) return null;
     const run = this.deps.database.updateBlockedMeetingRunConfig(
       parsed.runId,

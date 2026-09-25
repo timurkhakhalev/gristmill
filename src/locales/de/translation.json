@@ -2196,6 +2196,7 @@
     "speakerError": "Sprecherkorrektur konnte nicht gespeichert werden.",
     "deleteError": "Audio konnte nicht gelöscht werden. Du kannst es erneut versuchen.",
     "version": "Ergebnisversion",
+    "recording": "Aufnahme",
     "newAsr": "Neue Transkription",
     "newSummary": "Neue Zusammenfassung",
     "retry": "Erneut versuchen",

@@ -306,7 +306,7 @@ M1 → review/verification → M2 → review/verification → M3 → review/veri
 | M7 — Reviewer Fix 3 (по решению Тимура) | done | `99ba4a1f`, `a421f368` |
 | M8 — Code Review Fix 1 | done | `5732b276`, `baf28a8d`, `0811867c`, `76f1cc5a`, `65f36358` |
 | Reviewer | done | `review-1.md` — 4 high, 2 medium; `review-2.md` — 3 high; `review-3.md` — 2 high; `review-4.md` — pass, 0 findings |
-| Code Reviewer | not started | `code-review-1.md` — 2 medium; fix required |
+| Code Reviewer | done | `code-review-1.md` — 2 medium; `code-review-2.md` — pass, 0 findings |
 
 M2 verification: 50/50 focused tests, `pnpm run pack`, and packaged Notes smoke passed. On 2026-09-24 Timur explicitly deferred the live mic/system hardware smoke until the end of the task; its tail-loss guarantee remains unverified. This is an accepted verification-order deviation, not a passing hardware result.
 

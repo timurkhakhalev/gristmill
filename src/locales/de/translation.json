@@ -1995,7 +1995,7 @@
       "connect": "Google Calendar verbinden",
       "connecting": "Verbinde...",
       "connected": "Verbunden",
-      "notConfigured": "Nicht konfiguriert. Richte OAuth ein, um eine Verbindung herzustellen.",
+      "notConfigured": "Richte OAuth ein, um eine Verbindung herzustellen.",
       "addAnother": "Weiteren Kalender hinzufügen",
       "primaryOnly": "Nur Hauptkalender synchronisieren",
       "primaryOnlyDescription": "Termine aus mit dir geteilten Kalendern ignorieren.",
@@ -2013,7 +2013,7 @@
       "description": "Besprechungen aus deinem Outlook- oder Microsoft 365-Kalender lesen.",
       "connect": "Microsoft Calendar verbinden",
       "connected": "Verbunden",
-      "notConfigured": "Nicht konfiguriert. Richte OAuth ein, um eine Verbindung herzustellen.",
+      "notConfigured": "Richte OAuth ein, um eine Verbindung herzustellen.",
       "addAnother": "Weiteren Kalender hinzufügen",
       "primaryOnly": "Nur Hauptkalender synchronisieren",
       "primaryOnlyDescription": "Termine aus mit dir geteilten Kalendern ignorieren.",
@@ -2043,6 +2043,9 @@
     "notABot": {
       "title": "OpenHercules ist ein Meeting-Rekorder, kein Bot",
       "description": "OpenHercules erfasst Audio direkt von deinem System — es nimmt niemals als Teilnehmer an deinen Meetings teil. Verbinde einfach deinen Kalender und mach Notizen wie gewohnt."
+    },
+    "status": {
+      "notConfigured": "Nicht konfiguriert"
     }
   },
   "notesView": {
@@ -2101,7 +2104,12 @@
     "undock": "Von Seitenleiste abdocken",
     "close": "Chat schließen",
     "newChat": "Neuer Chat",
-    "conversationSelector": "Unterhaltung wechseln"
+    "conversationSelector": "Unterhaltung wechseln",
+    "suggestions": {
+      "summary": "Fasse diese Notiz zusammen",
+      "actions": "Welche Aufgaben gibt es?",
+      "decisions": "Was wurde entschieden?"
+    }
   },
   "transcriptionPreview": {
     "label": "Vorschau",

@@ -1,13 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Sparkles, ChevronDown, Settings2 } from "../icons";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "../ui/dropdown-menu";
+import { Description, Dropdown, Label, Separator } from "@heroui/react";
 import { cn } from "../lib/utils";
 import {
   useActions,
@@ -22,6 +16,7 @@ import { FOLLOW_UP_EMAIL_KEY } from "../../helpers/builtinActions";
 // Keyed fresh so the follow-up email default reaches installs that had
 // "Generate Notes" remembered under the old key.
 const ASK_BAR_ACTION_KEY = "askBarActionId";
+const MANAGE_KEY = "__manage__";
 
 interface ActionPickerProps {
   onRunAction: (action: ActionItem) => void;
@@ -63,9 +58,9 @@ export default function ActionPicker({
     <div
       className={cn(
         "flex items-center shrink-0 rounded-full overflow-hidden",
-        "bg-white/60 dark:bg-white/8",
+        "bg-surface/80",
         "backdrop-blur-lg transform-gpu",
-        "border border-black/10 dark:border-white/14",
+        "border border-border",
         "shadow-(--shadow-glass)",
         disabled && "opacity-40 pointer-events-none"
       )}
@@ -76,10 +71,9 @@ export default function ActionPicker({
         aria-label={t("notes.actions.runAction", { name: getActionName(activeAction, t) })}
         className={cn(
           "flex items-center gap-1.5 h-7 ps-3 pe-1.5",
-          "text-accent/70 dark:text-accent/60",
+          "text-primary",
           "transition-colors duration-150",
-          "hover:bg-accent/8 dark:hover:bg-accent/12",
-          "hover:text-accent/90 dark:hover:text-accent/80"
+          "hover:bg-accent-soft"
         )}
       >
         <Sparkles size={11} />
@@ -88,54 +82,48 @@ export default function ActionPicker({
         </span>
       </button>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            disabled={disabled}
+      <Dropdown>
+        <Dropdown.Trigger
+          isDisabled={disabled}
+          aria-label={t("notes.actions.selectAction")}
+          className={cn(
+            "flex h-7 w-6 items-center justify-center pe-0.5 outline-none",
+            "border-s border-border text-primary/60",
+            "transition-colors duration-150",
+            "hover:bg-accent-soft hover:text-primary",
+            "data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-focus"
+          )}
+        >
+          <ChevronDown size={12} />
+        </Dropdown.Trigger>
+        <Dropdown.Popover placement="top end" offset={8} className="min-w-56">
+          <Dropdown.Menu
             aria-label={t("notes.actions.selectAction")}
-            className={cn(
-              "flex items-center justify-center h-7 w-6 pe-0.5",
-              "border-s border-black/6 dark:border-white/10",
-              "text-accent/40 dark:text-accent/30",
-              "transition-colors duration-150",
-              "hover:bg-accent/8 dark:hover:bg-accent/12",
-              "hover:text-accent/70"
-            )}
+            onAction={(key) => {
+              if (key === MANAGE_KEY) return onManageActions();
+              const action = actions.find((item) => String(item.id) === key);
+              if (action) handleRun(action);
+            }}
           >
-            <ChevronDown size={10} />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" side="top" sideOffset={8} className="min-w-48">
-          {actions.map((action) => (
-            <DropdownMenuItem
-              key={action.id}
-              onClick={() => handleRun(action)}
-              className={cn(
-                "text-xs gap-2.5 rounded-md px-2.5 py-1.5",
-                action.id === activeAction.id && "bg-accent/5"
-              )}
-            >
-              <Sparkles size={12} className="text-accent/50 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{getActionName(action, t)}</div>
-                {action.description && (
-                  <div className="text-xs text-muted-foreground/70 truncate">
-                    {getActionDescription(action, t)}
-                  </div>
-                )}
-              </div>
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={onManageActions}
-            className="text-xs gap-2.5 rounded-md px-2.5 py-1.5 text-muted-foreground/70"
-          >
-            <Settings2 size={12} />
-            {t("notes.actions.manage")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            {actions.map((action) => (
+              <Dropdown.Item key={action.id} id={String(action.id)} textValue={getActionName(action, t)}>
+                <Sparkles size={14} className={cn("shrink-0", action.id === activeAction.id ? "text-primary" : "text-muted")} />
+                <div className="min-w-0 flex-1">
+                  <Label className="block truncate">{getActionName(action, t)}</Label>
+                  {action.description && (
+                    <Description className="block truncate">{getActionDescription(action, t)}</Description>
+                  )}
+                </div>
+              </Dropdown.Item>
+            ))}
+            <Separator className="my-1" />
+            <Dropdown.Item id={MANAGE_KEY} textValue={t("notes.actions.manage")}>
+              <Settings2 size={14} className="shrink-0 text-muted" />
+              <Label>{t("notes.actions.manage")}</Label>
+            </Dropdown.Item>
+          </Dropdown.Menu>
+        </Dropdown.Popover>
+      </Dropdown>
     </div>
   );
 }

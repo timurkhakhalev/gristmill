@@ -131,7 +131,7 @@ export default function NoteParticipants({
         >
           {dateLabel && (
             <>
-              <Calendar size={14} className="shrink-0 text-foreground/60" />
+              <Calendar size={14} className="shrink-0 text-muted" />
               <span>{dateLabel}</span>
               <span aria-hidden="true" className="mx-0.5 h-3.5 w-px bg-border dark:bg-white/15" />
             </>
@@ -155,11 +155,11 @@ export default function NoteParticipants({
             </span>
           ) : (
             <>
-              <Users size={14} className="shrink-0 text-foreground/60" />
+              <Users size={14} className="shrink-0 text-muted" />
               {chipLabel}
             </>
           )}
-          <ChevronDown size={14} className="shrink-0 text-foreground/50" />
+          <ChevronDown size={14} className="shrink-0 text-muted" />
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-0">
@@ -170,7 +170,7 @@ export default function NoteParticipants({
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t("notes.participants.addPlaceholder", "Add attendees...")}
-            className="w-full px-2 py-1.5 rounded-md bg-transparent text-xs text-foreground placeholder:text-foreground/45 outline-none border-none appearance-none"
+            className="w-full px-2 py-1.5 rounded-md bg-transparent text-xs text-foreground placeholder:text-muted outline-none border-none appearance-none"
             autoFocus
           />
         </div>
@@ -182,7 +182,7 @@ export default function NoteParticipants({
                 <button
                   key={contact.email}
                   onClick={() => addParticipant(contact.email, contact.display_name)}
-                  className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-foreground/70 hover:bg-foreground/5 transition-colors cursor-pointer"
+                  className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-foreground/70 hover:bg-default transition-colors cursor-pointer"
                 >
                   <PersonAvatar email={contact.email} displayName={contact.display_name} />
                   <span dir="auto" className="truncate">
@@ -194,7 +194,7 @@ export default function NoteParticipants({
           )}
 
           {search && !search.includes("@") && suggestions.length === 0 && (
-            <div className="px-3 py-2 text-2xs text-foreground/45">
+            <div className="px-3 py-2 text-2xs text-muted">
               {t("notes.participants.typeEmail", "Type an email to add...")}
             </div>
           )}
@@ -207,14 +207,14 @@ export default function NoteParticipants({
               {members.map((p) => (
                 <div
                   key={p.email}
-                  className="group flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-foreground/5 transition-colors"
+                  className="group flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-default transition-colors"
                 >
                   <PersonAvatar email={p.email} displayName={p.displayName} />
 
                   <span dir="auto" className="flex-1 min-w-0 truncate text-xs text-foreground/70">
                     {p.displayName || p.email.split("@")[0]}
                     {p.self && (
-                      <span className="ms-1 text-foreground/45">
+                      <span className="ms-1 text-muted">
                         {t("notes.participants.me", "(me)")}
                       </span>
                     )}
@@ -222,7 +222,7 @@ export default function NoteParticipants({
 
                   <button
                     onClick={() => removeParticipant(p.email)}
-                    className="shrink-0 opacity-0 group-hover:opacity-100 p-0.5 rounded text-foreground/45 hover:text-foreground/60 transition-opacity cursor-pointer"
+                    className="shrink-0 opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted hover:text-muted transition-opacity cursor-pointer"
                   >
                     <X size={12} />
                   </button>
@@ -232,7 +232,7 @@ export default function NoteParticipants({
           ))}
 
           {localParticipants.length === 0 && !search && (
-            <div className="px-3 py-4 text-center text-2xs text-foreground/45">
+            <div className="px-3 py-4 text-center text-2xs text-muted">
               {t("notes.participants.typeEmail", "Type an email to add...")}
             </div>
           )}

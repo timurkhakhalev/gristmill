@@ -104,8 +104,8 @@ export default function NoteBottomBar({
               ? "max-w-0 opacity-0 ps-0 pe-0 border-transparent shadow-none pointer-events-none"
               : "max-w-[600px] opacity-100 ps-4 pe-1.5",
             isExpanded
-              ? "border-black/15 dark:border-white/22 ring-[3px] ring-primary/8"
-              : !hideInput && "border-black/10 dark:border-white/14"
+              ? "border-border ring-[3px] ring-primary/8"
+              : !hideInput && "border-border"
           )}
         >
           <input
@@ -122,7 +122,7 @@ export default function NoteBottomBar({
             className={cn(
               "input-inline flex-1 bg-transparent outline-none min-w-0 p-0 caret-primary",
               "text-ui text-foreground",
-              "placeholder:text-foreground/45 dark:placeholder:text-foreground/45"
+              "placeholder:text-muted dark:placeholder:text-muted"
             )}
           />
 

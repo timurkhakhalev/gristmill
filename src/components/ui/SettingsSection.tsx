@@ -162,7 +162,7 @@ export function InferenceModeSelector({
           <SettingsPanelRow
             key={mode.id}
             className={`transition-colors ${
-              isDisabled ? "" : "hover:bg-foreground/3 dark:hover:bg-white/3"
+              isDisabled ? "" : "hover:bg-default dark:hover:bg-white/3"
             }`}
           >
             <button
@@ -196,7 +196,7 @@ export function InferenceModeSelector({
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground/80 mt-0.5">{mode.description}</p>
+                <p className="text-xs text-muted mt-0.5">{mode.description}</p>
               </div>
               <div
                 className={`w-4 h-4 rounded-full border-2 shrink-0 transition-colors ${

@@ -381,7 +381,7 @@ export default function BackgroundModelDownloadTray({
               </span>
             </div>
             {download.error ? (
-              <p className="truncate text-[0.625rem] text-destructive">{download.error}</p>
+              <p className="truncate text-[0.625rem] text-danger">{download.error}</p>
             ) : (
               // Frame 2147259038: 12 tall track on #F7F7F7 at radius 9, brand fill
               // at radius 11.
@@ -403,7 +403,7 @@ export default function BackgroundModelDownloadTray({
             aria-label={t("onboarding.rehaul.local.cancelDownload", {
               model: downloadDisplay(download).name,
             })}
-            className="shrink-0 rounded-full transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-default disabled:opacity-40 disabled:hover:opacity-40"
+            className="shrink-0 rounded-full transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-default disabled:opacity-40 disabled:hover:opacity-40"
           >
             <CancelGlyph />
           </button>

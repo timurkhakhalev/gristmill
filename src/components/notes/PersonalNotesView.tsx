@@ -668,15 +668,15 @@ export default function PersonalNotesView({
         className="shrink-0 overflow-hidden transition-[width] duration-300 ease-out"
         style={{ width: isSidePanelLayout ? 0 : "13rem" }}
       >
-        <div className="w-52 shrink-0 border-e border-border dark:border-white/10 flex flex-col h-full">
+        <div className="w-52 shrink-0 border-e border-border flex flex-col h-full">
           <div className="px-2 pt-2 pb-1 shrink-0 space-y-0.5">
             <button
               onClick={() => setShowActionManager(true)}
               className={cn(
                 "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs",
-                "text-foreground/85 hover:text-foreground hover:bg-foreground/5",
+                "text-foreground/85 hover:text-foreground hover:bg-default",
                 "transition-colors duration-150",
-                "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/30"
+                "focus:outline-none focus-visible:ring-1 focus-visible:ring-focus"
               )}
             >
               <Sparkles size={14} className="shrink-0" />
@@ -864,10 +864,10 @@ export default function PersonalNotesView({
             </svg>
             {notes.length === 0 ? (
               <>
-                <h3 className="text-xs font-semibold text-foreground/60 mb-1">
+                <h3 className="text-xs font-semibold text-muted mb-1">
                   {t(notesEmptyTitleKey(activeFolderId != null))}
                 </h3>
-                <p className="text-xs text-foreground/50 dark:text-foreground/45 text-center max-w-55 mb-4">
+                <p className="text-xs text-muted text-center max-w-55 mb-4">
                   {t("notes.empty.description")}
                 </p>
                 <div className="flex items-center gap-2">
@@ -883,7 +883,7 @@ export default function PersonalNotesView({
                   {activeFolderId != null && (
                     <button
                       onClick={() => setShowAddNotesDialog(true)}
-                      className="flex items-center gap-1.5 px-4 h-7 rounded-md border border-foreground/8 dark:border-white/10 text-xs text-foreground/45 hover:text-foreground/60 hover:border-foreground/15 hover:bg-foreground/3 dark:hover:bg-white/3 transition-colors"
+                      className="flex items-center gap-1.5 px-4 h-7 rounded-md border border-foreground/8 dark:border-white/10 text-xs text-muted hover:text-muted hover:border-foreground/15 hover:bg-default dark:hover:bg-white/3 transition-colors"
                     >
                       {t("notes.addToFolder.addExisting")}
                     </button>
@@ -892,10 +892,10 @@ export default function PersonalNotesView({
               </>
             ) : (
               <>
-                <h3 className="text-xs font-semibold text-foreground/60 mb-1">
+                <h3 className="text-xs font-semibold text-muted mb-1">
                   {t("notes.empty.selectTitle")}
                 </h3>
-                <p className="text-xs text-foreground/50 dark:text-foreground/45 text-center max-w-50">
+                <p className="text-xs text-muted text-center max-w-50">
                   {t("notes.empty.selectDescription")}
                 </p>
               </>

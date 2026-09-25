@@ -1995,7 +1995,7 @@
       "connect": "Connecter Google Calendar",
       "connecting": "Connexion...",
       "connected": "Connecté",
-      "notConfigured": "Non configuré. Configurez OAuth pour vous connecter.",
+      "notConfigured": "Configurez OAuth pour vous connecter.",
       "addAnother": "Ajouter un autre calendrier",
       "primaryOnly": "Synchroniser uniquement le calendrier principal",
       "primaryOnlyDescription": "Ignorer les événements des calendriers partagés avec vous.",
@@ -2013,7 +2013,7 @@
       "description": "Lisez les réunions depuis votre calendrier Outlook ou Microsoft 365.",
       "connect": "Connecter Microsoft Calendar",
       "connected": "Connecté",
-      "notConfigured": "Non configuré. Configurez OAuth pour vous connecter.",
+      "notConfigured": "Configurez OAuth pour vous connecter.",
       "addAnother": "Ajouter un autre calendrier",
       "primaryOnly": "Synchroniser uniquement le calendrier principal",
       "primaryOnlyDescription": "Ignorer les événements des calendriers partagés avec vous.",
@@ -2043,6 +2043,9 @@
     "notABot": {
       "title": "OpenHercules est un enregistreur de réunions, pas un bot",
       "description": "OpenHercules capture l'audio directement depuis votre système — il ne rejoint jamais vos réunions en tant que participant. Connectez simplement votre calendrier et prenez vos notes normalement."
+    },
+    "status": {
+      "notConfigured": "Non configuré"
     }
   },
   "notesView": {
@@ -2101,7 +2104,12 @@
     "undock": "Détacher de la barre latérale",
     "close": "Fermer le chat",
     "newChat": "Nouvelle discussion",
-    "conversationSelector": "Changer de conversation"
+    "conversationSelector": "Changer de conversation",
+    "suggestions": {
+      "summary": "Résume cette note",
+      "actions": "Quelles sont les actions à mener ?",
+      "decisions": "Qu'est-ce qui a été décidé ?"
+    }
   },
   "transcriptionPreview": {
     "label": "Aperçu",

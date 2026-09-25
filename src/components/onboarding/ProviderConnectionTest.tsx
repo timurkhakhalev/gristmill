@@ -105,7 +105,7 @@ export default function ProviderConnectionTest({
           </Button>
         </div>
         {error && (
-          <p role="alert" className="mt-1 px-1 text-xs text-destructive">
+          <p role="alert" className="mt-1 px-1 text-xs text-danger">
             {error}
           </p>
         )}
@@ -124,7 +124,7 @@ export default function ProviderConnectionTest({
       >
         {status === "testing" && <Loader2 className="size-4 animate-spin" />}
         {status === "success" && <CheckCircle className="size-4 text-success" />}
-        {status === "error" && <XCircle className="size-4 text-destructive" />}
+        {status === "error" && <XCircle className="size-4 text-danger" />}
         {status === "testing"
           ? t("onboarding.rehaul.provider.testing")
           : status === "success"
@@ -132,7 +132,7 @@ export default function ProviderConnectionTest({
             : t("onboarding.rehaul.provider.runTest")}
       </Button>
       {error && (
-        <p role="alert" className="text-xs text-destructive">
+        <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}

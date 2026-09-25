@@ -1,117 +1,91 @@
 import * as React from "react";
-import { useTranslation } from "react-i18next";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "../icons";
+import { Button, Modal } from "@heroui/react";
 import { cn } from "../lib/utils";
-import { OVERLAY_CLASS } from "./surfaceStyles";
-import { Button } from "./button";
-import { useDismissGuard } from "./useDismissGuard";
 
-const Dialog = DialogPrimitive.Root;
+/*
+ * Dialog primitives on HeroUI Modal (React Aria), keeping the shadcn-style API
+ * the app already uses. React Aria owns focus and outside-click handling, so
+ * HeroUI selects, menus and popovers opened inside these dialogs nest correctly.
+ */
 
-const DialogTrigger = DialogPrimitive.Trigger;
+interface DialogState {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
 
-const DialogPortal = DialogPrimitive.Portal;
+const DialogContext = React.createContext<DialogState>({ open: false, onOpenChange: () => {} });
 
-const DialogClose = DialogPrimitive.Close;
-
-const DialogOverlay = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Overlay
-    ref={ref}
-    className={cn(
-      "fixed inset-0 z-50 bg-backdrop backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-      className
-    )}
-    {...props}
-  />
-));
-DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
-
-const DialogContent = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { overlayClassName?: string }
->(({ className, children, onInteractOutside, overlayClassName, ...props }, ref) => {
-  const { t } = useTranslation();
-  const { registerContent, shouldBlockDismiss } =
-    useDismissGuard<React.ElementRef<typeof DialogPrimitive.Content>>(ref);
-
-  return (
-    <DialogPortal>
-      <DialogOverlay className={overlayClassName} />
-      <DialogPrimitive.Content
-        ref={registerContent}
-        onInteractOutside={(event) => {
-          onInteractOutside?.(event);
-          if (event.defaultPrevented) return;
-          if (shouldBlockDismiss(event)) event.preventDefault();
-        }}
-        className={cn(
-          "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 p-6 outline-none duration-200",
-          OVERLAY_CLASS,
-          "rounded-2xl",
-          "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
-          className
-        )}
-        {...props}
-      >
-        {children}
-        <DialogPrimitive.Close className="absolute end-4 top-4 flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-default hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:pointer-events-none">
-          <X className="size-4" />
-          <span className="sr-only">{t("common.close")}</span>
-        </DialogPrimitive.Close>
-      </DialogPrimitive.Content>
-    </DialogPortal>
+function Dialog({
+  open = false,
+  onOpenChange,
+  children,
+}: {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children: React.ReactNode;
+}) {
+  const value = React.useMemo(
+    () => ({ open, onOpenChange: onOpenChange ?? (() => {}) }),
+    [open, onOpenChange]
   );
-});
-DialogContent.displayName = DialogPrimitive.Content.displayName;
+  return <DialogContext.Provider value={value}>{children}</DialogContext.Provider>;
+}
+
+type DialogSize = "xs" | "sm" | "md" | "lg";
+
+interface DialogContentProps {
+  className?: string;
+  children?: React.ReactNode;
+  "aria-label"?: string;
+  "aria-describedby"?: string;
+  size?: DialogSize;
+  /** Hide the corner close button (the dialog still closes on Escape). */
+  hideClose?: boolean;
+  /** Block closing on backdrop click, e.g. while a form is dirty. */
+  isDismissable?: boolean;
+}
+
+function DialogContent({
+  className,
+  children,
+  size = "md",
+  hideClose = false,
+  isDismissable = true,
+  ...props
+}: DialogContentProps) {
+  const { open, onOpenChange } = React.useContext(DialogContext);
+  return (
+    <Modal isOpen={open} onOpenChange={onOpenChange}>
+      <Modal.Backdrop isDismissable={isDismissable}>
+        <Modal.Container size={size}>
+          <Modal.Dialog className={cn("flex flex-col gap-4", className)} {...props}>
+            {!hideClose && <Modal.CloseTrigger />}
+            {children}
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
+    </Modal>
+  );
+}
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn("flex flex-col space-y-1.5 text-center sm:text-start", className)}
-    {...props}
-  />
+  <div className={cn("flex flex-col gap-1.5 pe-8 text-start", className)} {...props} />
 );
-DialogHeader.displayName = "DialogHeader";
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:gap-2", className)}
-    {...props}
-  />
+  <div className={cn("flex flex-wrap justify-end gap-2", className)} {...props} />
 );
-DialogFooter.displayName = "DialogFooter";
 
-const DialogTitle = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Title>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title
-    ref={ref}
-    className={cn(
-      "text-base font-semibold leading-snug text-foreground brand-heading",
-      className
-    )}
-    {...props}
-  />
-));
-DialogTitle.displayName = DialogPrimitive.Title.displayName;
+const DialogTitle = ({ className, children }: { className?: string; children: React.ReactNode }) => (
+  <Modal.Heading className={cn("text-base font-semibold leading-snug text-foreground", className)}>
+    {children}
+  </Modal.Heading>
+);
 
-const DialogDescription = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Description>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description
-    ref={ref}
-    className={cn("text-sm text-muted-foreground brand-body", className)}
-    {...props}
-  />
-));
-DialogDescription.displayName = DialogPrimitive.Description.displayName;
+const DialogDescription = ({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
+  <p className={cn("text-sm text-muted", className)} {...props} />
+);
 
-// Custom confirmation dialog component
 interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -140,8 +114,6 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   children,
   confirmDisabled = false,
 }) => {
-  const confirmRef = React.useRef<HTMLButtonElement>(null);
-
   const handleConfirm = () => {
     onConfirm();
     onOpenChange(false);
@@ -152,33 +124,29 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     onOpenChange(false);
   };
 
-  // Radix auto-focuses the first tabbable — the Cancel button — so Enter used
-  // to cancel. Focus Confirm instead, except: destructive dialogs keep Cancel
-  // focused (Enter must never destroy by default), and dialogs with children
-  // keep Radix's choice (a type-to-confirm input owns focus and Enter itself).
-  const handleOpenAutoFocus = (event: Event) => {
-    if (children != null || variant === "destructive") return;
-    event.preventDefault();
-    confirmRef.current?.focus();
-  };
+  // Enter confirms by default, except: destructive dialogs keep Cancel focused
+  // (Enter must never destroy by default), and dialogs with children leave
+  // focus to their own content (a type-to-confirm input owns Enter).
+  const focusConfirm = children == null && variant !== "destructive";
+  const focusCancel = children == null && variant === "destructive";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]" onOpenAutoFocus={handleOpenAutoFocus}>
+      <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         {children}
         <DialogFooter>
-          <Button variant="outline" onClick={handleCancel}>
+          <Button variant="tertiary" autoFocus={focusCancel} onPress={handleCancel}>
             {cancelText}
           </Button>
           <Button
-            ref={confirmRef}
-            variant={variant === "destructive" ? "destructive" : "default"}
-            onClick={handleConfirm}
-            disabled={confirmDisabled}
+            variant={variant === "destructive" ? "danger" : "primary"}
+            autoFocus={focusConfirm}
+            isDisabled={confirmDisabled}
+            onPress={handleConfirm}
           >
             {confirmText}
           </Button>
@@ -188,7 +156,6 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   );
 };
 
-// Custom alert dialog component
 interface AlertDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -213,13 +180,13 @@ const AlertDialog: React.FC<AlertDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         <DialogFooter>
-          <Button variant="default" onClick={handleOk}>
+          <Button autoFocus onPress={handleOk}>
             {okText}
           </Button>
         </DialogFooter>
@@ -230,10 +197,6 @@ const AlertDialog: React.FC<AlertDialogProps> = ({
 
 export {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
-  DialogClose,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogFooter,

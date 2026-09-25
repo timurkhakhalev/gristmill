@@ -92,7 +92,7 @@ export default function MeetingRecordingPill({
             "flex items-center gap-3 px-1 -mx-1 rounded-md",
             "transition-colors",
             "hover:bg-primary/8 active:bg-primary/14",
-            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30"
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
           )}
         >
           <div className="flex items-end gap-0.75 h-4" aria-hidden="true">
@@ -101,7 +101,7 @@ export default function MeetingRecordingPill({
                 key={i}
                 className={cn(
                   "w-0.75 rounded-full origin-bottom",
-                  capturePhase === "paused" || isWaitingForMic ? "bg-amber-500" : "bg-primary/60 dark:bg-primary/70"
+                  capturePhase === "paused" || isWaitingForMic ? "bg-warning" : "bg-primary/60 dark:bg-primary/70"
                 )}
                 style={{ height: computeBarHeight(micLevel, i) }}
               />
@@ -121,7 +121,7 @@ export default function MeetingRecordingPill({
           className={cn(
             "flex items-center justify-center w-7 h-7 rounded-lg",
             "transition-colors duration-150",
-            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus",
             isStopping
               ? "bg-primary/6 text-primary/40 cursor-not-allowed"
               : "bg-primary/10 hover:bg-primary/18 active:bg-primary/25 text-primary"

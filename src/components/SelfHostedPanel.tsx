@@ -24,7 +24,7 @@ export default function SelfHostedPanel({
   return (
     <div className="border border-border rounded-lg p-3 space-y-2.5">
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-foreground">
+        <label className="block text-sm font-medium text-foreground">
           {t("settingsPage.selfHosted.serverUrl")}
         </label>
         <Input
@@ -37,7 +37,7 @@ export default function SelfHostedPanel({
       </div>
       {onModelChange && (
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-foreground">{t("common.model")}</label>
+          <label className="block text-sm font-medium text-foreground">{t("common.model")}</label>
           <Input
             dir="ltr"
             value={model ?? ""}

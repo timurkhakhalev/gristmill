@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import ReactMarkdown from "react-markdown";
 import { Button, Dropdown, Label, ListBox, Modal, Popover, Select, Tabs } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AudioLines, ChevronDown, Download, MoreHorizontal, Play, RotateCcw, Trash2 } from "../icons";
+import { AudioLines, ChevronDown, MoreHorizontal, Play, RotateCcw, Trash2 } from "../icons";
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
@@ -11,6 +11,8 @@ import { getMeetingFileTranscriptionProviders, getAllReasoningModels, getProvide
 import { BYOK_API_KEYS } from "../../config/secretKeys";
 import { ConfirmDialog } from "../ui/dialog";
 import { useDialogs } from "../../hooks/useDialogs";
+import { openSettings } from "../../utils/openSettings";
+import { NoteNotice } from "./NoteNotices";
 
 type ViewMode = "raw" | "enhanced" | "transcript";
 type RunChoice = { kind: "reprocess" | "summary"; partId?: string };
@@ -38,7 +40,10 @@ function formatDuration(duration: number | null) {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, fallbackTranscript, fallbackSummary }: {
+export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, fallbackTranscript, fallbackSummary, actions, notice }: {
+  actions?: ReactNode;
+  /** Live capture notice rendered under the toolbar, above processing status. */
+  notice?: ReactNode;
   noteId: number;
   locale: string;
   previewRecordings?: MeetingProcessingRecordingResult[];
@@ -91,11 +96,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const parts = useMemo(() => recordings.filter((item) => item.recording.groupId === currentGroup).sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt)), [recordings, currentGroup]);
   const versions = useMemo(() => parts.flatMap((part) => part.runs).filter((item) => item.transcript).sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt)), [parts]);
   const selected = versions.find((item) => item.run.id === runId) ?? versions.find((item) => parts.some((part) => part.recording.currentRunId === item.run.id)) ?? versions[0];
+  const speakerLabel = (id: string) => t("meetingResults.speakerNumber", { defaultValue: "Speaker {{number}}", number: [...new Set(selected?.transcript?.segments?.map((segment) => segment.speaker).filter(Boolean))].indexOf(id) + 1 });
   const selectedId = selected?.run.id ?? "";
-  const sourceVersion = selected?.run.sourceRunId ? versions.find((item) => item.run.id === selected.run.sourceRunId) : null;
-  const sourceTimes = selected?.run.sourceRecordingIds.map((id) => parts.find((part) => part.recording.id === id))
-    .filter((part): part is MeetingProcessingRecordingResult => Boolean(part))
-    .map((part) => dateLabel(part.recording.startedAt, locale, { timeStyle: "short" })).join(", ") ?? "";
+
   const allRuns = parts.flatMap((part) => part.runs);
   const combinedCurrent = allRuns.find((item) => item.run.kind === "reprocess" && item.run.sourceRecordingIds.length > 1 &&
     parts.some((part) => part.recording.currentRunId === item.run.id));
@@ -275,8 +278,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           <Tabs.Tab id="transcript">{t("notes.editor.transcript")}<Tabs.Indicator /></Tabs.Tab>
         </Tabs.List>
       </Tabs>
+      <div className="oh-toolbar-actions">
       <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
-        <Button size="sm" variant="tertiary" aria-label={`${tr("audioParts", "Audio")} ${parts.length}`}><AudioLines size={16}/>{tr("audioParts", "Audio")} <span className="oh-count">{parts.length}</span></Button>
+        <Button size="sm" variant="tertiary" aria-label={`${tr("audioParts", "Audio")} ${parts.length}`}><AudioLines size={16}/><span className="oh-toolbar-label">{tr("audioParts", "Audio")}</span> <span className="oh-count">{parts.length}</span></Button>
         <Popover.Content placement="bottom end" className="oh-audio-popover"><Popover.Dialog>
           <Popover.Heading>{tr("audioParts", "Audio")}</Popover.Heading>
           {groups.length > 1 && <Choice label={t("meetingResults.recording")} value={currentGroup ?? ""} options={groups.map((group) => ({ id: group.recording.groupId, label: dateLabel(group.recording.startedAt, locale, { dateStyle: "medium", timeStyle: "short" }) }))} onChange={setGroupId} />}
@@ -299,28 +303,44 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           <p className="oh-muted oh-small">{tr("originalsPreserved", "Original microphone and system tracks are saved separately.")}</p>
         </Popover.Dialog></Popover.Content>
       </Popover>
+      {actions}
+      </div>
     </div>
 
-    {parts.some((part) => part.recording.captureState === "incomplete" || part.recording.captureErrorCode) && <p className="oh-meeting-warning" role="alert">{t("meetingResults.captureIncomplete")}</p>}
-    {latestRun && !["complete", "cancelled"].includes(latestRun.run.status) && <div className="oh-processing" role="status">
-      <strong>{t(`meetingResults.stage.${latestRun.run.stage}`)} · {t(`meetingResults.status.${latestRun.run.status}`)}</strong>
-      {latestRun.run.errorCode && <span>{latestRun.run.errorCode}</span>}
-      {latestRun.run.status === "blocked" && (latestRun.run.configError || !latestRun.run.config || latestRun.run.errorCode === "missing-summary-config") && <Button size="sm" variant="ghost" onPress={() => void runTask(async () => {
-        if (previewRecordings) { setMessage("Mock settings updated in memory"); return; }
-        const snapshot = snapshotMeetingRecordingConfig(latestRun.run.stage === "summary" && latestRun.transcript ? latestRun.run.config?.transcription : undefined);
-        const result = await window.electronAPI.meetingProcessingUpdateBlockedRunConfig({ runId: latestRun.run.id, config: snapshot.config, configError: snapshot.configError });
-        if (!result.success) throw new Error(result.error || t("meetingResults.updateConfigError"));
-      })}>{t("meetingResults.updateRunSettings")}</Button>}
-      {["failed", "blocked"].includes(latestRun.run.status) && <Button size="sm" variant="ghost" onPress={() => void runTask(async () => {
-        if (previewRecordings) { setMessage("Mock retry queued in memory"); return; }
-        const result = await window.electronAPI.meetingProcessingRetryRun(latestRun.run.id);
-        if (!result.success) throw new Error(result.error || t("meetingResults.retryError"));
-      })}>{t("meetingResults.retry")}</Button>}
-    </div>}
+    {notice}
+    {parts.some((part) => part.recording.captureState === "incomplete" || part.recording.captureErrorCode) && <NoteNotice
+      status="warning"
+      title={t("notes.editor.capture.incomplete")}
+      description={t("meetingResults.captureIncomplete")}
+    />}
+    {latestRun && !["complete", "cancelled"].includes(latestRun.run.status) && (() => {
+      const { status, stage, errorCode } = latestRun.run;
+      const stageKey = stage === "asr" || stage === "summary" ? stage : "other";
+      const needsConfig = status === "blocked" && Boolean(latestRun.run.configError || !latestRun.run.config || errorCode === "missing-summary-config");
+      const settingsSection = stage === "summary" || errorCode === "missing-summary-config" ? "llms" : "speechToText";
+      const actions = <>
+        {needsConfig && <Button size="sm" variant="secondary" onPress={() => openSettings(settingsSection)}>{t("meetingResults.openSettings")}</Button>}
+        {needsConfig && <Button size="sm" variant="ghost" isDisabled={busy} onPress={() => void runTask(async () => {
+          if (previewRecordings) { setMessage("Mock settings updated in memory"); return; }
+          const snapshot = snapshotMeetingRecordingConfig(latestRun.run.stage === "summary" && latestRun.transcript ? latestRun.run.config?.transcription : undefined);
+          const result = await window.electronAPI.meetingProcessingUpdateBlockedRunConfig({ runId: latestRun.run.id, config: snapshot.config, configError: snapshot.configError });
+          if (!result.success) throw new Error(result.error || t("meetingResults.updateConfigError"));
+        })}>{t("meetingResults.updateRunSettings")}</Button>}
+        {(status === "failed" || (status === "blocked" && !needsConfig)) && <Button size="sm" variant="secondary" isDisabled={busy} onPress={() => void runTask(async () => {
+          if (previewRecordings) { setMessage("Mock retry queued in memory"); return; }
+          const result = await window.electronAPI.meetingProcessingRetryRun(latestRun.run.id);
+          if (!result.success) throw new Error(result.error || t("meetingResults.retryError"));
+        })}>{t("meetingResults.retry")}</Button>}
+      </>;
+      if (status === "blocked") return <NoteNotice status="warning" title={t(`meetingResults.blocked.${stageKey}`)}
+        description={t(errorCode === "missing-transcription-config" || errorCode === "missing-summary-config" ? `meetingResults.blockedReason.${errorCode}` : "meetingResults.blockedReason.other")} actions={actions} />;
+      if (status === "failed") return <NoteNotice status="danger" title={t(`meetingResults.failed.${stageKey}`)} description={t("meetingResults.failedReason")} actions={actions} />;
+      return <NoteNotice status="accent" busy title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
+    })()}
 
     {viewMode === "raw" ? manualContent : <div className="oh-result">
-      {selected && <div className="oh-result-meta"><span>{viewMode === "enhanced" ? selected.run.config?.summary?.provider : selected.run.provider} · {viewMode === "enhanced" ? selected.run.config?.summary?.model : selected.run.model}</span>
-        <Dropdown><Button size="sm" variant="ghost">{t("meetingResults.version")} <ChevronDown size={13}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={t("meetingResults.version")} onAction={(key) => void selectRun(String(key))}>{versions.map((item, index) => <Dropdown.Item key={item.run.id} id={item.run.id} textValue={`${t("meetingResults.version")} ${index + 1}`}><Label>{index + 1} · {item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / {item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model || "—"}</Label><span className="oh-muted oh-small">{dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" })}</span></Dropdown.Item>)}</Dropdown.Menu></Dropdown.Popover></Dropdown>
+      {selected && (viewMode !== "enhanced" || selected.summary?.text) && <div className="oh-result-meta"><span>{viewMode === "enhanced" ? selected.run.config?.summary?.provider : selected.run.provider} · {viewMode === "enhanced" ? selected.run.config?.summary?.model : selected.run.model}</span>
+        <Dropdown><Button size="sm" variant="ghost" className="oh-version-button">{t("meetingResults.version")} <ChevronDown size={13}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={t("meetingResults.version")} onAction={(key) => void selectRun(String(key))}>{versions.map((item, index) => <Dropdown.Item key={item.run.id} id={item.run.id} textValue={`${t("meetingResults.version")} ${index + 1}`}><Label>{index + 1} · {item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / {item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model || "—"}</Label><span className="oh-muted oh-small">{dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" })}</span></Dropdown.Item>)}</Dropdown.Menu></Dropdown.Popover></Dropdown>
         <Dropdown><Button size="sm" variant="ghost" isIconOnly aria-label={tr("resultActions", "Result actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("resultActions", "Result actions")} onAction={(key) => {
           if (key === "asr") openRun("reprocess");
           if (key === "summary") openRun("summary");
@@ -330,10 +350,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           <Dropdown.Item id="asr" isDisabled={!availableParts.length} textValue={t("meetingResults.newAsr")}>{t("meetingResults.newAsr")}</Dropdown.Item>
           <Dropdown.Item id="summary" textValue={t("meetingResults.newSummary")}>{t("meetingResults.newSummary")}</Dropdown.Item>
           <Dropdown.Item id="copy" textValue={tr("copyResult", "Copy text")}>{tr("copyResult", "Copy text")}</Dropdown.Item>
-          <Dropdown.Item id="export" isDisabled={!availableParts.length} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
+          <Dropdown.Item id="export" isDisabled={!availableParts.length} textValue={t("meetingResults.exportMixed")}>{t("meetingResults.exportMixed")}</Dropdown.Item>
         </Dropdown.Menu></Dropdown.Popover></Dropdown>
       </div>}
-      {viewMode === "enhanced" ? selected?.summary?.text ? <article className="oh-summary"><ReactMarkdown>{selected.summary.text}</ReactMarkdown><p className="oh-provenance">{tr("fromTranscript", "From transcript")} {sourceVersion ? `${sourceVersion.run.provider || "local"} / ${sourceVersion.run.model || "—"}` : selected.run.sourceRunId ?? selected.run.id} · {tr("audioParts", "Audio")}: {sourceTimes}</p></article> : fallbackSummary : selected?.transcript ? <div className="oh-transcript">
+      {viewMode === "enhanced" ? selected?.summary?.text ? <article className="oh-summary"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary : selected?.transcript ? <div className="oh-transcript">
         {selected.transcript.segments?.length ? selected.transcript.segments.map((segment, index) => <div className="oh-transcript-row" key={`${index}-${segment.start}`}>
           <button className="oh-timestamp" onClick={() => {
             let remaining = segment.start;
@@ -347,13 +367,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           }}>{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</button>
           <div>{segment.speaker && <button className="oh-speaker" onClick={() => {
             const correction = selected.speakerCorrections.find((item) => item.speakerId === segment.speaker);
-            setSpeakerId(segment.speaker ?? null); setSpeakerName(correction?.displayName ?? segment.speaker ?? ""); setSpeakerProfileId(String(correction?.profileId ?? "none"));
-          }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? segment.speaker}</button>}<p>{segment.text}</p></div>
+            setSpeakerId(segment.speaker ?? null); setSpeakerName(correction?.displayName ?? (segment.speaker ? speakerLabel(segment.speaker) : "")); setSpeakerProfileId(String(correction?.profileId ?? "none"));
+          }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}<p>{segment.text}</p></div>
         </div>) : <p className="oh-transcript-text">{selected.transcript.text}</p>}
-        <p className="oh-provenance">{selected.run.sourceRecordingIds.length} {tr("parts", "parts")} · {selected.run.provider} / {selected.run.model} · {tr("audioParts", "Audio")}: {sourceTimes}</p>
+
       </div> : fallbackTranscript}
     </div>}
-    {message && <p role="status" className="oh-meeting-message">{message}</p>}
+    {message && <NoteNotice status="default" title={message} />}
     <audio ref={audioRef} preload="metadata" onEnded={() => setPlayingId(null)} />
 
     <Modal isOpen={runChoice !== null} onOpenChange={(open) => { if (!open) setRunChoice(null); }}><Modal.Backdrop><Modal.Container size="md"><Modal.Dialog><Modal.CloseTrigger/><Modal.Header><Modal.Heading>{isSummaryChoice ? t("meetingResults.newSummary") : t("meetingResults.newAsr")}</Modal.Heading></Modal.Header><Modal.Body>

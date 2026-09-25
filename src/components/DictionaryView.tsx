@@ -147,19 +147,19 @@ export default function DictionaryView() {
         variant="destructive"
       />
 
-      <div className="px-5 pt-4">
-        <TabsList className="h-7 p-0.5 rounded-[7px]">
-          <TabsTrigger value="dictionary" className="h-6 px-2.5 text-xs rounded-[5px]">
+      <div className="mx-auto w-full max-w-2xl px-6 pt-5">
+        <TabsList>
+          <TabsTrigger value="dictionary">
             {t("dictionary.tabDictionary")}
           </TabsTrigger>
-          <TabsTrigger value="snippets" className="h-6 px-2.5 text-xs rounded-[5px]">
+          <TabsTrigger value="snippets">
             {t("dictionary.tabSnippets")}
           </TabsTrigger>
         </TabsList>
       </div>
 
       <TabsContent value="dictionary" className="flex-1 min-h-0 mt-0 overflow-y-auto">
-        <div className="px-5 py-4 flex flex-col gap-3">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-6 py-4">
           {/* ─── Add word ─── */}
           <div>
             <div className="relative">
@@ -172,7 +172,7 @@ export default function DictionaryView() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleAdd();
                 }}
-                className="w-full h-8 text-xs pe-24 placeholder:text-foreground/45"
+                className="w-full h-9 rounded-lg text-sm pe-24 placeholder:text-muted-foreground"
               />
               <div className="absolute end-2.5 top-1/2 -translate-y-1/2 flex items-center gap-2">
                 <button

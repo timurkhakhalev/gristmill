@@ -443,7 +443,7 @@
       "selectModelHint": "モデルが未選択です — 下のリストから選択してください。",
       "keyRequiredHint": "推論には API キーが必要です — このプロバイダーを使用するには追加してください。"
     },
-    "getApiKey": "API キーを取得 ->",
+    "getApiKey": "API キーを取得",
     "selectModel": "モデルを選択",
     "availableModels": "利用可能なモデル",
     "disableThinking": {
@@ -545,7 +545,7 @@
       "unavailable": "利用不可"
     },
     "apiKeyOptional": "API キー（任意）",
-    "getKey": "キーを取得 ->",
+    "getKey": "キーを取得",
     "endpointUrl": "エンドポイント URL",
     "azureHint": "Azure AI Foundry: リソースのエンドポイント（例: https://your-resource.cognitiveservices.azure.com）を入力し、モデルにデプロイの正確な名前を設定してください。",
     "customProvider": "カスタム",
@@ -837,7 +837,8 @@
     "selectPlaceholder": "マイクを選択",
     "systemDefault": "システムデフォルト",
     "unknownDevice": "不明なデバイス",
-    "using": "使用中: {{device}}"
+    "using": "使用中: {{device}}",
+    "refresh": "デバイスを更新"
   },
   "promptStudio": {
     "common": {
@@ -902,27 +903,27 @@
     },
     "sections": {
       "general": {
-        "description": "外観、サウンド、起動設定",
+        "description": "言語、テーマ、ノート",
         "label": "環境設定"
       },
       "hotkeys": {
-        "description": "ディクテーションホットキーと起動モード",
+        "description": "ミーティングモードのキーボードショートカット",
         "label": "ホットキー"
       },
       "speechToText": {
-        "description": "ディクテーションとノート録音用エンジン",
+        "description": "録音とアップロードしたファイルの文字起こし方法",
         "label": "音声認識"
       },
       "llms": {
-        "description": "クリーンアップ、ノートのフォーマット、チャット用のモデル",
+        "description": "会議の要約とチャットに使うモデル",
         "label": "言語モデル"
       },
       "privacyData": {
-        "description": "プライバシー、権限、分析",
+        "description": "ノート、音声、チャットはこのデバイスに保存されます。プロバイダーには API キーで送信した内容だけが届きます。",
         "label": "プライバシーとデータ"
       },
       "system": {
-        "description": "更新、ストレージ、開発者ツール",
+        "description": "起動、録音デバイス、診断",
         "label": "システム"
       }
     },
@@ -1079,7 +1080,8 @@
       "noteFiles": {
         "label": "Store note files",
         "description": "Keep a local Markdown copy of notes."
-      }
+      },
+      "notesGroup": "ノート"
     },
     "permissions": {
       "description": "OpenHercules の正常動作に必要なシステム権限をテスト・管理",
@@ -1119,7 +1121,8 @@
       "deleteAllAudioConfirmDescription": "録音中の場合は文字起こしを開始せず安全に停止し、その後、保存済み音声を削除します。",
       "deleteAllAudioConfirm": "すべての音声を削除",
       "deleteAllAudioDone": "{{count}} 件の音声を削除しました。",
-      "deleteAllAudioFailed": "{{count}} 件の音声を削除できませんでした。再試行してください。"
+      "deleteAllAudioFailed": "{{count}} 件の音声を削除できませんでした。再試行してください。",
+      "audioGroup": "会議の音声"
     },
     "prompts": {
       "description": "テキスト補正と指示検出を行う統合システムプロンプトの表示、カスタマイズ、テスト",
@@ -1458,8 +1461,12 @@
         "unavailable": "利用不可",
         "inactive": "未開始",
         "writingToDisk": "ディスクに書き込み中",
-        "incompleteReason": "音声が一部欠けている可能性があります。問題発生前に保存された音声は保持されます。"
-      }
+        "incompleteReason": "音声が一部欠けている可能性があります。問題発生前に保存された音声は保持されます。",
+        "failedReason": "マイクとシステム音声の権限を確認してから、もう一度お試しください。"
+      },
+      "summaryEmptyTitle": "まだ要約はありません",
+      "summaryEmptyDescription": "録音の文字起こしが終わると、ここに要約が表示されます。",
+      "summaryReadyDescription": "文字起こしが完了しました。言語モデルで要約を作成できます。"
     },
     "participants": {
       "attendee": "名の参加者",
@@ -1662,24 +1669,24 @@
     },
     "onboarding": {
       "llm": {
-        "title": "AI モデルを設定",
-        "description": "アクションは AI を使ってノートを変換します。言語モデルを設定して始めましょう。",
-        "configured": "AI モデルが設定されました"
-      },
-      "actions": {
-        "title": "AI アクション",
-        "description": "アクションでノートを変換できます — 文字起こしの整理、議事録の要約など。組み込みアクションを使うか、独自のアクションを作成できます。",
-        "builtInLabel": "組み込み",
-        "createTitle": "独自のアクションを作成",
-        "createDescription": "独自の AI プロンプトでカスタムアクションを定義できます。設定からいつでも編集・追加できます。",
-        "created": "作成しました！"
+        "title": "要約とチャット",
+        "description": "言語モデルが要約を作成し、ノートに関する質問に答えます。"
       },
       "getStarted": "始める",
       "systemAudio": {
         "title": "システム音声",
-        "description": "マイクと一緒にミーティングや他のアプリの音声をキャプチャします。",
-        "grant": "権限を許可",
+        "description": "自分のマイクだけでなく、通話相手の声も録音します。",
+        "grant": "許可",
         "enabled": "有効"
+      },
+      "title": "会議ノートの設定",
+      "subtitle": "会議を録音すると、文字起こしと要約が作成されます。この設定は一度だけです。",
+      "done": "完了",
+      "setUp": "設定",
+      "laterHint": "これらはあとから設定でいつでも変更できます。",
+      "transcription": {
+        "title": "音声認識",
+        "description": "会議の音声を文字起こしに変換します。"
       }
     },
     "enhance": {
@@ -1944,7 +1951,6 @@
     "description": "サービスを接続してワークフローを強化",
     "googleCalendar": {
       "title": "Google カレンダー",
-      "optional": "任意",
       "description": "カレンダーから会議名と参加者を自動で入力します。",
       "connect": "Google カレンダーを接続",
       "connecting": "接続中...",
@@ -1964,7 +1970,6 @@
     },
     "microsoftCalendar": {
       "title": "Microsoft カレンダー",
-      "optional": "任意",
       "description": "Outlook または Microsoft 365 のカレンダーから会議を読み取ります。",
       "connect": "Microsoft カレンダーを接続",
       "connected": "接続済み",
@@ -1980,7 +1985,6 @@
     },
     "appleCalendar": {
       "title": "Apple カレンダー",
-      "optional": "任意",
       "description": "Calendar.app から会議を読み取ります — iCloud、Google、Exchange、Outlook をまとめて。",
       "connect": "Apple カレンダーを接続",
       "connected": "接続済み",
@@ -2189,6 +2193,7 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
@@ -2221,7 +2226,7 @@
     "selectError": "結果を選択できませんでした。",
     "createError": "処理を作成できませんでした。",
     "retryError": "処理を再試行できませんでした。",
-    "updateRunSettings": "現在の設定を使用",
+    "updateRunSettings": "現在の設定で再試行",
     "updateConfigError": "この処理の設定を更新できませんでした。",
     "playbackError": "音声の再生を準備できませんでした。",
     "exportError": "音声の書き出しに失敗しました。",
@@ -2268,6 +2273,27 @@
       "finalizing": "録音を保存中",
       "ready": "保存済み",
       "incomplete": "未完了"
+    },
+    "openSettings": "設定を開く",
+    "blocked": {
+      "asr": "文字起こしは設定待ちです",
+      "summary": "要約は設定待ちです",
+      "other": "処理は設定待ちです"
+    },
+    "blockedReason": {
+      "missing-transcription-config": "音声認識プロバイダーを選び API キーを追加してから、再試行してください。",
+      "missing-summary-config": "会議の要約に使う言語モデルを選んでから、再試行してください。",
+      "other": "処理の設定を更新してから、再試行してください。"
+    },
+    "failed": {
+      "asr": "文字起こしに失敗しました",
+      "summary": "要約に失敗しました",
+      "other": "処理に失敗しました"
+    },
+    "failedReason": "音声は保存されています。接続と API キーを確認してから、再試行してください。",
+    "progress": {
+      "pending": "開始を待っています。",
+      "running": "数分かかることがあります。その間もノートを書き続けられます。"
     }
   }
 }

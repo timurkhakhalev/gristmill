@@ -1,7 +1,6 @@
 import { Globe, Download, Trash2, X, ExternalLink } from "../icons";
 import { useTranslation } from "react-i18next";
 import { Button } from "./button";
-import { cn } from "../lib/utils";
 import type { ColorScheme } from "../../utils/modelPickerStyles";
 import { createExternalLinkHandler, withUtm } from "../../utils/externalLinks";
 
@@ -22,34 +21,12 @@ export interface ModelCardOption {
   recommended?: boolean;
 }
 
-const COLOR_CONFIG: Record<
-  ColorScheme,
-  {
-    selected: string;
-    default: string;
-  }
-> = {
-  purple: {
-    selected:
-      "border-primary/30 bg-primary/8 dark:bg-primary/6 dark:border-primary/20 shadow-[0_0_0_1px_oklch(0.62_0.22_260/0.12),0_0_10px_-3px_oklch(0.62_0.22_260/0.18)]",
-    default:
-      "border-border bg-surface-1 hover:border-border-hover hover:bg-muted dark:border-white/10 dark:bg-white/3 dark:hover:border-white/20 dark:hover:bg-white/8",
-  },
-  blue: {
-    selected:
-      "border-primary/30 bg-primary/10 dark:bg-primary/6 shadow-[0_0_0_1px_oklch(0.62_0.22_260/0.15),0_0_12px_-3px_oklch(0.62_0.22_260/0.2)]",
-    default:
-      "border-border bg-surface-1 hover:border-border-hover hover:bg-muted dark:border-white/10 dark:bg-white/3 dark:hover:border-white/20 dark:hover:bg-white/8",
-  },
-};
-
 interface ModelCardProps {
   model: ModelCardOption;
   isSelected: boolean;
   onSelect: (modelId: string) => void;
   colorScheme?: ColorScheme;
-  // Long-form descriptions (e.g. OpenRouter) fill the row and ellipsize
-  // instead of sitting flush-right like short metadata.
+  // Kept for call-site compatibility; descriptions now render on a second row.
   truncateDescription?: boolean;
   // Local model actions (optional - when provided, enables local model UI)
   onDownload?: (modelId: string) => void;
@@ -61,14 +38,11 @@ export function ModelCard({
   model,
   isSelected,
   onSelect,
-  colorScheme = "purple",
-  truncateDescription = false,
   onDownload,
   onDelete,
   onCancelDownload,
 }: ModelCardProps) {
   const { t } = useTranslation();
-  const styles = COLOR_CONFIG[colorScheme];
   const isLocalMode = Boolean(onDownload);
   const isDownloaded = model.isDownloaded;
   const isDownloading = model.isDownloading;
@@ -85,40 +59,43 @@ export function ModelCard({
     }
   };
 
-  const getStatusDotClass = () => {
-    if (!isLocalMode) {
-      return isSelected
-        ? "bg-primary shadow-[0_0_6px_oklch(0.62_0.22_260/0.6)]"
-        : "bg-muted-foreground/30";
-    }
-    if (isDownloaded) {
-      return isSelected
-        ? "bg-primary shadow-[0_0_6px_oklch(0.62_0.22_260/0.6)]"
-        : "bg-success shadow-[0_0_4px_rgba(34,197,94,0.5)]";
-    }
-    if (isDownloading) {
-      return "bg-amber-500 shadow-[0_0_4px_rgba(245,158,11,0.5)]";
-    }
-    return "bg-muted-foreground/20";
-  };
+  const isSelectable = !isLocalMode || Boolean(isDownloaded);
 
   return (
     <div
+      role="radio"
+      aria-checked={isSelected}
+      aria-disabled={!isSelectable}
+      tabIndex={isSelectable ? 0 : -1}
       onClick={handleCardClick}
-      className={`relative w-full p-2 rounded-md border text-start transition-colors duration-200 group overflow-hidden ${
-        isSelected ? styles.selected : styles.default
-      } ${!isLocalMode || (isDownloaded && !isSelected) ? "cursor-pointer" : ""}`}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleCardClick();
+        }
+      }}
+      className={`group relative w-full min-h-[44px] overflow-hidden rounded-lg border px-3 py-2 text-start outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-focus ${
+        isSelected
+          ? "border-primary/60 bg-primary/8"
+          : "border-border bg-surface hover:bg-surface-secondary"
+      } ${isSelectable && !isSelected ? "cursor-pointer" : ""}`}
     >
-      <div className="flex items-center gap-1.5">
-        <div
-          className={`w-1.5 h-1.5 rounded-full shrink-0 ${getStatusDotClass()} ${
-            isSelected && isDownloaded
-              ? "animate-[pulse-glow_2s_ease-in-out_infinite]"
+      <div className="flex items-center gap-2.5 min-w-0">
+        <span
+          aria-hidden="true"
+          className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${
+            isSelected
+              ? "border-accent bg-accent"
               : isDownloading
-                ? "animate-[spinner-rotate_1s_linear_infinite]"
-                : ""
+                ? "border-warning border-dashed animate-[spinner-rotate_1s_linear_infinite]"
+                : isSelectable
+                  ? "border-border-hover"
+                  : "border-border border-dashed"
           }`}
-        />
+        >
+          {isSelected && <span className="size-1.5 rounded-full bg-accent-foreground" />}
+        </span>
 
         {model.icon ? (
           <img
@@ -133,48 +110,17 @@ export function ModelCard({
 
         <span
           dir="ltr"
-          className={cn(
-            "text-sm font-semibold text-foreground truncate tracking-tight",
-            truncateDescription && (model.description ? "shrink-0 max-w-[60%]" : "min-w-0 flex-1")
-          )}
+          className="text-sm font-semibold text-foreground tracking-tight truncate min-w-0 flex-1"
         >
           {model.label}
         </span>
-        {model.description && (
-          <span
-            className={
-              truncateDescription
-                ? "text-xs text-muted-foreground/70 truncate min-w-0 flex-1"
-                : "text-xs text-muted-foreground/70 tabular-nums shrink-0"
-            }
-          >
-            {model.description}
-          </span>
-        )}
-        {specHref && (
-          <a
-            href={specHref}
-            onClick={createExternalLinkHandler(specHref)}
-            className="inline-flex items-center gap-0.5 text-xs text-primary/60 hover:text-primary transition-colors shrink-0"
-          >
-            {t("models.learnMore")}
-            <ExternalLink size={9} />
-          </a>
-        )}
-
-        {model.recommended && (
-          <span className="text-xs font-medium text-primary px-1.5 py-0.5 bg-primary/10 rounded-sm shrink-0">
-            {t("common.recommended")}
-          </span>
-        )}
 
         <div className="ms-auto flex items-center gap-1.5 shrink-0">
-          {isSelected && (
-            <span className="text-xs font-medium text-primary px-2 py-0.5 bg-primary/10 rounded-sm">
-              {t("common.active")}
+          {model.recommended && (
+            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+              {t("common.recommended")}
             </span>
           )}
-
           {isLocalMode && (
             <>
               {isDownloaded ? (
@@ -221,6 +167,25 @@ export function ModelCard({
           )}
         </div>
       </div>
+      {(model.description || specHref) && (
+        <div className="mt-0.5 ps-[3.125rem] flex items-center gap-2 min-w-0">
+          {model.description && (
+            <span className="text-xs text-muted-foreground truncate min-w-0 flex-1">
+              {model.description}
+            </span>
+          )}
+          {specHref && (
+            <a
+              href={specHref}
+              onClick={createExternalLinkHandler(specHref)}
+              className="inline-flex items-center gap-0.5 text-xs text-primary/60 hover:text-primary transition-colors shrink-0"
+            >
+              {t("models.learnMore")}
+              <ExternalLink size={9} />
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -256,7 +221,7 @@ export default function ModelCardList({
   }
 
   return (
-    <div className={`space-y-0.5 ${className}`}>
+    <div role="radiogroup" className={`space-y-1 ${className}`}>
       {models.map((model) => (
         <ModelCard
           key={model.value}

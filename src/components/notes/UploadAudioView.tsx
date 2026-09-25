@@ -55,6 +55,8 @@ import type {
   FileTranscriptionResult,
   DiarizationSettings,
 } from "../../services/fileTranscription";
+import EmptyStateCard from "../ui/EmptyStateCard";
+import { Toggle } from "../ui/toggle";
 import { MAX_SPEAKER_COUNT } from "../../constants/speakerDetection.json";
 import BatchQueueView from "./BatchQueueView";
 import { generateNoteTitle } from "../../utils/generateTitle";
@@ -1181,24 +1183,23 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           )}
         </div>
 
-        {(state === "idle" || state === "selected") && (
+        {(state === "idle" || state === "selected") && providerReady !== false && (
           <div className="max-w-[320px] mx-auto mt-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-xs text-foreground/45 font-medium">
+                <p className="text-sm font-medium text-foreground">
                   {t("notes.upload.speakerDetection")}
                 </p>
-                <p className="text-[10px] text-foreground/45 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {t("notes.upload.speakerDetectionDescription")}
                 </p>
               </div>
-              <button
-                role="switch"
-                aria-checked={diarizationEnabled}
-                aria-label={t("notes.upload.speakerDetection")}
-                onClick={async () => {
+              <Toggle
+                checked={diarizationEnabled}
+                disabled={diarizationDownloading}
+                ariaLabel={t("notes.upload.speakerDetection")}
+                onChange={async (next) => {
                   if (diarizationDownloading) return;
-                  const next = !diarizationEnabled;
                   setDiarizationEnabled(next);
                   // BYOK-native diarization needs no local models — don't download them.
                   if (
@@ -1210,23 +1211,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                     if (!ready) setDiarizationEnabled(false);
                   }
                 }}
-                className={cn(
-                  "relative w-7 h-4 rounded-full transition-colors shrink-0",
-                  diarizationDownloading
-                    ? "bg-primary/50 animate-pulse"
-                    : diarizationEnabled
-                      ? "bg-primary"
-                      : "bg-muted"
-                )}
-                disabled={diarizationDownloading}
-              >
-                <div
-                  className={cn(
-                    "absolute top-0.5 start-0.5 w-3 h-3 rounded-full bg-white transition-transform",
-                    diarizationEnabled ? "translate-x-3 rtl:-translate-x-3" : ""
-                  )}
-                />
-              </button>
+              />
             </div>
 
             {diarizationEnabled &&
@@ -1345,29 +1330,15 @@ interface NoProviderViewProps {
 
 function NoProviderView({ t, onOpenSettings }: NoProviderViewProps) {
   return (
-    <div
-      className="flex flex-col items-center gap-4 py-2"
-      style={{ animation: "float-up 0.4s ease-out" }}
+    <EmptyStateCard
+      icon={Settings}
+      title={t("notes.upload.noProviderTitle")}
+      description={t("notes.upload.noProviderDescription")}
     >
-      <div className="w-10 h-10 rounded-[10px] bg-linear-to-b from-foreground/5 to-foreground/2 dark:from-white/8 dark:to-white/3 border border-foreground/8 dark:border-white/10 flex items-center justify-center">
-        <Settings
-          size={17}
-          strokeWidth={1.5}
-          className="text-foreground/45 dark:text-foreground/45"
-        />
-      </div>
-      <div className="text-center">
-        <h2 className="text-xs font-semibold text-foreground mb-1">
-          {t("notes.upload.noProviderTitle")}
-        </h2>
-        <p className="text-xs text-foreground/45 leading-relaxed max-w-60">
-          {t("notes.upload.noProviderDescription")}
-        </p>
-      </div>
-      <Button variant="default" size="sm" className="h-7 text-xs px-4" onClick={onOpenSettings}>
+      <Button size="sm" onClick={onOpenSettings}>
         {t("notes.upload.noProviderAction")}
       </Button>
-    </div>
+    </EmptyStateCard>
   );
 }
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Bug, Check } from "../icons";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
@@ -47,8 +48,9 @@ export default function NotesDebugControls({
   scenario: NotesDebugScenario | null;
   onChange: (scenario: NotesDebugScenario | null) => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -70,7 +72,10 @@ export default function NotesDebugControls({
               key={id ?? "live"}
               type="button"
               aria-pressed={scenario === id}
-              onClick={() => onChange(id as NotesDebugScenario | null)}
+              onClick={() => {
+                onChange(id as NotesDebugScenario | null);
+                setOpen(false);
+              }}
               className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs hover:bg-foreground/5"
             >
               {label}

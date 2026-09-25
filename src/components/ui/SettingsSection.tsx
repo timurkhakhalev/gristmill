@@ -1,7 +1,7 @@
 import React from "react";
-import { useTranslation } from "react-i18next";
 import { useSettingsLayout } from "./useSettingsLayout";
 import type { InferenceMode } from "../../contracts/inferenceSettings";
+import { SettingsRowLabelContext } from "./settingsRowLabel";
 
 interface SettingsSectionProps {
   title: string;
@@ -19,9 +19,9 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
   return (
     <div className={`space-y-3 ${className}`}>
       <div>
-        <h3 className="text-xs font-semibold text-foreground tracking-tight">{title}</h3>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         {description && (
-          <p className="text-xs text-muted-foreground/80 mt-0.5 leading-relaxed">{description}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{description}</p>
         )}
       </div>
       {children}
@@ -72,32 +72,37 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
   const { isCompact } = useSettingsLayout();
 
   return (
-    <div
-      className={`flex ${
-        isCompact ? "flex-col items-start gap-2" : "items-center justify-between gap-4"
-      } ${className}`}
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-foreground">{label}</p>
-        {description && (
-          <p className="text-xs text-muted-foreground/80 mt-0.5 leading-relaxed">{description}</p>
-        )}
+    <SettingsRowLabelContext.Provider value={label}>
+      <div
+        className={`flex ${
+          isCompact ? "flex-col items-start gap-2" : "items-center justify-between gap-4"
+        } ${className}`}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">{label}</p>
+          {description && (
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{description}</p>
+          )}
+        </div>
+        <div className={isCompact ? "" : "shrink-0"}>{children}</div>
       </div>
-      <div className={isCompact ? "" : "shrink-0"}>{children}</div>
-    </div>
+    </SettingsRowLabelContext.Provider>
   );
 };
 
 export function SettingsPanel({
   children,
   className = "",
+  role,
 }: {
   children: React.ReactNode;
   className?: string;
+  role?: string;
 }) {
   return (
     <div
-      className={`rounded-lg border border-border/70 dark:border-border-subtle/70 bg-card/50 dark:bg-surface-2/50 backdrop-blur-sm divide-y divide-border/60 dark:divide-border-subtle/50 ${className}`}
+      role={role}
+      className={`rounded-lg border border-border bg-surface divide-y divide-border ${className}`}
     >
       {children}
     </div>
@@ -121,9 +126,9 @@ export function SettingsPanelRow({
 export function SectionHeader({ title, description }: { title: string; description?: string }) {
   return (
     <div className="mb-3">
-      <h3 className="text-xs font-semibold text-foreground tracking-tight">{title}</h3>
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       {description && (
-        <p className="text-xs text-muted-foreground/80 mt-0.5 leading-relaxed">{description}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{description}</p>
       )}
     </div>
   );
@@ -147,10 +152,9 @@ export function InferenceModeSelector({
   activeMode: InferenceMode | null;
   onSelect: (mode: InferenceMode) => void;
 }) {
-  const { t } = useTranslation();
 
   return (
-    <SettingsPanel className="overflow-hidden">
+    <SettingsPanel className="overflow-hidden" role="radiogroup">
       {modes.map((mode) => {
         const isActive = activeMode === mode.id;
         const isDisabled = !!mode.disabled;
@@ -162,6 +166,9 @@ export function InferenceModeSelector({
             }`}
           >
             <button
+              type="button"
+              role="radio"
+              aria-checked={isActive}
               onClick={() => onSelect(mode.id)}
               className={`w-full flex items-center gap-3 text-start cursor-pointer group ${
                 isDisabled ? "opacity-60" : ""
@@ -171,7 +178,7 @@ export function InferenceModeSelector({
                 className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 transition-colors ${
                   isActive
                     ? "bg-primary/10 dark:bg-primary/15"
-                    : "bg-muted/60 dark:bg-surface-raised group-hover:bg-muted dark:group-hover:bg-surface-3"
+                    : "bg-subtle/60 dark:bg-surface-raised group-hover:bg-subtle dark:group-hover:bg-surface-3"
                 }`}
               >
                 <div
@@ -183,13 +190,8 @@ export function InferenceModeSelector({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium text-foreground">{mode.label}</span>
-                  {isActive && !isDisabled && (
-                    <span className="text-xs font-medium text-primary bg-primary/10 dark:bg-primary/15 px-1.5 py-px rounded-sm">
-                      {t("common.active")}
-                    </span>
-                  )}
                   {isDisabled && mode.badge && (
-                    <span className="text-xs font-medium text-muted-foreground bg-muted/80 dark:bg-surface-3 px-1.5 py-px rounded-sm">
+                    <span className="text-xs font-medium text-muted-foreground bg-subtle/80 dark:bg-surface-3 px-1.5 py-px rounded-sm">
                       {mode.badge}
                     </span>
                   )}
@@ -199,13 +201,13 @@ export function InferenceModeSelector({
               <div
                 className={`w-4 h-4 rounded-full border-2 shrink-0 transition-colors ${
                   isActive
-                    ? "border-primary bg-primary"
-                    : "border-border-hover dark:border-border-subtle"
+                    ? "border-accent bg-accent"
+                    : "border-border-hover"
                 }`}
               >
                 {isActive && (
                   <div className="w-full h-full flex items-center justify-center">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-accent-foreground" />
                   </div>
                 )}
               </div>
@@ -214,5 +216,28 @@ export function InferenceModeSelector({
         );
       })}
     </SettingsPanel>
+  );
+}
+
+/** A titled group of settings rows sharing one bordered card. */
+export function SettingsCard({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-2">
+      {title && (
+        <h3 className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {title}
+        </h3>
+      )}
+      <SettingsPanel>{children}</SettingsPanel>
+    </section>
+  );
+}
+
+/** A SettingsRow padded to sit inside a SettingsCard. */
+export function SettingsCardRow(props: SettingsRowProps) {
+  return (
+    <SettingsPanelRow>
+      <SettingsRow {...props} />
+    </SettingsPanelRow>
   );
 }

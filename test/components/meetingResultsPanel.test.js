@@ -48,6 +48,8 @@ export const Dropdown = Object.assign(passthrough,{Popover:passthrough,Menu:pass
 export const Popover = Object.assign(passthrough,{Content:passthrough,Dialog:passthrough,Heading:passthrough});
 export const Select = Object.assign(passthrough,{Trigger:passthrough,Value:passthrough,Indicator:passthrough,Popover:passthrough});
 export const Tabs = Object.assign(passthrough,{List:passthrough,Tab:passthrough,Indicator:passthrough});
+export const Alert = Object.assign(passthrough,{Indicator:passthrough,Content:passthrough,Title:passthrough,Description:passthrough});
+export const Spinner = () => null;
 export const Modal = Object.assign(({isOpen,children}) => isOpen ? React.createElement(React.Fragment,null,children) : null,{Backdrop:passthrough,Container:passthrough,Dialog:passthrough,CloseTrigger:passthrough,Header:passthrough,Heading:passthrough,Body:passthrough,Footer:passthrough});
 `;
 
@@ -55,7 +57,8 @@ function find(tree, predicate) {
   if (Array.isArray(tree)) return tree.map((item) => find(item, predicate)).find(Boolean) ?? null;
   if (!tree || typeof tree !== "object") return null;
   if (predicate(tree)) return tree;
-  return find(tree.props?.children, predicate);
+  // Slot props (e.g. a notice's `actions`) hold elements too, not just children.
+  return Object.values(tree.props ?? {}).map((value) => find(value, predicate)).find(Boolean) ?? null;
 }
 
 function textOf(value) {

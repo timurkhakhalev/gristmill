@@ -95,7 +95,7 @@ export default function TestConnectionButton({ provider, getConfig }: TestConnec
           )}
           {errorInfo.copyCommand && (
             <div className="flex items-center gap-1.5">
-              <code dir="ltr" className="text-xs bg-muted px-1.5 py-0.5 rounded flex-1 font-mono">
+              <code dir="ltr" className="text-xs bg-subtle px-1.5 py-0.5 rounded flex-1 font-mono">
                 {errorInfo.copyCommand}
               </code>
               <Button

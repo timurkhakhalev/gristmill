@@ -63,7 +63,7 @@ function AuthModeToggle({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex gap-1 p-0.5 bg-muted rounded-md w-fit">
+    <div className="flex gap-1 p-0.5 bg-subtle rounded-md w-fit">
       {options.map((opt) => (
         <button
           key={opt.id}

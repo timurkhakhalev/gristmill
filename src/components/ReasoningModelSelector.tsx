@@ -33,6 +33,23 @@ type CloudModelOption = {
 const OPENROUTER_TAB = "openrouter";
 const OPENROUTER_KEYS_URL = "https://openrouter.ai/keys";
 
+function ApiKeyBlock({ apiKey, setApiKey, linkUrl }: {
+  apiKey: string;
+  setApiKey: (key: string) => void;
+  linkUrl: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between">
+        <h4 className="text-sm font-medium text-foreground">{t("common.apiKey")}</h4>
+        <GetApiKeyLink url={linkUrl} />
+      </div>
+      <ApiKeyInput apiKey={apiKey} setApiKey={setApiKey} label="" helpText="" />
+    </div>
+  );
+}
+
 const CLOUD_PROVIDER_IDS = [
   "openai",
   "anthropic",
@@ -297,92 +314,52 @@ export default function ReasoningModelSelector({
               ) : (
                 <>
                   {displayedCloudProvider === "openai" && (
-                    <div className="space-y-2">
-                      <div className="flex items-baseline justify-between">
-                        <h4 className="font-medium text-foreground">{t("common.apiKey")}</h4>
-                        <GetApiKeyLink url="https://platform.openai.com/api-keys" />
-                      </div>
-                      <ApiKeyInput
-                        apiKey={openaiApiKey}
-                        setApiKey={setOpenaiApiKey}
-                        label=""
-                        helpText=""
-                      />
-                    </div>
+                    <ApiKeyBlock
+                      apiKey={openaiApiKey}
+                      setApiKey={setOpenaiApiKey}
+                      linkUrl="https://platform.openai.com/api-keys"
+                    />
                   )}
 
                   {displayedCloudProvider === "anthropic" && (
-                    <div className="space-y-2">
-                      <div className="flex items-baseline justify-between">
-                        <h4 className="font-medium text-foreground">{t("common.apiKey")}</h4>
-                        <GetApiKeyLink url="https://console.anthropic.com/settings/keys" />
-                      </div>
-                      <ApiKeyInput
-                        apiKey={anthropicApiKey}
-                        setApiKey={setAnthropicApiKey}
-                        label=""
-                        helpText=""
-                      />
-                    </div>
+                    <ApiKeyBlock
+                      apiKey={anthropicApiKey}
+                      setApiKey={setAnthropicApiKey}
+                      linkUrl="https://console.anthropic.com/settings/keys"
+                    />
                   )}
 
                   {displayedCloudProvider === "gemini" && (
-                    <div className="space-y-2">
-                      <div className="flex items-baseline justify-between">
-                        <h4 className="font-medium text-foreground">{t("common.apiKey")}</h4>
-                        <GetApiKeyLink url="https://aistudio.google.com/app/api-keys" />
-                      </div>
-                      <ApiKeyInput
-                        apiKey={geminiApiKey}
-                        setApiKey={setGeminiApiKey}
-                        label=""
-                        helpText=""
-                      />
-                    </div>
+                    <ApiKeyBlock
+                      apiKey={geminiApiKey}
+                      setApiKey={setGeminiApiKey}
+                      linkUrl="https://aistudio.google.com/app/api-keys"
+                    />
                   )}
 
                   {displayedCloudProvider === "groq" && (
-                    <div className="space-y-2">
-                      <div className="flex items-baseline justify-between">
-                        <h4 className="font-medium text-foreground">{t("common.apiKey")}</h4>
-                        <GetApiKeyLink url="https://console.groq.com/keys" />
-                      </div>
-                      <ApiKeyInput
-                        apiKey={groqApiKey}
-                        setApiKey={setGroqApiKey}
-                        label=""
-                        helpText=""
-                      />
-                    </div>
+                    <ApiKeyBlock
+                      apiKey={groqApiKey}
+                      setApiKey={setGroqApiKey}
+                      linkUrl="https://console.groq.com/keys"
+                    />
                   )}
 
                   {displayedCloudProvider === "tinfoil" && (
-                    <div className="space-y-2">
-                      <div className="flex items-baseline justify-between">
-                        <h4 className="font-medium text-foreground">{t("common.apiKey")}</h4>
-                        <GetApiKeyLink url="https://tinfoil.sh/inference?utm_source=referral&utm_campaign=openhercules" />
-                      </div>
-                      <ApiKeyInput
-                        apiKey={tinfoilApiKey}
-                        setApiKey={setTinfoilApiKey}
-                        label=""
-                        helpText=""
-                      />
-                    </div>
+                    <ApiKeyBlock
+                      apiKey={tinfoilApiKey}
+                      setApiKey={setTinfoilApiKey}
+                      linkUrl="https://tinfoil.sh/inference?utm_source=referral&utm_campaign=openhercules"
+                    />
                   )}
 
                   {displayedCloudProvider === "corti" && (
                     <div className="space-y-2">
                       <p className="text-xs text-muted-foreground">{t("reasoning.corti.euOnly")}</p>
-                      <div className="flex items-baseline justify-between">
-                        <h4 className="font-medium text-foreground">{t("common.apiKey")}</h4>
-                        <GetApiKeyLink url="https://www.corti.ai/?utm_source=referral&utm_campaign=openhercules" />
-                      </div>
-                      <ApiKeyInput
+                      <ApiKeyBlock
                         apiKey={cortiApiKey}
                         setApiKey={setCortiApiKey}
-                        label=""
-                        helpText=""
+                        linkUrl="https://www.corti.ai/?utm_source=referral&utm_campaign=openhercules"
                       />
                     </div>
                   )}

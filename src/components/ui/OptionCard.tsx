@@ -30,7 +30,7 @@ export default function OptionCard({
         selected
           ? "bg-primary/5 border-primary/40 dark:bg-primary/10 dark:border-primary/30"
           : "bg-surface-1 border-border hover:bg-surface-2 hover:border-border-hover",
-        disabled && "cursor-not-allowed border-border-subtle bg-muted text-muted-foreground"
+        disabled && "cursor-not-allowed border-border-subtle bg-subtle text-muted-foreground"
       )}
     >
       <div className="flex items-center gap-3">

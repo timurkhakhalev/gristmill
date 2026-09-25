@@ -443,7 +443,7 @@
       "selectModelHint": "No model selected yet — choose one from the list below.",
       "keyRequiredHint": "An API key is required for inference — add one to use this provider."
     },
-    "getApiKey": "Get your API key ->",
+    "getApiKey": "Get your API key",
     "selectModel": "Select Model",
     "availableModels": "Available Models",
     "disableThinking": {
@@ -545,7 +545,7 @@
       "unavailable": "Unavailable"
     },
     "apiKeyOptional": "API Key (Optional)",
-    "getKey": "Get key ->",
+    "getKey": "Get key",
     "endpointUrl": "Endpoint URL",
     "azureHint": "Azure AI Foundry: enter your resource endpoint (e.g. https://your-resource.cognitiveservices.azure.com) and set Model to your exact deployment name.",
     "customProvider": "Custom",
@@ -877,7 +877,8 @@
     "selectPlaceholder": "Select a microphone",
     "systemDefault": "System Default",
     "unknownDevice": "Unknown Device",
-    "using": "Using: {{device}}"
+    "using": "Using: {{device}}",
+    "refresh": "Refresh devices"
   },
   "promptStudio": {
     "common": {
@@ -942,27 +943,27 @@
     },
     "sections": {
       "general": {
-        "description": "Appearance, sounds & startup",
+        "description": "Language, theme and notes",
         "label": "Preferences"
       },
       "hotkeys": {
-        "description": "Dictation hotkey & activation",
+        "description": "Keyboard shortcuts for meeting mode",
         "label": "Hotkeys"
       },
       "speechToText": {
-        "description": "Engines for dictation & note recording",
+        "description": "How recordings and uploaded files are transcribed",
         "label": "Speech-to-Text"
       },
       "llms": {
-        "description": "Models for chat, cleanup & summaries",
+        "description": "Models for meeting summaries and chat",
         "label": "Language Models"
       },
       "privacyData": {
-        "description": "Privacy, permissions & analytics",
+        "description": "Notes, audio and chats stay on this device. Providers only receive what you send with your API key.",
         "label": "Privacy & Data"
       },
       "system": {
-        "description": "Updates, storage & developer tools",
+        "description": "Startup, recording devices and diagnostics",
         "label": "System"
       }
     },
@@ -1119,7 +1120,8 @@
       "noteFiles": {
         "label": "Store note files",
         "description": "Keep a local Markdown copy of notes."
-      }
+      },
+      "notesGroup": "Notes"
     },
     "permissions": {
       "description": "Test and manage system permissions required for OpenHercules to function correctly",
@@ -1159,7 +1161,8 @@
       "deleteAllAudioConfirmDescription": "If a meeting is recording, it will stop safely without starting transcription. Saved audio will then be deleted.",
       "deleteAllAudioConfirm": "Delete all audio",
       "deleteAllAudioDone": "Deleted {{count}} audio item(s).",
-      "deleteAllAudioFailed": "{{count}} audio item(s) could not be deleted. Run this action again to retry."
+      "deleteAllAudioFailed": "{{count}} audio item(s) could not be deleted. Run this action again to retry.",
+      "audioGroup": "Meeting audio"
     },
     "prompts": {
       "description": "View, customize, and test the unified system prompt that powers text cleanup and instruction detection",
@@ -1559,8 +1562,12 @@
         "unavailable": "Unavailable",
         "inactive": "Not started",
         "writingToDisk": "Writing to disk",
-        "incompleteReason": "Some audio may be missing. The recording keeps the audio saved before the issue."
-      }
+        "incompleteReason": "Some audio may be missing. The recording keeps the audio saved before the issue.",
+        "failedReason": "Check microphone and system audio permissions, then try again."
+      },
+      "summaryEmptyTitle": "No summary yet",
+      "summaryEmptyDescription": "The summary appears here after the recording is transcribed.",
+      "summaryReadyDescription": "The transcript is ready. Generate a summary with your language model."
     },
     "participants": {
       "attendee": "attendee",
@@ -1736,24 +1743,24 @@
     },
     "onboarding": {
       "llm": {
-        "title": "Configure an AI model",
-        "description": "Actions use AI to transform your notes. Set up a language model to get started.",
-        "configured": "AI model configured"
+        "title": "Summaries and chat",
+        "description": "A language model writes summaries and answers questions about your notes."
       },
-      "actions": {
-        "title": "AI-Powered Actions",
-        "description": "Actions transform your notes — clean up transcriptions, summarize meetings, and more. Use built-in actions or create your own.",
-        "builtInLabel": "Built-in",
-        "createTitle": "Create your own action",
-        "createDescription": "Define a custom action with your own AI prompt. You can always edit or add more later in settings.",
-        "created": "Created!"
-      },
-      "getStarted": "Get Started",
+      "getStarted": "Get started",
       "systemAudio": {
-        "title": "System Audio",
-        "description": "Capture audio from meetings and other apps alongside your microphone.",
-        "grant": "Grant Permission",
+        "title": "System audio",
+        "description": "Records the other people on the call, not just your microphone.",
+        "grant": "Allow",
         "enabled": "Enabled"
+      },
+      "title": "Set up meeting notes",
+      "subtitle": "Record a meeting, get a transcript and a summary. Finish these steps once.",
+      "done": "Done",
+      "setUp": "Set up",
+      "laterHint": "You can change all of this later in Settings.",
+      "transcription": {
+        "title": "Speech-to-text",
+        "description": "Turns meeting audio into a transcript."
       }
     },
     "enhance": {
@@ -1984,7 +1991,6 @@
     "description": "Connect services to supercharge your workflow",
     "googleCalendar": {
       "title": "Google Calendar",
-      "optional": "Optional",
       "description": "Auto-fill meeting titles and attendees from your calendar.",
       "connect": "Connect Google Calendar",
       "connecting": "Connecting...",
@@ -2004,7 +2010,6 @@
     },
     "microsoftCalendar": {
       "title": "Microsoft Calendar",
-      "optional": "Optional",
       "description": "Read meetings from your Outlook or Microsoft 365 calendar.",
       "connect": "Connect Microsoft Calendar",
       "connected": "Connected",
@@ -2020,7 +2025,6 @@
     },
     "appleCalendar": {
       "title": "Apple Calendar",
-      "optional": "Optional",
       "description": "Read meetings from Calendar.app — iCloud, Google, Exchange, and Outlook in one place.",
       "connect": "Connect Apple Calendar",
       "connected": "Connected",
@@ -2182,6 +2186,7 @@
     }
   },
   "meetingResults": {
+    "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
@@ -2214,7 +2219,7 @@
     "selectError": "Could not select this result.",
     "createError": "Could not create a processing run.",
     "retryError": "Could not retry this run.",
-    "updateRunSettings": "Use current settings",
+    "updateRunSettings": "Retry with current settings",
     "updateConfigError": "Could not update this run's settings.",
     "playbackError": "Could not prepare audio playback.",
     "exportError": "Audio export failed.",
@@ -2242,9 +2247,47 @@
     "deleteActiveNoteTitle": "Stop and delete this recording?",
     "deleteActiveNoteDescription": "Recording will stop safely without starting transcription, then the note, audio, and processing history will be deleted.",
     "stopBeforeDeleteError": "Recording could not be stopped safely. The note was kept.",
-    "stage": { "prepare": "Preparing audio", "asr": "Transcribing", "normalize": "Saving transcript", "summary": "Writing summary" },
-    "status": { "pending": "Waiting", "running": "In progress", "blocked": "Blocked", "failed": "Failed", "cancelled": "Cancelled", "complete": "Complete" },
-    "capture": { "recording": "Recording", "finalizing": "Saving recording", "ready": "Saved", "incomplete": "Incomplete" }
+    "stage": {
+      "prepare": "Preparing audio",
+      "asr": "Transcribing",
+      "normalize": "Saving transcript",
+      "summary": "Writing summary"
+    },
+    "status": {
+      "pending": "Waiting",
+      "running": "In progress",
+      "blocked": "Blocked",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "complete": "Complete"
+    },
+    "capture": {
+      "recording": "Recording",
+      "finalizing": "Saving recording",
+      "ready": "Saved",
+      "incomplete": "Incomplete"
+    },
+    "openSettings": "Open settings",
+    "blocked": {
+      "asr": "Transcription is waiting for settings",
+      "summary": "Summary is waiting for settings",
+      "other": "Processing is waiting for settings"
+    },
+    "blockedReason": {
+      "missing-transcription-config": "Choose a speech-to-text provider and add its API key, then retry.",
+      "missing-summary-config": "Choose a language model for meeting summaries, then retry.",
+      "other": "Update the processing settings, then retry."
+    },
+    "failed": {
+      "asr": "Transcription failed",
+      "summary": "Summary failed",
+      "other": "Processing failed"
+    },
+    "failedReason": "Your audio is saved. Check your connection and API key, then retry.",
+    "progress": {
+      "pending": "Waiting to start.",
+      "running": "This can take a few minutes. You can keep writing notes."
+    }
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

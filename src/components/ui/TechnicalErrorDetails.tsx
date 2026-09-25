@@ -41,7 +41,7 @@ export function TechnicalErrorDetails({
     <details
       className={cn(
         "group/details mt-1.5 rounded-[3px] border px-1.5 py-1 text-xs",
-        onDark ? "border-white/6 bg-white/4 text-white/45" : "border-border bg-muted/50"
+        onDark ? "border-white/6 bg-white/4 text-white/45" : "border-border bg-subtle/50"
       )}
     >
       <summary className="cursor-pointer select-none text-xs text-muted-foreground">
@@ -61,7 +61,7 @@ export function TechnicalErrorDetails({
             "shrink-0 rounded-xs p-1 transition-colors",
             onDark
               ? "text-white/30 hover:bg-white/6 hover:text-white/70"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              : "text-muted-foreground hover:bg-subtle hover:text-foreground"
           )}
           aria-label={t("reasoning.enterprise.technicalDetails.copy")}
         >

@@ -285,7 +285,7 @@ export default function OpenAICompatiblePanel({
     <>
       {!lockedBaseUrl && (
         <div className="space-y-2">
-          <h4 className="font-medium text-foreground">{t("reasoning.custom.endpointTitle")}</h4>
+          <h4 className="text-sm font-medium text-foreground">{t("reasoning.custom.endpointTitle")}</h4>
           <Input
             dir="ltr"
             value={draftBase}
@@ -312,7 +312,7 @@ export default function OpenAICompatiblePanel({
 
       <div className="space-y-2 pt-3">
         <div className="flex items-baseline justify-between">
-          <h4 className="font-medium text-foreground">
+          <h4 className="text-sm font-medium text-foreground">
             {t(apiKeyRequired ? "common.apiKey" : "reasoning.custom.apiKeyOptional")}
           </h4>
           {getKeyUrl && <GetApiKeyLink url={getKeyUrl} />}

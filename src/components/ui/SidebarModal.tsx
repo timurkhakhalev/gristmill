@@ -94,7 +94,7 @@ export default function SidebarModal<T extends string>({
             ? "bg-primary/10 text-primary dark:bg-primary/15"
             : item.badgeVariant === "update"
               ? "bg-warning/10 text-warning dark:bg-warning/15"
-              : "bg-muted text-muted-foreground"
+              : "bg-subtle text-muted-foreground"
         }`}
       >
         {item.badge}
@@ -119,11 +119,11 @@ export default function SidebarModal<T extends string>({
             // otherwise take the whole settings modal with it.
             if (shouldBlockDismiss(e)) e.preventDefault();
           }}
-          className="fixed left-[50%] top-[50%] z-50 max-h-[85vh] w-[90vw] max-w-4xl translate-x-[-50%] translate-y-[-50%] rounded-xl p-0 overflow-hidden bg-background border border-border shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] dark:bg-surface-1 dark:border-border-subtle dark:shadow-[0_25px_60px_-12px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.05)] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-98 data-[state=open]:zoom-in-98"
+          className="fixed left-[50%] top-[50%] z-50 outline-none max-h-[85vh] w-[90vw] max-w-4xl translate-x-[-50%] translate-y-[-50%] rounded-xl p-0 overflow-hidden bg-background border border-border shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] dark:bg-surface-1 dark:border-border-subtle dark:shadow-[0_25px_60px_-12px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.05)] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-98 data-[state=open]:zoom-in-98"
         >
           <div className="relative h-full max-h-[85vh] overflow-hidden">
-            <DialogPrimitive.Close className="absolute end-4 top-4 z-10 rounded-md p-1.5 opacity-40 ring-offset-background transition-[opacity,background-color] hover:opacity-100 bg-transparent hover:bg-muted dark:hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-ring/30 focus:ring-offset-1">
-              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            <DialogPrimitive.Close className="absolute end-4 top-4 z-10 flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-default hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-focus">
+              <X className="size-4" />
               <span className="sr-only">{t("common.close")}</span>
             </DialogPrimitive.Close>
 
@@ -167,8 +167,8 @@ export default function SidebarModal<T extends string>({
                                 isCompact ? "justify-center px-0 py-2" : "gap-2 px-2 py-1.5"
                               } ${
                                 isActive
-                                  ? "text-foreground bg-muted dark:bg-surface-raised"
-                                  : "text-muted-foreground dark:text-foreground/75 hover:text-foreground hover:bg-muted/50 dark:hover:bg-surface-2"
+                                  ? "text-foreground bg-subtle dark:bg-surface-raised"
+                                  : "text-muted-foreground dark:text-foreground/75 hover:text-foreground hover:bg-subtle/50 dark:hover:bg-surface-2"
                               }`}
                             >
                               <Icon

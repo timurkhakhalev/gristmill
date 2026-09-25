@@ -37,7 +37,7 @@ export default function StepProgress({ steps, currentStep, className = "" }: Ste
                     ? "bg-primary text-primary-foreground"
                     : isCompleted
                       ? "bg-success/15 text-success"
-                      : "bg-muted text-muted-foreground/70"
+                      : "bg-subtle text-muted-foreground/70"
                 }`}
               >
                 {isCompleted ? (

@@ -443,7 +443,7 @@
       "selectModelHint": "尚未选择模型 — 请从下方列表中选择一个。",
       "keyRequiredHint": "推理需要 API 密钥 — 请添加密钥以使用此提供商。"
     },
-    "getApiKey": "获取你的 API Key ->",
+    "getApiKey": "获取你的 API Key",
     "selectModel": "选择模型",
     "availableModels": "可用模型",
     "disableThinking": {
@@ -545,7 +545,7 @@
       "unavailable": "不可用"
     },
     "apiKeyOptional": "API Key（可选）",
-    "getKey": "获取密钥 ->",
+    "getKey": "获取密钥",
     "endpointUrl": "端点 URL",
     "azureHint": "Azure AI Foundry：输入你的资源终结点（例如 https://your-resource.cognitiveservices.azure.com），并将“模型”设置为你的确切部署名称。",
     "customProvider": "自定义",
@@ -837,7 +837,8 @@
     "selectPlaceholder": "选择麦克风",
     "systemDefault": "系统默认",
     "unknownDevice": "未知设备",
-    "using": "当前使用：{{device}}"
+    "using": "当前使用：{{device}}",
+    "refresh": "刷新设备"
   },
   "promptStudio": {
     "common": {
@@ -902,27 +903,27 @@
     },
     "sections": {
       "general": {
-        "description": "外观、声音与启动",
+        "description": "语言、主题和笔记",
         "label": "偏好设置"
       },
       "hotkeys": {
-        "description": "听写快捷键与激活模式",
+        "description": "会议模式的键盘快捷键",
         "label": "快捷键"
       },
       "speechToText": {
-        "description": "听写与笔记录音引擎",
+        "description": "录音和上传文件的转写方式",
         "label": "语音转文字"
       },
       "llms": {
-        "description": "用于清理、笔记格式化和聊天的模型",
+        "description": "用于会议摘要和聊天的模型",
         "label": "语言模型"
       },
       "privacyData": {
-        "description": "隐私、权限与数据分析",
+        "description": "笔记、音频和聊天都保存在此设备上。服务商只会收到你用 API 密钥发送的内容。",
         "label": "隐私与数据"
       },
       "system": {
-        "description": "更新、存储与开发者工具",
+        "description": "启动、录音设备和诊断",
         "label": "系统"
       }
     },
@@ -1079,7 +1080,8 @@
       "noteFiles": {
         "label": "Store note files",
         "description": "Keep a local Markdown copy of notes."
-      }
+      },
+      "notesGroup": "笔记"
     },
     "permissions": {
       "description": "测试和管理 OpenHercules 正常运行所需的系统权限",
@@ -1119,7 +1121,8 @@
       "deleteAllAudioConfirmDescription": "如果正在录音，将安全停止且不会启动转录，然后删除已保存音频。",
       "deleteAllAudioConfirm": "删除所有音频",
       "deleteAllAudioDone": "已删除 {{count}} 个音频项目。",
-      "deleteAllAudioFailed": "有 {{count}} 个音频项目无法删除。请重试。"
+      "deleteAllAudioFailed": "有 {{count}} 个音频项目无法删除。请重试。",
+      "audioGroup": "会议音频"
     },
     "prompts": {
       "description": "查看、自定义和测试用于文本整理和指令识别的统一系统提示词",
@@ -1485,8 +1488,12 @@
         "unavailable": "不可用",
         "inactive": "尚未开始",
         "writingToDisk": "正在写入磁盘",
-        "incompleteReason": "部分音频可能缺失。问题发生前保存的音频会保留。"
-      }
+        "incompleteReason": "部分音频可能缺失。问题发生前保存的音频会保留。",
+        "failedReason": "请检查麦克风和系统音频权限，然后重试。"
+      },
+      "summaryEmptyTitle": "暂无摘要",
+      "summaryEmptyDescription": "录音转写完成后，摘要会显示在这里。",
+      "summaryReadyDescription": "转写已完成。可以用语言模型生成摘要。"
     },
     "participants": {
       "attendee": "位参会者",
@@ -1662,24 +1669,24 @@
     },
     "onboarding": {
       "llm": {
-        "title": "配置 AI 模型",
-        "description": "操作使用 AI 来处理你的笔记。设置一个语言模型以开始使用。",
-        "configured": "AI 模型已配置"
-      },
-      "actions": {
-        "title": "AI 驱动的操作",
-        "description": "操作可以处理你的笔记——整理转录、总结会议等。使用内置操作或创建你自己的。",
-        "builtInLabel": "内置",
-        "createTitle": "创建你的操作",
-        "createDescription": "使用你自己的 AI 提示词定义自定义操作。你可以随时在设置中编辑或添加更多。",
-        "created": "已创建！"
+        "title": "摘要和聊天",
+        "description": "语言模型负责撰写摘要，并回答关于笔记的问题。"
       },
       "getStarted": "开始使用",
       "systemAudio": {
         "title": "系统音频",
-        "description": "在使用麦克风的同时捕获会议和其他应用程序的音频。",
-        "grant": "授予权限",
+        "description": "除了你的麦克风，也会录下通话中的其他人。",
+        "grant": "允许",
         "enabled": "已启用"
+      },
+      "title": "设置会议笔记",
+      "subtitle": "录制会议即可获得转写和摘要。以下步骤只需完成一次。",
+      "done": "已完成",
+      "setUp": "设置",
+      "laterHint": "以上内容之后都可以在设置中更改。",
+      "transcription": {
+        "title": "语音转文字",
+        "description": "将会议音频转为文字稿。"
       }
     },
     "enhance": {
@@ -1944,7 +1951,6 @@
     "description": "连接服务以增强您的工作流程",
     "googleCalendar": {
       "title": "Google 日历",
-      "optional": "可选",
       "description": "从日历自动填充会议名称和参与者。",
       "connect": "连接 Google 日历",
       "connecting": "连接中...",
@@ -1964,7 +1970,6 @@
     },
     "microsoftCalendar": {
       "title": "Microsoft 日历",
-      "optional": "可选",
       "description": "从 Outlook 或 Microsoft 365 日历读取会议。",
       "connect": "连接 Microsoft 日历",
       "connected": "已连接",
@@ -1980,7 +1985,6 @@
     },
     "appleCalendar": {
       "title": "Apple 日历",
-      "optional": "可选",
       "description": "从 Calendar.app 读取会议 — iCloud、Google、Exchange 和 Outlook 一站式接入。",
       "connect": "连接 Apple 日历",
       "connected": "已连接",
@@ -2189,6 +2193,7 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
@@ -2221,7 +2226,7 @@
     "selectError": "无法选择此结果。",
     "createError": "无法创建处理任务。",
     "retryError": "无法重试此任务。",
-    "updateRunSettings": "使用当前设置",
+    "updateRunSettings": "使用当前设置重试",
     "updateConfigError": "无法更新此处理任务的设置。",
     "playbackError": "无法准备音频播放。",
     "exportError": "音频导出失败。",
@@ -2268,6 +2273,27 @@
       "finalizing": "正在保存录音",
       "ready": "已保存",
       "incomplete": "未完成"
+    },
+    "openSettings": "打开设置",
+    "blocked": {
+      "asr": "转写正在等待设置",
+      "summary": "摘要正在等待设置",
+      "other": "处理正在等待设置"
+    },
+    "blockedReason": {
+      "missing-transcription-config": "请选择语音转文字服务商并添加 API 密钥，然后重试。",
+      "missing-summary-config": "请选择用于会议摘要的语言模型，然后重试。",
+      "other": "请更新处理设置，然后重试。"
+    },
+    "failed": {
+      "asr": "转写失败",
+      "summary": "摘要生成失败",
+      "other": "处理失败"
+    },
+    "failedReason": "音频已保存。请检查网络连接和 API 密钥，然后重试。",
+    "progress": {
+      "pending": "等待开始。",
+      "running": "这可能需要几分钟。你可以继续写笔记。"
     }
   }
 }

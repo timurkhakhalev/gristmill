@@ -25,9 +25,9 @@ import appleCalendarIcon from "../assets/icons/apple-calendar.svg";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 ps-1">
+    <h3 className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
       {children}
-    </div>
+    </h3>
   );
 }
 
@@ -45,25 +45,19 @@ function ProviderRow({ icon, i18nKey, connected, isConnecting, onConnect, config
   return (
     <SettingsPanelRow>
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-lg bg-white dark:bg-surface-raised shadow-[0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-none dark:border dark:border-white/10 flex items-center justify-center shrink-0">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-secondary">
           <img src={icon} alt="" className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <p className="text-xs font-semibold text-foreground">{t(`${i18nKey}.title`)}</p>
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-              {t(`${i18nKey}.optional`)}
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground/70 mt-0.5 leading-relaxed">
+          <p className="text-sm font-medium text-foreground">{t(`${i18nKey}.title`)}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             {t(`${i18nKey}.description`)}
           </p>
+          {configured === false && (
+            <p className="mt-1 text-xs text-warning">{t(`${i18nKey}.notConfigured`)}</p>
+          )}
         </div>
-        {configured === false ? (
-          <span className="shrink-0 text-xs text-muted-foreground/70">
-            {t(`${i18nKey}.notConfigured`)}
-          </span>
-        ) : connected ? (
+        {configured === false ? null : connected ? (
           <Badge variant="success" className="shrink-0">
             {t(`${i18nKey}.connected`)}
           </Badge>
@@ -347,8 +341,8 @@ export default function IntegrationsView() {
   }, [isMac, setAppleCalendarConnected]);
 
   return (
-    <div className="max-w-lg mx-auto w-full px-6 py-6 space-y-5">
-      <p className="text-xs text-muted-foreground/70">{t("integrations.description")}</p>
+    <div className="mx-auto w-full max-w-2xl space-y-6 px-6 py-6">
+      <p className="text-sm text-muted-foreground">{t("integrations.description")}</p>
 
       <div>
         <SectionLabel>{t("integrations.sections.calendar")}</SectionLabel>
@@ -422,13 +416,13 @@ export default function IntegrationsView() {
       </div>
 
       {!hasAccounts && (
-        <div className="rounded-lg border border-border/70 dark:border-border-subtle/60 bg-muted/20 dark:bg-surface-2/30 p-4 flex items-start gap-3">
-          <Info size={15} className="text-primary/60 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 rounded-lg border border-border bg-subtle p-4">
+          <Info size={16} className="mt-0.5 shrink-0 text-primary" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-foreground/80">
+            <p className="text-sm font-medium text-foreground">
               {t("integrations.notABot.title")}
             </p>
-            <p className="text-xs text-muted-foreground/70 mt-0.5 leading-relaxed">
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
               {t("integrations.notABot.description")}
             </p>
           </div>

@@ -301,7 +301,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                         "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/10",
                         "dark:bg-surface-1 dark:border-border-subtle/60",
                         "dark:focus-visible:border-border-active dark:focus-visible:ring-ring/10",
-                        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-muted",
+                        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-subtle",
                         "font-mono text-[13px]"
                       )}
                     />

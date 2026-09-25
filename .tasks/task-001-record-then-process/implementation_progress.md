@@ -344,3 +344,24 @@ Root-only focused regression command:
 Root-only M7 checks: `pnpm run typecheck`, `pnpm run lint`, and `pnpm run i18n:check`; final integration remains sequential `pnpm test`, `pnpm run pack`, then `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
 
 Commit: `99ba4a1f` — M7: keep summary correction and version selection stable.
+
+## M8 Code Review Fix 1
+
+Status: done
+
+Playback now accepts any transcript-backed run belonging to an audio-available recording, including the older visible result while a newer run is pending. It does not update current-run selection or the Note projection. Source and mixed audio exports use asynchronous 256 KiB chunks with the existing timeline gaps, WAV header, temporary-file, fsync, close, and atomic-rename behavior. Export and playback-preparation operations are registered by recording; after a durable audio or Note deletion intent, deletion aborts and waits for those operations before removing managed audio.
+
+Preserved invariants: older-run playback and mixed export do not change persisted selection; raw mic/system epochs and prior run artifacts remain immutable; export handles are closed before deletion removes files; canceled or failed exports remove only their temporary output and never report success.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings, all on pre-existing or unrelated lines/files.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused regression command:
+`node --import tsx --test --test-concurrency=1 test/services/meetingResults.test.js test/components/meetingResultsPanel.test.js test/helpers/meetingRecordingRetention.test.js test/helpers/meetingProcessing.test.js`
+
+Root integration checks from the plan: `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, then sequential `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
+
+Commit: `5732b276` — M8: fix playback selection and stream audio exports.

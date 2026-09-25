@@ -120,7 +120,7 @@ export default function BatchQueueView({
             )}
           >
             <StatusIcon status={item.status} />
-            <span className="flex-1 truncate text-muted">{item.name}</span>
+            <span dir="auto" className="flex-1 truncate text-muted">{item.name}</span>
 
             {item.status === "downloading" && (
               <div className="w-16 h-[2px] rounded-full bg-default overflow-hidden">

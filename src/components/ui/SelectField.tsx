@@ -25,6 +25,7 @@ export function SelectField({
   className = "w-44",
   isDisabled,
   size = "md",
+  dir,
 }: {
   /** Empty string shows the placeholder. */
   value: string;
@@ -35,6 +36,8 @@ export function SelectField({
   className?: string;
   isDisabled?: boolean;
   size?: "sm" | "md";
+  /** Direction of the trigger value, e.g. "ltr" for technical values in an RTL UI. */
+  dir?: "ltr" | "rtl" | "auto";
 }) {
   const rowLabel = React.useContext(SettingsRowLabelContext);
   return (
@@ -47,7 +50,7 @@ export function SelectField({
       placeholder={placeholder}
       className={className}
     >
-      <Select.Trigger className={cn(size === "sm" && "h-8 min-h-8 text-xs")}>
+      <Select.Trigger dir={dir} className={cn(size === "sm" && "h-8 min-h-8 text-xs")}>
         <Select.Value />
         <Select.Indicator />
       </Select.Trigger>

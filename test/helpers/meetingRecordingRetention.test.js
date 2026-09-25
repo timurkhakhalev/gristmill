@@ -8,6 +8,7 @@ const DatabaseManager = require("../../src/helpers/database.ts");
 const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
 const IPCHandlers = require("../../src/helpers/ipcHandlers.ts");
 const { DEFAULT_RETENTION_SETTINGS } = require("../../src/helpers/retentionSettings.ts");
+const { createMeetingAudioOperationRegistry } = require("../../src/helpers/meetingAudioExport.ts");
 
 const DAY = 86_400_000;
 const config = { transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "en" } };
@@ -47,11 +48,26 @@ function runCleanup(db, storage, settings, overrides = {}) {
     },
     _retentionSettings: { ...DEFAULT_RETENTION_SETTINGS, ...settings },
     _meetingProcessing: { cancelRecordingForDeletion: async () => {} },
+    _meetingAudioOperations: createMeetingAudioOperationRegistry(),
     _processMeetingDeletionIntents: IPCHandlers.prototype._processMeetingDeletionIntents,
     _finishMeetingDeletion: IPCHandlers.prototype._finishMeetingDeletion,
     ...overrides,
   };
   return IPCHandlers.prototype._runRetentionCleanup.call(context);
+}
+
+function holdAudioOperation(registry, recordingId) {
+  let start;
+  const started = new Promise((resolve) => { start = resolve; });
+  let closed = false;
+  const operation = registry.run(recordingId, (signal) => new Promise((resolve) => {
+    start();
+    signal.addEventListener("abort", () => {
+      closed = true;
+      resolve();
+    }, { once: true });
+  }));
+  return { started, operation, isClosed: () => closed };
 }
 
 function withClock(t, timestamp) {
@@ -94,6 +110,9 @@ test("delete-all safely stops active capture, waits for processing, and removes 
   const storage = new MeetingRecordingStorage({ userDataPath: root });
   const { note, recording, initialRun } = createFinishedRecording(db, storage, Date.now(), 1);
   storeTranscript(db, storage, initialRun, "Saved words");
+  const audioOperations = createMeetingAudioOperationRegistry();
+  const audioRead = holdAudioOperation(audioOperations, recording.id);
+  await audioRead.started;
   let safeStop = false;
   let waited = false;
   const context = {
@@ -110,9 +129,11 @@ test("delete-all safely stops active capture, waits for processing, and removes 
       deleteAllAudio: () => ({ deleted: 0, failed: 0 }),
     },
     databaseManager: db,
+    _meetingAudioOperations: audioOperations,
     _meetingProcessing: {
       cancelRecordingForDeletion: async (id) => {
         assert.equal(id, recording.id);
+        assert.equal(audioRead.isClosed(), true, "active audio operations close before processing/deletion proceeds");
         waited = true;
       },
     },
@@ -122,6 +143,7 @@ test("delete-all safely stops active capture, waits for processing, and removes 
   const result = await IPCHandlers.prototype._deleteAllAudio.call(context);
   assert.equal(safeStop, true);
   assert.equal(waited, true);
+  await audioRead.operation;
   assert.deepEqual(result, { deleted: 1, failed: 0 });
   assert.equal(db.getMeetingRecording(recording.id).audioState, "deleted");
   assert.equal(db.getNote(note.id).content, "Manual note stays");
@@ -138,6 +160,9 @@ test("note deletion waits for the active reader before removing its Note and run
   storeTranscript(db, storage, initialRun, "Saved words");
   const intent = db.beginMeetingNoteDeletion(note.id);
   assert.ok(intent, "note deletion must persist an intent before removing files");
+  const audioOperations = createMeetingAudioOperationRegistry();
+  const audioRead = holdAudioOperation(audioOperations, recording.id);
+  await audioRead.started;
   let releaseReader;
   let readerStarted;
   const readerWait = new Promise((resolve) => { readerStarted = resolve; });
@@ -145,10 +170,12 @@ test("note deletion waits for the active reader before removing its Note and run
   const context = {
     databaseManager: db,
     audioStorageManager: { meetingRecordings: storage },
+    _meetingAudioOperations: audioOperations,
     _meetingProcessing: {
       cancelRecordingForDeletion: async (id, includeNonAudio) => {
         assert.equal(id, recording.id);
         assert.equal(includeNonAudio, true);
+        assert.equal(audioRead.isClosed(), true, "audio operations must settle before Note cleanup proceeds");
         readerStarted();
         await release;
       },
@@ -163,6 +190,7 @@ test("note deletion waits for the active reader before removing its Note and run
   assert.deepEqual(storage.readRunArtifact(initialRun.id, "transcript"), { text: "Saved words" });
   releaseReader();
   assert.equal(await deletion, true);
+  await audioRead.operation;
   assert.equal(db.getNote(note.id), null);
   assert.equal(db.getMeetingRecording(recording.id), null);
   assert.equal(storage.readRunArtifact(initialRun.id, "transcript"), null);

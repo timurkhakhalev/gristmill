@@ -258,4 +258,4 @@ Root-only focused regression command:
 
 Root-only integration verification remains `pnpm test`, then `pnpm run pack` and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains unverified.
 
-Commit: `dab4bf27` — M5: fix reviewed meeting processing gaps.
+Commit: `9b4755a6` — M5: fix reviewed meeting processing gaps.

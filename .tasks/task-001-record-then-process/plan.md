@@ -239,10 +239,12 @@ M1 → review/verification → M2 → review/verification → M3 → review/veri
 | M2 — Capture и безопасный Stop | done | `9028b992`, `485b17dd`, `58ef1f5c`, `c49cb910`, `30ce4434`, `1485e2fb`, `b7901205`, `e6d99434`, `beda40d5`, `4f157947`, `0f6331de`, `8e99ea4e` |
 | M3 — Обработка после Stop | done | `e192dd51`, `7dcf9f86`, `c871bf01` |
 | M4 — Notes, retention и итоговая проверка | done | `15717b7a`, `de86d1ce`, `cbc2c026`, `0798ff68`, `bb69d9c7`, `731b8845`, `8534657f`, `f7823d59`, `d9b022b7`, `dbada7c1`, `f2fcc4dd`, `bcdb3332` |
-| M5 — Reviewer Fix 1 | in progress | |
+| M5 — Reviewer Fix 1 | done | `9b4755a6`, `79bdbd77`, `0fbe743f`, `0d2041c1`, `98ef791c`, `fdc7fdbf` |
 | Reviewer | not started | `review-1.md` — 4 high, 2 medium; fix required |
 | Code Reviewer | not started | |
 
 M2 verification: 50/50 focused tests, `pnpm run pack`, and packaged Notes smoke passed. On 2026-09-24 Timur explicitly deferred the live mic/system hardware smoke until the end of the task; its tail-loss guarantee remains unverified. This is an accepted verification-order deviation, not a passing hardware result.
 
 M4 integration verification: `pnpm run typecheck` passed; `pnpm run lint` passed with 0 errors and 36 warnings; focused M4 tests passed 32/32, M2 Stop tests 50/50, translation coverage 8/8, and main build tests 7/7. The sequential full suite passed 2768/2768 tests on 2026-09-25. `pnpm run pack` and `node scripts/smoke-electron.js` passed after integration. Live mic/system hardware verification remains deferred to Timur and is not counted as a pass.
+
+M5 verification: focused tests passed 38/38; `pnpm run typecheck`, `pnpm run lint` (0 errors, 36 warnings), and `pnpm run i18n:check` passed. The sequential full suite passed 2779/2779 on 2026-09-25. `pnpm run pack` and `node scripts/smoke-electron.js` passed. The hardware smoke remains deferred and unverified.

@@ -409,7 +409,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
       )}
 
       {run?.transcript?.segments && run.transcript.segments.length > 0 && (
-        <div className="mt-3 max-h-32 overflow-y-auto border-t border-border/60 pt-2">
+        <div className="mt-3 border-t border-border/60 pt-2">
           {run.transcript.segments.map((segment, index) => (
             <button key={`${index}-${segment.start}`} type="button" className="block w-full py-1 text-left text-xs text-muted-foreground hover:text-foreground" disabled={!audioRef.current || !audioAvailable} onClick={() => { if (audioRef.current) audioRef.current.currentTime = segment.start; }}>
               <span className="me-2 tabular-nums">{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</span>{segment.text}
@@ -418,7 +418,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
         </div>
       )}
       {run?.transcript?.text && !run.transcript.segments?.length && (
-        <p className="mt-3 max-h-32 overflow-y-auto border-t border-border/60 pt-2 text-xs whitespace-pre-wrap">{run.transcript.text}</p>
+        <p className="mt-3 border-t border-border/60 pt-2 text-xs whitespace-pre-wrap">{run.transcript.text}</p>
       )}
       {run?.transcript && !run.transcript.text.trim() && !run.transcript.segments?.length && (
         <p className="mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">{t("notes.upload.noSpeechDetected")}</p>

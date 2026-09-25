@@ -1,8 +1,7 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, Loader2, ShieldCheck, Sparkles, Users, X } from "../icons";
-import { useStickToBottom } from "../../hooks/useStickToBottom";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
 import { Toggle } from "../ui/toggle";
 import { cn } from "../lib/utils";
@@ -719,6 +718,7 @@ const SegmentRow = memo(function SegmentRow({
 
 interface MeetingTranscriptChatProps {
   segments: TranscriptSegment[];
+  scrollElementRef: RefObject<HTMLDivElement | null>;
   micPartial?: string;
   systemPartial?: string;
   systemPartialSpeakerId?: string | null;
@@ -748,6 +748,7 @@ interface MeetingTranscriptChatProps {
 
 export function MeetingTranscriptChat({
   segments,
+  scrollElementRef,
   micPartial,
   systemPartial,
   systemPartialSpeakerId,
@@ -771,28 +772,45 @@ export function MeetingTranscriptChat({
 }: MeetingTranscriptChatProps) {
   const { t } = useTranslation();
   const hasContent = segments.length > 0 || Boolean(micPartial) || Boolean(systemPartial);
-  // The scroller mounts only once content exists, and a recording opens with
-  // partials before its first final segment — the follow effect must re-run on
-  // that mount too, or it runs against a null node and never attaches its
-  // resize observer.
-  const followDep = useMemo(() => ({ segments, hasContent }), [segments, hasContent]);
-  const {
-    scrollRef,
-    handleScroll,
-    handleWheel,
-    handleTouchStart,
-    handleTouchMove,
-    handleTouchEnd,
-  } = useStickToBottom<HTMLDivElement>(followDep);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  useLayoutEffect(() => {
+    const scroller = scrollElementRef.current;
+    const list = listRef.current;
+    if (!scroller || !list) return;
+
+    const measure = () => {
+      setScrollMargin(list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop);
+    };
+    const resizeObserver = new ResizeObserver(measure);
+    const observeChildren = () => {
+      resizeObserver.disconnect();
+      resizeObserver.observe(scroller);
+      for (const child of scroller.children) resizeObserver.observe(child);
+    };
+    const mutationObserver = new MutationObserver(() => {
+      observeChildren();
+      measure();
+    });
+    mutationObserver.observe(scroller, { childList: true });
+    observeChildren();
+    measure();
+    return () => {
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
+  }, [scrollElementRef]);
 
   // Rows are keyed by segment id, not index: segments are inserted by timestamp
   // and retracted mid-list, which would misalign an index-keyed size cache.
   const virtualizer = useVirtualizer({
     count: segments.length,
-    getScrollElement: () => scrollRef.current,
+    getScrollElement: () => scrollElementRef.current,
     estimateSize: () => ESTIMATED_ROW_PX,
     getItemKey: (index) => segments[index].id,
     initialRect: INITIAL_VIEWPORT_RECT,
+    scrollMargin,
     overscan: 8,
   });
   const totalSize = virtualizer.getTotalSize();
@@ -854,7 +872,7 @@ export function MeetingTranscriptChat({
 
   if (!hasContent) {
     return (
-      <div className="h-full flex flex-col">
+      <div className="flex flex-col">
         {consentNotice}
         <div className="flex-1 flex items-center justify-center px-5">
           <p className="text-xs text-muted-foreground/70 select-none">
@@ -881,7 +899,7 @@ export function MeetingTranscriptChat({
     !userTouchedStepper;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex flex-col">
       {consentNotice}
       {(isRecording || isDiarizing) && (
         <div className="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 mx-4 mb-1.5 px-3 py-1.5 rounded-lg border border-border/70 bg-surface-2/40 text-xs text-foreground">
@@ -959,13 +977,8 @@ export function MeetingTranscriptChat({
         </div>
       )}
       <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        onWheel={handleWheel}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        className="flex-1 min-h-0 overflow-y-auto px-4 pt-2 agent-chat-scroll pb-[var(--floating-inset,96px)]"
+        ref={listRef}
+        className="px-4 pt-2 pb-[var(--floating-inset,96px)]"
       >
         <div>
           <div style={{ height: totalSize, width: "100%", position: "relative" }}>
@@ -986,7 +999,7 @@ export function MeetingTranscriptChat({
                     top: 0,
                     left: 0,
                     width: "100%",
-                    transform: `translateY(${virtualItem.start}px)`,
+                    transform: `translateY(${virtualItem.start - scrollMargin}px)`,
                   }}
                 >
                   <SegmentRow

@@ -304,7 +304,7 @@ M1 → review/verification → M2 → review/verification → M3 → review/veri
 | M5 — Reviewer Fix 1 | done | `9b4755a6`, `79bdbd77`, `0fbe743f`, `0d2041c1`, `98ef791c`, `fdc7fdbf` |
 | M6 — Reviewer Fix 2 | done | `d0795810`, `baff7416` |
 | M7 — Reviewer Fix 3 (по решению Тимура) | done | `99ba4a1f`, `a421f368` |
-| M8 — Code Review Fix 1 | in progress | |
+| M8 — Code Review Fix 1 | done | `5732b276`, `baf28a8d`, `0811867c`, `76f1cc5a`, `65f36358` |
 | Reviewer | done | `review-1.md` — 4 high, 2 medium; `review-2.md` — 3 high; `review-3.md` — 2 high; `review-4.md` — pass, 0 findings |
 | Code Reviewer | not started | `code-review-1.md` — 2 medium; fix required |
 
@@ -317,3 +317,5 @@ M5 verification: focused tests passed 38/38; `pnpm run typecheck`, `pnpm run lin
 M6 verification: focused tests passed 42/42; `pnpm run typecheck`, `pnpm run lint` (0 errors, 36 warnings), and `pnpm run i18n:check` passed. The sequential full suite passed 2783/2783 on 2026-09-25. `pnpm run pack` and `node scripts/smoke-electron.js` passed. The hardware smoke remains deferred and unverified.
 
 M7 verification: focused tests passed 31/31; `pnpm run typecheck`, `pnpm run lint` (0 errors, 36 warnings), and `pnpm run i18n:check` passed. The sequential full suite passed 2785/2785 on 2026-09-25. `pnpm run pack` and `node scripts/smoke-electron.js` passed. The hardware smoke remains deferred and unverified.
+
+M8 verification: focused tests passed 45/45; `pnpm run typecheck`, `pnpm run lint` (0 errors, 36 warnings), and `pnpm run i18n:check` passed. The sequential full suite passed 2790/2790 on 2026-09-25. `pnpm run pack` and `node scripts/smoke-electron.js` passed. The hardware smoke remains deferred and unverified.

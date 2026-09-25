@@ -25,12 +25,13 @@ export function parseTranscriptSegments(raw: string): TranscriptSegment[] {
         source: s.source,
         timestamp: s.timestamp,
         endTimestamp: s.endTimestamp,
-        speaker: s.speaker,
+        // Older uploads saved the provider label as speakerName only.
+        speaker: s.speaker || s.speakerName,
         speakerName: s.speakerName,
-        speakerIsPlaceholder: s.speakerIsPlaceholder,
+        speakerIsPlaceholder: s.speakerIsPlaceholder ?? (!s.speaker && !!s.speakerName),
         suggestedName: s.suggestedName,
         suggestedProfileId: s.suggestedProfileId,
-        speakerStatus: s.speakerStatus,
+        speakerStatus: s.speakerStatus ?? (!s.speaker && s.speakerName ? "provisional" : undefined),
         speakerLocked: s.speakerLocked,
         speakerLockSource: s.speakerLockSource,
       }))

@@ -101,6 +101,7 @@ export async function saveUploadNote({
     durationSeconds,
     segments
   );
+  const transcript = noteUpdates?.transcript ?? buildUploadTranscript([{ text, start: 0 }]);
   const res = await window.electronAPI.saveNote(
     title,
     text,
@@ -109,9 +110,15 @@ export async function saveUploadNote({
     audioDurationSeconds,
     folderId
   );
-  if (res.success && res.note && noteUpdates) {
-    // Best-effort: a failed metadata write must not error a saved note.
-    await window.electronAPI.updateNote(res.note.id, noteUpdates).catch(() => {});
+  if (res.success && res.note && (noteUpdates || transcript)) {
+    // Keep the original text in Notes if the transcript write fails.
+    const updated = await window.electronAPI
+      .updateNote(res.note.id, {
+        ...noteUpdates,
+        ...(transcript ? { transcript, content: "" } : {}),
+      })
+      .catch(() => null);
+    if (updated?.success) return updated;
   }
   return res;
 }

@@ -191,7 +191,9 @@ export default function NoteEditor({
   const capturePending = capturePhase === "preparing" || capturePhase === "saving";
   const captureLive = capturePhase === "recording";
   const captureHasStatus = capturePending || captureLive || capturePhase === "incomplete" || capturePhase === "failed";
-  const [viewMode, setViewMode] = useState<MeetingViewMode>("raw");
+  const [viewMode, setViewMode] = useState<MeetingViewMode>(
+    note.note_type === "upload" && note.transcript ? "transcript" : "raw"
+  );
   const [chatMode, setChatMode] = useState<EmbeddedChatMode>("hidden");
   const [folderSearch, setFolderSearch] = useState("");
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);

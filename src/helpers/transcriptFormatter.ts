@@ -22,6 +22,9 @@ export interface TranscriptExportNote {
 export type SpeakerMappings = Record<string, string>;
 
 function resolveSpeaker(seg: TranscriptExportSegment, speakerMappings: SpeakerMappings): string {
+  if (!seg.speaker && seg.speakerName && speakerMappings[seg.speakerName]) {
+    return speakerMappings[seg.speakerName];
+  }
   if (seg.speakerName && !seg.speakerIsPlaceholder) return seg.speakerName;
   if (seg.speaker && speakerMappings[seg.speaker]) return speakerMappings[seg.speaker];
   if (seg.speaker === "you") return i18nMain.t("transcript.speaker.you");

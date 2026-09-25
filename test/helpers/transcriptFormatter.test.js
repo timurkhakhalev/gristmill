@@ -171,6 +171,13 @@ test("a single segment with speaker identity keeps the prefix on every SRT cue",
   assert.match(output, /\n2\n00:00:05,000 --> 00:00:08,000\nAda: Named reply\./);
 });
 
+test("a corrected speaker name applies to legacy upload transcript exports", () => {
+  const output = formatSrt([{ speakerName: "Speaker 1", timestamp: 0, text: "Uploaded speech." }], {
+    "Speaker 1": "Alice",
+  });
+  assert.match(output, /Alice: Uploaded speech\./);
+});
+
 test("meeting segments identified only by source keep their SRT speaker labels", () => {
   const output = formatSrt(
     [

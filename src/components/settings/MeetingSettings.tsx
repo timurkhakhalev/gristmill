@@ -1,13 +1,12 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Key, Cpu, Network } from "../icons";
+import { Key, Cpu } from "../icons";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { LocalTranscriptionProvider } from "../../contracts/inferenceSettings";
 import { InferenceModeSelector, SettingsRow } from "../ui/SettingsSection";
 import type { InferenceModeOption } from "../ui/SettingsSection";
 import { Toggle } from "../ui/toggle";
 import TranscriptionModelPicker from "../TranscriptionModelPicker";
-import SelfHostedPanel from "../SelfHostedPanel";
 import type { InferenceMode } from "../../contracts/inferenceSettings";
 
 export function MeetingSpeakerDetectionRow() {
@@ -48,10 +47,6 @@ export function MeetingTranscriptionPanel() {
     meetingCloudTranscriptionBaseUrl,
     setMeetingCloudTranscriptionBaseUrl,
     setMeetingCloudTranscriptionMode,
-    remoteTranscriptionUrl,
-    setRemoteTranscriptionUrl,
-    remoteTranscriptionModel,
-    setRemoteTranscriptionModel,
   } = useSettingsStore();
   const transcriptionModes: InferenceModeOption[] = [
       {
@@ -65,12 +60,6 @@ export function MeetingTranscriptionPanel() {
         label: t("settingsPage.transcription.modes.local"),
         description: t("settingsPage.transcription.modes.localDesc"),
         icon: <Cpu className="w-4 h-4" />,
-      },
-      {
-        id: "self-hosted",
-        label: t("settingsPage.transcription.modes.selfHosted"),
-        description: t("settingsPage.transcription.modes.selfHostedDesc"),
-        icon: <Network className="w-4 h-4" />,
       },
     ];
   const effectiveTranscriptionMode = meetingTranscriptionMode;
@@ -102,7 +91,6 @@ export function MeetingTranscriptionPanel() {
 
   const renderTranscriptionPicker = (mode: "cloud" | "local") => (
     <TranscriptionModelPicker
-      streamingOnly
       transcriptionContext="meeting"
       selectedCloudProvider={meetingCloudTranscriptionProvider}
       onCloudProviderSelect={setMeetingCloudTranscriptionProvider}
@@ -137,15 +125,6 @@ export function MeetingTranscriptionPanel() {
 
       {effectiveTranscriptionMode === "providers" && renderTranscriptionPicker("cloud")}
       {effectiveTranscriptionMode === "local" && renderTranscriptionPicker("local")}
-      {effectiveTranscriptionMode === "self-hosted" && (
-        <SelfHostedPanel
-          service="transcription"
-          url={remoteTranscriptionUrl}
-          onUrlChange={setRemoteTranscriptionUrl}
-          model={remoteTranscriptionModel}
-          onModelChange={setRemoteTranscriptionModel}
-        />
-      )}
       <MeetingSpeakerDetectionRow />
     </div>
   );

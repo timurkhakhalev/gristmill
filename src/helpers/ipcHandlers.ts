@@ -62,6 +62,7 @@ import {
 import type { DiarizationPublicationDatabase } from "./meetingDiarizationPublication.js";
 import { registerSpeakerHandlers, type SpeakerDatabase } from "./speakerIpcHandlers.js";
 import { registerRemoteTranscriptionHandler, transcribeAudioFileByok, type RemoteTranscriptionDeps } from "./remoteTranscriptionIpcHandler.js";
+import { postRawAudioFile } from "./audioFileUpload.js";
 import { registerReasoningHandlers, type EnterpriseStreamModel } from "./reasoningIpcHandlers.js";
 import { registerFileDiarizationHandlers } from "./fileDiarizationIpcHandlers.js";
 import { registerUploadCancelHandler } from "./uploadCancelIpcHandler.js";
@@ -183,91 +184,6 @@ async function postMultipart(
       statusCode: response.status,
     });
   }
-}
-
-async function postRawAudioFile(
-  url: URL,
-  filePath: string,
-  contentType: string,
-  apiKey: string,
-  {
-    signal,
-    multipart,
-  }: {
-    signal?: AbortSignal;
-    multipart?: { fileName: string; fields: Record<string, string> };
-  } = {}
-): Promise<{ statusCode: number; data: unknown }> {
-  return new Promise((resolve, reject) => {
-    const boundary = multipart ? `----OpenHercules${crypto.randomUUID()}` : null;
-    const header = boundary
-      ? Buffer.from(
-          `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${multipart!.fileName.replace(/[\r\n"]/g, "_")}"\r\nContent-Type: ${contentType}\r\n\r\n`
-        )
-      : null;
-    const footer = boundary
-      ? Buffer.from(
-          `\r\n${Object.entries(multipart!.fields)
-            .map(
-              ([name, value]) =>
-                `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
-            )
-            .join("")}--${boundary}--\r\n`
-        )
-      : null;
-    const request = net.request({
-      method: "POST",
-      url: url.toString(),
-      headers: boundary
-        ? { "xi-api-key": apiKey, "Content-Type": `multipart/form-data; boundary=${boundary}` }
-        : { Authorization: `Token ${apiKey}`, "Content-Type": contentType },
-    });
-    request.chunkedEncoding = true;
-    const source = fs.createReadStream(filePath);
-    let settled = false;
-    const finish = (error?: Error, result?: { statusCode: number; data: unknown }) => {
-      if (settled) return;
-      settled = true;
-      signal?.removeEventListener("abort", abort);
-      source.destroy();
-      if (error) {
-        request.abort();
-        reject(error);
-      } else if (result) resolve(result);
-    };
-    const abort = () => finish(new DOMException("Cancelled", "AbortError"));
-    if (signal?.aborted) return abort();
-    signal?.addEventListener("abort", abort, { once: true });
-    source.on("error", finish);
-    request.on("error", finish);
-    request.on("close", () => {
-      if (!settled) finish(new Error("Audio upload closed before a response"));
-    });
-    request.on("response", (response) => {
-      const chunks: Buffer[] = [];
-      response.on("data", (chunk: Buffer) => chunks.push(chunk));
-      response.on("error", finish);
-      response.on("end", () => {
-        const body = Buffer.concat(chunks).toString();
-        try {
-          finish(undefined, { statusCode: response.statusCode, data: JSON.parse(body) });
-        } catch {
-          finish(undefined, { statusCode: response.statusCode, data: body });
-        }
-      });
-    });
-    void (async () => {
-      if (header) await new Promise<void>((written) => request.write(header, undefined, written));
-      for await (const chunk of source) {
-        if (signal?.aborted) return;
-        await new Promise<void>((written) => request.write(chunk, undefined, written));
-      }
-      if (!signal?.aborted) {
-        if (footer) await new Promise<void>((written) => request.write(footer, undefined, written));
-        request.end();
-      }
-    })().catch(finish);
-  });
 }
 
 function runGeminiFile(request: Parameters<typeof transcribeGeminiFile>[0]) {

@@ -14,7 +14,7 @@ import { useDialogs } from "../hooks/useDialogs";
 import { useModelDownload } from "../hooks/useModelDownload";
 import {
   getTranscriptionProviders,
-  getMeetingStreamingTranscriptionProviders,
+  getMeetingFileTranscriptionProviders,
   TranscriptionProviderData,
   WHISPER_MODEL_INFO,
   PARAKEET_MODEL_INFO,
@@ -228,7 +228,6 @@ interface TranscriptionModelPickerProps {
   className?: string;
   variant?: "onboarding" | "settings";
   mode?: "cloud" | "local";
-  streamingOnly?: boolean;
 }
 
 const CLOUD_PROVIDER_TABS = [
@@ -390,7 +389,6 @@ export default function TranscriptionModelPicker({
   className = "",
   variant = "settings",
   mode,
-  streamingOnly = false,
 }: TranscriptionModelPickerProps) {
   const { t } = useTranslation();
   const switchCloudTranscriptionProvider = useSettingsStore(
@@ -481,20 +479,17 @@ export default function TranscriptionModelPicker({
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
   const colorScheme: ColorScheme = variant === "settings" ? "purple" : "blue";
   const styles = useMemo(() => MODEL_PICKER_COLORS[colorScheme], [colorScheme]);
-  // streamingOnly is Note Recording's picker, so it offers the streaming
-  // providers note recording can actually run — not every streaming provider.
-  // Upload is always http-batch, and the realtime-only providers have no batch
-  // route at all (transcriptionRoute fails them closed), so they are hidden there.
+  // Meetings use post-Stop file routes. Upload has its own wider batch routes.
   const availableCloudProviders = useMemo(() => {
-    if (streamingOnly) return getMeetingStreamingTranscriptionProviders();
+    if (transcriptionContext === "meeting") return getMeetingFileTranscriptionProviders();
     const providers = getTranscriptionProviders();
     if (transcriptionContext !== "upload") return providers;
     return providers.filter((provider) => !STREAMING_ONLY_PROVIDERS.has(provider.id));
-  }, [streamingOnly, transcriptionContext]);
+  }, [transcriptionContext]);
   const cloudProviders = availableCloudProviders;
   const cloudProviderTabs = useMemo(() => {
     const availableIds = new Set(availableCloudProviders.map((p) => p.id));
-    if (!streamingOnly) availableIds.add("custom");
+    if (transcriptionContext !== "meeting") availableIds.add("custom");
     const tabs = CLOUD_PROVIDER_TABS.filter((provider) => availableIds.has(provider.id)).map(
       (provider) =>
         provider.id === "custom"
@@ -502,7 +497,7 @@ export default function TranscriptionModelPicker({
           : provider
     );
     return tabs;
-  }, [availableCloudProviders, streamingOnly, t]);
+  }, [availableCloudProviders, transcriptionContext, t]);
   const localProviderTabs = useMemo(
     () =>
       LOCAL_PROVIDER_TABS.map((provider) =>
@@ -594,17 +589,23 @@ export default function TranscriptionModelPicker({
     );
     const candidate = browsedCloudProvider ?? selectedCloudProvider;
     const candidateAvailable =
-      (candidate === "custom" && !streamingOnly && hasCustomUrl) ||
+      (candidate === "custom" && transcriptionContext !== "meeting" && hasCustomUrl) ||
       cloudProviders.some((provider) => provider.id === candidate);
     const provider = candidateAvailable ? candidate : cloudProviders[0]?.id ?? "custom";
-    return { provider, model: selectedCloudModel };
+    const models = cloudProviders.find((entry) => entry.id === provider)?.models ?? [];
+    const model =
+      transcriptionContext === "meeting" &&
+      !models.some((entry) => entry.id === selectedCloudModel)
+        ? models[0]?.id ?? selectedCloudModel
+        : selectedCloudModel;
+    return { provider, model };
   }, [
     cloudProviders,
     cloudTranscriptionBaseUrl,
     browsedCloudProvider,
     selectedCloudProvider,
     selectedCloudModel,
-    streamingOnly,
+    transcriptionContext,
   ]);
   const displayedCloudProvider = effectiveCloudSelection.provider;
   const displayedCloudModel = effectiveCloudSelection.model;
@@ -619,6 +620,10 @@ export default function TranscriptionModelPicker({
       return;
     }
     if (effectiveCloudSelection.provider !== selectedCloudProvider) {
+      if (transcriptionContext === "meeting") {
+        switchCloudTranscriptionProvider("meeting", effectiveCloudSelection.provider);
+        return;
+      }
       onCloudProviderSelect(effectiveCloudSelection.provider);
     }
     if (effectiveCloudSelection.model !== selectedCloudModel) {
@@ -632,6 +637,8 @@ export default function TranscriptionModelPicker({
     onCloudProviderSelect,
     selectedCloudModel,
     selectedCloudProvider,
+    switchCloudTranscriptionProvider,
+    transcriptionContext,
   ]);
 
   useEffect(() => {

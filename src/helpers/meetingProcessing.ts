@@ -30,6 +30,7 @@ import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio } from "./meetingAudioMixer.js";
 import { formatSpeakerTranscript, mergeSpeakersWithText } from "./speakerMerge.js";
 import { byokFileSizeLimit } from "./transcriptionRoute.js";
+import { supportedMeetingFileProvider } from "./meetingFileTranscription.js";
 
 const AUTO_RETRY_LIMIT = 3;
 const RETRY_BASE_SECONDS = 5;
@@ -395,7 +396,7 @@ export class MeetingProcessingWorker {
   private async prepare(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal): Promise<void> {
     if (this.isCapturing()) return this.pause(run, "prepare");
     const config = this.requireConfig(run);
-    const provider = config.transcription.mode === "local" ? null : supportedProvider(config.transcription.provider, config.transcription.model);
+    const provider = config.transcription.mode === "local" ? null : supportedMeetingFileProvider(config.transcription.provider, config.transcription.model);
     if (config.transcription.mode === "providers" && !provider) {
       throw new MeetingProcessingFailure("unsupported-provider", "blocked");
     }
@@ -453,7 +454,7 @@ export class MeetingProcessingWorker {
       this.setState(run.id, "normalize", "pending", null, null);
       return;
     }
-    const provider = supportedProvider(config.provider, config.model);
+    const provider = supportedMeetingFileProvider(config.provider, config.model);
     if (!provider) throw new MeetingProcessingFailure("unsupported-provider", "blocked");
     if (fileSize > byokFileSizeLimit(provider)) throw new MeetingProcessingFailure("provider-limit", "blocked");
     if (provider === "gemini" && (recording.endedAt && recording.startedAt && (Date.parse(recording.endedAt) - Date.parse(recording.startedAt)) / 1000 > GEMINI_MAX_SECONDS)) {
@@ -522,7 +523,7 @@ export class MeetingProcessingWorker {
         result = { ...result, text: formatSpeakerTranscript(segments), diarized: true, segments };
       }
     } else {
-      const provider = supportedProvider(config.provider, config.model);
+      const provider = supportedMeetingFileProvider(config.provider, config.model);
       if (!provider) throw new MeetingProcessingFailure("unsupported-provider", "blocked");
       result = normalizeProviderResponse(provider, raw);
     }
@@ -782,14 +783,6 @@ class MeetingProcessingFailure extends Error {
   ) {
     super(message ?? code);
   }
-}
-
-function supportedProvider(provider: string | undefined, model: string | undefined): "deepgram" | "elevenlabs" | "gemini" | "openai" | null {
-  if (provider === "deepgram" && (!model || model.startsWith("nova-"))) return "deepgram";
-  if (provider === "elevenlabs" && (!model || model === "scribe_v2")) return "elevenlabs";
-  if (provider === "gemini" && (!model || model === "gemini-3.5-transcribe")) return "gemini";
-  if (provider === "openai" && (!model || ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "gpt-4o-transcribe-diarize"].includes(model))) return "openai";
-  return null;
 }
 
 function providerModel(model: string | undefined, provider: "deepgram" | "elevenlabs" | "gemini" | "openai"): string {

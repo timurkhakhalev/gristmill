@@ -27,6 +27,7 @@
     "src/helpers/autoStartPolicy.ts",
     "src/helpers/debugLogger.ts",
     "src/helpers/devServerManager.ts",
+    "src/helpers/devSnapshot.ts",
     "src/helpers/dockManager.ts",
     "src/helpers/dockPolicy.ts",
     "src/helpers/dragManager.ts",

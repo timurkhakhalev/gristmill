@@ -53,10 +53,10 @@ export default function OptionCard({
         <div
           className={cn(
             "w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-colors duration-150",
-            selected ? "bg-primary border-primary" : "border-border-hover bg-transparent"
+            selected ? "bg-accent border-accent" : "border-border-hover bg-transparent"
           )}
         >
-          {selected && <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />}
+          {selected && <Check className="w-3 h-3 text-accent-foreground" strokeWidth={3} />}
         </div>
       </div>
     </button>

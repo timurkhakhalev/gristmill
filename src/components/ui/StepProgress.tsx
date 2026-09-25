@@ -34,7 +34,7 @@ export default function StepProgress({ steps, currentStep, className = "" }: Ste
               <div
                 className={`w-4.5 h-4.5 rounded-md flex items-center justify-center shrink-0 transition-colors duration-150 ${
                   isActive
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-accent text-accent-foreground"
                     : isCompleted
                       ? "bg-success/15 text-success"
                       : "bg-subtle text-muted-foreground/70"

@@ -1,6 +1,6 @@
 import { X } from "./icons";
-import { cn } from "./lib/utils";
-import { BRAND_GLASS_SURFACE } from "./ui/gradientCircle";
+import { useTranslation } from "react-i18next";
+import { Button } from "./ui/button";
 
 interface MeetingNotificationCardProps {
   title: string;
@@ -34,13 +34,13 @@ export function MeetingNotificationCard({
   onMouseEnter,
   onMouseLeave,
 }: MeetingNotificationCardProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={[
         "relative",
-        "bg-card/95 dark:bg-surface-2/95 backdrop-blur-xl",
-        "border border-border/70 dark:border-border-subtle/60",
-        "rounded-xl shadow-lg p-2.5",
+        "bg-overlay text-overlay-foreground border border-border",
+        "rounded-xl shadow-overlay p-2.5",
         className,
       ].join(" ")}
       onMouseEnter={onMouseEnter}
@@ -48,12 +48,14 @@ export function MeetingNotificationCard({
     >
       {onDismiss && (
         <button
+          type="button"
           onClick={onDismiss}
+          aria-label={t("common.close")}
           className={[
             "absolute -left-2.5 -top-2.5 z-10 size-6 rounded-full",
             "flex items-center justify-center",
-            "bg-card dark:bg-surface-2 border border-border/70 dark:border-border-subtle/60 shadow-sm",
-            "text-muted-foreground/70 hover:text-foreground hover:bg-subtle",
+            "bg-overlay border border-border shadow-sm",
+            "text-muted-foreground hover:text-foreground hover:bg-default",
             "transition-all duration-150",
             closeVisible ? "opacity-100 scale-100" : "opacity-0 scale-75 pointer-events-none",
           ].join(" ")}
@@ -76,26 +78,20 @@ export function MeetingNotificationCard({
         <div className="flex-1 min-w-0">
           <p
             className={[
-              "text-[12px] font-semibold text-foreground leading-tight",
+              "text-xs font-semibold text-foreground leading-tight",
               allowTitleWrap ? "whitespace-normal break-words" : "truncate",
             ].join(" ")}
           >
             {title}
           </p>
-          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5 break-words">
+          <p className="text-2xs text-muted-foreground leading-tight mt-0.5 break-words">
             {body}
           </p>
         </div>
 
-        <button
-          onClick={onStart}
-          className={cn(
-            BRAND_GLASS_SURFACE,
-            "shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition-[filter] hover:brightness-110 active:brightness-95"
-          )}
-        >
+        <Button size="sm" onClick={onStart} className="h-7 min-h-7 shrink-0 px-3 text-xs">
           {startLabel}
-        </button>
+        </Button>
       </div>
     </div>
   );

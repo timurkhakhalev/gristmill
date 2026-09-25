@@ -71,7 +71,7 @@ function groupEventsByDay(events: CalendarEvent[], now: Date): DayGroup[] {
 }
 
 const ATTENDEE_COUNT_PILL_CLASS =
-  "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-surface-3 px-0.5 text-[9px] font-medium tabular-nums text-muted-foreground ring-1 ring-background";
+  "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-surface-3 px-0.5 text-3xs font-medium tabular-nums text-muted-foreground ring-1 ring-background";
 
 const RSVP_DOT: Record<string, string> = {
   accepted: "bg-green-500",
@@ -120,7 +120,7 @@ function AttendeePopover({
           <p dir="auto" className="text-xs font-medium leading-snug text-foreground">
             {event.summary || t("upcoming.untitledEvent")}
           </p>
-          <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">{timeRange}</p>
+          <p className="mt-0.5 text-2xs tabular-nums text-muted-foreground">{timeRange}</p>
         </div>
         <div className="max-h-56 overflow-y-auto p-1">
           {attendees.map((a) => (
@@ -133,7 +133,7 @@ function AttendeePopover({
                     <span className="ms-1 text-foreground/45">{t("notes.participants.me")}</span>
                   )}
                 </p>
-                <p dir="ltr" className="truncate text-[11px] text-foreground/45">
+                <p dir="ltr" className="truncate text-2xs text-foreground/45">
                   {a.email}
                 </p>
               </div>

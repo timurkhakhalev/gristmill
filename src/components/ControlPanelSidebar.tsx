@@ -9,7 +9,7 @@ export type { ControlPanelView };
 const rowIconClass =
   "shrink-0 text-foreground/70 group-hover:text-foreground/90 dark:text-foreground/65 dark:group-hover:text-foreground/85 transition-colors duration-150";
 const rowLabelClass =
-  "text-[13px] text-foreground/90 group-hover:text-foreground dark:text-foreground/85 dark:group-hover:text-foreground transition-colors duration-150";
+  "text-ui text-foreground/90 group-hover:text-foreground dark:text-foreground/85 dark:group-hover:text-foreground transition-colors duration-150";
 const rowButtonClass =
   "group flex items-center gap-2.5 w-full h-8 px-2.5 rounded-md text-start outline-none hover:bg-foreground/4 dark:hover:bg-white/4 focus-visible:ring-1 focus-visible:ring-primary/30 transition-colors duration-150";
 
@@ -67,7 +67,7 @@ export default function ControlPanelSidebar({
               />
               <span
                 className={cn(
-                  collapsed ? "max-w-full truncate text-[11px] leading-tight" : "text-[13px] transition-colors duration-150",
+                  collapsed ? "max-w-full truncate text-2xs leading-tight" : "text-ui transition-colors duration-150",
                   isActive
                     ? "text-foreground font-medium"
                     : "text-foreground/90 group-hover:text-foreground dark:text-foreground/85 dark:group-hover:text-foreground"
@@ -90,7 +90,7 @@ export default function ControlPanelSidebar({
           title={t("sidebar.settings")}
         >
           <Settings size={16} className={rowIconClass} />
-          <span className={collapsed ? "max-w-full truncate text-[11px] leading-tight text-foreground/90" : rowLabelClass}>{t("sidebar.settings")}</span>
+          <span className={collapsed ? "max-w-full truncate text-2xs leading-tight text-foreground/90" : rowLabelClass}>{t("sidebar.settings")}</span>
         </button>
 
       </div>

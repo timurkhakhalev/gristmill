@@ -62,7 +62,7 @@ export function ConversationPicker({
                 )}
               >
                 <span className="truncate flex-1">{conversation.title}</span>
-                <span className="text-[10px] text-foreground/45 shrink-0">
+                <span className="text-2xs text-foreground/45 shrink-0">
                   {formatShortDate(conversation.updated_at, locale)}
                 </span>
               </DropdownMenuItem>

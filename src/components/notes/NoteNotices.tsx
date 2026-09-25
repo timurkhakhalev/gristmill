@@ -22,7 +22,7 @@ export function NoteNotice({
   role?: "status" | "alert";
 }) {
   return (
-    <Alert status={status} className="oh-notice" role={role ?? (status === "danger" ? "alert" : "status")}>
+    <Alert status={status} className="mb-4 items-center rounded-xl" role={role ?? (status === "danger" ? "alert" : "status")}>
       {busy ? (
         <Alert.Indicator>
           <Spinner size="sm" color="current" />
@@ -31,10 +31,10 @@ export function NoteNotice({
         <Alert.Indicator />
       )}
       <Alert.Content>
-        <Alert.Title>{title}</Alert.Title>
-        {description && <Alert.Description>{description}</Alert.Description>}
+        <Alert.Title className="text-sm">{title}</Alert.Title>
+        {description && <Alert.Description className="text-xs">{description}</Alert.Description>}
       </Alert.Content>
-      {actions && <div className="oh-notice-actions">{actions}</div>}
+      {actions && <div className="ms-auto flex flex-wrap items-center gap-1.5">{actions}</div>}
     </Alert>
   );
 }
@@ -55,7 +55,7 @@ export function CaptureHealthLine({
     ["system", systemStatus],
   ] as const;
   return (
-    <div className="oh-capture-health" role="status">
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg bg-subtle px-3 py-2 text-xs text-muted" role="status">
       {sources.map(([source, status]) => (
         <span key={source} className="inline-flex items-center gap-1.5">
           <span

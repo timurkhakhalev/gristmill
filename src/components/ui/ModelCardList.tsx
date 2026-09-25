@@ -117,7 +117,7 @@ export function ModelCard({
 
         <div className="ms-auto flex items-center gap-1.5 shrink-0">
           {model.recommended && (
-            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-2xs font-medium text-primary">
               {t("common.recommended")}
             </span>
           )}

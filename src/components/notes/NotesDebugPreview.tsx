@@ -10,6 +10,7 @@ import EmptyStateCard from "../ui/EmptyStateCard";
 import { FileText } from "../icons";
 import { Button } from "../ui/button";
 import NoteEditor from "./NoteEditor";
+import NotesOnboarding from "./NotesOnboarding";
 import type { NotesDebugScenario } from "./NotesDebugControls";
 
 const NOW = "2026-09-25T12:00:00.000Z";
@@ -39,11 +40,16 @@ const config: MeetingProcessingConfig = {
 };
 
 function makePreview(scenario: NotesDebugScenario) {
-  const hasTranscript = ["transcript", "ready", "audio-deleted", "enhanced-stale"].includes(
-    scenario
-  );
+  const hasTranscript = [
+    "transcript",
+    "ready",
+    "audio-deleted",
+    "enhanced-stale",
+    "summary-failed",
+  ].includes(scenario);
   const hasSummary = ["ready", "audio-deleted", "enhanced-stale"].includes(scenario);
-  const isRecording = scenario === "recording" || scenario === "reconnecting";
+  const isRecording =
+    scenario === "recording" || scenario === "reconnecting" || scenario === "system-unavailable";
   const note: NoteItem = {
     id: 0,
     title: scenario === "blank" ? "" : "Тестовая встреча",
@@ -74,7 +80,7 @@ function makePreview(scenario: NotesDebugScenario) {
         ? "running"
         : scenario === "blocked" || scenario === "transcript"
           ? "blocked"
-          : scenario === "failed"
+          : scenario === "failed" || scenario === "summary-failed"
             ? "failed"
             : "complete";
   const run: MeetingProcessingRunDto = {
@@ -99,7 +105,7 @@ function makePreview(scenario: NotesDebugScenario) {
         ? "missing-transcription-config"
         : scenario === "transcript"
           ? "missing-summary-config"
-          : scenario === "failed"
+          : scenario === "failed" || scenario === "summary-failed"
             ? "provider-timeout"
             : null,
     retryAt: null,
@@ -115,6 +121,7 @@ function makePreview(scenario: NotesDebugScenario) {
     "processing",
     "blocked",
     "failed",
+    "summary-failed",
     "incomplete",
     "transcript",
     "ready",
@@ -175,10 +182,12 @@ export default function NotesDebugPreview({
   const [preview, setPreview] = useState(() => makePreview(scenario));
   const [isRecording, setIsRecording] = useState(preview.isRecording);
   const [capturePhase, setCapturePhase] = useState<
-    "idle" | "preparing" | "recording" | "saving" | "saved" | "incomplete" | "failed"
+    "idle" | "preparing" | "recording" | "paused" | "saving" | "saved" | "incomplete" | "failed"
   >(
     preview.isRecording
       ? "recording"
+      : scenario === "paused"
+        ? "paused"
       : scenario === "incomplete"
         ? "incomplete"
         : scenario === "capture-preparing"
@@ -190,10 +199,20 @@ export default function NotesDebugPreview({
               : "idle"
   );
   const [captureStartedAt, setCaptureStartedAt] = useState<number | undefined>(
-    preview.isRecording || scenario === "capture-saving" ? Date.now() - 75_000 : undefined
+    preview.isRecording || scenario === "capture-saving" || scenario === "paused"
+      ? Date.now() - 75_000
+      : undefined
   );
-  const [systemStatus, setSystemStatus] = useState<"inactive" | "active" | "reconnecting">(
-    scenario === "reconnecting" ? "reconnecting" : preview.isRecording ? "active" : "inactive"
+  const [systemStatus, setSystemStatus] = useState<
+    "inactive" | "active" | "reconnecting" | "unavailable"
+  >(
+    scenario === "reconnecting"
+      ? "reconnecting"
+      : scenario === "system-unavailable"
+        ? "unavailable"
+        : preview.isRecording
+          ? "active"
+          : "inactive"
   );
 
   const startRecording = () => {
@@ -201,6 +220,14 @@ export default function NotesDebugPreview({
     setCapturePhase("recording");
     setIsRecording(true);
     setSystemStatus("active");
+  };
+  const pauseRecording = () => {
+    setCapturePhase("paused");
+    setIsRecording(false);
+  };
+  const resumeRecording = () => {
+    setCapturePhase("recording");
+    setIsRecording(true);
   };
   const stopRecording = () => {
     setCapturePhase("saved");
@@ -214,7 +241,11 @@ export default function NotesDebugPreview({
       <div className="shrink-0 border-b border-orange-500/20 bg-orange-500/10 px-4 py-2 text-xs text-orange-700 dark:text-orange-300">
         Debug preview: {scenario}. In memory only; no database, audio, or provider calls.
       </div>
-      {scenario === "empty" ? (
+      {scenario === "onboarding" ? (
+        <div className="min-h-0 flex-1">
+          <NotesOnboarding preview onComplete={() => onSelectScenario("empty")} />
+        </div>
+      ) : scenario === "empty" ? (
         <div className="flex flex-1 items-center justify-center">
           <EmptyStateCard
             icon={FileText}
@@ -247,6 +278,8 @@ export default function NotesDebugPreview({
             isProcessing={false}
             onStartRecording={startRecording}
             onStopRecording={stopRecording}
+            onPauseRecording={pauseRecording}
+            onResumeRecording={resumeRecording}
             onGenerateSummary={() =>
               setPreview((current) => ({
                 ...current,
@@ -291,5 +324,10 @@ export default function NotesDebugPreview({
 }
 
 function hasTranscriptScenario(scenario: NotesDebugScenario): boolean {
-  return scenario === "transcript" || scenario === "ready" || scenario === "audio-deleted";
+  return (
+    scenario === "transcript" ||
+    scenario === "ready" ||
+    scenario === "audio-deleted" ||
+    scenario === "summary-failed"
+  );
 }

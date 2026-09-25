@@ -83,7 +83,7 @@ export default function ActionPicker({
         )}
       >
         <Sparkles size={11} />
-        <span className="text-[11px] font-semibold tracking-tight">
+        <span className="text-2xs font-semibold tracking-tight">
           {getActionCta(activeAction, t)}
         </span>
       </button>

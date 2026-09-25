@@ -932,7 +932,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
               <div className="flex items-center gap-3 my-3">
                 <div className="h-px flex-1 bg-foreground/5 dark:bg-white/5" />
-                <span className="text-[10px] text-foreground/45 uppercase tracking-wider">
+                <span className="text-2xs text-foreground/45 uppercase tracking-wider">
                   {t("notes.upload.orDivider")}
                 </span>
                 <div className="h-px flex-1 bg-foreground/5 dark:bg-white/5" />
@@ -1030,7 +1030,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           )}
 
           {batchUrlNotice && (
-            <p className="text-[10px] text-amber-500/60 mt-2 text-center">{batchUrlNotice}</p>
+            <p className="text-2xs text-amber-500/60 mt-2 text-center">{batchUrlNotice}</p>
           )}
 
           {batch.hasQueue && (
@@ -1218,7 +1218,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
               !useLocalWhisper &&
               !isSelfHosted &&
               cloudTranscriptionProvider === "openai" && (
-                <p className="text-[10px] text-foreground/45 mt-1.5">
+                <p className="text-2xs text-foreground/45 mt-1.5">
                   {t("notes.upload.openaiDiarizeNote")}
                 </p>
               )}
@@ -1226,7 +1226,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
               !useLocalWhisper &&
               !isSelfHosted &&
               cloudTranscriptionProvider === "mistral" && (
-                <p className="text-[10px] text-foreground/45 mt-1.5">
+                <p className="text-2xs text-foreground/45 mt-1.5">
                   {t("notes.upload.mistralDiarizeNote")}
                 </p>
               )}
@@ -1234,13 +1234,13 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
               !useLocalWhisper &&
               !isSelfHosted &&
               cloudTranscriptionProvider === "groq" && (
-                <p className="text-[10px] text-amber-500/60 mt-1.5">
+                <p className="text-2xs text-amber-500/60 mt-1.5">
                   {t("notes.upload.groqDiarizeNote")}
                 </p>
               )}
 
             {diarizationDownloading && (
-              <p className="text-[10px] text-primary/50 mt-1.5">
+              <p className="text-2xs text-primary/50 mt-1.5">
                 {t("notes.upload.downloadingModels")}
               </p>
             )}
@@ -1274,7 +1274,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                     "mt-1 w-full h-8 px-2.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   )}
                 />
-                <p className="text-[10px] text-foreground/45 mt-1.5">
+                <p className="text-2xs text-foreground/45 mt-1.5">
                   {t("notes.upload.numSpeakersHint")}
                 </p>
               </div>
@@ -1648,7 +1648,7 @@ function FolderSelect({
                 <span className="flex items-center gap-1.5">
                   <span dir="auto">{f.name}</span>
                   {isMeetings && (
-                    <span className="text-[8px] uppercase tracking-wider text-foreground/45 font-medium">
+                    <span className="text-3xs uppercase tracking-wider text-foreground/45 font-medium">
                       {t("notes.folders.soon")}
                     </span>
                   )}

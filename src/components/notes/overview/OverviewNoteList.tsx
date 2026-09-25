@@ -55,7 +55,7 @@ export function OverviewNoteList({
     <div className="pb-6">
       {groups.map((group) => (
         <div key={group.label}>
-          <div className="pt-4 pb-1 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider select-none">
+          <div className="pt-4 pb-1 text-2xs font-semibold text-muted-foreground/70 uppercase tracking-wider select-none">
             {group.label}
           </div>
           {group.items.map((note) => (
@@ -68,10 +68,10 @@ export function OverviewNoteList({
                   size={14}
                   className="text-foreground/45 dark:text-foreground/45 shrink-0"
                 />
-                <span className="text-[13px] text-foreground/85 truncate flex-1">
+                <span className="text-ui text-foreground/85 truncate flex-1">
                   {note.title || t("notes.list.untitled")}
                 </span>
-                <span className="text-[11px] text-foreground/45 dark:text-foreground/45 shrink-0 tabular-nums">{note.updated_at}</span>
+                <span className="text-2xs text-foreground/45 dark:text-foreground/45 shrink-0 tabular-nums">{note.updated_at}</span>
               </button>
           ))}
         </div>

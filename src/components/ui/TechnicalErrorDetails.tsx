@@ -50,7 +50,7 @@ export function TechnicalErrorDetails({
       <div className="mt-1.5 flex items-start justify-between gap-2">
         <pre
           dir="ltr"
-          className="min-w-0 flex-1 whitespace-pre-wrap wrap-break-word font-mono text-[11px] leading-snug select-all"
+          className="min-w-0 flex-1 whitespace-pre-wrap wrap-break-word font-mono text-2xs leading-snug select-all"
         >
           {text}
         </pre>

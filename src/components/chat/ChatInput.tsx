@@ -128,7 +128,7 @@ export function ChatInput({
         {isListening && (
           <>
             <RecordingIndicator />
-            <span className="text-[12px] text-foreground/80 truncate flex-1">
+            <span className="text-xs text-foreground/80 truncate flex-1">
               {/* A live transcript's informative part is its tail — show the
                   latest words once the line fills instead of a frozen start. */}
               {partialTranscript.length > 60
@@ -141,7 +141,7 @@ export function ChatInput({
         {isTranscribing && (
           <>
             <ProcessingIndicator />
-            <span className="text-[12px] text-muted-foreground select-none">
+            <span className="text-xs text-muted-foreground select-none">
               {t("agentMode.input.transcribing")}
             </span>
           </>
@@ -154,7 +154,7 @@ export function ChatInput({
               bars="auto"
               className="flex-1 overflow-hidden"
             />
-            <span className="text-[13px] font-semibold tabular-nums tracking-[0.08em] text-foreground/85 shrink-0">
+            <span className="text-ui font-semibold tabular-nums tracking-[0.08em] text-foreground/85 shrink-0">
               {formatMmSs(voice.elapsed)}
             </span>
             <button
@@ -191,7 +191,7 @@ export function ChatInput({
         {isVoiceTranscribing && (
           <>
             <ProcessingIndicator />
-            <span className="text-[12px] text-muted-foreground select-none">
+            <span className="text-xs text-muted-foreground select-none">
               {t("agentMode.input.transcribing")}
             </span>
           </>
@@ -211,7 +211,7 @@ export function ChatInput({
               placeholder={placeholder ?? t("agentMode.input.typeMessage")}
               className={cn(
                 "input-inline flex-1 outline-none bg-transparent caret-primary",
-                "text-[13px] text-foreground placeholder:text-muted-foreground/70",
+                "text-ui text-foreground placeholder:text-muted-foreground/70",
                 "min-w-0 p-0",
                 isBusy && "text-muted-foreground/70 cursor-not-allowed"
               )}

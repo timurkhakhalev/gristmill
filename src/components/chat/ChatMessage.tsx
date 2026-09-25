@@ -65,19 +65,19 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
         />
 
         {isExecuting ? (
-          <span className="text-[11px] text-muted-foreground/80">
+          <span className="text-2xs text-muted-foreground/80">
             {t(`agentMode.tools.${toolCall.name}Status`, { defaultValue: toolCall.name })}
           </span>
         ) : isError ? (
           <div className="flex items-center gap-1">
             <CircleAlert size={10} className="text-destructive/60 shrink-0" />
-            <span className="text-[11px] text-destructive/70">
+            <span className="text-2xs text-destructive/70">
               {toolCall.result || toolCall.name}
             </span>
           </div>
         ) : isClipboard ? (
           <div className="flex items-center gap-1">
-            <span className="text-[11px] text-emerald-600 dark:text-emerald-400/80">
+            <span className="text-2xs text-emerald-600 dark:text-emerald-400/80">
               {t("agentMode.tools.copiedToClipboard")}
             </span>
             <Check
@@ -87,7 +87,7 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
             />
           </div>
         ) : (
-          <span className="text-[11px] text-muted-foreground/70">
+          <span className="text-2xs text-muted-foreground/70">
             {toolCall.result || toolCall.name}
           </span>
         )}
@@ -110,7 +110,7 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
         >
           <pre
             dir="ltr"
-            className="text-[10px] text-muted-foreground/70 px-2.5 pb-1.5 whitespace-pre-wrap leading-tight"
+            className="text-2xs text-muted-foreground/70 px-2.5 pb-1.5 whitespace-pre-wrap leading-tight"
           >
             {toolCall.result}
           </pre>
@@ -149,10 +149,10 @@ function NoteCard({
         <FileText size={12} className="text-primary/70" />
       </div>
       <div className="min-w-0 flex-1">
-        <p dir="auto" className="text-[12px] font-medium text-foreground truncate">
+        <p dir="auto" className="text-xs font-medium text-foreground truncate">
           {title}
         </p>
-        <p className="text-[10px] text-muted-foreground/70">{t("agentMode.tools.openNote")}</p>
+        <p className="text-2xs text-muted-foreground/70">{t("agentMode.tools.openNote")}</p>
       </div>
       <ChevronRight
         size={12}
@@ -192,8 +192,8 @@ export function ChatMessage({
           data-chat-bubble
           className={cn(
             "max-w-[80%] px-3 py-2 rounded-lg rounded-ee-sm",
-            "bg-primary/90 text-primary-foreground",
-            "text-[13px] leading-relaxed"
+            "bg-accent text-accent-foreground",
+            "text-ui leading-relaxed"
           )}
         >
           <span dir="auto">{content}</span>
@@ -216,7 +216,7 @@ export function ChatMessage({
         className={cn(
           "max-w-[85%] px-3 py-2 rounded-lg rounded-es-sm",
           "bg-surface-1 border border-border/70 text-foreground",
-          "text-[13px] leading-relaxed"
+          "text-ui leading-relaxed"
         )}
       >
         {hasToolCalls && (
@@ -234,7 +234,7 @@ export function ChatMessage({
         {hasContent && (
           <MarkdownRenderer
             content={content}
-            className="text-[13px] leading-relaxed [&_p]:text-[13px] [&_li]:text-[13px]"
+            className="text-ui leading-relaxed [&_p]:text-ui [&_li]:text-ui"
           />
         )}
 
@@ -246,7 +246,7 @@ export function ChatMessage({
         )}
 
         {isStreaming && !hasContent && !hasToolCalls && (
-          <span className="text-[13px] font-medium select-none thinking-shimmer-text">
+          <span className="text-ui font-medium select-none thinking-shimmer-text">
             {t("agentMode.input.thinking")}...
           </span>
         )}

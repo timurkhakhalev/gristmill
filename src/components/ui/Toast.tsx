@@ -308,7 +308,7 @@ const Toast: React.FC<
             <div className="mt-1.5 flex items-center gap-1.5 rounded-[3px] border border-white/6 bg-white/4 px-1.5 py-1">
               <code
                 dir="ltr"
-                className="min-w-0 flex-1 wrap-break-word font-mono text-[11px] text-white/60 select-all"
+                className="min-w-0 flex-1 wrap-break-word font-mono text-2xs text-white/60 select-all"
               >
                 {copyCommand}
               </code>

@@ -293,7 +293,7 @@ export default function CommandSearch({
                     type="button"
                     className={cn(
                       "flex items-center gap-1 shrink-0 rounded-md border border-border/70 bg-subtle/40",
-                      "px-1.5 py-0.5 text-[11px] transition-colors outline-none",
+                      "px-1.5 py-0.5 text-2xs transition-colors outline-none",
                       scopeSpace ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                     )}
                   >
@@ -346,7 +346,7 @@ export default function CommandSearch({
             {query && (
               <button
                 onClick={() => setQuery("")}
-                className="text-[11px] text-muted-foreground/70 hover:text-muted-foreground transition-colors outline-none"
+                className="text-2xs text-muted-foreground/70 hover:text-muted-foreground transition-colors outline-none"
               >
                 ✕
               </button>
@@ -463,7 +463,7 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
   return (
     <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
       <span className="text-muted-foreground/70">{icon}</span>
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+      <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground/70">
         {label}
       </span>
     </div>
@@ -510,7 +510,7 @@ function ContainerRow({
       ) : space?.kind === "private" ? (
         <Lock size={13} className={iconClass} />
       ) : space?.emoji ? (
-        <span className="text-[13px] leading-none shrink-0" aria-hidden="true">
+        <span className="text-ui leading-none shrink-0" aria-hidden="true">
           {space.emoji}
         </span>
       ) : (
@@ -522,7 +522,7 @@ function ContainerRow({
       {showSpaceHint && space && (
         <span
           dir="auto"
-          className="text-[10px] text-muted-foreground/70 truncate shrink-0 max-w-32"
+          className="text-2xs text-muted-foreground/70 truncate shrink-0 max-w-32"
         >
           {spaceLabel(space)}
         </span>
@@ -584,7 +584,7 @@ function NoteRow({
           {note.title || t("notes.list.untitled")}
         </p>
         {(breadcrumb || preview) && (
-          <p className="text-[10px] truncate mt-px">
+          <p className="text-2xs truncate mt-px">
             {breadcrumb && (
               <span dir="auto" className="text-muted-foreground/70">
                 {breadcrumb}
@@ -599,7 +599,7 @@ function NoteRow({
           </p>
         )}
       </div>
-      <span className="text-[10px] text-muted-foreground/70 tabular-nums shrink-0">
+      <span className="text-2xs text-muted-foreground/70 tabular-nums shrink-0">
         {formatRelativeTime(note.updated_at, t, locale)}
       </span>
     </button>
@@ -646,7 +646,7 @@ function TranscriptRow({
       <p dir="auto" className="flex-1 text-xs text-foreground/75 truncate min-w-0">
         {transcript.text}
       </p>
-      <span className="text-[10px] text-muted-foreground/70 tabular-nums shrink-0">
+      <span className="text-2xs text-muted-foreground/70 tabular-nums shrink-0">
         {formatRelativeTime(transcript.created_at, t, locale)}
       </span>
     </button>
@@ -660,13 +660,13 @@ function FooterHint({ keys, label }: { keys: string[]; label: string }) {
         {keys.map((k) => (
           <kbd
             key={k}
-            className="text-[10px] px-1 py-px rounded border border-border/70 bg-subtle/50 text-muted-foreground/55 font-mono leading-tight"
+            className="text-2xs px-1 py-px rounded border border-border/70 bg-subtle/50 text-muted-foreground/55 font-mono leading-tight"
           >
             {k}
           </kbd>
         ))}
       </span>
-      <span className="text-[10px] text-muted-foreground/70 ms-0.5">{label}</span>
+      <span className="text-2xs text-muted-foreground/70 ms-0.5">{label}</span>
     </div>
   );
 }

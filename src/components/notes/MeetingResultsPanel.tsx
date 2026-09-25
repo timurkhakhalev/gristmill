@@ -269,25 +269,25 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     setMessage(t("meetingResults.exported"));
   });
 
-  return <div className="oh-meeting-detail">
-    <div className="oh-meeting-toolbar">
-      <Tabs selectedKey={viewMode} onSelectionChange={(key) => onViewModeChange(String(key) as ViewMode)} aria-label={tr("contentTabs", "Meeting content")}>
+  return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">
+    <div className="mb-3 flex items-center justify-between gap-2 pb-3 max-[720px]:flex-wrap">
+      <Tabs className="w-auto shrink-0" selectedKey={viewMode} onSelectionChange={(key) => onViewModeChange(String(key) as ViewMode)} aria-label={tr("contentTabs", "Meeting content")}>
         <Tabs.List aria-label={tr("contentTabs", "Meeting content")}>
           <Tabs.Tab id="raw">{t("notes.editor.notes")}<Tabs.Indicator /></Tabs.Tab>
           <Tabs.Tab id="enhanced">{tr("summaryTab", "Summary")}<Tabs.Indicator /></Tabs.Tab>
           <Tabs.Tab id="transcript">{t("notes.editor.transcript")}<Tabs.Indicator /></Tabs.Tab>
         </Tabs.List>
       </Tabs>
-      <div className="oh-toolbar-actions">
+      <div className="ms-auto flex flex-wrap items-center gap-1.5">
       <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
-        <Button size="sm" variant="tertiary" aria-label={`${tr("audioParts", "Audio")} ${parts.length}`}><AudioLines size={16}/><span className="oh-toolbar-label">{tr("audioParts", "Audio")}</span> <span className="oh-count">{parts.length}</span></Button>
-        <Popover.Content placement="bottom end" className="oh-audio-popover"><Popover.Dialog>
-          <Popover.Heading>{tr("audioParts", "Audio")}</Popover.Heading>
+        <Button size="sm" variant="tertiary" aria-label={`${tr("audioParts", "Audio")} ${parts.length}`}><AudioLines size={16}/><span className="@max-[620px]:sr-only">{tr("audioParts", "Audio")}</span> <span className="text-xs text-muted">{parts.length}</span></Button>
+        <Popover.Content placement="bottom end" className="w-[355px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="p-4">
+          <Popover.Heading className="text-base font-semibold">{tr("audioParts", "Audio")}</Popover.Heading>
           {groups.length > 1 && <Choice label={t("meetingResults.recording")} value={currentGroup ?? ""} options={groups.map((group) => ({ id: group.recording.groupId, label: dateLabel(group.recording.startedAt, locale, { dateStyle: "medium", timeStyle: "short" }) }))} onChange={setGroupId} />}
-          {!parts.length && <p className="oh-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
-          {parts.map((part, index) => <div className="oh-audio-row" key={part.recording.id}>
+          {!parts.length && <p className="text-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
+          {parts.map((part, index) => <div className="flex items-center gap-2.5 border-b border-border py-3.5" key={part.recording.id}>
             <Button isIconOnly size="sm" variant="ghost" isDisabled={part.recording.audioState !== "available"} aria-label={playingId === part.recording.id ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={() => void startAudio(part.recording.id)}>{playingId === part.recording.id ? <Pause size={16}/> : <Play size={16}/>}</Button>
-            <div className="oh-audio-label"><strong>{dateLabel(part.recording.startedAt, locale, { timeStyle: "short" })}</strong><span>{formatDuration(part.recording.durationSeconds)} · {tr("part", "Part")} {index + 1}</span></div>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5"><strong className="text-sm font-medium">{dateLabel(part.recording.startedAt, locale, { timeStyle: "short" })}</strong><span className="text-xs text-muted">{formatDuration(part.recording.durationSeconds)} · {tr("part", "Part")} {index + 1}</span></div>
             <Dropdown><Button isIconOnly size="sm" variant="ghost" aria-label={tr("partActions", "Audio part actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("partActions", "Audio part actions")} onAction={(key) => {
               if (key === "asr") openRun("reprocess", part.recording.id);
               if (key === "mic" || key === "system") void exportPart(part.recording.id, key);
@@ -300,7 +300,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
             </Dropdown.Menu></Dropdown.Popover></Dropdown>
           </div>)}
           {availableParts.length > 0 && <Button size="sm" variant="ghost" onPress={() => openRun("reprocess")}>{tr("processWholeMeeting", "Transcribe whole meeting")}<RotateCcw size={14}/></Button>}
-          <p className="oh-muted oh-small">{tr("originalsPreserved", "Original microphone and system tracks are saved separately.")}</p>
+          <p className="mt-3.5 text-xs leading-normal text-muted">{tr("originalsPreserved", "Original microphone and system tracks are saved separately.")}</p>
         </Popover.Dialog></Popover.Content>
       </Popover>
       {actions}
@@ -338,10 +338,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       return <NoteNotice status="accent" busy title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
     })()}
 
-    {viewMode === "raw" ? manualContent : <div className="oh-result">
-      {selected && (viewMode !== "enhanced" || selected.summary?.text) && <div className="oh-result-meta"><span>{viewMode === "enhanced" ? selected.run.config?.summary?.provider : selected.run.provider} · {viewMode === "enhanced" ? selected.run.config?.summary?.model : selected.run.model}</span>
-        <Dropdown><Button size="sm" variant="ghost" className="oh-version-button">{t("meetingResults.version")} <ChevronDown size={13}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={t("meetingResults.version")} onAction={(key) => void selectRun(String(key))}>{versions.map((item, index) => <Dropdown.Item key={item.run.id} id={item.run.id} textValue={`${t("meetingResults.version")} ${index + 1}`}><Label>{index + 1} · {item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / {item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model || "—"}</Label><span className="oh-muted oh-small">{dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" })}</span></Dropdown.Item>)}</Dropdown.Menu></Dropdown.Popover></Dropdown>
-        <Dropdown><Button size="sm" variant="ghost" isIconOnly aria-label={tr("resultActions", "Result actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("resultActions", "Result actions")} onAction={(key) => {
+    {viewMode === "raw" ? manualContent : <div>
+      {selected && (viewMode !== "enhanced" || selected.summary?.text) && <div className="flex items-center gap-1.5 text-xs text-muted"><span className="min-w-0 flex-1 truncate">{viewMode === "enhanced" ? selected.run.config?.summary?.provider : selected.run.provider} · {viewMode === "enhanced" ? selected.run.config?.summary?.model : selected.run.model}</span>
+        <Dropdown><Button size="sm" variant="ghost" className="h-7 min-h-7 gap-1 px-2 text-xs">{t("meetingResults.version")} <ChevronDown size={13}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={t("meetingResults.version")} onAction={(key) => void selectRun(String(key))}>{versions.map((item, index) => <Dropdown.Item key={item.run.id} id={item.run.id} textValue={`${t("meetingResults.version")} ${index + 1}`}><Label>{index + 1} · {item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / {item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model || "—"}</Label><span className="text-xs text-muted">{dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" })}</span></Dropdown.Item>)}</Dropdown.Menu></Dropdown.Popover></Dropdown>
+        <Dropdown><Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7" aria-label={tr("resultActions", "Result actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("resultActions", "Result actions")} onAction={(key) => {
           if (key === "asr") openRun("reprocess");
           if (key === "summary") openRun("summary");
           if (key === "copy") void navigator.clipboard.writeText(viewMode === "enhanced" ? selected.summary?.text ?? "" : selected.transcript?.text ?? "");
@@ -353,9 +353,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           <Dropdown.Item id="export" isDisabled={!availableParts.length} textValue={t("meetingResults.exportMixed")}>{t("meetingResults.exportMixed")}</Dropdown.Item>
         </Dropdown.Menu></Dropdown.Popover></Dropdown>
       </div>}
-      {viewMode === "enhanced" ? selected?.summary?.text ? <article className="oh-summary"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary : selected?.transcript ? <div className="oh-transcript">
-        {selected.transcript.segments?.length ? selected.transcript.segments.map((segment, index) => <div className="oh-transcript-row" key={`${index}-${segment.start}`}>
-          <button className="oh-timestamp" onClick={() => {
+      {viewMode === "enhanced" ? selected?.summary?.text ? <article className="note-prose"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary : selected?.transcript ? <div>
+        {selected.transcript.segments?.length ? selected.transcript.segments.map((segment, index) => <div className="mt-6 grid grid-cols-[52px_minmax(0,1fr)] items-baseline gap-x-3.5" key={`${index}-${segment.start}`}>
+          <button className="rounded py-1.5 text-start font-mono text-xs tabular-nums text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
             let remaining = segment.start;
             for (const id of selected.run.sourceRecordingIds) {
               const part = parts.find((item) => item.recording.id === id);
@@ -365,11 +365,11 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
               remaining -= duration;
             }
           }}>{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</button>
-          <div>{segment.speaker && <button className="oh-speaker" onClick={() => {
+          <div>{segment.speaker && <button className="rounded text-xs font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
             const correction = selected.speakerCorrections.find((item) => item.speakerId === segment.speaker);
             setSpeakerId(segment.speaker ?? null); setSpeakerName(correction?.displayName ?? (segment.speaker ? speakerLabel(segment.speaker) : "")); setSpeakerProfileId(String(correction?.profileId ?? "none"));
-          }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}<p>{segment.text}</p></div>
-        </div>) : <p className="oh-transcript-text">{selected.transcript.text}</p>}
+          }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-[1.8] text-muted">{segment.text}</p></div>
+        </div>) : <p className="whitespace-pre-wrap text-sm leading-[1.8] text-muted">{selected.transcript.text}</p>}
 
       </div> : fallbackTranscript}
     </div>}
@@ -377,14 +377,14 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     <audio ref={audioRef} preload="metadata" onEnded={() => setPlayingId(null)} />
 
     <Modal isOpen={runChoice !== null} onOpenChange={(open) => { if (!open) setRunChoice(null); }}><Modal.Backdrop><Modal.Container size="md"><Modal.Dialog><Modal.CloseTrigger/><Modal.Header><Modal.Heading>{isSummaryChoice ? t("meetingResults.newSummary") : t("meetingResults.newAsr")}</Modal.Heading></Modal.Header><Modal.Body>
-      <p className="oh-muted">{isSummaryChoice ? tr("summaryFromSaved", "Create a summary from a saved transcript without another transcription request.") : runChoice?.partId ? tr("transcribePart", "Transcribe this audio part.") : tr("transcribeWhole", "Transcribe all saved parts as one meeting.")}</p>
-      <div className="oh-run-fields"><Choice label={tr("provider", "Provider")} value={provider} options={isSummaryChoice ? llmProviders : asrProviders} onChange={(value) => { setProvider(value); setModel(isSummaryChoice ? llmModels.find((item) => item.provider === value)?.value ?? "" : asrProviders.find((item) => item.id === value)?.models[0]?.id ?? ""); }}/><Choice label={tr("model", "Model")} value={model} options={modelOptions} onChange={setModel}/></div>
+      <p className="text-muted">{isSummaryChoice ? tr("summaryFromSaved", "Create a summary from a saved transcript without another transcription request.") : runChoice?.partId ? tr("transcribePart", "Transcribe this audio part.") : tr("transcribeWhole", "Transcribe all saved parts as one meeting.")}</p>
+      <div className="my-5 flex gap-3.5 max-[720px]:flex-col"><Choice label={tr("provider", "Provider")} value={provider} options={isSummaryChoice ? llmProviders : asrProviders} onChange={(value) => { setProvider(value); setModel(isSummaryChoice ? llmModels.find((item) => item.provider === value)?.value ?? "" : asrProviders.find((item) => item.id === value)?.models[0]?.id ?? ""); }}/><Choice label={tr("model", "Model")} value={model} options={modelOptions} onChange={setModel}/></div>
       {isSummaryChoice && <Choice label={tr("sourceTranscript", "Source transcript")} value={sourceRunId} options={versions.filter((item) => item.run.kind !== "summary").map((item) => ({ id: item.run.id, label: `${item.run.provider || "local"} / ${item.run.model || "—"} · ${dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" })}` }))} onChange={setSourceRunId} />}
-      <p className="oh-muted oh-small">{tr("oneRunOnly", "This choice applies to this run. Global defaults stay the same.")}</p>
+      <p className="text-xs text-muted">{tr("oneRunOnly", "This choice applies to this run. Global defaults stay the same.")}</p>
     </Modal.Body><Modal.Footer><Button variant="tertiary" onPress={() => setRunChoice(null)}>{tr("cancel", "Cancel")}</Button><Button isDisabled={busy || !provider || !model} onPress={() => void createRun()}>{tr("createVersion", "Create version")}</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
 
-    <Modal isOpen={speakerId !== null} onOpenChange={(open) => { if (!open) setSpeakerId(null); }}><Modal.Backdrop><Modal.Container size="sm"><Modal.Dialog><Modal.CloseTrigger/><Modal.Header><Modal.Heading>{t("meetingResults.saveSpeaker")}</Modal.Heading></Modal.Header><Modal.Body>
-      <label className="oh-speaker-field">{tr("speakerName", "Speaker name")}<input dir="auto" value={speakerName} onChange={(event) => setSpeakerName(event.target.value)} /></label>
+    <Modal isOpen={speakerId !== null} onOpenChange={(open) => { if (!open) setSpeakerId(null); }}><Modal.Backdrop><Modal.Container size="sm"><Modal.Dialog><Modal.CloseTrigger/><Modal.Header><Modal.Heading>{t("meetingResults.saveSpeaker")}</Modal.Heading></Modal.Header><Modal.Body className="flex flex-col gap-4">
+      <label className="flex flex-col gap-2 text-xs">{tr("speakerName", "Speaker name")}<input dir="auto" className="h-9 rounded-lg px-3 text-sm" value={speakerName} onChange={(event) => setSpeakerName(event.target.value)} /></label>
       <Choice label={t("meetingResults.speakerProfile")} value={speakerProfileId} options={[{ id: "none", label: t("meetingResults.noSpeakerProfile") }, ...profiles.map((item) => ({ id: String(item.id), label: item.display_name }))]} onChange={setSpeakerProfileId}/>
     </Modal.Body><Modal.Footer><Button variant="tertiary" onPress={() => setSpeakerId(null)}>{tr("cancel", "Cancel")}</Button><Button isDisabled={!speakerName.trim() || busy} onPress={() => void correctSpeaker()}>{t("meetingResults.saveSpeaker")}</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
     <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => !open && hideConfirmDialog()} title={confirmDialog.title} description={confirmDialog.description} confirmText={confirmDialog.confirmText} cancelText={confirmDialog.cancelText} onConfirm={confirmDialog.onConfirm} variant={confirmDialog.variant} />

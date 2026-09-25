@@ -109,12 +109,12 @@ export default function ControlPanelTopBar({
           className="flex h-8 w-full items-center gap-2.5 rounded-full bg-foreground/4 px-4 text-start outline-none transition-colors duration-150 hover:bg-foreground/6 focus-visible:ring-1 focus-visible:ring-primary/30 dark:bg-white/5 dark:hover:bg-white/8"
         >
           <Search size={14} className="shrink-0 text-muted-foreground/70" />
-          <span className="flex-1 truncate text-[13px] text-muted-foreground/70">
+          <span className="flex-1 truncate text-ui text-muted-foreground/70">
             {t("commandSearch.placeholder")}
           </span>
           <kbd
             dir="ltr"
-            className="shrink-0 rounded-full bg-foreground/6 px-1.5 py-px font-sans text-[10px] font-medium text-muted-foreground/70 dark:bg-white/8"
+            className="shrink-0 rounded-full bg-foreground/6 px-1.5 py-px font-sans text-2xs font-medium text-muted-foreground/70 dark:bg-white/8"
           >
             {platform === "darwin" ? "⌘ + K" : "Ctrl + K"}
           </kbd>

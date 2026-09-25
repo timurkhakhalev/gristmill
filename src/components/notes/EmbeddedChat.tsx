@@ -174,7 +174,7 @@ export default function EmbeddedChat({
   return (
     <div
       className={cn(
-        "oh-chat-sidebar w-85 shrink-0",
+        "w-85 shrink-0 max-[850px]:absolute max-[850px]:inset-y-0 max-[850px]:end-0 max-[850px]:z-30 max-[850px]:w-[min(340px,calc(100%-48px))] max-[850px]:shadow-overlay",
         "border-s border-black/12 dark:border-white/14",
         "bg-surface-1 dark:bg-surface-2",
         "flex flex-col",

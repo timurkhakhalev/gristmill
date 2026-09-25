@@ -13,6 +13,8 @@ import { openSettings } from "../../utils/openSettings";
 
 interface NotesOnboardingProps {
   onComplete: () => void;
+  /** Debug preview: finishing does not mark the real onboarding complete. */
+  preview?: boolean;
 }
 
 function useMeetingTranscriptionReady() {
@@ -59,7 +61,7 @@ function SetupStep({
   );
 }
 
-export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
+export default function NotesOnboarding({ onComplete, preview = false }: NotesOnboardingProps) {
   const { t } = useTranslation();
   const { isLLMConfigured, complete } = useNotesOnboarding();
   const transcriptionReady = useMeetingTranscriptionReady();
@@ -78,7 +80,7 @@ export default function NotesOnboarding({ onComplete }: NotesOnboardingProps) {
   }, [requestSystemAudio]);
 
   const handleComplete = () => {
-    complete();
+    if (!preview) complete();
     onComplete();
   };
 

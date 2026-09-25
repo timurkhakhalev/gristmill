@@ -2,7 +2,6 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const React = require("react");
 const { createRoot } = require("react-dom/client");
-const { renderToStaticMarkup } = require("react-dom/server");
 const { createRendererServer, installBrowserGlobals, installHookDom } = require("../lib/rendererTestHarness");
 
 const RECORDING_ID = "00000000-0000-4000-8000-000000000001";
@@ -60,6 +59,10 @@ function resultDto({ status = "complete", captureState = "ready", transcript = {
 }
 
 async function mountPanel(t, recordings, { playbackResponse = { success: false, error: "not requested" } } = {}) {
+  let root;
+  t.after(async () => {
+    if (root) await React.act(async () => root.unmount());
+  });
   const exportCalls = [];
   const createRunCalls = [];
   const updateConfigCalls = [];
@@ -97,8 +100,7 @@ async function mountPanel(t, recordings, { playbackResponse = { success: false, 
     tree = MeetingResultsPanel({ noteId: 1, locale: "en" });
     return tree;
   }
-  const root = createRoot(container);
-  t.after(async () => React.act(async () => root.unmount()));
+  root = createRoot(container);
   await React.act(async () => {
     root.render(React.createElement(Harness));
     await Promise.resolve();
@@ -107,7 +109,7 @@ async function mountPanel(t, recordings, { playbackResponse = { success: false, 
     exportCalls,
     createRunCalls,
     updateConfigCalls,
-    markup: () => renderToStaticMarkup(tree),
+    textContent: () => container.textContent,
     findButton(label) {
       function find(node) {
         if (Array.isArray(node)) return node.map(find).find(Boolean) ?? null;
@@ -122,14 +124,16 @@ async function mountPanel(t, recordings, { playbackResponse = { success: false, 
 
 test("incomplete capture remains visible after the processing run completes", async (t) => {
   const ui = await mountPanel(t, [resultDto({ captureState: "incomplete" })]);
-  const markup = ui.markup();
-  assert.match(markup, /meetingResults\.captureIncomplete/);
-  assert.match(markup, /meetingResults\.status\.complete/);
-  assert.match(markup, /system-audio-interrupted/);
+  const text = ui.textContent();
+  assert.match(text, /meetingResults\.captureIncomplete/);
+  assert.match(text, /meetingResults\.status\.complete/);
+  assert.match(text, /system-audio-interrupted/);
 });
 
 test("source WAV export is available for saved audio without a transcript or playback path", async (t) => {
   const ui = await mountPanel(t, [resultDto({ status: "blocked", transcript: null })]);
+  assert.match(ui.textContent(), /meetingResults\.exportMic/);
+  assert.match(ui.textContent(), /meetingResults\.exportSystem/);
   const micExport = ui.findButton("meetingResults.exportMic");
   const systemExport = ui.findButton("meetingResults.exportSystem");
   assert.ok(micExport);
@@ -140,6 +144,7 @@ test("source WAV export is available for saved audio without a transcript or pla
 
 test("New transcription uses the current recording when no transcript is selectable", async (t) => {
   const ui = await mountPanel(t, [resultDto({ status: "blocked", transcript: null })]);
+  assert.match(ui.textContent(), /meetingResults\.newAsr/);
   const newAsr = ui.findButton("meetingResults.newAsr");
   assert.ok(newAsr);
   await React.act(async () => newAsr.props.onClick());
@@ -157,6 +162,7 @@ test("blocked initial run exposes an action that sends the current validated set
     transcript: null,
     hasRawProviderResponse: false,
   })]);
+  assert.match(ui.textContent(), /meetingResults\.updateRunSettings/);
   const updateSettings = ui.findButton("meetingResults.updateRunSettings");
   assert.ok(updateSettings);
   await React.act(async () => updateSettings.props.onClick());
@@ -169,12 +175,12 @@ test("blocked initial run exposes an action that sends the current validated set
 
 test("a valid empty transcript has a distinct no-speech message", async (t) => {
   const ui = await mountPanel(t, [resultDto({ transcript: { text: "", segments: [] } })]);
-  assert.match(ui.markup(), /notes\.upload\.noSpeechDetected/);
+  assert.match(ui.textContent(), /notes\.upload\.noSpeechDetected/);
 });
 
 test("a fulfilled playback failure is visible in Notes", async (t) => {
   const ui = await mountPanel(t, [resultDto()], {
     playbackResponse: { success: false, error: "mixer-failed" },
   });
-  assert.match(ui.markup(), /meetingResults\.playbackError/);
+  assert.match(ui.textContent(), /meetingResults\.playbackError/);
 });

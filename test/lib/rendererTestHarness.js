@@ -95,6 +95,7 @@ function installHookDom(t) {
       },
       get firstChild() { return this.childNodes[0] ?? null; },
       get lastChild() { return this.childNodes.at(-1) ?? null; },
+      get options() { return this.childNodes.filter((child) => child.tagName === "OPTION"); },
       get nextSibling() {
         if (!this.parentNode) return null;
         const siblings = this.parentNode.childNodes;

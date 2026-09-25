@@ -24,7 +24,7 @@ async function renderChat(props) {
     });
   }
   const mod = await import("../../src/components/notes/MeetingTranscriptChat.tsx");
-  return renderStatic(mod.MeetingTranscriptChat, { segments: SEGMENTS, ...props });
+  return renderStatic(mod.MeetingTranscriptChat, { segments: SEGMENTS, scrollElementRef: { current: null }, ...props });
 }
 
 test("rows resolve speaker labels through the live mappings", async () => {

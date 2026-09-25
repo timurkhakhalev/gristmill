@@ -869,7 +869,7 @@ export default function NoteEditor({
 
 
         <div className="flex-1 relative min-h-0">
-          <div ref={contentScrollRef} className="h-full overflow-y-auto">
+          <div ref={contentScrollRef} className="h-full overflow-y-auto agent-chat-scroll">
             <MeetingResultsPanel noteId={note.id} locale={locale} />
             {captureHasStatus && (
               <div className="m-4 rounded-xl border border-border bg-surface-2/70 p-4 dark:border-white/10">
@@ -920,6 +920,7 @@ export default function NoteEditor({
               ) : (
                 <MeetingTranscriptChat
                   segments={displaySegments}
+                  scrollElementRef={contentScrollRef}
                   speakerMappings={speakerMappings}
                   speakerProfiles={knownSpeakers}
                   participants={parsedParticipants}

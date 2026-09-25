@@ -365,3 +365,18 @@ Root-only focused regression command:
 Root integration checks from the plan: `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, then sequential `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
 
 Commit: `5732b276` — M8: fix playback selection and stream audio exports.
+
+## M8 focused root-test follow-up
+
+Status: done
+
+Root's focused run found retention fixtures that called `_finishMeetingDeletion` without the new audio-operation registry. The retention context now supplies an empty real registry; delete-all and Note-deletion cases register a held audio operation and assert that it closes before processing cancellation and file removal. The stalled Note-deletion test was waiting on its processing-reader barrier, which never started after `_finishMeetingDeletion` returned early on the missing registry. The run was manually stopped by root, so the remaining suite was interrupted rather than independently diagnosed as a product failure.
+
+Preserved production cancellation and deletion behavior; only test contexts now model the required registry contract.
+
+Verification:
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused rerun:
+`node --import tsx --test --test-concurrency=1 test/services/meetingResults.test.js test/components/meetingResultsPanel.test.js test/helpers/meetingRecordingRetention.test.js test/helpers/meetingProcessing.test.js`

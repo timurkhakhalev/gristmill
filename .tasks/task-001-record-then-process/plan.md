@@ -40,6 +40,7 @@ Milestones выполняются последовательно одним impl
 | M2 | Capture и безопасный Stop | M1 | Оба источника, bounded buffering, окно/quit |
 | M3 | Обработка после Stop | M1, M2 | Общий файл, сохраняемый job, три адаптера, summary |
 | M4 | Notes, retention и итоговая проверка | M1, M2, M3 | Версии, playback/export, UI и документация |
+| M5 | Reviewer Fix 1 | M1, M2, M3, M4 | Findings `M1-1`, `M3-1`, `M4-1`–`M4-4` из `review-1.md` |
 
 ## 5. Milestone details
 
@@ -204,9 +205,27 @@ NoteEditor/Transcript/Chat, settings, existing menu/tray, provider/model picker,
 
 Нет записи — обычная пустая/ручная Note. Recording/queued/stages — видимые статусы. Ready result — transcript/summary/версии. Failed summary — transcript+retry. Incomplete capture — постоянная отметка. Audio expired — текст и reason disabled actions. Deleting — operation in progress; failed delete — явная ошибка с повтором, success только после файловой очистки. Export — pending/success/error назначения.
 
+### 5.5 M5 — Reviewer Fix 1
+
+#### 5.5.1 Depends on
+
+Depends on: M1, M2, M3, M4.
+
+#### 5.5.2 Scope
+
+Исправить только подтверждённые блокирующие findings `M1-1`, `M3-1`, `M4-1`, `M4-2`, `M4-3`, `M4-4` из [review-1.md](review-1.md). Отчёт задаёт дефекты и ожидаемый контракт; способ исправления выбрать по текущему коду без расширения продукта. Сохранить все fixed decisions, исходные дорожки и safe Stop, неизменяемые версии runs и raw response, раздельные manual/automatic notes, историю, retention/deletion и существующие маршруты провайдеров.
+
+#### 5.5.3 Acceptance criteria
+
+Каждый из шести findings перестаёт воспроизводиться на соответствующей пользовательской поверхности и в сохранённом состоянии. Исправление заблокированного run проходит main validation и не меняет его snapshot при обычном retry; отсутствие summary config остаётся видимым blocked состоянием при сохранённом transcript. Неполнота capture остаётся видимой после успешной обработки; source export доступен при сохранённом аудио без transcript или playback; пустой валидный transcript и ошибка playback имеют разные видимые сообщения. Не ухудшить ранее проверенные M1–M4 контракты.
+
+#### 5.5.4 Verification
+
+Добавить или обновить focused regression tests для всех шести findings на подходящем уровне, включая Notes consumer states и IPC/config validation. Root запускает affected focused tests, `pnpm run typecheck`, `pnpm run lint`; после интеграции — последовательный `pnpm test`, затем `pnpm run pack` и `node scripts/smoke-electron.js`. Записать результаты в `implementation_progress.md`. Аппаратная mic/system проверка остаётся за Тимуром и не считается пройденной.
+
 ## 6. Execution order (derived from dependencies)
 
-M1 → review/verification → M2 → review/verification → M3 → review/verification → M4 → интеграционная проверка → финальный code review. Не запускать следующий milestone до закрытия блокирующих findings текущего.
+M1 → review/verification → M2 → review/verification → M3 → review/verification → M4 → интеграционная проверка → M5 Reviewer Fix 1 → повторный milestone review → финальный code review. Не запускать следующий milestone до закрытия блокирующих findings текущего.
 
 Общие команды из корня worktree: `pnpm run typecheck`, `pnpm run lint`, focused Node commands выше; полный `pnpm test` один раз после интеграции, при ошибке сначала focused rerun. Не устанавливать новые библиотеки для очереди, кодирования или тестов: SQLite, Node fs, ffmpeg и node:test уже есть. Tests/build/install выполняет только root.
 
@@ -220,7 +239,8 @@ M1 → review/verification → M2 → review/verification → M3 → review/veri
 | M2 — Capture и безопасный Stop | done | `9028b992`, `485b17dd`, `58ef1f5c`, `c49cb910`, `30ce4434`, `1485e2fb`, `b7901205`, `e6d99434`, `beda40d5`, `4f157947`, `0f6331de`, `8e99ea4e` |
 | M3 — Обработка после Stop | done | `e192dd51`, `7dcf9f86`, `c871bf01` |
 | M4 — Notes, retention и итоговая проверка | done | `15717b7a`, `de86d1ce`, `cbc2c026`, `0798ff68`, `bb69d9c7`, `731b8845`, `8534657f`, `f7823d59`, `d9b022b7`, `dbada7c1`, `f2fcc4dd`, `bcdb3332` |
-| Reviewer | done | `review-1.md` — 4 high, 2 medium; fix required |
+| M5 — Reviewer Fix 1 | in progress | |
+| Reviewer | not started | `review-1.md` — 4 high, 2 medium; fix required |
 | Code Reviewer | not started | |
 
 M2 verification: 50/50 focused tests, `pnpm run pack`, and packaged Notes smoke passed. On 2026-09-24 Timur explicitly deferred the live mic/system hardware smoke until the end of the task; its tail-loss guarantee remains unverified. This is an accepted verification-order deviation, not a passing hardware result.

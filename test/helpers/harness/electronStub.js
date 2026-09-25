@@ -1,4 +1,5 @@
 const Module = require("node:module");
+const path = require("node:path");
 
 // DatabaseManager requires electron at load time, which is unloadable under plain
 // node, so the module loader hands it a stub whose userData path tests repoint.
@@ -13,7 +14,11 @@ function installElectronStub() {
     if (request === "electron") {
       return {
         app: {
-          getPath: () => userDataDir,
+          // Named paths: everything resolves inside the test userData dir;
+          // appData is its parent so channel-profile resolution behaves like
+          // the real app (userData = appData/<profile>).
+          getPath: (name) =>
+            name === "appData" ? path.dirname(userDataDir) : userDataDir,
           getAppPath: () => process.cwd(),
           isReady: () => false,
         },

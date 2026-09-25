@@ -123,6 +123,14 @@ function configureChannelUserDataPath(): void {
 
 configureChannelUserDataPath();
 
+// Dev channel: seed the isolated dev profile from a one-way snapshot of the
+// production profile (issue #86) before anything reads userData. The explicit
+// --user-data-dir smoke/debug profiles are untouched: they never match the
+// channel default path.
+if (APP_CHANNEL === "development") {
+  require("./src/helpers/devSnapshot.js").snapshotProductionProfileForDev();
+}
+
 // Load userData .env (contains DICTATION_KEY, API keys, etc.) early — before
 // hotkey registration, which needs DICTATION_KEY before the renderer loads.
 require("dotenv").config({

@@ -190,6 +190,7 @@ export function ByokProviderStep({
                 value={selectedModel}
                 onChange={(value) => { setSelectedModel(value); setConnected(false); onConnectionChange(false); }}
                 isDisabled={!selectedProvider}
+                dir="ltr"
                 ariaLabel={t("onboarding.rehaul.provider.modelLabel")}
                 placeholder={t("onboarding.rehaul.provider.modelPlaceholder")}
                 className="w-full"

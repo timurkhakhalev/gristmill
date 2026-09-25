@@ -42,6 +42,7 @@ Milestones выполняются последовательно одним impl
 | M4 | Notes, retention и итоговая проверка | M1, M2, M3 | Версии, playback/export, UI и документация |
 | M5 | Reviewer Fix 1 | M1, M2, M3, M4 | Findings `M1-1`, `M3-1`, `M4-1`–`M4-4` из `review-1.md` |
 | M6 | Reviewer Fix 2 | M5 | Findings `M4-1`, `M5-1`, `M5-2` из `review-2.md` |
+| M7 | Reviewer Fix 3 (по решению Тимура) | M6 | Findings `M6-1`, `M6-2` из `review-3.md` |
 
 ## 5. Milestone details
 
@@ -242,9 +243,29 @@ Depends on: M5.
 
 Добавить focused regression tests для deletion без transcript, summary-only correction после ASR и выбора двух записей в одной Note. Root запускает affected focused tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, затем последовательные `pnpm test`, `pnpm run pack`, `node scripts/smoke-electron.js`. Результаты записать в `implementation_progress.md`. Отложенная аппаратная проверка не считается пройденной.
 
+### 5.7 M7 — Reviewer Fix 3 (по решению Тимура)
+
+#### 5.7.1 Depends on
+
+Depends on: M6. Тимур 2026-09-25 явно поручил разобраться с двумя findings `review-3.md`, записать решение в план и передать в реализацию после остановки предыдущего reviewer loop. Это разрешает один осмысленный этап исправления вместо автоматического повторения M5/M6.
+
+#### 5.7.2 Scope and correction
+
+- `M6-1`: Для summary-only correction строить summary из текущих note-formatting settings **без** проверки текущего meeting transcription route. Сохранённую `config.transcription` заблокированного run подставить до валидации полного `MeetingProcessingConfig`; не брать из текущих настроек новый ASR route и не повторять ASR. Переиспользовать существующее построение summary в `meetingRecordingConfigSnapshot.ts` (например, разрешить передать сохранённую transcription как вход), без второй реализации prompts/settings. Обычный capture snapshot и main validation оставить неизменными.
+- `M6-2`: `selectRecording` в Notes меняет только локально просматриваемую запись и видимый transcript. Не вызывать `meetingProcessingSelectRun` при простом переключении записи. Сохраняемый `current_run_id`/Notes projection менять только после явного выбора версии результата через `selectRun`; это сохраняет право pending run опубликоваться при завершении. При refresh предпочитать сохранённый current run, когда у него появился transcript, чтобы UI показывал завершившийся новый результат; старые версии остаются доступны вручную.
+- Сохранить M1–M6 контракты, особенно немодифицируемый ASR route и raw artifacts, отдельный summary retry, историю версий, безопасное удаление аудио и выбранные пользователем исправления speakers. Не добавлять fallback или новую сущность состояния.
+
+#### 5.7.3 Acceptance criteria
+
+Если встреча была записана поддерживаемым ASR route, а пользователь позже выбрал неподдерживаемый для meeting Self-Hosted route, он всё ещё может исправить summary настройки заблокированного run: main принимает сохранённую transcription плюс новую валидную summary, выполняется только summary и не вызывается ASR. Переключение между записями, у одной из которых есть старый transcript и более новый pending run без transcript, не меняет `current_run_id` и Notes projection. После завершения pending run его результат публикуется автоматически и появляется в UI; явный выбор исторической версии по прежнему обновляет projection.
+
+#### 5.7.4 Verification
+
+Добавить регрессию для текущего неподдерживаемого Self-Hosted transcription route при исправлении сохранённого summary run; проверить отправленный config и отсутствие второго ASR на уровне main. Добавить UI/SQLite regression для двух записей и одной записи со старым transcript + новым pending run: переключение записи не вызывает select-run IPC и не меняет persisted current/projection; завершение нового run публикует результат; явный выбор версии меняет projection. Root запускает focused tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`; после интеграции — последовательный `pnpm test`, `pnpm run pack`, `node scripts/smoke-electron.js`. Аппаратная проверка остаётся у Тимура.
+
 ## 6. Execution order (derived from dependencies)
 
-M1 → review/verification → M2 → review/verification → M3 → review/verification → M4 → интеграционная проверка → M5 Reviewer Fix 1 → повторный milestone review → M6 Reviewer Fix 2 → повторный milestone review → финальный code review. Не запускать следующий milestone до закрытия блокирующих findings текущего.
+M1 → review/verification → M2 → review/verification → M3 → review/verification → M4 → интеграционная проверка → M5 Reviewer Fix 1 → повторный milestone review → M6 Reviewer Fix 2 → повторный milestone review → M7 Reviewer Fix 3 по решению Тимура → повторный milestone review → финальный code review. Не запускать следующий milestone до закрытия блокирующих findings текущего.
 
 Общие команды из корня worktree: `pnpm run typecheck`, `pnpm run lint`, focused Node commands выше; полный `pnpm test` один раз после интеграции, при ошибке сначала focused rerun. Не устанавливать новые библиотеки для очереди, кодирования или тестов: SQLite, Node fs, ffmpeg и node:test уже есть. Tests/build/install выполняет только root.
 
@@ -260,7 +281,8 @@ M1 → review/verification → M2 → review/verification → M3 → review/veri
 | M4 — Notes, retention и итоговая проверка | done | `15717b7a`, `de86d1ce`, `cbc2c026`, `0798ff68`, `bb69d9c7`, `731b8845`, `8534657f`, `f7823d59`, `d9b022b7`, `dbada7c1`, `f2fcc4dd`, `bcdb3332` |
 | M5 — Reviewer Fix 1 | done | `9b4755a6`, `79bdbd77`, `0fbe743f`, `0d2041c1`, `98ef791c`, `fdc7fdbf` |
 | M6 — Reviewer Fix 2 | done | `d0795810`, `baff7416` |
-| Reviewer | done | `review-1.md` — 4 high, 2 medium; `review-2.md` — 3 high; `review-3.md` — 2 high; blocked: reviewer fix loop is not converging |
+| M7 — Reviewer Fix 3 (по решению Тимура) | in progress | |
+| Reviewer | not started | `review-1.md` — 4 high, 2 medium; `review-2.md` — 3 high; `review-3.md` — 2 high; user-authorized correction in M7 |
 | Code Reviewer | not started | |
 
 M2 verification: 50/50 focused tests, `pnpm run pack`, and packaged Notes smoke passed. On 2026-09-24 Timur explicitly deferred the live mic/system hardware smoke until the end of the task; its tail-loss guarantee remains unverified. This is an accepted verification-order deviation, not a passing hardware result.

@@ -133,6 +133,7 @@ export interface RemoteTranscriptionDeps {
     diarize: boolean;
     apiKey: string;
     signal?: AbortSignal;
+    onRawResponse?: (response: unknown) => Promise<void>;
   }) => Promise<RemoteTranscriptionResult>;
   transcribeWithCorti: (args: {
     environment?: string;
@@ -200,6 +201,23 @@ function formatDiarizedTranscript(
     .join("\n\n");
 }
 
+export function parseOpenAIFileResponse(raw: unknown, diarize: boolean, timestamps = false): RemoteTranscriptionResult {
+  const response = asRecord(raw);
+  if (diarize && Array.isArray(response?.segments)) {
+    const segments = projectDiarizedSegments(response.segments, (item) =>
+      String(item.speaker || "Speaker ?")
+    );
+    const text = segments.length ? formatDiarizedTranscript(segments) : response.text;
+    return { success: true, ...(typeof text === "string" ? { text } : {}), diarized: true, segments };
+  }
+  const segments = timestamps ? mapVerboseSegments(raw) : null;
+  return {
+    success: true,
+    ...(typeof response?.text === "string" ? { text: response.text } : {}),
+    ...(segments ? { segments } : {}),
+  };
+}
+
 function errorMessageFromStatus(
   data: { statusCode: number; data: unknown },
   prefix: string
@@ -213,9 +231,17 @@ function errorMessageFromStatus(
 
 export async function transcribeAudioFileByok(
   deps: RemoteTranscriptionDeps,
-  payload: RemoteTranscriptionRequest
+  payload: RemoteTranscriptionRequest,
+  internal: {
+    onRawProviderResponse?: (response: unknown) => Promise<void>;
+    signal?: AbortSignal;
+  } = {}
 ): Promise<RemoteTranscriptionResult> {
-  const { signal, release } = deps.uploadCancelRegistry.register(payload.requestId);
+  const meetingFailureCode = (code: string) => internal.onRawProviderResponse ? { code } : {};
+  const { signal: registrySignal, release } = deps.uploadCancelRegistry.register(payload.requestId);
+  const signal = registrySignal && internal.signal
+    ? AbortSignal.any([registrySignal, internal.signal])
+    : internal.signal ?? registrySignal;
   try {
     if (signal?.aborted) return cancelled();
     const realByok = deps.resolveAllowedAudioPath(payload.filePath);
@@ -277,7 +303,7 @@ export async function transcribeAudioFileByok(
 
     const fileSize = deps.fileSize(realByok);
     if (route.sizeCapBytes && fileSize > route.sizeCapBytes) {
-      return { success: false, error: byokSizeCapError(route.sizeCapBytes) };
+      return { success: false, error: byokSizeCapError(route.sizeCapBytes), ...meetingFailureCode("PROVIDER_LIMIT") };
     }
 
     if (fileSize === 0) {
@@ -289,6 +315,7 @@ export async function transcribeAudioFileByok(
         return {
           success: false,
           error: "No Deepgram API key configured. Add your key in Settings.",
+          ...meetingFailureCode("API_KEY_MISSING"),
         };
       }
       const ext = extname(realByok).toLowerCase().replace(".", "");
@@ -300,30 +327,33 @@ export async function transcribeAudioFileByok(
         { signal }
       );
       if (data.statusCode === 401 || data.statusCode === 403) {
-        return { success: false, error: "Invalid Deepgram API key. Check your key in Settings." };
+        return { success: false, error: "Invalid Deepgram API key. Check your key in Settings.", ...meetingFailureCode("INVALID_KEY") };
       }
       if (data.statusCode === 413) {
         return {
           success: false,
           error: "Deepgram rejected the audio size. Choose another provider.",
+          ...meetingFailureCode("PROVIDER_LIMIT"),
         };
       }
       if (data.statusCode === 429) {
-        return { success: false, error: "Deepgram rate limit exceeded. Please try again later." };
+        return { success: false, error: "Deepgram rate limit exceeded. Please try again later.", ...meetingFailureCode("PROVIDER_RATE_LIMITED") };
       }
       if (data.statusCode === 504) {
         return {
           success: false,
           error: "Deepgram timed out processing this recording. Retry or choose another provider.",
+          ...meetingFailureCode("TRANSCRIPTION_TRANSPORT_ERROR"),
         };
       }
       if (data.statusCode !== 200) {
         return {
           success: false,
           error: errorMessageFromStatus(data, "Deepgram API error:"),
-          code: "DEEPGRAM_API_ERROR",
+          ...meetingFailureCode(data.statusCode >= 500 || data.statusCode === 408 ? "TRANSCRIPTION_TRANSPORT_ERROR" : "DEEPGRAM_API_ERROR"),
         };
       }
+      await internal.onRawProviderResponse?.(data.data);
       return parseResult(parseDeepgramFileResponse(data.data, payload.diarize === true));
     }
 
@@ -332,6 +362,7 @@ export async function transcribeAudioFileByok(
         return {
           success: false,
           error: "No ElevenLabs API key configured. Add your key in Settings.",
+          ...meetingFailureCode("API_KEY_MISSING"),
         };
       }
       const ext = extname(realByok).toLowerCase().replace(".", "");
@@ -353,24 +384,26 @@ export async function transcribeAudioFileByok(
         }
       );
       if (data.statusCode === 401 || data.statusCode === 403) {
-        return { success: false, error: "Invalid ElevenLabs API key. Check your key in Settings." };
+        return { success: false, error: "Invalid ElevenLabs API key. Check your key in Settings.", ...meetingFailureCode("INVALID_KEY") };
       }
       if (data.statusCode === 413) {
         return {
           success: false,
           error: "ElevenLabs rejected the audio size. Choose another provider.",
+          ...meetingFailureCode("PROVIDER_LIMIT"),
         };
       }
       if (data.statusCode === 429) {
-        return { success: false, error: "ElevenLabs rate limit exceeded. Please try again later." };
+        return { success: false, error: "ElevenLabs rate limit exceeded. Please try again later.", ...meetingFailureCode("PROVIDER_RATE_LIMITED") };
       }
       if (data.statusCode !== 200) {
         return {
           success: false,
           error: errorMessageFromStatus(data, "ElevenLabs API error:"),
-          code: "ELEVENLABS_API_ERROR",
+          ...meetingFailureCode(data.statusCode >= 500 || data.statusCode === 408 ? "TRANSCRIPTION_TRANSPORT_ERROR" : "ELEVENLABS_API_ERROR"),
         };
       }
+      await internal.onRawProviderResponse?.(data.data);
       return parseResult(parseElevenLabsFileResponse(data.data, payload.diarize === true));
     }
 
@@ -415,6 +448,7 @@ export async function transcribeAudioFileByok(
         diarize: payload.diarize === true,
         apiKey: payload.apiKey || deps.getGeminiKey(),
         signal,
+        onRawResponse: internal.onRawProviderResponse,
       }));
     }
 
@@ -504,23 +538,17 @@ export async function transcribeAudioFileByok(
       throw new Error(errorMessageFromStatus(data, "API error:"));
     }
 
+    await internal.onRawProviderResponse?.(data.data);
+
+    if (route.provider === "openai") {
+      return parseResult(parseOpenAIFileResponse(data.data, diarize, payload.timestamps === true));
+    }
+
     const payloadRecord = asRecord(data.data);
 
     if (diarize && Array.isArray(payloadRecord?.speakers)) {
       const segments = projectDiarizedSegments(payloadRecord.speakers, (item) =>
         String(item.id || `Speaker ${item.speaker || "?"}`)
-      );
-      return parseResult({
-        success: true,
-        text: formatDiarizedTranscript(segments),
-        diarized: true,
-        segments,
-      });
-    }
-
-    if (diarize && Array.isArray(payloadRecord?.segments)) {
-      const segments = projectDiarizedSegments(payloadRecord.segments, (item) =>
-        String(item.speaker || "Speaker ?")
       );
       return parseResult({
         success: true,
@@ -550,7 +578,9 @@ export async function transcribeAudioFileByok(
     return {
       success: false,
       error: err?.message,
-      ...(err?.code ? { code: err.code } : {}),
+      ...(internal.onRawProviderResponse
+        ? { code: err?.code || (err?.name === "TypeError" ? "TRANSCRIPTION_TRANSPORT_ERROR" : "TRANSCRIPTION_ERROR") }
+        : err?.code ? { code: err.code } : {}),
       ...(err?.messageKey ? { messageKey: err.messageKey } : {}),
     };
   } finally {

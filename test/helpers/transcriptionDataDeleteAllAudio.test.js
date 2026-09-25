@@ -60,6 +60,7 @@ function setup(t) {
       // The real managers: no mock stands in for the database seam here.
       database: db,
       audioStorage,
+      deleteAllAudio: async () => audioStorage.deleteAllAudio(),
       deleteTranscriptionInternal: (id) => db.deleteTranscription(id),
       buildSpeakerMappings: () => ({}),
       queueNoteNavigation: async () => {},
@@ -116,7 +117,7 @@ test("delete-all-audio removes files, clears has_audio, keeps records, is repeat
   assert.ok(handler, "delete-all-audio must be registered");
 
   const result = await handler({});
-  assert.deepEqual(result, { deleted: 2 });
+  assert.deepEqual(result, { deleted: 2, failed: 0 });
 
   assert.equal(fs.readdirSync(audioStorage.audioDir).length, 0, "storage must be empty");
   assert.deepEqual(db.getAudioFlaggedIds(), []);
@@ -128,7 +129,7 @@ test("delete-all-audio removes files, clears has_audio, keeps records, is repeat
   assert.equal(db.getTranscriptions(50).length, 3, "no record may be deleted");
 
   const second = await handler({});
-  assert.deepEqual(second, { deleted: 0 });
+  assert.deepEqual(second, { deleted: 0, failed: 0 });
 });
 
 test("delete-all-audio on an empty storage is a no-op", async (t) => {
@@ -137,7 +138,7 @@ test("delete-all-audio on an empty storage is a no-op", async (t) => {
   const { db, audioStorage, handlers } = setupResult;
 
   const result = await handlers.get("delete-all-audio")({});
-  assert.deepEqual(result, { deleted: 0 });
+  assert.deepEqual(result, { deleted: 0, failed: 0 });
   assert.equal(fs.readdirSync(audioStorage.audioDir).length, 0);
   assert.deepEqual(db.getAudioFlaggedIds(), []);
 });

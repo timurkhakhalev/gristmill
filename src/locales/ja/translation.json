@@ -61,7 +61,9 @@
     "openControlPanel": "コントロールパネルを開く",
     "hideControlPanel": "コントロールパネルを非表示",
     "quit": "OpenHercules を終了",
-    "tooltip": "OpenHercules"
+    "tooltip": "OpenHercules",
+    "recordingStatus": "録音中",
+    "stopRecording": "録音を停止"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -91,6 +93,13 @@
         "url": "URL: {{url}}",
         "hint": "アプリを再インストールするか、--log-level=debug オプションで起動してください。"
       }
+    },
+    "meetingQuit": {
+      "title": "録音中",
+      "message": "終了前に録音を停止して保存しますか？",
+      "stopAndQuit": "停止して終了",
+      "cancel": "キャンセル",
+      "stopFailed": "録音をまだ保存できません。OpenHercules は開いたままです。"
     }
   },
   "startup": {
@@ -1094,7 +1103,21 @@
         "description": "Set audio and transcript retention periods. Zero means keep indefinitely."
       },
       "audioRetention": "Audio retention (days)",
-      "transcriptRetention": "Transcript retention (days)"
+      "transcriptRetention": "Transcript retention (days)",
+      "audioRetentionLabel": "会議音声の保存期間",
+      "audioRetentionDescription": "元の音声を保存する日数です。0 は手動で削除するまで保存します。",
+      "retentionDecreaseTitle": "音声の保存期間を短縮しますか？",
+      "retentionDecreaseDescription": "{{days}} 日より古い録音は次回のクリーンアップで削除されます。",
+      "retentionDecreaseConfirm": "保存期間を短縮",
+      "days": "日",
+      "deleteAllAudioLabel": "保存済み音声をすべて削除",
+      "deleteAllAudioDescription": "保存済みの会議音声と古い録音を削除します。ノート、文字起こし、要約はこの端末に残ります。",
+      "deleteAllAudioButton": "すべての音声を削除",
+      "deleteAllAudioTitle": "保存済み音声をすべて削除しますか？",
+      "deleteAllAudioConfirmDescription": "録音中の場合は文字起こしを開始せず安全に停止し、その後、保存済み音声を削除します。",
+      "deleteAllAudioConfirm": "すべての音声を削除",
+      "deleteAllAudioDone": "{{count}} 件の音声を削除しました。",
+      "deleteAllAudioFailed": "{{count}} 件の音声を削除できませんでした。再試行してください。"
     },
     "prompts": {
       "description": "テキスト補正と指示検出を行う統合システムプロンプトの表示、カスタマイズ、テスト",
@@ -1411,10 +1434,26 @@
       "enhanced": "強化済み",
       "saving": "保存中",
       "transcriptEmptyTitle": "まだ録音がありません",
-      "transcriptEmptyDescription": "録音ボタンを押すと文字起こしが始まります。話した内容がここにリアルタイムで表示されます。",
+      "transcriptEmptyDescription": "処理が完了すると、文字起こしがここに表示されます。",
       "startRecording": "録音を開始",
       "generateSummary": "AI要約を生成",
-      "startWriting": "書き始める..."
+      "startWriting": "書き始める...",
+      "capture": {
+        "preparing": "ローカル録音を準備中…",
+        "recording": "音声を録音中",
+        "saving": "音声の末尾を保存中…",
+        "saved": "音声を保存しました",
+        "incomplete": "音声の一部が欠けた状態で録音を保存しました",
+        "failed": "録音を開始できませんでした",
+        "mic": "マイク",
+        "system": "システム音声",
+        "active": "音声を取得中",
+        "reconnecting": "再接続中",
+        "unavailable": "利用不可",
+        "inactive": "未開始",
+        "writingToDisk": "ディスクに書き込み中",
+        "incompleteReason": "音声が一部欠けている可能性があります。問題発生前に保存された音声は保持されます。"
+      }
     },
     "participants": {
       "attendee": "名の参加者",
@@ -2142,5 +2181,60 @@
     "systemAudio": "System audio",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
+  },
+  "meetingResults": {
+    "title": "会議の録音",
+    "loadError": "録音履歴を読み込めませんでした。",
+    "selectError": "結果を選択できませんでした。",
+    "createError": "処理を作成できませんでした。",
+    "retryError": "処理を再試行できませんでした。",
+    "updateRunSettings": "現在の設定を使用",
+    "updateConfigError": "この処理の設定を更新できませんでした。",
+    "playbackError": "音声の再生を準備できませんでした。",
+    "exportError": "音声の書き出しに失敗しました。",
+    "exported": "音声を書き出しました。",
+    "speakerError": "話者の修正を保存できませんでした。",
+    "deleteError": "音声を削除できませんでした。再試行できます。",
+    "version": "結果のバージョン",
+    "recording": "録音",
+    "newAsr": "新しい文字起こし",
+    "newSummary": "新しい要約",
+    "retry": "再試行",
+    "deleteAudio": "音声を削除",
+    "retryDelete": "音声削除を再試行",
+    "deleteAudioTitle": "元音声を削除しますか？",
+    "deleteAudioDescription": "保存済みのマイク音声とシステム音声を削除します。ノートの文字起こしと要約は引き続き利用できます。",
+    "deleteAudioConfirm": "音声を削除",
+    "audioUnavailable": "元音声は削除済みか利用できません。文字起こし、再生、書き出しは無効です。",
+    "exportMixed": "ミックス WAV を書き出す",
+    "exportMic": "マイク WAV を書き出す",
+    "exportSystem": "システム音声 WAV を書き出す",
+    "saveSpeaker": "話者を保存",
+    "speakerProfile": "話者プロフィール",
+    "noSpeakerProfile": "プロフィールなし",
+    "captureIncomplete": "録音が早期に終了しました。保存済み音声と結果は保持されます。",
+    "deleteActiveNoteTitle": "録音を停止して削除しますか？",
+    "deleteActiveNoteDescription": "文字起こしを開始せず安全に録音を停止し、その後ノート、音声、処理履歴を削除します。",
+    "stopBeforeDeleteError": "安全に停止できませんでした。ノートは保持されました。",
+    "stage": {
+      "prepare": "音声を準備中",
+      "asr": "文字起こし中",
+      "normalize": "文字起こしを保存中",
+      "summary": "要約を作成中"
+    },
+    "status": {
+      "pending": "待機中",
+      "running": "処理中",
+      "blocked": "ブロック中",
+      "failed": "失敗",
+      "cancelled": "キャンセル済み",
+      "complete": "完了"
+    },
+    "capture": {
+      "recording": "録音中",
+      "finalizing": "録音を保存中",
+      "ready": "保存済み",
+      "incomplete": "未完了"
+    }
   }
 }

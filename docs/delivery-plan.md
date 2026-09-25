@@ -1,6 +1,6 @@
 # Delivery plan
 
-## Stage 1: cleanup
+## Stage 1: cleanup — complete
 
 Scope: [removal-plan.md](removal-plan.md).
 Inventories, ownership, baseline and gates: [cleanup-m0.md](cleanup-m0.md).
@@ -18,16 +18,27 @@ Acceptance means preserving agreed features without OW backend or removed
 products, not offline durable capture or a new pipeline. Dependency-blocked
 baseline checks are not passing checks.
 
-## Stage 2: durable capture and batch
+## Stage 2: durable capture and post-Stop processing — implemented
 
-Plan separately after cleanup: separate durable mic/system chunks, manifests,
-recovery, health events, queued batch processing, canonical artifacts, retries,
-revisions, automatic notes and timestamp citations. Keep the Note product model
-and existing local/direct providers. See the future proposal in architecture.md.
+The M1–M4 task branch implements separate durable mic/system PCM epochs, recovery,
+capture health, saved provider runs/results, post-Stop processing, selected-result
+Notes projection, speaker correction, playback/export, retention, and deletion.
+Capture has no ASR/provider dependency. Stop finalizes the original tracks and
+queues a durable run; processing builds one derived full timeline WAV. See the
+[current architecture](architecture.md) and
+[record-then-process flow](record-then-process.md).
 
-## Stage 3: model evaluation
+M1–M3 focused test runs passed at their root-owned gates. M4 tests, final
+typecheck/lint/test/pack checks, packaged-app smoke, and live mic/system hardware
+smoke are not complete yet. The hardware tail-loss/recovery guarantee remains
+unverified. Exact commands and evidence are listed in
+[record-then-process verification status](record-then-process.md).
 
-Compare the user's ASR/diarization candidates on consented recordings, with
-reference transcripts, speaker attribution, latency, cost and note factuality.
-Verify model IDs and prices then. No new adapter or paid benchmark is required
-to finish cleanup.
+## Stage 3: model evaluation — user-run after integration
+
+Timur will test the three implemented providers himself on his recordings:
+transcript quality, speaker attribution, latency, cost and note factuality.
+The hypotheses in record-then-process.md are his evaluation checklist, not
+pre-implementation gates. No quality, cost, or billing benchmark has been run.
+Preserve separate run results so he can compare the same source recording
+without overwriting prior artifacts.

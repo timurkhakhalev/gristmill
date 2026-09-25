@@ -34,6 +34,7 @@ import { useSettingsStore } from "../../stores/settingsStore";
 import { cn } from "../lib/utils";
 import { treeHorizontalIntent } from "./treeDirection";
 import { defaultFolderDisplayName } from "./shared";
+import { stopRecording as storeStopRecording, useMeetingRecordingStore } from "../../stores/meetingRecordingStore";
 import type { FolderItem, SpaceItem } from "../../contracts/containers";
 import type { NoteItem } from "../../contracts/notes";
 import {
@@ -501,6 +502,8 @@ export default function SpacesTree({
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const undoToast = useRef<string | null>(null);
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
+  const capturePhase = useMeetingRecordingStore((state) => state.capturePhase);
+  const recordingNoteId = useMeetingRecordingStore((state) => state.recordingNoteId);
   const rows = useMemo<TreeRow[]>(() => {
     const result: TreeRow[] = [];
     for (const space of spaces) {
@@ -681,7 +684,36 @@ export default function SpacesTree({
         void moveNote(note.id, target);
       }}
       onCreateFolderAndMove={onCreateFolderAndMove}
-      onDelete={onDeleteNote}
+      onDelete={() => {
+        const activeCapture = recordingNoteId === note.id &&
+          ["preparing", "recording", "saving"].includes(capturePhase);
+        if (!activeCapture) {
+          void onDeleteNote(note.id);
+          return;
+        }
+        showConfirmDialog({
+          title: t("meetingResults.deleteActiveNoteTitle"),
+          description: t("meetingResults.deleteActiveNoteDescription"),
+          confirmText: t("meetingResults.deleteAudioConfirm"),
+          variant: "destructive",
+          onConfirm: async () => {
+            try {
+              const result = await storeStopRecording(undefined, { suppressProcessing: true });
+              if (!result.stopped) {
+                toast({ title: t("meetingResults.stopBeforeDeleteError"), variant: "destructive" });
+                return;
+              }
+              await onDeleteNote(note.id);
+            } catch (error) {
+              toast({
+                title: t("meetingResults.stopBeforeDeleteError"),
+                description: error instanceof Error ? error.message : String(error),
+                variant: "destructive",
+              });
+            }
+          },
+        });
+      }}
       a11y={a11y(`n:${note.id}`)}
       t={t}
       dragState={dragState}

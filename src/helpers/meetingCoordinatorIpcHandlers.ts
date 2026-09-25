@@ -1,11 +1,7 @@
-// The meeting coordinator, moved out of ipcHandlers.js: recording
-// prepare/connect/start/stop/cancel, local chunking, native capture, AEC,
-// watchdogs, live speakers, the transcription lifecycle queue, recording
-// locks, the mic warm hold, detection/auto-end/notification IPC and the
-// final-diarization publication. Owners and execution paths are unchanged —
-// detection/auto-end policies stay in their own modules, no unified
-// state-machine framework. Dependencies are passed as managers and narrow
-// callbacks; the JS composition root only wires them.
+// The main-process meeting coordinator owns capture preparation, recording
+// start/stop, durable raw audio writes, source availability, detection and
+// auto-end IPC, recording locks, mic warm hold, notifications, and speaker
+// management. Meeting processing starts after capture and is not run here.
 import path from "path";
 import os from "os";
 import fs from "fs";
@@ -50,6 +46,13 @@ import {
   buildMergedCandidates,
 } from "./transcriptText.js";
 import { createMeetingAudioTimeline } from "./meetingAudioTimeline.js";
+import { MeetingCaptureSession, type MeetingCaptureEpochStorage } from "./meetingCaptureSession.js";
+import { meetingRecordingConfigInputSchema } from "../contracts/meetingRecording.js";
+import {
+  meetingCapturePacketSchema,
+  meetingCaptureStopRequestSchema,
+  meetingOptionsSchema,
+} from "../contracts/meetingCoordinator.js";
 import { createMeetingTranscriptionLifecycle } from "./meetingTranscriptionLifecycle.js";
 import { registerMeetingAutoEndLifecycleHandlers } from "./meetingAutoEndLifecycle.js";
 import { downsample24kTo16k, pcm16ToWav } from "../utils/audioUtils.js";
@@ -139,7 +142,9 @@ export interface CoordinatorLiveSpeakerIdentifier {
 }
 
 export interface MeetingCoordinatorDeps {
-  databaseManager: DiarizationPublicationDatabase;
+  databaseManager: DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase;
+  meetingRecordingStorage: MeetingCaptureEpochStorage;
+  cancelInitialProcessingRun?: (runId: string) => boolean;
   diarizationManager: import("./meetingDiarizationPublication.js").DiarizationPublicationDiarizationManager;
   meetingDetectionEngine: MeetingDetectionEngine | null;
   audioTapManager: Pick<AudioTapManager, "isSupported" | "start" | "stop"> | null;
@@ -178,6 +183,9 @@ export interface MeetingCoordinatorDeps {
   getMeetingNotificationData?(): unknown;
   consumePendingMeetingNoteNavigation?(): unknown;
   showNotificationWindow?(sender: WebContents): void;
+  setMeetingCaptureState?(active: boolean): void;
+  onCaptureStarted?(): void;
+  onCaptureStopped?(): void;
 }
 
 interface MeetingSystemAudioPlan {
@@ -217,6 +225,8 @@ export type IpcMainLike = {
 };
 
 export interface MeetingCoordinatorRuntime {
+  isRecording(): boolean;
+  requestSafeStop(suppressProcessing?: boolean): Promise<{ success: boolean; captureState?: "ready" | "incomplete" }>;
   // Recording start links the live session to its note; the notes vertical's
   // roster refresh only applies while that link is current.
   linkRecordingSessionToNote(noteId: number | null): void;
@@ -273,6 +283,11 @@ export function registerMeetingCoordinatorHandlers(
   let activeMeetingSpeakerConfig: MeetingSessionSpeakerConfig | null = null;
   let activeRecordingPipeline: string | null = null;
   let activeMeetingNoteId: number | null = null;
+  let activeCaptureSession: MeetingCaptureSession | null = null;
+  let activeCaptureSessionId: string | null = null;
+  let activeCaptureOwner: WebContents | null = null;
+  let safeStopPromise: Promise<{ success: boolean; captureState?: "ready" | "incomplete" }> | null = null;
+  let resolveSafeStop: ((result: { success: boolean; captureState?: "ready" | "incomplete" }) => void) | null = null;
   const micHoldSenders = new Map<number, () => void>();
 
   const publicationDeps = {
@@ -1856,73 +1871,21 @@ export function registerMeetingCoordinatorHandlers(
 
   ipcMain.handle(
     "meeting-transcription-prepare",
-    async (event, options: Record<string, unknown> = {}) => {
-      if (meetingTranscriptionPrepareInProgress || meetingTranscriptionStartInProgress) {
-        debugLogger.debug("Meeting transcription prepare already in progress, ignoring");
-        return { success: false, error: "Operation in progress" };
+    async () => {
+      if (meetingTranscriptionStartInProgress || activeCaptureSession) {
+        return { success: false, error: "Meeting capture is already active" };
       }
-      const provider = typeof options.provider === "string" ? options.provider : undefined;
-      if (!ALLOWED_MEETING_PROVIDERS.has(provider as never)) {
-        return { success: false, error: `Unsupported provider: ${provider}` };
+      try {
+        await getMeetingSystemAudioPlan();
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
       }
-      if (provider === "local") return { success: true };
-
-      // Claim before the first await. Cancellation/timeout invalidate the result,
-      // but the slot belongs to the operation until its clients finish cleanup.
-      meetingTranscriptionPrepareInProgress = true;
-      const controller = new AbortController();
-      prepareAbort = controller;
-      const operation = (async () => {
-        try {
-          const { mode: systemAudioMode } = await getMeetingSystemAudioPlan();
-          controller.signal.throwIfAborted();
-          const requestedConnectionKey = getMeetingConnectionKey(
-            options as MeetingConnectionOptions
-          );
-          if (
-            isMeetingStreamingConnected(systemAudioMode) &&
-            meetingConnectionKey === requestedConnectionKey
-          ) {
-            return { success: true, alreadyPrepared: true };
-          }
-          await connectRealtimeStreaming(
-            event,
-            options as MeetingConnectionOptions,
-            controller.signal
-          );
-          return { success: true };
-        } finally {
-          meetingTranscriptionPrepareInProgress = false;
-          meetingTranscriptionPreparePromise = null;
-          prepareAbort = null;
-        }
-      })();
-      let onAbort: () => void;
-      const canceled = new Promise<never>((_resolve, reject) => {
-        onAbort = () => reject(controller.signal.reason);
-        controller.signal.addEventListener("abort", onAbort, { once: true });
-      });
-      const timeout = setTimeout(() => controller.abort(new Error("Prepare timed out")), 15000);
-      meetingTranscriptionPreparePromise = Promise.race([operation, canceled])
-        .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
-          debugLogger.error("Meeting transcription prepare error", { error: message });
-          return { success: false, error: message };
-        })
-        .finally(() => {
-          clearTimeout(timeout);
-          controller.signal.removeEventListener("abort", onAbort);
-        });
-      return meetingTranscriptionPreparePromise;
     }
   );
 
   ipcMain.handle("meeting-transcription-cancel", async () => {
-    if (prepareAbort) {
-      prepareAbort.abort(new Error("Prepare canceled"));
-      return { success: true };
-    }
-    if (meetingTranscriptionStartInProgress || isMeetingStreamingConnected() || meetingLocalTimer) {
+    if (meetingTranscriptionStartInProgress || activeCaptureSession) {
       return { success: false, reason: "recording-active" };
     }
     return { success: true };
@@ -1942,123 +1905,101 @@ export function registerMeetingCoordinatorHandlers(
     event: { sender: WebContents },
     options: Record<string, unknown> = {}
   ) => {
-    if (meetingTranscriptionPreparePromise) await meetingTranscriptionPreparePromise;
-    if (meetingTranscriptionPrepareInProgress || meetingTranscriptionStartInProgress) {
-      return { success: false, error: "Operation in progress" };
+    if (activeCaptureSession || meetingTranscriptionStartInProgress) {
+      return { success: false, error: "Meeting capture is already active" };
     }
-    const provider = typeof options.provider === "string" ? options.provider : undefined;
-    if (!ALLOWED_MEETING_PROVIDERS.has(provider as never)) {
-      return { success: false, error: `Unsupported provider: ${provider}` };
+    const noteId = typeof options.noteId === "number" ? options.noteId : null;
+    const sessionId = typeof options.sessionId === "string" ? options.sessionId : "";
+    if (!noteId || !Number.isSafeInteger(noteId) || noteId < 1 || !sessionId) {
+      return { success: false, error: "A saved note and capture session are required" };
     }
 
     meetingTranscriptionStartInProgress = true;
-    const recordingSessionId = typeof options.sessionId === "string" ? options.sessionId : "";
-    meetingStartedAt = Date.now();
-    meetingConnectionOptions = options as MeetingConnectionOptions;
-    meetingConnectionWin = BrowserWindow.fromWebContents(event.sender);
-    meetingReconnectCount = 0;
-    meetingFatalErrorSent = false;
-    meetingDetectionEngine?.endRecordingSession();
+    const startedAt = new Date();
+    const configInput = options.recordingConfig;
+    const safeConfig = meetingRecordingConfigInputSchema.safeParse(configInput);
+    const recordingConfig = safeConfig.success
+      ? { config: safeConfig.data.config, configError: safeConfig.data.configError ?? null }
+      : { config: null, configError: { code: "invalid-config" } };
+
+    let capture: MeetingCaptureSession;
+    try {
+      capture = MeetingCaptureSession.create(
+        databaseManager,
+        deps.meetingRecordingStorage,
+        noteId,
+        recordingConfig,
+        startedAt
+      );
+    } catch (error) {
+      meetingTranscriptionStartInProgress = false;
+      return meetingFailure(error);
+    }
+
+    activeCaptureSession = capture;
+    activeCaptureSessionId = sessionId;
+    activeCaptureOwner = event.sender;
+    meetingStartedAt = startedAt.getTime();
+    meetingNoteId = noteId;
+    linkRecordingSessionToNote(noteId);
+    deps.onCaptureStarted?.();
     meetingDetectionEngine?.setUserRecording(true);
 
-    const completeStart = async (result: MeetingStartInternalResult) => {
+    let systemAudioMode: "native" | "unsupported" = "unsupported";
+    let systemAudioStrategy: "native" | "unsupported" = "unsupported";
+    try {
+      const plan = await getMeetingSystemAudioPlan();
+      systemAudioMode = plan.mode;
+      systemAudioStrategy = plan.strategy;
       await meetingDetectionEngine?.beginRecordingSession({
-        sessionId: recordingSessionId,
+        sessionId,
         autoEndEligible: options.autoEndEligible === true,
         ownerWebContents: event.sender,
         systemAudioAvailable: false,
       });
-      if (result.success && result.systemAudioStrategy && result.systemAudioStrategy !== "unsupported") {
-        armMeetingSystemAudioSilenceTimer(meetingConnectionWin, result.systemAudioStrategy);
-        startMeetingSystemAudioWatchdog(meetingConnectionWin, result.systemAudioStrategy);
-      }
-      return { ...result, sessionId: recordingSessionId };
-    };
 
-    try {
-      const { mode: systemAudioMode, strategy: systemAudioStrategy } =
-        await getMeetingSystemAudioPlan();
-      const requestedConnectionKey = getMeetingConnectionKey(options as MeetingConnectionOptions);
-      meetingEchoLeakDetector.reset();
-      meetingOneOnOneAttendee = resolveOneOnOneAttendeeForNote(
-        typeof options.noteId === "number" ? options.noteId : null
-      );
-      meetingOneOnOneProfileBound = false;
-      meetingNoteId = typeof options.noteId === "number" ? options.noteId : null;
-      linkRecordingSessionToNote(meetingNoteId);
-      if (!activeMeetingSpeakerConfig) {
-        activeMeetingSpeakerConfig = resolveInitialMeetingSpeakerConfig(
-          publicationDeps,
-          meetingNoteId
-        );
-      }
-
-      if (systemAudioMode === "unsupported" && meetingSystemStreaming?.isConnected) {
-        await meetingSystemStreaming.disconnect().catch(() => ({ text: "" }));
-        meetingSystemStreaming = null;
-      }
-
-      if (
-        !meetingLocalMode &&
-        isMeetingStreamingConnected(systemAudioMode) &&
-        meetingConnectionKey === requestedConnectionKey
-      ) {
-        const win = BrowserWindow.fromWebContents(event.sender);
-        attachMeetingStreamingHandlers(meetingMicStreaming!, win, "mic");
-        if (systemAudioMode !== "unsupported") {
-          attachMeetingStreamingHandlers(meetingSystemStreaming!, win, "system");
+      if (plan.mode === "native" && audioTapManager) {
+        try {
+          await startManagedMeetingSystemAudio(event, capture, audioTapManager);
+        } catch (error) {
+          capture.markSourceUnavailable("system", "system-audio-unavailable");
+          stopMeetingSystemAudioWatchdog();
+          systemAudioMode = "unsupported";
+          systemAudioStrategy = "unsupported";
+          debugLogger.warn("Native meeting system capture is unavailable", {
+            error: error instanceof Error ? error.message : String(error),
+          }, "meeting");
         }
-        await startMeetingAec(systemAudioMode);
-        await startLiveSpeakerIdentification(win, systemAudioMode);
-        const started = await startMeetingSystemAudio(
-          event,
-          systemAudioMode,
-          systemAudioStrategy,
-          "during warm-start reuse"
-        );
-        return completeStart({ success: true, ...started, oneOnOneAttendee: meetingOneOnOneAttendee });
       }
 
-      if (provider === "local") {
-        meetingLocalMode = true;
-        meetingLocalProvider =
-          typeof options.localProvider === "string" ? options.localProvider : "whisper";
-        meetingLocalModel = typeof options.localModel === "string" ? options.localModel : null;
-        meetingLocalLanguage = typeof options.language === "string" ? options.language : null;
-        meetingLocalWin = BrowserWindow.fromWebContents(event.sender);
-        meetingLocalBuffers = { mic: [], system: [] };
-        meetingLocalTranscript = "";
-        await startLiveSpeakerIdentification(meetingLocalWin, systemAudioMode);
-        await startMeetingAec(systemAudioMode);
-        meetingLocalTimer = setInterval(() => void transcribeAllLocalBuffers(), LOCAL_MEETING_CHUNK_INTERVAL_MS);
-        const started = await startMeetingSystemAudio(
-          event,
-          systemAudioMode,
-          systemAudioStrategy,
-          "in local meeting mode"
-        );
-        return completeStart({ success: true, ...started, oneOnOneAttendee: meetingOneOnOneAttendee });
-      }
-
-      await connectRealtimeStreaming(event, options as MeetingConnectionOptions);
-      const realtimeWin = BrowserWindow.fromWebContents(event.sender);
-      await startLiveSpeakerIdentification(realtimeWin, systemAudioMode);
-      await startMeetingAec(systemAudioMode);
-      const started = await startMeetingSystemAudio(
-        event,
+      deps.setMeetingCaptureState?.(true);
+      return {
+        success: true,
+        sessionId,
+        recordingId: capture.recordingId,
+        originAt: capture.originAt,
         systemAudioMode,
         systemAudioStrategy,
-        "in realtime mode"
-      );
-      return completeStart({ success: true, ...started, oneOnOneAttendee: meetingOneOnOneAttendee });
+      };
     } catch (error) {
-      await rollbackMeetingTranscriptionStart();
-      meetingDetectionEngine?.endRecordingSession(recordingSessionId);
+      capture.markCaptureFailure("capture-start-failed");
+      try {
+        await audioTapManager?.stop();
+        await capture.stop({ lastSequence: {}, errorCode: "capture-start-failed" });
+      } catch (stopError) {
+        debugLogger.error("Failed to finalize a meeting capture that did not start", {
+          error: stopError instanceof Error ? stopError.message : String(stopError),
+          recordingId: capture.recordingId,
+        }, "meeting");
+      }
+      activeCaptureSession = null;
+      activeCaptureSessionId = null;
+      activeCaptureOwner = null;
+      deps.onCaptureStopped?.();
+      deps.setMeetingCaptureState?.(false);
+      meetingDetectionEngine?.endRecordingSession(sessionId);
       meetingDetectionEngine?.setUserRecording(false);
-      debugLogger.error("Meeting transcription start error", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return meetingFailure(error);
+      return { ...meetingFailure(error), recordingId: capture.recordingId };
     } finally {
       meetingTranscriptionStartInProgress = false;
     }
@@ -2067,234 +2008,159 @@ export function registerMeetingCoordinatorHandlers(
   const sendMeetingAudio = (
     audioBuffer: unknown,
     source: MeetingAudioSource,
-    synthetic = false,
-    capturedAt: number | null = null
+    sessionId: string,
+    packet: { epochIndex: number; epochStartFrame: number; sequence: number; sampleOffset: number }
   ) => {
-    const outboundBuffer = Buffer.isBuffer(audioBuffer)
-      ? audioBuffer
-      : Buffer.from(audioBuffer as ArrayBufferLike);
-    if (!synthetic) {
-      meetingDetectionEngine?.recordMeetingAudioChunk(source, outboundBuffer);
+    const capture = activeCaptureSession;
+    if (!capture || sessionId !== activeCaptureSessionId) {
+      throw new Error("Meeting capture session is no longer active");
     }
-
-    if (source === "system") {
-      const receivedAt = Date.now();
-      if (!synthetic) {
-        meetingEchoLeakDetector.recordSystemChunk(outboundBuffer, receivedAt);
-        if (meetingAecEnabled && !meetingAecManager?.processSystemBuffer(outboundBuffer)) {
-          meetingAecEnabled = false;
-        }
-        flushPendingMeetingMicChunks();
-      }
-      if (meetingLiveSpeakerActive) {
-        meetingLiveSpeakerStartedAt ??= receivedAt;
-        void liveSpeakerIdentifier.feedAudio(outboundBuffer);
-      }
-      if (!meetingDiarizationStream) {
-        meetingDiarizationPath = path.join(os.tmpdir(), `ow-diarize-raw-${Date.now()}.pcm`);
-        meetingDiarizationStream = fs.createWriteStream(meetingDiarizationPath);
-        meetingDiarizationStartedAt = receivedAt;
-      }
-      meetingDiarizationStream.write(outboundBuffer);
-      if (!synthetic) {
-        // Every real chunk feeds the watchdog, including actual silence.
-        const { rms, peak } = computeChunkStats(outboundBuffer);
-        const audible = rms >= MEETING_MIC_SILENCE_RMS || peak >= MEETING_MIC_SILENCE_PEAK;
-        meetingSystemAudioWatchdog.recordChunk(audible);
-        if (audible && !meetingSystemAudioHeard) {
-          meetingSystemAudioHeard = true;
-          dropMeetingMicDiarizationCapture();
-          clearMeetingSystemAudioSilenceTimer();
-        }
-      }
-      dispatchMeetingAudioBuffer(outboundBuffer, "system", synthetic, capturedAt);
-      return;
+    if (!Buffer.isBuffer(audioBuffer) && !(audioBuffer instanceof ArrayBuffer)) {
+      throw new Error("Meeting capture packet must be an ArrayBuffer");
     }
-
-    if (source !== "mic") return;
-    if (!meetingSystemAudioHeard) {
-      if (!meetingMicDiarizationStream) {
-        const receivedAt = Date.now();
-        meetingMicDiarizationPath = path.join(os.tmpdir(), `ow-diarize-raw-mic-${receivedAt}.pcm`);
-        meetingMicDiarizationStream = fs.createWriteStream(meetingMicDiarizationPath);
-        meetingMicDiarizationStartedAt = receivedAt;
-      }
-      meetingMicDiarizationStream.write(outboundBuffer);
+    if (source !== "mic" && source !== "system") {
+      throw new Error("Meeting capture source is invalid");
     }
-    if (processMeetingMicWithAec(outboundBuffer)) return;
-    if (!hasNativeMeetingSystemAudio()) {
-      const analysis = meetingEchoLeakDetector.analyzeMicChunk(outboundBuffer);
-      if (analysis?.shouldMute && !meetingAecEnabled) {
-        if (!meetingLocalMode) dispatchMeetingAudioBuffer(Buffer.alloc(outboundBuffer.length), "mic");
-        return;
-      }
-      dispatchMeetingAudioBuffer(outboundBuffer, "mic");
-      return;
-    }
-    meetingPendingMicChunks.push({ buffer: outboundBuffer, queuedAt: Date.now() });
-    flushPendingMeetingMicChunks();
+    const parsedPacket = meetingCapturePacketSchema.safeParse(packet);
+    if (!parsedPacket.success) throw new Error("Meeting capture packet metadata is invalid");
+    const raw = Buffer.isBuffer(audioBuffer) ? audioBuffer : Buffer.from(audioBuffer);
+    capture.appendRendererSamples(source, parsedPacket.data, raw);
+    meetingDetectionEngine?.recordMeetingAudioChunk(source, raw);
+    return { success: true, sequence: parsedPacket.data.sequence };
   };
 
-  const startManagedMeetingSystemAudio = (
+  const startManagedMeetingSystemAudio = async (
     event: { sender: WebContents },
-    manager: NonNullable<MeetingCoordinatorDeps["audioTapManager"]>,
-    warningLabel: string,
-    onWarningCode?: (code: string | undefined) => void
-  ) => {
+    capture: MeetingCaptureSession,
+    manager: NonNullable<MeetingCoordinatorDeps["audioTapManager"]>
+  ): Promise<void> => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    const timeline = manager === audioTapManager ? createMeetingAudioTimeline() : null;
-    let captureStarted = false;
-    const startCapture = () => {
-      if (captureStarted) timeline?.markRestart();
-      captureStarted = true;
-      return manager.start({
+    const timeline = createMeetingAudioTimeline({ originAt: Date.parse(capture.originAt) });
+    const startCapture = () =>
+      manager.start({
+        onStart: () => {
+          capture.beginSourceEpoch("system", timeline.markRestart(Date.now()));
+        },
         onChunk: (chunk) => {
-          if (timeline) {
-            timeline.write(chunk, (buffer, synthetic, capturedAt) =>
-              sendMeetingAudio(buffer, "system", synthetic, capturedAt)
-            );
-          } else {
-            sendMeetingAudio(chunk, "system");
+          try {
+            timeline.write(chunk, (raw) => {
+              capture.appendNativeSamples("system", raw);
+              meetingDetectionEngine?.recordMeetingAudioChunk("system", raw);
+              const { rms, peak } = computeChunkStats(raw);
+              meetingSystemAudioWatchdog.recordChunk(
+                rms >= MEETING_MIC_SILENCE_RMS || peak >= MEETING_MIC_SILENCE_PEAK
+              );
+            });
+          } catch (error) {
+            capture.markCaptureFailure("audio-write-failed");
+            const message = error instanceof Error ? error.message : String(error);
+            if (win && !win.isDestroyed()) {
+              win.webContents.send("meeting-transcription-fatal-error", message);
+            }
+            if (activeCaptureSessionId) {
+              void stopMeetingTranscription(activeCaptureSessionId, { incomplete: true });
+            }
           }
         },
         onError: (error) => {
+          capture.markSourceUnavailable("system", "system-audio-interrupted");
           if (win && !win.isDestroyed()) {
             win.webContents.send("meeting-transcription-error", error.message);
           }
         },
         onWarning: (warning) => {
-          debugLogger.warn(warningLabel, { code: warning.code, message: warning.message }, "meeting");
-          onWarningCode?.(warning.code);
+          debugLogger.warn("macOS system audio tap warning", {
+            code: warning.code,
+            message: warning.message,
+          }, "meeting");
+          if (warning.code === "device_invalidated") {
+            meetingSystemAudioWatchdog.reportDeviceInvalidated();
+          }
         },
       });
-    };
+
+    startMeetingSystemAudioWatchdog(win, "native");
     meetingSystemAudioWatchdog.attachCapture({
       stop: () => manager.stop(),
       start: startCapture,
     });
-    return startCapture();
+    await startCapture();
   };
 
-  const fallBackToMicOnly = async (context: string) => {
-    if (meetingSystemStreaming?.isConnected) {
-      await meetingSystemStreaming.disconnect().catch((error) => {
-        debugLogger.debug(
-          `System streaming disconnect during ${context} fallback failed`,
-          { error: error.message },
-          "meeting"
-        );
-      });
-    }
-    meetingSystemStreaming = null;
-    stopMeetingSystemAudioWatchdog();
-    await stopLiveSpeakerIdentification().catch(() => {});
-  };
+  ipcMain.handle(
+    "meeting-transcription-send",
+    (_event, audioBuffer: unknown, source: MeetingAudioSource, sessionId: string, packet: unknown) =>
+      sendMeetingAudio(audioBuffer, source, sessionId, packet as {
+        epochIndex: number;
+        epochStartFrame: number;
+        sequence: number;
+        sampleOffset: number;
+      })
+  );
 
-  const startMeetingSystemAudio = async (
-    event: { sender: WebContents },
-    systemAudioMode: "native" | "unsupported",
-    systemAudioStrategy: "native" | "unsupported",
-    context: string
+  const stopMeetingTranscription = async (
+    expectedSessionId: string,
+    options: {
+      incomplete?: boolean;
+      lastSequence?: Partial<Record<MeetingAudioSource, number>>;
+      errorCode?: string;
+      suppressProcessing?: boolean;
+    } = {}
   ) => {
-    if (systemAudioMode !== "native" || !audioTapManager) {
-      return { systemAudioMode, systemAudioStrategy };
-    }
-    try {
-      await startManagedMeetingSystemAudio(event, audioTapManager, "macOS system audio tap warning", (code) => {
-        if (code === "device_invalidated") {
-          meetingSystemAudioWatchdog.reportDeviceInvalidated();
-        }
-      });
-      return { systemAudioMode, systemAudioStrategy };
-    } catch (error) {
-      debugLogger.warn(
-        `Native system audio tap failed ${context}, falling back to mic-only`,
-        { error: error instanceof Error ? error.message : String(error) },
-        "meeting"
-      );
-      await fallBackToMicOnly("native");
-      return { systemAudioMode: "unsupported", systemAudioStrategy: "unsupported" };
-    }
-  };
-
-  ipcMain.on("meeting-transcription-send", (_event, audioBuffer: unknown, source: MeetingAudioSource) => {
-    sendMeetingAudio(audioBuffer, source);
-  });
-
-  const stopMeetingTranscription = async (expectedSessionId: string) => {
-    if (meetingDetectionEngine?.endRecordingSession(expectedSessionId) === false) {
+    const capture = activeCaptureSession;
+    if (!capture || expectedSessionId !== activeCaptureSessionId) {
       return { success: false, reason: "stale-session" };
     }
+    if (options.incomplete) capture.markCaptureFailure(options.errorCode ?? "renderer-lost");
+    meetingDetectionEngine?.endRecordingSession(expectedSessionId);
     meetingDetectionEngine?.setUserRecording(false);
     clearMeetingSystemAudioSilenceTimer();
     stopMeetingSystemAudioWatchdog();
+
+    let stopError: string | null = null;
     try {
-      if (audioTapManager) await audioTapManager.stop().catch(() => {});
-      flushPendingMeetingMicChunks(true);
-      await stopMeetingAec();
-      const liveSpeakerState = await stopLiveSpeakerIdentification().catch(() => null);
-      const diarizationSessionId = `diar-${Date.now()}`;
-      const diarizationWin = meetingLocalWin || (deps.getControlPanelWindow?.() ?? null);
-
-      if (meetingLocalMode) {
-        if (meetingLocalTimer) {
-          clearInterval(meetingLocalTimer);
-          meetingLocalTimer = null;
-        }
-        try {
-          await transcribeAllLocalBuffers();
-        } catch (error) {
-          debugLogger.error("Local meeting final transcription failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-        flushPendingMicFinals(true);
-        const state = await captureMeetingDiarizationState();
-        const transcript =
-          buildOrderedTranscriptText(state.diarizationSegments) || meetingLocalTranscript;
-        const sessionSpeakerConfigSnapshot = activeMeetingSpeakerConfig;
-        const noteIdSnapshot = meetingNoteId;
-        activeMeetingSpeakerConfig = null;
-        resetMeetingLocalState();
-        startOrSkipMeetingDiarization(publicationDeps, {
-          sessionId: diarizationSessionId,
-          rawPcmPath: state.diarizationPcmPath,
-          audioStartedAt: state.diarizationStartedAt,
-          transcriptSegments: state.diarizationSegments,
-          win: diarizationWin,
-          liveSpeakerState,
-          sessionConfig: sessionSpeakerConfigSnapshot,
-          noteId: noteIdSnapshot,
-          diarizedSource: state.diarizedSource,
-        });
-        return { success: true, transcript, diarizationSessionId };
-      }
-
-      const results = await disconnectMeetingStreaming({ flushPending: true });
-      const state = await captureMeetingDiarizationState();
-      const transcript =
-        buildOrderedTranscriptText(state.diarizationSegments) ||
-        [results[0]?.text, results[1]?.text].filter(Boolean).join(" ");
-      const sessionSpeakerConfigSnapshot = activeMeetingSpeakerConfig;
-      const noteIdSnapshot = meetingNoteId;
-      activeMeetingSpeakerConfig = null;
-      startOrSkipMeetingDiarization(publicationDeps, {
-        sessionId: diarizationSessionId,
-        rawPcmPath: state.diarizationPcmPath,
-        audioStartedAt: state.diarizationStartedAt,
-        transcriptSegments: state.diarizationSegments,
-        win: diarizationWin,
-        liveSpeakerState,
-        sessionConfig: sessionSpeakerConfigSnapshot,
-        noteId: noteIdSnapshot,
-        diarizedSource: state.diarizedSource,
-      });
-      return { success: true, transcript, diarizationSessionId };
+      await audioTapManager?.stop();
     } catch (error) {
-      debugLogger.error("Meeting transcription stop error", {
+      stopError = "audio-flush-failed";
+      capture.markCaptureFailure(stopError);
+      debugLogger.error("Meeting system audio tail did not drain", {
         error: error instanceof Error ? error.message : String(error),
+      }, "meeting");
+    }
+
+    try {
+      const result = await capture.stop({
+        lastSequence: options.lastSequence ?? {},
+        errorCode: stopError,
       });
-      return { success: false, error: (error as Error).message };
+      if (options.suppressProcessing) deps.cancelInitialProcessingRun?.(result.initialRunId);
+      activeCaptureSession = null;
+      activeCaptureSessionId = null;
+      activeCaptureOwner = null;
+      deps.onCaptureStopped?.();
+      linkRecordingSessionToNote(null);
+      deps.setMeetingCaptureState?.(false);
+      resolveSafeStop?.({ success: true, captureState: result.captureState });
+      return {
+        success: true,
+        recordingId: result.recordingId,
+        initialRunId: result.initialRunId,
+        captureState: result.captureState,
+        errorCode: result.errorCode,
+      };
+    } catch (error) {
+      debugLogger.error("Meeting capture finalization failed", {
+        error: error instanceof Error ? error.message : String(error),
+        recordingId: capture.recordingId,
+      }, "meeting");
+      activeCaptureSession = null;
+      activeCaptureSessionId = null;
+      activeCaptureOwner = null;
+      deps.onCaptureStopped?.();
+      linkRecordingSessionToNote(null);
+      deps.setMeetingCaptureState?.(false);
+      resolveSafeStop?.({ success: false });
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   };
 
@@ -2304,7 +2170,7 @@ export function registerMeetingCoordinatorHandlers(
         { sender: ownerWebContents as WebContents },
         { ...options, sessionId }
       ),
-    stop: (sessionId) => stopMeetingTranscription(sessionId),
+    stop: (sessionId, options) => stopMeetingTranscription(sessionId, options),
     onError: (error, sessionId) => {
       debugLogger.error(
         "Meeting transcription owner-loss teardown failed",
@@ -2317,25 +2183,84 @@ export function registerMeetingCoordinatorHandlers(
     },
   });
 
+  const requestSafeStop = (suppressProcessing = false): Promise<{
+    success: boolean;
+    captureState?: "ready" | "incomplete";
+  }> => {
+    if (!activeCaptureSessionId || !activeCaptureSession) {
+      return Promise.resolve({ success: true });
+    }
+    if (safeStopPromise) return safeStopPromise;
+
+    const sessionId = activeCaptureSessionId;
+    const pendingSafeStop = new Promise<{
+      success: boolean;
+      captureState?: "ready" | "incomplete";
+    }>((resolve) => {
+      let timeout: NodeJS.Timeout | null = null;
+      const settle = (result: { success: boolean; captureState?: "ready" | "incomplete" }) => {
+        if (timeout) clearTimeout(timeout);
+        resolveSafeStop = null;
+        resolve(result);
+      };
+      resolveSafeStop = settle;
+
+      const owner = activeCaptureOwner;
+      if (!owner || owner.isDestroyed()) {
+        void meetingTranscriptionLifecycle
+          .stopSession(sessionId, { incomplete: true, suppressProcessing })
+          .then((result) => settle({ success: result.success, captureState: result.captureState }));
+        return;
+      }
+
+      timeout = setTimeout(() => {
+        void meetingTranscriptionLifecycle
+          .stopSession(sessionId, { incomplete: true, suppressProcessing })
+          .then((result) => settle({ success: result.success, captureState: result.captureState }));
+      }, 5000);
+      owner.send("meeting-transcription-stop-requested", { sessionId, suppressProcessing });
+    }).finally(() => {
+      safeStopPromise = null;
+      resolveSafeStop = null;
+    });
+    safeStopPromise = pendingSafeStop;
+    return pendingSafeStop;
+  };
+
   ipcMain.handle("meeting-transcription-start", (event, options: Record<string, unknown> = {}) => {
+    const parsed = meetingOptionsSchema.safeParse(options);
+    if (!parsed.success) return meetingFailure(new Error("Meeting capture start request is invalid"));
     const sessionId =
-      typeof options.sessionId === "string" && options.sessionId.length > 0
-        ? options.sessionId
+      typeof parsed.data.sessionId === "string" && parsed.data.sessionId.length > 0
+        ? parsed.data.sessionId
         : crypto.randomUUID();
     return meetingTranscriptionLifecycle.startSession({
       sessionId,
       ownerWebContents: event.sender,
-      options,
+      options: parsed.data,
     });
   });
 
-  ipcMain.handle("meeting-transcription-stop", (_event, expectedSessionId?: string) =>
-    meetingTranscriptionLifecycle.stopSession(expectedSessionId)
+  ipcMain.handle(
+    "meeting-transcription-stop",
+    (_event, request: unknown) => {
+      const parsed = meetingCaptureStopRequestSchema.safeParse(request);
+      if (!parsed.success) return { success: false, error: "Meeting capture stop request is invalid" };
+      return meetingTranscriptionLifecycle.stopSession(parsed.data.sessionId, {
+        incomplete: parsed.data.incomplete === true,
+        lastSequence: parsed.data.lastSequence,
+        errorCode: parsed.data.errorCode,
+        suppressProcessing: parsed.data.suppressProcessing,
+      });
+    }
   );
 
   ipcMain.handle(
     "meeting-transcription-set-system-audio-available",
     async (event, sessionId: string, available: boolean) => {
+      if (activeCaptureSessionId === sessionId && available !== true) {
+        activeCaptureSession?.markSourceUnavailable("system", "system-audio-unavailable");
+      }
       const updated = await meetingDetectionEngine?.setRecordingSystemAudioAvailable(
         sessionId,
         available === true,
@@ -2464,6 +2389,8 @@ export function registerMeetingCoordinatorHandlers(
   });
 
   return {
+    isRecording: () => activeCaptureSession !== null,
+    requestSafeStop,
     linkRecordingSessionToNote,
     refreshMeetingSpeakerConfigFromNote(noteId, note) {
       const config = activeMeetingSpeakerConfig;

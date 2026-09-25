@@ -11,6 +11,7 @@ import {
   meetingStartResultSchema,
   meetingStopResultSchema,
   meetingCancelResultSchema,
+  meetingCaptureAckSchema,
   meetingSetSystemAudioAvailableResultSchema,
   recordingLockResultSchema,
   meetingDetectionGetPreferencesResultSchema,
@@ -29,6 +30,7 @@ import {
   meetingSystemAudioInterruptedEventSchema,
   meetingAutoEndRequestEventSchema,
   meetingAutoEndRestartRequestEventSchema,
+  meetingStopRequestedEventSchema,
   type MeetingCoordinatorApi,
   type MeetingNotificationData,
 } from "../contracts/meetingCoordinator.js";
@@ -95,13 +97,20 @@ export function createMeetingCoordinatorBridge(
         meetingCoordinatorChannels.meetingTranscriptionStart,
         options
       ),
-    meetingTranscriptionSend: (buffer, source) =>
-      ipcRenderer.send(meetingCoordinatorChannels.meetingTranscriptionSend, buffer, source),
-    meetingTranscriptionStop: (expectedSessionId) =>
+    meetingTranscriptionSend: (buffer, source, sessionId, packet) =>
+      invokeParse(
+        meetingCaptureAckSchema,
+        meetingCoordinatorChannels.meetingTranscriptionSend,
+        buffer,
+        source,
+        sessionId,
+        packet
+      ),
+    meetingTranscriptionStop: (request) =>
       invokeParse(
         meetingStopResultSchema,
         meetingCoordinatorChannels.meetingTranscriptionStop,
-        expectedSessionId
+        request
       ),
     meetingTranscriptionCancel: () =>
       invokeParse(
@@ -195,6 +204,13 @@ export function createMeetingCoordinatorBridge(
         ipcRenderer,
         meetingCoordinatorEventChannels.meetingTranscriptionSegment,
         meetingSegmentEventSchema,
+        callback
+      ),
+    onMeetingTranscriptionStopRequested: (callback) =>
+      subscribe(
+        ipcRenderer,
+        meetingCoordinatorEventChannels.meetingTranscriptionStopRequested,
+        meetingStopRequestedEventSchema,
         callback
       ),
     onMeetingSpeakerIdentified: (callback) =>

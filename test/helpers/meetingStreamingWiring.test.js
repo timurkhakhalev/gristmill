@@ -3,143 +3,56 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-// The meeting dispatch/start/teardown paths live in the typed coordinator
-// module, so — like ipcPolicyHeaderCoverage.test.js — this pins the wiring at
-// the source level.
+// Meeting capture owns raw audio. Processing starts only after Stop through
+// the persisted recording worker, so these checks pin the current capture
+// boundary rather than the retired live-ASR wiring.
 const source = fs.readFileSync(
   path.join(__dirname, "../../src/helpers/meetingCoordinatorIpcHandlers.ts"),
   "utf8"
 );
 
-test("every meeting realtime connect labels the stream and gives system its own VAD threshold", () => {
-  assert.match(source, /const MEETING_SYSTEM_VAD_THRESHOLD = 0\.3;/);
-  assert.match(
-    source,
-    /withMeetingSourceConnectOpts = \(\s*connectOpts: Record<string, unknown>,\s*source: MeetingAudioSource\s*\) => \(\{\s*\.\.\.connectOpts,\s*streamLabel: source,\s*\.\.\.\(source === "system" \? \{ vadThreshold: MEETING_SYSTEM_VAD_THRESHOLD \} : \{\}\),\s*\}\)/
-  );
-  // Initial connect and mid-meeting reconnect both go through the helper; a
-  // bare ...connectOpts spread would silently drop the system channel's
-  // threshold and its stream label.
-  assert.equal(
-    (source.match(/\.\.\.withMeetingSourceConnectOpts\(connectOpts, source\)/g) ?? []).length,
-    2
-  );
-  assert.doesNotMatch(source, /connect\(\{ apiKey: secret, token: secret, \.\.\.connectOpts \}\)/);
+function section(from, to) {
+  const start = source.indexOf(from);
+  const end = source.indexOf(to, start + from.length);
+  assert.ok(start >= 0 && end > start, `source section ${from}..${to} must exist`);
+  return source.slice(start, end);
+}
+
+test("meeting start creates durable capture before selecting a local source", () => {
+  const start = section("const startMeetingTranscription", "const sendMeetingAudio");
+  const createCapture = start.indexOf("MeetingCaptureSession.create(");
+  const selectSource = start.indexOf("getMeetingSystemAudioPlan()");
+  assert.ok(createCapture >= 0 && selectSource > createCapture);
+  assert.match(start, /recordingId:\s*capture\.recordingId/);
+  assert.match(start, /originAt:\s*capture\.originAt/);
+  assert.doesNotMatch(start, /fetchRealtimeToken|getMeetingStreamingClient|transcribeLocal/);
+  assert.doesNotMatch(start, /meeting-transcription-segment/);
 });
 
-test("streaming dispatch logs system-channel levels", () => {
-  assert.match(
-    source,
-    /source === "system" && buffer\.length >= 2[\s\S]{0,400}?"Meeting system audio stats"/
-  );
+test("renderer PCM is validated and acknowledged only after the raw write", () => {
+  const send = section("const sendMeetingAudio", "const startManagedMeetingSystemAudio");
+  assert.match(send, /sessionId !== activeCaptureSessionId/);
+  assert.match(send, /meetingCapturePacketSchema\.safeParse\(packet\)/);
+  const write = send.indexOf("capture.appendRendererSamples(source, parsedPacket.data, raw)");
+  const acknowledge = send.indexOf("return { success: true, sequence: parsedPacket.data.sequence }");
+  assert.ok(write >= 0 && acknowledge > write);
 });
 
-test("silent system audio warning arms on start and clears on every teardown path", () => {
-  // Armed only when a system-audio strategy is active (never for mic-only).
-  assert.match(
-    source,
-    /result\.systemAudioStrategy && result\.systemAudioStrategy !== "unsupported"[\s\S]{0,160}?armMeetingSystemAudioSilenceTimer\(/
-  );
-  assert.match(source, /send\("meeting-system-audio-silent", \{ systemAudioStrategy \}\)/);
-  // Normal/forced stop and error rollback both clear the one-shot timer.
-  const rollbackStart = source.indexOf("const rollbackMeetingTranscriptionStart");
-  const stopStart = source.indexOf("const stopMeetingTranscription");
-  assert.ok(rollbackStart >= 0 && stopStart > rollbackStart);
-  const rollbackSection = source.slice(
-    rollbackStart,
-    source.indexOf("const sendMeetingAudio")
-  );
-  assert.match(rollbackSection, /clearMeetingSystemAudioSilenceTimer\(\);/);
-  const stopSection = source.slice(
-    stopStart,
-    source.indexOf("const meetingTranscriptionLifecycle")
-  );
-  assert.match(stopSection, /clearMeetingSystemAudioSilenceTimer\(\);/);
-});
+test("native system PCM is persisted, watched for interruption, and drained before finalization", () => {
+  const watchdog = section("const meetingSystemAudioWatchdog:", "let meetingStartedAt");
+  assert.match(watchdog, /send\("meeting-system-audio-interrupted", payload\)/);
 
-test("the system-audio watchdog is armed beside the silence timer and torn down with it", () => {
-  // Same gate as the one-shot warning: never armed for a mic-only session.
-  assert.match(
-    source,
-    /result\.systemAudioStrategy && result\.systemAudioStrategy !== "unsupported"[\s\S]{0,240}?startMeetingSystemAudioWatchdog\(meetingConnectionWin, result\.systemAudioStrategy\)/
-  );
-  // Only the macOS tap emits a chunk per period, so only it can be judged on
-  // delivery gaps; the loopback helpers may legitimately go idle.
-  assert.match(source, /watchesDelivery: systemAudioStrategy === "native"/);
+  const nativeStart = section("const startManagedMeetingSystemAudio", 'ipcMain.handle(\n    "meeting-transcription-send"');
+  assert.match(nativeStart, /timeline\.write\(chunk, \(raw\) => \{/);
+  assert.match(nativeStart, /capture\.appendNativeSamples\("system", raw\)/);
+  assert.match(nativeStart, /meetingSystemAudioWatchdog\.recordChunk\(/);
+  assert.match(nativeStart, /meetingSystemAudioWatchdog\.reportDeviceInvalidated\(\)/);
+  assert.match(nativeStart, /stop: \(\) => manager\.stop\(\)/);
 
-  // The ticker is the only timer the controller owns, and leaking one would
-  // keep judging a session that has already ended.
-  assert.match(
-    source,
-    /const stopMeetingSystemAudioWatchdog = \(\) => \{[\s\S]{0,400}?clearMeetingSystemAudioTicker\(\);[\s\S]{0,300}?meetingSystemAudioWatchdog\.stop\(\);/
-  );
-
-  // Arming runs after capture has started and attached itself, so it must clear
-  // only the ticker. Calling the full teardown here detaches the capture the
-  // start path just installed, which is how the first draft shipped a watchdog
-  // that reported stalls it could not recover from.
-  const armStart = source.indexOf("const startMeetingSystemAudioWatchdog");
-  assert.ok(armStart >= 0);
-  const armSection = source.slice(armStart, source.indexOf("const rollbackMeetingTranscriptionStart"));
-  assert.match(armSection, /clearMeetingSystemAudioTicker\(\);/);
-  assert.doesNotMatch(armSection, /stopMeetingSystemAudioWatchdog\(\);/);
-  assert.doesNotMatch(armSection, /detachCapture\(\)/);
-
-  // Every path that clears the one-shot timer also stops the watchdog, plus the
-  // mic-only fallback, which strands the restart hook on a dead manager.
-  for (const [label, from, to] of [
-    [
-      "rollback",
-      "const rollbackMeetingTranscriptionStart",
-      "const sendMeetingAudio",
-    ],
-    ["stop", "const stopMeetingTranscription", "const meetingTranscriptionLifecycle"],
-    ["mic-only fallback", "const fallBackToMicOnly", "const startMeetingSystemAudio = async"],
-  ]) {
-    const start = source.indexOf(from);
-    const end = source.indexOf(to);
-    assert.ok(start >= 0 && end > start, `${label} section not found`);
-    assert.match(source.slice(start, end), /stopMeetingSystemAudioWatchdog\(\);/, label);
-  }
-});
-
-test("the watchdog sees every system chunk and the helper's device warning", () => {
-  // The audible check used to be skipped once the call had been heard, which is
-  // exactly the window in which the tap dies (#1990).
-  assert.match(
-    source,
-    /const audible = rms >= MEETING_MIC_SILENCE_RMS \|\| peak >= MEETING_MIC_SILENCE_PEAK;\s*meetingSystemAudioWatchdog\.recordChunk\(audible\);/
-  );
-  assert.match(
-    source,
-    /if \(code === "device_invalidated"\) \{\s*meetingSystemAudioWatchdog\.reportDeviceInvalidated\(\);/
-  );
-
-  // Recovery bounces the helper process, so the capture must be attached by the
-  // same call that started it, not by the arming path.
-  const managedStart = source.indexOf("const startManagedMeetingSystemAudio");
-  assert.ok(managedStart >= 0);
-  const managedSection = source.slice(managedStart, source.indexOf("const fallBackToMicOnly"));
-  assert.match(
-    managedSection,
-    /meetingSystemAudioWatchdog\.attachCapture\(\{\s*stop: \(\) => manager\.stop\(\),\s*start: startCapture,/
-  );
-
-  // The interruption reaches the renderer; a log-only warning would leave the
-  // user watching a recording that has stopped hearing the call.
-  assert.match(source, /send\("meeting-system-audio-interrupted", payload\)/);
-});
-
-test("meeting connects forward the credential mode", () => {
-  // The Deepgram client picks its Authorization scheme from `mode`; both meeting
-  // connectOpts are built by hand, so omitting it re-authenticates Note Recording
-  // as managed (#2140). Scoped by sample rate so an unrelated connectOpts cannot
-  // drag the assertion off target.
-  const connectOptsBlocks =
-    source.match(/const connectOpts = \{[^}]*sampleRate: MEETING_STREAM_SAMPLE_RATE,\s*\};/g) ?? [];
-  assert.equal(connectOptsBlocks.length, 2, "initial connect and reconnect each build connectOpts");
-  for (const block of connectOptsBlocks) {
-    // Anchored: an unanchored match also accepts the key commented out.
-    assert.match(block, /^\s*mode: options\.mode,$/m);
-  }
+  const stop = section("const stopMeetingTranscription", "const meetingTranscriptionLifecycle");
+  const stopTap = stop.indexOf("await audioTapManager?.stop()");
+  const finalize = stop.indexOf("await capture.stop(");
+  assert.ok(stopTap >= 0 && finalize > stopTap);
+  assert.match(stop, /stopMeetingSystemAudioWatchdog\(\)/);
+  assert.match(stop, /capture\.markCaptureFailure\(stopError\)/);
 });

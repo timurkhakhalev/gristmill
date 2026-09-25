@@ -238,6 +238,10 @@ test("missing annotations or speaker labels fail closed and still delete the fil
 });
 
 test("incomplete interactions and invalid offsets are rejected", () => {
+  assert.deepEqual(
+    parseGeminiFileResponse({ status: "completed", output_text: "" }, true),
+    { success: true, text: "", diarized: false, segments: [] }
+  );
   assert.equal(
     parseGeminiFileResponse({ status: "failed", output_text: "partial" }, true).code,
     "GEMINI_INCOMPLETE"
@@ -268,4 +272,26 @@ test("incomplete interactions and invalid offsets are rejected", () => {
     ).code,
     "GEMINI_INVALID_RESPONSE"
   );
+});
+
+test("meeting raw interaction is saved before validation and Gemini file cleanup", async () => {
+  const events = [];
+  const { deps, request } = setup({
+    interaction: { status: "completed", output_text: "Hello without word timestamps." },
+  });
+  const fetch = deps.fetch;
+  deps.fetch = async (url, init) => {
+    const response = await fetch(url, init);
+    if (url.endsWith("/v1beta/interactions")) events.push("interaction-response");
+    if (init.method === "DELETE") events.push("delete-uploaded-file");
+    return response;
+  };
+  request.onRawResponse = async (raw) => {
+    events.push("raw-saved");
+    assert.deepEqual(raw, { status: "completed", output_text: "Hello without word timestamps." });
+    throw new Error("durable save failed");
+  };
+
+  await assert.rejects(() => transcribeGeminiFile(request, deps), /durable save failed/);
+  assert.deepEqual(events, ["interaction-response", "raw-saved", "delete-uploaded-file"]);
 });

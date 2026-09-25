@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const load = () => import("../../src/services/uploadNotes.ts");
 const { MAX_SPEAKER_COUNT } = require("../../src/constants/speakerDetection.json");
+const { parseTranscriptSegments } = require("../../src/utils/parseTranscriptSegments.ts");
 
 test("maps the diarizer invocation onto the note columns", async () => {
   const { buildUploadNoteMetadata } = await load();
@@ -104,6 +105,9 @@ test("provider segments serialize into the meeting-path transcript shape", async
     { text: "Hello world.", timestamp: anchorMs },
     { text: "Named part.", timestamp: anchorMs + 4200, speakerName: "Speaker 1" },
   ]);
+  const parsed = parseTranscriptSegments(transcript);
+  assert.equal(parsed[0].source, undefined, "a single mixed/upload transcript carries no false mic/system origin");
+  assert.equal(parsed[1].speakerName, "Speaker 1");
 });
 
 test("the default anchor is the current epoch so later meeting appends share one base", async () => {

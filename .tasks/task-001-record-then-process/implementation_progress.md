@@ -1,0 +1,384 @@
+# M1 implementation progress
+
+Status: done
+
+Implemented typed recording/run/result contracts, additive SQLite persistence, immutable mic/system PCM epoch storage, atomic result JSON publication, SQLite reopen/recovery, and durable audio/note deletion intents. Wired the new storage manager through `AudioStorageManager` and added focused storage and persistence tests.
+
+Preserved constraints: configuration snapshots are stored before epochs and strip unknown fields/secrets; recovery counts complete frames without rewriting raw audio; recording capture state stays independent from processing state; audio deletion preserves run JSON/text; note deletion removes recording results while shared speaker profiles and existing Notes behavior remain intact. All managed paths are generated and checked in main.
+
+Issues: test execution is pending the root-only verification gate; this worker did not run tests, builds, installs, or native rebuilds.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 12 pre-existing warnings; no warnings on M1 files.
+- `git diff --check` and staged diff check — passed.
+- Root to run: `node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingStorage.test.js test/helpers/meetingRecordingPersistence.test.js test/helpers/databaseLocalBehavior.test.js`.
+
+Commits:
+- `bd0d603b` — M1: add durable meeting recording storage.
+- `52714ef9` — M1: record implementation verification status.
+
+## M1 verification follow-up
+
+Root's focused run found two issues. The audio deletion test incorrectly expected ASR reprocessing after audio removal; it now verifies that ASR retry is blocked while transcript-backed summary work remains available. The recovery test supplied an odd-length PCM buffer to the append API; it now writes whole frames. Recovery also now always marks an open recording found at startup as incomplete, even when all recovered bytes are complete frames.
+
+Follow-up verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 12 pre-existing warnings; no warnings on M1 files.
+- Tests remain root-only and were not rerun by this worker.
+
+Follow-up commits:
+- `0e0f08fd` — M1: correct recovery and deleted-audio expectations.
+
+## M2 implementation progress
+
+Status: done
+
+Implemented local capture with a pre-capture settings snapshot, main-owned immutable mic/system raw writes, bounded per-source renderer queues, ack-after-write, epoch offsets, and explicit flush/drain before finalization. Removed live meeting transcript publication from the capture flow, added Notes/tray capture states, and added safe quit confirmation that leaves capture and hotkeys active when canceled.
+
+Preserved constraints: recording is independent of network/provider availability; raw mic and system audio remain separate and are written before any processing; source restarts retain gaps; missing or failed sources finalize incomplete; native system Stop waits for tap close; note text and existing transcript remain untouched.
+
+Issues: native tap output is main-owned and does not have a renderer sequence number. Finalization now relies on its awaited process close for that source, while still checking renderer sequence numbers; a regression case also covers stdout chunks larger than 100 ms. The code commit is complete; tests and macOS hardware smoke remain root-only verification gates.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors; 36 warnings remain, including unreachable legacy meeting helpers exposed by the capture cutover and unrelated existing warnings.
+- `git diff --check` and staged diff check — passed.
+- Tests were not run by this worker, per the root-only execution constraint.
+- Root focused command, including added quit-flow coverage: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+- Root hardware smoke: use an isolated macOS arm64 user-data profile; record known continuous signals to mic and system audio offline; verify hide/reopen, Stop mid-speech, quit/cancel, device restart, and process kills at several points; compare recovered tails and durations against the reference and record bytes/durations/loss. Normal Stop must have no tail loss and each crash-recovered track must lose at most 1 second.
+
+Commits:
+- `9028b992` — M2: implement record-first capture and safe Stop.
+
+## M2 root-test follow-up
+
+Root's focused run reported 20 failures: four IPC assertion issues and sixteen Vite import failures. IPC tests now follow the generated recording ID and wrap synchronous handler throws in a promise assertion. The Vite failure came from `secretKeys.ts` exporting its already-named ESM data with an unconditional CommonJS `module.exports`; that redundant export is removed, keeping the settings snapshot in the renderer where current user settings live while main validates and persists it before capture.
+
+Verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors; 36 warnings.
+- `git diff --check` — passed.
+- Root tests were not run by this worker. Rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+
+Follow-up commit:
+- `58ef1f5c` — M2: fix capture boundary and IPC assertions.
+
+## M2 root-test follow-up 2
+
+Root's rerun passed all IPC cases but the 16 renderer store cases failed while importing `meetingAudioTimeline.ts`, whose CommonJS footer is still required by the main-build test. The renderer now imports frame-offset math from a small ESM-only utility; the timeline helper re-exports it and retains its existing CommonJS shape for main.
+
+Verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 warnings.
+- `git diff --check` — passed.
+- Renderer-imported meeting helpers/config were checked for CommonJS footers; none remain on the renderer path. The timeline's footer remains for main-build consumers.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+
+Follow-up commit:
+- `30ce4434` — M2: keep meeting timeline renderer import ESM-safe.
+
+## M2 root-test follow-up 3
+
+Root's next focused run passed 41/50; the remaining nine store failures came from outdated mocks, not capture behavior. The shared fake AudioContext now reports the requested sample rate, and successful mocked starts in the mic-only fallback and retry cases now include the durable recording ID and origin required by the IPC contract. Production 24 kHz validation and raw capture are unchanged.
+
+Verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 warnings.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+
+Follow-up commit:
+- `b7901205` — M2: align capture store mocks with durable start contract.
+
+## M2 root-test follow-up 4
+
+Root's rerun passed 49/51. The last two failures were caused by test windows that supplied `setTimeout` but not `clearTimeout`, so the production flush-barrier cleanup threw while settling. The shared browser harness now supplies both real Node timer methods; affected tests use those shared methods, and the store cleanup hook explicitly awaits Stop.
+
+Verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 warnings.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+
+Follow-up commit:
+- `beda40d5` — M2: provide shared browser timer cleanup in store tests.
+
+## M2 root-test follow-up 5
+
+Root's 50/50 run still logged Stop errors because pending-start cleanup hooks ran after the fake window had been restored; prior tests discarded the stop result. The SystemAudioInterrupted tests now register awaited cleanup before browser globals, explicitly assert successful Stop results, and assert the canceled-start Stop is a no-op. No production error handling was changed.
+
+Verification:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 warnings.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
+
+Follow-up commit:
+- `0f6331de` — M2: assert Stop outcomes and order async test cleanup.
+
+## M3 implementation progress
+
+Status: done
+
+Implemented a persisted main-process worker that resumes and claims SQLite runs after recovery and retention readiness, processes only saved configuration snapshots, prioritizes capture, retains provider responses before parsing, and persists transcript and summary artifacts as separate stages. Added the full-timeline mono WAV mixer, run list/create/retry IPC, existing Local transcription and post-Stop diarization, and summary generation through the existing provider factories and prompts.
+
+Preserved constraints: mic/system epochs and provider responses remain separate and immutable; M3 derives one processing WAV without changing raw tracks; no request is issued while capture is active; issued remote ASR can finish and save raw JSON while normalization/summary wait; no new Self-Hosted meeting route or fallback/splitting was added; manual Notes remain unchanged and run results do not expose raw provider JSON.
+
+Issues: the first Local transcript projection duplicated existing speaker-text merge behavior and omitted speaker labels in its text. Reused the existing `speakerMerge` helpers and added Local-path coverage. Live mic/system tail-loss remains the explicitly deferred M2 hardware check for the final verification pass.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors; 36 warnings remain in pre-existing or unrelated files, including M2's unused realtime-helper warnings after the capture cutover.
+- `git diff --check` and staged diff check — passed.
+- Tests were not run by this worker, per the root-only execution constraint. Root command: `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/remoteTranscriptionIpc.test.js test/helpers/geminiFileTranscription.test.js test/helpers/retryTranscriptionHandler.test.js test/helpers/transcriptionRoute.test.js test/services/fileTranscriptionDiarizationWarning.test.js`.
+- The mixer suite includes a real FFmpeg sample/offset/gap/duration check and skips only when FFmpeg is unavailable. Real provider calls and hardware smoke were not run by this worker.
+
+Commit:
+- `e192dd51` — M3: add durable post-stop meeting processing.
+
+## M3 root-test follow-up
+
+Root's focused suite passed 89/90; the FFmpeg mixer case exposed that the disk-space probe used the not-yet-created final WAV path. The mixer now checks available space on the existing containing directory, while retaining the same byte estimate and temporary-file-to-final rename. The injected test verifies the probe receives an existing directory.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/remoteTranscriptionIpc.test.js test/helpers/geminiFileTranscription.test.js test/helpers/retryTranscriptionHandler.test.js test/helpers/transcriptionRoute.test.js test/services/fileTranscriptionDiarizationWarning.test.js`.
+
+## M4 implementation progress
+
+Status: done
+
+Added the Notes result/version panel, selected-run transcript/summary projection notifications, run-scoped speaker correction and existing-profile recognition, mixed playback/seek, and mixed/source WAV export. Added retention controls (7-day default, saved values preserved, 0 means indefinite), confirmed delete-all/note-delete safe Stop, durable retention cleanup ordering/retry, and focused retention/result regressions. Reconciled README/product/architecture/delivery/cutover/removal docs to the implemented contracts and retained chunking research as superseded history.
+
+Preserved constraints: Note content and empty Notes remain intact; no new dashboard or Self-Hosted meeting route; selected results and corrections remain per run; raw provider results and mic/system PCM remain separate/immutable; expiry uses recording end time; audio deletion retains text/history and shared speaker profiles; Note deletion waits for active processing and prevents late publication. The main checkout's dirty README/docs were read only and were not modified. Live mic/system hardware smoke remains explicitly unverified.
+
+Issues: final root-owned focused/full tests, build/packaged smoke, and hardware validation are pending. Typecheck initially caught the async delete-all dependency shape and duplicate Stop option fields; both were corrected. Tests/builds/installs/native rebuilds were not run by this worker.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 34 warnings, all in existing/unrelated files.
+- `git diff --check` and English/Russian locale JSON parse — passed.
+- Root focused suite: `node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingRetention.test.js test/services/meetingResults.test.js test/services/uploadNotes.test.js test/helpers/retentionSettings.test.js` — not run by this worker.
+- Root integration sequence: `pnpm run typecheck`, `pnpm run lint`, `pnpm test`, `pnpm run pack`, `node scripts/smoke-electron.js` — pending. Live isolated macOS mic/system smoke and M2 tail-loss/recovery evidence remain pending.
+
+Commits:
+- `15717b7a` — M4: add Notes and retention surfaces.
+- M4 verification log — pending.
+
+## M4 root-test follow-up
+
+Root's focused retention run found fixture defects. The retention recording helper discarded the initial run returned by finalization, and the Electron test stub lacked `BrowserWindow.getAllWindows()`, causing real deletion broadcasts to fail after files and SQLite state were already settled. The fixture now returns and asserts the persisted run/intent inputs, and the Electron stub models a process with no open windows. Managed-directory checks and the intentional unsafe-path failure case remain unchanged.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings, all outside the changed files.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingRetention.test.js test/services/meetingResults.test.js test/services/uploadNotes.test.js test/helpers/retentionSettings.test.js`.
+
+Commits:
+- `cbc2c026` — M4: fix retention test fixtures.
+- `0798ff68` — M4: record retention fixture verification.
+
+## M4 root-test follow-up 2
+
+Root's next retention run passed 29/32. The remaining three failures tried to attach a transcript directly to a run, but M3 persists the immutable provider response before transcript normalization. The retention fixtures now follow that persisted artifact order and verify provider-response JSON survives audio-only deletion alongside transcript text.
+
+Verification:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings; no warnings on changed files.
+- `git diff --check` — passed.
+- Tests were not run by this worker. Root rerun: `node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingRetention.test.js test/services/meetingResults.test.js test/services/uploadNotes.test.js test/helpers/retentionSettings.test.js`.
+
+Commit:
+- `bb69d9c7` — M4: satisfy persisted transcript prerequisites.
+
+## M1–M4 integration failure follow-up
+
+Status: done
+
+Fixed the full-run failures caused by stale capture fixtures and contracts, obsolete live-ASR source assertions, SRT end-time selection, delete-all IPC fixture shape, missing Arabic UI strings, and the strict type probes. Extracted the existing provider dispatch into one shared factory and added a main-safe meeting adapter so summary processing stays on the current provider routes while the Electron graph emits every relative import.
+
+Preserved constraints: meeting capture continues to store raw mic/system audio before processing, wait for acknowledged writes and native tail drain, and mark missing system audio incomplete. The old realtime streaming assertions were replaced with checks for post-Stop persisted processing, raw writes, watchdog interruption, and Stop drain. Existing renderer provider behavior, Notes/manual content, Local/Self-Hosted/file-import routes, and deletion/result semantics remain in place.
+
+Issues: root's first full run had 39 failures before these fixes. This worker did not run tests, builds, installs, or native rebuilds. Root must rerun the focused failures and full suite before marking integration verified.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 34 pre-existing warnings in the root lint pass and 2 React-refresh warnings in `src/`; no lint errors.
+- `git diff --check` — passed.
+
+Root-only focused verification:
+- `node --import tsx --test --test-concurrency=1 test/components/fieldDirectionPolicy.test.js test/components/meetingInterruptionWarning.test.js test/helpers/audioTapManagerWarnings.test.js test/helpers/calendarAvailabilityBridge.test.js test/helpers/localFileTranscriptionBridge.test.js test/helpers/meetingCoordinatorBridge.test.js test/helpers/meetingStreamingWiring.test.js test/helpers/transcriptFormatter.test.js test/helpers/transcriptionDataDeleteAllAudio.test.js test/locales/translationCoverage.test.js test/scripts/meetingCoordinatorTypeProbe.test.js test/scripts/noteFilesTypeProbe.test.js test/stores/meetingRecordingStoreDiarizationPublish.test.js test/stores/meetingRecordingStoreSystemAudioDegraded.test.js test/stores/meetingRecordingStoreSystemAudioSilence.test.js`
+- `pnpm run build:main` followed by `node --import tsx --test --test-concurrency=1 test/scripts/mainBuild.test.js`
+- After focused fixes pass, `pnpm test` (its `pretest` builds the main graph).
+
+Commits:
+- `8534657f` — M4: preserve merged SRT cue end times.
+- `f7823d59` — M4: keep meeting summary providers in the main graph.
+- `d9b022b7` — M4: align integration fixtures with record-first capture.
+- `dbada7c1` — M4: complete meeting Arabic and input direction coverage.
+
+## M1–M4 integration locale follow-up
+
+Status: done
+
+Added the missing meeting recording, safe-quit, audio-retention, capture-status, and processing-result strings in German, Spanish, French, Italian, Japanese, Portuguese, Simplified Chinese, and Traditional Chinese. Existing Arabic and Russian strings were already complete and remain unchanged.
+
+Preserved the English key nesting and all interpolation placeholders. Retention and deletion copy continues to distinguish saved audio from Notes, transcripts, and summaries.
+
+Verification:
+- Read-only key and placeholder parity script over every locale directory — all 10 non-English locales have 0 missing English keys and 0 placeholder mismatches.
+- `git diff --check` — passed.
+- This worker did not run tests, builds, installs, or native rebuilds.
+
+Root-only rerun: `node --import tsx --test --test-concurrency=1 test/locales/translationCoverage.test.js`
+
+## M5 Reviewer Fix 1
+
+Status: done
+
+Added a main-validated IPC action to refresh configuration on a blocked run before any provider response or other run artifact exists. Ordinary retry still reuses its persisted snapshot; runs with raw results cannot change route. Missing summary configuration now leaves nonempty saved transcripts visibly blocked.
+
+Notes keeps incomplete capture visible alongside processing status, allows original mic/system export without a transcript or prepared playback file, displays the existing no-speech message for valid empty transcripts, and reports fulfilled playback IPC errors. New ASR now works when no transcript version is selectable.
+
+Preserved separate immutable mic/system sources, raw-response/run history, manual Notes content, existing provider routes, and deletion safeguards. Configuration correction cannot relabel or reinterpret a saved provider response.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings outside changed files.
+- Read-only translation key/placeholder parity — all 10 non-English locales have 0 missing English keys and 0 placeholder mismatches.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused regression command:
+`node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
+
+Root-only integration verification remains `pnpm test`, then `pnpm run pack` and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains unverified.
+
+Commit: `9b4755a6` — M5: fix reviewed meeting processing gaps.
+
+## M5 focused root-test follow-up
+
+Status: done
+
+Fixed the renderer test DOM so React can create host elements and text nodes during client mounting. Updated the summary-null processing assertions to expect a blocked summary stage while checking the transcript, provider response, and absent summary artifact; the Notes panel now references the existing localized `notes.upload.noSpeechDetected` key.
+
+Preserved the missing-summary-config blocked state and persisted processing artifacts. The no-speech copy is already translated in all 11 locales.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings outside changed files.
+- Read-only locale key check — `notes.upload.noSpeechDetected` exists in all 11 locales.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused rerun:
+`node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
+
+Commit: `0fbe743f` — M5: fix focused meeting result test failures.
+
+## M5 mounted UI test follow-up
+
+Status: done
+
+Added the minimal controlled-select `options` collection to the existing test DOM and registered root unmount before browser-global restoration. The six MeetingResultsPanel tests now assert text from the mounted container after effects; action checks continue to invoke the current mounted button handlers and verify IPC requests.
+
+Preserved the actual component, effects, API state updates, and all result-panel behavior; no product behavior changed.
+
+Verification run by this worker:
+- `pnpm run lint` — passed with 0 errors and 36 warnings outside changed files.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused rerun:
+`node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
+
+Commit: `98ef791c` — M5: stabilize mounted results panel tests.
+
+## M6 Reviewer Fix 2
+
+Status: done
+
+Notes now select the newest recording by default and let users switch between recordings independently of transcript versions. Run-version selection, status, export, retry, settings correction, and audio deletion are scoped to the selected recording; transcriptless audio can be deleted or retried after a failed deletion.
+
+A blocked summary stage with a saved transcript and raw response can accept a validated summary-only configuration update. Main preserves the persisted transcription configuration and artifact paths, then resumes at summary without another ASR request. Ordinary retry behavior is unchanged.
+
+Preserved immutable mic/system recordings, prior run and result history, saved Notes content, main-side validation, and existing deletion intent behavior.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 existing warnings.
+- Read-only locale key parity — all 11 locales have the same keys, including the new recording selector label.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused regression command:
+`node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
+
+Root-only final verification from plan 5.6: `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, sequential `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
+
+Commit: `d0795810` — M6: fix reviewed recording selection and retry paths.
+
+## M7 Reviewer Fix 3
+
+Status: done
+
+Summary-only correction now passes the saved transcription into the existing config snapshot builder. The helper skips current meeting-route resolution for that correction while building and validating the current note-formatting summary; ordinary capture snapshots still use and validate current meeting settings.
+
+Switching recordings changes only local Notes selection. Refresh keeps an older transcript visible while the persisted current run is pending, then prefers that current run once its transcript is saved. Only explicit result-version selection calls the durable select-run IPC and changes the Note projection.
+
+Preserved saved ASR configuration, raw and transcript artifacts, speaker/manual content, pending-run publication, and the existing selected-version projection behavior.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 existing warnings.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused regression command:
+`node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingConfigSnapshot.test.js test/helpers/meetingProcessing.test.js test/components/meetingResultsPanel.test.js`
+
+Root-only M7 checks: `pnpm run typecheck`, `pnpm run lint`, and `pnpm run i18n:check`; final integration remains sequential `pnpm test`, `pnpm run pack`, then `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
+
+Commit: `99ba4a1f` — M7: keep summary correction and version selection stable.
+
+## M8 Code Review Fix 1
+
+Status: done
+
+Playback now accepts any transcript-backed run belonging to an audio-available recording, including the older visible result while a newer run is pending. It does not update current-run selection or the Note projection. Source and mixed audio exports use asynchronous 256 KiB chunks with the existing timeline gaps, WAV header, temporary-file, fsync, close, and atomic-rename behavior. Export and playback-preparation operations are registered by recording; after a durable audio or Note deletion intent, deletion aborts and waits for those operations before removing managed audio.
+
+Preserved invariants: older-run playback and mixed export do not change persisted selection; raw mic/system epochs and prior run artifacts remain immutable; export handles are closed before deletion removes files; canceled or failed exports remove only their temporary output and never report success.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings, all on pre-existing or unrelated lines/files.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused regression command:
+`node --import tsx --test --test-concurrency=1 test/services/meetingResults.test.js test/components/meetingResultsPanel.test.js test/helpers/meetingRecordingRetention.test.js test/helpers/meetingProcessing.test.js`
+
+Root integration checks from the plan: `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, then sequential `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
+
+Commit: `5732b276` — M8: fix playback selection and stream audio exports.
+
+## M8 focused root-test follow-up
+
+Status: done
+
+Root's focused run found retention fixtures that called `_finishMeetingDeletion` without the new audio-operation registry. The retention context now supplies an empty real registry; delete-all and Note-deletion cases register a held audio operation and assert that it closes before processing cancellation and file removal. The stalled Note-deletion test was waiting on its processing-reader barrier, which never started after `_finishMeetingDeletion` returned early on the missing registry. The run was manually stopped by root, so the remaining suite was interrupted rather than independently diagnosed as a product failure.
+
+Preserved production cancellation and deletion behavior; only test contexts now model the required registry contract.
+
+Verification:
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused rerun:
+`node --import tsx --test --test-concurrency=1 test/services/meetingResults.test.js test/components/meetingResultsPanel.test.js test/helpers/meetingRecordingRetention.test.js test/helpers/meetingProcessing.test.js`
+
+Fixture follow-up commits: `0811867c`, `76f1cc5a`.

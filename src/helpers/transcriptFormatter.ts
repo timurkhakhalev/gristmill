@@ -94,6 +94,7 @@ interface MergedSegment {
   text: string;
   timestamp: number;
   endTimestamp: number;
+  hasExplicitEndTimestamp: boolean;
   speaker?: string | null;
   speakerName?: string | null;
   speakerIsPlaceholder?: boolean | null;
@@ -109,9 +110,16 @@ function mergeSegments(segments: TranscriptExportSegment[]): MergedSegment[] {
     const last = merged[merged.length - 1];
     if (last && speakerKey(last) === speakerKey(seg) && ts - (lastTimestamp as number) < 2) {
       last.text = last.text + " " + seg.text.trim();
-      last.endTimestamp = ts;
+      last.endTimestamp = typeof seg.endTimestamp === "number" ? seg.endTimestamp : ts;
+      last.hasExplicitEndTimestamp = typeof seg.endTimestamp === "number";
     } else {
-      merged.push({ ...seg, timestamp: ts, endTimestamp: ts, text: seg.text.trim() });
+      merged.push({
+        ...seg,
+        timestamp: ts,
+        endTimestamp: typeof seg.endTimestamp === "number" ? seg.endTimestamp : ts,
+        hasExplicitEndTimestamp: typeof seg.endTimestamp === "number",
+        text: seg.text.trim(),
+      });
     }
     lastTimestamp = ts;
   }
@@ -195,7 +203,9 @@ export function formatSrt(
   const entries: string[] = [];
   for (let i = 0; i < merged.length; i++) {
     const seg = merged[i];
-    const nextTs = i + 1 < merged.length ? merged[i + 1].timestamp : seg.endTimestamp + 3;
+    const nextTs = seg.hasExplicitEndTimestamp && seg.endTimestamp > seg.timestamp
+      ? seg.endTimestamp
+      : i + 1 < merged.length ? merged[i + 1].timestamp : seg.endTimestamp + 3;
     entries.push(`${i + 1}`);
     entries.push(`${formatSrtTimestamp(seg.timestamp)} --> ${formatSrtTimestamp(nextTs)}`);
     entries.push(
@@ -231,6 +241,7 @@ export function formatJson(
       segments: merged.map((seg) => ({
         speaker: resolveSpeaker(seg, speakerMappings),
         timestamp: seg.timestamp,
+        end_timestamp: seg.endTimestamp,
         text: seg.text,
       })),
     },

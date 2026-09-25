@@ -40,6 +40,7 @@ export interface InferenceOptions {
   max_tokens?: number;
   disableThinking?: boolean;
   requireCompleteOutput?: boolean;
+  signal?: AbortSignal;
 }
 
 interface CountPromptTokensOptions {
@@ -605,6 +606,9 @@ export class LlamaServerManager {
     if (!this.ready || !this.process) {
       throw new Error("llama-server is not running");
     }
+    if (options.signal?.aborted) {
+      throw Object.assign(new Error("Inference cancelled"), { name: "AbortError" });
+    }
 
     this.clearIdleTimer();
 
@@ -629,6 +633,7 @@ export class LlamaServerManager {
 
     const body = JSON.stringify(requestBody);
 
+    let abortRequest: (() => void) | null = null;
     return new Promise<string>((resolve, reject) => {
       const startTime = Date.now();
 
@@ -682,16 +687,24 @@ export class LlamaServerManager {
       );
 
       req.on("error", (error: Error) => {
-        reject(new Error(`llama-server request failed: ${error.message}`));
+        reject(options.signal?.aborted
+          ? Object.assign(new Error("Inference cancelled"), { name: "AbortError" })
+          : new Error(`llama-server request failed: ${error.message}`));
       });
       req.on("timeout", () => {
         req.destroy();
         reject(new Error("llama-server request timed out"));
       });
 
+      abortRequest = () => req.destroy(Object.assign(new Error("Inference cancelled"), { name: "AbortError" }));
+      options.signal?.addEventListener("abort", abortRequest, { once: true });
+      if (options.signal?.aborted) abortRequest();
       req.write(body);
       req.end();
-    }).finally(() => this.resetIdleTimer());
+    }).finally(() => {
+      if (abortRequest) options.signal?.removeEventListener("abort", abortRequest);
+      this.resetIdleTimer();
+    });
   }
 
   async stop(): Promise<void> {

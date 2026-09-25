@@ -61,7 +61,9 @@
     "openControlPanel": "Kontrollzentrum öffnen",
     "hideControlPanel": "Kontrollzentrum ausblenden",
     "quit": "OpenHercules beenden",
-    "tooltip": "OpenHercules"
+    "tooltip": "OpenHercules",
+    "recordingStatus": "Aufnahme läuft",
+    "stopRecording": "Aufnahme beenden"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -91,6 +93,13 @@
         "url": "URL: {{url}}",
         "hint": "Versuchen Sie, die App neu zu installieren oder mit --log-level=debug zu starten."
       }
+    },
+    "meetingQuit": {
+      "title": "Aufnahme läuft",
+      "message": "Diese Aufnahme vor dem Beenden stoppen und speichern?",
+      "stopAndQuit": "Stoppen und beenden",
+      "cancel": "Abbrechen",
+      "stopFailed": "Die Aufnahme konnte noch nicht gespeichert werden. OpenHercules bleibt geöffnet."
     }
   },
   "startup": {
@@ -1134,7 +1143,21 @@
         "description": "Set audio and transcript retention periods. Zero means keep indefinitely."
       },
       "audioRetention": "Audio retention (days)",
-      "transcriptRetention": "Transcript retention (days)"
+      "transcriptRetention": "Transcript retention (days)",
+      "audioRetentionLabel": "Aufbewahrung von Meeting-Audio",
+      "audioRetentionDescription": "Tage, für die Originalaudio gespeichert wird. 0 bedeutet bis zur manuellen Löschung.",
+      "retentionDecreaseTitle": "Audio-Aufbewahrung verkürzen?",
+      "retentionDecreaseDescription": "Aufnahmen älter als {{days}} Tage werden bei der nächsten Bereinigung gelöscht.",
+      "retentionDecreaseConfirm": "Aufbewahrung verkürzen",
+      "days": "Tage",
+      "deleteAllAudioLabel": "Gespeichertes Audio löschen",
+      "deleteAllAudioDescription": "Löscht gespeicherte Meeting-Spuren und ältere Aufnahmen. Notizen, Transkripte und Zusammenfassungen bleiben auf diesem Gerät.",
+      "deleteAllAudioButton": "Alle Audiodateien löschen",
+      "deleteAllAudioTitle": "Gespeichertes Audio löschen?",
+      "deleteAllAudioConfirmDescription": "Eine laufende Aufnahme wird sicher ohne Transkription beendet. Danach wird gespeichertes Audio gelöscht.",
+      "deleteAllAudioConfirm": "Alle Audiodateien löschen",
+      "deleteAllAudioDone": "{{count}} Audioelement(e) gelöscht.",
+      "deleteAllAudioFailed": "{{count}} Audioelement(e) konnten nicht gelöscht werden. Wiederhole den Vorgang."
     },
     "prompts": {
       "description": "Den einheitlichen System-Prompt anzeigen, anpassen und testen, der Textbereinigung und Anweisungserkennung steuert",
@@ -1504,7 +1527,7 @@
       "enhanced": "Verbessert",
       "saving": "Wird gespeichert",
       "transcriptEmptyTitle": "Noch nichts aufgenommen",
-      "transcriptEmptyDescription": "Drücke auf Aufnahme, um mit der Transkription zu beginnen. Alles Gesagte erscheint hier in Echtzeit.",
+      "transcriptEmptyDescription": "Das Transkript erscheint hier nach der Verarbeitung.",
       "startRecording": "Aufnahme starten",
       "generateSummary": "KI-Zusammenfassung erstellen",
       "startWriting": "Schreibe los...",
@@ -1515,7 +1538,23 @@
       "conversationWillAppear": "Gespräch wird hier angezeigt...",
       "linkedEvent": "Verknüpftes Ereignis",
       "noFolder": "Kein Ordner",
-      "participants": "Teilnehmer"
+      "participants": "Teilnehmer",
+      "capture": {
+        "preparing": "Lokale Aufnahme wird vorbereitet…",
+        "recording": "Audioaufnahme läuft",
+        "saving": "Audio-Ende wird gespeichert…",
+        "saved": "Audioaufnahme gespeichert",
+        "incomplete": "Aufnahme mit fehlendem Audio gespeichert",
+        "failed": "Aufnahme konnte nicht starten",
+        "mic": "Mikrofon",
+        "system": "Systemaudio",
+        "active": "Audioaufnahme aktiv",
+        "reconnecting": "Verbindung wird wiederhergestellt",
+        "unavailable": "Nicht verfügbar",
+        "inactive": "Nicht gestartet",
+        "writingToDisk": "Wird auf Datenträger geschrieben",
+        "incompleteReason": "Audio kann fehlen. Vor dem Problem gespeichertes Audio bleibt erhalten."
+      }
     },
     "participants": {
       "attendee": "Teilnehmer",
@@ -2142,5 +2181,60 @@
     "systemAudio": "System audio",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
+  },
+  "meetingResults": {
+    "title": "Meeting-Aufnahme",
+    "loadError": "Aufnahmeverlauf konnte nicht geladen werden.",
+    "selectError": "Ergebnis konnte nicht ausgewählt werden.",
+    "createError": "Verarbeitungslauf konnte nicht erstellt werden.",
+    "retryError": "Lauf konnte nicht wiederholt werden.",
+    "updateRunSettings": "Aktuelle Einstellungen verwenden",
+    "updateConfigError": "Einstellungen dieses Laufs konnten nicht aktualisiert werden.",
+    "playbackError": "Audiowiedergabe konnte nicht vorbereitet werden.",
+    "exportError": "Audioexport fehlgeschlagen.",
+    "exported": "Audio exportiert.",
+    "speakerError": "Sprecherkorrektur konnte nicht gespeichert werden.",
+    "deleteError": "Audio konnte nicht gelöscht werden. Du kannst es erneut versuchen.",
+    "version": "Ergebnisversion",
+    "recording": "Aufnahme",
+    "newAsr": "Neue Transkription",
+    "newSummary": "Neue Zusammenfassung",
+    "retry": "Erneut versuchen",
+    "deleteAudio": "Audio löschen",
+    "retryDelete": "Audiolöschung erneut versuchen",
+    "deleteAudioTitle": "Originalaudio löschen?",
+    "deleteAudioDescription": "Gespeichertes Mikrofon- und Systemaudio wird entfernt. Transkripte und Zusammenfassungen in Notizen bleiben verfügbar.",
+    "deleteAudioConfirm": "Audio löschen",
+    "audioUnavailable": "Originalaudio wurde gelöscht oder ist nicht verfügbar. Transkription, Wiedergabe und Audioexport sind deaktiviert.",
+    "exportMixed": "Gemischtes WAV exportieren",
+    "exportMic": "Mikrofon-WAV exportieren",
+    "exportSystem": "Systemaudio-WAV exportieren",
+    "saveSpeaker": "Sprecher speichern",
+    "speakerProfile": "Sprecherprofil",
+    "noSpeakerProfile": "Kein Profil",
+    "captureIncomplete": "Aufnahme endete früh; gespeichertes Audio und Ergebnisse bleiben erhalten.",
+    "deleteActiveNoteTitle": "Aufnahme stoppen und löschen?",
+    "deleteActiveNoteDescription": "Aufnahme sicher ohne Transkription beenden, danach Notiz, Audio und Verarbeitungsläufe löschen.",
+    "stopBeforeDeleteError": "Aufnahme konnte nicht sicher beendet werden. Notiz bleibt erhalten.",
+    "stage": {
+      "prepare": "Audio wird vorbereitet",
+      "asr": "Transkription läuft",
+      "normalize": "Transkript wird gespeichert",
+      "summary": "Zusammenfassung wird erstellt"
+    },
+    "status": {
+      "pending": "Wartet",
+      "running": "In Bearbeitung",
+      "blocked": "Blockiert",
+      "failed": "Fehlgeschlagen",
+      "cancelled": "Abgebrochen",
+      "complete": "Abgeschlossen"
+    },
+    "capture": {
+      "recording": "Aufnahme",
+      "finalizing": "Aufnahme wird gespeichert",
+      "ready": "Gespeichert",
+      "incomplete": "Unvollständig"
+    }
   }
 }

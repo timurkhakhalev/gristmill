@@ -16,7 +16,6 @@ import {
   type MeetingAutoEndRestartContext,
 } from "../helpers/meetingRecordingSession";
 import { parseTranscriptSegments } from "../utils/parseTranscriptSegments";
-import { serializeTranscriptSegments } from "../utils/transcriptSpeakerState";
 import logger from "../utils/logger";
 
 const EMA_PREV = 0.5;
@@ -36,7 +35,6 @@ export default function MeetingRecordingMount(): null {
   const { t } = useTranslation();
   const { toast, dismiss } = useToast();
   const isRecording = useMeetingRecordingStore((s) => s.isRecording);
-  const isTranscribing = useMeetingRecordingStore((s) => s.isTranscribing);
   const error = useMeetingRecordingStore((s) => s.error);
   const errorNonce = useMeetingRecordingStore((s) => s.errorNonce);
   const systemAudioSilentWarning = useMeetingRecordingStore((s) => s.systemAudioSilentWarning);
@@ -68,6 +66,19 @@ export default function MeetingRecordingMount(): null {
 
   useEffect(() => {
     primeMeetingWorklet();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onMeetingTranscriptionStopRequested?.((request) => {
+      void stopRecording(request.sessionId, { suppressProcessing: request.suppressProcessing === true }).catch((error) => {
+        logger.error(
+          "Meeting capture could not drain before quit",
+          { error: error instanceof Error ? error.message : String(error), sessionId: request.sessionId },
+          "meeting"
+        );
+      });
+    });
+    return () => unsubscribe?.();
   }, []);
 
   useEffect(() => {
@@ -163,22 +174,6 @@ export default function MeetingRecordingMount(): null {
   useEffect(() => {
     if (isRecording) pendingAutoEndRestart.current = null;
   }, [isRecording]);
-
-  // Crash-safety net moved out of the notes view: it must keep running when
-  // the user switches views mid-recording.
-  useEffect(() => {
-    if (!isTranscribing) return;
-
-    const interval = setInterval(() => {
-      const { recordingNoteId, segments } = useMeetingRecordingStore.getState();
-      if (!recordingNoteId || segments.length === 0) return;
-      window.electronAPI.updateNote(recordingNoteId, {
-        transcript: serializeTranscriptSegments(segments),
-      });
-    }, 30_000);
-
-    return () => clearInterval(interval);
-  }, [isTranscribing]);
 
   useEffect(() => {
     if (!error) return;

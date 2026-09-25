@@ -784,7 +784,7 @@
       "enhanced": "مُحسّن",
       "saving": "جاري الحفظ",
       "transcriptEmptyTitle": "لم يتم تسجيل أي شيء بعد",
-      "transcriptEmptyDescription": "اضغط على تسجيل لبدء النسخ. كل ما يُقال يظهر هنا لحظيًا.",
+      "transcriptEmptyDescription": "سيظهر النص المفرغ هنا بعد اكتمال المعالجة.",
       "startRecording": "بدء التسجيل",
       "generateSummary": "إنشاء ملخص بالذكاء الاصطناعي",
       "startWriting": "ابدأ الكتابة...",
@@ -795,7 +795,23 @@
       "conversationWillAppear": "ستظهر المحادثة هنا...",
       "linkedEvent": "الحدث المرتبط",
       "noFolder": "بدون مجلد",
-      "participants": "المشاركون"
+      "participants": "المشاركون",
+      "capture": {
+        "preparing": "جارٍ تجهيز التسجيل محليًا…",
+        "recording": "جارٍ تسجيل الصوت",
+        "saving": "جارٍ حفظ الجزء الأخير من الصوت…",
+        "saved": "تم حفظ التسجيل الصوتي",
+        "incomplete": "تم حفظ التسجيل مع صوت ناقص",
+        "failed": "تعذر بدء التسجيل",
+        "mic": "الميكروفون",
+        "system": "صوت النظام",
+        "active": "يلتقط الصوت",
+        "reconnecting": "جارٍ إعادة الاتصال",
+        "unavailable": "غير متاح",
+        "inactive": "لم يبدأ",
+        "writingToDisk": "جارٍ الكتابة إلى القرص",
+        "incompleteReason": "قد يكون بعض الصوت مفقودًا. يحتفظ التسجيل بالصوت الذي حُفظ قبل حدوث المشكلة."
+      }
     },
     "participants": {
       "attendee": "حاضر",
@@ -1506,7 +1522,21 @@
         "description": "Set audio and transcript retention periods. Zero means keep indefinitely."
       },
       "audioRetention": "Audio retention (days)",
-      "transcriptRetention": "Transcript retention (days)"
+      "transcriptRetention": "Transcript retention (days)",
+      "audioRetentionLabel": "مدة الاحتفاظ بصوت الاجتماعات",
+      "audioRetentionDescription": "عدد الأيام للاحتفاظ بالتسجيلات الصوتية الأصلية. 0 يعني الاحتفاظ بها حتى تحذفها يدويًا.",
+      "retentionDecreaseTitle": "تقليل مدة الاحتفاظ بالصوت؟",
+      "retentionDecreaseDescription": "سيتم حذف التسجيلات الأقدم من {{days}} يومًا عند عملية التنظيف التالية.",
+      "retentionDecreaseConfirm": "تقليل مدة الاحتفاظ",
+      "days": "أيام",
+      "deleteAllAudioLabel": "حذف كل التسجيلات الصوتية المحفوظة",
+      "deleteAllAudioDescription": "يحذف مسارات صوت الاجتماعات والتسجيلات القديمة المحفوظة. تبقى الملاحظات والنصوص والملخصات على هذا الجهاز.",
+      "deleteAllAudioButton": "حذف كل الصوت",
+      "deleteAllAudioTitle": "حذف كل الصوت المحفوظ؟",
+      "deleteAllAudioConfirmDescription": "إذا كان هناك اجتماع قيد التسجيل، فسيتوقف بأمان دون بدء التفريغ. بعد ذلك يُحذف الصوت المحفوظ.",
+      "deleteAllAudioConfirm": "حذف كل الصوت",
+      "deleteAllAudioDone": "تم حذف {{count}} عنصرًا صوتيًا.",
+      "deleteAllAudioFailed": "تعذر حذف {{count}} من العناصر الصوتية. أعد تنفيذ هذا الإجراء للمحاولة مرة أخرى."
     },
     "prompts": {
       "description": "عرض وتخصيص واختبار موجه النظام الموحد الذي يشغل تنظيف النص واكتشاف التعليمات",
@@ -1689,6 +1719,8 @@
   "tray": {
     "openControlPanel": "فتح لوحة التحكم",
     "hideControlPanel": "إخفاء لوحة التحكم",
+    "recordingStatus": "التسجيل جارٍ",
+    "stopRecording": "إيقاف التسجيل",
     "quit": "إنهاء OpenHercules",
     "tooltip": "OpenHercules"
   },
@@ -1707,6 +1739,13 @@
     "controlPanelTitle": "لوحة التحكم"
   },
   "dialog": {
+    "meetingQuit": {
+      "title": "التسجيل جارٍ",
+      "message": "هل تريد إيقاف هذا التسجيل وحفظه قبل الخروج؟",
+      "stopAndQuit": "إيقاف والخروج",
+      "cancel": "إلغاء",
+      "stopFailed": "تعذر حفظ التسجيل بعد. سيبقى OpenHercules مفتوحًا."
+    },
     "openLink": {
       "title": "تعذر فتح الرابط",
       "message": "فشل فتح الرابط في متصفحك:\n{{url}}\n\nخطأ: {{error}}"
@@ -2178,6 +2217,61 @@
       "openNote": "فتح الملاحظة",
       "unknownTool": "أداة غير معروفة: {{name}}",
       "invalidArgs": "وسيطات غير صالحة للأداة {{name}}"
+    }
+  },
+  "meetingResults": {
+    "title": "تسجيل الاجتماع",
+    "loadError": "تعذر تحميل سجل التسجيلات.",
+    "selectError": "تعذر اختيار هذه النتيجة.",
+    "createError": "تعذر إنشاء عملية معالجة.",
+    "retryError": "تعذر إعادة محاولة هذه العملية.",
+    "updateRunSettings": "استخدام الإعدادات الحالية",
+    "updateConfigError": "تعذر تحديث إعدادات هذه العملية.",
+    "playbackError": "تعذر تجهيز الصوت للتشغيل.",
+    "exportError": "فشل تصدير الصوت.",
+    "exported": "تم تصدير الصوت.",
+    "speakerError": "تعذر حفظ تصحيح المتحدث.",
+    "deleteError": "فشل حذف الصوت. يمكنك المحاولة مرة أخرى.",
+    "version": "نسخة النتيجة",
+    "recording": "التسجيل",
+    "newAsr": "تفريغ جديد",
+    "newSummary": "ملخص جديد",
+    "retry": "إعادة المحاولة",
+    "deleteAudio": "حذف الصوت",
+    "retryDelete": "إعادة محاولة حذف الصوت",
+    "deleteAudioTitle": "حذف صوت الاجتماع الأصلي؟",
+    "deleteAudioDescription": "سيؤدي ذلك إلى حذف صوت الميكروفون والنظام المحفوظ. ستظل النصوص والملخصات المحفوظة في الملاحظات متاحة.",
+    "deleteAudioConfirm": "حذف الصوت",
+    "audioUnavailable": "تم حذف الصوت الأصلي أو أنه غير متاح. تعطلت إعادة التفريغ والتشغيل وتصدير الصوت.",
+    "exportMixed": "تصدير الصوت الممزوج WAV",
+    "exportMic": "تصدير صوت الميكروفون WAV",
+    "exportSystem": "تصدير صوت النظام WAV",
+    "saveSpeaker": "حفظ المتحدث",
+    "speakerProfile": "ملف المتحدث",
+    "noSpeakerProfile": "لا يوجد ملف",
+    "captureIncomplete": "انتهى التسجيل مبكرًا؛ تم الاحتفاظ بالصوت والنتائج المحفوظة.",
+    "deleteActiveNoteTitle": "إيقاف هذا التسجيل وحذفه؟",
+    "deleteActiveNoteDescription": "سيتوقف التسجيل بأمان دون بدء التفريغ، ثم تُحذف الملاحظة والصوت وسجل المعالجة.",
+    "stopBeforeDeleteError": "تعذر إيقاف التسجيل بأمان. تم الاحتفاظ بالملاحظة.",
+    "stage": {
+      "prepare": "تجهيز الصوت",
+      "asr": "تفريغ الصوت",
+      "normalize": "حفظ النص",
+      "summary": "كتابة الملخص"
+    },
+    "status": {
+      "pending": "قيد الانتظار",
+      "running": "قيد التنفيذ",
+      "blocked": "متوقف مؤقتًا",
+      "failed": "فشل",
+      "cancelled": "أُلغي",
+      "complete": "مكتمل"
+    },
+    "capture": {
+      "recording": "جارٍ التسجيل",
+      "finalizing": "جارٍ حفظ التسجيل",
+      "ready": "تم الحفظ",
+      "incomplete": "غير مكتمل"
     }
   },
   "cleanupSettings": {

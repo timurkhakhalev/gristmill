@@ -27,6 +27,8 @@ async function setup(t) {
     }),
     meetingTranscriptionStart: async () => ({
       success: true,
+      recordingId: "00000000-0000-4000-8000-000000000001",
+      originAt: new Date().toISOString(),
       systemAudioMode: "native",
       systemAudioStrategy: "native",
     }),

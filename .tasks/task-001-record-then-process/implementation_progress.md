@@ -321,3 +321,26 @@ Root-only focused regression command:
 Root-only final verification from plan 5.6: `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, sequential `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
 
 Commit: `d0795810` — M6: fix reviewed recording selection and retry paths.
+
+## M7 Reviewer Fix 3
+
+Status: done
+
+Summary-only correction now passes the saved transcription into the existing config snapshot builder. The helper skips current meeting-route resolution for that correction while building and validating the current note-formatting summary; ordinary capture snapshots still use and validate current meeting settings.
+
+Switching recordings changes only local Notes selection. Refresh keeps an older transcript visible while the persisted current run is pending, then prefers that current run once its transcript is saved. Only explicit result-version selection calls the durable select-run IPC and changes the Note projection.
+
+Preserved saved ASR configuration, raw and transcript artifacts, speaker/manual content, pending-run publication, and the existing selected-version projection behavior.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 existing warnings.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused regression command:
+`node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingConfigSnapshot.test.js test/helpers/meetingProcessing.test.js test/components/meetingResultsPanel.test.js`
+
+Root-only M7 checks: `pnpm run typecheck`, `pnpm run lint`, and `pnpm run i18n:check`; final integration remains sequential `pnpm test`, `pnpm run pack`, then `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
+
+Commit: `99ba4a1f` — M7: keep summary correction and version selection stable.

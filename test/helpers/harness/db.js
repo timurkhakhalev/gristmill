@@ -2,7 +2,7 @@ const REQUIRED_DB_FAILURE =
   "DB-backed tests were required (REQUIRE_DB_TESTS is set) but the better-sqlite3 native " +
   "binding could not be loaded, so this test would have been skipped instead of run. In CI " +
   "this almost always means the step that rebuilds better-sqlite3 for the runner's Node " +
-  '("npm rebuild better-sqlite3", right after "npm ci --ignore-scripts") is missing or ' +
+  '("pnpm --dir node_modules/better-sqlite3 exec prebuild-install") is missing or ' +
   "failed. Restore that step instead of deleting this check: without it every DB test " +
   "skips and the suite stays green with no database coverage. Underlying error: ";
 

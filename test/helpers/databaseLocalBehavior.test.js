@@ -27,6 +27,7 @@ function createDb(t) {
   } catch (error) {
     const message = String(error?.message || error);
     if (message.includes("NODE_MODULE_VERSION") || message.includes("Could not locate the bindings file")) {
+      if (process.env.REQUIRE_DB_TESTS) throw error;
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
       return null;
     }

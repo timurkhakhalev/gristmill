@@ -22,7 +22,7 @@ export function NoteNotice({
   role?: "status" | "alert";
 }) {
   return (
-    <Alert status={status} className="mb-4 items-center rounded-xl" role={role ?? (status === "danger" ? "alert" : "status")}>
+    <Alert status={status} className="mb-4 items-center rounded-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-top-1" role={role ?? (status === "danger" ? "alert" : "status")}>
       {busy ? (
         <Alert.Indicator>
           <Spinner size="sm" color="current" />
@@ -55,7 +55,7 @@ export function CaptureHealthLine({
     ["system", systemStatus],
   ] as const;
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg bg-subtle px-3 py-2 text-xs text-muted" role="status">
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg bg-subtle px-3 py-2 text-xs text-muted motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-top-1" role="status">
       {sources.map(([source, status]) => (
         <span key={source} className="inline-flex items-center gap-1.5">
           <span

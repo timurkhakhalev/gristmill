@@ -50,6 +50,7 @@ export const Select = Object.assign(passthrough,{Trigger:passthrough,Value:passt
 export const Tabs = Object.assign(passthrough,{List:passthrough,Tab:passthrough,Indicator:passthrough});
 export const Alert = Object.assign(passthrough,{Indicator:passthrough,Content:passthrough,Title:passthrough,Description:passthrough});
 export const Spinner = () => null;
+export const Tooltip = Object.assign(({children}) => React.createElement(React.Fragment, null, children),{Content:() => null,Trigger:passthrough});
 export const Modal = Object.assign(({isOpen,children}) => isOpen ? React.createElement(React.Fragment,null,children) : null,{Backdrop:passthrough,Container:passthrough,Dialog:passthrough,CloseTrigger:passthrough,Header:passthrough,Heading:passthrough,Body:passthrough,Footer:passthrough});
 `;
 

@@ -279,3 +279,21 @@ Root-only focused rerun:
 `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
 
 Commit: `0fbe743f` — M5: fix focused meeting result test failures.
+
+## M5 mounted UI test follow-up
+
+Status: done
+
+Added the minimal controlled-select `options` collection to the existing test DOM and registered root unmount before browser-global restoration. The six MeetingResultsPanel tests now assert text from the mounted container after effects; action checks continue to invoke the current mounted button handlers and verify IPC requests.
+
+Preserved the actual component, effects, API state updates, and all result-panel behavior; no product behavior changed.
+
+Verification run by this worker:
+- `pnpm run lint` — passed with 0 errors and 36 warnings outside changed files.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused rerun:
+`node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
+
+Commit: `98ef791c` — M5: stabilize mounted results panel tests.

@@ -5,7 +5,9 @@ const test = require("node:test");
 const { createDb } = require("./harness/db.js");
 const { getUserDataDir } = require("./harness/electronStub.js");
 const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
-const { MeetingProcessingWorker } = require("../../src/helpers/meetingProcessing.ts");
+const { MeetingProcessingWorker, registerMeetingProcessingHandlers } = require("../../src/helpers/meetingProcessing.ts");
+const { meetingProcessingChannels } = require("../../src/contracts/meetingProcessing.ts");
+const { createMeetingProcessingBridge } = require("../../src/preload/meetingProcessingBridge.ts");
 const { prepareMeetingAudio } = require("../../src/helpers/meetingAudioMixer.ts");
 const { getFFmpegPath } = require("../../src/helpers/ffmpegUtils.ts");
 
@@ -181,6 +183,130 @@ test("a valid empty transcript completes without generating a summary", async (t
   assert.equal(storage.readRunArtifact(run.id, "transcript").text, "");
   assert.equal(db.getMeetingProcessingRun(run.id).hasSummary, false);
   assert.equal(summaryCalls, 0);
+});
+
+test("a nonempty transcript stays blocked when its saved run has no summary config", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const noSummaryConfig = { ...validConfig, summary: null };
+  const { run } = createFinishedRecording(db, storage, noSummaryConfig);
+  let summaryCalls = 0;
+  const worker = workerFor(db, storage, {
+    summarize: async () => {
+      summaryCalls += 1;
+      return "unexpected summary";
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+
+  const saved = db.getMeetingProcessingRun(run.id);
+  assert.equal(saved.status, "blocked");
+  assert.equal(saved.stage, "summary");
+  assert.equal(saved.errorCode, "missing-summary-config");
+  assert.equal(saved.hasTranscript, true);
+  assert.match(storage.readRunArtifact(run.id, "transcript").text, /Hello\./);
+  assert.equal(saved.hasSummary, false);
+  assert.equal(summaryCalls, 0);
+});
+
+test("IPC corrects only a blocked run snapshot after main validation; ordinary retry keeps it", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage, null);
+  let apiKey = "";
+  const worker = workerFor(db, storage, { getCredential: () => apiKey });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "blocked");
+  assert.equal(db.getMeetingProcessingRun(run.id).config, null);
+
+  const handlers = new Map();
+  registerMeetingProcessingHandlers({ handle: (channel, handler) => handlers.set(channel, handler) }, worker);
+  const update = handlers.get(meetingProcessingChannels.updateBlockedRunConfig);
+  const invalid = await update(null, {
+    runId: run.id,
+    config: {
+      ...validConfig,
+      transcription: { ...validConfig.transcription, credentialRef: "raw-secret-value" },
+    },
+    configError: null,
+  });
+  assert.equal(invalid.success, false, "main IPC rejects secret values in credential references");
+  assert.equal(db.getMeetingProcessingRun(run.id).config, null);
+
+  const corrected = await update(null, { runId: run.id, config: validConfig, configError: null });
+  assert.equal(corrected.success, true);
+  assert.equal(corrected.result.run.status, "pending");
+  await worker.waitForIdle();
+  const blockedWithSnapshot = db.getMeetingProcessingRun(run.id);
+  assert.equal(blockedWithSnapshot.status, "blocked", "the corrected route remains blocked until its key is available");
+  assert.deepEqual(blockedWithSnapshot.config, validConfig);
+
+  apiKey = "now-available";
+  const retried = await handlers.get(meetingProcessingChannels.retryRun)(null, { runId: run.id });
+  assert.equal(retried.success, true);
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
+  assert.deepEqual(db.getMeetingProcessingRun(run.id).config, validConfig);
+});
+
+test("blocked config correction refuses an unindexed raw response file", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage, null);
+  storage.writeRunArtifact(run.id, "provider-response", { text: "already saved" });
+  const worker = workerFor(db, storage);
+  t.after(() => worker.stop());
+  const handlers = new Map();
+  registerMeetingProcessingHandlers({ handle: (channel, handler) => handlers.set(channel, handler) }, worker);
+
+  const result = await handlers.get(meetingProcessingChannels.updateBlockedRunConfig)(null, {
+    runId: run.id,
+    config: validConfig,
+    configError: null,
+  });
+  assert.equal(result.success, false);
+  assert.equal(db.getMeetingProcessingRun(run.id).config, null);
+  assert.equal(storage.hasRunArtifact(run.id, "provider-response"), true);
+});
+
+test("preload validates blocked-run config correction before invoking main", async () => {
+  const calls = [];
+  const bridge = createMeetingProcessingBridge({
+    invoke: async (...args) => {
+      calls.push(args);
+      return { success: false, error: "rejected" };
+    },
+    on() {},
+    removeListener() {},
+  });
+  assert.throws(() => bridge.meetingProcessingUpdateBlockedRunConfig({
+    runId: "00000000-0000-4000-8000-000000000001",
+    config: {
+      ...validConfig,
+      transcription: { ...validConfig.transcription, credentialRef: "secret-value" },
+    },
+    configError: null,
+  }));
+  assert.equal(calls.length, 0);
+
+  const response = await bridge.meetingProcessingUpdateBlockedRunConfig({
+    runId: "00000000-0000-4000-8000-000000000001",
+    config: validConfig,
+    configError: null,
+  });
+  assert.deepEqual(calls, [[meetingProcessingChannels.updateBlockedRunConfig, {
+    runId: "00000000-0000-4000-8000-000000000001",
+    config: validConfig,
+    configError: null,
+  }]]);
+  assert.deepEqual(response, { success: false, error: "rejected" });
 });
 
 test("summary retry preserves the transcript and does not repeat ASR", async (t) => {

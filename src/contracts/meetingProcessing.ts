@@ -12,6 +12,7 @@ export const meetingProcessingChannels = {
   listForNote: "meeting-processing-list-for-note",
   createRun: "meeting-processing-create-run",
   retryRun: "meeting-processing-retry-run",
+  updateBlockedRunConfig: "meeting-processing-update-blocked-run-config",
   selectRun: "meeting-processing-select-run",
   setSpeakerCorrection: "meeting-processing-set-speaker-correction",
   getPlaybackPath: "meeting-recording-get-playback-path",
@@ -35,6 +36,11 @@ export const meetingProcessingCreateRunRequestSchema = z.object({
   sourceRunId: meetingRecordingIdSchema.nullable().optional(),
 });
 export const meetingProcessingRetryRequestSchema = z.object({ runId: meetingRecordingIdSchema });
+export const meetingProcessingUpdateBlockedRunConfigRequestSchema = z.object({
+  runId: meetingRecordingIdSchema,
+  config: meetingProcessingConfigSchema.nullable(),
+  configError: meetingProcessingConfigErrorSchema.nullable(),
+});
 export const meetingProcessingSelectRunRequestSchema = z.object({
   recordingId: meetingRecordingIdSchema,
   runId: meetingRecordingIdSchema,
@@ -103,6 +109,7 @@ export interface MeetingProcessingApi {
   meetingProcessingListForNote(noteId: number): Promise<MeetingProcessingListResponse>;
   meetingProcessingCreateRun(input: z.infer<typeof meetingProcessingCreateRunRequestSchema>): Promise<MeetingProcessingRunResponse>;
   meetingProcessingRetryRun(runId: string): Promise<MeetingProcessingRunResponse>;
+  meetingProcessingUpdateBlockedRunConfig(input: z.infer<typeof meetingProcessingUpdateBlockedRunConfigRequestSchema>): Promise<MeetingProcessingRunResponse>;
   meetingProcessingSelectRun(recordingId: string, runId: string): Promise<z.infer<typeof meetingProcessingSelectRunResponseSchema>>;
   meetingProcessingSetSpeakerCorrection(input: z.infer<typeof meetingProcessingSpeakerCorrectionRequestSchema>): Promise<z.infer<typeof meetingProcessingCorrectionResponseSchema>>;
   meetingRecordingGetPlaybackPath(recordingId: string, runId: string): Promise<z.infer<typeof meetingRecordingPlaybackResponseSchema>>;

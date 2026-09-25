@@ -8,6 +8,7 @@ const {
 
 const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
 const RUN_ID = "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2";
+const SECOND_RECORDING_ID = "d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4";
 const START_ARGS = {
   noteId: 11,
   noteTitle: "Standup",
@@ -21,6 +22,8 @@ function createElectronAPI({ stopResult }) {
   const api = {
     stopRequests: [],
     noteUpdates: [],
+    recordings: [],
+    processingRequests: [],
     api: null,
   };
   api.api = {
@@ -51,6 +54,12 @@ function createElectronAPI({ stopResult }) {
       api.noteUpdates.push({ id, value });
       return { success: true };
     },
+    meetingProcessingListForNote: async () => ({ success: true, recordings: api.recordings }),
+    meetingProcessingCreateRun: async (request) => {
+      api.processingRequests.push(request);
+      api.recordings[0].runs.push({ run: { id: "c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3", kind: "reprocess", sourceRecordingIds: request.sourceRecordingIds, hasTranscript: true, status: "complete" }, transcript: { text: "Saved transcript" } });
+      return { success: true, result: { run: api.recordings[0].runs.at(-1).run } };
+    },
     onMeetingTranscriptionError: noopListener,
     onMeetingTranscriptionFatalError: noopListener,
     onMeetingSystemAudioSilent: noopListener,
@@ -79,6 +88,54 @@ const finalized = (captureState = "ready") => ({
   initialRunId: RUN_ID,
   captureState,
   errorCode: captureState === "ready" ? null : "system-source-unavailable",
+});
+
+test("ending a paused call queues its saved parts once without another ASR request", async (t) => {
+  const api = createElectronAPI({ stopResult: () => finalized() });
+  const store = await loadStore(t, api);
+  assert.equal(await store.startRecording(START_ARGS), true);
+  const groupId = store.useMeetingRecordingStore.getState().meetingGroupId;
+  api.recordings = [{
+    recording: { id: RECORDING_ID, groupId, audioState: "available", startedAt: new Date().toISOString() },
+    runs: [{ run: { id: RUN_ID, kind: "initial", errorCode: null, config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } }, configError: null } }],
+  }];
+  assert.equal(await store.pauseMeeting(), true);
+  assert.equal(api.stopRequests[0].suppressProcessing, true);
+  assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "paused");
+  assert.equal(await store.finishMeeting(), true);
+  assert.equal(api.stopRequests.length, 1, "paused call has no active capture to stop again");
+  assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID]);
+  await store.queueMeetingGroupProcessing(groupId, START_ARGS.noteId);
+  assert.equal(api.processingRequests.length, 1, "a saved transcript does not trigger ASR again");
+  assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "saved");
+});
+
+test("ending a paused call with no saved audio skips processing", async (t) => {
+  const api = createElectronAPI({ stopResult: () => finalized() });
+  const store = await loadStore(t, api);
+  assert.equal(await store.startRecording(START_ARGS), true);
+  assert.equal(await store.pauseMeeting(), true);
+  assert.equal(await store.finishMeeting(), true);
+  assert.equal(api.processingRequests.length, 0);
+  assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "saved");
+});
+
+test("resume adds a second saved part to one whole-meeting processing run", async (t) => {
+  let stopCount = 0;
+  const api = createElectronAPI({ stopResult: () => ({ ...finalized(), recordingId: ++stopCount === 1 ? RECORDING_ID : SECOND_RECORDING_ID }) });
+  const store = await loadStore(t, api);
+  assert.equal(await store.startRecording(START_ARGS), true);
+  const groupId = store.useMeetingRecordingStore.getState().meetingGroupId;
+  api.recordings = [{ recording: { id: RECORDING_ID, groupId, audioState: "available", startedAt: "2026-09-25T10:00:00.000Z" }, runs: [{ run: { kind: "initial", errorCode: null, config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } } } }] }];
+  assert.equal(await store.pauseMeeting(), true);
+  api.api.meetingTranscriptionStart = async () => ({ success: true, recordingId: SECOND_RECORDING_ID, originAt: new Date().toISOString(), systemAudioMode: "native", systemAudioStrategy: "native" });
+  assert.equal(await store.resumeMeeting(START_ARGS), true);
+  assert.equal(store.useMeetingRecordingStore.getState().meetingGroupId, groupId);
+  api.recordings.push({ recording: { id: SECOND_RECORDING_ID, groupId, audioState: "available", startedAt: "2026-09-25T10:01:00.000Z" }, runs: [{ run: { kind: "initial", errorCode: null, config: null } }] });
+  assert.equal(await store.finishMeeting(), true);
+  assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID, SECOND_RECORDING_ID]);
+  assert.deepEqual(api.stopRequests.map((request) => request.suppressProcessing), [true, true]);
+  assert.equal(api.processingRequests.length, 1);
 });
 
 test("normal stop drains and finalizes one raw recording without writing the note transcript", async (t) => {

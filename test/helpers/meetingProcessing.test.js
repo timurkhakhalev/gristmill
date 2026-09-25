@@ -79,6 +79,51 @@ function workerFor(db, storage, overrides = {}) {
   return new MeetingProcessingWorker(deps);
 }
 
+test("paused audio parts produce one persisted whole-meeting run and one ASR request", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const first = createFinishedRecording(db, storage, validConfig, "Manual notes stay here.");
+  const second = db.createMeetingRecording(first.note.id, { config: validConfig },
+    new Date(Date.parse(first.recording.endedAt) + 5 * 60_000).toISOString(), undefined, first.recording.id);
+  db.createMeetingRecordingEpoch(second.id, "system", 0, 0);
+  storage.openEpochWriter(second.id, "system", 0);
+  storage.appendEpochSamples(second.id, "system", 0, Buffer.from([1, 2, 3, 4]));
+  storage.closeEpochWriter(second.id, "system", 0);
+  db.updateMeetingRecordingEpochRecovery(second.id, "system", 0, storage.recoverEpoch(second.id, "system", 0));
+  db.markMeetingRecordingFinalizing(second.id);
+  const finalSecond = db.finalizeMeetingRecording(second.id, {
+    captureState: "ready", endedAt: new Date(Date.parse(second.startedAt) + 1000).toISOString(),
+  });
+  let asrCalls = 0;
+  let mixed;
+  const worker = workerFor(db, storage, {
+    mixAudio: async (recording, runId, epochs) => {
+      mixed = { recording, epochs };
+      return { path: storage.getDerivedAudioPath(recording.id, runId), frameCount: 48_000, durationSeconds: 2, sizeBytes: 4096 };
+    },
+    transcribeRemote: async (_request, saveRaw) => {
+      asrCalls++;
+      await saveRaw(elevenResponse);
+      return { success: true, text: "Hello." };
+    },
+  });
+  t.after(() => worker.stop());
+  assert.equal(worker.cancelRun(first.run.id), true);
+  assert.equal(worker.cancelRun(finalSecond.initialRun.id), true);
+  const run = db.createMeetingProcessingRun(first.recording.id, {
+    kind: "reprocess", sourceRecordingIds: [first.recording.id, second.id], config: validConfig,
+  });
+  assert.deepEqual(db.getMeetingProcessingRun(run.id).sourceRecordingIds, [first.recording.id, second.id]);
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(asrCalls, 1);
+  assert.equal(mixed.recording.endedAt, new Date(Date.parse(first.recording.startedAt) + 2000).toISOString());
+  assert.deepEqual(mixed.epochs.map((epoch) => epoch.recordingId), [first.recording.id, second.id]);
+  assert.equal(db.getNote(first.note.id).content, "Manual notes stay here.");
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
+});
+
 test("waits for retention and capture to finish, then persists the response, transcript, and separate summary", async (t) => {
   const db = createDb(t);
   if (!db) return;

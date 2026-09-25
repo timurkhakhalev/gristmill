@@ -27,7 +27,7 @@ import { parseGeminiFileResponse } from "./geminiFileTranscription.js";
 import { parseOpenAIFileResponse } from "./remoteTranscriptionIpcHandler.js";
 import { meetingTranscriptArtifactSchema, meetingSummaryArtifactSchema } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
-import { prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio } from "./meetingAudioMixer.js";
+import { composeMeetingAudioParts, meetingTimelineFrameCount, prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio } from "./meetingAudioMixer.js";
 import { formatSpeakerTranscript, mergeSpeakersWithText } from "./speakerMerge.js";
 import { byokFileSizeLimit } from "./transcriptionRoute.js";
 import { supportedMeetingFileProvider } from "./meetingFileTranscription.js";
@@ -48,6 +48,7 @@ export interface MeetingProcessingDatabase {
   getNote(id: number): { content?: string | null; expected_speaker_count?: number | null } | null;
   createMeetingProcessingRun(recordingId: string, input: {
     kind: "reprocess" | "summary";
+    sourceRecordingIds?: string[];
     config: MeetingProcessingConfig | null;
     configError?: { code: string; messageKey?: string } | null;
     sourceRunId?: string | null;
@@ -190,7 +191,7 @@ export class MeetingProcessingWorker {
   }
 
   async cancelRecordingForDeletion(recordingId: string, includeNonAudio = false): Promise<void> {
-    for (const run of this.deps.database.listMeetingProcessingRuns(recordingId)) {
+    for (const run of this.deps.database.listAllMeetingProcessingRuns().filter((item) => item.sourceRecordingIds.includes(recordingId))) {
       const needsAudio = run.stage === "prepare" || run.stage === "asr" ||
         (run.stage === "normalize" && run.config?.transcription.mode === "local");
       const mustCancel = includeNonAudio || needsAudio;
@@ -299,6 +300,7 @@ export class MeetingProcessingWorker {
     const parsed = meetingProcessingCreateRunRequestSchema.parse(input);
     const run = this.deps.database.createMeetingProcessingRun(parsed.recordingId, {
       kind: parsed.kind,
+      sourceRecordingIds: parsed.sourceRecordingIds,
       config: parsed.config,
       configError: parsed.configError ?? null,
       sourceRunId: parsed.sourceRunId ?? null,
@@ -316,6 +318,7 @@ export class MeetingProcessingWorker {
       return {
         recording: {
           id: recording.id,
+          groupId: recording.groupId,
           captureState: recording.captureState,
           captureErrorCode: recording.captureErrorCode,
           audioState: recording.audioState,
@@ -323,6 +326,7 @@ export class MeetingProcessingWorker {
           currentRunId: recording.currentRunId,
           startedAt: recording.startedAt,
           endedAt: recording.endedAt,
+          durationSeconds: recording.endedAt ? meetingTimelineFrameCount(recording, this.deps.database.listMeetingRecordingEpochs(recording.id)) / 24_000 : null,
         },
         runs,
       };
@@ -400,14 +404,14 @@ export class MeetingProcessingWorker {
     if (config.transcription.mode === "providers" && !provider) {
       throw new MeetingProcessingFailure("unsupported-provider", "blocked");
     }
-    const epochs = this.deps.database.listMeetingRecordingEpochs(recording.id);
+    const { timeline, epochs } = this.sourceTimeline(run, recording, true);
     const mixer = this.deps.mixAudio ?? ((recordingValue, runId, epochValues, abortSignal) =>
       prepareMeetingAudio(this.deps.storage, recordingValue, runId, epochValues, {
         signal: abortSignal,
         deps: this.deps.mixerDeps,
       })
     );
-    const audio = await mixer(recording, run.id, epochs, signal);
+    const audio = await mixer(timeline, run.id, epochs, signal);
     signal.throwIfAborted();
     if (this.isCapturing()) return this.pause(run, "asr");
     if (provider && audio.sizeBytes > byokFileSizeLimit(provider)) {
@@ -457,7 +461,8 @@ export class MeetingProcessingWorker {
     const provider = supportedMeetingFileProvider(config.provider, config.model);
     if (!provider) throw new MeetingProcessingFailure("unsupported-provider", "blocked");
     if (fileSize > byokFileSizeLimit(provider)) throw new MeetingProcessingFailure("provider-limit", "blocked");
-    if (provider === "gemini" && (recording.endedAt && recording.startedAt && (Date.parse(recording.endedAt) - Date.parse(recording.startedAt)) / 1000 > GEMINI_MAX_SECONDS)) {
+    const timeline = this.sourceTimeline(run, recording).timeline;
+    if (provider === "gemini" && (timeline.endedAt && (Date.parse(timeline.endedAt) - Date.parse(timeline.startedAt)) / 1000 > GEMINI_MAX_SECONDS)) {
       throw new MeetingProcessingFailure("gemini-duration-limit", "blocked");
     }
     const apiKey = this.deps.getCredential(config.credentialRef, provider);
@@ -495,7 +500,8 @@ export class MeetingProcessingWorker {
     const config = this.requireConfig(run).transcription;
     const raw = this.deps.storage.readRunArtifact(run.id, "provider-response");
     if (raw === null) throw new MeetingProcessingFailure("provider-response-missing", "failed");
-    const recordingDuration = timelineDuration(recording, this.deps.database.listMeetingRecordingEpochs(recording.id));
+    const { timeline, epochs } = this.sourceTimeline(run, recording);
+    const recordingDuration = timelineDuration(timeline, epochs);
     let result: RemoteTranscriptionResult;
     if (config.mode === "local") {
       result = normalizeLocalResponse(raw);
@@ -509,7 +515,7 @@ export class MeetingProcessingWorker {
               deps: this.deps.mixerDeps,
             })
           );
-          await mixer(recording, run.id, this.deps.database.listMeetingRecordingEpochs(recording.id), signal);
+          await mixer(timeline, run.id, epochs, signal);
         }
         const note = this.deps.database.getNote(recording.noteId);
         const diarization = await this.deps.diarizeLocal(audioPath, {
@@ -650,6 +656,18 @@ export class MeetingProcessingWorker {
     const parsed = meetingProcessingConfigSchema.safeParse(run.config);
     if (!parsed.success) throw new MeetingProcessingFailure("processing-config-missing", "blocked");
     return parsed.data;
+  }
+
+  private sourceTimeline(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, requireAudio = false): {
+    timeline: MeetingRecordingDto;
+    epochs: MeetingRecordingEpochDto[];
+  } {
+    const sources = run.sourceRecordingIds.map((id) => this.deps.database.getMeetingRecording(id));
+    if (sources.some((source) => !source || (requireAudio && source.audioState !== "available") || source.noteId !== recording.noteId || source.groupId !== recording.groupId)) {
+      throw new MeetingProcessingFailure("audio-part-unavailable", "blocked");
+    }
+    const combined = composeMeetingAudioParts(sources as MeetingRecordingDto[], (id) => this.deps.database.listMeetingRecordingEpochs(id));
+    return { timeline: { ...recording, startedAt: combined.recording.startedAt, endedAt: combined.recording.endedAt }, epochs: combined.epochs };
   }
 
   private requireCurrentRun(runId: string): MeetingProcessingRunDto {

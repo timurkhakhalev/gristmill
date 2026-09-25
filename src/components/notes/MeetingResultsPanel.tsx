@@ -1,531 +1,372 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
+import { Button, Dropdown, Label, ListBox, Modal, Popover, Select, Tabs } from "@heroui/react";
 import { useTranslation } from "react-i18next";
+import { AudioLines, ChevronDown, Download, MoreHorizontal, Play, RotateCcw, Trash2 } from "../icons";
+import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
-import type { MeetingProcessingResultDto } from "../../contracts/meetingRecording";
-import { snapshotMeetingRecordingConfig } from "../../helpers/meetingRecordingConfigSnapshot";
-import { Button } from "../ui/button";
+import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
+import { builtinMeetingSummaryInstruction, snapshotMeetingRecordingConfig } from "../../helpers/meetingRecordingConfigSnapshot";
+import { getMeetingFileTranscriptionProviders, getAllReasoningModels, getProviderDisplayName, modelRegistry } from "../../models/ModelRegistry";
+import { BYOK_API_KEYS } from "../../config/secretKeys";
 import { ConfirmDialog } from "../ui/dialog";
 import { useDialogs } from "../../hooks/useDialogs";
 
-function formatVersionDate(value: string, locale: string): string {
+type ViewMode = "raw" | "enhanced" | "transcript";
+type RunChoice = { kind: "reprocess" | "summary"; partId?: string };
+
+function Choice({ label, value, options, onChange }: {
+  label: string; value: string; options: Array<{ id: string; label: string }>; onChange: (value: string) => void;
+}) {
+  return <Select aria-label={label} value={value} onChange={(key) => onChange(String(key))} className="min-w-0 flex-1">
+    <Label>{label}</Label>
+    <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
+    <Select.Popover><ListBox>{options.map((option) =>
+      <ListBox.Item key={option.id} id={option.id} textValue={option.label}><Label>{option.label}</Label><ListBox.ItemIndicator /></ListBox.Item>
+    )}</ListBox></Select.Popover>
+  </Select>;
+}
+
+function dateLabel(value: string, locale: string, options: Intl.DateTimeFormatOptions) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(date);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, options).format(date);
 }
 
-function versionLabel(result: MeetingProcessingResultDto, locale: string): string {
-  const { run } = result;
-  const provider = run.provider || run.config?.transcription.local?.provider || "local";
-  return `${provider} / ${run.model || run.config?.transcription.local?.model || "—"} · ${formatVersionDate(run.createdAt, locale)}`;
+function formatDuration(duration: number | null) {
+  if (duration === null) return "—";
+  const seconds = Math.max(0, Math.round(duration));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function newestRecording(recordings: MeetingProcessingRecordingResult[]): MeetingProcessingRecordingResult | null {
-  return [...recordings].sort((a, b) =>
-    b.recording.startedAt.localeCompare(a.recording.startedAt) || b.recording.id.localeCompare(a.recording.id)
-  )[0] ?? null;
-}
-
-function latestTranscript(recording: MeetingProcessingRecordingResult): MeetingProcessingResultDto | null {
-  return recording.runs.find((item) => item.run.id === recording.recording.currentRunId && item.transcript)
-    ?? [...recording.runs]
-      .filter((item) => item.transcript)
-      .sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt))[0]
-    ?? null;
-}
-
-export default function MeetingResultsPanel({
-  noteId,
-  locale,
-  previewRecordings,
-}: {
+export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, fallbackTranscript, fallbackSummary }: {
   noteId: number;
   locale: string;
   previewRecordings?: MeetingProcessingRecordingResult[];
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
+  manualContent: ReactNode;
+  fallbackTranscript: ReactNode;
+  fallbackSummary: ReactNode;
 }) {
   const { t } = useTranslation();
-  const [recordings, setRecordings] = useState<MeetingProcessingRecordingResult[]>(previewRecordings ?? []);
-  const [selectedRecordingId, setSelectedRecordingId] = useState("");
-  const [selectedRunId, setSelectedRunId] = useState<string>("");
-  const [playbackUrl, setPlaybackUrl] = useState<string>("");
-  const [message, setMessage] = useState<string>("");
+  const tr = (key: string, fallback: string) => t(`meetingResults.${key}`, { defaultValue: fallback });
+  const [recordings, setRecordings] = useState(previewRecordings ?? []);
+  const [groupId, setGroupId] = useState("");
+  const [runId, setRunId] = useState("");
+  const [audioOpen, setAudioOpen] = useState(false);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState("");
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
-  const [speakerProfileIds, setSpeakerProfileIds] = useState<Record<string, number | null>>({});
-  const [speakerProfiles, setSpeakerProfiles] = useState<Array<{ id: number; display_name: string }>>([]);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const selectedRecordingIdRef = useRef("");
+  const [runChoice, setRunChoice] = useState<RunChoice | null>(null);
+  const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
+  const [sourceRunId, setSourceRunId] = useState("");
+  const [speakerId, setSpeakerId] = useState<string | null>(null);
+  const [speakerName, setSpeakerName] = useState("");
+  const [speakerProfileId, setSpeakerProfileId] = useState("none");
+  const [profiles, setProfiles] = useState<Array<{ id: number; display_name: string }>>([]);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
 
   const refresh = useCallback(async () => {
     if (previewRecordings) return;
     const result = await window.electronAPI.meetingProcessingListForNote(noteId);
-    if (!result.success) {
-      setMessage(result.error || t("meetingResults.loadError"));
-      return;
-    }
-    const next = result.recordings ?? [];
-    setRecordings(next);
-    const selectedRecording = next.find((item) => item.recording.id === selectedRecordingIdRef.current)
-      ?? newestRecording(next);
-    selectedRecordingIdRef.current = selectedRecording?.recording.id ?? "";
-    setSelectedRecordingId(selectedRecordingIdRef.current);
-    if (!selectedRecording) {
-      setSelectedRunId("");
-      return;
-    }
-    const currentTranscript = selectedRecording.runs.find((item) =>
-      item.run.id === selectedRecording.recording.currentRunId && item.transcript
-    );
-    const preferred = currentTranscript ?? latestTranscript(selectedRecording);
-    setSelectedRunId((selected) =>
-      currentTranscript?.run.id ?? (selectedRecording.runs.some((item) => item.run.id === selected && item.transcript)
-        ? selected
-        : preferred?.run.id ?? "")
-    );
+    if (result.success) setRecordings(result.recordings ?? []);
+    else setMessage(result.error || t("meetingResults.loadError"));
   }, [noteId, previewRecordings, t]);
-
   useEffect(() => {
-    if (previewRecordings) return;
+    if (previewRecordings) { setRecordings(previewRecordings); return; }
     void refresh();
     const unsubscribe = window.electronAPI.onMeetingProcessingUpdated(() => void refresh());
     return unsubscribe;
   }, [previewRecordings, refresh]);
-
   useEffect(() => {
     if (previewRecordings) return;
-    void window.electronAPI.getSpeakerProfiles?.().then((profiles) => {
-      setSpeakerProfiles((profiles ?? []).map((profile) => ({ id: profile.id, display_name: profile.display_name })));
-    });
+    void window.electronAPI.getSpeakerProfiles?.().then((items) => setProfiles((items ?? []).map((item) => ({ id: item.id, display_name: item.display_name }))));
   }, [previewRecordings]);
 
-  const currentRecording = useMemo(
-    () => recordings.find((item) => item.recording.id === selectedRecordingId) ?? newestRecording(recordings),
-    [recordings, selectedRecordingId]
-  );
-  const selected = useMemo(() => {
-    if (!currentRecording) return null;
-    const result = currentRecording.runs.find((item) => item.run.id === selectedRunId && item.transcript)
-      ?? latestTranscript(currentRecording);
-    return result ? { recording: currentRecording, result } : null;
-  }, [currentRecording, selectedRunId]);
+  const groups = useMemo(() => [...new Map([...recordings].reverse().map((item) => [item.recording.groupId, item])).values()].reverse(), [recordings]);
+  const currentGroup = groupId && groups.some((item) => item.recording.groupId === groupId) ? groupId : groups[groups.length - 1]?.recording.groupId;
+  const parts = useMemo(() => recordings.filter((item) => item.recording.groupId === currentGroup).sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt)), [recordings, currentGroup]);
+  const versions = useMemo(() => parts.flatMap((part) => part.runs).filter((item) => item.transcript).sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt)), [parts]);
+  const selected = versions.find((item) => item.run.id === runId) ?? versions.find((item) => parts.some((part) => part.recording.currentRunId === item.run.id)) ?? versions[0];
+  const selectedId = selected?.run.id ?? "";
+  const sourceVersion = selected?.run.sourceRunId ? versions.find((item) => item.run.id === selected.run.sourceRunId) : null;
+  const sourceTimes = selected?.run.sourceRecordingIds.map((id) => parts.find((part) => part.recording.id === id))
+    .filter((part): part is MeetingProcessingRecordingResult => Boolean(part))
+    .map((part) => dateLabel(part.recording.startedAt, locale, { timeStyle: "short" })).join(", ") ?? "";
+  const allRuns = parts.flatMap((part) => part.runs);
+  const combinedCurrent = allRuns.find((item) => item.run.kind === "reprocess" && item.run.sourceRecordingIds.length > 1 &&
+    parts.some((part) => part.recording.currentRunId === item.run.id));
+  const latestRun = allRuns.find((item) => item.run.id === runId)
+    ?? combinedCurrent
+    ?? [...allRuns].reverse().find((item) => parts.some((part) => part.recording.currentRunId === item.run.id));
+  const availableParts = parts.filter((part) => part.recording.audioState === "available");
+  const currentConfig = snapshotMeetingRecordingConfig().config;
+  const localTranscriptionConfig = currentConfig?.transcription ?? versions.find((item) => item.run.config?.transcription.mode === "local")?.run.config?.transcription;
+  const localTranscription = localTranscriptionConfig?.mode === "local" ? localTranscriptionConfig.local : null;
+  const asrProviders = [
+    ...getMeetingFileTranscriptionProviders().map((item) => ({ id: item.id, label: item.name, models: item.models.map((model) => ({ id: model.id, label: model.name })) })),
+    ...(localTranscription ? [{ id: "local", label: tr("localProvider", "Local"), models: [{ id: localTranscription.model, label: localTranscription.model }] }] : []),
+  ];
+  const llmModels = getAllReasoningModels();
+  const summaryConfig = currentConfig?.summary;
+  const llmProviders = [...new Set(llmModels.map((item) => item.provider))]
+    .filter((id) => !["bedrock", "azure", "vertex"].includes(id) || (summaryConfig?.reasoningMode === "enterprise" && summaryConfig.provider === id))
+    .map((id) => ({ id, label: getProviderDisplayName(id) }));
+  if (summaryConfig?.reasoningMode === "self-hosted") llmProviders.push({ id: "self-hosted", label: tr("selfHostedProvider", "Self-hosted") });
+  const isSummaryChoice = runChoice?.kind === "summary";
+  const modelOptions = isSummaryChoice
+    ? provider === "self-hosted" ? [{ id: summaryConfig?.model ?? "", label: summaryConfig?.model ?? "" }]
+      : llmModels.filter((item) => item.provider === provider).map((item) => ({ id: item.value, label: item.label }))
+    : asrProviders.find((item) => item.id === provider)?.models ?? [];
 
-  useEffect(() => {
-    let cancelled = false;
-    setPlaybackUrl("");
-    if (previewRecordings) return;
-    if (!selected || selected.recording.recording.audioState !== "available" || !selected.result.run.hasTranscript) return;
-    void window.electronAPI.meetingRecordingGetPlaybackPath(selected.recording.recording.id, selected.result.run.id)
-      .then((result) => {
-        if (!cancelled && result.success && result.path) {
-          setPlaybackUrl(new URL(result.path, "file://").href);
-        } else if (!cancelled) {
-          setMessage(t("meetingResults.playbackError"));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setMessage(t("meetingResults.playbackError"));
-      });
-    return () => { cancelled = true; };
-  }, [previewRecordings, selected, t]);
-
-  useEffect(() => {
-    const result = selected?.result;
-    if (!result?.transcript?.segments) return;
-    const initial: Record<string, string> = {};
-    for (const segment of result.transcript.segments) {
-      if (!segment.speaker) continue;
-      const correction = result.speakerCorrections.find((item) => item.speakerId === segment.speaker);
-      initial[segment.speaker] = correction?.displayName || segment.speaker;
-      setSpeakerProfileIds((current) => ({ ...current, [segment.speaker as string]: correction?.profileId ?? null }));
-    }
-    setSpeakerNames(initial);
-  }, [selectedRunId, selected?.result]);
-
-  if (!recordings.length) {
-    return message ? (
-      <section className="m-4 rounded-xl border border-border bg-surface-2/70 p-4 dark:border-white/10" aria-label={t("meetingResults.title")}>
-        <p role="alert" className="text-xs text-muted-foreground">{message}</p>
-      </section>
-    ) : null;
-  }
-
-  if (!currentRecording) return null;
-  const run = selected?.result;
-  const audioAvailable = currentRecording.recording.audioState === "available";
-  const selectableRuns = currentRecording.runs.filter((result) => result.transcript);
-  const latestRun = [...currentRecording.runs].sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt))[0];
-  const speakers = [...new Set(run?.transcript?.segments?.flatMap((segment) => segment.speaker ? [segment.speaker] : []) ?? [])];
-
-  const selectRun = async (runId: string, recordingId = currentRecording.recording.id) => {
-    const recording = recordings.find((item) => item.recording.id === recordingId);
-    const resultForRun = recording?.runs.find((result) => result.run.id === runId && result.transcript);
-    if (!recording || !resultForRun) return;
-    selectedRecordingIdRef.current = recordingId;
-    setSelectedRecordingId(recordingId);
-    setSelectedRunId(runId);
-    setMessage("");
-    if (previewRecordings) {
-      setRecordings((current) => current.map((item) => item.recording.id === recordingId
-        ? { ...item, recording: { ...item.recording, currentRunId: runId } }
-        : item));
-      return;
-    }
-    const result = await window.electronAPI.meetingProcessingSelectRun(recordingId, runId);
-    if (!result.success) setMessage(result.error || t("meetingResults.selectError"));
-    else void refresh();
+  const runTask = async (task: () => Promise<void>) => {
+    setBusy(true); setMessage("");
+    try { await task(); await refresh(); }
+    catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
   };
 
-  const selectRecording = (recordingId: string) => {
-    const recording = recordings.find((item) => item.recording.id === recordingId);
-    if (!recording) return;
-    selectedRecordingIdRef.current = recordingId;
-    setSelectedRecordingId(recordingId);
-    setMessage("");
-    const preferred = latestTranscript(recording);
-    setSelectedRunId(preferred?.run.id ?? "");
-  };
-
-  const makeRun = async (kind: "reprocess" | "summary") => {
-    const sourceRecording = kind === "reprocess" ? selected?.recording ?? currentRecording : selected?.recording;
-    if (!sourceRecording || (kind === "summary" && !selected)) return;
-    const sourceRunId = selected
-      ? selected.result.run.kind === "summary"
-        ? selected.result.run.sourceRunId ?? selected.result.run.id
-        : selected.result.run.id
-      : undefined;
-    if (previewRecordings) {
-      const now = new Date().toISOString();
-      const baseRun = sourceRecording.runs[0]?.run;
-      const nextRun: MeetingProcessingResultDto = {
-        run: {
-          id: crypto.randomUUID(),
-          recordingId: sourceRecording.recording.id,
-          kind,
-          sourceRunId: kind === "summary" ? sourceRunId ?? null : null,
-          provider: baseRun?.provider ?? "deepgram",
-          model: baseRun?.model ?? "nova-3",
-          config: baseRun?.config ?? null,
-          configError: null,
-          stage: kind === "summary" ? "summary" : "prepare",
-          status: "pending",
-          errorCode: null,
-          retryAt: null,
-          retryCount: 0,
-          hasRawProviderResponse: false,
-          hasTranscript: false,
-          hasSummary: false,
-          createdAt: now,
-          updatedAt: now,
-        },
-        transcript: null,
-        summary: null,
-        speakerCorrections: [],
-      };
-      setRecordings((current) => current.map((item) => item.recording.id === sourceRecording.recording.id
-        ? { ...item, runs: [nextRun, ...item.runs] }
-        : item));
-      setMessage("Mock run queued in memory. No provider was called.");
-      return;
-    }
-    setBusy(true);
-    setMessage("");
-    try {
-      const snapshot = snapshotMeetingRecordingConfig();
-      const created = await window.electronAPI.meetingProcessingCreateRun({
-        recordingId: sourceRecording.recording.id,
-        kind,
-        config: snapshot.config,
-        configError: snapshot.configError,
-        ...(kind === "summary" && sourceRunId ? { sourceRunId } : {}),
-      });
-      if (!created.success || !created.result) throw new Error(created.error || t("meetingResults.createError"));
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
+  const startAudio = async (id: string, seek = 0) => {
+    if (playingId === id && audioRef.current && seek === 0) { audioRef.current.pause(); setPlayingId(null); return; }
+    if (previewRecordings) { setMessage(tr("previewAudio", "Preview audio is unavailable.")); return; }
+    if (!parts.some((item) => item.recording.id === id)) return;
+    const path = await window.electronAPI.meetingRecordingGetPlaybackPath(id);
+    if (!path.success || !path.path) { setMessage(path.error || t("meetingResults.playbackError")); return; }
+    const url = new URL(path.path, "file://").href;
+    if (audioRef.current) {
+      if (audioUrl !== url) {
+        audioRef.current.src = url;
+        audioRef.current.load();
+      }
+      if (audioRef.current.readyState < HTMLMediaElement.HAVE_METADATA) {
+        await new Promise<void>((resolve) => {
+          audioRef.current?.addEventListener("loadedmetadata", () => resolve(), { once: true });
+          audioRef.current?.addEventListener("error", () => resolve(), { once: true });
+        });
+      }
+      audioRef.current.currentTime = seek;
+      await audioRef.current.play().catch(() => setMessage(t("meetingResults.playbackError")));
+      setPlayingId(id); setAudioUrl(url);
     }
   };
 
-  const retryRun = async () => {
-    if (!latestRun) return;
-    if (previewRecordings) {
-      setRecordings((current) => current.map((item) => ({
-        ...item,
-        runs: item.runs.map((result) => result.run.id === latestRun.run.id
-          ? { ...result, run: { ...result.run, status: "pending", errorCode: null, retryCount: result.run.retryCount + 1 } }
-          : result),
-      })));
-      setMessage("Mock retry queued in memory. No provider was called.");
-      return;
-    }
-    setBusy(true);
-    setMessage("");
-    try {
-      const result = await window.electronAPI.meetingProcessingRetryRun(latestRun.run.id);
-      if (!result.success) throw new Error(result.error || t("meetingResults.retryError"));
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
+  const openRun = (kind: "reprocess" | "summary", partId?: string) => {
+    const snapshot = snapshotMeetingRecordingConfig();
+    const config = snapshot.config;
+    const initialProvider = kind === "summary"
+      ? config?.summary?.reasoningMode === "local" ? "local" : config?.summary?.reasoningMode === "self-hosted" ? "self-hosted" : config?.summary?.provider ?? ""
+      : config?.transcription.mode === "local" ? "local" : config?.transcription.provider ?? "";
+    const initialModel = kind === "summary" ? config?.summary?.model ?? "" : config?.transcription.mode === "local" ? config.transcription.local?.model ?? "" : config?.transcription.model ?? "";
+    setProvider(initialProvider || (kind === "summary" ? llmProviders[0]?.id : asrProviders[0]?.id) || "");
+    setModel(initialModel || (kind === "summary" ? llmModels[0]?.value : asrProviders[0]?.models[0]?.id) || "");
+    setSourceRunId(selected?.run.kind === "summary" ? selected.run.sourceRunId ?? "" : selectedId);
+    setRunChoice({ kind, partId }); setAudioOpen(false);
   };
 
-  const exportAudio = async (source: "mixed" | "mic" | "system") => {
-    if (source === "mixed" && !run) return;
-    if (previewRecordings) {
-      setMessage(`Mock ${source} audio has no file to export.`);
-      return;
+  const createRun = () => runTask(async () => {
+    if (!runChoice || !parts.length) return;
+    if (previewRecordings) { setMessage("Mock processing queued in memory"); setRunChoice(null); return; }
+    const snapshot = snapshotMeetingRecordingConfig();
+    const savedConfig = (runChoice.kind === "summary" ? versions.find((item) => item.run.id === sourceRunId) : selected)?.run.config;
+    const baseConfig = snapshot.config ?? savedConfig;
+    if (!baseConfig) throw new Error(snapshot.configError?.code || "processing-config-missing");
+    const config: MeetingProcessingConfig = { ...baseConfig };
+    const ids = runChoice.partId ? [runChoice.partId] : availableParts.map((part) => part.recording.id);
+    if (runChoice.kind === "reprocess") {
+      if (!ids.length) throw new Error("meeting-audio-unavailable");
+      if (provider === "local") {
+        if (!localTranscription || localTranscription.model !== model) throw new Error("local-transcription-route-unavailable");
+        config.transcription = { ...config.transcription, mode: "local", provider: undefined, model: undefined, baseUrl: undefined, credentialRef: undefined, local: localTranscription };
+      } else {
+        config.transcription = { ...config.transcription, mode: "providers", provider, model,
+          baseUrl: provider === "custom" ? config.transcription.baseUrl : undefined,
+          local: undefined, credentialRef: provider === "custom" ? "CUSTOM_TRANSCRIPTION_API_KEY" : BYOK_API_KEYS.find((item) => item.base === provider)?.env };
+      }
+    } else {
+      if (!sourceRunId) throw new Error("summary-transcript-missing");
+      const source = versions.find((item) => item.run.id === sourceRunId);
+      if (!source) throw new Error("summary-transcript-missing");
+      config.transcription = source.run.config?.transcription ?? config.transcription;
+      if (!config.summary) config.summary = { instruction: builtinMeetingSummaryInstruction(), reasoningMode: "providers" };
+      if (provider === "local") {
+        const localProvider = modelRegistry.getModel(model)?.provider.id;
+        if (!localProvider) throw new Error("local-summary-model-unavailable");
+        config.summary = { ...config.summary, reasoningMode: "local", provider: localProvider, model, cloudBaseUrl: undefined, remoteUrl: undefined, credentialRef: undefined, enterprise: undefined };
+      } else if (provider === "self-hosted") {
+        if (summaryConfig?.reasoningMode !== "self-hosted" || !summaryConfig.remoteUrl) throw new Error("self-hosted-route-unavailable");
+        config.summary = { ...config.summary, ...summaryConfig, model };
+      } else if (["bedrock", "azure", "vertex"].includes(provider)) {
+        if (summaryConfig?.reasoningMode !== "enterprise" || summaryConfig.provider !== provider) throw new Error("enterprise-route-unavailable");
+        config.summary = { ...config.summary, ...summaryConfig, model };
+      } else {
+        config.summary = { ...config.summary, reasoningMode: "providers", provider, model,
+          cloudBaseUrl: provider === "custom" ? summaryConfig?.cloudBaseUrl : undefined, remoteUrl: undefined,
+          enterprise: undefined, credentialRef: provider === "custom" ? "CUSTOM_CLEANUP_API_KEY" : BYOK_API_KEYS.find((item) => item.base === provider)?.env };
+      }
     }
-    setBusy(true);
-    setMessage("");
-    try {
-      const result = await window.electronAPI.meetingRecordingExportAudio({
-        recordingId: currentRecording.recording.id,
-        ...(source === "mixed" && run ? { runId: run.run.id } : {}),
-        source,
-      });
-      if (!result.success) throw new Error(result.error || t("meetingResults.exportError"));
-      setMessage(t("meetingResults.exported"));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  };
+    const source = runChoice.kind === "summary" ? versions.find((item) => item.run.id === sourceRunId) : null;
+    const result = await window.electronAPI.meetingProcessingCreateRun({
+      recordingId: source?.run.recordingId ?? ids[0],
+      sourceRecordingIds: runChoice.kind === "reprocess" ? ids : undefined,
+      kind: runChoice.kind,
+      config,
+      configError: null,
+      sourceRunId: runChoice.kind === "summary" ? sourceRunId : undefined,
+    });
+    if (!result.success || !result.result) throw new Error(result.error || t("meetingResults.createError"));
+    setRunId(result.result.run.id); setRunChoice(null);
+    onViewModeChange(runChoice.kind === "summary" ? "enhanced" : "transcript");
+  });
 
-  const updateBlockedRunConfig = async () => {
-    if (!latestRun) return;
-    if (previewRecordings) {
-      setRecordings((current) => current.map((item) => ({
-        ...item,
-        runs: item.runs.map((result) => result.run.id === latestRun.run.id
-          ? { ...result, run: { ...result.run, status: "pending", configError: null, errorCode: null } }
-          : result),
-      })));
-      setMessage("Mock settings updated in memory. No provider was called.");
-      return;
-    }
-    setBusy(true);
-    setMessage("");
-    try {
-      const savedTranscription = latestRun.run.config?.transcription;
-      const summaryOnlyCorrection = latestRun.run.kind !== "summary" &&
-        Boolean(savedTranscription) &&
-        latestRun.run.stage === "summary" &&
-        latestRun.run.errorCode === "missing-summary-config" &&
-        Boolean(latestRun.transcript) &&
-        latestRun.summary === null;
-      const snapshot = snapshotMeetingRecordingConfig(summaryOnlyCorrection ? savedTranscription : undefined);
-      const updated = await window.electronAPI.meetingProcessingUpdateBlockedRunConfig({
-        runId: latestRun.run.id,
-        config: snapshot.config,
-        configError: snapshot.configError,
-      });
-      if (!updated.success) throw new Error(updated.error || t("meetingResults.updateConfigError"));
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("meetingResults.updateConfigError"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const persistSpeaker = async (speakerId: string) => {
+  const selectRun = (id: string) => runTask(async () => {
+    const run = versions.find((item) => item.run.id === id);
     if (!run) return;
-    const sourceRunId = run.run.kind === "summary" ? run.run.sourceRunId : run.run.id;
-    const displayName = speakerNames[speakerId]?.trim();
-    if (!sourceRunId || !displayName) return;
+    if (!previewRecordings) {
+      const result = await window.electronAPI.meetingProcessingSelectRun(run.run.recordingId, id);
+      if (!result.success) throw new Error(result.error || t("meetingResults.selectError"));
+    }
+    setRunId(id);
+  });
+
+  const deletePart = (id: string) => {
+    setAudioOpen(false);
+    showConfirmDialog({
+      title: t("meetingResults.deleteAudioTitle"), description: t("meetingResults.deleteAudioDescription"),
+      confirmText: t("meetingResults.deleteAudioConfirm"), variant: "destructive",
+      onConfirm: () => void runTask(async () => {
+        audioRef.current?.pause(); setPlayingId(null);
+        if (previewRecordings) { setRecordings((items) => items.map((item) => item.recording.id === id ? { ...item, recording: { ...item.recording, audioState: "deleted" } } : item)); return; }
+        const result = await window.electronAPI.meetingRecordingDeleteAudio(id);
+        if (!result.success) throw new Error(result.error || t("meetingResults.deleteError"));
+      }),
+    });
+  };
+
+  const correctSpeaker = () => runTask(async () => {
+    if (!speakerId || !selected || !speakerName.trim()) return;
     if (previewRecordings) {
-      setRecordings((current) => current.map((item) => ({
-        ...item,
-        runs: item.runs.map((result) => result.run.id === run.run.id
-          ? {
-              ...result,
-              speakerCorrections: [
-                ...result.speakerCorrections.filter((correction) => correction.speakerId !== speakerId),
-                { speakerId, profileId: speakerProfileIds[speakerId] ?? null, displayName },
-              ],
-            }
-          : result),
-      })));
-      return;
+      setRecordings((items) => items.map((item) => ({ ...item, runs: item.runs.map((run) => run.run.id === selected.run.id ? { ...run, speakerCorrections: [...run.speakerCorrections.filter((correction) => correction.speakerId !== speakerId), { speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId) }] } : run) })));
+      setSpeakerId(null); return;
     }
     const result = await window.electronAPI.meetingProcessingSetSpeakerCorrection({
-      runId: sourceRunId,
-      speakerId,
-      profileId: speakerProfileIds[speakerId] ?? null,
-      displayName,
+      runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? selected.run.id : selected.run.id,
+      speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId),
     });
-    if (!result.success) setMessage(result.error || t("meetingResults.speakerError"));
-    else await refresh();
-  };
+    if (!result.success) throw new Error(result.error || t("meetingResults.speakerError"));
+    setSpeakerId(null);
+  });
 
-  const confirmDeleteAudio = () => {
-    showConfirmDialog({
-      title: t("meetingResults.deleteAudioTitle"),
-      description: t("meetingResults.deleteAudioDescription"),
-      confirmText: t("meetingResults.deleteAudioConfirm"),
-      variant: "destructive",
-      onConfirm: async () => {
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.removeAttribute("src");
-          audioRef.current.load();
-        }
-        setPlaybackUrl("");
-        if (previewRecordings) {
-          setRecordings((current) => current.map((item) => item.recording.id === currentRecording.recording.id
-            ? { ...item, recording: { ...item.recording, audioState: "deleted" } }
-            : item));
-          setMessage("Mock audio marked deleted in memory.");
-          return;
-        }
-        setBusy(true);
-        const result = currentRecording.recording.audioState === "deleting"
-          ? await window.electronAPI.meetingRecordingRetryAudioDeletion(currentRecording.recording.id)
-          : await window.electronAPI.meetingRecordingDeleteAudio(currentRecording.recording.id);
-        setBusy(false);
-        setMessage(result.success ? "" : result.error || t("meetingResults.deleteError"));
-        await refresh();
-      },
-    });
-  };
+  const exportPart = (id: string, source: "mic" | "system") => runTask(async () => {
+    if (previewRecordings) { setMessage(tr("previewAudio", "Preview audio is unavailable.")); return; }
+    const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: id, source });
+    if (!result.success) throw new Error(result.error || t("meetingResults.exportError"));
+    setMessage(t("meetingResults.exported"));
+  });
 
-  const runStatus = latestRun
-    ? `${t(`meetingResults.stage.${latestRun.run.stage}`)} · ${t(`meetingResults.status.${latestRun.run.status}`)}`
-    : "";
-  const captureIncomplete = currentRecording.recording.captureState === "incomplete";
-  const status = captureIncomplete
-    ? [t("meetingResults.captureIncomplete"), runStatus].filter(Boolean).join(" · ")
-    : runStatus || t(`meetingResults.capture.${currentRecording.recording.captureState}`);
-  const sortedRecordings = [...recordings].sort((a, b) =>
-    b.recording.startedAt.localeCompare(a.recording.startedAt) || b.recording.id.localeCompare(a.recording.id)
-  );
-  const summaryOnlyCorrection = latestRun?.run.stage === "summary" &&
-    latestRun.run.status === "blocked" &&
-    latestRun.run.kind !== "summary" &&
-    Boolean(latestRun.run.config) &&
-    latestRun.run.errorCode === "missing-summary-config" &&
-    Boolean(latestRun.transcript) &&
-    latestRun.summary === null;
-  const initialSettingsCorrection = latestRun?.run.status === "blocked" &&
-    latestRun.run.kind !== "summary" &&
-    !latestRun.run.hasRawProviderResponse &&
-    !latestRun.run.hasTranscript &&
-    audioAvailable;
-
-  return (
-    <section className="m-4 rounded-xl border border-border bg-surface-2/70 p-4 dark:border-white/10" aria-label={t("meetingResults.title")}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-semibold">{t("meetingResults.title")}</h3>
-          <p className="text-xs text-muted-foreground">{status}{latestRun?.run.errorCode ? ` · ${latestRun.run.errorCode}` : ""}{currentRecording.recording.captureErrorCode ? ` · ${currentRecording.recording.captureErrorCode}` : ""}{currentRecording.recording.audioErrorCode ? ` · ${currentRecording.recording.audioErrorCode}` : ""}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {audioAvailable && <Button size="sm" variant="outline" disabled={busy} onClick={() => void makeRun("reprocess")}>{t("meetingResults.newAsr")}</Button>}
-          {run?.transcript && <Button size="sm" variant="outline" disabled={busy} onClick={() => void makeRun("summary")}>{t("meetingResults.newSummary")}</Button>}
-          {latestRun && ["failed", "blocked", "cancelled"].includes(latestRun.run.status) && (
-            <Button size="sm" variant="outline" disabled={busy || (!audioAvailable && !latestRun.run.hasRawProviderResponse && !latestRun.transcript)} onClick={() => void retryRun()}>{t("meetingResults.retry")}</Button>
-          )}
-          {(initialSettingsCorrection || summaryOnlyCorrection) && (
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void updateBlockedRunConfig()}>{t("meetingResults.updateRunSettings")}</Button>
-          )}
-          {audioAvailable && <Button size="sm" variant="outline" disabled={busy} onClick={() => void confirmDeleteAudio()}>{t("meetingResults.deleteAudio")}</Button>}
-          {currentRecording.recording.audioState === "deleting" && <Button size="sm" variant="outline" disabled={busy} onClick={() => void confirmDeleteAudio()}>{t("meetingResults.retryDelete")}</Button>}
-        </div>
-      </div>
-
-      {recordings.length > 1 && (
-        <label className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span>{t("meetingResults.recording")}</span>
-          <select
-            className="max-w-full rounded border bg-background px-2 py-1"
-            aria-label={t("meetingResults.recording")}
-            value={currentRecording.recording.id}
-            onChange={(event) => void selectRecording(event.target.value)}
-          >
-            {sortedRecordings.map((recording, index) => (
-              <option key={recording.recording.id} value={recording.recording.id}>
-                {t("meetingResults.recording")} {index + 1} · {formatVersionDate(recording.recording.startedAt, locale)} · {t(`meetingResults.capture.${recording.recording.captureState}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      {selectableRuns.length > 0 && (
-        <label className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span>{t("meetingResults.version")}</span>
-          <select className="max-w-full rounded border bg-background px-2 py-1" value={selectedRunId} onChange={(event) => void selectRun(event.target.value)}>
-            {selectableRuns.map((result) => (
-              <option key={result.run.id} value={result.run.id}>{versionLabel(result, locale)}</option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      {playbackUrl && audioAvailable && <audio ref={audioRef} controls preload="metadata" src={playbackUrl} className="mt-3 h-9 max-w-full" />}
-      {audioAvailable && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {playbackUrl && run && <Button size="sm" variant="outline" disabled={busy} onClick={() => void exportAudio("mixed")}>{t("meetingResults.exportMixed")}</Button>}
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void exportAudio("mic")}>{t("meetingResults.exportMic")}</Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void exportAudio("system")}>{t("meetingResults.exportSystem")}</Button>
-        </div>
-      )}
-      {!audioAvailable && <p className="mt-2 text-xs text-muted-foreground">{t("meetingResults.audioUnavailable")}</p>}
-
-      {speakers.length > 0 && run && (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {speakers.map((speakerId) => (
-            <label key={speakerId} className="flex items-center gap-2 text-xs">
-              <span className="shrink-0">{speakerId}</span>
-              <input dir="auto" className="min-w-0 flex-1 rounded border bg-background px-2 py-1" value={speakerNames[speakerId] ?? speakerId} onChange={(event) => {
-                setSpeakerNames((current) => ({ ...current, [speakerId]: event.target.value }));
-                setSpeakerProfileIds((current) => ({ ...current, [speakerId]: null }));
-              }} />
-              <select
-                className="max-w-32 rounded border bg-background px-2 py-1"
-                value={speakerProfileIds[speakerId] ?? ""}
-                onChange={(event) => {
-                  const profileId = event.target.value ? Number(event.target.value) : null;
-                  setSpeakerProfileIds((current) => ({ ...current, [speakerId]: profileId }));
-                  const profile = speakerProfiles.find((item) => item.id === profileId);
-                  if (profile) setSpeakerNames((current) => ({ ...current, [speakerId]: profile.display_name }));
-                }}
-                aria-label={t("meetingResults.speakerProfile")}
-              >
-                <option value="">{t("meetingResults.noSpeakerProfile")}</option>
-                {speakerProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.display_name}</option>)}
-              </select>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => void persistSpeaker(speakerId)}>{t("meetingResults.saveSpeaker")}</Button>
-            </label>
-          ))}
-        </div>
-      )}
-
-      {run?.transcript?.segments && run.transcript.segments.length > 0 && (
-        <div className="mt-3 border-t border-border/60 pt-2">
-          {run.transcript.segments.map((segment, index) => (
-            <button key={`${index}-${segment.start}`} type="button" className="block w-full py-1 text-left text-xs text-muted-foreground hover:text-foreground" disabled={(!audioRef.current && !previewRecordings) || !audioAvailable} onClick={() => {
-              if (previewRecordings) setMessage(`Mock playback position: ${Math.floor(segment.start)}s`);
-              else if (audioRef.current) audioRef.current.currentTime = segment.start;
+  return <div className="oh-meeting-detail">
+    <div className="oh-meeting-toolbar">
+      <Tabs selectedKey={viewMode} onSelectionChange={(key) => onViewModeChange(String(key) as ViewMode)} aria-label={tr("contentTabs", "Meeting content")}>
+        <Tabs.List aria-label={tr("contentTabs", "Meeting content")}>
+          <Tabs.Tab id="raw">{t("notes.editor.notes")}<Tabs.Indicator /></Tabs.Tab>
+          <Tabs.Tab id="enhanced">{tr("summaryTab", "Summary")}<Tabs.Indicator /></Tabs.Tab>
+          <Tabs.Tab id="transcript">{t("notes.editor.transcript")}<Tabs.Indicator /></Tabs.Tab>
+        </Tabs.List>
+      </Tabs>
+      <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
+        <Button size="sm" variant="tertiary" aria-label={`${tr("audioParts", "Audio")} ${parts.length}`}><AudioLines size={16}/>{tr("audioParts", "Audio")} <span className="oh-count">{parts.length}</span></Button>
+        <Popover.Content placement="bottom end" className="oh-audio-popover"><Popover.Dialog>
+          <Popover.Heading>{tr("audioParts", "Audio")}</Popover.Heading>
+          {groups.length > 1 && <Choice label={t("meetingResults.recording")} value={currentGroup ?? ""} options={groups.map((group) => ({ id: group.recording.groupId, label: dateLabel(group.recording.startedAt, locale, { dateStyle: "medium", timeStyle: "short" }) }))} onChange={setGroupId} />}
+          {!parts.length && <p className="oh-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
+          {parts.map((part, index) => <div className="oh-audio-row" key={part.recording.id}>
+            <Button isIconOnly size="sm" variant="ghost" isDisabled={part.recording.audioState !== "available"} aria-label={playingId === part.recording.id ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={() => void startAudio(part.recording.id)}>{playingId === part.recording.id ? <Pause size={16}/> : <Play size={16}/>}</Button>
+            <div className="oh-audio-label"><strong>{dateLabel(part.recording.startedAt, locale, { timeStyle: "short" })}</strong><span>{formatDuration(part.recording.durationSeconds)} · {tr("part", "Part")} {index + 1}</span></div>
+            <Dropdown><Button isIconOnly size="sm" variant="ghost" aria-label={tr("partActions", "Audio part actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("partActions", "Audio part actions")} onAction={(key) => {
+              if (key === "asr") openRun("reprocess", part.recording.id);
+              if (key === "mic" || key === "system") void exportPart(part.recording.id, key);
+              if (key === "delete") deletePart(part.recording.id);
             }}>
-              <span className="me-2 tabular-nums">{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</span>{segment.text}
-            </button>
-          ))}
-        </div>
-      )}
-      {run?.transcript?.text && !run.transcript.segments?.length && (
-        <p className="mt-3 border-t border-border/60 pt-2 text-xs whitespace-pre-wrap">{run.transcript.text}</p>
-      )}
-      {run?.transcript && !run.transcript.text.trim() && !run.transcript.segments?.length && (
-        <p className="mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">{t("notes.upload.noSpeechDetected")}</p>
-      )}
-      {message && <p role="status" className="mt-2 text-xs text-muted-foreground">{message}</p>}
-      <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => !open && hideConfirmDialog()} title={confirmDialog.title} description={confirmDialog.description} confirmText={confirmDialog.confirmText} cancelText={confirmDialog.cancelText} onConfirm={confirmDialog.onConfirm} variant={confirmDialog.variant} />
-    </section>
-  );
+              <Dropdown.Item id="asr" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}>{t("meetingResults.newAsr")}</Dropdown.Item>
+              <Dropdown.Item id="mic" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.exportMic")}>{t("meetingResults.exportMic")}</Dropdown.Item>
+              <Dropdown.Item id="system" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.exportSystem")}>{t("meetingResults.exportSystem")}</Dropdown.Item>
+              <Dropdown.Item id="delete" isDisabled={busy || part.recording.audioState === "deleted"} variant="danger" textValue={t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}><Trash2 size={14}/>{t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}</Dropdown.Item>
+            </Dropdown.Menu></Dropdown.Popover></Dropdown>
+          </div>)}
+          {availableParts.length > 0 && <Button size="sm" variant="ghost" onPress={() => openRun("reprocess")}>{tr("processWholeMeeting", "Transcribe whole meeting")}<RotateCcw size={14}/></Button>}
+          <p className="oh-muted oh-small">{tr("originalsPreserved", "Original microphone and system tracks are saved separately.")}</p>
+        </Popover.Dialog></Popover.Content>
+      </Popover>
+    </div>
+
+    {parts.some((part) => part.recording.captureState === "incomplete" || part.recording.captureErrorCode) && <p className="oh-meeting-warning" role="alert">{t("meetingResults.captureIncomplete")}</p>}
+    {latestRun && !["complete", "cancelled"].includes(latestRun.run.status) && <div className="oh-processing" role="status">
+      <strong>{t(`meetingResults.stage.${latestRun.run.stage}`)} · {t(`meetingResults.status.${latestRun.run.status}`)}</strong>
+      {latestRun.run.errorCode && <span>{latestRun.run.errorCode}</span>}
+      {latestRun.run.status === "blocked" && (latestRun.run.configError || !latestRun.run.config || latestRun.run.errorCode === "missing-summary-config") && <Button size="sm" variant="ghost" onPress={() => void runTask(async () => {
+        if (previewRecordings) { setMessage("Mock settings updated in memory"); return; }
+        const snapshot = snapshotMeetingRecordingConfig(latestRun.run.stage === "summary" && latestRun.transcript ? latestRun.run.config?.transcription : undefined);
+        const result = await window.electronAPI.meetingProcessingUpdateBlockedRunConfig({ runId: latestRun.run.id, config: snapshot.config, configError: snapshot.configError });
+        if (!result.success) throw new Error(result.error || t("meetingResults.updateConfigError"));
+      })}>{t("meetingResults.updateRunSettings")}</Button>}
+      {["failed", "blocked"].includes(latestRun.run.status) && <Button size="sm" variant="ghost" onPress={() => void runTask(async () => {
+        if (previewRecordings) { setMessage("Mock retry queued in memory"); return; }
+        const result = await window.electronAPI.meetingProcessingRetryRun(latestRun.run.id);
+        if (!result.success) throw new Error(result.error || t("meetingResults.retryError"));
+      })}>{t("meetingResults.retry")}</Button>}
+    </div>}
+
+    {viewMode === "raw" ? manualContent : <div className="oh-result">
+      {selected && <div className="oh-result-meta"><span>{viewMode === "enhanced" ? selected.run.config?.summary?.provider : selected.run.provider} · {viewMode === "enhanced" ? selected.run.config?.summary?.model : selected.run.model}</span>
+        <Dropdown><Button size="sm" variant="ghost">{t("meetingResults.version")} <ChevronDown size={13}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={t("meetingResults.version")} onAction={(key) => void selectRun(String(key))}>{versions.map((item, index) => <Dropdown.Item key={item.run.id} id={item.run.id} textValue={`${t("meetingResults.version")} ${index + 1}`}><Label>{index + 1} · {item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / {item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model || "—"}</Label><span className="oh-muted oh-small">{dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" })}</span></Dropdown.Item>)}</Dropdown.Menu></Dropdown.Popover></Dropdown>
+        <Dropdown><Button size="sm" variant="ghost" isIconOnly aria-label={tr("resultActions", "Result actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("resultActions", "Result actions")} onAction={(key) => {
+          if (key === "asr") openRun("reprocess");
+          if (key === "summary") openRun("summary");
+          if (key === "copy") void navigator.clipboard.writeText(viewMode === "enhanced" ? selected.summary?.text ?? "" : selected.transcript?.text ?? "");
+          if (key === "export") void runTask(async () => { if (previewRecordings) { setMessage(tr("previewAudio", "Preview audio is unavailable.")); return; } const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: selected.run.recordingId, runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? undefined : selected.run.id, source: "mixed" }); if (!result.success) throw new Error(result.error || t("meetingResults.exportError")); });
+        }}>
+          <Dropdown.Item id="asr" isDisabled={!availableParts.length} textValue={t("meetingResults.newAsr")}>{t("meetingResults.newAsr")}</Dropdown.Item>
+          <Dropdown.Item id="summary" textValue={t("meetingResults.newSummary")}>{t("meetingResults.newSummary")}</Dropdown.Item>
+          <Dropdown.Item id="copy" textValue={tr("copyResult", "Copy text")}>{tr("copyResult", "Copy text")}</Dropdown.Item>
+          <Dropdown.Item id="export" isDisabled={!availableParts.length} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
+        </Dropdown.Menu></Dropdown.Popover></Dropdown>
+      </div>}
+      {viewMode === "enhanced" ? selected?.summary?.text ? <article className="oh-summary"><ReactMarkdown>{selected.summary.text}</ReactMarkdown><p className="oh-provenance">{tr("fromTranscript", "From transcript")} {sourceVersion ? `${sourceVersion.run.provider || "local"} / ${sourceVersion.run.model || "—"}` : selected.run.sourceRunId ?? selected.run.id} · {tr("audioParts", "Audio")}: {sourceTimes}</p></article> : fallbackSummary : selected?.transcript ? <div className="oh-transcript">
+        {selected.transcript.segments?.length ? selected.transcript.segments.map((segment, index) => <div className="oh-transcript-row" key={`${index}-${segment.start}`}>
+          <button className="oh-timestamp" onClick={() => {
+            let remaining = segment.start;
+            for (const id of selected.run.sourceRecordingIds) {
+              const part = parts.find((item) => item.recording.id === id);
+              if (!part) continue;
+              const duration = part.recording.durationSeconds ?? 0;
+              if (remaining <= duration) { void startAudio(id, remaining); break; }
+              remaining -= duration;
+            }
+          }}>{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</button>
+          <div>{segment.speaker && <button className="oh-speaker" onClick={() => {
+            const correction = selected.speakerCorrections.find((item) => item.speakerId === segment.speaker);
+            setSpeakerId(segment.speaker ?? null); setSpeakerName(correction?.displayName ?? segment.speaker ?? ""); setSpeakerProfileId(String(correction?.profileId ?? "none"));
+          }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? segment.speaker}</button>}<p>{segment.text}</p></div>
+        </div>) : <p className="oh-transcript-text">{selected.transcript.text}</p>}
+        <p className="oh-provenance">{selected.run.sourceRecordingIds.length} {tr("parts", "parts")} · {selected.run.provider} / {selected.run.model} · {tr("audioParts", "Audio")}: {sourceTimes}</p>
+      </div> : fallbackTranscript}
+    </div>}
+    {message && <p role="status" className="oh-meeting-message">{message}</p>}
+    <audio ref={audioRef} preload="metadata" onEnded={() => setPlayingId(null)} />
+
+    <Modal isOpen={runChoice !== null} onOpenChange={(open) => { if (!open) setRunChoice(null); }}><Modal.Backdrop><Modal.Container size="md"><Modal.Dialog><Modal.CloseTrigger/><Modal.Header><Modal.Heading>{isSummaryChoice ? t("meetingResults.newSummary") : t("meetingResults.newAsr")}</Modal.Heading></Modal.Header><Modal.Body>
+      <p className="oh-muted">{isSummaryChoice ? tr("summaryFromSaved", "Create a summary from a saved transcript without another transcription request.") : runChoice?.partId ? tr("transcribePart", "Transcribe this audio part.") : tr("transcribeWhole", "Transcribe all saved parts as one meeting.")}</p>
+      <div className="oh-run-fields"><Choice label={tr("provider", "Provider")} value={provider} options={isSummaryChoice ? llmProviders : asrProviders} onChange={(value) => { setProvider(value); setModel(isSummaryChoice ? llmModels.find((item) => item.provider === value)?.value ?? "" : asrProviders.find((item) => item.id === value)?.models[0]?.id ?? ""); }}/><Choice label={tr("model", "Model")} value={model} options={modelOptions} onChange={setModel}/></div>
+      {isSummaryChoice && <Choice label={tr("sourceTranscript", "Source transcript")} value={sourceRunId} options={versions.filter((item) => item.run.kind !== "summary").map((item) => ({ id: item.run.id, label: `${item.run.provider || "local"} / ${item.run.model || "—"} · ${dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" })}` }))} onChange={setSourceRunId} />}
+      <p className="oh-muted oh-small">{tr("oneRunOnly", "This choice applies to this run. Global defaults stay the same.")}</p>
+    </Modal.Body><Modal.Footer><Button variant="tertiary" onPress={() => setRunChoice(null)}>{tr("cancel", "Cancel")}</Button><Button isDisabled={busy || !provider || !model} onPress={() => void createRun()}>{tr("createVersion", "Create version")}</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
+
+    <Modal isOpen={speakerId !== null} onOpenChange={(open) => { if (!open) setSpeakerId(null); }}><Modal.Backdrop><Modal.Container size="sm"><Modal.Dialog><Modal.CloseTrigger/><Modal.Header><Modal.Heading>{t("meetingResults.saveSpeaker")}</Modal.Heading></Modal.Header><Modal.Body>
+      <label className="oh-speaker-field">{tr("speakerName", "Speaker name")}<input dir="auto" value={speakerName} onChange={(event) => setSpeakerName(event.target.value)} /></label>
+      <Choice label={t("meetingResults.speakerProfile")} value={speakerProfileId} options={[{ id: "none", label: t("meetingResults.noSpeakerProfile") }, ...profiles.map((item) => ({ id: String(item.id), label: item.display_name }))]} onChange={setSpeakerProfileId}/>
+    </Modal.Body><Modal.Footer><Button variant="tertiary" onPress={() => setSpeakerId(null)}>{tr("cancel", "Cancel")}</Button><Button isDisabled={!speakerName.trim() || busy} onPress={() => void correctSpeaker()}>{t("meetingResults.saveSpeaker")}</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
+    <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => !open && hideConfirmDialog()} title={confirmDialog.title} description={confirmDialog.description} confirmText={confirmDialog.confirmText} cancelText={confirmDialog.cancelText} onConfirm={confirmDialog.onConfirm} variant={confirmDialog.variant} />
+  </div>;
 }

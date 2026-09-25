@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Square } from "../icons";
-import { stopRecording, useMeetingRecordingStore } from "../../stores/meetingRecordingStore";
+import { finishMeeting, stopRecording, useMeetingRecordingStore } from "../../stores/meetingRecordingStore";
 import { cn } from "../lib/utils";
 import { isControlPanelWindow } from "../../utils/windowContext";
 
@@ -34,6 +34,7 @@ export default function MeetingRecordingPill({
 }: MeetingRecordingPillProps) {
   const { t } = useTranslation();
   const isRecording = useMeetingRecordingStore((s) => s.isRecording);
+  const capturePhase = useMeetingRecordingStore((s) => s.capturePhase);
   const recordingNoteId = useMeetingRecordingStore((s) => s.recordingNoteId);
   const recordingNoteTitle = useMeetingRecordingStore((s) => s.recordingNoteTitle);
   const micLevel = useMeetingRecordingStore((s) => s.currentMicLevel);
@@ -44,7 +45,7 @@ export default function MeetingRecordingPill({
   const isViewingRecordingNote =
     activeView === "personal-notes" && activeNoteId === recordingNoteId;
 
-  if (!isRecording || isViewingRecordingNote || !isControlPanelWindow()) {
+  if ((!isRecording && capturePhase !== "paused") || isViewingRecordingNote || !isControlPanelWindow()) {
     return null;
   }
 
@@ -52,7 +53,8 @@ export default function MeetingRecordingPill({
     if (isStopping) return;
     setIsStopping(true);
     try {
-      await stopRecording();
+      if (recordingNoteId) await finishMeeting();
+      else await stopRecording();
     } finally {
       setIsStopping(false);
     }
@@ -60,7 +62,7 @@ export default function MeetingRecordingPill({
 
   const title = truncateTitle(recordingNoteTitle ?? "");
   const returnLabel = t("notes.meetingPill.returnToNote");
-  const stopLabel = t("notes.editor.stop");
+  const stopLabel = t("notes.editor.capture.finishMeeting");
 
   return createPortal(
     <div
@@ -93,20 +95,20 @@ export default function MeetingRecordingPill({
             "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30"
           )}
         >
-          <div className="flex items-end gap-0.75 h-4">
+          <div className="flex items-end gap-0.75 h-4" aria-hidden="true">
             {Array.from({ length: BAR_COUNT }, (_, i) => (
               <div
                 key={i}
                 className={cn(
                   "w-0.75 rounded-full origin-bottom",
-                  isWaitingForMic ? "bg-amber-500" : "bg-primary/60 dark:bg-primary/70"
+                  capturePhase === "paused" || isWaitingForMic ? "bg-amber-500" : "bg-primary/60 dark:bg-primary/70"
                 )}
                 style={{ height: computeBarHeight(micLevel, i) }}
               />
             ))}
           </div>
           <span className="text-xs font-medium text-foreground/80 truncate max-w-[12rem]">
-            {isWaitingForMic ? t("notes.meetingPill.waitingForMicrophone") : title}
+            {capturePhase === "paused" ? t("notes.editor.capture.paused") : isWaitingForMic ? t("notes.meetingPill.waitingForMicrophone") : title}
           </span>
         </button>
 

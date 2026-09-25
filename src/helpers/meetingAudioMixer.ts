@@ -52,6 +52,26 @@ export function meetingTimelineFrameCount(
   return Math.max(latestEpochEnd, captureEnd);
 }
 
+/** Concatenate saved parts for one ASR pass. Gaps inside each part stay in its timeline; intentional pauses do not become silence. */
+export function composeMeetingAudioParts(
+  parts: MeetingRecordingDto[],
+  listEpochs: (recordingId: string) => MeetingRecordingEpochDto[]
+): { recording: MeetingRecordingDto; epochs: MeetingRecordingEpochDto[] } {
+  if (!parts.length) throw new Error("Meeting has no audio parts");
+  let offset = 0;
+  const epochs = parts.flatMap((part) => {
+    const own = listEpochs(part.id);
+    const shifted = own.map((epoch) => ({ ...epoch, startFrame: epoch.startFrame + offset }));
+    offset += meetingTimelineFrameCount(part, own);
+    return shifted;
+  });
+  const first = parts[0];
+  return {
+    recording: { ...first, endedAt: new Date(Date.parse(first.startedAt) + offset / 24).toISOString() },
+    epochs,
+  };
+}
+
 export async function prepareMeetingAudio(
   storage: MeetingRecordingStorage,
   recording: MeetingRecordingDto,

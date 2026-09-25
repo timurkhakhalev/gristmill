@@ -67,8 +67,9 @@ export const SIDE_PANEL_BREAKPOINT_PX = 1024;
 interface MeetingRecordingState {
   isRecording: boolean;
   isTranscribing: boolean;
-  capturePhase: "idle" | "preparing" | "recording" | "saving" | "saved" | "incomplete" | "failed";
+  capturePhase: "idle" | "preparing" | "recording" | "paused" | "saving" | "saved" | "incomplete" | "failed";
   recordingId: string | null;
+  meetingGroupId: string | null;
   captureErrorCode: string | null;
   captureStartedAt: number | null;
   recordingNoteId: number | null;
@@ -516,15 +517,24 @@ let captureEpochIndices: Record<"mic" | "system", number> = { mic: 0, system: 0 
 let captureLastSequences: Record<"mic" | "system", number> = { mic: -1, system: -1 };
 let captureDrainErrorCode: string | null = null;
 let suppressInitialProcessingForStop = false;
+const PAUSED_MEETING_KEY = "openhercules.paused-meeting";
+function readPausedMeeting(): { groupId: string; noteId: number } | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(PAUSED_MEETING_KEY) ?? "null");
+    return typeof value?.groupId === "string" && Number.isSafeInteger(value?.noteId) ? value : null;
+  } catch { return null; }
+}
+const pausedMeeting = typeof window === "undefined" ? null : readPausedMeeting();
 
 export const useMeetingRecordingStore = create<MeetingRecordingState>()(() => ({
   isRecording: false,
   isTranscribing: false,
-  capturePhase: "idle",
+  capturePhase: pausedMeeting ? "paused" : "idle",
   recordingId: null,
+  meetingGroupId: pausedMeeting?.groupId ?? null,
   captureErrorCode: null,
   captureStartedAt: null,
-  recordingNoteId: null,
+  recordingNoteId: pausedMeeting?.noteId ?? null,
   recordingNoteTitle: null,
   recordingFolderId: null,
   segments: [],
@@ -727,14 +737,21 @@ export interface StartRecordingArgs {
   expectedCount?: number | null;
   expectedCountIsExplicit?: boolean;
   autoEndEligible: boolean;
+  groupId?: string;
 }
 
 // Resolves false only when setup cannot start the recording; setup failures are
 // reported through the store so callers do not roll back UI they do not own.
 export async function startRecording(args: StartRecordingArgs): Promise<boolean> {
   if (isRecordingFlag || isStartingFlag) return true;
+  const paused = readPausedMeeting();
+  if (paused && (paused.noteId !== args.noteId || paused.groupId !== args.groupId)) {
+    reportMeetingError("Finish or resume the paused call before starting another.");
+    return false;
+  }
 
   const sessionId = createMeetingRecordingSessionId();
+  const groupId = args.groupId ?? crypto.randomUUID();
   let started = false;
   await meetingRecordingStartCoordinator.runStart(sessionId, async (startOperation) => {
     if (isRecordingFlag || isStartingFlag) {
@@ -767,6 +784,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       isTranscribing: false,
       capturePhase: "preparing",
       recordingId: null,
+      meetingGroupId: groupId,
       captureErrorCode: null,
       captureStartedAt: null,
       recordingNoteId: args.noteId,
@@ -909,6 +927,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       const mainStartPromise = window.electronAPI?.meetingTranscriptionStart?.({
         noteId: args.noteId ?? null,
         sessionId,
+        groupId,
         autoEndEligible: args.autoEndEligible,
         recordingConfig: getMeetingRecordingConfig(),
       });
@@ -1450,6 +1469,80 @@ export async function stopRecording(
     }, "meeting");
     return { diarizationSessionId: null, stopped };
   });
+}
+
+export async function pauseMeeting(): Promise<boolean> {
+  const state = useMeetingRecordingStore.getState();
+  if (!state.isRecording || !state.meetingGroupId || !state.recordingNoteId) return false;
+  localStorage.setItem(PAUSED_MEETING_KEY, JSON.stringify({ groupId: state.meetingGroupId, noteId: state.recordingNoteId }));
+  const result = await stopRecording(undefined, { suppressProcessing: true });
+  if (!result.stopped) {
+    localStorage.removeItem(PAUSED_MEETING_KEY);
+    return false;
+  }
+  useMeetingRecordingStore.setState({ capturePhase: "paused", meetingGroupId: state.meetingGroupId, recordingNoteId: state.recordingNoteId });
+  return true;
+}
+
+export async function resumeMeeting(args: StartRecordingArgs): Promise<boolean> {
+  const paused = readPausedMeeting();
+  if (!paused || paused.noteId !== args.noteId || useMeetingRecordingStore.getState().capturePhase !== "paused") return false;
+  const recordings = await window.electronAPI.meetingProcessingListForNote(paused.noteId);
+  if (!recordings.success || !recordings.recordings?.some((item) => item.recording.groupId === paused.groupId && item.recording.audioState === "available")) {
+    localStorage.removeItem(PAUSED_MEETING_KEY);
+    useMeetingRecordingStore.setState({ capturePhase: "saved", meetingGroupId: null });
+    return false;
+  }
+  const started = await startRecording({ ...args, groupId: paused.groupId });
+  if (started) localStorage.removeItem(PAUSED_MEETING_KEY);
+  else useMeetingRecordingStore.setState({ capturePhase: "paused", meetingGroupId: paused.groupId, recordingNoteId: paused.noteId });
+  return started;
+}
+
+export async function queueMeetingGroupProcessing(groupId: string, noteId: number): Promise<void> {
+  const listed = await window.electronAPI.meetingProcessingListForNote(noteId);
+  if (!listed.success) throw new Error(listed.error || "Meeting parts could not be loaded");
+  const parts = (listed.recordings ?? [])
+    .filter((item) => item.recording.groupId === groupId && item.recording.audioState === "available")
+    .sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt));
+  const usable = parts.filter((part) => part.runs.some((result) => result.run.errorCode !== "recording-audio-unavailable"));
+  if (!usable.length) return;
+  const sourceIds = usable.map((part) => part.recording.id);
+  const existing = usable.flatMap((part) => part.runs).find((result) =>
+    result.run.kind === "reprocess" && result.run.sourceRecordingIds.length === sourceIds.length &&
+    result.run.sourceRecordingIds.every((id, index) => id === sourceIds[index])
+  );
+  if (existing) return;
+  const first = usable[0];
+  const initial = first.runs.find((result) => result.run.kind === "initial");
+  const created = await window.electronAPI.meetingProcessingCreateRun({
+    recordingId: first.recording.id,
+    sourceRecordingIds: sourceIds,
+    kind: "reprocess",
+    config: initial?.run.config ?? null,
+    configError: initial?.run.configError ?? null,
+  });
+  if (!created.success) throw new Error(created.error || "Meeting processing could not start");
+}
+
+export async function finishMeeting(): Promise<boolean> {
+  const state = useMeetingRecordingStore.getState();
+  const groupId = state.meetingGroupId;
+  const noteId = state.recordingNoteId;
+  if (!groupId || !noteId || (state.capturePhase !== "paused" && !state.isRecording)) return false;
+  localStorage.setItem(PAUSED_MEETING_KEY, JSON.stringify({ groupId, noteId }));
+  if (state.isRecording && !(await stopRecording(undefined, { suppressProcessing: true })).stopped) return false;
+  try {
+    await queueMeetingGroupProcessing(groupId, noteId);
+  } catch (error) {
+    localStorage.setItem(PAUSED_MEETING_KEY, JSON.stringify({ groupId, noteId }));
+    useMeetingRecordingStore.setState({ capturePhase: "paused", meetingGroupId: groupId, recordingNoteId: noteId });
+    reportMeetingError(error instanceof Error ? error.message : String(error));
+    return false;
+  }
+  localStorage.removeItem(PAUSED_MEETING_KEY);
+  useMeetingRecordingStore.setState({ capturePhase: "saved", meetingGroupId: null });
+  return true;
 }
 
 export function lockSpeaker(speakerId: string, displayName: string): void {

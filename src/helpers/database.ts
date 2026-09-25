@@ -122,6 +122,7 @@ export interface ActionRow {
 
 interface MeetingRecordingDbRow {
   id: string;
+  group_id: string | null;
   note_id: number;
   capture_state: MeetingCaptureState;
   started_at: string;
@@ -156,6 +157,7 @@ interface MeetingRecordingEpochDbRow {
 interface MeetingProcessingRunDbRow {
   id: string;
   recording_id: string;
+  source_recording_ids_json: string | null;
   kind: "initial" | "reprocess" | "summary";
   source_run_id: string | null;
   provider: string | null;
@@ -458,6 +460,7 @@ function configErrorFromRow(code: string | null, messageKey: string | null): Mee
 function toMeetingRecordingDto(row: MeetingRecordingDbRow): MeetingRecordingDto {
   return {
     id: row.id,
+    groupId: row.group_id ?? row.id,
     noteId: row.note_id,
     captureState: row.capture_state,
     startedAt: row.started_at,
@@ -494,6 +497,7 @@ function toMeetingRunDto(row: MeetingProcessingRunDbRow): MeetingProcessingRunDt
   return {
     id: row.id,
     recordingId: row.recording_id,
+    sourceRecordingIds: row.source_recording_ids_json ? JSON.parse(row.source_recording_ids_json) : [row.recording_id],
     kind: row.kind,
     sourceRunId: row.source_run_id,
     provider: row.provider,
@@ -659,6 +663,7 @@ export class DatabaseManager {
 
         CREATE TABLE IF NOT EXISTS meeting_recordings (
           id TEXT PRIMARY KEY,
+          group_id TEXT,
           note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE RESTRICT,
           capture_state TEXT NOT NULL CHECK(capture_state IN ('recording', 'finalizing', 'ready', 'incomplete')),
           started_at TEXT NOT NULL,
@@ -696,6 +701,7 @@ export class DatabaseManager {
         CREATE TABLE IF NOT EXISTS meeting_processing_runs (
           id TEXT PRIMARY KEY,
           recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE,
+          source_recording_ids_json TEXT,
           kind TEXT NOT NULL CHECK(kind IN ('initial', 'reprocess', 'summary')),
           source_run_id TEXT REFERENCES meeting_processing_runs(id) ON DELETE SET NULL,
           provider TEXT,
@@ -909,6 +915,15 @@ export class DatabaseManager {
         END;
       `);
 
+      const recordingColumns = this.sql.pragma("table_info(meeting_recordings)") as Array<{ name: string }>;
+      if (!recordingColumns.some((column) => column.name === "group_id")) {
+        this.sql.exec("ALTER TABLE meeting_recordings ADD COLUMN group_id TEXT");
+      }
+      const runColumns = this.sql.pragma("table_info(meeting_processing_runs)") as Array<{ name: string }>;
+      if (!runColumns.some((column) => column.name === "source_recording_ids_json")) {
+        this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN source_recording_ids_json TEXT");
+      }
+
       const existingSpace = this.sql.prepare("SELECT id FROM spaces LIMIT 1").get() as
         | { id: number }
         | undefined;
@@ -954,9 +969,11 @@ export class DatabaseManager {
     noteId: number,
     input: { config: unknown | null; configError?: unknown } | null,
     startedAt = new Date().toISOString(),
-    id = randomUUID()
+    id = randomUUID(),
+    groupId = id
   ): MeetingRecordingDto {
     meetingRecordingIdSchema.parse(id);
+    meetingRecordingIdSchema.parse(groupId);
     if (!Number.isSafeInteger(noteId) || noteId < 1 || !this.getNote(noteId)) {
       throw new Error("Meeting note not found");
     }
@@ -966,10 +983,11 @@ export class DatabaseManager {
     const snapshot = storedConfig(input?.config ?? null, input?.configError);
     this.sql
       .prepare(
-        "INSERT INTO meeting_recordings (id, note_id, capture_state, started_at, config_json, config_error_code, config_error_message_key) VALUES (?, ?, 'recording', ?, ?, ?, ?)"
+        "INSERT INTO meeting_recordings (id, group_id, note_id, capture_state, started_at, config_json, config_error_code, config_error_message_key) VALUES (?, ?, ?, 'recording', ?, ?, ?, ?)"
       )
       .run(
         id,
+        groupId,
         noteId,
         parsedStart.toISOString(),
         configJson(snapshot.config),
@@ -1197,6 +1215,7 @@ export class DatabaseManager {
       config: MeetingProcessingConfig | null;
       configError?: MeetingProcessingConfigError | null;
       sourceRunId?: string | null;
+      sourceRecordingIds?: string[];
     }
   ): MeetingProcessingRunDto {
     meetingRecordingIdSchema.parse(recordingId);
@@ -1205,6 +1224,19 @@ export class DatabaseManager {
     const transaction = this.sql.transaction(() => {
       const recording = this.getMeetingRecording(recordingId);
       if (!recording) throw new Error("Meeting recording not found");
+      const sourceRecordingIds = input.sourceRecordingIds ?? [recordingId];
+      if (input.kind === "reprocess") {
+        if (sourceRecordingIds[0] !== recordingId || new Set(sourceRecordingIds).size !== sourceRecordingIds.length) {
+          throw new Error("Invalid meeting audio parts");
+        }
+        for (const sourceId of sourceRecordingIds) {
+          meetingRecordingIdSchema.parse(sourceId);
+          const source = this.getMeetingRecording(sourceId);
+          if (!source || source.noteId !== recording.noteId || source.groupId !== recording.groupId || source.audioState !== "available" || !["ready", "incomplete"].includes(source.captureState)) {
+            throw new Error("Meeting audio is unavailable for a selected part");
+          }
+        }
+      }
       if (recording.captureState !== "ready" && recording.captureState !== "incomplete") {
         throw new Error("Meeting recording is not finalized");
       }
@@ -1237,11 +1269,12 @@ export class DatabaseManager {
       const model = transcription?.mode === "local" ? transcription.local?.model ?? null : transcription?.model ?? null;
       this.sql
         .prepare(
-          "INSERT INTO meeting_processing_runs (id, recording_id, kind, source_run_id, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          "INSERT INTO meeting_processing_runs (id, recording_id, source_recording_ids_json, kind, source_run_id, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .run(
           runId,
           recordingId,
+          JSON.stringify(input.kind === "summary" ? sourceRun && JSON.parse(sourceRun.source_recording_ids_json ?? JSON.stringify([recordingId])) : sourceRecordingIds),
           input.kind,
           sourceRun?.id ?? null,
           provider,
@@ -1274,13 +1307,13 @@ export class DatabaseManager {
   listMeetingProcessingRuns(recordingId: string): MeetingProcessingRunDto[] {
     meetingRecordingIdSchema.parse(recordingId);
     return (this.sql
-      .prepare("SELECT * FROM meeting_processing_runs WHERE recording_id = ? ORDER BY created_at, id")
+      .prepare("SELECT * FROM meeting_processing_runs WHERE recording_id = ? ORDER BY created_at, rowid")
       .all(recordingId) as MeetingProcessingRunDbRow[]).map(toMeetingRunDto);
   }
 
   listAllMeetingProcessingRuns(): MeetingProcessingRunDto[] {
     return (this.sql
-      .prepare("SELECT * FROM meeting_processing_runs ORDER BY created_at, id")
+      .prepare("SELECT * FROM meeting_processing_runs ORDER BY created_at, rowid")
       .all() as MeetingProcessingRunDbRow[]).map(toMeetingRunDto);
   }
 
@@ -1553,8 +1586,8 @@ export class DatabaseManager {
         .prepare("UPDATE meeting_recordings SET audio_state = 'deleting', audio_error_code = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
         .run(recordingId);
       this.sql.prepare(
-        "UPDATE meeting_processing_runs SET status = 'cancelled', error_code = 'audio-deletion-requested', retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE recording_id = ? AND status IN ('pending', 'running') AND stage IN ('prepare', 'asr') AND raw_response_path IS NULL"
-      ).run(recordingId);
+        "UPDATE meeting_processing_runs SET status = 'cancelled', error_code = 'audio-deletion-requested', retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE (recording_id = ? OR source_recording_ids_json LIKE ?) AND status IN ('pending', 'running') AND stage IN ('prepare', 'asr') AND raw_response_path IS NULL"
+      ).run(recordingId, `%\"${recordingId}\"%`);
       const existing = this.sql
         .prepare("SELECT * FROM meeting_deletion_intents WHERE recording_id = ? AND kind = 'audio'")
         .get(recordingId) as MeetingDeletionIntentDbRow | undefined;

@@ -153,6 +153,7 @@ export interface MeetingTranscriptionPrepareOptions {
 export interface MeetingTranscriptionStartOptions {
   noteId?: number | null;
   sessionId: string;
+  groupId?: string;
   autoEndEligible: boolean;
   recordingConfig?: {
     config: MeetingProcessingConfig | null;

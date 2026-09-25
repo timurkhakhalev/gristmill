@@ -6,7 +6,7 @@ import { useControlPanelNavItems, type ControlPanelView } from "./controlPanelNa
 import MeetingRecordingMount from "./MeetingRecordingMount";
 import MeetingRecordingPill from "./notes/MeetingRecordingPill";
 import { useCollapsibleSidebar } from "../hooks/useCollapsibleSidebar";
-import { useIsMeetingMode, useIsNarrowWindow, useMeetingRecordingStore } from "../stores/meetingRecordingStore";
+import { useIsMeetingMode, useMeetingRecordingStore } from "../stores/meetingRecordingStore";
 import {
   initializeNotes,
   navigateToContainer,
@@ -19,6 +19,7 @@ import BackgroundActionToastListener from "./notes/BackgroundActionToastListener
 import type { NotesDebugScenario } from "./notes/NotesDebugControls";
 
 const SIDEBAR_WIDTH_PX = 192;
+const SIDEBAR_RAIL_WIDTH_PX = 68;
 
 const SettingsModal = React.lazy(() => import("./SettingsModal"));
 const PersonalNotesView = React.lazy(() => import("./notes/PersonalNotesView"));
@@ -51,20 +52,14 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     event: any;
   } | null>(null);
   const isMeetingMode = useIsMeetingMode();
-  const isNarrowWindow = useIsNarrowWindow();
   const activeNoteId = useActiveNoteId();
   const recordingNoteId = useMeetingRecordingStore((state) => state.recordingNoteId);
   const recordingFolderId = useMeetingRecordingStore((state) => state.recordingFolderId);
   const {
     collapsed: sidebarCollapsed,
-    peek: sidebarPeek,
     toggle: toggleSidebar,
-    showPeek,
-    hidePeek,
-    leaveToggle,
   } = useCollapsibleSidebar();
-  const isSidePanelLayout =
-    isMeetingMode || (isNarrowWindow && activeView === "personal-notes" && activeNoteId != null);
+  const isSidePanelLayout = isMeetingMode;
 
   useEffect(() => {
     const drainMeeting = async () => {
@@ -146,22 +141,14 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
       <div className="flex flex-1 overflow-hidden relative">
         <div
-          className="shrink-0 transition-[width] duration-300 ease-out"
-          style={{ width: sidebarCollapsed || isSidePanelLayout ? 0 : SIDEBAR_WIDTH_PX }}
-        />
-        <div
-          className={`absolute inset-y-0 start-0 z-30 transition-transform duration-300 ease-out ${
-            !isSidePanelLayout && (!sidebarCollapsed || sidebarPeek)
-              ? "translate-x-0"
-              : "ltr:-translate-x-full rtl:translate-x-full"
-          }`}
-          onMouseEnter={sidebarCollapsed ? showPeek : undefined}
-          onMouseLeave={sidebarCollapsed ? hidePeek : undefined}
+          className={`shrink-0 overflow-hidden transition-[width] duration-300 ease-out ${isSidePanelLayout ? "w-0" : ""}`}
+          style={{ width: isSidePanelLayout ? 0 : sidebarCollapsed ? SIDEBAR_RAIL_WIDTH_PX : SIDEBAR_WIDTH_PX }}
         >
           <ControlPanelSidebar
             activeView={activeView}
             onViewChange={setActiveView}
             onOpenSettings={() => openSettings()}
+            collapsed={sidebarCollapsed}
           />
         </div>
         <main className="flex-1 flex flex-col overflow-hidden p-2">
@@ -170,8 +157,6 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
               title={navItems.find((item) => item.id === activeView)?.label ?? t("sidebar.notes")}
               sidebarCollapsed={sidebarCollapsed}
               onToggleSidebar={toggleSidebar}
-              onToggleMouseEnter={sidebarCollapsed ? showPeek : undefined}
-              onToggleMouseLeave={sidebarCollapsed ? leaveToggle : undefined}
               onOpenSearch={() => setShowSearch(true)}
               isSidePanelLayout={isSidePanelLayout}
               onExitSidePanel={handleExitSidePanel}

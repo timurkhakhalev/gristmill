@@ -1,5 +1,5 @@
 import React from "react";
-import { useShallow } from "zustand/react/shallow";
+import { Tabs } from "@heroui/react";
 import { HotkeyListInput } from "./ui/HotkeyListInput";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { usePermissions } from "../hooks/usePermissions";
@@ -9,7 +9,6 @@ import DeveloperSection from "./DeveloperSection";
 import { Button } from "./ui/button";
 import { useTranslation } from "react-i18next";
 import { useSettingsStore } from "../stores/settingsStore";
-import { selectResolvedLLMConfig } from "../config/settingsSelectors";
 import { useTheme } from "../hooks/useTheme";
 import LanguageSelector from "./ui/LanguageSelector";
 import { SettingsRow } from "./ui/SettingsSection";
@@ -222,17 +221,16 @@ function PrivacySettings() {
 }
 
 function SpeechSettings({ initialSubTab }: { initialSubTab?: string }) {
+  const { t } = useTranslation();
   const [tab, setTab] = React.useState(initialSubTab === "upload" ? "upload" : "meeting");
   return (
     <Panel>
-      <div className="flex gap-2">
-        <button className="text-xs" onClick={() => setTab("meeting")}>
-          Meeting notes
-        </button>
-        <button className="text-xs" onClick={() => setTab("upload")}>
-          Uploads
-        </button>
-      </div>
+      <Tabs selectedKey={tab} onSelectionChange={(key) => setTab(String(key))} aria-label={t("settingsPage.speechToText.title")}>
+        <Tabs.List aria-label={t("settingsPage.speechToText.title")}>
+          <Tabs.Tab id="meeting">{t("settingsPage.speechToText.tabs.noteRecording")}<Tabs.Indicator /></Tabs.Tab>
+          <Tabs.Tab id="upload">{t("settingsPage.speechToText.tabs.upload")}<Tabs.Indicator /></Tabs.Tab>
+        </Tabs.List>
+      </Tabs>
       {tab === "meeting" ? <MeetingTranscriptionPanel /> : <UploadTranscriptionPanel />}
     </Panel>
   );
@@ -240,21 +238,23 @@ function SpeechSettings({ initialSubTab }: { initialSubTab?: string }) {
 
 function LlmSettings() {
   const t = useTranslation().t;
-  const noteConfig = useSettingsStore(useShallow((s) => selectResolvedLLMConfig(s, "noteFormatting")));
+  const [task, setTask] = React.useState("transcription");
   return (
     <Panel>
       <Header
         title={t("settingsPage.aiModels.title")}
         description={t("settingsPage.aiModels.description")}
       />
-      <InferenceConfigEditor scope="noteFormatting" />
-      <div className="border-t border-border/70 pt-6">
-        <Header title={t("settingsPage.aiModels.chatTitle", { defaultValue: "Embedded chat" })} />
-        <ChatAgentSettings />
-      </div>
-      <div className="text-xs text-muted-foreground">
-        {noteConfig.provider && `Provider: ${noteConfig.provider}`}
-      </div>
+      <Tabs selectedKey={task} onSelectionChange={(key) => setTask(String(key))} aria-label={t("settingsPage.aiModels.title")}>
+        <Tabs.List aria-label={t("settingsPage.aiModels.title")}>
+          <Tabs.Tab id="transcription">{t("settingsPage.aiModels.transcriptionTask", { defaultValue: "Transcription" })}<Tabs.Indicator /></Tabs.Tab>
+          <Tabs.Tab id="summary">{t("settingsPage.aiModels.summaryTask", { defaultValue: "Meeting summary" })}<Tabs.Indicator /></Tabs.Tab>
+          <Tabs.Tab id="chat">{t("settingsPage.aiModels.chatTitle", { defaultValue: "Chat" })}<Tabs.Indicator /></Tabs.Tab>
+        </Tabs.List>
+      </Tabs>
+      {task === "transcription" && <MeetingTranscriptionPanel />}
+      {task === "summary" && <InferenceConfigEditor scope="noteFormatting" />}
+      {task === "chat" && <ChatAgentSettings />}
     </Panel>
   );
 }

@@ -1,148 +1,41 @@
 import { useEffect, useState } from "react";
+import { Button } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { Loader2, Mic, Square } from "../icons";
-import { cn } from "../lib/utils";
-import { LiveWaveform } from "../ui/LiveWaveform";
-import { GRADIENT_CIRCLE } from "../ui/gradientCircle";
-import { analyserRms } from "../../utils/audioLevel";
+import { AudioLines, Loader2, Mic, Play, Square } from "../icons";
+import { Pause } from "../icons/primitives";
 import { formatMmSs } from "../../utils/formatDuration";
-import { getMicAnalyser, useMeetingRecordingStore } from "../../stores/meetingRecordingStore";
 
-// Module-level buffer: there is a single meeting mic analyser at a time.
-const micLevelBuf: { current: Float32Array<ArrayBuffer> | null } = { current: null };
-
-function readMeetingMicLevel(): number {
-  const analyser = getMicAnalyser();
-  if (!analyser) return useMeetingRecordingStore.getState().currentMicLevel;
-  return analyserRms(analyser, micLevelBuf);
+export function RecordingWave({ className = "" }: { className?: string }) {
+  return <AudioLines size={14} className={className} aria-hidden="true" />;
 }
 
-// Same near-opaque surface the ask bar wears while recording, so the two capsules match.
-const RECORDING_SURFACE = "bg-surface-2/95 shadow-(--shadow-glass)";
-
-const WAVE_BAR_HEIGHTS = [6, 12, 9, 11];
-
-/** Four-bar pulse shown in the Transcript tab while a recording is running. */
-export function RecordingWave({ className }: { className?: string }) {
-  return (
-    <span aria-hidden="true" className={cn("flex h-3 items-center gap-px", className)}>
-      {WAVE_BAR_HEIGHTS.map((height, i) => (
-        <span
-          key={i}
-          className="w-0.5 rounded-full bg-primary animate-[ow-wave_1s_ease-in-out_infinite] motion-reduce:animate-none"
-          style={{ height, animationDelay: `${i * 0.15}s` }}
-        />
-      ))}
-    </span>
-  );
-}
-
-interface NoteRecordControlProps {
+export default function NoteRecordControl({ isRecording, isProcessing, capturePhase, captureStartedAt, disabled = false, onStart, onStop, onPause, onResume }: {
   isRecording: boolean;
   isProcessing: boolean;
-  capturePhase: "idle" | "preparing" | "recording" | "saving" | "saved" | "incomplete" | "failed";
+  capturePhase: "idle" | "preparing" | "recording" | "paused" | "saving" | "saved" | "incomplete" | "failed";
   captureStartedAt: number | null;
   disabled?: boolean;
   onStart: () => void;
   onStop: () => void;
-}
-
-/** Record button for the note header: a brand circle that widens into a stop + live-wave + timer pill. */
-export default function NoteRecordControl({
-  isRecording,
-  isProcessing,
-  capturePhase,
-  captureStartedAt,
-  disabled = false,
-  onStart,
-  onStop,
-}: NoteRecordControlProps) {
+  onPause?: () => void;
+  onResume?: () => void;
+}) {
   const { t } = useTranslation();
   const [elapsed, setElapsed] = useState(0);
-
   useEffect(() => {
-    if (!isRecording) {
-      setElapsed(0);
-      return;
-    }
-    const update = () =>
-      setElapsed(
-        captureStartedAt == null ? 0 : Math.max(0, Math.floor((Date.now() - captureStartedAt) / 1000))
-      );
+    if (!isRecording || captureStartedAt === null) return;
+    const update = () => setElapsed(Math.max(0, Math.floor((Date.now() - captureStartedAt) / 1000)));
     update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  }, [captureStartedAt, isRecording]);
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [isRecording, captureStartedAt]);
 
-  const isCapturePending = capturePhase === "preparing" || capturePhase === "saving";
-
-  return (
-    <div
-      className={cn(
-        "h-[30px] shrink-0 overflow-hidden transition-[width] duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]",
-        isRecording || isCapturePending ? "w-40" : "w-[30px]"
-      )}
-    >
-      {isCapturePending ? (
-        <span
-          className={cn(
-            "flex h-[30px] w-full items-center justify-center gap-2 rounded-full px-3 text-xs text-foreground/75",
-            RECORDING_SURFACE
-          )}
-        >
-          <Loader2 size={13} className="animate-spin" />
-          {t(`notes.editor.capture.${capturePhase}`)}
-        </span>
-      ) : isRecording ? (
-        <button
-          type="button"
-          onClick={onStop}
-          aria-label={t("notes.editor.stop")}
-          title={t("notes.editor.stop")}
-          className={cn(
-            "group flex h-[30px] w-full items-center gap-2 rounded-full ps-1 pe-3",
-            RECORDING_SURFACE,
-            "border border-primary/15 transition-[border-color] duration-200 hover:border-primary/30",
-            "dark:border-primary/25 dark:hover:border-primary/40",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          )}
-        >
-          <span
-            className={cn(
-              "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full",
-              GRADIENT_CIRCLE,
-              "transition-[filter] duration-150 group-hover:brightness-110"
-            )}
-          >
-            <Square size={8} fill="currentColor" />
-          </span>
-          <LiveWaveform readLevel={readMeetingMicLevel} bars={10} className="h-3.5 flex-1" />
-          <span className="shrink-0 text-xs font-medium tabular-nums text-foreground/85">
-            {formatMmSs(elapsed)}
-          </span>
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={onStart}
-          disabled={disabled || isProcessing}
-          aria-label={t("notes.editor.startRecording")}
-          className={cn(
-            "flex h-[30px] w-[30px] items-center justify-center rounded-full",
-            GRADIENT_CIRCLE,
-            "transition-[filter,transform] duration-150 hover:brightness-110 active:scale-95",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
-            disabled && "pointer-events-none opacity-40 saturate-0",
-            isProcessing && "pointer-events-none"
-          )}
-        >
-          {isProcessing ? (
-            <Loader2 size={14} className="animate-spin text-white/90" />
-          ) : (
-            <Mic size={15} />
-          )}
-        </button>
-      )}
-    </div>
-  );
+  if (capturePhase === "preparing" || capturePhase === "saving") return <div className="oh-capture-control"><Loader2 size={14} className="animate-spin" />{t(`notes.editor.capture.${capturePhase}`)}</div>;
+  if (isRecording || capturePhase === "paused") return <div className="oh-capture-control" role="group" aria-label={t("notes.meeting.title")}>
+    <span className={`oh-record-dot ${capturePhase === "paused" ? "oh-record-dot-paused" : ""}`} />
+    <strong className="tabular-nums">{capturePhase === "paused" ? t("notes.editor.capture.paused", { defaultValue: "Paused" }) : formatMmSs(elapsed)}</strong>
+    <Button isIconOnly size="sm" variant="ghost" aria-label={capturePhase === "paused" ? t("notes.editor.capture.resume", { defaultValue: "Resume recording" }) : t("notes.editor.capture.pause", { defaultValue: "Pause recording" })} onPress={capturePhase === "paused" ? onResume : onPause}>{capturePhase === "paused" ? <Play size={16} /> : <Pause size={16} />}</Button>
+    <Button size="sm" variant="secondary" onPress={onStop}><Square size={13} />{t("notes.editor.capture.finishMeeting", { defaultValue: "End call" })}</Button>
+  </div>;
+  return <Button size="sm" isDisabled={disabled || isProcessing} onPress={onStart}><Mic size={16} />{t("notes.editor.startRecording")}</Button>;
 }

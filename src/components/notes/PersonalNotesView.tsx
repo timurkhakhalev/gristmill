@@ -48,10 +48,10 @@ import {
 } from "../../stores/noteStore";
 import {
   useMeetingRecordingStore,
-  useIsMeetingMode,
-  useIsNarrowWindow,
   startRecording as storeStartRecording,
-  stopRecording as storeStopRecording,
+  pauseMeeting,
+  resumeMeeting,
+  finishMeeting,
   lockSpeaker,
   setSessionDiarizationEnabled,
   setSessionExpectedCount,
@@ -121,12 +121,10 @@ export default function PersonalNotesView({
   meetingRecordingRequest,
   onMeetingRecordingRequestHandled,
 }: PersonalNotesViewProps) {
-  const isMeetingMode = useIsMeetingMode();
-  const isNarrowWindow = useIsNarrowWindow();
   const { t } = useTranslation();
   const notes = useNotes();
   const activeNoteId = useActiveNoteId();
-  const isSidePanelLayout = isMeetingMode || (isNarrowWindow && activeNoteId != null);
+  const isSidePanelLayout = activeNoteId != null;
   const activeFolderId = useActiveFolderId();
   const [isSaving, setIsSaving] = useState(false);
   const [draft, setDraftState] = useState<NoteEditorDraft | null>(null);
@@ -262,9 +260,9 @@ export default function PersonalNotesView({
     });
   }, [activeNote?.calendar_event_id]);
 
-  const startRecordingForNote = useCallback(async (note: NoteItem | null) => {
+  const startRecordingForNote = useCallback(async (note: NoteItem | null, resume = false) => {
     const seedSegments = note?.transcript ? parseTranscriptSegments(note.transcript) : [];
-    await storeStartRecording({
+    const args = {
       noteId: note?.id ?? null,
       noteTitle: note?.title ?? null,
       folderId: note?.folder_id ?? null,
@@ -273,7 +271,8 @@ export default function PersonalNotesView({
       expectedCount: resolveExpectedSpeakerCount(note),
       expectedCountIsExplicit: isExplicitSpeakerCount(note?.expected_speaker_count),
       autoEndEligible: isMeetingAutoEndEligible(note),
-    });
+    };
+    await (resume ? resumeMeeting(args) : storeStartRecording(args));
   }, []);
 
   const startRecording = useCallback(
@@ -282,7 +281,7 @@ export default function PersonalNotesView({
   );
 
   const stopRecording = useCallback(async () => {
-    await storeStopRecording();
+    await finishMeeting();
   }, []);
 
   useEffect(() => {
@@ -701,6 +700,7 @@ export default function PersonalNotesView({
               key={editorNote.id}
               note={editorNote}
               onTitleChange={handleTitleChange}
+              onBackToNotes={() => setActiveNoteId(null)}
               onContentChange={handleContentChange}
               isSaving={isSaving}
               isRecording={isActiveNoteRecording}
@@ -708,6 +708,8 @@ export default function PersonalNotesView({
               recordingAllowed={meetingRecordingAllowed}
               onStartRecording={startRecording}
               onStopRecording={stopRecording}
+              onPauseRecording={() => { void pauseMeeting(); }}
+              onResumeRecording={() => { void startRecordingForNote(activeNote ?? null, true); }}
               onExportNote={handleExportNote}
               onExportTranscript={handleExportTranscript}
               enhancement={

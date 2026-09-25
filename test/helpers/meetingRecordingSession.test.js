@@ -129,6 +129,16 @@ test("restart context preserves note identity and session speaker settings", asy
       },
     }
   );
+  assert.equal(createMeetingAutoEndRestartContext("meeting-2", "meeting-2", {
+    recordingNoteId: 42,
+    recordingNoteTitle: "Planning",
+    recordingFolderId: 8,
+    meetingGroupId: "saved-meeting-group",
+    sessionDiarizationEnabled: false,
+    sessionExpectedCount: 5,
+    userTouchedStepper: true,
+    segments: seedSegments,
+  }).args.groupId, "saved-meeting-group");
   assert.equal(
     createMeetingAutoEndRestartContext("meeting-1", "meeting-2", {
       recordingNoteId: 42,

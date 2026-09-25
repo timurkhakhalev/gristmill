@@ -15,6 +15,13 @@ const credentialRefForProvider = (provider: string): string | undefined => {
   return BYOK_API_KEYS.find((entry) => entry.base === provider)?.env;
 };
 
+export function builtinMeetingSummaryInstruction(): string {
+  const action = BUILTIN_ACTIONS.find((item) => item.translationKey === DETAILED_NOTES_KEY);
+  if (!action) throw new Error("Built-in meeting summary prompt is unavailable");
+  const state = getSettings();
+  return appendDictionarySuffix(MEETING_INPUT_PREAMBLE + action.prompt, state.customDictionary ?? [], state.uiLanguage);
+}
+
 export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingProcessingConfig["transcription"]): {
   config: MeetingProcessingConfig | null;
   configError: MeetingProcessingConfigError | null;

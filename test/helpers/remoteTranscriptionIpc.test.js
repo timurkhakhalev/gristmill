@@ -10,10 +10,11 @@ const os = require("node:os");
 const path = require("node:path");
 
 let registerRemoteTranscriptionHandler;
+let transcribeAudioFileByok;
 let createUploadCancelRegistry;
 
 test.before(async () => {
-  ({ registerRemoteTranscriptionHandler } =
+  ({ registerRemoteTranscriptionHandler, transcribeAudioFileByok } =
     await import("../../src/helpers/remoteTranscriptionIpcHandler.ts"));
   ({ createUploadCancelRegistry } = await import("../../src/helpers/uploadCancelRegistry.ts"));
 });
@@ -274,8 +275,98 @@ function setup(overrides = {}) {
   const handlers = new Map();
   registerRemoteTranscriptionHandler({ handle: (channel, fn) => handlers.set(channel, fn) }, deps);
   const call = (payload) => handlers.get("transcribe-audio-file-byok")(null, payload);
-  return { call, calls, transport, registry, handlers };
+  return { call, calls, transport, registry, handlers, deps };
 }
+
+test("meeting raw-response sink is awaited before Deepgram parsing", async () => {
+  const { deps } = setup({
+    transport: makeTransport({ data: { results: {} } }),
+  });
+  const saved = [];
+  const result = await transcribeAudioFileByok(
+    deps,
+    {
+      filePath: audioFile,
+      apiKey: "dg-secret",
+      provider: "deepgram",
+      model: "nova-3",
+      transcriptionMode: "providers",
+      requestId: "meeting-raw-before-parse",
+    },
+    {
+      onRawProviderResponse: async (response) => {
+        saved.push(response);
+        throw Object.assign(new Error("durable save failed"), { code: "RAW_SAVE_FAILED" });
+      },
+    }
+  );
+
+  assert.equal(result.success, false);
+  assert.equal(result.code, "RAW_SAVE_FAILED");
+  assert.deepEqual(saved, [{ results: {} }]);
+});
+
+test("meeting raw-response sink is awaited before ElevenLabs parsing", async () => {
+  const raw = {
+    text: "Hello.",
+    words: [{ type: "word", text: "Hello.", start: 0, end: 0.5, speaker_id: "speaker_0" }],
+  };
+  const { deps } = setup({ transport: makeTransport({ data: raw }) });
+  let saved;
+  const result = await transcribeAudioFileByok(
+    deps,
+    {
+      filePath: audioFile,
+      apiKey: "el-secret",
+      provider: "elevenlabs",
+      model: "scribe_v2",
+      diarize: true,
+      transcriptionMode: "providers",
+      requestId: "meeting-elevenlabs-raw-before-parse",
+    },
+    {
+      onRawProviderResponse: async (response) => {
+        saved = response;
+        throw Object.assign(new Error("durable save failed"), { code: "RAW_SAVE_FAILED" });
+      },
+    }
+  );
+
+  assert.equal(result.success, false);
+  assert.equal(result.code, "RAW_SAVE_FAILED");
+  assert.deepEqual(saved, raw);
+});
+
+test("meeting raw-response sink is awaited before OpenAI parsing", async () => {
+  const raw = {
+    text: "Hello.",
+    segments: [{ speaker: "A", text: "Hello.", start: 0, end: 0.5 }],
+  };
+  const { deps } = setup({ transport: makeTransport({ data: raw }) });
+  let saved;
+  const result = await transcribeAudioFileByok(
+    deps,
+    {
+      filePath: audioFile,
+      apiKey: "sk",
+      provider: "openai",
+      model: "gpt-4o-mini-transcribe",
+      diarize: true,
+      transcriptionMode: "providers",
+      requestId: "meeting-openai-raw-before-parse",
+    },
+    {
+      onRawProviderResponse: async (response) => {
+        saved = response;
+        throw Object.assign(new Error("durable save failed"), { code: "RAW_SAVE_FAILED" });
+      },
+    }
+  );
+
+  assert.equal(result.success, false);
+  assert.equal(result.code, "RAW_SAVE_FAILED");
+  assert.deepEqual(saved, raw);
+});
 
 test("happy path: Bearer auth, model field, signal handed to the transport", async () => {
   const { call, calls, transport } = setup();

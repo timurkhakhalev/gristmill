@@ -61,7 +61,9 @@
     "openControlPanel": "開啟控制面板",
     "hideControlPanel": "隱藏控制面板",
     "quit": "結束 OpenHercules",
-    "tooltip": "OpenHercules"
+    "tooltip": "OpenHercules",
+    "recordingStatus": "正在錄音",
+    "stopRecording": "停止錄音"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -91,6 +93,13 @@
         "url": "URL：{{url}}",
         "hint": "請嘗試重新安裝應用程式，或使用 --log-level=debug 啟動。"
       }
+    },
+    "meetingQuit": {
+      "title": "正在錄音",
+      "message": "離開前要停止並儲存這段錄音嗎？",
+      "stopAndQuit": "停止並離開",
+      "cancel": "取消",
+      "stopFailed": "目前無法儲存錄音。OpenHercules 會保持開啟。"
     }
   },
   "startup": {
@@ -1094,7 +1103,21 @@
         "description": "Set audio and transcript retention periods. Zero means keep indefinitely."
       },
       "audioRetention": "Audio retention (days)",
-      "transcriptRetention": "Transcript retention (days)"
+      "transcriptRetention": "Transcript retention (days)",
+      "audioRetentionLabel": "會議音訊保留期限",
+      "audioRetentionDescription": "原始音訊的保留天數。0 表示保留至手動刪除。",
+      "retentionDecreaseTitle": "縮短音訊保留期限？",
+      "retentionDecreaseDescription": "下次清理時會刪除超過 {{days}} 天的錄音。",
+      "retentionDecreaseConfirm": "縮短保留期限",
+      "days": "天",
+      "deleteAllAudioLabel": "刪除已儲存的音訊",
+      "deleteAllAudioDescription": "刪除已儲存的會議音軌和舊錄音。筆記、轉錄和摘要仍會保留在此裝置上。",
+      "deleteAllAudioButton": "刪除所有音訊",
+      "deleteAllAudioTitle": "刪除所有已儲存的音訊？",
+      "deleteAllAudioConfirmDescription": "如果正在錄音，系統會安全停止且不會開始轉錄，之後再刪除已儲存音訊。",
+      "deleteAllAudioConfirm": "刪除所有音訊",
+      "deleteAllAudioDone": "已刪除 {{count}} 個音訊項目。",
+      "deleteAllAudioFailed": "有 {{count}} 個音訊項目無法刪除。請重試。"
     },
     "prompts": {
       "description": "檢視、自訂和測試用於文字整理和指令偵測的統一系統提示詞",
@@ -1430,7 +1453,7 @@
       "enhanced": "已增強",
       "saving": "儲存中",
       "transcriptEmptyTitle": "尚未錄製任何內容",
-      "transcriptEmptyDescription": "點擊錄製開始轉錄。所說的內容會即時顯示在這裡。",
+      "transcriptEmptyDescription": "處理完成後，轉錄內容會顯示在這裡。",
       "startRecording": "開始錄製",
       "generateSummary": "產生 AI 摘要",
       "startWriting": "開始撰寫...",
@@ -1441,7 +1464,23 @@
       "conversationWillAppear": "對話將顯示在這裡...",
       "linkedEvent": "關聯行程",
       "noFolder": "無資料夾",
-      "participants": "參與者"
+      "participants": "參與者",
+      "capture": {
+        "preparing": "正在準備本機錄音…",
+        "recording": "正在錄製音訊",
+        "saving": "正在儲存音訊尾段…",
+        "saved": "音訊錄製已儲存",
+        "incomplete": "錄音已儲存，但缺少部分音訊",
+        "failed": "無法開始錄音",
+        "mic": "麥克風",
+        "system": "系統音訊",
+        "active": "正在擷取音訊",
+        "reconnecting": "正在重新連線",
+        "unavailable": "無法使用",
+        "inactive": "尚未開始",
+        "writingToDisk": "正在寫入磁碟",
+        "incompleteReason": "部分音訊可能遺失。問題發生前已儲存的音訊會保留。"
+      }
     },
     "participants": {
       "attendee": "位與會者",
@@ -2142,5 +2181,60 @@
     "systemAudio": "System audio",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
+  },
+  "meetingResults": {
+    "title": "會議錄音",
+    "loadError": "無法載入錄音記錄。",
+    "selectError": "無法選取此結果。",
+    "createError": "無法建立處理工作。",
+    "retryError": "無法重試此工作。",
+    "updateRunSettings": "使用目前設定",
+    "updateConfigError": "無法更新此處理工作的設定。",
+    "playbackError": "無法準備音訊播放。",
+    "exportError": "音訊匯出失敗。",
+    "exported": "音訊已匯出。",
+    "speakerError": "無法儲存說話者修正。",
+    "deleteError": "音訊刪除失敗。你可以重試。",
+    "version": "結果版本",
+    "recording": "錄音",
+    "newAsr": "新轉錄",
+    "newSummary": "新摘要",
+    "retry": "重試",
+    "deleteAudio": "刪除音訊",
+    "retryDelete": "重試刪除音訊",
+    "deleteAudioTitle": "刪除會議原始音訊？",
+    "deleteAudioDescription": "這會移除已儲存的麥克風和系統音訊。筆記中已儲存的轉錄和摘要仍可使用。",
+    "deleteAudioConfirm": "刪除音訊",
+    "audioUnavailable": "原始音訊已刪除或無法使用。轉錄重試、播放和匯出已停用。",
+    "exportMixed": "匯出混合 WAV",
+    "exportMic": "匯出麥克風 WAV",
+    "exportSystem": "匯出系統音訊 WAV",
+    "saveSpeaker": "儲存說話者",
+    "speakerProfile": "說話者設定檔",
+    "noSpeakerProfile": "沒有設定檔",
+    "captureIncomplete": "錄音提早結束；已儲存的音訊和結果會保留。",
+    "deleteActiveNoteTitle": "停止並刪除此錄音？",
+    "deleteActiveNoteDescription": "錄音會安全停止且不會開始轉錄，之後會刪除筆記、音訊和處理記錄。",
+    "stopBeforeDeleteError": "無法安全停止錄音。筆記已保留。",
+    "stage": {
+      "prepare": "正在準備音訊",
+      "asr": "正在轉錄",
+      "normalize": "正在儲存轉錄",
+      "summary": "正在撰寫摘要"
+    },
+    "status": {
+      "pending": "等待中",
+      "running": "進行中",
+      "blocked": "已封鎖",
+      "failed": "失敗",
+      "cancelled": "已取消",
+      "complete": "已完成"
+    },
+    "capture": {
+      "recording": "正在錄音",
+      "finalizing": "正在儲存錄音",
+      "ready": "已儲存",
+      "incomplete": "未完成"
+    }
   }
 }

@@ -60,8 +60,9 @@ export interface TranscriptionDataDeps {
     getAudioBuffer: (id: number) => Buffer | null;
     deleteAudio: (id: number) => { success: boolean };
     getStorageUsage: () => { fileCount: number; totalBytes: number };
-    deleteAllAudio: () => { deleted: number };
+    deleteAllAudio: () => { deleted: number; failed: number };
   };
+  deleteAllAudio: () => Promise<{ deleted: number; failed: number }>;
   // The shared delete path (audio + row + transcription-deleted broadcast)
   // owned by the composition root.
   deleteTranscriptionInternal: (id: number) => unknown;
@@ -265,8 +266,8 @@ export function registerTranscriptionDataHandlers(
   );
 
   ipcMain.handle(transcriptionDataChannels.deleteAllAudio, async () => {
-    const result = audioStorage.deleteAllAudio();
-    try {
+    const result = await deps.deleteAllAudio();
+    if (result.failed === 0) try {
       const rows = database.getAudioFlaggedIds();
       if (rows.length > 0) {
         database.clearAudioFlags(rows.map((r) => r.id));

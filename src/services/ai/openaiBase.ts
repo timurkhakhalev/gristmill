@@ -3,6 +3,7 @@ import { getSettings } from "../../stores/settingsStore";
 import { isSecureHttpEndpoint } from "../../utils/urlUtils";
 import logger from "../../utils/logger";
 import i18n from "../../i18n";
+import { resolveSelfHostedOpenAIBase as resolveSelfHostedOpenAIBaseCore } from "./openaiBaseCore.js";
 
 // Never falls back: rerouting an invalid Custom endpoint to api.openai.com
 // would send the prompt and the custom API key to a host the user never chose.
@@ -64,10 +65,9 @@ export function canBorrowCleanupCustomKey(requestBaseUrl: string | undefined): b
 }
 
 export function resolveSelfHostedOpenAIBase(configuredBaseUrl: string): string {
-  const normalized = ensureV1Suffix(configuredBaseUrl.trim());
-  if (!normalized || !isSecureHttpEndpoint(normalized)) {
+  try {
+    return resolveSelfHostedOpenAIBaseCore(configuredBaseUrl);
+  } catch {
     throw new Error(i18n.t("reasoning.custom.httpsRequired"));
   }
-
-  return normalized;
 }

@@ -125,5 +125,3 @@ export const BYOK_API_KEYS = [
     storeKey: "chatAgentCustomApiKey",
   },
 ] as const satisfies readonly ByokApiKeyEntry[];
-
-module.exports = { BYOK_API_KEYS };

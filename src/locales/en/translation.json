@@ -60,6 +60,8 @@
   "tray": {
     "openControlPanel": "Open Control Panel",
     "hideControlPanel": "Hide Control Panel",
+    "recordingStatus": "Recording in progress",
+    "stopRecording": "Stop recording",
     "quit": "Quit OpenHercules",
     "tooltip": "OpenHercules"
   },
@@ -78,6 +80,13 @@
     "controlPanelTitle": "Control Panel"
   },
   "dialog": {
+    "meetingQuit": {
+      "title": "Recording in progress",
+      "message": "Stop and save this recording before quitting?",
+      "stopAndQuit": "Stop and Quit",
+      "cancel": "Cancel",
+      "stopFailed": "The recording could not be saved yet. OpenHercules will stay open."
+    },
     "openLink": {
       "title": "Unable to Open Link",
       "message": "Failed to open the link in your browser:\n{{url}}\n\nError: {{error}}"
@@ -1134,7 +1143,21 @@
         "description": "Set audio and transcript retention periods. Zero means keep indefinitely."
       },
       "audioRetention": "Audio retention (days)",
-      "transcriptRetention": "Transcript retention (days)"
+      "transcriptRetention": "Transcript retention (days)",
+      "audioRetentionLabel": "Meeting audio retention",
+      "audioRetentionDescription": "Number of days to keep original audio. 0 means keep it until you delete it manually.",
+      "retentionDecreaseTitle": "Reduce audio retention?",
+      "retentionDecreaseDescription": "Recordings older than {{days}} days will be deleted during the next cleanup.",
+      "retentionDecreaseConfirm": "Reduce retention",
+      "days": "days",
+      "deleteAllAudioLabel": "Delete all saved audio",
+      "deleteAllAudioDescription": "Deletes saved meeting tracks and legacy recording audio. Notes, transcripts, and summaries stay on this device.",
+      "deleteAllAudioButton": "Delete all audio",
+      "deleteAllAudioTitle": "Delete all saved audio?",
+      "deleteAllAudioConfirmDescription": "If a meeting is recording, it will stop safely without starting transcription. Saved audio will then be deleted.",
+      "deleteAllAudioConfirm": "Delete all audio",
+      "deleteAllAudioDone": "Deleted {{count}} audio item(s).",
+      "deleteAllAudioFailed": "{{count}} audio item(s) could not be deleted. Run this action again to retry."
     },
     "prompts": {
       "description": "View, customize, and test the unified system prompt that powers text cleanup and instruction detection",
@@ -1503,8 +1526,8 @@
       "raw": "Raw",
       "enhanced": "Enhanced",
       "saving": "Saving",
-      "transcriptEmptyTitle": "Nothing recorded yet",
-      "transcriptEmptyDescription": "Hit record to start transcribing. Everything said shows up here as it happens.",
+      "transcriptEmptyTitle": "Transcript not created yet",
+      "transcriptEmptyDescription": "The transcript will appear here after processing.",
       "startRecording": "Start recording",
       "generateSummary": "Generate AI Summary",
       "startWriting": "Start writing...",
@@ -1515,7 +1538,23 @@
       "conversationWillAppear": "Conversation will appear here...",
       "linkedEvent": "Linked event",
       "noFolder": "No folder",
-      "participants": "Participants"
+      "participants": "Participants",
+      "capture": {
+        "preparing": "Preparing local recording…",
+        "recording": "Recording audio",
+        "saving": "Saving audio tail…",
+        "saved": "Audio recording saved",
+        "incomplete": "Recording saved with missing audio",
+        "failed": "Recording could not start",
+        "mic": "Microphone",
+        "system": "System audio",
+        "active": "Capturing",
+        "reconnecting": "Reconnecting",
+        "unavailable": "Unavailable",
+        "inactive": "Not started",
+        "writingToDisk": "Writing to disk",
+        "incompleteReason": "Some audio may be missing. The recording keeps the audio saved before the issue."
+      }
     },
     "participants": {
       "attendee": "attendee",
@@ -2135,6 +2174,44 @@
       "unknownTool": "Unknown tool: {{name}}",
       "invalidArgs": "Invalid tool arguments for {{name}}"
     }
+  },
+  "meetingResults": {
+    "title": "Meeting recording",
+    "loadError": "Could not load recording history.",
+    "selectError": "Could not select this result.",
+    "createError": "Could not create a processing run.",
+    "retryError": "Could not retry this run.",
+    "updateRunSettings": "Use current settings",
+    "updateConfigError": "Could not update this run's settings.",
+    "playbackError": "Could not prepare audio playback.",
+    "exportError": "Audio export failed.",
+    "exported": "Audio exported.",
+    "speakerError": "Could not save speaker correction.",
+    "deleteError": "Audio deletion failed. You can retry it.",
+    "version": "Result version",
+    "recording": "Recording",
+    "newAsr": "New transcription",
+    "newSummary": "New summary",
+    "retry": "Retry",
+    "deleteAudio": "Delete audio",
+    "retryDelete": "Retry audio deletion",
+    "deleteAudioTitle": "Delete original meeting audio?",
+    "deleteAudioDescription": "This removes the saved microphone and system audio. Transcripts and summaries already saved in Notes remain available.",
+    "deleteAudioConfirm": "Delete audio",
+    "audioUnavailable": "Original audio was deleted or is unavailable. Transcription retry, playback, and audio export are disabled.",
+    "exportMixed": "Export mixed WAV",
+    "exportMic": "Export microphone WAV",
+    "exportSystem": "Export system WAV",
+    "saveSpeaker": "Save speaker",
+    "speakerProfile": "Speaker profile",
+    "noSpeakerProfile": "No profile",
+    "captureIncomplete": "Capture ended early; saved audio and results are retained.",
+    "deleteActiveNoteTitle": "Stop and delete this recording?",
+    "deleteActiveNoteDescription": "Recording will stop safely without starting transcription, then the note, audio, and processing history will be deleted.",
+    "stopBeforeDeleteError": "Recording could not be stopped safely. The note was kept.",
+    "stage": { "prepare": "Preparing audio", "asr": "Transcribing", "normalize": "Saving transcript", "summary": "Writing summary" },
+    "status": { "pending": "Waiting", "running": "In progress", "blocked": "Blocked", "failed": "Failed", "cancelled": "Cancelled", "complete": "Complete" },
+    "capture": { "recording": "Recording", "finalizing": "Saving recording", "ready": "Saved", "incomplete": "Incomplete" }
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

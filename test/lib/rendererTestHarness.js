@@ -20,6 +20,12 @@ function installBrowserGlobals(t, { initialStorage = {}, window: windowProps = {
     localStorage: storage,
     addEventListener() {},
     removeEventListener() {},
+    setTimeout(...args) {
+      return globalThis.setTimeout(...args);
+    },
+    clearTimeout(timeoutId) {
+      globalThis.clearTimeout(timeoutId);
+    },
     setInterval() {
       return 1;
     },
@@ -49,24 +55,117 @@ function installHookDom(t) {
   class HTMLElement extends Element {}
   class HTMLIFrameElement extends HTMLElement {}
 
+  function makeNode(nodeType, nodeName, namespaceURI = "http://www.w3.org/1999/xhtml") {
+    const node = {
+      nodeType,
+      nodeName,
+      tagName: nodeType === 1 ? nodeName.toUpperCase() : undefined,
+      namespaceURI: nodeType === 1 ? namespaceURI : null,
+      ownerDocument: null,
+      parentNode: null,
+      childNodes: [],
+      attributes: new Map(),
+      style: {},
+      appendChild(child) {
+        child.parentNode?.removeChild?.(child);
+        child.parentNode = this;
+        this.childNodes.push(child);
+        return child;
+      },
+      insertBefore(child, before) {
+        if (!before) return this.appendChild(child);
+        child.parentNode?.removeChild?.(child);
+        const index = this.childNodes.indexOf(before);
+        child.parentNode = this;
+        this.childNodes.splice(index < 0 ? this.childNodes.length : index, 0, child);
+        return child;
+      },
+      removeChild(child) {
+        const index = this.childNodes.indexOf(child);
+        if (index >= 0) this.childNodes.splice(index, 1);
+        child.parentNode = null;
+        return child;
+      },
+      setAttribute(name, value) { this.attributes.set(name, String(value)); },
+      removeAttribute(name) { this.attributes.delete(name); },
+      addEventListener: noop,
+      removeEventListener: noop,
+      contains(candidate) {
+        return candidate === this || this.childNodes.some((child) => child.contains?.(candidate));
+      },
+      get firstChild() { return this.childNodes[0] ?? null; },
+      get lastChild() { return this.childNodes.at(-1) ?? null; },
+      get options() { return this.childNodes.filter((child) => child.tagName === "OPTION"); },
+      get nextSibling() {
+        if (!this.parentNode) return null;
+        const siblings = this.parentNode.childNodes;
+        return siblings[siblings.indexOf(this) + 1] ?? null;
+      },
+      get textContent() {
+        return nodeType === 3 ? this.nodeValue : this.childNodes.map((child) => child.textContent ?? "").join("");
+      },
+      set textContent(value) {
+        this.childNodes.forEach((child) => { child.parentNode = null; });
+        this.childNodes = [];
+        if (value != null && String(value)) this.appendChild(document.createTextNode(String(value)));
+      },
+    };
+    if (nodeType === 3 || nodeType === 8) {
+      node.nodeValue = "";
+      node.data = "";
+    }
+    Object.setPrototypeOf(node, nodeType === 1 ? (namespaceURI === "http://www.w3.org/1999/xhtml" ? HTMLElement.prototype : Element.prototype) : Object.prototype);
+    return node;
+  }
+
   const document = {
     nodeType: 9,
     activeElement: null,
     addEventListener: noop,
     removeEventListener: noop,
+    createElement(name) {
+      const element = makeNode(1, name);
+      element.ownerDocument = document;
+      return element;
+    },
+    createElementNS(namespaceURI, name) {
+      const element = makeNode(1, name, namespaceURI);
+      element.ownerDocument = document;
+      return element;
+    },
+    createTextNode(value) {
+      const node = makeNode(3, "#text");
+      node.ownerDocument = document;
+      node.nodeValue = String(value);
+      node.data = String(value);
+      return node;
+    },
+    createComment(value) {
+      const node = makeNode(8, "#comment");
+      node.ownerDocument = document;
+      node.nodeValue = String(value);
+      node.data = String(value);
+      return node;
+    },
+    createDocumentFragment() {
+      const fragment = makeNode(11, "#document-fragment");
+      fragment.ownerDocument = document;
+      return fragment;
+    },
+    querySelector: () => null,
+    querySelectorAll: () => [],
   };
-  const container = {
-    nodeType: 1,
-    nodeName: "DIV",
-    tagName: "DIV",
-    namespaceURI: "http://www.w3.org/1999/xhtml",
-    ownerDocument: document,
-    addEventListener: noop,
-    removeEventListener: noop,
-    appendChild: noop,
-    removeChild: noop,
-    insertBefore: noop,
-  };
+  document.createRange = () => ({
+    setStart() {},
+    setEnd() {},
+    createContextualFragment: () => document.createDocumentFragment(),
+  });
+  const container = document.createElement("div");
+  document.documentElement = document.createElement("html");
+  document.head = document.createElement("head");
+  document.body = document.createElement("body");
+  document.documentElement.appendChild(document.head);
+  document.documentElement.appendChild(document.body);
   Object.assign(globalThis.window, {
     Element,
     HTMLElement,
@@ -169,8 +268,9 @@ function installMicCaptureGlobals(t) {
     smoothingTimeConstant: 0,
   });
   class FakeAudioContext {
-    constructor() {
+    constructor({ sampleRate = 48_000 } = {}) {
       this.state = "running";
+      this.sampleRate = sampleRate;
       this.audioWorklet = { addModule: async () => {} };
       this.destination = {};
     }
@@ -188,7 +288,16 @@ function installMicCaptureGlobals(t) {
   }
   class FakeAudioWorkletNode {
     constructor() {
-      this.port = { onmessage: null, postMessage() {} };
+      this.port = {
+        onmessage: null,
+        postMessage: (message) => {
+          if (message?.type === "flush") {
+            queueMicrotask(() =>
+              this.port.onmessage?.({ data: { type: "flush-complete", lastSequence: -1 } })
+            );
+          }
+        },
+      };
     }
     connect() {}
     disconnect() {}

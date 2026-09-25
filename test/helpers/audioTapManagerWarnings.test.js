@@ -21,7 +21,10 @@ function createFakeChild() {
   child.killed = false;
   child.kill = () => {
     child.killed = true;
-    setImmediate(() => child.emit("exit", 0, null));
+    setImmediate(() => {
+      child.emit("exit", 0, null);
+      child.emit("close", 0, null);
+    });
   };
   return child;
 }

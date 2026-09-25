@@ -26,7 +26,8 @@ import { registerVocabularyHandlers } from "./vocabularyIpcHandlers.js";
 import { registerContainerHandlers } from "./containerIpcHandlers.js";
 import { registerChatPersistenceHandlers } from "./chatPersistenceIpcHandlers.js";
 import { registerActionsHandlers } from "./actionsIpcHandlers.js";
-import { registerLocalFileTranscriptionHandler } from "./localFileTranscriptionIpcHandler.js";
+import { registerLocalFileTranscriptionHandler, type TranscriptionHandlerDeps } from "./localFileTranscriptionIpcHandler.js";
+import { transcribeLocalFile } from "./localFileTranscription.js";
 import {
   applyConfirmedSpeaker,
   canAutoRelabelSpeaker,
@@ -60,7 +61,7 @@ import {
 } from "./meetingCoordinatorIpcHandlers.js";
 import type { DiarizationPublicationDatabase } from "./meetingDiarizationPublication.js";
 import { registerSpeakerHandlers, type SpeakerDatabase } from "./speakerIpcHandlers.js";
-import { registerRemoteTranscriptionHandler } from "./remoteTranscriptionIpcHandler.js";
+import { registerRemoteTranscriptionHandler, transcribeAudioFileByok, type RemoteTranscriptionDeps } from "./remoteTranscriptionIpcHandler.js";
 import { registerReasoningHandlers, type EnterpriseStreamModel } from "./reasoningIpcHandlers.js";
 import { registerFileDiarizationHandlers } from "./fileDiarizationIpcHandlers.js";
 import { registerUploadCancelHandler } from "./uploadCancelIpcHandler.js";
@@ -74,10 +75,29 @@ import type { LlmModelManagerLike, LlmDownloadStatusTracker } from "./localLlmMo
 import type { WhisperManagerLike, ParakeetManagerLike } from "./localModelLifecycleIpcHandlers.js";
 import type { DiarizationPublicationDiarizationManager } from "./meetingDiarizationPublication.js";
 import { registerTranscriptionDataHandlers } from "./transcriptionDataIpcHandlers.js";
+import { MeetingProcessingWorker, registerMeetingProcessingHandlers } from "./meetingProcessing.js";
+import {
+  meetingProcessingChannels,
+  meetingRecordingPlaybackRequestSchema,
+  meetingRecordingExportRequestSchema,
+  meetingRecordingAudioRequestSchema,
+} from "../contracts/meetingProcessing.js";
+import {
+  canPlayMeetingRun,
+  copyMeetingAudioExport,
+  createMeetingAudioOperationRegistry,
+  exportMeetingSourceTrack,
+} from "./meetingAudioExport.js";
+import { prepareMeetingAudio } from "./meetingAudioMixer.js";
+import { recognizeMeetingSpeakers } from "./meetingSpeakerRecognition.js";
+import { generateMeetingSummary } from "./meetingSummary.js";
+import { BYOK_API_KEYS } from "../config/secretKeys.js";
 import { registerDesktopSettingsHandlers } from "./desktopSettingsIpcHandlers.js";
 import { listLocalTranscriptionModels } from "./localTranscriptionModels.js";
+import { getEnterpriseAIModel } from "./enterpriseAiProviders.js";
 import markdownMirror from "./markdownMirror.js";
 import modelManagerBundle from "./modelManagerBridge.js";
+import localReasoningBridge from "../services/localReasoningBridge.js";
 import type { NoteItem } from "../contracts/notes.js";
 import type { TranscriptionResponse } from "../contracts/localFileTranscription.js";
 import type { EnvironmentManagerWithByok } from "./environment.js";
@@ -128,10 +148,6 @@ interface IPCHandlersManagerOptions {
   oauthProtocolRegistered: boolean;
   oauthProtocol: string;
 }
-
-// The WindowManager class has no mainWindow property; the main-window seams
-// below read it as an absent optional, exactly like the untyped JS did.
-type IpcWindowManager = WindowManager & { mainWindow?: BrowserWindow | null };
 
 // The multipart transport behind the remote transcription handler. Kept here
 // (not in the typed module) because it owns the Electron net session; the
@@ -273,7 +289,7 @@ export class IPCHandlers {
   whisperManager: WhisperManager;
   parakeetManager: ParakeetManager;
   diarizationManager: DiarizationManager;
-  windowManager: IpcWindowManager;
+  windowManager: WindowManager;
   getTrayManager: () => TrayManager | null;
   googleCalendarManager: GoogleCalendarManager;
   microsoftCalendarManager: MicrosoftCalendarManager;
@@ -302,6 +318,9 @@ export class IPCHandlers {
   _granolaImportPending: import("./noteFilesIpcHandlers.js").GranolaImportState | null;
   whisperVadSettings: Record<string, unknown>;
   _meetingCoordinator: MeetingCoordinatorRuntime | null = null;
+  _meetingProcessing: MeetingProcessingWorker | null = null;
+  _meetingAudioOperations: ReturnType<typeof createMeetingAudioOperationRegistry>;
+  _meetingRecoveryReady = false;
 
   constructor(managers: IPCHandlersManagerOptions) {
     this.environmentManager = managers.environmentManager;
@@ -323,6 +342,7 @@ export class IPCHandlers {
     this._uploadCancelRegistry = createUploadCancelRegistry();
     this._enterpriseReasoningRequests = new AgentStreamRequestRegistry();
     this._enterpriseStreams = new AgentStreamRequestRegistry();
+    this._meetingAudioOperations = createMeetingAudioOperationRegistry();
     this._hotkeyCaptureMode = false;
     this.audioStorageManager = new AudioStorageManager();
     this.localModelDownloadStatus = new LocalModelDownloadStatus();
@@ -337,6 +357,14 @@ export class IPCHandlers {
       ...DEFAULT_WHISPER_VAD_CONFIG,
     };
     liveSpeakerIdentifier.setDiarizationManager(this.diarizationManager);
+    try {
+      this.audioStorageManager.meetingRecordings.recover(this.databaseManager);
+      this._meetingRecoveryReady = true;
+    } catch (error) {
+      debugLogger.error("Meeting recording recovery failed; background processing is paused", {
+        error: error instanceof Error ? error.message : String(error),
+      }, "meeting");
+    }
     this._setupRetentionCleanup();
     this.setupHandlers();
   }
@@ -555,18 +583,25 @@ export class IPCHandlers {
 
   _setupRetentionCleanup(): void {
     const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
-    // No sweep at startup: _retentionSettings still holds the 30-day default
+    // No sweep at startup: _retentionSettings still holds an unverified default
     // until the renderer syncs, so sweeping here deletes audio a user set to
     // keep for 60/90 days or forever (#1370). The first sync runs the first
     // sweep instead.
     this._retentionCleanupInterval = setInterval(() => {
-      if (this._retentionSettingsSynced) this._runRetentionCleanup();
+      if (this._retentionSettingsSynced) {
+        void this._runRetentionCleanup().then((ready) => {
+          if (ready) this._meetingProcessing?.onRetentionReady();
+        });
+      }
     }, SIX_HOURS_MS);
   }
 
-  _runRetentionCleanup(): void {
+  async _runRetentionCleanup(): Promise<boolean> {
     const { audioRetentionDays, transcriptRetentionDays } = this._retentionSettings;
     try {
+      // Durable deletion intents from a previous process must settle before the
+      // worker can read any recording or result belonging to them.
+      let ready = await this._processMeetingDeletionIntents();
       if (transcriptRetentionDays > 0) {
         const { ids } =
           this.databaseManager.deleteTranscriptionsExpiredBefore(transcriptRetentionDays);
@@ -577,14 +612,230 @@ export class IPCHandlers {
       }
       if (audioRetentionDays > 0) {
         this.audioStorageManager.cleanupExpiredAudio(audioRetentionDays, this.databaseManager);
+        const cutoff = Date.now() - audioRetentionDays * 86_400_000;
+        for (const recording of this.databaseManager.listAllMeetingRecordings()) {
+          if (recording.audioState !== "available" || recording.captureState === "recording" || recording.captureState === "finalizing") continue;
+          const endedAt = recording.endedAt ? Date.parse(recording.endedAt) : NaN;
+          if (!Number.isFinite(endedAt) || endedAt >= cutoff) continue;
+          const intent = this.databaseManager.beginMeetingAudioDeletion(recording.id);
+          if (intent && !(await this._finishMeetingDeletion(intent))) ready = false;
+        }
       }
+      return ready;
     } catch (error) {
       debugLogger.error(
         "Retention cleanup failed",
         { error: (error as Error).message },
         "audio-storage"
       );
+      return false;
     }
+  }
+
+  async _finishMeetingDeletion(intent: import("../contracts/meetingRecording.js").MeetingDeletionIntentDto): Promise<boolean> {
+    try {
+      if (intent.kind === "audio") {
+        if (!intent.recordingId) throw new Error("Invalid meeting audio deletion intent");
+        await this._meetingAudioOperations.cancelAndWait(intent.recordingId);
+        await this._meetingProcessing?.cancelRecordingForDeletion(intent.recordingId);
+        this.audioStorageManager.meetingRecordings.removeRecordingAudio(intent.recordingId);
+        if (!this.databaseManager.completeMeetingAudioDeletion(intent.id).success) {
+          throw new Error("Meeting audio deletion state was not completed");
+        }
+        for (const run of this.databaseManager.listMeetingProcessingRuns(intent.recordingId)) {
+          broadcastToWindows("meeting-processing-updated", { recordingId: intent.recordingId, runId: run.id });
+        }
+        return true;
+      }
+
+      const { recordingIds, runIds } = this.databaseManager.getMeetingNoteStorageIds(intent.noteId);
+      await Promise.all(recordingIds.map((recordingId) => this._meetingAudioOperations.cancelAndWait(recordingId)));
+      for (const recordingId of recordingIds) {
+        await this._meetingProcessing?.cancelRecordingForDeletion(recordingId, true);
+      }
+      this.audioStorageManager.meetingRecordings.removeNoteFiles(recordingIds, runIds);
+      if (!this.databaseManager.completeMeetingNoteDeletion(intent.id).success) {
+        throw new Error("Meeting note deletion state was not completed");
+      }
+      setImmediate(() => sendNoteDeleted({ id: intent.noteId }));
+      this._asyncMirrorDelete(intent.noteId);
+      return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const safeCode = typeof code === "string" && /^[A-Z0-9_]{1,64}$/.test(code)
+        ? code
+        : "file-operation-failed";
+      this.databaseManager.failMeetingDeletion(intent.id, safeCode);
+      debugLogger.error("Meeting recording deletion failed", {
+        intentId: intent.id,
+        kind: intent.kind,
+        error: error instanceof Error ? error.message : String(error),
+      }, "audio-storage");
+      return false;
+    }
+  }
+
+  async _processMeetingDeletionIntents(): Promise<boolean> {
+    let success = true;
+    for (const intent of this.databaseManager.listMeetingDeletionIntents()) {
+      if (!(await this._finishMeetingDeletion(intent))) success = false;
+    }
+    return success;
+  }
+
+  async _deleteAllAudio(): Promise<{ deleted: number; failed: number }> {
+    if (this._meetingCoordinator?.isRecording()) {
+      const stopped = await this._meetingCoordinator.requestSafeStop(true);
+      if (!stopped.success) throw new Error("Active meeting recording could not be stopped safely");
+    }
+    const legacy = this.audioStorageManager.deleteAllAudio();
+    let deleted = legacy.deleted;
+    let failed = legacy.failed;
+    for (const recording of this.databaseManager.listAllMeetingRecordings()) {
+      if (recording.audioState === "deleted") continue;
+      try {
+        const intent = this.databaseManager.beginMeetingAudioDeletion(recording.id);
+        if (!intent || !(await this._finishMeetingDeletion(intent))) failed += 1;
+        else deleted += 1;
+      } catch (error) {
+        failed += 1;
+        debugLogger.error("Failed to delete meeting audio", {
+          recordingId: recording.id,
+          error: error instanceof Error ? error.message : String(error),
+        }, "audio-storage");
+      }
+    }
+    return { deleted, failed };
+  }
+
+  _registerMeetingRecordingAssetHandlers(): void {
+    const storage = this.audioStorageManager.meetingRecordings;
+    const database = this.databaseManager;
+
+    ipcMain.handle(meetingProcessingChannels.getPlaybackPath, async (_event, payload: unknown) => {
+      try {
+        const parsed = meetingRecordingPlaybackRequestSchema.parse(payload);
+        const recording = database.getMeetingRecording(parsed.recordingId);
+        const run = database.getMeetingProcessingRun(parsed.runId);
+        if (!recording || recording.audioState !== "available" || !run || run.recordingId !== recording.id) {
+          return { success: false, error: "meeting-audio-unavailable" };
+        }
+        if (!canPlayMeetingRun(recording, run)) {
+          return { success: false, error: "meeting-result-not-selected" };
+        }
+        return await this._meetingAudioOperations.run(recording.id, async (signal) => {
+          if (signal.aborted) throw new Error("Meeting audio operation cancelled");
+          const currentRecording = database.getMeetingRecording(recording.id);
+          const currentRun = database.getMeetingProcessingRun(run.id);
+          if (
+            !currentRecording || currentRecording.audioState !== "available" ||
+            !currentRun || currentRun.recordingId !== currentRecording.id
+          ) {
+            return { success: false, error: "meeting-audio-unavailable" };
+          }
+          if (!canPlayMeetingRun(currentRecording, currentRun)) {
+            return { success: false, error: "meeting-result-not-selected" };
+          }
+          let audioPath = storage.getDerivedAudioPath(recording.id, run.id);
+          if (!fs.existsSync(audioPath)) {
+            await prepareMeetingAudio(
+              storage,
+              currentRecording,
+              run.id,
+              database.listMeetingRecordingEpochs(recording.id),
+              { signal }
+            );
+            audioPath = storage.getDerivedAudioPath(recording.id, run.id);
+          }
+          if (signal.aborted) throw new Error("Meeting audio operation cancelled");
+          const stats = await fs.promises.stat(audioPath);
+          if (!stats.isFile()) throw new Error("Meeting playback audio is unavailable");
+          if (signal.aborted) throw new Error("Meeting audio operation cancelled");
+          approveAudioPath(audioPath);
+          return { success: true, path: audioPath };
+        });
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle(meetingProcessingChannels.exportAudio, async (_event, payload: unknown) => {
+      try {
+        const parsed = meetingRecordingExportRequestSchema.parse(payload);
+        const recording = database.getMeetingRecording(parsed.recordingId);
+        if (!recording || recording.audioState !== "available") {
+          return { success: false, error: "meeting-audio-unavailable" };
+        }
+        const result = await dialog.showSaveDialog({
+          defaultPath: `OpenHercules-meeting-${parsed.source}.wav`,
+          filters: [{ name: "WAV audio", extensions: ["wav"] }],
+        });
+        if (result.canceled || !result.filePath) return { success: false };
+        const destination = path.resolve(result.filePath);
+        if (!(await fs.promises.stat(path.dirname(destination))).isDirectory()) {
+          throw new Error("Selected export folder is unavailable");
+        }
+        const currentRecording = database.getMeetingRecording(parsed.recordingId);
+        if (!currentRecording || currentRecording.audioState !== "available") {
+          return { success: false, error: "meeting-audio-unavailable" };
+        }
+        const runId = parsed.source === "mixed" ? parsed.runId ?? currentRecording.currentRunId : null;
+        const run = runId ? database.getMeetingProcessingRun(runId) : null;
+        if (parsed.source === "mixed" && (!run || run.recordingId !== currentRecording.id || !run.hasTranscript)) {
+          return { success: false, error: "meeting-result-not-selected" };
+        }
+        return await this._meetingAudioOperations.run(currentRecording.id, async (signal) => {
+          if (signal.aborted) throw new Error("Meeting audio operation cancelled");
+          const latestRecording = database.getMeetingRecording(currentRecording.id);
+          if (!latestRecording || latestRecording.audioState !== "available") {
+            return { success: false, error: "meeting-audio-unavailable" };
+          }
+          if (parsed.source === "mic" || parsed.source === "system") {
+            await exportMeetingSourceTrack(
+              storage,
+              latestRecording,
+              parsed.source,
+              database.listMeetingRecordingEpochs(latestRecording.id),
+              destination,
+              signal
+            );
+            return { success: true };
+          }
+          const latestRun = runId ? database.getMeetingProcessingRun(runId) : null;
+          if (!latestRun || latestRun.recordingId !== latestRecording.id || !latestRun.hasTranscript) {
+            return { success: false, error: "meeting-result-not-selected" };
+          }
+          let sourcePath = storage.getDerivedAudioPath(latestRecording.id, latestRun.id);
+          if (!fs.existsSync(sourcePath)) {
+            await prepareMeetingAudio(
+              storage,
+              latestRecording,
+              latestRun.id,
+              database.listMeetingRecordingEpochs(latestRecording.id),
+              { signal }
+            );
+            sourcePath = storage.getDerivedAudioPath(latestRecording.id, latestRun.id);
+          }
+          await copyMeetingAudioExport(sourcePath, destination, signal);
+          return { success: true };
+        });
+      } catch (error) {
+        debugLogger.error("Meeting audio export failed", {
+          error: error instanceof Error ? error.message : String(error),
+        }, "audio-storage");
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    const deleteAudio = async (payload: unknown) => {
+      const parsed = meetingRecordingAudioRequestSchema.parse(payload);
+      const intent = database.beginMeetingAudioDeletion(parsed.recordingId);
+      if (!intent) return { success: false, error: "meeting-audio-unavailable" };
+      const success = await this._finishMeetingDeletion(intent);
+      return { success, ...(success ? {} : { error: "meeting-audio-delete-failed" }) };
+    };
+    ipcMain.handle(meetingProcessingChannels.deleteAudio, (_event, payload: unknown) => deleteAudio(payload));
+    ipcMain.handle(meetingProcessingChannels.retryAudioDeletion, (_event, payload: unknown) => deleteAudio(payload));
   }
 
   _syncStartupEnv(setVars: Record<string, string>, clearVars: string[] = []): void {
@@ -666,9 +917,7 @@ export class IPCHandlers {
       mintStoredCortiToken: (tokenOptions) => this._mintStoredCortiToken(tokenOptions),
       generateText: (options) => require("ai").generateText(options),
       getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
-        (
-          require("./enterpriseAiProviders") as typeof import("./enterpriseAiProviders.js")
-        ).getEnterpriseAIModel(
+        getEnterpriseAIModel(
           provider,
           model,
           apiKey,
@@ -694,18 +943,21 @@ export class IPCHandlers {
     registerTranscriptionDataHandlers(ipcMain, {
       database: this.databaseManager,
       audioStorage: this.audioStorageManager,
+      deleteAllAudio: () => this._deleteAllAudio(),
       deleteTranscriptionInternal: (id) => this.deleteTranscriptionInternal(id),
       buildSpeakerMappings: (noteId) => this._buildSpeakerMappings(noteId),
       queueNoteNavigation: (payload) => this.windowManager.queueNoteNavigation(payload),
       consumePendingNoteNavigation: () => this.windowManager.consumePendingNoteNavigation(),
       retention: {
         getCurrentSettings: () => this._retentionSettings,
-        getOwner: () => this.windowManager.mainWindow?.webContents,
+        getOwner: () => this.windowManager.controlPanelWindow?.webContents,
         hasSynced: () => this._retentionSettingsSynced,
         onSettingsChanged: (settings) => {
           this._retentionSettings = settings;
           this._retentionSettingsSynced = true;
-          this._runRetentionCleanup();
+          void this._runRetentionCleanup().then((ready) => {
+            if (ready) this._meetingProcessing?.onRetentionReady();
+          });
           // First point at which the local-history switch is known to be real.
           // After the sweep, so expired transcripts are gone before they can be
           // reconstructed into counters the sweep would only have to purge.
@@ -783,7 +1035,7 @@ export class IPCHandlers {
       oauthProtocolRegistered: this.oauthProtocolRegistered,
       oauthProtocol: this.oauthProtocol,
       getTrayManager: () => this.getTrayManager(),
-      sendToMainWindow: (channel) => this.windowManager.mainWindow?.webContents?.send(channel),
+      sendToMainWindow: (channel) => this.windowManager.controlPanelWindow?.webContents?.send(channel),
       stopWhisperServer: () => this.whisperManager.stopServer(),
       stopParakeetServer: () => this.parakeetManager.stopServer(),
       stopLlamaServer: () => modelManager.stopServer(),
@@ -796,7 +1048,7 @@ export class IPCHandlers {
         shutdownDiarization: () => this.diarizationManager.shutdown(),
         revokeGoogleTokens: () => this.googleCalendarManager.revokeAllTokens(),
         closeDatabase: () => this.databaseManager.db.close(),
-        deleteAllAudio: () => this.audioStorageManager.deleteAllAudio(),
+        deleteAllAudio: () => this._deleteAllAudio(),
         deleteWhisperModels: () => {
           const { getModelsDirForService } =
             require("./modelDirUtils") as typeof import("./modelDirUtils.js");
@@ -885,7 +1137,7 @@ export class IPCHandlers {
 
     // Local file transcription lives in the typed module; the shared
     // execution below it also serves the CLI bridge.
-    registerLocalFileTranscriptionHandler(ipcMain, {
+    const localFileTranscriptionDeps: TranscriptionHandlerDeps = {
       readFile: (filePath) => fs.readFileSync(filePath),
       resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
       isSherpaLocalProvider: (provider) => isSherpaLocalProvider(provider),
@@ -897,12 +1149,13 @@ export class IPCHandlers {
       uploadCancelRegistry: this._uploadCancelRegistry,
       logDebug: (message, data) => debugLogger.debug(message, data),
       logError: (message, data) => debugLogger.error(message, data),
-    });
+    };
+    registerLocalFileTranscriptionHandler(ipcMain, localFileTranscriptionDeps);
 
     // Remote (BYOK/self-hosted) transcription lives in the typed module; the
     // route resolver is re-run there as the trust boundary, and every active
     // transport receives the cancel registry's AbortSignal.
-    registerRemoteTranscriptionHandler(ipcMain, {
+    const remoteTranscriptionDeps: RemoteTranscriptionDeps = {
       resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
       readFile: (filePath) => fs.readFileSync(filePath),
       fileSize: (filePath) => fs.statSync(filePath).size,
@@ -927,7 +1180,110 @@ export class IPCHandlers {
       logDebug: (message, data) => debugLogger.debug(message, data),
       logWarn: (message, data) => debugLogger.warn(message, data),
       logError: (message, data) => debugLogger.error(message, data),
+    };
+    registerRemoteTranscriptionHandler(ipcMain, remoteTranscriptionDeps);
+
+    const getMeetingCredential = (reference: string | undefined, provider: string): string => {
+      if (reference === "CUSTOM_TRANSCRIPTION_API_KEY") return this.environmentManager.getCustomTranscriptionKey();
+      if (reference === "CUSTOM_CLEANUP_API_KEY") return this.environmentManager.getCleanupCustomKey();
+      if (reference === "BEDROCK_ACCESS_KEY_ID") return this.environmentManager.getBedrockAccessKeyId();
+      if (reference === "BEDROCK_SECRET_ACCESS_KEY") return this.environmentManager.getBedrockSecretAccessKey();
+      if (reference === "BEDROCK_SESSION_TOKEN") return this.environmentManager.getBedrockSessionToken();
+      if (reference === "AZURE_OPENAI_API_KEY") return this.environmentManager.getAzureApiKey();
+      if (reference === "VERTEX_API_KEY") return this.environmentManager.getVertexApiKey();
+      const key = BYOK_API_KEYS.find((entry) => entry.env === reference) ??
+        BYOK_API_KEYS.find((entry) => entry.base === provider);
+      return key ? this.environmentManager[key.get]() : "";
+    };
+    const meetingWorker = new MeetingProcessingWorker({
+      database: this.databaseManager,
+      storage: this.audioStorageManager.meetingRecordings,
+      isCaptureActive: () => this._meetingCoordinator?.isRecording() === true,
+      transcribeRemote: (request, onRawProviderResponse, signal) =>
+        transcribeAudioFileByok(remoteTranscriptionDeps, request, { onRawProviderResponse, signal }),
+      transcribeLocal: (audioPath, options) => {
+        const approvedPath = resolveAllowedAudioPath(audioPath);
+        if (!approvedPath) {
+          return Promise.resolve({ success: false, error: "File path not allowed", code: "AUDIO_PATH_NOT_ALLOWED" });
+        }
+        return transcribeLocalFile(localFileTranscriptionDeps, approvedPath, options);
+      },
+      diarizeLocal: async (audioPath, options) => {
+        if (!this.diarizationManager.isModelDownloaded()) {
+          throw Object.assign(new Error("Local diarization models are not installed"), {
+            code: "DIARIZATION_MODEL_MISSING",
+          });
+        }
+        const resolveThreshold = (
+          require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")
+        ).resolveClusterThreshold;
+        const dropNegligible = (
+          require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")
+        ).dropNegligibleClusters;
+        const expected = options.expectedSpeakerCount;
+        const diarized = await this.diarizationManager.diarize(audioPath, {
+          numSpeakers: expected && expected > 0 ? expected : -1,
+          threshold: resolveThreshold(options.durationSeconds, undefined),
+          signal: options.signal,
+        });
+        options.signal.throwIfAborted();
+        const meaningful = dropNegligible(diarized) ?? [];
+        return this.diarizationManager.capSpeakerClusters(
+          meaningful,
+          expected && expected > 0 ? expected : MAX_SPEAKER_COUNT
+        ).map(({ speaker, start, end }) => ({ speaker, start, end }));
+      },
+      summarize: async (input, summaryConfig, signal) => {
+        const providers = await import("./meetingAiProviders.js");
+        return generateMeetingSummary(input, summaryConfig, {
+          getAIModel: (provider, model, apiKey, baseUrl, options) =>
+            providers.getMeetingAIModel(provider, model, apiKey, baseUrl, options),
+          generateText: (options) => require("ai").generateText(options),
+          processLocalText: (text, model, options, abortSignal) =>
+            localReasoningBridge.processText(text, model, options, abortSignal),
+          getCredential: getMeetingCredential,
+          getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
+            getEnterpriseAIModel(provider, model, apiKey, enterprise),
+          validateEnterpriseEndpoint,
+          runBedrockRequest: (operation, options) => runBedrockRequest(operation, options),
+        }, signal);
+      },
+      recognizeSpeakers: async (recording, run, transcript, audioPath, signal) => {
+        const approvedAudioPath = resolveAllowedAudioPath(audioPath);
+        if (!approvedAudioPath) return [];
+        const tempDir = (require("./safeTempDir") as typeof import("./safeTempDir.js")).getSafeTempDir();
+        const speakerEmbeddings = require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings;
+        const ffmpeg = require("./ffmpegUtils") as typeof import("./ffmpegUtils.js");
+        const corrections = await recognizeMeetingSpeakers(transcript, approvedAudioPath, signal, {
+          speakerEmbeddings,
+          getProfiles: () => this.databaseManager.getSpeakerProfiles(true),
+          convertToWav: (inputPath, outputPath, options) => ffmpeg.convertToWav(inputPath, outputPath, options),
+          createTempPath: () => path.join(tempDir, `meeting-speakers-${crypto.randomUUID()}.wav`),
+          removeFile: (filePath) => fs.rmSync(filePath, { force: true }),
+          logSkipped: (error) => debugLogger.debug("Post-stop speaker recognition skipped", {
+            recordingId: recording.id,
+            runId: run.id,
+            error: error instanceof Error ? error.message : String(error),
+          }, "speaker"),
+        });
+        debugLogger.debug("Post-stop speaker recognition finished", {
+          recordingId: recording.id,
+          runId: run.id,
+          recognizedCount: corrections.length,
+        }, "speaker");
+        return corrections;
+      },
+      getCredential: getMeetingCredential,
+      onNoteProjectionChanged: (noteId) => {
+        const note = this.databaseManager.getNote(noteId);
+        if (note) sendNoteUpdated(note);
+      },
+      onChanged: (recordingId, runId) =>
+        broadcastToWindows("meeting-processing-updated", { recordingId, runId }),
     });
+    this._meetingProcessing = meetingWorker;
+    registerMeetingProcessingHandlers(ipcMain, meetingWorker);
+    this._registerMeetingRecordingAssetHandlers();
 
     // The explicit hard cancel of one managed upload execution: aborts the
     // transcription, diarization and transport registered under the id.
@@ -984,8 +1340,8 @@ export class IPCHandlers {
     // eager-loads the enterprise SDKs.
     registerReasoningHandlers(ipcMain, {
       localService: (
-        require("../services/localReasoningBridge") as typeof import("../services/localReasoningBridge.js")
-      ).default,
+        localReasoningBridge
+      ),
       getAnthropicKey: () => this.environmentManager.getAnthropicKey(),
       proxyFetch: (url, init) => proxyFetch(url, init as RequestInit),
       extractAnthropicText,
@@ -997,9 +1353,7 @@ export class IPCHandlers {
       validateEnterpriseEndpoint,
       generateText: (options) => require("ai").generateText(options),
       getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
-        (
-          require("./enterpriseAiProviders") as typeof import("./enterpriseAiProviders.js")
-        ).getEnterpriseAIModel(
+        getEnterpriseAIModel(
           provider,
           model,
           apiKey,
@@ -1137,7 +1491,9 @@ export class IPCHandlers {
     // only wires its dependencies. The meeting-state callbacks the notes and
     // speaker verticals need come from its runtime handle.
     this._meetingCoordinator = registerMeetingCoordinatorHandlers(ipcMain, {
-      databaseManager: this.databaseManager as unknown as DiarizationPublicationDatabase,
+      databaseManager: this.databaseManager as unknown as DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase,
+      meetingRecordingStorage: this.audioStorageManager.meetingRecordings,
+      cancelInitialProcessingRun: (runId) => this._meetingProcessing?.cancelRun(runId) ?? false,
       diarizationManager: this
         .diarizationManager as unknown as DiarizationPublicationDiarizationManager,
       meetingDetectionEngine: this.meetingDetectionEngine,
@@ -1185,6 +1541,20 @@ export class IPCHandlers {
       consumePendingMeetingNoteNavigation: () =>
         this.windowManager.consumePendingMeetingNoteNavigation() ?? null,
       showNotificationWindow: (sender) => this.windowManager.showNotificationWindow(sender),
+      setMeetingCaptureState: (active) =>
+        this.getTrayManager()?.setMeetingCaptureStatus(
+          active,
+          active ? () => this.windowManager.stopMeetingCaptureFromMenu() : undefined
+        ),
+      onCaptureStarted: () => this._meetingProcessing?.captureStarted(),
+      onCaptureStopped: () => this._meetingProcessing?.captureStopped(),
+    });
+    this.windowManager.setMeetingCaptureQuitGuard({
+      isRecording: () => this._meetingCoordinator?.isRecording() === true,
+      stop: async () => {
+        const result = await this._meetingCoordinator?.requestSafeStop();
+        return { success: result?.success === true };
+      },
     });
 
     registerSpeakerHandlers(ipcMain, {
@@ -1369,7 +1739,15 @@ export class IPCHandlers {
     return result;
   }
 
-  deleteNoteInternal(id: number) {
+  async deleteNoteInternal(id: number): Promise<{ success: boolean }> {
+    if (!this.databaseManager.getNote(id)) return { success: false };
+    const recordings = this.databaseManager.listMeetingRecordingsForNote(id);
+    if (recordings.length > 0) {
+      const intent = this.databaseManager.beginMeetingNoteDeletion(id);
+      if (!intent) return { success: false };
+      const success = await this._finishMeetingDeletion(intent);
+      return { success };
+    }
     const result = this.databaseManager.deleteNote(id);
     if (result?.success) {
       setImmediate(() => sendNoteDeleted({ id }));

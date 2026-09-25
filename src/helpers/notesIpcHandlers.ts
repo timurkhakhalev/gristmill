@@ -157,7 +157,7 @@ export function registerNotesHandlers(
     const [id] = parseArgs(deleteNoteArgsSchema, args);
     // deleteNoteInternal owns the delete event and mirror cleanup; validate
     // only its result shape here.
-    const raw = deps.deleteNoteInternal(id);
+    const raw = await deps.deleteNoteInternal(id);
     const result = noteDeleteResultSchema.safeParse(raw);
     if (!result.success) {
       throw new Error("DatabaseManager returned an unexpected delete result");

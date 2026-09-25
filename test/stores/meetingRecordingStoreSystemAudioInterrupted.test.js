@@ -11,11 +11,12 @@ const {
 // several times in one call and each break is worth surfacing (#1990).
 
 const START_ARGS = {
-  noteId: null,
-  noteTitle: null,
+  noteId: 11,
+  noteTitle: "Meeting",
   folderId: null,
   autoEndEligible: false,
 };
+const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
 
 function createElectronAPI({ systemAudioMode, systemAudioStrategy }) {
   const listeners = { systemAudioInterrupted: null, systemAudioResumed: null };
@@ -29,16 +30,17 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }) {
     }),
     meetingTranscriptionStart: async () => ({
       success: true,
+      recordingId: RECORDING_ID,
+      originAt: new Date().toISOString(),
       systemAudioMode,
       systemAudioStrategy,
     }),
     meetingTranscriptionSetSystemAudioAvailable: async () => ({ success: true }),
     meetingTranscriptionStop: async () => ({ success: true }),
-    meetingTranscriptionSend: () => {},
-    onMeetingTranscriptionSegment: noopListener,
-    onMeetingSpeakerIdentified: noopListener,
-    onMeetingSpeakersMerged: noopListener,
-    onMeetingSessionSpeakerConfigUpdated: noopListener,
+    meetingTranscriptionSend: async (_buffer, _source, _sessionId, packet) => ({
+      success: true,
+      sequence: packet.sequence,
+    }),
     onMeetingTranscriptionError: noopListener,
     onMeetingTranscriptionFatalError: noopListener,
     onMeetingSystemAudioSilent: noopListener,
@@ -56,13 +58,14 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }) {
         if (listeners.systemAudioResumed === callback) listeners.systemAudioResumed = null;
       };
     },
+    onMeetingTranscriptionStopRequested: noopListener,
   };
   return { api, listeners };
 }
 
 async function loadStore(t, api) {
   installBrowserGlobals(t, {
-    window: { electronAPI: api, setTimeout: (fn, ms) => setTimeout(fn, ms) },
+    window: { electronAPI: api },
   });
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-meeting-system-audio-interrupted-test-",
@@ -70,7 +73,21 @@ async function loadStore(t, api) {
   return vite.ssrLoadModule("/stores/meetingRecordingStore.ts");
 }
 
+async function stopStoreAndAssertOutcome(store) {
+  const expectedStopped = store.useMeetingRecordingStore.getState().isRecording;
+  const result = await store.stopRecording();
+  assert.equal(result.stopped, expectedStopped);
+}
+
 async function startWithPendingMicrophone(t, startResult) {
+  let store;
+  let starting;
+  let finishStart = async () => {};
+  t.after(async () => {
+    await finishStart();
+    if (store) await stopStoreAndAssertOutcome(store);
+  });
+
   installMicCaptureGlobals(t);
   const micStream = await navigator.mediaDevices.getUserMedia();
   const microphone = Promise.withResolvers();
@@ -89,16 +106,12 @@ async function startWithPendingMicrophone(t, startResult) {
     mainStarted.resolve();
     return startResult ?? startMain();
   };
-  const store = await loadStore(t, api);
-  const starting = store.startRecording(START_ARGS);
-  const finishStart = async () => {
+  store = await loadStore(t, api);
+  starting = store.startRecording(START_ARGS);
+  finishStart = async () => {
     microphone.resolve(micStream);
     await starting;
   };
-  t.after(async () => {
-    await finishStart();
-    await store.stopRecording();
-  });
   await Promise.all([mainStarted.promise, micRequested.promise]);
   return { api, listeners, store, finishStart };
 }
@@ -124,6 +137,7 @@ test("the final startup interruption survives a pending microphone permission", 
     reason: "no_audio_delivered",
   });
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterruptedNonce, 1);
+  assert.equal((await store.stopRecording()).stopped, true);
 });
 
 test("resumed audio discards a quiet warning buffered during microphone setup", async (t) => {
@@ -133,6 +147,7 @@ test("resumed audio discards a quiet warning buffered during microphone setup", 
   await finishStart();
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterrupted, null);
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterruptedNonce, 0);
+  assert.equal((await store.stopRecording()).stopped, true);
 });
 
 test("resumed audio preserves a capture-loss warning buffered during microphone setup", async (t) => {
@@ -144,11 +159,14 @@ test("resumed audio preserves a capture-loss warning buffered during microphone 
     recovering: false,
     reason: "no_audio_delivered",
   });
+  assert.equal((await store.stopRecording()).stopped, true);
 });
 
 test("a mic-only fallback discards buffered system-audio interruptions", async (t) => {
   const { listeners, store, finishStart } = await startWithPendingMicrophone(t, {
     success: true,
+    recordingId: RECORDING_ID,
+    originAt: new Date().toISOString(),
     systemAudioMode: "unsupported",
     systemAudioStrategy: "unsupported",
   });
@@ -158,6 +176,7 @@ test("a mic-only fallback discards buffered system-audio interruptions", async (
   assert.equal(store.useMeetingRecordingStore.getState().isRecording, true);
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterrupted, null);
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterruptedNonce, 0);
+  assert.equal((await store.stopRecording()).stopped, true);
 });
 
 test("failed startup removes early interruption listeners before another session", async (t) => {
@@ -176,10 +195,12 @@ test("failed startup removes early interruption listeners before another session
 
   api.meetingTranscriptionStart = async () => ({
     success: true,
+    recordingId: "c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3",
+    originAt: new Date().toISOString(),
     systemAudioMode: "native",
     systemAudioStrategy: "native",
   });
-  await store.startRecording(START_ARGS);
+  assert.equal(await store.startRecording(START_ARGS), true);
   listeners.systemAudioInterrupted({ ...stoppedCapture, reason: "gone_quiet" });
   lateInterrupted?.(stoppedCapture);
   lateResumed?.();
@@ -187,6 +208,7 @@ test("failed startup removes early interruption listeners before another session
     store.useMeetingRecordingStore.getState().systemAudioInterrupted.reason,
     "gone_quiet"
   );
+  assert.equal((await store.stopRecording()).stopped, true);
 });
 
 test("stopping during microphone setup discards buffered warnings and early listeners", async (t) => {
@@ -194,7 +216,7 @@ test("stopping during microphone setup discards buffered warnings and early list
   listeners.systemAudioInterrupted?.(stoppedCapture);
   const stopping = store.stopRecording();
   await finishStart();
-  await stopping;
+  assert.equal((await stopping).stopped, false);
   assert.equal(listeners.systemAudioInterrupted, null);
   assert.equal(listeners.systemAudioResumed, null);
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterrupted, null);
@@ -202,13 +224,17 @@ test("stopping during microphone setup discards buffered warnings and early list
 });
 
 test("resumed audio clears only quiet warnings without creating another interruption", async (t) => {
+  let store;
+  t.after(async () => {
+    if (store) await stopStoreAndAssertOutcome(store);
+  });
+
   installMicCaptureGlobals(t);
   const { api, listeners } = createElectronAPI({
     systemAudioMode: "native",
     systemAudioStrategy: "native",
   });
-  const store = await loadStore(t, api);
-  t.after(() => store.stopRecording());
+  store = await loadStore(t, api);
   await store.startRecording(START_ARGS);
   listeners.systemAudioInterrupted({ ...stoppedCapture, reason: "gone_quiet" });
   const nonce = store.useMeetingRecordingStore.getState().systemAudioInterruptedNonce;
@@ -225,7 +251,7 @@ test("resumed audio clears only quiet warnings without creating another interrup
   }
 
   const lateResumed = listeners.systemAudioResumed;
-  await store.stopRecording();
+  assert.equal((await store.stopRecording()).stopped, true);
   await store.startRecording(START_ARGS);
   listeners.systemAudioInterrupted({ ...stoppedCapture, reason: "gone_quiet" });
   lateResumed?.();
@@ -233,6 +259,7 @@ test("resumed audio clears only quiet warnings without creating another interrup
     store.useMeetingRecordingStore.getState().systemAudioInterrupted.reason,
     "gone_quiet"
   );
+  assert.equal((await store.stopRecording()).stopped, true);
 });
 
 test("every interruption bumps the nonce so a repeat still notifies", async (t) => {
@@ -266,7 +293,7 @@ test("every interruption bumps the nonce so a repeat still notifies", async (t) 
   state = store.useMeetingRecordingStore.getState();
   assert.equal(state.systemAudioInterruptedNonce, firstNonce + 1);
 
-  await store.stopRecording();
+  assert.equal((await store.stopRecording()).stopped, true);
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterrupted, null);
 });
 
@@ -302,7 +329,7 @@ test("a give-up report carries recovering false and its reason through to the st
     reason: "no_audio_delivered",
   });
 
-  await store.stopRecording();
+  assert.equal((await store.stopRecording()).stopped, true);
 });
 
 test("an interruption arriving after stop is ignored without crashing", async (t) => {
@@ -314,7 +341,7 @@ test("an interruption arriving after stop is ignored without crashing", async (t
 
   assert.equal(await store.startRecording(START_ARGS), true);
   const lateCallback = listeners.systemAudioInterrupted;
-  await store.stopRecording();
+  assert.equal((await store.stopRecording()).stopped, true);
 
   lateCallback({
     systemAudioStrategy: "native",
@@ -342,5 +369,5 @@ test("no interruption state when the session had no system audio", async (t) => 
   });
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterrupted, null);
 
-  await store.stopRecording();
+  assert.equal((await store.stopRecording()).stopped, true);
 });

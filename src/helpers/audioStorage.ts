@@ -1,8 +1,11 @@
+import type { MeetingRecordingStorage as MeetingRecordingStorageType } from "./meetingRecordingStorage.js";
+
 const fs = require("fs");
 const path = require("path");
 const { app } = require("electron");
 const debugLogger = require("./debugLogger");
 const { parseDbTimestamp } = require("./dbTimestamp");
+const MeetingRecordingStorage = require("./meetingRecordingStorage");
 
 export interface AudioCleanupDatabase {
   clearAudioFlags(ids: string[]): unknown;
@@ -10,9 +13,11 @@ export interface AudioCleanupDatabase {
 
 export class AudioStorageManager {
   readonly audioDir: string;
+  readonly meetingRecordings: MeetingRecordingStorageType;
 
   constructor() {
     this.audioDir = path.join(app.getPath("userData"), "audio");
+    this.meetingRecordings = new MeetingRecordingStorage({ userDataPath: app.getPath("userData") });
     this.ensureAudioDir();
   }
 
@@ -165,13 +170,17 @@ export class AudioStorageManager {
     }
   }
 
-  deleteAllAudio(): { deleted: number } {
+  deleteAllAudio(): { deleted: number; failed: number } {
     try {
       const files = fs.readdirSync(this.audioDir).filter((f: string) => f.endsWith(".webm"));
+      let deleted = 0;
+      let failed = 0;
       for (const file of files) {
         try {
           fs.unlinkSync(path.join(this.audioDir, file));
+          deleted += 1;
         } catch (error) {
+          failed += 1;
           debugLogger.error(
             "Failed to delete audio file",
             { file, error: (error as Error).message },
@@ -179,15 +188,15 @@ export class AudioStorageManager {
           );
         }
       }
-      debugLogger.info("All audio deleted", { count: files.length }, "audio-storage");
-      return { deleted: files.length };
+      debugLogger.info("All audio deletion finished", { deleted, failed }, "audio-storage");
+      return { deleted, failed };
     } catch (error) {
       debugLogger.error(
         "Failed to delete all audio",
         { error: (error as Error).message },
         "audio-storage"
       );
-      return { deleted: 0 };
+      return { deleted: 0, failed: 1 };
     }
   }
 

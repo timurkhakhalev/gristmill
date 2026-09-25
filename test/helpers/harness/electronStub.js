@@ -17,6 +17,9 @@ function installElectronStub() {
           getAppPath: () => process.cwd(),
           isReady: () => false,
         },
+        BrowserWindow: {
+          getAllWindows: () => [],
+        },
       };
     }
     return originalLoad.call(this, request, parent, isMain);

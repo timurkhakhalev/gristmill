@@ -62,6 +62,7 @@ export interface AudioTapProcessError extends Error {
 }
 
 export interface AudioTapStartOptions {
+  onStart?: (message: AudioTapStartMessage) => void;
   onChunk?: (chunk: Buffer) => void;
   onError?: (error: Error) => void;
   onWarning?: (warning: AudioTapWarningMessage) => void;
@@ -129,6 +130,7 @@ export class AudioTapManager {
   onChunk: ((chunk: Buffer) => void) | null;
   onError: ((error: Error) => void) | null;
   onWarning: ((warning: AudioTapWarningMessage) => void) | null;
+  onStart: ((message: AudioTapStartMessage) => void) | null;
   isStopping: boolean;
   permissionStatus: AudioTapPermissionStatus;
   private _requestPromise: Promise<AudioTapAccessResult> | null;
@@ -139,6 +141,7 @@ export class AudioTapManager {
     this.onChunk = null;
     this.onError = null;
     this.onWarning = null;
+    this.onStart = null;
     this.isStopping = false;
     this.permissionStatus = this._loadPermissionStatus();
     this._requestPromise = null;
@@ -230,7 +233,7 @@ export class AudioTapManager {
     return requestPromise;
   }
 
-  async start({ onChunk, onError, onWarning }: AudioTapStartOptions = {}): Promise<void> {
+  async start({ onStart, onChunk, onError, onWarning }: AudioTapStartOptions = {}): Promise<void> {
     if (!this.isSupported()) {
       throw new Error("macOS 14.2 or later is required for native system audio capture.");
     }
@@ -238,6 +241,7 @@ export class AudioTapManager {
       this.onChunk = onChunk || null;
       this.onError = onError || null;
       this.onWarning = onWarning || null;
+      this.onStart = onStart || null;
       return;
     }
     if (this._requestPromise) {
@@ -248,6 +252,7 @@ export class AudioTapManager {
     this.onChunk = onChunk || null;
     this.onError = onError || null;
     this.onWarning = onWarning || null;
+    this.onStart = onStart || null;
     this.isStopping = false;
     this.stderrBuffer = "";
 
@@ -287,6 +292,13 @@ export class AudioTapManager {
         this._consumeStderr(chunk, (message) => {
           if (message.type === "start") {
             this._persistPermissionStatus("granted");
+            try {
+              this.onStart?.(message);
+            } catch (error) {
+              if (settle()) reject(error);
+              void this.stop();
+              return;
+            }
             if (settle()) resolve();
             return;
           }
@@ -313,18 +325,11 @@ export class AudioTapManager {
       });
 
       child.on("error", (error) => {
-        if (this.process === child) {
-          this.process = null;
-        }
         if (settle()) reject(error);
       });
 
       child.on("exit", (code, signal) => {
         const wasStopping = this.isStopping;
-        if (this.process === child) {
-          this.process = null;
-        }
-
         if (!settled) {
           if (settle()) {
             reject(
@@ -343,6 +348,15 @@ export class AudioTapManager {
             )
           );
         }
+      });
+
+      child.once("close", () => {
+        if (this.process !== child) return;
+        this.process = null;
+        this.onChunk = null;
+        this.onError = null;
+        this.onWarning = null;
+        this.onStart = null;
       });
     });
   }
@@ -364,7 +378,7 @@ export class AudioTapManager {
         }
       }, STOP_TIMEOUT_MS);
 
-      child.once("exit", () => {
+      child.once("close", () => {
         clearTimeout(timeout);
         resolve();
       });
@@ -384,6 +398,7 @@ export class AudioTapManager {
     this.onChunk = null;
     this.onError = null;
     this.onWarning = null;
+    this.onStart = null;
     this.isStopping = false;
   }
 

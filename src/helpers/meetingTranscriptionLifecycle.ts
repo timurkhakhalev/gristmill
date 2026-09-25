@@ -20,6 +20,9 @@ export interface MeetingStartResult {
 
 export interface MeetingStopResult {
   success: boolean;
+  captureState?: "ready" | "incomplete";
+  recordingId?: string;
+  initialRunId?: string;
   reason?: string;
   transcript?: string;
   diarizationSessionId?: string;
@@ -32,6 +35,10 @@ export interface MeetingLifecycleSession {
   state: "queued" | "starting" | "active" | "stopping";
   startSucceeded: boolean;
   stopRequested: boolean;
+  incomplete: boolean;
+  lastSequence?: Partial<Record<"mic" | "system", number>>;
+  errorCode?: string;
+  suppressProcessing: boolean;
   stopPromise: Promise<MeetingStopResult> | null;
   ownerLossHandler: (() => void) | null;
   ownerNavigationHandler: ((details: { isMainFrame?: boolean; isSameDocument?: boolean }) => void) | null;
@@ -43,7 +50,15 @@ export interface MeetingTranscriptionLifecycle {
     ownerWebContents: WebContents | null;
     options: MeetingTranscriptionSessionOptions;
   }): Promise<MeetingStartResult>;
-  stopSession(expectedSessionId?: string | null): Promise<MeetingStopResult>;
+  stopSession(
+    expectedSessionId?: string | null,
+    options?: {
+      incomplete?: boolean;
+      lastSequence?: Partial<Record<"mic" | "system", number>>;
+      errorCode?: string;
+      suppressProcessing?: boolean;
+    }
+  ): Promise<MeetingStopResult>;
 }
 
 export function createMeetingTranscriptionLifecycle({
@@ -52,7 +67,15 @@ export function createMeetingTranscriptionLifecycle({
   onError = () => {},
 }: {
   start: (invocation: MeetingStartInvocation) => Promise<MeetingStartResult>;
-  stop: (sessionId: string) => Promise<MeetingStopResult>;
+  stop: (
+    sessionId: string,
+    options?: {
+      incomplete?: boolean;
+      lastSequence?: Partial<Record<"mic" | "system", number>>;
+      errorCode?: string;
+      suppressProcessing?: boolean;
+    }
+  ) => Promise<MeetingStopResult>;
   onError?: (error: unknown, sessionId: string) => void;
 }): MeetingTranscriptionLifecycle {
   let operationTail: Promise<unknown> = Promise.resolve();
@@ -95,20 +118,41 @@ export function createMeetingTranscriptionLifecycle({
   };
 
   const stopSession = (
-    expectedSessionId?: string | null
+    expectedSessionId?: string | null,
+    options: {
+      incomplete?: boolean;
+      lastSequence?: Partial<Record<"mic" | "system", number>>;
+      errorCode?: string;
+      suppressProcessing?: boolean;
+    } = {}
   ): Promise<MeetingStopResult> => {
     const session = resolveSession(expectedSessionId);
     if (!session) {
       return Promise.resolve({ success: false, reason: "stale-session" });
     }
-    if (session.stopPromise) return session.stopPromise;
+    if (session.stopPromise) {
+      session.incomplete ||= options.incomplete === true;
+      session.lastSequence ??= options.lastSequence;
+      session.errorCode ??= options.errorCode;
+      session.suppressProcessing ||= options.suppressProcessing === true;
+      return session.stopPromise;
+    }
 
     session.stopRequested = true;
+    session.incomplete = options.incomplete === true;
+    session.lastSequence = options.lastSequence;
+    session.errorCode = options.errorCode;
+    session.suppressProcessing = options.suppressProcessing === true;
     session.state = "stopping";
     session.stopPromise = enqueue(async () => {
       try {
         if (!session.startSucceeded) return { success: true };
-        return await stop(session.sessionId);
+        return await stop(session.sessionId, {
+          incomplete: session.incomplete,
+          lastSequence: session.lastSequence,
+          errorCode: session.errorCode,
+          suppressProcessing: session.suppressProcessing,
+        });
       } finally {
         removeSession(session);
       }
@@ -134,7 +178,9 @@ export function createMeetingTranscriptionLifecycle({
         session.ownerWebContents === ownerWebContents &&
         session.state !== "stopping"
       ) {
-        void stopSession(session.sessionId).catch((error) => onError(error, session.sessionId));
+        void stopSession(session.sessionId, { incomplete: true }).catch((error) =>
+          onError(error, session.sessionId)
+        );
       }
     }
     const operationInProgress = [...sessions.values()].some(
@@ -151,6 +197,10 @@ export function createMeetingTranscriptionLifecycle({
       startSucceeded: false,
       stopRequested: false,
       stopPromise: null,
+      incomplete: false,
+      lastSequence: undefined,
+      errorCode: undefined,
+      suppressProcessing: false,
       ownerLossHandler: null,
       ownerNavigationHandler: null,
     };
@@ -179,7 +229,7 @@ export function createMeetingTranscriptionLifecycle({
     });
 
     const handleOwnerLoss = () => {
-      void stopSession(sessionId).catch((error) => {
+      void stopSession(sessionId, { incomplete: true }).catch((error) => {
         onError(error, sessionId);
       });
     };

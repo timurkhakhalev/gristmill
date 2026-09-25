@@ -8,6 +8,7 @@
 // main.js. sessionId, noteId and detectionId are distinct fields and are never
 // interchangeable.
 import { z } from "zod";
+import type { MeetingProcessingConfig, MeetingProcessingConfigError, MeetingSource } from "./meetingRecording.js";
 
 // ---- channels -----------------------------------------------------------------
 
@@ -36,6 +37,7 @@ export const meetingCoordinatorChannels = {
 } as const;
 
 export const meetingCoordinatorEventChannels = {
+  meetingTranscriptionStopRequested: "meeting-transcription-stop-requested",
   meetingTranscriptionSegment: "meeting-transcription-segment",
   meetingTranscriptionError: "meeting-transcription-error",
   meetingTranscriptionFatalError: "meeting-transcription-fatal-error",
@@ -136,39 +138,60 @@ const failureMetadataSchema = z
   })
   .passthrough();
 
-// Untrusted boundary: tolerate the full option superset (unknown extension
-// fields survive to the routing/manager code as before).
 export const meetingOptionsSchema = z
   .object({
-    provider: z.string().optional(),
-    model: z.string().optional(),
-    language: z.string().optional(),
-    mode: z.string().optional(),
-    environment: z.string().optional(),
-    tenant: z.string().optional(),
-    keyterms: z.array(z.string()).optional(),
-    localProvider: z.string().optional(),
-    localModel: z.string().optional(),
     sessionId: z.string().optional(),
     noteId: z.number().int().nullable().optional(),
     autoEndEligible: z.boolean().optional(),
-  })
-  .passthrough();
+    recordingConfig: z.unknown().optional(),
+  });
 
 // Renderer-facing option shapes (previous electron.ts declarations).
 export interface MeetingTranscriptionPrepareOptions {
-  provider?: string;
-  model?: string;
-  language?: string;
+  noteId?: number | null;
 }
 export interface MeetingTranscriptionStartOptions {
-  provider?: string;
-  model?: string;
-  language?: string;
   noteId?: number | null;
   sessionId: string;
   autoEndEligible: boolean;
+  recordingConfig?: {
+    config: MeetingProcessingConfig | null;
+    configError?: MeetingProcessingConfigError | null;
+  };
 }
+
+export interface MeetingCapturePacket {
+  epochIndex: number;
+  epochStartFrame: number;
+  sequence: number;
+  sampleOffset: number;
+}
+
+export const meetingCapturePacketSchema = z.object({
+  epochIndex: z.number().int().nonnegative(),
+  epochStartFrame: z.number().int().nonnegative(),
+  sequence: z.number().int().nonnegative(),
+  sampleOffset: z.number().int().nonnegative(),
+});
+
+export interface MeetingCaptureStopRequest {
+  sessionId: string;
+  lastSequence: Partial<Record<MeetingSource, number>>;
+  incomplete?: boolean;
+  errorCode?: string;
+  suppressProcessing?: boolean;
+}
+
+export const meetingCaptureStopRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  lastSequence: z.object({
+    mic: z.number().int().optional(),
+    system: z.number().int().optional(),
+  }),
+  incomplete: z.boolean().optional(),
+  errorCode: z.string().optional(),
+  suppressProcessing: z.boolean().optional(),
+});
 
 // ipcMain.handle keeps only the message when a promise rejects, so failures
 // resolve with serialized error shapes instead of throwing.
@@ -181,6 +204,8 @@ export type MeetingPrepareResult = z.infer<typeof meetingPrepareResultSchema>;
 export const meetingStartResultSchema = failureMetadataSchema.extend({
   success: z.boolean(),
   sessionId: z.string().optional(),
+  recordingId: z.string().uuid().optional(),
+  originAt: z.string().optional(),
   systemAudioMode: z.enum(["native", "loopback", "portal", "unsupported"]).optional(),
   systemAudioStrategy: z
     .enum(["native", "loopback", "pipewire-loopback", "wasapi-loopback", "unsupported"])
@@ -195,13 +220,18 @@ export type MeetingStartResult = z.infer<typeof meetingStartResultSchema>;
 export const meetingStopResultSchema = z
   .object({
     success: z.boolean(),
-    transcript: z.string().optional(),
-    diarizationSessionId: z.string().optional(),
+    recordingId: z.string().uuid().optional(),
+    initialRunId: z.string().uuid().optional(),
+    captureState: z.enum(["ready", "incomplete"]).optional(),
+    errorCode: z.string().nullable().optional(),
     error: z.string().optional(),
     reason: z.string().optional(),
   })
   .passthrough();
 export type MeetingStopResult = z.infer<typeof meetingStopResultSchema>;
+
+export const meetingCaptureAckSchema = z.object({ success: z.boolean(), sequence: z.number().int().nonnegative() });
+export type MeetingCaptureAck = z.infer<typeof meetingCaptureAckSchema>;
 
 export const meetingCancelResultSchema = z.object({
   success: z.boolean(),
@@ -391,6 +421,11 @@ export const meetingAutoEndRequestEventSchema = z.object({
   reason: z.enum(["mic-released", "silence", "process-exit"]).optional(),
 });
 
+export const meetingStopRequestedEventSchema = z.object({
+  sessionId: z.string().min(1),
+  suppressProcessing: z.boolean().optional(),
+});
+
 export const meetingAutoEndRestartRequestEventSchema = z.object({
   sessionId: z.string(),
 });
@@ -404,8 +439,13 @@ export interface MeetingCoordinatorApi {
   meetingTranscriptionStart?(
     options: MeetingTranscriptionStartOptions
   ): Promise<MeetingStartResult>;
-  meetingTranscriptionSend?(buffer: ArrayBuffer, source: "mic" | "system"): void;
-  meetingTranscriptionStop?(expectedSessionId?: string): Promise<MeetingStopResult>;
+  meetingTranscriptionSend?(
+    buffer: ArrayBuffer,
+    source: MeetingSource,
+    sessionId: string,
+    packet: MeetingCapturePacket
+  ): Promise<MeetingCaptureAck>;
+  meetingTranscriptionStop?(request?: MeetingCaptureStopRequest): Promise<MeetingStopResult>;
   meetingTranscriptionCancel?(): Promise<MeetingCancelResult>;
   meetingTranscriptionSetSystemAudioAvailable?(
     sessionId: string,
@@ -440,6 +480,7 @@ export interface MeetingCoordinatorApi {
   onMeetingTranscriptionSegment?(
     callback: (data: MeetingSegmentEvent) => void
   ): () => void;
+  onMeetingTranscriptionStopRequested?(callback: (request: z.infer<typeof meetingStopRequestedEventSchema>) => void): () => void;
   onMeetingSpeakerIdentified?(
     callback: (data: MeetingSpeakerIdentifiedEvent) => void
   ): () => void;

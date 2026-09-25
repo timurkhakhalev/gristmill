@@ -116,6 +116,7 @@ export const audioStorageUsageSchema = z.object({
 
 export const audioDeleteAllResultSchema = z.object({
   deleted: z.number(),
+  failed: z.number(),
 });
 
 // ---- exports ---------------------------------------------------------------
@@ -236,7 +237,7 @@ export interface TranscriptionDataApi {
   getAudioBuffer(id: number): Promise<ArrayBuffer | null>;
   deleteTranscriptionAudio(id: number): Promise<{ success: boolean }>;
   getAudioStorageUsage(): Promise<{ fileCount: number; totalBytes: number }>;
-  deleteAllAudio(): Promise<{ deleted: number }>;
+  deleteAllAudio(): Promise<{ deleted: number; failed: number }>;
   syncRetentionSettings?(settings: {
     audioRetentionDays: number;
     transcriptRetentionDays: number;

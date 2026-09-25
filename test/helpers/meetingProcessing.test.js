@@ -381,7 +381,12 @@ test("local meeting transcription uses post-Stop diarization and speaker-text me
 
   const saved = db.getMeetingProcessingRun(run.id);
   const transcript = storage.readRunArtifact(run.id, "transcript");
-  assert.equal(saved.status, "complete");
+  assert.equal(saved.status, "blocked");
+  assert.equal(saved.stage, "summary");
+  assert.equal(saved.errorCode, "missing-summary-config");
+  assert.equal(saved.hasTranscript, true);
+  assert.equal(saved.hasSummary, false);
+  assert.equal(storage.readRunArtifact(run.id, "summary"), null);
   assert.equal(localCalls, 1);
   assert.equal(diarizationCalls, 1);
   assert.match(transcript.text, /\[Speaker 1\]/);
@@ -581,8 +586,17 @@ test("provider size limits block only that run and another provider keeps its ow
   await worker.waitForIdle();
   assert.equal(db.getMeetingProcessingRun(deepgramRun.id).status, "blocked");
   assert.equal(db.getMeetingProcessingRun(deepgramRun.id).hasRawProviderResponse, false);
-  assert.equal(db.getMeetingProcessingRun(elevenRun.id).status, "complete");
-  assert.equal(db.getMeetingProcessingRun(elevenRun.id).provider, "elevenlabs");
+  const elevenSavedRun = db.getMeetingProcessingRun(elevenRun.id);
+  assert.equal(elevenSavedRun.status, "blocked");
+  assert.equal(elevenSavedRun.stage, "summary");
+  assert.equal(elevenSavedRun.errorCode, "missing-summary-config");
+  assert.equal(elevenSavedRun.provider, "elevenlabs");
+  assert.equal(elevenSavedRun.hasRawProviderResponse, true);
+  assert.equal(elevenSavedRun.hasTranscript, true);
+  assert.equal(elevenSavedRun.hasSummary, false);
+  assert.deepEqual(storage.readRunArtifact(elevenRun.id, "provider-response"), elevenResponse);
+  assert.ok(storage.readRunArtifact(elevenRun.id, "transcript"));
+  assert.equal(storage.readRunArtifact(elevenRun.id, "summary"), null);
   assert.equal(requests, 1);
 });
 

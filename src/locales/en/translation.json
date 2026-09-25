@@ -1527,7 +1527,7 @@
       "enhanced": "Enhanced",
       "saving": "Saving",
       "transcriptEmptyTitle": "Transcript not created yet",
-      "transcriptEmptyDescription": "Record audio first. Its transcript will be available after processing.",
+      "transcriptEmptyDescription": "The transcript will appear here after processing.",
       "startRecording": "Start recording",
       "generateSummary": "Generate AI Summary",
       "startWriting": "Start writing...",

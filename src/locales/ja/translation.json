@@ -1434,7 +1434,7 @@
       "enhanced": "強化済み",
       "saving": "保存中",
       "transcriptEmptyTitle": "まだ録音がありません",
-      "transcriptEmptyDescription": "録音ボタンを押すと文字起こしが始まります。話した内容がここにリアルタイムで表示されます。",
+      "transcriptEmptyDescription": "処理が完了すると、文字起こしがここに表示されます。",
       "startRecording": "録音を開始",
       "generateSummary": "AI要約を生成",
       "startWriting": "書き始める...",

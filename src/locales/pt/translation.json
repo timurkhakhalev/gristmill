@@ -1453,7 +1453,7 @@
       "enhanced": "Aprimorado",
       "saving": "Salvando",
       "transcriptEmptyTitle": "Nada gravado ainda",
-      "transcriptEmptyDescription": "Toque em gravar para começar a transcrever. Tudo o que for dito aparece aqui em tempo real.",
+      "transcriptEmptyDescription": "A transcrição aparecerá aqui após o processamento.",
       "startRecording": "Começar a gravar",
       "generateSummary": "Gerar resumo com IA",
       "startWriting": "Comece a escrever...",

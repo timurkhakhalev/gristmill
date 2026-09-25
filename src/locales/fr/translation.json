@@ -1527,7 +1527,7 @@
       "enhanced": "Amélioré",
       "saving": "Enregistrement",
       "transcriptEmptyTitle": "Rien d'enregistré pour l'instant",
-      "transcriptEmptyDescription": "Lancez l'enregistrement pour commencer la transcription. Tout ce qui est dit s'affiche ici en direct.",
+      "transcriptEmptyDescription": "La transcription apparaîtra ici après le traitement.",
       "startRecording": "Démarrer l'enregistrement",
       "generateSummary": "Générer un résumé IA",
       "startWriting": "Commencez à écrire...",

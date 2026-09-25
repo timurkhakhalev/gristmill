@@ -1527,7 +1527,7 @@
       "enhanced": "Verbessert",
       "saving": "Wird gespeichert",
       "transcriptEmptyTitle": "Noch nichts aufgenommen",
-      "transcriptEmptyDescription": "Drücke auf Aufnahme, um mit der Transkription zu beginnen. Alles Gesagte erscheint hier in Echtzeit.",
+      "transcriptEmptyDescription": "Das Transkript erscheint hier nach der Verarbeitung.",
       "startRecording": "Aufnahme starten",
       "generateSummary": "KI-Zusammenfassung erstellen",
       "startWriting": "Schreibe los...",

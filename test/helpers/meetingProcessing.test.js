@@ -321,6 +321,84 @@ test("main corrects summary-only configuration and resumes from saved artifacts 
   assert.equal(summaryCalls, 1);
 });
 
+test("viewing old transcript leaves a pending current run and Note projection intact until explicit selection", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, recording, run: oldRun } = createFinishedRecording(db, storage, validConfig, "Manual note stays.");
+  let response = elevenResponse;
+  let transcribeCalls = 0;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => {
+      transcribeCalls += 1;
+      await saveRaw(response);
+      return { success: true, text: "ignored adapter projection" };
+    },
+    summarize: async (input) => input.includes("New saved transcript") ? "Summary from new run" : "Summary from old run",
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  const oldProjection = db.getNote(note.id);
+  assert.match(oldProjection.transcript, /Hello\./);
+  assert.match(oldProjection.enhanced_content, /Summary from old run/);
+  assert.equal(db.getMeetingRecording(recording.id).currentRunId, oldRun.id);
+
+  const pendingRun = db.createMeetingProcessingRun(recording.id, {
+    kind: "reprocess",
+    config: validConfig,
+    configError: null,
+    sourceRunId: null,
+  });
+  const pendingProjection = db.getNote(note.id);
+  assert.equal(pendingRun.status, "pending");
+  assert.equal(pendingRun.hasTranscript, false);
+  assert.equal(db.getMeetingRecording(recording.id).currentRunId, pendingRun.id);
+  assert.deepEqual({
+    content: pendingProjection.content,
+    transcript: pendingProjection.transcript,
+    enhancedContent: pendingProjection.enhanced_content,
+    enhancementPrompt: pendingProjection.enhancement_prompt,
+  }, {
+    content: oldProjection.content,
+    transcript: oldProjection.transcript,
+    enhancedContent: oldProjection.enhanced_content,
+    enhancementPrompt: oldProjection.enhancement_prompt,
+  }, "creating or viewing the pending version does not rewrite the existing Note projection");
+
+  worker.stop();
+  response = {
+    text: "New saved transcript",
+    words: [{ type: "word", text: "New saved transcript", start: 0, end: 0.8, speaker_id: "speaker_0" }],
+  };
+  const resumedWorker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => {
+      transcribeCalls += 1;
+      await saveRaw(response);
+      return { success: true, text: "ignored adapter projection" };
+    },
+    summarize: async () => "Summary from new run",
+  });
+  t.after(() => resumedWorker.stop());
+  resumedWorker.onRetentionReady();
+  await resumedWorker.waitForIdle();
+
+  const newProjection = db.getNote(note.id);
+  assert.equal(transcribeCalls, 2);
+  assert.equal(db.getMeetingProcessingRun(pendingRun.id).status, "complete");
+  assert.equal(db.getMeetingRecording(recording.id).currentRunId, pendingRun.id);
+  assert.match(newProjection.transcript, /New saved transcript/);
+  assert.match(newProjection.enhanced_content, /Summary from new run/);
+  assert.equal(newProjection.content, oldProjection.content);
+
+  assert.equal((await resumedWorker.selectRun(recording.id, oldRun.id)).success, true);
+  const selectedOldProjection = db.getNote(note.id);
+  assert.equal(db.getMeetingRecording(recording.id).currentRunId, oldRun.id);
+  assert.equal(selectedOldProjection.transcript, oldProjection.transcript);
+  assert.equal(selectedOldProjection.enhanced_content, oldProjection.enhanced_content);
+  assert.equal(selectedOldProjection.content, oldProjection.content);
+});
+
 test("blocked config correction refuses an unindexed raw response file", async (t) => {
   const db = createDb(t);
   if (!db) return;

@@ -15,42 +15,45 @@ const credentialRefForProvider = (provider: string): string | undefined => {
   return BYOK_API_KEYS.find((entry) => entry.base === provider)?.env;
 };
 
-export function snapshotMeetingRecordingConfig(): {
+export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingProcessingConfig["transcription"]): {
   config: MeetingProcessingConfig | null;
   configError: MeetingProcessingConfigError | null;
 } {
   const state = getSettings();
-  const meeting = selectResolvedMeetingTranscription(state);
-  const language = getBaseLanguageCode(state.preferredLanguage) ?? "auto";
-  const credentialRef = credentialRefForProvider(meeting.cloudTranscriptionProvider);
-  let transcription: Record<string, unknown> | null = null;
+  let transcription: unknown = transcriptionOverride ?? null;
 
-  if (meeting.transcriptionMode === "local") {
-    const provider = meeting.localTranscriptionProvider;
-    const model =
-      provider === "whisper"
-        ? meeting.whisperModel
-        : provider === "nvidia"
-          ? meeting.parakeetModel
-          : meeting.cohereModel;
-    transcription = {
-      mode: "local",
-      language,
-      dictionaryHints: state.customDictionary ?? [],
-      local: { provider, model, options: { diarize: state.speakerDiarizationEnabled !== false } },
-    };
-  } else if (meeting.transcriptionMode === "providers") {
-    transcription = {
-      mode: "providers",
-      provider: meeting.cloudTranscriptionProvider,
-      model: meeting.cloudTranscriptionModel,
-      language,
-      dictionaryHints: state.customDictionary ?? [],
-      ...(meeting.cloudTranscriptionProvider === "custom" && meeting.cloudTranscriptionBaseUrl
-        ? { baseUrl: meeting.cloudTranscriptionBaseUrl }
-        : {}),
-      ...(credentialRef ? { credentialRef } : {}),
-    };
+  if (transcriptionOverride === undefined) {
+    const meeting = selectResolvedMeetingTranscription(state);
+    const language = getBaseLanguageCode(state.preferredLanguage) ?? "auto";
+    const credentialRef = credentialRefForProvider(meeting.cloudTranscriptionProvider);
+
+    if (meeting.transcriptionMode === "local") {
+      const provider = meeting.localTranscriptionProvider;
+      const model =
+        provider === "whisper"
+          ? meeting.whisperModel
+          : provider === "nvidia"
+            ? meeting.parakeetModel
+            : meeting.cohereModel;
+      transcription = {
+        mode: "local",
+        language,
+        dictionaryHints: state.customDictionary ?? [],
+        local: { provider, model, options: { diarize: state.speakerDiarizationEnabled !== false } },
+      };
+    } else if (meeting.transcriptionMode === "providers") {
+      transcription = {
+        mode: "providers",
+        provider: meeting.cloudTranscriptionProvider,
+        model: meeting.cloudTranscriptionModel,
+        language,
+        dictionaryHints: state.customDictionary ?? [],
+        ...(meeting.cloudTranscriptionProvider === "custom" && meeting.cloudTranscriptionBaseUrl
+          ? { baseUrl: meeting.cloudTranscriptionBaseUrl }
+          : {}),
+        ...(credentialRef ? { credentialRef } : {}),
+      };
+    }
   }
 
   if (!transcription) {

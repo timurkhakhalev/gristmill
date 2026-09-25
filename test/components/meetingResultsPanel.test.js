@@ -88,6 +88,7 @@ async function mountPanel(t, recordings, {
   const retryDeleteCalls = [];
   const selectRunCalls = [];
   const listRecordings = typeof recordings === "function" ? recordings : () => recordings;
+  let notifyUpdated = () => {};
   const previousDialog = globalThis.__meetingResultsConfirmDialog;
   t.after(() => {
     if (previousDialog === undefined) delete globalThis.__meetingResultsConfirmDialog;
@@ -95,11 +96,16 @@ async function mountPanel(t, recordings, {
   });
   const api = {
     meetingProcessingListForNote: async () => ({ success: true, recordings: listRecordings() }),
-    onMeetingProcessingUpdated: () => () => {},
+    onMeetingProcessingUpdated: (callback) => {
+      notifyUpdated = callback;
+      return () => { notifyUpdated = () => {}; };
+    },
     getSpeakerProfiles: async () => [],
     meetingRecordingGetPlaybackPath: async () => playbackResponse,
     meetingProcessingSelectRun: async (recordingId, runId) => {
       selectRunCalls.push({ recordingId, runId });
+      const selectedRecording = listRecordings().find((item) => item.recording.id === recordingId);
+      if (selectedRecording) selectedRecording.recording.currentRunId = runId;
       return { success: true };
     },
     meetingProcessingCreateRun: async (input) => {
@@ -130,7 +136,7 @@ async function mountPanel(t, recordings, {
     mockModules: {
       "react-i18next": "export function useTranslation() { return { t: (key) => key }; }",
       "/ui/dialog": "export const ConfirmDialog = (props) => { globalThis.__meetingResultsConfirmDialog = props; return null; };",
-      "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig() { return ${JSON.stringify({ config: snapshotConfig, configError: null })}; }`,
+      "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig(transcriptionOverride) { const snapshot = ${JSON.stringify({ config: snapshotConfig, configError: null })}; return transcriptionOverride && snapshot.config ? { ...snapshot, config: { ...snapshot.config, transcription: transcriptionOverride } } : snapshot; }`,
     },
   });
   const { default: MeetingResultsPanel } = await vite.ssrLoadModule("/components/notes/MeetingResultsPanel.tsx");
@@ -151,6 +157,7 @@ async function mountPanel(t, recordings, {
     deleteCalls,
     retryDeleteCalls,
     selectRunCalls,
+    notifyUpdated: () => notifyUpdated(),
     textContent: () => container.textContent,
     findButton(label) {
       function find(node) {
@@ -166,6 +173,15 @@ async function mountPanel(t, recordings, {
         if (Array.isArray(node)) return node.map(find).find(Boolean) ?? null;
         if (!node || typeof node !== "object") return null;
         if (node.type === "select" && node.props?.["aria-label"] === label) return node;
+        return find(node.props?.children);
+      }
+      return find(tree);
+    },
+    findSelectByValue(value) {
+      function find(node) {
+        if (Array.isArray(node)) return node.map(find).find(Boolean) ?? null;
+        if (!node || typeof node !== "object") return null;
+        if (node.type === "select" && node.props?.value === value) return node;
         return find(node.props?.children);
       }
       return find(tree);
@@ -304,6 +320,7 @@ function recordingOptions(recording) {
 test("selecting one of multiple recordings scopes status, results, and actions to that recording", async (t) => {
   const olderRecordingId = "00000000-0000-4000-8000-000000000011";
   const olderRunId = "00000000-0000-4000-8000-000000000012";
+  const olderPendingRunId = "00000000-0000-4000-8000-000000000013";
   const newerRecordingId = "00000000-0000-4000-8000-000000000021";
   const newerRunId = "00000000-0000-4000-8000-000000000022";
   const older = resultDto({
@@ -312,6 +329,8 @@ test("selecting one of multiple recordings scopes status, results, and actions t
     startedAt: "2026-09-23T10:00:00.000Z",
     transcript: { text: "Older saved result", segments: [] },
   });
+  older.runs[0].run.createdAt = "2026-09-23T10:00:30.000Z";
+  older.runs[0].run.updatedAt = "2026-09-23T10:01:00.000Z";
   const newer = resultDto({
     recordingId: newerRecordingId,
     runId: newerRunId,
@@ -323,7 +342,30 @@ test("selecting one of multiple recordings scopes status, results, and actions t
     transcript: null,
     hasRawProviderResponse: false,
   });
-  const ui = await mountPanel(t, [older, newer]);
+  const pendingRun = {
+    ...older.runs[0],
+    run: {
+      ...older.runs[0].run,
+      id: olderPendingRunId,
+      kind: "reprocess",
+      stage: "asr",
+      status: "pending",
+      errorCode: null,
+      hasRawProviderResponse: false,
+      hasTranscript: false,
+      hasSummary: false,
+      createdAt: "2026-09-23T10:02:00.000Z",
+      updatedAt: "2026-09-23T10:02:00.000Z",
+    },
+    transcript: null,
+    summary: null,
+  };
+  let currentRecordings = [newer, {
+    ...older,
+    recording: { ...older.recording, currentRunId: olderPendingRunId },
+    runs: [older.runs[0], pendingRun],
+  }];
+  const ui = await mountPanel(t, () => currentRecordings);
   assert.match(ui.textContent(), /meetingResults\.captureIncomplete/);
   assert.equal(ui.textContent().includes("Older saved result"), false);
 
@@ -348,7 +390,43 @@ test("selecting one of multiple recordings scopes status, results, and actions t
     await new Promise((resolve) => setImmediate(resolve));
   });
   assert.match(ui.textContent(), /Older saved result/);
-  assert.deepEqual(ui.selectRunCalls.at(-1), { recordingId: olderRecordingId, runId: olderRunId });
+  assert.match(ui.textContent(), /meetingResults\.status\.pending/);
+  assert.deepEqual(ui.selectRunCalls, [], "switching recordings does not persist an old transcript selection");
+
+  const completedPendingRun = {
+    ...pendingRun,
+    run: {
+      ...pendingRun.run,
+      stage: "summary",
+      status: "complete",
+      hasRawProviderResponse: true,
+      hasTranscript: true,
+      hasSummary: true,
+      updatedAt: "2026-09-23T10:03:00.000Z",
+    },
+    transcript: { text: "Newest pending result", segments: [] },
+    summary: { text: "Newest pending summary" },
+  };
+  currentRecordings = [newer, {
+    ...older,
+    recording: { ...older.recording, currentRunId: olderPendingRunId },
+    runs: [older.runs[0], completedPendingRun],
+  }];
+  await React.act(async () => {
+    ui.notifyUpdated();
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+  assert.match(ui.textContent(), /Newest pending result/);
+  assert.deepEqual(ui.selectRunCalls, [], "refresh follows the persisted current run without selecting another version");
+
+  const versionSelect = ui.findSelectByValue(olderPendingRunId);
+  assert.ok(versionSelect);
+  await React.act(async () => {
+    versionSelect.props.onChange({ target: { value: olderRunId } });
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+  assert.match(ui.textContent(), /Older saved result/);
+  assert.deepEqual(ui.selectRunCalls, [{ recordingId: olderRecordingId, runId: olderRunId }]);
 
   recordingSelect = ui.findSelect("meetingResults.recording");
   await React.act(async () => {
@@ -357,6 +435,7 @@ test("selecting one of multiple recordings scopes status, results, and actions t
   });
   assert.match(ui.textContent(), /meetingResults\.captureIncomplete/);
   assert.equal(ui.textContent().includes("Older saved result"), false);
+  assert.deepEqual(ui.selectRunCalls, [{ recordingId: olderRecordingId, runId: olderRunId }], "switching away leaves the explicit version selection unchanged");
 });
 
 test("summary-only settings correction keeps the selected run's saved transcription route", async (t) => {

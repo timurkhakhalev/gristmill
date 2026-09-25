@@ -46,7 +46,6 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
   const [speakerProfileIds, setSpeakerProfileIds] = useState<Record<string, number | null>>({});
   const [speakerProfiles, setSpeakerProfiles] = useState<Array<{ id: number; display_name: string }>>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const autoSelectRunId = useRef<string | null>(null);
   const selectedRecordingIdRef = useRef("");
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
 
@@ -60,28 +59,20 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     setRecordings(next);
     const selectedRecording = next.find((item) => item.recording.id === selectedRecordingIdRef.current)
       ?? newestRecording(next);
-    const pendingRecording = autoSelectRunId.current
-      ? next.find((item) => item.runs.some((run) => run.run.id === autoSelectRunId.current && run.transcript))
-      : undefined;
-    if (pendingRecording && autoSelectRunId.current) {
-      const pendingRun = pendingRecording.runs.find((item) => item.run.id === autoSelectRunId.current);
-      autoSelectRunId.current = null;
-      selectedRecordingIdRef.current = pendingRecording.recording.id;
-      setSelectedRecordingId(pendingRecording.recording.id);
-      setSelectedRunId(pendingRun?.run.id ?? "");
-      return;
-    }
     selectedRecordingIdRef.current = selectedRecording?.recording.id ?? "";
     setSelectedRecordingId(selectedRecordingIdRef.current);
     if (!selectedRecording) {
       setSelectedRunId("");
       return;
     }
-    const preferred = latestTranscript(selectedRecording);
+    const currentTranscript = selectedRecording.runs.find((item) =>
+      item.run.id === selectedRecording.recording.currentRunId && item.transcript
+    );
+    const preferred = currentTranscript ?? latestTranscript(selectedRecording);
     setSelectedRunId((selected) =>
-      selectedRecording.runs.some((item) => item.run.id === selected && item.transcript)
+      currentTranscript?.run.id ?? (selectedRecording.runs.some((item) => item.run.id === selected && item.transcript)
         ? selected
-        : preferred?.run.id ?? ""
+        : preferred?.run.id ?? "")
     );
   }, [noteId, t]);
 
@@ -167,7 +158,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     else void refresh();
   };
 
-  const selectRecording = async (recordingId: string) => {
+  const selectRecording = (recordingId: string) => {
     const recording = recordings.find((item) => item.recording.id === recordingId);
     if (!recording) return;
     selectedRecordingIdRef.current = recordingId;
@@ -175,7 +166,6 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     setMessage("");
     const preferred = latestTranscript(recording);
     setSelectedRunId(preferred?.run.id ?? "");
-    if (preferred) await selectRun(preferred.run.id, recordingId);
   };
 
   const makeRun = async (kind: "reprocess" | "summary") => {
@@ -198,7 +188,6 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
         ...(kind === "summary" && sourceRunId ? { sourceRunId } : {}),
       });
       if (!created.success || !created.result) throw new Error(created.error || t("meetingResults.createError"));
-      autoSelectRunId.current = created.result.run.id;
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -212,7 +201,6 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     setBusy(true);
     setMessage("");
     try {
-      autoSelectRunId.current = latestRun.run.id;
       const result = await window.electronAPI.meetingProcessingRetryRun(latestRun.run.id);
       if (!result.success) throw new Error(result.error || t("meetingResults.retryError"));
       await refresh();
@@ -247,19 +235,17 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     setBusy(true);
     setMessage("");
     try {
-      const snapshot = snapshotMeetingRecordingConfig();
+      const savedTranscription = latestRun.run.config?.transcription;
       const summaryOnlyCorrection = latestRun.run.kind !== "summary" &&
-        Boolean(latestRun.run.config) &&
+        Boolean(savedTranscription) &&
         latestRun.run.stage === "summary" &&
         latestRun.run.errorCode === "missing-summary-config" &&
         Boolean(latestRun.transcript) &&
         latestRun.summary === null;
-      const config = summaryOnlyCorrection && latestRun.run.config
-        ? { transcription: latestRun.run.config.transcription, summary: snapshot.config?.summary ?? null }
-        : snapshot.config;
+      const snapshot = snapshotMeetingRecordingConfig(summaryOnlyCorrection ? savedTranscription : undefined);
       const updated = await window.electronAPI.meetingProcessingUpdateBlockedRunConfig({
         runId: latestRun.run.id,
-        config,
+        config: snapshot.config,
         configError: snapshot.configError,
       });
       if (!updated.success) throw new Error(updated.error || t("meetingResults.updateConfigError"));

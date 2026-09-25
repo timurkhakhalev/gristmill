@@ -16,6 +16,7 @@ import {
   meetingProcessingListRequestSchema,
   meetingProcessingListResponseSchema,
   meetingProcessingRetryRequestSchema,
+  meetingProcessingUpdateBlockedRunConfigRequestSchema,
   meetingProcessingRunResponseSchema,
   type MeetingProcessingRecordingResult,
 } from "../contracts/meetingProcessing.js";
@@ -59,6 +60,11 @@ export interface MeetingProcessingDatabase {
   }): { success: boolean };
   setMeetingRunArtifact(id: string, artifact: "provider-response" | "transcript" | "summary"): { success: boolean };
   retryMeetingProcessingRun(id: string): MeetingProcessingRunDto | null;
+  updateBlockedMeetingRunConfig(
+    id: string,
+    config: MeetingProcessingConfig | null,
+    error?: { code: string; messageKey?: string } | null
+  ): MeetingProcessingRunDto | null;
   recoverRunningMeetingProcessingRuns(): number;
   getMeetingRunSpeakerCorrections(runId: string): MeetingSpeakerCorrection[];
   setMeetingRunSpeakerCorrection(runId: string, speakerId: string, profileId: number | null, displayName: string): { success: boolean };
@@ -244,6 +250,32 @@ export class MeetingProcessingWorker {
 
   retry(runId: string): MeetingProcessingResultDto | null {
     const run = this.deps.database.retryMeetingProcessingRun(runId);
+    if (!run) return null;
+    const result = this.getResult(run);
+    this.notify(run);
+    this.processPending();
+    return result;
+  }
+
+  updateBlockedRunConfig(input: unknown): MeetingProcessingResultDto | null {
+    const parsed = meetingProcessingUpdateBlockedRunConfigRequestSchema.parse(input);
+    const current = this.deps.database.getMeetingProcessingRun(parsed.runId);
+    if (
+      !current ||
+      current.status !== "blocked" ||
+      current.kind === "summary" ||
+      current.hasRawProviderResponse ||
+      current.hasTranscript ||
+      current.hasSummary ||
+      this.deps.storage.hasRunArtifact(current.id, "provider-response") ||
+      this.deps.storage.hasRunArtifact(current.id, "transcript") ||
+      this.deps.storage.hasRunArtifact(current.id, "summary")
+    ) return null;
+    const run = this.deps.database.updateBlockedMeetingRunConfig(
+      parsed.runId,
+      parsed.config,
+      parsed.configError
+    );
     if (!run) return null;
     const result = this.getResult(run);
     this.notify(run);
@@ -512,7 +544,7 @@ export class MeetingProcessingWorker {
     this.publishCurrentSelection(run.id);
     if (!transcript.text.trim()) this.setState(run.id, "summary", "complete", null, null);
     else if (this.requireConfig(run).summary) this.setState(run.id, "summary", "pending", null, null);
-    else this.setState(run.id, "summary", "complete", null, null);
+    else this.setState(run.id, "summary", "blocked", "missing-summary-config", null);
   }
 
   private async summarize(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal): Promise<void> {
@@ -520,16 +552,13 @@ export class MeetingProcessingWorker {
     if (current.hasSummary) return this.setState(run.id, "summary", "complete", null, null);
     if (this.isCapturing()) return this.pause(run, "summary");
     const config = this.requireConfig(run);
-    const summaryConfig = config.summary;
-    if (!summaryConfig) {
-      this.setState(run.id, "summary", "complete", null, null);
-      return;
-    }
     const transcriptRun = run.kind === "summary" ? run.sourceRunId : run.id;
     if (!transcriptRun) throw new MeetingProcessingFailure("summary-transcript-missing", "blocked");
     const transcript = this.readTranscript(transcriptRun);
     if (!transcript) throw new MeetingProcessingFailure("summary-transcript-missing", "blocked");
     if (!transcript.text.trim()) return this.setState(run.id, "summary", "complete", null, null);
+    const summaryConfig = config.summary;
+    if (!summaryConfig) throw new MeetingProcessingFailure("missing-summary-config", "blocked");
     const note = this.deps.database.getNote(recording.noteId);
     const manual = note?.content ?? "";
     const input = [manual.trim() ? `## Manual Notes\n${manual}` : "", `## Transcript\n${transcript.text}`]
@@ -709,6 +738,18 @@ export function registerMeetingProcessingHandlers(
       return result
         ? meetingProcessingRunResponseSchema.parse({ success: true, result })
         : { success: false, error: "Meeting processing run cannot be retried" };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle(meetingProcessingChannels.updateBlockedRunConfig, (_event, ...args) => {
+    const parsed = meetingProcessingUpdateBlockedRunConfigRequestSchema.safeParse(args[0]);
+    if (!parsed.success) return { success: false, error: "Invalid blocked meeting run config update request" };
+    try {
+      const result = worker.updateBlockedRunConfig(parsed.data);
+      return result
+        ? meetingProcessingRunResponseSchema.parse({ success: true, result })
+        : { success: false, error: "Meeting processing run cannot be updated" };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }

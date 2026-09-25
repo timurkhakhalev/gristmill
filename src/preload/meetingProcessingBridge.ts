@@ -4,6 +4,7 @@ import {
   meetingProcessingListRequestSchema,
   meetingProcessingListResponseSchema,
   meetingProcessingRetryRequestSchema,
+  meetingProcessingUpdateBlockedRunConfigRequestSchema,
   meetingProcessingRunResponseSchema,
   meetingProcessingSelectRunRequestSchema,
   meetingProcessingSelectRunResponseSchema,
@@ -51,6 +52,12 @@ export function createMeetingProcessingBridge(ipcRenderer: IpcRendererLike): Mee
       const input = meetingProcessingRetryRequestSchema.parse({ runId });
       return ipcRenderer.invoke(meetingProcessingChannels.retryRun, input).then((raw) =>
         parse(meetingProcessingRunResponseSchema, raw, meetingProcessingChannels.retryRun)
+      );
+    },
+    meetingProcessingUpdateBlockedRunConfig(input) {
+      const parsed = meetingProcessingUpdateBlockedRunConfigRequestSchema.parse(input);
+      return ipcRenderer.invoke(meetingProcessingChannels.updateBlockedRunConfig, parsed).then((raw) =>
+        parse(meetingProcessingRunResponseSchema, raw, meetingProcessingChannels.updateBlockedRunConfig)
       );
     },
     meetingProcessingSelectRun(recordingId, runId) {

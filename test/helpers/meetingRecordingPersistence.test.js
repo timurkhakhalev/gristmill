@@ -118,6 +118,27 @@ test("missing or invalid processing config records a blocked initial run but pre
   db.close();
 });
 
+test("blocked config correction cannot change a route after its raw response is saved", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const note = saveMeetingNote(db);
+  const { recording, initialRun } = createFinishedRecording(db, storage, note, null);
+  storage.writeRunArtifact(initialRun.id, "provider-response", { text: "response from saved route" });
+  assert.equal(db.setMeetingRunArtifact(initialRun.id, "provider-response").success, true);
+  assert.equal(db.setMeetingProcessingRunState(initialRun.id, {
+    stage: "normalize",
+    status: "blocked",
+    errorCode: "local-diarization-unavailable",
+  }).success, true);
+
+  assert.equal(db.updateBlockedMeetingRunConfig(initialRun.id, validConfig), null);
+  assert.equal(db.getMeetingProcessingRun(initialRun.id).config, null);
+  assert.deepEqual(storage.readRunArtifact(initialRun.id, "provider-response"), { text: "response from saved route" });
+  assert.equal(db.getMeetingRecording(recording.id).audioState, "available");
+  db.close();
+});
+
 test("audio deletion blocks ASR retry but keeps text and summary; note deletion preserves shared speakers", (t) => {
   const db = createDb(t);
   if (!db) return;

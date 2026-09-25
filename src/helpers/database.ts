@@ -1388,7 +1388,7 @@ export class DatabaseManager {
     if (config !== null) meetingProcessingConfigSchema.parse(config);
     if (error !== null) meetingProcessingConfigErrorSchema.parse(error);
     const row = this.sql.prepare(
-      "SELECT p.*, r.audio_state, r.note_id FROM meeting_processing_runs p JOIN meeting_recordings r ON r.id = p.recording_id WHERE p.id = ? AND p.status = 'blocked'"
+      "SELECT p.*, r.audio_state, r.note_id FROM meeting_processing_runs p JOIN meeting_recordings r ON r.id = p.recording_id WHERE p.id = ? AND p.status = 'blocked' AND p.kind != 'summary' AND p.raw_response_path IS NULL AND p.transcript_path IS NULL AND p.summary_path IS NULL"
     ).get(id) as (MeetingProcessingRunDbRow & { audio_state: MeetingAudioState; note_id: number }) | undefined;
     if (!row || this.isMeetingNoteDeletionPending(row.note_id)) return null;
     if (row.kind === "reprocess" && row.audio_state !== "available") return null;

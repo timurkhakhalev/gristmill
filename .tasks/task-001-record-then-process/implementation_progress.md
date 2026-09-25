@@ -235,3 +235,27 @@ Verification:
 - This worker did not run tests, builds, installs, or native rebuilds.
 
 Root-only rerun: `node --import tsx --test --test-concurrency=1 test/locales/translationCoverage.test.js`
+
+## M5 Reviewer Fix 1
+
+Status: done
+
+Added a main-validated IPC action to refresh configuration on a blocked run before any provider response or other run artifact exists. Ordinary retry still reuses its persisted snapshot; runs with raw results cannot change route. Missing summary configuration now leaves nonempty saved transcripts visibly blocked.
+
+Notes keeps incomplete capture visible alongside processing status, allows original mic/system export without a transcript or prepared playback file, displays the existing no-speech message for valid empty transcripts, and reports fulfilled playback IPC errors. New ASR now works when no transcript version is selectable.
+
+Preserved separate immutable mic/system sources, raw-response/run history, manual Notes content, existing provider routes, and deletion safeguards. Configuration correction cannot relabel or reinterpret a saved provider response.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings outside changed files.
+- Read-only translation key/placeholder parity — all 10 non-English locales have 0 missing English keys and 0 placeholder mismatches.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused regression command:
+`node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
+
+Root-only integration verification remains `pnpm test`, then `pnpm run pack` and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains unverified.
+
+Commit: `dab4bf27` — M5: fix reviewed meeting processing gaps.

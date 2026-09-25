@@ -93,13 +93,15 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
       .then((result) => {
         if (!cancelled && result.success && result.path) {
           setPlaybackUrl(new URL(result.path, "file://").href);
+        } else if (!cancelled) {
+          setMessage(t("meetingResults.playbackError"));
         }
       })
-      .catch((error: unknown) => {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : String(error));
+      .catch(() => {
+        if (!cancelled) setMessage(t("meetingResults.playbackError"));
       });
     return () => { cancelled = true; };
-  }, [selected]);
+  }, [selected, t]);
 
   useEffect(() => {
     const result = selected?.result;
@@ -140,13 +142,14 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
   };
 
   const makeRun = async (kind: "reprocess" | "summary") => {
-    if (!selected) return;
+    const sourceRecording = kind === "reprocess" ? selected?.recording ?? currentRecording : selected?.recording;
+    if (!sourceRecording || (kind === "summary" && !selected)) return;
     setBusy(true);
     setMessage("");
     try {
       const snapshot = snapshotMeetingRecordingConfig();
       const created = await window.electronAPI.meetingProcessingCreateRun({
-        recordingId: selected.recording.recording.id,
+        recordingId: sourceRecording.recording.id,
         kind,
         config: snapshot.config,
         configError: snapshot.configError,
@@ -183,12 +186,12 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
   };
 
   const exportAudio = async (source: "mixed" | "mic" | "system") => {
-    if (!selected) return;
+    if (source === "mixed" && !run) return;
     setBusy(true);
     setMessage("");
     try {
       const result = await window.electronAPI.meetingRecordingExportAudio({
-        recordingId: selected.recording.recording.id,
+        recordingId: currentRecording.recording.id,
         ...(source === "mixed" && run ? { runId: run.run.id } : {}),
         source,
       });
@@ -196,6 +199,26 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
       setMessage(t("meetingResults.exported"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateBlockedRunConfig = async () => {
+    if (!latestRun) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const snapshot = snapshotMeetingRecordingConfig();
+      const updated = await window.electronAPI.meetingProcessingUpdateBlockedRunConfig({
+        runId: latestRun.run.id,
+        config: snapshot.config,
+        configError: snapshot.configError,
+      });
+      if (!updated.success) throw new Error(updated.error || t("meetingResults.updateConfigError"));
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("meetingResults.updateConfigError"));
     } finally {
       setBusy(false);
     }
@@ -242,24 +265,29 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     });
   };
 
-  const status = latestRun
+  const runStatus = latestRun
     ? `${t(`meetingResults.stage.${latestRun.run.stage}`)} · ${t(`meetingResults.status.${latestRun.run.status}`)}`
-    : currentRecording.recording.captureState === "incomplete"
-      ? t("meetingResults.captureIncomplete")
-      : t(`meetingResults.capture.${currentRecording.recording.captureState}`);
+    : "";
+  const captureIncomplete = currentRecording.recording.captureState === "incomplete";
+  const status = captureIncomplete
+    ? [t("meetingResults.captureIncomplete"), runStatus].filter(Boolean).join(" · ")
+    : runStatus || t(`meetingResults.capture.${currentRecording.recording.captureState}`);
 
   return (
     <section className="m-4 rounded-xl border border-border bg-surface-2/70 p-4 dark:border-white/10" aria-label={t("meetingResults.title")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold">{t("meetingResults.title")}</h3>
-          <p className="text-xs text-muted-foreground">{status}{latestRun?.run.errorCode ? ` · ${latestRun.run.errorCode}` : currentRecording.recording.captureErrorCode ? ` · ${currentRecording.recording.captureErrorCode}` : currentRecording.recording.audioErrorCode ? ` · ${currentRecording.recording.audioErrorCode}` : ""}</p>
+          <p className="text-xs text-muted-foreground">{status}{latestRun?.run.errorCode ? ` · ${latestRun.run.errorCode}` : ""}{currentRecording.recording.captureErrorCode ? ` · ${currentRecording.recording.captureErrorCode}` : ""}{currentRecording.recording.audioErrorCode ? ` · ${currentRecording.recording.audioErrorCode}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {audioAvailable && <Button size="sm" variant="outline" disabled={busy} onClick={() => void makeRun("reprocess")}>{t("meetingResults.newAsr")}</Button>}
           {run?.transcript && <Button size="sm" variant="outline" disabled={busy} onClick={() => void makeRun("summary")}>{t("meetingResults.newSummary")}</Button>}
           {latestRun && ["failed", "blocked", "cancelled"].includes(latestRun.run.status) && (
             <Button size="sm" variant="outline" disabled={busy || (!audioAvailable && !latestRun.run.hasRawProviderResponse && !latestRun.transcript)} onClick={() => void retryRun()}>{t("meetingResults.retry")}</Button>
+          )}
+          {latestRun?.run.status === "blocked" && latestRun.run.kind !== "summary" && !latestRun.run.hasRawProviderResponse && !latestRun.run.hasTranscript && audioAvailable && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void updateBlockedRunConfig()}>{t("meetingResults.updateRunSettings")}</Button>
           )}
           {audioAvailable && <Button size="sm" variant="outline" disabled={busy} onClick={() => void confirmDeleteAudio()}>{t("meetingResults.deleteAudio")}</Button>}
           {currentRecording.recording.audioState === "deleting" && <Button size="sm" variant="outline" disabled={busy} onClick={() => void confirmDeleteAudio()}>{t("meetingResults.retryDelete")}</Button>}
@@ -277,10 +305,10 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
         </label>
       )}
 
-      {playbackUrl && audioAvailable && (
+      {playbackUrl && audioAvailable && <audio ref={audioRef} controls preload="metadata" src={playbackUrl} className="mt-3 h-9 max-w-full" />}
+      {audioAvailable && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <audio ref={audioRef} controls preload="metadata" src={playbackUrl} className="h-9 max-w-full" />
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void exportAudio("mixed")}>{t("meetingResults.exportMixed")}</Button>
+          {playbackUrl && run && <Button size="sm" variant="outline" disabled={busy} onClick={() => void exportAudio("mixed")}>{t("meetingResults.exportMixed")}</Button>}
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void exportAudio("mic")}>{t("meetingResults.exportMic")}</Button>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void exportAudio("system")}>{t("meetingResults.exportSystem")}</Button>
         </div>
@@ -327,6 +355,9 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
       )}
       {run?.transcript?.text && !run.transcript.segments?.length && (
         <p className="mt-3 max-h-32 overflow-y-auto border-t border-border/60 pt-2 text-xs whitespace-pre-wrap">{run.transcript.text}</p>
+      )}
+      {run?.transcript && !run.transcript.text.trim() && !run.transcript.segments?.length && (
+        <p className="mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">{t("notes.editor.noSpeechDetected")}</p>
       )}
       {message && <p role="status" className="mt-2 text-xs text-muted-foreground">{message}</p>}
       <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => !open && hideConfirmDialog()} title={confirmDialog.title} description={confirmDialog.description} confirmText={confirmDialog.confirmText} cancelText={confirmDialog.cancelText} onConfirm={confirmDialog.onConfirm} variant={confirmDialog.variant} />

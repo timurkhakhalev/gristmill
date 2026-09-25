@@ -276,6 +276,11 @@
           "streaming": true
         },
         {
+          "id": "gpt-4o-transcribe-diarize",
+          "name": "GPT-4o Transcribe Diarize",
+          "description": "File transcription with speaker detection"
+        },
+        {
           "id": "whisper-1",
           "name": "Whisper",
           "description": "Original Whisper model",

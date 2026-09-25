@@ -106,8 +106,79 @@ test("provider segments serialize into the meeting-path transcript shape", async
     { text: "Named part.", timestamp: anchorMs + 4200, speakerName: "Speaker 1" },
   ]);
   const parsed = parseTranscriptSegments(transcript);
-  assert.equal(parsed[0].source, undefined, "a single mixed/upload transcript carries no false mic/system origin");
+  assert.equal(
+    parsed[0].source,
+    undefined,
+    "a single mixed/upload transcript carries no false mic/system origin"
+  );
   assert.equal(parsed[1].speakerName, "Speaker 1");
+  assert.equal(parsed[1].speaker, "Speaker 1", "provider labels remain visible in Transcript");
+  assert.equal(
+    parsed[1].speakerStatus,
+    "provisional",
+    "provider labels are not confirmed identities"
+  );
+});
+
+test("Upload keeps the transcript in Transcript and leaves Notes editable", async (t) => {
+  const { saveUploadNote } = await load();
+  const calls = [];
+  const originalWindow = global.window;
+  t.after(() => {
+    global.window = originalWindow;
+  });
+  global.window = {
+    electronAPI: {
+      saveNote: async (...args) => {
+        calls.push({ kind: "save", args });
+        return { success: true, note: { id: 42, content: args[1] } };
+      },
+      updateNote: async (id, updates) => {
+        calls.push({ kind: "update", id, updates });
+        return { success: true, note: { id, ...updates } };
+      },
+    },
+  };
+
+  const saved = await saveUploadNote({
+    title: "Call",
+    text: "Spoken words.",
+    sourceName: "call.wav",
+    folderId: null,
+    diarization: { enabled: false, localModelsReady: false, numSpeakers: null },
+  });
+  assert.equal(
+    calls[0].args[1],
+    "Spoken words.",
+    "initial save protects the text if metadata fails"
+  );
+  assert.equal(calls[1].updates.content, "");
+  assert.equal(JSON.parse(calls[1].updates.transcript)[0].text, "Spoken words.");
+  assert.equal(saved.note.content, "");
+});
+
+test("a failed transcript write leaves the original text in Notes", async (t) => {
+  const { saveUploadNote } = await load();
+  const originalWindow = global.window;
+  t.after(() => {
+    global.window = originalWindow;
+  });
+  global.window = {
+    electronAPI: {
+      saveNote: async () => ({ success: true, note: { id: 42, content: "Spoken words." } }),
+      updateNote: async () => {
+        throw new Error("write failed");
+      },
+    },
+  };
+  const saved = await saveUploadNote({
+    title: "Call",
+    text: "Spoken words.",
+    sourceName: "call.wav",
+    folderId: null,
+    diarization: { enabled: false, localModelsReady: false, numSpeakers: null },
+  });
+  assert.equal(saved.note.content, "Spoken words.");
 });
 
 test("the default anchor is the current epoch so later meeting appends share one base", async () => {

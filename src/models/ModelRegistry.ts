@@ -6,6 +6,7 @@ import {
   type MeetingTranscriptionProvider,
 } from "../helpers/meetingTranscriptionRouting";
 import type { InferenceMode } from "../contracts/inferenceSettings";
+import { isMeetingFilePickerModel } from "../helpers/meetingFileTranscription";
 
 export interface ModelDefinition {
   id: string;
@@ -444,6 +445,15 @@ export function getMeetingStreamingTranscriptionProviders(): Array<
   TranscriptionProviderData & MeetingTranscriptionProvider
 > {
   return filterMeetingStreamingProviders(getStreamingTranscriptionProviders());
+}
+
+export function getMeetingFileTranscriptionProviders(): TranscriptionProviderData[] {
+  return getTranscriptionProviders()
+    .map((provider) => ({
+      ...provider,
+      models: provider.models.filter((model) => isMeetingFilePickerModel(provider.id, model.id)),
+    }))
+    .filter((provider) => provider.models.length > 0);
 }
 
 export function getTranscriptionProvider(

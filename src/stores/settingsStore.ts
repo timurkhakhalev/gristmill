@@ -25,6 +25,7 @@ import {
 } from "../config/settingsSelectors";
 import { DEFAULT_CLOUD_TRANSCRIPTION_PROVIDER } from "../config/transcriptionCapabilities";
 import { findStaleLocalModelKeys } from "../helpers/localModelSelections";
+import { isMeetingFilePickerModel } from "../helpers/meetingFileTranscription";
 import {
   INFERENCE_SCOPES,
   type InferenceScope,
@@ -71,7 +72,9 @@ function transcriptionProviderModels(
   const models =
     modelRegistryData.transcriptionProviders.find((provider) => provider.id === providerId)
       ?.models ?? [];
-  return context === "meeting" ? models.filter((model) => model.streaming) : models;
+  return context === "meeting"
+    ? models.filter((model) => isMeetingFilePickerModel(providerId, model.id))
+    : models;
 }
 
 function defaultTranscriptionModel(

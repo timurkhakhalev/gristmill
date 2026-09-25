@@ -259,3 +259,23 @@ Root-only focused regression command:
 Root-only integration verification remains `pnpm test`, then `pnpm run pack` and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains unverified.
 
 Commit: `9b4755a6` — M5: fix reviewed meeting processing gaps.
+
+## M5 focused root-test follow-up
+
+Status: done
+
+Fixed the renderer test DOM so React can create host elements and text nodes during client mounting. Updated the summary-null processing assertions to expect a blocked summary stage while checking the transcript, provider response, and absent summary artifact; the Notes panel now references the existing localized `notes.upload.noSpeechDetected` key.
+
+Preserved the missing-summary-config blocked state and persisted processing artifacts. The no-speech copy is already translated in all 11 locales.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed (main, renderer, settings selectors).
+- `pnpm run lint` — passed with 0 errors and 36 warnings outside changed files.
+- Read-only locale key check — `notes.upload.noSpeechDetected` exists in all 11 locales.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused rerun:
+`node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
+
+Commit: `0fbe743f` — M5: fix focused meeting result test failures.

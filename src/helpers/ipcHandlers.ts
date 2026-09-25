@@ -149,10 +149,6 @@ interface IPCHandlersManagerOptions {
   oauthProtocol: string;
 }
 
-// The WindowManager class has no mainWindow property; the main-window seams
-// below read it as an absent optional, exactly like the untyped JS did.
-type IpcWindowManager = WindowManager & { mainWindow?: BrowserWindow | null };
-
 // The multipart transport behind the remote transcription handler. Kept here
 // (not in the typed module) because it owns the Electron net session; the
 // handler receives it as a narrow dependency.
@@ -293,7 +289,7 @@ export class IPCHandlers {
   whisperManager: WhisperManager;
   parakeetManager: ParakeetManager;
   diarizationManager: DiarizationManager;
-  windowManager: IpcWindowManager;
+  windowManager: WindowManager;
   getTrayManager: () => TrayManager | null;
   googleCalendarManager: GoogleCalendarManager;
   microsoftCalendarManager: MicrosoftCalendarManager;
@@ -954,7 +950,7 @@ export class IPCHandlers {
       consumePendingNoteNavigation: () => this.windowManager.consumePendingNoteNavigation(),
       retention: {
         getCurrentSettings: () => this._retentionSettings,
-        getOwner: () => this.windowManager.mainWindow?.webContents,
+        getOwner: () => this.windowManager.controlPanelWindow?.webContents,
         hasSynced: () => this._retentionSettingsSynced,
         onSettingsChanged: (settings) => {
           this._retentionSettings = settings;
@@ -1039,7 +1035,7 @@ export class IPCHandlers {
       oauthProtocolRegistered: this.oauthProtocolRegistered,
       oauthProtocol: this.oauthProtocol,
       getTrayManager: () => this.getTrayManager(),
-      sendToMainWindow: (channel) => this.windowManager.mainWindow?.webContents?.send(channel),
+      sendToMainWindow: (channel) => this.windowManager.controlPanelWindow?.webContents?.send(channel),
       stopWhisperServer: () => this.whisperManager.stopServer(),
       stopParakeetServer: () => this.parakeetManager.stopServer(),
       stopLlamaServer: () => modelManager.stopServer(),

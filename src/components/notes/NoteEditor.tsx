@@ -190,7 +190,7 @@ export default function NoteEditor({
   );
   const capturePending = capturePhase === "preparing" || capturePhase === "saving";
   const captureLive = capturePhase === "recording";
-  const captureHasStatus = capturePhase !== "idle";
+  const captureHasStatus = capturePending || captureLive || capturePhase === "incomplete" || capturePhase === "failed";
   const [viewMode, setViewMode] = useState<MeetingViewMode>("raw");
   const [chatMode, setChatMode] = useState<EmbeddedChatMode>("hidden");
   const [folderSearch, setFolderSearch] = useState("");
@@ -878,13 +878,13 @@ export default function NoteEditor({
                     {(capturePending || captureLive) && <RecordingWave className="me-1" />}
                     {t(`notes.editor.capture.${capturePhase}`)}
                   </div>
-                  {captureStartedAt != null && (
+                  {captureStartedAt != null && (capturePending || captureLive) && (
                     <span className="text-xs tabular-nums text-foreground/60">
                       {formatMmSs(Math.max(0, Math.floor((Date.now() - captureStartedAt) / 1000)))}
                     </span>
                   )}
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                {(capturePending || captureLive) && <div className="mt-3 flex flex-wrap gap-2 text-xs">
                   {(["mic", "system"] as const).map((source) => {
                     const status = source === "mic" ? micCaptureStatus : systemCaptureStatus;
                     return (
@@ -906,7 +906,7 @@ export default function NoteEditor({
                       {t("notes.editor.capture.writingToDisk")}
                     </span>
                   )}
-                </div>
+                </div>}
                 {captureErrorCode && (
                   <p className="mt-2 text-xs text-foreground/60">
                     {t("notes.editor.capture.incompleteReason")}

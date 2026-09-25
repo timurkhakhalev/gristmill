@@ -189,7 +189,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                             {getActionName(action, t)}
                           </span>
                           {action.is_builtin === 1 && (
-                            <span className="text-[10px] font-medium px-1 py-px rounded bg-foreground/5 dark:bg-white/6 text-muted-foreground/70 shrink-0">
+                            <span className="text-2xs font-medium px-1 py-px rounded bg-foreground/5 dark:bg-white/6 text-muted-foreground/70 shrink-0">
                               {t("notes.actions.builtIn")}
                             </span>
                           )}
@@ -302,7 +302,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                         "dark:bg-surface-1 dark:border-border-subtle/60",
                         "dark:focus-visible:border-border-active dark:focus-visible:ring-ring/10",
                         "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-subtle",
-                        "font-mono text-[13px]"
+                        "font-mono text-ui"
                       )}
                     />
                   </div>

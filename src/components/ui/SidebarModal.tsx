@@ -147,7 +147,7 @@ export default function SidebarModal<T extends string>({
                     <div key={groupIndex} className={groupIndex > 0 ? "mt-4" : ""}>
                       {!isCompact && group.label && (
                         <div className="px-2 pb-1">
-                          <span className="text-[11px] font-medium text-muted-foreground/70 dark:text-muted-foreground/65">
+                          <span className="text-2xs font-medium text-muted-foreground/70 dark:text-muted-foreground/65">
                             {group.label}
                           </span>
                         </div>

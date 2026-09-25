@@ -277,7 +277,7 @@ function NoteRow({
       )}
     >
       <FileText size={14} className="shrink-0 text-foreground/50" />
-      <span dir="auto" className="text-[13px] truncate min-w-0 flex-1 text-foreground/85">
+      <span dir="auto" className="text-ui truncate min-w-0 flex-1 text-foreground/85">
         {note.title || t("notes.list.untitled")}
       </span>
       <DropdownMenu>
@@ -385,9 +385,9 @@ function FolderRow({
         )}
       >
         <TreeToggle open={expanded} onToggle={onToggle} icon={<Folder size={14} />} />
-        <span className="text-[13px] truncate flex-1 text-foreground/85">
+        <span className="text-ui truncate flex-1 text-foreground/85">
           {defaultFolderDisplayName(folder, t)}
-          {count > 0 && <span className="ms-1 text-[10px] text-foreground/40">{count}</span>}
+          {count > 0 && <span className="ms-1 text-2xs text-foreground/40">{count}</span>}
         </span>
         <Button
           variant="ghost"
@@ -817,10 +817,10 @@ export default function SpacesTree({
                   onToggle={() => toggleContainerExpanded(key)}
                   icon={<Lock size={14} />}
                 />
-                <span className="text-[13px] truncate flex-1 text-foreground/85">
+                <span className="text-ui truncate flex-1 text-foreground/85">
                   {space.name || t("notes.spaces.personal")}
                 </span>
-                {count > 0 && <span className="text-[10px] text-foreground/40">{count}</span>}
+                {count > 0 && <span className="text-2xs text-foreground/40">{count}</span>}
                 <Button
                   variant="ghost"
                   size="icon"

@@ -3,6 +3,7 @@ import { Bug, Check } from "../icons";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 export type NotesDebugScenario =
+  | "onboarding"
   | "empty"
   | "blank"
   | "manual"
@@ -12,16 +13,20 @@ export type NotesDebugScenario =
   | "processing"
   | "blocked"
   | "failed"
+  | "summary-failed"
   | "incomplete"
   | "audio-deleted"
   | "enhanced-stale"
   | "capture-preparing"
   | "recording"
+  | "paused"
   | "reconnecting"
+  | "system-unavailable"
   | "capture-saving"
   | "capture-failed";
 
 const scenarios: { id: NotesDebugScenario; label: string }[] = [
+  { id: "onboarding", label: "Setup checklist" },
   { id: "empty", label: "Empty Notes" },
   { id: "blank", label: "Blank note" },
   { id: "manual", label: "Manual note" },
@@ -31,12 +36,15 @@ const scenarios: { id: NotesDebugScenario; label: string }[] = [
   { id: "queued", label: "Processing queued" },
   { id: "processing", label: "Processing running" },
   { id: "blocked", label: "Processing blocked" },
-  { id: "failed", label: "Processing failed" },
+  { id: "failed", label: "Transcription failed" },
+  { id: "summary-failed", label: "Summary failed" },
   { id: "incomplete", label: "Incomplete capture" },
   { id: "audio-deleted", label: "Audio deleted" },
   { id: "capture-preparing", label: "Capture preparing" },
   { id: "recording", label: "Recording UI" },
+  { id: "paused", label: "Recording paused" },
   { id: "reconnecting", label: "System audio reconnecting" },
+  { id: "system-unavailable", label: "System audio unavailable" },
   { id: "capture-saving", label: "Capture saving" },
   { id: "capture-failed", label: "Capture failed" },
 ];
@@ -63,7 +71,7 @@ export default function NotesDebugControls({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-60 max-h-[min(75vh,560px)] overflow-y-auto">
         <p className="px-2 py-1 text-xs font-semibold">Notes state preview</p>
-        <p className="px-2 pb-2 text-[11px] text-muted-foreground">
+        <p className="px-2 pb-2 text-2xs text-muted-foreground">
           Interactive in-memory states. No audio or provider calls.
         </p>
         <div role="group" aria-label="Notes state preview" className="space-y-0.5">

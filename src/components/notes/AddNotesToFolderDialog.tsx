@@ -154,7 +154,7 @@ export default function AddNotesToFolderDialog({
                         className={cn(
                           "w-4 h-4 rounded-[3px] border shrink-0 flex items-center justify-center transition-colors",
                           isSelected
-                            ? "bg-primary border-primary"
+                            ? "bg-accent border-accent"
                             : "border-foreground/15 dark:border-white/15"
                         )}
                       >

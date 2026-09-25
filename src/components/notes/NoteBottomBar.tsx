@@ -121,7 +121,7 @@ export default function NoteBottomBar({
             placeholder={t("embeddedChat.askPlaceholder")}
             className={cn(
               "input-inline flex-1 bg-transparent outline-none min-w-0 p-0 caret-primary",
-              "text-[13px] text-foreground",
+              "text-ui text-foreground",
               "placeholder:text-foreground/45 dark:placeholder:text-foreground/45"
             )}
           />

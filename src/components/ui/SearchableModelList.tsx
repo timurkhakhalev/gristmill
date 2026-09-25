@@ -227,10 +227,10 @@ export default function SearchableModelList({
                 >
                   {row.type === "header" ? (
                     <div className="flex items-center gap-1.5 px-0.5 pt-2 pb-1">
-                      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                      <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground/70">
                         {row.label}
                       </span>
-                      <span className="text-[11px] text-muted-foreground/70 tabular-nums">
+                      <span className="text-2xs text-muted-foreground/70 tabular-nums">
                         {row.count}
                       </span>
                     </div>

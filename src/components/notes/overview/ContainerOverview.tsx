@@ -91,7 +91,7 @@ export function ContainerOverview({
           <h1 className="text-xl font-semibold text-foreground tracking-tight">
             {folder ? defaultFolderDisplayName(folder, t) : space.name}
           </h1>
-          <p className="text-[13px] text-foreground/50 dark:text-foreground/45">
+          <p className="text-ui text-foreground/50 dark:text-foreground/45">
             {t("notes.overview.subtitle.private")}
           </p>
           <p className="text-xs text-foreground/45 dark:text-foreground/45">

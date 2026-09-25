@@ -13,7 +13,6 @@ import {
   Plus,
   Check,
   ArrowLeft,
-  PanelRight,
 } from "../icons";
 import { RichTextEditor } from "../ui/RichTextEditor";
 import type { Editor } from "@tiptap/react";
@@ -636,8 +635,8 @@ export default function NoteEditor({
   return (
     <div className="relative flex h-full min-h-0">
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="oh-note-header px-5 pt-5 pb-0">
-          {onBackToNotes && <button type="button" className="oh-back-button" onClick={onBackToNotes} aria-label={t("controlPanel.backToNotes")}><ArrowLeft size={16}/>{t("controlPanel.backToNotes")}</button>}
+        <div className="mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-5">
+          {onBackToNotes && <button type="button" className="mb-6 inline-flex items-center gap-2 rounded text-xs text-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={onBackToNotes} aria-label={t("controlPanel.backToNotes")}><ArrowLeft size={16}/>{t("controlPanel.backToNotes")}</button>}
           <div
             dir="auto"
             ref={titleRef}
@@ -647,7 +646,7 @@ export default function NoteEditor({
             onKeyDown={handleTitleKeyDown}
             onPaste={handleTitlePaste}
             data-placeholder={t("notes.editor.untitled")}
-            className="text-3xl font-medium leading-tight text-foreground bg-transparent outline-none tracking-[-0.01em] empty:before:content-[attr(data-placeholder)] empty:before:text-foreground/45 empty:before:pointer-events-none"
+            className="text-3xl font-semibold leading-tight text-foreground bg-transparent outline-none tracking-tight empty:before:content-[attr(data-placeholder)] empty:before:text-foreground/45 empty:before:pointer-events-none"
             role="textbox"
             aria-label={t("notes.editor.noteTitle")}
           />
@@ -788,7 +787,7 @@ export default function NoteEditor({
         <div className="flex-1 relative min-h-0 flex flex-col">
           <div ref={contentScrollRef} className="flex-1 min-h-0 overflow-y-auto agent-chat-scroll">
             <MeetingResultsPanel
-              notice={captureLive || capturePhase === "paused" ? (
+              notice={captureLive ? (
                 <CaptureHealthLine micStatus={micCaptureStatus} systemStatus={systemCaptureStatus} />
               ) : capturePhase === "failed" ? (
                 <NoteNotice
@@ -798,9 +797,8 @@ export default function NoteEditor({
                   actions={<HeroButton size="sm" variant="secondary" onPress={() => openSettings("system")}>{t("meetingResults.openSettings")}</HeroButton>}
                 />
               ) : null}
-              actions={<div className="oh-note-actions">
-              <HeroButton isIconOnly size="sm" variant={chatMode === "sidebar" ? "secondary" : "ghost"} onPress={() => setChatMode(chatMode === "sidebar" ? "hidden" : "sidebar")} aria-label={t("sidebar.chat")} aria-pressed={chatMode === "sidebar"}><PanelRight size={16} /></HeroButton>
-              {canEditNote && (
+              actions={<div className="flex flex-wrap items-center gap-1.5">
+                            {canEditNote && (
                 <NoteRecordControl
                   isRecording={isRecording}
                   isProcessing={isProcessing}

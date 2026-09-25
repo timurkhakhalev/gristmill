@@ -1,7 +1,9 @@
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "../icons";
 import { cn } from "../lib/utils";
+import { OVERLAY_CLASS } from "./surfaceStyles";
 import { Button } from "./button";
 import { useDismissGuard } from "./useDismissGuard";
 
@@ -20,7 +22,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/60 backdrop-blur-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-backdrop backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -32,6 +34,7 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { overlayClassName?: string }
 >(({ className, children, onInteractOutside, overlayClassName, ...props }, ref) => {
+  const { t } = useTranslation();
   const { registerContent, shouldBlockDismiss } =
     useDismissGuard<React.ElementRef<typeof DialogPrimitive.Content>>(ref);
 
@@ -46,18 +49,18 @@ const DialogContent = React.forwardRef<
           if (shouldBlockDismiss(event)) event.preventDefault();
         }}
         className={cn(
-          "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border p-6 shadow-2xl duration-200 rounded-2xl",
-          "bg-card border-border/70",
-          "dark:bg-surface-2 dark:border-border dark:shadow-modal",
+          "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 p-6 outline-none duration-200",
+          OVERLAY_CLASS,
+          "rounded-2xl",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
           className
         )}
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute end-4 top-4 rounded-full opacity-50 ring-offset-background transition-[opacity,background-color] hover:opacity-100 hover:bg-subtle/50 dark:hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none p-1.5">
-          <X className="h-4 w-4 text-muted-foreground" />
-          <span className="sr-only">Close</span>
+        <DialogPrimitive.Close className="absolute end-4 top-4 flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-default hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:pointer-events-none">
+          <X className="size-4" />
+          <span className="sr-only">{t("common.close")}</span>
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </DialogPortal>
@@ -88,7 +91,7 @@ const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold leading-none tracking-tight text-foreground brand-heading",
+      "text-base font-semibold leading-snug text-foreground brand-heading",
       className
     )}
     {...props}

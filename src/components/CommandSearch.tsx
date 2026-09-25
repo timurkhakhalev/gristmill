@@ -292,7 +292,7 @@ export default function CommandSearch({
                   <button
                     type="button"
                     className={cn(
-                      "flex items-center gap-1 shrink-0 rounded-md border border-border/70 bg-muted/40",
+                      "flex items-center gap-1 shrink-0 rounded-md border border-border/70 bg-subtle/40",
                       "px-1.5 py-0.5 text-[11px] transition-colors outline-none",
                       scopeSpace ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                     )}
@@ -448,7 +448,7 @@ export default function CommandSearch({
           </div>
 
           {/* Footer */}
-          <div className="flex items-center gap-4 px-3.5 py-2 border-t border-border/70 bg-muted/15">
+          <div className="flex items-center gap-4 px-3.5 py-2 border-t border-border/70 bg-subtle/15">
             <FooterHint keys={["↑", "↓"]} label={t("commandSearch.footer.navigate")} />
             <FooterHint keys={["↵"]} label={t("commandSearch.footer.open")} />
             <FooterHint keys={["Esc"]} label={t("commandSearch.footer.dismiss")} />
@@ -660,7 +660,7 @@ function FooterHint({ keys, label }: { keys: string[]; label: string }) {
         {keys.map((k) => (
           <kbd
             key={k}
-            className="text-[10px] px-1 py-px rounded border border-border/70 bg-muted/50 text-muted-foreground/55 font-mono leading-tight"
+            className="text-[10px] px-1 py-px rounded border border-border/70 bg-subtle/50 text-muted-foreground/55 font-mono leading-tight"
           >
             {k}
           </kbd>

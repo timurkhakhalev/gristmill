@@ -443,7 +443,7 @@
       "selectModelHint": "Nessun modello selezionato — scegline uno dall'elenco qui sotto.",
       "keyRequiredHint": "Per l'inferenza è richiesta una chiave API — aggiungine una per usare questo provider."
     },
-    "getApiKey": "Ottieni la chiave API ->",
+    "getApiKey": "Ottieni la chiave API",
     "selectModel": "Seleziona modello",
     "availableModels": "Modelli disponibili",
     "disableThinking": {
@@ -545,7 +545,7 @@
       "unavailable": "Non disponibile"
     },
     "apiKeyOptional": "Chiave API (opzionale)",
-    "getKey": "Ottieni chiave ->",
+    "getKey": "Ottieni chiave",
     "endpointUrl": "URL endpoint",
     "azureHint": "Azure AI Foundry: inserisci l'endpoint della tua risorsa (es. https://your-resource.cognitiveservices.azure.com) e imposta Modello con il nome esatto della tua distribuzione.",
     "customProvider": "Personalizzato",
@@ -837,7 +837,8 @@
     "selectPlaceholder": "Seleziona un microfono",
     "systemDefault": "Predefinito di sistema",
     "unknownDevice": "Dispositivo sconosciuto",
-    "using": "In uso: {{device}}"
+    "using": "In uso: {{device}}",
+    "refresh": "Aggiorna dispositivi"
   },
   "promptStudio": {
     "common": {
@@ -902,27 +903,27 @@
     },
     "sections": {
       "general": {
-        "description": "Aspetto, suoni e avvio",
+        "description": "Lingua, tema e note",
         "label": "Preferenze"
       },
       "hotkeys": {
-        "description": "Scorciatoia di dettatura e attivazione",
+        "description": "Scorciatoie da tastiera per la modalità riunione",
         "label": "Scorciatoie"
       },
       "speechToText": {
-        "description": "Motori per dettatura e registrazione di note",
+        "description": "Come vengono trascritte le registrazioni e i file caricati",
         "label": "Riconoscimento vocale"
       },
       "llms": {
-        "description": "Modelli per chat, pulizia e riassunti",
+        "description": "Modelli per i riepiloghi delle riunioni e la chat",
         "label": "Modelli linguistici"
       },
       "privacyData": {
-        "description": "Privacy, permessi e analisi",
+        "description": "Note, audio e chat restano su questo dispositivo. I provider ricevono solo ciò che invii con la tua chiave API.",
         "label": "Privacy e dati"
       },
       "system": {
-        "description": "Aggiornamenti, archiviazione e strumenti di sviluppo",
+        "description": "Avvio, dispositivi di registrazione e diagnostica",
         "label": "Sistema"
       }
     },
@@ -1079,7 +1080,8 @@
       "noteFiles": {
         "label": "Store note files",
         "description": "Keep a local Markdown copy of notes."
-      }
+      },
+      "notesGroup": "Note"
     },
     "permissions": {
       "description": "Testa e gestisci i permessi di sistema necessari per il corretto funzionamento di OpenHercules",
@@ -1119,7 +1121,8 @@
       "deleteAllAudioConfirmDescription": "La registrazione in corso verrà interrotta in sicurezza senza avviare la trascrizione. Poi l’audio salvato verrà eliminato.",
       "deleteAllAudioConfirm": "Elimina tutto l’audio",
       "deleteAllAudioDone": "Eliminati {{count}} elemento/i audio.",
-      "deleteAllAudioFailed": "Impossibile eliminare {{count}} elemento/i audio. Riprova."
+      "deleteAllAudioFailed": "Impossibile eliminare {{count}} elemento/i audio. Riprova.",
+      "audioGroup": "Audio delle riunioni"
     },
     "prompts": {
       "description": "Visualizza, personalizza e testa il prompt di sistema unificato che gestisce la correzione del testo e il rilevamento delle istruzioni",
@@ -1485,8 +1488,12 @@
         "unavailable": "Non disponibile",
         "inactive": "Non avviato",
         "writingToDisk": "Scrittura su disco",
-        "incompleteReason": "Potrebbe mancare parte dell’audio. Quello salvato prima del problema viene conservato."
-      }
+        "incompleteReason": "Potrebbe mancare parte dell’audio. Quello salvato prima del problema viene conservato.",
+        "failedReason": "Controlla i permessi del microfono e dell'audio di sistema, poi riprova."
+      },
+      "summaryEmptyTitle": "Nessun riepilogo per ora",
+      "summaryEmptyDescription": "Il riepilogo apparirà qui dopo la trascrizione della registrazione.",
+      "summaryReadyDescription": "La trascrizione è pronta. Genera un riepilogo con il tuo modello linguistico."
     },
     "participants": {
       "attendee": "partecipante",
@@ -1662,24 +1669,24 @@
     },
     "onboarding": {
       "llm": {
-        "title": "Configura un modello IA",
-        "description": "Le azioni usano l'IA per trasformare le tue note. Configura un modello linguistico per iniziare.",
-        "configured": "Modello IA configurato"
-      },
-      "actions": {
-        "title": "Azioni basate sull'IA",
-        "description": "Le azioni trasformano le tue note: correggono le trascrizioni, riassumono le riunioni e altro ancora. Usa le azioni integrate o creane di tue.",
-        "builtInLabel": "Integrata",
-        "createTitle": "Crea la tua azione",
-        "createDescription": "Definisci un'azione personalizzata con il tuo prompt IA. Puoi sempre modificarle o aggiungerne altre nelle impostazioni.",
-        "created": "Creata!"
+        "title": "Riepiloghi e chat",
+        "description": "Un modello linguistico scrive i riepiloghi e risponde alle domande sulle tue note."
       },
       "getStarted": "Inizia",
       "systemAudio": {
         "title": "Audio di sistema",
-        "description": "Cattura l'audio delle riunioni e di altre app insieme al microfono.",
-        "grant": "Concedi permesso",
+        "description": "Registra gli altri partecipanti, non solo il tuo microfono.",
+        "grant": "Consenti",
         "enabled": "Attivato"
+      },
+      "title": "Configura le note delle riunioni",
+      "subtitle": "Registra una riunione e ottieni trascrizione e riepilogo. Questi passaggi servono una sola volta.",
+      "done": "Fatto",
+      "setUp": "Configura",
+      "laterHint": "Puoi modificare tutto più tardi nelle impostazioni.",
+      "transcription": {
+        "title": "Trascrizione vocale",
+        "description": "Trasforma l'audio della riunione in una trascrizione."
       }
     },
     "enhance": {
@@ -1944,7 +1951,6 @@
     "description": "Collega servizi per potenziare il tuo flusso di lavoro",
     "googleCalendar": {
       "title": "Google Calendar",
-      "optional": "Opzionale",
       "description": "Compila automaticamente titoli e partecipanti delle riunioni dal tuo calendario.",
       "connect": "Collega Google Calendar",
       "connecting": "Connessione...",
@@ -1964,7 +1970,6 @@
     },
     "microsoftCalendar": {
       "title": "Microsoft Calendar",
-      "optional": "Opzionale",
       "description": "Leggi le riunioni dal tuo calendario Outlook o Microsoft 365.",
       "connect": "Collega Microsoft Calendar",
       "connected": "Connesso",
@@ -1980,7 +1985,6 @@
     },
     "appleCalendar": {
       "title": "Calendario Apple",
-      "optional": "Opzionale",
       "description": "Leggi le riunioni da Calendar.app — iCloud, Google, Exchange e Outlook in un unico posto.",
       "connect": "Collega Calendario Apple",
       "connected": "Connesso",
@@ -2189,6 +2193,7 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
@@ -2221,7 +2226,7 @@
     "selectError": "Impossibile selezionare il risultato.",
     "createError": "Impossibile creare un’esecuzione di elaborazione.",
     "retryError": "Impossibile riprovare questa esecuzione.",
-    "updateRunSettings": "Usa le impostazioni attuali",
+    "updateRunSettings": "Riprova con le impostazioni attuali",
     "updateConfigError": "Impossibile aggiornare le impostazioni di questa esecuzione.",
     "playbackError": "Impossibile preparare la riproduzione audio.",
     "exportError": "Esportazione audio non riuscita.",
@@ -2268,6 +2273,27 @@
       "finalizing": "Salvataggio della registrazione",
       "ready": "Salvato",
       "incomplete": "Incompleto"
+    },
+    "openSettings": "Apri impostazioni",
+    "blocked": {
+      "asr": "La trascrizione attende le impostazioni",
+      "summary": "Il riepilogo attende le impostazioni",
+      "other": "L'elaborazione attende le impostazioni"
+    },
+    "blockedReason": {
+      "missing-transcription-config": "Scegli un provider di trascrizione vocale e aggiungi la sua chiave API, poi riprova.",
+      "missing-summary-config": "Scegli un modello linguistico per i riepiloghi delle riunioni, poi riprova.",
+      "other": "Aggiorna le impostazioni di elaborazione, poi riprova."
+    },
+    "failed": {
+      "asr": "Trascrizione non riuscita",
+      "summary": "Riepilogo non riuscito",
+      "other": "Elaborazione non riuscita"
+    },
+    "failedReason": "L'audio è salvato. Controlla la connessione e la chiave API, poi riprova.",
+    "progress": {
+      "pending": "In attesa di avvio.",
+      "running": "Può richiedere qualche minuto. Puoi continuare a scrivere note."
     }
   }
 }

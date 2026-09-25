@@ -10,8 +10,8 @@ import { Button } from "./ui/button";
 import { useTranslation } from "react-i18next";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useTheme } from "../hooks/useTheme";
-import LanguageSelector from "./ui/LanguageSelector";
-import { SettingsRow } from "./ui/SettingsSection";
+import { SettingsCard, SettingsCardRow, SettingsPanelRow } from "./ui/SettingsSection";
+import { SelectField } from "./ui/SelectField";
 import { Toggle } from "./ui/toggle";
 import InferenceConfigEditor from "./settings/InferenceConfigEditor";
 import ChatAgentSettings from "./settings/ChatAgentSettings";
@@ -19,6 +19,22 @@ import { MeetingTranscriptionPanel } from "./settings/MeetingSettings";
 import { UploadTranscriptionPanel } from "./settings/UploadSettings";
 import { ConfirmDialog } from "./ui/dialog";
 import { useDialogs } from "../hooks/useDialogs";
+import { SUPPORTED_UI_LANGUAGES, type UiLanguage } from "../i18n";
+
+// Each language is named in itself, so users can find theirs from any UI language.
+const UI_LANGUAGE_NAMES: Record<UiLanguage, string> = {
+  en: "English",
+  ar: "العربية",
+  es: "Español",
+  fr: "Français",
+  de: "Deutsch",
+  pt: "Português",
+  it: "Italiano",
+  ru: "Русский",
+  ja: "日本語",
+  "zh-CN": "简体中文",
+  "zh-TW": "繁體中文",
+};
 
 export type SettingsSectionType =
   "general" | "hotkeys" | "speechToText" | "llms" | "privacyData" | "system";
@@ -38,15 +54,52 @@ const sections: SettingsSectionType[] = [
   "system",
 ];
 
-function Panel({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-6">{children}</div>;
-}
-function Header({ title, description }: { title: string; description?: string }) {
+/** Every settings section: page title, then content in a readable column. */
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
-      <h2 className="text-base font-semibold text-foreground">{title}</h2>
-      {description && <p className="mt-1 text-xs text-muted-foreground">{description}</p>}
+    <div className="mx-auto max-w-2xl space-y-6">
+      <header className="pe-10">
+        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+      </header>
+      {children}
     </div>
+  );
+}
+
+const Group = SettingsCard;
+const Row = SettingsCardRow;
+
+function SubTabs({
+  selectedKey,
+  onChange,
+  label,
+  tabs,
+}: {
+  selectedKey: string;
+  onChange: (key: string) => void;
+  label: string;
+  tabs: { id: string; label: string }[];
+}) {
+  return (
+    <Tabs selectedKey={selectedKey} onSelectionChange={(key) => onChange(String(key))} aria-label={label}>
+      <Tabs.List aria-label={label}>
+        {tabs.map((tab) => (
+          <Tabs.Tab key={tab.id} id={tab.id}>
+            {tab.label}
+            <Tabs.Indicator />
+          </Tabs.Tab>
+        ))}
+      </Tabs.List>
+    </Tabs>
   );
 }
 
@@ -60,48 +113,55 @@ function GeneralSettings() {
   const autoTitle = useSettingsStore((s) => s.autoGenerateNoteTitle);
   const setAutoTitle = useSettingsStore((s) => s.setAutoGenerateNoteTitle);
   return (
-    <Panel>
-      <Header
-        title={t("settingsPage.general.title")}
-        description={t("settingsPage.general.description")}
-      />
-      <div className="rounded-lg border border-border/70 divide-y divide-border/60">
-        <SettingsRow
+    <Section
+      title={t("settingsModal.sections.general.label")}
+      description={t("settingsModal.sections.general.description")}
+    >
+      <Group>
+        <Row
           label={t("settingsPage.general.language.label")}
           description={t("settingsPage.general.language.description")}
         >
-          <LanguageSelector value={language} onChange={setLanguage} />
-        </SettingsRow>
-        <SettingsRow
+          <SelectField
+            value={language}
+            onChange={setLanguage}
+            options={SUPPORTED_UI_LANGUAGES.map((id) => ({ id, label: UI_LANGUAGE_NAMES[id] }))}
+            className="w-36"
+          />
+        </Row>
+        <Row
           label={t("settingsPage.general.theme.label")}
           description={t("settingsPage.general.theme.description")}
         >
-          <select
+          <SelectField
             value={theme}
-            onChange={(e) => setTheme(e.target.value as "light" | "dark" | "auto")}
-            className="h-8 rounded border bg-background px-2 text-xs"
-          >
-            <option value="auto">{t("settingsPage.general.theme.system")}</option>
-            <option value="light">{t("settingsPage.general.theme.light")}</option>
-            <option value="dark">{t("settingsPage.general.theme.dark")}</option>
-          </select>
-        </SettingsRow>
-        <SettingsRow
+            onChange={(value) => setTheme(value as "light" | "dark" | "auto")}
+            options={[
+              { id: "auto", label: t("settingsPage.general.theme.system") },
+              { id: "light", label: t("settingsPage.general.theme.light") },
+              { id: "dark", label: t("settingsPage.general.theme.dark") },
+            ]}
+            className="w-36"
+          />
+        </Row>
+      </Group>
+      <Group title={t("settingsPage.general.notesGroup")}>
+        <Row
           label={t("settingsPage.general.autoGenerateTitle")}
           description={t("settingsPage.general.autoGenerateTitleDescription")}
         >
           <Toggle checked={autoTitle} onChange={setAutoTitle} />
-        </SettingsRow>
-        <SettingsRow
+        </Row>
+        <Row
           label={t("settingsPage.general.noteFiles.label", { defaultValue: "Store note files" })}
           description={t("settingsPage.general.noteFiles.description", {
             defaultValue: "Keep local note files available in the file manager.",
           })}
         >
           <Toggle checked={noteFilesEnabled} onChange={setNoteFilesEnabled} />
-        </SettingsRow>
-      </div>
-    </Panel>
+        </Row>
+      </Group>
+    </Section>
   );
 }
 
@@ -122,22 +182,22 @@ function PrivacySettings() {
     setAudioRetentionInput(String(next));
   };
   return (
-    <Panel>
-      <Header title={t("settingsPage.privacy.title")} />
-      <p className="text-sm text-muted-foreground">{t("cleanupSettings.localPrivacy")}</p>
-      <div className="rounded-lg border border-border/70 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-foreground">{t("settingsPage.privacy.audioRetentionLabel")}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{t("settingsPage.privacy.audioRetentionDescription")}</p>
-          </div>
-          <label className="flex items-center gap-2 text-xs">
+    <Section
+      title={t("settingsModal.sections.privacyData.label")}
+      description={t("settingsModal.sections.privacyData.description")}
+    >
+      <Group title={t("settingsPage.privacy.audioGroup")}>
+        <Row
+          label={t("settingsPage.privacy.audioRetentionLabel")}
+          description={t("settingsPage.privacy.audioRetentionDescription")}
+        >
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
             <input
               dir="ltr"
               type="number"
               min={0}
               step={1}
-              className="h-8 w-24 rounded border bg-background px-2"
+              className="h-8 w-20 rounded-lg px-2.5 text-sm"
               value={audioRetentionInput}
               onChange={(event) => {
                 setAudioRetentionInput(event.target.value);
@@ -165,14 +225,20 @@ function PrivacySettings() {
             />
             <span>{t("settingsPage.privacy.days")}</span>
           </label>
-        </div>
-      </div>
-      <div className="rounded-lg border border-border/70 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-foreground">{t("settingsPage.privacy.deleteAllAudioLabel")}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{t("settingsPage.privacy.deleteAllAudioDescription")}</p>
-          </div>
+        </Row>
+        <Row
+          label={t("settingsPage.privacy.deleteAllAudioLabel")}
+          description={
+            <>
+              {t("settingsPage.privacy.deleteAllAudioDescription")}
+              {audioDeleteMessage && (
+                <span className="mt-1 block text-foreground" role="status">
+                  {audioDeleteMessage}
+                </span>
+              )}
+            </>
+          }
+        >
           <Button
             variant="destructive"
             size="sm"
@@ -196,9 +262,8 @@ function PrivacySettings() {
           >
             {t("settingsPage.privacy.deleteAllAudioButton")}
           </Button>
-        </div>
-        {audioDeleteMessage && <p className="mt-2 text-xs text-muted-foreground" role="status">{audioDeleteMessage}</p>}
-      </div>
+        </Row>
+      </Group>
       <ConfirmDialog
         open={confirmDialog.open}
         onOpenChange={(open) => {
@@ -216,7 +281,7 @@ function PrivacySettings() {
         onConfirm={confirmDialog.onConfirm}
         variant={confirmDialog.variant}
       />
-    </Panel>
+    </Section>
   );
 }
 
@@ -224,38 +289,44 @@ function SpeechSettings({ initialSubTab }: { initialSubTab?: string }) {
   const { t } = useTranslation();
   const [tab, setTab] = React.useState(initialSubTab === "upload" ? "upload" : "meeting");
   return (
-    <Panel>
-      <Tabs selectedKey={tab} onSelectionChange={(key) => setTab(String(key))} aria-label={t("settingsPage.speechToText.title")}>
-        <Tabs.List aria-label={t("settingsPage.speechToText.title")}>
-          <Tabs.Tab id="meeting">{t("settingsPage.speechToText.tabs.noteRecording")}<Tabs.Indicator /></Tabs.Tab>
-          <Tabs.Tab id="upload">{t("settingsPage.speechToText.tabs.upload")}<Tabs.Indicator /></Tabs.Tab>
-        </Tabs.List>
-      </Tabs>
+    <Section
+      title={t("settingsModal.sections.speechToText.label")}
+      description={t("settingsModal.sections.speechToText.description")}
+    >
+      <SubTabs
+        selectedKey={tab}
+        onChange={setTab}
+        label={t("settingsPage.speechToText.title")}
+        tabs={[
+          { id: "meeting", label: t("settingsPage.speechToText.tabs.noteRecording") },
+          { id: "upload", label: t("settingsPage.speechToText.tabs.upload") },
+        ]}
+      />
       {tab === "meeting" ? <MeetingTranscriptionPanel /> : <UploadTranscriptionPanel />}
-    </Panel>
+    </Section>
   );
 }
 
 function LlmSettings() {
-  const t = useTranslation().t;
-  const [task, setTask] = React.useState("transcription");
+  const { t } = useTranslation();
+  const [task, setTask] = React.useState("summary");
   return (
-    <Panel>
-      <Header
-        title={t("settingsPage.aiModels.title")}
-        description={t("settingsPage.aiModels.description")}
+    <Section
+      title={t("settingsModal.sections.llms.label")}
+      description={t("settingsModal.sections.llms.description")}
+    >
+      <SubTabs
+        selectedKey={task}
+        onChange={setTask}
+        label={t("settingsPage.aiModels.title")}
+        tabs={[
+          { id: "summary", label: t("settingsPage.aiModels.summaryTask") },
+          { id: "chat", label: t("settingsPage.aiModels.chatTitle") },
+        ]}
       />
-      <Tabs selectedKey={task} onSelectionChange={(key) => setTask(String(key))} aria-label={t("settingsPage.aiModels.title")}>
-        <Tabs.List aria-label={t("settingsPage.aiModels.title")}>
-          <Tabs.Tab id="transcription">{t("settingsPage.aiModels.transcriptionTask", { defaultValue: "Transcription" })}<Tabs.Indicator /></Tabs.Tab>
-          <Tabs.Tab id="summary">{t("settingsPage.aiModels.summaryTask", { defaultValue: "Meeting summary" })}<Tabs.Indicator /></Tabs.Tab>
-          <Tabs.Tab id="chat">{t("settingsPage.aiModels.chatTitle", { defaultValue: "Chat" })}<Tabs.Indicator /></Tabs.Tab>
-        </Tabs.List>
-      </Tabs>
-      {task === "transcription" && <MeetingTranscriptionPanel />}
       {task === "summary" && <InferenceConfigEditor scope="noteFormatting" />}
       {task === "chat" && <ChatAgentSettings />}
-    </Panel>
+    </Section>
   );
 }
 
@@ -269,46 +340,50 @@ function HotkeysSettings() {
     onSuccess: setMeetingKey,
   });
   return (
-    <Panel>
-      <Header
-        title={t("settingsPage.general.meetingHotkey.title")}
-        description={t("settingsPage.general.meetingHotkey.description")}
-      />
-      <HotkeyListInput
-        value={meetingKey}
-        onChange={registerHotkey}
-        onClear={async () => {
-          const result = (await window.electronAPI.registerMeetingHotkey?.("")) ?? {
-            success: false,
-          };
-          if (result.success) setMeetingKey("");
-          return result.success;
-        }}
-        disabled={isRegistering}
-      />
-      {lastError && (
-        <p role="alert" className="text-xs text-destructive">
-          {lastError}
-        </p>
-      )}
-      <SettingsRow label={t("settingsPage.general.meetingHotkey.layoutLabel")}>
-        <select
-          value={meetingHotkeyLayoutMode}
-          onChange={(e) =>
-            setMeetingHotkeyLayoutMode(e.target.value as "full-width" | "side-panel")
-          }
-        >
-          <option value="full-width">
-            {t("settingsPage.general.meetingHotkey.layoutFullWidth")}
-          </option>
-          <option value="side-panel">
-            {t("settingsPage.general.meetingHotkey.layoutSidePanel")}
-          </option>
-        </select>
-      </SettingsRow>
-    </Panel>
+    <Section
+      title={t("settingsModal.sections.hotkeys.label")}
+      description={t("settingsModal.sections.hotkeys.description")}
+    >
+      <Group title={t("settingsPage.general.meetingHotkey.title")}>
+        <SettingsPanelRow>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              {t("settingsPage.general.meetingHotkey.description")}
+            </p>
+            <HotkeyListInput
+              value={meetingKey}
+              onChange={registerHotkey}
+              onClear={async () => {
+                const result = (await window.electronAPI.registerMeetingHotkey?.("")) ?? {
+                  success: false,
+                };
+                if (result.success) setMeetingKey("");
+                return result.success;
+              }}
+              disabled={isRegistering}
+            />
+            {lastError && (
+              <p role="alert" className="text-xs text-destructive">
+                {lastError}
+              </p>
+            )}
+          </div>
+        </SettingsPanelRow>
+        <Row label={t("settingsPage.general.meetingHotkey.layoutLabel")}>
+          <SelectField
+            value={meetingHotkeyLayoutMode}
+            onChange={(value) => setMeetingHotkeyLayoutMode(value as "full-width" | "side-panel")}
+            options={[
+              { id: "full-width", label: t("settingsPage.general.meetingHotkey.layoutFullWidth") },
+              { id: "side-panel", label: t("settingsPage.general.meetingHotkey.layoutSidePanel") },
+            ]}
+          />
+        </Row>
+      </Group>
+    </Section>
   );
 }
+
 function SystemSettings() {
   const { t } = useTranslation();
   const settings = useSettingsStore();
@@ -327,58 +402,68 @@ function SystemSettings() {
     } else setError(result?.error || t("common.error"));
   };
   return (
-    <Panel>
-      <Header
-        title={t("settingsPage.general.startup.title")}
-        description={t("settingsPage.general.startup.description")}
-      />
-      <SettingsRow label={t("settingsPage.general.startup.launchAtLogin")}>
-        <Toggle
-          checked={autoStart}
-          onChange={(value) => {
-            void updateAutoStart(value);
-          }}
-        />
-      </SettingsRow>
-      <SettingsRow label={t("settingsPage.general.startup.startMinimized")}>
-        <Toggle checked={settings.startMinimized} onChange={settings.setStartMinimized} />
-      </SettingsRow>
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      )}
-      <MicrophoneSettings
-        microphoneSelectionMode={settings.microphoneSelectionMode}
-        selectedMicDeviceId={settings.selectedMicDeviceId}
-        selectedMicDeviceLabel={settings.selectedMicDeviceLabel}
-        onSelectionModeChange={settings.setMicrophoneSelectionMode}
-        onDeviceSelect={settings.setSelectedMicDevice}
-      />
-      <Header title={t("cleanupSettings.permissions")} />
-      <SettingsRow label={t("settingsPage.general.microphone.title")}>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void permissions.openMicPrivacySettings()}
+    <Section
+      title={t("settingsModal.sections.system.label")}
+      description={t("settingsModal.sections.system.description")}
+    >
+      <Group title={t("settingsPage.general.startup.title")}>
+        <Row
+          label={t("settingsPage.general.startup.launchAtLogin")}
+          description={t("settingsPage.general.startup.launchAtLoginDescription")}
         >
-          {t("cleanupSettings.openSettings")}
-        </Button>
-      </SettingsRow>
-      {permissions.micPermissionError && <p role="alert">{permissions.micPermissionError}</p>}
-      <SettingsRow label={t("cleanupSettings.systemAudio")}>
-        <Button variant="outline" size="sm" onClick={() => void systemAudio.openSettings()}>
-          {t("cleanupSettings.openSettings")}
-        </Button>
-      </SettingsRow>
-      <SettingsRow label={t("settingsPage.general.notifications.title")}>
-        <Toggle
-          checked={settings.notificationsEnabled}
-          onChange={settings.setNotificationsEnabled}
-        />
-      </SettingsRow>
+          <Toggle
+            checked={autoStart}
+            onChange={(value) => {
+              void updateAutoStart(value);
+            }}
+          />
+        </Row>
+        <Row
+          label={t("settingsPage.general.startup.startMinimized")}
+          description={t("settingsPage.general.startup.startMinimizedDescription")}
+        >
+          <Toggle checked={settings.startMinimized} onChange={settings.setStartMinimized} />
+        </Row>
+        {error && (
+          <SettingsPanelRow>
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          </SettingsPanelRow>
+        )}
+      </Group>
+      <Group title={t("cleanupSettings.permissions")}>
+        <SettingsPanelRow>
+          <MicrophoneSettings
+            microphoneSelectionMode={settings.microphoneSelectionMode}
+            selectedMicDeviceId={settings.selectedMicDeviceId}
+            selectedMicDeviceLabel={settings.selectedMicDeviceLabel}
+            onSelectionModeChange={settings.setMicrophoneSelectionMode}
+            onDeviceSelect={settings.setSelectedMicDevice}
+          />
+        </SettingsPanelRow>
+        <Row
+          label={t("settingsPage.general.microphone.title")}
+          description={permissions.micPermissionError || undefined}
+        >
+          <Button variant="outline" size="sm" onClick={() => void permissions.openMicPrivacySettings()}>
+            {t("cleanupSettings.openSettings")}
+          </Button>
+        </Row>
+        <Row label={t("cleanupSettings.systemAudio")}>
+          <Button variant="outline" size="sm" onClick={() => void systemAudio.openSettings()}>
+            {t("cleanupSettings.openSettings")}
+          </Button>
+        </Row>
+        <Row label={t("settingsPage.general.notifications.title")}>
+          <Toggle
+            checked={settings.notificationsEnabled}
+            onChange={settings.setNotificationsEnabled}
+          />
+        </Row>
+      </Group>
       <DeveloperSection />
-    </Panel>
+    </Section>
   );
 }
 

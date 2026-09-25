@@ -84,7 +84,7 @@ export default function NoteBottomBar({
   return (
     <div
       ref={containerRef}
-      className="absolute bottom-0 left-0 right-0 z-10 px-5 pb-4 pt-6 pointer-events-none bg-gradient-to-t from-background from-45% to-transparent"
+      className="shrink-0 px-5 pb-4 pt-3 pointer-events-none"
     >
       {callout && !hideInput && (
         <div className="pointer-events-auto mb-3 flex justify-center">{callout}</div>

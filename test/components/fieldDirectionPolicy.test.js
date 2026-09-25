@@ -83,13 +83,11 @@ const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/notes/NoteBottomBar.tsx": ["auto"],
   "src/components/notes/NoteEditor.tsx": ["auto", "auto"],
   "src/components/notes/NoteParticipants.tsx": ["auto"],
-  "src/components/notes/NotesOnboarding.tsx": ["auto", "auto", "auto"],
   "src/components/notes/SpacesTree.tsx": ["auto", "auto", "auto", "auto"],
   "src/components/notes/UploadAudioView.tsx": ["ltr", "ltr", "inherit", "inherit"],
   "src/components/onboarding/LanguageSelectionStep.tsx": ["auto"],
   "src/components/onboarding/UseCaseStep.tsx": ["auto"],
   "src/components/settings/ChatAgentSettings.tsx": ["auto"],
-  "src/components/ui/LanguageSelector.tsx": ["auto"],
 };
 
 test("shared field primitives inherit unless a consumer declares its content direction", async (t) => {

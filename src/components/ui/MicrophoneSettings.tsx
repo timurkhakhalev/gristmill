@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select";
+import { SelectField } from "./SelectField";
+import { SettingsRow } from "./SettingsSection";
 import { Button } from "./button";
-import { RefreshCw, Mic } from "../icons";
+import { RefreshCw } from "../icons";
 import { isBuiltInMicrophone } from "../../utils/audioDeviceUtils";
 import { resolveSystemDefaultMicDevice } from "../../helpers/microphoneSelection";
 import { resolveMicDeviceSelection } from "../../helpers/micDeviceSelection";
@@ -101,97 +102,81 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
         ? "__built-in__"
         : selectedMicDeviceId || "__specific__";
 
+  const options = [
+    {
+      id: "__system__",
+      label: `${t("microphoneSettings.systemDefault")}${systemDefaultLabel ? ` — ${systemDefaultLabel}` : ""}`,
+    },
+    { id: "__built-in__", label: t("microphoneSettings.preferBuiltIn.label") },
+    ...devices
+      .filter((device) => device.deviceId !== "default")
+      .map((device) => ({
+        id: device.deviceId,
+        label: device.isBuiltIn
+          ? `${device.label} · ${t("microphoneSettings.builtIn")}`
+          : device.label,
+      })),
+  ];
+  if (!options.some((option) => option.id === selectorValue)) {
+    options.push({ id: selectorValue, label: selectedDevice?.label || t("microphoneSettings.unknownDevice") });
+  }
+
+  const builtInNotice =
+    microphoneSelectionMode === "built-in"
+      ? builtInDevice
+        ? t("microphoneSettings.using", { device: builtInDevice.label })
+        : devices.length > 0
+          ? t("microphoneSettings.noBuiltInDetected")
+          : null
+      : null;
+
   return (
-    <div className="space-y-4">
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-foreground">
-            {t("microphoneSettings.inputDevice")}
-          </label>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={loadDevices}
-            disabled={isLoading}
-            className="h-7 w-7 p-0"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-
-        {error ? (
-          <p className="text-sm text-destructive">{error}</p>
+    <SettingsRow
+      label={t("microphoneSettings.inputDevice")}
+      description={
+        error ? (
+          <span className="text-destructive">{error}</span>
         ) : (
-          <Select
-            value={selectorValue}
-            onValueChange={(value) => {
-              if (value === "__system__") {
-                onSelectionModeChange("system");
-                return;
-              }
-              if (value === "__built-in__") {
-                onSelectionModeChange("built-in");
-                return;
-              }
-              const device = devices.find((candidate) => candidate.deviceId === value);
-              if (!device) return;
-              onDeviceSelect(value, device.label);
-              onSelectionModeChange("specific");
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder={t("microphoneSettings.selectPlaceholder")}>
-                {microphoneSelectionMode === "system"
-                  ? `${t("microphoneSettings.systemDefault")}${systemDefaultLabel ? ` — ${systemDefaultLabel}` : ""}`
-                  : microphoneSelectionMode === "built-in"
-                    ? t("microphoneSettings.preferBuiltIn.label")
-                    : selectedDevice?.label || t("microphoneSettings.unknownDevice")}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__system__">{t("microphoneSettings.systemDefault")}</SelectItem>
-              <SelectItem value="__built-in__">
-                {t("microphoneSettings.preferBuiltIn.label")}
-              </SelectItem>
-              {devices
-                .filter((device) => device.deviceId !== "default")
-                .map((device) => (
-                  <SelectItem key={device.deviceId} value={device.deviceId}>
-                    {device.label}
-                    {device.isBuiltIn && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {t("microphoneSettings.builtIn")}
-                      </span>
-                    )}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        <p className="text-xs text-muted-foreground">{t("microphoneSettings.helpText")}</p>
+          <>
+            {t("microphoneSettings.helpText")}
+            {builtInNotice && <span className="mt-1 block text-foreground">{builtInNotice}</span>}
+          </>
+        )
+      }
+    >
+      <div className="flex items-center gap-1.5">
+        <SelectField
+          value={selectorValue}
+          options={options}
+          className="w-64"
+          isDisabled={Boolean(error)}
+          onChange={(value) => {
+            if (value === "__system__") {
+              onSelectionModeChange("system");
+              return;
+            }
+            if (value === "__built-in__") {
+              onSelectionModeChange("built-in");
+              return;
+            }
+            const device = devices.find((candidate) => candidate.deviceId === value);
+            if (!device) return;
+            onDeviceSelect(value, device.label);
+            onSelectionModeChange("specific");
+          }}
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={loadDevices}
+          disabled={isLoading}
+          aria-label={t("microphoneSettings.refresh", { defaultValue: "Refresh devices" })}
+          title={t("microphoneSettings.refresh", { defaultValue: "Refresh devices" })}
+        >
+          <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
       </div>
-
-      {microphoneSelectionMode === "built-in" && builtInDevice && (
-        <div className="p-3 bg-success/10 dark:bg-success/20 border border-success/30 rounded-lg">
-          <div className="flex items-center gap-2">
-            <Mic className="w-4 h-4 text-success dark:text-success" />
-            <span className="text-sm text-success dark:text-success">
-              {t("microphoneSettings.using", { device: builtInDevice.label })}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {microphoneSelectionMode === "built-in" && !builtInDevice && devices.length > 0 && (
-        <div className="p-3 bg-warning/10 dark:bg-warning/20 border border-warning/30 rounded-lg">
-          <p className="text-sm text-warning dark:text-warning">
-            {t("microphoneSettings.noBuiltInDetected")}
-          </p>
-        </div>
-      )}
-
-    </div>
+    </SettingsRow>
   );
 };
 

@@ -35,7 +35,10 @@ import type { NoteItem } from "../../contracts/notes";
 import type { ActionProcessingState } from "../../hooks/useActionProcessing";
 import ActionProcessingOverlay from "./ActionProcessingOverlay";
 import NoteBottomBar from "./NoteBottomBar";
-import NoteRecordControl, { RecordingWave } from "./NoteRecordControl";
+import NoteRecordControl from "./NoteRecordControl";
+import { CaptureHealthLine, NoteNotice } from "./NoteNotices";
+import { Button as HeroButton } from "@heroui/react";
+import { openSettings } from "../../utils/openSettings";
 import EmptyStateCard from "../ui/EmptyStateCard";
 import { Button } from "../ui/button";
 import EmbeddedChat, { type EmbeddedChatMode } from "./EmbeddedChat";
@@ -53,7 +56,6 @@ import NoteParticipants from "./NoteParticipants";
 import type { CalendarAttendee } from "../../contracts/calendar";
 import { observeFloatingChatLayout } from "./floatingChatLayout";
 import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } from "./shared";
-import { formatMmSs } from "../../utils/formatDuration";
 import MeetingResultsPanel from "./MeetingResultsPanel";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 
@@ -197,10 +199,6 @@ export default function NoteEditor({
     s.recordingNoteId === note.id ? s.captureStartedAt : null
   );
   const captureStartedAt = debugPreview?.captureStartedAt ?? liveCaptureStartedAt;
-  const liveCaptureErrorCode = useMeetingRecordingStore((s) =>
-    s.recordingNoteId === note.id ? s.captureErrorCode : null
-  );
-  const captureErrorCode = debugPreview?.captureErrorCode ?? liveCaptureErrorCode;
   const liveMicCaptureStatus = useMeetingRecordingStore((s) =>
     s.recordingNoteId === note.id ? s.micCaptureStatus : "inactive"
   );
@@ -209,9 +207,7 @@ export default function NoteEditor({
   );
   const micCaptureStatus = debugPreview?.micStatus ?? liveMicCaptureStatus;
   const systemCaptureStatus = debugPreview?.systemStatus ?? liveSystemCaptureStatus;
-  const capturePending = capturePhase === "preparing" || capturePhase === "saving";
   const captureLive = capturePhase === "recording";
-  const captureHasStatus = capturePending || captureLive || capturePhase === "paused" || capturePhase === "incomplete" || capturePhase === "failed";
   const [viewMode, setViewMode] = useState<MeetingViewMode>(
     debugPreview?.viewMode ?? (note.note_type === "upload" && note.transcript ? "transcript" : "raw")
   );
@@ -271,9 +267,8 @@ export default function NoteEditor({
   }, [diarizedSegments, note.transcript]);
 
   const hasChatSegments = displaySegments.length > 0;
-  // A finished recording with no AI summary yet offers one from the transcript view.
-  const showSummaryCallout =
-    viewMode === "transcript" &&
+  // A finished recording with no AI summary yet offers one from the Summary tab.
+  const canGenerateSummary =
     !isRecording &&
     hasChatSegments &&
     !enhancement &&
@@ -786,9 +781,25 @@ export default function NoteEditor({
               </span>
             )}
           </div>
-          <div className="mt-5 flex items-center justify-end gap-3">
-            <div className="flex shrink-0 items-center gap-2">
-              <button type="button" className="oh-chat-toggle" onClick={() => setChatMode(chatMode === "sidebar" ? "hidden" : "sidebar")} aria-label={t("sidebar.chat")} aria-pressed={chatMode === "sidebar"}><PanelRight size={17} /></button>
+
+        </div>
+
+
+        <div className="flex-1 relative min-h-0 flex flex-col">
+          <div ref={contentScrollRef} className="flex-1 min-h-0 overflow-y-auto agent-chat-scroll">
+            <MeetingResultsPanel
+              notice={captureLive || capturePhase === "paused" ? (
+                <CaptureHealthLine micStatus={micCaptureStatus} systemStatus={systemCaptureStatus} />
+              ) : capturePhase === "failed" ? (
+                <NoteNotice
+                  status="danger"
+                  title={t("notes.editor.capture.failed")}
+                  description={t("notes.editor.capture.failedReason")}
+                  actions={<HeroButton size="sm" variant="secondary" onPress={() => openSettings("system")}>{t("meetingResults.openSettings")}</HeroButton>}
+                />
+              ) : null}
+              actions={<div className="oh-note-actions">
+              <HeroButton isIconOnly size="sm" variant={chatMode === "sidebar" ? "secondary" : "ghost"} onPress={() => setChatMode(chatMode === "sidebar" ? "hidden" : "sidebar")} aria-label={t("sidebar.chat")} aria-pressed={chatMode === "sidebar"}><PanelRight size={16} /></HeroButton>
               {canEditNote && (
                 <NoteRecordControl
                   isRecording={isRecording}
@@ -805,10 +816,10 @@ export default function NoteEditor({
               {exportOptions.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button type="button" className={NOTE_META_CHIP_CLASS}>
-                      <FileText size={13} className="text-foreground/60" />
+                    <Button variant="ghost" size="sm">
+                      <FileText size={14} />
                       {t("notes.editor.export")}
-                    </button>
+                    </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     {exportOptions.map((option) => (
@@ -819,57 +830,7 @@ export default function NoteEditor({
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-            </div>
-          </div>
-        </div>
-
-
-        <div className="flex-1 relative min-h-0">
-          <div ref={contentScrollRef} className="h-full overflow-y-auto agent-chat-scroll">
-            {captureHasStatus && (
-              <div className="m-4 rounded-xl border border-border bg-surface-2/70 p-4 dark:border-white/10">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                    {(capturePending || captureLive) && <RecordingWave className="me-1" />}
-                    {t(`notes.editor.capture.${capturePhase}`, { defaultValue: capturePhase === "paused" ? t("notes.editor.capture.paused", { defaultValue: "Paused" }) : capturePhase })}
-                  </div>
-                  {captureStartedAt != null && (capturePending || captureLive) && (
-                    <span className="text-xs tabular-nums text-foreground/60">
-                      {formatMmSs(Math.max(0, Math.floor((Date.now() - captureStartedAt) / 1000)))}
-                    </span>
-                  )}
-                </div>
-                {(capturePending || captureLive) && <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  {(["mic", "system"] as const).map((source) => {
-                    const status = source === "mic" ? micCaptureStatus : systemCaptureStatus;
-                    return (
-                      <span
-                        key={source}
-                        className={cn(
-                          "rounded-full px-2 py-1",
-                          status === "active"
-                            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                            : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                        )}
-                      >
-                        {t(`notes.editor.capture.${source}`)}: {t(`notes.editor.capture.${status}`)}
-                      </span>
-                    );
-                  })}
-                  {capturePhase === "recording" && (
-                    <span className="rounded-full bg-primary/10 px-2 py-1 text-primary">
-                      {t("notes.editor.capture.writingToDisk")}
-                    </span>
-                  )}
-                </div>}
-                {captureErrorCode && (
-                  <p className="mt-2 text-xs text-foreground/60">
-                    {t("notes.editor.capture.incompleteReason")}
-                  </p>
-                )}
-              </div>
-            )}
-            <MeetingResultsPanel
+            </div>}
               noteId={note.id}
               locale={locale}
               previewRecordings={debugPreview?.recordings}
@@ -888,7 +849,15 @@ export default function NoteEditor({
                 onChange={handleEnhancedChange}
                 disabled={!canEditNote}
                 mentionPeople={mentionPeople}
-              /> : <EmptyStateCard icon={Sparkles} title={t("notes.editor.enhanced")} description={t("notes.editor.transcriptEmptyDescription")} />}
+              /> : <EmptyStateCard icon={Sparkles} title={t("notes.editor.summaryEmptyTitle")} description={t(canGenerateSummary ? "notes.editor.summaryReadyDescription" : "notes.editor.summaryEmptyDescription")} className="mt-2">
+                {canGenerateSummary && <Button size="sm" onClick={() => {
+                  onGenerateSummary?.();
+                  if (debugPreview) setViewMode("enhanced");
+                }}>
+                  <AlignLeft size={16} />
+                  {t("notes.editor.generateSummary")}
+                </Button>}
+              </EmptyStateCard>}
               fallbackTranscript={hasChatSegments && !isRecording ? <MeetingTranscriptChat
                 segments={displaySegments}
                 scrollElementRef={contentScrollRef}
@@ -942,17 +911,6 @@ export default function NoteEditor({
             onAskSubmit={handleAskSubmit}
             onInputFocus={handleChatInputFocus}
             actionPicker={isRecording || !canEditNote ? undefined : actionPicker}
-            callout={
-              showSummaryCallout && (
-                <Button className="h-9 gap-2 px-4 text-sm" onClick={() => {
-                  onGenerateSummary?.();
-                  if (debugPreview) setViewMode("enhanced");
-                }}>
-                  <AlignLeft size={16} />
-                  {t("notes.editor.generateSummary")}
-                </Button>
-              )
-            }
             hideInput={chatMode !== "hidden"}
           />
           {chatMode === "floating" && (

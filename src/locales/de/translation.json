@@ -443,7 +443,7 @@
       "selectModelHint": "Noch kein Modell ausgewählt — wählen Sie eines aus der Liste unten.",
       "keyRequiredHint": "Für die Inferenz ist ein API-Schlüssel erforderlich — fügen Sie einen hinzu, um diesen Anbieter zu nutzen."
     },
-    "getApiKey": "API-Schlüssel holen ->",
+    "getApiKey": "API-Schlüssel holen",
     "selectModel": "Modell auswählen",
     "availableModels": "Verfügbare Modelle",
     "disableThinking": {
@@ -545,7 +545,7 @@
       "unavailable": "Nicht verfügbar"
     },
     "apiKeyOptional": "API-Schlüssel (optional)",
-    "getKey": "Schlüssel holen ->",
+    "getKey": "Schlüssel holen",
     "endpointUrl": "Endpoint-URL",
     "azureHint": "Azure AI Foundry: Geben Sie Ihren Ressourcen-Endpunkt ein (z. B. https://your-resource.cognitiveservices.azure.com) und setzen Sie „Model“ auf den exakten Namen Ihrer Bereitstellung.",
     "customProvider": "Benutzerdefiniert",
@@ -877,7 +877,8 @@
     "selectPlaceholder": "Mikrofon auswählen",
     "systemDefault": "Systemstandard",
     "unknownDevice": "Unbekanntes Gerät",
-    "using": "Verwendet: {{device}}"
+    "using": "Verwendet: {{device}}",
+    "refresh": "Geräte aktualisieren"
   },
   "promptStudio": {
     "common": {
@@ -942,27 +943,27 @@
     },
     "sections": {
       "general": {
-        "description": "Darstellung, Töne & Start",
+        "description": "Sprache, Design und Notizen",
         "label": "Einstellungen"
       },
       "hotkeys": {
-        "description": "Diktat-Hotkey & Aktivierung",
+        "description": "Tastenkürzel für den Meeting-Modus",
         "label": "Hotkeys"
       },
       "speechToText": {
-        "description": "Engines für Diktat & Notizaufnahme",
+        "description": "Wie Aufnahmen und hochgeladene Dateien transkribiert werden",
         "label": "Spracherkennung"
       },
       "llms": {
-        "description": "Modelle für Chat, Bereinigung & Zusammenfassungen",
+        "description": "Modelle für Meeting-Zusammenfassungen und Chat",
         "label": "Sprachmodelle"
       },
       "privacyData": {
-        "description": "Datenschutz, Berechtigungen & Analyse",
+        "description": "Notizen, Audio und Chats bleiben auf diesem Gerät. Anbieter erhalten nur, was du mit deinem API-Schlüssel sendest.",
         "label": "Datenschutz & Daten"
       },
       "system": {
-        "description": "Updates, Speicher & Entwicklertools",
+        "description": "Start, Aufnahmegeräte und Diagnose",
         "label": "System"
       }
     },
@@ -1119,7 +1120,8 @@
       "noteFiles": {
         "label": "Store note files",
         "description": "Keep a local Markdown copy of notes."
-      }
+      },
+      "notesGroup": "Notizen"
     },
     "permissions": {
       "description": "Systemberechtigungen testen und verwalten, die OpenHercules für den ordnungsgemäßen Betrieb benötigt",
@@ -1159,7 +1161,8 @@
       "deleteAllAudioConfirmDescription": "Eine laufende Aufnahme wird sicher ohne Transkription beendet. Danach wird gespeichertes Audio gelöscht.",
       "deleteAllAudioConfirm": "Alle Audiodateien löschen",
       "deleteAllAudioDone": "{{count}} Audioelement(e) gelöscht.",
-      "deleteAllAudioFailed": "{{count}} Audioelement(e) konnten nicht gelöscht werden. Wiederhole den Vorgang."
+      "deleteAllAudioFailed": "{{count}} Audioelement(e) konnten nicht gelöscht werden. Wiederhole den Vorgang.",
+      "audioGroup": "Meeting-Audio"
     },
     "prompts": {
       "description": "Den einheitlichen System-Prompt anzeigen, anpassen und testen, der Textbereinigung und Anweisungserkennung steuert",
@@ -1559,8 +1562,12 @@
         "unavailable": "Nicht verfügbar",
         "inactive": "Nicht gestartet",
         "writingToDisk": "Wird auf Datenträger geschrieben",
-        "incompleteReason": "Audio kann fehlen. Vor dem Problem gespeichertes Audio bleibt erhalten."
-      }
+        "incompleteReason": "Audio kann fehlen. Vor dem Problem gespeichertes Audio bleibt erhalten.",
+        "failedReason": "Prüfe die Berechtigungen für Mikrofon und Systemaudio und versuche es erneut."
+      },
+      "summaryEmptyTitle": "Noch keine Zusammenfassung",
+      "summaryEmptyDescription": "Die Zusammenfassung erscheint hier, sobald die Aufnahme transkribiert ist.",
+      "summaryReadyDescription": "Das Transkript ist fertig. Erstelle eine Zusammenfassung mit deinem Sprachmodell."
     },
     "participants": {
       "attendee": "Teilnehmer",
@@ -1736,24 +1743,24 @@
     },
     "onboarding": {
       "llm": {
-        "title": "KI-Modell konfigurieren",
-        "description": "Aktionen verwenden KI, um Ihre Notizen zu transformieren. Richten Sie ein Sprachmodell ein, um loszulegen.",
-        "configured": "KI-Modell konfiguriert"
+        "title": "Zusammenfassungen und Chat",
+        "description": "Ein Sprachmodell schreibt Zusammenfassungen und beantwortet Fragen zu deinen Notizen."
       },
-      "actions": {
-        "title": "KI-gestützte Aktionen",
-        "description": "Aktionen transformieren Ihre Notizen – bereinigen Transkriptionen, fassen Besprechungen zusammen und mehr. Verwenden Sie integrierte Aktionen oder erstellen Sie eigene.",
-        "builtInLabel": "Integriert",
-        "createTitle": "Eigene Aktion erstellen",
-        "createDescription": "Definieren Sie eine benutzerdefinierte Aktion mit Ihrem eigenen KI-Prompt. Sie können später jederzeit weitere hinzufügen oder bearbeiten.",
-        "created": "Erstellt!"
-      },
-      "getStarted": "Loslegen",
+      "getStarted": "Los geht's",
       "systemAudio": {
         "title": "Systemaudio",
-        "description": "Erfassen Sie Audio aus Meetings und anderen Apps zusätzlich zu Ihrem Mikrofon.",
-        "grant": "Berechtigung erteilen",
+        "description": "Nimmt die anderen Teilnehmer auf, nicht nur dein Mikrofon.",
+        "grant": "Erlauben",
         "enabled": "Aktiviert"
+      },
+      "title": "Meeting-Notizen einrichten",
+      "subtitle": "Nimm ein Meeting auf und erhalte Transkript und Zusammenfassung. Diese Schritte brauchst du nur einmal.",
+      "done": "Erledigt",
+      "setUp": "Einrichten",
+      "laterHint": "Du kannst das alles später in den Einstellungen ändern.",
+      "transcription": {
+        "title": "Spracherkennung",
+        "description": "Macht aus Meeting-Audio ein Transkript."
       }
     },
     "enhance": {
@@ -1984,7 +1991,6 @@
     "description": "Verbinde Dienste, um deinen Workflow zu verbessern",
     "googleCalendar": {
       "title": "Google Calendar",
-      "optional": "Optional",
       "description": "Meeting-Titel und Teilnehmer automatisch aus deinem Kalender übernehmen.",
       "connect": "Google Calendar verbinden",
       "connecting": "Verbinde...",
@@ -2004,7 +2010,6 @@
     },
     "microsoftCalendar": {
       "title": "Microsoft Calendar",
-      "optional": "Optional",
       "description": "Besprechungen aus deinem Outlook- oder Microsoft 365-Kalender lesen.",
       "connect": "Microsoft Calendar verbinden",
       "connected": "Verbunden",
@@ -2020,7 +2025,6 @@
     },
     "appleCalendar": {
       "title": "Apple Kalender",
-      "optional": "Optional",
       "description": "Termine aus Calendar.app lesen — iCloud, Google, Exchange und Outlook an einem Ort.",
       "connect": "Apple Kalender verbinden",
       "connected": "Verbunden",
@@ -2189,6 +2193,7 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
@@ -2221,7 +2226,7 @@
     "selectError": "Ergebnis konnte nicht ausgewählt werden.",
     "createError": "Verarbeitungslauf konnte nicht erstellt werden.",
     "retryError": "Lauf konnte nicht wiederholt werden.",
-    "updateRunSettings": "Aktuelle Einstellungen verwenden",
+    "updateRunSettings": "Mit aktuellen Einstellungen wiederholen",
     "updateConfigError": "Einstellungen dieses Laufs konnten nicht aktualisiert werden.",
     "playbackError": "Audiowiedergabe konnte nicht vorbereitet werden.",
     "exportError": "Audioexport fehlgeschlagen.",
@@ -2268,6 +2273,27 @@
       "finalizing": "Aufnahme wird gespeichert",
       "ready": "Gespeichert",
       "incomplete": "Unvollständig"
+    },
+    "openSettings": "Einstellungen öffnen",
+    "blocked": {
+      "asr": "Transkription wartet auf Einstellungen",
+      "summary": "Zusammenfassung wartet auf Einstellungen",
+      "other": "Verarbeitung wartet auf Einstellungen"
+    },
+    "blockedReason": {
+      "missing-transcription-config": "Wähle einen Speech-to-Text-Anbieter und füge seinen API-Schlüssel hinzu, dann versuche es erneut.",
+      "missing-summary-config": "Wähle ein Sprachmodell für Meeting-Zusammenfassungen, dann versuche es erneut.",
+      "other": "Aktualisiere die Verarbeitungseinstellungen, dann versuche es erneut."
+    },
+    "failed": {
+      "asr": "Transkription fehlgeschlagen",
+      "summary": "Zusammenfassung fehlgeschlagen",
+      "other": "Verarbeitung fehlgeschlagen"
+    },
+    "failedReason": "Dein Audio ist gespeichert. Prüfe Verbindung und API-Schlüssel, dann versuche es erneut.",
+    "progress": {
+      "pending": "Wartet auf den Start.",
+      "running": "Das kann einige Minuten dauern. Du kannst weiter Notizen schreiben."
     }
   }
 }

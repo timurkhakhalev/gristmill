@@ -17,9 +17,10 @@ import {
 import { useSettingsStore } from "../stores/settingsStore";
 import BackgroundActionToastListener from "./notes/BackgroundActionToastListener";
 import type { NotesDebugScenario } from "./notes/NotesDebugControls";
+import { onOpenSettingsRequest } from "../utils/openSettings";
 
 const SIDEBAR_WIDTH_PX = 192;
-const SIDEBAR_RAIL_WIDTH_PX = 68;
+const SIDEBAR_RAIL_WIDTH_PX = 80;
 
 const SettingsModal = React.lazy(() => import("./SettingsModal"));
 const PersonalNotesView = React.lazy(() => import("./notes/PersonalNotesView"));
@@ -108,6 +109,8 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     setSettingsSection(section);
     setShowSettings(true);
   }, []);
+
+  useEffect(() => onOpenSettingsRequest(openSettings), [openSettings]);
 
   const handleExitSidePanel = useCallback(() => {
     if (isMeetingMode) window.electronAPI?.restoreFromMeetingMode?.();

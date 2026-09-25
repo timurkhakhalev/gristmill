@@ -64,7 +64,7 @@ function downloadDisplay(download: ActiveDownload) {
 function CancelGlyph() {
   return (
     <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect width={24} height={24} rx={12} fill="var(--color-muted)" />
+      <rect width={24} height={24} rx={12} fill="var(--color-subtle)" />
       <path
         d="M16 8L8 16"
         stroke="var(--color-muted-foreground)"
@@ -336,7 +336,7 @@ export default function BackgroundModelDownloadTray({
       aria-live="polite"
     >
       {/* Frame 2147259037: #F7F7F7 strip, 7/8 padding, gap 5, 12/140% label. */}
-      <div className="flex items-center gap-[5px] bg-muted px-2 py-[7px] text-xs leading-[1.4] text-muted-foreground">
+      <div className="flex items-center gap-[5px] bg-subtle px-2 py-[7px] text-xs leading-[1.4] text-muted-foreground">
         <BrandMark className="size-[11.2px] shrink-0 text-primary" />
         {installing ? (
           <span>
@@ -385,7 +385,7 @@ export default function BackgroundModelDownloadTray({
             ) : (
               // Frame 2147259038: 12 tall track on #F7F7F7 at radius 9, brand fill
               // at radius 11.
-              <div className="h-3 overflow-hidden rounded-[9px] bg-muted">
+              <div className="h-3 overflow-hidden rounded-[9px] bg-subtle">
                 <div
                   className="h-full rounded-[11px] bg-primary transition-[width] motion-reduce:transition-none"
                   style={{ width: `${download.percentage}%` }}

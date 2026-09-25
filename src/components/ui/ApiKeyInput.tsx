@@ -94,7 +94,7 @@ export default function ApiKeyInput({
   return (
     <div className={className}>
       {resolvedLabel && (
-        <label className="block text-xs font-medium text-foreground mb-1">{resolvedLabel}</label>
+        <label className="mb-1.5 block text-sm font-medium text-foreground">{resolvedLabel}</label>
       )}
 
       <div ref={containerRef} className="relative">
@@ -109,7 +109,7 @@ export default function ApiKeyInput({
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={handleKeyDown}
               aria-label={ariaLabel || resolvedLabel || t("apiKeyInput.label")}
-              className={`h-8 text-sm font-mono pr-16 ${variantClasses}`}
+              className={`h-9 rounded-lg text-sm font-mono pr-16 ${variantClasses}`}
               autoComplete="off"
               spellCheck={false}
             />
@@ -125,7 +125,7 @@ export default function ApiKeyInput({
               <button
                 type="button"
                 onClick={cancel}
-                className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/70 hover:text-muted-foreground hover:bg-muted/50 active:scale-95 transition-all"
+                className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/70 hover:text-muted-foreground hover:bg-subtle/50 active:scale-95 transition-all"
                 aria-label={t("apiKeyInput.cancelEdit")}
               >
                 <X className="w-3.5 h-3.5" />
@@ -136,11 +136,7 @@ export default function ApiKeyInput({
           <button
             type="button"
             onClick={enterEdit}
-            className={`w-full h-8 flex items-center px-3 rounded border text-sm transition-all cursor-pointer group ${
-              hasKey
-                ? "border-border/70 bg-input hover:border-border-hover dark:bg-surface-1 dark:border-border-subtle/60 dark:hover:border-border-hover"
-                : "border-dashed border-border/70 bg-transparent hover:border-border/70 hover:bg-muted/30"
-            }`}
+            className="group flex h-9 w-full cursor-pointer items-center rounded-lg border border-border bg-field px-3 text-sm outline-none transition-colors hover:border-border-hover focus-visible:ring-2 focus-visible:ring-focus"
             aria-label={hasKey ? t("apiKeyInput.edit") : t("apiKeyInput.add")}
           >
             {hasKey ? (
@@ -152,9 +148,9 @@ export default function ApiKeyInput({
                 {maskKey(apiKey)}
               </span>
             ) : (
-              <span className="text-muted-foreground/70 text-xs">{resolvedPlaceholder}</span>
+              <span className="text-muted-foreground text-sm">{resolvedPlaceholder}</span>
             )}
-            <span className="ms-auto text-muted-foreground/70 text-xs group-hover:text-muted-foreground/70 transition-colors">
+            <span className="ms-auto text-xs font-medium text-link">
               {hasKey ? t("apiKeyInput.editButton") : t("apiKeyInput.addButton")}
             </span>
           </button>

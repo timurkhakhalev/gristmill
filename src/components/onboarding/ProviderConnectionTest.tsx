@@ -114,7 +114,7 @@ export default function ProviderConnectionTest({
   }
 
   return (
-    <div className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
+    <div className="space-y-2 rounded-xl border border-border bg-subtle/30 p-3">
       <Button
         type="button"
         variant="outline"

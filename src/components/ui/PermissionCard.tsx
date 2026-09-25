@@ -53,7 +53,7 @@ export default function PermissionCard({
           <h3 className="text-xs font-medium text-foreground">
             {title}
             {badge && (
-              <span className="ms-1.5 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground">
+              <span className="ms-1.5 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-subtle text-muted-foreground">
                 {badge}
               </span>
             )}

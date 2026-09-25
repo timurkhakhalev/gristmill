@@ -1047,7 +1047,7 @@ export default function TranscriptionModelPicker({
               {displayedCloudProvider === "custom" ? (
                 <div className="space-y-2">
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-medium text-foreground">
+                    <label className="block text-sm font-medium text-foreground">
                       {t("transcription.endpointUrl")}
                     </label>
                     <Input
@@ -1068,7 +1068,7 @@ export default function TranscriptionModelPicker({
                   />
 
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-medium text-foreground">
+                    <label className="block text-sm font-medium text-foreground">
                       {t("common.model")}
                     </label>
                     <Input
@@ -1091,7 +1091,7 @@ export default function TranscriptionModelPicker({
                   {providerCredentials.fields.map((field, index) => (
                     <div key={field.key} className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-xs font-medium text-foreground">
+                        <label className="text-sm font-medium text-foreground">
                           {field.labelKey ? t(field.labelKey) : t("common.apiKey")}
                         </label>
                         {index === 0 && (
@@ -1138,7 +1138,7 @@ export default function TranscriptionModelPicker({
                   ))}
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">
+                    <label className="text-sm font-medium text-foreground">
                       {t("common.model")}
                     </label>
                     <ModelCardList

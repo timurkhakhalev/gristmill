@@ -5,6 +5,7 @@ import { FolderOpen, Copy, Check } from "./icons";
 import { useToast } from "./ui/useToast";
 import { Toggle } from "./ui/toggle";
 import { useSettingsLayout } from "./ui/useSettingsLayout";
+import { SettingsCard, SettingsCardRow, SettingsPanelRow } from "./ui/SettingsSection";
 import logger from "../utils/logger";
 
 export default function DeveloperSection() {
@@ -111,132 +112,76 @@ export default function DeveloperSection() {
     }
   };
 
+  const loggedItems = [
+    t("developerSection.whatGetsLogged.items.audioProcessing"),
+    t("developerSection.whatGetsLogged.items.apiRequests"),
+    t("developerSection.whatGetsLogged.items.ffmpegOperations"),
+    t("developerSection.whatGetsLogged.items.systemDiagnostics"),
+    t("developerSection.whatGetsLogged.items.transcriptionPipeline"),
+    t("developerSection.whatGetsLogged.items.errorDetails"),
+  ];
+
   return (
-    <div className="space-y-8">
-      <div className="mb-5">
-        <h3 className="text-[15px] font-semibold text-foreground tracking-tight">
-          {t("developerSection.title")}
-        </h3>
-        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-          {t("developerSection.description")}
-        </p>
-      </div>
+    <SettingsCard title={t("developerSection.title")}>
+      <SettingsCardRow
+        label={t("developerSection.debugMode.label")}
+        description={
+          <>
+            {debugEnabled
+              ? t("developerSection.debugMode.enabledDescription")
+              : t("developerSection.debugMode.disabledDescription")}
+            <span className="mt-1 block">
+              {t("developerSection.whatGetsLogged.title")}: {loggedItems.join(", ")}.
+            </span>
+          </>
+        }
+      >
+        <Toggle
+          checked={debugEnabled}
+          onChange={handleToggleDebug}
+          disabled={isLoading || isToggling}
+        />
+      </SettingsCardRow>
 
-      {/* Debug Toggle */}
-      <div className="rounded-xl border border-border/70 dark:border-border-subtle bg-card dark:bg-surface-2 divide-y divide-border/60 dark:divide-border-subtle">
-        <div className="px-5 py-4">
-          <div className="flex items-center justify-between gap-6">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-medium text-foreground">
-                  {t("developerSection.debugMode.label")}
-                </p>
-                <div
-                  className={`h-1.5 w-1.5 rounded-full transition-colors ${
-                    debugEnabled ? "bg-success" : "bg-muted-foreground/30"
-                  }`}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                {debugEnabled
-                  ? t("developerSection.debugMode.enabledDescription")
-                  : t("developerSection.debugMode.disabledDescription")}
-              </p>
-            </div>
-            <div className="shrink-0">
-              <Toggle
-                checked={debugEnabled}
-                onChange={handleToggleDebug}
-                disabled={isLoading || isToggling}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Log Path — only when active */}
-        {debugEnabled && logPath && (
-          <div className="px-5 py-4">
-            <p className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
-              {t("developerSection.currentLogFile")}
-            </p>
-            <div className="flex items-center gap-2">
-              <code
-                dir="ltr"
-                className="flex-1 text-xs text-muted-foreground font-mono break-all leading-relaxed bg-muted/30 dark:bg-surface-raised/30 px-3 py-2 rounded-lg border border-border/70"
-              >
-                {logPath}
-              </code>
+      {debugEnabled && logPath && (
+        <SettingsPanelRow>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">
+            {t("developerSection.currentLogFile")}
+          </p>
+          <div className={`flex gap-2 ${isCompact ? "flex-col" : "items-center"}`}>
+            <code
+              dir="ltr"
+              className="flex-1 break-all rounded-lg bg-subtle px-3 py-2 font-mono text-xs text-muted-foreground"
+            >
+              {logPath}
+            </code>
+            <div className="flex shrink-0 items-center gap-1.5">
               <Button
                 onClick={handleCopyPath}
                 variant="ghost"
-                size="sm"
-                className="shrink-0 h-8 w-8 p-0"
+                size="icon"
+                aria-label={t("common.copy", { defaultValue: "Copy" })}
               >
                 {copiedPath ? (
-                  <Check className="h-3.5 w-3.5 text-success" />
+                  <Check className="size-3.5 text-success" />
                 ) : (
-                  <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                  <Copy className="size-3.5 text-muted-foreground" />
                 )}
+              </Button>
+              <Button onClick={handleOpenLogsFolder} variant="outline" size="sm">
+                <FolderOpen className="size-3.5" />
+                {t("developerSection.openLogsFolder")}
               </Button>
             </div>
           </div>
-        )}
-
-        {/* Actions */}
-        {debugEnabled && (
-          <div className="px-5 py-4">
-            <Button onClick={handleOpenLogsFolder} variant="outline" size="sm" className="w-full">
-              <FolderOpen className="me-2 h-3.5 w-3.5" />
-              {t("developerSection.openLogsFolder")}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* What gets logged */}
-      <div>
-        <div className="mb-5">
-          <h3 className="text-[15px] font-semibold text-foreground tracking-tight">
-            {t("developerSection.whatGetsLogged.title")}
-          </h3>
-        </div>
-        <div className="rounded-xl border border-border/70 dark:border-border-subtle bg-card dark:bg-surface-2">
-          <div className="px-5 py-4">
-            <div
-              className={`grid gap-y-2 ${isCompact ? "grid-cols-1 gap-x-0" : "grid-cols-2 gap-x-6"}`}
-            >
-              {[
-                t("developerSection.whatGetsLogged.items.audioProcessing"),
-                t("developerSection.whatGetsLogged.items.apiRequests"),
-                t("developerSection.whatGetsLogged.items.ffmpegOperations"),
-                t("developerSection.whatGetsLogged.items.systemDiagnostics"),
-                t("developerSection.whatGetsLogged.items.transcriptionPipeline"),
-                t("developerSection.whatGetsLogged.items.errorDetails"),
-              ].map((item) => (
-                <div key={item} className="flex items-center gap-2">
-                  <div className="h-1 w-1 rounded-full bg-muted-foreground/30 shrink-0" />
-                  <span className="text-xs text-muted-foreground">{item}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Performance note — conditional */}
-      {debugEnabled && (
-        <div className="rounded-xl border border-warning/20 bg-warning/5 dark:bg-warning/10">
-          <div className="px-5 py-4">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              <span className="font-medium text-warning">
-                {t("developerSection.performanceNote.label")}
-              </span>{" "}
-              {t("developerSection.performanceNote.description")}
-            </p>
-          </div>
-        </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            <span className="font-medium text-warning">
+              {t("developerSection.performanceNote.label")}
+            </span>{" "}
+            {t("developerSection.performanceNote.description")}
+          </p>
+        </SettingsPanelRow>
       )}
-
-    </div>
+    </SettingsCard>
   );
 }

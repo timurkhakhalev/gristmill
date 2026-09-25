@@ -131,7 +131,7 @@ function makePreview(scenario: NotesDebugScenario) {
             captureErrorCode: scenario === "incomplete" ? "system-audio-unavailable" : null,
             audioState: scenario === "audio-deleted" ? "deleted" : "available",
             audioErrorCode: null,
-            currentRunId: hasTranscript ? RUN_ID : null,
+            currentRunId: scenario === "incomplete" ? null : RUN_ID,
             startedAt: NOW,
             endedAt: NOW,
             durationSeconds: 0,

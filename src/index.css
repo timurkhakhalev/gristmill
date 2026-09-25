@@ -1,40 +1,98 @@
 @import "tailwindcss";
 @import "@heroui/styles";
 
+/* Design tokens — single source of truth.
+   HeroUI reads these raw variables directly (bg-surface, text-muted, bg-accent…);
+   the legacy Tailwind tokens in @theme below are aliases of the same values.
+   accent = solid brand fill (buttons, selected controls), brand = brand text/tints. */
 :root {
-  --accent: oklch(0.55 0.2 290);
-  --accent-foreground: white;
-  --surface: #f1f1f5;
-  --surface-secondary: #e8e8ed;
-  --overlay: #fff;
-  --foreground: #20212a;
-  --muted: #626674;
-  --border: #e3e3eb;
+  --background: #ffffff;
+  --foreground: #171717;
+  --surface: #ffffff;
+  --surface-secondary: #f5f5f6;
+  --surface-tertiary: #eeeef0;
+  --overlay: #ffffff;
+  --muted: #5f6068;
+  --subtle: #f4f4f5;
+  --default: #f0f0f2;
+  --default-foreground: #171717;
+  --accent: #7156c9;
+  --accent-foreground: #ffffff;
+  --brand: #7156c9;
+  --segment: #ffffff;
+  --segment-foreground: #171717;
+  --border: #e4e4e7;
+  --border-hover: #d4d4d8;
+  --surface-window: #f7f7f8;
+  --separator: #ececef;
+  --focus: #7156c9;
+  --link: #7156c9;
+  --success: #16a34a;
+  --success-foreground: #ffffff;
+  --warning: #b45309;
+  --warning-foreground: #ffffff;
+  --danger: #dc2626;
+  --danger-foreground: #ffffff;
+  --info: #4577e9;
+  --field-background: #ffffff;
+  --field-border: #e4e4e7;
+  --field-border-width: 1px;
+  --radius: 0.5rem;
 }
 .dark {
-  --accent: oklch(0.74 0.15 290);
-  --accent-foreground: #191425;
-  --surface: #24252b;
-  --surface-secondary: #2c2d34;
-  --overlay: #24252b;
-  --foreground: #edeef3;
-  --muted: #a1a3b0;
-  --border: #303138;
+  --background: oklch(0.22 0.006 260);
+  --foreground: oklch(0.93 0 0);
+  --surface: oklch(0.26 0.007 260);
+  --surface-secondary: oklch(0.29 0.008 260);
+  --surface-tertiary: oklch(0.32 0.009 260);
+  --overlay: oklch(0.28 0.008 260);
+  --muted: oklch(0.7 0.006 260);
+  --subtle: oklch(0.25 0.007 260);
+  --default: oklch(0.3 0.008 260);
+  --default-foreground: oklch(0.93 0 0);
+  --accent: oklch(0.56 0.17 288);
+  --accent-foreground: oklch(0.99 0 0);
+  --brand: oklch(0.76 0.13 290);
+  --segment: oklch(0.34 0.01 260);
+  --segment-foreground: oklch(0.96 0 0);
+  --border: oklch(0.33 0.007 260);
+  --border-hover: oklch(0.42 0.01 260);
+  --surface-window: oklch(0.19 0.005 260);
+  --separator: oklch(0.3 0.007 260);
+  --focus: oklch(0.72 0.14 290);
+  --link: oklch(0.78 0.12 290);
+  --success: oklch(0.72 0.17 150);
+  --success-foreground: oklch(0.18 0 0);
+  --warning: oklch(0.8 0.14 75);
+  --warning-foreground: oklch(0.18 0 0);
+  --danger: oklch(0.64 0.2 25);
+  --danger-foreground: oklch(0.99 0 0);
+  --info: oklch(0.7 0.15 240);
+  --field-background: oklch(0.2 0.005 260);
+  --field-border: oklch(0.33 0.007 260);
 }
+
+/* HeroUI adjustments shared by every screen. */
+.select__value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select__value .label { font-weight: 400; }
 
 .oh-note-header { width: min(100%, 880px); margin-inline: auto; padding-inline: clamp(20px, 5vw, 54px); }
 .oh-note-header [role="textbox"][aria-label] { font-family: var(--font-family-sans); font-weight: 620; letter-spacing: -.035em; }
 .oh-back-button { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 24px; color: var(--muted); font-size: 12px; }
 .oh-back-button:hover { color: var(--foreground); }
-.oh-chat-toggle { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); }
-.oh-chat-toggle:hover, .oh-chat-toggle[aria-pressed="true"] { color: var(--accent); background: var(--surface); }
-.oh-chat-toggle:focus-visible, .oh-back-button:focus-visible, .oh-timestamp:focus-visible, .oh-speaker:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.oh-meeting-detail { width: min(100%, 880px); margin-inline: auto; padding: 22px clamp(20px, 5vw, 54px) 80px; font-family: var(--font-family-sans); }
-.oh-meeting-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); padding-bottom: 18px; margin-bottom: 22px; }
-.oh-meeting-toolbar .tabs__list { gap: 0; }
+.oh-back-button:focus-visible, .oh-timestamp:focus-visible, .oh-speaker:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.oh-meeting-detail { container-type: inline-size; width: min(100%, 880px); margin-inline: auto; padding: 16px clamp(20px, 5vw, 54px) 32px; font-family: var(--font-family-sans); }
+.oh-meeting-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: nowrap; padding-bottom: 12px; margin-bottom: 12px; }
+.oh-meeting-toolbar .tabs { width: auto; flex: 0 0 auto; }
+.oh-meeting-toolbar .tabs__list { gap: 2px; padding: 2px; }
 .oh-meeting-toolbar .tabs__tab:not([aria-selected="true"]) { color: var(--muted); }
-.oh-meeting-toolbar .tabs__tab { min-height: 32px; padding-inline: 12px; font-size: 12px; }
+.oh-meeting-toolbar .tabs__tab { width: auto; min-width: 0; min-height: 28px; height: 28px; padding: 4px 9px; font-size: 12px; flex: 0 0 auto; }
 .oh-meeting-toolbar > .popover { flex-shrink: 0; }
+.oh-toolbar-actions, .oh-note-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.oh-toolbar-actions { margin-inline-start: auto; }
+.oh-toolbar-actions .button { height: 32px; min-height: 32px; font-size: 13px; gap: 6px; }
+.oh-toolbar-actions .button:not(.button--icon-only) { padding-inline: 12px; }
+.oh-toolbar-actions .button--icon-only { width: 32px; }
 .oh-count, .oh-small { font-size: 11px; }
 .oh-count, .oh-muted { color: var(--muted); }
 .oh-audio-popover { width: 355px; max-width: calc(100vw - 24px); }
@@ -47,6 +105,7 @@
 .oh-audio-popover > .popover__dialog > .oh-muted { margin-top: 14px; line-height: 1.5; }
 .oh-result-meta { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
 .oh-result-meta > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oh-result-meta .button { min-height: 26px; height: 26px; padding-inline: 9px; font-size: 11px; gap: 3px; }
 .oh-summary { font-size: 15px; line-height: 1.8; }
 .oh-summary > :first-child { margin-top: 26px; }
 .oh-summary h1, .oh-summary h2, .oh-summary h3 { font-size: 16px; font-weight: 600; margin: 30px 0 10px; }
@@ -55,24 +114,31 @@
 .oh-summary ol { list-style: decimal; padding-inline-start: 20px; }
 .oh-summary li { margin: 8px 0; }
 .oh-summary li::marker { color: var(--muted); }
-.oh-transcript-row { display: flex; gap: 20px; margin-top: 24px; }
-.oh-timestamp { flex: 0 0 46px; align-self: flex-start; text-align: start; color: var(--accent); font-size: 11px; padding: 6px 0; }
+.oh-transcript-row { display: grid; grid-template-columns: 52px minmax(0, 1fr); column-gap: 14px; align-items: baseline; margin-top: 24px; }
+.oh-timestamp { flex: 0 0 auto; text-align: start; color: var(--brand); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; padding: 6px 0; }
 .oh-speaker { font-size: 12px; font-weight: 600; }
-.oh-speaker:hover { color: var(--accent); }
+.oh-speaker:hover { color: var(--brand); }
 .oh-transcript-row p, .oh-transcript-text { font-size: 14px; line-height: 1.8; color: var(--muted); white-space: pre-wrap; }
-.oh-transcript-row p { margin-top: 6px; }
-.oh-provenance { color: var(--muted); font-size: 11px; margin-top: 32px; }
-.oh-meeting-warning, .oh-processing, .oh-meeting-message { background: var(--surface); border-radius: 12px; padding: 14px; margin: 18px 0; font-size: 12px; }
-.oh-meeting-warning { color: #ae6833; }
-.oh-processing { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.oh-processing span { color: var(--muted); }
-.oh-processing button { margin-inline-start: auto; }
+.oh-transcript-row p { margin-top: 2px; }
 .oh-run-fields { display: flex; gap: 14px; margin: 20px 0; }
+.oh-run-fields .select { flex: 1; min-width: 0; }
 .oh-speaker-field { display: flex; flex-direction: column; gap: 7px; font-size: 12px; }
 .oh-speaker-field input { border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; background: var(--surface); color: var(--foreground); }
-.oh-capture-control { display: flex; align-items: center; gap: 8px; background: var(--surface); border-radius: 12px; padding: 6px 9px; font-size: 12px; white-space: nowrap; }
-.oh-record-dot { width: 7px; height: 7px; border-radius: 50%; background: #e96c78; }
-.oh-record-dot-paused { background: #d7ba7d; }
+.oh-capture-control { display: flex; align-items: center; gap: 6px; height: 32px; background: var(--default); border-radius: 999px; padding: 0 2px 0 12px; font-size: 13px; white-space: nowrap; }
+.oh-toolbar-actions .oh-capture-control .button { height: 28px; min-height: 28px; }
+.oh-toolbar-actions .oh-capture-control .button--icon-only { width: 28px; }
+.oh-notice { margin: 0 0 16px; border-radius: var(--radius-xl); align-items: center; }
+.oh-notice .alert__title { font-size: 13px; }
+.oh-notice .alert__description { font-size: 12px; }
+.oh-notice-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-inline-start: auto; }
+.oh-capture-health { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 0 0 16px; padding: 8px 12px; border-radius: var(--radius-lg); background: var(--subtle); color: var(--muted); font-size: 12px; }
+.oh-record-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); }
+.oh-record-dot-paused { background: var(--warning); }
+/* Narrow note column (chat panel open, small window): icon-only toolbar actions. */
+@container (max-width: 620px) {
+  .oh-toolbar-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .oh-toolbar-actions .button:not(.button--icon-only) { padding-inline: 9px; }
+}
 @media (max-width: 720px) {
   .oh-note-header { padding-inline: 20px; }
   .oh-meeting-detail { padding: 18px 20px 70px; }
@@ -88,51 +154,43 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* OpenHercules Theme — registers color tokens with Tailwind v4.
-     These are the light-mode defaults; .dark overrides them below. */
-  /* A restrained violet accent for controls, focus rings, and links. */
-  --color-primary: #7156c9;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f5f5f5;
-  --color-secondary-foreground: #171717;
-  --color-muted: #f5f5f5;
-  --color-muted-foreground: #525252;
-  --color-accent: oklch(0.55 0.22 285);
-  --color-accent-foreground: #ffffff;
+  /* Legacy token names, aliased to the design tokens at the top of this file.
+     Names HeroUI also owns (background, foreground, muted, accent, border, link,
+     success, warning, surface) are intentionally NOT redefined here. */
+  --color-primary: var(--brand);
+  --color-primary-foreground: var(--accent-foreground);
+  --color-secondary: var(--surface-secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-subtle: var(--subtle);
+  --color-muted-foreground: var(--muted);
   /* Agent Mode identity, sourced from the supplied sparkle/leaf mark. */
   --color-agent-brand: #8787ff;
-  --color-destructive: #dc2626;
-  --color-destructive-foreground: #ffffff;
-  --color-border: #e5e5e5;
-  --color-input: #f9f6f1;
-  --color-ring: #7156c9;
-  --color-background: #ffffff;
-  --color-foreground: #171717;
-  --color-card: #ffffff;
-  --color-card-foreground: #171717;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #171717;
-  --color-link: #7156c9;
-  --color-success: #16a34a;
-  --color-success-foreground: #ffffff;
-  --color-warning: #d97706;
-  --color-warning-foreground: #ffffff;
-  --color-info: #4577e9;
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--danger-foreground);
+  --color-input: var(--field-background);
+  --color-ring: var(--focus);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--overlay);
+  --color-popover-foreground: var(--foreground);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
   --color-info-foreground: #ffffff;
 
-  /* Surface hierarchy — light mode equivalents */
-  --color-surface-0: #ffffff;
-  --color-surface-1: #fafafa;
-  --color-surface-2: #ffffff;
-  --color-surface-3: #f5f5f5;
-  --color-surface-raised: #f0f0f0;
+  /* Surface hierarchy */
+  --color-surface-0: var(--background);
+  --color-surface-1: var(--subtle);
+  --color-surface-2: var(--surface);
+  --color-surface-3: var(--surface-secondary);
+  --color-surface-raised: var(--surface-tertiary);
   /* Main-window backdrop behind the sidebar and the inset content container. */
-  --color-surface-window: #f7f7f7;
+  --color-surface-window: var(--surface-window);
 
-  /* Border states — light mode equivalents */
-  --color-border-subtle: #e5e5e5;
-  --color-border-hover: #d4d4d4;
-  --color-border-active: #7156c9;
+  /* Border states */
+  --color-border-subtle: var(--border);
+  --color-border-hover: var(--border-hover);
+  --color-border-active: var(--focus);
 }
 
 :root {
@@ -196,49 +254,6 @@
 }
 
 .dark {
-  /* Dark mode — charcoal surfaces with clear elevation hierarchy
-     Base L=0.22 (charcoal) with 0.05 steps between layers.
-     Hue 260 (neutral blue) with minimal chroma for sophistication. */
-  --color-background: oklch(0.22 0.006 260);
-  --color-foreground: oklch(0.93 0 0);
-  --color-card: oklch(0.27 0.008 260);
-  --color-card-foreground: oklch(0.93 0 0);
-  --color-popover: oklch(0.29 0.009 260);
-  --color-popover-foreground: oklch(0.93 0 0);
-  --color-primary: oklch(0.74 0.15 290);
-  --color-primary-foreground: oklch(0.99 0 0);
-  --color-secondary: oklch(0.28 0.007 260);
-  --color-secondary-foreground: oklch(0.9 0 0);
-  --color-muted: oklch(0.24 0.006 260);
-  --color-muted-foreground: oklch(0.65 0 0);
-  --color-accent: oklch(0.68 0.18 285);
-  --color-accent-foreground: oklch(0.99 0 0);
-  --color-destructive: oklch(0.62 0.22 25);
-  --color-destructive-foreground: oklch(0.99 0 0);
-  --color-border: oklch(0.35 0.007 260);
-  --color-input: oklch(0.19 0.005 260);
-  --color-ring: oklch(0.74 0.15 290);
-  --color-success: oklch(0.7 0.18 145);
-  --color-success-foreground: oklch(0.99 0 0);
-  --color-warning: oklch(0.75 0.15 70);
-  --color-warning-foreground: oklch(0.15 0 0);
-  --color-info: oklch(0.68 0.18 240);
-  --color-info-foreground: oklch(0.99 0 0);
-
-  /* Surface hierarchy — charcoal depth system (0.22 → 0.33) */
-  --color-surface-0: oklch(0.22 0.006 260);
-  --color-surface-1: oklch(0.25 0.007 260);
-  --color-surface-2: oklch(0.27 0.008 260);
-  --color-surface-3: oklch(0.3 0.009 260);
-  --color-surface-raised: oklch(0.33 0.01 260);
-  --color-surface-window: oklch(0.19 0.005 260);
-
-  /* Border states */
-  --color-border-subtle: oklch(0.33 0.006 260);
-  --color-border-hover: oklch(0.42 0.01 260);
-  --color-border-active: oklch(0.5 0.15 260);
-  --color-link: oklch(0.67 0.1 250);
-
   /* Card depth shadows — softer for charcoal, with top highlight for premium depth */
   --shadow-card: 0 1px 3px oklch(0 0 0 / 0.2), inset 0 1px 0 oklch(1 0 0 / 0.03);
   --shadow-card-hover: 0 4px 12px oklch(0 0 0 / 0.25), inset 0 1px 0 oklch(1 0 0 / 0.04);
@@ -482,7 +497,7 @@ body.dark:has(.onboarding-canvas) {
   --onboarding-text-tertiary: color-mix(in srgb, var(--color-muted-foreground) 75%, transparent);
   --onboarding-control-border: var(--color-border);
   --onboarding-surface: var(--color-background);
-  --onboarding-surface-secondary: var(--color-muted);
+  --onboarding-surface-secondary: var(--color-subtle);
   --onboarding-surface-tertiary: var(--color-secondary);
   --onboarding-surface-hover: var(--color-surface-1);
   --onboarding-inverse-surface: var(--color-foreground);
@@ -678,7 +693,7 @@ body.dark:has(.onboarding-canvas) {
    crossed by the dividers.
 
    Why this is CSS and not Tailwind on the item: the base SelectItem's
-   `hover:bg-muted` / `dark:hover:bg-primary/8` resolve against the app's own
+   `hover:bg-subtle` / `dark:hover:bg-primary/8` resolve against the app's own
    palette, which is a different scale from the onboarding one and moves
    independently of it. Those are neutralised on the item (see SELECT_ITEM_CLASS)
    and the fill is bound to --onboarding-row-hover here instead, the same token
@@ -1065,34 +1080,6 @@ textarea:not(.input-inline) {
 .dark textarea:not(.input-inline):focus {
   border-color: var(--color-border-active);
   box-shadow: 0 0 0 2px oklch(from var(--color-ring) l c h / 0.15);
-}
-
-/* Card styling - elevated parchment */
-.card {
-  background-color: var(--color-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card, 0 1px 3px oklch(from var(--color-foreground) l c h / 0.08));
-  transition:
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
-}
-
-.card:hover {
-  box-shadow: var(--shadow-card-hover, 0 4px 12px oklch(from var(--color-foreground) l c h / 0.1));
-  transform: translateY(-1px);
-}
-
-/* Dark mode cards — grounded, no lift, subtle border glow */
-.dark .card {
-  border-color: var(--color-border-subtle);
-  box-shadow: var(--shadow-card);
-}
-
-.dark .card:hover {
-  box-shadow: var(--shadow-card-hover);
-  transform: none;
-  border-color: var(--color-border-hover);
 }
 
 /* Link styling */

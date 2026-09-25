@@ -114,7 +114,7 @@ export default function PromptStudio({ className = "", kind = "cleanup" }: Promp
         {activeTab === "current" && (
           <div className="px-5 py-4">
             <div className="mb-3 flex items-center justify-between"><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">{isCustomPrompt ? t("promptStudio.view.customPrompt") : t("promptStudio.view.defaultPrompt")}</p><Button onClick={() => copyText(currentPrompt)} variant="ghost" size="sm" className="h-7 px-2 text-xs">{copiedPrompt ? <><Check className="me-1 inline size-3 text-success" />{t("promptStudio.common.copied")}</> : <><Copy className="me-1 inline size-3" />{t("promptStudio.common.copy")}</>}</Button></div>
-            <pre dir="auto" className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground">{currentPrompt.replace(/\{\{agentName\}\}/g, agentName)}</pre>
+            <pre dir="auto" className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-subtle/30 p-4 text-xs leading-relaxed text-muted-foreground">{currentPrompt.replace(/\{\{agentName\}\}/g, agentName)}</pre>
           </div>
         )}
         {activeTab === "edit" && (
@@ -130,7 +130,7 @@ export default function PromptStudio({ className = "", kind = "cleanup" }: Promp
             <div className="flex items-center gap-4 px-5 py-4 text-xs"><span className="text-muted-foreground">{t("promptStudio.test.modelLabel")}: <b className="font-mono text-foreground">{model || t("promptStudio.test.none")}</b></span><span className="text-muted-foreground">{t("promptStudio.test.providerLabel")}: <b className="text-foreground">{providerLabel(provider)}</b></span></div>
             <div className="px-5 py-4"><p className="mb-2 text-xs font-medium text-foreground">{t("promptStudio.test.inputLabel")}</p><Textarea dir="auto" value={testText} onChange={(event) => setTestText(event.target.value)} rows={3} className="text-xs" /></div>
             <div className="px-5 py-4"><Button onClick={testPrompt} disabled={!testText.trim() || isLoading || !useModel} size="sm" className="w-full"><Play className="me-2 size-3.5" />{isLoading ? t("promptStudio.test.processing") : t("promptStudio.test.run")}</Button></div>
-            {testResult && <div className="px-5 py-4"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-medium">{t("promptStudio.test.outputLabel")}</p><Button onClick={() => copyText(testResult)} variant="ghost" size="sm" className="h-6 px-1.5"><Copy className="size-3" /></Button></div><pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-muted/30 p-4 text-xs">{testResult}</pre></div>}
+            {testResult && <div className="px-5 py-4"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-medium">{t("promptStudio.test.outputLabel")}</p><Button onClick={() => copyText(testResult)} variant="ghost" size="sm" className="h-6 px-1.5"><Copy className="size-3" /></Button></div><pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-subtle/30 p-4 text-xs">{testResult}</pre></div>}
           </div>
         )}
       </div>

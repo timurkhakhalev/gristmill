@@ -30,13 +30,13 @@ export default function ControlPanelSidebar({
   const navItems = useControlPanelNavItems();
 
   return (
-    <div className={cn("h-full shrink-0 flex flex-col bg-surface-window", collapsed ? "w-[68px]" : "w-48")}>
+    <div className={cn("h-full shrink-0 flex flex-col bg-surface-window", collapsed ? "w-20" : "w-48")}>
       <div
         className="w-full h-10 shrink-0"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       />
 
-      <nav aria-label={t("sidebar.notes")} className="flex flex-col gap-0.5 px-2 pt-2 pb-2">
+      <nav aria-label={t("sidebar.notes")} className={cn("flex flex-col gap-0.5 pt-2 pb-2", collapsed ? "px-1" : "px-2")}>
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeView === item.id;
@@ -49,7 +49,7 @@ export default function ControlPanelSidebar({
               aria-label={item.label}
               className={cn(
                 "group relative flex items-center gap-2.5 w-full h-9 rounded-md outline-none transition-colors duration-150 text-start",
-                collapsed ? "justify-center px-0" : "px-2.5",
+                collapsed ? "flex-col justify-center gap-1 px-0 h-12" : "px-2.5",
                 "focus-visible:ring-1 focus-visible:ring-primary/30",
                 isActive
                   ? "bg-primary/8 dark:bg-primary/10"
@@ -65,16 +65,16 @@ export default function ControlPanelSidebar({
                     : "text-foreground/70 group-hover:text-foreground/90 dark:text-foreground/65 dark:group-hover:text-foreground/85"
                 )}
               />
-              {!collapsed && <span
+              <span
                 className={cn(
-                  "text-[13px] transition-colors duration-150",
+                  collapsed ? "max-w-full truncate text-[11px] leading-tight" : "text-[13px] transition-colors duration-150",
                   isActive
                     ? "text-foreground font-medium"
                     : "text-foreground/90 group-hover:text-foreground dark:text-foreground/85 dark:group-hover:text-foreground"
                 )}
               >
                 {item.label}
-              </span>}
+              </span>
             </button>
           );
         })}
@@ -82,18 +82,16 @@ export default function ControlPanelSidebar({
 
       <div className="flex-1" />
 
-      <div className="px-2 pb-2 space-y-0.5">
+      <div className={cn("pb-2 space-y-0.5", collapsed ? "px-1" : "px-2")}>
         <button
           onClick={onOpenSettings}
           aria-label={t("sidebar.settings")}
-          className={cn(rowButtonClass, collapsed && "justify-center px-0")}
+          className={cn(rowButtonClass, collapsed && "flex-col justify-center gap-1 h-12 px-0")}
           title={t("sidebar.settings")}
         >
           <Settings size={16} className={rowIconClass} />
-          {!collapsed && <span className={rowLabelClass}>{t("sidebar.settings")}</span>}
+          <span className={collapsed ? "max-w-full truncate text-[11px] leading-tight text-foreground/90" : rowLabelClass}>{t("sidebar.settings")}</span>
         </button>
-
-        <div className="mx-1 h-px bg-border/10 dark:bg-white/6 my-1.5!" />
 
       </div>
     </div>

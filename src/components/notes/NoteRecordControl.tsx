@@ -35,7 +35,7 @@ export default function NoteRecordControl({ isRecording, isProcessing, capturePh
     <span className={`oh-record-dot ${capturePhase === "paused" ? "oh-record-dot-paused" : ""}`} />
     <strong className="tabular-nums">{capturePhase === "paused" ? t("notes.editor.capture.paused", { defaultValue: "Paused" }) : formatMmSs(elapsed)}</strong>
     <Button isIconOnly size="sm" variant="ghost" aria-label={capturePhase === "paused" ? t("notes.editor.capture.resume", { defaultValue: "Resume recording" }) : t("notes.editor.capture.pause", { defaultValue: "Pause recording" })} onPress={capturePhase === "paused" ? onResume : onPause}>{capturePhase === "paused" ? <Play size={16} /> : <Pause size={16} />}</Button>
-    <Button size="sm" variant="secondary" onPress={onStop}><Square size={13} />{t("notes.editor.capture.finishMeeting", { defaultValue: "End call" })}</Button>
+    <Button size="sm" variant="secondary" onPress={onStop}><Square size={13} /><span className="oh-toolbar-label">{t("notes.editor.capture.finishMeeting", { defaultValue: "End call" })}</span></Button>
   </div>;
-  return <Button size="sm" isDisabled={disabled || isProcessing} onPress={onStart}><Mic size={16} />{t("notes.editor.startRecording")}</Button>;
+  return <Button size="sm" isDisabled={disabled || isProcessing} onPress={onStart}><Mic size={16} /><span className="oh-toolbar-label">{t("notes.editor.startRecording")}</span></Button>;
 }

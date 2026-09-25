@@ -300,7 +300,7 @@
       "selectModelHint": "لم يتم تحديد أي نموذج بعد — اختر واحدًا من القائمة أدناه.",
       "keyRequiredHint": "مفتاح API مطلوب للاستدلال — أضف واحدًا لاستخدام هذا المزود."
     },
-    "getApiKey": "احصل على مفتاح API الخاص بك ←",
+    "getApiKey": "احصل على مفتاح API الخاص بك",
     "selectModel": "تحديد النموذج",
     "availableModels": "النماذج المتاحة",
     "disableThinking": {
@@ -404,7 +404,6 @@
     "description": "قم بتوصيل الخدمات لتعزيز سير عملك",
     "googleCalendar": {
       "title": "تقويم Google",
-      "optional": "اختياري",
       "description": "الملء التلقائي لعناوين الاجتماعات والحاضرين من التقويم الخاص بك.",
       "connect": "ربط تقويم Google",
       "connecting": "جاري الربط...",
@@ -424,7 +423,6 @@
     },
     "microsoftCalendar": {
       "title": "تقويم Microsoft",
-      "optional": "اختياري",
       "description": "قراءة الاجتماعات من تقويم Outlook أو Microsoft 365 الخاص بك.",
       "connect": "ربط تقويم Microsoft",
       "connected": "متصل",
@@ -440,7 +438,6 @@
     },
     "appleCalendar": {
       "title": "تقويم Apple",
-      "optional": "اختياري",
       "description": "قراءة الاجتماعات من تطبيق التقويم (Calendar.app) — iCloud وGoogle وExchange وOutlook في مكان واحد.",
       "connect": "ربط تقويم Apple",
       "connected": "متصل",
@@ -814,8 +811,12 @@
         "unavailable": "غير متاح",
         "inactive": "لم يبدأ",
         "writingToDisk": "جارٍ الكتابة إلى القرص",
-        "incompleteReason": "قد يكون بعض الصوت مفقودًا. يحتفظ التسجيل بالصوت الذي حُفظ قبل حدوث المشكلة."
-      }
+        "incompleteReason": "قد يكون بعض الصوت مفقودًا. يحتفظ التسجيل بالصوت الذي حُفظ قبل حدوث المشكلة.",
+        "failedReason": "تحقق من أذونات الميكروفون وصوت النظام، ثم حاول مرة أخرى."
+      },
+      "summaryEmptyTitle": "لا يوجد ملخص بعد",
+      "summaryEmptyDescription": "سيظهر الملخص هنا بعد تفريغ التسجيل.",
+      "summaryReadyDescription": "التفريغ جاهز. أنشئ ملخصًا باستخدام النموذج اللغوي."
     },
     "participants": {
       "attendee": "حاضر",
@@ -997,24 +998,24 @@
     },
     "onboarding": {
       "llm": {
-        "title": "تكوين نموذج ذكاء اصطناعي",
-        "description": "تستخدم الإجراءات الذكاء الاصطناعي لتحويل ملاحظاتك. قم بإعداد نموذج لغة للبدء.",
-        "configured": "تم تكوين نموذج الذكاء الاصطناعي"
+        "title": "الملخصات والدردشة",
+        "description": "يكتب النموذج اللغوي الملخصات ويجيب عن الأسئلة حول ملاحظاتك."
       },
-      "actions": {
-        "title": "إجراءات مدعومة بالذكاء الاصطناعي",
-        "description": "تعمل الإجراءات على تحويل ملاحظاتك — تنظيف النصوص المفرَّغة، وتلخيص الاجتماعات، والمزيد. استخدم الإجراءات المضمّنة أو أنشئ إجراءاتك الخاصة.",
-        "builtInLabel": "مضمّن",
-        "createTitle": "أنشئ إجراءك الخاص",
-        "createDescription": "حدد إجراءً مخصصًا باستخدام موجه الذكاء الاصطناعي الخاص بك. يمكنك دائمًا تعديله أو إضافة المزيد لاحقًا في الإعدادات.",
-        "created": "تم الإنشاء!"
-      },
-      "getStarted": "البدء",
+      "getStarted": "ابدأ",
       "systemAudio": {
         "title": "صوت النظام",
-        "description": "التقط الصوت من الاجتماعات والتطبيقات الأخرى إلى جانب الميكروفون الخاص بك.",
-        "grant": "منح الإذن",
+        "description": "يسجّل الأشخاص الآخرين في المكالمة، وليس الميكروفون فقط.",
+        "grant": "سماح",
         "enabled": "مُمكّن"
+      },
+      "title": "إعداد ملاحظات الاجتماعات",
+      "subtitle": "سجّل اجتماعًا واحصل على التفريغ والملخص. تحتاج إلى هذه الخطوات مرة واحدة فقط.",
+      "done": "تم",
+      "setUp": "إعداد",
+      "laterHint": "يمكنك تغيير كل ذلك لاحقًا من الإعدادات.",
+      "transcription": {
+        "title": "تحويل الكلام إلى نص",
+        "description": "يحوّل صوت الاجتماع إلى نص مفرّغ."
       }
     },
     "enhance": {
@@ -1480,7 +1481,8 @@
       "noteFiles": {
         "label": "Store note files",
         "description": "Keep a local Markdown copy of notes."
-      }
+      },
+      "notesGroup": "الملاحظات"
     },
     "permissions": {
       "description": "اختبار وإدارة أذونات النظام المطلوبة لعمل OpenHercules بشكل صحيح",
@@ -1542,7 +1544,8 @@
       "deleteAllAudioConfirmDescription": "إذا كان هناك اجتماع قيد التسجيل، فسيتوقف بأمان دون بدء التفريغ. بعد ذلك يُحذف الصوت المحفوظ.",
       "deleteAllAudioConfirm": "حذف كل الصوت",
       "deleteAllAudioDone": "تم حذف {{count}} عنصرًا صوتيًا.",
-      "deleteAllAudioFailed": "تعذر حذف {{count}} من العناصر الصوتية. أعد تنفيذ هذا الإجراء للمحاولة مرة أخرى."
+      "deleteAllAudioFailed": "تعذر حذف {{count}} من العناصر الصوتية. أعد تنفيذ هذا الإجراء للمحاولة مرة أخرى.",
+      "audioGroup": "صوت الاجتماعات"
     },
     "prompts": {
       "description": "عرض وتخصيص واختبار موجه النظام الموحد الذي يشغل تنظيف النص واكتشاف التعليمات",
@@ -1872,7 +1875,7 @@
       "unavailable": "غير متوفر"
     },
     "apiKeyOptional": "API Key (اختياري)",
-    "getKey": "الحصول على مفتاح ←",
+    "getKey": "الحصول على مفتاح",
     "endpointUrl": "عنوان URL لنقطة النهاية",
     "azureHint": "Azure AI Foundry: أدخل نقطة نهاية موردك (مثال: https://your-resource.cognitiveservices.azure.com) وقم بتعيين النموذج إلى اسم النشر الدقيق الخاص بك.",
     "customProvider": "مخصص",
@@ -1985,7 +1988,8 @@
     "selectPlaceholder": "حدد ميكروفونًا",
     "systemDefault": "الافتراضي للنظام",
     "unknownDevice": "جهاز غير معروف",
-    "using": "مستخدم حاليًا: {{device}}"
+    "using": "مستخدم حاليًا: {{device}}",
+    "refresh": "تحديث الأجهزة"
   },
   "settingsModal": {
     "groups": {
@@ -1995,27 +1999,27 @@
     },
     "sections": {
       "general": {
-        "description": "المظهر والأصوات وبدء التشغيل",
+        "description": "اللغة والمظهر والملاحظات",
         "label": "التفضيلات"
       },
       "hotkeys": {
-        "description": "اختصارات الإملاء والتفعيل",
+        "description": "اختصارات لوحة المفاتيح لوضع الاجتماع",
         "label": "اختصارات لوحة المفاتيح"
       },
       "speechToText": {
-        "description": "محركات الإملاء وتسجيل الملاحظات",
+        "description": "طريقة تفريغ التسجيلات والملفات المرفوعة",
         "label": "تحويل الكلام إلى نص"
       },
       "llms": {
-        "description": "نماذج الدردشة والتنظيف والملخصات",
+        "description": "نماذج ملخصات الاجتماعات والدردشة",
         "label": "النماذج اللغوية"
       },
       "privacyData": {
-        "description": "الخصوصية والأذونات والتحليلات",
+        "description": "تبقى الملاحظات والصوت والمحادثات على هذا الجهاز. لا يتلقى المزودون إلا ما ترسله باستخدام مفتاح API الخاص بك.",
         "label": "الخصوصية والبيانات"
       },
       "system": {
-        "description": "التحديثات والتخزين وأدوات المطورين",
+        "description": "بدء التشغيل وأجهزة التسجيل والتشخيص",
         "label": "النظام"
       }
     },
@@ -2226,6 +2230,7 @@
     }
   },
   "meetingResults": {
+    "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
@@ -2258,7 +2263,7 @@
     "selectError": "تعذر اختيار هذه النتيجة.",
     "createError": "تعذر إنشاء عملية معالجة.",
     "retryError": "تعذر إعادة محاولة هذه العملية.",
-    "updateRunSettings": "استخدام الإعدادات الحالية",
+    "updateRunSettings": "إعادة المحاولة بالإعدادات الحالية",
     "updateConfigError": "تعذر تحديث إعدادات هذه العملية.",
     "playbackError": "تعذر تجهيز الصوت للتشغيل.",
     "exportError": "فشل تصدير الصوت.",
@@ -2305,6 +2310,27 @@
       "finalizing": "جارٍ حفظ التسجيل",
       "ready": "تم الحفظ",
       "incomplete": "غير مكتمل"
+    },
+    "openSettings": "فتح الإعدادات",
+    "blocked": {
+      "asr": "التفريغ بانتظار الإعدادات",
+      "summary": "الملخص بانتظار الإعدادات",
+      "other": "المعالجة بانتظار الإعدادات"
+    },
+    "blockedReason": {
+      "missing-transcription-config": "اختر مزود تحويل الكلام إلى نص وأضف مفتاح API الخاص به، ثم أعد المحاولة.",
+      "missing-summary-config": "اختر نموذجًا لغويًا لملخصات الاجتماعات، ثم أعد المحاولة.",
+      "other": "حدّث إعدادات المعالجة، ثم أعد المحاولة."
+    },
+    "failed": {
+      "asr": "فشل التفريغ",
+      "summary": "فشل الملخص",
+      "other": "فشلت المعالجة"
+    },
+    "failedReason": "تم حفظ الصوت. تحقق من الاتصال ومفتاح API، ثم أعد المحاولة.",
+    "progress": {
+      "pending": "في انتظار البدء.",
+      "running": "قد يستغرق ذلك بضع دقائق. يمكنك متابعة كتابة الملاحظات."
     }
   },
   "cleanupSettings": {

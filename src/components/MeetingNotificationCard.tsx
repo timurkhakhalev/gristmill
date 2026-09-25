@@ -53,7 +53,7 @@ export function MeetingNotificationCard({
             "absolute -left-2.5 -top-2.5 z-10 size-6 rounded-full",
             "flex items-center justify-center",
             "bg-card dark:bg-surface-2 border border-border/70 dark:border-border-subtle/60 shadow-sm",
-            "text-muted-foreground/70 hover:text-foreground hover:bg-muted",
+            "text-muted-foreground/70 hover:text-foreground hover:bg-subtle",
             "transition-all duration-150",
             closeVisible ? "opacity-100 scale-100" : "opacity-0 scale-75 pointer-events-none",
           ].join(" ")}

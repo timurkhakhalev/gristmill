@@ -82,7 +82,12 @@ import {
   meetingRecordingExportRequestSchema,
   meetingRecordingAudioRequestSchema,
 } from "../contracts/meetingProcessing.js";
-import { exportMeetingSourceTrack, copyMeetingAudioExport } from "./meetingAudioExport.js";
+import {
+  canPlayMeetingRun,
+  copyMeetingAudioExport,
+  createMeetingAudioOperationRegistry,
+  exportMeetingSourceTrack,
+} from "./meetingAudioExport.js";
 import { prepareMeetingAudio } from "./meetingAudioMixer.js";
 import { recognizeMeetingSpeakers } from "./meetingSpeakerRecognition.js";
 import { generateMeetingSummary } from "./meetingSummary.js";
@@ -318,6 +323,7 @@ export class IPCHandlers {
   whisperVadSettings: Record<string, unknown>;
   _meetingCoordinator: MeetingCoordinatorRuntime | null = null;
   _meetingProcessing: MeetingProcessingWorker | null = null;
+  _meetingAudioOperations: ReturnType<typeof createMeetingAudioOperationRegistry>;
   _meetingRecoveryReady = false;
 
   constructor(managers: IPCHandlersManagerOptions) {
@@ -340,6 +346,7 @@ export class IPCHandlers {
     this._uploadCancelRegistry = createUploadCancelRegistry();
     this._enterpriseReasoningRequests = new AgentStreamRequestRegistry();
     this._enterpriseStreams = new AgentStreamRequestRegistry();
+    this._meetingAudioOperations = createMeetingAudioOperationRegistry();
     this._hotkeyCaptureMode = false;
     this.audioStorageManager = new AudioStorageManager();
     this.localModelDownloadStatus = new LocalModelDownloadStatus();
@@ -633,6 +640,7 @@ export class IPCHandlers {
     try {
       if (intent.kind === "audio") {
         if (!intent.recordingId) throw new Error("Invalid meeting audio deletion intent");
+        await this._meetingAudioOperations.cancelAndWait(intent.recordingId);
         await this._meetingProcessing?.cancelRecordingForDeletion(intent.recordingId);
         this.audioStorageManager.meetingRecordings.removeRecordingAudio(intent.recordingId);
         if (!this.databaseManager.completeMeetingAudioDeletion(intent.id).success) {
@@ -645,6 +653,7 @@ export class IPCHandlers {
       }
 
       const { recordingIds, runIds } = this.databaseManager.getMeetingNoteStorageIds(intent.noteId);
+      await Promise.all(recordingIds.map((recordingId) => this._meetingAudioOperations.cancelAndWait(recordingId)));
       for (const recordingId of recordingIds) {
         await this._meetingProcessing?.cancelRecordingForDeletion(recordingId, true);
       }
@@ -715,17 +724,40 @@ export class IPCHandlers {
         if (!recording || recording.audioState !== "available" || !run || run.recordingId !== recording.id) {
           return { success: false, error: "meeting-audio-unavailable" };
         }
-        if (recording.currentRunId !== run.id || !run.hasTranscript) {
+        if (!canPlayMeetingRun(recording, run)) {
           return { success: false, error: "meeting-result-not-selected" };
         }
-        let audioPath = storage.getDerivedAudioPath(recording.id, run.id);
-        if (!fs.existsSync(audioPath)) {
-          await prepareMeetingAudio(storage, recording, run.id, database.listMeetingRecordingEpochs(recording.id));
-          audioPath = storage.getDerivedAudioPath(recording.id, run.id);
-        }
-        if (!fs.statSync(audioPath).isFile()) throw new Error("Meeting playback audio is unavailable");
-        approveAudioPath(audioPath);
-        return { success: true, path: audioPath };
+        return await this._meetingAudioOperations.run(recording.id, async (signal) => {
+          if (signal.aborted) throw new Error("Meeting audio operation cancelled");
+          const currentRecording = database.getMeetingRecording(recording.id);
+          const currentRun = database.getMeetingProcessingRun(run.id);
+          if (
+            !currentRecording || currentRecording.audioState !== "available" ||
+            !currentRun || currentRun.recordingId !== currentRecording.id
+          ) {
+            return { success: false, error: "meeting-audio-unavailable" };
+          }
+          if (!canPlayMeetingRun(currentRecording, currentRun)) {
+            return { success: false, error: "meeting-result-not-selected" };
+          }
+          let audioPath = storage.getDerivedAudioPath(recording.id, run.id);
+          if (!fs.existsSync(audioPath)) {
+            await prepareMeetingAudio(
+              storage,
+              currentRecording,
+              run.id,
+              database.listMeetingRecordingEpochs(recording.id),
+              { signal }
+            );
+            audioPath = storage.getDerivedAudioPath(recording.id, run.id);
+          }
+          if (signal.aborted) throw new Error("Meeting audio operation cancelled");
+          const stats = await fs.promises.stat(audioPath);
+          if (!stats.isFile()) throw new Error("Meeting playback audio is unavailable");
+          if (signal.aborted) throw new Error("Meeting audio operation cancelled");
+          approveAudioPath(audioPath);
+          return { success: true, path: audioPath };
+        });
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) };
       }
@@ -744,31 +776,53 @@ export class IPCHandlers {
         });
         if (result.canceled || !result.filePath) return { success: false };
         const destination = path.resolve(result.filePath);
-        if (!fs.statSync(path.dirname(destination)).isDirectory()) {
+        if (!(await fs.promises.stat(path.dirname(destination))).isDirectory()) {
           throw new Error("Selected export folder is unavailable");
         }
-        if (parsed.source === "mic" || parsed.source === "system") {
-          exportMeetingSourceTrack(
-            storage,
-            recording,
-            parsed.source,
-            database.listMeetingRecordingEpochs(recording.id),
-            destination
-          );
-          return { success: true };
+        const currentRecording = database.getMeetingRecording(parsed.recordingId);
+        if (!currentRecording || currentRecording.audioState !== "available") {
+          return { success: false, error: "meeting-audio-unavailable" };
         }
-        const runId = parsed.runId ?? recording.currentRunId;
+        const runId = parsed.source === "mixed" ? parsed.runId ?? currentRecording.currentRunId : null;
         const run = runId ? database.getMeetingProcessingRun(runId) : null;
-        if (!run || run.recordingId !== recording.id || !run.hasTranscript) {
+        if (parsed.source === "mixed" && (!run || run.recordingId !== currentRecording.id || !run.hasTranscript)) {
           return { success: false, error: "meeting-result-not-selected" };
         }
-        let sourcePath = storage.getDerivedAudioPath(recording.id, run.id);
-        if (!fs.existsSync(sourcePath)) {
-          await prepareMeetingAudio(storage, recording, run.id, database.listMeetingRecordingEpochs(recording.id));
-          sourcePath = storage.getDerivedAudioPath(recording.id, run.id);
-        }
-        copyMeetingAudioExport(sourcePath, destination);
-        return { success: true };
+        return await this._meetingAudioOperations.run(currentRecording.id, async (signal) => {
+          if (signal.aborted) throw new Error("Meeting audio operation cancelled");
+          const latestRecording = database.getMeetingRecording(currentRecording.id);
+          if (!latestRecording || latestRecording.audioState !== "available") {
+            return { success: false, error: "meeting-audio-unavailable" };
+          }
+          if (parsed.source === "mic" || parsed.source === "system") {
+            await exportMeetingSourceTrack(
+              storage,
+              latestRecording,
+              parsed.source,
+              database.listMeetingRecordingEpochs(latestRecording.id),
+              destination,
+              signal
+            );
+            return { success: true };
+          }
+          const latestRun = runId ? database.getMeetingProcessingRun(runId) : null;
+          if (!latestRun || latestRun.recordingId !== latestRecording.id || !latestRun.hasTranscript) {
+            return { success: false, error: "meeting-result-not-selected" };
+          }
+          let sourcePath = storage.getDerivedAudioPath(latestRecording.id, latestRun.id);
+          if (!fs.existsSync(sourcePath)) {
+            await prepareMeetingAudio(
+              storage,
+              latestRecording,
+              latestRun.id,
+              database.listMeetingRecordingEpochs(latestRecording.id),
+              { signal }
+            );
+            sourcePath = storage.getDerivedAudioPath(latestRecording.id, latestRun.id);
+          }
+          await copyMeetingAudioExport(sourcePath, destination, signal);
+          return { success: true };
+        });
       } catch (error) {
         debugLogger.error("Meeting audio export failed", {
           error: error instanceof Error ? error.message : String(error),

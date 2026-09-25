@@ -87,6 +87,7 @@ async function mountPanel(t, recordings, {
   const deleteCalls = [];
   const retryDeleteCalls = [];
   const selectRunCalls = [];
+  const playbackCalls = [];
   const listRecordings = typeof recordings === "function" ? recordings : () => recordings;
   let notifyUpdated = () => {};
   const previousDialog = globalThis.__meetingResultsConfirmDialog;
@@ -101,7 +102,10 @@ async function mountPanel(t, recordings, {
       return () => { notifyUpdated = () => {}; };
     },
     getSpeakerProfiles: async () => [],
-    meetingRecordingGetPlaybackPath: async () => playbackResponse,
+    meetingRecordingGetPlaybackPath: async (...args) => {
+      playbackCalls.push(args);
+      return playbackResponse;
+    },
     meetingProcessingSelectRun: async (recordingId, runId) => {
       selectRunCalls.push({ recordingId, runId });
       const selectedRecording = listRecordings().find((item) => item.recording.id === recordingId);
@@ -157,6 +161,7 @@ async function mountPanel(t, recordings, {
     deleteCalls,
     retryDeleteCalls,
     selectRunCalls,
+    playbackCalls,
     notifyUpdated: () => notifyUpdated(),
     textContent: () => container.textContent,
     findButton(label) {
@@ -365,7 +370,9 @@ test("selecting one of multiple recordings scopes status, results, and actions t
     recording: { ...older.recording, currentRunId: olderPendingRunId },
     runs: [older.runs[0], pendingRun],
   }];
-  const ui = await mountPanel(t, () => currentRecordings);
+  const ui = await mountPanel(t, () => currentRecordings, {
+    playbackResponse: { success: true, path: "/managed/older-run.wav" },
+  });
   assert.match(ui.textContent(), /meetingResults\.captureIncomplete/);
   assert.equal(ui.textContent().includes("Older saved result"), false);
 
@@ -392,6 +399,15 @@ test("selecting one of multiple recordings scopes status, results, and actions t
   assert.match(ui.textContent(), /Older saved result/);
   assert.match(ui.textContent(), /meetingResults\.status\.pending/);
   assert.deepEqual(ui.selectRunCalls, [], "switching recordings does not persist an old transcript selection");
+  assert.deepEqual(ui.playbackCalls.at(-1), [olderRecordingId, olderRunId]);
+  const mixedExport = ui.findButton("meetingResults.exportMixed");
+  assert.ok(mixedExport, "the displayed older result keeps mixed export available");
+  await React.act(async () => mixedExport.props.onClick());
+  assert.deepEqual(ui.exportCalls.at(-1), {
+    recordingId: olderRecordingId,
+    runId: olderRunId,
+    source: "mixed",
+  });
 
   const completedPendingRun = {
     ...pendingRun,

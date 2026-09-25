@@ -20,9 +20,24 @@ function versionLabel(result: MeetingProcessingResultDto, locale: string): strin
   return `${provider} / ${run.model || run.config?.transcription.local?.model || "—"} · ${formatVersionDate(run.createdAt, locale)}`;
 }
 
+function newestRecording(recordings: MeetingProcessingRecordingResult[]): MeetingProcessingRecordingResult | null {
+  return [...recordings].sort((a, b) =>
+    b.recording.startedAt.localeCompare(a.recording.startedAt) || b.recording.id.localeCompare(a.recording.id)
+  )[0] ?? null;
+}
+
+function latestTranscript(recording: MeetingProcessingRecordingResult): MeetingProcessingResultDto | null {
+  return recording.runs.find((item) => item.run.id === recording.recording.currentRunId && item.transcript)
+    ?? [...recording.runs]
+      .filter((item) => item.transcript)
+      .sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt))[0]
+    ?? null;
+}
+
 export default function MeetingResultsPanel({ noteId, locale }: { noteId: number; locale: string }) {
   const { t } = useTranslation();
   const [recordings, setRecordings] = useState<MeetingProcessingRecordingResult[]>([]);
+  const [selectedRecordingId, setSelectedRecordingId] = useState("");
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const [playbackUrl, setPlaybackUrl] = useState<string>("");
   const [message, setMessage] = useState<string>("");
@@ -32,6 +47,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
   const [speakerProfiles, setSpeakerProfiles] = useState<Array<{ id: number; display_name: string }>>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const autoSelectRunId = useRef<string | null>(null);
+  const selectedRecordingIdRef = useRef("");
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
 
   const refresh = useCallback(async () => {
@@ -42,20 +58,31 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     }
     const next = result.recordings ?? [];
     setRecordings(next);
-    const runs = next.flatMap((recording) => recording.runs);
-    const pendingAutoSelect = autoSelectRunId.current;
-    if (pendingAutoSelect && runs.some((item) => item.run.id === pendingAutoSelect && item.transcript)) {
+    const selectedRecording = next.find((item) => item.recording.id === selectedRecordingIdRef.current)
+      ?? newestRecording(next);
+    const pendingRecording = autoSelectRunId.current
+      ? next.find((item) => item.runs.some((run) => run.run.id === autoSelectRunId.current && run.transcript))
+      : undefined;
+    if (pendingRecording && autoSelectRunId.current) {
+      const pendingRun = pendingRecording.runs.find((item) => item.run.id === autoSelectRunId.current);
       autoSelectRunId.current = null;
-      setSelectedRunId(pendingAutoSelect);
+      selectedRecordingIdRef.current = pendingRecording.recording.id;
+      setSelectedRecordingId(pendingRecording.recording.id);
+      setSelectedRunId(pendingRun?.run.id ?? "");
       return;
     }
-    setSelectedRunId((selected) => {
-      return runs.some((item) => item.run.id === selected && item.transcript)
+    selectedRecordingIdRef.current = selectedRecording?.recording.id ?? "";
+    setSelectedRecordingId(selectedRecordingIdRef.current);
+    if (!selectedRecording) {
+      setSelectedRunId("");
+      return;
+    }
+    const preferred = latestTranscript(selectedRecording);
+    setSelectedRunId((selected) =>
+      selectedRecording.runs.some((item) => item.run.id === selected && item.transcript)
         ? selected
-        : runs.find((item) => item.run.id === next.find((recording) => recording.recording.currentRunId)?.recording.currentRunId && item.transcript)?.run.id
-          ?? runs.find((item) => item.transcript)?.run.id
-          ?? "";
-    });
+        : preferred?.run.id ?? ""
+    );
   }, [noteId, t]);
 
   useEffect(() => {
@@ -70,20 +97,16 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     });
   }, []);
 
+  const currentRecording = useMemo(
+    () => recordings.find((item) => item.recording.id === selectedRecordingId) ?? newestRecording(recordings),
+    [recordings, selectedRecordingId]
+  );
   const selected = useMemo(() => {
-    for (const recording of recordings) {
-      const result = recording.runs.find((item) => item.run.id === selectedRunId);
-      if (result?.transcript) return { recording, result };
-    }
-    for (const recording of recordings) {
-      const result = recording.runs.find((item) => item.run.id === recording.recording.currentRunId && item.transcript);
-      if (result) return { recording, result };
-    }
-    return recordings.flatMap((recording) => recording.runs
-      .filter((item) => item.transcript)
-      .map((result) => ({ recording, result })))
-      .sort((a, b) => b.result.run.createdAt.localeCompare(a.result.run.createdAt))[0] ?? null;
-  }, [recordings, selectedRunId]);
+    if (!currentRecording) return null;
+    const result = currentRecording.runs.find((item) => item.run.id === selectedRunId && item.transcript)
+      ?? latestTranscript(currentRecording);
+    return result ? { recording: currentRecording, result } : null;
+  }, [currentRecording, selectedRunId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,26 +147,45 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     ) : null;
   }
 
-  const currentRecording = selected?.recording ?? recordings[0];
+  if (!currentRecording) return null;
   const run = selected?.result;
   const audioAvailable = currentRecording.recording.audioState === "available";
-  const selectableRuns = recordings.flatMap((recording) => recording.runs.filter((result) => result.transcript));
+  const selectableRuns = currentRecording.runs.filter((result) => result.transcript);
   const latestRun = [...currentRecording.runs].sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt))[0];
   const speakers = [...new Set(run?.transcript?.segments?.flatMap((segment) => segment.speaker ? [segment.speaker] : []) ?? [])];
 
-  const selectRun = async (runId: string) => {
-    const found = recordings.flatMap((item) => item.runs.map((result) => ({ item, result }))).find(({ result }) => result.run.id === runId);
-    if (!found) return;
+  const selectRun = async (runId: string, recordingId = currentRecording.recording.id) => {
+    const recording = recordings.find((item) => item.recording.id === recordingId);
+    const resultForRun = recording?.runs.find((result) => result.run.id === runId && result.transcript);
+    if (!recording || !resultForRun) return;
+    selectedRecordingIdRef.current = recordingId;
+    setSelectedRecordingId(recordingId);
     setSelectedRunId(runId);
     setMessage("");
-    const result = await window.electronAPI.meetingProcessingSelectRun(found.item.recording.id, runId);
+    const result = await window.electronAPI.meetingProcessingSelectRun(recordingId, runId);
     if (!result.success) setMessage(result.error || t("meetingResults.selectError"));
     else void refresh();
+  };
+
+  const selectRecording = async (recordingId: string) => {
+    const recording = recordings.find((item) => item.recording.id === recordingId);
+    if (!recording) return;
+    selectedRecordingIdRef.current = recordingId;
+    setSelectedRecordingId(recordingId);
+    setMessage("");
+    const preferred = latestTranscript(recording);
+    setSelectedRunId(preferred?.run.id ?? "");
+    if (preferred) await selectRun(preferred.run.id, recordingId);
   };
 
   const makeRun = async (kind: "reprocess" | "summary") => {
     const sourceRecording = kind === "reprocess" ? selected?.recording ?? currentRecording : selected?.recording;
     if (!sourceRecording || (kind === "summary" && !selected)) return;
+    const sourceRunId = selected
+      ? selected.result.run.kind === "summary"
+        ? selected.result.run.sourceRunId ?? selected.result.run.id
+        : selected.result.run.id
+      : undefined;
     setBusy(true);
     setMessage("");
     try {
@@ -153,11 +195,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
         kind,
         config: snapshot.config,
         configError: snapshot.configError,
-        ...(kind === "summary" ? {
-          sourceRunId: selected.result.run.kind === "summary"
-            ? selected.result.run.sourceRunId ?? selected.result.run.id
-            : selected.result.run.id,
-        } : {}),
+        ...(kind === "summary" && sourceRunId ? { sourceRunId } : {}),
       });
       if (!created.success || !created.result) throw new Error(created.error || t("meetingResults.createError"));
       autoSelectRunId.current = created.result.run.id;
@@ -210,9 +248,18 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
     setMessage("");
     try {
       const snapshot = snapshotMeetingRecordingConfig();
+      const summaryOnlyCorrection = latestRun.run.kind !== "summary" &&
+        Boolean(latestRun.run.config) &&
+        latestRun.run.stage === "summary" &&
+        latestRun.run.errorCode === "missing-summary-config" &&
+        Boolean(latestRun.transcript) &&
+        latestRun.summary === null;
+      const config = summaryOnlyCorrection && latestRun.run.config
+        ? { transcription: latestRun.run.config.transcription, summary: snapshot.config?.summary ?? null }
+        : snapshot.config;
       const updated = await window.electronAPI.meetingProcessingUpdateBlockedRunConfig({
         runId: latestRun.run.id,
-        config: snapshot.config,
+        config,
         configError: snapshot.configError,
       });
       if (!updated.success) throw new Error(updated.error || t("meetingResults.updateConfigError"));
@@ -240,14 +287,12 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
   };
 
   const confirmDeleteAudio = () => {
-    if (!selected) return;
     showConfirmDialog({
       title: t("meetingResults.deleteAudioTitle"),
       description: t("meetingResults.deleteAudioDescription"),
       confirmText: t("meetingResults.deleteAudioConfirm"),
       variant: "destructive",
       onConfirm: async () => {
-        if (!selected) return;
         if (audioRef.current) {
           audioRef.current.pause();
           audioRef.current.removeAttribute("src");
@@ -256,8 +301,8 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
         setPlaybackUrl("");
         setBusy(true);
         const result = currentRecording.recording.audioState === "deleting"
-          ? await window.electronAPI.meetingRecordingRetryAudioDeletion(selected.recording.recording.id)
-          : await window.electronAPI.meetingRecordingDeleteAudio(selected.recording.recording.id);
+          ? await window.electronAPI.meetingRecordingRetryAudioDeletion(currentRecording.recording.id)
+          : await window.electronAPI.meetingRecordingDeleteAudio(currentRecording.recording.id);
         setBusy(false);
         setMessage(result.success ? "" : result.error || t("meetingResults.deleteError"));
         await refresh();
@@ -272,6 +317,21 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
   const status = captureIncomplete
     ? [t("meetingResults.captureIncomplete"), runStatus].filter(Boolean).join(" · ")
     : runStatus || t(`meetingResults.capture.${currentRecording.recording.captureState}`);
+  const sortedRecordings = [...recordings].sort((a, b) =>
+    b.recording.startedAt.localeCompare(a.recording.startedAt) || b.recording.id.localeCompare(a.recording.id)
+  );
+  const summaryOnlyCorrection = latestRun?.run.stage === "summary" &&
+    latestRun.run.status === "blocked" &&
+    latestRun.run.kind !== "summary" &&
+    Boolean(latestRun.run.config) &&
+    latestRun.run.errorCode === "missing-summary-config" &&
+    Boolean(latestRun.transcript) &&
+    latestRun.summary === null;
+  const initialSettingsCorrection = latestRun?.run.status === "blocked" &&
+    latestRun.run.kind !== "summary" &&
+    !latestRun.run.hasRawProviderResponse &&
+    !latestRun.run.hasTranscript &&
+    audioAvailable;
 
   return (
     <section className="m-4 rounded-xl border border-border bg-surface-2/70 p-4 dark:border-white/10" aria-label={t("meetingResults.title")}>
@@ -286,7 +346,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
           {latestRun && ["failed", "blocked", "cancelled"].includes(latestRun.run.status) && (
             <Button size="sm" variant="outline" disabled={busy || (!audioAvailable && !latestRun.run.hasRawProviderResponse && !latestRun.transcript)} onClick={() => void retryRun()}>{t("meetingResults.retry")}</Button>
           )}
-          {latestRun?.run.status === "blocked" && latestRun.run.kind !== "summary" && !latestRun.run.hasRawProviderResponse && !latestRun.run.hasTranscript && audioAvailable && (
+          {(initialSettingsCorrection || summaryOnlyCorrection) && (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => void updateBlockedRunConfig()}>{t("meetingResults.updateRunSettings")}</Button>
           )}
           {audioAvailable && <Button size="sm" variant="outline" disabled={busy} onClick={() => void confirmDeleteAudio()}>{t("meetingResults.deleteAudio")}</Button>}
@@ -294,13 +354,31 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
         </div>
       </div>
 
+      {recordings.length > 1 && (
+        <label className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <span>{t("meetingResults.recording")}</span>
+          <select
+            className="max-w-full rounded border bg-background px-2 py-1"
+            aria-label={t("meetingResults.recording")}
+            value={currentRecording.recording.id}
+            onChange={(event) => void selectRecording(event.target.value)}
+          >
+            {sortedRecordings.map((recording, index) => (
+              <option key={recording.recording.id} value={recording.recording.id}>
+                {t("meetingResults.recording")} {index + 1} · {formatVersionDate(recording.recording.startedAt, locale)} · {t(`meetingResults.capture.${recording.recording.captureState}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       {selectableRuns.length > 0 && (
         <label className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span>{t("meetingResults.version")}</span>
           <select className="max-w-full rounded border bg-background px-2 py-1" value={selectedRunId} onChange={(event) => void selectRun(event.target.value)}>
-            {recordings.flatMap((recording) => recording.runs.filter((result) => result.transcript).map((result) => (
+            {selectableRuns.map((result) => (
               <option key={result.run.id} value={result.run.id}>{versionLabel(result, locale)}</option>
-            )))}
+            ))}
           </select>
         </label>
       )}

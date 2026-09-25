@@ -1388,12 +1388,34 @@ export class DatabaseManager {
     if (config !== null) meetingProcessingConfigSchema.parse(config);
     if (error !== null) meetingProcessingConfigErrorSchema.parse(error);
     const row = this.sql.prepare(
-      "SELECT p.*, r.audio_state, r.note_id FROM meeting_processing_runs p JOIN meeting_recordings r ON r.id = p.recording_id WHERE p.id = ? AND p.status = 'blocked' AND p.kind != 'summary' AND p.raw_response_path IS NULL AND p.transcript_path IS NULL AND p.summary_path IS NULL"
+      "SELECT p.*, r.audio_state, r.note_id FROM meeting_processing_runs p JOIN meeting_recordings r ON r.id = p.recording_id WHERE p.id = ? AND p.status = 'blocked'"
     ).get(id) as (MeetingProcessingRunDbRow & { audio_state: MeetingAudioState; note_id: number }) | undefined;
-    if (!row || this.isMeetingNoteDeletionPending(row.note_id)) return null;
+    if (!row || row.kind === "summary" || this.isMeetingNoteDeletionPending(row.note_id)) return null;
+
+    const hasNoArtifacts = row.raw_response_path === null && row.transcript_path === null && row.summary_path === null;
+    if (!hasNoArtifacts) {
+      const previousConfig = parseConfig(row.config_json);
+      const summaryOnlyCorrection =
+        row.stage === "summary" &&
+        row.error_code === "missing-summary-config" &&
+        row.config_error_code === null &&
+        row.raw_response_path !== null &&
+        row.transcript_path !== null &&
+        row.summary_path === null &&
+        config !== null &&
+        config.summary != null &&
+        error === null &&
+        previousConfig?.summary == null &&
+        JSON.stringify(previousConfig?.transcription) === JSON.stringify(config.transcription);
+      if (!summaryOnlyCorrection) return null;
+      const updated = this.sql.prepare(
+        "UPDATE meeting_processing_runs SET config_json = ?, config_error_code = NULL, config_error_message_key = NULL, status = 'pending', error_code = NULL, retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'blocked' AND stage = 'summary' AND error_code = 'missing-summary-config' AND transcript_path IS NOT NULL AND summary_path IS NULL"
+      ).run(configJson(config), id);
+      return updated.changes === 1 ? this.getMeetingProcessingRun(id) : null;
+    }
+
     if (row.kind === "reprocess" && row.audio_state !== "available") return null;
-    const summaryMissing = row.kind === "summary" && config?.summary == null;
-    const nextError = error ?? (config === null ? { code: "missing-config" } : summaryMissing ? { code: "missing-summary-config" } : null);
+    const nextError = error ?? (config === null ? { code: "missing-config" } : null);
     const transcription = config?.transcription;
     const provider = transcription?.mode === "local" ? transcription.local?.provider ?? null : transcription?.provider ?? null;
     const model = transcription?.mode === "local" ? transcription.local?.model ?? null : transcription?.model ?? null;
@@ -1405,7 +1427,7 @@ export class DatabaseManager {
       configJson(config),
       nextError?.code ?? null,
       nextError?.messageKey ?? null,
-      config === null || error !== null || summaryMissing ? "blocked" : "pending",
+      config === null || error !== null ? "blocked" : "pending",
       nextError?.code ?? null,
       id
     );

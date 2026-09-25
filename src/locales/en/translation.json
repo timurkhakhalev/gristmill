@@ -2189,6 +2189,7 @@
     "speakerError": "Could not save speaker correction.",
     "deleteError": "Audio deletion failed. You can retry it.",
     "version": "Result version",
+    "recording": "Recording",
     "newAsr": "New transcription",
     "newSummary": "New summary",
     "retry": "Retry",

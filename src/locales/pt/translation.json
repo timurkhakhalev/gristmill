@@ -2196,6 +2196,7 @@
     "speakerError": "Não foi possível salvar a correção do interlocutor.",
     "deleteError": "Falha ao excluir áudio. Você pode tentar de novo.",
     "version": "Versão do resultado",
+    "recording": "Gravação",
     "newAsr": "Nova transcrição",
     "newSummary": "Novo resumo",
     "retry": "Tentar novamente",

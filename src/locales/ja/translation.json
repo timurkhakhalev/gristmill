@@ -2196,6 +2196,7 @@
     "speakerError": "話者の修正を保存できませんでした。",
     "deleteError": "音声を削除できませんでした。再試行できます。",
     "version": "結果のバージョン",
+    "recording": "録音",
     "newAsr": "新しい文字起こし",
     "newSummary": "新しい要約",
     "retry": "再試行",

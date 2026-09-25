@@ -18,31 +18,44 @@ const currentConfig = {
   summary: null,
 };
 
-function resultDto({ status = "complete", captureState = "ready", transcript = { text: "Hello", segments: [] }, summary = null, hasRawProviderResponse = true } = {}) {
+function resultDto({
+  recordingId = RECORDING_ID,
+  runId = RUN_ID,
+  status = "complete",
+  stage = "summary",
+  errorCode = status === "blocked" ? "missing-summary-config" : null,
+  captureState = "ready",
+  audioState = "available",
+  startedAt = "2026-09-24T10:00:00.000Z",
+  transcript = { text: "Hello", segments: [] },
+  summary = null,
+  config = null,
+  hasRawProviderResponse = true,
+} = {}) {
   return {
     recording: {
-      id: RECORDING_ID,
+      id: recordingId,
       captureState,
       captureErrorCode: captureState === "incomplete" ? "system-audio-interrupted" : null,
-      audioState: "available",
+      audioState,
       audioErrorCode: null,
-      currentRunId: RUN_ID,
-      startedAt: "2026-09-24T10:00:00.000Z",
+      currentRunId: runId,
+      startedAt,
       endedAt: "2026-09-24T10:01:00.000Z",
     },
     runs: [{
       run: {
-        id: RUN_ID,
-        recordingId: RECORDING_ID,
+        id: runId,
+        recordingId,
         kind: "initial",
         sourceRunId: null,
         provider: "elevenlabs",
         model: "scribe_v2",
-        config: null,
+        config,
         configError: null,
-        stage: "summary",
+        stage,
         status,
-        errorCode: status === "blocked" ? "missing-summary-config" : null,
+        errorCode,
         retryAt: null,
         retryCount: 0,
         hasRawProviderResponse,
@@ -58,7 +71,12 @@ function resultDto({ status = "complete", captureState = "ready", transcript = {
   };
 }
 
-async function mountPanel(t, recordings, { playbackResponse = { success: false, error: "not requested" } } = {}) {
+async function mountPanel(t, recordings, {
+  playbackResponse = { success: false, error: "not requested" },
+  snapshotConfig = currentConfig,
+  onDeleteAudio = async () => ({ success: true }),
+  onRetryDelete = async () => ({ success: true }),
+} = {}) {
   let root;
   t.after(async () => {
     if (root) await React.act(async () => root.unmount());
@@ -66,11 +84,24 @@ async function mountPanel(t, recordings, { playbackResponse = { success: false, 
   const exportCalls = [];
   const createRunCalls = [];
   const updateConfigCalls = [];
+  const deleteCalls = [];
+  const retryDeleteCalls = [];
+  const selectRunCalls = [];
+  const listRecordings = typeof recordings === "function" ? recordings : () => recordings;
+  const previousDialog = globalThis.__meetingResultsConfirmDialog;
+  t.after(() => {
+    if (previousDialog === undefined) delete globalThis.__meetingResultsConfirmDialog;
+    else globalThis.__meetingResultsConfirmDialog = previousDialog;
+  });
   const api = {
-    meetingProcessingListForNote: async () => ({ success: true, recordings }),
+    meetingProcessingListForNote: async () => ({ success: true, recordings: listRecordings() }),
     onMeetingProcessingUpdated: () => () => {},
     getSpeakerProfiles: async () => [],
     meetingRecordingGetPlaybackPath: async () => playbackResponse,
+    meetingProcessingSelectRun: async (recordingId, runId) => {
+      selectRunCalls.push({ recordingId, runId });
+      return { success: true };
+    },
     meetingProcessingCreateRun: async (input) => {
       createRunCalls.push(input);
       return { success: true, result: { run: { id: UPDATED_RUN_ID } } };
@@ -83,6 +114,14 @@ async function mountPanel(t, recordings, { playbackResponse = { success: false, 
       exportCalls.push(input);
       return { success: true };
     },
+    meetingRecordingDeleteAudio: async (recordingId) => {
+      deleteCalls.push(recordingId);
+      return onDeleteAudio(recordingId);
+    },
+    meetingRecordingRetryAudioDeletion: async (recordingId) => {
+      retryDeleteCalls.push(recordingId);
+      return onRetryDelete(recordingId);
+    },
   };
   installBrowserGlobals(t, { window: { electronAPI: api } });
   const container = installHookDom(t);
@@ -90,8 +129,8 @@ async function mountPanel(t, recordings, { playbackResponse = { success: false, 
     cachePrefix: "meeting-results-panel-review-",
     mockModules: {
       "react-i18next": "export function useTranslation() { return { t: (key) => key }; }",
-      "/ui/dialog": "export const ConfirmDialog = () => null;",
-      "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig() { return ${JSON.stringify({ config: currentConfig, configError: null })}; }`,
+      "/ui/dialog": "export const ConfirmDialog = (props) => { globalThis.__meetingResultsConfirmDialog = props; return null; };",
+      "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig() { return ${JSON.stringify({ config: snapshotConfig, configError: null })}; }`,
     },
   });
   const { default: MeetingResultsPanel } = await vite.ssrLoadModule("/components/notes/MeetingResultsPanel.tsx");
@@ -109,6 +148,9 @@ async function mountPanel(t, recordings, { playbackResponse = { success: false, 
     exportCalls,
     createRunCalls,
     updateConfigCalls,
+    deleteCalls,
+    retryDeleteCalls,
+    selectRunCalls,
     textContent: () => container.textContent,
     findButton(label) {
       function find(node) {
@@ -119,6 +161,16 @@ async function mountPanel(t, recordings, { playbackResponse = { success: false, 
       }
       return find(tree);
     },
+    findSelect(label) {
+      function find(node) {
+        if (Array.isArray(node)) return node.map(find).find(Boolean) ?? null;
+        if (!node || typeof node !== "object") return null;
+        if (node.type === "select" && node.props?.["aria-label"] === label) return node;
+        return find(node.props?.children);
+      }
+      return find(tree);
+    },
+    dialog: () => globalThis.__meetingResultsConfirmDialog,
   };
 }
 
@@ -183,4 +235,159 @@ test("a fulfilled playback failure is visible in Notes", async (t) => {
     playbackResponse: { success: false, error: "mixer-failed" },
   });
   assert.match(ui.textContent(), /meetingResults\.playbackError/);
+});
+
+test("audio-only deletion works without a transcript, can be cancelled, and can retry after failure", async (t) => {
+  let recording = resultDto({
+    status: "blocked",
+    stage: "asr",
+    errorCode: "missing-config",
+    transcript: null,
+    hasRawProviderResponse: false,
+  });
+  const ui = await mountPanel(t, () => [recording], {
+    onDeleteAudio: async () => {
+      recording = resultDto({ ...recordingOptions(recording), audioState: "deleting" });
+      return { success: false, error: "disk-busy" };
+    },
+    onRetryDelete: async () => {
+      recording = resultDto({ ...recordingOptions(recording), audioState: "deleted" });
+      return { success: true };
+    },
+  });
+  assert.match(ui.textContent(), /meetingResults\.deleteAudio/);
+
+  await React.act(async () => ui.findButton("meetingResults.deleteAudio").props.onClick());
+  const cancelledDialog = ui.dialog();
+  assert.equal(cancelledDialog.open, true);
+  await React.act(async () => cancelledDialog.onOpenChange(false));
+  assert.deepEqual(ui.deleteCalls, [], "cancelling confirmation leaves the recording untouched");
+
+  await React.act(async () => ui.findButton("meetingResults.deleteAudio").props.onClick());
+  const deleteDialog = ui.dialog();
+  await React.act(async () => {
+    await deleteDialog.onConfirm();
+    deleteDialog.onOpenChange(false);
+  });
+  assert.deepEqual(ui.deleteCalls, [RECORDING_ID]);
+  assert.match(ui.textContent(), /disk-busy/);
+  assert.ok(ui.findButton("meetingResults.retryDelete"));
+
+  await React.act(async () => ui.findButton("meetingResults.retryDelete").props.onClick());
+  const retryDialog = ui.dialog();
+  await React.act(async () => {
+    await retryDialog.onConfirm();
+    retryDialog.onOpenChange(false);
+  });
+  assert.deepEqual(ui.retryDeleteCalls, [RECORDING_ID]);
+  assert.equal(ui.textContent().includes("meetingResults.retryDelete"), false);
+});
+
+function recordingOptions(recording) {
+  const run = recording.runs[0];
+  return {
+    recordingId: recording.recording.id,
+    runId: run.run.id,
+    status: run.run.status,
+    stage: run.run.stage,
+    errorCode: run.run.errorCode,
+    captureState: recording.recording.captureState,
+    audioState: recording.recording.audioState,
+    startedAt: recording.recording.startedAt,
+    transcript: run.transcript,
+    summary: run.summary,
+    config: run.run.config,
+    hasRawProviderResponse: run.run.hasRawProviderResponse,
+  };
+}
+
+test("selecting one of multiple recordings scopes status, results, and actions to that recording", async (t) => {
+  const olderRecordingId = "00000000-0000-4000-8000-000000000011";
+  const olderRunId = "00000000-0000-4000-8000-000000000012";
+  const newerRecordingId = "00000000-0000-4000-8000-000000000021";
+  const newerRunId = "00000000-0000-4000-8000-000000000022";
+  const older = resultDto({
+    recordingId: olderRecordingId,
+    runId: olderRunId,
+    startedAt: "2026-09-23T10:00:00.000Z",
+    transcript: { text: "Older saved result", segments: [] },
+  });
+  const newer = resultDto({
+    recordingId: newerRecordingId,
+    runId: newerRunId,
+    startedAt: "2026-09-24T10:00:00.000Z",
+    captureState: "incomplete",
+    status: "blocked",
+    stage: "asr",
+    errorCode: "missing-config",
+    transcript: null,
+    hasRawProviderResponse: false,
+  });
+  const ui = await mountPanel(t, [older, newer]);
+  assert.match(ui.textContent(), /meetingResults\.captureIncomplete/);
+  assert.equal(ui.textContent().includes("Older saved result"), false);
+
+  await React.act(async () => ui.findButton("meetingResults.exportMic").props.onClick());
+  assert.deepEqual(ui.exportCalls, [{ recordingId: newerRecordingId, source: "mic" }]);
+  await React.act(async () => ui.findButton("meetingResults.newAsr").props.onClick());
+  assert.equal(ui.createRunCalls[0].recordingId, newerRecordingId);
+  await React.act(async () => ui.findButton("meetingResults.updateRunSettings").props.onClick());
+  assert.deepEqual(ui.updateConfigCalls.map(({ runId }) => runId), [newerRunId]);
+  await React.act(async () => ui.findButton("meetingResults.deleteAudio").props.onClick());
+  const deleteDialog = ui.dialog();
+  await React.act(async () => {
+    await deleteDialog.onConfirm();
+    deleteDialog.onOpenChange(false);
+  });
+  assert.deepEqual(ui.deleteCalls, [newerRecordingId]);
+
+  let recordingSelect = ui.findSelect("meetingResults.recording");
+  assert.ok(recordingSelect);
+  await React.act(async () => {
+    recordingSelect.props.onChange({ target: { value: olderRecordingId } });
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+  assert.match(ui.textContent(), /Older saved result/);
+  assert.deepEqual(ui.selectRunCalls.at(-1), { recordingId: olderRecordingId, runId: olderRunId });
+
+  recordingSelect = ui.findSelect("meetingResults.recording");
+  await React.act(async () => {
+    recordingSelect.props.onChange({ target: { value: newerRecordingId } });
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+  assert.match(ui.textContent(), /meetingResults\.captureIncomplete/);
+  assert.equal(ui.textContent().includes("Older saved result"), false);
+});
+
+test("summary-only settings correction keeps the selected run's saved transcription route", async (t) => {
+  const savedConfig = {
+    transcription: { ...currentConfig.transcription, provider: "deepgram", model: "nova-3", credentialRef: "DEEPGRAM_API_KEY" },
+    summary: null,
+  };
+  const currentSettings = {
+    ...currentConfig,
+    transcription: { ...currentConfig.transcription, language: "fr" },
+    summary: {
+      actionId: "notes.actions.builtin.detailedNotes",
+      instruction: "Summarize the meeting accurately.",
+      reasoningMode: "providers",
+      provider: "openai",
+      model: "gpt-4o-mini",
+      credentialRef: "OPENAI_API_KEY",
+    },
+  };
+  const ui = await mountPanel(t, [resultDto({
+    status: "blocked",
+    errorCode: "missing-summary-config",
+    config: savedConfig,
+    hasRawProviderResponse: true,
+  })], { snapshotConfig: currentSettings });
+  const updateSettings = ui.findButton("meetingResults.updateRunSettings");
+  assert.ok(updateSettings);
+  await React.act(async () => updateSettings.props.onClick());
+  assert.deepEqual(ui.updateConfigCalls, [{
+    runId: RUN_ID,
+    config: { transcription: savedConfig.transcription, summary: currentSettings.summary },
+    configError: null,
+  }]);
 });

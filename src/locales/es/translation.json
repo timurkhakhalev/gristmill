@@ -2196,6 +2196,7 @@
     "speakerError": "No se pudo guardar la corrección del hablante.",
     "deleteError": "Falló la eliminación del audio. Puedes reintentar.",
     "version": "Versión del resultado",
+    "recording": "Grabación",
     "newAsr": "Nueva transcripción",
     "newSummary": "Nuevo resumen",
     "retry": "Reintentar",

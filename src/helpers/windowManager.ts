@@ -14,6 +14,7 @@ import { NotificationDismissTimer, getNotificationTimeoutMs } from "./notificati
 import type { MeetingNotificationPrompt } from "./windowConfig.js";
 import {
   CONTROL_PANEL_CONFIG,
+  CONTROL_PANEL_MIN_SIZE,
   ONBOARDING_WINDOW_SIZES,
   NOTIFICATION_WINDOW_CONFIG,
   getMeetingNotificationWindowSize,
@@ -254,6 +255,10 @@ export class WindowManager {
     }
 
     this.controlPanelWindow = new BrowserWindow(CONTROL_PANEL_CONFIG);
+    this.controlPanelWindow.setMinimumSize(
+      CONTROL_PANEL_MIN_SIZE.width,
+      CONTROL_PANEL_MIN_SIZE.height
+    );
     this._onboardingRestoreBounds = null;
     this._onboardingWindowMode = null;
     this._onboardingWindowState = null;
@@ -451,9 +456,10 @@ export class WindowManager {
         win.setMaximizable(state.maximizable);
         win.setClosable(state.closable);
         win.setFullScreenable(state.fullscreenable);
-        if (state.minimumSize) {
-          win.setMinimumSize(state.minimumSize[0], state.minimumSize[1]);
-        }
+        win.setMinimumSize(
+          Math.min(CONTROL_PANEL_MIN_SIZE.width, workArea.width),
+          Math.min(CONTROL_PANEL_MIN_SIZE.height, workArea.height)
+        );
       }
       if (process.platform === "darwin" && typeof win.setWindowButtonVisibility === "function") {
         win.setWindowButtonVisibility(true);

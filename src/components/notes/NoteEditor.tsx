@@ -632,7 +632,7 @@ export default function NoteEditor({
   return (
     <div className="relative flex h-full min-h-0">
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-5">
+        <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-5">
           {onBackToNotes && <button type="button" className="mb-6 inline-flex items-center gap-2 rounded text-xs text-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={onBackToNotes} aria-label={t("controlPanel.backToNotes")}><ArrowLeft size={16}/>{t("controlPanel.backToNotes")}</button>}
           <div
             dir="auto"
@@ -643,7 +643,7 @@ export default function NoteEditor({
             onKeyDown={handleTitleKeyDown}
             onPaste={handleTitlePaste}
             data-placeholder={t("notes.editor.untitled")}
-            className="text-3xl font-semibold leading-tight text-foreground bg-transparent outline-none tracking-tight empty:before:content-[attr(data-placeholder)] empty:before:text-muted empty:before:pointer-events-none"
+            className="text-3xl font-semibold leading-tight text-foreground bg-transparent outline-none tracking-tight empty:before:content-[attr(data-placeholder)] empty:before:text-muted empty:before:pointer-events-none @max-[520px]:text-2xl"
             role="textbox"
             aria-label={t("notes.editor.noteTitle")}
           />

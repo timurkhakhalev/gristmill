@@ -297,3 +297,27 @@ Root-only focused rerun:
 `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
 
 Commit: `98ef791c` — M5: stabilize mounted results panel tests.
+
+## M6 Reviewer Fix 2
+
+Status: done
+
+Notes now select the newest recording by default and let users switch between recordings independently of transcript versions. Run-version selection, status, export, retry, settings correction, and audio deletion are scoped to the selected recording; transcriptless audio can be deleted or retried after a failed deletion.
+
+A blocked summary stage with a saved transcript and raw response can accept a validated summary-only configuration update. Main preserves the persisted transcription configuration and artifact paths, then resumes at summary without another ASR request. Ordinary retry behavior is unchanged.
+
+Preserved immutable mic/system recordings, prior run and result history, saved Notes content, main-side validation, and existing deletion intent behavior.
+
+Verification run by this worker:
+- `pnpm run typecheck` — passed.
+- `pnpm run lint` — passed with 0 errors and 36 existing warnings.
+- Read-only locale key parity — all 11 locales have the same keys, including the new recording selector label.
+- `git diff --check` — passed.
+- Tests, builds, installs, and native rebuilds were not run by this worker.
+
+Root-only focused regression command:
+`node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
+
+Root-only final verification from plan 5.6: `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, sequential `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
+
+Commit: `d0795810` — M6: fix reviewed recording selection and retry paths.

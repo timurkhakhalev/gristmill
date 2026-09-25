@@ -1,23 +1,19 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
-import { Plus, Sparkles } from "../icons";
-import { useToast } from "../ui/useToast";
+import { Plus } from "../icons";
 import NoteEditor from "./NoteEditor";
-import SpacesTree from "./SpacesTree";
 import { ContainerOverview } from "./overview/ContainerOverview";
 import ActionPicker from "./ActionPicker";
 import ActionManagerDialog from "./ActionManagerDialog";
 import AddNotesToFolderDialog from "./AddNotesToFolderDialog";
 import { useActionProcessing } from "../../hooks/useActionProcessing";
-import type { NoteMoveTarget } from "../../hooks/useNoteDragAndDrop";
 import type { ActionItem } from "../../contracts/actions";
 import type { NoteItem } from "../../contracts/notes";
 import { useActions } from "../../stores/actionStore";
 import { DETAILED_NOTES_KEY } from "../../helpers/builtinActions";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { selectResolvedNoteFormatting } from "../../config/settingsSelectors";
-import { cn } from "../lib/utils";
 import logger from "../../utils/logger";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";
 import { isExplicitSpeakerCount, resolveExpectedSpeakerCount } from "../../utils/participants";
@@ -37,26 +33,20 @@ import {
   useActiveNoteId,
   useActiveFolderId,
   useActiveContext,
-  initializeNotes,
   initializeNotesTree,
-  loadFolders,
   setActiveNoteId,
-  setActiveContext,
-  revealContainer,
-  createFolder,
-  getNoteFromStore,
 } from "../../stores/noteStore";
 import {
   useMeetingRecordingStore,
   startRecording as storeStartRecording,
   pauseMeeting,
-  resumeMeeting,
   finishMeeting,
   lockSpeaker,
   setSessionDiarizationEnabled,
   setSessionExpectedCount,
 } from "../../stores/meetingRecordingStore";
 import { useNotesOnboarding } from "../../hooks/useNotesOnboarding";
+import { useNotesTreeActions } from "../../hooks/useNotesTreeActions";
 import NotesOnboarding from "./NotesOnboarding";
 import { defaultFolderDisplayName, notesEmptyTitleKey } from "./shared";
 import { isRegenerableNoteTitle } from "../../helpers/regenerableNoteTitle";
@@ -66,7 +56,6 @@ import {
   applyNoteDraftMutation,
   collectPendingNoteWrites,
   planNoteTransition,
-  shouldCancelPendingSavesForDelete,
   type NoteEditorDraft,
   type PendingDocumentSnapshot,
   type PendingEnhancedSnapshot,
@@ -127,7 +116,6 @@ export default function PersonalNotesView({
   const { t } = useTranslation();
   const notes = useNotes();
   const activeNoteId = useActiveNoteId();
-  const isSidePanelLayout = activeNoteId != null;
   const activeFolderId = useActiveFolderId();
   const [isSaving, setIsSaving] = useState(false);
   const [draft, setDraftState] = useState<NoteEditorDraft | null>(null);
@@ -203,10 +191,18 @@ export default function PersonalNotesView({
     },
     [commitDraft, persistPendingWrites, takePendingSnapshots]
   );
-  const { toast } = useToast();
   const noteFormatting = useSettingsStore(useShallow(selectResolvedNoteFormatting));
   const effectiveModelId = noteFormatting.model;
   const { isComplete: isOnboardingComplete, complete: completeOnboarding } = useNotesOnboarding();
+  const {
+    startRecordingForNote,
+    handleNewNoteIn,
+    handleNewNote,
+    handleNotesAdded,
+    handleMoveNote,
+    handleMoveToFolder,
+    handleCreateFolderAndMove,
+  } = useNotesTreeActions();
 
   const isTranscribing = useMeetingRecordingStore((s) => s.isRecording);
   const diarizationSessionId = useMeetingRecordingStore((s) => s.diarizationSessionId);
@@ -262,21 +258,6 @@ export default function PersonalNotesView({
       setCalendarEventName(result?.success && result.event?.summary ? result.event.summary : null);
     });
   }, [activeNote?.calendar_event_id]);
-
-  const startRecordingForNote = useCallback(async (note: NoteItem | null, resume = false) => {
-    const seedSegments = note?.transcript ? parseTranscriptSegments(note.transcript) : [];
-    const args = {
-      noteId: note?.id ?? null,
-      noteTitle: note?.title ?? null,
-      folderId: note?.folder_id ?? null,
-      seedSegments,
-      diarizationEnabled: note?.diarization_enabled == null ? null : note.diarization_enabled === 1,
-      expectedCount: resolveExpectedSpeakerCount(note),
-      expectedCountIsExplicit: isExplicitSpeakerCount(note?.expected_speaker_count),
-      autoEndEligible: isMeetingAutoEndEligible(note),
-    };
-    await (resume ? resumeMeeting(args) : storeStartRecording(args));
-  }, []);
 
   const startRecording = useCallback(
     () => startRecordingForNote(activeNote ?? null),
@@ -416,101 +397,6 @@ export default function PersonalNotesView({
   useEffect(() => {
     return () => flushPendingSaves("unmount");
   }, [flushPendingSaves]);
-
-  const handleNewNoteIn = useCallback(
-    async (spaceId: number, folderId: number | null) => {
-      const result = await window.electronAPI.saveNote(
-        t("notes.list.untitledNote"),
-        "",
-        "personal",
-        null,
-        null,
-        folderId,
-        spaceId
-      );
-      if (result.success && result.note) {
-        setActiveContext(result.note.space_id, result.note.folder_id);
-        revealContainer(result.note.space_id, result.note.folder_id);
-        setActiveNoteId(result.note.id);
-        // A new note is a recording waiting to happen: start it unless one is already live.
-        if (meetingRecordingAllowed && !isTranscribing) void startRecordingForNote(result.note);
-      }
-    },
-    [t, meetingRecordingAllowed, isTranscribing, startRecordingForNote]
-  );
-
-  const privateSpaceId = useMemo(
-    () => spaces.find((s) => s.kind === "private")?.id ?? null,
-    [spaces]
-  );
-
-  const handleNewNoteInPrivate = useCallback(() => {
-    if (privateSpaceId == null) return;
-    handleNewNoteIn(privateSpaceId, null);
-  }, [privateSpaceId, handleNewNoteIn]);
-
-  const handleNewNote = useCallback(() => {
-    if (activeContext) handleNewNoteIn(activeContext.spaceId, activeContext.folderId);
-    else handleNewNoteInPrivate();
-  }, [activeContext, handleNewNoteIn, handleNewNoteInPrivate]);
-
-  const handleNotesAdded = useCallback(async () => {
-    if (activeFolderId) {
-      await initializeNotes(null, 50, activeFolderId);
-    }
-    loadFolders();
-  }, [activeFolderId]);
-
-  const handleDelete = useCallback(
-    async (id: number) => {
-      if (shouldCancelPendingSavesForDelete(draftRef.current?.noteId ?? null, id)) {
-        cancelPendingSaves(id);
-      }
-      await window.electronAPI.deleteNote(id);
-    },
-    [cancelPendingSaves]
-  );
-
-  const handleMoveNote = useCallback(
-    async (noteId: number, target: NoteMoveTarget) => {
-      await window.electronAPI.updateNote(noteId, {
-        folder_id: target.folderId,
-        space_id: target.spaceId,
-      });
-      if (noteId === activeNoteId) {
-        setActiveContext(target.spaceId, target.folderId);
-        revealContainer(target.spaceId, target.folderId);
-      }
-    },
-    [activeNoteId]
-  );
-
-  const handleMoveToFolder = useCallback(
-    async (noteId: number, folderId: number) => {
-      const folder = folders.find((f) => f.id === folderId);
-      if (!folder) return;
-      await handleMoveNote(noteId, { spaceId: folder.space_id, folderId });
-    },
-    [folders, handleMoveNote]
-  );
-
-  const handleCreateFolderAndMove = useCallback(
-    async (noteId: number, folderName: string) => {
-      const spaceId = getNoteFromStore(noteId)?.space_id ?? privateSpaceId;
-      if (spaceId == null) return;
-      const result = await createFolder(folderName, spaceId);
-      if (result.success && result.folder) {
-        await handleMoveToFolder(noteId, result.folder.id);
-      } else if (result.error) {
-        toast({
-          title: t("notes.folders.couldNotCreate"),
-          description: result.error,
-          variant: "destructive",
-        });
-      }
-    },
-    [privateSpaceId, handleMoveToFolder, toast, t]
-  );
 
   const {
     state: actionProcessingState,
@@ -667,35 +553,6 @@ export default function PersonalNotesView({
 
   return (
     <div className="flex h-full">
-      <div
-        className="shrink-0 overflow-hidden transition-[width] duration-300 ease-out"
-        style={{ width: isSidePanelLayout ? 0 : "13rem" }}
-      >
-        <div className="w-52 shrink-0 border-e border-border flex flex-col h-full">
-          <div className="px-2 pt-2 pb-1 shrink-0 space-y-0.5">
-            <button
-              onClick={() => setShowActionManager(true)}
-              className={cn(
-                "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs",
-                "text-foreground/85 hover:text-foreground hover:bg-default",
-                "transition-colors duration-150",
-                "focus:outline-none focus-visible:ring-1 focus-visible:ring-focus"
-              )}
-            >
-              <Sparkles size={14} className="shrink-0" />
-              {t("notes.sidebar.actions")}
-            </button>
-          </div>
-
-          <SpacesTree
-            onDeleteNote={handleDelete}
-            onMoveNote={handleMoveNote}
-            onCreateFolderAndMove={handleCreateFolderAndMove}
-            onNewNote={handleNewNoteIn}
-          />
-        </div>
-      </div>
-
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {editorNote ? (
           <>

@@ -918,6 +918,10 @@
         "description": "用於會議摘要與聊天的模型",
         "label": "語言模型"
       },
+      "dictionary": {
+        "label": "字典",
+        "description": "用於轉寫的自訂詞語和片段"
+      },
       "privacyData": {
         "description": "筆記、音訊和聊天都保存在此裝置上。服務商只會收到你用 API 金鑰傳送的內容。",
         "label": "隱私與資料"
@@ -1843,7 +1847,7 @@
   },
   "sidebar": {
     "notes": "筆記",
-    "upload": "上傳",
+    "upload": "上傳檔案",
     "dictionary": "字典",
     "settings": "設定",
     "support": "支援",

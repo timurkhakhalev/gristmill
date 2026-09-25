@@ -17,6 +17,8 @@ import InferenceConfigEditor from "./settings/InferenceConfigEditor";
 import ChatAgentSettings from "./settings/ChatAgentSettings";
 import { MeetingTranscriptionPanel } from "./settings/MeetingSettings";
 import { UploadTranscriptionPanel } from "./settings/UploadSettings";
+import DictionaryView from "./DictionaryView";
+import IntegrationsView from "./IntegrationsView";
 import { ConfirmDialog } from "./ui/dialog";
 import { useDialogs } from "../hooks/useDialogs";
 import { SUPPORTED_UI_LANGUAGES, type UiLanguage } from "../i18n";
@@ -37,7 +39,14 @@ const UI_LANGUAGE_NAMES: Record<UiLanguage, string> = {
 };
 
 export type SettingsSectionType =
-  "general" | "hotkeys" | "speechToText" | "llms" | "privacyData" | "system";
+  | "general"
+  | "hotkeys"
+  | "speechToText"
+  | "llms"
+  | "dictionary"
+  | "integrations"
+  | "privacyData"
+  | "system";
 
 interface SettingsPageProps {
   activeSection?: SettingsSectionType;
@@ -50,6 +59,8 @@ const sections: SettingsSectionType[] = [
   "hotkeys",
   "speechToText",
   "llms",
+  "dictionary",
+  "integrations",
   "privacyData",
   "system",
 ];
@@ -481,6 +492,10 @@ export default function SettingsPage({
       return <SpeechSettings initialSubTab={initialSubTab} />;
     case "llms":
       return <LlmSettings />;
+    case "dictionary":
+      return <DictionaryView />;
+    case "integrations":
+      return <IntegrationsView />;
     case "privacyData":
       return <PrivacySettings />;
     case "system":

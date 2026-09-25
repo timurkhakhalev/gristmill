@@ -1,9 +1,8 @@
 import type React from "react";
 import { useTranslation } from "react-i18next";
-import { NotebookPen, BookOpen, Upload, Blocks } from "./icons";
+import { NotebookPen, Upload } from "./icons";
 
-export type ControlPanelView =
-  "personal-notes" | "dictionary" | "upload" | "integrations";
+export type ControlPanelView = "personal-notes" | "upload";
 
 export interface ControlPanelNavItem {
   id: ControlPanelView;
@@ -12,9 +11,9 @@ export interface ControlPanelNavItem {
 }
 
 /**
- * Single source of truth for main-window navigation. The sidebar renders these
- * rows and the top bar shows the active item's label as the page title, so the
- * two can never disagree.
+ * Single source of truth for main-window navigation. The sidebar renders the
+ * notes tree with Upload file and Settings buttons at the bottom, and the top
+ * bar shows the active view's label as the page title.
  */
 export function useControlPanelNavItems(): ControlPanelNavItem[] {
   const { t } = useTranslation();
@@ -22,7 +21,5 @@ export function useControlPanelNavItems(): ControlPanelNavItem[] {
   return [
     { id: "personal-notes", label: t("sidebar.notes"), icon: NotebookPen },
     { id: "upload", label: t("sidebar.upload"), icon: Upload },
-    { id: "dictionary", label: t("sidebar.dictionary"), icon: BookOpen },
-    { id: "integrations", label: t("sidebar.integrations"), icon: Blocks },
   ];
 }

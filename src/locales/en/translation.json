@@ -958,6 +958,10 @@
         "description": "Models for meeting summaries and chat",
         "label": "Language Models"
       },
+      "dictionary": {
+        "label": "Dictionary",
+        "description": "Custom words and snippets for transcription"
+      },
       "privacyData": {
         "description": "Notes, audio and chats stay on this device. Providers only receive what you send with your API key.",
         "label": "Privacy & Data"
@@ -1429,7 +1433,7 @@
   },
   "sidebar": {
     "notes": "Notes",
-    "upload": "Upload",
+    "upload": "Upload file",
     "dictionary": "Dictionary",
     "settings": "Settings",
     "support": "Support",

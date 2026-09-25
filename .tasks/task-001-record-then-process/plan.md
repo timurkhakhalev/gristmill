@@ -43,6 +43,7 @@ Milestones выполняются последовательно одним impl
 | M5 | Reviewer Fix 1 | M1, M2, M3, M4 | Findings `M1-1`, `M3-1`, `M4-1`–`M4-4` из `review-1.md` |
 | M6 | Reviewer Fix 2 | M5 | Findings `M4-1`, `M5-1`, `M5-2` из `review-2.md` |
 | M7 | Reviewer Fix 3 (по решению Тимура) | M6 | Findings `M6-1`, `M6-2` из `review-3.md` |
+| M8 | Code Review Fix 1 | M7 | Findings `CR-1`, `CR-2` из `code-review-1.md` |
 
 ## 5. Milestone details
 
@@ -263,9 +264,30 @@ Depends on: M6. Тимур 2026-09-25 явно поручил разобрать
 
 Добавить регрессию для текущего неподдерживаемого Self-Hosted transcription route при исправлении сохранённого summary run; проверить отправленный config и отсутствие второго ASR на уровне main. Добавить UI/SQLite regression для двух записей и одной записи со старым transcript + новым pending run: переключение записи не вызывает select-run IPC и не меняет persisted current/projection; завершение нового run публикует результат; явный выбор версии меняет projection. Root запускает focused tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`; после интеграции — последовательный `pnpm test`, `pnpm run pack`, `node scripts/smoke-electron.js`. Аппаратная проверка остаётся у Тимура.
 
+### 5.8 M8 — Code Review Fix 1
+
+#### 5.8.1 Depends on
+
+Depends on: M7 and passing milestone review `review-4.md`.
+
+#### 5.8.2 What changes now
+
+Исправить findings `CR-1` и `CR-2` из [code-review-1.md](code-review-1.md):
+
+- Playback и seek должны работать для любого сохранённого transcript run данной записи, который Notes действительно показывает, даже если `current_run_id` указывает на новый pending run. Проверять принадлежность run записи, доступность audio и наличие transcript; само получение playback path не должно менять `current_run_id` или Notes projection. Mixed export видимого результата также остаётся доступным.
+- Экспорт исходных mic/system WAV из длинных epochs выполнять асинхронно и ограниченными по памяти блоками, используя существующие безопасные пути хранения и сохраняя offsets/gaps, WAV header, временный файл, fsync/close и атомарное переименование. Убрать main-thread blocking и whole-file PCM Buffer; ошибки и отмена удаляют temp, не объявляют success. Согласовать export с уже существующим audio/note deletion lifecycle: после intent не начинать новый export; активный export прервать и дождаться закрытия readers до удаления. Для mixed-copy применить тот же принцип отсутствия блокировки main и корректного завершения операции, если затронут общим handler.
+
+#### 5.8.3 What must remain true
+
+Явный выбор исторической версии по прежнему меняет persisted selection, а простой просмотр записи/старого transcript — нет. Новое завершённое run автоматически публикуется после pending. Источники PCM остаются неизменяемыми, export сохраняет шкалу времени, renderer получает только разрешённый результат, path выходит из ID и save dialog, не из произвольного renderer FS. Deletion intent предшествует очистке и не оставляет новых аудиокопий после удаления. Сохранить M1–M7 invariants, без compatibility shims и новых зависимостей.
+
+#### 5.8.4 Verification
+
+Добавить focused regression для playback старого видимого run при новом pending и неизменного `current_run_id`/projection; после завершения pending проверить новый результат. Для export проверить несколько epochs и gaps, большой sparse/temporary PCM без whole-file read, bounded chunk I/O, failure cleanup, cancellation/deletion race и завершение только после close/rename. Root запускает affected focused tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, затем последовательные `pnpm test`, `pnpm run pack`, `node scripts/smoke-electron.js`. Аппаратная mic/system проверка остаётся у Тимура.
+
 ## 6. Execution order (derived from dependencies)
 
-M1 → review/verification → M2 → review/verification → M3 → review/verification → M4 → интеграционная проверка → M5 Reviewer Fix 1 → повторный milestone review → M6 Reviewer Fix 2 → повторный milestone review → M7 Reviewer Fix 3 по решению Тимура → повторный milestone review → финальный code review. Не запускать следующий milestone до закрытия блокирующих findings текущего.
+M1 → review/verification → M2 → review/verification → M3 → review/verification → M4 → интеграционная проверка → M5 Reviewer Fix 1 → повторный milestone review → M6 Reviewer Fix 2 → повторный milestone review → M7 Reviewer Fix 3 по решению Тимура → повторный milestone review → code review → M8 Code Review Fix 1 → повторный code review. Не запускать следующий milestone до закрытия блокирующих findings текущего.
 
 Общие команды из корня worktree: `pnpm run typecheck`, `pnpm run lint`, focused Node commands выше; полный `pnpm test` один раз после интеграции, при ошибке сначала focused rerun. Не устанавливать новые библиотеки для очереди, кодирования или тестов: SQLite, Node fs, ffmpeg и node:test уже есть. Tests/build/install выполняет только root.
 
@@ -282,8 +304,9 @@ M1 → review/verification → M2 → review/verification → M3 → review/veri
 | M5 — Reviewer Fix 1 | done | `9b4755a6`, `79bdbd77`, `0fbe743f`, `0d2041c1`, `98ef791c`, `fdc7fdbf` |
 | M6 — Reviewer Fix 2 | done | `d0795810`, `baff7416` |
 | M7 — Reviewer Fix 3 (по решению Тимура) | done | `99ba4a1f`, `a421f368` |
+| M8 — Code Review Fix 1 | in progress | |
 | Reviewer | done | `review-1.md` — 4 high, 2 medium; `review-2.md` — 3 high; `review-3.md` — 2 high; `review-4.md` — pass, 0 findings |
-| Code Reviewer | done | `code-review-1.md` — 2 medium; fix required |
+| Code Reviewer | not started | `code-review-1.md` — 2 medium; fix required |
 
 M2 verification: 50/50 focused tests, `pnpm run pack`, and packaged Notes smoke passed. On 2026-09-24 Timur explicitly deferred the live mic/system hardware smoke until the end of the task; its tail-loss guarantee remains unverified. This is an accepted verification-order deviation, not a passing hardware result.
 

@@ -24,9 +24,7 @@ const SIDEBAR_WIDTH_PX = 192;
 
 const SettingsModal = React.lazy(() => import("./SettingsModal"));
 const PersonalNotesView = React.lazy(() => import("./notes/PersonalNotesView"));
-const DictionaryView = React.lazy(() => import("./DictionaryView"));
 const UploadAudioView = React.lazy(() => import("./notes/UploadAudioView"));
-const IntegrationsView = React.lazy(() => import("./IntegrationsView"));
 const CommandSearch = React.lazy(() => import("./CommandSearch"));
 const NotesDebugPreview = (import.meta.env.DEV || import.meta.env.VITE_OPENHERCULES_DEV_BUILD === "true")
   ? React.lazy(() => import("./notes/NotesDebugPreview"))
@@ -227,11 +225,6 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                   )}
                 </Suspense>
               )}
-              {activeView === "dictionary" && (
-                <Suspense fallback={null}>
-                  <DictionaryView />
-                </Suspense>
-              )}
               {activeView === "upload" && (
                 <Suspense fallback={null}>
                   <UploadAudioView
@@ -242,11 +235,6 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                     }}
                     onOpenSettings={openSettings}
                   />
-                </Suspense>
-              )}
-              {activeView === "integrations" && (
-                <Suspense fallback={null}>
-                  <IntegrationsView />
                 </Suspense>
               )}
             </div>

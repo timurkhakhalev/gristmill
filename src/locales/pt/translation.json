@@ -912,6 +912,10 @@
         "description": "Modelos para resumos de reuniões e chat",
         "label": "Modelos de linguagem"
       },
+      "dictionary": {
+        "label": "Dicionário",
+        "description": "Palavras personalizadas e trechos para a transcrição"
+      },
       "privacyData": {
         "description": "Notas, áudio e conversas ficam neste dispositivo. Os provedores só recebem o que você envia com sua chave de API.",
         "label": "Privacidade e dados"
@@ -1843,7 +1847,7 @@
   },
   "sidebar": {
     "notes": "Notas",
-    "upload": "Enviar",
+    "upload": "Enviar arquivo",
     "dictionary": "Dicionário",
     "settings": "Configurações",
     "support": "Suporte",

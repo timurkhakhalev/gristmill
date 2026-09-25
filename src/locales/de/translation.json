@@ -958,6 +958,10 @@
         "description": "Modelle für Meeting-Zusammenfassungen und Chat",
         "label": "Sprachmodelle"
       },
+      "dictionary": {
+        "label": "Wörterbuch",
+        "description": "Eigene Wörter und Snippets für die Transkription"
+      },
       "privacyData": {
         "description": "Notizen, Audio und Chats bleiben auf diesem Gerät. Anbieter erhalten nur, was du mit deinem API-Schlüssel sendest.",
         "label": "Datenschutz & Daten"
@@ -1429,7 +1433,7 @@
   },
   "sidebar": {
     "notes": "Notizen",
-    "upload": "Hochladen",
+    "upload": "Datei hochladen",
     "dictionary": "Wörterbuch",
     "settings": "Einstellungen",
     "support": "Support",

@@ -958,6 +958,10 @@
         "description": "Modèles pour les résumés de réunion et le chat",
         "label": "Modèles de langage"
       },
+      "dictionary": {
+        "label": "Dictionnaire",
+        "description": "Mots personnalisés et extraits pour la transcription"
+      },
       "privacyData": {
         "description": "Les notes, l'audio et les discussions restent sur cet appareil. Les fournisseurs ne reçoivent que ce que vous envoyez avec votre clé API.",
         "label": "Confidentialité & données"
@@ -1429,7 +1433,7 @@
   },
   "sidebar": {
     "notes": "Notes",
-    "upload": "Importer",
+    "upload": "Importer un fichier",
     "dictionary": "Dictionnaire",
     "settings": "Paramètres",
     "support": "Assistance",

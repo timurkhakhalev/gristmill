@@ -918,6 +918,10 @@
         "description": "会議の要約とチャットに使うモデル",
         "label": "言語モデル"
       },
+      "dictionary": {
+        "label": "辞書",
+        "description": "文字起こし用のカスタム単語とスニペット"
+      },
       "privacyData": {
         "description": "ノート、音声、チャットはこのデバイスに保存されます。プロバイダーには API キーで送信した内容だけが届きます。",
         "label": "プライバシーとデータ"
@@ -1843,7 +1847,7 @@
   },
   "sidebar": {
     "notes": "ノート",
-    "upload": "アップロード",
+    "upload": "ファイルをアップロード",
     "dictionary": "辞書",
     "settings": "設定",
     "support": "サポート",

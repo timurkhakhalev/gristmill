@@ -7,6 +7,8 @@ import {
   Wrench,
   Keyboard,
   Shield,
+  BookOpen,
+  Blocks,
 } from "./icons";
 import SidebarModal, { type SidebarItem } from "./ui/SidebarModal";
 import SettingsPage, { SettingsSectionType } from "./SettingsPage";
@@ -78,6 +80,20 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
         icon: Brain,
         description: t("settingsModal.sections.llms.description"),
         group: t("settingsModal.groups.aiModels"),
+      },
+      {
+        id: "dictionary",
+        label: t("sidebar.dictionary"),
+        icon: BookOpen,
+        description: t("settingsModal.sections.dictionary.description"),
+        group: t("settingsModal.groups.aiModels"),
+      },
+      {
+        id: "integrations",
+        label: t("sidebar.integrations"),
+        icon: Blocks,
+        description: t("integrations.description"),
+        group: t("settingsModal.groups.system"),
       },
       {
         id: "privacyData",

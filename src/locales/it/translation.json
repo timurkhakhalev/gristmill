@@ -918,6 +918,10 @@
         "description": "Modelli per i riepiloghi delle riunioni e la chat",
         "label": "Modelli linguistici"
       },
+      "dictionary": {
+        "label": "Dizionario",
+        "description": "Parole personalizzate e snippet per la trascrizione"
+      },
       "privacyData": {
         "description": "Note, audio e chat restano su questo dispositivo. I provider ricevono solo ciò che invii con la tua chiave API.",
         "label": "Privacy e dati"
@@ -1843,7 +1847,7 @@
   },
   "sidebar": {
     "notes": "Note",
-    "upload": "Carica",
+    "upload": "Carica file",
     "dictionary": "Dizionario",
     "settings": "Impostazioni",
     "support": "Assistenza",

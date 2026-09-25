@@ -1,4 +1,5 @@
 import fs from "fs";
+import type { FileHandle } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 import { app } from "electron";
@@ -216,6 +217,23 @@ export class MeetingRecordingStorage {
     this.assertSafeFile(filePath);
     const raw = fs.readFileSync(filePath);
     return raw.subarray(0, Math.floor(raw.length / BYTES_PER_FRAME) * BYTES_PER_FRAME);
+  }
+
+  async openEpochReader(recordingId: string, source: MeetingSource, epochIndex: number): Promise<FileHandle> {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingSourceSchema.parse(source);
+    this.validateEpochIndex(epochIndex);
+    const filePath = this.epochFilePath(recordingId, source, epochIndex);
+    this.assertSafeFile(filePath);
+    const handle = await fs.promises.open(filePath, fs.constants.O_RDONLY | this.noFollowFlag());
+    try {
+      const stats = await handle.stat();
+      if (!stats.isFile()) throw new Error("Meeting recording audio epoch is not a file");
+      return handle;
+    } catch (error) {
+      await handle.close();
+      throw error;
+    }
   }
 
   writeRunArtifact(runId: string, artifact: MeetingRunArtifact, value: unknown): string {

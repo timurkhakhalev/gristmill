@@ -1,12 +1,18 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createDb } = require("../helpers/harness/db.js");
-const { getUserDataDir } = require("../helpers/harness/electronStub.js");
+const { getUserDataDir, setUserDataDir } = require("../helpers/harness/electronStub.js");
 const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
 const { MeetingProcessingWorker } = require("../../src/helpers/meetingProcessing.ts");
-const { exportMeetingSourceTrack, copyMeetingAudioExport } = require("../../src/helpers/meetingAudioExport.ts");
+const {
+  canPlayMeetingRun,
+  copyMeetingAudioExport,
+  createMeetingAudioOperationRegistry,
+  exportMeetingSourceTrack,
+} = require("../../src/helpers/meetingAudioExport.ts");
 const { recognizeMeetingSpeakers } = require("../../src/helpers/meetingSpeakerRecognition.ts");
 
 const config = {
@@ -244,7 +250,7 @@ test("worker stores post-stop recognition per run and does not infer names from 
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(secondRun.run.id), [], "the new run must not inherit an old run correction");
 });
 
-test("source WAV exports keep epoch gaps; failed export and unavailable audio do not report success", (t) => {
+test("source WAV exports keep epoch gaps; failed export and unavailable audio do not report success", async (t) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -258,8 +264,8 @@ test("source WAV exports keep epoch gaps; failed export and unavailable audio do
   const epochs = db.listMeetingRecordingEpochs(recording.id);
   const micPath = path.join(root, "mic-export.wav");
   const systemPath = path.join(root, "system-export.wav");
-  exportMeetingSourceTrack(storage, recording, "mic", epochs, micPath);
-  exportMeetingSourceTrack(storage, recording, "system", epochs, systemPath);
+  await exportMeetingSourceTrack(storage, recording, "mic", epochs, micPath);
+  await exportMeetingSourceTrack(storage, recording, "system", epochs, systemPath);
   const micWav = fs.readFileSync(micPath);
   const systemWav = fs.readFileSync(systemPath);
   assert.equal(micWav.readUInt32LE(40), 12);
@@ -269,14 +275,194 @@ test("source WAV exports keep epoch gaps; failed export and unavailable audio do
   assert.deepEqual(systemWav.subarray(52, 56), system.samples);
 
   const copied = path.join(root, "copied.wav");
-  copyMeetingAudioExport(micPath, copied);
+  await copyMeetingAudioExport(micPath, copied);
   assert.deepEqual(fs.readFileSync(copied), micWav);
   const unavailableIntent = db.beginMeetingAudioDeletion(recording.id);
   storage.removeRecordingAudio(recording.id);
   assert.equal(db.completeMeetingAudioDeletion(unavailableIntent.id).success, true);
   assert.equal(db.getMeetingRecording(recording.id).audioState, "deleted");
-  assert.throws(() => exportMeetingSourceTrack(storage, recording, "mic", epochs, path.join(root, "unavailable.wav")));
+  await assert.rejects(exportMeetingSourceTrack(storage, recording, "mic", epochs, path.join(root, "unavailable.wav")));
   assert.equal(fs.existsSync(path.join(root, "unavailable.wav")), false);
-  assert.throws(() => copyMeetingAudioExport(micPath, path.join(root, "missing-directory", "copy.wav")));
+  await assert.rejects(copyMeetingAudioExport(micPath, path.join(root, "missing-directory", "copy.wav")));
   assert.equal(fs.existsSync(path.join(root, "missing-directory")), false);
+});
+
+test("source WAV export reads large epochs in bounded chunks without whole-file sample reads", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const root = getUserDataDir();
+  const storage = new MeetingRecordingStorage({ userDataPath: root });
+  const samples = Buffer.alloc(700 * 1024, 7);
+  const { recording } = createFinishedRecording(db, storage, {
+    sources: [{ source: "mic", startFrame: 13, samples }],
+  });
+  const epochs = db.listMeetingRecordingEpochs(recording.id);
+  const destination = path.join(root, "bounded-export.wav");
+  const openEpochReader = storage.openEpochReader.bind(storage);
+  const readSizes = [];
+  storage.readEpochSamples = () => { throw new Error("whole-file sample reads are forbidden"); };
+  storage.openEpochReader = async (...args) => {
+    const reader = await openEpochReader(...args);
+    const read = reader.read.bind(reader);
+    reader.read = async (buffer, offset, length, position) => {
+      readSizes.push(length);
+      return read(buffer, offset, length, position);
+    };
+    return reader;
+  };
+
+  await exportMeetingSourceTrack(storage, recording, "mic", epochs, destination);
+  assert.ok(readSizes.length >= 3);
+  assert.ok(Math.max(...readSizes) <= 256 * 1024);
+  const wav = fs.readFileSync(destination);
+  assert.equal(wav.readUInt32LE(40), (13 + samples.length / 2) * 2);
+  assert.deepEqual(wav.subarray(44, 44 + 26), Buffer.alloc(26));
+  assert.deepEqual(wav.subarray(44 + 26, 44 + 26 + 20), samples.subarray(0, 20));
+});
+
+test("source WAV export failure removes its temporary file and keeps an existing destination", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const root = getUserDataDir();
+  const storage = new MeetingRecordingStorage({ userDataPath: root });
+  const samples = Buffer.alloc(700 * 1024, 5);
+  const { recording } = createFinishedRecording(db, storage, {
+    sources: [{ source: "mic", startFrame: 0, samples }],
+  });
+  const epochs = db.listMeetingRecordingEpochs(recording.id);
+  const destination = path.join(root, "failed-export.wav");
+  fs.writeFileSync(destination, "keep existing export");
+  const openEpochReader = storage.openEpochReader.bind(storage);
+  storage.openEpochReader = async (...args) => {
+    const reader = await openEpochReader(...args);
+    const read = reader.read.bind(reader);
+    let reads = 0;
+    reader.read = async (...readArgs) => {
+      reads += 1;
+      if (reads === 2) throw new Error("injected read failure");
+      return read(...readArgs);
+    };
+    return reader;
+  };
+
+  await assert.rejects(
+    exportMeetingSourceTrack(storage, recording, "mic", epochs, destination),
+    /injected read failure/
+  );
+  assert.equal(fs.readFileSync(destination, "utf8"), "keep existing export");
+  assert.deepEqual(fs.readdirSync(root).filter((name) => name.startsWith(".failed-export.wav.") && name.endsWith(".tmp")), []);
+});
+
+test("mixed WAV export copies in bounded chunks", async (t) => {
+  const previousRoot = getUserDataDir();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "meeting-audio-export-"));
+  setUserDataDir(root);
+  t.after(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+    setUserDataDir(previousRoot);
+  });
+  const sourcePath = path.join(root, "large-mixed-source.wav");
+  const destination = path.join(root, "large-mixed-copy.wav");
+  t.after(() => {
+    fs.rmSync(sourcePath, { force: true });
+    fs.rmSync(destination, { force: true });
+  });
+  const contents = Buffer.alloc(700 * 1024, 3);
+  fs.writeFileSync(sourcePath, contents);
+  const originalOpen = fs.promises.open;
+  const open = originalOpen.bind(fs.promises);
+  const readSizes = [];
+  fs.promises.open = async (filePath, ...args) => {
+    const handle = await open(filePath, ...args);
+    if (filePath === sourcePath) {
+      const read = handle.read.bind(handle);
+      handle.read = async (buffer, offset, length, position) => {
+        readSizes.push(length);
+        return read(buffer, offset, length, position);
+      };
+    }
+    return handle;
+  };
+  try {
+    await copyMeetingAudioExport(sourcePath, destination);
+  } finally {
+    fs.promises.open = originalOpen;
+  }
+  assert.ok(readSizes.length >= 3);
+  assert.ok(Math.max(...readSizes) <= 256 * 1024);
+  assert.deepEqual(fs.readFileSync(destination), contents);
+});
+
+test("audio deletion aborts and waits for an active source export before removing its source", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const root = getUserDataDir();
+  const storage = new MeetingRecordingStorage({ userDataPath: root });
+  const samples = Buffer.alloc(700 * 1024, 9);
+  const { recording } = createFinishedRecording(db, storage, {
+    sources: [{ source: "mic", startFrame: 0, samples }],
+  });
+  const epochs = db.listMeetingRecordingEpochs(recording.id);
+  const destination = path.join(root, "cancelled-export.wav");
+  const openEpochReader = storage.openEpochReader.bind(storage);
+  let readStarted;
+  const firstReadStarted = new Promise((resolve) => { readStarted = resolve; });
+  let signal;
+  let paused = false;
+  let readerPaused = false;
+  storage.openEpochReader = async (...args) => {
+    const reader = await openEpochReader(...args);
+    const read = reader.read.bind(reader);
+    reader.read = async (...readArgs) => {
+      const result = await read(...readArgs);
+      if (!paused) {
+        paused = true;
+        readerPaused = true;
+        readStarted();
+        await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+        readerPaused = false;
+      }
+      return result;
+    };
+    return reader;
+  };
+  const operations = createMeetingAudioOperationRegistry();
+  const exportPromise = operations.run(recording.id, (operationSignal) => {
+    signal = operationSignal;
+    return exportMeetingSourceTrack(storage, recording, "mic", epochs, destination, operationSignal);
+  });
+  const exportRejected = assert.rejects(exportPromise, /Aborted/);
+  await firstReadStarted;
+  const intent = db.beginMeetingAudioDeletion(recording.id);
+  assert.ok(intent);
+  let removed = false;
+  await operations.cancelAndWait(recording.id).then(() => {
+    assert.equal(readerPaused, false);
+    storage.removeRecordingAudio(recording.id);
+    assert.equal(db.completeMeetingAudioDeletion(intent.id).success, true);
+    removed = true;
+  });
+  await exportRejected;
+  assert.equal(removed, true);
+  assert.equal(fs.existsSync(path.join(storage.recordingsRoot, recording.id)), false);
+  assert.equal(fs.existsSync(destination), false);
+  assert.deepEqual(fs.readdirSync(root).filter((name) => name.startsWith(".cancelled-export.wav.") && name.endsWith(".tmp")), []);
+});
+
+test("a transcript-backed older run remains playable while a newer run is current", () => {
+  const recording = {
+    id: "00000000-0000-4000-8000-000000000001",
+    audioState: "available",
+    currentRunId: "00000000-0000-4000-8000-000000000003",
+  };
+  const olderTranscript = {
+    recordingId: recording.id,
+    hasTranscript: true,
+  };
+
+  assert.equal(canPlayMeetingRun(recording, olderTranscript), true);
+  assert.equal(recording.currentRunId, "00000000-0000-4000-8000-000000000003");
+  assert.equal(canPlayMeetingRun({ ...recording, audioState: "deleted" }, olderTranscript), false);
+  assert.equal(canPlayMeetingRun(recording, { ...olderTranscript, recordingId: "00000000-0000-4000-8000-000000000004" }), false);
+  assert.equal(canPlayMeetingRun(recording, { ...olderTranscript, hasTranscript: false }), false);
 });

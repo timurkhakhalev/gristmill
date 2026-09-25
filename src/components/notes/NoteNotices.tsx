@@ -22,7 +22,7 @@ export function NoteNotice({
   role?: "status" | "alert";
 }) {
   return (
-    <Alert status={status} className="mb-4 items-center rounded-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-top-1" role={role ?? (status === "danger" ? "alert" : "status")}>
+    <Alert status={status} className="mb-4 rounded-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-top-1" role={role ?? (status === "danger" ? "alert" : "status")}>
       {busy ? (
         <Alert.Indicator>
           <Spinner size="sm" color="current" />
@@ -33,8 +33,8 @@ export function NoteNotice({
       <Alert.Content>
         <Alert.Title className="text-sm">{title}</Alert.Title>
         {description && <Alert.Description className="text-xs">{description}</Alert.Description>}
+        {actions && <div className="mt-2.5 flex flex-wrap items-center gap-2">{actions}</div>}
       </Alert.Content>
-      {actions && <div className="ms-auto flex flex-wrap items-center gap-1.5">{actions}</div>}
     </Alert>
   );
 }

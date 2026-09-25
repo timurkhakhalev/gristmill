@@ -36,7 +36,7 @@ export default function ProcessingModeSelector({
         <Cloud className="w-4 h-4" />
         <span className="text-sm font-medium">{t("common.cloud")}</span>
         {!useLocalWhisper && (
-          <span className="text-xs text-emerald-500 font-medium">{t("common.fast")}</span>
+          <span className="text-xs text-success font-medium">{t("common.fast")}</span>
         )}
       </button>
 

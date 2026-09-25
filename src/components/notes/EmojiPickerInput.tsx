@@ -86,11 +86,8 @@ export function EmojiPickerInput({
       </PopoverAnchor>
       <PopoverContent
         className="w-auto min-w-0 p-1.5"
-        onOpenAutoFocus={(e) => e.preventDefault()}
-        onCloseAutoFocus={(e) => e.preventDefault()}
-        onInteractOutside={(e) => {
-          if (e.target === inputRef.current) e.preventDefault();
-        }}
+        isNonModal
+        shouldCloseOnInteractOutside={(element) => element !== inputRef.current}
       >
         <div className="grid grid-cols-8 gap-0.5">
           {EMOJI_CHOICES.map((choice) => (
@@ -103,8 +100,8 @@ export function EmojiPickerInput({
                 inputRef.current?.focus();
               }}
               className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-md text-base outline-none transition-colors hover:bg-accent focus-visible:bg-accent",
-                choice === value && "bg-accent"
+                "flex h-7 w-7 items-center justify-center rounded-md text-base outline-none transition-colors hover:bg-default focus-visible:bg-default",
+                choice === value && "bg-accent-soft"
               )}
             >
               {choice}

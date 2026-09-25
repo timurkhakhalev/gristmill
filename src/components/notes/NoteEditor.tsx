@@ -21,13 +21,8 @@ import {
   useMeetingRecordingStore,
   type TranscriptSegment,
 } from "../../stores/meetingRecordingStore";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "../ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { MENU_ITEM_CLASS } from "../ui/surfaceStyles";
 import { cn } from "../lib/utils";
 import type { FolderItem } from "../../contracts/containers";
 import type { NoteItem } from "../../contracts/notes";
@@ -213,6 +208,7 @@ export default function NoteEditor({
   );
   const [chatMode, setChatMode] = useState<EmbeddedChatMode>("hidden");
   const [folderSearch, setFolderSearch] = useState("");
+  const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isDiarizing, setIsDiarizing] = useState(false);
@@ -636,7 +632,7 @@ export default function NoteEditor({
   return (
     <div className="relative flex h-full min-h-0">
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-5">
+        <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-5">
           {onBackToNotes && <button type="button" className="mb-6 inline-flex items-center gap-2 rounded text-xs text-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={onBackToNotes} aria-label={t("controlPanel.backToNotes")}><ArrowLeft size={16}/>{t("controlPanel.backToNotes")}</button>}
           <div
             dir="auto"
@@ -647,7 +643,7 @@ export default function NoteEditor({
             onKeyDown={handleTitleKeyDown}
             onPaste={handleTitlePaste}
             data-placeholder={t("notes.editor.untitled")}
-            className="text-3xl font-semibold leading-tight text-foreground bg-transparent outline-none tracking-tight empty:before:content-[attr(data-placeholder)] empty:before:text-foreground/45 empty:before:pointer-events-none"
+            className="text-3xl font-semibold leading-tight text-foreground bg-transparent outline-none tracking-tight empty:before:content-[attr(data-placeholder)] empty:before:text-muted empty:before:pointer-events-none @max-[520px]:text-2xl"
             role="textbox"
             aria-label={t("notes.editor.noteTitle")}
           />
@@ -661,19 +657,21 @@ export default function NoteEditor({
             />
             {calendarEventName && (
               <span className={cn(NOTE_META_CHIP_CLASS, "cursor-default")}>
-                <LinkIcon size={14} className="shrink-0 text-foreground/60" />
+                <LinkIcon size={14} className="shrink-0 text-muted" />
                 <span className="max-w-40 truncate">{calendarEventName}</span>
               </span>
             )}
             {folders && onMoveToFolder && !canMoveToFolders && folderName && (
               <span className={cn(NOTE_META_CHIP_CLASS, "cursor-default")}>
-                <FolderOpen size={14} className="shrink-0 text-foreground/60" />
+                <FolderOpen size={14} className="shrink-0 text-muted" />
                 <span dir="auto">{folderName}</span>
               </span>
             )}
             {folders && onMoveToFolder && canMoveToFolders && (
-              <DropdownMenu
+              <Popover
+                open={folderMenuOpen}
                 onOpenChange={(open) => {
+                  setFolderMenuOpen(open);
                   if (!open) {
                     setFolderSearch("");
                     setIsCreatingFolder(false);
@@ -681,101 +679,96 @@ export default function NoteEditor({
                   }
                 }}
               >
-                <DropdownMenuTrigger asChild>
+                <PopoverTrigger asChild>
                   <button className={NOTE_META_CHIP_CLASS}>
-                    <FolderOpen size={14} className="shrink-0 text-foreground/60" />
+                    <FolderOpen size={14} className="shrink-0 text-muted" />
                     {folderName ? <span dir="auto">{folderName}</span> : t("notes.editor.noFolder")}
                   </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" sideOffset={6} className="min-w-44 p-1">
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-56 p-1">
                   {folders.length > 5 && (
-                    <>
-                      <div className="relative px-1.5 py-0.5">
-                        <Search
-                          size={9}
-                          className="absolute start-3.5 top-1/2 -translate-y-1/2 text-foreground/45 pointer-events-none"
-                        />
-                        <input
-                          dir="auto"
-                          value={folderSearch}
-                          onChange={(e) => setFolderSearch(e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          placeholder={t("notes.context.searchFolders")}
-                          className="input-inline w-full ps-4.5 pe-1 py-0.5 text-xs text-foreground placeholder:text-foreground/45 outline-none border-none appearance-none"
-                        />
-                      </div>
-                      <DropdownMenuSeparator />
-                    </>
+                    <div className="relative mb-1 border-b border-border px-1.5 pb-1.5 pt-0.5">
+                      <Search
+                        size={12}
+                        className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-muted"
+                      />
+                      <input
+                        dir="auto"
+                        autoFocus
+                        value={folderSearch}
+                        onChange={(e) => setFolderSearch(e.target.value)}
+                        placeholder={t("notes.context.searchFolders")}
+                        className="input-inline w-full appearance-none border-none py-1 ps-6 pe-1 text-xs text-foreground outline-none placeholder:text-muted"
+                      />
+                    </div>
                   )}
-                  <div className="overflow-y-auto max-h-48">
+                  <div className="max-h-48 overflow-y-auto">
                     {filteredFolders.map((folder) => {
                       const isCurrent = folder.id === note.folder_id;
                       return (
-                        <DropdownMenuItem
+                        <button
                           key={folder.id}
+                          type="button"
                           disabled={isCurrent}
-                          onClick={() => onMoveToFolder(note.id, folder.id)}
-                          className="text-xs gap-2 rounded-md px-2 py-1.5"
+                          onClick={() => {
+                            onMoveToFolder(note.id, folder.id);
+                            setFolderMenuOpen(false);
+                          }}
+                          className={cn(MENU_ITEM_CLASS, "w-full gap-2 text-xs disabled:opacity-100")}
                         >
-                          <FolderOpen size={11} className="text-foreground/45 shrink-0" />
-                          <span dir="auto" className="truncate flex-1">
+                          <FolderOpen size={14} className="shrink-0 text-muted" />
+                          <span dir="auto" className="flex-1 truncate text-start">
                             {defaultFolderDisplayName(folder, t)}
                           </span>
-                          {isCurrent && <Check size={9} className="text-primary shrink-0" />}
-                        </DropdownMenuItem>
+                          {isCurrent && <Check size={12} className="shrink-0 text-primary" />}
+                        </button>
                       );
                     })}
                     {folderSearch && filteredFolders.length === 0 && (
-                      <p className="text-xs text-foreground/45 text-center py-1.5">
-                        {t("notes.context.noResults")}
-                      </p>
+                      <p className="py-1.5 text-center text-xs text-muted">{t("notes.context.noResults")}</p>
                     )}
                   </div>
                   {onCreateFolderAndMove && (
-                    <>
-                      <DropdownMenuSeparator />
+                    <div className="mt-1 border-t border-border pt-1">
                       {isCreatingFolder ? (
-                        <div className="px-1">
-                          <input
-                            dir="auto"
-                            autoFocus
-                            value={newFolderName}
-                            onChange={(e) => setNewFolderName(e.target.value)}
-                            onKeyDown={(e) => {
+                        <input
+                          dir="auto"
+                          autoFocus
+                          value={newFolderName}
+                          onChange={(e) => setNewFolderName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && newFolderName.trim()) {
+                              onCreateFolderAndMove(note.id, newFolderName.trim());
+                              setNewFolderName("");
+                              setIsCreatingFolder(false);
+                              setFolderMenuOpen(false);
+                            }
+                            if (e.key === "Escape") {
                               e.stopPropagation();
-                              if (e.key === "Enter" && newFolderName.trim()) {
-                                onCreateFolderAndMove(note.id, newFolderName.trim());
-                                setNewFolderName("");
-                                setIsCreatingFolder(false);
-                              }
-                              if (e.key === "Escape") {
-                                setIsCreatingFolder(false);
-                                setNewFolderName("");
-                              }
-                            }}
-                            placeholder={t("notes.folders.folderName")}
-                            className="input-inline w-full px-2 py-1.5 rounded-md bg-transparent text-xs text-foreground placeholder:text-foreground/45 outline-none border-none appearance-none"
-                          />
-                        </div>
-                      ) : (
-                        <DropdownMenuItem
-                          onSelect={(e) => {
-                            e.preventDefault();
-                            setIsCreatingFolder(true);
+                              setIsCreatingFolder(false);
+                              setNewFolderName("");
+                            }
                           }}
-                          className="text-xs gap-2 rounded-md px-2 py-1.5 text-foreground/45"
+                          placeholder={t("notes.folders.folderName")}
+                          className="input-inline w-full appearance-none rounded-md border-none bg-transparent px-2 py-1.5 text-xs text-foreground outline-none placeholder:text-muted"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setIsCreatingFolder(true)}
+                          className={cn(MENU_ITEM_CLASS, "w-full gap-2 text-xs text-muted")}
                         >
-                          <Plus size={10} />
+                          <Plus size={14} />
                           {t("notes.context.newFolder")}
-                        </DropdownMenuItem>
+                        </button>
                       )}
-                    </>
+                    </div>
                   )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                </PopoverContent>
+              </Popover>
             )}
             {isSaving && (
-              <span className="inline-flex items-center gap-1 text-xs text-foreground/45 tabular-nums">
+              <span className="inline-flex items-center gap-1 text-xs text-muted tabular-nums">
                 <Loader2 size={10} className="animate-spin" />
                 {t("notes.editor.saving")}
               </span>

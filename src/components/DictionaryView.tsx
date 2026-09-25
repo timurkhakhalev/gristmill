@@ -5,7 +5,7 @@ import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Button } from "./ui/button";
 import { ConfirmDialog } from "./ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
+import { Tabs } from "@heroui/react";
 import { useToast } from "./ui/useToast";
 import SnippetsView from "./SnippetsView";
 import { useSettings } from "../hooks/useSettings";
@@ -115,11 +115,11 @@ export default function DictionaryView() {
 
   const emptyState = (
     <div className="flex flex-col items-center text-center py-8">
-      <div className="w-10 h-10 rounded-[10px] bg-gradient-to-b from-primary/8 to-primary/4 dark:from-primary/12 dark:to-primary/6 border border-primary/10 dark:border-primary/15 flex items-center justify-center mb-3.5">
+      <div className="w-10 h-10 rounded-xl bg-gradient-to-b from-primary/8 to-primary/4 dark:from-primary/12 dark:to-primary/6 border border-primary/10 dark:border-primary/15 flex items-center justify-center mb-3.5">
         <BookOpen size={17} strokeWidth={1.5} className="text-primary/50 dark:text-primary/60" />
       </div>
       <h4 className="text-xs font-semibold text-foreground mb-1">{t("dictionary.emptyTitle")}</h4>
-      <p className="text-xs text-foreground/45 leading-relaxed max-w-[240px] mb-4">
+      <p className="text-xs text-muted leading-relaxed max-w-[240px] mb-4">
         {t("dictionary.emptyDescription", { agentName })}
       </p>
       <Button size="sm" onClick={() => addInputRef.current?.focus()}>
@@ -128,7 +128,7 @@ export default function DictionaryView() {
       </Button>
       <button
         onClick={() => setShowBulkImport(true)}
-        className="mt-3 flex items-center gap-1.5 text-xs text-foreground/45 hover:text-foreground/60 transition-colors"
+        className="mt-3 flex items-center gap-1.5 text-xs text-muted hover:text-muted transition-colors"
       >
         <Upload size={11} />
         {t("dictionary.importList")}
@@ -137,7 +137,7 @@ export default function DictionaryView() {
   );
 
   return (
-    <Tabs defaultValue="dictionary" className="flex flex-col h-full">
+    <Tabs defaultSelectedKey="dictionary" className="flex h-full flex-col">
       <ConfirmDialog
         open={confirmClear}
         onOpenChange={setConfirmClear}
@@ -148,17 +148,19 @@ export default function DictionaryView() {
       />
 
       <div className="mx-auto w-full max-w-2xl px-6 pt-5">
-        <TabsList>
-          <TabsTrigger value="dictionary">
+        <Tabs.List aria-label={t("sidebar.dictionary")} className="w-fit">
+          <Tabs.Tab id="dictionary">
             {t("dictionary.tabDictionary")}
-          </TabsTrigger>
-          <TabsTrigger value="snippets">
+            <Tabs.Indicator />
+          </Tabs.Tab>
+          <Tabs.Tab id="snippets">
             {t("dictionary.tabSnippets")}
-          </TabsTrigger>
-        </TabsList>
+            <Tabs.Indicator />
+          </Tabs.Tab>
+        </Tabs.List>
       </div>
 
-      <TabsContent value="dictionary" className="flex-1 min-h-0 mt-0 overflow-y-auto">
+      <Tabs.Panel id="dictionary" className="min-h-0 flex-1 overflow-y-auto p-0">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-6 py-4">
           {/* ─── Add word ─── */}
           <div>
@@ -179,16 +181,16 @@ export default function DictionaryView() {
                   onClick={handleAdd}
                   disabled={!newWord.trim()}
                   aria-label={t("dictionary.addWord")}
-                  className="flex items-center gap-1 text-xs text-foreground/45 enabled:hover:text-primary disabled:text-foreground/45 transition-colors"
+                  className="flex items-center gap-1 text-xs text-muted enabled:hover:text-primary disabled:text-muted transition-colors"
                 >
                   {t("dictionary.add")}
                   <CornerDownLeft size={10} />
                 </button>
-                <div className="w-px h-3.5 bg-foreground/10 dark:bg-white/8" />
+                <div className="w-px h-3.5 bg-default dark:bg-white/8" />
                 <button
                   onClick={() => setShowBulkImport(true)}
                   aria-label={t("dictionary.importWords")}
-                  className="text-foreground/45 hover:text-foreground/60 transition-colors"
+                  className="text-muted hover:text-muted transition-colors"
                 >
                   <Upload size={11} />
                 </button>
@@ -206,10 +208,10 @@ export default function DictionaryView() {
                 onChange={(e) => setBulkText(e.target.value)}
                 placeholder={t("dictionary.importPlaceholder")}
                 rows={4}
-                className="min-h-[72px] resize-none border-0 shadow-none rounded-none bg-transparent p-0 text-xs text-foreground placeholder:text-foreground/45 hover:border-0 focus:border-0 focus:ring-0"
+                className="min-h-[72px] resize-none border-0 shadow-none rounded-none bg-transparent p-0 text-xs text-foreground placeholder:text-muted hover:border-0 focus:border-0 focus:ring-0"
               />
               <div className="flex items-center justify-between pt-1.5">
-                <p className="text-xs text-foreground/45">
+                <p className="text-xs text-muted">
                   {t("dictionary.separateWithCommas")}
                   {pendingImportCount > 0 && (
                     <span className="text-success">
@@ -245,7 +247,7 @@ export default function DictionaryView() {
                 {agentName}
               </span>
             </div>
-            <span className="text-xs text-foreground/45 shrink-0">
+            <span className="text-xs text-muted shrink-0">
               {t("dictionary.agentDefault")}
             </span>
           </div>
@@ -255,21 +257,21 @@ export default function DictionaryView() {
             {userWords.length > 0 && (
               <>
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold text-foreground/45">
+                  <h3 className="text-xs font-semibold text-muted">
                     {t("dictionary.yourDictionary")}
                   </h3>
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => setConfirmClear(true)}
                       aria-label={t("dictionary.clearAll")}
-                      className="text-xs text-foreground/45 hover:text-destructive/70 transition-colors"
+                      className="text-xs text-muted hover:text-danger/70 transition-colors"
                     >
                       {t("dictionary.clearAll")}
                     </button>
                     <button
                       onClick={handleExport}
                       aria-label={t("dictionary.exportDictionary")}
-                      className="text-foreground/45 hover:text-foreground/60 transition-colors"
+                      className="text-muted hover:text-muted transition-colors"
                     >
                       <Download size={12} />
                     </button>
@@ -282,7 +284,7 @@ export default function DictionaryView() {
             {userWords.length === 0 ? (
               emptyState
             ) : visibleWords.length === 0 ? (
-              <p className="py-6 text-xs text-foreground/45 text-center">
+              <p className="py-6 text-xs text-muted text-center">
                 {t("dictionary.noMatches", { word: newWord.trim() })}
               </p>
             ) : (
@@ -308,7 +310,7 @@ export default function DictionaryView() {
                           className="h-7 text-xs flex-1"
                         />
                       ) : (
-                        <span dir="auto" className="flex-1 text-xs truncate text-foreground/60">
+                        <span dir="auto" className="flex-1 text-xs truncate text-muted">
                           {word}
                         </span>
                       )}
@@ -317,14 +319,14 @@ export default function DictionaryView() {
                           <button
                             onClick={() => startEdit(word)}
                             aria-label={t("dictionary.editWord", { word })}
-                            className="p-1 text-foreground/45 hover:text-foreground/60 transition-colors"
+                            className="p-1 text-muted hover:text-muted transition-colors"
                           >
                             <Pencil size={11} />
                           </button>
                           <button
                             onClick={() => handleRemove(word)}
                             aria-label={t("dictionary.removeWord", { word })}
-                            className="p-1 text-foreground/45 hover:text-destructive/70 transition-colors"
+                            className="p-1 text-muted hover:text-danger/70 transition-colors"
                           >
                             <X size={11} strokeWidth={2} />
                           </button>
@@ -339,16 +341,16 @@ export default function DictionaryView() {
 
           {/* ─── Provider prompt-limit notice ─── */}
           {promptChars > WHISPER_DECODER_PROMPT_CHARS && (
-            <p className="text-xs text-foreground/45 leading-relaxed">
+            <p className="text-xs text-muted leading-relaxed">
               {t("dictionary.promptLimitNotice", { chars: promptChars })}
             </p>
           )}
         </div>
-      </TabsContent>
+      </Tabs.Panel>
 
-      <TabsContent value="snippets" className="flex-1 min-h-0 mt-0 overflow-y-auto">
+      <Tabs.Panel id="snippets" className="min-h-0 flex-1 overflow-y-auto p-0">
         <SnippetsView />
-      </TabsContent>
+      </Tabs.Panel>
     </Tabs>
   );
 }

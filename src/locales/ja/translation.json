@@ -1955,7 +1955,7 @@
       "connect": "Google カレンダーを接続",
       "connecting": "接続中...",
       "connected": "接続済み",
-      "notConfigured": "未設定です。接続するには OAuth を設定してください。",
+      "notConfigured": "接続するには OAuth を設定してください。",
       "addAnother": "別のカレンダーを追加",
       "primaryOnly": "メインカレンダーのみ同期",
       "primaryOnlyDescription": "共有されたカレンダーの予定は無視します。",
@@ -1973,7 +1973,7 @@
       "description": "Outlook または Microsoft 365 のカレンダーから会議を読み取ります。",
       "connect": "Microsoft カレンダーを接続",
       "connected": "接続済み",
-      "notConfigured": "未設定です。接続するには OAuth を設定してください。",
+      "notConfigured": "接続するには OAuth を設定してください。",
       "addAnother": "別のカレンダーを追加",
       "primaryOnly": "メインカレンダーのみ同期",
       "primaryOnlyDescription": "共有されたカレンダーの予定は無視します。",
@@ -2003,6 +2003,9 @@
     "notABot": {
       "title": "OpenHercules はミーティング録音ツールであり、ボットではありません",
       "description": "OpenHercules はシステムから直接オーディオをキャプチャします — 参加者としてミーティングに参加することはありません。カレンダーを接続して、通常通りノートを取るだけです。"
+    },
+    "status": {
+      "notConfigured": "未設定"
     }
   },
   "calendar": {
@@ -2101,7 +2104,12 @@
     "undock": "サイドバーから外す",
     "close": "チャットを閉じる",
     "newChat": "新しいチャット",
-    "conversationSelector": "会話を切り替え"
+    "conversationSelector": "会話を切り替え",
+    "suggestions": {
+      "summary": "このノートを要約して",
+      "actions": "アクションアイテムは？",
+      "decisions": "何が決まった？"
+    }
   },
   "transcriptionPreview": {
     "label": "プレビュー",

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { CalendarDays, Info, Loader2, Mail, Plus, Unlink } from "./icons";
 import { Button } from "./ui/button";
 import { BIDI_VALUE_TOKEN, BidiInterpolatedText } from "./ui/BidiInterpolatedText";
-import { Badge } from "./ui/badge";
+import { Chip } from "@heroui/react";
 import { SettingsPanel, SettingsPanelRow, SettingsRow } from "./ui/SettingsSection";
 import { Toggle } from "./ui/toggle";
 import {
@@ -54,20 +54,21 @@ function ProviderRow({ icon, i18nKey, connected, isConnecting, onConnect, config
             {t(`${i18nKey}.description`)}
           </p>
           {configured === false && (
-            <p className="mt-1 text-xs text-warning">{t(`${i18nKey}.notConfigured`)}</p>
+            <p className="mt-1 text-xs text-muted">{t(`${i18nKey}.notConfigured`)}</p>
           )}
         </div>
-        {configured === false ? null : connected ? (
-          <Badge variant="success" className="shrink-0">
+        {configured === false ? (
+          <Chip size="sm" variant="soft" color="warning" className="shrink-0">
+            {t("integrations.status.notConfigured")}
+          </Chip>
+        ) : connected ? (
+          <Chip size="sm" variant="soft" color="success" className="shrink-0">
             {t(`${i18nKey}.connected`)}
-          </Badge>
+          </Chip>
         ) : (
           <Button size="sm" onClick={onConnect} disabled={isConnecting} className="shrink-0">
-            {isConnecting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              t(`${i18nKey}.connect`)
-            )}
+            {isConnecting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {t(`${i18nKey}.connect`)}
           </Button>
         )}
       </div>
@@ -103,14 +104,14 @@ function CalendarAccountRows({
       {accounts.map((account) => (
         <SettingsPanelRow key={account.email}>
           <div className="group flex items-center gap-3 ps-12">
-            <Mail className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+            <Mail className="h-3.5 w-3.5 text-muted shrink-0" />
             <span className="text-xs text-muted-foreground truncate flex-1">
               <bdi dir="ltr">{account.email}</bdi>
             </span>
             <button
               onClick={() => onUnlink(account.email)}
               disabled={disconnectingEmail === account.email}
-              className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
+              className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-muted-foreground hover:text-danger hover:bg-danger/10 transition-all disabled:opacity-50"
               aria-label={t(`${i18nKey}.disconnect`)}
             >
               {disconnectingEmail === account.email ? (
@@ -398,13 +399,13 @@ export default function IntegrationsView() {
           {isMac && appleCalendarConnected && (
             <SettingsPanelRow>
               <div className="group flex items-center gap-3 ps-12">
-                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+                <CalendarDays className="h-3.5 w-3.5 text-muted shrink-0" />
                 <span className="text-xs text-muted-foreground truncate flex-1">
                   {appleSourceNames.join(" · ")}
                 </span>
                 <button
                   onClick={() => setConfirmAppleDisconnect(true)}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-muted-foreground hover:text-danger hover:bg-danger/10 transition-all"
                   aria-label={t("integrations.appleCalendar.disconnect")}
                 >
                   <Unlink className="h-3.5 w-3.5" />

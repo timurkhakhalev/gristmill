@@ -1,41 +1,34 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-const PEEK_CLOSE_DELAY_MS = 120;
+// Below this width the labeled sidebar is an overlay drawer, not a persistent column.
+const NARROW_QUERY = "(max-width: 899px)";
+
+function useNarrowWindow() {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches);
+  useEffect(() => {
+    const query = window.matchMedia(NARROW_QUERY);
+    const update = () => setNarrow(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return narrow;
+}
 
 export function useCollapsibleSidebar() {
-  const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem("sidebarCollapsed") === "true"
-  );
-  const [peek, setPeek] = useState(false);
-  const peekTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const suppressPeek = useRef(false);
+  const narrow = useNarrowWindow();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!narrow) setDrawerOpen(false);
+  }, [narrow]);
 
   const toggle = useCallback(() => {
-    clearTimeout(peekTimer.current);
-    setPeek(false);
-    const next = !collapsed;
-    suppressPeek.current = next;
-    localStorage.setItem("sidebarCollapsed", String(next));
-    setCollapsed(next);
-  }, [collapsed]);
-
-  const showPeek = useCallback(() => {
-    if (suppressPeek.current) return;
-    clearTimeout(peekTimer.current);
-    setPeek(true);
+    setDrawerOpen((value) => !value);
   }, []);
 
-  const hidePeek = useCallback(() => {
-    clearTimeout(peekTimer.current);
-    peekTimer.current = setTimeout(() => setPeek(false), PEEK_CLOSE_DELAY_MS);
+  const close = useCallback(() => {
+    setDrawerOpen(false);
   }, []);
 
-  const leaveToggle = useCallback(() => {
-    suppressPeek.current = false;
-    hidePeek();
-  }, [hidePeek]);
-
-  useEffect(() => () => clearTimeout(peekTimer.current), []);
-
-  return { collapsed, peek, toggle, showPeek, hidePeek, leaveToggle };
+  return { narrow, drawerOpen, toggle, close };
 }

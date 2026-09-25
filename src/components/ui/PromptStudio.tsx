@@ -113,7 +113,7 @@ export default function PromptStudio({ className = "", kind = "cleanup" }: Promp
         </div>
         {activeTab === "current" && (
           <div className="px-5 py-4">
-            <div className="mb-3 flex items-center justify-between"><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">{isCustomPrompt ? t("promptStudio.view.customPrompt") : t("promptStudio.view.defaultPrompt")}</p><Button onClick={() => copyText(currentPrompt)} variant="ghost" size="sm" className="h-7 px-2 text-xs">{copiedPrompt ? <><Check className="me-1 inline size-3 text-success" />{t("promptStudio.common.copied")}</> : <><Copy className="me-1 inline size-3" />{t("promptStudio.common.copy")}</>}</Button></div>
+            <div className="mb-3 flex items-center justify-between"><p className="text-xs font-medium uppercase tracking-wider text-muted">{isCustomPrompt ? t("promptStudio.view.customPrompt") : t("promptStudio.view.defaultPrompt")}</p><Button onClick={() => copyText(currentPrompt)} variant="ghost" size="sm" className="h-7 px-2 text-xs">{copiedPrompt ? <><Check className="me-1 inline size-3 text-success" />{t("promptStudio.common.copied")}</> : <><Copy className="me-1 inline size-3" />{t("promptStudio.common.copy")}</>}</Button></div>
             <pre dir="auto" className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-subtle/30 p-4 text-xs leading-relaxed text-muted-foreground">{currentPrompt.replace(/\{\{agentName\}\}/g, agentName)}</pre>
           </div>
         )}

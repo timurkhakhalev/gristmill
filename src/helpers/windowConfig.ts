@@ -247,10 +247,16 @@ export const ONBOARDING_WINDOW_SIZES = {
   EXPANDED: { width: 1000, height: 740 },
 };
 
+// Floor for the normal control panel. Compact onboarding may go smaller while
+// that mode is active; restore puts this floor back.
+export const CONTROL_PANEL_MIN_SIZE = { width: 540, height: 640 };
+
 // Control panel window configuration
 export const CONTROL_PANEL_CONFIG: LegacyWindowConfig = {
   width: 1200,
   height: 800,
+  minWidth: CONTROL_PANEL_MIN_SIZE.width,
+  minHeight: CONTROL_PANEL_MIN_SIZE.height,
   // Fully transparent so nothing paints into the compact onboarding frame's
   // rounded corners.
   backgroundColor: "#00000000",

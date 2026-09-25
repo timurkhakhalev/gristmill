@@ -80,6 +80,9 @@ test("onboarding sizing does not resize the normal control panel", () => {
     },
     { width: 1200, height: 800 }
   );
+  assert.deepEqual(windowConfig.CONTROL_PANEL_MIN_SIZE, { width: 540, height: 640 });
+  assert.equal(windowConfig.CONTROL_PANEL_CONFIG.minWidth, 540);
+  assert.equal(windowConfig.CONTROL_PANEL_CONFIG.minHeight, 640);
   assert.deepEqual(windowConfig.ONBOARDING_WINDOW_SIZES.COMPACT, { width: 480, height: 624 });
   assert.deepEqual(windowConfig.ONBOARDING_WINDOW_SIZES.EXPANDED, { width: 1000, height: 740 });
 });

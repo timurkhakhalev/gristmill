@@ -119,10 +119,10 @@ export function ChatInput({
         className={cn(
           "flex items-center gap-2 min-h-11 ps-4 pe-1.5 rounded-full",
           GLASS_SURFACE,
-          "border border-black/10 dark:border-white/14",
+          "border border-border",
           "transition-all duration-200",
           isIdle &&
-            "focus-within:border-black/15 dark:focus-within:border-white/22 focus-within:ring-[3px] focus-within:ring-primary/8"
+            "focus-within:border-border-hover focus-within:ring-2 focus-within:ring-focus/25"
         )}
       >
         {isListening && (
@@ -141,7 +141,7 @@ export function ChatInput({
         {isTranscribing && (
           <>
             <ProcessingIndicator />
-            <span className="text-xs text-muted-foreground select-none">
+            <span className="text-xs text-muted select-none">
               {t("agentMode.input.transcribing")}
             </span>
           </>
@@ -163,8 +163,8 @@ export function ChatInput({
               title={t("common.cancel")}
               className={cn(
                 "flex items-center justify-center w-7 h-7 rounded-full shrink-0",
-                "text-muted-foreground/70 hover:text-foreground hover:bg-foreground/8",
-                "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/30",
+                "text-muted hover:text-foreground hover:bg-default",
+                "outline-none focus-visible:ring-2 focus-visible:ring-focus",
                 "transition-colors duration-100"
               )}
             >
@@ -179,7 +179,7 @@ export function ChatInput({
                 "animate-[scale-in_0.15s_ease-out_backwards]",
                 GRADIENT_CIRCLE,
                 "hover:brightness-110 active:scale-95",
-                "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/30",
+                "outline-none focus-visible:ring-2 focus-visible:ring-focus",
                 "transition-all duration-100"
               )}
             >
@@ -191,7 +191,7 @@ export function ChatInput({
         {isVoiceTranscribing && (
           <>
             <ProcessingIndicator />
-            <span className="text-xs text-muted-foreground select-none">
+            <span className="text-xs text-muted select-none">
               {t("agentMode.input.transcribing")}
             </span>
           </>
@@ -211,9 +211,9 @@ export function ChatInput({
               placeholder={placeholder ?? t("agentMode.input.typeMessage")}
               className={cn(
                 "input-inline flex-1 outline-none bg-transparent caret-primary",
-                "text-ui text-foreground placeholder:text-muted-foreground/70",
+                "text-ui text-foreground placeholder:text-muted",
                 "min-w-0 p-0",
-                isBusy && "text-muted-foreground/70 cursor-not-allowed"
+                isBusy && "text-muted cursor-not-allowed"
               )}
             />
             {isBusy && onCancel ? (
@@ -224,8 +224,8 @@ export function ChatInput({
                 title={t("common.cancel")}
                 className={cn(
                   "flex items-center justify-center w-7 h-7 rounded-full shrink-0",
-                  "text-muted-foreground/70 hover:text-foreground hover:bg-foreground/8",
-                  "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/30",
+                  "text-muted hover:text-foreground hover:bg-default",
+                  "outline-none focus-visible:ring-2 focus-visible:ring-focus",
                   "transition-colors duration-100"
                 )}
               >
@@ -239,7 +239,7 @@ export function ChatInput({
                 className={cn(
                   "rounded-full shrink-0",
                   voiceDraft && "animate-[scale-in_0.15s_ease-out_backwards]",
-                  "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/30",
+                  "outline-none focus-visible:ring-2 focus-visible:ring-focus",
                   "transition-all duration-100",
                   inputText.trim()
                     ? "hover:brightness-110 active:scale-95"
@@ -261,7 +261,7 @@ export function ChatInput({
                 className={cn(
                   "flex items-center justify-center w-7 h-7 rounded-full shrink-0",
                   GRADIENT_CIRCLE,
-                  "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/30",
+                  "outline-none focus-visible:ring-2 focus-visible:ring-focus",
                   "transition-all duration-100",
                   voice.streamingOnlyProvider
                     ? "opacity-30 saturate-0 cursor-default"

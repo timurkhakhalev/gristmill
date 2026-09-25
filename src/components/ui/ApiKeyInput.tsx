@@ -125,7 +125,7 @@ export default function ApiKeyInput({
               <button
                 type="button"
                 onClick={cancel}
-                className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/70 hover:text-muted-foreground hover:bg-subtle/50 active:scale-95 transition-all"
+                className="h-6 w-6 flex items-center justify-center rounded text-muted hover:text-muted-foreground hover:bg-subtle/50 active:scale-95 transition-all"
                 aria-label={t("apiKeyInput.cancelEdit")}
               >
                 <X className="w-3.5 h-3.5" />
@@ -144,7 +144,7 @@ export default function ApiKeyInput({
                 dir="ltr"
                 className="flex items-center gap-1.5 text-foreground/70 font-mono text-xs tracking-wide"
               >
-                <KeyRound className="w-3 h-3 text-muted-foreground/70 shrink-0" />
+                <KeyRound className="w-3 h-3 text-muted shrink-0" />
                 {maskKey(apiKey)}
               </span>
             ) : (
@@ -157,7 +157,7 @@ export default function ApiKeyInput({
         )}
       </div>
 
-      {helpText && <p className="text-xs text-muted-foreground/70 mt-1">{helpText}</p>}
+      {helpText && <p className="text-xs text-muted mt-1">{helpText}</p>}
     </div>
   );
 }

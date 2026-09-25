@@ -34,7 +34,7 @@ export function ChatMessages({ messages, emptyState, onOpenNote }: ChatMessagesP
       {messages.length === 0 ? (
         (emptyState ?? null)
       ) : (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-3">
           {messages
             .filter((msg) => msg.role !== "tool")
             .map((msg) => (

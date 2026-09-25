@@ -131,7 +131,7 @@ export function ModelCard({
                   }}
                   size="sm"
                   variant="ghost"
-                  className="h-6 w-6 p-0 text-muted-foreground/70 hover:text-destructive opacity-0 group-hover:opacity-100 transition-[color,opacity,transform] active:scale-95"
+                  className="h-6 w-6 p-0 text-muted hover:text-danger opacity-0 group-hover:opacity-100 transition-[color,opacity,transform] active:scale-95"
                 >
                   <Trash2 size={12} />
                 </Button>
@@ -144,7 +144,7 @@ export function ModelCard({
                   disabled={modelIsCancelling}
                   size="sm"
                   variant="outline"
-                  className="h-6 px-2.5 text-xs text-destructive border-destructive/25 hover:bg-destructive/8"
+                  className="h-6 px-2.5 text-xs text-danger border-danger/25 hover:bg-danger/8"
                 >
                   <X size={11} className="me-0.5" />
                   {modelIsCancelling ? "..." : t("common.cancel")}

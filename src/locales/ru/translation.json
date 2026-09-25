@@ -1455,7 +1455,7 @@
       "enhanced": "Улучшенный",
       "saving": "Сохранение",
       "transcriptEmptyTitle": "Расшифровки пока нет",
-      "transcriptEmptyDescription": "Сначала запишите аудио. Расшифровка появится после обработки записи.",
+      "transcriptEmptyDescription": "Расшифровка появится здесь после обработки записи.",
       "startRecording": "Начать запись",
       "generateSummary": "Создать ИИ-сводку",
       "startWriting": "Начните писать...",

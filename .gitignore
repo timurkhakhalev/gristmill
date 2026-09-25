@@ -326,3 +326,4 @@ src/assets/fonts/yowza/*.otf
 
 # Compiled Electron application
 dist-main/
+dist-dev*/

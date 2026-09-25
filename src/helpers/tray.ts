@@ -166,13 +166,16 @@ export class TrayManager {
 
   async loadTrayIcon(): Promise<Electron.NativeImage | null> {
     const platform = process.platform;
-    const isDevelopment = process.env.NODE_ENV === "development";
+    const isDevelopment = process.env.OPENHERCULES_CHANNEL === "development";
 
     const candidatePaths: string[] = [];
 
     if (platform === "darwin") {
       if (isDevelopment) {
-        candidatePaths.push(path.join(app.getAppPath(), "src", "assets", "iconTemplate@3x.png"));
+        candidatePaths.push(
+          path.join(process.resourcesPath, "src", "assets", "iconDevMenubar@3x.png"),
+          path.join(app.getAppPath(), "src", "assets", "iconDevMenubar@3x.png")
+        );
       } else {
         candidatePaths.push(
           path.join(process.resourcesPath, "src", "assets", "iconTemplate@3x.png"),
@@ -210,7 +213,7 @@ export class TrayManager {
           const icon = nativeImage.createFromPath(testPath);
           if (icon && !icon.isEmpty()) {
             if (platform === "darwin") {
-              icon.setTemplateImage(true);
+              icon.setTemplateImage(!isDevelopment);
             }
             debugLogger.debug("Using tray icon", { path: testPath }, "tray");
             return icon;

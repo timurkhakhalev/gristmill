@@ -82,7 +82,8 @@
       "from": "src/assets",
       "to": "src/assets",
       "filter": [
-        "**/*"
+        "**/*",
+        "!iconDev*"
       ]
     },
     {

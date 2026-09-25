@@ -23,6 +23,7 @@ function estimateModelSizeB(modelId: string): number {
 }
 
 interface UseChatStreamingOptions {
+  disabled?: boolean;
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   /** Optional note context to prepend to the system prompt (used by embedded note chat). */
@@ -43,6 +44,7 @@ export interface ChatStreaming {
 type HistoryMessage = { role: string; content: string };
 
 export function useChatStreaming({
+  disabled = false,
   messages,
   setMessages,
   noteContext: externalNoteContext,
@@ -116,6 +118,7 @@ export function useChatStreaming({
   // how sendToAI tells a user's cancel from an unmount mid-stream.
   const explicitCancelGenerationRef = useRef(0);
   const cancelStream = useCallback(() => {
+    if (disabled) return;
     sendGenerationRef.current += 1;
     if (mountedRef.current) {
       explicitCancelGenerationRef.current = sendGenerationRef.current;
@@ -123,7 +126,7 @@ export function useChatStreaming({
     ReasoningService.cancelActiveStream();
     setAgentState("idle");
     clearToolActivity();
-  }, [clearToolActivity]);
+  }, [clearToolActivity, disabled]);
 
   useEffect(() => {
     mountedRef.current = true;

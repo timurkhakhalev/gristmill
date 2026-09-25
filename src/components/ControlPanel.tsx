@@ -16,6 +16,7 @@ import {
 } from "../stores/noteStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import BackgroundActionToastListener from "./notes/BackgroundActionToastListener";
+import type { NotesDebugScenario } from "./notes/NotesDebugControls";
 
 const SIDEBAR_WIDTH_PX = 192;
 
@@ -25,6 +26,9 @@ const DictionaryView = React.lazy(() => import("./DictionaryView"));
 const UploadAudioView = React.lazy(() => import("./notes/UploadAudioView"));
 const IntegrationsView = React.lazy(() => import("./IntegrationsView"));
 const CommandSearch = React.lazy(() => import("./CommandSearch"));
+const NotesDebugPreview = (import.meta.env.DEV || import.meta.env.VITE_OPENHERCULES_DEV_BUILD === "true")
+  ? React.lazy(() => import("./notes/NotesDebugPreview"))
+  : null;
 
 interface ControlPanelProps {
   initialSettingsSection?: string;
@@ -40,6 +44,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const [showSettings, setShowSettings] = useState(Boolean(initialSettingsSection));
   const [settingsSection, setSettingsSection] = useState(initialSettingsSection);
   const [showSearch, setShowSearch] = useState(false);
+  const [notesDebugScenario, setNotesDebugScenario] = useState<NotesDebugScenario | null>(null);
   const [meetingRecordingRequest, setMeetingRecordingRequest] = useState<{
     noteId: number;
     folderId: number;
@@ -170,15 +175,26 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
               onOpenSearch={() => setShowSearch(true)}
               isSidePanelLayout={isSidePanelLayout}
               onExitSidePanel={handleExitSidePanel}
+              notesDebugScenario={notesDebugScenario}
+              onNotesDebugScenarioChange={setNotesDebugScenario}
+              showNotesDebug={activeView === "personal-notes"}
             />
             <div className="scrollbar-hidden flex-1 overflow-y-auto">
               {activeView === "personal-notes" && (
                 <Suspense fallback={null}>
-                  <PersonalNotesView
-                    onOpenSettings={openSettings}
-                    meetingRecordingRequest={meetingRecordingRequest}
-                    onMeetingRecordingRequestHandled={() => setMeetingRecordingRequest(null)}
-                  />
+                  {notesDebugScenario && NotesDebugPreview ? (
+                    <NotesDebugPreview
+                      key={notesDebugScenario}
+                      scenario={notesDebugScenario}
+                      onSelectScenario={setNotesDebugScenario}
+                    />
+                  ) : (
+                    <PersonalNotesView
+                      onOpenSettings={openSettings}
+                      meetingRecordingRequest={meetingRecordingRequest}
+                      onMeetingRecordingRequestHandled={() => setMeetingRecordingRequest(null)}
+                    />
+                  )}
                 </Suspense>
               )}
               {activeView === "dictionary" && (

@@ -5,6 +5,11 @@ import { Button } from "./ui/button";
 import WindowControls from "./WindowControls";
 import { cn } from "./lib/utils";
 import { getCachedPlatform } from "../utils/platform";
+import type { NotesDebugScenario } from "./notes/NotesDebugControls";
+
+const NotesDebugControls = (import.meta.env.DEV || import.meta.env.VITE_OPENHERCULES_DEV_BUILD === "true")
+  ? React.lazy(() => import("./notes/NotesDebugControls"))
+  : null;
 
 const platform = getCachedPlatform();
 
@@ -24,6 +29,9 @@ interface ControlPanelTopBarProps {
   /** Meeting mode or a narrow window with an open note: sidebar hidden, back button shown. */
   isSidePanelLayout: boolean;
   onExitSidePanel: () => void;
+  notesDebugScenario: NotesDebugScenario | null;
+  onNotesDebugScenarioChange: (scenario: NotesDebugScenario | null) => void;
+  showNotesDebug: boolean;
 }
 
 export default function ControlPanelTopBar({
@@ -35,6 +43,9 @@ export default function ControlPanelTopBar({
   onOpenSearch,
   isSidePanelLayout,
   onExitSidePanel,
+  notesDebugScenario,
+  onNotesDebugScenarioChange,
+  showNotesDebug,
 }: ControlPanelTopBarProps) {
   const { t } = useTranslation();
   // With the sidebar out of the way the container's start edge sits under the
@@ -111,6 +122,13 @@ export default function ControlPanelTopBar({
       )}
 
       <div className="col-start-3 flex items-center justify-self-end">
+        {showNotesDebug && NotesDebugControls && (
+          <div data-no-window-drag="" style={noDragStyle}>
+            <React.Suspense fallback={null}>
+              <NotesDebugControls scenario={notesDebugScenario} onChange={onNotesDebugScenarioChange} />
+            </React.Suspense>
+          </div>
+        )}
         {platform !== "darwin" && (
           <div data-no-window-drag="" style={noDragStyle}>
             <WindowControls />

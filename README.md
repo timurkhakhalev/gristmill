@@ -32,6 +32,11 @@ Cleanup was merged in PR #6. The current task adds durable separate audio tracks
 Install with `pnpm install --frozen-lockfile` (pnpm 10.19.0, Node >=24).
 Use `pnpm run build:renderer`, `pnpm run typecheck`, `pnpm run lint` and
 `pnpm test` for checks. The canonical lockfile is `pnpm-lock.yaml`.
+`pnpm test -- test/helpers/ffmpegUtils.test.js` runs one file; `pnpm test` runs
+the full suite. Both build the main process first. On macOS, the test run uses
+background scheduling and one Node test worker. pnpm refuses to run scripts
+when `node_modules` does not match this worktree's lockfile; install with
+`pnpm install --frozen-lockfile` in that worktree first.
 Build the macOS arm64 app with `pnpm run build:mac:arm64` (Xcode command-line tools required). For an unsigned local build, set `CSC_IDENTITY_AUTO_DISCOVERY=false`.
 Run `node scripts/smoke-electron.js` after packaging for an isolated-profile smoke test.
 Only the integrator runs tests/build/install, sequentially. Node tests and Electron

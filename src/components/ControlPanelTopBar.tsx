@@ -50,7 +50,7 @@ export default function ControlPanelTopBar({
   const { t } = useTranslation();
   // With the sidebar out of the way the container's start edge sits under the
   // macOS traffic lights, so the leading controls shift past them.
-  const clearTrafficLights = platform === "darwin" && (sidebarCollapsed || isSidePanelLayout);
+  const clearTrafficLights = platform === "darwin" && isSidePanelLayout;
 
   return (
     <header

@@ -1929,7 +1929,9 @@ export function registerMeetingCoordinatorHandlers(
         deps.meetingRecordingStorage,
         noteId,
         recordingConfig,
-        startedAt
+        startedAt,
+        undefined,
+        typeof options.groupId === "string" ? options.groupId : undefined
       );
     } catch (error) {
       meetingTranscriptionStartInProgress = false;

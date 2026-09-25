@@ -80,6 +80,7 @@ function makePreview(scenario: NotesDebugScenario) {
   const run: MeetingProcessingRunDto = {
     id: RUN_ID,
     recordingId: RECORDING_ID,
+    sourceRecordingIds: [RECORDING_ID],
     kind: "initial",
     sourceRunId: null,
     provider: "deepgram",
@@ -125,6 +126,7 @@ function makePreview(scenario: NotesDebugScenario) {
         {
           recording: {
             id: RECORDING_ID,
+            groupId: RECORDING_ID,
             captureState: scenario === "incomplete" ? "incomplete" : "ready",
             captureErrorCode: scenario === "incomplete" ? "system-audio-unavailable" : null,
             audioState: scenario === "audio-deleted" ? "deleted" : "available",
@@ -132,6 +134,7 @@ function makePreview(scenario: NotesDebugScenario) {
             currentRunId: hasTranscript ? RUN_ID : null,
             startedAt: NOW,
             endedAt: NOW,
+            durationSeconds: 0,
           },
           runs:
             scenario === "incomplete"

@@ -12,7 +12,8 @@ export interface MeetingCaptureDatabase {
     noteId: number,
     input: { config: unknown | null; configError?: unknown },
     startedAt?: string,
-    id?: string
+    id?: string,
+    groupId?: string
   ): MeetingRecordingDto;
   createMeetingRecordingEpoch(
     recordingId: string,
@@ -99,7 +100,8 @@ export class MeetingCaptureSession {
     noteId: number,
     config: { config: unknown | null; configError?: unknown } | null,
     startedAt: Date,
-    recordingId: string = randomUUID()
+    recordingId: string = randomUUID(),
+    groupId: string = recordingId
   ) {
     this.recordingId = recordingId;
     this.originAt = startedAt.toISOString();
@@ -107,7 +109,8 @@ export class MeetingCaptureSession {
       noteId,
       config ?? { config: null, configError: { code: "missing-config" } },
       this.originAt,
-      recordingId
+      recordingId,
+      groupId
     );
   }
 
@@ -117,9 +120,10 @@ export class MeetingCaptureSession {
     noteId: number,
     config: { config: unknown | null; configError?: unknown } | null,
     startedAt = new Date(),
-    recordingId?: string
+    recordingId?: string,
+    groupId?: string
   ): MeetingCaptureSession {
-    return new MeetingCaptureSession(database, storage, noteId, config, startedAt, recordingId);
+    return new MeetingCaptureSession(database, storage, noteId, config, startedAt, recordingId, groupId);
   }
 
   get isStopping(): boolean {

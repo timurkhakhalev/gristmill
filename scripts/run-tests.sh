@@ -5,6 +5,12 @@ if [ "${1:-}" = "--" ]; then
   shift
 fi
 
+# macOS schedules this process and all test children as background work.
+if [ "$(uname -s)" = Darwin ] && [ "${OPENHERCULES_TEST_BACKGROUND:-}" != 1 ]; then
+  export OPENHERCULES_TEST_BACKGROUND=1
+  exec taskpolicy -b nice -n 15 sh "$0" "$@"
+fi
+
 full_suite=0
 if [ "$#" -eq 0 ]; then
   full_suite=1
@@ -28,12 +34,6 @@ if [ "$full_suite" -eq 1 ] && ! node -e 'const db = require("better-sqlite3") ("
   exit 1
 fi
 export REQUIRE_DB_TESTS=1
-
-# macOS schedules this process and all test children as background work.
-if [ "$(uname -s)" = Darwin ] && [ "${OPENHERCULES_TEST_BACKGROUND:-}" != 1 ]; then
-  export OPENHERCULES_TEST_BACKGROUND=1
-  exec taskpolicy -b nice -n 15 sh "$0" "$@"
-fi
 
 pnpm run build:main
 exec node --import tsx --test --test-concurrency=1 --test-timeout=30000 "$@"

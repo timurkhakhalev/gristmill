@@ -4,485 +4,188 @@ const React = require("react");
 const { createRoot } = require("react-dom/client");
 const { createRendererServer, installBrowserGlobals, installHookDom } = require("../lib/rendererTestHarness");
 
-const RECORDING_ID = "00000000-0000-4000-8000-000000000001";
-const RUN_ID = "00000000-0000-4000-8000-000000000002";
-const UPDATED_RUN_ID = "00000000-0000-4000-8000-000000000003";
-const currentConfig = {
-  transcription: {
-    mode: "providers",
-    provider: "elevenlabs",
-    model: "scribe_v2",
-    language: "en",
-    credentialRef: "ELEVENLABS_API_KEY",
-  },
-  summary: null,
+const FIRST = "00000000-0000-4000-8000-000000000001";
+const SECOND = "00000000-0000-4000-8000-000000000002";
+const RUN = "00000000-0000-4000-8000-000000000003";
+const CONFIG = {
+  transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en", credentialRef: "ELEVENLABS_API_KEY" },
+  summary: { instruction: "Built-in summary instruction", reasoningMode: "providers", provider: "openai", model: "gpt-4o-mini", credentialRef: "OPENAI_API_KEY" },
 };
 
-function resultDto({
-  recordingId = RECORDING_ID,
-  runId = RUN_ID,
-  status = "complete",
-  stage = "summary",
-  errorCode = status === "blocked" ? "missing-summary-config" : null,
-  captureState = "ready",
-  audioState = "available",
-  startedAt = "2026-09-24T10:00:00.000Z",
-  transcript = { text: "Hello", segments: [] },
-  summary = null,
-  config = null,
-  hasRawProviderResponse = true,
-} = {}) {
+function recording(id, groupId, startedAt, run = null, captureState = "ready") {
   return {
     recording: {
-      id: recordingId,
-      captureState,
-      captureErrorCode: captureState === "incomplete" ? "system-audio-interrupted" : null,
-      audioState,
-      audioErrorCode: null,
-      currentRunId: runId,
-      startedAt,
-      endedAt: "2026-09-24T10:01:00.000Z",
+      id, groupId, startedAt, endedAt: "2026-09-25T10:01:00.000Z", durationSeconds: 60,
+      captureState, captureErrorCode: captureState === "incomplete" ? "system-audio-interrupted" : null,
+      audioState: "available", audioErrorCode: null, currentRunId: run?.run.id ?? null,
     },
-    runs: [{
-      run: {
-        id: runId,
-        recordingId,
-        kind: "initial",
-        sourceRunId: null,
-        provider: "elevenlabs",
-        model: "scribe_v2",
-        config,
-        configError: null,
-        stage,
-        status,
-        errorCode,
-        retryAt: null,
-        retryCount: 0,
-        hasRawProviderResponse,
-        hasTranscript: transcript !== null,
-        hasSummary: summary !== null,
-        createdAt: "2026-09-24T10:00:30.000Z",
-        updatedAt: "2026-09-24T10:01:00.000Z",
-      },
-      transcript,
-      summary,
-      speakerCorrections: [],
-    }],
+    runs: run ? [run] : [],
   };
 }
 
-async function mountPanel(t, recordings, {
-  playbackResponse = { success: false, error: "not requested" },
-  snapshotConfig = currentConfig,
-  onDeleteAudio = async () => ({ success: true }),
-  onRetryDelete = async () => ({ success: true }),
-} = {}) {
-  let root;
-  t.after(async () => {
-    if (root) await React.act(async () => root.unmount());
-  });
-  const exportCalls = [];
-  const createRunCalls = [];
-  const updateConfigCalls = [];
-  const deleteCalls = [];
-  const retryDeleteCalls = [];
-  const selectRunCalls = [];
-  const playbackCalls = [];
-  const listRecordings = typeof recordings === "function" ? recordings : () => recordings;
-  let notifyUpdated = () => {};
-  const previousDialog = globalThis.__meetingResultsConfirmDialog;
-  t.after(() => {
-    if (previousDialog === undefined) delete globalThis.__meetingResultsConfirmDialog;
-    else globalThis.__meetingResultsConfirmDialog = previousDialog;
-  });
-  const api = {
-    meetingProcessingListForNote: async () => ({ success: true, recordings: listRecordings() }),
-    onMeetingProcessingUpdated: (callback) => {
-      notifyUpdated = callback;
-      return () => { notifyUpdated = () => {}; };
+function completeRun() {
+  return {
+    run: {
+      id: RUN, recordingId: FIRST, sourceRecordingIds: [FIRST, SECOND], kind: "reprocess", sourceRunId: null,
+      provider: "elevenlabs", model: "scribe_v2", config: CONFIG, configError: null,
+      stage: "summary", status: "complete", errorCode: null, retryAt: null, retryCount: 0,
+      hasRawProviderResponse: true, hasTranscript: true, hasSummary: true,
+      createdAt: "2026-09-25T10:02:00.000Z", updatedAt: "2026-09-25T10:03:00.000Z",
     },
-    getSpeakerProfiles: async () => [],
-    meetingRecordingGetPlaybackPath: async (...args) => {
-      playbackCalls.push(args);
-      return playbackResponse;
-    },
-    meetingProcessingSelectRun: async (recordingId, runId) => {
-      selectRunCalls.push({ recordingId, runId });
-      const selectedRecording = listRecordings().find((item) => item.recording.id === recordingId);
-      if (selectedRecording) selectedRecording.recording.currentRunId = runId;
-      return { success: true };
-    },
-    meetingProcessingCreateRun: async (input) => {
-      createRunCalls.push(input);
-      return { success: true, result: { run: { id: UPDATED_RUN_ID } } };
-    },
-    meetingProcessingUpdateBlockedRunConfig: async (input) => {
-      updateConfigCalls.push(input);
-      return { success: true };
-    },
-    meetingRecordingExportAudio: async (input) => {
-      exportCalls.push(input);
-      return { success: true };
-    },
-    meetingRecordingDeleteAudio: async (recordingId) => {
-      deleteCalls.push(recordingId);
-      return onDeleteAudio(recordingId);
-    },
-    meetingRecordingRetryAudioDeletion: async (recordingId) => {
-      retryDeleteCalls.push(recordingId);
-      return onRetryDelete(recordingId);
-    },
+    transcript: { text: "Discussion", segments: [{ start: 1, end: 2, speaker: "speaker-1", text: "Discussion" }] },
+    summary: { text: "## Decision\nRelease on Friday." },
+    speakerCorrections: [],
   };
+}
+
+const heroMock = `
+import React from "react";
+const passthrough = ({children}) => React.createElement(React.Fragment, null, children);
+export const Button = ({children,onPress,"aria-label":label}) => React.createElement("button", {onClick:onPress,"aria-label":label}, children);
+export const Label = passthrough;
+export const ListBox = Object.assign(passthrough,{Item:passthrough,ItemIndicator:passthrough});
+export const Dropdown = Object.assign(passthrough,{Popover:passthrough,Menu:passthrough,Item:passthrough});
+export const Popover = Object.assign(passthrough,{Content:passthrough,Dialog:passthrough,Heading:passthrough});
+export const Select = Object.assign(passthrough,{Trigger:passthrough,Value:passthrough,Indicator:passthrough,Popover:passthrough});
+export const Tabs = Object.assign(passthrough,{List:passthrough,Tab:passthrough,Indicator:passthrough});
+export const Modal = Object.assign(({isOpen,children}) => isOpen ? React.createElement(React.Fragment,null,children) : null,{Backdrop:passthrough,Container:passthrough,Dialog:passthrough,CloseTrigger:passthrough,Header:passthrough,Heading:passthrough,Body:passthrough,Footer:passthrough});
+`;
+
+function find(tree, predicate) {
+  if (Array.isArray(tree)) return tree.map((item) => find(item, predicate)).find(Boolean) ?? null;
+  if (!tree || typeof tree !== "object") return null;
+  if (predicate(tree)) return tree;
+  return find(tree.props?.children, predicate);
+}
+
+function textOf(value) {
+  if (Array.isArray(value)) return value.map(textOf).join("");
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  return value?.props ? textOf(value.props.children) : "";
+}
+
+async function mountPanel(t, items, { viewMode = "raw", config = CONFIG, playback = { success: false, error: "mixer-failed" }, preview = false } = {}) {
+  const calls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], retry: [] };
+  const api = {
+    meetingProcessingListForNote: async () => ({ success: true, recordings: items }),
+    onMeetingProcessingUpdated: () => () => {},
+    getSpeakerProfiles: async () => [],
+    meetingRecordingGetPlaybackPath: async (...args) => { calls.playback.push(args); return playback; },
+    meetingRecordingExportAudio: async (input) => { calls.export.push(input); return { success: true }; },
+    meetingRecordingDeleteAudio: async (id) => { calls.delete.push(id); return { success: true }; },
+    meetingProcessingCreateRun: async (input) => { calls.create.push(input); return { success: true, result: { run: { id: "00000000-0000-4000-8000-000000000004" } } }; },
+    meetingProcessingUpdateBlockedRunConfig: async (input) => { calls.update.push(input); return { success: true }; },
+    meetingProcessingSetSpeakerCorrection: async (input) => { calls.speaker.push(input); return { success: true }; },
+    meetingProcessingSelectRun: async () => ({ success: true }),
+    meetingProcessingRetryRun: async (id) => { calls.retry.push(id); return { success: true }; },
+  };
+  let root;
+  t.after(async () => { if (root) await React.act(async () => root.unmount()); });
   installBrowserGlobals(t, { window: { electronAPI: api } });
   const container = installHookDom(t);
+  const document = globalThis.document;
+  const createElement = document.createElement.bind(document);
+  document.createElement = (name) => {
+    const element = createElement(name);
+    if (name === "audio") element.pause = () => {};
+    return element;
+  };
+  const previousDialog = globalThis.__meetingResultsConfirmDialog;
+  t.after(() => previousDialog === undefined ? delete globalThis.__meetingResultsConfirmDialog : globalThis.__meetingResultsConfirmDialog = previousDialog);
   const vite = await createRendererServer(t, {
-    cachePrefix: "meeting-results-panel-review-",
+    cachePrefix: "meeting-results-panel-hero-",
+    noExternal: ["@heroui/react"],
     mockModules: {
-      "react-i18next": "export function useTranslation() { return { t: (key) => key }; }",
-      "/ui/dialog": "export const ConfirmDialog = (props) => { globalThis.__meetingResultsConfirmDialog = props; return null; };",
-      "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig(transcriptionOverride) { const snapshot = ${JSON.stringify({ config: snapshotConfig, configError: null })}; return transcriptionOverride && snapshot.config ? { ...snapshot, config: { ...snapshot.config, transcription: transcriptionOverride } } : snapshot; }`,
+      "@heroui/react": heroMock,
+      "react-i18next": `export function useTranslation() { return { t: (key, options) => options?.defaultValue ?? key }; }`,
+      "/ui/dialog": `export const ConfirmDialog = (props) => { globalThis.__meetingResultsConfirmDialog = props; return null; };`,
+      "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig(transcriptionOverride) { const config = ${JSON.stringify(config)}; return { config: transcriptionOverride ? { ...config, transcription: transcriptionOverride } : config, configError: null }; } export function builtinMeetingSummaryInstruction() { return "Built-in summary instruction"; }`,
     },
   });
   const { default: MeetingResultsPanel } = await vite.ssrLoadModule("/components/notes/MeetingResultsPanel.tsx");
   let tree;
   function Harness() {
-    tree = MeetingResultsPanel({ noteId: 1, locale: "en" });
+    const [mode, setMode] = React.useState(viewMode);
+    tree = MeetingResultsPanel({ noteId: 1, locale: "en", previewRecordings: preview ? items : undefined, viewMode: mode, onViewModeChange: setMode,
+      manualContent: React.createElement("p", null, "Manual notes"), fallbackTranscript: React.createElement("p", null, "No transcript"), fallbackSummary: React.createElement("p", null, "No summary") });
     return tree;
   }
   root = createRoot(container);
-  await React.act(async () => {
-    root.render(React.createElement(Harness));
-    await Promise.resolve();
-  });
+  await React.act(async () => { root.render(React.createElement(Harness)); await Promise.resolve(); });
+  const flush = async (action) => React.act(async () => { action(); await new Promise((resolve) => setImmediate(resolve)); });
   return {
-    exportCalls,
-    createRunCalls,
-    updateConfigCalls,
-    deleteCalls,
-    retryDeleteCalls,
-    selectRunCalls,
-    playbackCalls,
-    notifyUpdated: () => notifyUpdated(),
-    textContent: () => container.textContent,
-    findButton(label) {
-      function find(node) {
-        if (Array.isArray(node)) return node.map(find).find(Boolean) ?? null;
-        if (!node || typeof node !== "object") return null;
-        if (node.props?.onClick && node.props?.children === label) return node;
-        return find(node.props?.children);
-      }
-      return find(tree);
-    },
-    findSelect(label) {
-      function find(node) {
-        if (Array.isArray(node)) return node.map(find).find(Boolean) ?? null;
-        if (!node || typeof node !== "object") return null;
-        if (node.type === "select" && node.props?.["aria-label"] === label) return node;
-        return find(node.props?.children);
-      }
-      return find(tree);
-    },
-    findSelectByValue(value) {
-      function find(node) {
-        if (Array.isArray(node)) return node.map(find).find(Boolean) ?? null;
-        if (!node || typeof node !== "object") return null;
-        if (node.type === "select" && node.props?.value === value) return node;
-        return find(node.props?.children);
-      }
-      return find(tree);
-    },
-    dialog: () => globalThis.__meetingResultsConfirmDialog,
+    calls, flush, dialog: () => globalThis.__meetingResultsConfirmDialog,
+    text: () => container.textContent,
+    button(label) { return find(tree, (node) => typeof node.props?.onPress === "function" && textOf(node.props.children).includes(label)); },
+    iconButton(label) { return find(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onPress === "function"); },
+    menu(label) { return find(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onAction === "function"); },
   };
 }
 
-test("incomplete capture remains visible after the processing run completes", async (t) => {
-  const ui = await mountPanel(t, [resultDto({ captureState: "incomplete" })]);
-  const text = ui.textContent();
-  assert.match(text, /meetingResults\.captureIncomplete/);
-  assert.match(text, /meetingResults\.status\.complete/);
-  assert.match(text, /system-audio-interrupted/);
+test("manual notes stay primary while an incomplete saved audio part is visible", async (t) => {
+  const items = [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", null, "incomplete")];
+  const ui = await mountPanel(t, items);
+  assert.match(ui.text(), /Manual notes/);
+  assert.match(ui.text(), /Capture ended early/);
+  assert.match(ui.text(), /Audio/);
+  await ui.flush(() => ui.iconButton("Play audio").props.onPress());
+  assert.deepEqual(ui.calls.playback, [[FIRST]]);
+  assert.match(ui.text(), /mixer-failed/);
 });
 
-test("source WAV export is available for saved audio without a transcript or playback path", async (t) => {
-  const ui = await mountPanel(t, [resultDto({ status: "blocked", transcript: null })]);
-  assert.match(ui.textContent(), /meetingResults\.exportMic/);
-  assert.match(ui.textContent(), /meetingResults\.exportSystem/);
-  const micExport = ui.findButton("meetingResults.exportMic");
-  const systemExport = ui.findButton("meetingResults.exportSystem");
-  assert.ok(micExport);
-  assert.ok(systemExport);
-  await React.act(async () => micExport.props.onClick());
-  assert.deepEqual(ui.exportCalls, [{ recordingId: RECORDING_ID, source: "mic" }]);
+test("audio part actions export original tracks and confirm deletion without a transcript", async (t) => {
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z")]);
+  const menu = ui.menu("Audio part actions");
+  assert.ok(menu);
+  await ui.flush(() => menu.props.onAction("mic"));
+  assert.deepEqual(ui.calls.export, [{ recordingId: FIRST, source: "mic" }]);
+  await ui.flush(() => menu.props.onAction("delete"));
+  assert.equal(ui.dialog().open, true);
+  await ui.flush(() => ui.dialog().onConfirm());
+  assert.deepEqual(ui.calls.delete, [FIRST]);
 });
 
-test("New transcription uses the current recording when no transcript is selectable", async (t) => {
-  const ui = await mountPanel(t, [resultDto({ status: "blocked", transcript: null })]);
-  assert.match(ui.textContent(), /meetingResults\.newAsr/);
-  const newAsr = ui.findButton("meetingResults.newAsr");
-  assert.ok(newAsr);
-  await React.act(async () => newAsr.props.onClick());
-  assert.deepEqual(ui.createRunCalls, [{
-    recordingId: RECORDING_ID,
-    kind: "reprocess",
-    config: currentConfig,
-    configError: null,
-  }]);
+test("whole-meeting reprocess uses both saved parts and leaves defaults untouched", async (t) => {
+  const ui = await mountPanel(t, [
+    recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z"),
+    recording(SECOND, FIRST, "2026-09-25T10:05:00.000Z"),
+  ]);
+  await ui.flush(() => ui.button("Transcribe whole meeting").props.onPress());
+  await ui.flush(() => ui.button("Create version").props.onPress());
+  assert.equal(ui.calls.create.length, 1);
+  assert.deepEqual(ui.calls.create[0].sourceRecordingIds, [FIRST, SECOND]);
+  assert.equal(ui.calls.create[0].recordingId, FIRST);
+  assert.equal(ui.calls.create[0].config.transcription.provider, CONFIG.transcription.provider);
+  assert.equal(ui.calls.create[0].config.transcription.model, CONFIG.transcription.model);
+  assert.equal(ui.calls.create[0].config.summary.instruction, CONFIG.summary.instruction);
 });
 
-test("blocked initial run exposes an action that sends the current validated settings snapshot", async (t) => {
-  const ui = await mountPanel(t, [resultDto({
-    status: "blocked",
-    transcript: null,
-    hasRawProviderResponse: false,
-  })]);
-  assert.match(ui.textContent(), /meetingResults\.updateRunSettings/);
-  const updateSettings = ui.findButton("meetingResults.updateRunSettings");
-  assert.ok(updateSettings);
-  await React.act(async () => updateSettings.props.onClick());
-  assert.deepEqual(ui.updateConfigCalls, [{
-    runId: RUN_ID,
-    config: currentConfig,
-    configError: null,
-  }]);
+test("summary version reads the saved transcript without another ASR run", async (t) => {
+  const ui = await mountPanel(t, [
+    recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", completeRun()),
+    recording(SECOND, FIRST, "2026-09-25T10:05:00.000Z"),
+  ], { viewMode: "enhanced" });
+  assert.match(ui.text(), /Release on Friday/);
+  await ui.flush(() => ui.menu("Result actions").props.onAction("summary"));
+  await ui.flush(() => ui.button("Create version").props.onPress());
+  assert.equal(ui.calls.create.length, 1);
+  assert.equal(ui.calls.create[0].kind, "summary");
+  assert.equal(ui.calls.create[0].sourceRunId, RUN);
+  assert.equal(ui.calls.create[0].sourceRecordingIds, undefined);
+  assert.equal(ui.calls.create[0].config.summary.instruction, CONFIG.summary.instruction);
 });
 
-test("a valid empty transcript has a distinct no-speech message", async (t) => {
-  const ui = await mountPanel(t, [resultDto({ transcript: { text: "", segments: [] } })]);
-  assert.match(ui.textContent(), /notes\.upload\.noSpeechDetected/);
-});
 
-test("a fulfilled playback failure is visible in Notes", async (t) => {
-  const ui = await mountPanel(t, [resultDto()], {
-    playbackResponse: { success: false, error: "mixer-failed" },
-  });
-  assert.match(ui.textContent(), /meetingResults\.playbackError/);
-});
-
-test("audio-only deletion works without a transcript, can be cancelled, and can retry after failure", async (t) => {
-  let recording = resultDto({
-    status: "blocked",
-    stage: "asr",
-    errorCode: "missing-config",
-    transcript: null,
-    hasRawProviderResponse: false,
-  });
-  const ui = await mountPanel(t, () => [recording], {
-    onDeleteAudio: async () => {
-      recording = resultDto({ ...recordingOptions(recording), audioState: "deleting" });
-      return { success: false, error: "disk-busy" };
-    },
-    onRetryDelete: async () => {
-      recording = resultDto({ ...recordingOptions(recording), audioState: "deleted" });
-      return { success: true };
-    },
-  });
-  assert.match(ui.textContent(), /meetingResults\.deleteAudio/);
-
-  await React.act(async () => ui.findButton("meetingResults.deleteAudio").props.onClick());
-  const cancelledDialog = ui.dialog();
-  assert.equal(cancelledDialog.open, true);
-  await React.act(async () => cancelledDialog.onOpenChange(false));
-  assert.deepEqual(ui.deleteCalls, [], "cancelling confirmation leaves the recording untouched");
-
-  await React.act(async () => ui.findButton("meetingResults.deleteAudio").props.onClick());
-  const deleteDialog = ui.dialog();
-  await React.act(async () => {
-    await deleteDialog.onConfirm();
-    deleteDialog.onOpenChange(false);
-  });
-  assert.deepEqual(ui.deleteCalls, [RECORDING_ID]);
-  assert.match(ui.textContent(), /disk-busy/);
-  assert.ok(ui.findButton("meetingResults.retryDelete"));
-
-  await React.act(async () => ui.findButton("meetingResults.retryDelete").props.onClick());
-  const retryDialog = ui.dialog();
-  await React.act(async () => {
-    await retryDialog.onConfirm();
-    retryDialog.onOpenChange(false);
-  });
-  assert.deepEqual(ui.retryDeleteCalls, [RECORDING_ID]);
-  assert.equal(ui.textContent().includes("meetingResults.retryDelete"), false);
-});
-
-function recordingOptions(recording) {
-  const run = recording.runs[0];
-  return {
-    recordingId: recording.recording.id,
-    runId: run.run.id,
-    status: run.run.status,
-    stage: run.run.stage,
-    errorCode: run.run.errorCode,
-    captureState: recording.recording.captureState,
-    audioState: recording.recording.audioState,
-    startedAt: recording.recording.startedAt,
-    transcript: run.transcript,
-    summary: run.summary,
-    config: run.run.config,
-    hasRawProviderResponse: run.run.hasRawProviderResponse,
-  };
-}
-
-test("selecting one of multiple recordings scopes status, results, and actions to that recording", async (t) => {
-  const olderRecordingId = "00000000-0000-4000-8000-000000000011";
-  const olderRunId = "00000000-0000-4000-8000-000000000012";
-  const olderPendingRunId = "00000000-0000-4000-8000-000000000013";
-  const newerRecordingId = "00000000-0000-4000-8000-000000000021";
-  const newerRunId = "00000000-0000-4000-8000-000000000022";
-  const older = resultDto({
-    recordingId: olderRecordingId,
-    runId: olderRunId,
-    startedAt: "2026-09-23T10:00:00.000Z",
-    transcript: { text: "Older saved result", segments: [] },
-  });
-  older.runs[0].run.createdAt = "2026-09-23T10:00:30.000Z";
-  older.runs[0].run.updatedAt = "2026-09-23T10:01:00.000Z";
-  const newer = resultDto({
-    recordingId: newerRecordingId,
-    runId: newerRunId,
-    startedAt: "2026-09-24T10:00:00.000Z",
-    captureState: "incomplete",
-    status: "blocked",
-    stage: "asr",
-    errorCode: "missing-config",
-    transcript: null,
-    hasRawProviderResponse: false,
-  });
-  const pendingRun = {
-    ...older.runs[0],
-    run: {
-      ...older.runs[0].run,
-      id: olderPendingRunId,
-      kind: "reprocess",
-      stage: "asr",
-      status: "pending",
-      errorCode: null,
-      hasRawProviderResponse: false,
-      hasTranscript: false,
-      hasSummary: false,
-      createdAt: "2026-09-23T10:02:00.000Z",
-      updatedAt: "2026-09-23T10:02:00.000Z",
-    },
-    transcript: null,
-    summary: null,
-  };
-  let currentRecordings = [newer, {
-    ...older,
-    recording: { ...older.recording, currentRunId: olderPendingRunId },
-    runs: [older.runs[0], pendingRun],
-  }];
-  const ui = await mountPanel(t, () => currentRecordings, {
-    playbackResponse: { success: true, path: "/managed/older-run.wav" },
-  });
-  assert.match(ui.textContent(), /meetingResults\.captureIncomplete/);
-  assert.equal(ui.textContent().includes("Older saved result"), false);
-
-  await React.act(async () => ui.findButton("meetingResults.exportMic").props.onClick());
-  assert.deepEqual(ui.exportCalls, [{ recordingId: newerRecordingId, source: "mic" }]);
-  await React.act(async () => ui.findButton("meetingResults.newAsr").props.onClick());
-  assert.equal(ui.createRunCalls[0].recordingId, newerRecordingId);
-  await React.act(async () => ui.findButton("meetingResults.updateRunSettings").props.onClick());
-  assert.deepEqual(ui.updateConfigCalls.map(({ runId }) => runId), [newerRunId]);
-  await React.act(async () => ui.findButton("meetingResults.deleteAudio").props.onClick());
-  const deleteDialog = ui.dialog();
-  await React.act(async () => {
-    await deleteDialog.onConfirm();
-    deleteDialog.onOpenChange(false);
-  });
-  assert.deepEqual(ui.deleteCalls, [newerRecordingId]);
-
-  let recordingSelect = ui.findSelect("meetingResults.recording");
-  assert.ok(recordingSelect);
-  await React.act(async () => {
-    recordingSelect.props.onChange({ target: { value: olderRecordingId } });
-    await new Promise((resolve) => setImmediate(resolve));
-  });
-  assert.match(ui.textContent(), /Older saved result/);
-  assert.match(ui.textContent(), /meetingResults\.status\.pending/);
-  assert.deepEqual(ui.selectRunCalls, [], "switching recordings does not persist an old transcript selection");
-  assert.deepEqual(ui.playbackCalls.at(-1), [olderRecordingId, olderRunId]);
-  const mixedExport = ui.findButton("meetingResults.exportMixed");
-  assert.ok(mixedExport, "the displayed older result keeps mixed export available");
-  await React.act(async () => mixedExport.props.onClick());
-  assert.deepEqual(ui.exportCalls.at(-1), {
-    recordingId: olderRecordingId,
-    runId: olderRunId,
-    source: "mixed",
-  });
-
-  const completedPendingRun = {
-    ...pendingRun,
-    run: {
-      ...pendingRun.run,
-      stage: "summary",
-      status: "complete",
-      hasRawProviderResponse: true,
-      hasTranscript: true,
-      hasSummary: true,
-      updatedAt: "2026-09-23T10:03:00.000Z",
-    },
-    transcript: { text: "Newest pending result", segments: [] },
-    summary: { text: "Newest pending summary" },
-  };
-  currentRecordings = [newer, {
-    ...older,
-    recording: { ...older.recording, currentRunId: olderPendingRunId },
-    runs: [older.runs[0], completedPendingRun],
-  }];
-  await React.act(async () => {
-    ui.notifyUpdated();
-    await new Promise((resolve) => setImmediate(resolve));
-  });
-  assert.match(ui.textContent(), /Newest pending result/);
-  assert.deepEqual(ui.selectRunCalls, [], "refresh follows the persisted current run without selecting another version");
-
-  const versionSelect = ui.findSelectByValue(olderPendingRunId);
-  assert.ok(versionSelect);
-  await React.act(async () => {
-    versionSelect.props.onChange({ target: { value: olderRunId } });
-    await new Promise((resolve) => setImmediate(resolve));
-  });
-  assert.match(ui.textContent(), /Older saved result/);
-  assert.deepEqual(ui.selectRunCalls, [{ recordingId: olderRecordingId, runId: olderRunId }]);
-
-  recordingSelect = ui.findSelect("meetingResults.recording");
-  await React.act(async () => {
-    recordingSelect.props.onChange({ target: { value: newerRecordingId } });
-    await new Promise((resolve) => setImmediate(resolve));
-  });
-  assert.match(ui.textContent(), /meetingResults\.captureIncomplete/);
-  assert.equal(ui.textContent().includes("Older saved result"), false);
-  assert.deepEqual(ui.selectRunCalls, [{ recordingId: olderRecordingId, runId: olderRunId }], "switching away leaves the explicit version selection unchanged");
-});
-
-test("summary-only settings correction keeps the selected run's saved transcription route", async (t) => {
-  const savedConfig = {
-    transcription: { ...currentConfig.transcription, provider: "deepgram", model: "nova-3", credentialRef: "DEEPGRAM_API_KEY" },
-    summary: null,
-  };
-  const currentSettings = {
-    ...currentConfig,
-    transcription: { ...currentConfig.transcription, language: "fr" },
-    summary: {
-      actionId: "notes.actions.builtin.detailedNotes",
-      instruction: "Summarize the meeting accurately.",
-      reasoningMode: "providers",
-      provider: "openai",
-      model: "gpt-4o-mini",
-      credentialRef: "OPENAI_API_KEY",
-    },
-  };
-  const ui = await mountPanel(t, [resultDto({
-    status: "blocked",
-    errorCode: "missing-summary-config",
-    config: savedConfig,
-    hasRawProviderResponse: true,
-  })], { snapshotConfig: currentSettings });
-  const updateSettings = ui.findButton("meetingResults.updateRunSettings");
-  assert.ok(updateSettings);
-  await React.act(async () => updateSettings.props.onClick());
-  assert.deepEqual(ui.updateConfigCalls, [{
-    runId: RUN_ID,
-    config: { transcription: savedConfig.transcription, summary: currentSettings.summary },
-    configError: null,
-  }]);
+test("debug preview keeps retry, export and processing away from the real API", async (t) => {
+  const run = completeRun();
+  run.run.status = "failed";
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)], { preview: true });
+  await ui.flush(() => ui.button("Retry").props.onPress());
+  assert.match(ui.text(), /Mock retry queued in memory/);
+  await ui.flush(() => ui.menu("Audio part actions").props.onAction("mic"));
+  await ui.flush(() => ui.button("Transcribe whole meeting").props.onPress());
+  await ui.flush(() => ui.button("Create version").props.onPress());
+  assert.deepEqual(ui.calls.retry, []);
+  assert.deepEqual(ui.calls.export, []);
+  assert.deepEqual(ui.calls.create, []);
 });

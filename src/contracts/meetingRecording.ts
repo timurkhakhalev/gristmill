@@ -149,6 +149,7 @@ export const meetingRecordingConfigInputSchema = z.object({
 
 export const meetingRecordingDtoSchema = z.object({
   id: meetingRecordingIdSchema,
+  groupId: meetingRecordingIdSchema,
   noteId: z.number().int().positive(),
   captureState: meetingCaptureStateSchema,
   startedAt: z.string(),
@@ -183,6 +184,7 @@ export type MeetingRecordingEpochDto = z.infer<typeof meetingRecordingEpochDtoSc
 export const meetingProcessingRunDtoSchema = z.object({
   id: meetingRecordingIdSchema,
   recordingId: meetingRecordingIdSchema,
+  sourceRecordingIds: z.array(meetingRecordingIdSchema).min(1),
   kind: z.enum(["initial", "reprocess", "summary"]),
   sourceRunId: meetingRecordingIdSchema.nullable(),
   provider: z.string().nullable(),

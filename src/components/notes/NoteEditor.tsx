@@ -6,13 +6,14 @@ import {
   FileText,
   Sparkles,
   AlignLeft,
-  MessageSquareText,
   Mic,
   LinkIcon,
   FolderOpen,
   Search,
   Plus,
   Check,
+  ArrowLeft,
+  PanelRight,
 } from "../icons";
 import { RichTextEditor } from "../ui/RichTextEditor";
 import type { Editor } from "@tiptap/react";
@@ -55,9 +56,6 @@ import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } fr
 import { formatMmSs } from "../../utils/formatDuration";
 import MeetingResultsPanel from "./MeetingResultsPanel";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
-
-const SEGMENT_BUTTON_CLASS =
-  "relative z-1 flex h-[26px] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors duration-150";
 
 const TRANSCRIPT_EXPORT_LABEL_KEYS = {
   txt: "notes.editor.asTranscriptText",
@@ -113,6 +111,7 @@ function buildKnownSpeakers(
 
 interface NoteEditorProps {
   note: NoteItem;
+  onBackToNotes?: () => void;
   onTitleChange: (sourceNoteId: number, title: string) => void;
   onContentChange: (sourceNoteId: number, content: string) => void;
   isSaving: boolean;
@@ -121,6 +120,8 @@ interface NoteEditorProps {
   recordingAllowed?: boolean;
   onStartRecording: () => void;
   onStopRecording: () => void;
+  onPauseRecording?: () => void;
+  onResumeRecording?: () => void;
   onExportNote?: (format: "md" | "txt") => void;
   onExportTranscript?: (format: "txt" | "srt" | "json" | "md") => void;
   enhancement?: Enhancement;
@@ -143,7 +144,7 @@ interface NoteEditorProps {
   onCreateFolderAndMove?: (noteId: number, folderName: string) => void;
   debugPreview?: {
     recordings: MeetingProcessingRecordingResult[];
-    capturePhase?: "idle" | "preparing" | "recording" | "saving" | "saved" | "incomplete" | "failed";
+    capturePhase?: "idle" | "preparing" | "recording" | "paused" | "saving" | "saved" | "incomplete" | "failed";
     captureStartedAt?: number;
     captureErrorCode?: string;
     micStatus?: "inactive" | "active" | "reconnecting" | "unavailable";
@@ -154,6 +155,7 @@ interface NoteEditorProps {
 
 export default function NoteEditor({
   note,
+  onBackToNotes,
   onTitleChange,
   onContentChange,
   isSaving,
@@ -162,6 +164,8 @@ export default function NoteEditor({
   recordingAllowed = true,
   onStartRecording,
   onStopRecording,
+  onPauseRecording,
+  onResumeRecording,
   onExportNote,
   onExportTranscript,
   enhancement,
@@ -207,7 +211,7 @@ export default function NoteEditor({
   const systemCaptureStatus = debugPreview?.systemStatus ?? liveSystemCaptureStatus;
   const capturePending = capturePhase === "preparing" || capturePhase === "saving";
   const captureLive = capturePhase === "recording";
-  const captureHasStatus = capturePending || captureLive || capturePhase === "incomplete" || capturePhase === "failed";
+  const captureHasStatus = capturePending || captureLive || capturePhase === "paused" || capturePhase === "incomplete" || capturePhase === "failed";
   const [viewMode, setViewMode] = useState<MeetingViewMode>(
     debugPreview?.viewMode ?? (note.note_type === "upload" && note.transcript ? "transcript" : "raw")
   );
@@ -246,8 +250,6 @@ export default function NoteEditor({
   const titleRef = useRef<HTMLDivElement>(null);
   const prevNoteIdRef = useRef<number>(note.id);
 
-  const segmentContainerRef = useRef<HTMLDivElement>(null);
-  const [indicatorStyle, setIndicatorStyle] = useState<React.CSSProperties>({ opacity: 0 });
   const scheduleUiUpdate = useCallback((callback: () => void) => {
     const frameId = window.requestAnimationFrame(callback);
     return () => window.cancelAnimationFrame(frameId);
@@ -314,34 +316,6 @@ export default function NoteEditor({
       );
     });
   }, [debugPreview]);
-
-  const updateSegmentIndicator = useCallback(() => {
-    const container = segmentContainerRef.current;
-    if (!container) return;
-
-    const buttons = container.querySelectorAll<HTMLButtonElement>("[data-segment-button]");
-    const activeBtn = Array.from(buttons).find((btn) => btn.dataset.segmentValue === viewMode);
-    if (!activeBtn) return;
-
-    const cr = container.getBoundingClientRect();
-    const br = activeBtn.getBoundingClientRect();
-    setIndicatorStyle({
-      width: br.width,
-      height: br.height,
-      transform: `translateX(${br.left - cr.left}px)`,
-      opacity: 1,
-    });
-  }, [viewMode]);
-
-  useEffect(() => {
-    updateSegmentIndicator();
-  }, [updateSegmentIndicator]);
-
-  useEffect(() => {
-    const observer = new ResizeObserver(() => updateSegmentIndicator());
-    if (segmentContainerRef.current) observer.observe(segmentContainerRef.current);
-    return () => observer.disconnect();
-  }, [updateSegmentIndicator]);
 
   const prevProcessingStateRef = useRef(actionProcessingState);
   useEffect(() => {
@@ -632,7 +606,7 @@ export default function NoteEditor({
   const handleAskSubmit = useCallback(
     (text: string) => {
       if (chatMode === "hidden") {
-        setChatMode("floating");
+        setChatMode("sidebar");
       }
       sendChatMessage(text);
     },
@@ -641,7 +615,7 @@ export default function NoteEditor({
 
   const handleChatInputFocus = useCallback(() => {
     if (chatMode === "hidden") {
-      setChatMode("floating");
+      setChatMode("sidebar");
     }
   }, [chatMode]);
 
@@ -665,9 +639,10 @@ export default function NoteEditor({
   }, [viewMode, onExportTranscript, onExportNote, t]);
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="relative flex h-full min-h-0">
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="px-5 pt-5 pb-0">
+        <div className="oh-note-header px-5 pt-5 pb-0">
+          {onBackToNotes && <button type="button" className="oh-back-button" onClick={onBackToNotes} aria-label={t("controlPanel.backToNotes")}><ArrowLeft size={16}/>{t("controlPanel.backToNotes")}</button>}
           <div
             dir="auto"
             ref={titleRef}
@@ -811,69 +786,9 @@ export default function NoteEditor({
               </span>
             )}
           </div>
-          <div className="mt-5 flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center">
-              <div
-                ref={segmentContainerRef}
-                className="relative flex shrink-0 items-center rounded-full bg-surface-3 p-0.5 dark:bg-surface-2"
-              >
-                <div
-                  className="pointer-events-none absolute top-0.5 left-0 rounded-full bg-background shadow-sm transition-[width,height,transform,opacity] duration-200 ease-out dark:bg-surface-3"
-                  style={indicatorStyle}
-                />
-                <button
-                  data-segment-button
-                  data-segment-value="transcript"
-                  onClick={() => setViewMode("transcript")}
-                  className={cn(
-                    SEGMENT_BUTTON_CLASS,
-                    viewMode === "transcript"
-                      ? "text-foreground"
-                      : "text-foreground/60 hover:text-foreground/80"
-                  )}
-                >
-                  {isRecording ? <RecordingWave /> : <MessageSquareText size={12} />}
-                  {t("notes.editor.transcript")}
-                </button>
-                <button
-                  data-segment-button
-                  data-segment-value="raw"
-                  onClick={() => setViewMode("raw")}
-                  className={cn(
-                    SEGMENT_BUTTON_CLASS,
-                    viewMode === "raw"
-                      ? "text-foreground"
-                      : "text-foreground/60 hover:text-foreground/80"
-                  )}
-                >
-                  <AlignLeft size={12} />
-                  {t("notes.editor.notes")}
-                </button>
-                {enhancement && (
-                  <button
-                    data-segment-button
-                    data-segment-value="enhanced"
-                    onClick={() => setViewMode("enhanced")}
-                    className={cn(
-                      SEGMENT_BUTTON_CLASS,
-                      viewMode === "enhanced"
-                        ? "text-foreground"
-                        : "text-foreground/60 hover:text-foreground/80"
-                    )}
-                  >
-                    <Sparkles size={12} />
-                    {t("notes.editor.enhanced")}
-                    {enhancement.isStale && (
-                      <span
-                        className="h-1 w-1 rounded-full bg-amber-400/60"
-                        title={t("notes.editor.staleIndicator")}
-                      />
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
+          <div className="mt-5 flex items-center justify-end gap-3">
             <div className="flex shrink-0 items-center gap-2">
+              <button type="button" className="oh-chat-toggle" onClick={() => setChatMode(chatMode === "sidebar" ? "hidden" : "sidebar")} aria-label={t("sidebar.chat")} aria-pressed={chatMode === "sidebar"}><PanelRight size={17} /></button>
               {canEditNote && (
                 <NoteRecordControl
                   isRecording={isRecording}
@@ -883,6 +798,8 @@ export default function NoteEditor({
                   captureStartedAt={captureStartedAt}
                   onStart={onStartRecording}
                   onStop={onStopRecording}
+                  onPause={onPauseRecording}
+                  onResume={onResumeRecording}
                 />
               )}
               {exportOptions.length > 0 && (
@@ -909,13 +826,12 @@ export default function NoteEditor({
 
         <div className="flex-1 relative min-h-0">
           <div ref={contentScrollRef} className="h-full overflow-y-auto agent-chat-scroll">
-            <MeetingResultsPanel noteId={note.id} locale={locale} previewRecordings={debugPreview?.recordings} />
             {captureHasStatus && (
               <div className="m-4 rounded-xl border border-border bg-surface-2/70 p-4 dark:border-white/10">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                     {(capturePending || captureLive) && <RecordingWave className="me-1" />}
-                    {t(`notes.editor.capture.${capturePhase}`)}
+                    {t(`notes.editor.capture.${capturePhase}`, { defaultValue: capturePhase === "paused" ? t("notes.editor.capture.paused", { defaultValue: "Paused" }) : capturePhase })}
                   </div>
                   {captureStartedAt != null && (capturePending || captureLive) && (
                     <span className="text-xs tabular-nums text-foreground/60">
@@ -953,67 +869,51 @@ export default function NoteEditor({
                 )}
               </div>
             )}
-            {viewMode === "transcript" && (hasChatSegments || isRecording) ? (
-              isRecording ? (
-                null
-              ) : (
-                <MeetingTranscriptChat
-                  segments={displaySegments}
-                  scrollElementRef={contentScrollRef}
-                  speakerMappings={speakerMappings}
-                  speakerProfiles={knownSpeakers}
-                  participants={parsedParticipants}
-                  isDiarizing={isDiarizing}
-                  sessionDiarizationEnabled={sessionDiarizationEnabled}
-                  sessionExpectedCount={sessionExpectedCount}
-                  userTouchedStepper={userTouchedStepper}
-                  onSetSessionDiarizationEnabled={onSetSessionDiarizationEnabled}
-                  onSetSessionExpectedCount={onSetSessionExpectedCount}
-                  onMapSpeaker={handleMapSpeaker}
-                  onConfirmSuggestion={handleConfirmSuggestion}
-                  onDismissSuggestion={handleDismissSuggestion}
-                  onAttachSpeakerEmail={handleAttachSpeakerEmail}
-                  selectedSegmentIds={selectedSegmentIds}
-                  onToggleSelect={handleToggleSelect}
-                />
-              )
-            ) : viewMode === "transcript" && hasMeetingTranscript ? (
-              <RichTextEditor value={note.transcript || ""} disabled />
-            ) : viewMode === "transcript" ? (
-              <EmptyStateCard
-                icon={Mic}
-                title={t("notes.editor.transcriptEmptyTitle")}
-                description={t("notes.editor.transcriptEmptyDescription")}
-                className="mt-2"
-              >
-                {canEditNote && recordingAllowed && (
-                  <Button
-                    size="sm"
-                    onClick={onStartRecording}
-                    disabled={isProcessing || capturePending || captureLive}
-                  >
-                    <Mic size={13} />
-                    {t("notes.editor.startRecording")}
-                  </Button>
-                )}
-              </EmptyStateCard>
-            ) : viewMode === "enhanced" && enhancement ? (
-              <RichTextEditor
-                value={enhancement.content}
-                onChange={handleEnhancedChange}
-                disabled={!canEditNote}
-                mentionPeople={mentionPeople}
-              />
-            ) : (
-              <RichTextEditor
+            <MeetingResultsPanel
+              noteId={note.id}
+              locale={locale}
+              previewRecordings={debugPreview?.recordings}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              manualContent={<RichTextEditor
                 value={note.content}
                 onChange={handleContentChange}
                 editorRef={editorRef}
                 placeholder={t("notes.editor.startWriting")}
                 disabled={!canEditNote || actionProcessingState === "processing"}
                 mentionPeople={mentionPeople}
-              />
-            )}
+              />}
+              fallbackSummary={enhancement ? <RichTextEditor
+                value={enhancement.content}
+                onChange={handleEnhancedChange}
+                disabled={!canEditNote}
+                mentionPeople={mentionPeople}
+              /> : <EmptyStateCard icon={Sparkles} title={t("notes.editor.enhanced")} description={t("notes.editor.transcriptEmptyDescription")} />}
+              fallbackTranscript={hasChatSegments && !isRecording ? <MeetingTranscriptChat
+                segments={displaySegments}
+                scrollElementRef={contentScrollRef}
+                speakerMappings={speakerMappings}
+                speakerProfiles={knownSpeakers}
+                participants={parsedParticipants}
+                isDiarizing={isDiarizing}
+                sessionDiarizationEnabled={sessionDiarizationEnabled}
+                sessionExpectedCount={sessionExpectedCount}
+                userTouchedStepper={userTouchedStepper}
+                onSetSessionDiarizationEnabled={onSetSessionDiarizationEnabled}
+                onSetSessionExpectedCount={onSetSessionExpectedCount}
+                onMapSpeaker={handleMapSpeaker}
+                onConfirmSuggestion={handleConfirmSuggestion}
+                onDismissSuggestion={handleDismissSuggestion}
+                onAttachSpeakerEmail={handleAttachSpeakerEmail}
+                selectedSegmentIds={selectedSegmentIds}
+                onToggleSelect={handleToggleSelect}
+              /> : hasMeetingTranscript ? <RichTextEditor value={note.transcript || ""} disabled /> : <EmptyStateCard
+                icon={Mic}
+                title={t("notes.editor.transcriptEmptyTitle")}
+                description={t("notes.editor.transcriptEmptyDescription")}
+                className="mt-2"
+              />}
+            />
           </div>
           <ActionProcessingOverlay
             state={actionProcessingState ?? "idle"}

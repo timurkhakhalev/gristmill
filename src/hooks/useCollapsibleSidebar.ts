@@ -4,7 +4,7 @@ const PEEK_CLOSE_DELAY_MS = 120;
 
 export function useCollapsibleSidebar() {
   const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem("sidebarCollapsed") === "true"
+    () => localStorage.getItem("sidebarCollapsed") !== "false"
   );
   const [peek, setPeek] = useState(false);
   const peekTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);

@@ -34,6 +34,7 @@ export function requestMeetingRecordingAutoEnd(
 }
 
 interface MeetingAutoEndRestartState {
+  meetingGroupId?: string | null;
   recordingNoteId: number | null;
   recordingNoteTitle: string | null;
   recordingFolderId: number | null;
@@ -59,6 +60,7 @@ export function createMeetingAutoEndRestartContext(
     sessionId,
     args: {
       noteId: state.recordingNoteId,
+      ...(state.meetingGroupId ? { groupId: state.meetingGroupId } : {}),
       noteTitle: state.recordingNoteTitle,
       folderId: state.recordingFolderId,
       seedSegments: state.segments,

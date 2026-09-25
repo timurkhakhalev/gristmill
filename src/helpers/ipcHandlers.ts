@@ -89,7 +89,7 @@ import {
   createMeetingAudioOperationRegistry,
   exportMeetingSourceTrack,
 } from "./meetingAudioExport.js";
-import { prepareMeetingAudio } from "./meetingAudioMixer.js";
+import { composeMeetingAudioParts, prepareMeetingAudio } from "./meetingAudioMixer.js";
 import { recognizeMeetingSpeakers } from "./meetingSpeakerRecognition.js";
 import { generateMeetingSummary } from "./meetingSummary.js";
 import { BYOK_API_KEYS } from "../config/secretKeys.js";
@@ -552,7 +552,11 @@ export class IPCHandlers {
     try {
       if (intent.kind === "audio") {
         if (!intent.recordingId) throw new Error("Invalid meeting audio deletion intent");
-        await this._meetingAudioOperations.cancelAndWait(intent.recordingId);
+        const dependentAnchors = new Set(this.databaseManager.listAllMeetingProcessingRuns()
+          .filter((run) => run.sourceRecordingIds.includes(intent.recordingId as string))
+          .map((run) => run.recordingId));
+        dependentAnchors.add(intent.recordingId);
+        await Promise.all([...dependentAnchors].map((id) => this._meetingAudioOperations.cancelAndWait(id)));
         await this._meetingProcessing?.cancelRecordingForDeletion(intent.recordingId);
         this.audioStorageManager.meetingRecordings.removeRecordingAudio(intent.recordingId);
         if (!this.databaseManager.completeMeetingAudioDeletion(intent.id).success) {
@@ -632,36 +636,40 @@ export class IPCHandlers {
       try {
         const parsed = meetingRecordingPlaybackRequestSchema.parse(payload);
         const recording = database.getMeetingRecording(parsed.recordingId);
-        const run = database.getMeetingProcessingRun(parsed.runId);
-        if (!recording || recording.audioState !== "available" || !run || run.recordingId !== recording.id) {
+        const run = parsed.runId ? database.getMeetingProcessingRun(parsed.runId) : null;
+        if (!recording || recording.audioState !== "available" || (parsed.runId && (!run || run.recordingId !== recording.id))) {
           return { success: false, error: "meeting-audio-unavailable" };
         }
-        if (!canPlayMeetingRun(recording, run)) {
+        if (run && !canPlayMeetingRun(recording, run)) {
           return { success: false, error: "meeting-result-not-selected" };
         }
         return await this._meetingAudioOperations.run(recording.id, async (signal) => {
           if (signal.aborted) throw new Error("Meeting audio operation cancelled");
           const currentRecording = database.getMeetingRecording(recording.id);
-          const currentRun = database.getMeetingProcessingRun(run.id);
+          const currentRun = run ? database.getMeetingProcessingRun(run.id) : null;
           if (
             !currentRecording || currentRecording.audioState !== "available" ||
-            !currentRun || currentRun.recordingId !== currentRecording.id
+            (run && (!currentRun || currentRun.recordingId !== currentRecording.id))
           ) {
             return { success: false, error: "meeting-audio-unavailable" };
           }
-          if (!canPlayMeetingRun(currentRecording, currentRun)) {
+          if (currentRun && !canPlayMeetingRun(currentRecording, currentRun)) {
             return { success: false, error: "meeting-result-not-selected" };
           }
-          let audioPath = storage.getDerivedAudioPath(recording.id, run.id);
+          const playbackId = currentRun?.id ?? recording.id;
+          let audioPath = storage.getDerivedAudioPath(recording.id, playbackId);
           if (!fs.existsSync(audioPath)) {
+            const sources = currentRun?.sourceRecordingIds.map((id) => database.getMeetingRecording(id)) ?? [currentRecording];
+            if (sources.some((source) => !source || source.audioState !== "available")) throw new Error("meeting-audio-part-unavailable");
+            const combined = composeMeetingAudioParts(sources as NonNullable<typeof currentRecording>[], (id) => database.listMeetingRecordingEpochs(id));
             await prepareMeetingAudio(
               storage,
-              currentRecording,
-              run.id,
-              database.listMeetingRecordingEpochs(recording.id),
+              combined.recording,
+              playbackId,
+              combined.epochs,
               { signal }
             );
-            audioPath = storage.getDerivedAudioPath(recording.id, run.id);
+            audioPath = storage.getDerivedAudioPath(recording.id, playbackId);
           }
           if (signal.aborted) throw new Error("Meeting audio operation cancelled");
           const stats = await fs.promises.stat(audioPath);
@@ -723,11 +731,14 @@ export class IPCHandlers {
           }
           let sourcePath = storage.getDerivedAudioPath(latestRecording.id, latestRun.id);
           if (!fs.existsSync(sourcePath)) {
+            const sources = latestRun.sourceRecordingIds.map((id) => database.getMeetingRecording(id));
+            if (sources.some((source) => !source || source.audioState !== "available")) throw new Error("meeting-audio-part-unavailable");
+            const combined = composeMeetingAudioParts(sources as NonNullable<typeof latestRecording>[], (id) => database.listMeetingRecordingEpochs(id));
             await prepareMeetingAudio(
               storage,
-              latestRecording,
+              combined.recording,
               latestRun.id,
-              database.listMeetingRecordingEpochs(latestRecording.id),
+              combined.epochs,
               { signal }
             );
             sourcePath = storage.getDerivedAudioPath(latestRecording.id, latestRun.id);

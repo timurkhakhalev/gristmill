@@ -30,6 +30,7 @@ export const meetingProcessingUpdatedEventSchema = z.object({
 export const meetingProcessingListRequestSchema = z.object({ noteId: z.number().int().positive() });
 export const meetingProcessingCreateRunRequestSchema = z.object({
   recordingId: meetingRecordingIdSchema,
+  sourceRecordingIds: z.array(meetingRecordingIdSchema).min(1).max(100).optional(),
   kind: z.enum(["reprocess", "summary"]),
   config: meetingProcessingConfigSchema.nullable(),
   configError: meetingProcessingConfigErrorSchema.nullable().optional(),
@@ -53,7 +54,7 @@ export const meetingProcessingSpeakerCorrectionRequestSchema = z.object({
 });
 export const meetingRecordingPlaybackRequestSchema = z.object({
   recordingId: meetingRecordingIdSchema,
-  runId: meetingRecordingIdSchema,
+  runId: meetingRecordingIdSchema.optional(),
 });
 export const meetingRecordingExportRequestSchema = z.object({
   recordingId: meetingRecordingIdSchema,
@@ -65,6 +66,7 @@ export const meetingRecordingAudioRequestSchema = z.object({ recordingId: meetin
 export const meetingProcessingRecordingResultSchema = z.object({
   recording: z.object({
     id: meetingRecordingIdSchema,
+    groupId: meetingRecordingIdSchema,
     captureState: meetingCaptureStateSchema,
     captureErrorCode: z.string().nullable(),
     audioState: z.enum(["available", "deleting", "deleted"]),
@@ -72,6 +74,7 @@ export const meetingProcessingRecordingResultSchema = z.object({
     currentRunId: meetingRecordingIdSchema.nullable(),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
+    durationSeconds: z.number().nonnegative().nullable(),
   }),
   runs: z.array(meetingProcessingResultDtoSchema),
 });
@@ -112,7 +115,7 @@ export interface MeetingProcessingApi {
   meetingProcessingUpdateBlockedRunConfig(input: z.infer<typeof meetingProcessingUpdateBlockedRunConfigRequestSchema>): Promise<MeetingProcessingRunResponse>;
   meetingProcessingSelectRun(recordingId: string, runId: string): Promise<z.infer<typeof meetingProcessingSelectRunResponseSchema>>;
   meetingProcessingSetSpeakerCorrection(input: z.infer<typeof meetingProcessingSpeakerCorrectionRequestSchema>): Promise<z.infer<typeof meetingProcessingCorrectionResponseSchema>>;
-  meetingRecordingGetPlaybackPath(recordingId: string, runId: string): Promise<z.infer<typeof meetingRecordingPlaybackResponseSchema>>;
+  meetingRecordingGetPlaybackPath(recordingId: string, runId?: string): Promise<z.infer<typeof meetingRecordingPlaybackResponseSchema>>;
   meetingRecordingExportAudio(input: z.infer<typeof meetingRecordingExportRequestSchema>): Promise<z.infer<typeof meetingRecordingExportResponseSchema>>;
   meetingRecordingDeleteAudio(recordingId: string): Promise<z.infer<typeof meetingRecordingAudioOperationResponseSchema>>;
   meetingRecordingRetryAudioDeletion(recordingId: string): Promise<z.infer<typeof meetingRecordingAudioOperationResponseSchema>>;

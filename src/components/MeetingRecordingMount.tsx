@@ -5,6 +5,7 @@ import {
   getActiveRecordingSessionId,
   getMicAnalyser,
   primeMeetingWorklet,
+  queueMeetingGroupProcessing,
   startRecording,
   stopRecording,
   useMeetingRecordingStore,
@@ -92,7 +93,21 @@ export default function MeetingRecordingMount(): null {
 
       requestMeetingRecordingAutoEnd(
         request,
-        stopRecording,
+        async (sessionId) => {
+          const state = useMeetingRecordingStore.getState();
+          const groupId = state.meetingGroupId;
+          const noteId = state.recordingNoteId;
+          const listed = groupId && noteId ? await window.electronAPI.meetingProcessingListForNote(noteId) : null;
+          const hasEarlierPart = listed?.success && listed.recordings?.some((item) =>
+            item.recording.groupId === groupId && item.recording.id !== state.recordingId && item.recording.audioState === "available"
+          );
+          const result = await stopRecording(sessionId, { suppressProcessing: !!hasEarlierPart });
+          if (result.stopped && hasEarlierPart && groupId && noteId) {
+            try { await queueMeetingGroupProcessing(groupId, noteId); }
+            catch (error) { logger.error("Meeting auto-end group processing failed", { error: error instanceof Error ? error.message : String(error) }, "meeting"); }
+          }
+          return result;
+        },
         (sessionId, stopped) => {
           // Every path that ends the recording without offering a restart card
           // has to say so, or the recording just disappears.

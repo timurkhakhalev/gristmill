@@ -37,7 +37,7 @@ export default function WindowControls() {
         variant="ghost"
         size="icon"
         onClick={close}
-        className="h-8 w-8 hover:text-destructive hover:bg-destructive/10"
+        className="h-8 w-8 hover:text-danger hover:bg-danger/10"
         title={closeLabel}
         aria-label={closeLabel}
       >

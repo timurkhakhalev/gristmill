@@ -40,7 +40,7 @@ export function TechnicalErrorDetails({
   return (
     <details
       className={cn(
-        "group/details mt-1.5 rounded-[3px] border px-1.5 py-1 text-xs",
+        "group/details mt-1.5 rounded-sm border px-1.5 py-1 text-xs",
         onDark ? "border-white/6 bg-white/4 text-white/45" : "border-border bg-subtle/50"
       )}
     >

@@ -163,7 +163,7 @@ const ToastViewport: React.FC<{
     <div
       className={cn(
         "fixed z-[100] flex flex-col gap-1.5 pointer-events-none",
-        "bottom-5 end-5"
+        "bottom-6 end-6"
       )}
     >
       {toasts.map((toast) => (
@@ -185,12 +185,12 @@ const variantConfig = {
     progressClass: "bg-white/15",
   },
   destructive: {
-    accentClass: "bg-red-400",
-    progressClass: "bg-red-400/30",
+    accentClass: "bg-danger",
+    progressClass: "bg-danger/30",
   },
   success: {
-    accentClass: "bg-emerald-400",
-    progressClass: "bg-emerald-400/30",
+    accentClass: "bg-success",
+    progressClass: "bg-success/30",
   },
 };
 
@@ -256,8 +256,8 @@ const Toast: React.FC<
   return (
     <div
       className={cn(
-        "group toast-surface pointer-events-auto relative flex w-75",
-        "rounded-[5px]",
+        "group toast-surface pointer-events-auto relative flex w-80 overflow-hidden",
+        "rounded-xl",
         "transition-[opacity,transform] duration-200 ease-out",
         isExiting
           ? "opacity-0 translate-x-2 rtl:-translate-x-2 scale-[0.98]"
@@ -268,10 +268,10 @@ const Toast: React.FC<
     >
       <div className={cn("w-0.5 shrink-0", config.accentClass)} />
 
-      <div className="flex items-start gap-2 flex-1 min-w-0 px-2.5 py-2">
+      <div className="flex items-start gap-2 flex-1 min-w-0 px-3 py-2.5">
         <div className="flex-1 min-w-0">
           {message && (
-            <div className="text-xs font-medium leading-tight text-white/90">{message}</div>
+            <div className="text-ui font-medium leading-tight text-white/90">{message}</div>
           )}
           {secondaryDescription && (
             <div className="mt-1 text-xs leading-snug text-white/45">{secondaryDescription}</div>
@@ -280,9 +280,9 @@ const Toast: React.FC<
             (isDestructive ? (
               <div
                 className={cn(
-                  "text-xs leading-snug mt-1 px-1.5 py-1 rounded-[3px] font-mono",
+                  "text-xs leading-snug mt-1 px-1.5 py-1 rounded-sm font-mono",
                   "bg-white/4 border border-white/6",
-                  "text-red-300/80"
+                  "text-danger/80"
                 )}
               >
                 <div className="flex items-start justify-between gap-1.5">
@@ -305,7 +305,7 @@ const Toast: React.FC<
               <div className="text-xs leading-snug mt-0.5 text-white/45">{detail}</div>
             ))}
           {copyCommand && (
-            <div className="mt-1.5 flex items-center gap-1.5 rounded-[3px] border border-white/6 bg-white/4 px-1.5 py-1">
+            <div className="mt-1.5 flex items-center gap-1.5 rounded-sm border border-white/6 bg-white/4 px-1.5 py-1">
               <code
                 dir="ltr"
                 className="min-w-0 flex-1 wrap-break-word font-mono text-2xs text-white/60 select-all"

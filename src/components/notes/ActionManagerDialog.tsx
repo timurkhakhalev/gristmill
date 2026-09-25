@@ -111,13 +111,13 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl p-0 gap-0 overflow-hidden">
+      <DialogContent size="lg" className="max-w-3xl gap-0 overflow-hidden p-0">
         {/* Hidden accessible title */}
         <DialogTitle className="sr-only">{t("notes.actions.manageTitle")}</DialogTitle>
 
         <div className="flex h-120">
           {/* Left panel — action list */}
-          <div className="w-56 shrink-0 border-e border-border dark:border-white/10 flex flex-col bg-card/50 dark:bg-surface-1/30">
+          <div className="w-56 shrink-0 border-e border-border flex flex-col bg-card/50 dark:bg-surface-1/30">
             {/* List header */}
             <div className="flex items-center justify-between px-3 pt-3.5 pb-2">
               <span className="text-xs font-semibold tracking-tight text-foreground/70">
@@ -127,9 +127,9 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                 onClick={handleNewAction}
                 className={cn(
                   "p-1 rounded-md",
-                  "text-muted-foreground/70 hover:text-foreground/70",
-                  "hover:bg-foreground/5 dark:hover:bg-white/6",
-                  "active:bg-foreground/8 dark:active:bg-white/8",
+                  "text-muted hover:text-foreground/70",
+                  "hover:bg-default dark:hover:bg-white/6",
+                  "active:bg-default dark:active:bg-white/8",
                   "transition-colors duration-150"
                 )}
                 aria-label={t("notes.actions.addAction")}
@@ -142,13 +142,13 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
             <div className="flex-1 overflow-y-auto px-1.5 pb-2">
               {actions.length === 0 && !isCreating ? (
                 <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-                  <Zap size={20} className="text-muted-foreground/70 mb-2" />
-                  <p className="text-xs text-muted-foreground/70 leading-relaxed">
+                  <Zap size={20} className="text-muted mb-2" />
+                  <p className="text-xs text-muted leading-relaxed">
                     {t("notes.actions.noActions")}
                   </p>
                   <button
                     onClick={handleNewAction}
-                    className="text-xs text-accent/60 hover:text-accent/80 mt-2 transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/30 rounded"
+                    className="text-xs text-accent/60 hover:text-accent/80 mt-2 transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-focus rounded"
                   >
                     {t("notes.actions.addAction")}
                   </button>
@@ -164,7 +164,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                         "transition-colors duration-150",
                         selectedId === action.id && !isCreating
                           ? "bg-accent/8 dark:bg-accent/10"
-                          : "hover:bg-foreground/3 dark:hover:bg-white/3"
+                          : "hover:bg-default dark:hover:bg-white/3"
                       )}
                     >
                       <Sparkles
@@ -173,7 +173,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                           "shrink-0 transition-colors duration-150",
                           selectedId === action.id && !isCreating
                             ? "text-accent/60"
-                            : "text-muted-foreground/70"
+                            : "text-muted"
                         )}
                       />
                       <div className="flex-1 min-w-0">
@@ -189,7 +189,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                             {getActionName(action, t)}
                           </span>
                           {action.is_builtin === 1 && (
-                            <span className="text-2xs font-medium px-1 py-px rounded bg-foreground/5 dark:bg-white/6 text-muted-foreground/70 shrink-0">
+                            <span className="text-2xs font-medium px-1 py-px rounded bg-default dark:bg-white/6 text-muted shrink-0">
                               {t("notes.actions.builtIn")}
                             </span>
                           )}
@@ -204,9 +204,9 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                           aria-label={t("notes.context.delete")}
                           className={cn(
                             "p-1 rounded-md shrink-0",
-                            "text-muted-foreground/0 group-hover:text-muted-foreground/70",
-                            "hover:text-destructive/60! hover:bg-destructive/5",
-                            "active:bg-destructive/8",
+                            "text-muted group-hover:text-muted",
+                            "hover:text-danger/60! hover:bg-danger/5",
+                            "active:bg-danger/8",
                             "transition-all duration-150"
                           )}
                         >
@@ -225,8 +225,8 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
             {showEditor ? (
               <>
                 {/* Editor header — pe-12 clears the dialog close X button */}
-                <div className="flex items-center justify-between ps-5 pe-12 pt-4 pb-3 border-b border-border/70 dark:border-white/10">
-                  <span className="text-xs font-medium text-muted-foreground/70">
+                <div className="flex items-center justify-between ps-5 pe-12 pt-4 pb-3 border-b border-border">
+                  <span className="text-xs font-medium text-muted">
                     {isCreating ? t("notes.actions.addAction") : t("notes.actions.editAction")}
                   </span>
                   <div className="flex items-center gap-2">
@@ -285,7 +285,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
 
                   {/* Prompt — the star of the show */}
                   <div className="flex flex-col flex-1 space-y-1.5 min-h-0">
-                    <label className="text-xs font-medium text-foreground/50">
+                    <label className="text-xs font-medium text-muted">
                       {t("notes.actions.promptLabel", { defaultValue: "Prompt" })}
                     </label>
                     <textarea
@@ -296,11 +296,11 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                       disabled={isSaving}
                       className={cn(
                         "flex-1 min-h-50 w-full rounded border border-border/70 bg-input px-3.5 py-3 text-sm text-foreground leading-relaxed transition-colors duration-200 outline-none resize-none",
-                        "placeholder:text-muted-foreground/70",
+                        "placeholder:text-muted",
                         "hover:border-border-hover",
                         "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/10",
                         "dark:bg-surface-1 dark:border-border-subtle/60",
-                        "dark:focus-visible:border-border-active dark:focus-visible:ring-ring/10",
+                        "dark:focus-visible:border-border-active dark:focus-visible:ring-focus",
                         "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-subtle",
                         "font-mono text-ui"
                       )}
@@ -314,10 +314,10 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                 <div className="w-10 h-10 rounded-xl bg-accent/5 dark:bg-accent/8 flex items-center justify-center mb-3">
                   <Sparkles size={18} className="text-accent/30" />
                 </div>
-                <p className="text-sm font-medium text-foreground/45 mb-1">
+                <p className="text-sm font-medium text-muted mb-1">
                   {t("notes.actions.emptyEditorTitle", { defaultValue: "Select an action" })}
                 </p>
-                <p className="text-xs text-muted-foreground/70 mb-4 max-w-52 leading-relaxed">
+                <p className="text-xs text-muted mb-4 max-w-52 leading-relaxed">
                   {t("notes.actions.emptyEditorDescription", {
                     defaultValue: "Choose an action from the list or create a new one",
                   })}

@@ -33,9 +33,9 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
         "relative rounded-md mb-1 overflow-hidden",
         "border-s-2 transition-colors duration-300",
         isExecuting && "border-s-primary/60",
-        isCompleted && !isError && "border-s-muted-foreground/20",
-        isClipboard && "border-s-emerald-500/50",
-        isError && "border-s-destructive/50"
+        isCompleted && !isError && "border-s-border",
+        isClipboard && "border-s-success/50",
+        isError && "border-s-danger/50"
       )}
     >
       {isExecuting && (
@@ -48,7 +48,7 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
       <div
         className={cn(
           "flex items-center gap-1.5 px-2.5 py-1.5",
-          "bg-surface-1/60",
+          "bg-subtle",
           hasDetail && !isExecuting && "cursor-pointer"
         )}
         onClick={hasDetail && !isExecuting ? () => setExpanded((v) => !v) : undefined}
@@ -58,36 +58,36 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
           className={cn(
             "shrink-0 transition-colors duration-300",
             isExecuting && "text-primary/70",
-            isCompleted && !isError && !isClipboard && "text-muted-foreground/70",
-            isClipboard && "text-emerald-500/70",
-            isError && "text-destructive/60"
+            isCompleted && !isError && !isClipboard && "text-muted",
+            isClipboard && "text-success",
+            isError && "text-danger"
           )}
         />
 
         {isExecuting ? (
-          <span className="text-2xs text-muted-foreground/80">
+          <span className="text-2xs text-muted">
             {t(`agentMode.tools.${toolCall.name}Status`, { defaultValue: toolCall.name })}
           </span>
         ) : isError ? (
           <div className="flex items-center gap-1">
-            <CircleAlert size={10} className="text-destructive/60 shrink-0" />
-            <span className="text-2xs text-destructive/70">
+            <CircleAlert size={10} className="text-danger shrink-0" />
+            <span className="text-2xs text-danger">
               {toolCall.result || toolCall.name}
             </span>
           </div>
         ) : isClipboard ? (
           <div className="flex items-center gap-1">
-            <span className="text-2xs text-emerald-600 dark:text-emerald-400/80">
+            <span className="text-2xs text-success">
               {t("agentMode.tools.copiedToClipboard")}
             </span>
             <Check
               size={10}
-              className="text-emerald-500 shrink-0"
+              className="text-success shrink-0"
               style={{ animation: "tool-check-pop 300ms ease-out both" }}
             />
           </div>
         ) : (
-          <span className="text-2xs text-muted-foreground/70">
+          <span className="text-2xs text-muted">
             {toolCall.result || toolCall.name}
           </span>
         )}
@@ -96,7 +96,7 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
           <ChevronDown
             size={10}
             className={cn(
-              "ms-auto text-muted-foreground/70 shrink-0 transition-transform duration-200",
+              "ms-auto text-muted shrink-0 transition-transform duration-200",
               expanded && "rotate-180"
             )}
           />
@@ -110,7 +110,7 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
         >
           <pre
             dir="ltr"
-            className="text-2xs text-muted-foreground/70 px-2.5 pb-1.5 whitespace-pre-wrap leading-tight"
+            className="text-2xs text-muted px-2.5 pb-1.5 whitespace-pre-wrap leading-tight"
           >
             {toolCall.result}
           </pre>
@@ -137,26 +137,27 @@ function NoteCard({
         onOpenNote?.(noteId)
       }
       className={cn(
-        "flex items-center gap-2 w-full mt-2 px-2.5 py-2 rounded-md",
-        "bg-primary/6 border border-primary/12",
-        "hover:bg-primary/10 hover:border-primary/20",
+        "flex items-center gap-2 w-full mt-2 px-2.5 py-2 rounded-lg",
+        "border border-border bg-surface",
+        "hover:border-border-hover hover:bg-default",
+        "outline-none focus-visible:ring-2 focus-visible:ring-focus",
         "active:scale-[0.99]",
         "transition-all duration-150",
         "text-start group/note"
       )}
     >
-      <div className={cn("shrink-0 p-1 rounded", "bg-primary/10")}>
-        <FileText size={12} className="text-primary/70" />
+      <div className="shrink-0 rounded-md bg-accent-soft p-1">
+        <FileText size={12} className="text-primary" />
       </div>
       <div className="min-w-0 flex-1">
         <p dir="auto" className="text-xs font-medium text-foreground truncate">
           {title}
         </p>
-        <p className="text-2xs text-muted-foreground/70">{t("agentMode.tools.openNote")}</p>
+        <p className="text-2xs text-muted">{t("agentMode.tools.openNote")}</p>
       </div>
       <ChevronRight
         size={12}
-        className="text-muted-foreground/70 group-hover/note:text-primary/50 shrink-0 transition-colors duration-150 rtl:rotate-180"
+        className="text-muted group-hover/note:text-primary shrink-0 transition-colors duration-150 rtl:rotate-180"
       />
     </button>
   );
@@ -191,7 +192,7 @@ export function ChatMessage({
         <div
           data-chat-bubble
           className={cn(
-            "max-w-[80%] px-3 py-2 rounded-lg rounded-ee-sm",
+            "max-w-[80%] px-3 py-2 rounded-2xl rounded-ee-md",
             "bg-accent text-accent-foreground",
             "text-ui leading-relaxed"
           )}
@@ -214,15 +215,14 @@ export function ChatMessage({
       <div
         data-chat-bubble
         className={cn(
-          "max-w-[85%] px-3 py-2 rounded-lg rounded-es-sm",
-          "bg-surface-1 border border-border/70 text-foreground",
+          "w-full px-0.5 py-1 text-foreground",
           "text-ui leading-relaxed"
         )}
       >
         {hasToolCalls && (
           <div
             className={cn(
-              (hasContent || noteCards.length > 0) && "mb-2 pb-1.5 border-b border-border/70"
+              (hasContent || noteCards.length > 0) && "mb-2"
             )}
           >
             {toolCalls.map((tc) => (
@@ -240,7 +240,7 @@ export function ChatMessage({
 
         {isStreaming && hasContent && (
           <span
-            className="inline-block w-[2px] h-[14px] bg-foreground/70 align-middle ms-0.5"
+            className="inline-block w-0.5 h-3.5 bg-foreground/70 align-middle ms-0.5"
             style={{ animation: "agent-cursor-blink 1s ease-in-out infinite" }}
           />
         )}
@@ -265,17 +265,20 @@ export function ChatMessage({
         )}
 
         {hasContent && !isStreaming && (
-          <div className="flex justify-start mt-1.5 -mb-0.5">
+          <div className="mt-1 flex justify-start">
             <button
+              type="button"
               onClick={handleCopy}
+              aria-label={copied ? t("common.copied") : t("common.copy")}
+              title={copied ? t("common.copied") : t("common.copy")}
               className={cn(
-                "p-1 rounded-sm",
-                "text-muted-foreground/70 hover:text-foreground hover:bg-foreground/8",
-                "opacity-0 group-hover/msg:opacity-100 transition-all duration-150",
-                "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/30"
+                "rounded-md p-1",
+                "text-muted hover:bg-default hover:text-foreground",
+                "opacity-0 transition-opacity duration-150 group-hover/msg:opacity-100 focus-visible:opacity-100",
+                "outline-none focus-visible:ring-2 focus-visible:ring-focus"
               )}
             >
-              {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+              {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
             </button>
           </div>
         )}

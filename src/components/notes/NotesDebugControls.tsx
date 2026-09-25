@@ -84,7 +84,7 @@ export default function NotesDebugControls({
                 onChange(id as NotesDebugScenario | null);
                 setOpen(false);
               }}
-              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs hover:bg-foreground/5"
+              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs hover:bg-default"
             >
               {label}
               {scenario === id && <Check size={13} />}

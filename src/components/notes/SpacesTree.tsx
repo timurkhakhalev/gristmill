@@ -15,17 +15,9 @@ import {
   Trash2,
 } from "../icons";
 import { Button } from "../ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
-import { ConfirmDialog } from "../ui/dialog";
+import { Dropdown, Label, Separator } from "@heroui/react";
+import { MENU_ITEM_CLASS } from "../ui/surfaceStyles";
+import { ConfirmDialog, Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { useDialogs } from "../../hooks/useDialogs";
 import { useToast } from "../ui/useToast";
 import { useNoteDragAndDrop, type NoteMoveTarget } from "../../hooks/useNoteDragAndDrop";
@@ -85,11 +77,9 @@ interface SpacesTreeProps {
 }
 
 const rowClass =
-  "group relative flex items-center gap-2 rounded-md cursor-pointer select-none h-7 pe-2 transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring/30";
-const menuClass = "text-xs gap-2 rounded-md px-2 py-1";
+  "group relative flex items-center gap-2 rounded-md cursor-pointer select-none h-7 pe-2 transition-colors outline-none focus-visible:ring-1 focus-visible:ring-focus";
 const buttonClass =
-  "h-5 w-5 shrink-0 rounded-sm [&_svg]:size-3! opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-opacity text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/5";
-const submenuClass = "min-w-36 rounded-xl border border-border p-1";
+  "h-5 w-5 shrink-0 rounded-sm [&_svg]:size-3! opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 aria-expanded:opacity-100 data-[focus-visible]:opacity-100 transition-opacity text-muted hover:text-muted hover:bg-default";
 const managerName = () => "Finder";
 
 function TreeToggle({
@@ -109,7 +99,7 @@ function TreeToggle({
         e.stopPropagation();
         onToggle();
       }}
-      className="relative h-4 w-4 shrink-0 flex items-center justify-center rounded-sm text-foreground/50 hover:text-foreground/80"
+      className="relative h-4 w-4 shrink-0 flex items-center justify-center rounded-sm text-muted hover:text-foreground/80"
     >
       <span className="absolute inset-0 flex items-center justify-center transition-opacity group-hover:opacity-0">
         {icon}
@@ -119,7 +109,9 @@ function TreeToggle({
   );
 }
 
-function MoveMenu({
+function MoveDialog({
+  open,
+  onOpenChange,
   note,
   spaces,
   folders,
@@ -127,6 +119,8 @@ function MoveMenu({
   onCreateFolderAndMove,
   t,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   note: NoteItem;
   spaces: SpaceItem[];
   folders: FolderItem[];
@@ -143,7 +137,7 @@ function MoveMenu({
           key: spaceContainerKey(space.id),
           label: space.name,
           target: { spaceId: space.id, folderId: null },
-          space,
+          isSpace: true,
         },
         ...folders
           .filter((folder) => folder.space_id === space.id)
@@ -151,7 +145,7 @@ function MoveMenu({
             key: folderContainerKey(folder.id),
             label: defaultFolderDisplayName(folder, t),
             target: { spaceId: space.id, folderId: folder.id },
-            space,
+            isSpace: false,
           })),
       ]),
     [folders, spaces, t]
@@ -159,44 +153,60 @@ function MoveMenu({
   const filtered = search
     ? options.filter((option) => option.label.toLowerCase().includes(search.toLowerCase()))
     : options;
+  const close = () => {
+    setSearch("");
+    setNewFolder("");
+    onOpenChange(false);
+  };
   return (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger className={menuClass}>
-        <FolderOpen size={11} />
-        {t("notes.context.moveToFolder")}
-      </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent sideOffset={4} className={submenuClass}>
+    <Dialog open={open} onOpenChange={(value) => (value ? onOpenChange(true) : close())}>
+      <DialogContent size="xs" className="gap-3">
+        <DialogHeader>
+          <DialogTitle>{t("notes.context.moveToFolder")}</DialogTitle>
+        </DialogHeader>
         {options.length > 5 && (
-          <>
-            <input
-              dir="auto"
-              autoFocus
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("notes.context.searchFolders")}
-              className="input-inline w-full px-2 py-1 text-xs outline-none border-none"
-            />
-            <DropdownMenuSeparator />
-          </>
+          <input
+            dir="auto"
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("notes.context.searchFolders")}
+            className="h-8 rounded-lg px-2.5 text-sm"
+          />
         )}
-        <div className="max-h-40 overflow-y-auto">
-          {filtered.map((option) => (
-            <DropdownMenuItem
-              key={option.key}
-              disabled={
-                option.target.folderId === note.folder_id && option.target.spaceId === note.space_id
-              }
-              onClick={() => onMove(option.target)}
-              className={menuClass}
-            >
-              <span className="truncate flex-1">{option.label}</span>
-              {option.target.folderId === note.folder_id &&
-                option.target.spaceId === note.space_id && <Check size={9} />}
-            </DropdownMenuItem>
-          ))}
+        <div className="-mx-1 max-h-64 overflow-y-auto">
+          {filtered.map((option) => {
+            const isCurrent =
+              option.target.folderId === note.folder_id && option.target.spaceId === note.space_id;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                disabled={isCurrent}
+                onClick={() => {
+                  onMove(option.target);
+                  close();
+                }}
+                className={cn(MENU_ITEM_CLASS, "w-full", !option.isSpace && "ps-7")}
+              >
+                {option.isSpace ? (
+                  <Folder size={14} className="shrink-0 text-muted" />
+                ) : (
+                  <FolderOpen size={14} className="shrink-0 text-muted" />
+                )}
+                <span dir="auto" className={cn("flex-1 truncate text-start", option.isSpace && "font-medium")}>
+                  {option.label}
+                </span>
+                {isCurrent && <Check size={14} className="shrink-0 text-primary" />}
+              </button>
+            );
+          })}
+          {search && filtered.length === 0 && (
+            <p className="py-2 text-center text-xs text-muted">{t("notes.context.noResults")}</p>
+          )}
         </div>
-        <DropdownMenuSeparator />
-        <div className="px-1">
+        <div className="flex items-center gap-2 border-t border-border pt-3">
+          <Plus size={14} className="shrink-0 text-muted" />
           <input
             dir="auto"
             value={newFolder}
@@ -204,15 +214,41 @@ function MoveMenu({
             onKeyDown={(e) => {
               if (e.key === "Enter" && newFolder.trim()) {
                 onCreateFolderAndMove(note.id, newFolder.trim());
-                setNewFolder("");
+                close();
               }
             }}
             placeholder={t("notes.context.newFolder")}
-            className="input-inline w-full px-2 py-1 text-xs outline-none border-none"
+            className="input-inline h-7 flex-1 border-none bg-transparent text-sm outline-none"
           />
         </div>
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Row "…" menu; swallows clicks so pressing it never activates the row. */
+function RowMenu({
+  label,
+  onAction,
+  children,
+}: {
+  label: string;
+  onAction: (key: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="contents" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <Dropdown>
+        <Dropdown.Trigger aria-label={label} className={cn(buttonClass, "flex items-center justify-center")}>
+          <MoreHorizontal size={12} />
+        </Dropdown.Trigger>
+        <Dropdown.Popover placement="bottom end" className="min-w-44">
+          <Dropdown.Menu aria-label={label} onAction={(key) => onAction(String(key))}>
+            {children}
+          </Dropdown.Menu>
+        </Dropdown.Popover>
+      </Dropdown>
+    </span>
   );
 }
 
@@ -252,6 +288,7 @@ function NoteRow({
     spaceId: number;
   }) => { draggable: true; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
 }) {
+  const [moveOpen, setMoveOpen] = useState(false);
   return (
     <div
       title={note.title || t("notes.list.untitled")}
@@ -271,56 +308,49 @@ function NoteRow({
       })}
       className={cn(
         rowClass,
-        selected && "bg-foreground/8",
+        selected && "bg-default",
         level === 1 ? "ps-[30px]" : "ps-[14px]",
         dragState.draggingNoteId === note.id && "opacity-40"
       )}
     >
-      <FileText size={14} className="shrink-0 text-foreground/50" />
+      <FileText size={14} className="shrink-0 text-muted" />
       <span dir="auto" className="text-ui truncate min-w-0 flex-1 text-foreground/85">
         {note.title || t("notes.list.untitled")}
       </span>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t("common.actions")}
-            onClick={(e) => e.stopPropagation()}
-            className={buttonClass}
-          >
-            <MoreHorizontal size={12} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={4} className="min-w-40">
-          {noteFilesEnabled && (
-            <DropdownMenuItem
-              onClick={() => window.electronAPI?.showNoteFile?.(note.id)}
-              className={menuClass}
-            >
-              <ExternalLink size={11} />
-              {t("notes.context.showInFileManager", { manager: managerName() })}
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuSeparator />
-          <MoveMenu
-            note={note}
-            spaces={spaces}
-            folders={folders}
-            onMove={onMove}
-            onCreateFolderAndMove={onCreateFolderAndMove}
-            t={t}
-          />
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => onDelete(note.id)}
-            className={cn(menuClass, "text-destructive focus:text-destructive")}
-          >
-            <Trash2 size={11} />
-            {t("notes.context.delete")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <RowMenu
+        label={t("common.actions")}
+        onAction={(key) => {
+          if (key === "show") window.electronAPI?.showNoteFile?.(note.id);
+          else if (key === "move") setMoveOpen(true);
+          else if (key === "delete") onDelete(note.id);
+        }}
+      >
+        {noteFilesEnabled && (
+          <Dropdown.Item id="show" textValue={t("notes.context.showInFileManager", { manager: managerName() })}>
+            <ExternalLink size={14} className="shrink-0 text-muted" />
+            <Label>{t("notes.context.showInFileManager", { manager: managerName() })}</Label>
+          </Dropdown.Item>
+        )}
+        <Dropdown.Item id="move" textValue={t("notes.context.moveToFolder")}>
+          <FolderOpen size={14} className="shrink-0 text-muted" />
+          <Label>{t("notes.context.moveToFolder")}…</Label>
+        </Dropdown.Item>
+        <Separator className="my-1" />
+        <Dropdown.Item id="delete" variant="danger" textValue={t("notes.context.delete")}>
+          <Trash2 size={14} className="shrink-0" />
+          <Label>{t("notes.context.delete")}</Label>
+        </Dropdown.Item>
+      </RowMenu>
+      <MoveDialog
+        open={moveOpen}
+        onOpenChange={setMoveOpen}
+        note={note}
+        spaces={spaces}
+        folders={folders}
+        onMove={onMove}
+        onCreateFolderAndMove={onCreateFolderAndMove}
+        t={t}
+      />
     </div>
   );
 }
@@ -380,14 +410,14 @@ function FolderRow({
         className={cn(
           rowClass,
           "ps-[14px]",
-          selected && "bg-foreground/8",
+          selected && "bg-default",
           highlighted && "ring-1 ring-primary bg-primary/10"
         )}
       >
         <TreeToggle open={expanded} onToggle={onToggle} icon={<Folder size={14} />} />
         <span className="text-ui truncate flex-1 text-foreground/85">
           {defaultFolderDisplayName(folder, t)}
-          {count > 0 && <span className="ms-1 text-2xs text-foreground/40">{count}</span>}
+          {count > 0 && <span className="ms-1 text-2xs text-muted">{count}</span>}
         </span>
         <Button
           variant="ghost"
@@ -402,66 +432,63 @@ function FolderRow({
           <Plus size={12} />
         </Button>
         {(!folder.is_default || noteFilesEnabled) && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t("common.actions")}
-                onClick={(e) => e.stopPropagation()}
-                className={buttonClass}
-              >
-                <MoreHorizontal size={12} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-32">
-              {noteFilesEnabled && (
-                <DropdownMenuItem
-                  onClick={() => window.electronAPI?.showFolderInExplorer?.(folder.name)}
-                  className={menuClass}
-                >
-                  <ExternalLink size={11} />
-                  {t("notes.context.showInFileManager", { manager: managerName() })}
-                </DropdownMenuItem>
-              )}
-              {!folder.is_default && (
-                <>
-                  <DropdownMenuItem onClick={onRename} className={menuClass}>
-                    <Pencil size={11} />
-                    {t("notes.context.rename")}
-                  </DropdownMenuItem>
-                  {spaces.length > 1 && (
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger className={menuClass}>
-                        <FolderOpen size={11} />
-                        {t("notes.spaces.moveToSpace")}
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className={submenuClass}>
-                        {spaces.map((space) => (
-                          <DropdownMenuItem
-                            key={space.id}
-                            disabled={space.id === folder.space_id}
-                            onClick={() => onMove(space)}
-                            className={menuClass}
-                          >
-                            {space.name}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={onDelete}
-                    className={cn(menuClass, "text-destructive focus:text-destructive")}
+          <RowMenu
+            label={t("common.actions")}
+            onAction={(key) => {
+              if (key === "show") window.electronAPI?.showFolderInExplorer?.(folder.name);
+              else if (key === "rename") onRename();
+              else if (key === "delete") onDelete();
+              else if (key.startsWith("space:")) {
+                const space = spaces.find((item) => `space:${item.id}` === key);
+                if (space) onMove(space);
+              }
+            }}
+          >
+            {noteFilesEnabled && (
+              <Dropdown.Item id="show" textValue={t("notes.context.showInFileManager", { manager: managerName() })}>
+                <ExternalLink size={14} className="shrink-0 text-muted" />
+                <Label>{t("notes.context.showInFileManager", { manager: managerName() })}</Label>
+              </Dropdown.Item>
+            )}
+            {!folder.is_default && (
+              <Dropdown.Item id="rename" textValue={t("notes.context.rename")}>
+                <Pencil size={14} className="shrink-0 text-muted" />
+                <Label>{t("notes.context.rename")}</Label>
+              </Dropdown.Item>
+            )}
+            {!folder.is_default && spaces.length > 1 && (
+              <Dropdown.SubmenuTrigger>
+                <Dropdown.Item id="move-space" textValue={t("notes.spaces.moveToSpace")}>
+                  <FolderOpen size={14} className="shrink-0 text-muted" />
+                  <Label>{t("notes.spaces.moveToSpace")}</Label>
+                  <Dropdown.SubmenuIndicator />
+                </Dropdown.Item>
+                <Dropdown.Popover className="min-w-40">
+                  <Dropdown.Menu
+                    aria-label={t("notes.spaces.moveToSpace")}
+                    disabledKeys={[`space:${folder.space_id}`]}
+                    onAction={(key) => {
+                      const space = spaces.find((item) => `space:${item.id}` === key);
+                      if (space) onMove(space);
+                    }}
                   >
-                    <Trash2 size={11} />
-                    {t("notes.context.delete")}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    {spaces.map((space) => (
+                      <Dropdown.Item key={space.id} id={`space:${space.id}`} textValue={space.name}>
+                        <Label dir="auto">{space.name}</Label>
+                      </Dropdown.Item>
+                    ))}
+                  </Dropdown.Menu>
+                </Dropdown.Popover>
+              </Dropdown.SubmenuTrigger>
+            )}
+            {!folder.is_default && <Separator className="my-1" />}
+            {!folder.is_default && (
+              <Dropdown.Item id="delete" variant="danger" textValue={t("notes.context.delete")}>
+                <Trash2 size={14} className="shrink-0" />
+                <Label>{t("notes.context.delete")}</Label>
+              </Dropdown.Item>
+            )}
+          </RowMenu>
         )}
       </div>
       <div
@@ -664,7 +691,7 @@ export default function SpacesTree({
   if (loading && spaces.length === 0)
     return (
       <div className="flex-1 flex items-start justify-center py-8">
-        <Loader2 size={12} className="animate-spin text-foreground/45" />
+        <Loader2 size={12} className="animate-spin text-muted" />
       </div>
     );
   const renderNote = (note: NoteItem, level: 1 | 2) => (
@@ -735,7 +762,7 @@ export default function SpacesTree({
               if (e.key === "Escape") setRenamingFolder(null);
             }}
             onBlur={() => void rename(folder)}
-            className="w-full h-6 px-2 text-xs bg-foreground/5 rounded"
+            className="w-full h-6 px-2 text-xs bg-default rounded"
           />
         </div>
       );
@@ -820,7 +847,7 @@ export default function SpacesTree({
                 <span className="text-ui truncate flex-1 text-foreground/85">
                   {space.name || t("notes.spaces.personal")}
                 </span>
-                {count > 0 && <span className="text-2xs text-foreground/40">{count}</span>}
+                {count > 0 && <span className="text-2xs text-muted">{count}</span>}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -847,7 +874,7 @@ export default function SpacesTree({
                       if (e.key === "Escape") setNewFolderSpace(null);
                     }}
                     onBlur={() => void createFolderIn(space.id)}
-                    className="w-full h-6 px-2 text-xs bg-foreground/5 rounded"
+                    className="w-full h-6 px-2 text-xs bg-default rounded"
                   />
                 </div>
               )}

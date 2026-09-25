@@ -1995,7 +1995,7 @@
       "connect": "Connect Google Calendar",
       "connecting": "Connecting...",
       "connected": "Connected",
-      "notConfigured": "Not configured. Set up OAuth to connect.",
+      "notConfigured": "Set up OAuth to connect.",
       "addAnother": "Add another calendar",
       "primaryOnly": "Sync primary calendar only",
       "primaryOnlyDescription": "Ignore events from calendars shared with you.",
@@ -2013,7 +2013,7 @@
       "description": "Read meetings from your Outlook or Microsoft 365 calendar.",
       "connect": "Connect Microsoft Calendar",
       "connected": "Connected",
-      "notConfigured": "Not configured. Set up OAuth to connect.",
+      "notConfigured": "Set up OAuth to connect.",
       "addAnother": "Add another calendar",
       "primaryOnly": "Sync primary calendar only",
       "primaryOnlyDescription": "Ignore events from calendars shared with you.",
@@ -2043,6 +2043,9 @@
     "notABot": {
       "title": "OpenHercules is a meeting recorder, not a bot",
       "description": "OpenHercules captures audio directly from your system — it never joins your meetings as a participant. Just connect your calendar and take notes as normal."
+    },
+    "status": {
+      "notConfigured": "Not configured"
     }
   },
   "notesView": {
@@ -2101,7 +2104,12 @@
     "undock": "Undock from sidebar",
     "close": "Close chat",
     "newChat": "New chat",
-    "conversationSelector": "Switch conversation"
+    "conversationSelector": "Switch conversation",
+    "suggestions": {
+      "summary": "Summarize this note",
+      "actions": "What are the action items?",
+      "decisions": "What was decided?"
+    }
   },
   "transcriptionPreview": {
     "label": "Preview",

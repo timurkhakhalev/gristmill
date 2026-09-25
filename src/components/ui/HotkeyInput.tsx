@@ -634,7 +634,7 @@ export function HotkeyInput({
           e.stopPropagation();
           onClear();
         }}
-        className="rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 outline-none focus-visible:ring-2 focus-visible:ring-ring/30 transition-opacity duration-150 text-muted-foreground/70 hover:text-destructive cursor-pointer"
+        className="rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 outline-none focus-visible:ring-2 focus-visible:ring-focus transition-opacity duration-150 text-muted hover:text-danger cursor-pointer"
       >
         <Trash2 className="w-3.5 h-3.5" />
       </button>
@@ -685,7 +685,7 @@ export function HotkeyInput({
             disabled
               ? "bg-subtle/30 border-border cursor-not-allowed opacity-50"
               : isCapturing
-                ? "bg-primary/5 border-primary/30 shadow-[0_0_0_2px_rgba(37,99,212,0.1)]"
+                ? "bg-accent-soft border-focus ring-2 ring-focus/20"
                 : "bg-surface-1 border-border hover:border-border-hover hover:bg-surface-2"
           }
         `}
@@ -724,7 +724,7 @@ export function HotkeyInput({
             {validationWarning && (
               <div className="flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-md bg-warning/8 border border-warning/20 dark:bg-warning/12 dark:border-warning/25">
                 <AlertTriangle className="w-3 h-3 text-warning shrink-0" />
-                <span className="text-xs text-warning dark:text-amber-400">
+                <span className="text-xs text-warning">
                   {validationWarning}
                 </span>
               </div>
@@ -738,7 +738,7 @@ export function HotkeyInput({
                 hotkeyParts.map((part, i) => (
                   <React.Fragment key={part}>
                     {i > 0 && (
-                      <span className="text-muted-foreground/70 text-lg font-light">+</span>
+                      <span className="text-muted text-lg font-light">+</span>
                     )}
                     <kbd className="px-3 py-1.5 bg-surface-raised border border-border rounded-sm text-sm font-semibold text-foreground shadow-sm">
                       {part}
@@ -761,7 +761,7 @@ export function HotkeyInput({
                 </kbd>
               )}
             </div>
-            <span className="text-xs text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
+            <span className="text-xs text-muted group-hover:text-muted-foreground transition-colors">
               {t("hotkeyInput.clickToChange")}
             </span>
           </div>
@@ -796,7 +796,7 @@ export function HotkeyInput({
           disabled
             ? "bg-subtle/30 border-border cursor-not-allowed opacity-50"
             : isCapturing
-              ? "bg-primary/5 border-primary/30 shadow-[0_0_0_2px_rgba(37,99,212,0.1)]"
+              ? "bg-accent-soft border-focus ring-2 ring-focus/20"
               : "bg-surface-1 border-border hover:border-border-hover hover:bg-surface-2"
         }
       `}
@@ -840,7 +840,7 @@ export function HotkeyInput({
             {validationWarning && (
               <div className="flex items-center gap-1.5 mt-1.5 px-3 py-1.5 rounded-md bg-warning/8 border border-warning/20 dark:bg-warning/12 dark:border-warning/25">
                 <AlertTriangle className="w-3 h-3 text-warning shrink-0" />
-                <span className="text-xs text-warning dark:text-amber-400">
+                <span className="text-xs text-warning">
                   {validationWarning}
                 </span>
               </div>
@@ -856,7 +856,7 @@ export function HotkeyInput({
                 <div dir="ltr" className="flex items-center gap-1">
                   {hotkeyParts.map((part, i) => (
                     <React.Fragment key={part}>
-                      {i > 0 && <span className="text-muted-foreground/70 text-xs">+</span>}
+                      {i > 0 && <span className="text-muted text-xs">+</span>}
                       <kbd className="px-2 py-0.5 bg-surface-raised border border-border rounded-sm text-xs font-semibold text-foreground">
                         {part}
                       </kbd>
@@ -881,7 +881,7 @@ export function HotkeyInput({
                   {displayValue}
                 </kbd>
               )}
-              <span className="text-xs text-muted-foreground/70">
+              <span className="text-xs text-muted">
                 {t("hotkeyInput.clickToChangeLower")}
               </span>
               {clearButton}

@@ -1,9 +1,6 @@
 import React from "react";
-import { useTranslation } from "react-i18next";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "../icons";
+import { Modal } from "@heroui/react";
 import { SettingsLayoutProvider } from "./useSettingsLayout";
-import { useDismissGuard } from "./useDismissGuard";
 
 export interface SidebarItem<T extends string> {
   id: T;
@@ -42,8 +39,6 @@ export default function SidebarModal<T extends string>({
   version,
   header,
 }: SidebarModalProps<T>) {
-  const { t } = useTranslation();
-  const { registerContent, shouldBlockDismiss } = useDismissGuard<HTMLDivElement>();
 
   const [isCompact, setIsCompact] = React.useState(false);
   const observerRef = React.useRef<ResizeObserver | null>(null);
@@ -94,7 +89,7 @@ export default function SidebarModal<T extends string>({
             ? "bg-primary/10 text-primary dark:bg-primary/15"
             : item.badgeVariant === "update"
               ? "bg-warning/10 text-warning dark:bg-warning/15"
-              : "bg-subtle text-muted-foreground"
+              : "bg-subtle text-muted"
         }`}
       >
         {item.badge}
@@ -105,30 +100,17 @@ export default function SidebarModal<T extends string>({
   const actualSidebarWidth = isCompact ? "w-12" : sidebarWidth;
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content
-          ref={registerContent}
-          onEscapeKeyDown={(e) => {
-            if (document.querySelector("[data-capturing]")) e.preventDefault();
-          }}
-          onInteractOutside={(e) => {
-            // A dropdown open over this panel makes the panel inert, so the
-            // click that closes the dropdown lands on the overlay and would
-            // otherwise take the whole settings modal with it.
-            if (shouldBlockDismiss(e)) e.preventDefault();
-          }}
-          className="fixed left-[50%] top-[50%] z-50 outline-none max-h-[85vh] w-[90vw] max-w-4xl translate-x-[-50%] translate-y-[-50%] rounded-xl p-0 overflow-hidden bg-background border border-border shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] dark:bg-surface-1 dark:border-border-subtle dark:shadow-[0_25px_60px_-12px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.05)] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-98 data-[state=open]:zoom-in-98"
-        >
-          <div className="relative h-full max-h-[85vh] overflow-hidden">
-            <DialogPrimitive.Close className="absolute end-4 top-4 z-10 flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-default hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-focus">
-              <X className="size-4" />
-              <span className="sr-only">{t("common.close")}</span>
-            </DialogPrimitive.Close>
+    <Modal isOpen={open} onOpenChange={onOpenChange}>
+      <Modal.Backdrop>
+        <Modal.Container className="p-4">
+          <Modal.Dialog
+            aria-label={title}
+            className="h-[85vh] max-h-[85vh] w-[90vw] max-w-4xl overflow-hidden rounded-xl border border-border bg-background p-0 shadow-overlay dark:bg-surface-1"
+          >
+          <div className="relative h-full overflow-hidden">
+            <Modal.CloseTrigger className="end-4 top-4 z-10" />
 
             <div ref={containerRef} className="flex h-[85vh]">
-              <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
 
               {/* Sidebar */}
               <div
@@ -147,7 +129,7 @@ export default function SidebarModal<T extends string>({
                     <div key={groupIndex} className={groupIndex > 0 ? "mt-4" : ""}>
                       {!isCompact && group.label && (
                         <div className="px-2 pb-1">
-                          <span className="text-2xs font-medium text-muted-foreground/70 dark:text-muted-foreground/65">
+                          <span className="text-2xs font-medium text-muted">
                             {group.label}
                           </span>
                         </div>
@@ -168,14 +150,14 @@ export default function SidebarModal<T extends string>({
                               } ${
                                 isActive
                                   ? "text-foreground bg-subtle dark:bg-surface-raised"
-                                  : "text-muted-foreground dark:text-foreground/75 hover:text-foreground hover:bg-subtle/50 dark:hover:bg-surface-2"
+                                  : "text-muted hover:text-foreground hover:bg-subtle/60 dark:hover:bg-surface-2"
                               }`}
                             >
                               <Icon
                                 className={`h-4 w-4 shrink-0 transition-colors duration-100 ${
                                   isActive
                                     ? "text-primary"
-                                    : "text-muted-foreground/70 dark:text-foreground/55 group-hover:text-foreground/80"
+                                    : "text-muted group-hover:text-foreground/80"
                                 }`}
                               />
                               {!isCompact && (
@@ -189,7 +171,7 @@ export default function SidebarModal<T extends string>({
                                   {item.shortcut && !item.badge && (
                                     <kbd
                                       dir="ltr"
-                                      className="ms-auto text-xs text-muted-foreground/70 font-mono shrink-0"
+                                      className="ms-auto text-xs text-muted font-mono shrink-0"
                                     >
                                       {item.shortcut}
                                     </kbd>
@@ -219,7 +201,7 @@ export default function SidebarModal<T extends string>({
                       {!isCompact && (
                         <span
                           dir="ltr"
-                          className="text-xs text-muted-foreground/70 tabular-nums tracking-wide"
+                          className="text-xs text-muted tabular-nums tracking-wide"
                         >
                           v{version}
                         </span>
@@ -237,8 +219,9 @@ export default function SidebarModal<T extends string>({
               </div>
             </div>
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
+    </Modal>
   );
 }

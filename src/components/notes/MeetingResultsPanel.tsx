@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { Button, Dropdown, Label, ListBox, Modal, Popover, Select } from "@heroui/react";
 import { useTranslation } from "react-i18next";
@@ -13,6 +13,7 @@ import { ConfirmDialog } from "../ui/dialog";
 import { useDialogs } from "../../hooks/useDialogs";
 import { openSettings } from "../../utils/openSettings";
 import { NoteNotice } from "./NoteNotices";
+import { ToastContext } from "../ui/useToast";
 import NoteViewSwitch from "./NoteViewSwitch";
 import { IconTooltip } from "../ui/IconTooltip";
 
@@ -64,6 +65,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState("");
   const [message, setMessage] = useState("");
+  const toastApi = useContext(ToastContext);
+  // Outcomes of one-off actions go to a toast; the inline line is only a fallback outside ToastProvider.
+  const notify = useCallback((text: string, variant: "default" | "destructive" | "success" = "default") => {
+    if (!text) return setMessage("");
+    if (toastApi) toastApi.toast({ title: text, variant });
+    else setMessage(text);
+  }, [toastApi]);
   const [busy, setBusy] = useState(false);
   const [runChoice, setRunChoice] = useState<RunChoice | null>(null);
   const [provider, setProvider] = useState("");
@@ -80,7 +88,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     if (previewRecordings) return;
     const result = await window.electronAPI.meetingProcessingListForNote(noteId);
     if (result.success) setRecordings(result.recordings ?? []);
-    else setMessage(result.error || t("meetingResults.loadError"));
+    else notify(result.error || t("meetingResults.loadError"), "destructive");
   }, [noteId, previewRecordings, t]);
   useEffect(() => {
     if (previewRecordings) { setRecordings(previewRecordings); return; }
@@ -128,18 +136,18 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     : asrProviders.find((item) => item.id === provider)?.models ?? [];
 
   const runTask = async (task: () => Promise<void>) => {
-    setBusy(true); setMessage("");
+    setBusy(true);
     try { await task(); await refresh(); }
-    catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    catch (error) { notify(error instanceof Error ? error.message : String(error), "destructive"); }
     finally { setBusy(false); }
   };
 
   const startAudio = async (id: string, seek = 0) => {
     if (playingId === id && audioRef.current && seek === 0) { audioRef.current.pause(); setPlayingId(null); return; }
-    if (previewRecordings) { setMessage(tr("previewAudio", "Preview audio is unavailable.")); return; }
+    if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; }
     if (!parts.some((item) => item.recording.id === id)) return;
     const path = await window.electronAPI.meetingRecordingGetPlaybackPath(id);
-    if (!path.success || !path.path) { setMessage(path.error || t("meetingResults.playbackError")); return; }
+    if (!path.success || !path.path) { notify(path.error || t("meetingResults.playbackError"), "destructive"); return; }
     const url = new URL(path.path, "file://").href;
     if (audioRef.current) {
       if (audioUrl !== url) {
@@ -153,7 +161,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         });
       }
       audioRef.current.currentTime = seek;
-      await audioRef.current.play().catch(() => setMessage(t("meetingResults.playbackError")));
+      await audioRef.current.play().catch(() => notify(t("meetingResults.playbackError"), "destructive"));
       setPlayingId(id); setAudioUrl(url);
     }
   };
@@ -173,7 +181,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
   const createRun = () => runTask(async () => {
     if (!runChoice || !parts.length) return;
-    if (previewRecordings) { setMessage("Mock processing queued in memory"); setRunChoice(null); return; }
+    if (previewRecordings) { notify("Mock processing queued in memory"); setRunChoice(null); return; }
     const snapshot = snapshotMeetingRecordingConfig();
     const savedConfig = (runChoice.kind === "summary" ? versions.find((item) => item.run.id === sourceRunId) : selected)?.run.config;
     const baseConfig = snapshot.config ?? savedConfig;
@@ -265,10 +273,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   });
 
   const exportPart = (id: string, source: "mic" | "system") => runTask(async () => {
-    if (previewRecordings) { setMessage(tr("previewAudio", "Preview audio is unavailable.")); return; }
+    if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; }
     const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: id, source });
     if (!result.success) throw new Error(result.error || t("meetingResults.exportError"));
-    setMessage(t("meetingResults.exported"));
+    notify(t("meetingResults.exported"), "success");
   });
 
   return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">
@@ -334,15 +342,15 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       const needsConfig = status === "blocked" && Boolean(latestRun.run.configError || !latestRun.run.config || errorCode === "missing-summary-config");
       const settingsSection = stage === "summary" || errorCode === "missing-summary-config" ? "llms" : "speechToText";
       const actions = <>
-        {needsConfig && <Button size="sm" variant="secondary" onPress={() => openSettings(settingsSection)}>{t("meetingResults.openSettings")}</Button>}
-        {needsConfig && <Button size="sm" variant="ghost" isDisabled={busy} onPress={() => void runTask(async () => {
-          if (previewRecordings) { setMessage("Mock settings updated in memory"); return; }
+        {needsConfig && <Button size="sm" onPress={() => openSettings(settingsSection)}>{t("meetingResults.openSettings")}</Button>}
+        {needsConfig && <Button size="sm" variant="tertiary" isPending={busy} onPress={() => void runTask(async () => {
+          if (previewRecordings) { notify("Mock settings updated in memory"); return; }
           const snapshot = snapshotMeetingRecordingConfig(latestRun.run.stage === "summary" && latestRun.transcript ? latestRun.run.config?.transcription : undefined);
           const result = await window.electronAPI.meetingProcessingUpdateBlockedRunConfig({ runId: latestRun.run.id, config: snapshot.config, configError: snapshot.configError });
           if (!result.success) throw new Error(result.error || t("meetingResults.updateConfigError"));
         })}>{t("meetingResults.updateRunSettings")}</Button>}
-        {(status === "failed" || (status === "blocked" && !needsConfig)) && <Button size="sm" variant="secondary" isDisabled={busy} onPress={() => void runTask(async () => {
-          if (previewRecordings) { setMessage("Mock retry queued in memory"); return; }
+        {(status === "failed" || (status === "blocked" && !needsConfig)) && <Button size="sm" variant="secondary" isPending={busy} onPress={() => void runTask(async () => {
+          if (previewRecordings) { notify("Mock retry queued in memory"); return; }
           const result = await window.electronAPI.meetingProcessingRetryRun(latestRun.run.id);
           if (!result.success) throw new Error(result.error || t("meetingResults.retryError"));
         })}>{t("meetingResults.retry")}</Button>}
@@ -360,7 +368,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           if (key === "asr") openRun("reprocess");
           if (key === "summary") openRun("summary");
           if (key === "copy") void navigator.clipboard.writeText(viewMode === "enhanced" ? selected.summary?.text ?? "" : selected.transcript?.text ?? "");
-          if (key === "export") void runTask(async () => { if (previewRecordings) { setMessage(tr("previewAudio", "Preview audio is unavailable.")); return; } const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: selected.run.recordingId, runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? undefined : selected.run.id, source: "mixed" }); if (!result.success) throw new Error(result.error || t("meetingResults.exportError")); });
+          if (key === "export") void runTask(async () => { if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; } const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: selected.run.recordingId, runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? undefined : selected.run.id, source: "mixed" }); if (!result.success) throw new Error(result.error || t("meetingResults.exportError")); });
         }}>
           <Dropdown.Item id="asr" isDisabled={!availableParts.length} textValue={t("meetingResults.newAsr")}>{t("meetingResults.newAsr")}</Dropdown.Item>
           <Dropdown.Item id="summary" textValue={t("meetingResults.newSummary")}>{t("meetingResults.newSummary")}</Dropdown.Item>

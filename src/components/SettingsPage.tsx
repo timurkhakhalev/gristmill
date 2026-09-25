@@ -363,7 +363,7 @@ function HotkeysSettings() {
               disabled={isRegistering}
             />
             {lastError && (
-              <p role="alert" className="text-xs text-destructive">
+              <p role="alert" className="text-xs text-danger">
                 {lastError}
               </p>
             )}
@@ -426,7 +426,7 @@ function SystemSettings() {
         </Row>
         {error && (
           <SettingsPanelRow>
-            <p role="alert" className="text-xs text-destructive">
+            <p role="alert" className="text-xs text-danger">
               {error}
             </p>
           </SettingsPanelRow>

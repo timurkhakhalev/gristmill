@@ -28,7 +28,7 @@ export default function StepProgress({ steps, currentStep, className = "" }: Ste
                   ? "bg-primary/10 text-primary"
                   : isCompleted
                     ? "text-success"
-                    : "text-muted-foreground/70"
+                    : "text-muted"
               }`}
             >
               <div
@@ -37,7 +37,7 @@ export default function StepProgress({ steps, currentStep, className = "" }: Ste
                     ? "bg-accent text-accent-foreground"
                     : isCompleted
                       ? "bg-success/15 text-success"
-                      : "bg-subtle text-muted-foreground/70"
+                      : "bg-subtle text-muted"
                 }`}
               >
                 {isCompleted ? (
@@ -52,7 +52,7 @@ export default function StepProgress({ steps, currentStep, className = "" }: Ste
                     ? "text-primary"
                     : isCompleted
                       ? "text-success"
-                      : "text-muted-foreground/70"
+                      : "text-muted"
                 }`}
               >
                 {step.title}

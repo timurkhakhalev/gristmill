@@ -29,8 +29,8 @@ export function UploadModelSettingsButton({
       disabled={!onOpenSettings}
       className={cn(
         "rounded-sm underline underline-offset-2 decoration-foreground/30 transition-colors",
-        "hover:text-foreground hover:decoration-foreground/50 active:text-foreground/50",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-1",
+        "hover:text-foreground hover:decoration-foreground/50 active:text-muted",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-1",
         "disabled:pointer-events-none disabled:no-underline disabled:opacity-50",
         className
       )}
@@ -56,7 +56,7 @@ export function UploadCompleteWarnings({
   return (
     <>
       {partialWarning && (
-        <p className={cn(COMPLETION_WARNING, "text-destructive/50")}>
+        <p className={cn(COMPLETION_WARNING, "text-danger/50")}>
           {t("notes.upload.partialWarningCount", {
             failed: partialWarning.failed,
             total: partialWarning.total,

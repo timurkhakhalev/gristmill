@@ -95,21 +95,21 @@ export default function AddNotesToFolderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-96 p-0 gap-0 overflow-hidden" aria-describedby={undefined}>
+      <DialogContent size="sm" className="gap-0 overflow-hidden p-0">
         <DialogTitle className="sr-only">{t("notes.addToFolder.title")}</DialogTitle>
 
         <div className="px-4 pe-12 pt-4 pb-2">
           <div className="relative">
             <Search
               size={13}
-              className="absolute start-2.5 top-1/2 -translate-y-1/2 text-foreground/45"
+              className="absolute start-2.5 top-1/2 -translate-y-1/2 text-muted"
             />
             <input
               dir="auto"
               placeholder={t("notes.addToFolder.searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-8 rounded-md bg-foreground/[0.03] dark:bg-white/[0.04] border border-foreground/8 dark:border-white/10 ps-8 pe-3 text-xs text-foreground placeholder:text-foreground/45 outline-none focus:border-primary/30 transition-colors"
+              className="w-full h-8 rounded-md bg-foreground/[0.03] dark:bg-white/[0.04] border border-foreground/8 dark:border-white/10 ps-8 pe-3 text-xs text-foreground placeholder:text-muted outline-none focus:border-primary/30 transition-colors"
               autoFocus
             />
           </div>
@@ -118,7 +118,7 @@ export default function AddNotesToFolderDialog({
         <div className="max-h-80 overflow-y-auto px-2 pb-2">
           {grouped.length === 0 ? (
             <div className="flex items-center justify-center py-10">
-              <p className="text-xs text-foreground/45">
+              <p className="text-xs text-muted">
                 {search
                   ? t("notes.addToFolder.noResults")
                   : t("notes.addToFolder.noNotesAvailable")}
@@ -127,7 +127,7 @@ export default function AddNotesToFolderDialog({
           ) : (
             grouped.map(([dateLabel, notes]) => (
               <div key={dateLabel}>
-                <p className="text-xs font-medium text-foreground/45 px-2 pt-3 pb-1.5">
+                <p className="text-xs font-medium text-muted px-2 pt-3 pb-1.5">
                   {dateLabel}
                 </p>
                 {notes.map((note) => {
@@ -138,12 +138,12 @@ export default function AddNotesToFolderDialog({
                       onClick={() => toggleNote(note.id)}
                       className={cn(
                         "w-full flex items-center gap-3 px-2 py-2 rounded-md transition-colors",
-                        "hover:bg-foreground/3 dark:hover:bg-white/3",
+                        "hover:bg-default dark:hover:bg-white/3",
                         isSelected && "bg-primary/5 dark:bg-primary/8"
                       )}
                     >
                       <div className="w-7 h-7 rounded-md bg-foreground/[0.03] dark:bg-white/[0.04] border border-foreground/6 dark:border-white/10 flex items-center justify-center shrink-0">
-                        <FileText size={12} className="text-foreground/45" />
+                        <FileText size={12} className="text-muted" />
                       </div>
                       <div className="flex-1 min-w-0 text-start">
                         <p className="text-xs text-foreground/80 truncate">
@@ -152,7 +152,7 @@ export default function AddNotesToFolderDialog({
                       </div>
                       <div
                         className={cn(
-                          "w-4 h-4 rounded-[3px] border shrink-0 flex items-center justify-center transition-colors",
+                          "w-4 h-4 rounded-sm border shrink-0 flex items-center justify-center transition-colors",
                           isSelected
                             ? "bg-accent border-accent"
                             : "border-foreground/15 dark:border-white/15"
@@ -168,7 +168,7 @@ export default function AddNotesToFolderDialog({
           )}
         </div>
 
-        <div className="px-4 py-3 border-t border-border/70 dark:border-white/10 flex justify-end">
+        <div className="px-4 py-3 border-t border-border flex justify-end">
           <Button
             variant="default"
             size="sm"

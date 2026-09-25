@@ -87,7 +87,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 function FieldHint({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs text-muted-foreground/70">{children}</p>;
+  return <p className="text-xs text-muted">{children}</p>;
 }
 
 function useSuggestedModels(provider: "bedrock" | "vertex") {
@@ -325,7 +325,7 @@ function BedrockConfig({ reasoningModel, setReasoningModel }: EnterpriseProvider
           </Button>
           {catalog.status === "error" && (
             <FieldHint>
-              <span role="alert" className="text-destructive">
+              <span role="alert" className="text-danger">
                 {catalog.error}
               </span>
             </FieldHint>

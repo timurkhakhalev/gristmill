@@ -46,17 +46,17 @@ export function DownloadProgressBar({
           {!isInstalling && (indeterminate || speedText || etaText) && (
             <div className="flex items-center gap-1.5 mt-0.5">
               {indeterminate && (
-                <span className="text-xs text-muted-foreground/70 tabular-nums">
+                <span className="text-xs text-muted tabular-nums">
                   {formatBytes(downloadedBytes)}
                 </span>
               )}
               {speedText && (
-                <span className="text-xs text-muted-foreground/70 tabular-nums">{speedText}</span>
+                <span className="text-xs text-muted tabular-nums">{speedText}</span>
               )}
               {etaText && (
                 <>
-                  <span className="text-xs text-muted-foreground/70">·</span>
-                  <span className="text-xs text-muted-foreground/70 tabular-nums">{etaText}</span>
+                  <span className="text-xs text-muted">·</span>
+                  <span className="text-xs text-muted tabular-nums">{etaText}</span>
                 </>
               )}
             </div>

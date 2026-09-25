@@ -129,6 +129,7 @@
   /* Border states */
   --color-border-subtle: var(--border);
   --color-border-hover: var(--border-hover);
+  --color-focus: var(--focus);
   --color-border-active: var(--focus);
 
   /* Type scale additions: use these instead of arbitrary text-[Npx] values. */
@@ -858,21 +859,19 @@ body:has(.onboarding-canvas) kbd {
   font-weight: 400;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-family-display);
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-}
+/* Defaults only: layered so size and weight utilities on a heading win. */
+@layer base {
+  :where(h1, h2, h3, h4, h5, h6) {
+    font-family: var(--font-family-display);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+  }
 
-h1 {
-  font-size: 2.5rem;
-  font-weight: 700;
+  :where(h1) {
+    font-size: 2.5rem;
+    font-weight: 700;
+  }
 }
 
 .onboarding-display-title {

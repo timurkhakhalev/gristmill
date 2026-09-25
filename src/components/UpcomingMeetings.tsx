@@ -74,9 +74,9 @@ const ATTENDEE_COUNT_PILL_CLASS =
   "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-surface-3 px-0.5 text-3xs font-medium tabular-nums text-muted-foreground ring-1 ring-background";
 
 const RSVP_DOT: Record<string, string> = {
-  accepted: "bg-green-500",
-  declined: "bg-red-400",
-  tentative: "bg-amber-400",
+  accepted: "bg-success",
+  declined: "bg-danger",
+  tentative: "bg-warning",
 };
 
 function AttendeePopover({
@@ -97,7 +97,7 @@ function AttendeePopover({
       <PopoverTrigger asChild>
         <button
           aria-label={`${attendees.length} ${t("notes.participants.attendees")}`}
-          className="flex shrink-0 items-center -space-x-1 rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring/40"
+          className="flex shrink-0 items-center -space-x-1 rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-1 focus-visible:ring-focus"
         >
           {attendees.slice(0, MAX_STACKED_AVATARS).map((a) => (
             <PersonAvatar
@@ -130,10 +130,10 @@ function AttendeePopover({
                 <p dir="auto" className="truncate text-xs text-foreground/80">
                   {a.displayName || a.email.split("@")[0]}
                   {a.self && (
-                    <span className="ms-1 text-foreground/45">{t("notes.participants.me")}</span>
+                    <span className="ms-1 text-muted">{t("notes.participants.me")}</span>
                   )}
                 </p>
-                <p dir="ltr" className="truncate text-2xs text-foreground/45">
+                <p dir="ltr" className="truncate text-2xs text-muted">
                   {a.email}
                 </p>
               </div>
@@ -150,7 +150,7 @@ function AttendeePopover({
           <div className="border-t border-border/70 p-1">
             <button
               onClick={() => openJoinUrl(joinUrl)}
-              className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground/70 transition-colors hover:bg-foreground/5"
+              className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground/70 transition-colors hover:bg-default"
             >
               <ExternalLink size={12} className="shrink-0" />
               {t("upcoming.openMeetingLink")}
@@ -204,10 +204,10 @@ function EventRow({ event, isNow }: { event: CalendarEvent; isNow: boolean }) {
         {isNow ? (
           <span className="mt-1 flex items-center gap-1.5">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-green-500 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
+              <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-success opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
             </span>
-            <span className="text-xs font-medium text-green-600 dark:text-green-400">
+            <span className="text-xs font-medium text-success">
               {t("upcoming.now")}
             </span>
           </span>
@@ -237,7 +237,7 @@ function DayCard({ group, isNowFn }: { group: DayGroup; isNowFn: (e: CalendarEve
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border/70 dark:border-white/10",
+        "rounded-2xl border border-border",
         !group.isToday && "overflow-clip"
       )}
     >
@@ -262,7 +262,7 @@ function DayCard({ group, isNowFn }: { group: DayGroup; isNowFn: (e: CalendarEve
       </div>
       <div className="rounded-b-[15px] bg-background px-2 dark:bg-surface-2/60">
         {group.items.length === 0 ? (
-          <p className="px-1 py-3 text-xs text-muted-foreground/70">
+          <p className="px-1 py-3 text-xs text-muted">
             {t("upcoming.noEventsToday")}
           </p>
         ) : (

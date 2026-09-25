@@ -36,7 +36,8 @@ Use `pnpm run build:renderer`, `pnpm run typecheck`, `pnpm run lint` and
 the full suite. Both build the main process first. On macOS, the test run uses
 background scheduling and one Node test worker. pnpm refuses to run scripts
 when `node_modules` does not match this worktree's lockfile; install with
-`pnpm install --frozen-lockfile` in that worktree first.
+`pnpm install --frozen-lockfile` in that worktree first. Dependency install
+builds one child package at a time.
 Before the full suite, rebuild SQLite for Node with
 `pnpm --dir node_modules/better-sqlite3 exec prebuild-install`; the test command
 checks the binding before starting and requires DB tests to run.

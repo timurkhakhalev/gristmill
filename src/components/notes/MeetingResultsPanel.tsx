@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
-import { Button, Dropdown, Label, ListBox, Modal, Popover, Select, Tabs } from "@heroui/react";
+import { Button, Dropdown, Label, ListBox, Modal, Popover, Select } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AudioLines, ChevronDown, MoreHorizontal, Play, RotateCcw, Trash2 } from "../icons";
+import { AlignLeft, AudioLines, MessageSquareText, MoreHorizontal, Play, RotateCcw, Sparkles, Trash2 } from "../icons";
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
@@ -13,6 +13,8 @@ import { ConfirmDialog } from "../ui/dialog";
 import { useDialogs } from "../../hooks/useDialogs";
 import { openSettings } from "../../utils/openSettings";
 import { NoteNotice } from "./NoteNotices";
+import NoteViewSwitch from "./NoteViewSwitch";
+import { IconTooltip } from "../ui/IconTooltip";
 
 type ViewMode = "raw" | "enhanced" | "transcript";
 type RunChoice = { kind: "reprocess" | "summary"; partId?: string };
@@ -271,16 +273,29 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
   return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">
     <div className="mb-3 flex items-center justify-between gap-2 pb-3 max-[720px]:flex-wrap">
-      <Tabs className="w-auto shrink-0" selectedKey={viewMode} onSelectionChange={(key) => onViewModeChange(String(key) as ViewMode)} aria-label={tr("contentTabs", "Meeting content")}>
-        <Tabs.List aria-label={tr("contentTabs", "Meeting content")}>
-          <Tabs.Tab id="raw">{t("notes.editor.notes")}<Tabs.Indicator /></Tabs.Tab>
-          <Tabs.Tab id="enhanced">{tr("summaryTab", "Summary")}<Tabs.Indicator /></Tabs.Tab>
-          <Tabs.Tab id="transcript">{t("notes.editor.transcript")}<Tabs.Indicator /></Tabs.Tab>
-        </Tabs.List>
-      </Tabs>
+      <NoteViewSwitch
+        value={viewMode}
+        onChange={onViewModeChange}
+        ariaLabel={tr("contentTabs", "Meeting content")}
+        options={[
+          { id: "raw", label: t("notes.editor.notes"), icon: AlignLeft },
+          { id: "enhanced", label: tr("summaryTab", "Summary"), icon: Sparkles },
+          { id: "transcript", label: t("notes.editor.transcript"), icon: MessageSquareText },
+        ]}
+        versionMenu={viewMode === "raw" ? undefined : {
+          label: t("meetingResults.version"),
+          selectedId,
+          onSelect: (id) => void selectRun(id),
+          items: versions.map((item, index) => ({
+            id: item.run.id,
+            label: `${index + 1} · ${item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / ${(item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model) || "—"}`,
+            detail: dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" }),
+          })),
+        }}
+      />
       <div className="ms-auto flex flex-wrap items-center gap-1.5">
       <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
-        <Button size="sm" variant="tertiary" aria-label={`${tr("audioParts", "Audio")} ${parts.length}`}><AudioLines size={16}/><span className="@max-[620px]:sr-only">{tr("audioParts", "Audio")}</span> <span className="text-xs text-muted">{parts.length}</span></Button>
+        <IconTooltip label={tr("audioParts", "Audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("audioParts", "Audio")} ${parts.length}`}><AudioLines size={16}/>{parts.length > 0 && <span key={parts.length} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{parts.length}</span>}</Button></IconTooltip>
         <Popover.Content placement="bottom end" className="w-[355px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="p-4">
           <Popover.Heading className="text-base font-semibold">{tr("audioParts", "Audio")}</Popover.Heading>
           {groups.length > 1 && <Choice label={t("meetingResults.recording")} value={currentGroup ?? ""} options={groups.map((group) => ({ id: group.recording.groupId, label: dateLabel(group.recording.startedAt, locale, { dateStyle: "medium", timeStyle: "short" }) }))} onChange={setGroupId} />}
@@ -338,10 +353,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       return <NoteNotice status="accent" busy title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
     })()}
 
+    <div key={viewMode} className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-bottom-1">
     {viewMode === "raw" ? manualContent : <div>
       {selected && (viewMode !== "enhanced" || selected.summary?.text) && <div className="flex items-center gap-1.5 text-xs text-muted"><span className="min-w-0 flex-1 truncate">{viewMode === "enhanced" ? selected.run.config?.summary?.provider : selected.run.provider} · {viewMode === "enhanced" ? selected.run.config?.summary?.model : selected.run.model}</span>
-        <Dropdown><Button size="sm" variant="ghost" className="h-7 min-h-7 gap-1 px-2 text-xs">{t("meetingResults.version")} <ChevronDown size={13}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={t("meetingResults.version")} onAction={(key) => void selectRun(String(key))}>{versions.map((item, index) => <Dropdown.Item key={item.run.id} id={item.run.id} textValue={`${t("meetingResults.version")} ${index + 1}`}><Label>{index + 1} · {item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / {item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model || "—"}</Label><span className="text-xs text-muted">{dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" })}</span></Dropdown.Item>)}</Dropdown.Menu></Dropdown.Popover></Dropdown>
-        <Dropdown><Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7" aria-label={tr("resultActions", "Result actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("resultActions", "Result actions")} onAction={(key) => {
+        <Dropdown><IconTooltip label={tr("resultActions", "Result actions")}><Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7" aria-label={tr("resultActions", "Result actions")}><MoreHorizontal size={17}/></Button></IconTooltip><Dropdown.Popover><Dropdown.Menu aria-label={tr("resultActions", "Result actions")} onAction={(key) => {
           if (key === "asr") openRun("reprocess");
           if (key === "summary") openRun("summary");
           if (key === "copy") void navigator.clipboard.writeText(viewMode === "enhanced" ? selected.summary?.text ?? "" : selected.transcript?.text ?? "");
@@ -373,6 +388,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
       </div> : fallbackTranscript}
     </div>}
+    </div>
     {message && <NoteNotice status="default" title={message} />}
     <audio ref={audioRef} preload="metadata" onEnded={() => setPlayingId(null)} />
 

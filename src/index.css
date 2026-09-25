@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@heroui/styles";
+@import "tw-animate-css";
 
 /* Design tokens — single source of truth.
    HeroUI reads these raw variables directly (bg-surface, text-muted, bg-accent…);
@@ -38,6 +39,9 @@
   --field-border: #e4e4e7;
   --field-border-width: 1px;
   --radius: 0.5rem;
+  /* Icon-only controls rely on tooltips, so show them sooner than HeroUI's 1.5s. */
+  --tooltip-delay: 400ms;
+  --tooltip-close-delay: 0ms;
 }
 .dark {
   --background: oklch(0.22 0.006 260);

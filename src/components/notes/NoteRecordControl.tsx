@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { AudioLines, Loader2, Mic, Play, Square } from "../icons";
 import { Pause } from "../icons/primitives";
 import { formatMmSs } from "../../utils/formatDuration";
+import { IconTooltip } from "../ui/IconTooltip";
 
 export function RecordingWave({ className = "" }: { className?: string }) {
   return <AudioLines size={14} className={className} aria-hidden="true" />;
@@ -30,12 +31,14 @@ export default function NoteRecordControl({ isRecording, isProcessing, capturePh
     return () => window.clearInterval(timer);
   }, [isRecording, captureStartedAt]);
 
-  if (capturePhase === "preparing" || capturePhase === "saving") return <div className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-default ps-3 pe-0.5 text-sm pe-3"><Loader2 size={14} className="animate-spin" />{t(`notes.editor.capture.${capturePhase}`)}</div>;
-  if (isRecording || capturePhase === "paused") return <div className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-default ps-3 pe-0.5 text-sm" role="group" aria-label={t("notes.meeting.title")}>
-    <span aria-hidden="true" className={`size-[7px] rounded-full ${capturePhase === "paused" ? "bg-warning" : "bg-danger"}`} />
+  const pauseLabel = capturePhase === "paused" ? t("notes.editor.capture.resume", { defaultValue: "Resume recording" }) : t("notes.editor.capture.pause", { defaultValue: "Pause recording" });
+  const stopLabel = t("notes.editor.capture.finishMeeting", { defaultValue: "End call" });
+  if (capturePhase === "preparing" || capturePhase === "saving") return <div className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-default ps-3 pe-0.5 text-sm pe-3 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"><Loader2 size={14} className="animate-spin" />{t(`notes.editor.capture.${capturePhase}`)}</div>;
+  if (isRecording || capturePhase === "paused") return <div className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-default ps-3 pe-0.5 text-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:zoom-in-95" role="group" aria-label={t("notes.meeting.title")}>
+    <span aria-hidden="true" className={`size-[7px] rounded-full ${capturePhase === "paused" ? "bg-warning" : "bg-danger motion-safe:animate-pulse"}`} />
     <strong className="tabular-nums">{capturePhase === "paused" ? t("notes.editor.capture.paused", { defaultValue: "Paused" }) : formatMmSs(elapsed)}</strong>
-    <Button isIconOnly size="sm" variant="ghost" className="size-7 min-h-7" aria-label={capturePhase === "paused" ? t("notes.editor.capture.resume", { defaultValue: "Resume recording" }) : t("notes.editor.capture.pause", { defaultValue: "Pause recording" })} onPress={capturePhase === "paused" ? onResume : onPause}>{capturePhase === "paused" ? <Play size={16} /> : <Pause size={16} />}</Button>
-    <Button size="sm" variant="secondary" className="h-7 min-h-7" onPress={onStop}><Square size={13} /><span className="@max-[620px]:sr-only">{t("notes.editor.capture.finishMeeting", { defaultValue: "End call" })}</span></Button>
+    <IconTooltip label={pauseLabel}><Button isIconOnly size="sm" variant="ghost" className="size-7 min-h-7" aria-label={pauseLabel} onPress={capturePhase === "paused" ? onResume : onPause}>{capturePhase === "paused" ? <Play size={16} /> : <Pause size={16} />}</Button></IconTooltip>
+    <IconTooltip label={stopLabel}><Button isIconOnly size="sm" variant="secondary" className="size-7 min-h-7" aria-label={stopLabel} onPress={onStop}><Square size={13} /></Button></IconTooltip>
   </div>;
-  return <Button size="sm" isDisabled={disabled || isProcessing} onPress={onStart}><Mic size={16} /><span className="@max-[620px]:sr-only">{t("notes.editor.startRecording")}</span></Button>;
+  return <Button size="sm" className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200" isDisabled={disabled || isProcessing} onPress={onStart}><Mic size={16} /><span className="@max-[620px]:sr-only">{t("notes.editor.startRecording")}</span></Button>;
 }

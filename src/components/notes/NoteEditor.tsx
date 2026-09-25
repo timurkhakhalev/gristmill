@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import {
   Loader2,
-  FileText,
+  Download,
   Sparkles,
   AlignLeft,
   Mic,
@@ -36,7 +36,8 @@ import ActionProcessingOverlay from "./ActionProcessingOverlay";
 import NoteBottomBar from "./NoteBottomBar";
 import NoteRecordControl from "./NoteRecordControl";
 import { CaptureHealthLine, NoteNotice } from "./NoteNotices";
-import { Button as HeroButton } from "@heroui/react";
+import { Button as HeroButton, Dropdown as HeroDropdown } from "@heroui/react";
+import { IconTooltip } from "../ui/IconTooltip";
 import { openSettings } from "../../utils/openSettings";
 import EmptyStateCard from "../ui/EmptyStateCard";
 import { Button } from "../ui/button";
@@ -812,21 +813,25 @@ export default function NoteEditor({
                 />
               )}
               {exportOptions.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm">
-                      <FileText size={14} />
-                      {t("notes.editor.export")}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {exportOptions.map((option) => (
-                      <DropdownMenuItem key={option.id} onSelect={option.onSelect}>
-                        {option.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <HeroDropdown>
+                  <IconTooltip label={t("notes.editor.export")}>
+                    <HeroButton isIconOnly size="sm" variant="ghost" aria-label={t("notes.editor.export")}>
+                      <Download size={16} />
+                    </HeroButton>
+                  </IconTooltip>
+                  <HeroDropdown.Popover placement="bottom end">
+                    <HeroDropdown.Menu
+                      aria-label={t("notes.editor.export")}
+                      onAction={(key) => exportOptions.find((option) => option.id === key)?.onSelect()}
+                    >
+                      {exportOptions.map((option) => (
+                        <HeroDropdown.Item key={option.id} id={option.id} textValue={option.label}>
+                          {option.label}
+                        </HeroDropdown.Item>
+                      ))}
+                    </HeroDropdown.Menu>
+                  </HeroDropdown.Popover>
+                </HeroDropdown>
               )}
             </div>}
               noteId={note.id}

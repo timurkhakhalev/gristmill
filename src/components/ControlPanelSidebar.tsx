@@ -17,26 +17,24 @@ interface ControlPanelSidebarProps {
   activeView: ControlPanelView;
   onViewChange: (view: ControlPanelView) => void;
   onOpenSettings: () => void;
-  collapsed: boolean;
 }
 
 export default function ControlPanelSidebar({
   activeView,
   onViewChange,
   onOpenSettings,
-  collapsed,
 }: ControlPanelSidebarProps) {
   const { t } = useTranslation();
   const navItems = useControlPanelNavItems();
 
   return (
-    <div className={cn("h-full shrink-0 flex flex-col bg-surface-window", collapsed ? "w-20" : "w-48")}>
+    <div className="flex h-full w-48 shrink-0 flex-col bg-surface-window">
       <div
-        className="w-full h-10 shrink-0"
+        className="h-10 w-full shrink-0"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       />
 
-      <nav aria-label={t("sidebar.notes")} className={cn("flex flex-col gap-0.5 pt-2 pb-2", collapsed ? "px-1" : "px-2")}>
+      <nav aria-label={t("sidebar.notes")} className="flex flex-col gap-0.5 px-2 pt-2 pb-2">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeView === item.id;
@@ -48,8 +46,7 @@ export default function ControlPanelSidebar({
               title={item.label}
               aria-label={item.label}
               className={cn(
-                "group relative flex items-center gap-2.5 w-full h-9 rounded-md outline-none transition-colors duration-150 text-start",
-                collapsed ? "flex-col justify-center gap-1 px-0 h-12" : "px-2.5",
+                "group relative flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-start outline-none transition-colors duration-150",
                 "focus-visible:ring-1 focus-visible:ring-primary/30",
                 isActive
                   ? "bg-primary/8 dark:bg-primary/10"
@@ -67,9 +64,9 @@ export default function ControlPanelSidebar({
               />
               <span
                 className={cn(
-                  collapsed ? "max-w-full truncate text-2xs leading-tight" : "text-ui transition-colors duration-150",
+                  "text-ui transition-colors duration-150",
                   isActive
-                    ? "text-foreground font-medium"
+                    ? "font-medium text-foreground"
                     : "text-foreground/90 group-hover:text-foreground dark:text-foreground/85 dark:group-hover:text-foreground"
                 )}
               >
@@ -82,17 +79,16 @@ export default function ControlPanelSidebar({
 
       <div className="flex-1" />
 
-      <div className={cn("pb-2 space-y-0.5", collapsed ? "px-1" : "px-2")}>
+      <div className="space-y-0.5 px-2 pb-2">
         <button
           onClick={onOpenSettings}
           aria-label={t("sidebar.settings")}
-          className={cn(rowButtonClass, collapsed && "flex-col justify-center gap-1 h-12 px-0")}
+          className={rowButtonClass}
           title={t("sidebar.settings")}
         >
           <Settings size={16} className={rowIconClass} />
-          <span className={collapsed ? "max-w-full truncate text-2xs leading-tight text-foreground/90" : rowLabelClass}>{t("sidebar.settings")}</span>
+          <span className={rowLabelClass}>{t("sidebar.settings")}</span>
         </button>
-
       </div>
     </div>
   );

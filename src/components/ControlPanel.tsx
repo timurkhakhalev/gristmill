@@ -1,6 +1,7 @@
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ControlPanelSidebar from "./ControlPanelSidebar";
+import ControlPanelNavDrawer from "./ControlPanelNavDrawer";
 import ControlPanelTopBar from "./ControlPanelTopBar";
 import { useControlPanelNavItems, type ControlPanelView } from "./controlPanelNav";
 import MeetingRecordingMount from "./MeetingRecordingMount";
@@ -20,7 +21,6 @@ import type { NotesDebugScenario } from "./notes/NotesDebugControls";
 import { onOpenSettingsRequest } from "../utils/openSettings";
 
 const SIDEBAR_WIDTH_PX = 192;
-const SIDEBAR_RAIL_WIDTH_PX = 80;
 
 const SettingsModal = React.lazy(() => import("./SettingsModal"));
 const PersonalNotesView = React.lazy(() => import("./notes/PersonalNotesView"));
@@ -57,10 +57,19 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const recordingNoteId = useMeetingRecordingStore((state) => state.recordingNoteId);
   const recordingFolderId = useMeetingRecordingStore((state) => state.recordingFolderId);
   const {
-    collapsed: sidebarCollapsed,
+    narrow,
+    drawerOpen,
     toggle: toggleSidebar,
+    close: closeSidebarDrawer,
   } = useCollapsibleSidebar();
-  const isSidePanelLayout = isMeetingMode;
+  const noteSurfaceOpen =
+    activeView === "personal-notes" &&
+    (activeNoteId != null ||
+      (notesDebugScenario != null &&
+        notesDebugScenario !== "onboarding" &&
+        notesDebugScenario !== "empty"));
+  const isSidePanelLayout = isMeetingMode || (narrow && noteSurfaceOpen);
+  const sidebarInline = !narrow && !isSidePanelLayout;
 
   useEffect(() => {
     const drainMeeting = async () => {
@@ -112,10 +121,24 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
   useEffect(() => onOpenSettingsRequest(openSettings), [openSettings]);
 
+  useEffect(() => {
+    if (isSidePanelLayout) closeSidebarDrawer();
+  }, [isSidePanelLayout, closeSidebarDrawer]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeSidebarDrawer();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen, closeSidebarDrawer]);
+
   const handleExitSidePanel = useCallback(() => {
     if (isMeetingMode) window.electronAPI?.restoreFromMeetingMode?.();
+    if (notesDebugScenario) setNotesDebugScenario(null);
     else setActiveNoteId(null);
-  }, [isMeetingMode]);
+  }, [isMeetingMode, notesDebugScenario]);
 
   return (
     <div className="h-screen bg-surface-window flex flex-col">
@@ -144,24 +167,42 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
       <div className="flex flex-1 overflow-hidden relative">
         <div
-          className={`shrink-0 overflow-hidden transition-[width] duration-300 ease-out ${isSidePanelLayout ? "w-0" : ""}`}
-          style={{ width: isSidePanelLayout ? 0 : sidebarCollapsed ? SIDEBAR_RAIL_WIDTH_PX : SIDEBAR_WIDTH_PX }}
+          className="shrink-0 overflow-hidden transition-[width] duration-300 ease-out"
+          style={{ width: sidebarInline ? SIDEBAR_WIDTH_PX : 0 }}
         >
-          <ControlPanelSidebar
-            activeView={activeView}
-            onViewChange={setActiveView}
-            onOpenSettings={() => openSettings()}
-            collapsed={sidebarCollapsed}
-          />
+          {sidebarInline && (
+            <ControlPanelSidebar
+              activeView={activeView}
+              onViewChange={setActiveView}
+              onOpenSettings={() => openSettings()}
+            />
+          )}
         </div>
+        {narrow && !isSidePanelLayout && (
+          <ControlPanelNavDrawer open={drawerOpen} onClose={closeSidebarDrawer}>
+            <ControlPanelSidebar
+              activeView={activeView}
+              onViewChange={(view) => {
+                setActiveView(view);
+                closeSidebarDrawer();
+              }}
+              onOpenSettings={() => {
+                closeSidebarDrawer();
+                openSettings();
+              }}
+            />
+          </ControlPanelNavDrawer>
+        )}
         <main className="flex-1 flex flex-col overflow-hidden p-2">
           <div className="flex min-h-0 flex-1 flex-col overflow-clip rounded-(--radius-shell) border border-border bg-background dark:border-white/10">
             <ControlPanelTopBar
               title={navItems.find((item) => item.id === activeView)?.label ?? t("sidebar.notes")}
-              sidebarCollapsed={sidebarCollapsed}
+              showSidebarToggle={narrow && !isSidePanelLayout}
+              sidebarOpen={drawerOpen}
               onToggleSidebar={toggleSidebar}
               onOpenSearch={() => setShowSearch(true)}
               isSidePanelLayout={isSidePanelLayout}
+              insetTrafficLights={!sidebarInline}
               onExitSidePanel={handleExitSidePanel}
               notesDebugScenario={notesDebugScenario}
               onNotesDebugScenarioChange={setNotesDebugScenario}
@@ -181,6 +222,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                       onOpenSettings={openSettings}
                       meetingRecordingRequest={meetingRecordingRequest}
                       onMeetingRecordingRequestHandled={() => setMeetingRecordingRequest(null)}
+                      chromeProvidesBack={isSidePanelLayout}
                     />
                   )}
                 </Suspense>

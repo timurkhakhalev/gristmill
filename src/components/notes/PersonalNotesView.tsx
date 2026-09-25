@@ -114,12 +114,15 @@ interface PersonalNotesViewProps {
     event: any;
   } | null;
   onMeetingRecordingRequestHandled?: () => void;
+  /** Top bar already shows Back when the window is a narrow note surface. */
+  chromeProvidesBack?: boolean;
 }
 
 export default function PersonalNotesView({
   onOpenSettings,
   meetingRecordingRequest,
   onMeetingRecordingRequestHandled,
+  chromeProvidesBack = false,
 }: PersonalNotesViewProps) {
   const { t } = useTranslation();
   const notes = useNotes();
@@ -700,7 +703,7 @@ export default function PersonalNotesView({
               key={editorNote.id}
               note={editorNote}
               onTitleChange={handleTitleChange}
-              onBackToNotes={() => setActiveNoteId(null)}
+              onBackToNotes={chromeProvidesBack ? undefined : () => setActiveNoteId(null)}
               onContentChange={handleContentChange}
               isSaving={isSaving}
               isRecording={isActiveNoteRecording}

@@ -158,11 +158,11 @@ test("note deletion waits for the active reader before removing its Note and run
   const storage = new MeetingRecordingStorage({ userDataPath: root });
   const { note, recording, initialRun } = createFinishedRecording(db, storage, Date.now(), 1);
   storeTranscript(db, storage, initialRun, "Saved words");
-  const intent = db.beginMeetingNoteDeletion(note.id);
-  assert.ok(intent, "note deletion must persist an intent before removing files");
   const audioOperations = createMeetingAudioOperationRegistry();
   const audioRead = holdAudioOperation(audioOperations, recording.id);
   await audioRead.started;
+  const intent = db.beginMeetingNoteDeletion(note.id);
+  assert.ok(intent, "note deletion must persist an intent before removing files");
   let releaseReader;
   let readerStarted;
   const readerWait = new Promise((resolve) => { readerStarted = resolve; });

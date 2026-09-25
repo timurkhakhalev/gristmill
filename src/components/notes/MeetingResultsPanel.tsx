@@ -357,7 +357,7 @@ export default function MeetingResultsPanel({ noteId, locale }: { noteId: number
         <p className="mt-3 max-h-32 overflow-y-auto border-t border-border/60 pt-2 text-xs whitespace-pre-wrap">{run.transcript.text}</p>
       )}
       {run?.transcript && !run.transcript.text.trim() && !run.transcript.segments?.length && (
-        <p className="mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">{t("notes.editor.noSpeechDetected")}</p>
+        <p className="mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">{t("notes.upload.noSpeechDetected")}</p>
       )}
       {message && <p role="status" className="mt-2 text-xs text-muted-foreground">{message}</p>}
       <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => !open && hideConfirmDialog()} title={confirmDialog.title} description={confirmDialog.description} confirmText={confirmDialog.confirmText} cancelText={confirmDialog.cancelText} onConfirm={confirmDialog.onConfirm} variant={confirmDialog.variant} />

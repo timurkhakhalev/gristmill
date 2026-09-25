@@ -169,7 +169,7 @@ test("blocked initial run exposes an action that sends the current validated set
 
 test("a valid empty transcript has a distinct no-speech message", async (t) => {
   const ui = await mountPanel(t, [resultDto({ transcript: { text: "", segments: [] } })]);
-  assert.match(ui.markup(), /notes\.editor\.noSpeechDetected/);
+  assert.match(ui.markup(), /notes\.upload\.noSpeechDetected/);
 });
 
 test("a fulfilled playback failure is visible in Notes", async (t) => {

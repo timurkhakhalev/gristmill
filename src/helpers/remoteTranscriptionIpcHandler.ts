@@ -201,6 +201,23 @@ function formatDiarizedTranscript(
     .join("\n\n");
 }
 
+export function parseOpenAIFileResponse(raw: unknown, diarize: boolean, timestamps = false): RemoteTranscriptionResult {
+  const response = asRecord(raw);
+  if (diarize && Array.isArray(response?.segments)) {
+    const segments = projectDiarizedSegments(response.segments, (item) =>
+      String(item.speaker || "Speaker ?")
+    );
+    const text = segments.length ? formatDiarizedTranscript(segments) : response.text;
+    return { success: true, ...(typeof text === "string" ? { text } : {}), diarized: true, segments };
+  }
+  const segments = timestamps ? mapVerboseSegments(raw) : null;
+  return {
+    success: true,
+    ...(typeof response?.text === "string" ? { text: response.text } : {}),
+    ...(segments ? { segments } : {}),
+  };
+}
+
 function errorMessageFromStatus(
   data: { statusCode: number; data: unknown },
   prefix: string
@@ -521,23 +538,17 @@ export async function transcribeAudioFileByok(
       throw new Error(errorMessageFromStatus(data, "API error:"));
     }
 
+    await internal.onRawProviderResponse?.(data.data);
+
+    if (route.provider === "openai") {
+      return parseResult(parseOpenAIFileResponse(data.data, diarize, payload.timestamps === true));
+    }
+
     const payloadRecord = asRecord(data.data);
 
     if (diarize && Array.isArray(payloadRecord?.speakers)) {
       const segments = projectDiarizedSegments(payloadRecord.speakers, (item) =>
         String(item.id || `Speaker ${item.speaker || "?"}`)
-      );
-      return parseResult({
-        success: true,
-        text: formatDiarizedTranscript(segments),
-        diarized: true,
-        segments,
-      });
-    }
-
-    if (diarize && Array.isArray(payloadRecord?.segments)) {
-      const segments = projectDiarizedSegments(payloadRecord.segments, (item) =>
-        String(item.speaker || "Speaker ?")
       );
       return parseResult({
         success: true,

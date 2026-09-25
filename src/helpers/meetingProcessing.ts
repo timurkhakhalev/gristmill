@@ -24,6 +24,7 @@ import type { RemoteTranscriptionRequest, RemoteTranscriptionResult } from "../c
 import { parseDeepgramFileResponse } from "./deepgramFileTranscription.js";
 import { parseElevenLabsFileResponse } from "./elevenLabsFileTranscription.js";
 import { parseGeminiFileResponse } from "./geminiFileTranscription.js";
+import { parseOpenAIFileResponse } from "./remoteTranscriptionIpcHandler.js";
 import { meetingTranscriptArtifactSchema, meetingSummaryArtifactSchema } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio } from "./meetingAudioMixer.js";
@@ -766,9 +767,10 @@ export function registerMeetingProcessingHandlers(
   });
 }
 
-export function normalizeProviderResponse(provider: "deepgram" | "elevenlabs" | "gemini", raw: unknown): RemoteTranscriptionResult {
+export function normalizeProviderResponse(provider: "deepgram" | "elevenlabs" | "gemini" | "openai", raw: unknown): RemoteTranscriptionResult {
   if (provider === "deepgram") return parseDeepgramFileResponse(raw, true);
   if (provider === "elevenlabs") return parseElevenLabsFileResponse(raw, true);
+  if (provider === "openai") return parseOpenAIFileResponse(raw, true);
   return parseGeminiFileResponse(raw, true);
 }
 
@@ -782,15 +784,16 @@ class MeetingProcessingFailure extends Error {
   }
 }
 
-function supportedProvider(provider: string | undefined, model: string | undefined): "deepgram" | "elevenlabs" | "gemini" | null {
+function supportedProvider(provider: string | undefined, model: string | undefined): "deepgram" | "elevenlabs" | "gemini" | "openai" | null {
   if (provider === "deepgram" && (!model || model.startsWith("nova-"))) return "deepgram";
   if (provider === "elevenlabs" && (!model || model === "scribe_v2")) return "elevenlabs";
   if (provider === "gemini" && (!model || model === "gemini-3.5-transcribe")) return "gemini";
+  if (provider === "openai" && (!model || ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "gpt-4o-transcribe-diarize"].includes(model))) return "openai";
   return null;
 }
 
-function providerModel(model: string | undefined, provider: "deepgram" | "elevenlabs" | "gemini"): string {
-  return model || (provider === "deepgram" ? "nova-3" : provider === "elevenlabs" ? "scribe_v2" : "gemini-3.5-transcribe");
+function providerModel(model: string | undefined, provider: "deepgram" | "elevenlabs" | "gemini" | "openai"): string {
+  return model || (provider === "deepgram" ? "nova-3" : provider === "elevenlabs" ? "scribe_v2" : provider === "gemini" ? "gemini-3.5-transcribe" : "gpt-4o-transcribe-diarize");
 }
 
 function serializeTranscriptProjection(

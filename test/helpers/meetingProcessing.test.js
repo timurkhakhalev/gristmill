@@ -130,6 +130,74 @@ test("waits for retention and capture to finish, then persists the response, tra
   assert.equal(transcribeCalls, 1);
 });
 
+test("OpenAI meeting route persists diarized raw response and finishes transcription", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const config = {
+    transcription: {
+      mode: "providers",
+      provider: "openai",
+      model: "gpt-4o-mini-transcribe",
+      language: "auto",
+      credentialRef: "OPENAI_API_KEY",
+    },
+    summary: validConfig.summary,
+  };
+  const { run } = createFinishedRecording(db, storage, config);
+  const raw = {
+    text: "Hello.",
+    segments: [{ type: "transcript.text.segment", speaker: "A", text: "Hello.", start: 0.1, end: 0.5 }],
+  };
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async (request, saveRaw) => {
+      assert.equal(request.provider, "openai");
+      assert.equal(request.model, "gpt-4o-mini-transcribe");
+      assert.equal(request.diarize, true);
+      await saveRaw(raw);
+      return { success: true, text: "parsed by adapter" };
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+
+  const saved = db.getMeetingProcessingRun(run.id);
+  assert.equal(saved.status, "complete", JSON.stringify({ stage: saved.stage, errorCode: saved.errorCode }));
+  assert.equal(saved.hasRawProviderResponse, true);
+  assert.equal(saved.hasTranscript, true);
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), raw);
+  assert.deepEqual(storage.readRunArtifact(run.id, "transcript").segments, [
+    { speaker: "A", text: "Hello.", start: 0.1, end: 0.5 },
+  ]);
+});
+
+test("OpenAI text without speaker segments remains visible as a failed run", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage, {
+    transcription: { mode: "providers", provider: "openai", model: "gpt-4o-mini-transcribe", language: "auto" },
+    summary: validConfig.summary,
+  });
+  const raw = { text: "Speech was recognized.", segments: [] };
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => {
+      await saveRaw(raw);
+      return { success: true, text: raw.text };
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+
+  const saved = db.getMeetingProcessingRun(run.id);
+  assert.equal(saved.status, "failed");
+  assert.equal(saved.stage, "normalize");
+  assert.equal(saved.errorCode, "provider-diarization-missing");
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), raw);
+});
+
 test("a bad provider response stays saved and retry re-enters normalize without another ASR request", async (t) => {
   const db = createDb(t);
   if (!db) return;

@@ -337,6 +337,37 @@ test("meeting raw-response sink is awaited before ElevenLabs parsing", async () 
   assert.deepEqual(saved, raw);
 });
 
+test("meeting raw-response sink is awaited before OpenAI parsing", async () => {
+  const raw = {
+    text: "Hello.",
+    segments: [{ speaker: "A", text: "Hello.", start: 0, end: 0.5 }],
+  };
+  const { deps } = setup({ transport: makeTransport({ data: raw }) });
+  let saved;
+  const result = await transcribeAudioFileByok(
+    deps,
+    {
+      filePath: audioFile,
+      apiKey: "sk",
+      provider: "openai",
+      model: "gpt-4o-mini-transcribe",
+      diarize: true,
+      transcriptionMode: "providers",
+      requestId: "meeting-openai-raw-before-parse",
+    },
+    {
+      onRawProviderResponse: async (response) => {
+        saved = response;
+        throw Object.assign(new Error("durable save failed"), { code: "RAW_SAVE_FAILED" });
+      },
+    }
+  );
+
+  assert.equal(result.success, false);
+  assert.equal(result.code, "RAW_SAVE_FAILED");
+  assert.deepEqual(saved, raw);
+});
+
 test("happy path: Bearer auth, model field, signal handed to the transport", async () => {
   const { call, calls, transport } = setup();
   const result = await call({

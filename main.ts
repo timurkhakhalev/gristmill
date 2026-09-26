@@ -123,13 +123,6 @@ function configureChannelUserDataPath(): void {
 
 configureChannelUserDataPath();
 
-// Load userData .env (contains DICTATION_KEY, API keys, etc.) early — before
-// hotkey registration, which needs DICTATION_KEY before the renderer loads.
-require("dotenv").config({
-  path: path.join(app.getPath("userData"), ".env"),
-  override: false,
-});
-
 
 function getOAuthProtocol(): string {
   const fromEnv = (process.env.VITE_OPENHERCULES_PROTOCOL || process.env.OPENHERCULES_PROTOCOL || "")
@@ -190,6 +183,15 @@ if (APP_CHANNEL === "development" && gotSingleInstanceLock && !app.commandLine.g
     app.exit(1);
   }
 }
+
+// Load userData .env (contains DICTATION_KEY, API keys, etc.) after the dev
+// snapshot so a first dev launch sees the copied credentials without a
+// restart, and before hotkey registration, which needs DICTATION_KEY before
+// the renderer loads.
+require("dotenv").config({
+  path: path.join(app.getPath("userData"), ".env"),
+  override: false,
+});
 
 function isLiveWindow(window: BrowserWindow | null): window is BrowserWindow {
   return Boolean(window && !window.isDestroyed());

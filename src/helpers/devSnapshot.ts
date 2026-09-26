@@ -16,7 +16,26 @@ const PROD_DB = "transcriptions.db";
 // transcriptions-dev.db (appChannel.ts + database.ts); both dev modes
 // converge on this one file, so the snapshot writes only it.
 const DEV_DB = "transcriptions-dev.db";
-const COPY_FILES = [".env", "globe-preference-state.json", ".system-audio-permission"];
+const COPY_FILES = ["globe-preference-state.json", ".system-audio-permission"];
+
+// Copy the production .env for BYOK credentials, but never the OAuth scheme
+// selectors: the URL scheme is a property of the build channel (dev builds
+// register openhercules-dev), and inheriting a production value would flip
+// the protocol between the first and second launch.
+const ENV_STRIP_KEYS = ["OPENHERCULES_PROTOCOL", "VITE_OPENHERCULES_PROTOCOL"];
+
+function cloneEnvFile(source: string, target: string): void {
+  const destination = path.join(target, ".env");
+  if (fs.existsSync(destination) || !fs.existsSync(path.join(source, ".env"))) return;
+  const lines = fs
+    .readFileSync(path.join(source, ".env"), "utf8")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const key = line.slice(0, line.indexOf("="));
+      return !ENV_STRIP_KEYS.includes(key.trim().toUpperCase());
+    });
+  fs.writeFileSync(destination, lines.join("\n"), { mode: 0o600 });
+}
 // Big trees (audio, meeting results, the persisted session partition with
 // localStorage onboarding state) are cloned wholesale.
 const COPY_DIRS = ["audio", "meeting-results", "notes", "secure-keys", "Partitions"];
@@ -62,66 +81,71 @@ function cloneDir(from: string, to: string): void {
   }
 }
 
-// One-time cutover: before the channel-based filename, the packaged Dev app
-// (no NODE_ENV=development) wrote transcriptions.db while pnpm dev wrote
-// transcriptions-dev.db — a user of both modes has TWO note sets. The mixed
-// case is preserved as an explicit backup instead of a schema merge (a wrong
-// merge loses notes; a visible backup file never does). The single-database
-// case checkpoints the WAL into the main file first, then renames -wal/-shm
-// before the database itself: an interruption at any point leaves no
-// transcriptions-dev.db, so adoption reruns on the next launch.
-function adoptLegacyDevDatabase(target: string): boolean {
-  const legacy = path.join(target, PROD_DB);
-  const current = path.join(target, DEV_DB);
-  if (!fs.existsSync(legacy)) return true;
-  if (fs.existsSync(current)) {
-    // Both databases predate the cutover: keep the packaged-Dev set as an
-    // explicit, visible backup. It is not opened automatically; restoring it
-    // is a manual, deliberate act.
-    const backup = path.join(target, "transcriptions-legacy-dev-backup.db");
-    if (fs.existsSync(backup)) return true;
-    debugLogger.warn(
-      "dev profile holds both pre-cutover databases; keeping the packaged-Dev set as " +
-        "transcriptions-legacy-dev-backup.db",
-      {},
-      "devSnapshot"
-    );
-    fs.renameSync(legacy, backup);
-    for (const suffix of ["-shm", "-wal"]) {
-      const side = legacy + suffix;
-      if (fs.existsSync(side)) fs.renameSync(side, backup + suffix);
-    }
-    return true;
-  }
+// TRUNCATE reports a blocked checkpoint as busy=1 in the result row instead
+// of throwing; renaming a database whose WAL still holds unmerged commits
+// would lose them, so a blocked checkpoint is a failure, not a warning.
+function checkpointDatabase(file: string): boolean {
   try {
     const Database = require("better-sqlite3") as new (path: string) => {
-      exec: (sql: string) => void;
       prepare: (sql: string) => { get: () => { busy: number } };
       close: () => void;
     };
-    const db = new Database(legacy);
+    const db = new Database(file);
     try {
-      // TRUNCATE reports a blocked checkpoint as busy=1 in the result row
-      // instead of throwing; renaming with an unmerged WAL would lose those
-      // commits, so a blocked checkpoint is a failure, not a warning.
       const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get() as { busy: number };
       if (row?.busy !== 0) throw new Error("wal_checkpoint blocked by another reader");
     } finally {
       db.close();
     }
+    return true;
   } catch (error) {
     debugLogger.warn(
-      "legacy dev database adoption failed; retrying on the next launch",
+      "database checkpoint failed; retrying on the next launch",
       { error: (error as Error)?.message },
       "devSnapshot"
     );
     return false;
   }
+}
+
+// Rename a database file set so an interruption at any point leaves the
+// destination's database file absent: sidecars move first, the database last,
+// and a rerun starts over cleanly because the destination database is missing.
+function renameDatabaseSet(from: string, to: string): void {
   for (const suffix of ["-shm", "-wal"]) {
-    const side = legacy + suffix;
-    if (fs.existsSync(side)) fs.renameSync(side, current + suffix);
+    if (fs.existsSync(from + suffix)) fs.renameSync(from + suffix, to + suffix);
   }
-  fs.renameSync(legacy, current);
+  fs.renameSync(from, to);
+}
+
+// One-time cutover: before the channel-based filename, the packaged Dev app
+// (no NODE_ENV=development) wrote transcriptions.db while pnpm dev wrote
+// transcriptions-dev.db — a user of both modes has TWO note sets. The mixed
+// case is preserved as an explicit backup instead of a schema merge (a wrong
+// merge loses notes; a visible backup file never does). Both paths checkpoint
+// the legacy WAL first so no committed note stays behind in a sidecar.
+function adoptLegacyDevDatabase(target: string): boolean {
+  const legacy = path.join(target, PROD_DB);
+  const current = path.join(target, DEV_DB);
+  if (!fs.existsSync(legacy)) return true;
+  if (!checkpointDatabase(legacy)) return false;
+  if (fs.existsSync(current)) {
+    // Both databases predate the cutover: keep the packaged-Dev set as an
+    // explicit, visible backup. It is not opened automatically; restoring it
+    // is a manual, deliberate act. A collision gets a fresh timestamped name
+    // — never a silent skip that would strand a later note set.
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backup = path.join(target, `transcriptions-legacy-dev-backup-${stamp}.db`);
+    debugLogger.warn(
+      "dev profile holds both pre-cutover databases; keeping the packaged-Dev set as " +
+        path.basename(backup),
+      {},
+      "devSnapshot"
+    );
+    renameDatabaseSet(legacy, backup);
+    return true;
+  }
+  renameDatabaseSet(legacy, current);
   return true;
 }
 
@@ -190,6 +214,7 @@ export function snapshotProductionProfileForDev(): boolean {
     // The database filename follows the channel (appChannel.ts): both dev
     // modes — pnpm dev and the packaged Dev app — open transcriptions-dev.db.
     dbReady = snapshotDatabase(source, target, DEV_DB);
+    cloneEnvFile(source, target);
     for (const name of COPY_FILES) {
       clone(path.join(source, name), path.join(target, name));
     }

@@ -8,7 +8,9 @@ const originalLoad = Module._load;
 test("getConnectionStatus reports Google OAuth registration state", () => {
   const GoogleCalendarManager = loadManagerModule();
   const previousId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
+  const previousSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
   delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
+  delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
   try {
     const manager = new GoogleCalendarManager({ getGoogleAccounts: () => [] }, null, {
       scheduleNextMeeting: () => {},
@@ -16,18 +18,24 @@ test("getConnectionStatus reports Google OAuth registration state", () => {
     });
     assert.equal(manager.getConnectionStatus().configured, false);
     process.env.GOOGLE_CALENDAR_CLIENT_ID = "client-id";
+    assert.equal(manager.getConnectionStatus().configured, false);
+    process.env.GOOGLE_CALENDAR_CLIENT_SECRET = "desktop-client-secret";
     assert.equal(manager.getConnectionStatus().configured, true);
   } finally {
     if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
     else process.env.GOOGLE_CALENDAR_CLIENT_ID = previousId;
+    if (previousSecret === undefined) delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+    else process.env.GOOGLE_CALENDAR_CLIENT_SECRET = previousSecret;
   }
 });
 
-test("Google desktop OAuth exchanges and refreshes tokens without a client secret", async () => {
+test("Google desktop OAuth exchanges and refreshes tokens with its client secret", async () => {
   loadManagerModule();
   const GoogleCalendarOAuth = require("../../src/helpers/googleCalendarOAuth.ts");
   const previousId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
+  const previousSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
   process.env.GOOGLE_CALENDAR_CLIENT_ID = "desktop-client-id";
+  process.env.GOOGLE_CALENDAR_CLIENT_SECRET = "desktop-client-secret";
   try {
     const oauth = new GoogleCalendarOAuth({});
     const requests = [];
@@ -40,13 +48,15 @@ test("Google desktop OAuth exchanges and refreshes tokens without a client secre
     assert.equal(requests.length, 2);
     for (const { params } of requests) {
       assert.equal(params.get("client_id"), "desktop-client-id");
-      assert.equal(params.has("client_secret"), false);
+      assert.equal(params.get("client_secret"), "desktop-client-secret");
     }
     assert.equal(requests[0].params.get("code_verifier"), "verifier");
     assert.equal(requests[1].params.get("refresh_token"), "refresh-token");
   } finally {
     if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
     else process.env.GOOGLE_CALENDAR_CLIENT_ID = previousId;
+    if (previousSecret === undefined) delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+    else process.env.GOOGLE_CALENDAR_CLIENT_SECRET = previousSecret;
   }
 });
 

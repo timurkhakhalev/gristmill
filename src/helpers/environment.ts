@@ -62,6 +62,8 @@ const PERSISTED_KEYS: readonly string[] = [
   "START_MINIMIZED",
   "UI_LANGUAGE",
   "GOOGLE_CALENDAR_CLIENT_ID",
+  // Google Desktop OAuth distributes this credential with the client; PKCE protects the code.
+  "GOOGLE_CALENDAR_CLIENT_SECRET",
   "WHISPER_THREADS",
   "BEDROCK_REGION",
   "BEDROCK_PROFILE",
@@ -275,7 +277,8 @@ export class EnvironmentManager {
       }
     }
     const tmpPath = `${envPath}.tmp`;
-    await fsPromises.writeFile(tmpPath, envContent, "utf8");
+    await fsPromises.writeFile(tmpPath, envContent, { encoding: "utf8", mode: 0o600 });
+    await fsPromises.chmod(tmpPath, 0o600);
     await fsPromises.rename(tmpPath, envPath);
   }
 

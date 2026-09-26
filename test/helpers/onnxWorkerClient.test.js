@@ -8,7 +8,7 @@ const originalLoad = Module._load;
 
 // A fake utility-process graph: MessageChannelMain ports are EventEmitters
 // wired both ways, and fork() returns a scripted child the test controls.
-function createFakeRuntime({ neverSpawn = false } = {}) {
+function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
   const state = { children: [], forkCalls: 0 };
 
   class FakePort extends EventEmitter {
@@ -45,7 +45,13 @@ function createFakeRuntime({ neverSpawn = false } = {}) {
     child.kill = () => {
       child.killCalls += 1;
     };
-    child.postMessage = () => {};
+    child.postMessage = (_message, [port]) => {
+      port.on("message", ({ data }) => {
+        if (exitOnShutdown && data?.method === "shutdown") {
+          setImmediate(() => child.emit("exit", 0));
+        }
+      });
+    };
     if (!neverSpawn) setImmediate(() => child.emit("spawn"));
     state.children.push(child);
     state.forkCalls += 1;
@@ -82,16 +88,20 @@ function loadClient(runtime) {
 // Waits until the spawned client has its port, then hands the test a
 // deliver() that injects a reply as if the worker sent it.
 function whenPortReady(client) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const poll = setInterval(() => {
       if (client.port) {
         clearInterval(poll);
+        clearTimeout(timeout);
         // Replies travel the way a real worker sends them: port2.postMessage
         // delivers to the client's port1 listener.
         resolve((message) => client.port.peer.postMessage(message));
       }
     }, 1);
-    setTimeout(() => clearInterval(poll), 1000);
+    const timeout = setTimeout(() => {
+      clearInterval(poll);
+      reject(new Error("worker port was not ready"));
+    }, 1000);
   });
 }
 
@@ -219,13 +229,10 @@ test("the queue limit evicts the oldest pending request", async () => {
   deliver({ id: 1, result: PING_OK });
   assert.deepEqual(await request, PING_OK);
   await client.stop();
-  // Artificial prefilled entries: drop their timers so the file can exit.
-  for (const entry of client.pending.values()) clearTimeout(entry.timeout);
-  client.pending.clear();
 });
 
 test("stop sends the shutdown rpc and waits for exit before killing", async () => {
-  const runtime = createFakeRuntime();
+  const runtime = createFakeRuntime({ exitOnShutdown: false });
   const client = loadClient(runtime);
   const warm = client.request("ping", {});
   const warmDeliver = await whenPortReady(client);
@@ -250,4 +257,22 @@ test("stop sends the shutdown rpc and waits for exit before killing", async () =
   assert.equal(child.killCalls, 0, "the child gets its exit grace period");
   child.emit("exit", 0);
   await stopped;
+});
+
+test("stop kills a child that ignores shutdown after its grace period", async (t) => {
+  const runtime = createFakeRuntime({ exitOnShutdown: false });
+  const client = loadClient(runtime);
+  const warm = client.request("ping", {});
+  const deliver = await whenPortReady(client);
+  deliver({ id: 1, result: PING_OK });
+  await warm;
+
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const child = runtime.children[0];
+  const stopped = client.stop();
+  t.mock.timers.tick(4999);
+  assert.equal(child.killCalls, 0);
+  t.mock.timers.tick(1);
+  await stopped;
+  assert.equal(child.killCalls, 1);
 });

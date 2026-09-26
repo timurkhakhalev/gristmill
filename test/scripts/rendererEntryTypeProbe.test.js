@@ -39,16 +39,17 @@ function entrypointDiagnostics({ patch } = {}) {
     { ...parsed.options, noEmit: true },
     host
   );
-  return ts
-    .getPreEmitDiagnostics(program)
-    .filter((diagnostic) => {
-      const file = diagnostic.file?.fileName;
-      return file && ENTRYPOINTS.includes(path.resolve(file));
-    })
-    .map((diagnostic) => ({
-      code: diagnostic.code,
-      message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
-    }));
+  return ENTRYPOINTS.flatMap((file) => {
+    const sourceFile = program.getSourceFile(file);
+    assert.ok(sourceFile, `entrypoint is missing from the program: ${file}`);
+    return ts
+      .getPreEmitDiagnostics(program, sourceFile)
+      .filter((diagnostic) => diagnostic.file && path.resolve(diagnostic.file.fileName) === file)
+      .map((diagnostic) => ({
+        code: diagnostic.code,
+        message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+      }));
+  });
 }
 
 test("the renderer entrypoints are strict-clean themselves", () => {

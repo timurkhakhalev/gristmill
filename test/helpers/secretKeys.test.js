@@ -5,9 +5,8 @@ const path = require("path");
 const fs = require("fs");
 const Module = require("module");
 
-// Mock electron and the OS keyring before environment.js / secretCrypto load,
-// so secrets take the plaintext (process.env) fallback path instead of writing
-// to the developer's real keychain.
+// Mock electron and the OS keyring before environment.js / secretCrypto load
+// so tests prove that unavailable secure storage fails closed.
 const tmpUserData = fs.mkdtempSync(path.join(os.tmpdir(), "ow-secret-test-"));
 process.resourcesPath = tmpUserData; // Electron-only global; harmless dummy for the .env fallback scan
 const fakeElectron = {
@@ -21,7 +20,7 @@ Module._load = function (request, ...rest) {
   return origLoad.call(this, request, ...rest);
 };
 
-const { BYOK_API_KEYS } = require("../../src/config/secretKeys");
+const { BYOK_API_KEYS, SECRET_ENV_KEYS } = require("../../src/config/secretKeys");
 const EnvironmentManager = require("../../src/helpers/environment");
 
 test("manifest entries are unique and complete", () => {
@@ -35,32 +34,37 @@ test("manifest entries are unique and complete", () => {
       seen[field].add(k[field]);
     }
   }
+  for (const key of BYOK_API_KEYS) {
+    assert.ok(SECRET_ENV_KEYS.includes(key.env), `${key.env} is marked secret`);
+  }
 });
 
-test("every BYOK key round-trips through the generated accessors", () => {
+test("every BYOK key accessor fails closed when secure storage is unavailable", async () => {
   const env = new EnvironmentManager();
   for (const k of BYOK_API_KEYS) {
     assert.equal(typeof env[k.get], "function", `${k.get} generated`);
     assert.equal(typeof env[k.save], "function", `${k.save} generated`);
 
     const secret = `sk-test-${k.base}-123`;
-    env[k.save](secret);
-    assert.equal(env[k.get](), secret, `${k.base} round-trips`);
-    assert.equal(process.env[k.env], secret, `${k.base} persisted to its env var`);
+    delete process.env[k.env];
+    assert.deepEqual(await env[k.save](secret), { success: false });
+    assert.equal(env[k.get](), "", `${k.base} is not usable without secure storage`);
+    assert.equal(process.env[k.env], undefined, `${k.base} is not left in process.env`);
 
-    env[k.save]("");
+    assert.deepEqual(await env[k.save](""), { success: true });
     assert.equal(env[k.get](), "", `${k.base} clears`);
     assert.equal(process.env[k.env], undefined, `${k.base} env var removed on clear`);
   }
 });
 
-test("openrouter is a first-class secret", () => {
+test("openrouter is a first-class secret", async () => {
   const or = BYOK_API_KEYS.find((k) => k.base === "openrouter");
   assert.ok(or, "openrouter present in manifest");
   assert.equal(or.env, "OPENROUTER_API_KEY");
   const env = new EnvironmentManager();
-  env.saveOpenrouterKey("sk-or-abc");
-  assert.equal(env.getOpenrouterKey(), "sk-or-abc");
+  delete process.env.OPENROUTER_API_KEY;
+  assert.deepEqual(await env.saveOpenrouterKey("sk-or-abc"), { success: false });
+  assert.equal(env.getOpenrouterKey(), "");
 });
 
 // The accessor names come verbatim from the manifest rather than from `base`,

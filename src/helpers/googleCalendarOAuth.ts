@@ -48,12 +48,8 @@ export class GoogleCalendarOAuth {
     return process.env.GOOGLE_CALENDAR_CLIENT_ID;
   }
 
-  getClientSecret(): string | undefined {
-    return process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
-  }
-
   isConfigured(): boolean {
-    return Boolean(this.getClientId() && this.getClientSecret());
+    return Boolean(this.getClientId());
   }
 
   startOAuthFlow(): Promise<{ success: boolean; email: string }> {
@@ -125,7 +121,6 @@ export class GoogleCalendarOAuth {
     const body = new URLSearchParams({
       code,
       client_id: this.getClientId() as string,
-      client_secret: this.getClientSecret() as string,
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
       code_verifier: codeVerifier,
@@ -137,7 +132,6 @@ export class GoogleCalendarOAuth {
   async refreshAccessToken(refreshToken: string): Promise<GoogleTokenResponse> {
     const body = new URLSearchParams({
       client_id: this.getClientId() as string,
-      client_secret: this.getClientSecret() as string,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }).toString();

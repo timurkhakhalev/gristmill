@@ -1944,6 +1944,7 @@
     "placeholder": "Paste your API key",
     "label": "API Key",
     "save": "Save API key",
+    "saveError": "Could not save securely. Check secure storage and try again.",
     "cancelEdit": "Cancel editing",
     "edit": "Edit API key",
     "add": "Add API key",

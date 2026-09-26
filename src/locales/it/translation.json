@@ -1908,7 +1908,8 @@
     "edit": "Modifica",
     "add": "Aggiungi",
     "editButton": "Modifica",
-    "addButton": "Aggiungi"
+    "addButton": "Aggiungi",
+    "saveError": "Impossibile salvare in modo sicuro. Controlla l’archivio sicuro e riprova."
   },
   "gpu": {
     "transcriptionBanner": "Velocizza la trascrizione con la GPU",

@@ -902,22 +902,22 @@ export interface SettingsState
   setCleanupProvider: (value: string) => void;
   setUiLanguage: (language: string) => void;
 
-  setOpenaiApiKey: (key: string) => void;
-  setAnthropicApiKey: (key: string) => void;
-  setGeminiApiKey: (key: string) => void;
-  setGroqApiKey: (key: string) => void;
-  setXaiApiKey: (key: string) => void;
-  setMistralApiKey: (key: string) => void;
-  setOpenrouterApiKey: (key: string) => void;
-  setCortiClientId: (key: string) => void;
-  setCortiClientSecret: (key: string) => void;
-  setCortiApiKey: (key: string) => void;
-  setTinfoilApiKey: (key: string) => void;
-  setDeepgramApiKey: (key: string) => void;
-  setElevenLabsApiKey: (key: string) => void;
-  setAssemblyaiApiKey: (key: string) => void;
-  setCustomTranscriptionApiKey: (key: string) => void;
-  setCleanupCustomApiKey: (key: string) => void;
+  setOpenaiApiKey: (key: string) => Promise<SecretSaveResult>;
+  setAnthropicApiKey: (key: string) => Promise<SecretSaveResult>;
+  setGeminiApiKey: (key: string) => Promise<SecretSaveResult>;
+  setGroqApiKey: (key: string) => Promise<SecretSaveResult>;
+  setXaiApiKey: (key: string) => Promise<SecretSaveResult>;
+  setMistralApiKey: (key: string) => Promise<SecretSaveResult>;
+  setOpenrouterApiKey: (key: string) => Promise<SecretSaveResult>;
+  setCortiClientId: (key: string) => Promise<SecretSaveResult>;
+  setCortiClientSecret: (key: string) => Promise<SecretSaveResult>;
+  setCortiApiKey: (key: string) => Promise<SecretSaveResult>;
+  setTinfoilApiKey: (key: string) => Promise<SecretSaveResult>;
+  setDeepgramApiKey: (key: string) => Promise<SecretSaveResult>;
+  setElevenLabsApiKey: (key: string) => Promise<SecretSaveResult>;
+  setAssemblyaiApiKey: (key: string) => Promise<SecretSaveResult>;
+  setCustomTranscriptionApiKey: (key: string) => Promise<SecretSaveResult>;
+  setCleanupCustomApiKey: (key: string) => Promise<SecretSaveResult>;
 
   // Corti (BYOK)
   cortiEnvironment: string;
@@ -947,17 +947,17 @@ export interface SettingsState
   setEnterpriseTranscriptionSetupMode: (value: EnterpriseSetupMode) => void;
   setBedrockRegion: (value: string) => void;
   setBedrockProfile: (value: string) => void;
-  setBedrockAccessKeyId: (key: string) => void;
-  setBedrockSecretAccessKey: (key: string) => void;
-  setBedrockSessionToken: (key: string) => void;
+  setBedrockAccessKeyId: (key: string) => Promise<SecretSaveResult>;
+  setBedrockSecretAccessKey: (key: string) => Promise<SecretSaveResult>;
+  setBedrockSessionToken: (key: string) => Promise<SecretSaveResult>;
   setAzureEndpoint: (value: string) => void;
-  setAzureApiKey: (key: string) => void;
+  setAzureApiKey: (key: string) => Promise<SecretSaveResult>;
   setAzureDeploymentName: (value: string) => void;
   setAzureApiVersion: (value: string) => void;
   setVertexAuthMode: (value: string) => void;
   setVertexProject: (value: string) => void;
   setVertexLocation: (value: string) => void;
-  setVertexApiKey: (key: string) => void;
+  setVertexApiKey: (key: string) => Promise<SecretSaveResult>;
 
   setMeetingKey: (key: string) => void;
   setMeetingHotkeyLayoutMode: (mode: "side-panel" | "full-width") => void;
@@ -1115,23 +1115,21 @@ const SECRET_IPC_SAVERS = {
 
 type SecretProvider = keyof typeof SECRET_IPC_SAVERS;
 
-const secretSaveTimers: Partial<Record<SecretProvider, ReturnType<typeof setTimeout>>> = {};
-function debouncedSaveSecret(provider: SecretProvider, key: string) {
-  if (!isBrowser) return;
-  const timer = secretSaveTimers[provider];
-  if (timer) clearTimeout(timer);
-  secretSaveTimers[provider] = setTimeout(() => {
-    const api = window.electronAPI;
-    const save = api?.[SECRET_IPC_SAVERS[provider]] as
-      ((k: string) => Promise<unknown>) | undefined;
-    save?.(key)?.catch((err) => {
-      logger.warn(
-        "Failed to persist secret",
-        { provider, error: (err as Error).message },
-        "settings"
-      );
-    });
-  }, 250);
+type SecretSaveResult = { success: boolean };
+
+async function persistSecret(provider: SecretProvider, key: string): Promise<SecretSaveResult> {
+  if (!isBrowser) return { success: false };
+  const api = window.electronAPI;
+  const save = api?.[SECRET_IPC_SAVERS[provider]] as
+    ((value: string) => Promise<SecretSaveResult>) | undefined;
+  if (!save) return { success: false };
+  try {
+    const result = await save(key);
+    return result?.success === true ? { success: true } : { success: false };
+  } catch {
+    logger.warn("Failed to persist secret", { provider }, "settings");
+    return { success: false };
+  }
 }
 
 const STALE_SECRET_LOCALSTORAGE_KEYS = [
@@ -1186,21 +1184,22 @@ function invalidateApiKeyCaches(
     }
   }
   if (isBrowser) window.dispatchEvent(new Event("api-key-changed"));
-  debouncedPersistToEnv();
 }
 
-// Uniform BYOK key setter: persist to the secure store (debounced) and clear
-// the provider's cached key. cacheProvider is omitted where there is no scoped
-// cache to clear (xai), preserving prior behavior.
+// Persist each secret before exposing it in renderer state, then clear the
+// provider's cached key. cacheProvider is omitted where there is no scoped
+// cache to clear (xai).
 function createSecretSetter(
   storeKey: string,
   saver: SecretProvider,
   cacheProvider?: Parameters<typeof invalidateApiKeyCaches>[0]
 ) {
-  return (key: string) => {
+  return async (key: string): Promise<SecretSaveResult> => {
+    const result = await persistSecret(saver, key);
+    if (!result.success) return result;
     useSettingsStore.setState({ [storeKey]: key });
-    debouncedSaveSecret(saver, key);
     invalidateApiKeyCaches(cacheProvider);
+    return result;
   };
 }
 
@@ -1458,7 +1457,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   noteFormattingCloudMode: readDirectCloudMode("noteFormattingCloudMode", ""),
   noteFormattingCloudBaseUrl: readString("noteFormattingCloudBaseUrl", ""),
   noteFormattingRemoteUrl: readString("noteFormattingRemoteUrl", ""),
-  noteFormattingCustomApiKey: readString("noteFormattingCustomApiKey", ""),
+  noteFormattingCustomApiKey: "",
 
   setTranscriptionMode: createStringSetter("transcriptionMode") as (mode: InferenceMode) => void,
   setRemoteTranscriptionType: createStringSetter("remoteTranscriptionType") as (
@@ -1523,7 +1522,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   chatAgentMode: readReasoningMode("chatAgentMode", "chatAgentCloudMode", "chatAgentProvider"),
   chatAgentRemoteUrl: readString("chatAgentRemoteUrl", ""),
   chatAgentCloudBaseUrl: readString("chatAgentCloudBaseUrl", ""),
-  chatAgentCustomApiKey: readString("chatAgentCustomApiKey", ""),
+  chatAgentCustomApiKey: "",
 
   cleanupDisableThinking: readBoolean("cleanupDisableThinking", true),
   noteFormattingDisableThinking: readBoolean("noteFormattingDisableThinking", true),
@@ -1728,16 +1727,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setXaiApiKey: createSecretSetter("xaiApiKey", "xai"),
   setMistralApiKey: createSecretSetter("mistralApiKey", "mistral", "mistral"),
   setOpenrouterApiKey: createSecretSetter("openrouterApiKey", "openrouter", "openrouter"),
-  setCortiClientId: (key: string) => {
-    set({ cortiClientId: key });
-    debouncedSaveSecret("cortiClientId", key);
-    invalidateApiKeyCaches("corti");
-  },
-  setCortiClientSecret: (key: string) => {
-    set({ cortiClientSecret: key });
-    debouncedSaveSecret("cortiClientSecret", key);
-    invalidateApiKeyCaches("corti");
-  },
+  setCortiClientId: createSecretSetter("cortiClientId", "cortiClientId", "corti"),
+  setCortiClientSecret: createSecretSetter("cortiClientSecret", "cortiClientSecret", "corti"),
   setCortiApiKey: createSecretSetter("cortiApiKey", "cortiApiKey", "corti"),
   setCortiEnvironment: createStringSetter("cortiEnvironment"),
   setCortiTenant: createStringSetter("cortiTenant"),
@@ -1746,16 +1737,12 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setDeepgramApiKey: createSecretSetter("deepgramApiKey", "deepgram"),
   setElevenLabsApiKey: createSecretSetter("elevenLabsApiKey", "elevenlabs"),
   setAssemblyaiApiKey: createSecretSetter("assemblyaiApiKey", "assemblyai"),
-  setCustomTranscriptionApiKey: (key: string) => {
-    set({ customTranscriptionApiKey: key });
-    debouncedSaveSecret("customTranscription", key);
-    invalidateApiKeyCaches("custom");
-  },
-  setCleanupCustomApiKey: (key: string) => {
-    set({ cleanupCustomApiKey: key });
-    debouncedSaveSecret("cleanupCustom", key);
-    invalidateApiKeyCaches("custom");
-  },
+  setCustomTranscriptionApiKey: createSecretSetter(
+    "customTranscriptionApiKey",
+    "customTranscription",
+    "custom"
+  ),
+  setCleanupCustomApiKey: createSecretSetter("cleanupCustomApiKey", "cleanupCustom", "custom"),
 
   // Enterprise provider setters
   setEnterpriseSetupMode: createStringSetter("enterpriseSetupMode") as (
@@ -1780,32 +1767,19 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     window.electronAPI?.saveBedrockProfile?.(value);
     debouncedPersistToEnv();
   },
-  setBedrockAccessKeyId: (key: string) => {
-    set({ bedrockAccessKeyId: key });
-    debouncedSaveSecret("bedrockAccessKeyId", key);
-    debouncedPersistToEnv();
-  },
-  setBedrockSecretAccessKey: (key: string) => {
-    set({ bedrockSecretAccessKey: key });
-    debouncedSaveSecret("bedrockSecretAccessKey", key);
-    debouncedPersistToEnv();
-  },
-  setBedrockSessionToken: (key: string) => {
-    set({ bedrockSessionToken: key });
-    debouncedSaveSecret("bedrockSessionToken", key);
-    debouncedPersistToEnv();
-  },
+  setBedrockAccessKeyId: createSecretSetter("bedrockAccessKeyId", "bedrockAccessKeyId"),
+  setBedrockSecretAccessKey: createSecretSetter(
+    "bedrockSecretAccessKey",
+    "bedrockSecretAccessKey"
+  ),
+  setBedrockSessionToken: createSecretSetter("bedrockSessionToken", "bedrockSessionToken"),
   setAzureEndpoint: (value: string) => {
     if (isBrowser) localStorage.setItem("azureEndpoint", value);
     set({ azureEndpoint: value });
     window.electronAPI?.saveAzureEndpoint?.(value);
     debouncedPersistToEnv();
   },
-  setAzureApiKey: (key: string) => {
-    set({ azureApiKey: key });
-    debouncedSaveSecret("azureApiKey", key);
-    debouncedPersistToEnv();
-  },
+  setAzureApiKey: createSecretSetter("azureApiKey", "azureApiKey"),
   setAzureDeploymentName: (value: string) => {
     if (isBrowser) localStorage.setItem("azureDeploymentName", value);
     set({ azureDeploymentName: value });
@@ -1834,11 +1808,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     window.electronAPI?.saveVertexLocation?.(value);
     debouncedPersistToEnv();
   },
-  setVertexApiKey: (key: string) => {
-    set({ vertexApiKey: key });
-    debouncedSaveSecret("vertexApiKey", key);
-    debouncedPersistToEnv();
-  },
+  setVertexApiKey: createSecretSetter("vertexApiKey", "vertexApiKey"),
 
   setMeetingKey: (key: string) => {
     if (isBrowser) localStorage.setItem("meetingKey", key);
@@ -2219,9 +2189,10 @@ const SECRET_SCOPE_KEY_SETTERS = {
 export function setResolvedLLMConfig(
   scope: InferenceScope,
   patch: Partial<Omit<ResolvedLLMConfig, "scope">>
-): void {
+): Promise<SecretSaveResult> | undefined {
   const def: InferenceScopeDefinition = INFERENCE_SCOPES[scope];
   const updates: Partial<SettingsState> = {};
+  let secretWrite: Promise<SecretSaveResult> | undefined;
   for (const [field, value] of Object.entries(patch)) {
     if (value === undefined) continue;
     const storeKey = def.storeKeys[field as keyof InferenceScopeStoreKeys];
@@ -2229,7 +2200,8 @@ export function setResolvedLLMConfig(
     const secretSetter =
       SECRET_SCOPE_KEY_SETTERS[storeKey as keyof typeof SECRET_SCOPE_KEY_SETTERS];
     if (secretSetter) {
-      useSettingsStore.getState()[secretSetter](value as string);
+      const result = useSettingsStore.getState()[secretSetter](value as string);
+      if (result) secretWrite = result;
       continue;
     }
     if (isBrowser) {
@@ -2241,6 +2213,7 @@ export function setResolvedLLMConfig(
     (updates as Record<string, unknown>)[storeKey as string] = value;
   }
   if (Object.keys(updates).length > 0) useSettingsStore.setState(updates);
+  return secretWrite;
 }
 
 // --- Convenience getters for non-React code ---
@@ -2347,30 +2320,8 @@ export function getEffectiveCleanupModel() {
 
 // --- Initialization ---
 
-// One-time migration: scope custom keys lived in plaintext localStorage before
-// moving to the OS secure store. Prefer the secure value; otherwise push the
-// legacy plaintext copy into the secure store — the stale-secret sweep in
-// initializeSettings then strips it from localStorage.
-async function migrateScopeCustomKeys(
-  entries: ReadonlyArray<[keyof SettingsState & string, string | null | undefined, string]>
-): Promise<Partial<SettingsState>> {
-  const updates: Record<string, string> = {};
-  for (const [storeKey, secureValue, saverName] of entries) {
-    let value = secureValue || "";
-    if (!value) {
-      const legacy = localStorage.getItem(storeKey)?.trim() || "";
-      if (legacy) {
-        value = legacy;
-        const save = window.electronAPI?.[saverName as keyof typeof window.electronAPI] as
-          ((key: string) => Promise<unknown>) | undefined;
-        await save?.(legacy);
-      }
-    }
-    updates[storeKey] = value;
-  }
-  return updates as Partial<SettingsState>;
-}
-
+// Hydrate scope custom keys from the secure store. The stale-secret sweep
+// below discards older browser copies so a missing key can be re-entered.
 let hasInitialized = false;
 
 export async function initializeSettings(): Promise<void> {
@@ -2378,6 +2329,12 @@ export async function initializeSettings(): Promise<void> {
   hasInitialized = true;
 
   if (!isBrowser) return;
+
+  // Discard plaintext credentials before attempting secure-store hydration.
+  // A failed or unavailable bridge must never make a legacy local copy usable.
+  for (const key of STALE_SECRET_LOCALSTORAGE_KEYS) {
+    localStorage.removeItem(key);
+  }
 
   const state = useSettingsStore.getState();
 
@@ -2447,11 +2404,9 @@ export async function initializeSettings(): Promise<void> {
         tinfoilApiKey: tinfoil || "",
         customTranscriptionApiKey: customTx || "",
         cleanupCustomApiKey: customRx || "",
+        noteFormattingCustomApiKey: noteFormattingCustom || "",
+        chatAgentCustomApiKey: chatAgentCustom || "",
         bedrockAccessKeyId: bedrockAccessKeyId || "",
-        ...(await migrateScopeCustomKeys([
-          ["noteFormattingCustomApiKey", noteFormattingCustom, "saveNoteFormattingCustomKey"],
-          ["chatAgentCustomApiKey", chatAgentCustom, "saveChatAgentCustomKey"],
-        ])),
         bedrockSecretAccessKey: bedrockSecretAccessKey || "",
         bedrockSessionToken: bedrockSessionToken || "",
         azureApiKey: azureApiKey || "",
@@ -2480,24 +2435,6 @@ export async function initializeSettings(): Promise<void> {
         useSettingsStore.setState({ enterpriseSetupMode });
       }
 
-      for (const key of STALE_SECRET_LOCALSTORAGE_KEYS) {
-        localStorage.removeItem(key);
-      }
-
-      // Users who configured OpenRouter through the Custom tab keep their key
-      // in the shared custom slot — seed the dedicated slot from it once.
-      if (!openrouter && customRx) {
-        const hydrated = useSettingsStore.getState();
-        const usesOpenRouterViaCustom = (Object.keys(INFERENCE_SCOPES) as InferenceScope[]).some(
-          (scope) => {
-            const cfg = selectResolvedLLMConfig(hydrated, scope);
-            return cfg.provider === "custom" && (cfg.cloudBaseUrl || "").includes("openrouter.ai");
-          }
-        );
-        if (usesOpenRouterViaCustom) {
-          hydrated.setOpenrouterApiKey(customRx);
-        }
-      }
     } catch (err) {
       logger.warn(
         "Failed to hydrate secrets from main process",

@@ -245,12 +245,10 @@ function BedrockConfig({ reasoningModel, setReasoningModel }: EnterpriseProvider
                 defaultValue: "Session Token (optional)",
               })}
             </FieldLabel>
-            <Input
-              dir="ltr"
-              value={store.bedrockSessionToken}
-              onChange={(e) => store.setBedrockSessionToken(e.target.value)}
-              placeholder=""
-              className="text-sm"
+            <ApiKeyInput
+              apiKey={store.bedrockSessionToken}
+              setApiKey={store.setBedrockSessionToken}
+              label=""
             />
           </div>
         </div>

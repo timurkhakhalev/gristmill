@@ -1948,7 +1948,8 @@
     "edit": "Bearbeiten",
     "add": "Hinzufügen",
     "editButton": "Bearbeiten",
-    "addButton": "Hinzufügen"
+    "addButton": "Hinzufügen",
+    "saveError": "Speichern nicht sicher möglich. Prüfe den sicheren Speicher und versuche es erneut."
   },
   "gpu": {
     "transcriptionBanner": "Transkription mit GPU beschleunigen",

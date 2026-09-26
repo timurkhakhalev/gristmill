@@ -23,13 +23,20 @@ function makeProfiles() {
   // output must be a readable database with the same rows.
   const Database = require("better-sqlite3") as new (path: string) => {
     exec: (sql: string) => void;
-    prepare: (sql: string) => { get: () => { title: string } };
+    prepare: (sql: string) => {
+      get: () => { title: string; count: number };
+      run: (...params: unknown[]) => unknown;
+    };
     close: () => void;
-  };  const prodDb = new Database(path.join(production, "transcriptions.db"));
+  };
+  const prodDb = new Database(path.join(production, "transcriptions.db"));
   prodDb.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT)");
   prodDb.exec("INSERT INTO notes (title) VALUES ('prod-note')");
   prodDb.close();
-  fs.writeFileSync(path.join(production, ".env"), "KEY=1\nOPENHERCULES_PROTOCOL=openhercules");
+  fs.writeFileSync(
+    path.join(production, ".env"),
+    "KEY=1\nOPENAI_API_KEY=plaintext-provider-key\nOPENHERCULES_PROTOCOL=openhercules"
+  );
   fs.writeFileSync(path.join(production, "audio", "meetings", "rec-1", "audio.pcm"), "pcm");
   fs.writeFileSync(path.join(production, "meeting-results", "run-1.json"), "{}");
   return { root, production, development, Database };
@@ -39,7 +46,10 @@ const DEV_DB = "transcriptions-dev.db";
 
 function openDevDb(dir: string) {
   const Database = require("better-sqlite3") as new (path: string) => {
-    prepare: (sql: string) => { get: () => { title: string } };
+    prepare: (sql: string) => {
+      get: () => { title: string; count: number };
+      run: (...params: unknown[]) => unknown;
+    };
     close: () => void;
   };
   return new Database(path.join(dir, DEV_DB));
@@ -56,7 +66,8 @@ test("snapshots production profile into a fresh dev profile", () => {
   devDb.close();
   // The .env is copied without the channel-owned OAuth scheme selectors.
   const copiedEnv = fs.readFileSync(path.join(development, ".env"), "utf8");
-  assert.ok(copiedEnv.includes("KEY=1"));
+  assert.ok(copiedEnv.includes('KEY="1"'));
+  assert.ok(!copiedEnv.includes("plaintext-provider-key"));
   assert.ok(!copiedEnv.includes("OPENHERCULES_PROTOCOL"));
   assert.equal(
     fs.readFileSync(path.join(development, "audio", "meetings", "rec-1", "audio.pcm"), "utf8"),
@@ -67,6 +78,37 @@ test("snapshots production profile into a fresh dev profile", () => {
     "{}"
   );
   assert.equal(fs.existsSync(path.join(development, ".dev-snapshot-complete")), true);
+});
+
+test("snapshot strips legacy plaintext calendar tokens from the dev database", () => {
+  const { production, development, Database } = makeProfiles();
+  const prodDb = new Database(path.join(production, "transcriptions.db"));
+  prodDb.exec(`
+    CREATE TABLE google_calendar_tokens (
+      google_email TEXT, access_token TEXT, refresh_token TEXT, expires_at INTEGER, scope TEXT
+    );
+    CREATE TABLE microsoft_calendar_tokens (
+      microsoft_email TEXT, access_token TEXT, refresh_token TEXT, expires_at INTEGER, scope TEXT
+    );
+  `);
+  prodDb.prepare(
+    "INSERT INTO google_calendar_tokens VALUES (?, ?, ?, ?, ?)"
+  ).run("google@example.com", "legacy-google-access", "legacy-google-refresh", 1, "calendar");
+  prodDb.prepare(
+    "INSERT INTO microsoft_calendar_tokens VALUES (?, ?, ?, ?, ?)"
+  ).run("microsoft@example.com", "legacy-ms-access", "legacy-ms-refresh", 1, "calendar");
+  prodDb.close();
+
+  setUserDataDir(development);
+  assert.equal(snapshotProductionProfileForDev(), true);
+
+  const devDb = new Database(path.join(development, DEV_DB));
+  assert.equal(devDb.prepare("SELECT COUNT(*) AS count FROM google_calendar_tokens").get().count, 0);
+  assert.equal(devDb.prepare("SELECT COUNT(*) AS count FROM microsoft_calendar_tokens").get().count, 0);
+  devDb.close();
+
+  const source = fs.readFileSync(path.join(production, "transcriptions.db"));
+  assert.ok(source.includes(Buffer.from("legacy-google-access")), "the production database is unchanged");
 });
 
 test("does not re-snapshot a completed dev profile", () => {
@@ -180,7 +222,7 @@ test("refresh re-copies missing files but keeps dev-only ones", () => {
   } finally {
     delete process.env.OPENHERCULES_REFRESH_SNAPSHOT;
   }
-  assert.ok(fs.readFileSync(path.join(development, ".env"), "utf8").includes("KEY=1"));
+  assert.ok(fs.readFileSync(path.join(development, ".env"), "utf8").includes('KEY="1"'));
   assert.equal(fs.readFileSync(path.join(development, "dev-only.txt"), "utf8"), "keep");
 });
 

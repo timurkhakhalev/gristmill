@@ -1908,7 +1908,8 @@
     "edit": "Editar",
     "add": "Agregar",
     "editButton": "Editar",
-    "addButton": "Agregar"
+    "addButton": "Agregar",
+    "saveError": "No se pudo guardar de forma segura. Comprueba el almacenamiento seguro e inténtalo de nuevo."
   },
   "gpu": {
     "transcriptionBanner": "Acelera la transcripción con GPU",

@@ -830,7 +830,7 @@ export default function TranscriptionModelPicker({
     elevenLabsApiKey,
     assemblyaiApiKey,
   };
-  const credentialSetters: Record<ProviderCredentialField["key"], (value: string) => void> = {
+  const credentialSetters: Record<ProviderCredentialField["key"], (value: string) => unknown | Promise<unknown>> = {
     openaiApiKey: setOpenaiApiKey,
     groqApiKey: setGroqApiKey,
     xaiApiKey: setXaiApiKey,

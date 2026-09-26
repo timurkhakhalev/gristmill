@@ -1908,7 +1908,8 @@
     "edit": "編輯",
     "add": "新增",
     "editButton": "編輯金鑰",
-    "addButton": "新增金鑰"
+    "addButton": "新增金鑰",
+    "saveError": "無法安全儲存。請檢查安全儲存並重試。"
   },
   "gpu": {
     "transcriptionBanner": "使用 GPU 加速轉錄",

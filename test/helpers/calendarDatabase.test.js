@@ -4,9 +4,32 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const Module = require("node:module");
+const crypto = require("node:crypto");
 
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-calendar-db-"));
 const originalLoad = Module._load;
+const databaseModulePath = require.resolve("../../src/helpers/database.ts");
+const testCryptoKey = Buffer.alloc(32, 19);
+let encryptionAvailable = true;
+const testSecretCrypto = {
+  isAvailable: () => encryptionAvailable,
+  encrypt(plaintext) {
+    if (!encryptionAvailable) throw new Error("test encryption unavailable");
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv("aes-256-gcm", testCryptoKey, iv);
+    const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+    return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
+  },
+  decrypt(blob) {
+    if (!encryptionAvailable) throw new Error("test decryption unavailable");
+    const decipher = crypto.createDecipheriv("aes-256-gcm", testCryptoKey, blob.subarray(0, 12));
+    decipher.setAuthTag(blob.subarray(12, 28));
+    return {
+      value: Buffer.concat([decipher.update(blob.subarray(28)), decipher.final()]).toString("utf8"),
+      needsReencrypt: false,
+    };
+  },
+};
 
 Module._load = function patchedLoad(request, parent, isMain) {
   if (request === "electron") {
@@ -17,6 +40,9 @@ Module._load = function patchedLoad(request, parent, isMain) {
         isReady: () => false,
       },
     };
+  }
+  if (parent?.filename === databaseModulePath && request === "./secretCrypto.js") {
+    return testSecretCrypto;
   }
   return originalLoad.call(this, request, parent, isMain);
 };
@@ -33,8 +59,8 @@ function isNativeBindingUnavailable(error) {
   );
 }
 
-function createDb(t) {
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-calendar-db-"));
+function createDb(t, directory) {
+  userDataDir = directory ?? fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-calendar-db-"));
   try {
     return new DatabaseManager();
   } catch (error) {
@@ -45,6 +71,109 @@ function createDb(t) {
     throw error;
   }
 }
+
+function databaseFiles(directory) {
+  return fs.readdirSync(directory)
+    .filter((name) => name.endsWith(".db") || name.endsWith(".db-wal") || name.endsWith(".db-shm"))
+    .map((name) => fs.readFileSync(path.join(directory, name)));
+}
+
+function includesSecret(directory, secret) {
+  return databaseFiles(directory).some((buffer) => buffer.includes(Buffer.from(secret)));
+}
+
+test("Google and Microsoft calendar tokens are encrypted and survive reopening", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openh-calendar-secure-"));
+  const db = createDb(t, directory);
+  if (!db) return;
+
+  const google = {
+    google_email: "google@example.com",
+    access_token: "google-access-secret",
+    refresh_token: "google-refresh-secret",
+    expires_at: Date.now() + 60_000,
+    scope: "calendar",
+  };
+  const microsoft = {
+    microsoft_email: "microsoft@example.com",
+    access_token: "microsoft-access-secret",
+    refresh_token: "microsoft-refresh-secret",
+    expires_at: Date.now() + 60_000,
+    scope: "calendar",
+  };
+  db.saveGoogleTokens(google);
+  db.saveMicrosoftTokens(microsoft);
+
+  const storedGoogle = db.db.prepare("SELECT access_token, refresh_token FROM google_calendar_tokens").get();
+  const storedMicrosoft = db.db.prepare("SELECT access_token, refresh_token FROM microsoft_calendar_tokens").get();
+  assert.ok(storedGoogle.access_token.startsWith("ohenc:v1:"));
+  assert.ok(storedGoogle.refresh_token.startsWith("ohenc:v1:"));
+  assert.ok(storedMicrosoft.access_token.startsWith("ohenc:v1:"));
+  assert.ok(storedMicrosoft.refresh_token.startsWith("ohenc:v1:"));
+  for (const token of [google.access_token, google.refresh_token, microsoft.access_token, microsoft.refresh_token]) {
+    assert.equal(includesSecret(directory, token), false);
+  }
+  encryptionAvailable = false;
+  assert.deepEqual(db.getGoogleAccounts(), [], "unreadable Google tokens do not show as connected");
+  assert.deepEqual(db.getMicrosoftAccounts(), [], "unreadable Microsoft tokens do not show as connected");
+  encryptionAvailable = true;
+  db.db.close();
+
+  const reopened = createDb(t, directory);
+  if (!reopened) return;
+  assert.equal(reopened.getGoogleTokensByEmail(google.google_email).refresh_token, google.refresh_token);
+  assert.equal(reopened.getMicrosoftTokensByEmail(microsoft.microsoft_email).access_token, microsoft.access_token);
+  reopened.db.close();
+});
+
+test("calendar credential saves fail closed when encryption is unavailable", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  encryptionAvailable = false;
+  try {
+    assert.throws(() => db.saveGoogleTokens({
+      google_email: "google@example.com",
+      access_token: "rejected-google-access",
+      refresh_token: "rejected-google-refresh",
+      expires_at: Date.now(),
+      scope: "calendar",
+    }));
+    assert.throws(() => db.saveMicrosoftTokens({
+      microsoft_email: "microsoft@example.com",
+      access_token: "rejected-ms-access",
+      refresh_token: "rejected-ms-refresh",
+      expires_at: Date.now(),
+      scope: "calendar",
+    }));
+    assert.deepEqual(db.getGoogleAccounts(), []);
+    assert.deepEqual(db.getMicrosoftAccounts(), []);
+  } finally {
+    encryptionAvailable = true;
+    db.db.close();
+  }
+});
+
+test("startup removes legacy plaintext calendar tokens and leaves both providers disconnected", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openh-calendar-legacy-"));
+  const first = createDb(t, directory);
+  if (!first) return;
+  first.db.prepare(
+    "INSERT INTO google_calendar_tokens (google_email, access_token, refresh_token, expires_at, scope) VALUES (?, ?, ?, ?, ?)"
+  ).run("google@example.com", "legacy-google-access", "legacy-google-refresh", Date.now(), "calendar");
+  first.db.prepare(
+    "INSERT INTO microsoft_calendar_tokens (microsoft_email, access_token, refresh_token, expires_at, scope) VALUES (?, ?, ?, ?, ?)"
+  ).run("microsoft@example.com", "legacy-ms-access", "legacy-ms-refresh", Date.now(), "calendar");
+  first.db.close();
+
+  const reopened = createDb(t, directory);
+  if (!reopened) return;
+  assert.deepEqual(reopened.getGoogleAccounts(), []);
+  assert.deepEqual(reopened.getMicrosoftAccounts(), []);
+  for (const token of ["legacy-google-access", "legacy-google-refresh", "legacy-ms-access", "legacy-ms-refresh"]) {
+    assert.equal(includesSecret(directory, token), false);
+  }
+  reopened.db.close();
+});
 
 function appleEvent(id, overrides = {}) {
   return {

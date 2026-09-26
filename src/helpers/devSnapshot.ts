@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { app } from "electron";
 import debugLogger from "./debugLogger.js";
+import { SECRET_ENV_KEYS } from "../config/secretKeys.js";
 
 // Issue #86: the dev channel (pnpm dev and the packaged Dev app) starts from a
 // one-way snapshot of the production profile so it opens existing notes,
@@ -17,18 +18,13 @@ const PROD_DB = "transcriptions.db";
 const DEV_DB = "transcriptions-dev.db";
 const COPY_FILES = ["globe-preference-state.json", ".system-audio-permission"];
 
-// Copy the production .env for BYOK credentials, but never the OAuth scheme
-// selectors: the URL scheme is a property of the build channel (dev builds
-// register openhercules-dev), and inheriting a production value would flip
-// the protocol between the first and second launch.
-const ENV_STRIP_KEYS = ["OPENHERCULES_PROTOCOL", "VITE_OPENHERCULES_PROTOCOL"];
-
-// dotenv accepts `KEY=`, `export KEY=` and `KEY:` assignments, with optional
-// surrounding whitespace — all spellings of a stripped key must go.
-function envLineAssignsStrippedKey(line: string): boolean {
-  const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*[=:]/);
-  return Boolean(match && ENV_STRIP_KEYS.includes(match[1].toUpperCase()));
-}
+// Copy non-secret settings only. Protocol selectors belong to the build
+// channel, while encrypted secrets are copied separately in secure-keys.
+const ENV_STRIP_KEYS = new Set([
+  ...SECRET_ENV_KEYS,
+  "OPENHERCULES_PROTOCOL",
+  "VITE_OPENHERCULES_PROTOCOL",
+].map((key) => key.toUpperCase()));
 
 function cloneEnvFile(source: string, target: string): void {
   const destination = path.join(target, ".env");
@@ -37,11 +33,12 @@ function cloneEnvFile(source: string, target: string): void {
     throw new Error("snapshot .env path is not an ordinary file");
   }
   if (fs.existsSync(destination) || !fs.existsSync(origin)) return;
-  const lines = fs
-    .readFileSync(origin, "utf8")
-    .split(/\r?\n/)
-    .filter((line) => !envLineAssignsStrippedKey(line));
-  fs.writeFileSync(destination, lines.join("\n"), { mode: 0o600 });
+  const parsed = require("dotenv").parse(fs.readFileSync(origin, "utf8")) as Record<string, string>;
+  const safeContent = Object.entries(parsed)
+    .filter(([key]) => !ENV_STRIP_KEYS.has(key.toUpperCase()))
+    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+    .join("\n");
+  fs.writeFileSync(destination, safeContent ? `${safeContent}\n` : "", { mode: 0o600 });
 }
 // The file-origin renderer settings live in Partitions. pnpm dev has a separate
 // HTTP origin; windowManager imports those settings before loading that page.
@@ -149,6 +146,53 @@ function checkpointDatabase(file: string): boolean {
   }
 }
 
+function discardPlaintextCalendarTokens(file: string): void {
+  const Database = require("better-sqlite3") as new (path: string) => {
+    exec(sql: string): void;
+    prepare(sql: string): {
+      all(): Array<{ name: string }>;
+      run(...params: unknown[]): { changes: number };
+      get(): { busy?: number } | undefined;
+    };
+    close(): void;
+  };
+  const db = new Database(file);
+  try {
+    db.exec("PRAGMA secure_delete = ON");
+    const tables = new Set(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('google_calendar_tokens', 'microsoft_calendar_tokens')"
+        )
+        .all()
+        .map((row) => row.name)
+    );
+    let changed = false;
+    if (tables.has("google_calendar_tokens")) {
+      changed =
+        db
+          .prepare(
+            "DELETE FROM google_calendar_tokens WHERE access_token NOT GLOB ? OR refresh_token NOT GLOB ?"
+          )
+          .run("ohenc:v1:*", "ohenc:v1:*").changes > 0 || changed;
+    }
+    if (tables.has("microsoft_calendar_tokens")) {
+      changed =
+        db
+          .prepare(
+            "DELETE FROM microsoft_calendar_tokens WHERE access_token NOT GLOB ? OR refresh_token NOT GLOB ?"
+          )
+          .run("ohenc:v1:*", "ohenc:v1:*").changes > 0 || changed;
+    }
+    if (changed) {
+      const checkpoint = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      if (checkpoint?.busy !== 0) throw new Error("calendar token WAL checkpoint failed");
+    }
+  } finally {
+    db.close();
+  }
+}
+
 // Rename a database file set so an interruption at any point leaves the
 // destination's database file absent: sidecars move first, the database last,
 // and a rerun starts over cleanly because the destination database is missing.
@@ -169,8 +213,25 @@ function adoptLegacyDevDatabase(target: string): boolean {
   const legacy = path.join(target, PROD_DB);
   const current = path.join(target, DEV_DB);
   if (!fs.existsSync(legacy)) return true;
+  try {
+    discardPlaintextCalendarTokens(legacy);
+  } catch (error) {
+    debugLogger.warn("legacy dev database could not be prepared; retrying on the next launch", {
+      error: (error as Error).message,
+    }, "devSnapshot");
+    return false;
+  }
   if (!checkpointDatabase(legacy)) return false;
   if (fs.existsSync(current)) {
+    try {
+      discardPlaintextCalendarTokens(current);
+    } catch (error) {
+      debugLogger.warn("dev database could not be prepared; retrying on the next launch", {
+        error: (error as Error).message,
+      }, "devSnapshot");
+      return false;
+    }
+    if (!checkpointDatabase(current)) return false;
     // Both databases predate the cutover: keep the packaged-Dev set as an
     // explicit, visible backup. It is not opened automatically; restoring it
     // is a manual, deliberate act. Reserve an unused name first — rename
@@ -239,6 +300,7 @@ function snapshotDatabase(source: string, target: string, name: string): boolean
     } finally {
       db.close();
     }
+    discardPlaintextCalendarTokens(staged);
     // link() never overwrites; rename() over APFS would clobber a database a
     // concurrent launch created between the existsSync check and now.
     fs.linkSync(staged, destination);

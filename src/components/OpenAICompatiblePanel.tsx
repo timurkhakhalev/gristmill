@@ -20,7 +20,7 @@ interface OpenAICompatiblePanelProps {
   baseUrl: string;
   setBaseUrl: (value: string) => void;
   apiKey: string;
-  setApiKey: (value: string) => void;
+  setApiKey: (value: string) => unknown | Promise<unknown>;
   model: string;
   setModel: (value: string) => void;
   defaultBaseUrl?: string;

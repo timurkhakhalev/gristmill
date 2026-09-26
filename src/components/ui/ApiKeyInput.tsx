@@ -6,7 +6,7 @@ import logger from "../../utils/logger";
 
 interface ApiKeyInputProps {
   apiKey: string;
-  setApiKey: (key: string) => void;
+  setApiKey: (key: string) => unknown | Promise<unknown>;
   className?: string;
   placeholder?: string;
   label?: string;
@@ -35,6 +35,9 @@ export default function ApiKeyInput({
   const resolvedLabel = label ?? t("apiKeyInput.label");
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [saveError, setSaveError] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveInFlight = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hasKey = apiKey.length > 0;
@@ -54,17 +57,30 @@ export default function ApiKeyInput({
     setIsEditing(true);
   };
 
-  const save = useCallback(() => {
+  const save = useCallback(async () => {
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
+    setIsSaving(true);
+    setSaveError(false);
     try {
-      setApiKey(draft.trim());
-    } catch (err) {
-      logger.warn("Failed to save API key", { error: (err as Error).message }, "settings");
+      const result = await setApiKey(draft.trim());
+      if (!result || typeof result !== "object" || !("success" in result) || result.success !== true) {
+        setSaveError(true);
+        return;
+      }
+      setIsEditing(false);
+    } catch {
+      logger.warn("Failed to save API key securely", {}, "settings");
+      setSaveError(true);
+    } finally {
+      saveInFlight.current = false;
+      setIsSaving(false);
     }
-    setIsEditing(false);
   }, [draft, setApiKey]);
 
   const cancel = () => {
     setDraft("");
+    setSaveError(false);
     setIsEditing(false);
   };
 
@@ -106,7 +122,10 @@ export default function ApiKeyInput({
               type="text"
               placeholder={resolvedPlaceholder}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setSaveError(false);
+              }}
               onKeyDown={handleKeyDown}
               aria-label={ariaLabel || resolvedLabel || t("apiKeyInput.label")}
               className={`h-9 rounded-lg text-sm font-mono pr-16 ${variantClasses}`}
@@ -116,8 +135,9 @@ export default function ApiKeyInput({
             <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
               <button
                 type="button"
-                onClick={save}
-                className="h-6 w-6 flex items-center justify-center rounded text-success hover:bg-success/10 active:scale-95 transition-all"
+                onClick={() => void save()}
+                disabled={isSaving}
+                className="h-6 w-6 flex items-center justify-center rounded text-success hover:bg-success/10 active:scale-95 transition-all disabled:opacity-50"
                 aria-label={t("apiKeyInput.save")}
               >
                 <Check className="w-3.5 h-3.5" />
@@ -154,6 +174,13 @@ export default function ApiKeyInput({
               {hasKey ? t("apiKeyInput.editButton") : t("apiKeyInput.addButton")}
             </span>
           </button>
+        )}
+        {isEditing && saveError && (
+          <p role="alert" className="mt-1 text-xs text-destructive">
+            {t("apiKeyInput.saveError", {
+              defaultValue: "Could not save securely. Check secure storage and try again.",
+            })}
+          </p>
         )}
       </div>
 

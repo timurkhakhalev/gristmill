@@ -21,6 +21,7 @@ import path from "path";
 import crypto from "crypto";
 import { z } from "zod";
 import debugLogger from "./debugLogger.js";
+import { isDevelopmentChannel } from "./appChannel.js";
 import { getAutoStartState, setAutoStartEnabled } from "./autoStart.js";
 import { openSystemSettings } from "./systemSettingsLauncher.js";
 import type { HotkeyActivationCallback, HotkeySlot } from "./hotkeyManager.js";
@@ -946,7 +947,7 @@ export function registerDesktopSettingsHandlers(
     try {
       const dbPath = path.join(
         app.getPath("userData"),
-        process.env.NODE_ENV === "development" ? "transcriptions-dev.db" : "transcriptions.db"
+        isDevelopmentChannel() ? "transcriptions-dev.db" : "transcriptions.db"
       );
       if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
       if (fs.existsSync(dbPath + "-wal")) fs.unlinkSync(dbPath + "-wal");

@@ -21,6 +21,7 @@
     "src/workers/*.ts",
     "src/utils/audioUtils.ts",
     "src/helpers/appVersion.ts",
+    "src/helpers/appChannel.ts",
     "src/helpers/audioActivityDetector.ts",
     "src/helpers/audioTapManager.ts",
     "src/helpers/autoStart.ts",

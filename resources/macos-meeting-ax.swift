@@ -54,17 +54,28 @@ func walk(_ root: AXUIElement, limit: Int = 900) -> ([AXUIElement], Bool) {
     return (nodes, true)
 }
 
-func hasLeaveButton(_ root: AXUIElement, labels: Set<String>) -> Bool? {
+func hasMeetLeaveButton(_ root: AXUIElement) -> Bool? {
     let (nodes, complete) = walk(root)
     guard complete else { return nil }
     return nodes.contains { node in
-        guard ["AXButton", "AXMenuItem", "AXPopUpButton"].contains(string(node, kAXRoleAttribute) ?? ""),
+        guard string(node, kAXRoleAttribute) == "AXButton",
               (attribute(node, kAXEnabledAttribute) as? Bool) != false,
               visible(node) else { return false }
-        return [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute]
-            .compactMap { string(node, $0)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            .contains { labels.contains($0) }
+        // Meet exposes no stable AX identifier for this button; its DOM class is available in AX.
+        return (attribute(node, "AXDOMClassList") as? [String])?.contains("xCYCgd") == true
     }
+}
+
+func hasZoomMeetingWindow(_ window: AXUIElement) -> Bool? {
+    guard let children = elements(window, kAXChildrenAttribute) else { return nil }
+    var defaultButton: CFTypeRef?
+    let status = AXUIElementCopyAttributeValue(window, kAXDefaultButtonAttribute as CFString, &defaultButton)
+    guard status == .success || status == .noValue || status == .attributeUnsupported else { return nil }
+    // Zoom's preview has a default Join button; a joined call keeps its video tab when controls hide.
+    // The compact in-call window uses AXSystemDialog after the main call window is minimized.
+    return ["AXStandardWindow", "AXSystemDialog"].contains(string(window, kAXSubroleAttribute) ?? "")
+        && defaultButton == nil
+        && children.contains { string($0, kAXRoleAttribute) == "AXTabGroup" }
 }
 
 func focusedWebArea(_ application: AXUIElement, window: AXUIElement) -> AXUIElement? {
@@ -101,9 +112,6 @@ let browsers: Set<String> = [
     "org.chromium.Chromium", "com.microsoft.edgemac", "com.brave.Browser",
     "company.thebrowser.Browser", "org.mozilla.firefox"
 ]
-let meetLeave: Set<String> = ["leave call", "leave meeting", "покинуть звонок", "выйти из звонка"]
-let zoomLeave: Set<String> = ["leave", "leave meeting", "end meeting", "покинуть", "выйти из конференции", "завершить конференцию"]
-
 for app in NSWorkspace.shared.runningApplications {
     guard let bundle = app.bundleIdentifier, app.processIdentifier > 0 else { continue }
     let ax = AXUIElementCreateApplication(app.processIdentifier)
@@ -116,7 +124,7 @@ for app in NSWorkspace.shared.runningApplications {
         var active = false
         var complete = true
         for window in windows where visible(window) {
-            guard let result = hasLeaveButton(window, labels: zoomLeave) else {
+            guard let result = hasZoomMeetingWindow(window) else {
                 complete = false
                 continue
             }
@@ -132,7 +140,7 @@ for app in NSWorkspace.shared.runningApplications {
               let url = webURL(webArea),
               url.scheme?.lowercased() == "https", url.host?.lowercased() == "meet.google.com" else { continue }
         let key = "meet:\(meetingKey(url))"
-        guard let active = hasLeaveButton(webArea, labels: meetLeave) else {
+        guard let active = hasMeetLeaveButton(webArea) else {
             print("unknown\tmeet")
             continue
         }

@@ -212,7 +212,17 @@ function snapshotDatabase(source: string, target: string, name: string): boolean
 export function snapshotProductionProfileForDev(): boolean {
   const source = sourceProfileDir();
   const target = targetProfileDir();
-  if (sameDir(source, target)) return true;
+  // A dev profile symlinked (or otherwise aliased) to the production profile
+  // must stop startup, not just skip the snapshot: the app itself would open
+  // and write its database inside the production profile.
+  if (sameDir(source, target)) {
+    debugLogger.warn(
+      "dev profile resolves to the production profile; refusing to start",
+      { source, target },
+      "devSnapshot"
+    );
+    return false;
+  }
 
   // Adoption is independent of the production snapshot: a dev-only profile
   // with pre-cutover notes must migrate even when no production profile

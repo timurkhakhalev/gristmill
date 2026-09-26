@@ -1579,7 +1579,11 @@
       "addAttendees": "Add attendees",
       "addPlaceholder": "Add attendees...",
       "typeEmail": "Type an email to add...",
-      "me": "(me)"
+      "me": "(me)",
+      "openInCalendar": "Open in calendar",
+      "copyEmail": "Copy email",
+      "emailCopied": "Email copied",
+      "removeAttendee": "Remove attendee"
     },
     "upload": {
       "title": "Upload Audio",

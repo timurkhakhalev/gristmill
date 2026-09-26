@@ -7,7 +7,6 @@ import {
   Sparkles,
   AlignLeft,
   Mic,
-  LinkIcon,
   FolderOpen,
   Search,
   Plus,
@@ -48,7 +47,7 @@ import {
   serializeTranscriptSegments,
 } from "../../utils/transcriptSpeakerState";
 import NoteParticipants from "./NoteParticipants";
-import type { CalendarAttendee } from "../../contracts/calendar";
+import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import { observeFloatingChatLayout } from "./floatingChatLayout";
 import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } from "./shared";
 import MeetingResultsPanel from "./MeetingResultsPanel";
@@ -79,6 +78,13 @@ interface NoteExportOption {
   id: string;
   label: string;
   onSelect: () => void;
+}
+
+/** Opening priority: a ready Summary wins over the Notes body. */
+function initialMeetingViewMode(note: NoteItem): MeetingViewMode {
+  if (note.enhanced_content) return "enhanced";
+  if (note.note_type === "upload" && note.transcript) return "transcript";
+  return "raw";
 }
 
 function buildKnownSpeakers(
@@ -135,8 +141,8 @@ interface NoteEditorProps {
   onSetSessionDiarizationEnabled?: (enabled: boolean) => void;
   onSetSessionExpectedCount?: (count: number) => void;
   folderName?: string | null;
-  calendarEventName?: string | null;
-  folders?: FolderItem[];
+  /** The linked calendar event, for the meeting card. Null when unlinked. */
+  calendarEvent?: CalendarEvent | null;  folders?: FolderItem[];
   onMoveToFolder?: (noteId: number, folderId: number) => void;
   onCreateFolderAndMove?: (noteId: number, folderName: string) => void;
   debugPreview?: {
@@ -178,7 +184,7 @@ export default function NoteEditor({
   onSetSessionDiarizationEnabled,
   onSetSessionExpectedCount,
   folderName,
-  calendarEventName,
+  calendarEvent,
   folders,
   onMoveToFolder,
   onCreateFolderAndMove,
@@ -204,7 +210,7 @@ export default function NoteEditor({
   const systemCaptureStatus = debugPreview?.systemStatus ?? liveSystemCaptureStatus;
   const captureLive = capturePhase === "recording";
   const [viewMode, setViewMode] = useState<MeetingViewMode>(
-    debugPreview?.viewMode ?? (note.note_type === "upload" && note.transcript ? "transcript" : "raw")
+    debugPreview?.viewMode ?? initialMeetingViewMode(note)
   );
   const [chatMode, setChatMode] = useState<EmbeddedChatMode>("hidden");
   const [folderSearch, setFolderSearch] = useState("");
@@ -328,14 +334,14 @@ export default function NoteEditor({
         setDiarizedSegments(null);
         setIsDiarizing(false);
         setSpeakerMappings({});
-        setViewMode("raw");
+        setViewMode(initialMeetingViewMode(note));
         if (titleRef.current && titleRef.current.textContent !== note.title) {
           titleRef.current.textContent = note.title || "";
         }
         editorRef.current?.commands.focus();
       });
     }
-  }, [note.id, note.title, scheduleUiUpdate]);
+  }, [note, scheduleUiUpdate]);
 
   useEffect(() => {
     if (debugPreview) return;
@@ -554,6 +560,23 @@ export default function NoteEditor({
 
   const contentScrollRef = useRef<HTMLDivElement>(null);
 
+  // A transcript opens at its newest row: the reader lands where the meeting
+  // ended. The list is virtualized, so pin across a few frames while rows
+  // measure and the real height settles.
+  useEffect(() => {
+    if (viewMode !== "transcript") return;
+    const scroller = contentScrollRef.current;
+    if (!scroller) return;
+    let frame = 0;
+    let remaining = 6;
+    const pin = () => {
+      scroller.scrollTop = scroller.scrollHeight;
+      if (remaining-- > 0) frame = window.requestAnimationFrame(pin);
+    };
+    frame = window.requestAnimationFrame(pin);
+    return () => window.cancelAnimationFrame(frame);
+  }, [viewMode]);
+
   const getActiveScroller = useCallback((root: HTMLDivElement): HTMLElement | null => {
     const candidates = [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))].filter(
       (el) => el.scrollHeight - el.clientHeight > 2
@@ -631,7 +654,7 @@ export default function NoteEditor({
 
   return (
     <div className="relative flex h-full min-h-0">
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
         <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-5">
           {onBackToNotes && <button type="button" className="mb-6 inline-flex items-center gap-2 rounded text-xs text-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={onBackToNotes} aria-label={t("controlPanel.backToNotes")}><ArrowLeft size={16}/>{t("controlPanel.backToNotes")}</button>}
           <div
@@ -651,16 +674,11 @@ export default function NoteEditor({
             <NoteParticipants
               noteId={note.id}
               participants={parsedParticipants}
+              event={calendarEvent}
               dateLabel={shortDate || undefined}
               dateTitle={noteDate}
               preview={Boolean(debugPreview)}
             />
-            {calendarEventName && (
-              <span className={cn(NOTE_META_CHIP_CLASS, "cursor-default")}>
-                <LinkIcon size={14} className="shrink-0 text-muted" />
-                <span className="max-w-40 truncate">{calendarEventName}</span>
-              </span>
-            )}
             {folders && onMoveToFolder && !canMoveToFolders && folderName && (
               <span className={cn(NOTE_META_CHIP_CLASS, "cursor-default")}>
                 <FolderOpen size={14} className="shrink-0 text-muted" />

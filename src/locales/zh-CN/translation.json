@@ -1505,7 +1505,11 @@
       "addAttendees": "添加参会者",
       "addPlaceholder": "添加参会者...",
       "typeEmail": "输入邮箱以添加...",
-      "me": "（我）"
+      "me": "（我）",
+      "openInCalendar": "在日历中打开",
+      "copyEmail": "复制邮箱",
+      "emailCopied": "邮箱已复制",
+      "removeAttendee": "移除参会者"
     },
     "upload": {
       "title": "上传音频",

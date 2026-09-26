@@ -1507,7 +1507,11 @@
       "addAttendees": "Добавить участников",
       "addPlaceholder": "Добавить участников...",
       "typeEmail": "Введите email для добавления...",
-      "me": "(я)"
+      "me": "(я)",
+      "openInCalendar": "Открыть в календаре",
+      "copyEmail": "Скопировать email",
+      "emailCopied": "Email скопирован",
+      "removeAttendee": "Удалить участника"
     },
     "upload": {
       "title": "Загрузить аудио",

@@ -1505,7 +1505,11 @@
       "addAttendees": "Adicionar participantes",
       "addPlaceholder": "Adicionar participantes...",
       "typeEmail": "Digite um e-mail para adicionar...",
-      "me": "(eu)"
+      "me": "(eu)",
+      "openInCalendar": "Abrir no calendário",
+      "copyEmail": "Copiar e-mail",
+      "emailCopied": "E-mail copiado",
+      "removeAttendee": "Remover participante"
     },
     "upload": {
       "title": "Enviar áudio",

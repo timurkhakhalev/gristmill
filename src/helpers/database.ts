@@ -306,6 +306,7 @@ export type CalendarEventRow = {
   self_response_status: string;
   hangout_link: string | null;
   conference_data: string | null;
+  event_url: string | null;
   organizer_email: string | null;
   attendees_count: number;
   attendees: string | null;
@@ -387,6 +388,7 @@ export interface CalendarEventInput {
   self_response_status?: string;
   hangout_link?: string | null;
   conference_data?: string | null;
+  event_url?: string | null;
   organizer_email?: string | null;
   attendees_count?: number;
   attendees?: string | null;
@@ -843,6 +845,7 @@ export class DatabaseManager {
           self_response_status TEXT NOT NULL DEFAULT 'unknown',
           hangout_link TEXT,
           conference_data TEXT,
+          event_url TEXT,
           organizer_email TEXT,
           attendees_count INTEGER NOT NULL DEFAULT 0,
           attendees TEXT,
@@ -922,6 +925,10 @@ export class DatabaseManager {
       const runColumns = this.sql.pragma("table_info(meeting_processing_runs)") as Array<{ name: string }>;
       if (!runColumns.some((column) => column.name === "source_recording_ids_json")) {
         this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN source_recording_ids_json TEXT");
+      }
+      const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{ name: string }>;
+      if (!calendarEventColumns.some((column) => column.name === "event_url")) {
+        this.sql.exec("ALTER TABLE calendar_events ADD COLUMN event_url TEXT");
       }
 
       const existingSpace = this.sql.prepare("SELECT id FROM spaces LIMIT 1").get() as
@@ -2604,7 +2611,7 @@ export class DatabaseManager {
   }
   upsertCalendarEvents(events: CalendarEventInput[]): { success: boolean } {
     const stmt = this.sql.prepare(
-      "INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, organizer_email, attendees_count, attendees, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+      "INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, event_url, organizer_email, attendees_count, attendees, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
     );
     this.sql.transaction((list: CalendarEventInput[]) =>
       list.forEach((e) =>
@@ -2621,6 +2628,7 @@ export class DatabaseManager {
           e.self_response_status || "unknown",
           e.hangout_link || null,
           e.conference_data || null,
+          e.event_url || null,
           e.organizer_email || null,
           e.attendees_count || 0,
           e.attendees || null
@@ -2744,7 +2752,7 @@ export class DatabaseManager {
         )
         .run();
       const stmt = this.sql.prepare(
-        "INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, organizer_email, attendees_count, attendees, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+        "INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, event_url, organizer_email, attendees_count, attendees, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
       );
       list.forEach((e) =>
         stmt.run(
@@ -2760,6 +2768,7 @@ export class DatabaseManager {
           e.self_response_status || "unknown",
           e.hangout_link || null,
           e.conference_data || null,
+          e.event_url || null,
           e.organizer_email || null,
           e.attendees_count || 0,
           e.attendees || null

@@ -1579,7 +1579,11 @@
       "addAttendees": "Ajouter des participants",
       "addPlaceholder": "Ajouter des participants...",
       "typeEmail": "Saisissez un e-mail pour ajouter...",
-      "me": "(moi)"
+      "me": "(moi)",
+      "openInCalendar": "Ouvrir dans l’agenda",
+      "copyEmail": "Copier l’e-mail",
+      "emailCopied": "E-mail copié",
+      "removeAttendee": "Retirer le participant"
     },
     "upload": {
       "title": "Téléverser un fichier audio",

@@ -272,6 +272,7 @@ test("_syncCalendar preserves meeting links from Google event location and descr
         id: "location-link",
         summary: "Location call",
         location: "Zoom: https://example.zoom.us/j/123456789",
+        htmlLink: "https://www.google.com/calendar/event?eid=location-link",
         start: { dateTime: "2026-08-14T10:00:00Z" },
         end: { dateTime: "2026-08-14T10:30:00Z" },
         status: "confirmed",
@@ -291,21 +292,24 @@ test("_syncCalendar preserves meeting links from Google event location and descr
   await manager._syncCalendar({ id: "cal-1", account_email: "test@example.com" });
 
   assert.deepEqual(
-    upsertedEvents.map(({ id, hangout_link, attendees_count }) => ({
+    upsertedEvents.map(({ id, hangout_link, attendees_count, event_url }) => ({
       id,
       hangout_link,
       attendees_count,
+      event_url,
     })),
     [
       {
         id: "location-link",
         hangout_link: "https://example.zoom.us/j/123456789",
         attendees_count: 0,
+        event_url: "https://www.google.com/calendar/event?eid=location-link",
       },
       {
         id: "description-link",
         hangout_link: "https://teams.live.com/meet/9876543210",
         attendees_count: 0,
+        event_url: null,
       },
     ]
   );

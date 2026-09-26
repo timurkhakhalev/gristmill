@@ -827,7 +827,11 @@
       "addAttendees": "إضافة حاضرين",
       "addPlaceholder": "إضافة حاضرين...",
       "typeEmail": "اكتب بريدًا إلكترونيًا لإضافته...",
-      "me": "(أنا)"
+      "me": "(أنا)",
+      "openInCalendar": "افتح في التقويم",
+      "copyEmail": "انسخ البريد",
+      "emailCopied": "تم نسخ البريد",
+      "removeAttendee": "إزالة الحاضر"
     },
     "upload": {
       "title": "رفع ملف صوتي",

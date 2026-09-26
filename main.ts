@@ -118,6 +118,9 @@ function configureChannelUserDataPath(): void {
   const isolatedPath = explicitPath
     ? path.resolve(explicitPath)
     : path.join(app.getPath("appData"), profileName);
+  // app.setPath throws when the directory does not exist; a first dev launch
+  // has no profile directory yet.
+  fs.mkdirSync(isolatedPath, { recursive: true });
   app.setPath("userData", isolatedPath);
 }
 

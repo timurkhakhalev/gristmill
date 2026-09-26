@@ -222,18 +222,32 @@ function realpathOrNull(p: string): string | null {
   }
 }
 
+// Does this resolved path live inside the production profile (or equal it)?
+function reachesProduction(resolved: string, source: string): boolean {
+  return resolved === source || resolved.startsWith(source + path.sep);
+}
+
 export function devProfileAliasesProduction(): boolean {
   const source = realpathOrNull(sourceProfileDir());
   const target = realpathOrNull(targetProfileDir());
   if (!source || !target) return false;
-  if (target === source) return true;
-  // Nested either way: userData inside the production profile or vice versa.
-  if (target.startsWith(source + path.sep) || source.startsWith(target + path.sep)) return true;
-  // A pre-created dev database symlinked into production storage.
-  const devDb = path.join(targetProfileDir(), DEV_DB);
-  const dbReal = realpathOrNull(devDb);
-  const prodDb = path.join(source, PROD_DB);
-  if (dbReal && (dbReal === prodDb || dbReal.startsWith(source + path.sep))) return true;
+  // Equal or nested either way: userData inside the production profile or
+  // vice versa.
+  if (reachesProduction(target, source) || reachesProduction(source, target)) return true;
+  // Anything the app opens or writes under userData that realpaths into
+  // production storage: the active and legacy databases, and the storage
+  // trees the snapshot copies into (audio, meeting-results, notes,
+  // secure-keys, Partitions). A symlinked legacy database would also make
+  // adoption checkpoint production and move the link onto the active name.
+  const candidates = [
+    DEV_DB,
+    PROD_DB,
+    ...COPY_DIRS.map((name) => name + path.sep),
+  ];
+  for (const name of candidates) {
+    const resolved = realpathOrNull(path.join(targetProfileDir(), name));
+    if (resolved && reachesProduction(resolved, source)) return true;
+  }
   return false;
 }
 

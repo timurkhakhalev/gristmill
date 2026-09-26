@@ -69,17 +69,18 @@ test("per-provider transcription model memory", async (t) => {
     assert.ok(Object.keys(persisted).some((key) => key.startsWith("dictation:")));
   });
 
-  await t.test("meeting scope restores only streaming-capable models", () => {
+  await t.test("meeting scope restores only meeting-file models", () => {
     state().switchCloudTranscriptionProvider("meeting", "openai");
-    // A remembered batch-only model must not survive into the streaming-filtered
-    // meeting scope; the streaming default wins instead.
+    // The post-Stop file route diarizes through gpt-4o-transcribe-diarize and
+    // accepts no other OpenAI model; the batch gpt-transcribe default must not
+    // leak into the meeting scope.
     const restored = state().meetingCloudTranscriptionModel;
     assert.equal(
       restored,
-      "gpt-4o-mini-transcribe",
-      "the batch-only gpt-transcribe default must not leak into the streaming scope"
+      "gpt-4o-transcribe-diarize",
+      "the batch-only gpt-transcribe default must not leak into the meeting scope"
     );
-    state().setMeetingCloudTranscriptionModel("gpt-4o-mini-transcribe");
+    state().setMeetingCloudTranscriptionModel("gpt-4o-transcribe");
     state().switchCloudTranscriptionProvider("meeting", "groq");
     state().switchCloudTranscriptionProvider("meeting", "openai");
     assert.notEqual(state().meetingCloudTranscriptionModel, "");

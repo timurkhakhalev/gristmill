@@ -14,11 +14,11 @@ fi
 full_suite=0
 if [ "$#" -eq 0 ]; then
   full_suite=1
-  set -- 'test/**/*.test.js'
+  set -- 'test/**/*.test.js' 'test/**/*.test.ts'
 else
   for file do
     case "$file" in
-      test/*.test.js|test/*/*.test.js) ;;
+      test/*.test.js|test/*/*.test.js|test/*.test.ts|test/*/*.test.ts) ;;
       *) echo "Expected a test file under test/: $file" >&2; exit 2 ;;
     esac
     if [ ! -f "$file" ]; then

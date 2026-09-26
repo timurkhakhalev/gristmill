@@ -1,14 +1,16 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const test = require("node:test");
-const { installElectronStub, setUserDataDir } = require("./harness/electronStub.js");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { installElectronStub, setUserDataDir } from "./harness/electronStub.js";
 
 installElectronStub();
-const { snapshotProductionProfileForDev } = require("../../src/helpers/devSnapshot.ts");
+const { snapshotProductionProfileForDev } = require("../../src/helpers/devSnapshot.ts") as {
+  snapshotProductionProfileForDev: () => void;
+};
 
-function makeProfiles() {
+function makeProfiles(): { root: string; production: string; development: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "oh-dev-snapshot-"));
   const production = path.join(root, "OpenHercules");
   const development = path.join(root, "OpenHercules-development");
@@ -42,7 +44,10 @@ test("snapshots production profile into a fresh dev profile", () => {
     fs.readFileSync(path.join(development, "audio", "meetings", "rec-1", "audio.pcm"), "utf8"),
     "pcm"
   );
-  assert.equal(fs.readFileSync(path.join(development, "meeting-results", "run-1.json"), "utf8"), "{}");
+  assert.equal(
+    fs.readFileSync(path.join(development, "meeting-results", "run-1.json"), "utf8"),
+    "{}"
+  );
 });
 
 test("does not overwrite an existing dev profile", () => {

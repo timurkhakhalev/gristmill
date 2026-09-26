@@ -257,9 +257,16 @@ test("source WAV exports keep epoch gaps; failed export and unavailable audio do
   const storage = new MeetingRecordingStorage({ userDataPath: root });
   const mic = { source: "mic", startFrame: 0, samples: Buffer.from([1, 2, 3, 4]) };
   const system = { source: "system", startFrame: 4, samples: Buffer.from([5, 6, 7, 8]) };
+  // startedAt must be pinned: the fixture defaults startedAt to "now"
+  // AFTER this object is built, so a plain new Date() here can land before
+  // the start and make meetingTimelineFrameCount throw "timeline is invalid".
+  // endedAt equals startedAt: capture end adds no frames and the WAV length
+  // is exactly the epochs' 8 frames the byte assertions expect.
+  const startedAt = new Date().toISOString();
   const { recording } = createFinishedRecording(db, storage, {
     sources: [mic, system],
-    endedAt: new Date().toISOString(),
+    startedAt,
+    endedAt: startedAt,
   });
   const epochs = db.listMeetingRecordingEpochs(recording.id);
   const micPath = path.join(root, "mic-export.wav");

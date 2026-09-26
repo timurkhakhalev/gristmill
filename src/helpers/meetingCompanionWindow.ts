@@ -107,6 +107,7 @@ export class MeetingCompanionWindow {
 
   private reconcile(): void {
     if (!shouldShowMeetingCompanion(this.state.active, this.isControlPanelFocused())) {
+      this.dragOrigin = null;
       if (this.win && !this.win.isDestroyed() && this.win.isVisible()) this.win.hide();
       return;
     }
@@ -129,8 +130,8 @@ export class MeetingCompanionWindow {
 
     const win = new BrowserWindow({
       ...NOTIFICATION_WINDOW_CONFIG,
-      width: MEETING_COMPANION_SIZE,
-      height: MEETING_COMPANION_SIZE,
+      width: MEETING_COMPANION_SIZE.width,
+      height: MEETING_COMPANION_SIZE.height,
       ...position,
     });
     this.win = win;

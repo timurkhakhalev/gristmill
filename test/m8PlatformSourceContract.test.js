@@ -32,13 +32,15 @@ test("M8 package scripts do not download removed products or platform artifacts"
 test("M8 keeps required macOS runtime resources in the builder filter", () => {
   const builder = readJson("electron-builder.json");
   const filter = builder.extraResources.find((entry) => entry.from === "resources/bin/").filter;
-  for (const resource of [
-    "whisper-cpp-*",
-    "llama-server-*",
-    "sherpa-onnx-*",
-    "diarization-models/**/*",
-    "whisper-vad/**/*",
-  ]) {
+  for (const resource of ["whisper-cpp-*", "llama-server-*", "sherpa-onnx-*"]) {
     assert.ok(filter.includes(resource), resource);
+  }
+});
+
+test("issue #89 keeps model assets out of the packaged resources", () => {
+  const builder = readJson("electron-builder.json");
+  const filter = builder.extraResources.find((entry) => entry.from === "resources/bin/").filter;
+  for (const modelAsset of ["diarization-models/**/*", "whisper-vad/**/*"]) {
+    assert.ok(!filter.includes(modelAsset), modelAsset);
   }
 });

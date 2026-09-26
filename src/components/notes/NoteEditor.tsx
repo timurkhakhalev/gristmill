@@ -47,6 +47,7 @@ import {
   serializeTranscriptSegments,
 } from "../../utils/transcriptSpeakerState";
 import NoteParticipants from "./NoteParticipants";
+import NoteFindBar from "./NoteFindBar";
 import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import { observeFloatingChatLayout } from "./floatingChatLayout";
 import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } from "./shared";
@@ -218,6 +219,7 @@ export default function NoteEditor({
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isDiarizing, setIsDiarizing] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
   const canEditNote = true;
   const canMoveToFolders = !debugPreview;
   const [diarizedSegments, setDiarizedSegments] = useState<TranscriptSegment[] | null>(null);
@@ -518,6 +520,17 @@ export default function NoteEditor({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedSegmentIds.size, handleClearSelection]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      if (e.key.toLowerCase() !== "f") return;
+      e.preventDefault();
+      setFindOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const handleBulkAssignName = useCallback(
     async (displayName: string, _email?: string | null, profileId?: number) => {
@@ -902,6 +915,7 @@ export default function NoteEditor({
             state={actionProcessingState ?? "idle"}
             actionName={actionName ?? null}
           />
+          <NoteFindBar open={findOpen} onClose={() => setFindOpen(false)} containerRef={contentScrollRef} />
           <div
             className="absolute bottom-0 left-0 right-0 h-20 pointer-events-none"
             style={{

@@ -1791,6 +1791,11 @@
     "dateGroups": {
       "today": "Hoy",
       "yesterday": "Ayer"
+    },
+    "find": {
+      "placeholder": "Buscar en la nota",
+      "previous": "Coincidencia anterior",
+      "next": "Coincidencia siguiente"
     }
   },
   "dictionary": {
@@ -2311,5 +2316,17 @@
       "pending": "Esperando para empezar.",
       "running": "Puede tardar unos minutos. Puedes seguir escribiendo notas."
     }
+  },
+  "shortcutsDialog": {
+    "title": "Atajos de teclado",
+    "groups": {
+      "navigation": "Navegación",
+      "notes": "Notas",
+      "help": "Ayuda"
+    },
+    "nextNote": "Nota siguiente / anterior",
+    "switchView": "Cambiar notas / subida",
+    "findInNote": "Buscar en la nota",
+    "showShortcuts": "Atajos de teclado"
   }
 }

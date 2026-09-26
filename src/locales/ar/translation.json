@@ -1131,6 +1131,11 @@
     "dateGroups": {
       "today": "اليوم",
       "yesterday": "أمس"
+    },
+    "find": {
+      "placeholder": "البحث في الملاحظة",
+      "previous": "التطابق السابق",
+      "next": "التطابق التالي"
     }
   },
   "onboarding": {
@@ -2355,5 +2360,17 @@
     "systemAudio": "System audio",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
+  },
+  "shortcutsDialog": {
+    "title": "اختصارات لوحة المفاتيح",
+    "groups": {
+      "navigation": "التنقل",
+      "notes": "الملاحظات",
+      "help": "المساعدة"
+    },
+    "nextNote": "الملاحظة التالية / السابقة",
+    "switchView": "التبديل بين الملاحظات / الرفع",
+    "findInNote": "البحث في الملاحظة",
+    "showShortcuts": "اختصارات لوحة المفاتيح"
   }
 }

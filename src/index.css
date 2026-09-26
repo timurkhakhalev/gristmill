@@ -1814,6 +1814,17 @@ a:hover {
   height: 0;
 }
 
+/* Find-in-note highlights (CSS Custom Highlight API), painted without touching
+   the editor selection or undo history. */
+::highlight(note-find-match) {
+  background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+}
+
+::highlight(note-find-active) {
+  background-color: color-mix(in oklab, var(--color-primary) 65%, transparent);
+  color: var(--color-primary-foreground);
+}
+
 /* Dark mode adjustments */
 .dark .rich-text-editor-content li::marker {
   color: oklch(0.7 0 0 / 0.4);

@@ -1791,6 +1791,11 @@
     "dateGroups": {
       "today": "今天",
       "yesterday": "昨天"
+    },
+    "find": {
+      "placeholder": "在筆記中尋找",
+      "previous": "上一個相符項",
+      "next": "下一個相符項"
     }
   },
   "dictionary": {
@@ -2311,5 +2316,17 @@
       "pending": "等待開始。",
       "running": "這可能需要幾分鐘。你可以繼續寫筆記。"
     }
+  },
+  "shortcutsDialog": {
+    "title": "鍵盤快速鍵",
+    "groups": {
+      "navigation": "導覽",
+      "notes": "筆記",
+      "help": "說明"
+    },
+    "nextNote": "下一則 / 上一則筆記",
+    "switchView": "切換筆記 / 上傳",
+    "findInNote": "在筆記中尋找",
+    "showShortcuts": "鍵盤快速鍵"
   }
 }

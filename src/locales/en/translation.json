@@ -1865,6 +1865,11 @@
     "dateGroups": {
       "today": "Today",
       "yesterday": "Yesterday"
+    },
+    "find": {
+      "placeholder": "Find in note",
+      "previous": "Previous match",
+      "next": "Next match"
     }
   },
   "dictionary": {
@@ -2311,5 +2316,17 @@
     "systemAudio": "System audio",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
+  },
+  "shortcutsDialog": {
+    "title": "Keyboard shortcuts",
+    "groups": {
+      "navigation": "Navigation",
+      "notes": "Notes",
+      "help": "Help"
+    },
+    "nextNote": "Next / previous note",
+    "switchView": "Switch notes / upload",
+    "findInNote": "Find in note",
+    "showShortcuts": "Keyboard shortcuts"
   }
 }

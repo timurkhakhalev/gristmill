@@ -1865,6 +1865,11 @@
     "dateGroups": {
       "today": "Aujourd'hui",
       "yesterday": "Hier"
+    },
+    "find": {
+      "placeholder": "Rechercher dans la note",
+      "previous": "Correspondance précédente",
+      "next": "Correspondance suivante"
     }
   },
   "dictionary": {
@@ -2311,5 +2316,17 @@
       "pending": "En attente de démarrage.",
       "running": "Cela peut prendre quelques minutes. Vous pouvez continuer à écrire vos notes."
     }
+  },
+  "shortcutsDialog": {
+    "title": "Raccourcis clavier",
+    "groups": {
+      "navigation": "Navigation",
+      "notes": "Notes",
+      "help": "Aide"
+    },
+    "nextNote": "Note suivante / précédente",
+    "switchView": "Basculer notes / import",
+    "findInNote": "Rechercher dans la note",
+    "showShortcuts": "Raccourcis clavier"
   }
 }

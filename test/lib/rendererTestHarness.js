@@ -241,6 +241,14 @@ async function createRendererServer(
   return vite;
 }
 
+async function reloadSettingsStore(vite) {
+  const url = "/stores/settingsStore.ts";
+  const module = await vite.moduleGraph.getModuleByUrl(url);
+  // Vite invalidates this module and its importers; shared dependencies stay cached.
+  if (module) vite.moduleGraph.invalidateModule(module);
+  return vite.ssrLoadModule(url);
+}
+
 // Minimal Web Audio + capture stubs so the mic pipeline can run under Node.
 function installMicCaptureGlobals(t) {
   const track = {
@@ -321,6 +329,7 @@ function installMicCaptureGlobals(t) {
 
 module.exports = {
   createRendererServer,
+  reloadSettingsStore,
   installBrowserGlobals,
   installHookDom,
   installMicCaptureGlobals,

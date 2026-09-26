@@ -1,6 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const {
+  createRendererServer,
+  installBrowserGlobals,
+  reloadSettingsStore,
+} = require("../lib/rendererTestHarness");
 const {
   resolveMeetingTranscriptionOptions,
 } = require("../../src/helpers/meetingTranscriptionRouting.ts");
@@ -59,10 +63,8 @@ const meetingRoute = (mod, state) => {
   });
 };
 
-// ~25 ssrLoadModule reloads take over 90s under the suite's background
-// scheduling (taskpolicy -b), past the global 30s per-test timeout: the
-// timeout fires on this parent test, tears down vite mid-flight and cascades
-// "transport was disconnected" onto every remaining subtest. Budget 5 minutes.
+// The migration cases share a Vite server. Allow extra time under macOS
+// background scheduling so the parent test does not close it mid-run.
 test("Note Recording modes survive the follow-flag migration", { timeout: 300_000 }, async (t) => {
   const { storage } = installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
@@ -80,9 +82,8 @@ test("Note Recording modes survive the follow-flag migration", { timeout: 300_00
   const countWrites = (key) => writes.filter((written) => written === key).length;
   const reload = async () => {
     writes.length = 0;
-    vite.moduleGraph.invalidateAll();
     const mod = {
-      ...(await vite.ssrLoadModule("/stores/settingsStore.ts")),
+      ...(await reloadSettingsStore(vite)),
       ...(await vite.ssrLoadModule("/config/settingsSelectors.ts")),
     };
     return { mod, state: mod.useSettingsStore.getState() };

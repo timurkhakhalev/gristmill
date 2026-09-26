@@ -1,6 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const {
+  createRendererServer,
+  installBrowserGlobals,
+  reloadSettingsStore,
+} = require("../lib/rendererTestHarness");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 
@@ -21,10 +25,7 @@ test("retired groq model selections migrate to served replacements", async (t) =
     cachePrefix: "openwhispr-retired-groq-models-test-",
   });
 
-  const load = async () => {
-    vite.moduleGraph.invalidateAll();
-    return vite.ssrLoadModule("/stores/settingsStore.ts");
-  };
+  const load = () => reloadSettingsStore(vite);
 
   await t.test("groq scopes remap, other providers keep their model", async () => {
     storage.clear();

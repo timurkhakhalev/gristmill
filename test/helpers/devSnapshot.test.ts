@@ -110,12 +110,15 @@ test("refresh re-copies missing files but keeps dev-only ones", () => {
   assert.equal(fs.readFileSync(path.join(development, "dev-only.txt"), "utf8"), "keep");
 });
 
-test("never snapshots into a dev profile symlinked to production", () => {
+test("refuses to start into a dev profile symlinked to production", () => {
   const { root, production } = makeProfiles();
   const link = path.join(root, "dev-link");
   fs.symlinkSync(production, link);
   setUserDataDir(link);
-  snapshotProductionProfileForDev();
+  const ok = snapshotProductionProfileForDev();
+  // Not just "writes nothing": startup must refuse, or the app would open
+  // its database inside the production profile through the alias.
+  assert.equal(ok, false);
   assert.equal(fs.existsSync(path.join(production, ".dev-snapshot-complete")), false);
   assert.equal(fs.existsSync(path.join(production, DEV_DB)), false);
 });

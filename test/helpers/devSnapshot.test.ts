@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { installElectronStub, setUserDataDir } from "./harness/electronStub.js";
+import { installElectronStub, setUserDataDir, setAppDataDir } from "./harness/electronStub.js";
 
 installElectronStub();
 const { snapshotProductionProfileForDev } = require("../../src/helpers/devSnapshot.ts") as {
@@ -121,6 +121,36 @@ test("refuses to start into a dev profile symlinked to production", () => {
   assert.equal(ok, false);
   assert.equal(fs.existsSync(path.join(production, ".dev-snapshot-complete")), false);
   assert.equal(fs.existsSync(path.join(production, DEV_DB)), false);
+});
+
+test("refuses to start into a profile nested inside the production profile", () => {
+  // Real layout: appData is shared (~/Library/Application Support); the dev
+  // profile nests inside the production profile through an explicit path.
+  const { Database } = makeProfiles();
+  const appData = fs.mkdtempSync(path.join(os.tmpdir(), "oh-dev-snapshot-appdata-"));
+  const production = path.join(appData, "OpenHercules");
+  fs.mkdirSync(production, { recursive: true });
+  const db = new Database(path.join(production, "transcriptions.db"));
+  db.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT)");
+  db.close();
+  const nested = path.join(production, "nested-dev");
+  fs.mkdirSync(nested, { recursive: true });
+  setUserDataDir(nested);
+  setAppDataDir(appData);
+  const ok = snapshotProductionProfileForDev();
+  assert.equal(ok, false, "userData inside production must refuse to start");
+});
+
+test("refuses to start when the dev database symlinks into production", () => {
+  const { production, development } = makeProfiles();
+  fs.mkdirSync(development, { recursive: true });
+  fs.symlinkSync(
+    path.join(production, "transcriptions.db"),
+    path.join(development, DEV_DB)
+  );
+  setUserDataDir(development);
+  const ok = snapshotProductionProfileForDev();
+  assert.equal(ok, false, "a dev database pointing into production must refuse to start");
 });
 
 test("adopts a legacy packaged-Dev database instead of losing it", () => {

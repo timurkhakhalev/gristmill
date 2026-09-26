@@ -209,12 +209,32 @@ function snapshotDatabase(source: string, target: string, name: string): boolean
   }
 }
 
-// A dev profile symlinked (or otherwise aliased) to the production profile
-// must stop startup, not just skip the snapshot: the app itself would open
-// and write its database inside the production profile. Applies to explicit
-// --user-data-dir paths too — every development launch.
+// A dev profile must never put production storage within reach: the app
+// opens databases and writes trees under userData, so an explicit
+// --user-data-dir that IS the production profile, sits inside it, or holds a
+// symlinked database pointing into it, all breach isolation. Applies to
+// every development launch.
+function realpathOrNull(p: string): string | null {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return null;
+  }
+}
+
 export function devProfileAliasesProduction(): boolean {
-  return sameDir(sourceProfileDir(), targetProfileDir());
+  const source = realpathOrNull(sourceProfileDir());
+  const target = realpathOrNull(targetProfileDir());
+  if (!source || !target) return false;
+  if (target === source) return true;
+  // Nested either way: userData inside the production profile or vice versa.
+  if (target.startsWith(source + path.sep) || source.startsWith(target + path.sep)) return true;
+  // A pre-created dev database symlinked into production storage.
+  const devDb = path.join(targetProfileDir(), DEV_DB);
+  const dbReal = realpathOrNull(devDb);
+  const prodDb = path.join(source, PROD_DB);
+  if (dbReal && (dbReal === prodDb || dbReal.startsWith(source + path.sep))) return true;
+  return false;
 }
 
 export function snapshotProductionProfileForDev(): boolean {

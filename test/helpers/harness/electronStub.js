@@ -4,6 +4,9 @@ const path = require("node:path");
 // DatabaseManager requires electron at load time, which is unloadable under plain
 // node, so the module loader hands it a stub whose userData path tests repoint.
 let userDataDir = process.cwd();
+// Optional explicit appData override (defaults to userData's parent, like the
+// real app's channel profiles: userData = appData/<profile>).
+let appDataDir = null;
 let patched = false;
 
 function installElectronStub() {
@@ -14,11 +17,8 @@ function installElectronStub() {
     if (request === "electron") {
       return {
         app: {
-          // Named paths: everything resolves inside the test userData dir;
-          // appData is its parent so channel-profile resolution behaves like
-          // the real app (userData = appData/<profile>).
           getPath: (name) =>
-            name === "appData" ? path.dirname(userDataDir) : userDataDir,
+            name === "appData" ? appDataDir || path.dirname(userDataDir) : userDataDir,
           getAppPath: () => process.cwd(),
           isReady: () => false,
         },
@@ -40,10 +40,18 @@ function setUserDataDir(dir) {
     throw new TypeError("setUserDataDir requires a non-empty path");
   }
   userDataDir = dir;
+  appDataDir = null;
 }
 
 function getUserDataDir() {
   return userDataDir;
 }
 
-module.exports = { installElectronStub, setUserDataDir, getUserDataDir };
+function setAppDataDir(dir) {
+  if (typeof dir !== "string" || dir.length === 0) {
+    throw new TypeError("setAppDataDir requires a non-empty path");
+  }
+  appDataDir = dir;
+}
+
+module.exports = { installElectronStub, setUserDataDir, getUserDataDir, setAppDataDir };

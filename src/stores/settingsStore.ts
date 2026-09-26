@@ -203,6 +203,7 @@ const BOOLEAN_SETTINGS = new Set([
   "notificationsEnabled",
   "notifyMeetingDetection",
   "notifyCalendarReminders",
+  "meetingCompanionEnabled",
   "gcalPrimaryOnly",
   "mcalPrimaryOnly",
   "appleCalendarConnected",
@@ -751,6 +752,8 @@ export interface SettingsState
   notificationsEnabled: boolean;
   notifyMeetingDetection: boolean;
   notifyCalendarReminders: boolean;
+  /** Floating recording bubble while OpenHercules is in the background. */
+  meetingCompanionEnabled: boolean;
   gcalPrimaryOnly: boolean;
   mcalPrimaryOnly: boolean;
   appleCalendarConnected: boolean;
@@ -984,6 +987,7 @@ export interface SettingsState
   setNotificationsEnabled: (value: boolean) => void;
   setNotifyMeetingDetection: (value: boolean) => void;
   setNotifyCalendarReminders: (value: boolean) => void;
+  setMeetingCompanionEnabled: (value: boolean) => void;
   setGcalPrimaryOnly: (value: boolean) => void;
   setMcalPrimaryOnly: (value: boolean) => void;
   setAppleCalendarConnected: (value: boolean) => void;
@@ -1332,6 +1336,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   notificationsEnabled: readBoolean("notificationsEnabled", true),
   notifyMeetingDetection: readBoolean("notifyMeetingDetection", true),
   notifyCalendarReminders: readBoolean("notifyCalendarReminders", true),
+  meetingCompanionEnabled: readBoolean("meetingCompanionEnabled", true),
   ...(() => {
     let accounts: CalendarAccount[] = [];
     try {
@@ -1920,6 +1925,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setNotificationsEnabled: createBooleanSetter("notificationsEnabled"),
   setNotifyMeetingDetection: createBooleanSetter("notifyMeetingDetection"),
   setNotifyCalendarReminders: createBooleanSetter("notifyCalendarReminders"),
+  setMeetingCompanionEnabled: createBooleanSetter("meetingCompanionEnabled"),
   setGcalPrimaryOnly: (value: boolean) => {
     if (isBrowser) localStorage.setItem("gcalPrimaryOnly", String(value));
     useSettingsStore.setState({ gcalPrimaryOnly: value });

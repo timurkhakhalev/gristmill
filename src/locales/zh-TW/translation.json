@@ -1085,7 +1085,11 @@
         "label": "Store note files",
         "description": "Keep a local Markdown copy of notes."
       },
-      "notesGroup": "筆記"
+      "notesGroup": "筆記",
+      "meetingCompanion": {
+        "label": "錄音夥伴",
+        "description": "會議錄音期間且 OpenHercules 在背景時，顯示一個可拖曳、會隨聲音變化的小泡泡。點擊即可開啟筆記。"
+      }
     },
     "permissions": {
       "description": "測試和管理 OpenHercules 正常運作所需的系統權限",

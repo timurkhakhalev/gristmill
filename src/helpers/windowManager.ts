@@ -25,6 +25,7 @@ import fs from "fs";
 import path from "path";
 import { isDevelopmentChannel } from "./appChannel.js";
 import type { TrayManager } from "./tray.js";
+import { MeetingCompanionWindow } from "./meetingCompanionWindow.js";
 
 const AUTO_END_NOTIFICATION_LOAD_TIMEOUT_MS = 10_000;
 
@@ -89,10 +90,15 @@ export class WindowManager {
   _pendingNotificationData: MeetingNotificationPrompt | null = null;
   _notificationReadyFallback: NodeJS.Timeout | null = null;
   _preMeetingBounds: WindowBounds | null = null;
+  meetingCompanion: MeetingCompanionWindow;
 
   constructor() {
     this.hotkeyManager = new HotkeyManager();
     this.dragManager = new DragManager();
+    this.meetingCompanion = new MeetingCompanionWindow({
+      getControlPanelWindow: () => this.controlPanelWindow,
+      openNote: (payload) => this.queueNoteNavigation(payload),
+    });
     this._notificationDismissTimer = new NotificationDismissTimer(() => {
       const notification = this._pendingNotificationData;
       // Dismiss first: an expiring restart offer lets the engine flush the

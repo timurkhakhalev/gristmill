@@ -1,6 +1,7 @@
 import React, { Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import MeetingNotificationOverlay from "./components/MeetingNotificationOverlay";
+import MeetingCompanion from "./components/MeetingCompanion";
 import { useTheme } from "./hooks/useTheme";
 import { useControlPanelWindowDrag } from "./hooks/useControlPanelWindowDrag";
 
@@ -13,6 +14,10 @@ export default function AppRouter() {
 
   if (params.includes("meeting-notification=true")) {
     return <MeetingNotificationOverlay />;
+  }
+
+  if (params.includes("meeting-companion=true")) {
+    return <MeetingCompanion />;
   }
 
 

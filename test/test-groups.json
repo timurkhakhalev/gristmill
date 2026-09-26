@@ -290,6 +290,7 @@
       "test/helpers/chineseScript.test.js",
       "test/helpers/cliBridgeRequestBody.test.js",
       "test/helpers/dockPolicy.test.js",
+      "test/helpers/meetingCompanionPolicy.test.js",
       "test/helpers/electronProcessIds.test.js",
       "test/helpers/externalUrlOpener.test.js",
       "test/helpers/formatBytes.test.js",

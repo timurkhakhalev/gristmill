@@ -8,8 +8,7 @@ import debugLogger from "./debugLogger.js";
 // recordings and settings without onboarding, while production data is never
 // touched by a dev build. The snapshot runs once; OPENHERCULES_REFRESH_SNAPSHOT=1
 // re-runs it additively (missing files are copied, existing dev files are never
-// overwritten — a dev database with dev-made notes stays intact). A full reset
-// is deleting the dev profile.
+// overwritten — a dev database with dev-made notes stays intact).
 
 const PROD_DB = "transcriptions.db";
 // The dev main process runs on the development channel and opens
@@ -33,19 +32,24 @@ function envLineAssignsStrippedKey(line: string): boolean {
 
 function cloneEnvFile(source: string, target: string): void {
   const destination = path.join(target, ".env");
-  if (fs.existsSync(destination) || !fs.existsSync(path.join(source, ".env"))) return;
+  const origin = path.join(source, ".env");
+  if (!ordinaryFileOrMissing(destination) || !ordinaryFileOrMissing(origin)) {
+    throw new Error("snapshot .env path is not an ordinary file");
+  }
+  if (fs.existsSync(destination) || !fs.existsSync(origin)) return;
   const lines = fs
-    .readFileSync(path.join(source, ".env"), "utf8")
+    .readFileSync(origin, "utf8")
     .split(/\r?\n/)
     .filter((line) => !envLineAssignsStrippedKey(line));
   fs.writeFileSync(destination, lines.join("\n"), { mode: 0o600 });
 }
-// Big trees (audio, meeting results, the persisted session partition with
-// localStorage onboarding state) are cloned wholesale.
+// The file-origin renderer settings live in Partitions. pnpm dev has a separate
+// HTTP origin; windowManager imports those settings before loading that page.
 const COPY_DIRS = ["audio", "meeting-results", "notes", "secure-keys", "Partitions"];
 // Written last: a profile without it was interrupted mid-snapshot and the
 // snapshot resumes on the next launch instead of staying half-empty forever.
 const MARKER = ".dev-snapshot-complete";
+const SUPPRESSED = ".dev-snapshot-suppressed";
 
 function sourceProfileDir(): string {
   return path.join(app.getPath("appData"), "OpenHercules");
@@ -55,24 +59,49 @@ function targetProfileDir(): string {
   return app.getPath("userData");
 }
 
-// Real paths, not string compare: a dev profile symlinked to the production
-// profile would otherwise pass an equality check and the copy could write
-// straight into production (worst under REFRESH, where DB files get created).
-function sameDir(a: string, b: string): boolean {
+function ordinaryFileOrMissing(file: string): boolean {
   try {
-    return fs.realpathSync(a) === fs.realpathSync(b);
-  } catch {
-    return false;
+    return fs.lstatSync(file).isFile();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw error;
+  }
+}
+
+function ordinaryDirectoryOrMissing(dir: string): boolean {
+  try {
+    return fs.lstatSync(dir).isDirectory();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw error;
   }
 }
 
 function clone(from: string, to: string): void {
+  if (!ordinaryFileOrMissing(from) || !ordinaryFileOrMissing(to)) {
+    throw new Error(`snapshot file path is not an ordinary file: ${from} -> ${to}`);
+  }
   if (fs.existsSync(to) || !fs.existsSync(from)) return;
   fs.mkdirSync(path.dirname(to), { recursive: true });
   fs.copyFileSync(from, to, fs.constants.COPYFILE_FICLONE);
 }
 
-function cloneDir(from: string, to: string): void {
+function assertOrdinaryTree(dir: string): void {
+  if (!ordinaryDirectoryOrMissing(dir)) {
+    throw new Error(`snapshot directory path is not an ordinary directory: ${dir}`);
+  }
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const child = path.join(dir, entry.name);
+    if (entry.isDirectory()) assertOrdinaryTree(child);
+    else if (!entry.isFile()) throw new Error(`snapshot does not support links or special files: ${child}`);
+  }
+}
+
+function copyDir(from: string, to: string): void {
+  if (!ordinaryDirectoryOrMissing(from) || !ordinaryDirectoryOrMissing(to)) {
+    throw new Error(`snapshot directory path is not an ordinary directory: ${from} -> ${to}`);
+  }
   if (!fs.existsSync(from)) return;
   if (!fs.existsSync(to)) {
     fs.mkdirSync(to, { recursive: true });
@@ -80,9 +109,17 @@ function cloneDir(from: string, to: string): void {
   for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
     const src = path.join(from, entry.name);
     const dst = path.join(to, entry.name);
-    if (entry.isDirectory()) cloneDir(src, dst);
-    else clone(src, dst);
+    if (entry.isDirectory()) copyDir(src, dst);
+    else if (entry.isFile()) clone(src, dst);
+    else throw new Error(`snapshot does not support links or special files: ${src}`);
   }
+}
+
+function cloneDir(from: string, to: string): void {
+  // One destination scan per copied tree catches links in dev-only branches
+  // too; copyDir checks each source entry as it traverses it.
+  assertOrdinaryTree(to);
+  copyDir(from, to);
 }
 
 // TRUNCATE reports a blocked checkpoint as busy=1 in the result row instead
@@ -177,16 +214,26 @@ function adoptLegacyDevDatabase(target: string): boolean {
 // first launches cannot replace a database the other one published or opened.
 function snapshotDatabase(source: string, target: string, name: string): boolean {
   const destination = path.join(target, name);
+  if (!ordinaryFileOrMissing(path.join(source, PROD_DB)) ||
+      !ordinaryFileOrMissing(destination)) {
+    throw new Error("snapshot database path is not an ordinary file");
+  }
   if (fs.existsSync(destination)) return true;
   fs.mkdirSync(target, { recursive: true });
   const staged = path.join(target, `.${name}.snapshot-${process.pid}.tmp`);
   fs.rmSync(staged, { force: true, recursive: true });
   try {
-    const Database = require("better-sqlite3") as new (path: string) => {
+    const Database = require("better-sqlite3") as new (
+      path: string,
+      options: { readonly: boolean; fileMustExist: boolean }
+    ) => {
       exec: (sql: string) => void;
       close: () => void;
     };
-    const db = new Database(path.join(source, PROD_DB));
+    const db = new Database(path.join(source, PROD_DB), {
+      readonly: true,
+      fileMustExist: true,
+    });
     try {
       db.exec(`VACUUM INTO '${staged.replace(/'/g, "''")}'`);
     } finally {
@@ -209,11 +256,9 @@ function snapshotDatabase(source: string, target: string, name: string): boolean
   }
 }
 
-// A dev profile must never put production storage within reach: the app
-// opens databases and writes trees under userData, so an explicit
-// --user-data-dir that IS the production profile, sits inside it, or holds a
-// symlinked database pointing into it, all breach isolation. Applies to
-// every development launch.
+// Refuse a dev userData root that resolves to or contains the production
+// profile before main creates it. Copy paths and database files are checked
+// separately when the snapshot runs.
 function realpathOrNull(p: string): string | null {
   try {
     return fs.realpathSync(p);
@@ -243,32 +288,6 @@ function realpathDeep(p: string): string | null {
   }
 }
 
-// Any symlink at or below userData whose target reaches production. Walks the
-// whole profile: top-level files (.env, logs, databases), the copied storage
-// trees, and nested links inside them (dev/audio/meetings -> production/notes
-// would otherwise make the snapshot write through it).
-function profileTreeReachesProduction(profile: string, source: string): boolean {
-  const stack: string[] = [profile];
-  while (stack.length) {
-    const dir = stack.pop() as string;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      // A symlink anywhere in the profile: resolve it (lstat-based readdir
-      // flags symlinks as non-directories, so resolve every entry type).
-      const resolved = realpathOrNull(full);
-      if (resolved && resolved !== full && reachesProduction(resolved, source)) return true;
-      if (entry.isDirectory() && !entry.isSymbolicLink()) stack.push(full);
-    }
-  }
-  return false;
-}
-
 export function profilePathAliasesProduction(targetProfile: string): boolean {
   const source = realpathOrNull(sourceProfileDir());
   if (!source) return false;
@@ -279,25 +298,46 @@ export function profilePathAliasesProduction(targetProfile: string): boolean {
   if (target && (reachesProduction(target, source) || reachesProduction(source, target))) {
     return true;
   }
-  if (!fs.existsSync(targetProfile)) return false;
-  return profileTreeReachesProduction(targetProfile, source);
+  return false;
 }
 
-export function devProfileAliasesProduction(): boolean {
-  return profilePathAliasesProduction(targetProfileDir());
+// Shallow startup check, including explicit --user-data-dir profiles that do
+// not run the snapshot. The app itself can open these files or write into
+// these directories after startup, even when the snapshot marker exists.
+export function devProfileHasUnsafePaths(target = targetProfileDir()): boolean {
+  if (profilePathAliasesProduction(target)) return true;
+  const files = [PROD_DB, DEV_DB, ".env", MARKER, SUPPRESSED, ...COPY_FILES];
+  for (const name of [PROD_DB, DEV_DB]) {
+    files.push(`${name}-wal`, `${name}-shm`);
+  }
+  return files.some((name) => !ordinaryFileOrMissing(path.join(target, name))) ||
+    [...COPY_DIRS, "logs"].some((name) =>
+      !ordinaryDirectoryOrMissing(path.join(target, name)));
+}
+
+// Explicit Reset All App Data is a lasting choice, including when the first
+// snapshot never reached its completion marker. Refresh remains opt-in.
+export function suppressDevSnapshotAfterReset(): void {
+  const target = targetProfileDir();
+  const file = path.join(target, SUPPRESSED);
+  if (!ordinaryFileOrMissing(file)) throw new Error("snapshot suppression path is not an ordinary file");
+  fs.writeFileSync(file, `${new Date().toISOString()}\n`, { mode: 0o600 });
 }
 
 export function snapshotProductionProfileForDev(): boolean {
   const source = sourceProfileDir();
   const target = targetProfileDir();
-  if (devProfileAliasesProduction()) {
+  if (devProfileHasUnsafePaths(target)) {
     debugLogger.warn(
-      "dev profile resolves to the production profile; refusing to start",
+      "dev profile has an unsafe storage path; refusing to start",
       { source, target },
       "devSnapshot"
     );
     return false;
   }
+
+  const refresh = process.env.OPENHERCULES_REFRESH_SNAPSHOT === "1";
+  if (fs.existsSync(path.join(target, SUPPRESSED)) && !refresh) return true;
 
   // Adoption is independent of the production snapshot: a dev-only profile
   // with pre-cutover notes must migrate even when no production profile
@@ -309,7 +349,6 @@ export function snapshotProductionProfileForDev(): boolean {
 
   if (!fs.existsSync(path.join(source, PROD_DB))) return true;
 
-  const refresh = process.env.OPENHERCULES_REFRESH_SNAPSHOT === "1";
   const markerExists = fs.existsSync(path.join(target, MARKER));
   const devDbExists = fs.existsSync(path.join(target, DEV_DB));
   if (devDbExists && markerExists && !refresh) return true;

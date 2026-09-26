@@ -22,6 +22,8 @@ import {
 } from "./windowConfig.js";
 import { centeredBounds, clampedBounds, type WindowBounds } from "./onboardingWindowBounds.js";
 import fs from "fs";
+import path from "path";
+import { isDevelopmentChannel } from "./appChannel.js";
 import type { TrayManager } from "./tray.js";
 
 const AUTO_END_NOTIFICATION_LOAD_TIMEOUT_MS = 10_000;
@@ -55,6 +57,7 @@ interface OnboardingWindowState {
 }
 
 export class WindowManager {
+  private devRendererSettingsSeeded = false;
   controlPanelWindow: BrowserWindow | null = null;
   _controlPanelVisibilityTimer: NodeJS.Timeout | null = null;
   _onboardingRestoreBounds: WindowBounds | null = null;
@@ -185,6 +188,17 @@ export class WindowManager {
     if (process.env.NODE_ENV === "development") {
       const appUrl = DevServerManager.getAppUrl(isControlPanel);
       await DevServerManager.waitForDevServer();
+      if (isControlPanel && !this.devRendererSettingsSeeded &&
+          isDevelopmentChannel() && !app.commandLine.getSwitchValue("user-data-dir")) {
+        const release = await this.seedDevRendererSettings(window!, appUrl as string);
+        try {
+          await window!.loadURL(appUrl as string);
+          this.devRendererSettingsSeeded = true;
+        } finally {
+          release();
+        }
+        return;
+      }
       await window!.loadURL(appUrl as string);
     } else {
       const fileInfo = DevServerManager.getAppFilePath(isControlPanel);
@@ -198,6 +212,42 @@ export class WindowManager {
 
       await window!.loadFile(fileInfo.path, { query: fileInfo.query });
     }
+  }
+
+  // The copied Chromium partition contains production's file:// localStorage,
+  // while pnpm dev uses http://localhost. Read through Chromium itself, then
+  // install missing keys before the HTTP page's first script runs. A durable
+  // marker stops later launches from resurrecting keys removed in dev.
+  private async seedDevRendererSettings(window: BrowserWindow, appUrl: string): Promise<() => void> {
+    const bridge = path.join(app.getAppPath(), "src", "dev-storage-bridge.html");
+    await window.loadFile(bridge);
+    const entries = await window.webContents.executeJavaScript(
+      "Array.from({ length: localStorage.length }, (_, i) => { const key = localStorage.key(i); return [key, localStorage.getItem(key)]; })"
+    ) as Array<[string, string]>;
+    if (entries.length === 0) return () => {};
+
+    const origin = new URL(appUrl).origin;
+    const marker = "openhercules.dev-renderer-settings-imported";
+    const script = `if (location.origin === ${JSON.stringify(origin)}) {
+      if (localStorage.getItem(${JSON.stringify(marker)}) !== "1") {
+        for (const [key, value] of ${JSON.stringify(entries)}) {
+          if (localStorage.getItem(key) === null) localStorage.setItem(key, value);
+        }
+        localStorage.setItem(${JSON.stringify(marker)}, "1");
+      }
+    }`;
+    const debuggerApi = window.webContents.debugger;
+    debuggerApi.attach("1.3");
+    try {
+      await debuggerApi.sendCommand("Page.enable");
+      await debuggerApi.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: script });
+    } catch (error) {
+      debuggerApi.detach();
+      throw error;
+    }
+    return () => {
+      if (debuggerApi.isAttached()) debuggerApi.detach();
+    };
   }
 
   // Public gate for main.js's meeting hotkey call sites, which invoke the

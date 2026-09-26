@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,8 +7,10 @@ import test from "node:test";
 import { installElectronStub, setUserDataDir, setAppDataDir } from "./harness/electronStub.js";
 
 installElectronStub();
-const { snapshotProductionProfileForDev } = require("../../src/helpers/devSnapshot.ts") as {
+const { snapshotProductionProfileForDev, suppressDevSnapshotAfterReset, devProfileHasUnsafePaths } = require("../../src/helpers/devSnapshot.ts") as {
   snapshotProductionProfileForDev: () => boolean;
+  suppressDevSnapshotAfterReset: () => void;
+  devProfileHasUnsafePaths: (path?: string) => boolean;
 };
 
 function makeProfiles() {
@@ -73,6 +76,77 @@ test("does not re-snapshot a completed dev profile", () => {
   fs.rmSync(path.join(development, ".env"));
   snapshotProductionProfileForDev();
   assert.equal(fs.existsSync(path.join(development, ".env")), false, "the marker must gate reruns");
+});
+
+test("reset prevents deleted notes from being restored on the next launch", () => {
+  const { development } = makeProfiles();
+  setUserDataDir(development);
+  snapshotProductionProfileForDev();
+  suppressDevSnapshotAfterReset();
+  fs.rmSync(path.join(development, DEV_DB));
+  assert.equal(snapshotProductionProfileForDev(), true);
+  assert.equal(fs.existsSync(path.join(development, DEV_DB)), false);
+  assert.equal(fs.existsSync(path.join(development, ".dev-snapshot-suppressed")), true);
+});
+
+test("reset before the first marker prevents a retry unless refresh is requested", () => {
+  const { development } = makeProfiles();
+  fs.mkdirSync(development, { recursive: true });
+  setUserDataDir(development);
+  suppressDevSnapshotAfterReset();
+  assert.equal(snapshotProductionProfileForDev(), true);
+  assert.equal(fs.existsSync(path.join(development, DEV_DB)), false);
+  process.env.OPENHERCULES_REFRESH_SNAPSHOT = "1";
+  try {
+    assert.equal(snapshotProductionProfileForDev(), true);
+  } finally {
+    delete process.env.OPENHERCULES_REFRESH_SNAPSHOT;
+  }
+  const db = openDevDb(development);
+  assert.equal(db.prepare("SELECT title FROM notes").get().title, "prod-note");
+  db.close();
+});
+
+test("snapshots a surviving WAL without checkpointing or changing production files", () => {
+  const { production, development } = makeProfiles();
+  const source = path.join(production, "transcriptions.db");
+  // A process exiting without close leaves WAL data behind. With no other
+  // connection open, the old writable source handle checkpointed on close.
+  const child = spawnSync(process.execPath, ["-e", `
+    const Database = require("better-sqlite3");
+    const db = new Database(process.argv[1]);
+    db.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0");
+    db.exec("INSERT INTO notes (title) VALUES ('wal-note')");
+    process.exit(0);
+  `, source], { encoding: "utf8" });
+  assert.equal(child.status, 0, child.stderr);
+  assert.equal(fs.existsSync(`${source}-wal`), true);
+  const beforeDb = fs.readFileSync(source);
+  const beforeWal = fs.readFileSync(`${source}-wal`);
+  setUserDataDir(development);
+  assert.equal(snapshotProductionProfileForDev(), true);
+  assert.deepEqual(fs.readFileSync(source), beforeDb);
+  assert.deepEqual(fs.readFileSync(`${source}-wal`), beforeWal);
+  const devDb = openDevDb(development);
+  assert.equal(
+    devDb.prepare("SELECT title FROM notes WHERE title = 'wal-note'").get().title,
+    "wal-note"
+  );
+  devDb.close();
+});
+
+test("shallow startup check rejects direct links even without a snapshot", () => {
+  const { production, development } = makeProfiles();
+  fs.mkdirSync(development, { recursive: true });
+  setUserDataDir(development);
+  fs.symlinkSync(path.join(production, "transcriptions.db"), path.join(development, DEV_DB));
+  assert.equal(devProfileHasUnsafePaths(development), true, "explicit smoke profile DB link");
+  fs.unlinkSync(path.join(development, DEV_DB));
+  fs.symlinkSync(path.join(production, "audio"), path.join(development, "audio"));
+  assert.equal(devProfileHasUnsafePaths(development), true, "completed profile copy root link");
+  fs.unlinkSync(path.join(development, "audio"));
+  fs.symlinkSync(path.join(production, ".env"), path.join(development, ".env"));
+  assert.equal(devProfileHasUnsafePaths(development), true, "completed profile .env link");
 });
 
 test("keeps a dev database even when the marker is missing (interrupted snapshot)", () => {

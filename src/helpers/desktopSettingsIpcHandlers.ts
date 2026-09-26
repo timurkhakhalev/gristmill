@@ -943,15 +943,27 @@ export function registerDesktopSettingsHandlers(
       }
     }
 
-    // Delete database file + WAL/SHM
+    // Delete database file + WAL/SHM, plus any pre-cutover dev databases and
+    // adoption backups (devSnapshot.ts) — "reset everything" must not leave
+    // note sets behind under another name.
     try {
+      const userDataPath = app.getPath("userData");
       const dbPath = path.join(
-        app.getPath("userData"),
+        userDataPath,
         isDevelopmentChannel() ? "transcriptions-dev.db" : "transcriptions.db"
       );
-      if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
-      if (fs.existsSync(dbPath + "-wal")) fs.unlinkSync(dbPath + "-wal");
-      if (fs.existsSync(dbPath + "-shm")) fs.unlinkSync(dbPath + "-shm");
+      for (const base of [dbPath, path.join(userDataPath, "transcriptions.db")]) {
+        for (const suffix of ["", "-wal", "-shm"]) {
+          fs.rmSync(base + suffix, { force: true });
+        }
+      }
+      for (const entry of fs.existsSync(userDataPath)
+        ? fs.readdirSync(userDataPath)
+        : []) {
+        if (/^transcriptions-legacy-dev-backup.*\.db(-wal|-shm)?$/.test(entry)) {
+          fs.rmSync(path.join(userDataPath, entry), { force: true });
+        }
+      }
     } catch (e) {
       errors.push(`DB file: ${(e as Error).message}`);
     }

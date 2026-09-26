@@ -26,7 +26,7 @@ function makeProfiles() {
   prodDb.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT)");
   prodDb.exec("INSERT INTO notes (title) VALUES ('prod-note')");
   prodDb.close();
-  fs.writeFileSync(path.join(production, ".env"), "KEY=1");
+  fs.writeFileSync(path.join(production, ".env"), "KEY=1\nOPENHERCULES_PROTOCOL=openhercules");
   fs.writeFileSync(path.join(production, "audio", "meetings", "rec-1", "audio.pcm"), "pcm");
   fs.writeFileSync(path.join(production, "meeting-results", "run-1.json"), "{}");
   return { root, production, development, Database };
@@ -51,7 +51,10 @@ test("snapshots production profile into a fresh dev profile", () => {
   const devDb = openDevDb(development);
   assert.equal(devDb.prepare("SELECT title FROM notes").get().title, "prod-note");
   devDb.close();
-  assert.equal(fs.readFileSync(path.join(development, ".env"), "utf8"), "KEY=1");
+  // The .env is copied without the channel-owned OAuth scheme selectors.
+  const copiedEnv = fs.readFileSync(path.join(development, ".env"), "utf8");
+  assert.ok(copiedEnv.includes("KEY=1"));
+  assert.ok(!copiedEnv.includes("OPENHERCULES_PROTOCOL"));
   assert.equal(
     fs.readFileSync(path.join(development, "audio", "meetings", "rec-1", "audio.pcm"), "utf8"),
     "pcm"
@@ -103,7 +106,7 @@ test("refresh re-copies missing files but keeps dev-only ones", () => {
   } finally {
     delete process.env.OPENHERCULES_REFRESH_SNAPSHOT;
   }
-  assert.equal(fs.readFileSync(path.join(development, ".env"), "utf8"), "KEY=1");
+  assert.ok(fs.readFileSync(path.join(development, ".env"), "utf8").includes("KEY=1"));
   assert.equal(fs.readFileSync(path.join(development, "dev-only.txt"), "utf8"), "keep");
 });
 
@@ -153,7 +156,12 @@ test("a profile with both pre-cutover databases keeps the legacy set as a backup
   assert.equal(check.prepare("SELECT title FROM notes").get().title, "pnpm-dev-note");
   check.close();
   // The packaged-Dev set survives as a visible backup, never merged or lost.
-  const backup = new Database(path.join(development, "transcriptions-legacy-dev-backup.db"));
+  // The name carries a timestamp; find it instead of pinning it.
+  const backupName = fs
+    .readdirSync(development)
+    .find((name) => /^transcriptions-legacy-dev-backup.*\.db$/.test(name));
+  assert.ok(backupName, "a legacy backup database must exist");
+  const backup = new Database(path.join(development, backupName as string));
   assert.equal(backup.prepare("SELECT title FROM notes").get().title, "packaged-dev-note");
   backup.close();
   assert.equal(fs.existsSync(path.join(development, "transcriptions.db")), false);

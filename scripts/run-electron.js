@@ -9,6 +9,7 @@ const { spawn } = require("child_process");
 const { constants } = require("os");
 const path = require("path");
 const { ensureSqliteRuntime } = require("./ensure-sqlite-runtime");
+const { launchMacElectron } = require("./launch-macos-electron");
 
 // Get the app directory (parent of scripts directory)
 const appDir = path.resolve(__dirname, "..");
@@ -44,6 +45,7 @@ async function runElectron({
   spawnProcess = spawn,
   electronPath,
   args = process.argv.slice(2),
+  platform = process.platform,
 } = {}) {
   await ensureRuntime("electron");
   const binary = electronPath || resolveElectronPath();
@@ -54,6 +56,9 @@ async function runElectron({
     ? [`--remote-debugging-port=${env.OPENHERCULES_DEBUG_CDP}`]
     : [];
   console.log("[run-electron] Starting Electron:", binary, appDir, args);
+  if (platform === "darwin") {
+    return launchMacElectron(binary, [...chromiumFlags, appDir, ...args], env, spawnProcess);
+  }
   return spawnProcess(binary, [...chromiumFlags, appDir, ...args], {
     stdio: "inherit",
     env,

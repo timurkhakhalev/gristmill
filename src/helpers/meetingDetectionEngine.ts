@@ -810,7 +810,7 @@ export class MeetingDetectionEngine {
     }
 
     debugLogger.info(
-      "Showing notification",
+      "Requesting meeting notification",
       {
         detectionId,
         source,
@@ -825,7 +825,18 @@ export class MeetingDetectionEngine {
       detection.event = event;
     }
 
-    void this.windowManager.showMeetingNotification?.({
+    const releaseUnshownPrompt = () => {
+      if (!detection || this.activeDetections.get(detectionId) !== detection) return;
+      this.activeDetections.delete(detectionId);
+      if (source === "audio") {
+        this.offeredCalls.delete(key);
+        this.callCalendarEvents.delete(key);
+      }
+      if (calendarEvent) this.offeredCalendarEvents.delete(calendarEvent.id);
+      debugLogger.info("Meeting notification was not shown; detection can retry", { source }, "meeting");
+    };
+
+    void Promise.resolve(this.windowManager.showMeetingNotification?.({
       kind: "detection",
       detectionId,
       source,
@@ -833,6 +844,13 @@ export class MeetingDetectionEngine {
       event,
       variant,
       joinUrl,
+    })).then((shown) => {
+      if (shown === false) releaseUnshownPrompt();
+    }).catch((error: unknown) => {
+      releaseUnshownPrompt();
+      debugLogger.warn("Meeting notification failed", {
+        reason: error instanceof Error ? error.name : "error",
+      }, "meeting");
     });
   }
 

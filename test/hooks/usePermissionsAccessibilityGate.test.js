@@ -15,6 +15,7 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t) 
   });
 
   let accessibilityChecks = 0;
+  const requests = [];
   installBrowserGlobals(t, {
     window: {
       electronAPI: {
@@ -24,6 +25,8 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t) 
           return false;
         },
         checkMicrophoneAccess: async () => ({ granted: false }),
+        promptAccessibilityPermission: async () => { requests.push("prompt"); return false; },
+        openAccessibilitySettings: async () => { requests.push("settings"); return { success: true }; },
         checkPasteTools: async () => ({
           platform: "darwin",
           available: true,
@@ -64,8 +67,9 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t) 
   const { usePermissions } = await vite.ssrLoadModule("/hooks/usePermissions.ts");
 
   let macAccessibilityChecksEnabled = false;
+  let permissions;
   function Harness() {
-    usePermissions(undefined, { macAccessibilityChecksEnabled });
+    permissions = usePermissions(undefined, { macAccessibilityChecksEnabled });
     return null;
   }
 
@@ -80,14 +84,16 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t) 
   await render();
   assert.equal(accessibilityChecks, 0);
   assert.equal(activeIntervals.size, 0);
+  await React.act(async () => { await permissions.requestAccessibilityPermission(); });
+  assert.deepEqual(requests, ["prompt", "settings"], "register the app before opening Settings");
 
   macAccessibilityChecksEnabled = true;
   await render();
-  assert.equal(accessibilityChecks, 1);
+  assert.equal(accessibilityChecks, 2);
   assert.equal(activeIntervals.size, 1);
 
   macAccessibilityChecksEnabled = false;
   await render();
-  assert.equal(accessibilityChecks, 1);
+  assert.equal(accessibilityChecks, 2);
   assert.equal(activeIntervals.size, 0);
 });

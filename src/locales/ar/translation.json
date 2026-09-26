@@ -2325,7 +2325,7 @@
     "permissions": "Recording permissions",
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
-    "accessibilityDetection": "مطلوب لتأكيد مكالمات Zoom وGoogle Meet النشطة. بدونه لن تظهر إشعارات اكتشاف الاجتماعات.",
+    "accessibilityDetection": "للتذكير بتسجيل الاجتماعات.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },

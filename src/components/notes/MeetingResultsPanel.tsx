@@ -280,7 +280,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   });
 
   return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">
-    <div className="mb-3 flex items-center justify-between gap-2 pb-3 max-[720px]:flex-wrap">
+    <div className="sticky top-0 z-10 -mt-4 mb-3 flex items-center justify-between gap-2 bg-background pt-4 pb-3 max-[720px]:flex-wrap">
       <NoteViewSwitch
         value={viewMode}
         onChange={onViewModeChange}

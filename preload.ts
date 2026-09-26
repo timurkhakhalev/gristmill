@@ -19,6 +19,7 @@ import { createTranscriptionDataBridge } from "./src/preload/transcriptionDataBr
 import { createDesktopSettingsBridge } from "./src/preload/desktopSettingsBridge";
 import { createMeetingCoordinatorBridge } from "./src/preload/meetingCoordinatorBridge";
 import { createMeetingProcessingBridge } from "./src/preload/meetingProcessingBridge";
+import { createMeetingCompanionBridge } from "./src/preload/meetingCompanionBridge";
 
 /** Unsubscribe returned to the renderer for every subscription. */
 type Unsubscribe = () => void;
@@ -67,6 +68,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createDesktopSettingsBridge(ipcRenderer),
   ...createMeetingCoordinatorBridge(ipcRenderer),
   ...createMeetingProcessingBridge(ipcRenderer),
+  ...createMeetingCompanionBridge(ipcRenderer),
   ...createContainersBridge(ipcRenderer),
   ...createChatPersistenceBridge(ipcRenderer),
   // Provider connection tests, local/remote transcription execution and the

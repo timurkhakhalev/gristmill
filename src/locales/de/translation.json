@@ -1125,7 +1125,11 @@
         "label": "Store note files",
         "description": "Keep a local Markdown copy of notes."
       },
-      "notesGroup": "Notizen"
+      "notesGroup": "Notizen",
+      "meetingCompanion": {
+        "label": "Aufnahme-Begleiter",
+        "description": "Während ein Meeting aufgenommen wird und OpenHercules im Hintergrund ist, eine kleine verschiebbare Blase anzeigen, die auf deine Stimme reagiert. Klick sie an, um die Notiz zu öffnen."
+      }
     },
     "permissions": {
       "description": "Systemberechtigungen testen und verwalten, die OpenHercules für den ordnungsgemäßen Betrieb benötigt",

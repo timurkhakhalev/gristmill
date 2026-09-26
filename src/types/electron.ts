@@ -1,6 +1,7 @@
 import type { ModelDefinition } from "../models/ModelRegistry";
 import type { NotesApi } from "../contracts/notes";
 import type { UrlDownloadApi } from "../contracts/urlDownload";
+import type { MeetingCompanionApi } from "../contracts/meetingCompanion";
 import type { VocabularyApi } from "../contracts/vocabulary";
 import type { ContainersApi } from "../contracts/containers";
 import type { ChatPersistenceApi } from "../contracts/chatPersistence";
@@ -563,7 +564,7 @@ declare global {
       // MeetingCoordinatorApi contract. register-meeting-hotkey lives there
       // too (its handler moved to the typed meetingHotkeyIpcHandler owner).
 
-      } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi & DesktopSettingsApi & MeetingCoordinatorApi & MeetingProcessingApi;
+      } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi & DesktopSettingsApi & MeetingCoordinatorApi & MeetingProcessingApi & MeetingCompanionApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

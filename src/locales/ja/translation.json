@@ -1085,7 +1085,11 @@
         "label": "Store note files",
         "description": "Keep a local Markdown copy of notes."
       },
-      "notesGroup": "ノート"
+      "notesGroup": "ノート",
+      "meetingCompanion": {
+        "label": "録音コンパニオン",
+        "description": "会議の録音中に OpenHercules がバックグラウンドにあるとき、声に反応するドラッグ可能な小さなバブルを表示します。クリックするとメモが開きます。"
+      }
     },
     "permissions": {
       "description": "OpenHercules の正常動作に必要なシステム権限をテスト・管理",

@@ -18,6 +18,7 @@ import {
 } from "../helpers/meetingRecordingSession";
 import { parseTranscriptSegments } from "../utils/parseTranscriptSegments";
 import logger from "../utils/logger";
+import { useMeetingCompanionSync } from "../hooks/useMeetingCompanionSync";
 
 const EMA_PREV = 0.5;
 const EMA_NEXT = 0.5;
@@ -33,6 +34,7 @@ const MEETING_ERROR_KEYS: Record<string, string> = {
 };
 
 export default function MeetingRecordingMount(): null {
+  useMeetingCompanionSync();
   const { t } = useTranslation();
   const { toast, dismiss } = useToast();
   const isRecording = useMeetingRecordingStore((s) => s.isRecording);

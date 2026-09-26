@@ -1451,7 +1451,11 @@
         "label": "Store note files",
         "description": "Keep a local Markdown copy of notes."
       },
-      "notesGroup": "الملاحظات"
+      "notesGroup": "الملاحظات",
+      "meetingCompanion": {
+        "label": "رفيق التسجيل",
+        "description": "أثناء تسجيل اجتماع وتشغيل OpenHercules في الخلفية، اعرض فقاعة صغيرة قابلة للسحب تتفاعل مع صوتك. انقر عليها لفتح الملاحظة."
+      }
     },
     "permissions": {
       "description": "اختبار وإدارة أذونات النظام المطلوبة لعمل OpenHercules بشكل صحيح",

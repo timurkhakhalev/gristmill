@@ -123,6 +123,8 @@ function GeneralSettings() {
   const setNoteFilesEnabled = useSettingsStore((s) => s.setNoteFilesEnabled);
   const autoTitle = useSettingsStore((s) => s.autoGenerateNoteTitle);
   const setAutoTitle = useSettingsStore((s) => s.setAutoGenerateNoteTitle);
+  const companionEnabled = useSettingsStore((s) => s.meetingCompanionEnabled);
+  const setCompanionEnabled = useSettingsStore((s) => s.setMeetingCompanionEnabled);
   return (
     <Section
       title={t("settingsModal.sections.general.label")}
@@ -170,6 +172,12 @@ function GeneralSettings() {
           })}
         >
           <Toggle checked={noteFilesEnabled} onChange={setNoteFilesEnabled} />
+        </Row>
+        <Row
+          label={t("settingsPage.general.meetingCompanion.label")}
+          description={t("settingsPage.general.meetingCompanion.description")}
+        >
+          <Toggle checked={companionEnabled} onChange={setCompanionEnabled} />
         </Row>
       </Group>
     </Section>

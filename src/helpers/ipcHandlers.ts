@@ -22,6 +22,7 @@ import { approveAudioPath, resolveAllowedAudioPath } from "./audioPathAllowlist.
 import { openSystemSettings } from "./systemSettingsLauncher.js";
 import { registerNotesHandlers } from "./notesIpcHandlers.js";
 import { registerUrlDownloadHandlers } from "./urlDownloadIpcHandlers.js";
+import { registerMeetingCompanionHandlers } from "./meetingCompanionWindow.js";
 import { registerVocabularyHandlers } from "./vocabularyIpcHandlers.js";
 import { registerContainerHandlers } from "./containerIpcHandlers.js";
 import { registerChatPersistenceHandlers } from "./chatPersistenceIpcHandlers.js";
@@ -1050,6 +1051,8 @@ export class IPCHandlers {
     registerChatPersistenceHandlers(ipcMain, {
       database: this.databaseManager,
     });
+
+    registerMeetingCompanionHandlers(ipcMain, this.windowManager.meetingCompanion);
 
     // URL download channels live in the typed module, per-registration state
     // included. Only the downloader and logging are shared.

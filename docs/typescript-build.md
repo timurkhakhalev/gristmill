@@ -93,9 +93,6 @@ Tests/build/install/rebuild запускаются последовательн�
 - `pnpm test` — 2390 passed, 0 failed/skipped, последовательный прогон.
 - `pnpm run pack` — renderer/main/native сборки и macOS arm64 `.app` готовы;
   afterPack проверил SQLite ABI и распакованный worker. Без подписи.
-- `node scripts/smoke-electron.js` — запуск, Notes, blank note, folder/edit,
-  поиск, chat persistence, Dictionary/Snippets, AI Actions, onboarding и Settings
-  прошли на отдельном временном профиле.
 - Дополнительно: настоящий Electron utilityProcess загрузил worker из
   `app.asar/dist-main` и ответил на `ping`, без загрузки модели или аудио.
   В asar проверено отсутствие исходных main/preload/helpers и `.env`.
@@ -467,7 +464,6 @@ folderDeleteRelocationContract 2, rendererBridgeContract, mainBuild,
 notesIpc, databaseLocalBehavior/Schema, notesDatabase,
 spacesTreeNoteActionClearance, toolUtils, searchNotesTool); compiler probe
 на неполную DB deps; полный `pnpm test`; `pnpm run pack`; Node ABI
-восстановлен; `node scripts/smoke-electron.js` на изолированном профиле.
 Inventory графа Electron: 131 JS, 37 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированная граница chat persistence»

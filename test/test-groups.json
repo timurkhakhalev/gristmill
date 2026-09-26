@@ -287,6 +287,7 @@
       "test/config/rendererInferenceRemovalContract.test.js",
       "test/config/colorSchemes.test.js",
       "test/helpers/appVersion.test.js",
+      "test/helpers/assetDownloadOffline.test.js",
       "test/helpers/autoStartPolicy.test.js",
       "test/helpers/chineseScript.test.js",
       "test/helpers/cliBridgeRequestBody.test.js",
@@ -718,6 +719,7 @@
       "test/helpers/uploadTimestamps.test.js",
       "test/helpers/whisperServerVadArgs.test.js",
       "test/helpers/whisperVadConfig.test.js",
+      "test/helpers/whisperVadModel.test.js",
       "test/helpers/whisperWakeRewarm.test.js",
       "test/services/transcriptionBaseUrl.test.js",
       "test/utils/liveTranscriptPresentation.test.js"

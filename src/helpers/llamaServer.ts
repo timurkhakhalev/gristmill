@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const debugLogger = require("./debugLogger.js");
+const { ensureDevBinary } = require("./devAssetInstaller.js");
 import { killProcess } from "../utils/process.js";
 import { isPortAvailable } from "../utils/serverUtils.js";
 import { getSafeTempDir } from "./safeTempDir.js";
@@ -240,7 +241,15 @@ export class LlamaServerManager {
   }
 
   async _doStart(modelPath: string, options: LlamaServerOptions = {}): Promise<void> {
-    const binaryPaths = this.getServerBinaryPaths();
+    let binaryPaths = this.getServerBinaryPaths();
+    if (!binaryPaths.default) {
+      // Dev checkouts no longer prefetch binaries at startup; the first local
+      // route use installs the pinned build. Packaged apps ship the binary.
+      await ensureDevBinary("llama-server").catch((error: Error) => {
+        debugLogger.warn("Local-route binary install failed", { error: error.message }, "assets");
+      });
+      binaryPaths = this.getServerBinaryPaths();
+    }
     if (!binaryPaths.default) throw new Error("llama-server binary not found");
     if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
 

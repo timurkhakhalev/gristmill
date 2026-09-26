@@ -61,7 +61,6 @@ import { resolveContextSileroEnabled } from "./whisperVadConfig.js";
 import { supportsLiveSpeakerIdentification } from "./liveSpeakerIdPolicy.js";
 import type { LiveSpeakerIdentifier, SpeakerReclusterMerge } from "./liveSpeakerIdentifier.js";
 import type { AudioTapManager } from "./audioTapManager.js";
-import type { MeetingAecManager } from "./meetingAecManager.js";
 import type { MeetingDetectionEngine } from "./meetingDetectionEngine.js";
 import { broadcastToWindows } from "./windowBroadcast.js";
 import {
@@ -96,10 +95,7 @@ const LOCAL_MEETING_CHUNK_INTERVAL_MS = 5000;
 // utterance's next-cycle system transcript can confirm buffered echo.
 const LOCAL_RISKY_MIC_SEGMENT_HOLDBACK_MS = LOCAL_MEETING_CHUNK_INTERVAL_MS + 1000;
 const RACING_MIC_RETRACT_WINDOW_MS = 4000;
-const MEETING_MIC_REFERENCE_ALIGNMENT_MS = 320;
 const MEETING_STARTUP_WARMUP_MS = 1500;
-const MEETING_MIC_BLEED_LOOKBACK_MS = 500;
-const MEETING_MIC_STATS_LOG_LIMIT = 200;
 const MEETING_SYSTEM_AUDIO_SILENCE_WARNING_MS = 45000;
 const MEETING_SYSTEM_AUDIO_TICK_MS = 2000;
 const MAX_MEETING_RECONNECTS = 5;
@@ -148,10 +144,6 @@ export interface MeetingCoordinatorDeps {
   diarizationManager: import("./meetingDiarizationPublication.js").DiarizationPublicationDiarizationManager;
   meetingDetectionEngine: MeetingDetectionEngine | null;
   audioTapManager: Pick<AudioTapManager, "isSupported" | "start" | "stop"> | null;
-  meetingAecManager: Pick<
-    MeetingAecManager,
-    "isAvailable" | "start" | "stop" | "processMicBuffer" | "processSystemBuffer"
-  > | null;
   whisperManager: {
     transcribeLocalWhisper(
       audio: Buffer,
@@ -200,12 +192,6 @@ interface PendingMicFinalEntry {
   holdbackMs: number;
   releaseAt: number;
   emit: () => void;
-}
-
-interface PendingAecMicChunk {
-  buffer: Buffer;
-  queuedAt: number;
-  analysisOnly?: boolean;
 }
 
 interface ReconnectAudioEntry {
@@ -265,7 +251,6 @@ export function registerMeetingCoordinatorHandlers(
     diarizationManager,
     meetingDetectionEngine,
     audioTapManager,
-    meetingAecManager,
     whisperManager,
     parakeetManager,
     liveSpeakerIdentifier,
@@ -1090,7 +1075,6 @@ export function registerMeetingCoordinatorHandlers(
 
   // ---- timers, watchdog, diarization capture and local-mode state -------------
 
-  let meetingMicStatsLogCount = 0;
   let meetingSystemAudioSilenceTimer: NodeJS.Timeout | null = null;
   let meetingSystemAudioTicker: NodeJS.Timeout | null = null;
   let meetingSystemAudioWatchdogWin: CoordinatorWindowLike | null = null;
@@ -1118,7 +1102,6 @@ export function registerMeetingCoordinatorHandlers(
     },
   });
   let meetingStartedAt: number | null = null;
-  let meetingSendCounts: Record<MeetingAudioSource, number> = { mic: 0, system: 0 };
   let meetingReconnectPromise: Promise<boolean> | null = null;
   let meetingFatalErrorSent = false;
   let meetingReconnectCount = 0;
@@ -1156,8 +1139,6 @@ export function registerMeetingCoordinatorHandlers(
   let meetingLocalModel: string | null = null;
   let meetingLocalLanguage: string | null = null;
   let meetingLocalTranscribing = false;
-  let meetingPendingMicChunks: PendingAecMicChunk[] = [];
-  let meetingAecEnabled = false;
   let meetingOneOnOneAttendee: { displayName: string; email: string | null } | null = null;
   let meetingOneOnOneProfileBound = false;
   let meetingNoteId: number | null = null;
@@ -1218,182 +1199,6 @@ export function registerMeetingCoordinatorHandlers(
         "speaker"
       );
     }
-  };
-
-  const dispatchMeetingAudioBuffer = (
-    buffer: Buffer,
-    source: MeetingAudioSource,
-    synthetic = false,
-    capturedAt: number | null = null
-  ) => {
-    if (meetingLocalMode) {
-      // Local STT timestamps each batch with wall time, not a sample cursor.
-      // Large synthetic gaps would dilute speech and inflate the next batch.
-      if (synthetic) return;
-      meetingLocalBuffers[source].push(buffer);
-      return;
-    }
-
-    const streaming = source === "mic" ? meetingMicStreaming : meetingSystemStreaming;
-    if (!streaming) {
-      if (meetingSendCounts[source] === 0) {
-        debugLogger.error("Meeting audio send: no streaming instance", { source });
-      }
-      return;
-    }
-
-    let outbound = buffer;
-    if (source === "mic" && buffer.length >= 2) {
-      const { rms, peak, sampleCount } = computeChunkStats(buffer);
-      // Evaluated eagerly (as before) because the stats log reports it.
-      const systemSpeaking = meetingEchoLeakDetector.isSystemSpeaking(
-        Date.now() - MEETING_MIC_BLEED_LOOKBACK_MS
-      );
-      const verdict = resolveMicChunkAction({
-        mode: "streaming",
-        source,
-        rms,
-        peak,
-        sampleCount,
-        isSystemSpeaking: () => systemSpeaking,
-      });
-      if (verdict.action === "zero") {
-        outbound = Buffer.alloc(buffer.length);
-      }
-      if (
-        meetingMicStatsLogCount < MEETING_MIC_STATS_LOG_LIMIT &&
-        (systemSpeaking || rms > 0.02)
-      ) {
-        meetingMicStatsLogCount += 1;
-        debugLogger.debug("Meeting mic audio stats", {
-          rms: rms.toFixed(4),
-          peak: peak.toFixed(4),
-          systemSpeaking,
-          zeroed: outbound !== buffer,
-        });
-      }
-    } else if (source === "system" && buffer.length >= 2 && !synthetic) {
-      // System chunks stream verbatim (no gate), so a periodic level readout
-      // is the only way field logs can tell real audio from capture silence.
-      const chunkCount = meetingSendCounts.system + 1;
-      if (chunkCount === 1 || chunkCount % 200 === 0) {
-        const { rms, peak } = computeChunkStats(buffer);
-        debugLogger.debug("Meeting system audio stats", {
-          rms: rms.toFixed(4),
-          peak: peak.toFixed(4),
-          chunkCount,
-        });
-      }
-    }
-
-    queueMeetingReconnectAudio(source, outbound, capturedAt);
-    const sent = sendMeetingStreamingAudio(streaming, outbound, capturedAt);
-    if (synthetic) return;
-    meetingSendCounts[source]++;
-    if (meetingSendCounts[source] <= 5 || meetingSendCounts[source] % 100 === 0) {
-      // The raw websocket handle is debug-only and stays off the narrow
-      // streaming-client interface on purpose.
-      const rawSocket = (streaming as { ws?: { readyState?: number } }).ws;
-      debugLogger.debug("Meeting audio send", {
-        source,
-        bytes: buffer.length,
-        sent,
-        wsReady: rawSocket?.readyState,
-        totalSent: streaming.audioBytesSent,
-        count: meetingSendCounts[source],
-      });
-    }
-  };
-
-  const stopMeetingAec = async () => {
-    meetingAecEnabled = false;
-    if (meetingAecManager) {
-      await meetingAecManager.stop().catch(() => {});
-    }
-  };
-
-  const startMeetingAec = async (systemAudioMode: string) => {
-    meetingAecEnabled = false;
-    if (systemAudioMode === "unsupported" || !meetingAecManager?.isAvailable()) {
-      return false;
-    }
-
-    const started = await meetingAecManager
-      .start({
-        onMicChunk: (chunk) => {
-          dispatchMeetingAudioBuffer(chunk, "mic");
-        },
-        onError: (error) => {
-          debugLogger.warn("Meeting AEC helper disabled", { error: error.message }, "meeting");
-          meetingAecEnabled = false;
-          void meetingAecManager.stop().catch(() => {});
-        },
-        onWarning: (warning) => {
-          debugLogger.debug("Meeting AEC helper warning", warning, "meeting");
-        },
-      })
-      .catch((error) => {
-        debugLogger.warn(
-          "Meeting AEC helper start failed",
-          { error: error instanceof Error ? error.message : String(error) },
-          "meeting"
-        );
-        return false;
-      });
-
-    meetingAecEnabled = !!started;
-    if (meetingAecEnabled) {
-      debugLogger.info("Meeting AEC helper started", { systemAudioMode }, "meeting");
-    }
-    return meetingAecEnabled;
-  };
-
-  const flushPendingMeetingMicChunks = (force = false) => {
-    if (!meetingPendingMicChunks.length) {
-      return;
-    }
-
-    const now = Date.now();
-    while (meetingPendingMicChunks.length > 0) {
-      const next = meetingPendingMicChunks[0];
-      if (!force && now - next.queuedAt < MEETING_MIC_REFERENCE_ALIGNMENT_MS) {
-        break;
-      }
-
-      meetingPendingMicChunks.shift();
-      const analysis = meetingEchoLeakDetector.analyzeMicChunk(next.buffer);
-      if (next.analysisOnly) {
-        continue;
-      }
-      if (analysis?.shouldMute && !meetingAecEnabled) {
-        if (!meetingLocalMode) {
-          dispatchMeetingAudioBuffer(Buffer.alloc(next.buffer.length), "mic");
-        }
-        continue;
-      }
-
-      dispatchMeetingAudioBuffer(next.buffer, "mic");
-    }
-  };
-
-  const processMeetingMicWithAec = (buffer: Buffer) => {
-    if (!meetingAecEnabled) {
-      return false;
-    }
-
-    const sent = meetingAecManager?.processMicBuffer(buffer);
-    if (sent) {
-      meetingPendingMicChunks.push({
-        buffer,
-        queuedAt: Date.now(),
-        analysisOnly: true,
-      });
-      flushPendingMeetingMicChunks();
-      return true;
-    }
-
-    meetingAecEnabled = false;
-    return false;
   };
 
   const stopLiveSpeakerIdentification = async () => {
@@ -1762,9 +1567,7 @@ export function registerMeetingCoordinatorHandlers(
     meetingLocalModel = null;
     meetingLocalLanguage = null;
     meetingLocalTranscribing = false;
-    meetingPendingMicChunks = [];
     resetPendingMicFinals();
-    meetingAecEnabled = false;
     meetingStartedAt = null;
     meetingEchoLeakDetector.reset();
   };
@@ -1772,11 +1575,8 @@ export function registerMeetingCoordinatorHandlers(
   const resetMeetingStreamingState = () => {
     meetingMicStreaming = null;
     meetingSystemStreaming = null;
-    meetingSendCounts = { mic: 0, system: 0 };
     meetingLiveSpeakerStartedAt = null;
-    meetingPendingMicChunks = [];
     resetPendingMicFinals();
-    meetingAecEnabled = false;
     meetingEchoLeakDetector.reset();
     meetingReconnectPromise = null;
     meetingFatalErrorSent = false;
@@ -1860,7 +1660,6 @@ export function registerMeetingCoordinatorHandlers(
     clearMeetingSystemAudioSilenceTimer();
     stopMeetingSystemAudioWatchdog();
     if (audioTapManager) await audioTapManager.stop().catch(() => {});
-    await stopMeetingAec();
     await stopLiveSpeakerIdentification().catch(() => {});
     resetMeetingLocalState();
     await disconnectMeetingStreaming().catch(() => {});

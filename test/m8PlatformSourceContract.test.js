@@ -36,7 +36,6 @@ test("M8 keeps required macOS runtime resources in the builder filter", () => {
     "whisper-cpp-*",
     "llama-server-*",
     "sherpa-onnx-*",
-    "meeting-aec-helper-darwin-arm64",
     "diarization-models/**/*",
     "whisper-vad/**/*",
   ]) {

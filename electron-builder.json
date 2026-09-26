@@ -99,7 +99,6 @@
         "macos-mic-listener",
         "macos-meeting-ax",
         "macos-calendar-listener",
-        "meeting-aec-helper-darwin-arm64",
         "diarization-models/**/*",
         "whisper-vad/**/*",
         "*.dylib"

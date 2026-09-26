@@ -2185,6 +2185,7 @@
     "permissions": "Recording permissions",
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
+    "accessibilityDetection": "用于确认正在进行的 Zoom 和 Google Meet 通话。未授予此权限时，不会显示会议检测通知。",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },

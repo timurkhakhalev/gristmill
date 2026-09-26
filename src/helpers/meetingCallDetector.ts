@@ -20,8 +20,9 @@ export class MeetingCallDetector extends EventEmitter {
 
   constructor(scan?: () => Promise<string>) {
     super();
+    let binary: string | null | undefined;
     this.scan = scan ?? (async () => {
-      const binary = resolveBundledBinary("macos-meeting-ax", "meeting");
+      binary ??= resolveBundledBinary("macos-meeting-ax", "meeting");
       if (!binary) return "unknown\tbinary";
       const { stdout } = await execFileAsync(binary, [], { timeout: 2500, maxBuffer: 64 * 1024 });
       return stdout;
@@ -52,7 +53,11 @@ export class MeetingCallDetector extends EventEmitter {
       const reason = lines.find(([state]) => state === "unknown")?.[1] ?? null;
       const unknown = reason !== null;
       if (reason !== this.lastUnknown) {
-        if (reason) debugLogger.info("Meeting AX unavailable or incomplete", { reason }, "meeting");
+        if (reason === "accessibility") {
+          debugLogger.warn("Accessibility permission required for meeting detection", {}, "meeting");
+        } else if (reason) {
+          debugLogger.info("Meeting AX unavailable or incomplete", { reason }, "meeting");
+        }
         this.lastUnknown = reason;
       }
       const presentZoom = new Set<string>();

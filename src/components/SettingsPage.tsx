@@ -406,7 +406,7 @@ function HotkeysSettings() {
 function SystemSettings() {
   const { t } = useTranslation();
   const settings = useSettingsStore();
-  const permissions = usePermissions(undefined, { macAccessibilityChecksEnabled: false });
+  const permissions = usePermissions();
   const systemAudio = useSystemAudioPermission();
   const [autoStart, setAutoStart] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -473,6 +473,24 @@ function SystemSettings() {
           <Button variant="outline" size="sm" onClick={() => void systemAudio.openSettings()}>
             {t("cleanupSettings.openSettings")}
           </Button>
+        </Row>
+        <Row
+          label={t("hooks.permissions.settingsTitles.accessibility")}
+          description={t("cleanupSettings.accessibilityDetection")}
+        >
+          {permissions.accessibilityPermissionGranted ? (
+            <span className="text-sm text-muted-foreground">
+              {t("onboarding.rehaul.permissions.enabled")}
+            </span>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void permissions.requestAccessibilityPermission()}
+            >
+              {t("cleanupSettings.openSettings")}
+            </Button>
+          )}
         </Row>
         <Row label={t("settingsPage.general.notifications.title")}>
           <Toggle

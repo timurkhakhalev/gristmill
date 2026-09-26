@@ -118,6 +118,19 @@ function configureChannelUserDataPath(): void {
   const isolatedPath = explicitPath
     ? path.resolve(explicitPath)
     : path.join(app.getPath("appData"), profileName);
+  if (APP_CHANNEL !== "production") {
+    // Dev channels refuse a profile that reaches production BEFORE creating
+    // anything: a not-yet-existing --user-data-dir inside the production
+    // profile must not be mkdir'd there before the refusal.
+    const devSnapshotModule = require("./src/helpers/devSnapshot.js");
+    if (devSnapshotModule.profilePathAliasesProduction(isolatedPath)) {
+      console.error(
+        "[devSnapshot] dev profile path resolves into the production profile; refusing to start."
+      );
+      app.exit(1);
+      return;
+    }
+  }
   // app.setPath throws when the directory does not exist; a first dev launch
   // has no profile directory yet.
   fs.mkdirSync(isolatedPath, { recursive: true });

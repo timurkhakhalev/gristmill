@@ -227,28 +227,64 @@ function reachesProduction(resolved: string, source: string): boolean {
   return resolved === source || resolved.startsWith(source + path.sep);
 }
 
-export function devProfileAliasesProduction(): boolean {
-  const source = realpathOrNull(sourceProfileDir());
-  const target = realpathOrNull(targetProfileDir());
-  if (!source || !target) return false;
-  // Equal or nested either way: userData inside the production profile or
-  // vice versa.
-  if (reachesProduction(target, source) || reachesProduction(source, target)) return true;
-  // Anything the app opens or writes under userData that realpaths into
-  // production storage: the active and legacy databases, and the storage
-  // trees the snapshot copies into (audio, meeting-results, notes,
-  // secure-keys, Partitions). A symlinked legacy database would also make
-  // adoption checkpoint production and move the link onto the active name.
-  const candidates = [
-    DEV_DB,
-    PROD_DB,
-    ...COPY_DIRS.map((name) => name + path.sep),
-  ];
-  for (const name of candidates) {
-    const resolved = realpathOrNull(path.join(targetProfileDir(), name));
-    if (resolved && reachesProduction(resolved, source)) return true;
+// Realpath, tolerating a missing tail: the deepest existing ancestor decides
+// containment for a not-yet-created path (an explicit --user-data-dir inside
+// production must be rejected before anything creates it).
+function realpathDeep(p: string): string | null {
+  let current = p;
+  const tail: string[] = [];
+  for (;;) {
+    const resolved = realpathOrNull(current);
+    if (resolved) return tail.length ? path.join(resolved, ...tail) : resolved;
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    tail.unshift(path.basename(current));
+    current = parent;
+  }
+}
+
+// Any symlink at or below userData whose target reaches production. Walks the
+// whole profile: top-level files (.env, logs, databases), the copied storage
+// trees, and nested links inside them (dev/audio/meetings -> production/notes
+// would otherwise make the snapshot write through it).
+function profileTreeReachesProduction(profile: string, source: string): boolean {
+  const stack: string[] = [profile];
+  while (stack.length) {
+    const dir = stack.pop() as string;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      // A symlink anywhere in the profile: resolve it (lstat-based readdir
+      // flags symlinks as non-directories, so resolve every entry type).
+      const resolved = realpathOrNull(full);
+      if (resolved && resolved !== full && reachesProduction(resolved, source)) return true;
+      if (entry.isDirectory() && !entry.isSymbolicLink()) stack.push(full);
+    }
   }
   return false;
+}
+
+export function profilePathAliasesProduction(targetProfile: string): boolean {
+  const source = realpathOrNull(sourceProfileDir());
+  if (!source) return false;
+  // Equal or nested either way, including paths that do not exist yet: the
+  // deepest existing ancestor decides (an explicit --user-data-dir inside
+  // production must refuse before mkdir creates anything there).
+  const target = realpathDeep(targetProfile);
+  if (target && (reachesProduction(target, source) || reachesProduction(source, target))) {
+    return true;
+  }
+  if (!fs.existsSync(targetProfile)) return false;
+  return profileTreeReachesProduction(targetProfile, source);
+}
+
+export function devProfileAliasesProduction(): boolean {
+  return profilePathAliasesProduction(targetProfileDir());
 }
 
 export function snapshotProductionProfileForDev(): boolean {

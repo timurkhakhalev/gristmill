@@ -99,8 +99,6 @@
         "macos-mic-listener",
         "macos-meeting-ax",
         "macos-calendar-listener",
-        "diarization-models/**/*",
-        "whisper-vad/**/*",
         "*.dylib"
       ]
     }

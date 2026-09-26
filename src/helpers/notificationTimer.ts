@@ -1,15 +1,14 @@
-const DETECTION_TIMEOUT_MS = 30 * 1000;
-// Calendar reminders fire 60s before the meeting (MEETING_REMINDER_LEAD_MS in
-// calendarReminderScheduler.js); the prompt must survive past the meeting
-// start, not vanish 30s before it.
-const CALENDAR_TIMEOUT_MS = 2 * 60 * 1000;
+// Every meeting prompt — mic/process detection and calendar reminders alike —
+// hides after one minute. Calendar reminders fire 60s before the meeting
+// (MEETING_REMINDER_LEAD_MS), so they stay up until it starts.
+const MEETING_PROMPT_TIMEOUT_MS = 60 * 1000;
 // A resumed countdown keeps at least this much runway so the card cannot
 // vanish right as the pointer leaves it — or mid-click, while the renderer's
 // 200ms dismiss animation delays the response IPC.
 const MIN_RESUME_MS = 5 * 1000;
 
-export function getNotificationTimeoutMs(source?: string | null): number {
-  return source === "calendar" ? CALENDAR_TIMEOUT_MS : DETECTION_TIMEOUT_MS;
+export function getNotificationTimeoutMs(_source?: string | null): number {
+  return MEETING_PROMPT_TIMEOUT_MS;
 }
 
 // Auto-dismiss countdown for the meeting notification overlay, pausable while

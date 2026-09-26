@@ -678,7 +678,7 @@ test("an expired detection reports the timeout once, not also as a close", async
   await showPromise;
 
   try {
-    timers.runDelay(30_000);
+    timers.runDelay(60_000);
     assert.equal(timeouts, 1, "the countdown owns this dismissal");
     assert.deepEqual(closedDetections, [], "the close must not double-report the same card");
   } finally {

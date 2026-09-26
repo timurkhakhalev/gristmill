@@ -6,12 +6,10 @@ const {
   getNotificationTimeoutMs,
 } = require("../../src/helpers/notificationTimer");
 
-test("calendar prompts outlive the 60s reminder lead; detections keep 30s", () => {
-  assert.ok(
-    getNotificationTimeoutMs("calendar") > 60 * 1000,
-    "a calendar prompt must survive past the meeting start"
-  );
-  assert.equal(getNotificationTimeoutMs("audio"), 30 * 1000);
+test("every meeting prompt hides after one minute", () => {
+  assert.equal(getNotificationTimeoutMs("calendar"), 60 * 1000);
+  assert.equal(getNotificationTimeoutMs("audio"), 60 * 1000);
+  assert.equal(getNotificationTimeoutMs("process"), 60 * 1000);
 });
 
 test("fires exactly once after the configured duration", (t) => {

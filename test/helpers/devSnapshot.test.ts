@@ -135,13 +135,11 @@ test("adopts a legacy packaged-Dev database instead of losing it", () => {
 });
 
 test("refuses to start when the database snapshot fails and none exists", () => {
-  const { development } = makeProfiles();
+  const { production, development } = makeProfiles();
+  // Corrupt the production database: opening it must fail, forcing the
+  // consistent-snapshot path to fail while no dev database exists yet.
+  fs.writeFileSync(path.join(production, "transcriptions.db"), "not a sqlite database");
   setUserDataDir(development);
-  // Force the VACUUM INTO path to fail: occupy the staged temp name with a
-  // directory so VACUUM INTO cannot write it.
-  fs.mkdirSync(path.join(development, `.${DEV_DB}.snapshot-${process.pid}.tmp`), {
-    recursive: true,
-  });
   const ok = snapshotProductionProfileForDev();
   assert.equal(ok, false, "a failed db snapshot without an existing db must refuse to start");
   assert.equal(fs.existsSync(path.join(development, DEV_DB)), false);

@@ -65,15 +65,38 @@ function cloneDir(from: string, to: string): void {
 // One-time cutover: before the channel-based filename, the packaged Dev app
 // (no NODE_ENV=development) wrote transcriptions.db in this profile. Those
 // dev-made notes must survive the rename to the channel database name.
+// Checkpoint the WAL into the main file first, then rename -wal/-shm before
+// the database itself: an interruption at any point leaves no
+// transcriptions-dev.db, so adoption simply reruns on the next launch and
+// never sees a new-style database next to an unmerged legacy WAL.
 function adoptLegacyDevDatabase(target: string): void {
   const legacy = path.join(target, PROD_DB);
   const current = path.join(target, DEV_DB);
   if (fs.existsSync(current) || !fs.existsSync(legacy)) return;
-  fs.renameSync(legacy, current);
-  for (const suffix of ["-wal", "-shm"]) {
+  try {
+    const Database = require("better-sqlite3") as new (path: string) => {
+      exec: (sql: string) => void;
+      close: () => void;
+    };
+    const db = new Database(legacy);
+    try {
+      db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    debugLogger.warn(
+      "legacy dev database adoption failed; retrying on the next launch",
+      { error: (error as Error)?.message },
+      "devSnapshot"
+    );
+    return;
+  }
+  for (const suffix of ["-shm", "-wal"]) {
     const side = legacy + suffix;
     if (fs.existsSync(side)) fs.renameSync(side, current + suffix);
   }
+  fs.renameSync(legacy, current);
 }
 
 // Copying a live WAL-mode database file-by-file can capture mismatched db/wal
@@ -87,7 +110,7 @@ function snapshotDatabase(source: string, target: string, name: string): boolean
   if (fs.existsSync(destination)) return true;
   fs.mkdirSync(target, { recursive: true });
   const staged = path.join(target, `.${name}.snapshot-${process.pid}.tmp`);
-  fs.rmSync(staged, { force: true });
+  fs.rmSync(staged, { force: true, recursive: true });
   try {
     const Database = require("better-sqlite3") as new (path: string) => {
       exec: (sql: string) => void;
@@ -102,10 +125,10 @@ function snapshotDatabase(source: string, target: string, name: string): boolean
     // link() never overwrites; rename() over APFS would clobber a database a
     // concurrent launch created between the existsSync check and now.
     fs.linkSync(staged, destination);
-    fs.rmSync(staged, { force: true });
+    fs.rmSync(staged, { force: true, recursive: true });
     return true;
   } catch (error) {
-    fs.rmSync(staged, { force: true });
+    fs.rmSync(staged, { force: true, recursive: true });
     if (fs.existsSync(destination)) return true; // a concurrent launch won
     debugLogger.warn(
       "consistent database snapshot failed; retrying on the next launch",
@@ -120,11 +143,14 @@ export function snapshotProductionProfileForDev(): boolean {
   const source = sourceProfileDir();
   const target = targetProfileDir();
   if (sameDir(source, target)) return true;
-  if (!fs.existsSync(path.join(source, PROD_DB))) return true;
 
-  // Adopt a legacy packaged-Dev database before any existence check would
-  // mistake it for a completed snapshot (it has no marker).
+  // Adoption is independent of the production snapshot: a dev-only profile
+  // with pre-cutover notes must migrate even when no production profile
+  // exists. Run it before any existence check would mistake the legacy file
+  // for a completed snapshot (it has no marker).
   adoptLegacyDevDatabase(target);
+
+  if (!fs.existsSync(path.join(source, PROD_DB))) return true;
 
   const refresh = process.env.OPENHERCULES_REFRESH_SNAPSHOT === "1";
   const markerExists = fs.existsSync(path.join(target, MARKER));

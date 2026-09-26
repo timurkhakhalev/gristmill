@@ -1,20 +1,27 @@
 # OpenHercules working rules
 
-Read `README.md` and the documents under `docs/` before making architectural or product changes.
+Start with [.memory-bank/index.md](.memory-bank/index.md). Read the
+[quality steering](.memory-bank/steerings/quality.md) before selecting or running
+checks. Read `README.md` and the relevant documents under `docs/` before making
+architectural or product changes.
 
-## Current milestone: cleanup
+## Product scope and implementation references
 
-The current contract is `docs/removal-plan.md`; delegation and verification are
-in `docs/cleanup-m0.md`. Complete cleanup before implementing batch processing.
+Cleanup is merged; `docs/removal-plan.md` and `docs/cleanup-m0.md` describe its
+scope and baseline. Read `README.md` and `docs/record-then-process.md` for the
+record-then-process implementation and remaining verification limits.
 Preserve existing notes (including blank notes), full embedded chat except
 web_search, all BYOK/Local/supported Self-Hosted routes, realtime recording,
 all speaker recognition, and Dictionary/Snippets data, tools and management UI.
-Remove Home (dictation history) and Insights entirely; open Notes by default.
-Do not build a replacement dashboard during cleanup.
-Isolate identity and storage in M1 before runtime smoke tests; never use the
-original OpenWhispr profile. Do not add compatibility shims.
+Keep Home (dictation history) and Insights removed; open Notes by default.
+Do not add a replacement dashboard without a product decision.
+Use isolated profiles for runtime smoke tests; never use the original
+OpenWhispr profile. Do not add compatibility shims.
 
 ## Parallel agent resource limits
+
+The [quality steering](.memory-bank/steerings/quality.md) defines check selection,
+full-suite triggers, runtime isolation and required verification evidence.
 
 - Subagents may run typecheck and lint, and write or update tests.
 - Only the root orchestrator/integrator may run tests, builds, dependency
@@ -25,12 +32,13 @@ original OpenWhispr profile. Do not add compatibility shims.
 - The orchestrator waits for the parallel wave to finish, then runs expensive
   checks sequentially, never multiple test/build/install processes at once.
   Use `--test-concurrency=1` for Node tests. After a failure, rerun focused tests
-  first; run the full suite after integration, not once per subagent.
+  first. When the quality steering requires the full suite, run it once after
+  integration, not once per subagent.
 
-## Future batch invariants (not cleanup acceptance criteria)
+## Recording and processing invariants
 
-These describe the next stage, not guarantees of the imported baseline.
-Do not implement new capture, queues or stage contracts during cleanup.
+Preserve these invariants when changing capture or processing. Automated tests
+do not replace live hardware verification; see `docs/record-then-process.md`.
 
 - The original microphone and system tracks are the source of truth.
 - Capture must not depend on network access or a model provider.

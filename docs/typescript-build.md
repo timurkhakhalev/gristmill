@@ -68,11 +68,11 @@ Electron уже типобезопасен. TS-модули графа пров�
 
 ## Проверки сборки
 
-`pnpm test` сначала собирает main. Для отдельного прогона:
+`pnpm test` собирает main, если выбранные тесты используют результат сборки.
+Полный прогон и проверка mainBuild требуют сборки. Для отдельного прогона:
 
 ```sh
-pnpm run build:main
-pnpm exec node --import tsx --test --test-concurrency=1 --test-timeout=30000 test/scripts/mainBuild.test.js
+pnpm test -- test/scripts/mainBuild.test.js
 ```
 
 Эти тесты проверяют относительные зависимости всего выходного графа,
@@ -1807,8 +1807,7 @@ lint-предупреждения: 12+2 (ниже baseline 15+2 — main/preload
 ```sh
 pnpm run typecheck          # main + renderer + settings-selectors, все strict
 pnpm run lint               # 0 errors
-pnpm run build:main         # tsc + esbuild preload bundle
-node --import tsx --test --test-concurrency=1 --test-timeout=30000 \
+pnpm test -- \
   test/scripts/mainBuild.test.js test/helpers/mainProcessEsmEntries.test.js \
   test/helpers/retryTranscriptionHandler.test.js \
   test/m1IdentitySourceContract.test.js test/helpers/macInferenceSourceContract.test.js \
@@ -1821,5 +1820,8 @@ pnpm run pack               # macOS arm64 .app; затем isolated Electron smo
 Ожидания от mainBuild: emitted graph замкнут (нет runtime-импортов .ts),
 preload sandbox-бандл грузится, route + ESM constants грузятся в plain Node,
 CJS-формы экспортов сохранены, компилятор отвергает неверные аргументы и
-DOM-глобалы в main. После pack — восстановить Node ABI better-sqlite3 перед
-повторными DB-тестами.
+DOM-глобалы в main. `pnpm test` подготавливает SQLite и собирает main, если
+выбранные тесты требуют результат сборки (включая mainBuild и полный прогон).
+На macOS тесты используют Node-режим Electron и тот же ABI, что приложение;
+вручную переключать SQLite на Node ABI не нужно. Выбор проверок описан в
+[quality steering](../.memory-bank/steerings/quality.md).

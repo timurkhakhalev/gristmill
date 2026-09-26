@@ -1,57 +1,70 @@
 const assert = require("node:assert/strict");
-const { spawnSync } = require("node:child_process");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
 const test = require("node:test");
+const { runTests, runCommand } = require("../../scripts/run-tests");
 
-const root = path.resolve(__dirname, "../..");
-
-function runWithFakeCommands(platform) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oh-test-runtime-"));
-  const bin = path.join(dir, "bin");
-  const log = path.join(dir, "calls.log");
-  fs.mkdirSync(bin);
-  const commands = {
-    uname: '#!/bin/sh\nprintf "%s\\n" "$FAKE_PLATFORM"\n',
-    node: '#!/bin/sh\nif [ "$1" = -p ]; then printf "%s\\n" "$FAKE_ELECTRON"; else printf "node:%s\\n" "$*" >> "$FAKE_LOG"; fi\n',
-    pnpm: '#!/bin/sh\nprintf "pnpm:%s\\n" "$*" >> "$FAKE_LOG"\n',
-    electron: '#!/bin/sh\nprintf "electron:%s:runAsNode=%s\\n" "$*" "$ELECTRON_RUN_AS_NODE" >> "$FAKE_LOG"\n',
+function fakeRunner(extra = {}) {
+  const calls = [];
+  return {
+    calls,
+    options: {
+      log: () => {},
+      platform: "darwin",
+      electronBinary: () => "/electron",
+      nodeBinary: "/node",
+      prepare: async (runtime) => { calls.push({ prepare: runtime }); },
+      run: async (binary, args, env) => { calls.push({ binary, args, env: { ...env } }); return 0; },
+      ...extra,
+    },
   };
-  for (const [name, source] of Object.entries(commands)) {
-    fs.writeFileSync(path.join(bin, name), source, { mode: 0o755 });
-  }
-  try {
-    const result = spawnSync("/bin/sh", ["scripts/run-tests.sh", "--", "test/scripts/sqliteRuntime.test.js"], {
-      cwd: root,
-      env: {
-        ...process.env,
-        PATH: `${bin}${path.delimiter}${process.env.PATH}`,
-        OPENHERCULES_TEST_BACKGROUND: "1",
-        FAKE_PLATFORM: platform,
-        FAKE_ELECTRON: path.join(bin, "electron"),
-        FAKE_LOG: log,
-      },
-      encoding: "utf8",
-    });
-    assert.equal(result.status, 0, result.stderr);
-    return fs.readFileSync(log, "utf8");
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
 }
 
-test("macOS focused tests probe and run under Electron as Node", () => {
-  const calls = runWithFakeCommands("Darwin");
-  assert.match(calls, /node:scripts\/ensure-sqlite-runtime\.js electron/);
-  assert.match(calls, /pnpm:run build:main/);
-  assert.match(calls, /electron:--import tsx --test --test-concurrency=1 --test-timeout=30000 test\/scripts\/sqliteRuntime\.test\.js:runAsNode=1/);
+test("macOS unit selection uses Electron as Node without a main build", async () => {
+  const { calls, options } = fakeRunner();
+  assert.equal(await runTests(["test/utils/formatDuration.test.js"], options), 0);
+  assert.deepEqual(calls[0], { prepare: "electron" });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].binary, "/electron");
+  assert.equal(calls[1].env.ELECTRON_RUN_AS_NODE, "1");
+  assert.equal(calls[1].env.REQUIRE_DB_TESTS, "1");
+  assert.ok(calls[1].args.includes("--test-concurrency=1"));
 });
 
-test("Linux focused tests keep the Node runtime", () => {
-  const calls = runWithFakeCommands("Linux");
-  assert.match(calls, /node:scripts\/ensure-sqlite-runtime\.js node/);
-  assert.match(calls, /pnpm:run build:main/);
-  assert.match(calls, /node:--import tsx --test --test-concurrency=1 --test-timeout=30000 test\/scripts\/sqliteRuntime\.test\.js/);
-  assert.doesNotMatch(calls, /electron:/);
+test("compiled bridge selection builds once and Linux uses Node", async () => {
+  const { calls, options } = fakeRunner({ platform: "linux" });
+  assert.equal(await runTests(["test/helpers/notesBridge.test.js", "test/helpers/calendarBridge.test.js"], options), 0);
+  assert.deepEqual(calls[0], { prepare: "node" });
+  assert.equal(calls.length, 3);
+  assert.equal(calls[1].binary, "pnpm");
+  assert.deepEqual(calls[1].args, ["run", "build:main"]);
+  assert.equal(calls[1].env.ELECTRON_RUN_AS_NODE, undefined);
+  assert.equal(calls[2].binary, "/node");
+  assert.equal(calls[2].env.ELECTRON_RUN_AS_NODE, undefined);
+});
+
+test("listing and invalid selection never prepare dependencies or launch processes", async () => {
+  const { calls, options } = fakeRunner();
+  assert.equal(await runTests(["--domain", "calendar", "--list"], options), 0);
+  assert.equal(await runTests(["--help"], options), 0);
+  await assert.rejects(runTests(["--domain", "typo"], options));
+  await assert.rejects(runTests(["test/missing.test.js"], options));
+  assert.deepEqual(calls, []);
+});
+
+test("failed preparation or build prevents test execution; test status is preserved", async () => {
+  const failedPrepare = fakeRunner({ prepare: async () => { throw new Error("probe failed"); } });
+  await assert.rejects(runTests(["test/helpers/notesBridge.test.js"], failedPrepare.options), /probe failed/);
+  assert.equal(failedPrepare.calls.length, 0);
+  const commands = [];
+  const failedBuild = fakeRunner({ run: async (binary) => { commands.push(binary); return 7; } });
+  assert.equal(await runTests(["test/helpers/notesBridge.test.js"], failedBuild.options), 7);
+  assert.deepEqual(commands, ["pnpm"]);
+  const failedTests = fakeRunner({ run: async () => 3 });
+  assert.equal(await runTests(["test/utils/formatDuration.test.js"], failedTests.options), 3);
+});
+
+test("real child failure and signal retain nonzero status", async () => {
+  assert.equal(await runCommand(process.execPath, ["-e", "process.exit(3)"], process.env), 3);
+  if (process.platform !== "win32") {
+    assert.equal(await runCommand(process.execPath, ["-e", "process.kill(process.pid, 'SIGTERM')"], process.env), 143);
+  }
 });

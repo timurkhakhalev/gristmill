@@ -17,16 +17,17 @@ test("the default spot sits on the right edge, inside the work area", async () =
   const { defaultCompanionPosition, clampToWorkArea, MEETING_COMPANION_SIZE } = await load();
 
   const point = defaultCompanionPosition(WORK_AREA, MEETING_COMPANION_SIZE);
-  assert.equal(point.x, WORK_AREA.width - MEETING_COMPANION_SIZE - 12);
+  assert.equal(point.x, WORK_AREA.width - MEETING_COMPANION_SIZE.width - 12);
   assert.deepEqual(clampToWorkArea(point, WORK_AREA, MEETING_COMPANION_SIZE), point);
 });
 
 test("dragging past any edge keeps the whole bubble on screen", async () => {
   const { clampToWorkArea } = await load();
 
-  assert.deepEqual(clampToWorkArea({ x: -50, y: 0 }, WORK_AREA, 64), { x: 0, y: 25 });
-  assert.deepEqual(clampToWorkArea({ x: 5000, y: 5000 }, WORK_AREA, 64), { x: 1376, y: 836 });
+  const size = { width: 52, height: 100 };
+  assert.deepEqual(clampToWorkArea({ x: -50, y: 0 }, WORK_AREA, size), { x: 0, y: 25 });
+  assert.deepEqual(clampToWorkArea({ x: 5000, y: 5000 }, WORK_AREA, size), { x: 1388, y: 800 });
   // Displays left of or above the primary one have negative origins.
   const left = { x: -1920, y: 0, width: 1920, height: 1080 };
-  assert.deepEqual(clampToWorkArea({ x: -1000.4, y: 500.6 }, left, 64), { x: -1000, y: 501 });
+  assert.deepEqual(clampToWorkArea({ x: -1000.4, y: 500.6 }, left, size), { x: -1000, y: 501 });
 });

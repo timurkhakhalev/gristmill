@@ -1441,7 +1441,8 @@
     "integrations": "Integrationen",
     "chat": "Chat",
     "collapse": "Seitenleiste einklappen",
-    "expand": "Seitenleiste ausklappen"
+    "expand": "Seitenleiste ausklappen",
+    "home": "Start"
   },
   "chat": {
     "newChat": "Neuer Chat",
@@ -1818,41 +1819,6 @@
       },
       "consentNotice": "Hole immer die Zustimmung ein, wenn du andere aufnimmst"
     },
-    "overview": {
-      "subtitle": {
-        "private": "Nur du kannst diese Notizen sehen."
-      },
-      "meta": {
-        "folders_one": "{{count}} Ordner",
-        "folders_other": "{{count}} Ordner",
-        "members_one": "{{count}} Mitglied",
-        "members_other": "{{count}} Mitglieder"
-      },
-      "banner": {
-        "title": {
-          "private": "Dein privater Space"
-        },
-        "body": {
-          "private": "Bewahre Meeting-Notizen, Ideen und Entwürfe an einem Ort auf – und frag nach allem in diesem Space."
-        },
-        "dismiss": "Ausblenden"
-      },
-      "ask": {
-        "placeholder": "Frag etwas",
-        "chips": {
-          "catchUp": "Bring mich auf den neuesten Stand",
-          "keyDecisions": "Liste die wichtigsten Entscheidungen auf",
-          "inFlight": "Zeig laufende Projekte"
-        }
-      },
-      "invite": "Einladen",
-      "list": {
-        "empty": "Hier gibt es noch keine Notizen"
-      },
-      "author": {
-        "you": "Du"
-      }
-    },
     "spaces": {
       "personal": "Persönlich",
       "moveToSpace": "In Bereich verschieben…",
@@ -2122,8 +2088,12 @@
     "suggestions": {
       "summary": "Fasse diese Notiz zusammen",
       "actions": "Welche Aufgaben gibt es?",
-      "decisions": "Was wurde entschieden?"
-    }
+      "decisions": "Was wurde entschieden?",
+      "catchUp": "Bring mich auf den neuesten Stand",
+      "keyDecisions": "Liste die wichtigsten Entscheidungen auf",
+      "inFlight": "Zeig laufende Projekte"
+    },
+    "homeEmptyState": "Frag alles zu deinen Notizen und Meetings"
   },
   "transcriptionPreview": {
     "label": "Vorschau",
@@ -2329,5 +2299,15 @@
     "switchView": "Notizen / Upload wechseln",
     "findInNote": "In Notiz suchen",
     "showShortcuts": "Tastenkürzel"
+  },
+  "home": {
+    "today": "Heute",
+    "yesterday": "Gestern",
+    "recent": {
+      "meeting": "Meeting",
+      "participantsMore_one": "{{names}} & {{count}} weitere",
+      "participantsMore_other": "{{names}} & {{count}} weitere",
+      "empty": "Noch keine Notizen"
+    }
   }
 }

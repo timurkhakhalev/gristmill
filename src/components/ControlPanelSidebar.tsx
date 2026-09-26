@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Settings, Sparkles, Upload } from "./icons";
+import { Home, Settings, Sparkles, Upload } from "./icons";
 import { useTranslation } from "react-i18next";
 import { cn } from "./lib/utils";
 import ActionManagerDialog from "./notes/ActionManagerDialog";
@@ -20,8 +20,8 @@ interface ControlPanelSidebarProps {
   onOpenSettings: () => void;
 }
 
-/** The single app sidebar: the notes tree on top, Upload file and Settings at
- * the bottom. Dictionary and integrations live in the settings modal. */
+/** The single app sidebar: Home and the notes tree on top, Upload file and
+ * Settings at the bottom. Dictionary and integrations live in the settings modal. */
 export default function ControlPanelSidebar({
   activeView,
   onViewChange,
@@ -43,7 +43,15 @@ export default function ControlPanelSidebar({
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       />
 
-      <div className="px-2 pt-2 pb-1 shrink-0">
+      <div className="space-y-0.5 px-2 pt-2 pb-1 shrink-0">
+        <button
+          onClick={() => onViewChange("home")}
+          aria-current={activeView === "home" ? "page" : undefined}
+          className={cn(rowButtonClass, activeView === "home" && "bg-primary/8 dark:bg-primary/10")}
+        >
+          <Home size={16} className={rowIconClass} />
+          <span className={rowLabelClass}>{t("sidebar.home")}</span>
+        </button>
         <button
           onClick={() => setShowActionManager(true)}
           className={cn(
@@ -64,12 +72,13 @@ export default function ControlPanelSidebar({
           onMoveNote={handleMoveNote}
           onCreateFolderAndMove={handleCreateFolderAndMove}
           onNewNote={handleNewNoteIn}
+          onNavigate={() => onViewChange("personal-notes")}
         />
       </div>
 
       <div className="space-y-0.5 px-2 pt-2 pb-2 shrink-0">
         <button
-          onClick={() => onViewChange(activeView === "upload" ? "personal-notes" : "upload")}
+          onClick={() => onViewChange(activeView === "upload" ? "home" : "upload")}
           title={t("sidebar.upload")}
           aria-label={t("sidebar.upload")}
           aria-pressed={activeView === "upload"}

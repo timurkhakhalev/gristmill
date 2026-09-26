@@ -192,8 +192,8 @@ export function ChatMessage({
         <div
           data-chat-bubble
           className={cn(
-            "max-w-[80%] px-3 py-2 rounded-2xl rounded-ee-md",
-            "bg-accent text-accent-foreground",
+            "max-w-[80%] px-3.5 py-2 rounded-2xl",
+            "bg-surface-3 text-foreground",
             "text-ui leading-relaxed"
           )}
         >

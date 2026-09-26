@@ -1,8 +1,8 @@
 import type React from "react";
 import { useTranslation } from "react-i18next";
-import { NotebookPen, Upload } from "./icons";
+import { Home, NotebookPen, Upload } from "./icons";
 
-export type ControlPanelView = "personal-notes" | "upload";
+export type ControlPanelView = "home" | "personal-notes" | "upload";
 
 export interface ControlPanelNavItem {
   id: ControlPanelView;
@@ -19,6 +19,7 @@ export function useControlPanelNavItems(): ControlPanelNavItem[] {
   const { t } = useTranslation();
 
   return [
+    { id: "home", label: t("sidebar.home"), icon: Home },
     { id: "personal-notes", label: t("sidebar.notes"), icon: NotebookPen },
     { id: "upload", label: t("sidebar.upload"), icon: Upload },
   ];

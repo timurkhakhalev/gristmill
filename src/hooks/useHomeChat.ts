@@ -4,87 +4,62 @@ import { useChatStreaming } from "../components/chat/useChatStreaming";
 import { useChatMessageSender } from "../components/chat/useChatMessageSender";
 import type { Message, AgentState } from "../components/chat/types";
 import { deriveConversationTitle } from "../lib/conversationTitle";
-import type { SpaceItem, FolderItem } from "../contracts/containers";
-import type { ContainerConversation } from "../contracts/chatPersistence";
 import type { NoteItem } from "../contracts/notes";
-import type { ContainerScope } from "../types/chat";
+import type { ConversationRow } from "../contracts/chatPersistence";
 
 const MAX_CONTEXT_NOTES = 12;
 const NOTE_SNIPPET_LENGTH = 600;
 
-interface UseContainerChatOptions {
-  space: SpaceItem;
-  folder: FolderItem | null;
-  notes: NoteItem[];
-}
-
-interface UseContainerChatReturn {
+interface UseHomeChatReturn {
   messages: Message[];
   agentState: AgentState;
   sendMessage: (text: string) => Promise<void>;
   cancelStream: () => void;
-  conversations: ContainerConversation[];
+  conversations: ConversationRow[];
   activeConversationId: number | null;
   switchConversation: (id: number) => Promise<void>;
   startNewChat: () => void;
 }
 
 /**
- * Chat scoped to a space or folder (container overview). The host component
- * remounts per container (key prop), so this hook always starts with a fresh
- * ask box; past container conversations are reachable via the picker.
+ * Home's chat: unscoped, searches every note, primed with the recent notes
+ * Home lists. Each Home mount starts fresh; history lists every conversation.
  */
-export function useContainerChat({
-  space,
-  folder,
-  notes,
-}: UseContainerChatOptions): UseContainerChatReturn {
+export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
   const [conversationId, setConversationId] = useState<number | null>(null);
-  const [conversations, setConversations] = useState<ContainerConversation[]>([]);
-  const folderId = folder?.id ?? null;
+  const [conversations, setConversations] = useState<ConversationRow[]>([]);
 
   const persistence = useChatPersistence({
     onConversationCreated: (id) => setConversationId(id),
   });
 
-  const containerContext = useMemo(() => {
-    const header = folder
-      ? `The user is viewing the folder "${folder.name}" in the space "${space.name}" (${notes.length} notes).`
-      : `The user is viewing the space "${space.name}" (${notes.length} notes).`;
+  const noteContext = useMemo(() => {
+    const header = `The user is on the Home screen, which lists their ${notes.length} most recent notes across all spaces.`;
     const noteBlocks = notes.slice(0, MAX_CONTEXT_NOTES).map((note) => {
       const body = (note.enhanced_content || note.content || "").slice(0, NOTE_SNIPPET_LENGTH);
       return `<note id="${note.id}" title="${note.title}" updated="${note.updated_at}">\n${body}\n</note>`;
     });
     return [header, ...noteBlocks].join("\n\n");
-  }, [folder, space.name, notes]);
-
-  const searchScope = useMemo<ContainerScope>(
-    () => ({ spaceId: space.id, folderId }),
-    [space.id, folderId]
-  );
+  }, [notes]);
 
   const streaming = useChatStreaming({
     messages: persistence.messages,
     setMessages: persistence.setMessages,
-    noteContext: containerContext,
-    searchScope,
+    noteContext,
     onStreamComplete: (_id, content, toolCalls) => {
       persistence.saveAssistantMessage(content, toolCalls);
     },
   });
 
-  const fetchConversations = useCallback(
-    async (isStale?: () => boolean): Promise<void> => {
-      let list: ContainerConversation[];
-      try {
-        list = (await window.electronAPI?.getConversationsForContainer?.(space.id, folderId)) ?? [];
-      } catch {
-        list = [];
-      }
-      if (!isStale?.()) setConversations(list);
-    },
-    [space.id, folderId]
-  );
+  const fetchConversations = useCallback(async (isStale?: () => boolean) => {
+    let list: ConversationRow[];
+    try {
+      list = (await window.electronAPI?.getAgentConversations?.()) ?? [];
+    } catch {
+      list = [];
+    }
+    if (!isStale?.()) setConversations(list);
+  }, []);
 
   useEffect(() => {
     let stale = false;
@@ -109,15 +84,11 @@ export function useContainerChat({
 
   const createConversation = useCallback(
     async (text: string) => {
-      const title = deriveConversationTitle(text, folder?.name ?? space.name);
-      const id = await persistence.createConversation(title, null, {
-        spaceId: space.id,
-        folderId,
-      });
+      const id = await persistence.createConversation(deriveConversationTitle(text, ""), null);
       void fetchConversations();
       return id;
     },
-    [fetchConversations, folder, folderId, persistence, space.id, space.name]
+    [fetchConversations, persistence]
   );
   const sendMessageWithResult = useChatMessageSender({
     conversationId,

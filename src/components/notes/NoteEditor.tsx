@@ -35,7 +35,8 @@ import { IconTooltip } from "../ui/IconTooltip";
 import { openSettings } from "../../utils/openSettings";
 import EmptyStateCard from "../ui/EmptyStateCard";
 import { Button } from "../ui/button";
-import EmbeddedChat, { type EmbeddedChatMode } from "./EmbeddedChat";
+import ChatPanel, { type ChatPanelMode } from "../chat/ChatPanel";
+import { setActiveFolderId, setActiveNoteId } from "../../stores/noteStore";
 import { useEmbeddedChat } from "../../hooks/useEmbeddedChat";
 import type { Message } from "../chat/types";
 import { formatNoteDate, formatShortDate } from "../../utils/dateFormatting";
@@ -213,7 +214,7 @@ export default function NoteEditor({
   const [viewMode, setViewMode] = useState<MeetingViewMode>(
     debugPreview?.viewMode ?? initialMeetingViewMode(note)
   );
-  const [chatMode, setChatMode] = useState<EmbeddedChatMode>("hidden");
+  const [chatMode, setChatMode] = useState<ChatPanelMode>("hidden");
   const [folderSearch, setFolderSearch] = useState("");
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -247,6 +248,15 @@ export default function NoteEditor({
   }, []);
   const chatMessages = debugPreview ? previewChatMessages : embeddedChat.messages;
   const sendChatMessage = debugPreview ? sendPreviewMessage : embeddedChat.sendMessage;
+  const chatSuggestions = useMemo(
+    () => (["summary", "actions", "decisions"] as const).map((key) => t(`embeddedChat.suggestions.${key}`)),
+    [t]
+  );
+  const openChatNote = useCallback(async (noteId: number) => {
+    const target = await window.electronAPI.getNote(noteId);
+    if (target?.folder_id) setActiveFolderId(target.folder_id);
+    setActiveNoteId(noteId);
+  }, []);
   const titleRef = useRef<HTMLDivElement>(null);
   const prevNoteIdRef = useRef<number>(note.id);
 
@@ -633,18 +643,36 @@ export default function NoteEditor({
   const handleAskSubmit = useCallback(
     (text: string) => {
       if (chatMode === "hidden") {
-        setChatMode("sidebar");
+        setChatMode("floating");
       }
       sendChatMessage(text);
     },
     [chatMode, sendChatMessage]
   );
 
+  const chatPanelProps = {
+    onModeChange: setChatMode,
+    messages: chatMessages,
+    agentState: embeddedChat.agentState,
+    onTextSubmit: sendChatMessage,
+    onCancel: debugPreview ? () => {} : embeddedChat.cancelStream,
+    conversations: debugPreview ? undefined : embeddedChat.noteConversations,
+    activeConversationId: embeddedChat.activeConversationId,
+    onSwitchConversation: debugPreview ? undefined : embeddedChat.switchConversation,
+    onNewChat: debugPreview ? undefined : embeddedChat.startNewChat,
+    suggestions: chatSuggestions,
+    emptyStateText: t("embeddedChat.emptyState"),
+    onOpenNote: debugPreview ? undefined : openChatNote,
+    allowSidebar: true,
+    voiceDraft: !debugPreview,
+  };
+
+  // Focusing the ask bar reopens an ongoing conversation; a fresh one waits for the first question.
   const handleChatInputFocus = useCallback(() => {
-    if (chatMode === "hidden") {
-      setChatMode("sidebar");
+    if (chatMode === "hidden" && chatMessages.length > 0) {
+      setChatMode("floating");
     }
-  }, [chatMode]);
+  }, [chatMode, chatMessages.length]);
 
   const noteDate = formatNoteDate(note.created_at, locale);
   const shortDate = formatShortDate(note.created_at, locale);
@@ -942,40 +970,11 @@ export default function NoteEditor({
             hideInput={chatMode !== "hidden"}
           />
           {chatMode === "floating" && (
-            <EmbeddedChat
-              mode="floating"
-              floatingPanelRef={floatingChatPanelRef}
-              onModeChange={setChatMode}
-              messages={chatMessages}
-              agentState={embeddedChat.agentState}
-              onTextSubmit={sendChatMessage}
-              onCancel={debugPreview ? () => {} : embeddedChat.cancelStream}
-              noteConversations={debugPreview ? undefined : embeddedChat.noteConversations}
-              activeConversationId={embeddedChat.activeConversationId}
-              onSwitchConversation={debugPreview ? undefined : embeddedChat.switchConversation}
-              onNewChat={debugPreview ? undefined : embeddedChat.startNewChat}
-              voiceDraft={!debugPreview}
-              preview={Boolean(debugPreview)}
-            />
+            <ChatPanel mode="floating" floatingPanelRef={floatingChatPanelRef} {...chatPanelProps} />
           )}
         </div>
       </div>
-      {chatMode === "sidebar" && (
-        <EmbeddedChat
-          mode="sidebar"
-          onModeChange={setChatMode}
-          messages={chatMessages}
-          agentState={embeddedChat.agentState}
-          onTextSubmit={sendChatMessage}
-          onCancel={debugPreview ? () => {} : embeddedChat.cancelStream}
-          noteConversations={debugPreview ? undefined : embeddedChat.noteConversations}
-          activeConversationId={embeddedChat.activeConversationId}
-          onSwitchConversation={debugPreview ? undefined : embeddedChat.switchConversation}
-          onNewChat={debugPreview ? undefined : embeddedChat.startNewChat}
-          voiceDraft={!debugPreview}
-          preview={Boolean(debugPreview)}
-        />
-      )}
+      {chatMode === "sidebar" && <ChatPanel mode="sidebar" {...chatPanelProps} />}
     </div>
   );
 }

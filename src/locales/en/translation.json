@@ -1441,7 +1441,8 @@
     "integrations": "Integrations",
     "chat": "Chat",
     "collapse": "Collapse sidebar",
-    "expand": "Expand sidebar"
+    "expand": "Expand sidebar",
+    "home": "Home"
   },
   "chat": {
     "newChat": "New chat",
@@ -1818,41 +1819,6 @@
       },
       "consentNotice": "Always get consent when recording others"
     },
-    "overview": {
-      "subtitle": {
-        "private": "Only you can see these notes."
-      },
-      "meta": {
-        "folders_one": "{{count}} folder",
-        "folders_other": "{{count}} folders",
-        "members_one": "{{count}} member",
-        "members_other": "{{count}} members"
-      },
-      "banner": {
-        "title": {
-          "private": "Your private space"
-        },
-        "body": {
-          "private": "Keep meeting notes, ideas and drafts in one place — and ask about anything in this space."
-        },
-        "dismiss": "Dismiss"
-      },
-      "ask": {
-        "placeholder": "Ask anything",
-        "chips": {
-          "catchUp": "Catch me up",
-          "keyDecisions": "List key decisions",
-          "inFlight": "Show in flight projects"
-        }
-      },
-      "invite": "Invite",
-      "list": {
-        "empty": "No notes here yet"
-      },
-      "author": {
-        "you": "You"
-      }
-    },
     "spaces": {
       "personal": "Personal",
       "moveToSpace": "Move to space…",
@@ -2122,8 +2088,12 @@
     "suggestions": {
       "summary": "Summarize this note",
       "actions": "What are the action items?",
-      "decisions": "What was decided?"
-    }
+      "decisions": "What was decided?",
+      "catchUp": "Catch me up",
+      "keyDecisions": "List key decisions",
+      "inFlight": "Show in flight projects"
+    },
+    "homeEmptyState": "Ask anything about your notes and meetings"
   },
   "transcriptionPreview": {
     "label": "Preview",
@@ -2329,5 +2299,15 @@
     "switchView": "Switch notes / upload",
     "findInNote": "Find in note",
     "showShortcuts": "Keyboard shortcuts"
+  },
+  "home": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "recent": {
+      "meeting": "Meeting",
+      "participantsMore_one": "{{names}} & {{count}} other",
+      "participantsMore_other": "{{names}} & {{count}} others",
+      "empty": "No notes yet"
+    }
   }
 }

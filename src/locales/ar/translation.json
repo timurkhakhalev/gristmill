@@ -1072,49 +1072,6 @@
       },
       "consentNotice": "احصل دائمًا على الموافقة عند تسجيل الآخرين"
     },
-    "overview": {
-      "subtitle": {
-        "private": "أنت فقط من يمكنه رؤية هذه الملاحظات."
-      },
-      "meta": {
-        "folders_zero": "{{count}} مجلدات",
-        "folders_one": "{{count}} مجلد",
-        "folders_two": "{{count}} مجلدان",
-        "folders_few": "{{count}} مجلدات",
-        "folders_many": "{{count}} مجلدًا",
-        "folders_other": "{{count}} مجلد",
-        "members_zero": "{{count}} أعضاء",
-        "members_one": "{{count}} عضو",
-        "members_two": "{{count}} عضوان",
-        "members_few": "{{count}} أعضاء",
-        "members_many": "{{count}} عضوًا",
-        "members_other": "{{count}} عضو"
-      },
-      "banner": {
-        "title": {
-          "private": "مساحتك الشخصية"
-        },
-        "body": {
-          "private": "احتفظ بملاحظات الاجتماع والأفكار والمسودات في مكان واحد — واسأل عن أي شيء في هذه المساحة."
-        },
-        "dismiss": "تجاهل"
-      },
-      "ask": {
-        "placeholder": "اسأل عن أي شيء",
-        "chips": {
-          "catchUp": "أطلعني على المستجدات",
-          "keyDecisions": "اذكر القرارات الرئيسية",
-          "inFlight": "إظهار المشاريع قيد التنفيذ"
-        }
-      },
-      "invite": "دعوة",
-      "list": {
-        "empty": "لا توجد ملاحظات هنا بعد"
-      },
-      "author": {
-        "you": "أنت"
-      }
-    },
     "spaces": {
       "personal": "شخصي",
       "moveToSpace": "نقل إلى مساحة…",
@@ -2051,7 +2008,8 @@
     "integrations": "التكاملات",
     "chat": "الدردشة",
     "collapse": "طي الشريط الجانبي",
-    "expand": "توسيع الشريط الجانبي"
+    "expand": "توسيع الشريط الجانبي",
+    "home": "الرئيسية"
   },
   "chat": {
     "newChat": "محادثة جديدة",
@@ -2166,8 +2124,12 @@
     "suggestions": {
       "summary": "لخّص هذه الملاحظة",
       "actions": "ما هي المهام المطلوبة؟",
-      "decisions": "ما الذي تقرر؟"
-    }
+      "decisions": "ما الذي تقرر؟",
+      "catchUp": "أطلعني على المستجدات",
+      "keyDecisions": "اذكر القرارات الرئيسية",
+      "inFlight": "إظهار المشاريع قيد التنفيذ"
+    },
+    "homeEmptyState": "اسأل أي شيء عن ملاحظاتك واجتماعاتك"
   },
   "transcriptionPreview": {
     "label": "معاينة",
@@ -2373,5 +2335,19 @@
     "switchView": "التبديل بين الملاحظات / الرفع",
     "findInNote": "البحث في الملاحظة",
     "showShortcuts": "اختصارات لوحة المفاتيح"
+  },
+  "home": {
+    "today": "اليوم",
+    "yesterday": "أمس",
+    "recent": {
+      "meeting": "اجتماع",
+      "participantsMore_one": "{{names}} و{{count}} آخر",
+      "participantsMore_other": "{{names}} و{{count}} آخرون",
+      "empty": "لا توجد ملاحظات بعد",
+      "participantsMore_zero": "{{names}} و{{count}} آخرون",
+      "participantsMore_two": "{{names}} و{{count}} آخران",
+      "participantsMore_few": "{{names}} و{{count}} آخرين",
+      "participantsMore_many": "{{names}} و{{count}} آخرًا"
+    }
   }
 }

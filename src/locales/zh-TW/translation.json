@@ -1744,41 +1744,6 @@
       },
       "consentNotice": "錄製他人時請務必徵得同意"
     },
-    "overview": {
-      "subtitle": {
-        "private": "只有你可以檢視這些筆記。"
-      },
-      "meta": {
-        "folders_one": "{{count}} 個資料夾",
-        "folders_other": "{{count}} 個資料夾",
-        "members_one": "{{count}} 位成員",
-        "members_other": "{{count}} 位成員"
-      },
-      "banner": {
-        "title": {
-          "private": "你的私人空間"
-        },
-        "body": {
-          "private": "將會議筆記、想法和草稿集中在一處，並隨時詢問此空間中的任何內容。"
-        },
-        "dismiss": "關閉"
-      },
-      "ask": {
-        "placeholder": "隨便問點什麼",
-        "chips": {
-          "catchUp": "幫我補上進度",
-          "keyDecisions": "列出關鍵決策",
-          "inFlight": "顯示進行中的專案"
-        }
-      },
-      "invite": "邀請",
-      "list": {
-        "empty": "這裡還沒有筆記"
-      },
-      "author": {
-        "you": "你"
-      }
-    },
     "spaces": {
       "personal": "個人",
       "moveToSpace": "移動到空間…",
@@ -1864,7 +1829,8 @@
     "integrations": "整合",
     "chat": "聊天",
     "collapse": "收合側邊欄",
-    "expand": "展開側邊欄"
+    "expand": "展開側邊欄",
+    "home": "首頁"
   },
   "chat": {
     "newChat": "新對話",
@@ -2122,8 +2088,12 @@
     "suggestions": {
       "summary": "總結這則筆記",
       "actions": "有哪些待辦事項？",
-      "decisions": "做了哪些決定？"
-    }
+      "decisions": "做了哪些決定？",
+      "catchUp": "幫我補上進度",
+      "keyDecisions": "列出關鍵決策",
+      "inFlight": "顯示進行中的專案"
+    },
+    "homeEmptyState": "詢問關於筆記和會議的任何問題"
   },
   "transcriptionPreview": {
     "label": "預覽",
@@ -2329,5 +2299,15 @@
     "switchView": "切換筆記 / 上傳",
     "findInNote": "在筆記中尋找",
     "showShortcuts": "鍵盤快速鍵"
+  },
+  "home": {
+    "today": "今天",
+    "yesterday": "昨天",
+    "recent": {
+      "meeting": "會議",
+      "participantsMore_one": "{{names}} 等 {{count}} 人",
+      "participantsMore_other": "{{names}} 等 {{count}} 人",
+      "empty": "還沒有筆記"
+    }
   }
 }

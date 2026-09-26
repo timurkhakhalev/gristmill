@@ -40,7 +40,6 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/containerOverviewDefaultFolder.test.js",
       "test/components/defaultFolderPresentation.test.js",
       "test/components/noteBottomBar.test.js",
       "test/components/spacesTreeDirection.test.js",

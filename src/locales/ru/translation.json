@@ -1746,45 +1746,6 @@
       },
       "consentNotice": "Всегда получайте согласие при записи других людей"
     },
-    "overview": {
-      "subtitle": {
-        "private": "Эти заметки видите только вы."
-      },
-      "meta": {
-        "folders_one": "{{count}} папка",
-        "folders_few": "{{count}} папки",
-        "folders_many": "{{count}} папок",
-        "folders_other": "{{count}} папки",
-        "members_one": "{{count}} участник",
-        "members_few": "{{count}} участника",
-        "members_many": "{{count}} участников",
-        "members_other": "{{count}} участника"
-      },
-      "banner": {
-        "title": {
-          "private": "Ваше личное пространство"
-        },
-        "body": {
-          "private": "Храните заметки со встреч, идеи и черновики в одном месте — и спрашивайте о чём угодно в этом пространстве."
-        },
-        "dismiss": "Скрыть"
-      },
-      "ask": {
-        "placeholder": "Спросите что угодно",
-        "chips": {
-          "catchUp": "Введи меня в курс дела",
-          "keyDecisions": "Перечисли ключевые решения",
-          "inFlight": "Покажи текущие проекты"
-        }
-      },
-      "invite": "Пригласить",
-      "list": {
-        "empty": "Здесь пока нет заметок"
-      },
-      "author": {
-        "you": "Вы"
-      }
-    },
     "spaces": {
       "personal": "Личное",
       "moveToSpace": "Переместить в пространство…",
@@ -1874,7 +1835,8 @@
     "integrations": "Интеграции",
     "chat": "Чат",
     "collapse": "Свернуть боковую панель",
-    "expand": "Развернуть боковую панель"
+    "expand": "Развернуть боковую панель",
+    "home": "Главная"
   },
   "chat": {
     "newChat": "Новый чат",
@@ -2132,8 +2094,12 @@
     "suggestions": {
       "summary": "Кратко перескажи заметку",
       "actions": "Какие есть задачи?",
-      "decisions": "Что решили?"
-    }
+      "decisions": "Что решили?",
+      "catchUp": "Введи меня в курс дела",
+      "keyDecisions": "Перечисли ключевые решения",
+      "inFlight": "Покажи текущие проекты"
+    },
+    "homeEmptyState": "Спросите что угодно о заметках и встречах"
   },
   "transcriptionPreview": {
     "label": "Предпросмотр",
@@ -2339,5 +2305,17 @@
     "switchView": "Переключить заметки / загрузку",
     "findInNote": "Поиск в заметке",
     "showShortcuts": "Горячие клавиши"
+  },
+  "home": {
+    "today": "Сегодня",
+    "yesterday": "Вчера",
+    "recent": {
+      "meeting": "Встреча",
+      "participantsMore_one": "{{names}} и ещё {{count}}",
+      "participantsMore_other": "{{names}} и ещё {{count}}",
+      "empty": "Заметок пока нет",
+      "participantsMore_few": "{{names}} и ещё {{count}}",
+      "participantsMore_many": "{{names}} и ещё {{count}}"
+    }
   }
 }

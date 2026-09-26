@@ -1744,41 +1744,6 @@
       "save": "保存",
       "cancel": "キャンセル"
     },
-    "overview": {
-      "subtitle": {
-        "private": "このノートはあなただけが閲覧できます。"
-      },
-      "meta": {
-        "folders_one": "{{count}} 件のフォルダ",
-        "folders_other": "{{count}} 件のフォルダ",
-        "members_one": "{{count}} 人のメンバー",
-        "members_other": "{{count}} 人のメンバー"
-      },
-      "banner": {
-        "title": {
-          "private": "プライベートスペース"
-        },
-        "body": {
-          "private": "会議のノート、アイデア、下書きを一か所にまとめて、このスペースの内容について何でも質問できます。"
-        },
-        "dismiss": "閉じる"
-      },
-      "ask": {
-        "placeholder": "何でも質問",
-        "chips": {
-          "catchUp": "最新情報をまとめて",
-          "keyDecisions": "重要な決定事項を一覧に",
-          "inFlight": "進行中のプロジェクトを表示"
-        }
-      },
-      "invite": "招待",
-      "list": {
-        "empty": "まだノートがありません"
-      },
-      "author": {
-        "you": "自分"
-      }
-    },
     "spaces": {
       "personal": "個人",
       "moveToSpace": "スペースに移動…",
@@ -1864,7 +1829,8 @@
     "integrations": "連携",
     "chat": "チャット",
     "collapse": "サイドバーを折りたたむ",
-    "expand": "サイドバーを展開"
+    "expand": "サイドバーを展開",
+    "home": "ホーム"
   },
   "chat": {
     "newChat": "新しいチャット",
@@ -2122,8 +2088,12 @@
     "suggestions": {
       "summary": "このノートを要約して",
       "actions": "アクションアイテムは？",
-      "decisions": "何が決まった？"
-    }
+      "decisions": "何が決まった？",
+      "catchUp": "最新情報をまとめて",
+      "keyDecisions": "重要な決定事項を一覧に",
+      "inFlight": "進行中のプロジェクトを表示"
+    },
+    "homeEmptyState": "メモやミーティングについて何でも質問できます"
   },
   "transcriptionPreview": {
     "label": "プレビュー",
@@ -2329,5 +2299,15 @@
     "switchView": "ノート / アップロードの切り替え",
     "findInNote": "ノート内を検索",
     "showShortcuts": "キーボードショートカット"
+  },
+  "home": {
+    "today": "今日",
+    "yesterday": "昨日",
+    "recent": {
+      "meeting": "ミーティング",
+      "participantsMore_one": "{{names}} ほか{{count}}人",
+      "participantsMore_other": "{{names}} ほか{{count}}人",
+      "empty": "まだメモはありません"
+    }
   }
 }

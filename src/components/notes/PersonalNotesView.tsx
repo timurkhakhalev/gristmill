@@ -3,7 +3,6 @@ import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
 import { Plus } from "../icons";
 import NoteEditor from "./NoteEditor";
-import { ContainerOverview } from "./overview/ContainerOverview";
 import ActionPicker from "./ActionPicker";
 import ActionManagerDialog from "./ActionManagerDialog";
 import AddNotesToFolderDialog from "./AddNotesToFolderDialog";
@@ -27,12 +26,10 @@ import type { MentionPerson } from "../../utils/mentionMarkdown";
 import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import {
   useNotes,
-  useSpaces,
   useFolders,
   useActiveNote,
   useActiveNoteId,
   useActiveFolderId,
-  useActiveContext,
   initializeNotesTree,
   setActiveNoteId,
 } from "../../stores/noteStore";
@@ -213,20 +210,7 @@ export default function PersonalNotesView({
   const meetingRecordingAllowed = true;
   const actions = useActions();
 
-  const spaces = useSpaces();
   const folders = useFolders();
-  const activeContext = useActiveContext();
-  const overviewSpace = useMemo(
-    () => (activeContext ? (spaces.find((s) => s.id === activeContext.spaceId) ?? null) : null),
-    [activeContext, spaces]
-  );
-  const overviewFolder = useMemo(
-    () =>
-      activeContext?.folderId != null
-        ? (folders.find((f) => f.id === activeContext.folderId) ?? null)
-        : null,
-    [activeContext, folders]
-  );
 
   useEffect(() => {
     initializeNotesTree();
@@ -613,19 +597,6 @@ export default function PersonalNotesView({
             />
             <ActionManagerDialog open={showActionManager} onOpenChange={setShowActionManager} />
           </>
-        ) : activeContext && overviewSpace ? (
-          <ContainerOverview
-            key={
-              activeContext.folderId != null
-                ? `f:${activeContext.folderId}`
-                : `s:${activeContext.spaceId}`
-            }
-            space={overviewSpace}
-            folder={overviewFolder}
-            onOpenNote={setActiveNoteId}
-            onNewNote={handleNewNote}
-            onAddExisting={activeFolderId != null ? () => setShowAddNotesDialog(true) : undefined}
-          />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center -mt-6">
             <svg

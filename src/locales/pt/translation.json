@@ -1744,41 +1744,6 @@
       },
       "consentNotice": "Sempre obtenha consentimento ao gravar outras pessoas"
     },
-    "overview": {
-      "subtitle": {
-        "private": "Só você pode ver estas notas."
-      },
-      "meta": {
-        "folders_one": "{{count}} pasta",
-        "folders_other": "{{count}} pastas",
-        "members_one": "{{count}} membro",
-        "members_other": "{{count}} membros"
-      },
-      "banner": {
-        "title": {
-          "private": "Seu espaço privado"
-        },
-        "body": {
-          "private": "Guarde notas de reuniões, ideias e rascunhos em um só lugar — e pergunte sobre qualquer coisa neste espaço."
-        },
-        "dismiss": "Dispensar"
-      },
-      "ask": {
-        "placeholder": "Pergunte qualquer coisa",
-        "chips": {
-          "catchUp": "Me atualize",
-          "keyDecisions": "Liste as decisões principais",
-          "inFlight": "Mostre os projetos em andamento"
-        }
-      },
-      "invite": "Convidar",
-      "list": {
-        "empty": "Ainda não há notas aqui"
-      },
-      "author": {
-        "you": "Você"
-      }
-    },
     "spaces": {
       "personal": "Pessoal",
       "moveToSpace": "Mover para espaço…",
@@ -1864,7 +1829,8 @@
     "integrations": "Integrações",
     "chat": "Chat",
     "collapse": "Recolher barra lateral",
-    "expand": "Expandir barra lateral"
+    "expand": "Expandir barra lateral",
+    "home": "Início"
   },
   "chat": {
     "newChat": "Novo chat",
@@ -2122,8 +2088,12 @@
     "suggestions": {
       "summary": "Resuma esta nota",
       "actions": "Quais são as tarefas?",
-      "decisions": "O que foi decidido?"
-    }
+      "decisions": "O que foi decidido?",
+      "catchUp": "Me atualize",
+      "keyDecisions": "Liste as decisões principais",
+      "inFlight": "Mostre os projetos em andamento"
+    },
+    "homeEmptyState": "Pergunte qualquer coisa sobre suas notas e reuniões"
   },
   "transcriptionPreview": {
     "label": "Pré-visualização",
@@ -2329,5 +2299,15 @@
     "switchView": "Alternar notas / upload",
     "findInNote": "Localizar na nota",
     "showShortcuts": "Atalhos de teclado"
+  },
+  "home": {
+    "today": "Hoje",
+    "yesterday": "Ontem",
+    "recent": {
+      "meeting": "Reunião",
+      "participantsMore_one": "{{names}} e mais {{count}}",
+      "participantsMore_other": "{{names}} e mais {{count}}",
+      "empty": "Ainda não há notas"
+    }
   }
 }

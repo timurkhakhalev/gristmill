@@ -1744,41 +1744,6 @@
       },
       "consentNotice": "录制他人时请务必征得同意"
     },
-    "overview": {
-      "subtitle": {
-        "private": "只有你可以查看这些笔记。"
-      },
-      "meta": {
-        "folders_one": "{{count}} 个文件夹",
-        "folders_other": "{{count}} 个文件夹",
-        "members_one": "{{count}} 位成员",
-        "members_other": "{{count}} 位成员"
-      },
-      "banner": {
-        "title": {
-          "private": "你的私人空间"
-        },
-        "body": {
-          "private": "将会议笔记、想法和草稿集中在一处，并随时询问此空间中的任何内容。"
-        },
-        "dismiss": "关闭"
-      },
-      "ask": {
-        "placeholder": "随便问点什么",
-        "chips": {
-          "catchUp": "帮我补上进展",
-          "keyDecisions": "列出关键决定",
-          "inFlight": "显示进行中的项目"
-        }
-      },
-      "invite": "邀请",
-      "list": {
-        "empty": "这里还没有笔记"
-      },
-      "author": {
-        "you": "你"
-      }
-    },
     "spaces": {
       "personal": "个人",
       "moveToSpace": "移动到空间…",
@@ -1864,7 +1829,8 @@
     "integrations": "集成",
     "chat": "聊天",
     "collapse": "折叠侧边栏",
-    "expand": "展开侧边栏"
+    "expand": "展开侧边栏",
+    "home": "主页"
   },
   "chat": {
     "newChat": "新对话",
@@ -2122,8 +2088,12 @@
     "suggestions": {
       "summary": "总结这条笔记",
       "actions": "有哪些待办事项？",
-      "decisions": "做了哪些决定？"
-    }
+      "decisions": "做了哪些决定？",
+      "catchUp": "帮我补上进展",
+      "keyDecisions": "列出关键决定",
+      "inFlight": "显示进行中的项目"
+    },
+    "homeEmptyState": "询问关于笔记和会议的任何问题"
   },
   "transcriptionPreview": {
     "label": "预览",
@@ -2329,5 +2299,15 @@
     "switchView": "切换笔记 / 上传",
     "findInNote": "在笔记中查找",
     "showShortcuts": "键盘快捷键"
+  },
+  "home": {
+    "today": "今天",
+    "yesterday": "昨天",
+    "recent": {
+      "meeting": "会议",
+      "participantsMore_one": "{{names}} 等 {{count}} 人",
+      "participantsMore_other": "{{names}} 等 {{count}} 人",
+      "empty": "还没有笔记"
+    }
   }
 }

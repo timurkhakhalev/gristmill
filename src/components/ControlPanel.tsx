@@ -11,6 +11,7 @@ import { useIsMeetingMode, useMeetingRecordingStore } from "../stores/meetingRec
 import {
   createFolder,
   initializeNotes,
+  initializeNotesTree,
   navigateToContainer,
   setActiveFolderId,
   setActiveNoteId,
@@ -34,6 +35,7 @@ import { localMutationErrorKey } from "../lib/localMutationError";
 const SIDEBAR_WIDTH_PX = 192;
 
 const SettingsModal = React.lazy(() => import("./SettingsModal"));
+const HomeView = React.lazy(() => import("./home/HomeView"));
 const PersonalNotesView = React.lazy(() => import("./notes/PersonalNotesView"));
 const UploadAudioView = React.lazy(() => import("./notes/UploadAudioView"));
 const CommandSearch = React.lazy(() => import("./CommandSearch"));
@@ -46,7 +48,7 @@ interface ControlPanelProps {
   initialSettingsSection?: string;
 }
 
-/** The durable app shell. Notes is the only start view; recording remains a
+/** The durable app shell. Home is the start view; recording remains a
  * separate service mounted for every view so meeting capture can continue while
  * the user browses dictionaries, uploads, or integrations. */
 export default function ControlPanel({ initialSettingsSection }: ControlPanelProps = {}) {
@@ -57,7 +59,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const spaces = useSpaces();
   const activeContext = useActiveContext();
   const containerNotes = useNotes();
-  const [activeView, setActiveView] = useState<ControlPanelView>("personal-notes");
+  const [activeView, setActiveView] = useState<ControlPanelView>("home");
   const [showSettings, setShowSettings] = useState(Boolean(initialSettingsSection));
   const [settingsSection, setSettingsSection] = useState(initialSettingsSection);
   const [showSearch, setShowSearch] = useState(false);
@@ -88,6 +90,18 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
         notesDebugScenario !== "empty"));
   const isSidePanelLayout = isMeetingMode || (narrow && noteSurfaceOpen);
   const sidebarInline = !narrow && !isSidePanelLayout;
+
+  // Notes has no list page of its own: with no note open, Home is the list.
+  useEffect(() => {
+    if (activeView === "personal-notes" && activeNoteId == null && notesDebugScenario == null) {
+      setActiveView("home");
+    }
+  }, [activeView, activeNoteId, notesDebugScenario]);
+
+  // The sidebar tree renders on every view, not only inside the notes view.
+  useEffect(() => {
+    void initializeNotesTree();
+  }, []);
 
   useEffect(() => {
     const drainMeeting = async () => {
@@ -194,6 +208,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
           break;
         case "new-note":
           void handleNewNote();
+          setActiveView("personal-notes");
           break;
         case "new-folder":
           if (spaces.length > 0) setNewFolderDialogOpen(true);
@@ -294,6 +309,19 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
               showNotesDebug={activeView === "personal-notes"}
             />
             <div className="scrollbar-hidden flex-1 overflow-y-auto">
+              {activeView === "home" && (
+                <Suspense fallback={null}>
+                  <HomeView
+                    onOpenNote={(note) => {
+                      if (note.folder_id != null) setActiveFolderId(note.folder_id);
+                      else navigateToContainer(note.space_id, null);
+                      setActiveNoteId(note.id);
+                      setActiveView("personal-notes");
+                    }}
+                    onConnectCalendar={() => openSettings("integrations")}
+                  />
+                </Suspense>
+              )}
               {activeView === "personal-notes" && (
                 <Suspense fallback={null}>
                   {notesDebugScenario && NotesDebugPreview ? (

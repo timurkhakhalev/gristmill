@@ -1441,7 +1441,8 @@
     "integrations": "Intégrations",
     "chat": "Chat",
     "collapse": "Réduire la barre latérale",
-    "expand": "Développer la barre latérale"
+    "expand": "Développer la barre latérale",
+    "home": "Accueil"
   },
   "chat": {
     "newChat": "Nouveau chat",
@@ -1818,41 +1819,6 @@
       },
       "consentNotice": "Obtenez toujours le consentement avant d'enregistrer d'autres personnes"
     },
-    "overview": {
-      "subtitle": {
-        "private": "Vous seul pouvez voir ces notes."
-      },
-      "meta": {
-        "folders_one": "{{count}} dossier",
-        "folders_other": "{{count}} dossiers",
-        "members_one": "{{count}} membre",
-        "members_other": "{{count}} membres"
-      },
-      "banner": {
-        "title": {
-          "private": "Votre espace privé"
-        },
-        "body": {
-          "private": "Regroupez notes de réunion, idées et brouillons au même endroit, et posez des questions sur tout ce que contient cet espace."
-        },
-        "dismiss": "Fermer"
-      },
-      "ask": {
-        "placeholder": "Posez une question",
-        "chips": {
-          "catchUp": "Résume-moi les nouveautés",
-          "keyDecisions": "Liste les décisions clés",
-          "inFlight": "Montre les projets en cours"
-        }
-      },
-      "invite": "Inviter",
-      "list": {
-        "empty": "Aucune note ici pour l'instant"
-      },
-      "author": {
-        "you": "Vous"
-      }
-    },
     "spaces": {
       "personal": "Personnel",
       "moveToSpace": "Déplacer vers un espace…",
@@ -2122,8 +2088,12 @@
     "suggestions": {
       "summary": "Résume cette note",
       "actions": "Quelles sont les actions à mener ?",
-      "decisions": "Qu'est-ce qui a été décidé ?"
-    }
+      "decisions": "Qu'est-ce qui a été décidé ?",
+      "catchUp": "Résume-moi les nouveautés",
+      "keyDecisions": "Liste les décisions clés",
+      "inFlight": "Montre les projets en cours"
+    },
+    "homeEmptyState": "Posez une question sur vos notes et réunions"
   },
   "transcriptionPreview": {
     "label": "Aperçu",
@@ -2329,5 +2299,15 @@
     "switchView": "Basculer notes / import",
     "findInNote": "Rechercher dans la note",
     "showShortcuts": "Raccourcis clavier"
+  },
+  "home": {
+    "today": "Aujourd'hui",
+    "yesterday": "Hier",
+    "recent": {
+      "meeting": "Réunion",
+      "participantsMore_one": "{{names}} et {{count}} autre",
+      "participantsMore_other": "{{names}} et {{count}} autres",
+      "empty": "Aucune note pour le moment"
+    }
   }
 }

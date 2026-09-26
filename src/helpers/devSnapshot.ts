@@ -69,18 +69,23 @@ function cloneDir(from: string, to: string): void {
 // the database itself: an interruption at any point leaves no
 // transcriptions-dev.db, so adoption simply reruns on the next launch and
 // never sees a new-style database next to an unmerged legacy WAL.
-function adoptLegacyDevDatabase(target: string): void {
+function adoptLegacyDevDatabase(target: string): boolean {
   const legacy = path.join(target, PROD_DB);
   const current = path.join(target, DEV_DB);
-  if (fs.existsSync(current) || !fs.existsSync(legacy)) return;
+  if (fs.existsSync(current) || !fs.existsSync(legacy)) return true;
   try {
     const Database = require("better-sqlite3") as new (path: string) => {
       exec: (sql: string) => void;
+      prepare: (sql: string) => { get: () => { busy: number } };
       close: () => void;
     };
     const db = new Database(legacy);
     try {
-      db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+      // TRUNCATE reports a blocked checkpoint as busy=1 in the result row
+      // instead of throwing; renaming with an unmerged WAL would lose those
+      // commits, so a blocked checkpoint is a failure, not a warning.
+      const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get() as { busy: number };
+      if (row?.busy !== 0) throw new Error("wal_checkpoint blocked by another reader");
     } finally {
       db.close();
     }
@@ -90,13 +95,14 @@ function adoptLegacyDevDatabase(target: string): void {
       { error: (error as Error)?.message },
       "devSnapshot"
     );
-    return;
+    return false;
   }
   for (const suffix of ["-shm", "-wal"]) {
     const side = legacy + suffix;
     if (fs.existsSync(side)) fs.renameSync(side, current + suffix);
   }
   fs.renameSync(legacy, current);
+  return true;
 }
 
 // Copying a live WAL-mode database file-by-file can capture mismatched db/wal
@@ -147,8 +153,10 @@ export function snapshotProductionProfileForDev(): boolean {
   // Adoption is independent of the production snapshot: a dev-only profile
   // with pre-cutover notes must migrate even when no production profile
   // exists. Run it before any existence check would mistake the legacy file
-  // for a completed snapshot (it has no marker).
-  adoptLegacyDevDatabase(target);
+  // for a completed snapshot (it has no marker). A failed adoption must stop
+  // startup: the app would create an empty dev database and the legacy notes
+  // would never be retried.
+  if (!adoptLegacyDevDatabase(target)) return false;
 
   if (!fs.existsSync(path.join(source, PROD_DB))) return true;
 

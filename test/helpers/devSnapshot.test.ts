@@ -146,6 +146,19 @@ test("refuses to start when the database snapshot fails and none exists", () => 
   assert.equal(fs.existsSync(path.join(development, ".dev-snapshot-complete")), false);
 });
 
+test("refuses to start when legacy adoption fails, keeping the retry", () => {
+  const { development } = makeProfiles();
+  fs.mkdirSync(development, { recursive: true });
+  // A dev-only legacy profile whose database cannot be checkpointed.
+  fs.writeFileSync(path.join(development, "transcriptions.db"), "not a sqlite database");
+  setUserDataDir(development);
+  const ok = snapshotProductionProfileForDev();
+  assert.equal(ok, false, "a failed adoption must refuse to start");
+  assert.equal(fs.existsSync(path.join(development, DEV_DB)), false);
+  // The legacy file is untouched, so the next launch retries adoption.
+  assert.equal(fs.existsSync(path.join(development, "transcriptions.db")), true);
+});
+
 test("no-op without a production profile", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "oh-dev-snapshot-"));
   const development = path.join(root, "OpenHercules-development");

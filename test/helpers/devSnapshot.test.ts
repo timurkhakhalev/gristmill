@@ -153,6 +153,30 @@ test("refuses to start when the dev database symlinks into production", () => {
   assert.equal(ok, false, "a dev database pointing into production must refuse to start");
 });
 
+test("refuses to start when a legacy database symlinks into production", () => {
+  const { production, development } = makeProfiles();
+  fs.mkdirSync(development, { recursive: true });
+  fs.symlinkSync(
+    path.join(production, "transcriptions.db"),
+    path.join(development, "transcriptions.db")
+  );
+  setUserDataDir(development);
+  const ok = snapshotProductionProfileForDev();
+  assert.equal(
+    ok, false,
+    "a legacy database pointing into production must refuse before adoption opens it"
+  );
+});
+
+test("refuses to start when a storage tree symlinks into production", () => {
+  const { production, development } = makeProfiles();
+  fs.mkdirSync(development, { recursive: true });
+  fs.symlinkSync(path.join(production, "audio"), path.join(development, "audio"));
+  setUserDataDir(development);
+  const ok = snapshotProductionProfileForDev();
+  assert.equal(ok, false, "a storage tree pointing into production must refuse to start");
+});
+
 test("adopts a legacy packaged-Dev database instead of losing it", () => {
   const { development, Database } = makeProfiles();
   fs.mkdirSync(development, { recursive: true });

@@ -10,35 +10,38 @@ const { snapshotProductionProfileForDev } = require("../../src/helpers/devSnapsh
   snapshotProductionProfileForDev: () => void;
 };
 
-function makeProfiles(): { root: string; production: string; development: string } {
+function makeProfiles() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "oh-dev-snapshot-"));
   const production = path.join(root, "OpenHercules");
   const development = path.join(root, "OpenHercules-development");
   fs.mkdirSync(path.join(production, "audio", "meetings", "rec-1"), { recursive: true });
   fs.mkdirSync(path.join(production, "meeting-results"), { recursive: true });
-  fs.writeFileSync(path.join(production, "transcriptions.db"), "prod-db");
-  fs.writeFileSync(path.join(production, "transcriptions.db-wal"), "prod-wal");
+  // A minimal real SQLite database: VACUUM INTO requires a valid db and its
+  // output must be a readable database with the same rows.
+  const Database = require("better-sqlite3") as new (path: string) => {
+    exec: (sql: string) => void;
+    prepare: (sql: string) => { get: () => { title: string } };
+    close: () => void;
+  };
+  const prodDb = new Database(path.join(production, "transcriptions.db"));
+  prodDb.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT)");
+  prodDb.exec("INSERT INTO notes (title) VALUES ('prod-note')");
+  prodDb.close();
   fs.writeFileSync(path.join(production, ".env"), "KEY=1");
   fs.writeFileSync(path.join(production, "audio", "meetings", "rec-1", "audio.pcm"), "pcm");
   fs.writeFileSync(path.join(production, "meeting-results", "run-1.json"), "{}");
-  return { root, production, development };
+  return { root, production, development, Database };
 }
 
 test("snapshots production profile into a fresh dev profile", () => {
-  const { development } = makeProfiles();
+  const { development, Database } = makeProfiles();
   setUserDataDir(development);
   snapshotProductionProfileForDev();
-  assert.equal(fs.readFileSync(path.join(development, "transcriptions.db"), "utf8"), "prod-db");
-  assert.equal(fs.readFileSync(path.join(development, "transcriptions.db-wal"), "utf8"), "prod-wal");
-  // The dev build opens transcriptions-dev.db — production notes must land there.
-  assert.equal(
-    fs.readFileSync(path.join(development, "transcriptions-dev.db"), "utf8"),
-    "prod-db"
-  );
-  assert.equal(
-    fs.readFileSync(path.join(development, "transcriptions-dev.db-wal"), "utf8"),
-    "prod-wal"
-  );
+  // The dev build opens transcriptions-dev.db (NODE_ENV=development): the
+  // VACUUM INTO snapshot must land there as a consistent, readable database.
+  const devDb = new Database(path.join(development, "transcriptions-dev.db"));
+  assert.equal(devDb.prepare("SELECT title FROM notes").get().title, "prod-note");
+  devDb.close();
   assert.equal(fs.readFileSync(path.join(development, ".env"), "utf8"), "KEY=1");
   assert.equal(
     fs.readFileSync(path.join(development, "audio", "meetings", "rec-1", "audio.pcm"), "utf8"),
@@ -48,32 +51,64 @@ test("snapshots production profile into a fresh dev profile", () => {
     fs.readFileSync(path.join(development, "meeting-results", "run-1.json"), "utf8"),
     "{}"
   );
+  assert.equal(fs.existsSync(path.join(development, ".dev-snapshot-complete")), true);
 });
 
-test("does not overwrite an existing dev profile", () => {
+test("does not re-snapshot a completed dev profile", () => {
   const { development } = makeProfiles();
-  fs.mkdirSync(development, { recursive: true });
-  fs.writeFileSync(path.join(development, "transcriptions-dev.db"), "dev-db");
   setUserDataDir(development);
   snapshotProductionProfileForDev();
-  assert.equal(fs.readFileSync(path.join(development, "transcriptions-dev.db"), "utf8"), "dev-db");
+  fs.rmSync(path.join(development, ".env"));
+  snapshotProductionProfileForDev();
+  assert.equal(fs.existsSync(path.join(development, ".env")), false, "the marker must gate reruns");
+});
+
+test("resumes an interrupted snapshot (no marker)", () => {
+  const { development } = makeProfiles();
+  fs.mkdirSync(development, { recursive: true });
+  // A crash mid-copy: the production db landed but the marker and the rest did not.
+  fs.copyFileSync(
+    path.join(development, "..", "OpenHercules", "transcriptions.db"),
+    path.join(development, "transcriptions.db")
+  );
+  setUserDataDir(development);
+  snapshotProductionProfileForDev();
+  assert.equal(fs.existsSync(path.join(development, ".env")), true);
+  assert.equal(
+    fs.existsSync(path.join(development, "audio", "meetings", "rec-1", "audio.pcm")),
+    true
+  );
+  assert.equal(fs.existsSync(path.join(development, ".dev-snapshot-complete")), true);
 });
 
 test("refresh re-copies missing files but keeps dev-only ones", () => {
   const { development } = makeProfiles();
-  fs.mkdirSync(development, { recursive: true });
-  fs.writeFileSync(path.join(development, "transcriptions-dev.db"), "dev-db");
-  fs.writeFileSync(path.join(development, "dev-only.txt"), "keep");
   setUserDataDir(development);
+  snapshotProductionProfileForDev();
+  fs.rmSync(path.join(development, ".env"));
+  fs.rmSync(path.join(development, "transcriptions.db"));
+  fs.rmSync(path.join(development, "transcriptions-dev.db"));
+  fs.writeFileSync(path.join(development, "dev-only.txt"), "keep");
   process.env.OPENHERCULES_REFRESH_SNAPSHOT = "1";
   try {
     snapshotProductionProfileForDev();
   } finally {
     delete process.env.OPENHERCULES_REFRESH_SNAPSHOT;
   }
-  assert.equal(fs.readFileSync(path.join(development, "transcriptions-dev.db"), "utf8"), "dev-db");
+  assert.equal(fs.existsSync(path.join(development, "transcriptions-dev.db")), true);
   assert.equal(fs.readFileSync(path.join(development, ".env"), "utf8"), "KEY=1");
   assert.equal(fs.readFileSync(path.join(development, "dev-only.txt"), "utf8"), "keep");
+});
+
+test("never snapshots into a dev profile symlinked to production", () => {
+  const { root, production } = makeProfiles();
+  const link = path.join(root, "dev-link");
+  fs.symlinkSync(production, link);
+  setUserDataDir(link);
+  snapshotProductionProfileForDev();
+  // Nothing new may appear inside the production profile through the alias.
+  assert.equal(fs.existsSync(path.join(production, ".dev-snapshot-complete")), false);
+  assert.equal(fs.existsSync(path.join(production, "transcriptions-dev.db")), false);
 });
 
 test("no-op without a production profile", () => {

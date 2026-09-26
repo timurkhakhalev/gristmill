@@ -423,7 +423,9 @@ function mockHttpsUpload({ onRequest }) {
       uploaded.push(Buffer.from(chunk));
       cb?.();
     };
-    request.end = () => {
+    request.end = (tail, _cb) => {
+      // The multipart footer rides on end() in postRawAudioFile.
+      if (tail) uploaded.push(Buffer.from(tail));
       queueMicrotask(() => {
         try {
           const { response } = onRequest(
@@ -481,17 +483,24 @@ test("upload: Deepgram streams raw file bytes through Node https", async () => {
 });
 
 test("upload: ElevenLabs streams a complete multipart file with Scribe fields", async () => {
+  const uploaded = [];
   mockHttpsUpload({
-    onRequest: (url, options) => {
+    onRequest: (url, options, body) => {
       assert.equal(url.toString(), "https://api.elevenlabs.io/v1/speech-to-text");
       assert.equal(options.headers["xi-api-key"], "el-key");
       assert.match(options.headers["Content-Type"], /multipart\/form-data; boundary=/);
+      uploaded.push(body);
       return { response: { text: "done" } };
     },
   });
   try {
     const result = await invokeUpload({ provider: "elevenlabs", apiKey: "el-key" });
     assert.equal(result.success, true);
+    const body = Buffer.concat(uploaded).toString();
+    assert.match(body, /name="file"; filename="[^"]+"/);
+    assert.match(body, /name="model_id"\r\n\r\nscribe_v2/);
+    assert.match(body, /name="diarize"\r\n\r\nfalse/);
+    assert.match(body, /\x01\x02\x03\x04/);
   } finally {
     https.request = originalHttpsRequest;
   }

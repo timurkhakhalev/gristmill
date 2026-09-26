@@ -9,16 +9,27 @@ import MeetingRecordingPill from "./notes/MeetingRecordingPill";
 import { useCollapsibleSidebar } from "../hooks/useCollapsibleSidebar";
 import { useIsMeetingMode, useMeetingRecordingStore } from "../stores/meetingRecordingStore";
 import {
+  createFolder,
   initializeNotes,
   navigateToContainer,
   setActiveFolderId,
   setActiveNoteId,
+  useActiveContext,
   useActiveNoteId,
+  useNotes,
+  useSpaces,
 } from "../stores/noteStore";
+import { useNotesTreeActions } from "../hooks/useNotesTreeActions";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useToast } from "./ui/useToast";
 import BackgroundActionToastListener from "./notes/BackgroundActionToastListener";
 import type { NotesDebugScenario } from "./notes/NotesDebugControls";
 import { onOpenSettingsRequest } from "../utils/openSettings";
+import { resolveAppShortcut } from "../utils/appShortcuts";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
+import { localMutationErrorKey } from "../lib/localMutationError";
 
 const SIDEBAR_WIDTH_PX = 192;
 
@@ -26,6 +37,7 @@ const SettingsModal = React.lazy(() => import("./SettingsModal"));
 const PersonalNotesView = React.lazy(() => import("./notes/PersonalNotesView"));
 const UploadAudioView = React.lazy(() => import("./notes/UploadAudioView"));
 const CommandSearch = React.lazy(() => import("./CommandSearch"));
+const KeyboardShortcutsDialog = React.lazy(() => import("./KeyboardShortcutsDialog"));
 const NotesDebugPreview = (import.meta.env.DEV || import.meta.env.VITE_OPENHERCULES_DEV_BUILD === "true")
   ? React.lazy(() => import("./notes/NotesDebugPreview"))
   : null;
@@ -39,11 +51,19 @@ interface ControlPanelProps {
  * the user browses dictionaries, uploads, or integrations. */
 export default function ControlPanel({ initialSettingsSection }: ControlPanelProps = {}) {
   const { t } = useTranslation();
+  const { toast } = useToast();
   const navItems = useControlPanelNavItems();
+  const { handleNewNote } = useNotesTreeActions();
+  const spaces = useSpaces();
+  const activeContext = useActiveContext();
+  const containerNotes = useNotes();
   const [activeView, setActiveView] = useState<ControlPanelView>("personal-notes");
   const [showSettings, setShowSettings] = useState(Boolean(initialSettingsSection));
   const [settingsSection, setSettingsSection] = useState(initialSettingsSection);
   const [showSearch, setShowSearch] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
   const [notesDebugScenario, setNotesDebugScenario] = useState<NotesDebugScenario | null>(null);
   const [meetingRecordingRequest, setMeetingRecordingRequest] = useState<{
     noteId: number;
@@ -131,6 +151,73 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen, closeSidebarDrawer]);
+
+  const goToAdjacentNote = useCallback(
+    (delta: number) => {
+      if (containerNotes.length === 0) return;
+      const index = containerNotes.findIndex((note) => note.id === activeNoteId);
+      const next = index === -1 ? (delta > 0 ? 0 : containerNotes.length - 1) : index + delta;
+      if (next < 0 || next >= containerNotes.length) return;
+      setActiveView("personal-notes");
+      setActiveNoteId(containerNotes[next].id);
+    },
+    [containerNotes, activeNoteId]
+  );
+
+  const submitNewFolder = useCallback(async () => {
+    const name = newFolderName.trim();
+    if (!name || !activeContext) return;
+    setNewFolderDialogOpen(false);
+    setNewFolderName("");
+    const result = await createFolder(name, activeContext.spaceId);
+    if (!result.success && result.error) {
+      toast({
+        title: t("notes.folders.couldNotCreate"),
+        description: t(localMutationErrorKey(result.error)),
+        variant: "destructive",
+      });
+    }
+  }, [newFolderName, activeContext, toast, t]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (showSettings) return;
+      const shortcut = resolveAppShortcut(event);
+      if (!shortcut) return;
+      event.preventDefault();
+      switch (shortcut) {
+        case "search":
+          setShowSearch((open) => !open);
+          break;
+        case "settings":
+          openSettings();
+          break;
+        case "new-note":
+          void handleNewNote();
+          break;
+        case "new-folder":
+          if (spaces.length > 0) setNewFolderDialogOpen(true);
+          break;
+        case "next-note":
+          goToAdjacentNote(1);
+          break;
+        case "prev-note":
+          goToAdjacentNote(-1);
+          break;
+        case "view-notes":
+          setActiveView("personal-notes");
+          break;
+        case "view-upload":
+          setActiveView("upload");
+          break;
+        case "shortcuts-help":
+          setShowShortcuts((open) => !open);
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showSettings, openSettings, handleNewNote, spaces.length, goToAdjacentNote]);
 
   const handleExitSidePanel = useCallback(() => {
     if (isMeetingMode) window.electronAPI?.restoreFromMeetingMode?.();
@@ -257,6 +344,46 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
           }}
         />
       </Suspense>
+      <Suspense fallback={null}>
+        <KeyboardShortcutsDialog open={showShortcuts} onOpenChange={setShowShortcuts} />
+      </Suspense>
+      <Dialog
+        open={newFolderDialogOpen}
+        onOpenChange={(open) => {
+          setNewFolderDialogOpen(open);
+          if (!open) setNewFolderName("");
+        }}
+      >
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>{t("notes.context.newFolder")}</DialogTitle>
+          </DialogHeader>
+          <Input
+            dir="auto"
+            autoFocus
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            placeholder={t("notes.folders.folderName")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void submitNewFolder();
+            }}
+          />
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setNewFolderDialogOpen(false);
+                setNewFolderName("");
+              }}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={() => void submitNewFolder()} disabled={!newFolderName.trim()}>
+              {t("common.create")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <BackgroundActionToastListener />
     </div>
   );

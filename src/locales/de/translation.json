@@ -1865,6 +1865,11 @@
     "dateGroups": {
       "today": "Heute",
       "yesterday": "Gestern"
+    },
+    "find": {
+      "placeholder": "In Notiz suchen",
+      "previous": "Vorheriger Treffer",
+      "next": "Nächster Treffer"
     }
   },
   "dictionary": {
@@ -2311,5 +2316,17 @@
       "pending": "Wartet auf den Start.",
       "running": "Das kann einige Minuten dauern. Du kannst weiter Notizen schreiben."
     }
+  },
+  "shortcutsDialog": {
+    "title": "Tastenkürzel",
+    "groups": {
+      "navigation": "Navigation",
+      "notes": "Notizen",
+      "help": "Hilfe"
+    },
+    "nextNote": "Nächste / vorherige Notiz",
+    "switchView": "Notizen / Upload wechseln",
+    "findInNote": "In Notiz suchen",
+    "showShortcuts": "Tastenkürzel"
   }
 }

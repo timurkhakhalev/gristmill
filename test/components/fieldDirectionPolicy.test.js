@@ -56,6 +56,7 @@ function inventoryByFile(inventory) {
 // multiple fields in the same component and makes any new or reclassified
 // consumer require an explicit policy decision in this test.
 const EXPECTED_SHARED_FIELD_DIRECTIONS = {
+  "src/components/ControlPanel.tsx": ["auto"],
   "src/components/DictionaryView.tsx": ["auto", "auto", "auto"],
   "src/components/EnterpriseProviderConfig.tsx": ["ltr", "ltr", "ltr", "ltr", "ltr", "ltr"],
   "src/components/OpenAICompatiblePanel.tsx": ["ltr"],
@@ -82,6 +83,7 @@ const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/notes/MeetingResultsPanel.tsx": ["auto"],
   "src/components/notes/NoteBottomBar.tsx": ["auto"],
   "src/components/notes/NoteEditor.tsx": ["auto", "auto"],
+  "src/components/notes/NoteFindBar.tsx": ["auto"],
   "src/components/notes/NoteParticipants.tsx": ["auto"],
   "src/components/notes/SpacesTree.tsx": ["auto", "auto", "auto", "auto"],
   "src/components/notes/UploadAudioView.tsx": ["ltr", "ltr", "inherit", "inherit"],

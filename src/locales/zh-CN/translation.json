@@ -1791,6 +1791,11 @@
     "dateGroups": {
       "today": "今天",
       "yesterday": "昨天"
+    },
+    "find": {
+      "placeholder": "在笔记中查找",
+      "previous": "上一个匹配项",
+      "next": "下一个匹配项"
     }
   },
   "dictionary": {
@@ -2311,5 +2316,17 @@
       "pending": "等待开始。",
       "running": "这可能需要几分钟。你可以继续写笔记。"
     }
+  },
+  "shortcutsDialog": {
+    "title": "键盘快捷键",
+    "groups": {
+      "navigation": "导航",
+      "notes": "笔记",
+      "help": "帮助"
+    },
+    "nextNote": "下一条 / 上一条笔记",
+    "switchView": "切换笔记 / 上传",
+    "findInNote": "在笔记中查找",
+    "showShortcuts": "键盘快捷键"
   }
 }

@@ -1791,6 +1791,11 @@
     "dateGroups": {
       "today": "Oggi",
       "yesterday": "Ieri"
+    },
+    "find": {
+      "placeholder": "Cerca nella nota",
+      "previous": "Corrispondenza precedente",
+      "next": "Corrispondenza successiva"
     }
   },
   "dictionary": {
@@ -2311,5 +2316,17 @@
       "pending": "In attesa di avvio.",
       "running": "Può richiedere qualche minuto. Puoi continuare a scrivere note."
     }
+  },
+  "shortcutsDialog": {
+    "title": "Scorciatoie da tastiera",
+    "groups": {
+      "navigation": "Navigazione",
+      "notes": "Note",
+      "help": "Aiuto"
+    },
+    "nextNote": "Nota successiva / precedente",
+    "switchView": "Passa a note / caricamento",
+    "findInNote": "Cerca nella nota",
+    "showShortcuts": "Scorciatoie da tastiera"
   }
 }

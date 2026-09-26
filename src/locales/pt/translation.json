@@ -1791,6 +1791,11 @@
     "dateGroups": {
       "today": "Hoje",
       "yesterday": "Ontem"
+    },
+    "find": {
+      "placeholder": "Localizar na nota",
+      "previous": "Correspondência anterior",
+      "next": "Próxima correspondência"
     }
   },
   "dictionary": {
@@ -2311,5 +2316,17 @@
       "pending": "Aguardando o início.",
       "running": "Isso pode levar alguns minutos. Você pode continuar escrevendo notas."
     }
+  },
+  "shortcutsDialog": {
+    "title": "Atalhos de teclado",
+    "groups": {
+      "navigation": "Navegação",
+      "notes": "Notas",
+      "help": "Ajuda"
+    },
+    "nextNote": "Próxima / nota anterior",
+    "switchView": "Alternar notas / upload",
+    "findInNote": "Localizar na nota",
+    "showShortcuts": "Atalhos de teclado"
   }
 }

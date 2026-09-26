@@ -249,7 +249,7 @@ export default function CommandSearch({
   return (
     <Modal isOpen={open} onOpenChange={onOpenChange}>
       <Modal.Backdrop>
-        <Modal.Container placement="top" className="pt-[14vh]">
+        <Modal.Container placement="center">
           <Modal.Dialog
             aria-label={t("commandSearch.title")}
             className="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-overlay p-0 text-overlay-foreground shadow-overlay"

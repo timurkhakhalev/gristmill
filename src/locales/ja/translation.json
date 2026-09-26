@@ -1791,6 +1791,11 @@
     "dateGroups": {
       "today": "今日",
       "yesterday": "昨日"
+    },
+    "find": {
+      "placeholder": "ノート内を検索",
+      "previous": "前の一致",
+      "next": "次の一致"
     }
   },
   "dictionary": {
@@ -2311,5 +2316,17 @@
       "pending": "開始を待っています。",
       "running": "数分かかることがあります。その間もノートを書き続けられます。"
     }
+  },
+  "shortcutsDialog": {
+    "title": "キーボードショートカット",
+    "groups": {
+      "navigation": "ナビゲーション",
+      "notes": "ノート",
+      "help": "ヘルプ"
+    },
+    "nextNote": "次のノート / 前のノート",
+    "switchView": "ノート / アップロードの切り替え",
+    "findInNote": "ノート内を検索",
+    "showShortcuts": "キーボードショートカット"
   }
 }

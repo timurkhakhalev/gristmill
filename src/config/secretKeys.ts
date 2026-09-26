@@ -125,3 +125,23 @@ export const BYOK_API_KEYS = [
     storeKey: "chatAgentCustomApiKey",
   },
 ] as const satisfies readonly ByokApiKeyEntry[];
+
+// Environment variables that must never be read from or written to a plaintext
+// .env file. Values outside the active secret store are discarded at cutover.
+export const SECRET_ENV_KEYS = [
+  ...BYOK_API_KEYS.map((key) => key.env),
+  "CORTI_CLIENT_ID",
+  "CORTI_CLIENT_SECRET",
+  "CUSTOM_TRANSCRIPTION_API_KEY",
+  "CUSTOM_CLEANUP_API_KEY",
+  "BEDROCK_ACCESS_KEY_ID",
+  "BEDROCK_SECRET_ACCESS_KEY",
+  "BEDROCK_SESSION_TOKEN",
+  "AZURE_OPENAI_API_KEY",
+  "VERTEX_API_KEY",
+  "VOICE_AGENT_KEY",
+  "TRANSLATION_KEY",
+  "CUSTOM_REASONING_API_KEY",
+  "CHAT_AGENT_KEY",
+  "GOOGLE_CALENDAR_CLIENT_SECRET",
+] as const;

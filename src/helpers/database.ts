@@ -13,6 +13,7 @@ import { toDbTimestamp } from "./dbTimestamp.js";
 import { BUILTIN_ACTIONS } from "./builtinActions.js";
 import { noteContentHash } from "../utils/noteContentHash.js";
 import { isDevelopmentChannel } from "./appChannel.js";
+import * as secretCrypto from "./secretCrypto.js";
 import {
   meetingProcessingConfigSchema,
   meetingProcessingConfigErrorSchema,
@@ -64,6 +65,20 @@ const CALENDARS_TABLE_BY_PROVIDER: Record<string, string> = {
   microsoft: "microsoft_calendars",
 };
 const CALENDAR_PROVIDERS: ReadonlySet<string> = new Set(["google", "microsoft", "apple"]);
+const CALENDAR_TOKEN_PREFIX = "ohenc:v1:";
+
+function encryptCalendarToken(token: string): string {
+  if (!token) throw new Error("Calendar OAuth response did not include a token");
+  return CALENDAR_TOKEN_PREFIX + secretCrypto.encrypt(token).toString("base64");
+}
+
+function decryptCalendarToken(token: string): string {
+  if (!token.startsWith(CALENDAR_TOKEN_PREFIX)) {
+    throw new Error("Calendar token is not encrypted");
+  }
+  const encrypted = Buffer.from(token.slice(CALENDAR_TOKEN_PREFIX.length), "base64");
+  return secretCrypto.decrypt(encrypted).value;
+}
 
 // --- Internal row shapes (main-only; not renderer DTO) ------------------------
 
@@ -589,6 +604,7 @@ export class DatabaseManager {
       this._db = new Database(path.join(app.getPath("userData"), fileName));
       this._db.pragma("foreign_keys = ON");
       this._db.pragma("journal_mode = WAL");
+      this._db.pragma("secure_delete = ON");
 
       this._db.exec(`
         CREATE TABLE IF NOT EXISTS transcriptions (
@@ -965,6 +981,7 @@ export class DatabaseManager {
           );
         }
       }
+      this._discardPlaintextCalendarTokens();
       return true;
     } catch (error) {
       debugLogger.error("Database initialization failed", { error: (error as Error).message }, "database");
@@ -2442,6 +2459,92 @@ export class DatabaseManager {
     return { success: result.changes > 0 };
   }
 
+  private _discardPlaintextCalendarTokens(): void {
+    const google = this.sql
+      .prepare(
+        "SELECT google_email AS email FROM google_calendar_tokens WHERE access_token NOT GLOB ? OR refresh_token NOT GLOB ?"
+      )
+      .all(`${CALENDAR_TOKEN_PREFIX}*`, `${CALENDAR_TOKEN_PREFIX}*`) as Array<{ email: string }>;
+    const microsoft = this.sql
+      .prepare(
+        "SELECT microsoft_email AS email FROM microsoft_calendar_tokens WHERE access_token NOT GLOB ? OR refresh_token NOT GLOB ?"
+      )
+      .all(`${CALENDAR_TOKEN_PREFIX}*`, `${CALENDAR_TOKEN_PREFIX}*`) as Array<{ email: string }>;
+    if (!google.length && !microsoft.length) return;
+
+    const discard = this.sql.transaction(() => {
+      for (const account of google) this.removeGoogleAccount(account.email);
+      for (const account of microsoft) this.removeMicrosoftAccount(account.email);
+    });
+    discard();
+
+    const checkpoint = this.sql.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get() as
+      | { busy?: number }
+      | undefined;
+    if (checkpoint?.busy !== 0) {
+      throw new Error("Could not clear legacy plaintext calendar tokens from SQLite WAL");
+    }
+    debugLogger.info(
+      "Removed legacy plaintext calendar credentials; reconnect required",
+      { google: google.length, microsoft: microsoft.length },
+      "database"
+    );
+  }
+
+  private _hasTokenEncryptionBackend(): boolean {
+    try {
+      return secretCrypto.isAvailable();
+    } catch {
+      return false;
+    }
+  }
+
+  private _decodeGoogleTokenRow(row: GoogleTokenRow | undefined): GoogleTokenRow | null {
+    if (!row) return null;
+    if (
+      !row.access_token.startsWith(CALENDAR_TOKEN_PREFIX) ||
+      !row.refresh_token.startsWith(CALENDAR_TOKEN_PREFIX)
+    ) {
+      this.removeGoogleAccount(row.google_email);
+      return null;
+    }
+    try {
+      return {
+        ...row,
+        access_token: decryptCalendarToken(row.access_token),
+        refresh_token: decryptCalendarToken(row.refresh_token),
+      };
+    } catch {
+      if (!this._hasTokenEncryptionBackend()) return null;
+      this.removeGoogleAccount(row.google_email);
+      debugLogger.warn("Unreadable Google Calendar credentials removed; reconnect required", {}, "database");
+      return null;
+    }
+  }
+
+  private _decodeMicrosoftTokenRow(row: MicrosoftTokenRow | undefined): MicrosoftTokenRow | null {
+    if (!row) return null;
+    if (
+      !row.access_token.startsWith(CALENDAR_TOKEN_PREFIX) ||
+      !row.refresh_token.startsWith(CALENDAR_TOKEN_PREFIX)
+    ) {
+      this.removeMicrosoftAccount(row.microsoft_email);
+      return null;
+    }
+    try {
+      return {
+        ...row,
+        access_token: decryptCalendarToken(row.access_token),
+        refresh_token: decryptCalendarToken(row.refresh_token),
+      };
+    } catch {
+      if (!this._hasTokenEncryptionBackend()) return null;
+      this.removeMicrosoftAccount(row.microsoft_email);
+      debugLogger.warn("Unreadable Microsoft Calendar credentials removed; reconnect required", {}, "database");
+      return null;
+    }
+  }
+
   saveGoogleTokens(tokens: {
     google_email: string;
     access_token: string;
@@ -2453,30 +2556,35 @@ export class DatabaseManager {
       .prepare(
         "INSERT INTO google_calendar_tokens (google_email, access_token, refresh_token, expires_at, scope) VALUES (?, ?, ?, ?, ?) ON CONFLICT(google_email) DO UPDATE SET access_token = excluded.access_token, refresh_token = excluded.refresh_token, expires_at = excluded.expires_at, scope = excluded.scope, updated_at = CURRENT_TIMESTAMP"
       )
-      .run(tokens.google_email, tokens.access_token, tokens.refresh_token, tokens.expires_at, tokens.scope);
+      .run(
+        tokens.google_email,
+        encryptCalendarToken(tokens.access_token),
+        encryptCalendarToken(tokens.refresh_token),
+        tokens.expires_at,
+        tokens.scope
+      );
     return { success: true };
   }
   getGoogleTokens(): GoogleTokenRow | null {
-    return (
-      (this.sql.prepare("SELECT * FROM google_calendar_tokens LIMIT 1").get() as
-        | GoogleTokenRow
-        | undefined) || null
-    );
+    return this.getAllGoogleTokens()[0] ?? null;
   }
   getGoogleTokensByEmail(email: string): GoogleTokenRow | null {
-    return (
-      (this.sql.prepare("SELECT * FROM google_calendar_tokens WHERE google_email = ?").get(email) as
-        | GoogleTokenRow
-        | undefined) || null
-    );
+    const row = this.sql
+      .prepare("SELECT * FROM google_calendar_tokens WHERE google_email = ?")
+      .get(email) as GoogleTokenRow | undefined;
+    return this._decodeGoogleTokenRow(row);
   }
   getAllGoogleTokens(): GoogleTokenRow[] {
-    return this.sql.prepare("SELECT * FROM google_calendar_tokens").all() as GoogleTokenRow[];
+    const rows = this.sql
+      .prepare("SELECT * FROM google_calendar_tokens ORDER BY created_at")
+      .all() as GoogleTokenRow[];
+    return rows.flatMap((row) => {
+      const decoded = this._decodeGoogleTokenRow(row);
+      return decoded ? [decoded] : [];
+    });
   }
   getGoogleAccounts(): CalendarAccountRow[] {
-    return this.sql
-      .prepare("SELECT google_email AS email FROM google_calendar_tokens ORDER BY created_at")
-      .all() as CalendarAccountRow[];
+    return this.getAllGoogleTokens().map((tokens) => ({ email: tokens.google_email }));
   }
   deleteGoogleTokens(): { success: boolean } {
     this.sql.prepare("DELETE FROM google_calendar_tokens").run();
@@ -2544,24 +2652,27 @@ export class DatabaseManager {
       )
       .run(
         tokens.microsoft_email,
-        tokens.access_token,
-        tokens.refresh_token,
+        encryptCalendarToken(tokens.access_token),
+        encryptCalendarToken(tokens.refresh_token),
         tokens.expires_at,
         tokens.scope
       );
     return { success: true };
   }
   getMicrosoftTokensByEmail(email: string): MicrosoftTokenRow | null {
-    return (
-      (this.sql
-        .prepare("SELECT * FROM microsoft_calendar_tokens WHERE microsoft_email = ?")
-        .get(email) as MicrosoftTokenRow | undefined) || null
-    );
+    const row = this.sql
+      .prepare("SELECT * FROM microsoft_calendar_tokens WHERE microsoft_email = ?")
+      .get(email) as MicrosoftTokenRow | undefined;
+    return this._decodeMicrosoftTokenRow(row);
   }
   getMicrosoftAccounts(): CalendarAccountRow[] {
-    return this.sql
-      .prepare("SELECT microsoft_email AS email FROM microsoft_calendar_tokens ORDER BY created_at")
-      .all() as CalendarAccountRow[];
+    const rows = this.sql
+      .prepare("SELECT * FROM microsoft_calendar_tokens ORDER BY created_at")
+      .all() as MicrosoftTokenRow[];
+    return rows.flatMap((row) => {
+      const decoded = this._decodeMicrosoftTokenRow(row);
+      return decoded ? [{ email: decoded.microsoft_email }] : [];
+    });
   }
   removeMicrosoftAccount(email: string): { success: boolean } {
     this.sql.prepare("DELETE FROM microsoft_calendar_tokens WHERE microsoft_email = ?").run(email);

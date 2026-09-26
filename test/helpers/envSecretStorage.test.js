@@ -1,9 +1,8 @@
 // Targeted environment/secretCrypto behavior on synthetic values and a
 // temporary userData dir with fake keychain/safeStorage backends. Pins the
-// storage contract from issue #41: backend modes, master-key persistence,
-// re-encrypt on legacy blobs, atomic writes, migration sentinel semantics
-// (failed migration preserves plaintext .env and writes no sentinel), and
-// that no secret value ever reaches a log call.
+// storage contract: backend modes, master-key persistence, re-encrypt on
+// legacy encrypted blobs, atomic writes, fail-closed saves, and no secret
+// value in logs or plaintext .env files.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -117,6 +116,7 @@ test.afterEach(() => {
   delete process.env.OPENAI_API_KEY;
   delete process.env.CUSTOM_CLEANUP_API_KEY;
   delete process.env.CUSTOM_REASONING_API_KEY;
+  delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
 });
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -213,57 +213,76 @@ test("no backend available fails closed for both encrypt and decrypt", () => {
   }
 });
 
-test("environment saves secrets as atomic .enc files and strips them from .env after migration", async () => {
+test("environment discards plaintext .env secrets and saves new keys encrypted", async () => {
   const fx = createFixture();
   try {
     const envPath = path.join(fx.userData, ".env");
-    fs.writeFileSync(envPath, "OPENAI_API_KEY=plaintext-to-migrate\nUI_LANGUAGE=ru\n");
-    process.env.OPENAI_API_KEY = "plaintext-to-migrate";
+    fs.writeFileSync(envPath, "OPENAI_API_KEY=plaintext-discard-me\nGOOGLE_CALENDAR_CLIENT_SECRET=old-calendar-secret\nUI_LANGUAGE=ru\n");
+    fs.writeFileSync(`${envPath}.tmp`, "OPENAI_API_KEY=stale-temp-secret\n");
+    process.env.OPENAI_API_KEY = "shell-secret";
+    process.env.GOOGLE_CALENDAR_CLIENT_SECRET = "shell-calendar-secret";
     process.env.UI_LANGUAGE = "ru";
 
     const manager = new fx.EnvironmentManager();
     await manager.init();
 
-    // Sentinel written, plaintext .env regenerated without the secret.
-    assert.ok(fs.existsSync(path.join(fx.userData, "secure-keys", ".migrated")));
+    // The old value is discarded, not imported into secure storage.
     const envContent = fs.readFileSync(envPath, "utf8");
-    assert.ok(!envContent.includes("plaintext-to-migrate"), "secret stripped from .env");
-    assert.ok(envContent.includes("UI_LANGUAGE=ru"), "non-secret settings preserved");
-    // Encrypted blob exists and does not contain the plaintext.
+    assert.ok(!envContent.includes("plaintext-discard-me"), "secret stripped from .env");
+    assert.ok(!envContent.includes("old-calendar-secret"), "unused desktop OAuth secret stripped from .env");
+    assert.ok(envContent.includes('UI_LANGUAGE="ru"'), "non-secret settings preserved");
+    assert.equal(fs.existsSync(`${envPath}.tmp`), false, "stale secret temp file removed");
+    assert.equal(process.env.OPENAI_API_KEY, undefined);
+    assert.equal(process.env.GOOGLE_CALENDAR_CLIENT_SECRET, undefined);
+    assert.equal(fs.existsSync(path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc")), false);
+
+    assert.deepEqual(await manager.saveOpenAIKey("new-secret"), { success: true });
     const blob = fs.readFileSync(path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc"));
-    assert.ok(!blob.toString("utf8").includes("plaintext-to-migrate"));
-    assert.equal(process.env.OPENAI_API_KEY, "plaintext-to-migrate");
+    assert.ok(!blob.toString("utf8").includes("new-secret"));
+    assert.equal(fs.statSync(path.join(fx.userData, "secure-keys")).mode & 0o777, 0o700);
+    assert.equal(fs.statSync(path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc")).mode & 0o777, 0o600);
+    assert.equal(process.env.OPENAI_API_KEY, "new-secret");
     // No secret value reached any log call.
-    assert.ok(!allLogText(fx.logs).includes("plaintext-to-migrate"));
+    assert.ok(!allLogText(fx.logs).includes("plaintext-discard-me"));
+    assert.ok(!allLogText(fx.logs).includes("new-secret"));
   } finally {
     delete process.env.UI_LANGUAGE;
     fx.restore();
   }
 });
 
-test("a failed migration preserves the plaintext .env and writes no sentinel", async () => {
-  const fx = createFixture();
-  // Break decryption after encryption so round-trip verification fails.
-  const originalDecrypt = fx.secretCrypto.decrypt;
-  fx.secretCrypto.decrypt = () => ({ value: "mismatch", needsReencrypt: false });
+test("saving a key fails when encryption is unavailable and never writes plaintext", async () => {
+  const fx = createFixture({ keychainWorks: false, encryptionAvailable: false });
   try {
     const envPath = path.join(fx.userData, ".env");
-    fs.writeFileSync(envPath, "OPENAI_API_KEY=precious-plaintext\n");
-    process.env.OPENAI_API_KEY = "precious-plaintext";
-
     const manager = new fx.EnvironmentManager();
-    await manager.init();
-
-    assert.equal(fs.existsSync(path.join(fx.userData, "secure-keys", ".migrated")), false);
-    const envContent = fs.readFileSync(envPath, "utf8");
-    assert.ok(
-      envContent.includes("precious-plaintext"),
-      "plaintext .env preserved on failed migration"
-    );
-    assert.ok(fx.logs.error.some((entry) => /aborted/.test(entry.m)));
-    assert.ok(!allLogText(fx.logs).includes("precious-plaintext"), "no secret in logs");
+    assert.deepEqual(await manager.saveOpenAIKey("rejected-secret"), { success: false });
+    assert.equal(process.env.OPENAI_API_KEY, undefined);
+    assert.equal(fs.existsSync(path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc")), false);
+    await manager.saveAllKeysToEnvFile();
+    assert.ok(!fs.readFileSync(envPath, "utf8").includes("rejected-secret"));
+    assert.ok(!allLogText(fx.logs).includes("rejected-secret"));
   } finally {
-    void originalDecrypt;
+    fx.restore();
+  }
+});
+
+test("encrypted secrets load after a new manager instance", async () => {
+  const fx = createFixture();
+  try {
+    const first = new fx.EnvironmentManager();
+    assert.deepEqual(await first.saveOpenAIKey("restart-secret"), { success: true });
+    delete process.env.OPENAI_API_KEY;
+
+    const restarted = new fx.EnvironmentManager();
+    await restarted.init();
+
+    assert.equal(process.env.OPENAI_API_KEY, "restart-secret");
+    new fx.EnvironmentManager();
+    assert.equal(process.env.OPENAI_API_KEY, "restart-secret", "helper managers retain active secrets");
+    const blob = fs.readFileSync(path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc"));
+    assert.ok(!blob.toString("utf8").includes("restart-secret"));
+  } finally {
     fx.restore();
   }
 });
@@ -272,7 +291,7 @@ test("clearAllPersistedData removes .env and the secure-keys directory", async (
   const fx = createFixture();
   try {
     const manager = new fx.EnvironmentManager();
-    manager.saveOpenAIKey("to-be-erased");
+    await manager.saveOpenAIKey("to-be-erased");
     // _saveKey persists asynchronously (keychain init + mkdir + write +
     // rename); the pending-write seam makes completion observable instead of
     // guessing at a number of ticks.
@@ -293,9 +312,10 @@ test("a save fired before clearAllPersistedData cannot resurrect the secret", as
   const fx = createFixture();
   try {
     const manager = new fx.EnvironmentManager();
-    manager.saveOpenAIKey("must-not-survive");
+    const save = manager.saveOpenAIKey("must-not-survive");
     // Deliberately no seam await: the clear races the in-flight write.
     const result = await manager.clearAllPersistedData();
+    await save;
     assert.deepEqual(result, { success: true });
     await manager._flushSecretWrites();
     assert.equal(
@@ -323,8 +343,8 @@ test("clear waits for every queued write of a key, not just the newest", async (
       return started.length === 1 ? gateA : null;
     });
 
-    manager.saveOpenAIKey("gated-value");
-    manager.saveOpenAIKey("queued-value");
+    const saveA = manager.saveOpenAIKey("gated-value");
+    const saveB = manager.saveOpenAIKey("queued-value");
     await tick();
     assert.deepEqual(
       started,
@@ -342,6 +362,7 @@ test("clear waits for every queued write of a key, not just the newest", async (
 
     gateA.resolve();
     assert.deepEqual(await clearPromise, { success: true });
+    await Promise.all([saveA, saveB]);
     await manager._flushSecretWrites();
     assert.equal(
       fs.existsSync(path.join(fx.userData, "secure-keys")),
@@ -363,8 +384,8 @@ test("different keys write independently and clear waits for all of them", async
     gates.set("OPENAI_API_KEY", deferred());
     gates.set("CUSTOM_CLEANUP_API_KEY", deferred());
 
-    manager.saveOpenAIKey("openai-value");
-    manager.saveCleanupCustomKey("cleanup-value");
+    const saveOpenAI = manager.saveOpenAIKey("openai-value");
+    const saveCleanup = manager.saveCleanupCustomKey("cleanup-value");
     await tick();
 
     const clearPromise = manager.clearAllPersistedData();
@@ -381,6 +402,7 @@ test("different keys write independently and clear waits for all of them", async
 
     gates.get("CUSTOM_CLEANUP_API_KEY").resolve();
     assert.deepEqual(await clearPromise, { success: true });
+    await Promise.all([saveOpenAI, saveCleanup]);
     assert.equal(fs.existsSync(path.join(fx.userData, "secure-keys")), false);
     assert.equal(process.env.OPENAI_API_KEY, undefined);
     assert.equal(process.env.CUSTOM_CLEANUP_API_KEY, undefined);
@@ -402,10 +424,11 @@ test("a queued delete runs after its save and leaves no artifact", async () => {
       return gate;
     });
 
-    manager.saveOpenAIKey("temp-value");
-    manager.saveOpenAIKey("");
+    const save = manager.saveOpenAIKey("temp-value");
+    const remove = manager.saveOpenAIKey("");
     await tick();
     gate.resolve();
+    await Promise.all([save, remove]);
     await manager._flushSecretWrites();
 
     assert.equal(fs.existsSync(encPath), false, "the delete landed after the save, not before");
@@ -415,7 +438,7 @@ test("a queued delete runs after its save and leaves no artifact", async () => {
   }
 });
 
-test("a failed write is logged without the value and the next write still lands", async () => {
+test("a failed write reports failure without the value and the next write still lands", async () => {
   const fx = createFixture();
   try {
     const manager = new fx.EnvironmentManager();
@@ -425,25 +448,50 @@ test("a failed write is logged without the value and the next write still lands"
       throw new Error("encrypt exploded");
     };
 
-    manager.saveOpenAIKey("doomed-value");
-    await manager._flushSecretWrites();
+    assert.deepEqual(await manager.saveOpenAIKey("doomed-value"), { success: false });
     assert.equal(fs.existsSync(encPath), false, "the failed write left no artifact");
     assert.ok(
       fx.logs.error.some(
-        (entry) => entry.d?.key === "OPENAI_API_KEY" && /encrypt exploded/.test(entry.d?.error)
+        (entry) => entry.d?.key === "OPENAI_API_KEY"
       ),
-      "the failure is logged with the key and error, never the value"
+      "the failure is logged with the key only"
     );
     assert.ok(!allLogText(fx.logs).includes("doomed-value"));
 
     fx.secretCrypto.encrypt = originalEncrypt;
-    manager.saveOpenAIKey("recovered-value");
-    await manager._flushSecretWrites();
+    assert.deepEqual(await manager.saveOpenAIKey("recovered-value"), { success: true });
     assert.equal(fs.existsSync(encPath), true, "the queue continued after the failure");
     assert.equal(process.env.OPENAI_API_KEY, "recovered-value");
 
     assert.deepEqual(await manager.clearAllPersistedData(), { success: true });
     assert.equal(fs.existsSync(encPath), false);
+  } finally {
+    fx.restore();
+  }
+});
+
+test("a storage write error reports failure and never activates the supplied key", async () => {
+  const fx = createFixture();
+  try {
+    const manager = new fx.EnvironmentManager();
+    const originalSave = manager._saveSecretKey.bind(manager);
+    manager._saveSecretKey = async () => {
+      throw Object.assign(new Error("synthetic disk failure"), { code: "ENOSPC" });
+    };
+
+    assert.deepEqual(await manager.saveOpenAIKey("write-failure-secret"), { success: false });
+    assert.equal(process.env.OPENAI_API_KEY, undefined);
+    assert.equal(
+      fs.existsSync(path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc")),
+      false
+    );
+    assert.ok(fx.logs.error.some((entry) => entry.d?.code === "ENOSPC"));
+    assert.ok(!allLogText(fx.logs).includes("synthetic disk failure"));
+    assert.ok(!allLogText(fx.logs).includes("write-failure-secret"));
+
+    manager._saveSecretKey = originalSave;
+    assert.deepEqual(await manager.saveOpenAIKey("storage-recovered-secret"), { success: true });
+    assert.equal(process.env.OPENAI_API_KEY, "storage-recovered-secret");
   } finally {
     fx.restore();
   }

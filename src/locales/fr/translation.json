@@ -1948,7 +1948,8 @@
     "edit": "Modifier la clé API",
     "add": "Ajouter une clé API",
     "editButton": "modifier",
-    "addButton": "ajouter"
+    "addButton": "ajouter",
+    "saveError": "Échec de l’enregistrement sécurisé. Vérifiez le stockage sécurisé et réessayez."
   },
   "gpu": {
     "transcriptionBanner": "Accélérez la transcription avec le GPU",

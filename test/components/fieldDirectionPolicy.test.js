@@ -58,7 +58,7 @@ function inventoryByFile(inventory) {
 const EXPECTED_SHARED_FIELD_DIRECTIONS = {
   "src/components/ControlPanel.tsx": ["auto"],
   "src/components/DictionaryView.tsx": ["auto", "auto", "auto"],
-  "src/components/EnterpriseProviderConfig.tsx": ["ltr", "ltr", "ltr", "ltr", "ltr", "ltr"],
+  "src/components/EnterpriseProviderConfig.tsx": ["ltr", "ltr", "ltr", "ltr", "ltr"],
   "src/components/OpenAICompatiblePanel.tsx": ["ltr"],
   "src/components/SelfHostedPanel.tsx": ["ltr", "ltr"],
   "src/components/SnippetsView.tsx": ["auto", "auto", "auto", "auto"],

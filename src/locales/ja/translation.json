@@ -1908,7 +1908,8 @@
     "edit": "編集",
     "add": "追加",
     "editButton": "編集",
-    "addButton": "追加"
+    "addButton": "追加",
+    "saveError": "安全に保存できませんでした。セキュアストレージを確認して再試行してください。"
   },
   "gpu": {
     "transcriptionBanner": "GPU で文字起こしを高速化",

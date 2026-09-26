@@ -35,7 +35,7 @@ const OPENROUTER_KEYS_URL = "https://openrouter.ai/keys";
 
 function ApiKeyBlock({ apiKey, setApiKey, linkUrl }: {
   apiKey: string;
-  setApiKey: (key: string) => void;
+  setApiKey: (key: string) => unknown | Promise<unknown>;
   linkUrl: string;
 }) {
   const { t } = useTranslation();
@@ -69,7 +69,7 @@ interface ReasoningModelSelectorProps {
   cloudReasoningBaseUrl: string;
   setCloudReasoningBaseUrl: (value: string) => void;
   customReasoningApiKey?: string;
-  setCustomReasoningApiKey?: (key: string) => void;
+  setCustomReasoningApiKey?: (key: string) => unknown | Promise<unknown>;
   setReasoningMode?: (mode: InferenceMode) => void;
   mode?: "cloud" | "local";
 }
@@ -303,7 +303,7 @@ export default function ReasoningModelSelector({
                   baseUrl={cloudReasoningBaseUrl}
                   setBaseUrl={setCloudReasoningBaseUrl}
                   apiKey={customReasoningApiKey}
-                  setApiKey={setCustomReasoningApiKey || (() => {})}
+                  setApiKey={setCustomReasoningApiKey || (() => ({ success: false }))}
                   model={localReasoningProvider === "custom" ? reasoningModel : ""}
                   setModel={(m) => {
                     setLocalReasoningProvider("custom");

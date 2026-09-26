@@ -1908,7 +1908,8 @@
     "edit": "编辑",
     "add": "添加",
     "editButton": "编辑密钥",
-    "addButton": "添加密钥"
+    "addButton": "添加密钥",
+    "saveError": "无法安全保存。请检查安全存储并重试。"
   },
   "gpu": {
     "transcriptionBanner": "使用 GPU 加速转录",

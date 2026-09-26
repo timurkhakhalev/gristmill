@@ -86,6 +86,8 @@ export function ByokProviderStep({
   const [draftBaseUrl, setDraftBaseUrl] = useState(resumeState?.baseUrl ?? "");
   const [draftCustomModel, setDraftCustomModel] = useState(resumeState?.customModel ?? "");
   const [connected, setConnected] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const latestDraft = useRef<OnboardingByokDraft | null>(null);
 
   useEffect(() => {
@@ -121,27 +123,42 @@ export function ByokProviderStep({
       setSelectedProvider(providerId);
       setSelectedModel(pickDefaultModelId(providers.find((item) => item.id === providerId)));
       setDraftApiKey(providerCredential(providerId, store).value);
+      setSaveError(false);
       setConnected(false);
       onConnectionChange(false);
     },
     [onConnectionChange, providers, store]
   );
 
-  const commitAndProceed = () => {
-    if (selfHosted) {
-      const url = draftBaseUrl.includes("://") ? draftBaseUrl.trim() : `https://${draftBaseUrl.trim()}`;
-      store.setCloudTranscriptionBaseUrl(url);
-      store.setCustomTranscriptionApiKey(draftApiKey);
-      store.setCloudTranscriptionModel(draftCustomModel);
-      store.setCloudTranscriptionProvider("custom");
-      store.setCloudTranscriptionMode("byok");
-    } else {
-      providerCredential(selectedProvider, store).set(draftApiKey);
-      store.setCloudTranscriptionMode("byok");
-      store.setCloudTranscriptionProvider(selectedProvider);
-      store.setCloudTranscriptionModel(selectedModel);
+  const commitAndProceed = async () => {
+    setIsSaving(true);
+    setSaveError(false);
+    try {
+      const result = selfHosted
+        ? await store.setCustomTranscriptionApiKey(draftApiKey)
+        : await providerCredential(selectedProvider, store).set(draftApiKey);
+      if (!result || typeof result !== "object" || !("success" in result) || result.success !== true) {
+        setSaveError(true);
+        return;
+      }
+
+      if (selfHosted) {
+        const url = draftBaseUrl.includes("://") ? draftBaseUrl.trim() : `https://${draftBaseUrl.trim()}`;
+        store.setCloudTranscriptionBaseUrl(url);
+        store.setCloudTranscriptionModel(draftCustomModel);
+        store.setCloudTranscriptionProvider("custom");
+        store.setCloudTranscriptionMode("byok");
+      } else {
+        store.setCloudTranscriptionMode("byok");
+        store.setCloudTranscriptionProvider(selectedProvider);
+        store.setCloudTranscriptionModel(selectedModel);
+      }
+      onProceed();
+    } catch {
+      setSaveError(true);
+    } finally {
+      setIsSaving(false);
     }
-    onProceed();
   };
 
   return (
@@ -171,7 +188,7 @@ export function ByokProviderStep({
           <>
             <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.endpointUrl")}</FieldLabel><Input dir="ltr" value={draftBaseUrl} onChange={(event) => setDraftBaseUrl(event.target.value)} placeholder={t("onboarding.rehaul.provider.endpointPlaceholder")} /></label>
             <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.modelId")}</FieldLabel><Input dir="ltr" value={draftCustomModel} onChange={(event) => setDraftCustomModel(event.target.value)} placeholder={t("onboarding.rehaul.provider.modelIdPlaceholder")} /></label>
-            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel><Input dir="ltr" type="password" value={draftApiKey} onChange={(event) => setDraftApiKey(event.target.value)} placeholder={t("onboarding.rehaul.provider.optional")} /></label>
+            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel><Input dir="ltr" type="password" value={draftApiKey} onChange={(event) => { setDraftApiKey(event.target.value); setSaveError(false); }} placeholder={t("onboarding.rehaul.provider.optional")} /></label>
           </>
         ) : (
           <>
@@ -197,7 +214,7 @@ export function ByokProviderStep({
                 options={models.map((model) => ({ id: model.id, label: model.name }))}
               />
             </div>
-            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel><Input dir="ltr" type="password" value={draftApiKey} onChange={(event) => { setDraftApiKey(event.target.value); setConnected(false); onConnectionChange(false); }} disabled={!selectedProvider} /></label>
+            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel><Input dir="ltr" type="password" value={draftApiKey} onChange={(event) => { setDraftApiKey(event.target.value); setSaveError(false); setConnected(false); onConnectionChange(false); }} disabled={!selectedProvider} /></label>
           </>
         )}
 
@@ -206,7 +223,14 @@ export function ByokProviderStep({
           onSuccessChange={(success) => { setConnected(success); onConnectionChange(success); }}
           variant="inline"
         />
-        <Button type="button" onClick={commitAndProceed} disabled={!connected || !fieldsReady} className="mt-4 w-full">{t("onboarding.rehaul.provider.proceed")}</Button>
+        {saveError && (
+          <p role="alert" className="text-xs text-destructive">
+            {t("apiKeyInput.saveError", {
+              defaultValue: "Could not save securely. Check secure storage and try again.",
+            })}
+          </p>
+        )}
+        <Button type="button" onClick={commitAndProceed} disabled={!connected || !fieldsReady || isSaving} className="mt-4 w-full">{t("onboarding.rehaul.provider.proceed")}</Button>
       </div>
     </section>
   );

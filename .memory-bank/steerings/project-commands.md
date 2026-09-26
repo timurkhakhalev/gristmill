@@ -53,11 +53,6 @@ The optional leading `--` also works with selectors.
 - `pnpm start`: run Electron after the configured preparation steps.
 - `pnpm run pack:dev`: build an unsigned development app. Close the packaged
   OpenHercules Dev app first. This is not a prerequisite for ordinary unit tests.
-- `node scripts/smoke-electron.js`: check the packaged production app with a fresh
-  temporary profile. The script also accepts a packaged executable path; append
-  `--dev` when checking the development package. Build the relevant package
-  first and inspect the script before running. This does not verify live
-  microphone/system audio or real provider credentials.
 
 ## Command maintenance
 

@@ -113,7 +113,6 @@ import type { MicrosoftCalendarManager } from "./microsoftCalendarManager.js";
 import type { AppleCalendarManager } from "./appleCalendarManager.js";
 import type { MeetingDetectionEngine } from "./meetingDetectionEngine.js";
 import type { AudioTapManager } from "./audioTapManager.js";
-import type { MeetingAecManager } from "./meetingAecManager.js";
 import type { TrayManager } from "./tray.js";
 
 const transcriptionProviderBaseUrls = () => modelRegistryData.transcriptionProviders;
@@ -145,7 +144,6 @@ interface IPCHandlersManagerOptions {
   appleCalendarManager: AppleCalendarManager;
   meetingDetectionEngine: MeetingDetectionEngine;
   audioTapManager: AudioTapManager;
-  meetingAecManager: MeetingAecManager;
   getTrayManager: () => TrayManager | null;
   oauthProtocolRegistered: boolean;
   oauthProtocol: string;
@@ -213,7 +211,6 @@ export class IPCHandlers {
   appleCalendarManager: AppleCalendarManager;
   meetingDetectionEngine: MeetingDetectionEngine;
   audioTapManager: AudioTapManager;
-  meetingAecManager: MeetingAecManager;
   oauthProtocolRegistered: boolean;
   oauthProtocol: string;
   sessionId: string;
@@ -252,7 +249,6 @@ export class IPCHandlers {
     this.appleCalendarManager = managers.appleCalendarManager;
     this.meetingDetectionEngine = managers.meetingDetectionEngine;
     this.audioTapManager = managers.audioTapManager;
-    this.meetingAecManager = managers.meetingAecManager;
     this.oauthProtocolRegistered = managers.oauthProtocolRegistered === true;
     this.oauthProtocol = managers.oauthProtocol || "openhercules";
     this.sessionId = crypto.randomUUID();
@@ -1428,7 +1424,6 @@ export class IPCHandlers {
         .diarizationManager as unknown as DiarizationPublicationDiarizationManager,
       meetingDetectionEngine: this.meetingDetectionEngine,
       audioTapManager: this.audioTapManager,
-      meetingAecManager: this.meetingAecManager,
       whisperManager: {
         transcribeLocalWhisper: (audio, options) =>
           this._transcribeLocalWhisper(audio, options) as Promise<

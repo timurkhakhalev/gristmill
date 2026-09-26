@@ -287,6 +287,7 @@
       "test/config/rendererInferenceRemovalContract.test.js",
       "test/config/colorSchemes.test.js",
       "test/helpers/appVersion.test.js",
+      "test/helpers/assetDownloadOffline.test.js",
       "test/helpers/autoStartPolicy.test.js",
       "test/helpers/chineseScript.test.js",
       "test/helpers/cliBridgeRequestBody.test.js",
@@ -371,7 +372,6 @@
       "test/helpers/audioTapManagerWarnings.test.js",
       "test/helpers/liveSpeakerIdPolicy.test.js",
       "test/helpers/liveSpeakerIdentifier.test.js",
-      "test/helpers/meetingAecManager.test.js",
       "test/helpers/meetingAudioActivityMonitor.test.js",
       "test/helpers/meetingAudioParts.test.js",
       "test/helpers/meetingAudioTimeline.test.js",
@@ -719,6 +719,7 @@
       "test/helpers/uploadTimestamps.test.js",
       "test/helpers/whisperServerVadArgs.test.js",
       "test/helpers/whisperVadConfig.test.js",
+      "test/helpers/whisperVadModel.test.js",
       "test/helpers/whisperWakeRewarm.test.js",
       "test/services/transcriptionBaseUrl.test.js",
       "test/utils/liveTranscriptPresentation.test.js"

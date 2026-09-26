@@ -29,6 +29,7 @@
     "src/helpers/debugLogger.ts",
     "src/helpers/devServerManager.ts",
     "src/helpers/devSnapshot.ts",
+    "src/helpers/devAssetInstaller.ts",
     "src/helpers/dockManager.ts",
     "src/helpers/dockPolicy.ts",
     "src/helpers/dragManager.ts",
@@ -46,7 +47,6 @@
     "src/helpers/windowBroadcast.ts",
     "src/helpers/windowConfig.ts",
     "src/helpers/windowManager.ts",
-    "src/helpers/meetingAecManager.ts",
     "src/helpers/meetingAudioActivityMonitor.ts",
     "src/helpers/meetingAudioTimeline.ts",
     "src/helpers/meetingCoordinatorIpcHandlers.ts",
@@ -56,7 +56,8 @@
     "src/helpers/meetingMicGate.ts",
     "src/helpers/meetingMicHoldback.ts",
     "src/helpers/meetingSystemAudioWatchdog.ts",
-    "src/helpers/systemDefaultMicrophone.ts"
+    "src/helpers/systemDefaultMicrophone.ts",
+    "src/helpers/whisperVadModel.ts"
   ],
   "exclude": ["node_modules", "dist", "dist-main", "src/dist", "test"]
 }

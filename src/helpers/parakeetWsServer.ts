@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const WebSocket = require("ws");
 const debugLogger = require("./debugLogger.js");
+const { ensureDevBinary } = require("./devAssetInstaller.js");
 const os = require("os");
 const {
   findAvailablePort,
@@ -103,7 +104,15 @@ export class ParakeetWsServer {
   }
 
   async _doStart(modelName: string, modelDir: string, runtime: "offline" | "online", language: string | null): Promise<void> {
-    const wsBinary = this.getWsBinaryPath(runtime);
+    let wsBinary = this.getWsBinaryPath(runtime);
+    if (!wsBinary) {
+      // Dev checkouts no longer prefetch binaries at startup; the first local
+      // route use installs the pinned build. Packaged apps ship the binary.
+      await ensureDevBinary("sherpa-onnx").catch((error: Error) => {
+        debugLogger.warn("Local-route binary install failed", { error: error.message }, "assets");
+      });
+      wsBinary = this.getWsBinaryPath(runtime);
+    }
     if (!wsBinary) throw new Error(`sherpa-onnx ${runtime} WS server binary not found`);
     if (!fs.existsSync(modelDir)) throw new Error(`Model directory not found: ${modelDir}`);
 

@@ -170,7 +170,6 @@ function refreshConfig(explicit, { expectedCount = 2, attendees = THREE_ATTENDEE
       diarizationManager: {},
       meetingDetectionEngine: null,
       audioTapManager: null,
-      meetingAecManager: null,
       whisperManager: { transcribeLocalWhisper: async () => ({}) },
       parakeetManager: { transcribeLocalParakeet: async () => ({}) },
       liveSpeakerIdentifier: liveSpeaker,

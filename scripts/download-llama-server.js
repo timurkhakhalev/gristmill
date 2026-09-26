@@ -109,18 +109,6 @@ function getEntriesForPlatformArch(platformArch) {
 }
 
 async function main() {
-  console.log(`\n[llama-server] Using pinned version: ${LLAMA_CPP_TAG}`);
-  const release = await getRelease();
-
-  if (!release) {
-    console.error(`[llama-server] Could not fetch release from ${LLAMA_CPP_REPO}`);
-    console.log(`\nMake sure release exists: https://github.com/${LLAMA_CPP_REPO}/releases`);
-    process.exitCode = 1;
-    return;
-  }
-
-  console.log(`\nDownloading llama-server binaries (${release.tag})...\n`);
-
   fs.mkdirSync(BIN_DIR, { recursive: true });
 
   const args = parseArgs();
@@ -134,7 +122,28 @@ async function main() {
       return;
     }
 
-    console.log(`Downloading for target platform (${args.platformArch}):`);
+    // Skip before fetching release info so an installed asset costs no network.
+    const allInstalled = entries.every(([, config]) =>
+      fs.existsSync(path.join(BIN_DIR, config.outputName))
+    );
+    if (allInstalled && !args.isForce) {
+      for (const [key] of entries) {
+        console.log(`  ${key}: Already exists (use --force to re-download)`);
+      }
+      return;
+    }
+
+    console.log(`\n[llama-server] Using pinned version: ${LLAMA_CPP_TAG}`);
+    const release = await getRelease();
+
+    if (!release) {
+      console.error(`[llama-server] Could not fetch release from ${LLAMA_CPP_REPO}`);
+      console.log(`\nMake sure release exists: https://github.com/${LLAMA_CPP_REPO}/releases`);
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log(`\nDownloading llama-server binaries (${release.tag})...`);
 
     for (const [key, config] of entries) {
       const ok = await downloadBinary(key, config, release, args.isForce);
@@ -151,7 +160,17 @@ async function main() {
       cleanupFiles(BIN_DIR, "llama-server", `llama-server-${args.platformArch}`);
     }
   } else {
-    console.log("Downloading binaries for all platforms:");
+    console.log(`\n[llama-server] Using pinned version: ${LLAMA_CPP_TAG}`);
+    const release = await getRelease();
+
+    if (!release) {
+      console.error(`[llama-server] Could not fetch release from ${LLAMA_CPP_REPO}`);
+      console.log(`\nMake sure release exists: https://github.com/${LLAMA_CPP_REPO}/releases`);
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log(`\nDownloading llama-server binaries (${release.tag})...`);
     for (const [key, config] of Object.entries(BINARIES)) {
       const ok = await downloadBinary(key, config, release, args.isForce);
       if (!ok && config.optional) {
@@ -175,4 +194,8 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+if (require.main === module) {
+  main().catch(console.error);
+}
+
+module.exports = { BINARIES, LLAMA_CPP_TAG };

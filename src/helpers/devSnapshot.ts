@@ -24,16 +24,20 @@ const COPY_FILES = ["globe-preference-state.json", ".system-audio-permission"];
 // the protocol between the first and second launch.
 const ENV_STRIP_KEYS = ["OPENHERCULES_PROTOCOL", "VITE_OPENHERCULES_PROTOCOL"];
 
+// dotenv accepts `KEY=`, `export KEY=` and `KEY:` assignments, with optional
+// surrounding whitespace — all spellings of a stripped key must go.
+function envLineAssignsStrippedKey(line: string): boolean {
+  const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*[=:]/);
+  return Boolean(match && ENV_STRIP_KEYS.includes(match[1].toUpperCase()));
+}
+
 function cloneEnvFile(source: string, target: string): void {
   const destination = path.join(target, ".env");
   if (fs.existsSync(destination) || !fs.existsSync(path.join(source, ".env"))) return;
   const lines = fs
     .readFileSync(path.join(source, ".env"), "utf8")
     .split(/\r?\n/)
-    .filter((line) => {
-      const key = line.slice(0, line.indexOf("="));
-      return !ENV_STRIP_KEYS.includes(key.trim().toUpperCase());
-    });
+    .filter((line) => !envLineAssignsStrippedKey(line));
   fs.writeFileSync(destination, lines.join("\n"), { mode: 0o600 });
 }
 // Big trees (audio, meeting results, the persisted session partition with
@@ -132,10 +136,26 @@ function adoptLegacyDevDatabase(target: string): boolean {
   if (fs.existsSync(current)) {
     // Both databases predate the cutover: keep the packaged-Dev set as an
     // explicit, visible backup. It is not opened automatically; restoring it
-    // is a manual, deliberate act. A collision gets a fresh timestamped name
-    // — never a silent skip that would strand a later note set.
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const backup = path.join(target, `transcriptions-legacy-dev-backup-${stamp}.db`);
+    // is a manual, deliberate act. Reserve an unused name first — rename
+    // onto an existing file overwrites it, and a same-millisecond collision
+    // must not destroy an earlier backup.
+    let backup: string | null = null;
+    for (let attempt = 0; attempt < 1000 && !backup; attempt++) {
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const candidate = path.join(
+        target,
+        `transcriptions-legacy-dev-backup-${stamp}${attempt ? `-${attempt}` : ""}.db`
+      );
+      if (!fs.existsSync(candidate)) backup = candidate;
+    }
+    if (!backup) {
+      debugLogger.warn(
+        "could not reserve a legacy backup name; retrying on the next launch",
+        {},
+        "devSnapshot"
+      );
+      return false;
+    }
     debugLogger.warn(
       "dev profile holds both pre-cutover databases; keeping the packaged-Dev set as " +
         path.basename(backup),

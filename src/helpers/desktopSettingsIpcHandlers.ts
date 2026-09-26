@@ -22,6 +22,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import debugLogger from "./debugLogger.js";
 import { isDevelopmentChannel } from "./appChannel.js";
+import { suppressDevSnapshotAfterReset } from "./devSnapshot.js";
 import { getAutoStartState, setAutoStartEnabled } from "./autoStart.js";
 import { openSystemSettings } from "./systemSettingsLauncher.js";
 import type { HotkeyActivationCallback, HotkeySlot } from "./hotkeyManager.js";
@@ -851,6 +852,20 @@ export function registerDesktopSettingsHandlers(
     const errors: string[] = [];
     const mainWindow = windowManager.mainWindow;
     const cleanup = deps.cleanup;
+
+    // Record the user's reset choice before removing the DB. Without this,
+    // the next dev launch would import the deleted notes from production.
+    if (isDevelopmentChannel()) {
+      try {
+        suppressDevSnapshotAfterReset();
+      } catch (e) {
+        return {
+          success: false,
+          message: "Cleanup stopped because reset could not be recorded",
+          errors: [`Snapshot reset state: ${(e as Error).message}`],
+        };
+      }
+    }
 
     // Stop services before deleting files they hold open
     try {

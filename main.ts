@@ -119,13 +119,12 @@ function configureChannelUserDataPath(): void {
     ? path.resolve(explicitPath)
     : path.join(app.getPath("appData"), profileName);
   if (APP_CHANNEL !== "production") {
-    // Dev channels refuse a profile that reaches production BEFORE creating
-    // anything: a not-yet-existing --user-data-dir inside the production
-    // profile must not be mkdir'd there before the refusal.
+    // Check the resolved root and known writable paths before creating the
+    // profile or reading its .env, including explicit smoke profiles.
     const devSnapshotModule = require("./src/helpers/devSnapshot.js");
-    if (devSnapshotModule.profilePathAliasesProduction(isolatedPath)) {
+    if (devSnapshotModule.devProfileHasUnsafePaths(isolatedPath)) {
       console.error(
-        "[devSnapshot] dev profile path resolves into the production profile; refusing to start."
+        "[devSnapshot] dev profile has an unsafe storage path; refusing to start."
       );
       app.exit(1);
       return;
@@ -198,18 +197,16 @@ if (!gotSingleInstanceLock) {
 // Dev channel: seed the isolated dev profile from a one-way snapshot of the
 // production profile (issue #86) before anything reads userData. Explicit
 // --user-data-dir smoke/debug profiles stay isolated and receive no
-// production data. Both run AFTER the single-instance lock so two concurrent
-// dev launches cannot race the snapshot; failures refuse to start (the app
+// production data. The snapshot runs AFTER the single-instance lock so two
+// concurrent dev launches cannot race it; failures refuse to start (the app
 // would otherwise create an empty dev database and mask the failure forever).
 if (APP_CHANNEL === "development" && gotSingleInstanceLock) {
   const devSnapshot = require("./src/helpers/devSnapshot.js");
-  // The alias refusal applies to every development launch, including explicit
-  // --user-data-dir: a dev build must never write inside the production
-  // profile through any path spelling.
-  let devOk = !devSnapshot.devProfileAliasesProduction();
-  if (devOk && !app.commandLine.getSwitchValue("user-data-dir")) {
-    devOk = devSnapshot.snapshotProductionProfileForDev();
-  }
+  // Explicit smoke profiles were checked before userData was set; they skip
+  // production import. The default profile gets checked again by snapshot.
+  const devOk = app.commandLine.getSwitchValue("user-data-dir")
+    ? true
+    : devSnapshot.snapshotProductionProfileForDev();
   if (!devOk) {
     console.error("[devSnapshot] dev profile check failed; exiting. The next launch retries.");
     app.exit(1);

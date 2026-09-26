@@ -28,11 +28,9 @@ else
   done
 fi
 
-# The full suite must include DB tests; do not report green with an Electron ABI.
-if [ "$full_suite" -eq 1 ] && ! node -e 'const db = require("better-sqlite3") (":memory:"); db.close()' 2>/dev/null; then
-  echo 'better-sqlite3 is not built for Node. Run: pnpm --dir node_modules/better-sqlite3 exec prebuild-install' >&2
-  exit 1
-fi
+# Focused and full tests both require the Node ABI. This is a no-op when the
+# installed binding already loads under Node.
+node scripts/ensure-sqlite-runtime.js node
 export REQUIRE_DB_TESTS=1
 
 pnpm run build:main

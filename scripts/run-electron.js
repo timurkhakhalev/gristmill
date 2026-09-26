@@ -6,10 +6,9 @@
  */
 
 const { spawn } = require("child_process");
+const { constants } = require("os");
 const path = require("path");
-
-// Remove ELECTRON_RUN_AS_NODE from environment
-delete process.env.ELECTRON_RUN_AS_NODE;
+const { ensureSqliteRuntime } = require("./ensure-sqlite-runtime");
 
 // Get the app directory (parent of scripts directory)
 const appDir = path.resolve(__dirname, "..");
@@ -36,39 +35,45 @@ function resolveElectronPath() {
       "[run-electron] If that still fails, remove node_modules and run npm install again."
     );
     console.error(err && err.stack ? err.stack : err);
-    process.exit(1);
+    throw err;
   }
 }
 
-// Get the electron path
-const electronPath = resolveElectronPath();
-
-// Pass through any command line arguments
-const args = process.argv.slice(2);
-
-console.log("[run-electron] Starting Electron with cleaned environment...");
-console.log("[run-electron] Electron path:", electronPath);
-console.log("[run-electron] App dir:", appDir);
-console.log("[run-electron] Args:", args);
-
-// Dev-only: OPENHERCULES_DEBUG_CDP=<port> exposes the Chrome DevTools Protocol so tools
-// can inspect the renderers (used for animation/window diagnostics).
-const chromiumFlags = [];
-if (process.env.OPENHERCULES_DEBUG_CDP) {
-  chromiumFlags.push(`--remote-debugging-port=${process.env.OPENHERCULES_DEBUG_CDP}`);
+async function runElectron({
+  ensureRuntime = ensureSqliteRuntime,
+  spawnProcess = spawn,
+  electronPath,
+  args = process.argv.slice(2),
+} = {}) {
+  await ensureRuntime("electron");
+  const binary = electronPath || resolveElectronPath();
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  // Dev-only: expose CDP when requested, while preserving app arguments.
+  const chromiumFlags = env.OPENHERCULES_DEBUG_CDP
+    ? [`--remote-debugging-port=${env.OPENHERCULES_DEBUG_CDP}`]
+    : [];
+  console.log("[run-electron] Starting Electron:", binary, appDir, args);
+  return spawnProcess(binary, [...chromiumFlags, appDir, ...args], {
+    stdio: "inherit",
+    env,
+    cwd: appDir,
+  });
 }
-const appArgs = args;
-const child = spawn(electronPath, [...chromiumFlags, appDir, ...appArgs], {
-  stdio: "inherit",
-  env: process.env,
-  cwd: appDir,
-});
 
-child.on("close", (code) => {
-  process.exit(code || 0);
-});
+module.exports = { runElectron };
 
-child.on("error", (err) => {
-  console.error("[run-electron] Failed to start Electron:", err);
-  process.exit(1);
-});
+if (require.main === module) {
+  runElectron().then((child) => {
+    child.on("close", (code, signal) => {
+      process.exit(code ?? (signal ? 128 + (constants.signals[signal] || 1) : 1));
+    });
+    child.on("error", (err) => {
+      console.error("[run-electron] Failed to start Electron:", err);
+      process.exit(1);
+    });
+  }).catch((error) => {
+    console.error("[run-electron] Failed to prepare or start Electron:", error);
+    process.exitCode = 1;
+  });
+}

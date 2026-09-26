@@ -24,7 +24,7 @@ import {
   type MeetingIdentity,
 } from "../../utils/llmTranscript";
 import type { MentionPerson } from "../../utils/mentionMarkdown";
-import type { CalendarAttendee } from "../../contracts/calendar";
+import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import {
   useNotes,
   useSpaces,
@@ -248,16 +248,18 @@ export default function PersonalNotesView({
     [activeNote, folders]
   );
 
-  const [calendarEventName, setCalendarEventName] = useState<string | null>(null);
+  const [calendarEvent, setCalendarEvent] = useState<CalendarEvent | null>(null);
   useEffect(() => {
     if (!activeNote?.calendar_event_id) {
-      setCalendarEventName(null);
+      setCalendarEvent(null);
       return;
     }
     window.electronAPI.gcalGetEvent(activeNote.calendar_event_id).then((result) => {
-      setCalendarEventName(result?.success && result.event?.summary ? result.event.summary : null);
+      setCalendarEvent(result?.success ? result.event : null);
     });
   }, [activeNote?.calendar_event_id]);
+
+  const calendarEventName = calendarEvent?.summary ?? null;
 
   const startRecording = useCallback(
     () => startRecordingForNote(activeNote ?? null),
@@ -589,7 +591,7 @@ export default function PersonalNotesView({
               onSetSessionDiarizationEnabled={setSessionDiarizationEnabled}
               onSetSessionExpectedCount={setSessionExpectedCount}
               folderName={activeFolderName}
-              calendarEventName={calendarEventName}
+              calendarEvent={calendarEvent}
               folders={editorFolders}
               onMoveToFolder={handleMoveToFolder}
               onCreateFolderAndMove={handleCreateFolderAndMove}

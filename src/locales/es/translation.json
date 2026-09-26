@@ -1505,7 +1505,11 @@
       "addAttendees": "Agregar asistentes",
       "addPlaceholder": "Agregar asistentes...",
       "typeEmail": "Escribe un correo para agregar...",
-      "me": "(yo)"
+      "me": "(yo)",
+      "openInCalendar": "Abrir en el calendario",
+      "copyEmail": "Copiar correo",
+      "emailCopied": "Correo copiado",
+      "removeAttendee": "Quitar asistente"
     },
     "upload": {
       "title": "Subir audio",

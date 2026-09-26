@@ -1505,7 +1505,11 @@
       "addAttendees": "新增與會者",
       "addPlaceholder": "新增與會者...",
       "typeEmail": "輸入電子郵件以新增...",
-      "me": "（我）"
+      "me": "（我）",
+      "openInCalendar": "在行事曆中開啟",
+      "copyEmail": "複製電子郵件",
+      "emailCopied": "已複製電子郵件",
+      "removeAttendee": "移除與會者"
     },
     "upload": {
       "title": "上傳音訊",

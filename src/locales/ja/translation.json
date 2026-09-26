@@ -1478,7 +1478,11 @@
       "addAttendees": "参加者を追加",
       "addPlaceholder": "参加者を追加...",
       "typeEmail": "メールアドレスを入力して追加...",
-      "me": "（自分）"
+      "me": "（自分）",
+      "openInCalendar": "カレンダーで開く",
+      "copyEmail": "メールをコピー",
+      "emailCopied": "メールをコピーしました",
+      "removeAttendee": "参加者を削除"
     },
     "context": {
       "moveToFolder": "フォルダに移動",

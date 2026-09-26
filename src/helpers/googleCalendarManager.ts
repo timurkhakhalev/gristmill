@@ -53,6 +53,7 @@ interface GoogleEventItem {
   transparency?: string;
   attendees?: GoogleAttendee[];
   hangoutLink?: string;
+  htmlLink?: string;
   location?: string;
   description?: string;
   conferenceData?: unknown;
@@ -354,6 +355,7 @@ export class GoogleCalendarManager {
         hangout_link:
           item.hangoutLink || extractMeetingUrl([item.location, item.description]) || null,
         conference_data: item.conferenceData ? JSON.stringify(item.conferenceData) : null,
+        event_url: item.htmlLink || null,
         organizer_email: item.organizer?.email || null,
         attendees_count: item.attendees?.length || 0,
         attendees: item.attendees

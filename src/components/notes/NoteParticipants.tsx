@@ -1,18 +1,110 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Calendar, ChevronDown, Users, X } from "../icons";
+import { Calendar, Check, ChevronDown, Copy, ExternalLink, Trash2, Users } from "../icons";
 import { cn } from "../lib/utils";
 import { NOTE_META_CHIP_CLASS } from "./shared";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
 import PersonAvatar from "../ui/PersonAvatar";
-import type { CalendarAttendee } from "../../contracts/calendar";
+import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import { syncSessionExpectedCountFromParticipants } from "../../stores/meetingRecordingStore";
+import { getMeetingJoinUrl } from "../../helpers/meetingJoinUrl";
+import { openExternalLink } from "../../utils/externalLinks";
+import { parseEventDate } from "../../utils/dateFormatting";
+import { useUiLocale } from "../../hooks/useUiLocale";
 
 const MAX_STACKED_AVATARS = 2;
+
+/** Local date + time range for the event; all-day events show the date only. */
+function formatEventWhen(event: CalendarEvent, locale: string): string {
+  const start = parseEventDate(event.start_time);
+  if (!start) return "";
+  const datePart = start.toLocaleDateString(locale, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const end = parseEventDate(event.end_time);
+  if (event.is_all_day === 1 || !end) return datePart;
+  const time = (d: Date) => d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+  const endPart =
+    start.toDateString() === end.toDateString()
+      ? time(end)
+      : `${end.toLocaleDateString(locale, { month: "short", day: "numeric" })} ${time(end)}`;
+  return `${datePart} · ${time(start)} – ${endPart}`;
+}
+
+function participantLabel(p: CalendarAttendee): string {
+  return p.displayName || p.email.split("@")[0];
+}
+
+/** Full name, email and copy action for one attendee, opened on click or focus. */
+function AttendeeCard({
+  attendee,
+  onRemove,
+}: {
+  attendee: CalendarAttendee;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const copyEmail = useCallback(() => {
+    navigator.clipboard
+      .writeText(attendee.email)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {});
+  }, [attendee.email]);
+
+  return (
+    <PopoverContent className="w-64 p-3">
+      <div className="flex items-center gap-2.5">
+        <PersonAvatar
+          email={attendee.email}
+          displayName={attendee.displayName}
+          size={36}
+        />
+        <div className="min-w-0 flex-1">
+          <p dir="auto" className="truncate text-sm font-medium text-foreground">
+            {participantLabel(attendee)}
+            {attendee.self && (
+              <span className="ms-1 font-normal text-muted">{t("notes.participants.me", "(me)")}</span>
+            )}
+          </p>
+          <div className="mt-0.5 flex items-center gap-1">
+            <span dir="ltr" className="min-w-0 flex-1 truncate text-xs text-muted">
+              {attendee.email}
+            </span>
+            <button
+              type="button"
+              onClick={copyEmail}
+              aria-label={copied ? t("notes.participants.emailCopied", "Email copied") : t("notes.participants.copyEmail", "Copy email")}
+              className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40"
+            >
+              {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={t("notes.participants.removeAttendee", "Remove attendee")}
+          className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </PopoverContent>
+  );
+}
 
 interface NoteParticipantsProps {
   noteId: number;
   participants: CalendarAttendee[];
+  /** The linked calendar event; when absent the card shows only participants. */
+  event?: CalendarEvent | null;
   /** When present the capsule leads with the note's date, so date and people read as one fact. */
   dateLabel?: string;
   dateTitle?: string;
@@ -22,11 +114,13 @@ interface NoteParticipantsProps {
 export default function NoteParticipants({
   noteId,
   participants,
+  event,
   dateLabel,
   dateTitle,
   preview = false,
 }: NoteParticipantsProps) {
   const { t } = useTranslation();
+  const locale = useUiLocale();
   const [localParticipants, setLocalParticipants] = useState(participants);
   const [search, setSearch] = useState("");
   const [suggestions, setSuggestions] = useState<
@@ -109,6 +203,10 @@ export default function NoteParticipants({
     return Array.from(groups.entries());
   }, [localParticipants]);
 
+  const joinUrl = useMemo(() => (event ? getMeetingJoinUrl(event) : null), [event]);
+  const eventUrl = event?.event_url ?? null;
+  const when = useMemo(() => (event ? formatEventWhen(event, locale) : ""), [event, locale]);
+
   const chipLabel =
     localParticipants.length > 0
       ? `${localParticipants.length} ${localParticipants.length === 1 ? t("notes.participants.attendee", "attendee") : t("notes.participants.attendees", "attendees")}`
@@ -162,7 +260,38 @@ export default function NoteParticipants({
           <ChevronDown size={14} className="shrink-0 text-muted" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0">
+      <PopoverContent className="w-80 p-0">
+        {event && (
+          <div className="border-b border-border/70 p-3">
+            <p dir="auto" className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
+              {event.summary || t("upcoming.untitledEvent", "Untitled Event")}
+            </p>
+            {when && <p className="mt-0.5 text-xs tabular-nums text-muted">{when}</p>}
+            {joinUrl && (
+              <button
+                type="button"
+                onClick={() => openExternalLink(joinUrl)}
+                className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground/80 transition-colors hover:bg-default focus-visible:ring-1 focus-visible:ring-ring/40"
+              >
+                <ExternalLink size={12} className="shrink-0 text-muted" />
+                <span dir="ltr" className="truncate text-start">
+                  {joinUrl.replace(/^https?:\/\//, "")}
+                </span>
+              </button>
+            )}
+            {eventUrl && (
+              <button
+                type="button"
+                onClick={() => openExternalLink(eventUrl)}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-default focus-visible:ring-1 focus-visible:ring-ring/40"
+              >
+                <Calendar size={14} className="shrink-0" />
+                {t("notes.participants.openInCalendar", "Open in calendar")}
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="p-2 border-b border-border/70">
           <input
             dir="auto"
@@ -205,28 +334,23 @@ export default function NoteParticipants({
                 {domain}
               </div>
               {members.map((p) => (
-                <div
-                  key={p.email}
-                  className="group flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-default transition-colors"
-                >
-                  <PersonAvatar email={p.email} displayName={p.displayName} />
-
-                  <span dir="auto" className="flex-1 min-w-0 truncate text-xs text-foreground/70">
-                    {p.displayName || p.email.split("@")[0]}
-                    {p.self && (
-                      <span className="ms-1 text-muted">
-                        {t("notes.participants.me", "(me)")}
+                <Popover key={p.email}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-default focus-visible:bg-default focus-visible:ring-1 focus-visible:ring-ring/40"
+                    >
+                      <PersonAvatar email={p.email} displayName={p.displayName} />
+                      <span dir="auto" className="min-w-0 flex-1 truncate text-xs text-foreground/70">
+                        {participantLabel(p)}
+                        {p.self && (
+                          <span className="ms-1 text-muted">{t("notes.participants.me", "(me)")}</span>
+                        )}
                       </span>
-                    )}
-                  </span>
-
-                  <button
-                    onClick={() => removeParticipant(p.email)}
-                    className="shrink-0 opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted hover:text-muted transition-opacity cursor-pointer"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
+                    </button>
+                  </PopoverTrigger>
+                  <AttendeeCard attendee={p} onRemove={() => removeParticipant(p.email)} />
+                </Popover>
               ))}
             </div>
           ))}

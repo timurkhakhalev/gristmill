@@ -1579,7 +1579,11 @@
       "addAttendees": "Teilnehmer hinzufügen",
       "addPlaceholder": "Teilnehmer hinzufügen...",
       "typeEmail": "E-Mail eingeben zum Hinzufügen...",
-      "me": "(ich)"
+      "me": "(ich)",
+      "openInCalendar": "Im Kalender öffnen",
+      "copyEmail": "E-Mail kopieren",
+      "emailCopied": "E-Mail kopiert",
+      "removeAttendee": "Teilnehmer entfernen"
     },
     "upload": {
       "title": "Audio hochladen",

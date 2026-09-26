@@ -172,6 +172,25 @@ test("calendar availability fields are persisted with events", (t) => {
   db.db.close();
 });
 
+test("upsertCalendarEvents round-trips event_url and defaults it to null", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+
+  db.upsertCalendarEvents([
+    restEvent("google", "google-calendar", "with-url", {
+      event_url: "https://www.google.com/calendar/event?eid=with-url",
+    }),
+    restEvent("google", "google-calendar", "without-url"),
+  ]);
+
+  assert.equal(
+    db.getCalendarEventById("with-url").event_url,
+    "https://www.google.com/calendar/event?eid=with-url"
+  );
+  assert.equal(db.getCalendarEventById("without-url").event_url, null);
+  db.db.close();
+});
+
 test("availability range query uses overlap boundaries and selected calendars", (t) => {
   const db = createDb(t);
   if (!db) return;

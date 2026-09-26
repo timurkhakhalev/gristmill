@@ -209,13 +209,18 @@ function snapshotDatabase(source: string, target: string, name: string): boolean
   }
 }
 
+// A dev profile symlinked (or otherwise aliased) to the production profile
+// must stop startup, not just skip the snapshot: the app itself would open
+// and write its database inside the production profile. Applies to explicit
+// --user-data-dir paths too — every development launch.
+export function devProfileAliasesProduction(): boolean {
+  return sameDir(sourceProfileDir(), targetProfileDir());
+}
+
 export function snapshotProductionProfileForDev(): boolean {
   const source = sourceProfileDir();
   const target = targetProfileDir();
-  // A dev profile symlinked (or otherwise aliased) to the production profile
-  // must stop startup, not just skip the snapshot: the app itself would open
-  // and write its database inside the production profile.
-  if (sameDir(source, target)) {
+  if (devProfileAliasesProduction()) {
     debugLogger.warn(
       "dev profile resolves to the production profile; refusing to start",
       { source, target },

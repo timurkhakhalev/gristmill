@@ -181,14 +181,21 @@ if (!gotSingleInstanceLock) {
 
 // Dev channel: seed the isolated dev profile from a one-way snapshot of the
 // production profile (issue #86) before anything reads userData. Explicit
-// --user-data-dir smoke/debug profiles stay isolated. Runs AFTER the
-// single-instance lock so two concurrent dev launches cannot race the
-// snapshot; a failed database snapshot refuses to start (the app would
-// otherwise create an empty dev database and mask the failure forever).
-if (APP_CHANNEL === "development" && gotSingleInstanceLock && !app.commandLine.getSwitchValue("user-data-dir")) {
-  const snapshotOk = require("./src/helpers/devSnapshot.js").snapshotProductionProfileForDev();
-  if (!snapshotOk) {
-    console.error("[devSnapshot] production profile snapshot failed; exiting. The next launch retries.");
+// --user-data-dir smoke/debug profiles stay isolated and receive no
+// production data. Both run AFTER the single-instance lock so two concurrent
+// dev launches cannot race the snapshot; failures refuse to start (the app
+// would otherwise create an empty dev database and mask the failure forever).
+if (APP_CHANNEL === "development" && gotSingleInstanceLock) {
+  const devSnapshot = require("./src/helpers/devSnapshot.js");
+  // The alias refusal applies to every development launch, including explicit
+  // --user-data-dir: a dev build must never write inside the production
+  // profile through any path spelling.
+  let devOk = !devSnapshot.devProfileAliasesProduction();
+  if (devOk && !app.commandLine.getSwitchValue("user-data-dir")) {
+    devOk = devSnapshot.snapshotProductionProfileForDev();
+  }
+  if (!devOk) {
+    console.error("[devSnapshot] dev profile check failed; exiting. The next launch retries.");
     app.exit(1);
   }
 }

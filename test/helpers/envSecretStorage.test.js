@@ -116,6 +116,7 @@ test.afterEach(() => {
   delete process.env.OPENAI_API_KEY;
   delete process.env.CUSTOM_CLEANUP_API_KEY;
   delete process.env.CUSTOM_REASONING_API_KEY;
+  delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
   delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
 });
 
@@ -217,7 +218,7 @@ test("environment discards plaintext .env secrets and saves new keys encrypted",
   const fx = createFixture();
   try {
     const envPath = path.join(fx.userData, ".env");
-    fs.writeFileSync(envPath, "OPENAI_API_KEY=plaintext-discard-me\nGOOGLE_CALENDAR_CLIENT_SECRET=old-calendar-secret\nUI_LANGUAGE=ru\n");
+    fs.writeFileSync(envPath, "OPENAI_API_KEY=plaintext-discard-me\nGOOGLE_CALENDAR_CLIENT_ID=desktop-client-id\nGOOGLE_CALENDAR_CLIENT_SECRET=old-calendar-secret\nUI_LANGUAGE=ru\n");
     fs.writeFileSync(`${envPath}.tmp`, "OPENAI_API_KEY=stale-temp-secret\n");
     process.env.OPENAI_API_KEY = "shell-secret";
     process.env.GOOGLE_CALENDAR_CLIENT_SECRET = "shell-calendar-secret";
@@ -230,10 +231,13 @@ test("environment discards plaintext .env secrets and saves new keys encrypted",
     const envContent = fs.readFileSync(envPath, "utf8");
     assert.ok(!envContent.includes("plaintext-discard-me"), "secret stripped from .env");
     assert.ok(!envContent.includes("old-calendar-secret"), "unused desktop OAuth secret stripped from .env");
+    assert.equal(process.env.GOOGLE_CALENDAR_CLIENT_ID, "desktop-client-id");
     assert.ok(envContent.includes('UI_LANGUAGE="ru"'), "non-secret settings preserved");
     assert.equal(fs.existsSync(`${envPath}.tmp`), false, "stale secret temp file removed");
     assert.equal(process.env.OPENAI_API_KEY, undefined);
     assert.equal(process.env.GOOGLE_CALENDAR_CLIENT_SECRET, undefined);
+    await manager.saveAllKeysToEnvFile();
+    assert.ok(fs.readFileSync(envPath, "utf8").includes("GOOGLE_CALENDAR_CLIENT_ID=desktop-client-id"));
     assert.equal(fs.existsSync(path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc")), false);
 
     assert.deepEqual(await manager.saveOpenAIKey("new-secret"), { success: true });

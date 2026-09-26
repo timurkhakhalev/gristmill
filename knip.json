@@ -1,0 +1,20 @@
+{
+  "entry": [
+    "main.ts",
+    "preload.ts",
+    "src/main.tsx",
+    "src/workers/onnxWorker.ts",
+    "src/vite.config.mjs",
+    "src/eslint.config.js",
+    "electron-builder.dev.cjs",
+    "scripts/afterPack.js",
+    "scripts/beforeBuild.js",
+    "scripts/run-tests.js",
+    "scripts/smoke-electron.js",
+    "scripts/meeting-diarization-eval.js",
+    "scripts/sync-nucleo-icons.js",
+    "test/helpers/audioFileUploadElectron.cjs",
+    "test/helpers/devRendererOriginElectron.cjs",
+    "test/**/*.test.{js,ts}"
+  ]
+}

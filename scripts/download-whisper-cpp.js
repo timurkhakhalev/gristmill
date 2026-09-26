@@ -149,21 +149,8 @@ async function downloadAllBinaries(release, isForce, download = downloadBinary) 
 }
 
 async function main() {
-  console.log(`\n[whisper-server] Using pinned version: ${WHISPER_CPP_TAG}`);
-  const release = await getRelease();
-
-  if (!release) {
-    console.error(`[whisper-server] Could not fetch release from ${WHISPER_CPP_REPO}`);
-    console.log(`\nMake sure release exists: https://github.com/${WHISPER_CPP_REPO}/releases`);
-    process.exitCode = 1;
-    return;
-  }
-
-  console.log(`\nDownloading whisper-server binaries (${release.tag})...\n`);
-
-  fs.mkdirSync(BIN_DIR, { recursive: true });
-
   const args = parseArgs();
+  fs.mkdirSync(BIN_DIR, { recursive: true });
 
   if (args.isCurrent) {
     if (!BINARIES[args.platformArch]) {
@@ -172,7 +159,28 @@ async function main() {
       return;
     }
 
-    console.log(`Downloading for target platform (${args.platformArch}):`);
+    // Skip before fetching release info so an installed asset costs no network.
+    const config = BINARIES[args.platformArch];
+    const installMarkerPath = path.join(BIN_DIR, `.whisper-cpp-${args.platformArch}.json`);
+    if (
+      !args.isForce &&
+      isCompleteInstall(installMarkerPath, path.join(BIN_DIR, config.outputName), config)
+    ) {
+      console.log(`  [server] ${args.platformArch}: Already exists (use --force to re-download)`);
+      return;
+    }
+
+    console.log(`\n[whisper-server] Using pinned version: ${WHISPER_CPP_TAG}`);
+    const release = await getRelease();
+
+    if (!release) {
+      console.error(`[whisper-server] Could not fetch release from ${WHISPER_CPP_REPO}`);
+      console.log(`\nMake sure release exists: https://github.com/${WHISPER_CPP_REPO}/releases`);
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log(`\nDownloading whisper-server binaries (${release.tag})...`);
     const ok = await downloadBinary(
       args.platformArch,
       BINARIES[args.platformArch],
@@ -189,6 +197,16 @@ async function main() {
       cleanupFiles(BIN_DIR, "whisper-server", `whisper-server-${args.platformArch}`);
     }
   } else {
+    console.log(`\n[whisper-server] Using pinned version: ${WHISPER_CPP_TAG}`);
+    const release = await getRelease();
+
+    if (!release) {
+      console.error(`[whisper-server] Could not fetch release from ${WHISPER_CPP_REPO}`);
+      console.log(`\nMake sure release exists: https://github.com/${WHISPER_CPP_REPO}/releases`);
+      process.exitCode = 1;
+      return;
+    }
+
     console.log("Downloading binaries for all platforms:");
     const allSucceeded = await downloadAllBinaries(release, args.isForce);
     if (!allSucceeded) process.exitCode = 1;

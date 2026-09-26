@@ -23,6 +23,7 @@ import { AppleCalendarManager } from "./src/helpers/appleCalendarManager.js";
 import { CalendarReminderScheduler } from "./src/helpers/calendarReminderScheduler.js";
 import { MeetingProcessDetector } from "./src/helpers/meetingProcessDetector.js";
 import { AudioActivityDetector } from "./src/helpers/audioActivityDetector.js";
+import { MeetingCallDetector } from "./src/helpers/meetingCallDetector.js";
 import {
   collectAudioCaptureHelperPids,
   createExcludedProcessIdProvider,
@@ -373,7 +374,8 @@ function initializeCoreManagers(): void {
       () => initializedMeetingProcessDetector.getDetectedProcesses().length > 0
     ),
     initializedWindowManager,
-    initializedDatabaseManager
+    initializedDatabaseManager,
+    { callDetector: new MeetingCallDetector() }
   );
   meetingDetectionEngine = initializedMeetingDetectionEngine;
   initializedWindowManager.meetingDetectionEngine = initializedMeetingDetectionEngine;

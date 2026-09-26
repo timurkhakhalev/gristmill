@@ -663,9 +663,9 @@ test("a post-dictation queue flush holds detections while the meeting session is
   engine.stop();
 });
 
-test("a detection-started recording re-enables prompts once its session ends", async (t) => {
+test("a detection-started recording allows a later confirmed call", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { audioActivityDetector, clock, engine, owner, shownNotifications } = createEngine();
+  const { clock, engine, owner, shownNotifications } = createEngine();
   engine.setMeetingModeActive(true);
   engine.setUserRecording(true);
   await engine.beginRecordingSession({
@@ -678,13 +678,10 @@ test("a detection-started recording re-enables prompts once its session ends", a
   engine.endRecordingSession("meeting-1");
   engine.setUserRecording(false);
   t.mock.timers.tick(POST_RECORDING_COOLDOWN_MS);
-  audioActivityDetector.emit("sustained-audio-detected", {
-    durationMs: 2000,
-    detectedAt: clock.now(),
-  });
+  engine._handleDetection("audio", "zoom:later", { detectedAt: clock.now(), service: "zoom" });
 
   assert.equal(shownNotifications.length, 1);
-  assert.equal(shownNotifications[0].detectionId, "audio:sustained-audio");
+  assert.equal(shownNotifications[0].detectionId, "audio:zoom:later");
   engine.stop();
 });
 

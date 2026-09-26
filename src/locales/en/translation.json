@@ -2119,7 +2119,7 @@
   "meetingNotification": {
     "title": "Meeting detected",
     "body": {
-      "detected": "It sounds like you're in a meeting. Want to take notes?",
+      "detected": "You're in a meeting. Want to take notes?",
       "starting": "Your meeting is starting. Want to take notes?",
       "underway": "It sounds like your meeting is underway. Want to take notes?"
     },
@@ -2289,6 +2289,7 @@
     "permissions": "Recording permissions",
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
+    "accessibilityDetection": "For meeting recording reminders.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },

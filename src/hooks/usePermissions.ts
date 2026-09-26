@@ -178,8 +178,12 @@ export const usePermissions = (
       return;
     }
 
-    // Open System Settings directly — avoids the undismissable macOS TCC dialog
-    // that isTrustedAccessibilityClient(true) would show.
+    // Register this app with macOS before opening the list of allowed apps.
+    const granted = await window.electronAPI?.promptAccessibilityPermission?.();
+    if (granted) {
+      setAccessibilityPermissionGranted(true);
+      return;
+    }
     await openSystemSettings("accessibility", window.electronAPI?.openAccessibilitySettings);
   }, [openSystemSettings, setAccessibilityPermissionGranted]);
 

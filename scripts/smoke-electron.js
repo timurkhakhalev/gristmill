@@ -102,19 +102,35 @@ async function main() {
     }
     assert.ok(initialReady, "Initial renderer finishes loading before navigation");
     await evaluate(
-      `localStorage.setItem("uiLanguage", "en"); localStorage.setItem("onboardingCompleted", "true"); localStorage.setItem("noteFilesEnabled", "false");`
+      `localStorage.setItem("uiLanguage", "en"); localStorage.setItem("onboardingCompleted", "true"); localStorage.setItem("notesOnboardingComplete", "true"); localStorage.setItem("noteFilesEnabled", "false");`
     );
     await send("Page.reload");
     await new Promise((resolve) => setTimeout(resolve, 500));
     let text = "";
     for (let attempt = 0; attempt < 80; attempt++) {
       text = await evaluate("document.body.innerText");
-      if (text.includes("Notes")) break;
+      if (text.includes("Home")) break;
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
-    assert.match(text, /Notes/, "Notes opens by default");
+    assert.match(text, /Home/, "Home opens by default");
     assert.doesNotMatch(text, /OpenWhispr|Sign in|Upgrade to Pro/);
     if (expectDev) {
+      const debugSeed = await evaluate(`(async () => {
+        const result = await window.electronAPI.saveNote('Smoke debug note', '', 'personal');
+        return result.success;
+      })()`);
+      assert.ok(debugSeed, "Debug smoke note is created in the isolated profile");
+      await send("Page.reload");
+      let noteOpened = false;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        noteOpened = await evaluate(`(() => {
+          const button = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Smoke debug note');
+          button?.click(); return !!button;
+        })()`);
+        if (noteOpened) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.ok(noteOpened, "Home opens a note for Debug checks");
       let debugOpened = false;
       for (let attempt = 0; attempt < 40; attempt++) {
         debugOpened = await evaluate(`(() => {
@@ -188,16 +204,6 @@ async function main() {
     } else {
       assert.doesNotMatch(text, /Debug/, "Production app hides Debug menu");
     }
-    for (let attempt = 0; attempt < 60; attempt++) {
-      const completed = await evaluate(`(() => {
-        const button = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Get Started');
-        if (!button) return false;
-        button.click(); return true;
-      })()`);
-      if (completed) break;
-      if (attempt === 59) throw new Error("Notes onboarding did not render its completion button");
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
     const result = await evaluate(`(async () => {
       const api = window.electronAPI;
       await api.noteFilesSetEnabled(false);
@@ -247,7 +253,7 @@ async function main() {
           profile,
           checks: [
             "packaged startup",
-            "Notes default",
+            "Home default",
             expectDev ? "interactive in-memory Notes Debug states" : "Debug menu absent",
             "blank note",
             "folder",
@@ -257,7 +263,6 @@ async function main() {
             "dictionary",
             "snippets",
             "built-in actions",
-            "notes onboarding completion",
             "settings UI",
           ],
         },

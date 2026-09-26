@@ -285,6 +285,7 @@
     "buildMain": false,
     "files": [
       "test/config/rendererInferenceRemovalContract.test.js",
+      "test/config/colorSchemes.test.js",
       "test/helpers/appVersion.test.js",
       "test/helpers/autoStartPolicy.test.js",
       "test/helpers/chineseScript.test.js",

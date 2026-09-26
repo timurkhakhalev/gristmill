@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef } from "react";
+import type { ColorSchemeId } from "../config/colorSchemes";
 import { useSettingsStore, initializeSettings } from "../stores/settingsStore";
 import logger from "../utils/logger";
 import { useLocalStorage } from "./useLocalStorage";
@@ -95,6 +96,7 @@ export interface PrivacySettings {
 
 export interface ThemeSettings {
   theme: "light" | "dark" | "auto";
+  colorScheme: ColorSchemeId;
 }
 
 export interface ChatAgentSettings {
@@ -260,6 +262,7 @@ function useSettingsInternal() {
     meetingHotkeyLayoutMode: store.meetingHotkeyLayoutMode,
     setMeetingHotkeyLayoutMode: store.setMeetingHotkeyLayoutMode,
     theme: store.theme,
+    colorScheme: store.colorScheme,
     setUseLocalWhisper: store.setUseLocalWhisper,
     setWhisperModel: store.setWhisperModel,
     setUiLanguage: store.setUiLanguage,
@@ -305,6 +308,7 @@ function useSettingsInternal() {
     spokenLanguages: store.spokenLanguages,
     setSpokenLanguages: store.setSpokenLanguages,
     setTheme: store.setTheme,
+    setColorScheme: store.setColorScheme,
     notificationsEnabled: store.notificationsEnabled,
     setNotificationsEnabled: store.setNotificationsEnabled,
     notifyMeetingDetection: store.notifyMeetingDetection,

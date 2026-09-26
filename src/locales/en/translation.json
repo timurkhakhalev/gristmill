@@ -1119,6 +1119,18 @@
         "light": "Light",
         "dark": "Dark"
       },
+      "colorScheme": {
+        "label": "Colour scheme",
+        "description": "Accent colour and surface tint.",
+        "names": {
+          "lavender": "Lavender",
+          "indigo": "Indigo",
+          "amethyst": "Amethyst",
+          "magenta": "Magenta",
+          "lime": "Lime",
+          "graphite": "Graphite"
+        }
+      },
       "autoGenerateTitle": "Generate note titles",
       "autoGenerateTitleDescription": "Use the configured model to title notes.",
       "noteFiles": {

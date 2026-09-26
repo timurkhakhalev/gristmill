@@ -1079,6 +1079,18 @@
         "light": "Light",
         "dark": "Dark"
       },
+      "colorScheme": {
+        "label": "配色方案",
+        "description": "强调色与界面底色。",
+        "names": {
+          "lavender": "薰衣草",
+          "indigo": "靛蓝",
+          "amethyst": "紫水晶",
+          "magenta": "洋红",
+          "lime": "青柠",
+          "graphite": "石墨"
+        }
+      },
       "autoGenerateTitle": "Generate note titles",
       "autoGenerateTitleDescription": "Use the configured model to title notes.",
       "noteFiles": {

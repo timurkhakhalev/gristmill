@@ -1119,6 +1119,18 @@
         "light": "Light",
         "dark": "Dark"
       },
+      "colorScheme": {
+        "label": "Farbschema",
+        "description": "Akzentfarbe und Flächentönung.",
+        "names": {
+          "lavender": "Lavendel",
+          "indigo": "Indigo",
+          "amethyst": "Amethyst",
+          "magenta": "Magenta",
+          "lime": "Limette",
+          "graphite": "Graphit"
+        }
+      },
       "autoGenerateTitle": "Generate note titles",
       "autoGenerateTitleDescription": "Use the configured model to title notes.",
       "noteFiles": {

@@ -1079,6 +1079,18 @@
         "light": "Светлая",
         "dark": "Тёмная"
       },
+      "colorScheme": {
+        "label": "Цветовая схема",
+        "description": "Акцентный цвет и оттенок фона.",
+        "names": {
+          "lavender": "Лаванда",
+          "indigo": "Индиго",
+          "amethyst": "Аметист",
+          "magenta": "Маджента",
+          "lime": "Лайм",
+          "graphite": "Графит"
+        }
+      },
       "autoGenerateTitle": "Создавать заголовки заметок",
       "autoGenerateTitleDescription": "Использовать выбранную модель для заголовков.",
       "noteFiles": {

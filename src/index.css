@@ -6,28 +6,52 @@
    HeroUI reads these raw variables directly (bg-surface, text-muted, bg-accent…);
    the legacy Tailwind tokens in @theme below are aliases of the same values.
    accent = solid brand fill (buttons, selected controls), brand = brand text/tints. */
+/* Colour schemes (Settings → General → Colour scheme, src/config/colorSchemes.ts).
+   A scheme only sets these knobs; every token below derives from them.
+   --n-h/--n-c: hue and chroma of the neutral surfaces. --a-h/--a-c: accent hue and
+   chroma. --a-l: lightness of the solid accent fill, --a-fg: text on that fill,
+   --brand-l: lightness of accent-coloured text and tints. The default scheme
+   (lavender) lives in :root/.dark; the others override below. */
+:root {
+  --n-h: 260;
+  --n-c: 0.007;
+  --a-h: 288;
+  --a-c: 0.17;
+  --a-l: 0.53;
+  --a-fg: oklch(0.99 0 0);
+  --brand-l: 0.53;
+}
+.dark {
+  --a-l: 0.56;
+  --brand-l: 0.76;
+}
+
+/* Design tokens — single source of truth.
+   HeroUI reads these raw variables directly (bg-surface, text-muted, bg-accent…);
+   the legacy Tailwind tokens in @theme below are aliases of the same values.
+   accent = solid brand fill (buttons, selected controls), brand = brand text/tints. */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: oklch(0.2 calc(var(--n-c) * 0.5) var(--n-h));
   --surface: #ffffff;
-  --surface-secondary: #f5f5f6;
-  --surface-tertiary: #eeeef0;
+  --surface-secondary: oklch(0.968 var(--n-c) var(--n-h));
+  --surface-tertiary: oklch(0.948 var(--n-c) var(--n-h));
   --overlay: #ffffff;
-  --muted: #5f6068;
-  --subtle: #f4f4f5;
-  --default: #f0f0f2;
-  --default-foreground: #171717;
-  --accent: #7156c9;
-  --accent-foreground: #ffffff;
-  --brand: #7156c9;
+  --muted: oklch(0.49 calc(var(--n-c) * 1.5) var(--n-h));
+  --subtle: oklch(0.967 var(--n-c) var(--n-h));
+  --default: oklch(0.955 var(--n-c) var(--n-h));
+  --default-foreground: var(--foreground);
+  --accent: oklch(var(--a-l) var(--a-c) var(--a-h));
+  --accent-foreground: var(--a-fg);
+  --brand: oklch(var(--brand-l) var(--a-c) var(--a-h));
   --segment: #ffffff;
-  --segment-foreground: #171717;
-  --border: #e4e4e7;
-  --border-hover: #d4d4d8;
-  --surface-window: #f7f7f8;
-  --separator: #ececef;
-  --focus: #7156c9;
-  --link: #7156c9;
+  --segment-foreground: var(--foreground);
+  --border: oklch(0.918 calc(var(--n-c) * 1.2) var(--n-h));
+  --border-hover: oklch(0.87 calc(var(--n-c) * 1.4) var(--n-h));
+  --surface-window: oklch(0.975 var(--n-c) var(--n-h));
+  --separator: oklch(0.94 var(--n-c) var(--n-h));
+  --focus: var(--brand);
+  --link: var(--brand);
   --success: #16a34a;
   --success-foreground: #ffffff;
   --warning: #b45309;
@@ -36,7 +60,7 @@
   --danger-foreground: #ffffff;
   --info: #4577e9;
   --field-background: #ffffff;
-  --field-border: #e4e4e7;
+  --field-border: var(--border);
   --field-border-width: 1px;
   --radius: 0.5rem;
   /* Icon-only controls rely on tooltips, so show them sooner than HeroUI's 1.5s. */
@@ -44,27 +68,24 @@
   --tooltip-close-delay: 0ms;
 }
 .dark {
-  --background: oklch(0.22 0.006 260);
-  --foreground: oklch(0.93 0 0);
-  --surface: oklch(0.26 0.007 260);
-  --surface-secondary: oklch(0.29 0.008 260);
-  --surface-tertiary: oklch(0.32 0.009 260);
-  --overlay: oklch(0.28 0.008 260);
-  --muted: oklch(0.7 0.006 260);
-  --subtle: oklch(0.25 0.007 260);
-  --default: oklch(0.3 0.008 260);
-  --default-foreground: oklch(0.93 0 0);
-  --accent: oklch(0.56 0.17 288);
-  --accent-foreground: oklch(0.99 0 0);
-  --brand: oklch(0.76 0.13 290);
-  --segment: oklch(0.34 0.01 260);
+  --background: oklch(0.22 var(--n-c) var(--n-h));
+  --foreground: oklch(0.93 calc(var(--n-c) * 0.3) var(--n-h));
+  --surface: oklch(0.26 var(--n-c) var(--n-h));
+  --surface-secondary: oklch(0.29 calc(var(--n-c) * 1.15) var(--n-h));
+  --surface-tertiary: oklch(0.32 calc(var(--n-c) * 1.3) var(--n-h));
+  --overlay: oklch(0.28 calc(var(--n-c) * 1.15) var(--n-h));
+  --muted: oklch(0.7 var(--n-c) var(--n-h));
+  --subtle: oklch(0.25 var(--n-c) var(--n-h));
+  --default: oklch(0.3 calc(var(--n-c) * 1.15) var(--n-h));
+  --segment: oklch(0.34 calc(var(--n-c) * 1.4) var(--n-h));
   --segment-foreground: oklch(0.96 0 0);
-  --border: oklch(0.33 0.007 260);
-  --border-hover: oklch(0.42 0.01 260);
-  --surface-window: oklch(0.19 0.005 260);
-  --separator: oklch(0.3 0.007 260);
-  --focus: oklch(0.72 0.14 290);
-  --link: oklch(0.78 0.12 290);
+  --brand: oklch(var(--brand-l) calc(var(--a-c) * 0.76) var(--a-h));
+  --border: oklch(0.33 var(--n-c) var(--n-h));
+  --border-hover: oklch(0.42 calc(var(--n-c) * 1.4) var(--n-h));
+  --surface-window: oklch(0.19 calc(var(--n-c) * 0.7) var(--n-h));
+  --separator: oklch(0.3 var(--n-c) var(--n-h));
+  --focus: oklch(calc(var(--brand-l) - 0.04) calc(var(--a-c) * 0.82) var(--a-h));
+  --link: oklch(calc(var(--brand-l) + 0.02) calc(var(--a-c) * 0.7) var(--a-h));
   --success: oklch(0.72 0.17 150);
   --success-foreground: oklch(0.18 0 0);
   --warning: oklch(0.8 0.14 75);
@@ -72,8 +93,74 @@
   --danger: oklch(0.64 0.2 25);
   --danger-foreground: oklch(0.99 0 0);
   --info: oklch(0.7 0.15 240);
-  --field-background: oklch(0.2 0.005 260);
-  --field-border: oklch(0.33 0.007 260);
+  --field-background: oklch(0.2 calc(var(--n-c) * 0.7) var(--n-h));
+}
+
+/* Alternative schemes. useTheme puts data-color-scheme on <html> and <body>
+   (both carry .dark too), so .dark[data-color-scheme] outranks the .dark knobs. */
+[data-color-scheme="indigo"] {
+  --n-h: 270;
+  --n-c: 0.012;
+  --a-h: 276;
+  --a-c: 0.16;
+  --a-l: 0.52;
+  --brand-l: 0.52;
+}
+.dark[data-color-scheme="indigo"] {
+  --a-l: 0.6;
+  --brand-l: 0.78;
+}
+[data-color-scheme="amethyst"] {
+  --n-h: 315;
+  --n-c: 0.013;
+  --a-h: 305;
+  --a-c: 0.19;
+  --a-l: 0.52;
+  --brand-l: 0.52;
+}
+.dark[data-color-scheme="amethyst"] {
+  --a-l: 0.72;
+  --a-fg: oklch(0.18 0.01 315);
+  --brand-l: 0.8;
+}
+[data-color-scheme="magenta"] {
+  --n-h: 340;
+  --n-c: 0.011;
+  --a-h: 345;
+  --a-c: 0.18;
+  --a-l: 0.54;
+  --brand-l: 0.52;
+}
+.dark[data-color-scheme="magenta"] {
+  --a-l: 0.72;
+  --a-fg: oklch(0.18 0.01 340);
+  --brand-l: 0.8;
+}
+[data-color-scheme="lime"] {
+  --n-h: 105;
+  --n-c: 0.008;
+  --a-h: 130;
+  --a-c: 0.16;
+  --a-l: 0.5;
+  --brand-l: 0.48;
+}
+.dark[data-color-scheme="lime"] {
+  --a-c: 0.17;
+  --a-l: 0.84;
+  --a-fg: oklch(0.2 0.01 105);
+  --brand-l: 0.86;
+}
+[data-color-scheme="graphite"] {
+  --n-h: 260;
+  --n-c: 0.002;
+  --a-h: 263;
+  --a-c: 0.19;
+  --a-l: 0.52;
+  --brand-l: 0.52;
+}
+.dark[data-color-scheme="graphite"] {
+  --a-l: 0.56;
+  --brand-l: 0.76;
 }
 
 /* HeroUI adjustments shared by every screen. */
@@ -196,9 +283,13 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.16),
     inset 0 -1px 1px rgba(0, 0, 0, 0.12);
   /* The fill under that rim: Button default, mic/send circles, the onboarding brand tile. */
-  --gradient-brand-glass: linear-gradient(180deg, #9277e4 0%, #7156c9 100%);
+  --gradient-brand-glass: linear-gradient(
+    180deg,
+    oklch(calc(var(--a-l) + 0.1) calc(var(--a-c) * 0.9) var(--a-h)) 0%,
+    var(--accent) 100%
+  );
   /* The brand tile floats over the onboarding hero, so it adds a soft coloured lift. */
-  --shadow-brand-tile: var(--shadow-brand-glass), 0 10px 24px -8px rgb(52 102 226 / 0.45);
+  --shadow-brand-tile: var(--shadow-brand-glass), 0 10px 24px -8px color-mix(in oklch, var(--accent) 45%, transparent);
 }
 
 .dark {
@@ -211,7 +302,7 @@
   /* Premium effects */
   --shadow-metallic-dark: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 8px rgba(0, 0, 0, 0.2);
   --shadow-selected-glow:
-    inset 0 0 0 1px oklch(0.65 0.2 260 / 0.2), 0 0 16px -4px oklch(0.65 0.2 260 / 0.2);
+    inset 0 0 0 1px color-mix(in oklch, var(--brand) 20%, transparent), 0 0 16px -4px color-mix(in oklch, var(--brand) 20%, transparent);
   --shadow-card-hover-subtle: 0 2px 8px -2px rgba(0, 0, 0, 0.12);
 
   /* Liquid-glass edge — faint rim on charcoal, deeper lift */
@@ -1071,7 +1162,7 @@ a:hover {
   height: 1px;
   background: linear-gradient(
     90deg,
-    oklch(0.65 0.2 260 / 0.5),
+    color-mix(in oklch, var(--brand) 50%, transparent),
     oklch(0.7 0.18 280 / 0.3),
     transparent 80%
   );
@@ -1149,11 +1240,11 @@ a:hover {
 @keyframes pulse-glow {
   0%,
   100% {
-    box-shadow: 0 0 6px oklch(0.65 0.2 260 / 0.4);
+    box-shadow: 0 0 6px color-mix(in oklch, var(--brand) 40%, transparent);
     opacity: 0.8;
   }
   50% {
-    box-shadow: 0 0 8px oklch(0.65 0.2 260 / 0.6);
+    box-shadow: 0 0 8px color-mix(in oklch, var(--brand) 60%, transparent);
     opacity: 1;
   }
 }
@@ -1340,7 +1431,7 @@ a:hover {
 .referral-mesh-bg::before {
   width: 300px;
   height: 300px;
-  background: oklch(0.65 0.2 260);
+  background: var(--brand);
   opacity: 0.04;
   top: -80px;
   right: -60px;
@@ -1410,11 +1501,11 @@ a:hover {
   border-radius: inherit;
   background: conic-gradient(
     from 180deg at 50% 50%,
-    oklch(0.65 0.2 260 / 0.2),
+    color-mix(in oklch, var(--brand) 20%, transparent),
     oklch(0.55 0.2 320 / 0.1),
     oklch(0.6 0.18 180 / 0.15),
     oklch(0.55 0.2 100 / 0.1),
-    oklch(0.65 0.2 260 / 0.2)
+    color-mix(in oklch, var(--brand) 20%, transparent)
   );
   z-index: -1;
   opacity: 0;
@@ -1438,7 +1529,7 @@ a:hover {
   left: 0;
   right: 0;
   height: 2px;
-  background: oklch(0.65 0.2 260 / 0.4);
+  background: color-mix(in oklch, var(--brand) 40%, transparent);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.3s;
@@ -1579,7 +1670,7 @@ a:hover {
     background: linear-gradient(
       90deg,
       transparent 0%,
-      oklch(0.65 0.2 260 / 0.04) 50%,
+      color-mix(in oklch, var(--brand) 4%, transparent) 50%,
       transparent 100%
     );
     background-position: -100% 0;

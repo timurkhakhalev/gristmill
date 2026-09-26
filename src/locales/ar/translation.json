@@ -1445,6 +1445,18 @@
         "light": "Light",
         "dark": "Dark"
       },
+      "colorScheme": {
+        "label": "نظام الألوان",
+        "description": "لون التمييز ودرجة لون الخلفيات.",
+        "names": {
+          "lavender": "خزامى",
+          "indigo": "نيلي",
+          "amethyst": "جمشت",
+          "magenta": "أرجواني",
+          "lime": "ليموني",
+          "graphite": "جرافيت"
+        }
+      },
       "autoGenerateTitle": "Generate note titles",
       "autoGenerateTitleDescription": "Use the configured model to title notes.",
       "noteFiles": {

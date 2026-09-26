@@ -192,7 +192,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
 
   return (
     <div
-      className="meeting-notification-window w-full h-full bg-transparent p-3 select-none"
+      className="meeting-notification-window w-full h-full bg-transparent p-2 select-none"
       style={{ touchAction: presentation.dismissible ? "pan-y" : "auto" }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -210,9 +210,9 @@ export default function MeetingNotificationOverlay(): ReactElement {
           title={title as string}
           body={body}
           startLabel={t(presentation.actionKey)}
+          icon={presentation.action}
           onStart={handleAction}
           onDismiss={presentation.dismissible ? dismiss : undefined}
-          closeVisible={isHovered}
           allowTitleWrap={presentation.allowTitleWrap}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}

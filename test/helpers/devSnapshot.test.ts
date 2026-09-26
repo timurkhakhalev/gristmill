@@ -177,6 +177,45 @@ test("refuses to start when a storage tree symlinks into production", () => {
   assert.equal(ok, false, "a storage tree pointing into production must refuse to start");
 });
 
+test("refuses to start when .env symlinks into production", () => {
+  const { production, development } = makeProfiles();
+  fs.mkdirSync(development, { recursive: true });
+  fs.symlinkSync(path.join(production, ".env"), path.join(development, ".env"));
+  setUserDataDir(development);
+  const ok = snapshotProductionProfileForDev();
+  assert.equal(ok, false, "a .env pointing into production must refuse to start");
+});
+
+test("refuses to start when a nested link inside a storage tree reaches production", () => {
+  const { production, development } = makeProfiles();
+  fs.mkdirSync(path.join(development, "audio", "meetings"), { recursive: true });
+  fs.symlinkSync(
+    path.join(production, "meeting-results"),
+    path.join(development, "audio", "meetings", "prod-link")
+  );
+  setUserDataDir(development);
+  const ok = snapshotProductionProfileForDev();
+  assert.equal(
+    ok, false,
+    "a link nested inside a copied tree must refuse before the snapshot writes through it"
+  );
+});
+
+test("refuses a not-yet-existing profile path inside production", () => {
+  const { production, root } = makeProfiles();
+  const { profilePathAliasesProduction } = require("../../src/helpers/devSnapshot.ts") as {
+    profilePathAliasesProduction: (p: string) => boolean;
+  };
+  // Point the stub's appData at this pair's root so sourceProfileDir matches.
+  setUserDataDir(path.join(root, "OpenHercules-development"));
+  const planned = path.join(production, "smoke-inside-prod");
+  assert.equal(
+    profilePathAliasesProduction(planned),
+    true,
+    "a nonexistent path inside production must refuse before anything is created there"
+  );
+});
+
 test("adopts a legacy packaged-Dev database instead of losing it", () => {
   const { development, Database } = makeProfiles();
   fs.mkdirSync(development, { recursive: true });

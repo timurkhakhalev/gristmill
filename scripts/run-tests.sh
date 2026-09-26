@@ -11,9 +11,7 @@ if [ "$(uname -s)" = Darwin ] && [ "${OPENHERCULES_TEST_BACKGROUND:-}" != 1 ]; t
   exec taskpolicy -b nice -n 15 sh "$0" "$@"
 fi
 
-full_suite=0
 if [ "$#" -eq 0 ]; then
-  full_suite=1
   set -- 'test/**/*.test.js' 'test/**/*.test.ts'
 else
   for file do
@@ -28,10 +26,19 @@ else
   done
 fi
 
-# Focused and full tests both require the Node ABI. This is a no-op when the
-# installed binding already loads under Node.
-node scripts/ensure-sqlite-runtime.js node
+# On macOS, tests use Electron as Node so a running dev app and tests use the
+# same SQLite ABI. Linux CI keeps its normal Node runtime.
+test_runtime=node
+if [ "$(uname -s)" = Darwin ]; then
+  test_runtime=electron
+fi
+node scripts/ensure-sqlite-runtime.js "$test_runtime"
 export REQUIRE_DB_TESTS=1
 
 pnpm run build:main
+if [ "$test_runtime" = electron ]; then
+  electron_bin="$(node -p 'require("electron")')"
+  export ELECTRON_RUN_AS_NODE=1
+  exec "$electron_bin" --import tsx --test --test-concurrency=1 --test-timeout=30000 "$@"
+fi
 exec node --import tsx --test --test-concurrency=1 --test-timeout=30000 "$@"

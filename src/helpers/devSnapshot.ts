@@ -62,15 +62,29 @@ function cloneDir(from: string, to: string): void {
   }
 }
 
+// One-time cutover: before the channel-based filename, the packaged Dev app
+// (no NODE_ENV=development) wrote transcriptions.db in this profile. Those
+// dev-made notes must survive the rename to the channel database name.
+function adoptLegacyDevDatabase(target: string): void {
+  const legacy = path.join(target, PROD_DB);
+  const current = path.join(target, DEV_DB);
+  if (fs.existsSync(current) || !fs.existsSync(legacy)) return;
+  fs.renameSync(legacy, current);
+  for (const suffix of ["-wal", "-shm"]) {
+    const side = legacy + suffix;
+    if (fs.existsSync(side)) fs.renameSync(side, current + suffix);
+  }
+}
+
 // Copying a live WAL-mode database file-by-file can capture mismatched db/wal
 // halves when production checkpoints between the two reads. VACUUM INTO
 // produces one consistent, self-contained file in a single SQLite read
-// transaction. The output is staged under a temp name and atomically renamed:
-// an interrupted snapshot never leaves a half-written database, and an
-// existing dev database is never overwritten.
-function snapshotDatabase(source: string, target: string, name: string): void {
+// transaction. The output is staged under a temp name and published with
+// link(), which fails when the destination already exists: two concurrent
+// first launches cannot replace a database the other one published or opened.
+function snapshotDatabase(source: string, target: string, name: string): boolean {
   const destination = path.join(target, name);
-  if (fs.existsSync(destination)) return;
+  if (fs.existsSync(destination)) return true;
   fs.mkdirSync(target, { recursive: true });
   const staged = path.join(target, `.${name}.snapshot-${process.pid}.tmp`);
   fs.rmSync(staged, { force: true });
@@ -85,50 +99,70 @@ function snapshotDatabase(source: string, target: string, name: string): void {
     } finally {
       db.close();
     }
-    fs.renameSync(staged, destination);
+    // link() never overwrites; rename() over APFS would clobber a database a
+    // concurrent launch created between the existsSync check and now.
+    fs.linkSync(staged, destination);
+    fs.rmSync(staged, { force: true });
+    return true;
   } catch (error) {
     fs.rmSync(staged, { force: true });
-    // No file-clone fallback: without a consistent SQLite read the db/wal
-    // halves can mismatch, and a wrong database is worse than an incomplete
-    // snapshot — the marker stays absent and the next launch retries.
+    if (fs.existsSync(destination)) return true; // a concurrent launch won
     debugLogger.warn(
       "consistent database snapshot failed; retrying on the next launch",
       { error: (error as Error)?.message },
       "devSnapshot"
     );
-    throw error;
+    return false;
   }
 }
 
-export function snapshotProductionProfileForDev(): void {
+export function snapshotProductionProfileForDev(): boolean {
   const source = sourceProfileDir();
   const target = targetProfileDir();
-  if (sameDir(source, target)) return;
-  if (!fs.existsSync(path.join(source, PROD_DB))) return;
+  if (sameDir(source, target)) return true;
+  if (!fs.existsSync(path.join(source, PROD_DB))) return true;
+
+  // Adopt a legacy packaged-Dev database before any existence check would
+  // mistake it for a completed snapshot (it has no marker).
+  adoptLegacyDevDatabase(target);
 
   const refresh = process.env.OPENHERCULES_REFRESH_SNAPSHOT === "1";
   const markerExists = fs.existsSync(path.join(target, MARKER));
   const devDbExists = fs.existsSync(path.join(target, DEV_DB));
-  if (devDbExists && markerExists && !refresh) return;
+  if (devDbExists && markerExists && !refresh) return true;
 
+  let dbReady: boolean;
   try {
     // The database filename follows the channel (appChannel.ts): both dev
     // modes — pnpm dev and the packaged Dev app — open transcriptions-dev.db.
-    snapshotDatabase(source, target, DEV_DB);
+    dbReady = snapshotDatabase(source, target, DEV_DB);
     for (const name of COPY_FILES) {
       clone(path.join(source, name), path.join(target, name));
     }
     for (const name of COPY_DIRS) {
       cloneDir(path.join(source, name), path.join(target, name));
     }
-    // Marker last: only a fully copied profile counts as snapshotted.
-    fs.writeFileSync(path.join(target, MARKER), `${new Date().toISOString()}\n`, { mode: 0o600 });
-    debugLogger.info("production profile snapshotted into dev profile", { source, target });
   } catch (error) {
     debugLogger.warn(
       "production profile snapshot incomplete; it resumes on the next launch",
       { error: (error as Error)?.message },
       "devSnapshot"
     );
+    return false;
   }
+  if (!dbReady && !fs.existsSync(path.join(target, DEV_DB))) {
+    // Without the database the app would create an empty transcriptions-dev.db
+    // on startup and every later launch would treat it as a completed profile.
+    // Stop instead: the next launch retries the snapshot.
+    debugLogger.warn(
+      "dev profile has no database and the snapshot failed; refusing to start",
+      {},
+      "devSnapshot"
+    );
+    return false;
+  }
+  // Marker last: only a fully copied profile counts as snapshotted.
+  fs.writeFileSync(path.join(target, MARKER), `${new Date().toISOString()}\n`, { mode: 0o600 });
+  debugLogger.info("production profile snapshotted into dev profile", { source, target });
+  return true;
 }

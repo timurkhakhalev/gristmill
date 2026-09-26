@@ -7,7 +7,7 @@ import { installElectronStub, setUserDataDir } from "./harness/electronStub.js";
 
 installElectronStub();
 const { snapshotProductionProfileForDev } = require("../../src/helpers/devSnapshot.ts") as {
-  snapshotProductionProfileForDev: () => void;
+  snapshotProductionProfileForDev: () => boolean;
 };
 
 function makeProfiles() {
@@ -115,6 +115,37 @@ test("never snapshots into a dev profile symlinked to production", () => {
   snapshotProductionProfileForDev();
   assert.equal(fs.existsSync(path.join(production, ".dev-snapshot-complete")), false);
   assert.equal(fs.existsSync(path.join(production, DEV_DB)), false);
+});
+
+test("adopts a legacy packaged-Dev database instead of losing it", () => {
+  const { development, Database } = makeProfiles();
+  fs.mkdirSync(development, { recursive: true });
+  // Pre-cutover packaged Dev app: dev-made notes under transcriptions.db.
+  const legacy = new Database(path.join(development, "transcriptions.db"));
+  legacy.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT)");
+  legacy.exec("INSERT INTO notes (title) VALUES ('legacy-dev-note')");
+  legacy.close();
+  setUserDataDir(development);
+  const ok = snapshotProductionProfileForDev();
+  assert.equal(ok, true);
+  const check = openDevDb(development);
+  assert.equal(check.prepare("SELECT title FROM notes").get().title, "legacy-dev-note");
+  check.close();
+  assert.equal(fs.existsSync(path.join(development, "transcriptions.db")), false);
+});
+
+test("refuses to start when the database snapshot fails and none exists", () => {
+  const { development } = makeProfiles();
+  setUserDataDir(development);
+  // Force the VACUUM INTO path to fail: occupy the staged temp name with a
+  // directory so VACUUM INTO cannot write it.
+  fs.mkdirSync(path.join(development, `.${DEV_DB}.snapshot-${process.pid}.tmp`), {
+    recursive: true,
+  });
+  const ok = snapshotProductionProfileForDev();
+  assert.equal(ok, false, "a failed db snapshot without an existing db must refuse to start");
+  assert.equal(fs.existsSync(path.join(development, DEV_DB)), false);
+  assert.equal(fs.existsSync(path.join(development, ".dev-snapshot-complete")), false);
 });
 
 test("no-op without a production profile", () => {

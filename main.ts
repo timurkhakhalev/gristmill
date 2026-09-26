@@ -123,14 +123,6 @@ function configureChannelUserDataPath(): void {
 
 configureChannelUserDataPath();
 
-// Dev channel: seed the isolated dev profile from a one-way snapshot of the
-// production profile (issue #86) before anything reads userData. Explicit
-// --user-data-dir smoke/debug profiles stay isolated: they never receive
-// production data.
-if (APP_CHANNEL === "development" && !app.commandLine.getSwitchValue("user-data-dir")) {
-  require("./src/helpers/devSnapshot.js").snapshotProductionProfileForDev();
-}
-
 // Load userData .env (contains DICTATION_KEY, API keys, etc.) early — before
 // hotkey registration, which needs DICTATION_KEY before the renderer loads.
 require("dotenv").config({
@@ -183,6 +175,20 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
   app.exit(0);
+}
+
+// Dev channel: seed the isolated dev profile from a one-way snapshot of the
+// production profile (issue #86) before anything reads userData. Explicit
+// --user-data-dir smoke/debug profiles stay isolated. Runs AFTER the
+// single-instance lock so two concurrent dev launches cannot race the
+// snapshot; a failed database snapshot refuses to start (the app would
+// otherwise create an empty dev database and mask the failure forever).
+if (APP_CHANNEL === "development" && gotSingleInstanceLock && !app.commandLine.getSwitchValue("user-data-dir")) {
+  const snapshotOk = require("./src/helpers/devSnapshot.js").snapshotProductionProfileForDev();
+  if (!snapshotOk) {
+    console.error("[devSnapshot] production profile snapshot failed; exiting. The next launch retries.");
+    app.exit(1);
+  }
 }
 
 function isLiveWindow(window: BrowserWindow | null): window is BrowserWindow {

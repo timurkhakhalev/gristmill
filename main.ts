@@ -124,10 +124,10 @@ function configureChannelUserDataPath(): void {
 configureChannelUserDataPath();
 
 // Dev channel: seed the isolated dev profile from a one-way snapshot of the
-// production profile (issue #86) before anything reads userData. The explicit
-// --user-data-dir smoke/debug profiles are untouched: they never match the
-// channel default path.
-if (APP_CHANNEL === "development") {
+// production profile (issue #86) before anything reads userData. Explicit
+// --user-data-dir smoke/debug profiles stay isolated: they never receive
+// production data.
+if (APP_CHANNEL === "development" && !app.commandLine.getSwitchValue("user-data-dir")) {
   require("./src/helpers/devSnapshot.js").snapshotProductionProfileForDev();
 }
 

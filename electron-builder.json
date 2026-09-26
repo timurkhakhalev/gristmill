@@ -97,6 +97,7 @@
         "macos-audio-tap",
         "macos-globe-listener",
         "macos-mic-listener",
+        "macos-meeting-ax",
         "macos-calendar-listener",
         "meeting-aec-helper-darwin-arm64",
         "diarization-models/**/*",

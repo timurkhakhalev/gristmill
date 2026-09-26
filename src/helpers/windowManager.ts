@@ -775,6 +775,15 @@ export class WindowManager {
     }
   }
 
+  dismissDetectionNotification(detectionId: string): void {
+    if (
+      this._pendingNotificationData?.kind === "detection" &&
+      this._pendingNotificationData.detectionId === detectionId
+    ) {
+      this.dismissMeetingNotification();
+    }
+  }
+
   showMeetingAutoEndNotification({
     sessionId,
     expiresAt,

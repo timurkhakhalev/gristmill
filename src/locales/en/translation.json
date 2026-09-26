@@ -2119,7 +2119,7 @@
   "meetingNotification": {
     "title": "Meeting detected",
     "body": {
-      "detected": "It sounds like you're in a meeting. Want to take notes?",
+      "detected": "You're in a meeting. Want to take notes?",
       "starting": "Your meeting is starting. Want to take notes?",
       "underway": "It sounds like your meeting is underway. Want to take notes?"
     },

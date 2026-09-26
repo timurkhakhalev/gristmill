@@ -657,6 +657,21 @@ test("unexpected detection card closure releases that detection", async () => {
   assert.deepEqual(closedDetections, ["audio:sustained-audio"]);
 });
 
+test("ending a call closes only its own detection card", async () => {
+  const manager = createNormalWindowManager();
+  const showPromise = manager.showMeetingNotification({
+    kind: "detection", detectionId: "audio:zoom:123", source: "audio",
+  });
+  const window = createdWindows[0];
+  window.loadDeferred.resolve();
+  await showPromise;
+
+  manager.dismissDetectionNotification("audio:zoom:other");
+  assert.equal(window.isDestroyed(), false);
+  manager.dismissDetectionNotification("audio:zoom:123");
+  assert.equal(window.isDestroyed(), true);
+});
+
 test("an expired detection reports the timeout once, not also as a close", async () => {
   const timers = installFakeTimers();
   const manager = createNormalWindowManager();

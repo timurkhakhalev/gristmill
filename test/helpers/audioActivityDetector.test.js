@@ -611,7 +611,9 @@ test("darwin: native snapshots exclude background speech while preserving meetin
       "-o",
       executablePath,
     ],
-    { encoding: "utf8", timeout: 120_000 }
+    // The suite runs under `taskpolicy -b` on macOS, where a cold Swift
+    // module-cache compile can exceed a tight synchronous timeout.
+    { encoding: "utf8", timeout: 600_000 }
   );
   assert.equal(compileResult.status, 0, compileResult.error?.message || compileResult.stderr);
 

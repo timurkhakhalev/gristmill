@@ -105,7 +105,16 @@ test("a diarized file upload persists the diarization metadata", async (t) => {
   // The diarizer runs under the same cancellable requestId as the
   // transcription, so one cancel-upload-transcription aborts both.
   assert.equal(typeof calls.diarize[0].requestId, "string");
-  assert.deepEqual(calls.updateNote, [[7, { diarization_enabled: 1, expected_speaker_count: 2 }]]);
+  // saveUploadNote writes the timestamped transcript through updateNote and
+  // moves the plain text out of the content column. The transcript timestamp
+  // is Date.now()-anchored, so only its shape is asserted here.
+  assert.deepEqual(
+    calls.updateNote.map(([id, updates]) => {
+      const { transcript, ...rest } = updates;
+      return [id, rest, typeof transcript === "string" && transcript.includes("[Speaker 1] hello")];
+    }),
+    [[7, { diarization_enabled: 1, expected_speaker_count: 2, content: "" }, true]]
+  );
 });
 
 test("a diarized URL ingest persists the diarization metadata", async (t) => {
@@ -141,7 +150,13 @@ test("a diarized URL ingest persists the diarization metadata", async (t) => {
   assert.equal(sourceFile, "Board Meeting Recording");
   assert.equal(audioDuration, 4359.87);
 
-  assert.deepEqual(calls.updateNote, [[7, { diarization_enabled: 1, expected_speaker_count: 2 }]]);
+  assert.deepEqual(
+    calls.updateNote.map(([id, updates]) => {
+      const { transcript, ...rest } = updates;
+      return [id, rest, typeof transcript === "string" && transcript.includes("[Speaker 1] hello")];
+    }),
+    [[7, { diarization_enabled: 1, expected_speaker_count: 2, content: "" }, true]]
+  );
   assert.deepEqual(calls.deletedTempFiles, ["/tmp/ow-url-download.m4a"]);
 });
 
@@ -165,9 +180,14 @@ test("an upload without diarization leaves the note columns untouched", async (t
 
   // diarization_enabled must stay null: consumers treat null as "use the
   // global speaker setting" when recording into the note later, and a stored 0
-  // would force it off.
+  // would force it off. The transcript write still happens (timestamps are on
+  // for uploads), but it must not drag any diarization column with it.
   assert.equal(calls.diarize.length, 0);
-  assert.equal(calls.updateNote.length, 0);
+  assert.equal(calls.updateNote.length, 1);
+  assert.equal(calls.updateNote[0][0], 7);
+  assert.equal(calls.updateNote[0][1].diarization_enabled, undefined);
+  assert.equal(calls.updateNote[0][1].expected_speaker_count, undefined);
+  assert.equal(calls.updateNote[0][1].content, "");
   assert.equal(calls.saveNote.length, 1);
   assert.equal(calls.saveNote[0][4], null);
 });

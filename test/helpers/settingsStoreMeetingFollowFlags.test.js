@@ -59,7 +59,11 @@ const meetingRoute = (mod, state) => {
   });
 };
 
-test("Note Recording modes survive the follow-flag migration", async (t) => {
+// ~25 ssrLoadModule reloads take over 90s under the suite's background
+// scheduling (taskpolicy -b), past the global 30s per-test timeout: the
+// timeout fires on this parent test, tears down vite mid-flight and cascades
+// "transport was disconnected" onto every remaining subtest. Budget 5 minutes.
+test("Note Recording modes survive the follow-flag migration", { timeout: 300_000 }, async (t) => {
   const { storage } = installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
     cachePrefix: "openhercules-meeting-follow-flags-test-",

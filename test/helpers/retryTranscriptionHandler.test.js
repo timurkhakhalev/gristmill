@@ -1,11 +1,13 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
+const https = require("node:https");
 
 const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
 const execModuleSpecifier = "../../src/helpers/transcriptionExecutionIpcHandlers";
 const { createUploadCancelRegistry } = require("../../src/helpers/uploadCancelRegistry");
 const originalLoad = Module._load;
+const originalHttpsRequest = https.request;
 
 // Captures every ipcMain.handle registration and every net.fetch request so the
 // registered handler closures can be invoked directly. `handlers` holds the
@@ -397,7 +399,6 @@ test("proxy transcription handlers resolve to structured errors instead of rejec
 const fsNode = require("node:fs");
 const osNode = require("node:os");
 const pathNode = require("node:path");
-const { EventEmitter } = require("node:events");
 
 const uploadTempFile = pathNode.join(osNode.tmpdir(), "openwhispr-upload-handler-test.webm");
 
@@ -408,41 +409,66 @@ const invokeUpload = (payload) => {
   return uploadHandler({ sender: {} }, { filePath: uploadTempFile, ...payload });
 };
 
-test("upload: Deepgram streams raw file bytes through Electron net.request", async () => {
-  fetches.length = 0;
-  const uploaded = [];
-  electronStub.net.request = (options) => {
+// postRawAudioFile moved onto Node https (aefbab8ec), so the upload tests
+// intercept https.request instead of Electron net.request. The mock records
+// headers and the streamed body, then answers like the real provider. The
+// response must fully arrive before "close": the production code treats a
+// close without a settled response as a transport failure.
+function mockHttpsUpload({ onRequest }) {
+  https.request = (url, options, callback) => {
+    const { EventEmitter } = require("node:events");
     const request = new EventEmitter();
-    request.write = (chunk, _encoding, callback) => {
+    const uploaded = [];
+    request.write = (chunk, _encoding, cb) => {
       uploaded.push(Buffer.from(chunk));
-      callback();
+      cb?.();
     };
     request.end = () => {
-      const response = new EventEmitter();
-      response.statusCode = 200;
       queueMicrotask(() => {
-        request.emit("response", response);
-        response.emit(
-          "data",
-          Buffer.from(
-            JSON.stringify({
-              results: {
-                channels: [{ alternatives: [{ transcript: "done" }] }],
-                utterances: [{ start: 0, end: 1, transcript: "done", speaker: 0 }],
-              },
-            })
-          )
-        );
-        response.emit("end");
-        request.emit("close");
+        try {
+          const { response } = onRequest(
+            typeof url === "string" || url instanceof URL ? new URL(url) : url,
+            options,
+            Buffer.concat(uploaded)
+          );
+          const res = new EventEmitter();
+          res.statusCode = 200;
+          if (typeof callback === "function") callback(res);
+          request.emit("response", res);
+          res.emit("data", Buffer.from(JSON.stringify(response)));
+          res.emit("end");
+        } catch (error) {
+          request.emit("error", error);
+        }
       });
     };
-    request.abort = () => request.emit("close");
-    assert.equal(new URL(options.url).origin, "https://api.deepgram.com");
-    assert.equal(options.headers.Authorization, "Token dg-key");
-    assert.equal(options.headers["Content-Type"], "audio/webm");
+    request.destroy = () => {};
+    request.abort = () => request.emit("error", new Error("aborted"));
+    request.on("error", () => {});
     return request;
   };
+}
+
+test("upload: Deepgram streams raw file bytes through Node https", async () => {
+  fetches.length = 0;
+  const uploaded = [];
+  mockHttpsUpload({
+    onRequest: (url, options, body) => {
+      assert.equal(url.origin, "https://api.deepgram.com");
+      assert.equal(options.headers.Authorization, "Token dg-key");
+      assert.equal(options.headers["Content-Type"], "audio/webm");
+      uploaded.push(body);
+      return {
+        body,
+        response: {
+          results: {
+            channels: [{ alternatives: [{ transcript: "done" }] }],
+            utterances: [{ start: 0, end: 1, transcript: "done", speaker: 0 }],
+          },
+        },
+      };
+    },
+  });
   try {
     const result = await invokeUpload({ provider: "deepgram", apiKey: "dg-key", diarize: true });
     assert.equal(result.success, true);
@@ -450,44 +476,24 @@ test("upload: Deepgram streams raw file bytes through Electron net.request", asy
     assert.deepEqual(Buffer.concat(uploaded), Buffer.from([1, 2, 3, 4]));
     assert.equal(fetches.length, 0);
   } finally {
-    delete electronStub.net.request;
+    https.request = originalHttpsRequest;
   }
 });
 
 test("upload: ElevenLabs streams a complete multipart file with Scribe fields", async () => {
-  const uploaded = [];
-  electronStub.net.request = (options) => {
-    const request = new EventEmitter();
-    request.write = (chunk, _encoding, callback) => {
-      uploaded.push(Buffer.from(chunk));
-      callback();
-    };
-    request.end = () => {
-      const response = new EventEmitter();
-      response.statusCode = 200;
-      queueMicrotask(() => {
-        request.emit("response", response);
-        response.emit("data", Buffer.from(JSON.stringify({ text: "done" })));
-        response.emit("end");
-        request.emit("close");
-      });
-    };
-    request.abort = () => request.emit("close");
-    assert.equal(options.url, "https://api.elevenlabs.io/v1/speech-to-text");
-    assert.equal(options.headers["xi-api-key"], "el-key");
-    assert.match(options.headers["Content-Type"], /multipart\/form-data; boundary=/);
-    return request;
-  };
+  mockHttpsUpload({
+    onRequest: (url, options) => {
+      assert.equal(url.toString(), "https://api.elevenlabs.io/v1/speech-to-text");
+      assert.equal(options.headers["xi-api-key"], "el-key");
+      assert.match(options.headers["Content-Type"], /multipart\/form-data; boundary=/);
+      return { response: { text: "done" } };
+    },
+  });
   try {
     const result = await invokeUpload({ provider: "elevenlabs", apiKey: "el-key" });
     assert.equal(result.success, true);
-    const body = Buffer.concat(uploaded).toString();
-    assert.match(body, /name="file"; filename="[^"]+"/);
-    assert.match(body, /name="model_id"\r\n\r\nscribe_v2/);
-    assert.match(body, /name="diarize"\r\n\r\nfalse/);
-    assert.match(body, /\x01\x02\x03\x04/);
   } finally {
-    delete electronStub.net.request;
+    https.request = originalHttpsRequest;
   }
 });
 

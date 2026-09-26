@@ -65,6 +65,10 @@ class FakeBrowserWindow extends EventEmitter {
   showInactive() {
     this.showCount += 1;
   }
+
+  isVisible() {
+    return this.showCount > 0 && !this.destroyed;
+  }
 }
 
 class FakeHotkeyManager {
@@ -109,7 +113,7 @@ Module._load = function loadWindowManagerWithStubs(request, parent, isMain) {
     };
   }
   if (request === "./debugLogger" || request === "./debugLogger.js") {
-    return { warn: () => undefined };
+    return { info: () => undefined, warn: () => undefined };
   }
   if (request === "./hotkeyManager" || request === "./hotkeyManager.js") {
     return { HotkeyManager: FakeHotkeyManager };

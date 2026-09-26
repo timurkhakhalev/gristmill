@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { CircleCheck, Undo2 } from "../icons";
+import { CircleCheck, Eye, Undo2 } from "../icons";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui/button";
 // Imported (not referenced by path) so Vite fingerprints them and they resolve
@@ -24,7 +24,7 @@ interface CompactPermissionsStepProps {
   onContinue: () => void;
 }
 
-type PermissionRowId = "microphone" | "system-audio";
+type PermissionRowId = "microphone" | "system-audio" | "accessibility";
 
 interface PermissionRowProps {
   title: string;
@@ -164,6 +164,16 @@ export default function CompactPermissionsStep({
               />
             </>
           }
+          <div className="h-px bg-[var(--onboarding-surface-tertiary)]" />
+          <PermissionRow
+            title={t("hooks.permissions.settingsTitles.accessibility")}
+            description={t("cleanupSettings.accessibilityDetection")}
+            badge={t("onboarding.permissions.optional")}
+            granted={permissions.accessibilityPermissionGranted}
+            busy={busyPermission === "accessibility"}
+            icon={<Eye className="size-10 shrink-0 p-2 text-[var(--onboarding-text-secondary)]" aria-hidden="true" />}
+            onRequest={() => request("accessibility", permissions.requestAccessibilityPermission)}
+          />
         </div>
 
         {!permissions.micPermissionGranted && permissions.micPermissionError && (

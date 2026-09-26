@@ -46,7 +46,9 @@ function permissions(overrides = {}) {
   return {
     micPermissionGranted: false,
     micPermissionError: null,
+    accessibilityPermissionGranted: false,
     requestMicPermission: asyncNoop,
+    requestAccessibilityPermission: asyncNoop,
     openMicPrivacySettings: asyncNoop,
     openSoundInputSettings: asyncNoop,
     setMicPermissionGranted: noop,
@@ -134,6 +136,8 @@ test("permissions offers Back ahead of Continue and gates Continue on microphone
     );
 
   const blocked = render(false, noop);
+  assert.match(blocked, /hooks\.permissions\.settingsTitles\.accessibility/);
+  assert.match(blocked, /cleanupSettings\.accessibilityDetection/);
   assert.doesNotMatch(blocked, /common\.logout/);
   assert.ok(
     blocked.indexOf("common.back") < blocked.indexOf("common.continue"),

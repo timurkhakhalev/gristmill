@@ -123,6 +123,15 @@ function configureChannelUserDataPath(): void {
 
 configureChannelUserDataPath();
 
+// Early profile .env pass: startup selectors below (OAuth protocol, the dev
+// snapshot refresh flag) read keys that may live in the profile .env. Values
+// are not overridden — the post-snapshot pass below adds the rest (copied
+// credentials) without clobbering anything set here.
+require("dotenv").config({
+  path: path.join(app.getPath("userData"), ".env"),
+  override: false,
+});
+
 
 function getOAuthProtocol(): string {
   const fromEnv = (process.env.VITE_OPENHERCULES_PROTOCOL || process.env.OPENHERCULES_PROTOCOL || "")
@@ -184,10 +193,9 @@ if (APP_CHANNEL === "development" && gotSingleInstanceLock && !app.commandLine.g
   }
 }
 
-// Load userData .env (contains DICTATION_KEY, API keys, etc.) after the dev
-// snapshot so a first dev launch sees the copied credentials without a
-// restart, and before hotkey registration, which needs DICTATION_KEY before
-// the renderer loads.
+// Second profile .env pass after the dev snapshot: a first dev launch gets
+// the copied credentials without a restart. override:false keeps anything the
+// early pass or the system environment already set.
 require("dotenv").config({
   path: path.join(app.getPath("userData"), ".env"),
   override: false,

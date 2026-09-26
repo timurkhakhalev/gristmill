@@ -130,6 +130,40 @@ test("calendar reminder and confirmed Meet call share one offer", () => {
   assert.equal(shown.length, 1);
 });
 
+test("a later call can prompt after the call tied to a calendar offer ends", () => {
+  const { engine, callDetector, reminderScheduler, shown } = createEngine();
+  const { createHash } = require("node:crypto");
+  const event = {
+    id: "calendar-rejoin", start_time: new Date(Date.now() + 60_000).toISOString(),
+    hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-rejoin",
+  };
+  reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
+  const key = `meet:${createHash("sha256").update("meet.google.com/abc-defg-hij").digest("hex")}`;
+
+  engine.handleCalendarReminder(event);
+  callDetector.emit("call-active", { key, service: "meet" });
+  callDetector.emit("call-ended", { key });
+  callDetector.emit("call-active", { key, service: "meet" });
+
+  assert.equal(shown.length, 2);
+  assert.equal(shown[1].source, "audio");
+});
+
+test("a calendar offer without a join link does not hide an unrelated call", () => {
+  const { engine, callDetector, reminderScheduler, shown } = createEngine();
+  const event = {
+    id: "calendar-unlinked", start_time: new Date(Date.now() + 60_000).toISOString(),
+    calendar_id: "calendar-unlinked", attendees: [{ email: "teammate@example.com" }],
+  };
+  reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
+
+  engine.handleCalendarReminder(event);
+  callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
+
+  assert.equal(shown.length, 2);
+  assert.equal(shown[1].source, "audio");
+});
+
 test("a confirmed Meet call suppresses its later calendar reminder", () => {
   const { engine, callDetector, reminderScheduler, shown } = createEngine();
   const { createHash } = require("node:crypto");

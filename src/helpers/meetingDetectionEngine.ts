@@ -203,6 +203,7 @@ export class MeetingDetectionEngine {
   readonly activeDetections = new Map<string, ActiveDetection>();
   private readonly offeredCalls = new Set<string>();
   private readonly offeredCalendarEvents = new Set<string>();
+  private readonly callCalendarEvents = new Map<string, string>();
   private preferences = { processDetection: true, audioDetection: true };
   private _userRecording = false;
   private _meetingModeActive = false;
@@ -304,6 +305,7 @@ export class MeetingDetectionEngine {
       const event = this._findCalendarEvent();
       if (event && this.offeredCalendarEvents.has(event.id) && this._callMatchesEvent(key, service, event)) {
         this.offeredCalls.add(key);
+        this.callCalendarEvents.set(key, event.id);
         return;
       }
       this._handleDetection("audio", key, { detectedAt: this._now(), service });
@@ -312,6 +314,9 @@ export class MeetingDetectionEngine {
 
     this.callDetector?.on("call-ended", ({ key }: { key: string }) => {
       this.offeredCalls.delete(key);
+      const calendarEventId = this.callCalendarEvents.get(key);
+      if (calendarEventId) this.offeredCalendarEvents.delete(calendarEventId);
+      this.callCalendarEvents.delete(key);
       const detectionId = `audio:${key}`;
       this.activeDetections.delete(detectionId);
       this._notificationQueue = this._notificationQueue.filter(
@@ -696,7 +701,7 @@ export class MeetingDetectionEngine {
 
   private _callMatchesEvent(key: string, service: string, event: DetectionCalendarEvent): boolean {
     const joinUrl = getMeetingJoinUrl(event);
-    if (!joinUrl) return true;
+    if (!joinUrl) return false;
     try {
       const url = new URL(joinUrl);
       if (service === "zoom") return url.hostname === "zoom.us" || url.hostname.endsWith(".zoom.us");
@@ -801,6 +806,7 @@ export class MeetingDetectionEngine {
     if (source === "calendar" && calendarEvent) this.offeredCalendarEvents.add(calendarEvent.id);
     if (source === "audio" && calendarEvent && this._callMatchesEvent(key, String(data.service), calendarEvent)) {
       this.offeredCalendarEvents.add(calendarEvent.id);
+      this.callCalendarEvents.set(key, calendarEvent.id);
     }
 
     debugLogger.info(
@@ -1054,11 +1060,8 @@ export class MeetingDetectionEngine {
       return;
     }
 
-    // Expiring unanswered is not a decline, so no dismissal cooldown starts:
-    // the detector's hasPrompted flag already keeps the ongoing call from
-    // re-prompting, while a call starting right after the timeout still
-    // prompts. Only an explicit dismissal (handleNotificationResponse) cools
-    // the mic detector down.
+    // Expiring unanswered is not a decline. offeredCalls keeps the ongoing
+    // call from re-prompting; call-ended releases it for a later call.
     this.activeDetections.clear();
     debugLogger.info("Notification auto-dismissed, detections cleared", {}, "meeting");
   }
@@ -1186,6 +1189,7 @@ export class MeetingDetectionEngine {
     this.activeDetections.clear();
     this.offeredCalls.clear();
     this.offeredCalendarEvents.clear();
+    this.callCalendarEvents.clear();
     this._meetingModeActive = false;
     if (this._postRecordingCooldown) {
       clearTimeout(this._postRecordingCooldown);

@@ -58,7 +58,7 @@ func hasLeaveButton(_ root: AXUIElement, labels: Set<String>) -> Bool? {
     let (nodes, complete) = walk(root)
     guard complete else { return nil }
     return nodes.contains { node in
-        guard string(node, kAXRoleAttribute) == kAXButtonRole as String,
+        guard ["AXButton", "AXMenuItem", "AXPopUpButton"].contains(string(node, kAXRoleAttribute) ?? ""),
               (attribute(node, kAXEnabledAttribute) as? Bool) != false,
               visible(node) else { return false }
         return [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute]

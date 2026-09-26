@@ -602,8 +602,6 @@ test("darwin: native snapshots exclude background speech while preserving meetin
       "-D",
       "MIC_LISTENER_STATE_TEST",
       path.resolve(__dirname, "../../resources/macos-mic-listener.swift"),
-      "-module-cache-path",
-      path.join(temporaryDirectory, "module-cache"),
       "-framework",
       "CoreAudio",
       "-framework",
@@ -611,8 +609,8 @@ test("darwin: native snapshots exclude background speech while preserving meetin
       "-o",
       executablePath,
     ],
-    // The suite runs under `taskpolicy -b` on macOS, where a cold Swift
-    // module-cache compile can exceed a tight synchronous timeout.
+    // The suite runs under `taskpolicy -b` on macOS, where filling Swift's
+    // compiler-managed module cache can exceed a tight synchronous timeout.
     { encoding: "utf8", timeout: 600_000 }
   );
   assert.equal(compileResult.status, 0, compileResult.error?.message || compileResult.stderr);

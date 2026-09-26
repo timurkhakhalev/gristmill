@@ -12,7 +12,6 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
-const { Arch } = require("app-builder-lib");
 
 // ---------------------------------------------------------------------------
 // macOS resource binary signing
@@ -184,26 +183,6 @@ function stripOnnxruntimeBinaries(context) {
   }
 }
 
-function verifyMeetingAecHelper(context) {
-  const platform = context.electronPlatformName;
-  const archName = Arch[context.arch];
-
-  if (platform !== "darwin" || archName !== "arm64") {
-    return;
-  }
-
-  const binaryName = `meeting-aec-helper-${platform}-${archName}`;
-  const resourcesDir = resolveResourcesDir(context);
-  const binaryPath = path.join(resourcesDir, "bin", binaryName);
-
-  if (!fs.existsSync(binaryPath)) {
-    console.warn(`  afterPack: missing optional meeting AEC helper (${binaryName})`);
-    return;
-  }
-
-  fs.chmodSync(binaryPath, 0o755);
-}
-
 function verifyUnpackedBinaries(context) {
   const unpackedDir = path.join(resolveResourcesDir(context), "app.asar.unpacked");
   const unpackedModulesDir = path.join(unpackedDir, "node_modules");
@@ -242,7 +221,6 @@ function verifySqliteRuntime(context) {
 
 exports.default = async function (context) {
   stripOnnxruntimeBinaries(context);
-  verifyMeetingAecHelper(context);
   verifyUnpackedBinaries(context);
   verifySqliteRuntime(context);
   registerMacResourceBinariesForSigning(context);

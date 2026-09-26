@@ -110,7 +110,6 @@ async function createFixture({ responses = {}, engine } = {}) {
     diarizationManager: { isAvailable: () => false },
     meetingDetectionEngine: engineFake,
     audioTapManager: null,
-    meetingAecManager: null,
     whisperManager: { transcribeLocalWhisper: async () => ({}) },
     parakeetManager: { transcribeLocalParakeet: async () => ({}) },
     liveSpeakerIdentifier: {

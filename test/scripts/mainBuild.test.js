@@ -199,7 +199,6 @@ test("compiled native audio and PCM modules keep their CommonJS consumer shapes"
     };
     const AudioActivity = require('./dist-main/src/helpers/audioActivityDetector.js');
     const AudioTap = require('./dist-main/src/helpers/audioTapManager.js');
-    const Aec = require('./dist-main/src/helpers/meetingAecManager.js');
     const Echo = require('./dist-main/src/helpers/meetingEchoLeakDetector.js');
     const Watchdog = require('./dist-main/src/helpers/meetingSystemAudioWatchdog.js');
     const Timeline = require('./dist-main/src/helpers/meetingAudioTimeline.js');
@@ -209,7 +208,6 @@ test("compiled native audio and PCM modules keep their CommonJS consumer shapes"
       direct: {
         activity: AudioActivity === AudioActivity.AudioActivityDetector,
         tap: AudioTap === AudioTap.AudioTapManager,
-        aec: Aec === Aec.MeetingAecManager,
         echo: Echo === Echo.MeetingEchoLeakDetector,
         watchdog: Watchdog === Watchdog.createMeetingSystemAudioWatchdog,
         timeline: Timeline === Timeline.createMeetingAudioTimeline,
@@ -228,7 +226,6 @@ test("compiled native audio and PCM modules keep their CommonJS consumer shapes"
     direct: {
       activity: true,
       tap: true,
-      aec: true,
       echo: true,
       watchdog: true,
       timeline: true,

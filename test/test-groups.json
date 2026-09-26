@@ -371,7 +371,6 @@
       "test/helpers/audioTapManagerWarnings.test.js",
       "test/helpers/liveSpeakerIdPolicy.test.js",
       "test/helpers/liveSpeakerIdentifier.test.js",
-      "test/helpers/meetingAecManager.test.js",
       "test/helpers/meetingAudioActivityMonitor.test.js",
       "test/helpers/meetingAudioParts.test.js",
       "test/helpers/meetingAudioTimeline.test.js",

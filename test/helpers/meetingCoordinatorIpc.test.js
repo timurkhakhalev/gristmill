@@ -173,7 +173,6 @@ function buildHarness({ failWrite = false } = {}) {
       },
       meetingDetectionEngine: engine,
       audioTapManager: null,
-      meetingAecManager: null,
       whisperManager: { transcribeLocalWhisper: async () => { asrCalls += 1; return { success: true, text: "" }; } },
       parakeetManager: { transcribeLocalParakeet: async () => { asrCalls += 1; return { success: true, text: "" }; } },
       liveSpeakerIdentifier: {

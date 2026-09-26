@@ -83,7 +83,6 @@ const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoor
   },
   meetingDetectionEngine: null,
   audioTapManager: null,
-  meetingAecManager: null,
   whisperManager: { transcribeLocalWhisper: async () => ({ success: true, text: "" }) },
   parakeetManager: { transcribeLocalParakeet: async () => ({ success: true, text: "" }) },
   liveSpeakerIdentifier: {

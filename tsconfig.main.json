@@ -46,7 +46,6 @@
     "src/helpers/windowBroadcast.ts",
     "src/helpers/windowConfig.ts",
     "src/helpers/windowManager.ts",
-    "src/helpers/meetingAecManager.ts",
     "src/helpers/meetingAudioActivityMonitor.ts",
     "src/helpers/meetingAudioTimeline.ts",
     "src/helpers/meetingCoordinatorIpcHandlers.ts",

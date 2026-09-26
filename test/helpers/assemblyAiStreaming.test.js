@@ -255,7 +255,7 @@ async function collectFrames(chunks, assertFrames) {
 }
 
 test("audio frames respect AssemblyAI's 50 ms floor at the meeting sample rate", async () => {
-  // 480 bytes is the smallest meeting-aec-helper can hand over (one 10 ms frame).
+  // 480 bytes is one 10 ms PCM16 frame at a 24 kHz meeting capture rate.
   await collectFrames(Array(20).fill(480), (frames) => {
     assert.ok(frames.length > 0, "no audio reached the server");
     for (const bytes of frames) {

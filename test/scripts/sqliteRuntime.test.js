@@ -94,6 +94,7 @@ test("Electron launch preserves app and CDP flags with a clean environment", asy
       ensureRuntime: async () => false,
       spawnProcess: (...args) => { launch = args; return {}; },
       electronPath: "/electron",
+      platform: "linux",
       args: ["--user-data-dir", "/tmp/isolated"],
     });
   } finally {
@@ -116,4 +117,31 @@ test("failed verification after repair stops instead of accepting a stale ABI", 
     log: () => {},
   }), /still fails after repair/);
   assert.equal(repairs, 1);
+});
+
+test("macOS launch uses LaunchServices with isolated logs and preserves application arguments", async () => {
+  const { EventEmitter } = require("node:events");
+  const fs = require("node:fs");
+  const child = new EventEmitter();
+  let launch;
+  const before = process.listenerCount("SIGINT");
+  await runElectron({
+    ensureRuntime: async () => false,
+    spawnProcess: (...args) => { launch = args; return child; },
+    electronPath: "/tmp/Electron.app/Contents/MacOS/Electron",
+    platform: "darwin",
+    args: ["--dev", "--user-data-dir=/tmp/isolated"],
+  });
+  const logPath = launch[1][launch[1].indexOf("--stdout") + 1];
+  try {
+    assert.equal(launch[0], "/usr/bin/open");
+    assert.deepEqual(launch[1].slice(0, 4), ["-n", "-W", "-a", "/tmp/Electron.app"]);
+    const appArgs = launch[1].slice(launch[1].indexOf("--args") + 1);
+    assert.deepEqual(appArgs.slice(0, 3), [require("node:path").resolve(__dirname, "../.."), "--dev", "--user-data-dir=/tmp/isolated"]);
+    assert.match(appArgs[3], /^--openhercules-launch=openhercules-launch-/);
+    assert.equal(fs.existsSync(logPath), true);
+    assert.equal(process.listenerCount("SIGINT"), before + 1);
+  } finally { child.emit("close", 0); }
+  assert.equal(fs.existsSync(logPath), false);
+  assert.equal(process.listenerCount("SIGINT"), before);
 });

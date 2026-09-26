@@ -84,6 +84,37 @@ test("microphone activity alone cannot show a meeting prompt", () => {
   assert.equal(shown.length, 0);
 });
 
+test("a call retries when startup prevents its notification from being shown", async () => {
+  const { engine, callDetector, shown } = createEngine();
+  let ready = false;
+  engine.windowManager.showMeetingNotification = async (data) => {
+    if (!ready) return false;
+    shown.push(data);
+    return true;
+  };
+  const call = { key: `meet:${"a".repeat(64)}`, service: "meet" };
+  callDetector.emit("call-active", call);
+  await Promise.resolve();
+  assert.equal(engine.activeDetections.size, 0);
+  assert.equal(engine.offeredCalls.has(call.key), false);
+  ready = true;
+  callDetector.emit("call-active", call);
+  await Promise.resolve();
+  assert.equal(shown.length, 1);
+  callDetector.emit("call-active", call);
+  assert.equal(shown.length, 1);
+});
+
+test("a failed notification load releases the call for retry", async () => {
+  const { engine, callDetector } = createEngine();
+  engine.windowManager.showMeetingNotification = async () => { throw new Error("load failed"); };
+  const call = { key: `meet:${"b".repeat(64)}`, service: "meet" };
+  callDetector.emit("call-active", call);
+  await new Promise(setImmediate);
+  assert.equal(engine.activeDetections.size, 0);
+  assert.equal(engine.offeredCalls.has(call.key), false);
+});
+
 test("an unanswered call prompt does not repeat for the same call", () => {
   const { engine, callDetector, shown } = createEngine();
 

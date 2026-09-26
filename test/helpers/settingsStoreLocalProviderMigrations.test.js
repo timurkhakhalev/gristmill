@@ -1,6 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const {
+  createRendererServer,
+  installBrowserGlobals,
+  reloadSettingsStore,
+} = require("../lib/rendererTestHarness");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 
@@ -25,8 +29,7 @@ test("provider migrations classify every registry local provider as local", asyn
     storage.setItem("agentProvider", providerId);
 
     // Each migration runs once per module evaluation, so re-evaluate the store per provider.
-    vite.moduleGraph.invalidateAll();
-    const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+    const { useSettingsStore } = await reloadSettingsStore(vite);
     const state = useSettingsStore.getState();
 
     assert.equal(state.cleanupMode, "local", `${providerId}: cleanupMode`);

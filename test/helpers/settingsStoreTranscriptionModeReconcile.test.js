@@ -1,6 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const {
+  createRendererServer,
+  installBrowserGlobals,
+  reloadSettingsStore,
+} = require("../lib/rendererTestHarness");
 
 // Pins reconcileTranscriptionRouting() in settingsStore.ts, where the rationale
 // for each rule lives (#2086).
@@ -30,8 +34,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
     storage.clear();
     for (const [key, value] of Object.entries(seed)) storage.setItem(key, value);
     writes.length = 0;
-    vite.moduleGraph.invalidateAll();
-    const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+    const { useSettingsStore } = await reloadSettingsStore(vite);
     return useSettingsStore.getState();
   };
 

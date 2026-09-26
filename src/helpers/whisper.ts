@@ -3,6 +3,7 @@ const fs = require("fs");
 const fsPromises = require("fs").promises;
 const path = require("path");
 const debugLogger = require("./debugLogger.js");
+const { ensureWhisperVadModel } = require("./whisperVadModel.js");
 const {
   downloadFile,
   createDownloadSignal,
@@ -421,7 +422,14 @@ export class WhisperManager {
     const modelPath = this.getModelPath(model);
 
     const vadEnabled = options.vadEnabled === true;
-    const vadModelPath = vadEnabled ? this.getVadModelPath() : null;
+    let vadModelPath = vadEnabled ? this.getVadModelPath() : null;
+    if (vadEnabled && !vadModelPath) {
+      // Issue #89: the VAD model is no longer bundled; fetch it on first use.
+      vadModelPath = await ensureWhisperVadModel().catch((error: Error) => {
+        debugLogger.warn("VAD model download failed", { error: error.message }, "assets");
+        return null;
+      });
+    }
     if (vadEnabled && !vadModelPath) {
       debugLogger.warn("VAD requested but ggml-silero model not found; running without VAD");
     }

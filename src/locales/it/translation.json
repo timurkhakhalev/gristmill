@@ -1744,41 +1744,6 @@
       },
       "consentNotice": "Ottieni sempre il consenso quando registri altre persone"
     },
-    "overview": {
-      "subtitle": {
-        "private": "Solo tu puoi vedere queste note."
-      },
-      "meta": {
-        "folders_one": "{{count}} cartella",
-        "folders_other": "{{count}} cartelle",
-        "members_one": "{{count}} membro",
-        "members_other": "{{count}} membri"
-      },
-      "banner": {
-        "title": {
-          "private": "Il tuo spazio privato"
-        },
-        "body": {
-          "private": "Tieni note delle riunioni, idee e bozze in un unico posto — e chiedi qualsiasi cosa su questo spazio."
-        },
-        "dismiss": "Chiudi"
-      },
-      "ask": {
-        "placeholder": "Chiedi qualsiasi cosa",
-        "chips": {
-          "catchUp": "Aggiornami",
-          "keyDecisions": "Elenca le decisioni chiave",
-          "inFlight": "Mostra i progetti in corso"
-        }
-      },
-      "invite": "Invita",
-      "list": {
-        "empty": "Ancora nessuna nota qui"
-      },
-      "author": {
-        "you": "Tu"
-      }
-    },
     "spaces": {
       "personal": "Personale",
       "moveToSpace": "Sposta in uno spazio…",
@@ -1864,7 +1829,8 @@
     "integrations": "Integrazioni",
     "chat": "Chat",
     "collapse": "Comprimi barra laterale",
-    "expand": "Espandi barra laterale"
+    "expand": "Espandi barra laterale",
+    "home": "Home"
   },
   "chat": {
     "newChat": "Nuova chat",
@@ -2122,8 +2088,12 @@
     "suggestions": {
       "summary": "Riassumi questa nota",
       "actions": "Quali sono le attività da fare?",
-      "decisions": "Cosa è stato deciso?"
-    }
+      "decisions": "Cosa è stato deciso?",
+      "catchUp": "Aggiornami",
+      "keyDecisions": "Elenca le decisioni chiave",
+      "inFlight": "Mostra i progetti in corso"
+    },
+    "homeEmptyState": "Chiedi qualsiasi cosa sulle tue note e riunioni"
   },
   "transcriptionPreview": {
     "label": "Anteprima",
@@ -2329,5 +2299,15 @@
     "switchView": "Passa a note / caricamento",
     "findInNote": "Cerca nella nota",
     "showShortcuts": "Scorciatoie da tastiera"
+  },
+  "home": {
+    "today": "Oggi",
+    "yesterday": "Ieri",
+    "recent": {
+      "meeting": "Riunione",
+      "participantsMore_one": "{{names}} e {{count}} altro",
+      "participantsMore_other": "{{names}} e altri {{count}}",
+      "empty": "Ancora nessuna nota"
+    }
   }
 }

@@ -116,7 +116,7 @@ test("user-authored names and previews detect direction at their display boundar
     assert.match(source(file), pattern, `${file} lost a dynamic-content direction boundary`);
   }
 
-  const meetingCards = source("src/components/UpcomingMeetings.tsx").match(
+  const meetingCards = source("src/components/home/ComingUp.tsx").match(
     /<p\s+dir="auto"[^>]*>\s*\{event\.summary \|\| t\("upcoming\.untitledEvent"\)\}/g
   );
   assert.equal(

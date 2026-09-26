@@ -1,4 +1,4 @@
-import { ChevronDown, Plus } from "../icons";
+import { ChevronDown, Clock, Plus } from "../icons";
 import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import type { ConversationRow } from "../../contracts/chatPersistence";
@@ -14,6 +14,8 @@ interface ConversationPickerProps {
   onSwitchConversation: (id: number) => void;
   onNewChat?: () => void;
   titleClassName?: string;
+  /** "history" shows a clock icon instead of the active conversation's title. */
+  variant?: "title" | "history";
 }
 
 export function ConversationPicker({
@@ -22,6 +24,7 @@ export function ConversationPicker({
   onSwitchConversation,
   onNewChat,
   titleClassName,
+  variant = "title",
 }: ConversationPickerProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
@@ -33,9 +36,13 @@ export function ConversationPicker({
         className="-ms-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-sm font-medium text-foreground outline-none transition-colors duration-150 hover:bg-default data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus"
         aria-label={t("embeddedChat.conversationSelector")}
       >
-        <span className={cn("max-w-40 truncate", titleClassName)}>
-          {activeConversation?.title || t("embeddedChat.newChat")}
-        </span>
+        {variant === "history" ? (
+          <Clock size={15} className="shrink-0 text-muted" />
+        ) : (
+          <span className={cn("max-w-40 truncate", titleClassName)}>
+            {activeConversation?.title || t("embeddedChat.newChat")}
+          </span>
+        )}
         <ChevronDown size={12} className="shrink-0 text-muted" />
       </Dropdown.Trigger>
       <Dropdown.Popover placement="bottom start" className="min-w-52 max-w-64">

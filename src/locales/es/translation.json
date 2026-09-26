@@ -1744,41 +1744,6 @@
       },
       "consentNotice": "Pide siempre consentimiento al grabar a otras personas"
     },
-    "overview": {
-      "subtitle": {
-        "private": "Solo tú puedes ver estas notas."
-      },
-      "meta": {
-        "folders_one": "{{count}} carpeta",
-        "folders_other": "{{count}} carpetas",
-        "members_one": "{{count}} miembro",
-        "members_other": "{{count}} miembros"
-      },
-      "banner": {
-        "title": {
-          "private": "Tu espacio privado"
-        },
-        "body": {
-          "private": "Guarda notas de reuniones, ideas y borradores en un solo lugar, y pregunta sobre cualquier cosa de este espacio."
-        },
-        "dismiss": "Descartar"
-      },
-      "ask": {
-        "placeholder": "Pregunta lo que quieras",
-        "chips": {
-          "catchUp": "Ponme al día",
-          "keyDecisions": "Lista las decisiones clave",
-          "inFlight": "Muestra los proyectos en curso"
-        }
-      },
-      "invite": "Invitar",
-      "list": {
-        "empty": "Aún no hay notas aquí"
-      },
-      "author": {
-        "you": "Tú"
-      }
-    },
     "spaces": {
       "personal": "Personal",
       "moveToSpace": "Mover a espacio…",
@@ -1864,7 +1829,8 @@
     "integrations": "Integraciones",
     "chat": "Chat",
     "collapse": "Contraer barra lateral",
-    "expand": "Expandir barra lateral"
+    "expand": "Expandir barra lateral",
+    "home": "Inicio"
   },
   "chat": {
     "newChat": "Nuevo chat",
@@ -2122,8 +2088,12 @@
     "suggestions": {
       "summary": "Resume esta nota",
       "actions": "¿Cuáles son las tareas pendientes?",
-      "decisions": "¿Qué se decidió?"
-    }
+      "decisions": "¿Qué se decidió?",
+      "catchUp": "Ponme al día",
+      "keyDecisions": "Lista las decisiones clave",
+      "inFlight": "Muestra los proyectos en curso"
+    },
+    "homeEmptyState": "Pregunta lo que quieras sobre tus notas y reuniones"
   },
   "transcriptionPreview": {
     "label": "Vista previa",
@@ -2329,5 +2299,15 @@
     "switchView": "Cambiar notas / subida",
     "findInNote": "Buscar en la nota",
     "showShortcuts": "Atajos de teclado"
+  },
+  "home": {
+    "today": "Hoy",
+    "yesterday": "Ayer",
+    "recent": {
+      "meeting": "Reunión",
+      "participantsMore_one": "{{names}} y {{count}} más",
+      "participantsMore_other": "{{names}} y {{count}} más",
+      "empty": "Aún no hay notas"
+    }
   }
 }

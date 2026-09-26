@@ -21,8 +21,7 @@ const ARABIC_PLURAL_BASES = [
   "settingsPage.privacy.hoursAgo",
   "settingsPage.privacy.minutesAgo",
   "notes.addToFolder.addCount",
-  "notes.overview.meta.folders",
-  "notes.overview.meta.members",
+  "home.recent.participantsMore",
   "dictionary.wordsReady",
 ];
 const ARABIC_NUMBER_NEUTRAL_TEMPLATES = {

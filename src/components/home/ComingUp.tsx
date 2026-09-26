@@ -1,20 +1,20 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Calendar, ExternalLink, Loader2, Mic, Monitor, Video } from "./icons";
-import { Button } from "./ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import PersonAvatar from "./ui/PersonAvatar";
-import EmptyStateCard from "./ui/EmptyStateCard";
-import { GRADIENT_CIRCLE } from "./ui/gradientCircle";
-import { cn } from "./lib/utils";
-import type { CalendarAttendee, CalendarEvent } from "../contracts/calendar";
-import { parseAttendees } from "../utils/calendarAttendees";
-import { useSystemAudioPermission } from "../hooks/useSystemAudioPermission";
-import { canManageSystemAudioInApp } from "../utils/systemAudioAccess";
-import { getMeetingJoinUrl } from "../helpers/meetingJoinUrl";
-import { parseEventDate } from "../utils/dateFormatting";
+import { Calendar, ExternalLink, Loader2, Mic, Monitor, Video } from "../icons";
+import { Button } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import PersonAvatar from "../ui/PersonAvatar";
+import EmptyStateCard from "../ui/EmptyStateCard";
+import { cn } from "../lib/utils";
+import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
+import { parseAttendees } from "../../utils/calendarAttendees";
+import { useSystemAudioPermission } from "../../hooks/useSystemAudioPermission";
+import { useUiLocale } from "../../hooks/useUiLocale";
+import { canManageSystemAudioInApp } from "../../utils/systemAudioAccess";
+import { getMeetingJoinUrl } from "../../helpers/meetingJoinUrl";
+import { parseEventDate } from "../../utils/dateFormatting";
 
-interface UpcomingMeetingsProps {
+interface ComingUpProps {
   events: CalendarEvent[];
   isLoading: boolean;
   isConnected: boolean;
@@ -36,7 +36,7 @@ function formatTimeRange(locale: string, startTime: string, endTime: string): st
 }
 
 // Today plus the next days that have events, capped at a working week.
-const MAX_DAY_CARDS = 5;
+const MAX_DAYS = 5;
 // Avatars shown before the "+N" overflow pill.
 const MAX_STACKED_AVATARS = 2;
 
@@ -64,14 +64,14 @@ function groupEventsByDay(events: CalendarEvent[], now: Date): DayGroup[] {
   }
   // Surface "today" even when it has nothing scheduled, so the list always
   // answers "what's next today?" at a glance.
-  if (groups.length > 0 && !groups.some((g) => g.isToday)) {
+  if (!groups.some((g) => g.isToday)) {
     groups.unshift({ key: now.toDateString(), date: now, isToday: true, items: [] });
   }
-  return groups.slice(0, MAX_DAY_CARDS);
+  return groups.slice(0, MAX_DAYS);
 }
 
 const ATTENDEE_COUNT_PILL_CLASS =
-  "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-surface-3 px-0.5 text-3xs font-medium tabular-nums text-muted-foreground ring-1 ring-background";
+  "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-surface-3 px-0.5 text-3xs font-medium tabular-nums text-muted-foreground ring-1 ring-surface-2";
 
 const RSVP_DOT: Record<string, string> = {
   accepted: "bg-success",
@@ -105,7 +105,7 @@ function AttendeePopover({
               email={a.email}
               displayName={a.displayName}
               size={18}
-              className="ring-1 ring-background"
+              className="ring-1 ring-surface-2"
             />
           ))}
           {attendees.length > MAX_STACKED_AVATARS && (
@@ -163,10 +163,11 @@ function AttendeePopover({
 }
 
 function EventRow({ event, isNow }: { event: CalendarEvent; isNow: boolean }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useUiLocale();
   const joinUrl = getMeetingJoinUrl(event);
   const attendees = useMemo(() => parseAttendees(event), [event]);
-  const timeRange = formatTimeRange(i18n.language, event.start_time, event.end_time);
+  const timeRange = formatTimeRange(locale, event.start_time, event.end_time);
 
   const startNotes = () => {
     if (joinUrl) openJoinUrl(joinUrl);
@@ -178,7 +179,7 @@ function EventRow({ event, isNow }: { event: CalendarEvent; isNow: boolean }) {
       size="sm"
       variant="ghost"
       onClick={startNotes}
-      className="pointer-events-auto h-7 shrink-0 gap-1.5 rounded-full bg-surface-3 px-3 text-xs text-foreground hover:bg-surface-raised dark:bg-surface-2 dark:hover:bg-surface-3"
+      className="pointer-events-auto h-7 shrink-0 gap-1.5 rounded-full bg-surface-3 px-3 text-xs text-foreground hover:bg-surface-raised"
     >
       {joinUrl ? <Video size={12} /> : <Mic size={12} />}
       {joinUrl ? t("upcoming.joinAndTranscribe") : t("upcoming.takeNotes")}
@@ -186,43 +187,47 @@ function EventRow({ event, isNow }: { event: CalendarEvent; isNow: boolean }) {
   );
 
   return (
-    <div className="group/event relative flex items-center gap-3 px-1 py-2">
-      {attendees.length > 1 ? (
-        <AttendeePopover
-          event={event}
-          attendees={attendees}
-          timeRange={timeRange}
-          joinUrl={joinUrl}
-        />
-      ) : event.attendees_count > 1 ? (
-        <span className={ATTENDEE_COUNT_PILL_CLASS}>+{event.attendees_count - 1}</span>
-      ) : null}
-      <div className="min-w-0 flex-1">
-        <p dir="auto" className="truncate text-sm font-medium leading-tight text-foreground">
+    <div className="group/event relative flex items-stretch gap-3">
+      <span
+        aria-hidden="true"
+        className={cn("w-0.5 shrink-0 rounded-full", isNow ? "bg-success" : "bg-primary/70")}
+      />
+      <div className="min-w-0 flex-1 py-0.5">
+        <p dir="auto" className="truncate text-sm font-medium leading-snug text-foreground">
           {event.summary || t("upcoming.untitledEvent")}
         </p>
         {isNow ? (
-          <span className="mt-1 flex items-center gap-1.5">
+          <span className="mt-0.5 flex items-center gap-1.5">
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-success opacity-75" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
             </span>
-            <span className="text-xs font-medium text-success">
-              {t("upcoming.now")}
-            </span>
+            <span className="text-xs font-medium text-success">{t("upcoming.now")}</span>
           </span>
         ) : (
           <p className="mt-0.5 truncate text-xs tabular-nums text-muted-foreground">{timeRange}</p>
         )}
       </div>
+      <div className="flex shrink-0 items-center">
+        {attendees.length > 1 ? (
+          <AttendeePopover
+            event={event}
+            attendees={attendees}
+            timeRange={timeRange}
+            joinUrl={joinUrl}
+          />
+        ) : event.attendees_count > 1 ? (
+          <span className={ATTENDEE_COUNT_PILL_CLASS}>+{event.attendees_count - 1}</span>
+        ) : null}
+      </div>
       {/* Always shown once the meeting is live; otherwise revealed on hover so you can join early. */}
       {isNow ? (
-        joinButton
+        <div className="flex shrink-0 items-center">{joinButton}</div>
       ) : (
         <span
           // Overlaid so the row keeps its full width until hovered; the scrim fades the
           // covered end of a long title out instead of slicing it.
-          className="pointer-events-none absolute inset-y-0 end-0 flex items-center bg-linear-to-r from-transparent to-background to-[2rem] ps-8 pe-1 opacity-0 transition-opacity duration-150 group-hover/event:opacity-100 has-[:focus-visible]:opacity-100 dark:to-surface-2"
+          className="pointer-events-none absolute inset-y-0 end-0 flex items-center bg-linear-to-r from-transparent to-surface-2 to-[2rem] ps-8 opacity-0 transition-opacity duration-150 group-hover/event:opacity-100 has-[:focus-visible]:opacity-100"
         >
           {joinButton}
         </span>
@@ -231,58 +236,56 @@ function EventRow({ event, isNow }: { event: CalendarEvent; isNow: boolean }) {
   );
 }
 
-function DayCard({ group, isNowFn }: { group: DayGroup; isNowFn: (e: CalendarEvent) => boolean }) {
-  const { t, i18n } = useTranslation();
+function DayRow({ group, isNowFn }: { group: DayGroup; isNowFn: (e: CalendarEvent) => boolean }) {
+  const { t } = useTranslation();
+  const locale = useUiLocale();
 
   return (
-    <div
-      className={cn(
-        "rounded-2xl border border-border",
-        !group.isToday && "overflow-clip"
-      )}
-    >
-      <div
-        className={cn(
-          "flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium",
-          // Today's glass strip sits over the card's hairline on three sides so the blue meets
-          // the rounded edge directly instead of being outlined in grey.
-          group.isToday
-            ? cn(GRADIENT_CIRCLE, "-mx-px -mt-px rounded-t-2xl")
-            : "bg-surface-3 text-foreground dark:bg-surface-2"
-        )}
-      >
-        <Calendar size={12} className="shrink-0" />
-        <span>
-          {group.date.toLocaleDateString(i18n.language, {
-            weekday: "short",
-            day: "numeric",
-            month: "short",
-          })}
+    <div className="grid grid-cols-[8.5rem_minmax(0,1fr)] items-start gap-4 px-5 py-4">
+      <div className="flex items-center gap-2.5">
+        <span className="w-9 text-3xl font-light leading-none tracking-tight tabular-nums text-foreground">
+          {group.date.getDate()}
         </span>
-      </div>
-      <div className="rounded-b-[15px] bg-background px-2 dark:bg-surface-2/60">
-        {group.items.length === 0 ? (
-          <p className="px-1 py-3 text-xs text-muted">
-            {t("upcoming.noEventsToday")}
+        <div className="min-w-0 leading-tight">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+            <span className="truncate">
+              {group.date.toLocaleDateString(locale, { month: "long" })}
+            </span>
+            {group.isToday && (
+              <span
+                aria-label={t("home.today")}
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger"
+              />
+            )}
           </p>
-        ) : (
-          <div className="divide-y divide-border/60">
-            {group.items.map((event) => (
-              <EventRow key={event.id} event={event} isNow={isNowFn(event)} />
-            ))}
-          </div>
-        )}
+          <p className="text-xs text-muted-foreground">
+            {group.date.toLocaleDateString(locale, { weekday: "short" })}
+          </p>
+        </div>
       </div>
+      {group.items.length === 0 ? (
+        <div className="flex items-stretch gap-3 self-center">
+          <span aria-hidden="true" className="w-0.5 shrink-0 rounded-full bg-border" />
+          <p className="py-2 text-sm text-muted-foreground">{t("upcoming.noEventsToday")}</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {group.items.map((event) => (
+            <EventRow key={event.id} event={event} isNow={isNowFn(event)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-export default function UpcomingMeetings({
+/** Home's calendar block: today plus the next days with meetings, one row per day. */
+export default function ComingUp({
   events,
   isLoading,
   isConnected,
   onConnectCalendar,
-}: UpcomingMeetingsProps) {
+}: ComingUpProps) {
   const { t } = useTranslation();
   const systemAudio = useSystemAudioPermission();
   const needsSystemAudioGrant = !systemAudio.granted && canManageSystemAudioInApp(systemAudio);
@@ -297,17 +300,15 @@ export default function UpcomingMeetings({
   };
 
   return (
-    <div>
-      <p className="pt-2 pb-2.5 text-sm text-muted-foreground">{t("upcoming.title")}</p>
+    <section>
+      <h2 className="pb-4 text-2xl text-foreground">{t("upcoming.title")}</h2>
 
-      {/* Loading state */}
-      {isLoading && (
+      {isLoading && events.length === 0 && (
         <div className="flex items-center justify-center gap-2 py-6">
           <Loader2 size={14} className="animate-spin text-primary" />
         </div>
       )}
 
-      {/* Calendar not connected */}
       {!isLoading && !isConnected && (
         <EmptyStateCard
           className="px-4 py-8"
@@ -325,51 +326,40 @@ export default function UpcomingMeetings({
         </EmptyStateCard>
       )}
 
-      {/* Connected, nothing scheduled */}
-      {!isLoading &&
-        isConnected &&
-        events.length === 0 &&
-        (needsSystemAudioGrant ? (
-          <EmptyStateCard
-            className="px-4 py-8"
-            icon={Monitor}
-            description={t("upcoming.systemAudioRequired")}
-          >
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => systemAudio.request()}
-              className="h-[30px] rounded-full px-3.5 text-xs"
-            >
-              {systemAudio.mode === "native"
-                ? t("upcoming.openSettings")
-                : t("onboarding.permissions.grantAccess")}
-            </Button>
-          </EmptyStateCard>
-        ) : (
-          <EmptyStateCard
-            className="px-4 py-8"
-            icon={Calendar}
-            title={t("upcoming.noUpcomingEvents")}
-            description={t("upcoming.moreCalendarsHint")}
-          >
-            <button
-              onClick={onConnectCalendar}
-              className="cursor-pointer text-xs text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
-            >
-              {t("upcoming.connectHere")}
-            </button>
-          </EmptyStateCard>
-        ))}
-
-      {/* Day cards */}
-      {!isLoading && isConnected && groupedEvents.length > 0 && (
-        <div className="space-y-2.5">
-          {groupedEvents.map((group) => (
-            <DayCard key={group.key} group={group} isNowFn={isNowFn} />
-          ))}
-        </div>
+      {isConnected && (!isLoading || events.length > 0) && (
+        <>
+          <div className="divide-y divide-dashed divide-border overflow-clip rounded-2xl border border-border bg-surface-2">
+            {groupedEvents.map((group) => (
+              <DayRow key={group.key} group={group} isNowFn={isNowFn} />
+            ))}
+          </div>
+          {events.length === 0 &&
+            (needsSystemAudioGrant ? (
+              <div className="mt-2 flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                <Monitor size={12} className="shrink-0" />
+                <span className="flex-1">{t("upcoming.systemAudioRequired")}</span>
+                <button
+                  onClick={() => systemAudio.request()}
+                  className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
+                >
+                  {systemAudio.mode === "native"
+                    ? t("upcoming.openSettings")
+                    : t("onboarding.permissions.grantAccess")}
+                </button>
+              </div>
+            ) : (
+              <p className="mt-2 px-1 text-xs text-muted-foreground">
+                {t("upcoming.moreCalendarsHint")}{" "}
+                <button
+                  onClick={onConnectCalendar}
+                  className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
+                >
+                  {t("upcoming.connectHere")}
+                </button>
+              </p>
+            ))}
+        </>
       )}
-    </div>
+    </section>
   );
 }

@@ -12,8 +12,8 @@ test("M7b settings and notes surfaces stay local-only", () => {
     "src/components/SettingsModal.tsx",
     "src/components/notes/SpacesTree.tsx",
     "src/components/notes/PersonalNotesView.tsx",
-    "src/components/notes/overview/ContainerOverview.tsx",
-    "src/components/notes/overview/OverviewNoteList.tsx",
+    "src/components/home/HomeView.tsx",
+    "src/components/home/RecentNotes.tsx",
     "src/hooks/useNotesOnboarding.ts",
   ];
   for (const file of files) {

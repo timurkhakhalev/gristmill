@@ -24,7 +24,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [providerConnected, setProviderConnected] = useState(false);
   const store = useSettingsStore();
   const [languages, setLanguages] = useState<string[]>(store.spokenLanguages ?? []);
-  const permissions = usePermissions(undefined, { macAccessibilityChecksEnabled: false });
+  const permissions = usePermissions();
   const systemAudio = useSystemAudioPermission();
 
   const finish = () => {

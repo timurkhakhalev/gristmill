@@ -63,16 +63,36 @@ function cloneDir(from: string, to: string): void {
 }
 
 // One-time cutover: before the channel-based filename, the packaged Dev app
-// (no NODE_ENV=development) wrote transcriptions.db in this profile. Those
-// dev-made notes must survive the rename to the channel database name.
-// Checkpoint the WAL into the main file first, then rename -wal/-shm before
-// the database itself: an interruption at any point leaves no
-// transcriptions-dev.db, so adoption simply reruns on the next launch and
-// never sees a new-style database next to an unmerged legacy WAL.
+// (no NODE_ENV=development) wrote transcriptions.db while pnpm dev wrote
+// transcriptions-dev.db — a user of both modes has TWO note sets. The mixed
+// case is preserved as an explicit backup instead of a schema merge (a wrong
+// merge loses notes; a visible backup file never does). The single-database
+// case checkpoints the WAL into the main file first, then renames -wal/-shm
+// before the database itself: an interruption at any point leaves no
+// transcriptions-dev.db, so adoption reruns on the next launch.
 function adoptLegacyDevDatabase(target: string): boolean {
   const legacy = path.join(target, PROD_DB);
   const current = path.join(target, DEV_DB);
-  if (fs.existsSync(current) || !fs.existsSync(legacy)) return true;
+  if (!fs.existsSync(legacy)) return true;
+  if (fs.existsSync(current)) {
+    // Both databases predate the cutover: keep the packaged-Dev set as an
+    // explicit, visible backup. It is not opened automatically; restoring it
+    // is a manual, deliberate act.
+    const backup = path.join(target, "transcriptions-legacy-dev-backup.db");
+    if (fs.existsSync(backup)) return true;
+    debugLogger.warn(
+      "dev profile holds both pre-cutover databases; keeping the packaged-Dev set as " +
+        "transcriptions-legacy-dev-backup.db",
+      {},
+      "devSnapshot"
+    );
+    fs.renameSync(legacy, backup);
+    for (const suffix of ["-shm", "-wal"]) {
+      const side = legacy + suffix;
+      if (fs.existsSync(side)) fs.renameSync(side, backup + suffix);
+    }
+    return true;
+  }
   try {
     const Database = require("better-sqlite3") as new (path: string) => {
       exec: (sql: string) => void;

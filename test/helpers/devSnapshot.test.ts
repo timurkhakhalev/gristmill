@@ -134,6 +134,31 @@ test("adopts a legacy packaged-Dev database instead of losing it", () => {
   assert.equal(fs.existsSync(path.join(development, "transcriptions.db")), false);
 });
 
+test("a profile with both pre-cutover databases keeps the legacy set as a backup", () => {
+  const { development, Database } = makeProfiles();
+  fs.mkdirSync(development, { recursive: true });
+  // Pre-cutover mixed use: pnpm dev notes + packaged Dev notes.
+  const legacy = new Database(path.join(development, "transcriptions.db"));
+  legacy.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT)");
+  legacy.exec("INSERT INTO notes (title) VALUES ('packaged-dev-note')");
+  legacy.close();
+  const pnpm = new Database(path.join(development, DEV_DB));
+  pnpm.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT)");
+  pnpm.exec("INSERT INTO notes (title) VALUES ('pnpm-dev-note')");
+  pnpm.close();
+  setUserDataDir(development);
+  const ok = snapshotProductionProfileForDev();
+  assert.equal(ok, true);
+  const check = openDevDb(development);
+  assert.equal(check.prepare("SELECT title FROM notes").get().title, "pnpm-dev-note");
+  check.close();
+  // The packaged-Dev set survives as a visible backup, never merged or lost.
+  const backup = new Database(path.join(development, "transcriptions-legacy-dev-backup.db"));
+  assert.equal(backup.prepare("SELECT title FROM notes").get().title, "packaged-dev-note");
+  backup.close();
+  assert.equal(fs.existsSync(path.join(development, "transcriptions.db")), false);
+});
+
 test("refuses to start when the database snapshot fails and none exists", () => {
   const { production, development } = makeProfiles();
   // Corrupt the production database: opening it must fail, forcing the

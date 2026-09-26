@@ -12,9 +12,9 @@ import debugLogger from "./debugLogger.js";
 // is deleting the dev profile.
 
 const PROD_DB = "transcriptions.db";
-// The dev main process runs with NODE_ENV=development and opens
-// transcriptions-dev.db (see database.ts): the production database must be
-// snapshotted under that name too, or the dev app opens an empty database.
+// The dev main process runs on the development channel and opens
+// transcriptions-dev.db (appChannel.ts + database.ts); both dev modes
+// converge on this one file, so the snapshot writes only it.
 const DEV_DB = "transcriptions-dev.db";
 const COPY_FILES = [".env", "globe-preference-state.json", ".system-audio-permission"];
 // Big trees (audio, meeting results, the persisted session partition with
@@ -65,12 +65,15 @@ function cloneDir(from: string, to: string): void {
 // Copying a live WAL-mode database file-by-file can capture mismatched db/wal
 // halves when production checkpoints between the two reads. VACUUM INTO
 // produces one consistent, self-contained file in a single SQLite read
-// transaction. Falls back to a plain clone when the prod db cannot be opened
-// (e.g. the better-sqlite3 binding is unavailable in this process).
-function snapshotDatabase(source: string, target: string): void {
-  const devDbPath = path.join(target, DEV_DB);
-  if (fs.existsSync(devDbPath)) return;
+// transaction. The output is staged under a temp name and atomically renamed:
+// an interrupted snapshot never leaves a half-written database, and an
+// existing dev database is never overwritten.
+function snapshotDatabase(source: string, target: string, name: string): void {
+  const destination = path.join(target, name);
+  if (fs.existsSync(destination)) return;
   fs.mkdirSync(target, { recursive: true });
+  const staged = path.join(target, `.${name}.snapshot-${process.pid}.tmp`);
+  fs.rmSync(staged, { force: true });
   try {
     const Database = require("better-sqlite3") as new (path: string) => {
       exec: (sql: string) => void;
@@ -78,24 +81,23 @@ function snapshotDatabase(source: string, target: string): void {
     };
     const db = new Database(path.join(source, PROD_DB));
     try {
-      db.exec(`VACUUM INTO '${path.join(target, PROD_DB).replace(/'/g, "''")}'`);
+      db.exec(`VACUUM INTO '${staged.replace(/'/g, "''")}'`);
     } finally {
       db.close();
     }
+    fs.renameSync(staged, destination);
   } catch (error) {
+    fs.rmSync(staged, { force: true });
+    // No file-clone fallback: without a consistent SQLite read the db/wal
+    // halves can mismatch, and a wrong database is worse than an incomplete
+    // snapshot — the marker stays absent and the next launch retries.
     debugLogger.warn(
-      "consistent db snapshot unavailable; cloning files instead",
+      "consistent database snapshot failed; retrying on the next launch",
       { error: (error as Error)?.message },
       "devSnapshot"
     );
-    fs.rmSync(path.join(target, PROD_DB), { force: true });
-    clone(path.join(source, PROD_DB), path.join(target, PROD_DB));
-    for (const suffix of ["-wal", "-shm"]) {
-      clone(path.join(source, PROD_DB + suffix), path.join(target, PROD_DB + suffix));
-    }
+    throw error;
   }
-  // No -wal/-shm beside the VACUUM output; it is a checkpointed single file.
-  clone(path.join(target, PROD_DB), devDbPath);
 }
 
 export function snapshotProductionProfileForDev(): void {
@@ -106,12 +108,13 @@ export function snapshotProductionProfileForDev(): void {
 
   const refresh = process.env.OPENHERCULES_REFRESH_SNAPSHOT === "1";
   const markerExists = fs.existsSync(path.join(target, MARKER));
-  const devDbExists = fs.existsSync(path.join(target, PROD_DB)) ||
-    fs.existsSync(path.join(target, DEV_DB));
+  const devDbExists = fs.existsSync(path.join(target, DEV_DB));
   if (devDbExists && markerExists && !refresh) return;
 
   try {
-    snapshotDatabase(source, target);
+    // The database filename follows the channel (appChannel.ts): both dev
+    // modes — pnpm dev and the packaged Dev app — open transcriptions-dev.db.
+    snapshotDatabase(source, target, DEV_DB);
     for (const name of COPY_FILES) {
       clone(path.join(source, name), path.join(target, name));
     }

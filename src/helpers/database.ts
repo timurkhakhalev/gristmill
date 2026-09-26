@@ -12,6 +12,7 @@ import { parseEventTime } from "./calendarAvailability.js";
 import { toDbTimestamp } from "./dbTimestamp.js";
 import { BUILTIN_ACTIONS } from "./builtinActions.js";
 import { noteContentHash } from "../utils/noteContentHash.js";
+import { isDevelopmentChannel } from "./appChannel.js";
 import {
   meetingProcessingConfigSchema,
   meetingProcessingConfigErrorSchema,
@@ -582,8 +583,7 @@ export class DatabaseManager {
 
   initDatabase(): boolean {
     try {
-      const fileName =
-        process.env.NODE_ENV === "development" ? "transcriptions-dev.db" : "transcriptions.db";
+      const fileName = isDevelopmentChannel() ? "transcriptions-dev.db" : "transcriptions.db";
       this._db = new Database(path.join(app.getPath("userData"), fileName));
       this._db.pragma("foreign_keys = ON");
       this._db.pragma("journal_mode = WAL");

@@ -58,7 +58,7 @@
     "compile:audio-tap": "node scripts/build-macos-audio-tap.js",
     "compile:native": "pnpm run compile:globe && pnpm run compile:mic-listener && pnpm run compile:calendar-listener && pnpm run compile:audio-tap",
     "prestart": "pnpm run compile:native && pnpm run download:meeting-aec-helper && pnpm run download:sherpa-onnx && pnpm run download:whisper-vad-model && pnpm run build:main",
-    "start": "electron .",
+    "start": "node scripts/run-electron.js",
     "dev": "concurrently -k -r \"pnpm:dev:renderer\" \"pnpm:dev:main\"",
     "predev:main": "pnpm run compile:native && pnpm run download:meeting-aec-helper && pnpm run download:sherpa-onnx && pnpm run download:whisper-vad-model && pnpm run build:main",
     "dev:main": "cross-env NODE_ENV=development node scripts/run-electron.js --dev",

@@ -18,7 +18,6 @@ pnpm run typecheck
 pnpm run lint
 pnpm test
 pnpm run pack
-node scripts/smoke-electron.js
 ```
 
 После pack для повторных Node SQLite тестов нужен `pnpm --dir node_modules/better-sqlite3 exec prebuild-install`. Hardware smoke — отдельная изолированная macOS arm64 проверка; её нельзя считать выполненной по этому документу.

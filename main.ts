@@ -30,7 +30,6 @@ import {
 } from "./src/helpers/electronProcessIds.js";
 import { registerMeetingHotkeyHandler } from "./src/helpers/meetingHotkeyIpcHandler.js";
 import { AudioTapManager } from "./src/helpers/audioTapManager.js";
-import { MeetingAecManager } from "./src/helpers/meetingAecManager.js";
 import { MeetingDetectionEngine } from "./src/helpers/meetingDetectionEngine.js";
 import { i18nMain, changeLanguage } from "./src/helpers/i18nMain.js";
 import { register as registerSidecar, shutdownAll } from "./src/helpers/sidecarRegistry.js";
@@ -263,7 +262,6 @@ let appleCalendarManager: AppleCalendarManager | null = null;
 let calendarReminderScheduler: CalendarReminderScheduler | null = null;
 let meetingDetectionEngine: MeetingDetectionEngine | null = null;
 let audioTapManager: AudioTapManager | null = null;
-let meetingAecManager: MeetingAecManager | null = null;
 let ipcHandlers: IPCHandlers | null = null;
 let cliBridge: CliBridge | null = null;
 let globeKeyAlertShown = false;
@@ -383,8 +381,6 @@ function initializeCoreManagers(): void {
     initializedMeetingDetectionEngine;
   const initializedAudioTapManager = new AudioTapManager();
   audioTapManager = initializedAudioTapManager;
-  const initializedMeetingAecManager = new MeetingAecManager();
-  meetingAecManager = initializedMeetingAecManager;
 
   // IPC handlers must be registered before window content loads
   ipcHandlers = new IPCHandlers({
@@ -399,7 +395,6 @@ function initializeCoreManagers(): void {
     appleCalendarManager: initializedAppleCalendarManager,
     meetingDetectionEngine: initializedMeetingDetectionEngine,
     audioTapManager: initializedAudioTapManager,
-    meetingAecManager: initializedMeetingAecManager,
     getTrayManager: () => trayManager,
     oauthProtocolRegistered: protocolRegistered,
     oauthProtocol: OAUTH_PROTOCOL,
@@ -755,5 +750,4 @@ function performSyncTeardown(): void {
   if (appleCalendarManager) appleCalendarManager.stop();
   if (calendarReminderScheduler) calendarReminderScheduler.stop();
   if (audioTapManager) audioTapManager.stop().catch(() => {});
-  if (meetingAecManager) meetingAecManager.stop().catch(() => {});
 }

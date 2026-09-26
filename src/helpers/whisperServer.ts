@@ -6,6 +6,7 @@ const path = require("path");
 import http from "http";
 const os = require("os");
 const debugLogger = require("./debugLogger.js");
+const { ensureDevBinary } = require("./devAssetInstaller.js");
 const { killProcess } = require("../utils/process.js");
 const { isPortAvailable } = require("../utils/serverUtils.js");
 import { getSafeTempDir } from "./safeTempDir.js";
@@ -446,7 +447,15 @@ export class WhisperServerManager extends EventEmitter {
     const threadResolution: ThreadResolution =
       options.threadResolution || resolveWhisperThreads(options);
     const serverBinary = this.getServerBinaryPath();
-    if (!serverBinary) throw new Error("whisper-server binary not found");
+    if (!serverBinary) {
+      // Dev checkouts no longer prefetch binaries at startup; the first local
+      // route use installs the pinned build. Packaged apps ship the binary.
+      await ensureDevBinary("whisper-cpp").catch((error: Error) => {
+        debugLogger.warn("Local-route binary install failed", { error: error.message }, "assets");
+      });
+    }
+    const resolvedBinary = serverBinary ?? this.getServerBinaryPath();
+    if (!resolvedBinary) throw new Error("whisper-server binary not found");
     if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
 
     this.port = await this.findAvailablePort();
@@ -458,7 +467,7 @@ export class WhisperServerManager extends EventEmitter {
     const pathSep = ":";
 
     // Add the whisper-server directory to PATH so any companion DLLs are found
-    const serverBinaryDir = path.dirname(serverBinary);
+    const serverBinaryDir = path.dirname(resolvedBinary);
     spawnEnv.PATH = serverBinaryDir + pathSep + (process.env.PATH || "");
 
     const args = buildWhisperServerArgs({
@@ -488,7 +497,7 @@ export class WhisperServerManager extends EventEmitter {
       threads: threadResolution,
     });
 
-    this.process = spawn(serverBinary, args, {
+    this.process = spawn(resolvedBinary, args, {
       stdio: ["ignore", "pipe", "pipe"],
       env: spawnEnv,
       cwd: serverBinaryDir,

@@ -26,18 +26,15 @@ function diagnosticsFor(source) {
 test("native adapter and PCM contracts reject wrong calls under strict main target", () => {
   const codes = diagnosticsFor(`
 import { AudioTapManager } from "./src/helpers/audioTapManager.ts";
-import { MeetingAecManager } from "./src/helpers/meetingAecManager.ts";
 import { createMeetingAudioActivityMonitor } from "./src/helpers/meetingAudioActivityMonitor.ts";
 import { resolveMicChunkAction } from "./src/helpers/meetingMicGate.ts";
 
 const tap = new AudioTapManager();
 tap.start({ onChunk: (chunk: string) => chunk.length });
-const aec = new MeetingAecManager();
-aec.processMicBuffer("not PCM");
 createMeetingAudioActivityMonitor({ onActivityChanged: (state) => state.other });
 resolveMicChunkAction({ mode: "streaming", source: "mic", rms: 0, peak: 0, sampleCount: 0, isSystemSpeaking: () => false, extra: true });
 `);
 
-  assert.ok(codes.includes(2345), `expected argument errors, got ${codes.join(",")}`);
+  assert.ok(codes.includes(2322), `expected argument errors, got ${codes.join(",")}`);
   assert.ok(codes.includes(2339), `expected state-property error, got ${codes.join(",")}`);
 });

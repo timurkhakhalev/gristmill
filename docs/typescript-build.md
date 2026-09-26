@@ -93,9 +93,6 @@ Tests/build/install/rebuild запускаются последовательн�
 - `pnpm test` — 2390 passed, 0 failed/skipped, последовательный прогон.
 - `pnpm run pack` — renderer/main/native сборки и macOS arm64 `.app` готовы;
   afterPack проверил SQLite ABI и распакованный worker. Без подписи.
-- `node scripts/smoke-electron.js` — запуск, Notes, blank note, folder/edit,
-  поиск, chat persistence, Dictionary/Snippets, AI Actions, onboarding и Settings
-  прошли на отдельном временном профиле.
 - Дополнительно: настоящий Electron utilityProcess загрузил worker из
   `app.asar/dist-main` и ответил на `ping`, без загрузки модели или аудио.
   В asar проверено отсутствие исходных main/preload/helpers и `.env`.
@@ -243,7 +240,6 @@ build-main.js и mainBuild.test.js. Перевод тестов/tooling на TS 
 - `src/helpers/localServerPolicy.js`
 - `src/helpers/localTranscriptionModels.js`
 - `src/helpers/markdownMirror.ts`
-- `src/helpers/meetingAecManager.ts`
 - `src/helpers/meetingAudioActivityMonitor.ts`
 - `src/helpers/meetingAudioTimeline.ts`
 - `src/helpers/meetingAutoEndController.js`
@@ -468,7 +464,6 @@ folderDeleteRelocationContract 2, rendererBridgeContract, mainBuild,
 notesIpc, databaseLocalBehavior/Schema, notesDatabase,
 spacesTreeNoteActionClearance, toolUtils, searchNotesTool); compiler probe
 на неполную DB deps; полный `pnpm test`; `pnpm run pack`; Node ABI
-восстановлен; `node scripts/smoke-electron.js` на изолированном профиле.
 Inventory графа Electron: 131 JS, 37 TS, 1 MTS, 25 JSON.
 
 ## Этап «типизированная граница chat persistence»
@@ -1404,7 +1399,7 @@ build, pack и isolated Electron smoke остаются за оркестрат�
 helpers переведены из JavaScript в TypeScript; последовательность meeting
 orchestration в `ipcHandlers.js` не менялась.
 
-- `AudioTapManager` и `MeetingAecManager` получили явные startup/readiness,
+- `AudioTapManager` получил явные startup/readiness,
   permission/status, warning/error и chunk contracts. Newline JSON с partial
   reads валидируется у stderr boundary; AEC stdout сохраняет split frame
   buffering и проверяет bounded even PCM16 frame lengths. Таймауты, cleanup,
@@ -1426,7 +1421,7 @@ orchestration в `ipcHandlers.js` не менялась.
   remapped, ambiguous, native-default и unavailable статусы.
 - Direct CJS consumers сохраняют identity через `module.exports = X` и
   `module.exports.X = X` (AudioActivityDetector, AudioTapManager,
-  MeetingAecManager, MeetingEchoLeakDetector, timeline, watchdog); watchdog
+  MeetingEchoLeakDetector, timeline, watchdog); watchdog
   statics и named-object consumers также re-attached. Existing ESM default
   drills не удалялись. Tests use explicit `.ts` source specifiers and every
   touched Module._load hook accepts extensionless and `.js` forms; no raw TS is

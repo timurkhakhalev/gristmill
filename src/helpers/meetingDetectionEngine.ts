@@ -1,4 +1,5 @@
 import type { WebContents } from "electron";
+import { createHash } from "crypto";
 import debugLogger from "./debugLogger.js";
 import { openExternalUrl } from "./externalUrlOpener.js";
 import { getMeetingJoinUrl } from "./meetingJoinUrl.js";
@@ -130,6 +131,11 @@ export interface AudioActivityDetectorLike extends NodeJS.EventEmitter {
   getExternalMicState(): { reliable: boolean; externalMicActive: boolean };
 }
 
+export interface MeetingCallDetectorLike extends NodeJS.EventEmitter {
+  start(): void;
+  stop(): void;
+}
+
 /** Narrow window-manager surface the engine drives (mirrors WindowManager). */
 export interface MeetingDetectionWindowManager extends EngineNotificationCallbacks {
   notificationPrefs?: Record<string, boolean | undefined>;
@@ -138,6 +144,7 @@ export interface MeetingDetectionWindowManager extends EngineNotificationCallbac
     options?: { autoDismiss?: boolean; autoDismissAt?: number | null }
   ): Promise<boolean> | boolean | undefined;
   dismissMeetingNotification?(options?: { notifyEngine?: boolean; flushQueued?: boolean }): void;
+  dismissDetectionNotification?(detectionId: string): void;
   showMeetingAutoEndNotification?(payload: {
     sessionId: string;
     reason: string;
@@ -178,6 +185,7 @@ export interface MeetingReminderSchedulerLike {
 }
 
 interface MeetingDetectionEngineOptions {
+  callDetector?: MeetingCallDetectorLike;
   createAutoEndController?: typeof createMeetingAutoEndController;
   createAudioActivityMonitor?: typeof createMeetingAudioActivityMonitor;
   now?: () => number;
@@ -189,9 +197,13 @@ export class MeetingDetectionEngine {
   private readonly reminderScheduler: MeetingReminderSchedulerLike;
   private readonly meetingProcessDetector: MeetingProcessDetectorLike;
   private readonly audioActivityDetector: AudioActivityDetectorLike;
+  private readonly callDetector?: MeetingCallDetectorLike;
   private readonly windowManager: MeetingDetectionWindowManager;
   private readonly databaseManager: MeetingDetectionDatabase;
   readonly activeDetections = new Map<string, ActiveDetection>();
+  private readonly offeredCalls = new Set<string>();
+  private readonly offeredCalendarEvents = new Set<string>();
+  private readonly callCalendarEvents = new Map<string, string>();
   private preferences = { processDetection: true, audioDetection: true };
   private _userRecording = false;
   private _meetingModeActive = false;
@@ -217,6 +229,7 @@ export class MeetingDetectionEngine {
     windowManager: MeetingDetectionWindowManager,
     databaseManager: MeetingDetectionDatabase,
     {
+      callDetector,
       createAutoEndController = createMeetingAutoEndController,
       createAudioActivityMonitor = createMeetingAudioActivityMonitor,
       now = Date.now,
@@ -227,6 +240,7 @@ export class MeetingDetectionEngine {
     this.reminderScheduler = reminderScheduler;
     this.meetingProcessDetector = meetingProcessDetector;
     this.audioActivityDetector = audioActivityDetector;
+    this.callDetector = callDetector;
     this.windowManager = windowManager;
     this.databaseManager = databaseManager;
     this._now = now;
@@ -282,8 +296,33 @@ export class MeetingDetectionEngine {
       }
     );
 
-    this.audioActivityDetector.on("sustained-audio-detected", (data: DetectionData) => {
-      this._handleDetection("audio", "sustained-audio", data);
+    this.callDetector?.on("call-active", ({ key, service }: { key: string; service: string }) => {
+      if (this.offeredCalls.has(key)) return;
+      if (this._meetingModeActive || this._recordingSession) {
+        this.offeredCalls.add(key);
+        return;
+      }
+      const event = this._findCalendarEvent();
+      if (event && this.offeredCalendarEvents.has(event.id) && this._callMatchesEvent(key, service, event)) {
+        this.offeredCalls.add(key);
+        this.callCalendarEvents.set(key, event.id);
+        return;
+      }
+      this._handleDetection("audio", key, { detectedAt: this._now(), service });
+      if (this.activeDetections.has(`audio:${key}`)) this.offeredCalls.add(key);
+    });
+
+    this.callDetector?.on("call-ended", ({ key }: { key: string }) => {
+      this.offeredCalls.delete(key);
+      const calendarEventId = this.callCalendarEvents.get(key);
+      if (calendarEventId) this.offeredCalendarEvents.delete(calendarEventId);
+      this.callCalendarEvents.delete(key);
+      const detectionId = `audio:${key}`;
+      this.activeDetections.delete(detectionId);
+      this._notificationQueue = this._notificationQueue.filter(
+        (entry) => entry.source !== "audio" || entry.key !== key
+      );
+      this.windowManager.dismissDetectionNotification?.(detectionId);
     });
 
     this.audioActivityDetector.on(
@@ -653,10 +692,25 @@ export class MeetingDetectionEngine {
     return true;
   }
 
-  // Calendar reminders enter the same pipeline as mic detections, so they share
+  // Calendar reminders enter the same pipeline as confirmed call detections, so they share
   // the recording gates, queueing, cooldowns, and the overlay window.
   handleCalendarReminder(event: DetectionCalendarEvent): void {
+    if (this.offeredCalendarEvents.has(event.id)) return;
     this._handleDetection("calendar", event.id, { event, detectedAt: Date.now() });
+  }
+
+  private _callMatchesEvent(key: string, service: string, event: DetectionCalendarEvent): boolean {
+    const joinUrl = getMeetingJoinUrl(event);
+    if (!joinUrl) return false;
+    try {
+      const url = new URL(joinUrl);
+      if (service === "zoom") return url.hostname === "zoom.us" || url.hostname.endsWith(".zoom.us");
+      if (service !== "meet" || url.protocol !== "https:" || url.hostname !== "meet.google.com") return false;
+      const room = `${url.hostname}${url.pathname}`.toLowerCase();
+      return key === `meet:${createHash("sha256").update(room).digest("hex")}`;
+    } catch {
+      return false;
+    }
   }
 
   _handleDetection(source: "audio" | "calendar", key: string, data: DetectionData): void {
@@ -743,19 +797,24 @@ export class MeetingDetectionEngine {
     const event = calendarEvent ?? placeholderEvent("__detected__");
 
     let variant: "detected" | "starting" | "underway" = "detected";
-    if (calendarEvent) {
+    if (source === "calendar" && calendarEvent) {
       const started = new Date(calendarEvent.start_time).getTime() <= Date.now();
       variant = started ? "underway" : "starting";
     }
     const joinUrl = source === "calendar" ? getMeetingJoinUrl(calendarEvent) : null;
 
+    if (source === "calendar" && calendarEvent) this.offeredCalendarEvents.add(calendarEvent.id);
+    if (source === "audio" && calendarEvent && this._callMatchesEvent(key, String(data.service), calendarEvent)) {
+      this.offeredCalendarEvents.add(calendarEvent.id);
+      this.callCalendarEvents.set(key, calendarEvent.id);
+    }
+
     debugLogger.info(
-      "Showing notification",
+      "Requesting meeting notification",
       {
         detectionId,
         source,
         variant,
-        title: calendarEvent?.summary ?? null,
         hasJoinUrl: !!joinUrl,
       },
       "meeting"
@@ -766,7 +825,18 @@ export class MeetingDetectionEngine {
       detection.event = event;
     }
 
-    void this.windowManager.showMeetingNotification?.({
+    const releaseUnshownPrompt = () => {
+      if (!detection || this.activeDetections.get(detectionId) !== detection) return;
+      this.activeDetections.delete(detectionId);
+      if (source === "audio") {
+        this.offeredCalls.delete(key);
+        this.callCalendarEvents.delete(key);
+      }
+      if (calendarEvent) this.offeredCalendarEvents.delete(calendarEvent.id);
+      debugLogger.info("Meeting notification was not shown; detection can retry", { source }, "meeting");
+    };
+
+    void Promise.resolve(this.windowManager.showMeetingNotification?.({
       kind: "detection",
       detectionId,
       source,
@@ -774,6 +844,13 @@ export class MeetingDetectionEngine {
       event,
       variant,
       joinUrl,
+    })).then((shown) => {
+      if (shown === false) releaseUnshownPrompt();
+    }).catch((error: unknown) => {
+      releaseUnshownPrompt();
+      debugLogger.warn("Meeting notification failed", {
+        reason: error instanceof Error ? error.name : "error",
+      }, "meeting");
     });
   }
 
@@ -1001,11 +1078,8 @@ export class MeetingDetectionEngine {
       return;
     }
 
-    // Expiring unanswered is not a decline, so no dismissal cooldown starts:
-    // the detector's hasPrompted flag already keeps the ongoing call from
-    // re-prompting, while a call starting right after the timeout still
-    // prompts. Only an explicit dismissal (handleNotificationResponse) cools
-    // the mic detector down.
+    // Expiring unanswered is not a decline. offeredCalls keeps the ongoing
+    // call from re-prompting; call-ended releases it for a later call.
     this.activeDetections.clear();
     debugLogger.info("Notification auto-dismissed, detections cleared", {}, "meeting");
   }
@@ -1102,6 +1176,12 @@ export class MeetingDetectionEngine {
 
     this._syncMeetingProcessDetector();
     this._syncAudioActivityDetector();
+    this._syncCallDetector();
+  }
+
+  private _syncCallDetector(): void {
+    if (this.preferences.audioDetection) this.callDetector?.start();
+    else this.callDetector?.stop();
   }
 
   getPreferences(): { processDetection: boolean; audioDetection: boolean } {
@@ -1112,6 +1192,7 @@ export class MeetingDetectionEngine {
     debugLogger.info("Meeting detection engine started", this.preferences, "meeting");
     this._syncMeetingProcessDetector();
     this._syncAudioActivityDetector();
+    this._syncCallDetector();
   }
 
   stop(): void {
@@ -1122,7 +1203,11 @@ export class MeetingDetectionEngine {
     this._recordingSession = null;
     this.meetingProcessDetector.stop();
     this.audioActivityDetector.stop();
+    this.callDetector?.stop();
     this.activeDetections.clear();
+    this.offeredCalls.clear();
+    this.offeredCalendarEvents.clear();
+    this.callCalendarEvents.clear();
     this._meetingModeActive = false;
     if (this._postRecordingCooldown) {
       clearTimeout(this._postRecordingCooldown);

@@ -85,7 +85,7 @@ export class CalendarReminderScheduler {
     this.activeMeeting = event;
     this.notifiedMeetings.add(notificationKey(event));
 
-    debugLogger.info("Calendar meeting reminder due", { summary: event.summary }, "calendar");
+    debugLogger.info("Calendar meeting reminder due", { eventId: event.id }, "calendar");
     this.meetingDetectionEngine?.handleCalendarReminder(event);
 
     this._scheduleMeetingEnd(event);
@@ -96,7 +96,7 @@ export class CalendarReminderScheduler {
   onMeetingEnd(): void {
     debugLogger.info(
       "Calendar meeting ended",
-      { summary: this.activeMeeting?.summary },
+      { eventId: this.activeMeeting?.id },
       "calendar"
     );
     this.activeMeeting = null;

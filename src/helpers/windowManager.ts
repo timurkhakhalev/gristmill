@@ -718,6 +718,7 @@ export class WindowManager {
       debugLogger.warn("Notification renderer did not signal ready, force-showing", {}, "meeting");
       win.webContents.send("meeting-notification-data", promptData);
       win.showInactive();
+      debugLogger.info("Meeting notification window shown", { visible: win.isVisible() }, "meeting");
     }, 3000);
     this._notificationReadyFallback = readyFallback;
 
@@ -748,6 +749,7 @@ export class WindowManager {
       this._notificationReadyFallback = null;
     }
     win.showInactive();
+    debugLogger.info("Meeting notification window shown", { visible: win.isVisible() }, "meeting");
   }
 
   dismissMeetingNotification({
@@ -772,6 +774,15 @@ export class WindowManager {
       this.meetingDetectionEngine?.handleDetectionNotificationClosed?.(notification.detectionId!, {
         flushQueued,
       });
+    }
+  }
+
+  dismissDetectionNotification(detectionId: string): void {
+    if (
+      this._pendingNotificationData?.kind === "detection" &&
+      this._pendingNotificationData.detectionId === detectionId
+    ) {
+      this.dismissMeetingNotification();
     }
   }
 

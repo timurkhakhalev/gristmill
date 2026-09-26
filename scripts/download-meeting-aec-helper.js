@@ -93,6 +93,16 @@ async function main() {
     return;
   }
 
+  if (!args.isForce && selected.every((target) => fs.existsSync(path.join(BIN_DIR, binaryName(target))))) {
+    for (const target of selected) {
+      console.log(`[meeting-aec-helper] ${binaryName(target)} already exists`);
+    }
+    if (args.shouldCleanup && !args.isAll) {
+      cleanupFiles(BIN_DIR, "meeting-aec-helper-", `meeting-aec-helper-${args.platformArch}`);
+    }
+    return;
+  }
+
   if (VERSION_OVERRIDE) {
     console.log(`\n[meeting-aec-helper] Using pinned version: ${VERSION_OVERRIDE}`);
   } else {

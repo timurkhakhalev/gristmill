@@ -819,6 +819,7 @@
     "files": [
       "test/helpers/meetingDetectionEngine.test.js",
       "test/helpers/meetingDetectionEngineAutoEnd.test.js",
+      "test/helpers/meetingCallDetector.test.js",
       "test/helpers/meetingJoinUrl.test.js",
       "test/helpers/meetingNotificationModel.test.js"
     ]

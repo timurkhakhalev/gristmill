@@ -54,6 +54,9 @@ function createEngine() {
   audioDetector.notifyMeetingAppsChanged = () => audioDetector.meetingAppNotifications++;
   audioDetector.start = () => {};
   audioDetector.stop = () => {};
+  const callDetector = new EventEmitter();
+  callDetector.start = () => {};
+  callDetector.stop = () => {};
 
   const shown = [];
   const windowManager = {
@@ -68,41 +71,143 @@ function createEngine() {
     processDetector,
     audioDetector,
     windowManager,
-    {}
+    {},
+    { callDetector }
   );
 
-  return { engine, audioDetector, processDetector, shown };
+  return { engine, audioDetector, callDetector, processDetector, shown, reminderScheduler };
 }
 
-test("an unanswered audio prompt expires without cooling down the mic detector", () => {
-  const { engine, audioDetector, shown } = createEngine();
-
+test("microphone activity alone cannot show a meeting prompt", () => {
+  const { audioDetector, shown } = createEngine();
   audioDetector.emit("sustained-audio-detected", { durationMs: 2000, detectedAt: 0 });
+  assert.equal(shown.length, 0);
+});
+
+test("a call retries when startup prevents its notification from being shown", async () => {
+  const { engine, callDetector, shown } = createEngine();
+  let ready = false;
+  engine.windowManager.showMeetingNotification = async (data) => {
+    if (!ready) return false;
+    shown.push(data);
+    return true;
+  };
+  const call = { key: `meet:${"a".repeat(64)}`, service: "meet" };
+  callDetector.emit("call-active", call);
+  await Promise.resolve();
+  assert.equal(engine.activeDetections.size, 0);
+  assert.equal(engine.offeredCalls.has(call.key), false);
+  ready = true;
+  callDetector.emit("call-active", call);
+  await Promise.resolve();
+  assert.equal(shown.length, 1);
+  callDetector.emit("call-active", call);
+  assert.equal(shown.length, 1);
+});
+
+test("a failed notification load releases the call for retry", async () => {
+  const { engine, callDetector } = createEngine();
+  engine.windowManager.showMeetingNotification = async () => { throw new Error("load failed"); };
+  const call = { key: `meet:${"b".repeat(64)}`, service: "meet" };
+  callDetector.emit("call-active", call);
+  await new Promise(setImmediate);
+  assert.equal(engine.activeDetections.size, 0);
+  assert.equal(engine.offeredCalls.has(call.key), false);
+});
+
+test("an unanswered call prompt does not repeat for the same call", () => {
+  const { engine, callDetector, shown } = createEngine();
+
+  callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
   assert.equal(shown.length, 1, "the detection must reach the overlay");
 
   engine.handleNotificationTimeout();
-
-  assert.equal(audioDetector.dismissals, 0, "a timeout is not a decline; no cooldown may start");
+  callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
+  assert.equal(shown.length, 1);
   assert.equal(engine.activeDetections.size, 0, "expired detections must be cleared");
 });
 
-test("explicitly dismissing an audio prompt still starts the mic cooldown", async () => {
-  const { engine, audioDetector, shown } = createEngine();
+test("dismissal does not repeat until the call ends", async () => {
+  const { engine, callDetector, shown } = createEngine();
 
-  audioDetector.emit("sustained-audio-detected", { durationMs: 2000, detectedAt: 0 });
+  callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
   await engine.handleNotificationResponse(shown[0].detectionId, "dismiss");
-
-  assert.equal(audioDetector.dismissals, 1, "an explicit decline must keep its cooldown");
+  callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
+  assert.equal(shown.length, 1);
 });
 
-test("a detection card closed without a response allows the next prompt", () => {
-  const { engine, audioDetector, shown } = createEngine();
+test("a confirmed new call can prompt after the previous one ends", () => {
+  const { engine, callDetector, shown } = createEngine();
 
-  audioDetector.emit("sustained-audio-detected", { durationMs: 2000, detectedAt: 0 });
+  callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
   engine.handleDetectionNotificationClosed(shown[0].detectionId);
-  audioDetector.emit("sustained-audio-detected", { durationMs: 4000, detectedAt: 1 });
+  callDetector.emit("call-ended", { key: "zoom:123" });
+  callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
 
   assert.equal(shown.length, 2);
+});
+
+test("calendar reminder and confirmed Meet call share one offer", () => {
+  const { engine, callDetector, reminderScheduler, shown } = createEngine();
+  const { createHash } = require("node:crypto");
+  const event = {
+    id: "calendar-1", start_time: new Date(Date.now() + 60_000).toISOString(),
+    hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-1",
+  };
+  reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
+  const key = `meet:${createHash("sha256").update("meet.google.com/abc-defg-hij").digest("hex")}`;
+  engine.handleCalendarReminder(event);
+  callDetector.emit("call-active", { key, service: "meet" });
+  assert.equal(shown.length, 1);
+});
+
+test("a later call can prompt after the call tied to a calendar offer ends", () => {
+  const { engine, callDetector, reminderScheduler, shown } = createEngine();
+  const { createHash } = require("node:crypto");
+  const event = {
+    id: "calendar-rejoin", start_time: new Date(Date.now() + 60_000).toISOString(),
+    hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-rejoin",
+  };
+  reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
+  const key = `meet:${createHash("sha256").update("meet.google.com/abc-defg-hij").digest("hex")}`;
+
+  engine.handleCalendarReminder(event);
+  callDetector.emit("call-active", { key, service: "meet" });
+  callDetector.emit("call-ended", { key });
+  callDetector.emit("call-active", { key, service: "meet" });
+
+  assert.equal(shown.length, 2);
+  assert.equal(shown[1].source, "audio");
+});
+
+test("a calendar offer without a join link does not hide an unrelated call", () => {
+  const { engine, callDetector, reminderScheduler, shown } = createEngine();
+  const event = {
+    id: "calendar-unlinked", start_time: new Date(Date.now() + 60_000).toISOString(),
+    calendar_id: "calendar-unlinked", attendees: [{ email: "teammate@example.com" }],
+  };
+  reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
+
+  engine.handleCalendarReminder(event);
+  callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
+
+  assert.equal(shown.length, 2);
+  assert.equal(shown[1].source, "audio");
+});
+
+test("a confirmed Meet call suppresses its later calendar reminder", () => {
+  const { engine, callDetector, reminderScheduler, shown } = createEngine();
+  const { createHash } = require("node:crypto");
+  const event = {
+    id: "calendar-2", start_time: new Date(Date.now() + 60_000).toISOString(),
+    hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-2",
+  };
+  reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
+  const key = `meet:${createHash("sha256").update("meet.google.com/abc-defg-hij").digest("hex")}`;
+  callDetector.emit("call-active", { key, service: "meet" });
+  engine.handleCalendarReminder(event);
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].variant, "detected");
 });
 
 test("a meeting app appearing asks the mic detector to re-evaluate unattributed activity", () => {

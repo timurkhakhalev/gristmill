@@ -54,9 +54,10 @@
   "scripts": {
     "compile:globe": "node scripts/build-globe-listener.js",
     "compile:mic-listener": "node scripts/build-macos-mic-listener.js",
+    "compile:meeting-ax": "node scripts/build-macos-meeting-ax.js",
     "compile:calendar-listener": "node scripts/build-macos-calendar-listener.js",
     "compile:audio-tap": "node scripts/build-macos-audio-tap.js",
-    "compile:native": "pnpm run compile:globe && pnpm run compile:mic-listener && pnpm run compile:calendar-listener && pnpm run compile:audio-tap",
+    "compile:native": "pnpm run compile:globe && pnpm run compile:mic-listener && pnpm run compile:meeting-ax && pnpm run compile:calendar-listener && pnpm run compile:audio-tap",
     "prestart": "pnpm run compile:native && pnpm run download:meeting-aec-helper && pnpm run download:sherpa-onnx && pnpm run download:whisper-vad-model && pnpm run build:main",
     "start": "node scripts/run-electron.js",
     "dev": "concurrently -k -r \"pnpm:dev:renderer\" \"pnpm:dev:main\"",

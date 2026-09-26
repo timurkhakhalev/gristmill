@@ -230,14 +230,16 @@ test("environment discards plaintext .env secrets and saves new keys encrypted",
     // The old value is discarded, not imported into secure storage.
     const envContent = fs.readFileSync(envPath, "utf8");
     assert.ok(!envContent.includes("plaintext-discard-me"), "secret stripped from .env");
-    assert.ok(!envContent.includes("old-calendar-secret"), "unused desktop OAuth secret stripped from .env");
+    assert.ok(envContent.includes("old-calendar-secret"), "desktop OAuth client credential retained");
     assert.equal(process.env.GOOGLE_CALENDAR_CLIENT_ID, "desktop-client-id");
+    assert.equal(process.env.GOOGLE_CALENDAR_CLIENT_SECRET, "old-calendar-secret");
     assert.ok(envContent.includes('UI_LANGUAGE="ru"'), "non-secret settings preserved");
     assert.equal(fs.existsSync(`${envPath}.tmp`), false, "stale secret temp file removed");
     assert.equal(process.env.OPENAI_API_KEY, undefined);
-    assert.equal(process.env.GOOGLE_CALENDAR_CLIENT_SECRET, undefined);
     await manager.saveAllKeysToEnvFile();
     assert.ok(fs.readFileSync(envPath, "utf8").includes("GOOGLE_CALENDAR_CLIENT_ID=desktop-client-id"));
+    assert.ok(fs.readFileSync(envPath, "utf8").includes("GOOGLE_CALENDAR_CLIENT_SECRET=old-calendar-secret"));
+    assert.equal(fs.statSync(envPath).mode & 0o777, 0o600);
     assert.equal(fs.existsSync(path.join(fx.userData, "secure-keys", "OPENAI_API_KEY.enc")), false);
 
     assert.deepEqual(await manager.saveOpenAIKey("new-secret"), { success: true });

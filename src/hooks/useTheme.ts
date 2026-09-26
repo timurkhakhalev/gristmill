@@ -1,8 +1,19 @@
 import { useEffect } from "react";
 import { useSettings } from "./useSettings";
+import { useSettingsStore } from "../stores/settingsStore";
+import { normalizeColorScheme } from "../config/colorSchemes";
 
 export function useTheme() {
   const { theme, setTheme } = useSettings();
+  const colorScheme = useSettingsStore((s) => s.colorScheme);
+
+  // On <html> and <body> alike: body carries .dark too, and the
+  // .dark[data-color-scheme] rules in index.css must match wherever .dark does.
+  useEffect(() => {
+    const scheme = normalizeColorScheme(colorScheme);
+    document.documentElement.dataset.colorScheme = scheme;
+    document.body.dataset.colorScheme = scheme;
+  }, [colorScheme]);
 
   useEffect(() => {
     const htmlElement = document.documentElement;

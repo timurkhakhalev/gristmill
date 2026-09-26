@@ -15,6 +15,11 @@ import type { CalendarAccount } from "../contracts/calendar";
 import { PROMPT_KIND_LIST, type PromptKind } from "../config/prompts/registry";
 import { sweepRetiredPromptOverrides } from "../config/retiredPrompts";
 import { sweepRetiredCloudModelSelections } from "../config/retiredCloudModels";
+import {
+  DEFAULT_COLOR_SCHEME,
+  normalizeColorScheme,
+  type ColorSchemeId,
+} from "../config/colorSchemes";
 import { buildReasoningScopePatches, inheritsFallbackEndpoint } from "../helpers/reasoningRouting";
 import {
   selectResolvedMeetingTranscription,
@@ -974,6 +979,7 @@ export interface SettingsState
   setMicWarmHoldSeconds: (seconds: number) => void;
 
   setTheme: (value: "light" | "dark" | "auto") => void;
+  setColorScheme: (value: ColorSchemeId) => void;
   setTelemetryEnabled: (value: boolean) => void;
   setAudioRetentionDays: (days: number) => void;
   setTranscriptRetentionDays: (days: number) => void;
@@ -1325,6 +1331,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     if (v === "light" || v === "dark" || v === "auto") return v;
     return "auto" as const;
   })(),
+  colorScheme: normalizeColorScheme(readString("colorScheme", DEFAULT_COLOR_SCHEME)),
   telemetryEnabled: readBoolean("telemetryEnabled", false),
   audioRetentionDays: readNumber("audioRetentionDays", 7),
   transcriptRetentionDays: readNumber("transcriptRetentionDays", 0),
@@ -1865,6 +1872,11 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setTheme: (value: "light" | "dark" | "auto") => {
     if (isBrowser) localStorage.setItem("theme", value);
     set({ theme: value });
+  },
+  setColorScheme: (value: ColorSchemeId) => {
+    const scheme = normalizeColorScheme(value);
+    if (isBrowser) localStorage.setItem("colorScheme", scheme);
+    set({ colorScheme: scheme });
   },
 
   setTelemetryEnabled: createBooleanSetter("telemetryEnabled"),

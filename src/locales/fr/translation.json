@@ -1119,6 +1119,18 @@
         "light": "Light",
         "dark": "Dark"
       },
+      "colorScheme": {
+        "label": "Palette de couleurs",
+        "description": "Couleur d’accent et teinte des surfaces.",
+        "names": {
+          "lavender": "Lavande",
+          "indigo": "Indigo",
+          "amethyst": "Améthyste",
+          "magenta": "Magenta",
+          "lime": "Citron vert",
+          "graphite": "Graphite"
+        }
+      },
       "autoGenerateTitle": "Generate note titles",
       "autoGenerateTitleDescription": "Use the configured model to title notes.",
       "noteFiles": {

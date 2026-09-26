@@ -14,6 +14,7 @@ import { SettingsCard, SettingsCardRow, SettingsPanelRow } from "./ui/SettingsSe
 import { SelectField } from "./ui/SelectField";
 import { Toggle } from "./ui/toggle";
 import InferenceConfigEditor from "./settings/InferenceConfigEditor";
+import { ColorSchemePicker } from "./settings/ColorSchemePicker";
 import ChatAgentSettings from "./settings/ChatAgentSettings";
 import { MeetingTranscriptionPanel } from "./settings/MeetingSettings";
 import { UploadTranscriptionPanel } from "./settings/UploadSettings";
@@ -117,6 +118,8 @@ function SubTabs({
 function GeneralSettings() {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
+  const colorScheme = useSettingsStore((s) => s.colorScheme);
+  const setColorScheme = useSettingsStore((s) => s.setColorScheme);
   const language = useSettingsStore((s) => s.uiLanguage);
   const setLanguage = useSettingsStore((s) => s.setUiLanguage);
   const noteFilesEnabled = useSettingsStore((s) => s.noteFilesEnabled);
@@ -155,6 +158,16 @@ function GeneralSettings() {
               { id: "dark", label: t("settingsPage.general.theme.dark") },
             ]}
             className="w-36"
+          />
+        </Row>
+        <Row
+          label={t("settingsPage.general.colorScheme.label")}
+          description={t("settingsPage.general.colorScheme.description")}
+        >
+          <ColorSchemePicker
+            value={colorScheme}
+            onChange={setColorScheme}
+            label={t("settingsPage.general.colorScheme.label")}
           />
         </Row>
       </Group>

@@ -29,11 +29,21 @@ Cleanup was merged in PR #6. The current task adds durable separate audio tracks
 
 ## Documents
 
+Start at the [memory bank](.memory-bank/index.md). The
+[quality steering](.memory-bank/steerings/quality.md) defines which checks to run
+for each change and how to keep test execution within the resource budget.
+
 Install with `pnpm install --frozen-lockfile` (pnpm 10.19.0, Node >=24).
 Use `pnpm run build:renderer`, `pnpm run typecheck`, `pnpm run lint` and
 `pnpm test` for checks. The canonical lockfile is `pnpm-lock.yaml`.
+`pnpm test --domain calendar` selects a domain; repeat `--domain` to combine them.
+Add `--kind unit` for a fast loop or `--list` to inspect the plan without running
+tests or preparing the runtime. Other kinds are `integration`, `types` and `native`.
 `pnpm test -- test/helpers/ffmpegUtils.test.js` runs one file; `pnpm test` runs
-the full suite. Both build the main process first. On macOS, the test run uses
+the full suite. The registry validates coverage of all test files. Main is built
+once only when selected tests require its output. See
+[project commands](.memory-bank/steerings/project-commands.md) for selector rules.
+On macOS, the test run uses
 background scheduling and one test worker. pnpm refuses to run scripts
 when `node_modules` does not match this worktree's lockfile; install with
 `pnpm install --frozen-lockfile` in that worktree first. Dependency install

@@ -29,10 +29,11 @@ interface BbModelPanelProps {
   hideTabs?: boolean;
   /** Content shown instead of the model list while a leading tab is open. */
   leadingContent?: ReactNode;
+  className?: string;
 }
 
 /** bb-style picker: harness tabs, model search over a virtual list, reasoning level. */
-export function BbModelPanel({ harnesses, selection, onSelect, leadingTabs = [], hideTabs = false, leadingContent }: BbModelPanelProps) {
+export function BbModelPanel({ harnesses, selection, onSelect, leadingTabs = [], hideTabs = false, leadingContent, className = "w-80" }: BbModelPanelProps) {
   const { t } = useTranslation();
   // What the panel shows; a leading tab (the chat's API route) or a harness.
   const [tab, setTab] = useState(() => {
@@ -106,7 +107,7 @@ export function BbModelPanel({ harnesses, selection, onSelect, leadingTabs = [],
   );
 
   return (
-    <div className="flex w-80 flex-col">
+    <div className={cn("flex flex-col", className)}>
       {!hideTabs && (
         <div role="tablist" aria-label={t("bbAgent.harness")} className="flex flex-wrap items-center gap-1 border-b border-border pb-2">
           {leadingTabs.map((item) => (

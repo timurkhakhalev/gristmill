@@ -102,7 +102,7 @@ export default function NotesOnboarding({ onComplete, preview = false }: NotesOn
             done={transcriptionReady}
             doneLabel={doneLabel}
             action={
-              <Button size="sm" variant="secondary" onPress={() => openSettings("speechToText")}>
+              <Button size="sm" variant="secondary" onPress={() => openSettings("models#meeting")}>
                 {t("notes.onboarding.setUp")}
               </Button>
             }
@@ -114,7 +114,7 @@ export default function NotesOnboarding({ onComplete, preview = false }: NotesOn
             done={isLLMConfigured}
             doneLabel={doneLabel}
             action={
-              <Button size="sm" variant="secondary" onPress={() => openSettings("llms")}>
+              <Button size="sm" variant="secondary" onPress={() => openSettings("models#summary")}>
                 {t("notes.onboarding.setUp")}
               </Button>
             }

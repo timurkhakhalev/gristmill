@@ -457,7 +457,7 @@ migrateUploadTranscription();
 // keys desync-and-all and then latches.
 //
 // Note Recording is excluded: resolveMeetingTranscriptionOptions branches on
-// `meetingTranscriptionMode`, the key MeetingSettings renders, so it cannot
+// `meetingTranscriptionMode`, the key the Models page edits, so it cannot
 // disagree, and no router reads `meetingUseLocalWhisper`.
 //
 // Never complete either rule symmetrically — it would start uploading audio from

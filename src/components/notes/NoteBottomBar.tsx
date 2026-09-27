@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
 import { SendIcon } from "../ui/SendIcon";
 import { GLASS_SURFACE } from "../ui/glass";
+import ChatModelPicker from "../chat/ChatModelPicker";
 
 // While recording, the bar sits over the live streaming transcript, and every
 // partial would force backdrop-blur to re-blur the strip; the capsule trades
@@ -126,6 +127,7 @@ export default function NoteBottomBar({
             )}
           />
 
+          {!hideInput && <ChatModelPicker disabled={askDisabled} />}
           {hasText ? (
             <button
               onClick={handleSubmit}

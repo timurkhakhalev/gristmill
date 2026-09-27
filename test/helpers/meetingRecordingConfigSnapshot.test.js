@@ -42,3 +42,24 @@ test("saved transcription bypasses an unsupported current meeting route while sn
   });
   assert.equal(globalThis.__meetingSnapshotRouteReads, 1, "ordinary capture still validates current meeting settings");
 });
+
+test("meeting summary snapshots the selected bb harness, model and reasoning level", async (t) => {
+  const vite = await createRendererServer(t, {
+    cachePrefix: "meeting-bb-snapshot-",
+    mockModules: {
+      "/stores/settingsStore.js": `export function getSettings() { return { preferredLanguage: "ru", uiLanguage: "ru", customDictionary: [], noteFormattingDisableThinking: false }; }`,
+      "/config/settingsSelectors.js": `export function selectResolvedMeetingTranscription() { throw new Error("saved transcription should be used"); } export function selectResolvedNoteFormatting() { return { mode: "agent", agentProvider: "codex", agentModel: "gpt-6-luna", agentReasoningLevel: "high" }; }`,
+      "/config/prompts.js": `export function appendDictionarySuffix(prompt) { return prompt; }`,
+      "/config/secretKeys.js": `export const BYOK_API_KEYS = [];`,
+    },
+  });
+  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule("/helpers/meetingRecordingConfigSnapshot.ts");
+  const result = snapshotMeetingRecordingConfig({
+    mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "ru",
+  });
+  assert.equal(result.configError, null);
+  assert.equal(result.config.summary.reasoningMode, "agent");
+  assert.equal(result.config.summary.agentProvider, "codex");
+  assert.equal(result.config.summary.model, "gpt-6-luna");
+  assert.equal(result.config.summary.agentReasoningLevel, "high");
+});

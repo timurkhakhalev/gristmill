@@ -6,6 +6,7 @@ import { IconTooltip } from "../ui/IconTooltip";
 import { cn } from "../lib/utils";
 import { ChatMessages } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
+import ChatModelPicker from "./ChatModelPicker";
 import { ConversationPicker } from "./ConversationPicker";
 import type { Message, AgentState } from "./types";
 import type { ConversationRow } from "../../contracts/chatPersistence";
@@ -165,6 +166,7 @@ export default function ChatPanel({
         onCancel={onCancel}
         voiceDraft={voiceDraft}
         placeholder={t("embeddedChat.askPlaceholder")}
+        modelPicker={<ChatModelPicker disabled={!isIdle} />}
         autoFocus
       />
     </>

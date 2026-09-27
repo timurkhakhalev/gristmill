@@ -68,6 +68,7 @@ packaged runtime before creating installers.
 - [Product requirements](docs/product.md)
 - [Target architecture](docs/architecture.md)
 - [Record-then-process decision and validation hypotheses](docs/record-then-process.md)
+- [BB agent route and pinned CLI version](docs/bb-integration.md)
 - [OpenWhispr cutover](docs/openwhispr-cutover.md)
 - [Delivery plan](docs/delivery-plan.md)
 

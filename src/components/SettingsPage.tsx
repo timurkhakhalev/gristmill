@@ -1,5 +1,4 @@
 import React from "react";
-import { Tabs } from "@heroui/react";
 import { HotkeyListInput } from "./ui/HotkeyListInput";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { usePermissions } from "../hooks/usePermissions";
@@ -13,11 +12,8 @@ import { useTheme } from "../hooks/useTheme";
 import { SettingsCard, SettingsCardRow, SettingsPanelRow } from "./ui/SettingsSection";
 import { SelectField } from "./ui/SelectField";
 import { Toggle } from "./ui/toggle";
-import InferenceConfigEditor from "./settings/InferenceConfigEditor";
 import { ColorSchemePicker } from "./settings/ColorSchemePicker";
-import ChatAgentSettings from "./settings/ChatAgentSettings";
-import { MeetingTranscriptionPanel } from "./settings/MeetingSettings";
-import { UploadTranscriptionPanel } from "./settings/UploadSettings";
+import ModelsSettings from "./settings/models/ModelsSettings";
 import DictionaryView from "./DictionaryView";
 import IntegrationsView from "./IntegrationsView";
 import { ConfirmDialog } from "./ui/dialog";
@@ -42,8 +38,7 @@ const UI_LANGUAGE_NAMES: Record<UiLanguage, string> = {
 export type SettingsSectionType =
   | "general"
   | "hotkeys"
-  | "speechToText"
-  | "llms"
+  | "models"
   | "dictionary"
   | "integrations"
   | "privacyData"
@@ -58,8 +53,7 @@ interface SettingsPageProps {
 const sections: SettingsSectionType[] = [
   "general",
   "hotkeys",
-  "speechToText",
-  "llms",
+  "models",
   "dictionary",
   "integrations",
   "privacyData",
@@ -89,31 +83,6 @@ function Section({
 
 const Group = SettingsCard;
 const Row = SettingsCardRow;
-
-function SubTabs({
-  selectedKey,
-  onChange,
-  label,
-  tabs,
-}: {
-  selectedKey: string;
-  onChange: (key: string) => void;
-  label: string;
-  tabs: { id: string; label: string }[];
-}) {
-  return (
-    <Tabs selectedKey={selectedKey} onSelectionChange={(key) => onChange(String(key))} aria-label={label}>
-      <Tabs.List aria-label={label}>
-        {tabs.map((tab) => (
-          <Tabs.Tab key={tab.id} id={tab.id}>
-            {tab.label}
-            <Tabs.Indicator />
-          </Tabs.Tab>
-        ))}
-      </Tabs.List>
-    </Tabs>
-  );
-}
 
 function GeneralSettings() {
   const { t } = useTranslation();
@@ -317,47 +286,11 @@ function PrivacySettings() {
   );
 }
 
-function SpeechSettings({ initialSubTab }: { initialSubTab?: string }) {
+function ModelsSection({ focus }: { focus?: string }) {
   const { t } = useTranslation();
-  const [tab, setTab] = React.useState(initialSubTab === "upload" ? "upload" : "meeting");
   return (
-    <Section
-      title={t("settingsModal.sections.speechToText.label")}
-      description={t("settingsModal.sections.speechToText.description")}
-    >
-      <SubTabs
-        selectedKey={tab}
-        onChange={setTab}
-        label={t("settingsPage.speechToText.title")}
-        tabs={[
-          { id: "meeting", label: t("settingsPage.speechToText.tabs.noteRecording") },
-          { id: "upload", label: t("settingsPage.speechToText.tabs.upload") },
-        ]}
-      />
-      {tab === "meeting" ? <MeetingTranscriptionPanel /> : <UploadTranscriptionPanel />}
-    </Section>
-  );
-}
-
-function LlmSettings() {
-  const { t } = useTranslation();
-  const [task, setTask] = React.useState("summary");
-  return (
-    <Section
-      title={t("settingsModal.sections.llms.label")}
-      description={t("settingsModal.sections.llms.description")}
-    >
-      <SubTabs
-        selectedKey={task}
-        onChange={setTask}
-        label={t("settingsPage.aiModels.title")}
-        tabs={[
-          { id: "summary", label: t("settingsPage.aiModels.summaryTask") },
-          { id: "chat", label: t("settingsPage.aiModels.chatTitle") },
-        ]}
-      />
-      {task === "summary" && <InferenceConfigEditor scope="noteFormatting" />}
-      {task === "chat" && <ChatAgentSettings />}
+    <Section title={t("settingsModal.sections.models.label")} description={t("modelsSettings.description")}>
+      <ModelsSettings focus={focus} />
     </Section>
   );
 }
@@ -527,10 +460,8 @@ export default function SettingsPage({
       return <GeneralSettings />;
     case "hotkeys":
       return <HotkeysSettings />;
-    case "speechToText":
-      return <SpeechSettings initialSubTab={initialSubTab} />;
-    case "llms":
-      return <LlmSettings />;
+    case "models":
+      return <ModelsSection focus={initialSubTab} />;
     case "dictionary":
       return <DictionaryView />;
     case "integrations":

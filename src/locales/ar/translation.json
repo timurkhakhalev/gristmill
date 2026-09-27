@@ -266,12 +266,6 @@
     }
   },
   "reasoning": {
-    "mode": {
-      "cloud": "سحابي (Cloud)",
-      "local": "محلي (Local)",
-      "localDescription": "يعمل على جهازك. خصوصية تامة، يعمل بدون إنترنت.",
-      "cloudDescription": "نماذج متقدمة عبر API. سريعة وقادرة، وتتطلب اتصالًا بالإنترنت."
-    },
     "custom": {
       "endpointWithProtocol": "أدخل عنوان URL أساسي كامل يتضمن البروتوكول (على سبيل المثال، https://server/v1).",
       "httpsRequired": "يتطلب HTTPS (يُسمح بـ HTTP للشبكة المحلية فقط).",
@@ -290,7 +284,6 @@
       "enterEndpoint": "أدخل عنوان URL لنقطة النهاية أعلاه لتحميل النماذج.",
       "fetchingModels": "جاري جلب قائمة النماذج من نقطة النهاية...",
       "noModels": "لم يتم إرجاع أي نماذج. تحقق من عنوان URL لنقطة النهاية.",
-      "providerName": "مخصص",
       "ownerLabel": "المالك: {{owner}}",
       "unableToLoadModels": "تعذر تحميل النماذج من نقطة النهاية.",
       "searchPlaceholder": "البحث عن النماذج...",
@@ -301,7 +294,6 @@
       "keyRequiredHint": "مفتاح API مطلوب للاستدلال — أضف واحدًا لاستخدام هذا المزود."
     },
     "getApiKey": "احصل على مفتاح API الخاص بك",
-    "selectModel": "تحديد النموذج",
     "availableModels": "النماذج المتاحة",
     "disableThinking": {
       "label": "تعطيل مخرجات التفكير",
@@ -382,8 +374,7 @@
     },
     "tinfoil": {
       "modelRetiredTitle": "النموذج لم يعد متاحًا",
-      "modelRetired": "قام Tinfoil بإيقاف {{from}}. تم التبديل إلى {{to}}.",
-      "refreshingModels": "جاري تحديث النماذج..."
+      "modelRetired": "قام Tinfoil بإيقاف {{from}}. تم التبديل إلى {{to}}."
     },
     "corti": {
       "euOnly": "نماذج Corti متوفرة فقط في منطقة الاتحاد الأوروبي."
@@ -1302,7 +1293,6 @@
   "settingsPage": {
     "aiModels": {
       "transcriptionTask": "Transcription",
-      "summaryTask": "Meeting summary",
       "customSetup": "إعداد مخصص",
       "customSetupDescription": "استخدم المزود ومفتاح API الخاص بك.",
       "description": "تنظيف النصوص المفرَّغة ومعالجة الأوامر وإصلاح الأخطاء مع الحفاظ على أسلوبك.",
@@ -1311,12 +1301,8 @@
       "modes": {
         "providers": "مزودو الخدمات السحابية",
         "local": "محلي",
-        "selfHosted": "مستضاف ذاتيًا",
-        "providersDesc": "أحضر مفتاح API الخاص بك.",
-        "localDesc": "نماذج على الجهاز. خاصة بالكامل.",
-        "selfHostedDesc": "خادمك الخاص على شبكتك."
+        "selfHosted": "مستضاف ذاتيًا"
       },
-      "title": "تحسين النص بالذكاء الاصطناعي",
       "toasts": {
         "switchedCustom": {
           "description": "قم بتكوين المزود ومفتاح API الخاصين بك.",
@@ -1334,8 +1320,7 @@
           "title": "مستضاف ذاتيًا",
           "description": "استخدام خادمك الخاص."
         }
-      },
-      "chatTitle": "Embedded chat"
+      }
     },
     "developer": {
       "clearCache": "مسح ذاكرة التخزين المؤقت",
@@ -1537,12 +1522,7 @@
       "title": "استوديو الموجهات"
     },
     "speechToText": {
-      "title": "تحويل الكلام إلى نص",
       "description": "اختر محركًا للإملاء وتسجيل الملاحظات",
-      "tabs": {
-        "noteRecording": "تسجيل الملاحظات",
-        "upload": "رفع ملف صوتي"
-      },
       "selfHostedStreamingNote": "يتطلب خادمًا يدعم التفريغ المتدفق."
     },
     "llms": {
@@ -1561,12 +1541,7 @@
       "customSetup": "إعداد مخصص",
       "customSetupDescription": "استخدم المزود ومفتاح API الخاص بك.",
       "modes": {
-        "providers": "مزودو الخدمات السحابية",
-        "local": "محلي",
-        "selfHosted": "مستضاف ذاتيًا",
-        "providersDesc": "أحضر مفتاح API الخاص بك.",
-        "localDesc": "نماذج على الجهاز. خاصة بالكامل.",
-        "selfHostedDesc": "خادمك الخاص على شبكتك."
+        "selfHosted": "مستضاف ذاتيًا"
       },
       "title": "تحويل الكلام إلى نص",
       "toasts": {
@@ -1815,15 +1790,12 @@
     "download": "تنزيل",
     "cancel": "إلغاء",
     "recommended": "موصى به",
-    "active": "نشط",
     "comingSoon": "قريبًا",
     "cloud": "سحابي",
     "local": "محلي",
     "apiKey": "مفتاح API",
     "model": "النموذج",
     "loading": "جاري التحميل...",
-    "unknown": "غير معروف",
-    "availableModels": "النماذج المتاحة",
     "fast": "سريع",
     "hold": "استمرار الضغط",
     "private": "خاص",
@@ -1860,25 +1832,14 @@
       "unavailable": "غير متوفر"
     },
     "apiKeyOptional": "API Key (اختياري)",
-    "getKey": "الحصول على مفتاح",
     "endpointUrl": "عنوان URL لنقطة النهاية",
     "azureHint": "Azure AI Foundry: أدخل نقطة نهاية موردك (مثال: https://your-resource.cognitiveservices.azure.com) وقم بتعيين النموذج إلى اسم النشر الدقيق الخاص بك.",
-    "customProvider": "مخصص",
-    "fallback": {
-      "whisperModelDescription": "النموذج",
-      "parakeetModelDescription": "نموذج NVIDIA Parakeet"
-    },
-    "whisperModels": "نماذج Whisper",
     "corti": {
       "clientId": "معرف العميل (Client ID)",
       "clientSecret": "سر العميل (Client Secret)",
       "apiKey": "مفتاح API",
       "environment": "منطقة البيانات",
       "tenant": "المستأجر"
-    },
-    "tinfoil": {
-      "transportNote": "يستخدم Tinfoil نموذج Voxtral Mini 4B للتفريغ المباشر (البث)، ونموذج Voxtral Small 24B للمعالجة الدفعية.",
-      "docsLink": "قراءة الوثائق"
     }
   },
   "cleanupPrompt": "التنظيف",
@@ -1991,14 +1952,6 @@
         "description": "اختصارات لوحة المفاتيح لوضع الاجتماع",
         "label": "اختصارات لوحة المفاتيح"
       },
-      "speechToText": {
-        "description": "طريقة تفريغ التسجيلات والملفات المرفوعة",
-        "label": "تحويل الكلام إلى نص"
-      },
-      "llms": {
-        "description": "نماذج ملخصات الاجتماعات والدردشة",
-        "label": "النماذج اللغوية"
-      },
       "dictionary": {
         "label": "القاموس",
         "description": "كلمات مخصصة ومقتطفات للتفريغ النصي"
@@ -2010,6 +1963,10 @@
       "system": {
         "description": "بدء التشغيل وأجهزة التسجيل والتشخيص",
         "label": "النظام"
+      },
+      "models": {
+        "label": "النماذج",
+        "description": "النسخ والملخصات والدردشة"
       }
     },
     "title": "الإعدادات"
@@ -2366,5 +2323,98 @@
       "participantsMore_few": "{{names}} و{{count}} آخرين",
       "participantsMore_many": "{{names}} و{{count}} آخرًا"
     }
+  },
+  "bbAgent": {
+    "harness": "بيئة التشغيل",
+    "harnesses": "أدوات bb",
+    "model": "النموذج",
+    "reasoning": "مستوى الاستدلال",
+    "noHarness": "لا توجد بيئات bb متاحة",
+    "noModel": "لا توجد نماذج bb متاحة",
+    "chooseModel": "اختر النموذج",
+    "chatSettings": "نموذج الدردشة",
+    "searchModels": "ابحث عن النماذج",
+    "loadingModels": "جارٍ تحميل النماذج…",
+    "noMatches": "لا توجد نماذج مطابقة",
+    "apiTab": "API",
+    "apiRoute": "تستخدم الدردشة المسار المضبوط في الإعدادات ← النماذج: {{route}}.",
+    "loadingHarnesses": "جارٍ تحميل أدوات bb…",
+    "settingsDescription": "حدّد الأداة الافتراضية ونموذجها وترتيبها في القوائم. الأدوات المعطّلة مخفية.",
+    "reorder": "إعادة ترتيب {{harness}}",
+    "reorderHint": "اسحب أو استخدم مفاتيح الأسهم",
+    "default": "افتراضي",
+    "makeDefault": "اجعلها افتراضية",
+    "enableHarness": "تفعيل {{harness}}",
+    "defaultModelFor": "النموذج الافتراضي لـ {{harness}}",
+    "noSelection": "لم يتم اختيار أداة bb مفعّلة. اختر واحدة أو فعّلها في تبويب bb."
+  },
+  "modelsSettings": {
+    "tasks": {
+      "title": "المهام",
+      "meeting": "تسجيل الاجتماع",
+      "meetingDescription": "ينسخ التسجيل بعد إيقافه",
+      "upload": "رفع الصوت",
+      "uploadDescription": "ينسخ الملفات الصوتية التي ترفعها",
+      "summary": "ملخص الاجتماع",
+      "summaryDescription": "يكتب الملاحظات من النص المنسوخ",
+      "chat": "الدردشة",
+      "chatDescription": "يجيب عن الأسئلة حول ملاحظاتك"
+    },
+    "sources": {
+      "cloud": "السحابة",
+      "local": "على الجهاز",
+      "self-hosted": "استضافة ذاتية",
+      "bb": "bb",
+      "enterprise": "المؤسسات"
+    },
+    "status": {
+      "chooseModel": "اختر نموذجًا",
+      "needsKey": "أضف مفتاح API",
+      "needsEndpoint": "أضف عنوان الخادم",
+      "notDownloaded": "النموذج غير مُنزّل",
+      "noHarness": "لم يتم اختيار أداة bb"
+    },
+    "picker": {
+      "source": "مصدر النموذج",
+      "customEndpoint": "نقطة نهاية مخصصة",
+      "openrouterAction": "تصفح نماذج OpenRouter",
+      "openrouterHint": "أي نموذج متاح على OpenRouter",
+      "customAction": "إعداد نقطة النهاية",
+      "customHint": "أي واجهة API متوافقة مع OpenAI",
+      "useThis": "استخدام",
+      "inUse": "قيد الاستخدام",
+      "localHint": "نزّل نموذجًا لاستخدامه دون اتصال.",
+      "selfHostedSpeechHint": "خادم نسخ على شبكتك.",
+      "bbDefault": "الأداة الافتراضية"
+    },
+    "providers": {
+      "title": "المزوّدون",
+      "description": "مفاتيح API مشتركة بين كل المهام.",
+      "connected": "متصل",
+      "notConnected": "غير متصل",
+      "addKey": "إضافة مفتاح",
+      "capability": {
+        "speech": "الكلام",
+        "language": "النص"
+      },
+      "corti": {
+        "languageKey": "مفتاح API (نماذج اللغة)"
+      }
+    },
+    "bb": {
+      "title": "وكلاء البرمجة (bb)"
+    },
+    "local": {
+      "title": "النماذج على الجهاز",
+      "description": "تعمل على جهاز Mac هذا. يبقى الصوت والنص على حاسوبك.",
+      "speech": "التعرف على الكلام",
+      "language": "نماذج اللغة",
+      "downloaded": "مُنزّل",
+      "inUse": "قيد الاستخدام",
+      "installing": "جارٍ التثبيت…",
+      "remove": "إزالة {{model}}"
+    },
+    "chatPrompt": "تعليمات الدردشة",
+    "description": "اختر نموذج كل مهمة، واربط المزوّدين، وأدِر النماذج على الجهاز."
   }
 }

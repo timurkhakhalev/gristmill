@@ -7,10 +7,12 @@ import logger from "../utils/logger";
 import whisperVadConstants from "../constants/whisperVad.json";
 import type { ChineseScriptPreference } from "../types/electron";
 import type {
+  BbAgentPreferences,
   LocalTranscriptionProvider,
   InferenceMode,
   SelfHostedType,
 } from "../contracts/inferenceSettings";
+import { parseBbAgentPreferences } from "../config/bbAgentPreferences";
 import type { CalendarAccount } from "../contracts/calendar";
 import { PROMPT_KIND_LIST, type PromptKind } from "../config/prompts/registry";
 import { sweepRetiredPromptOverrides } from "../config/retiredPrompts";
@@ -295,10 +297,10 @@ function deriveLegacyReasoningMode(
   return "providers";
 }
 
-type DirectInferenceMode = "providers" | "local" | "self-hosted" | "enterprise";
+type DirectInferenceMode = "providers" | "local" | "self-hosted" | "enterprise" | "agent";
 
 function isDirectInferenceMode(value: string): value is DirectInferenceMode {
-  return value === "providers" || value === "local" || value === "self-hosted" || value === "enterprise";
+  return value === "providers" || value === "local" || value === "self-hosted" || value === "enterprise" || value === "agent";
 }
 
 function readTranscriptionMode(
@@ -455,7 +457,7 @@ migrateUploadTranscription();
 // keys desync-and-all and then latches.
 //
 // Note Recording is excluded: resolveMeetingTranscriptionOptions branches on
-// `meetingTranscriptionMode`, the key MeetingSettings renders, so it cannot
+// `meetingTranscriptionMode`, the key the Models page edits, so it cannot
 // disagree, and no router reads `meetingUseLocalWhisper`.
 //
 // Never complete either rule symmetrically — it would start uploading audio from
@@ -822,6 +824,11 @@ export interface SettingsState
   noteFormattingCloudBaseUrl: string;
   noteFormattingRemoteUrl: string;
   noteFormattingCustomApiKey: string;
+  noteFormattingBbProvider: string;
+  noteFormattingBbModel: string;
+  noteFormattingBbReasoningLevel: string;
+  bbAgentPreferences: BbAgentPreferences | null;
+  setBbAgentPreferences: (preferences: BbAgentPreferences) => void;
 
   cleanupDisableThinking: boolean;
   noteFormattingDisableThinking: boolean;
@@ -1470,6 +1477,14 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   noteFormattingCloudBaseUrl: readString("noteFormattingCloudBaseUrl", ""),
   noteFormattingRemoteUrl: readString("noteFormattingRemoteUrl", ""),
   noteFormattingCustomApiKey: "",
+  noteFormattingBbProvider: readString("noteFormattingBbProvider", ""),
+  noteFormattingBbModel: readString("noteFormattingBbModel", ""),
+  noteFormattingBbReasoningLevel: readString("noteFormattingBbReasoningLevel", ""),
+  bbAgentPreferences: isBrowser ? parseBbAgentPreferences(localStorage.getItem("bbAgentPreferences")) : null,
+  setBbAgentPreferences: (preferences: BbAgentPreferences) => {
+    if (isBrowser) localStorage.setItem("bbAgentPreferences", JSON.stringify(preferences));
+    set({ bbAgentPreferences: preferences });
+  },
 
   setTranscriptionMode: createStringSetter("transcriptionMode") as (mode: InferenceMode) => void,
   setRemoteTranscriptionType: createStringSetter("remoteTranscriptionType") as (
@@ -1535,6 +1550,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   chatAgentRemoteUrl: readString("chatAgentRemoteUrl", ""),
   chatAgentCloudBaseUrl: readString("chatAgentCloudBaseUrl", ""),
   chatAgentCustomApiKey: "",
+  chatAgentBbProvider: readString("chatAgentBbProvider", ""),
+  chatAgentBbModel: readString("chatAgentBbModel", ""),
+  chatAgentBbReasoningLevel: readString("chatAgentBbReasoningLevel", ""),
 
   cleanupDisableThinking: readBoolean("cleanupDisableThinking", true),
   noteFormattingDisableThinking: readBoolean("noteFormattingDisableThinking", true),

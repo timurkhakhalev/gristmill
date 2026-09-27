@@ -163,15 +163,12 @@
     "download": "Download",
     "cancel": "Cancel",
     "recommended": "Recommended",
-    "active": "Active",
     "comingSoon": "Coming Soon",
     "cloud": "Cloud",
     "local": "Local",
     "apiKey": "API Key",
     "model": "Model",
     "loading": "Loading...",
-    "unknown": "Unknown",
-    "availableModels": "Available Models",
     "fast": "Fast",
     "hold": "Hold",
     "private": "Private",
@@ -409,12 +406,6 @@
     "backToNotes": "Back to notes"
   },
   "reasoning": {
-    "mode": {
-      "cloud": "Cloud",
-      "local": "Local",
-      "localDescription": "Runs on your device. Complete privacy, works offline.",
-      "cloudDescription": "Advanced models via API. Fast and capable, requires internet."
-    },
     "custom": {
       "endpointWithProtocol": "Enter a full base URL including protocol (for example, https://server/v1).",
       "httpsRequired": "HTTPS required (HTTP allowed for local network only).",
@@ -433,7 +424,6 @@
       "enterEndpoint": "Enter an endpoint URL above to load models.",
       "fetchingModels": "Fetching model list from endpoint...",
       "noModels": "No models returned. Check your endpoint URL.",
-      "providerName": "Custom",
       "ownerLabel": "Owner: {{owner}}",
       "unableToLoadModels": "Unable to load models from endpoint.",
       "searchPlaceholder": "Search models…",
@@ -444,7 +434,6 @@
       "keyRequiredHint": "An API key is required for inference — add one to use this provider."
     },
     "getApiKey": "Get your API key",
-    "selectModel": "Select Model",
     "availableModels": "Available Models",
     "disableThinking": {
       "label": "Disable thinking output",
@@ -525,8 +514,7 @@
     },
     "tinfoil": {
       "modelRetiredTitle": "Model no longer available",
-      "modelRetired": "Tinfoil retired {{from}}. Switched to {{to}}.",
-      "refreshingModels": "Refreshing models…"
+      "modelRetired": "Tinfoil retired {{from}}. Switched to {{to}}."
     },
     "corti": {
       "euOnly": "Corti's models are only available in the EU region."
@@ -545,25 +533,14 @@
       "unavailable": "Unavailable"
     },
     "apiKeyOptional": "API Key (Optional)",
-    "getKey": "Get key",
     "endpointUrl": "Endpoint URL",
     "azureHint": "Azure AI Foundry: enter your resource endpoint (e.g. https://your-resource.cognitiveservices.azure.com) and set Model to your exact deployment name.",
-    "customProvider": "Custom",
-    "fallback": {
-      "whisperModelDescription": "Model",
-      "parakeetModelDescription": "NVIDIA Parakeet Model"
-    },
-    "whisperModels": "Whisper Models",
     "corti": {
       "clientId": "Client ID",
       "clientSecret": "Client Secret",
       "apiKey": "API Key",
       "environment": "Data Region",
       "tenant": "Tenant"
-    },
-    "tinfoil": {
-      "transportNote": "Tinfoil streams using Voxtral Mini 4B, and batches with Voxtral Small 24B.",
-      "docsLink": "Read the docs"
     }
   },
   "hooks": {
@@ -950,14 +927,6 @@
         "description": "Keyboard shortcuts for meeting mode",
         "label": "Hotkeys"
       },
-      "speechToText": {
-        "description": "How recordings and uploaded files are transcribed",
-        "label": "Speech-to-Text"
-      },
-      "llms": {
-        "description": "Models for meeting summaries and chat",
-        "label": "Language Models"
-      },
       "dictionary": {
         "label": "Dictionary",
         "description": "Custom words and snippets for transcription"
@@ -969,6 +938,10 @@
       "system": {
         "description": "Startup, recording devices and diagnostics",
         "label": "System"
+      },
+      "models": {
+        "label": "Models",
+        "description": "Transcription, summaries and chat"
       }
     },
     "title": "Settings"
@@ -976,7 +949,6 @@
   "settingsPage": {
     "aiModels": {
       "transcriptionTask": "Transcription",
-      "summaryTask": "Meeting summary",
       "customSetup": "Custom Setup",
       "customSetupDescription": "Use your own provider and API key.",
       "description": "Clean up transcriptions, handle commands, and fix errors while preserving your tone.",
@@ -985,12 +957,8 @@
       "modes": {
         "providers": "Cloud Providers",
         "local": "Local",
-        "selfHosted": "Self-Hosted",
-        "providersDesc": "Bring your own API key.",
-        "localDesc": "On-device models. Fully private.",
-        "selfHostedDesc": "Your own server on your network."
+        "selfHosted": "Self-Hosted"
       },
-      "title": "AI Text Enhancement",
       "toasts": {
         "switchedCustom": {
           "description": "Configure your own provider and API key.",
@@ -1008,8 +976,7 @@
           "title": "Self-Hosted",
           "description": "Using your own server."
         }
-      },
-      "chatTitle": "Embedded chat"
+      }
     },
     "developer": {
       "clearCache": "Clear Cache",
@@ -1189,12 +1156,7 @@
       "title": "Prompt Studio"
     },
     "speechToText": {
-      "title": "Speech-to-Text",
       "description": "Pick an engine for dictation and note recording",
-      "tabs": {
-        "noteRecording": "Note Recording",
-        "upload": "Audio Upload"
-      },
       "selfHostedStreamingNote": "Requires a server that supports streaming transcription."
     },
     "llms": {
@@ -1213,12 +1175,7 @@
       "customSetup": "Custom Setup",
       "customSetupDescription": "Use your own provider and API key.",
       "modes": {
-        "providers": "Cloud Providers",
-        "local": "Local",
-        "selfHosted": "Self-Hosted",
-        "providersDesc": "Bring your own API key.",
-        "localDesc": "On-device models. Fully private.",
-        "selfHostedDesc": "Your own server on your network."
+        "selfHosted": "Self-Hosted"
       },
       "title": "Speech to Text",
       "toasts": {
@@ -2326,5 +2283,98 @@
       "participantsMore_other": "{{names}} & {{count}} others",
       "empty": "No notes yet"
     }
+  },
+  "bbAgent": {
+    "harness": "Harness",
+    "harnesses": "bb harnesses",
+    "model": "Model",
+    "reasoning": "Reasoning",
+    "noHarness": "No bb harness is available",
+    "noModel": "No bb models are available",
+    "chooseModel": "Choose model",
+    "chatSettings": "Chat model",
+    "searchModels": "Search models",
+    "loadingModels": "Loading models…",
+    "noMatches": "No matching models",
+    "apiTab": "API",
+    "apiRoute": "Chat uses the route set in Settings → Models: {{route}}.",
+    "loadingHarnesses": "Loading bb harnesses…",
+    "settingsDescription": "Set the default harness, its model and the order in pickers. Disabled harnesses are hidden from pickers.",
+    "reorder": "Reorder {{harness}}",
+    "reorderHint": "Drag, or use the arrow keys",
+    "default": "Default",
+    "makeDefault": "Make default",
+    "enableHarness": "Enable {{harness}}",
+    "defaultModelFor": "Default model for {{harness}}",
+    "noSelection": "No enabled bb harness is selected. Choose one or enable it in the bb tab."
+  },
+  "modelsSettings": {
+    "tasks": {
+      "title": "Tasks",
+      "meeting": "Meeting recording",
+      "meetingDescription": "Transcribes a recording after you stop it",
+      "upload": "Audio upload",
+      "uploadDescription": "Transcribes audio files you upload",
+      "summary": "Meeting summary",
+      "summaryDescription": "Writes notes from the transcript",
+      "chat": "Chat",
+      "chatDescription": "Answers questions about your notes"
+    },
+    "sources": {
+      "cloud": "Cloud",
+      "local": "On-device",
+      "self-hosted": "Self-hosted",
+      "bb": "bb",
+      "enterprise": "Enterprise"
+    },
+    "status": {
+      "chooseModel": "Choose a model",
+      "needsKey": "Add an API key",
+      "needsEndpoint": "Add a server URL",
+      "notDownloaded": "Model not downloaded",
+      "noHarness": "No bb harness selected"
+    },
+    "picker": {
+      "source": "Model source",
+      "customEndpoint": "Custom endpoint",
+      "openrouterAction": "Browse OpenRouter models",
+      "openrouterHint": "Any model available on OpenRouter",
+      "customAction": "Configure endpoint",
+      "customHint": "Any OpenAI-compatible API",
+      "useThis": "Use this",
+      "inUse": "In use",
+      "localHint": "Download a model to use it offline.",
+      "selfHostedSpeechHint": "A transcription server on your network.",
+      "bbDefault": "Default harness"
+    },
+    "providers": {
+      "title": "Providers",
+      "description": "API keys are shared by every task.",
+      "connected": "Connected",
+      "notConnected": "Not connected",
+      "addKey": "Add key",
+      "capability": {
+        "speech": "Speech",
+        "language": "Language"
+      },
+      "corti": {
+        "languageKey": "API key (language models)"
+      }
+    },
+    "bb": {
+      "title": "Coding agents (bb)"
+    },
+    "local": {
+      "title": "On-device models",
+      "description": "Models that run on this Mac. Audio and text stay on your computer.",
+      "speech": "Speech recognition",
+      "language": "Language models",
+      "downloaded": "Downloaded",
+      "inUse": "In use",
+      "installing": "Installing…",
+      "remove": "Remove {{model}}"
+    },
+    "chatPrompt": "Chat instructions",
+    "description": "Choose the model for each task, connect providers and manage on-device models."
   }
 }

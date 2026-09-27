@@ -100,6 +100,7 @@ export interface MeetingProcessingWorkerDeps {
     signal: AbortSignal;
   }) => Promise<Array<{ speaker: string; start: number; end: number }>>;
   summarize: (input: string, config: NonNullable<MeetingProcessingConfig["summary"]>, signal: AbortSignal) => Promise<string>;
+  summarizeAgent?: (input: string, config: NonNullable<MeetingProcessingConfig["summary"]>, run: MeetingProcessingRunDto, signal: AbortSignal) => Promise<string>;
   getCredential: (reference: string | undefined, provider: string) => string;
   mixAudio?: (
     recording: MeetingRecordingDto,
@@ -581,7 +582,10 @@ export class MeetingProcessingWorker {
     const manual = note?.content ?? "";
     const input = [manual.trim() ? `## Manual Notes\n${manual}` : "", `## Transcript\n${transcript.text}`]
       .filter(Boolean).join("\n\n");
-    const generated = await this.deps.summarize(input, summaryConfig, signal);
+    const generated = summaryConfig.reasoningMode === "agent"
+      ? await this.deps.summarizeAgent?.(input, summaryConfig, run, signal)
+      : await this.deps.summarize(input, summaryConfig, signal);
+    if (generated === undefined) throw new MeetingProcessingFailure("bb-unavailable", "blocked");
     signal.throwIfAborted();
     if (!generated.trim()) throw new MeetingProcessingFailure("summary-empty-output", "failed");
     const summary = meetingSummaryArtifactSchema.parse({ text: generated.trim() });
@@ -905,7 +909,7 @@ function failureFromUnknown(value: unknown): MeetingProcessingFailure {
     return new MeetingProcessingFailure("TRANSIENT_NETWORK_ERROR", "failed", error.message);
   }
   const code = detail.code || "processing-error";
-  if (["api-key-missing", "invalid-key", "INVALID_KEY", "API_KEY_MISSING", "reasoning-model-missing", "reasoning-endpoint-missing", "reasoning-endpoint-invalid", "reasoning-provider-missing", "unsupported-reasoning-provider", "unsupported-enterprise-reasoning-route", "enterprise-reasoning-unavailable", "SELF_HOSTED_ENDPOINT_INVALID", "DIARIZATION_MODEL_MISSING", "MODEL_NOT_DOWNLOADED", "MODEL_NOT_FOUND", "LLAMASERVER_NOT_FOUND", "LOCAL_SERVER_UNAVAILABLE"].includes(code)) {
+  if (["api-key-missing", "invalid-key", "INVALID_KEY", "API_KEY_MISSING", "reasoning-model-missing", "reasoning-endpoint-missing", "reasoning-endpoint-invalid", "reasoning-provider-missing", "unsupported-reasoning-provider", "unsupported-enterprise-reasoning-route", "enterprise-reasoning-unavailable", "SELF_HOSTED_ENDPOINT_INVALID", "DIARIZATION_MODEL_MISSING", "MODEL_NOT_DOWNLOADED", "MODEL_NOT_FOUND", "LLAMASERVER_NOT_FOUND", "LOCAL_SERVER_UNAVAILABLE", "bb-not-installed", "bb-version-unsupported", "bb-project-mismatch"].includes(code)) {
     return new MeetingProcessingFailure(code, "blocked", error.message);
   }
   return new MeetingProcessingFailure(code, "failed", error.message);

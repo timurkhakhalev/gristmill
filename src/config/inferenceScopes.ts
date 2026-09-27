@@ -8,15 +8,15 @@ import type {
 // fields must reference string snapshot fields, the mode field a mode field,
 // disableThinking a boolean field. The store's SettingsState structurally
 // satisfies the snapshot, so the same keys read its state.
-type StringKey = {
-  [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends string ? K : never;
-}[keyof InferenceSettingsSnapshot];
-type ModeKey = {
+type StringKey = NonNullable<{
+  [K in keyof InferenceSettingsSnapshot]: NonNullable<InferenceSettingsSnapshot[K]> extends string ? K : never;
+}[keyof InferenceSettingsSnapshot]>;
+type ModeKey = NonNullable<{
   [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends InferenceMode ? K : never;
-}[keyof InferenceSettingsSnapshot];
-type BooleanKey = {
+}[keyof InferenceSettingsSnapshot]>;
+type BooleanKey = NonNullable<{
   [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends boolean ? K : never;
-}[keyof InferenceSettingsSnapshot];
+}[keyof InferenceSettingsSnapshot]>;
 
 export interface InferenceScopeStoreKeys {
   mode: ModeKey;
@@ -27,6 +27,9 @@ export interface InferenceScopeStoreKeys {
   remoteUrl?: StringKey;
   customApiKey?: StringKey;
   disableThinking?: BooleanKey;
+  agentProvider?: StringKey;
+  agentModel?: StringKey;
+  agentReasoningLevel?: StringKey;
 }
 
 export interface InferenceScopeDefinition {
@@ -63,6 +66,9 @@ export const INFERENCE_SCOPES = {
       remoteUrl: "noteFormattingRemoteUrl",
       customApiKey: "noteFormattingCustomApiKey",
       disableThinking: "noteFormattingDisableThinking",
+      agentProvider: "noteFormattingBbProvider",
+      agentModel: "noteFormattingBbModel",
+      agentReasoningLevel: "noteFormattingBbReasoningLevel",
     },
     fallbackScope: "cleanup",
   },
@@ -78,6 +84,9 @@ export const INFERENCE_SCOPES = {
       remoteUrl: "chatAgentRemoteUrl",
       customApiKey: "chatAgentCustomApiKey",
       disableThinking: "chatAgentDisableThinking",
+      agentProvider: "chatAgentBbProvider",
+      agentModel: "chatAgentBbModel",
+      agentReasoningLevel: "chatAgentBbReasoningLevel",
     },
   },
 } as const satisfies Record<InferenceScopeId, InferenceScopeDefinition>;

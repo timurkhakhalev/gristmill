@@ -65,6 +65,7 @@
       "test/components/floatingChatLayout.test.js",
       "test/helpers/actionsCatalogBehavior.test.js",
       "test/helpers/actionsIpc.test.js",
+      "test/helpers/bbCli.test.js",
       "test/helpers/chatMessageSubmissionLock.test.js",
       "test/helpers/chatPersistenceBehavior.test.js",
       "test/helpers/chatPersistenceIpc.test.js",

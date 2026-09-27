@@ -22,6 +22,8 @@ interface ChatInputProps {
   className?: string;
   /** Offer a mic when the input is empty; recordings transcribe into the input. */
   voiceDraft?: boolean;
+  /** Model/harness picker shown beside the send control. */
+  modelPicker?: React.ReactNode;
 }
 
 function RecordingIndicator() {
@@ -61,6 +63,7 @@ export function ChatInput({
   placeholder,
   className,
   voiceDraft = false,
+  modelPicker,
 }: ChatInputProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -216,6 +219,7 @@ export function ChatInput({
                 isBusy && "text-muted cursor-not-allowed"
               )}
             />
+            {modelPicker}
             {isBusy && onCancel ? (
               <button
                 type="button"

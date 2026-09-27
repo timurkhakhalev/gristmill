@@ -65,6 +65,9 @@ import { registerSpeakerHandlers, type SpeakerDatabase } from "./speakerIpcHandl
 import { registerRemoteTranscriptionHandler, transcribeAudioFileByok, type RemoteTranscriptionDeps } from "./remoteTranscriptionIpcHandler.js";
 import { postRawAudioFile } from "./audioFileUpload.js";
 import { registerReasoningHandlers, type EnterpriseStreamModel } from "./reasoningIpcHandlers.js";
+import { registerBbHandlers } from "./bbIpcHandlers.js";
+import { generateBbSummary } from "./bbSummary.js";
+import { ensureBbWorkspace } from "./bbWorkspace.js";
 import { registerFileDiarizationHandlers } from "./fileDiarizationIpcHandlers.js";
 import { registerUploadCancelHandler } from "./uploadCancelIpcHandler.js";
 import { registerTranscriptionExecutionHandlers } from "./transcriptionExecutionIpcHandlers.js";
@@ -1174,6 +1177,19 @@ export class IPCHandlers {
           runBedrockRequest: (operation, options) => runBedrockRequest(operation, options),
         }, signal);
       },
+      summarizeAgent: async (input, summaryConfig, run, signal) => {
+        if (!summaryConfig.agentProvider || !summaryConfig.model || !summaryConfig.agentReasoningLevel) {
+          throw new Error("bb summary settings are incomplete");
+        }
+        return generateBbSummary({
+          prompt: `${summaryConfig.instruction}\n\n${input}`,
+          selection: { provider: summaryConfig.agentProvider, model: summaryConfig.model, reasoningLevel: summaryConfig.agentReasoningLevel },
+          environment: ensureBbWorkspace(app.getPath("userData")),
+          threadId: run.bbThreadId,
+          saveThreadId: (id) => this.databaseManager.setMeetingRunBbThreadId(run.id, id),
+          signal,
+        });
+      },
       recognizeSpeakers: async (recording, run, transcript, audioPath, signal) => {
         const approvedAudioPath = resolveAllowedAudioPath(audioPath);
         if (!approvedAudioPath) return [];
@@ -1289,6 +1305,7 @@ export class IPCHandlers {
       enterpriseStreams: this._enterpriseStreams,
       logError: (message, data) => debugLogger.error(message, data),
     });
+    registerBbHandlers(ipcMain, app.getPath("userData"));
 
     // Provider-neutral availability over the shared calendar cache, in the
     // typed module (validation, computation and wire projection included).

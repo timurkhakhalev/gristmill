@@ -92,9 +92,11 @@ const summaryConfigSchema = z.object({
   actionId: z.union([z.string().min(1).max(128), z.number().int().positive()]).optional(),
   templateId: z.union([z.string().min(1).max(128), z.number().int().positive()]).optional(),
   instruction: z.string().max(100_000),
-  reasoningMode: z.enum(["providers", "local", "self-hosted", "enterprise"]),
+  reasoningMode: z.enum(["providers", "local", "self-hosted", "enterprise", "agent"]),
   provider: z.string().min(1).max(100).optional(),
   model: z.string().min(1).max(200).optional(),
+  agentProvider: z.string().min(1).max(100).optional(),
+  agentReasoningLevel: z.string().min(1).max(40).optional(),
   cloudBaseUrl: secretFreeEndpointSchema.optional(),
   remoteUrl: secretFreeEndpointSchema.optional(),
   options: inferenceOptionsSchema.optional(),
@@ -125,6 +127,9 @@ const summaryConfigSchema = z.object({
   }
   if (config.reasoningMode === "enterprise" && !config.enterprise) {
     context.addIssue({ code: "custom", path: ["enterprise"], message: "Enterprise reasoning settings are required" });
+  }
+  if (config.reasoningMode === "agent" && (!config.agentProvider || !config.model || !config.agentReasoningLevel)) {
+    context.addIssue({ code: "custom", path: ["agentProvider"], message: "bb provider, model and reasoning level are required" });
   }
 });
 
@@ -187,6 +192,7 @@ export const meetingProcessingRunDtoSchema = z.object({
   sourceRecordingIds: z.array(meetingRecordingIdSchema).min(1),
   kind: z.enum(["initial", "reprocess", "summary"]),
   sourceRunId: meetingRecordingIdSchema.nullable(),
+  bbThreadId: z.string().nullable(),
   provider: z.string().nullable(),
   model: z.string().nullable(),
   config: meetingProcessingConfigSchema.nullable(),

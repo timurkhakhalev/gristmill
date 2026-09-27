@@ -340,7 +340,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       const { status, stage, errorCode } = latestRun.run;
       const stageKey = stage === "asr" || stage === "summary" ? stage : "other";
       const needsConfig = status === "blocked" && Boolean(latestRun.run.configError || !latestRun.run.config || errorCode === "missing-summary-config");
-      const settingsSection = stage === "summary" || errorCode === "missing-summary-config" ? "llms" : "speechToText";
+      const settingsSection = stage === "summary" || errorCode === "missing-summary-config" ? "models#summary" : "models#meeting";
       const actions = <>
         {needsConfig && <Button size="sm" onPress={() => openSettings(settingsSection)}>{t("meetingResults.openSettings")}</Button>}
         {needsConfig && <Button size="sm" variant="tertiary" isPending={busy} onPress={() => void runTask(async () => {

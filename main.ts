@@ -16,6 +16,7 @@ import dockManager from "./src/helpers/dockManager.js";
 import { wasLaunchedAtLoginHidden } from "./src/helpers/autoStart.js";
 import { IPCHandlers } from "./src/helpers/ipcHandlers.js";
 import { CliBridge } from "./src/helpers/cliBridge.js";
+import { writeBbConnection, removeBbConnection } from "./src/helpers/bbWorkspace.js";
 import { GlobeKeyManager } from "./src/helpers/globeKeyManager.js";
 import { GoogleCalendarManager } from "./src/helpers/googleCalendarManager.js";
 import { MicrosoftCalendarManager } from "./src/helpers/microsoftCalendarManager.js";
@@ -489,6 +490,7 @@ async function startApp(): Promise<void> {
   await initializedEnvironmentManager.init();
   registerSidecars();
 
+  removeBbConnection(app.getPath("userData"));
   const initializedCliBridge = new CliBridge({
     databaseManager: initializedHandlers.databaseManager,
     deleteNoteInternal: (id) => initializedHandlers.deleteNoteInternal(id),
@@ -501,10 +503,15 @@ async function startApp(): Promise<void> {
     audioStorageManager: initializedHandlers.audioStorageManager,
   });
   cliBridge = initializedCliBridge;
-  initializedCliBridge.start().catch((err: Error) => {
-    debugLogger.error("CLI bridge failed to start", { error: err.message });
+  try {
+    await initializedCliBridge.start();
+    const connection = initializedCliBridge.getConnection();
+    if (connection) writeBbConnection(app.getPath("userData"), connection.port, connection.token);
+  } catch (err) {
+    debugLogger.error("CLI bridge failed to start", { error: (err as Error).message });
+    await initializedCliBridge.stop().catch(() => {});
     cliBridge = null;
-  });
+  }
 
 
   ipcMain.on("start-minimized-changed", (_event, enabled: boolean) => {
@@ -730,6 +737,7 @@ if (gotSingleInstanceLock) {
 }
 
 function performSyncTeardown(): void {
+  removeBbConnection(app.getPath("userData"));
   if (wakeRewarmTimer) {
     clearTimeout(wakeRewarmTimer);
     wakeRewarmTimer = null;

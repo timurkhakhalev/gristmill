@@ -107,6 +107,9 @@ export interface ChatAgentSettings {
   chatAgentCloudBaseUrl: string;
   chatAgentRemoteUrl: string;
   chatAgentCustomApiKey: string;
+  chatAgentBbProvider: string;
+  chatAgentBbModel: string;
+  chatAgentBbReasoningLevel: string;
 }
 
 function useSettingsInternal() {

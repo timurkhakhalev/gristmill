@@ -5,7 +5,7 @@
 
 export type LocalTranscriptionProvider = "whisper" | "nvidia" | "cohere";
 
-export type InferenceMode = "providers" | "local" | "self-hosted" | "enterprise";
+export type InferenceMode = "providers" | "local" | "self-hosted" | "enterprise" | "agent";
 
 export type SelfHostedType = "openai-compatible" | "lan";
 
@@ -79,6 +79,9 @@ export interface NoteFormattingScopeSettings {
   noteFormattingRemoteUrl: string;
   noteFormattingCustomApiKey: string;
   noteFormattingDisableThinking: boolean;
+  noteFormattingBbProvider?: string;
+  noteFormattingBbModel?: string;
+  noteFormattingBbReasoningLevel?: string;
 }
 
 /** Routing fields of the chat-intelligence scope as they live in the store. */
@@ -91,6 +94,20 @@ export interface ChatAgentScopeSettings {
   chatAgentRemoteUrl: string;
   chatAgentCustomApiKey: string;
   chatAgentDisableThinking: boolean;
+  chatAgentBbProvider?: string;
+  chatAgentBbModel?: string;
+  chatAgentBbReasoningLevel?: string;
+}
+
+/**
+ * App-wide bb harness preferences. Seeded once from bb's own provider order and
+ * default, then owned by OpenHercules and never written back to bb.
+ */
+export interface BbAgentPreferences {
+  order: string[];
+  disabled: string[];
+  defaultProvider: string;
+  defaults: Record<string, { model: string; reasoningLevel: string }>;
 }
 
 /** Everything the four selectors read from a settings snapshot. */
@@ -99,4 +116,4 @@ export type InferenceSettingsSnapshot = BaseTranscriptionSettings &
   UploadTranscriptionSettings &
   CleanupScopeSettings &
   NoteFormattingScopeSettings &
-  ChatAgentScopeSettings;
+  ChatAgentScopeSettings & { bbAgentPreferences?: BbAgentPreferences | null };

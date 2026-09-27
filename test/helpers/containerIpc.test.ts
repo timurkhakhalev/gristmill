@@ -6,9 +6,10 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const Module = require("node:module");
 
-let registerContainerHandlers;
-const handlers = new Map();
-let sent: unknown = null;
+type ContainerModule = typeof import("../../src/helpers/containerIpcHandlers.js");
+let registerContainerHandlers: ContainerModule["registerContainerHandlers"];
+const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+let sent: Array<{ channel: string; data: unknown }> | null = null;
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -20,7 +21,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
           {
             isDestroyed: () => false,
             webContents: {
-              send: (ch, data: unknown) => {
+              send: (ch: string, data: unknown) => {
                 if (sent) sent.push({ channel: ch, data });
               },
             },
@@ -36,11 +37,12 @@ test.before(async () => {
   ({ registerContainerHandlers } = await import("../../src/helpers/containerIpcHandlers.ts"));
 });
 
-function setup(database, overrides = {}) {
+type DatabaseDouble = Parameters<ContainerModule["registerContainerHandlers"]>[1]["database"];
+function setup(database: DatabaseDouble, overrides: Record<string, unknown> = {}) {
   handlers.clear();
   sent = [];
   registerContainerHandlers(
-    { handle: (channel: string, fn) => handlers.set(channel, fn) },
+    { handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => handlers.set(channel, fn) },
     {
       database,
       noteFilesEnabled: () => false,
@@ -88,10 +90,10 @@ function fakeDb() {
   };
 }
 
-function call(handlers, channel: string, ...args) {
+function call(handlers: Map<string, (event: unknown, ...args: unknown[]) => unknown>, channel: string, ...args: unknown[]): any {
   const handler = handlers.get(channel);
   assert.ok(handler, `handler registered for ${channel}`);
-  return handler(null, ...args);
+  return handler!(null, ...args);
 }
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -116,7 +118,7 @@ const SPACE = {
 
 test("getFolders passes spaceId through (null keeps all folders)", async () => {
   const seen: unknown[] = [];
-  const db = { ...fakeDb(), getFolders: (spaceId: unknown) => (seen.push(spaceId), [FOLDER]) };
+  const db = { ...fakeDb(), getFolders: (spaceId: unknown) => (seen.push(spaceId), [FOLDER]) } as DatabaseDouble;
   const h = setup(db);
   assert.deepEqual(await call(h, "db-get-folders", 3), [FOLDER]);
   assert.deepEqual(await call(h, "db-get-folders", null), [FOLDER]);
@@ -127,22 +129,22 @@ test("getFolders passes spaceId through (null keeps all folders)", async () => {
 });
 
 test("createFolder defers folder-created and the mirror only when enabled", async () => {
-  const db = { ...fakeDb(), createFolder: (_name, _spaceId) => ({ success: true, folder: FOLDER }) };
+  const db = { ...fakeDb(), createFolder: (_name: unknown, _spaceId: unknown) => ({ success: true, folder: FOLDER }) } as DatabaseDouble;
   const calls: unknown[] = [];
   const h = setup(db, {
     noteFilesEnabled: () => true,
-    mirrorEnsureFolder: (name: string) => calls.push(`ensure:${name}`),
+    mirrorEnsureFolder: (name: string) => { calls.push(`ensure:${name}`); },
   });
   const result = await call(h, "db-create-folder", " Work ", 3);
   assert.equal(result.success, true);
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, [] as unknown);
   await flush();
-  assert.deepEqual(sent, [{ channel: "folder-created", data: FOLDER }]);
+  assert.deepEqual(sent!, [{ channel: "folder-created", data: FOLDER }]);
   assert.deepEqual(calls, ["ensure:Meetings"]);
 
   // Mirroring off: event still fires, mirror call does not.
   calls.length = 0;
-  sent.length = 0;
+  sent!.length = 0;
   const h2 = setup(db);
   await call(h2, "db-create-folder", "Work", 3);
   await flush();
@@ -153,7 +155,7 @@ test("createFolder defers folder-created and the mirror only when enabled", asyn
   const failed = await call(h3, "db-create-folder", "  ");
   assert.deepEqual(failed, { success: false, error: "Folder name is required" });
   await flush();
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, [] as unknown);
 });
 
 test("deleteFolder resolves the name before the delete and defers event + mirror", async () => {
@@ -177,14 +179,14 @@ test("deleteFolder resolves the name before the delete and defers event + mirror
   assert.deepEqual(result, { success: true });
   // Name resolution happens synchronously before the DB delete runs.
   assert.deepEqual(order, ["name:7", "delete:7"]);
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, [] as unknown);
   await flush();
-  assert.deepEqual(sent, [{ channel: "folder-deleted", data: { id: 7 } }]);
+  assert.deepEqual(sent!, [{ channel: "folder-deleted", data: { id: 7 } }]);
   assert.deepEqual(order.slice(2), ["mirror:Meetings"]);
 
   // Not found: no event, no mirror. Name is still resolved first.
   order.length = 0;
-  sent.length = 0;
+  sent!.length = 0;
   const h2 = setup(
     { ...db, deleteFolder: () => ({ success: false }) },
     {
@@ -197,7 +199,7 @@ test("deleteFolder resolves the name before the delete and defers event + mirror
   );
   await call(h2, "db-delete-folder", 99);
   await flush();
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, [] as unknown);
   assert.deepEqual(order, ["name:99"]);
 });
 
@@ -207,12 +209,12 @@ test("renameFolder defers folder-renamed and the rename mirror when enabled", as
   const h = setup(db, {
     noteFilesEnabled: () => true,
     getFolderName: () => "Old",
-    mirrorRenameFolder: (oldName, newName) => calls.push([oldName, newName]),
+    mirrorRenameFolder: (oldName: string, newName: string) => { calls.push([oldName, newName]); },
   });
   const result = await call(h, "db-rename-folder", 7, "New");
   assert.equal(result.success, true);
   await flush();
-  assert.deepEqual(sent, [{ channel: "folder-renamed", data: { ...FOLDER, name: "New" } }]);
+  assert.deepEqual(sent!, [{ channel: "folder-renamed", data: { ...FOLDER, name: "New" } }]);
   assert.deepEqual(calls, [["Old", "New"]]);
 });
 
@@ -223,14 +225,14 @@ test("moveFolderToSpace sends folder-synced only on success with a folder", asyn
   assert.equal(result.success, true);
   assert.deepEqual(result.notes, []);
   await flush();
-  assert.deepEqual(sent, [{ channel: "folder-synced", data: FOLDER }]);
+  assert.deepEqual(sent!, [{ channel: "folder-synced", data: FOLDER }]);
 
   // Success without a folder row sends nothing.
-  sent.length = 0;
+  sent!.length = 0;
   const h2 = setup({ ...db, moveFolderToSpace: () => ({ success: true }) });
   await call(h2, "db-move-folder-to-space", 7, 3);
   await flush();
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, [] as unknown);
 });
 
 test("getSpaces/getFolderNoteCounts pass the DB rows straight through", async () => {
@@ -246,20 +248,20 @@ test("getSpaces/getFolderNoteCounts pass the DB rows straight through", async ()
 });
 
 test("updateSpace defers space-synced only on success with a space", async () => {
-  const db = { ...fakeDb(), updateSpace: (_id, _updates) => ({ success: true, space: SPACE }) };
+  const db = { ...fakeDb(), updateSpace: (_id: unknown, _updates: unknown) => ({ success: true, space: SPACE }) } as DatabaseDouble;
   const h = setup(db);
   const result = await call(h, "db-update-space", 3, { name: "Renamed" });
   assert.equal(result.success, true);
   await flush();
-  assert.deepEqual(sent, [{ channel: "space-synced", data: SPACE }]);
+  assert.deepEqual(sent!, [{ channel: "space-synced", data: SPACE }]);
 
   // Empty whitelist ({} or null updates) fails quietly in the DB layer.
-  sent.length = 0;
+  sent!.length = 0;
   const h2 = setup({ ...db, updateSpace: () => ({ success: false }) });
   const failed = await call(h2, "db-update-space", 3, null);
   assert.deepEqual(failed, { success: false });
   await flush();
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, [] as unknown);
 });
 
 test("wrong-shaped ids reject before the DB is touched", async () => {

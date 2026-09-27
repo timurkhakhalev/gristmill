@@ -2,12 +2,19 @@
 // bubble (meetingCompanionWindow.ts), unit-tested in
 // test/helpers/meetingCompanionPolicy.test.js.
 
-export const MEETING_COMPANION_SIZE = 64;
+// A vertical pill: app mark on top, live voice bars below. The window adds a
+// few px around the pill so its shadow isn't clipped.
+export const MEETING_COMPANION_SIZE: Size = { width: 52, height: 100 };
 const EDGE_MARGIN = 12;
 
 export interface Point {
   x: number;
   y: number;
+}
+
+export interface Size {
+  width: number;
+  height: number;
 }
 
 interface WorkArea {
@@ -23,16 +30,20 @@ export function shouldShowMeetingCompanion(active: boolean, controlPanelFocused:
 }
 
 /** Keeps the whole bubble on a display's work area. */
-export function clampToWorkArea(point: Point, workArea: WorkArea, size: number): Point {
+export function clampToWorkArea(point: Point, workArea: WorkArea, size: Size): Point {
   return {
-    x: Math.round(Math.min(Math.max(point.x, workArea.x), workArea.x + workArea.width - size)),
-    y: Math.round(Math.min(Math.max(point.y, workArea.y), workArea.y + workArea.height - size)),
+    x: Math.round(
+      Math.min(Math.max(point.x, workArea.x), workArea.x + workArea.width - size.width)
+    ),
+    y: Math.round(
+      Math.min(Math.max(point.y, workArea.y), workArea.y + workArea.height - size.height)
+    ),
   };
 }
 
-export function defaultCompanionPosition(workArea: WorkArea, size: number): Point {
+export function defaultCompanionPosition(workArea: WorkArea, size: Size): Point {
   return {
-    x: workArea.x + workArea.width - size - EDGE_MARGIN,
+    x: workArea.x + workArea.width - size.width - EDGE_MARGIN,
     y: workArea.y + Math.round(workArea.height * 0.6),
   };
 }

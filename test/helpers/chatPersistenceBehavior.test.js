@@ -179,14 +179,14 @@ test("preview pagination skips rows and preview falls back to null", async (t) =
   const db = createDb(t);
   if (!db) return;
   const empty = db.createAgentConversation("empty");
-  // CURRENT_TIMESTAMP has one-second granularity; sleep between the three
-  // updates so their updated_at order (and therefore list order) is pinned.
-  await new Promise((resolve) => setTimeout(resolve, 1100));
   const first = db.createAgentConversation("first");
   db.addAgentMessage(first.id, "user", "oldest answer");
-  await new Promise((resolve) => setTimeout(resolve, 1100));
   const second = db.createAgentConversation("second");
   db.addAgentMessage(second.id, "assistant", "newest answer");
+  const setUpdatedAt = db.db.prepare("UPDATE agent_conversations SET updated_at = ? WHERE id = ?");
+  setUpdatedAt.run("2026-01-01 00:00:00", empty.id);
+  setUpdatedAt.run("2026-01-02 00:00:00", first.id);
+  setUpdatedAt.run("2026-01-03 00:00:00", second.id);
 
   const page = db.getAgentConversationsWithPreview(50, 0, false);
   // Newest first; an empty chat keeps preview null, the others carry their

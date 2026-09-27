@@ -197,6 +197,15 @@ test("streaming-only base provider is not inherited by upload", async () => {
   );
   assert.equal(deepgram.cloudTranscriptionProvider, "deepgram");
   assert.equal(deepgram.cloudTranscriptionModel, "nova-3");
+
+  const groq = selectResolvedUploadTranscription(
+    transcriptionFixture({
+      cloudTranscriptionProvider: "groq",
+      cloudTranscriptionModel: "whisper-large-v3-turbo",
+    })
+  );
+  assert.equal(groq.cloudTranscriptionProvider, "groq");
+  assert.equal(groq.cloudTranscriptionModel, "whisper-large-v3-turbo");
 });
 
 test("an explicit streaming-only upload provider is kept for the route guard", async () => {
@@ -210,6 +219,16 @@ test("an explicit streaming-only upload provider is kept for the route guard", a
   );
   assert.equal(resolved.cloudTranscriptionProvider, "assemblyai");
   assert.equal(resolved.cloudTranscriptionModel, "universal");
+
+  const groq = selectResolvedUploadTranscription(
+    transcriptionFixture({
+      cloudTranscriptionProvider: "deepgram",
+      uploadCloudTranscriptionProvider: "groq",
+      uploadCloudTranscriptionModel: "whisper-large-v3",
+    })
+  );
+  assert.equal(groq.cloudTranscriptionProvider, "groq");
+  assert.equal(groq.cloudTranscriptionModel, "whisper-large-v3");
 });
 
 test("cleanup and chatIntelligence do not gain a fallback scope", async () => {

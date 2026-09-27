@@ -7,7 +7,8 @@ Executable command semantics live here. Select checks using the
 
 | Command | Selection |
 | --- | --- |
-| `pnpm test` | Full suite, including compiler probes and native/GUI checks |
+| `pnpm test` | Full suite, including compiler probes and native/GUI checks; at most two ordinary files at once |
+| `pnpm test -- --processes 1` | Explicit one-process diagnostic mode |
 | `pnpm test --domain calendar` | All kinds in one domain |
 | `pnpm test --domain calendar --domain notes` | Union of domains, without duplicates |
 | `pnpm test --domain calendar --kind unit` | Unit tests in the domain |
@@ -28,8 +29,11 @@ The optional leading `--` also works with selectors.
 - Executed selections prepare SQLite. The runner runs `build:main` once only if
   a selected test requires compiled output. Combine checks in one call; do not
   run a separate main build immediately beforehand when the plan includes it.
-- On macOS, tests use Electron's Node mode, one worker and background scheduling
-  (`taskpolicy -b`, `nice -n 15`). Linux CI uses Node. Use the canonical wrapper;
+- On macOS, tests use Electron's Node mode and background scheduling
+  (`taskpolicy -b`, `nice -n 15`). Linux CI uses Node. Ordinary files use at most
+  two isolated processes; compiler/native and marked shared-resource files run
+  in a later one-worker phase. Preparation and main build each run once. Full
+  runs take a lock in the common Git directory across worktrees. Use the canonical wrapper;
   direct `node --test` can bypass the required SQLite runtime setup.
 - `pnpm run typecheck:main`, `pnpm run typecheck:renderer` and
   `pnpm run typecheck:settings-selectors` select compiler targets.

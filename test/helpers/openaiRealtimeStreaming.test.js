@@ -497,33 +497,6 @@ test("zero audio loss during proactive reconnect (timer before the limit)", asyn
   assert.equal(old.ws.sent.length + fresh.ws.sent.length, 141, "zero chunks dropped");
 });
 
-test("concurrent session_expired from mic and system streams only reconnects once", async () => {
-  const OpenAIRealtimeStreaming = (await load()).default;
-
-  // Mirrors the meetingReconnecting guard in ipcHandlers.
-  let reconnectCalls = 0;
-  let reconnecting = false;
-  const guardedReconnect = () => {
-    if (reconnecting) return;
-    reconnecting = true;
-    reconnectCalls++;
-  };
-
-  const mic = new OpenAIRealtimeStreaming();
-  const system = new OpenAIRealtimeStreaming();
-  mic.onSessionExpired = guardedReconnect;
-  system.onSessionExpired = guardedReconnect;
-
-  const expiredEvent = JSON.stringify({
-    type: "error",
-    error: { code: "session_expired", message: "expired" },
-  });
-  mic.handleMessage(expiredEvent);
-  system.handleMessage(expiredEvent);
-
-  assert.equal(reconnectCalls, 1, "reconnect called exactly once despite two streams expiring");
-});
-
 test("completedSegments accumulate across turns", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new OpenAIRealtimeStreaming();

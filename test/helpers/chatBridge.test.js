@@ -16,7 +16,6 @@ const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 let activeHandlers = null;
-let registeringModule = null;
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-chat-bridge-"));
 
 const originalLoad = Module._load;
@@ -53,12 +52,17 @@ Module._load = function patchedLoad(request, parent, isMain) {
   }
   return originalLoad.call(this, request, parent, isMain);
 };
+const originalNodeEnv = process.env.NODE_ENV;
 process.env.NODE_ENV = "test";
 
 const DatabaseManager = require("../../src/helpers/database.ts");
+const initialUserDataDir = userDataDir;
 
 test.after(() => {
   Module._load = originalLoad;
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
+  fs.rmSync(initialUserDataDir, { recursive: true, force: true });
 });
 
 function isNativeBindingUnavailable(error) {
@@ -102,7 +106,12 @@ function loadBundledPreload(invoke) {
 async function createFixture(t) {
   activeHandlers = new Map();
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-chat-bridge-"));
+  const fixtureDir = userDataDir;
   let db;
+  t.after(() => {
+    db?.close();
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  });
   try {
     db = new DatabaseManager();
   } catch (error) {
@@ -112,8 +121,6 @@ async function createFixture(t) {
     }
     throw error;
   }
-  t.after(() => db.close());
-
   const { registerChatPersistenceHandlers } = await import(
     "../../src/helpers/chatPersistenceIpcHandlers.ts"
   );
@@ -214,14 +221,7 @@ test("a wrong-shaped main response rejects instead of becoming an empty chat", a
   if (!ctx) return;
   const { api, invoke } = ctx;
 
-  const fake = (channel, value) => {
-    const real = invoke;
-    return async (requested, ...args) =>
-      requested === channel ? structuredClone(value) : real(requested, ...args);
-  };
-
   // A main-side crash returning an error object is not a valid detail.
-  const brokenInvoke = fake("db-get-agent-conversation", { error: "boom" });
   const apiA = (() => {
     // Rebuild the bridge over the corrupted invoke path.
     const handlers = new Map(activeHandlers);
@@ -290,9 +290,32 @@ test("the shared main registration registers every channel exactly once", async 
   );
 
   // setupHandlers completed without the stub throwing, so no channel was
-  // registered twice. The chat persistence channels really went through the
-  // shared registration next to the remaining JS handlers.
+  // registered twice. Assert representative channels from each migrated
+  // family were included in this one composition-root registration.
   for (const channel of [
+    "db-get-actions",
+    "db-get-action",
+    "db-create-action",
+    "db-update-action",
+    "db-delete-action",
+    "calendar-get-availability",
+    "gcal-start-oauth",
+    "gcal-disconnect",
+    "gcal-get-connection-status",
+    "gcal-get-calendars",
+    "gcal-set-calendar-selection",
+    "gcal-set-primary-only",
+    "gcal-sync-events",
+    "gcal-get-upcoming-events",
+    "gcal-get-event",
+    "mcal-start-oauth",
+    "mcal-disconnect",
+    "mcal-get-connection-status",
+    "mcal-set-primary-only",
+    "acal-connect",
+    "acal-disconnect",
+    "acal-get-connection-status",
+    "open-calendar-privacy-settings",
     "db-create-agent-conversation",
     "db-get-agent-conversation",
     "db-add-agent-message",

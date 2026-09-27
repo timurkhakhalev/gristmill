@@ -81,7 +81,9 @@ not establish that real microphone/system audio works.
 | Dependencies, compiler/build configuration, shared contracts or broad refactor | Relevant focused regressions, `pnpm run lint`, `pnpm run typecheck`, then one full suite after integration. Run the affected build/packaging path when its output changed. |
 | Release/package validation | Full suite, lint, typecheck, renderer build and package verification as applicable. Run the isolated packaged-app smoke after packaging. Capture/native changes additionally need the relevant hardware scenario. |
 
-Run the full suite when explicitly requested, when impact spans several domains
+When running the full suite, also run `pnpm run typecheck:renderer`: the strict
+renderer program replaces the retired entrypoint-only compiler probe. Run the
+full suite when explicitly requested, when impact spans several domains
 and cannot be bounded confidently, or when the table requires it. Do not infer a
 full-suite requirement merely from a large assertion count or a review request.
 Report focused evidence as focused evidence; never call it a full pass.
@@ -138,8 +140,11 @@ Use narrow patterns only for tests with the same domain and environment contract
   or native rebuilds. Subagents may edit tests and run scoped lint/typecheck;
   they report exact test/build commands for the root. Repeat this limit in each
   delegated task and avoid several concurrent whole-project typechecks.
-- Wait for delegated implementation to finish. Run expensive checks sequentially,
-  with `--test-concurrency=1`; no overlapping test/build/install runs. The same
+- Wait for delegated implementation to finish. Run expensive checks sequentially.
+  The canonical runner permits at most two ordinary test files at once, then
+  runs compiler/native and shared-resource files with one worker. Use
+  `--processes 1` for diagnosis or a constrained host. No overlapping
+  test/build/install runs. The same
   checkout and generated output are shared across Codex chats: check for an
   existing run before starting another, and do not stop another task's processes.
 - Keep installs and packaging/native rebuilds separate from running tests and

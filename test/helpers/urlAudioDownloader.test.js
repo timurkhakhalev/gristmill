@@ -214,6 +214,20 @@ test("downloadViaProxy restarts HTTPS redirects and rejects private targets", as
     assert.equal(fs.readFileSync(tempPath, "utf8"), "proxy-audio");
     assert.equal(requests.length, 2);
     assert.equal(requests[1].url, "https://93.184.216.34/real.mp3");
+    requests.length = 0;
+    fakeNet.request = (options) => {
+      const request = new EventEmitter();
+      request.url = options.url;
+      request.setHeader = () => {};
+      request.abort = () => {};
+      request.end = () => {
+        requests.push(request);
+        request.emit("redirect", 302, "GET", "https://127.0.0.1/private.mp3");
+      };
+      return request;
+    };
+    await assert.rejects(downloader.downloadViaProxy("https://93.184.216.34/file.mp3"), { code: "SSRF_BLOCKED" });
+    assert.equal(requests.length, 1, "private redirect is blocked before another proxy request");
   } finally {
     downloader._setElectronNetForTests(null);
     if (tempPath) fs.unlinkSync(tempPath);

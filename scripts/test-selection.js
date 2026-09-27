@@ -29,6 +29,7 @@ function validateRegistry(files, groups) {
         new Set(group.domains).size !== group.domains.length ||
         group.domains.some((domain) => !DOMAINS.includes(domain)) ||
         !KINDS.includes(group.kind) || typeof group.buildMain !== "boolean" ||
+        (group.serial !== undefined && typeof group.serial !== "boolean") ||
         !Array.isArray(group.files) || !group.files.length) {
       throw new Error(`Invalid test group: ${JSON.stringify(group)}`);
     }
@@ -41,7 +42,7 @@ function validateRegistry(files, groups) {
       if (!matches.length) throw new Error(`Stale test registration: ${pattern}`);
       for (const file of matches) {
         if (assigned.has(file)) throw new Error(`Duplicate test registration: ${file}`);
-        assigned.set(file, { file, domains: group.domains, kind: group.kind, buildMain: group.buildMain });
+        assigned.set(file, { file, domains: group.domains, kind: group.kind, buildMain: group.buildMain, serial: group.serial === true });
       }
     }
   }
@@ -53,11 +54,16 @@ function validateRegistry(files, groups) {
 function parseArgs(input) {
   const args = [...input];
   if (args[0] === "--") args.shift();
-  const result = { domains: [], kinds: [], files: [], list: false, help: false };
+  const result = { domains: [], kinds: [], files: [], list: false, help: false, processes: 2 };
   while (args.length) {
     const arg = args.shift();
     if (arg === "--list") result.list = true;
     else if (arg === "--help") result.help = true;
+    else if (arg === "--processes") {
+      const value = args.shift();
+      if (value !== "1" && value !== "2") throw new Error(`--processes expects 1 or 2; received ${value ?? "no value"}`);
+      result.processes = Number(value);
+    }
     else if (arg === "--domain" || arg === "--kind") {
       const value = args.shift();
       const choices = arg === "--domain" ? DOMAINS : KINDS;

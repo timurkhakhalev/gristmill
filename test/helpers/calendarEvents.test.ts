@@ -6,7 +6,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 
-const sent : unknown[] = [];
+const sent: Array<{ channel: string; payload: unknown }> = [];
 const electronStub = {
   BrowserWindow: {
     getAllWindows: () => [
@@ -25,7 +25,8 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-let senders;
+type SendersModule = typeof import("../../src/helpers/calendarEvents.js");
+let senders: SendersModule;
 
 test.before(async () => {
   senders = await import("../../src/helpers/calendarEvents.ts");

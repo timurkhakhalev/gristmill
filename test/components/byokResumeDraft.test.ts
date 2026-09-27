@@ -10,7 +10,7 @@ const {
 } = require("../lib/rendererTestHarness.ts");
 
 let vitePromise;
-const cleanup = [];
+const cleanup: Array<() => Promise<void>> = [];
 test.after(async () => {
   for (const close of cleanup) await close();
 });
@@ -28,12 +28,15 @@ const SECRETS = {
 
 const ALLOWED_DRAFT_KEYS = ["baseUrl", "customModel", "selectedModel", "selectedProvider"];
 
-async function collectByokDrafts(t, { selfHostedRequested, resumeState }) {
+interface ResumeState { selectedProvider: string; selectedModel: string; baseUrl: string; customModel: string; }
+type DraftOptions = { selfHostedRequested: boolean; resumeState?: ResumeState };
+
+async function collectByokDrafts(t: import("node:test").TestContext, { selfHostedRequested, resumeState }: DraftOptions) {
   installBrowserGlobals(t, {
     window: { electronAPI: { getPlatform: () => "linux" } },
   });
   const container = installHookDom(t);
-  const vite = await (vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
+  const vite = await (vitePromise ??= createRendererServer({ after: (close: () => Promise<void>) => cleanup.push(close) } as unknown as import("node:test").TestContext, {
     cachePrefix: "openwhispr-byok-resume-draft-",
     noExternal: ["react-i18next"],
     mockModules: {
@@ -53,7 +56,7 @@ async function collectByokDrafts(t, { selfHostedRequested, resumeState }) {
     "/components/onboarding/ProviderSetupStep.tsx"
   );
 
-  const drafts = [];
+  const drafts: Array<Record<string, unknown>> = [];
   function Harness() {
     // Execute the real component and hooks with React lifecycle, while leaving
     // native controls unmounted: the persisted draft is the test boundary.
@@ -63,7 +66,7 @@ async function collectByokDrafts(t, { selfHostedRequested, resumeState }) {
       onSelfHostedChange() {},
       onConnectionChange() {},
       onProceed() {},
-      onResumeStateChange: (draft) => drafts.push(draft),
+      onResumeStateChange: (draft: Record<string, unknown>) => drafts.push(draft),
     });
     return null;
   }
@@ -88,8 +91,8 @@ for (const [name, options] of [
   ],
   ["a self-hosted endpoint", { selfHostedRequested: true }],
 ]) {
-  test(`the resume draft for ${name} carries no credential`, async (t) => {
-    const drafts = await collectByokDrafts(t, options);
+  test(`the resume draft for ${name} carries no credential`, async (t: import("node:test").TestContext) => {
+    const drafts = await collectByokDrafts(t, options as DraftOptions);
 
     assert.ok(drafts.length > 0, "the step persists a draft so the session can restore it");
     for (const draft of drafts) {

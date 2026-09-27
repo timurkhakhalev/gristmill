@@ -25,8 +25,8 @@ test("other modifier-only shortcuts retain the hold threshold", async () => {
 
 test("capture focus is restored only when no control owns page focus", async () => {
   const { shouldRestoreCaptureFocus } = await load();
-  const body = {};
-  const button = {};
+  const body = {} as HTMLElement;
+  const button = {} as HTMLElement;
 
   assert.equal(shouldRestoreCaptureFocus(null, body), true);
   assert.equal(shouldRestoreCaptureFocus(body, body), true);

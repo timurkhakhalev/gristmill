@@ -16,7 +16,7 @@ const labels = {
   },
 };
 
-const translator = (locale) => (key) => labels[locale][key] ?? key;
+const translator = (locale: string) => (key: string) => (labels as Record<string, Record<string, string>>)[locale][key] ?? key;
 
 test("canonical default folders use the active Arabic presentation labels", async () => {
   const { defaultFolderDisplayName } = await load();
@@ -26,7 +26,7 @@ test("canonical default folders use the active Arabic presentation labels", asyn
   }));
 
   assert.deepEqual(
-    folders.map((folder) => defaultFolderDisplayName(folder, translator("ar"))),
+    folders.map((folder) => defaultFolderDisplayName(folder as unknown as import("../../src/contracts/containers.js").FolderItem, translator("ar"))),
     ["شخصي", "الاجتماعات", "الفيديوهات"]
   );
 });
@@ -39,7 +39,7 @@ test("canonical default folders retain their normal English presentation labels"
   }));
 
   assert.deepEqual(
-    folders.map((folder) => defaultFolderDisplayName(folder, translator("en"))),
+    folders.map((folder) => defaultFolderDisplayName(folder as unknown as import("../../src/contracts/containers.js").FolderItem, translator("en"))),
     ["Personal", "Meetings", "Videos"]
   );
 });
@@ -63,7 +63,7 @@ test("user-authored and non-canonical folder names are displayed verbatim", asyn
   ];
 
   assert.deepEqual(
-    folders.map((folder) => defaultFolderDisplayName(folder, translator("ar"))),
+    folders.map((folder) => defaultFolderDisplayName(folder as unknown as import("../../src/contracts/containers.js").FolderItem, translator("ar"))),
     ["Personal", "Client Work", "مشاريعي", "Archive"]
   );
 });
@@ -85,7 +85,7 @@ test("command search matches user-authored folders on their own name only", asyn
   const userMeetings = { name: "Meetings", is_default: 0 };
   const arabicFolder = { name: "مشاريعي", is_default: false };
 
-  assert.equal(folderMatchesQuery(userMeetings, t, "meet"), true);
-  assert.equal(folderMatchesQuery(userMeetings, t, "اجتماع"), false);
-  assert.equal(folderMatchesQuery(arabicFolder, t, "مشاريع"), true);
+  assert.equal(folderMatchesQuery(userMeetings as unknown as import("../../src/contracts/containers.js").FolderItem, t, "meet"), true);
+  assert.equal(folderMatchesQuery(userMeetings as unknown as import("../../src/contracts/containers.js").FolderItem, t, "اجتماع"), false);
+  assert.equal(folderMatchesQuery(arabicFolder as unknown as import("../../src/contracts/containers.js").FolderItem, t, "مشاريع"), true);
 });

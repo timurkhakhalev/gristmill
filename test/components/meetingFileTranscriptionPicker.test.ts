@@ -1,9 +1,13 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const path = require("node:path");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts") as typeof import("../lib/rendererTestHarness.js");
 
-test("meeting model choices are only models the post-Stop file worker can process", async (t) => {
+type TestContext = import("node:test").TestContext;
+interface CatalogModel { id: string; name: string; }
+interface CatalogGroup { providerId: string; models: CatalogModel[]; form?: string; }
+
+test("meeting model choices are only models the post-Stop file worker can process", async (t: TestContext) => {
   installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
     cachePrefix: "meeting-file-picker-",
@@ -20,15 +24,15 @@ test("meeting model choices are only models the post-Stop file worker can proces
   );
   const { resolveTranscriptionRoute } = await vite.ssrLoadModule("/helpers/transcriptionRoute.ts");
   const { cloudGroups } = await vite.ssrLoadModule("/components/settings/models/taskCatalog.ts");
-  const translate = (key) => key;
+  const translate = (key: string) => key;
   const providers = getMeetingFileTranscriptionProviders();
   assert.deepEqual(
-    providers.map((provider) => provider.id),
+    providers.map((provider: { id: string }) => provider.id),
     ["openai", "gemini", "deepgram", "elevenlabs"]
   );
   assert.deepEqual(
     Object.fromEntries(
-      providers.map((provider) => [provider.id, provider.models.map((model) => model.id)])
+      providers.map((provider: { id: string; models: Array<{ id: string }> }) => [provider.id, provider.models.map((model: { id: string }) => model.id)])
     ),
     {
       openai: ["gpt-4o-transcribe-diarize"],
@@ -56,20 +60,20 @@ test("meeting model choices are only models the post-Stop file worker can proces
   }
 
   // The Models page offers a meeting exactly these providers and models, no live/streaming ones.
-  const meetingGroups = cloudGroups("meeting", translate, []);
+  const meetingGroups = cloudGroups("meeting", translate, []) as unknown as CatalogGroup[];
   assert.deepEqual(
-    Object.fromEntries(meetingGroups.map((group) => [group.providerId, group.models.map((model) => model.id)])),
-    Object.fromEntries(providers.map((provider) => [provider.id, provider.models.map((model) => model.id)]))
+    Object.fromEntries(meetingGroups.map((group: CatalogGroup) => [group.providerId, group.models.map((model: CatalogModel) => model.id)])),
+    Object.fromEntries(providers.map((provider: { id: string; models: Array<{ id: string }> }) => [provider.id, provider.models.map((model: { id: string }) => model.id)]))
   );
-  assert.equal(meetingGroups.some((group) => group.form), false, "meetings have no custom endpoint");
-  const names = meetingGroups.flatMap((group) => group.models.map((model) => model.name)).join("\n");
+  assert.equal(meetingGroups.some((group: CatalogGroup) => group.form), false, "meetings have no custom endpoint");
+  const names = meetingGroups.flatMap((group: CatalogGroup) => group.models.map((model: CatalogModel) => model.name)).join("\n");
   assert.doesNotMatch(names, /Gemini 3\.5 Transcribe Live|GPT-4o Mini Transcribe|Universal Streaming/);
 
-  const uploadGroups = cloudGroups("upload", translate, []);
-  assert.ok(uploadGroups.some((group) => group.form === "custom"), "uploads keep the custom endpoint");
+  const uploadGroups = cloudGroups("upload", translate, []) as unknown as CatalogGroup[];
+  assert.ok(uploadGroups.some((group: CatalogGroup) => group.form === "custom"), "uploads keep the custom endpoint");
 });
 
-test("switching meeting providers selects a file model, including ElevenLabs and Gemini", async (t) => {
+test("switching meeting providers selects a file model, including ElevenLabs and Gemini", async (t: TestContext) => {
   installBrowserGlobals(t);
   const vite = await createRendererServer(t, { cachePrefix: "meeting-file-switch-" });
   const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");

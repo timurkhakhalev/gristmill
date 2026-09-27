@@ -4,19 +4,21 @@ const { createElement } = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
+type TestContext = import("node:test").TestContext;
+
 const servers = new Map();
-const cleanup = [];
+const cleanup: Array<() => void | Promise<void>> = [];
 test.after(async () => {
   for (const close of cleanup) await close();
 });
-function getVite(cachePrefix) {
+function getVite(cachePrefix: string) {
   if (!servers.has(cachePrefix)) {
-    servers.set(cachePrefix, createRendererServer({ after: (close) => cleanup.push(close) }, { cachePrefix }));
+    servers.set(cachePrefix, createRendererServer({ after: (close: () => void | Promise<void>) => cleanup.push(close) }, { cachePrefix }));
   }
   return servers.get(cachePrefix);
 }
 
-async function loadFeedback(t) {
+async function loadFeedback(t: TestContext) {
   installBrowserGlobals(t);
   const vite = await getVite("openwhispr-upload-audio-feedback-test-");
   const module = await vite.moduleGraph.getModuleByUrl("/components/notes/UploadAudioFeedback.tsx");
@@ -24,7 +26,7 @@ async function loadFeedback(t) {
   return vite.ssrLoadModule("/components/notes/UploadAudioFeedback.tsx");
 }
 
-async function loadBatchQueueView(t) {
+async function loadBatchQueueView(t: TestContext) {
   installBrowserGlobals(t);
   const vite = await getVite("openwhispr-batch-warning-indicator-test-");
   const module = await vite.moduleGraph.getModuleByUrl("/components/notes/BatchQueueView.tsx");
@@ -32,7 +34,7 @@ async function loadBatchQueueView(t) {
   return vite.ssrLoadModule("/components/notes/BatchQueueView.tsx");
 }
 
-test("the model button announces the model it names, not just the action", async (t) => {
+test("the model button announces the model it names, not just the action", async (t: TestContext) => {
   const { UploadModelSettingsButton } = await loadFeedback(t);
 
   const markup = renderToStaticMarkup(
@@ -54,14 +56,14 @@ test("the model button announces the model it names, not just the action", async
   assert.ok(ariaLabel.includes("Open Transcription Settings"));
 });
 
-test("the model button opens the upload-scoped transcription settings", async (t) => {
+test("the model button opens the upload-scoped transcription settings", async (t: TestContext) => {
   const { UploadModelSettingsButton } = await loadFeedback(t);
 
-  const openedSections = [];
+  const openedSections: string[] = [];
   const element = UploadModelSettingsButton({
     label: "Using Whisper · base",
     actionLabel: "Open Transcription Settings",
-    onOpenSettings: (section) => openedSections.push(section),
+    onOpenSettings: (section: string) => openedSections.push(section),
   });
   element.props.onClick();
 
@@ -69,28 +71,28 @@ test("the model button opens the upload-scoped transcription settings", async (t
   assert.equal(element.props.type, "button");
 });
 
-test("the batch warning indicator renders nothing when neither warning is set", async (t) => {
+test("the batch warning indicator renders nothing when neither warning is set", async (t: TestContext) => {
   const { BatchWarningIndicator } = await loadBatchQueueView(t);
 
   const markup = renderToStaticMarkup(
     createElement(BatchWarningIndicator, {
       transcriptionWarning: false,
       diarizationWarning: false,
-      t: (key) => key,
+      t: (key: string) => key,
     })
   );
 
   assert.equal(markup, "");
 });
 
-test("the batch warning indicator combines both warnings into one label", async (t) => {
+test("the batch warning indicator combines both warnings into one label", async (t: TestContext) => {
   const { BatchWarningIndicator } = await loadBatchQueueView(t);
 
   const markup = renderToStaticMarkup(
     createElement(BatchWarningIndicator, {
       transcriptionWarning: true,
       diarizationWarning: true,
-      t: (key) => key,
+      t: (key: string) => key,
     })
   );
 
@@ -102,42 +104,42 @@ test("the batch warning indicator combines both warnings into one label", async 
   assert.doesNotMatch(markup, /tabindex/i);
 });
 
-test("the batch warning indicator reports a transcription-only warning", async (t) => {
+test("the batch warning indicator reports a transcription-only warning", async (t: TestContext) => {
   const { BatchWarningIndicator } = await loadBatchQueueView(t);
 
   const markup = renderToStaticMarkup(
     createElement(BatchWarningIndicator, {
       transcriptionWarning: true,
       diarizationWarning: false,
-      t: (key) => key,
+      t: (key: string) => key,
     })
   );
 
   assert.match(markup, /aria-label="notes\.upload\.partialWarning"/);
 });
 
-test("the completed upload stays quiet when nothing went wrong", async (t) => {
+test("the completed upload stays quiet when nothing went wrong", async (t: TestContext) => {
   const { UploadCompleteWarnings } = await loadFeedback(t);
 
   const markup = renderToStaticMarkup(
     createElement(UploadCompleteWarnings, {
       partialWarning: null,
       diarizationWarning: false,
-      t: (key) => key,
+      t: (key: string) => key,
     })
   );
 
   assert.equal(markup, "");
 });
 
-test("the completed upload shows the diarization warning only when it is flagged", async (t) => {
+test("the completed upload shows the diarization warning only when it is flagged", async (t: TestContext) => {
   const { UploadCompleteWarnings } = await loadFeedback(t);
 
   const warned = renderToStaticMarkup(
     createElement(UploadCompleteWarnings, {
       partialWarning: null,
       diarizationWarning: true,
-      t: (key) => key,
+      t: (key: string) => key,
     })
   );
   assert.match(warned, /notes\.upload\.diarizationWarning/);
@@ -148,20 +150,20 @@ test("the completed upload shows the diarization warning only when it is flagged
     createElement(UploadCompleteWarnings, {
       partialWarning: null,
       diarizationWarning: false,
-      t: (key) => key,
+      t: (key: string) => key,
     })
   );
   assert.doesNotMatch(quiet, /notes\.upload\.diarizationWarning/);
 });
 
-test("a chunk loss and a diarization failure are reported together", async (t) => {
+test("a chunk loss and a diarization failure are reported together", async (t: TestContext) => {
   const { UploadCompleteWarnings } = await loadFeedback(t);
 
   const markup = renderToStaticMarkup(
     createElement(UploadCompleteWarnings, {
       partialWarning: { failed: 2, total: 9 },
       diarizationWarning: true,
-      t: (key) => key,
+      t: (key: string) => key,
     })
   );
 

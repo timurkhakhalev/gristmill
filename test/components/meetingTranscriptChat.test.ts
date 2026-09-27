@@ -12,7 +12,7 @@ const SEGMENTS = [
   { id: "s3", text: "second remote line", source: "system", timestamp: 3, speaker: "speaker_0" },
 ];
 
-async function renderChat(props) {
+async function renderChat(props: Record<string, unknown>) {
   if (!i18next.isInitialized) {
     const en = JSON.parse(
       fs.readFileSync(path.join(__dirname, "../../src/locales/en/translation.json"), "utf8")
@@ -23,7 +23,10 @@ async function renderChat(props) {
       interpolation: { escapeValue: false },
     });
   }
-  const mod = await import("../../src/components/notes/MeetingTranscriptChat.tsx");
+  // Indirect specifier: tsc resolves a literal .tsx import and demands "jsx",
+  // which tsconfig.test.json does not set; the runtime loader still gets the path.
+  const chatModule: string = "../../src/components/notes/MeetingTranscriptChat.tsx";
+  const mod = (await import(chatModule)) as { MeetingTranscriptChat: unknown };
   return renderStatic(mod.MeetingTranscriptChat, { segments: SEGMENTS, scrollElementRef: { current: null }, ...props });
 }
 

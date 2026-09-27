@@ -5,12 +5,12 @@ const test = require("node:test");
 
 const repoRoot = path.join(__dirname, "../..");
 
-function source(relativePath) {
+function source(relativePath: string): string {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
 test("dynamic prose and identity values keep their own direction", () => {
-  const expectations = [
+  const expectations: Array<[string, RegExp]> = [
     ["src/components/DictionaryView.tsx", /<span\s+dir="auto"[^>]*>\s*\{word\}/],
     ["src/components/SnippetsView.tsx", /<span\s+dir="auto"[^>]*>\s*\{snippet\.trigger\}/],
     ["src/components/SnippetsView.tsx", /<span\s+dir="auto"[^>]*>\s*\{snippet\.replacement\}/],
@@ -28,7 +28,7 @@ test("dynamic prose and identity values keep their own direction", () => {
 });
 
 test("technical output values remain LTR inside an Arabic document", () => {
-  const expectations = [
+  const expectations: Array<[string, RegExp]> = [
     ["src/components/DeveloperSection.tsx", /<code\s+dir="ltr"[\s\S]*?\{logPath\}/],
     ["src/components/ui/TechnicalErrorDetails.tsx", /<pre\s+dir="ltr"[\s\S]*?\{text\}/],
     [
@@ -53,7 +53,7 @@ test("technical output values remain LTR inside an Arabic document", () => {
 });
 
 test("localized sentences isolate technical interpolations without changing word order", () => {
-  const expectations = [
+  const expectations: Array<[string, RegExp]> = [
     [
       "src/components/IntegrationsView.tsx",
       /<BidiInterpolatedText[\s\S]*?googleCalendar\.disconnectConfirm[\s\S]*?value=\{confirmDisconnectEmail\}/,
@@ -72,7 +72,7 @@ test("localized sentences isolate technical interpolations without changing word
 });
 
 test("user-authored names and previews detect direction at their display boundary", () => {
-  const expectations = [
+  const expectations: Array<[string, RegExp]> = [
     ["src/components/CommandSearch.tsx", /<span\s+dir="auto"[^>]*>\s*\{spaceLabel\(scopeSpace\)\}/],
     ["src/components/CommandSearch.tsx", /<span\s+dir="auto"[^>]*>\s*\{spaceLabel\(space\)\}/],
     ["src/components/CommandSearch.tsx", /<p\s+dir="auto"[^>]*>\s*\{target\.label\}/],

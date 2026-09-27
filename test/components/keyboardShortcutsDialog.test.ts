@@ -14,7 +14,7 @@ export const Modal = Object.assign(
 );
 `;
 
-async function renderDialog(t) {
+async function renderDialog(t: import("node:test").TestContext) {
   installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-keyboard-shortcuts-",
@@ -29,7 +29,7 @@ async function renderDialog(t) {
   return renderToStaticMarkup(createElement(mod.default, { open: true, onOpenChange: () => {} }));
 }
 
-test("the shortcut cheat sheet lists every wired action and its chord", async (t) => {
+test("the shortcut cheat sheet lists every wired action and its chord", async (t: import("node:test").TestContext) => {
   const html = await renderDialog(t);
 
   assert.match(html, /Keyboard shortcuts/, "title");
@@ -44,13 +44,13 @@ test("the shortcut cheat sheet lists every wired action and its chord", async (t
     ["Find in note", ["⌘", "F"]],
     ["Keyboard shortcuts", ["⌘", "/"]],
   ]) {
-    const row = html.match(new RegExp(`<span[^>]*>${label.replaceAll("/", "\\/")}</span><span[^>]*>(.*?)</span>`));
+    const row = html.match(new RegExp(`<span[^>]*>${String(label).replaceAll("/", "\\/")}</span><span[^>]*>(.*?)</span>`));
     assert.ok(row, `${label} row`);
     assert.deepEqual([...row[1].matchAll(/<kbd[^>]*>(.*?)<\/kbd>/g)].map((match) => match[1]), chord, label);
   }
 });
 
-test("a closed cheat sheet renders nothing", async (t) => {
+test("a closed cheat sheet renders nothing", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-keyboard-shortcuts-closed-",

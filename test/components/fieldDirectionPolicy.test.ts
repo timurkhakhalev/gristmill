@@ -8,12 +8,12 @@ const { createRendererServer } = require("../lib/rendererTestHarness.ts");
 
 const repoRoot = path.join(__dirname, "../..");
 
-function source(relativePath) {
+function source(relativePath: string): string {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
-function componentFiles(directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+function componentFiles(directory: string) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry: import("node:fs").Dirent) => {
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) return componentFiles(absolutePath);
     return /\.(?:tsx|jsx)$/.test(entry.name) ? [absolutePath] : [];
@@ -21,7 +21,7 @@ function componentFiles(directory) {
 }
 
 function sharedFieldInventory() {
-  return componentFiles(path.join(repoRoot, "src/components")).flatMap((absolutePath) => {
+  return componentFiles(path.join(repoRoot, "src/components")).flatMap((absolutePath: string) => {
     const text = fs.readFileSync(absolutePath, "utf8");
     return [...text.matchAll(/<(Input|Textarea)\b[\s\S]*?\/>/g)].map((match) => ({
       file: path.relative(repoRoot, absolutePath).split(path.sep).join("/"),
@@ -33,7 +33,7 @@ function sharedFieldInventory() {
 function nativeFieldInventory() {
   const primitiveFiles = new Set(["src/components/ui/input.tsx", "src/components/ui/textarea.tsx"]);
 
-  return componentFiles(path.join(repoRoot, "src/components")).flatMap((absolutePath) => {
+  return componentFiles(path.join(repoRoot, "src/components")).flatMap((absolutePath: string) => {
     const file = path.relative(repoRoot, absolutePath).split(path.sep).join("/");
     if (primitiveFiles.has(file)) return [];
 
@@ -45,8 +45,9 @@ function nativeFieldInventory() {
   });
 }
 
-function inventoryByFile(inventory) {
-  return inventory.reduce((result, field) => {
+interface DirectionField { file: string; direction: string; }
+function inventoryByFile(inventory: DirectionField[]) {
+  return inventory.reduce((result: Record<string, string[]>, field: DirectionField) => {
     (result[field.file] ??= []).push(field.direction);
     return result;
   }, {});
@@ -90,7 +91,7 @@ const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/settings/models/TaskModelPicker.tsx": ["auto"],
 };
 
-test("shared field primitives inherit unless a consumer declares its content direction", async (t) => {
+test("shared field primitives inherit unless a consumer declares its content direction", async (t: import("node:test").TestContext) => {
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-field-direction-primitives-",
   });

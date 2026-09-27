@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.join(__dirname, "../..");
-const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
+const read = (relativePath: string) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
 test("onboarding flow contains only local setup persistence primitives", () => {
   const flow = read("src/components/onboarding/flow.ts");

@@ -29,7 +29,7 @@ function killOwnedGroupIfPresent(pidFile) {
 
 test("macOS unit selection uses Electron as Node without a main build", async () => {
   const { calls, options } = fakeRunner();
-  assert.equal(await runTests(["--processes", "1", "test/utils/formatDuration.test.js"], options), 0);
+  assert.equal(await runTests(["--processes", "1", "test/utils/formatDuration.test.ts"], options), 0);
   assert.deepEqual(calls[0], { prepare: "electron" });
   assert.equal(calls.length, 2);
   assert.equal(calls[1].binary, "/electron");
@@ -52,13 +52,13 @@ test("compiled bridge selection builds once and Linux uses Node", async () => {
 
 test("two processes run ordinary files before serial compiler and native files", async () => {
   const { calls, options } = fakeRunner({ platform: "linux" });
-  const files = ["test/utils/formatDuration.test.js", "test/scripts/mainBuild.test.js", "test/helpers/notesBridge.test.js"];
+  const files = ["test/utils/formatDuration.test.ts", "test/scripts/mainBuild.test.js", "test/helpers/notesBridge.test.js"];
   assert.equal(await runTests(["--processes", "2", ...files], options), 0);
   assert.deepEqual(calls[0], { prepare: "node" });
   assert.deepEqual(calls[1].args, ["run", "build:main"]);
   assert.equal(calls[2].args.find((arg) => arg.startsWith("--test-concurrency")), "--test-concurrency=2");
   assert.equal(calls[3].args.find((arg) => arg.startsWith("--test-concurrency")), "--test-concurrency=1");
-  assert.deepEqual(calls.slice(2).flatMap((call) => call.args.filter((arg) => arg.endsWith(".test.js"))).sort(), files.sort());
+  assert.deepEqual(calls.slice(2).flatMap((call) => call.args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts"))).sort(), files.slice().sort());
 });
 
 test("type probe files share one serial compiler process without changing selected domains", async () => {
@@ -73,16 +73,16 @@ test("type probe files share one serial compiler process without changing select
   assert.equal(calls[1].binary, "pnpm");
   assert.equal(calls[2].args.includes("--test-isolation=none"), true);
   assert.deepEqual(JSON.parse(calls[2].env.OPENHERCULES_TYPE_PROBE_GROUPS), ["actions", "calendar"]);
-  assert.deepEqual(calls[2].args.filter((arg) => arg.endsWith(".test.js")), files.slice(0, 2));
+  assert.deepEqual(calls[2].args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts")), files.slice(0, 2));
   assert.equal(calls[3].args.includes("--test-isolation=none"), false);
-  assert.deepEqual(calls[3].args.filter((arg) => arg.endsWith(".test.js")), [files[2]]);
+  assert.deepEqual(calls[3].args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts")), [files[2]]);
 });
 
 test("a failed parallel phase still runs serial tests and preserves failure", async () => {
   const { options } = fakeRunner({ platform: "linux" });
   let testsRun = 0;
   options.run = async (binary) => binary === "pnpm" ? 0 : (++testsRun === 1 ? 3 : 0);
-  assert.equal(await runTests(["--processes", "2", "test/utils/formatDuration.test.js", "test/scripts/mainBuild.test.js"], options), 3);
+  assert.equal(await runTests(["--processes", "2", "test/utils/formatDuration.test.ts", "test/scripts/mainBuild.test.js"], options), 3);
   assert.equal(testsRun, 2);
 });
 
@@ -206,7 +206,7 @@ test("failed preparation or build prevents test execution; test status is preser
   assert.equal(await runTests(["test/helpers/notesBridge.test.js"], failedBuild.options), 7);
   assert.deepEqual(commands, ["pnpm"]);
   const failedTests = fakeRunner({ run: async () => 3 });
-  assert.equal(await runTests(["test/utils/formatDuration.test.js"], failedTests.options), 3);
+  assert.equal(await runTests(["test/utils/formatDuration.test.ts"], failedTests.options), 3);
 });
 
 test("real child failure and signal retain nonzero status", async () => {

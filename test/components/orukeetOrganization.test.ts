@@ -9,18 +9,23 @@ const {
   installHookDom,
 } = require("../lib/rendererTestHarness.ts");
 
-let vitePromise;
-const cleanup = [];
+type TestContext = import("node:test").TestContext;
+type ViteDevServer = import("vite").ViteDevServer;
+type ModelEntry = { id: string; downloaded?: boolean };
+type ModelGroup = { id: string; entries: ModelEntry[] };
+
+let vitePromise: Promise<ViteDevServer> | undefined;
+const cleanup: Array<() => void | Promise<void>> = [];
 test.after(async () => {
   for (const close of cleanup) await close();
 });
 
 const noop = () => {};
-async function renderer(t, electronAPI = {}) {
+async function renderer(t: TestContext, electronAPI = {}) {
   installBrowserGlobals(t, {
     window: { location: { search: "" }, electronAPI: { getPlatform: () => "darwin", ...electronAPI } },
   });
-  const vite = await (vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
+  const vite = await (vitePromise ??= createRendererServer({ after: (close: () => void | Promise<void>) => cleanup.push(close) }, {
     cachePrefix: "openwhispr-oruk-organization-",
     resolveAlias: { "@": path.resolve(__dirname, "../../src") },
     mockModules: {
@@ -34,16 +39,16 @@ async function renderer(t, electronAPI = {}) {
   return vite;
 }
 
-const sherpaModels = (downloaded) => async () => ({
+const sherpaModels = (downloaded: string[]) => async () => ({
   success: true,
   models: downloaded.map((model) => ({ model, downloaded: true })),
 });
 
 /** Runs a hook body inside a real React root and returns what it last produced. */
-async function runHooks(t, vite, body) {
+async function runHooks<T>(t: TestContext, vite: ViteDevServer, body: () => T): Promise<() => T> {
   const container = installHookDom(t);
   const { ToastContext } = await vite.ssrLoadModule("/components/ui/useToast.ts");
-  let result;
+  let result!: T;
   function Harness() {
     result = body();
     return null;
@@ -58,10 +63,10 @@ async function runHooks(t, vite, body) {
   return () => result;
 }
 
-const mounted = [];
+const mounted: Array<{ unmount(): void }> = [];
 async function unmountAll() {
   while (mounted.length) {
-    const root = mounted.pop();
+    const root = mounted.pop()!;
     await React.act(async () => root.unmount());
   }
 }
@@ -78,14 +83,14 @@ const inventoryApi = (overrides = {}) => ({
   ...overrides,
 });
 
-async function inventory(t, vite) {
+async function inventory(t: TestContext, vite: ViteDevServer) {
   const { LocalModelInventoryProvider } = await vite.ssrLoadModule("/components/settings/models/LocalModelInventory.tsx");
   // The provider's value is the inventory; calling it as a hook body exposes it without a DOM for its dialog.
   const read = await runHooks(t, vite, () => LocalModelInventoryProvider({ children: null }).props.value);
   return read;
 }
 
-test("Orukeet is listed under Oruk and selecting it keeps the NVIDIA (sherpa) backend", async (t) => {
+test("Orukeet is listed under Oruk and selecting it keeps the NVIDIA (sherpa) backend", async (t: TestContext) => {
   const vite = await renderer(t, inventoryApi({ listParakeetModels: sherpaModels(["orukeet-v0.1.0"]) }));
   const read = await inventory(t, vite);
   const { localGroups } = await vite.ssrLoadModule("/components/settings/models/taskCatalog.ts");
@@ -96,9 +101,9 @@ test("Orukeet is listed under Oruk and selecting it keeps the NVIDIA (sherpa) ba
 
   const groups = localGroups("speech", read().speech);
   assert.equal(groups[0].id, "oruk", "Oruk leads the local speech list");
-  const orukeet = groups.find((group) => group.id === "oruk").entries.find((entry) => entry.id === "orukeet-v0.1.0");
+  const orukeet = groups.find((group: ModelGroup) => group.id === "oruk").entries.find((entry: ModelEntry) => entry.id === "orukeet-v0.1.0");
   assert.ok(orukeet?.downloaded);
-  assert.ok(groups.find((group) => group.id === "nvidia").entries.some((entry) => entry.id === "parakeet-tdt-0.6b-v3"));
+  assert.ok(groups.find((group: ModelGroup) => group.id === "nvidia").entries.some((entry: ModelEntry) => entry.id === "parakeet-tdt-0.6b-v3"));
 
   for (const task of ["meeting", "upload"]) {
     selectLocalModel(task, orukeet);
@@ -111,19 +116,19 @@ test("Orukeet is listed under Oruk and selecting it keeps the NVIDIA (sherpa) ba
   await unmountAll();
 });
 
-test("adding Orukeet preserves fresh-install transcription modes and existing backend defaults", async (t) => {
+test("adding Orukeet preserves fresh-install transcription modes and existing backend defaults", async (t: TestContext) => {
   const vite = await renderer(t);
   const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
   const state = useSettingsStore.getState();
   for (const prefix of ["", "meeting", "upload"]) {
-    const key = (name) => (prefix ? prefix + name[0].toUpperCase() + name.slice(1) : name);
+    const key = (name: string) => (prefix ? prefix + name[0].toUpperCase() + name.slice(1) : name);
     assert.equal(state[key("useLocalWhisper")], false);
     assert.equal(state[key("localTranscriptionProvider")], "whisper");
     assert.equal(state[key("parakeetModel")], "");
   }
 });
 
-test("on a Mac without the sherpa runtime, Oruk, NVIDIA and Cohere are unavailable and tasks fall back to Whisper", async (t) => {
+test("on a Mac without the sherpa runtime, Oruk, NVIDIA and Cohere are unavailable and tasks fall back to Whisper", async (t: TestContext) => {
   const vite = await renderer(t, inventoryApi({
     checkParakeetInstallation: async () => ({ installed: false, working: false, supported: false, minimumMacOSVersion: "15.5" }),
   }));

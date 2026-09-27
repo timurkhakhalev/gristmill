@@ -4,8 +4,10 @@ const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
+type TestContext = import("node:test").TestContext;
+
 const servers = new Map();
-const cleanup = [];
+const cleanup: Array<() => void | Promise<void>> = [];
 test.after(async () => {
   for (const close of cleanup) await close();
 });
@@ -13,11 +15,11 @@ test.after(async () => {
 const noop = () => {};
 const asyncNoop = async () => {};
 
-async function createOnboardingRenderer(t, platform = "linux") {
+async function createOnboardingRenderer(t: TestContext, platform = "linux") {
   installBrowserGlobals(t, {
     window: { electronAPI: { getPlatform: () => platform } },
   });
-  if (!servers.has(platform)) servers.set(platform, createRendererServer({ after: (close) => cleanup.push(close) }, {
+  if (!servers.has(platform)) servers.set(platform, createRendererServer({ after: (close: () => void | Promise<void>) => cleanup.push(close) }, {
     cachePrefix: "openwhispr-onboarding-compatibility-",
     noExternal: ["react-i18next"],
     mockModules: {
@@ -71,7 +73,7 @@ function permissions(overrides = {}) {
 // The action row carries mt-auto, so anything rendered after it rides down on
 // that auto margin and lands under the buttons — below the fold on the compact
 // frame. Contextual guidance has to precede it in the DOM, and so in tab order.
-function assertGuidancePrecedesActions(markup, guidance) {
+function assertGuidancePrecedesActions(markup: string, guidance: string) {
   assert.ok(
     markup.indexOf(guidance) < markup.indexOf("common.continue"),
     `${guidance} should render before the action row`
@@ -85,7 +87,7 @@ const systemAudio = {
   request: async () => false,
 };
 
-test("Linux onboarding exposes labelled minimize, maximize, and close controls in both modes", async (t) => {
+test("Linux onboarding exposes labelled minimize, maximize, and close controls in both modes", async (t: TestContext) => {
   const vite = await createOnboardingRenderer(t);
   const { default: OnboardingShell } = await vite.ssrLoadModule(
     "/components/onboarding/OnboardingShell.tsx"
@@ -112,7 +114,7 @@ test("Linux onboarding exposes labelled minimize, maximize, and close controls i
   }
 });
 
-test("a denied microphone exposes the existing Linux settings recovery", async (t) => {
+test("a denied microphone exposes the existing Linux settings recovery", async (t: TestContext) => {
   const vite = await createOnboardingRenderer(t);
   const { default: CompactPermissionsStep } = await vite.ssrLoadModule(
     "/components/onboarding/CompactPermissionsStep.tsx"
@@ -131,13 +133,13 @@ test("a denied microphone exposes the existing Linux settings recovery", async (
   assertGuidancePrecedesActions(markup, "Microphone blocked by the OS");
 });
 
-test("permissions offers Back ahead of Continue and gates Continue on microphone access", async (t) => {
+test("permissions offers Back ahead of Continue and gates Continue on microphone access", async (t: TestContext) => {
   const vite = await createOnboardingRenderer(t, "darwin");
   const { default: CompactPermissionsStep } = await vite.ssrLoadModule(
     "/components/onboarding/CompactPermissionsStep.tsx"
   );
 
-  const render = (micPermissionGranted, onBack) =>
+  const render = (micPermissionGranted: boolean, onBack?: () => void) =>
     renderToStaticMarkup(
       React.createElement(CompactPermissionsStep, {
         permissions: permissions({ micPermissionGranted }),
@@ -170,7 +172,7 @@ test("permissions offers Back ahead of Continue and gates Continue on microphone
   // With nothing to return to (a resumed session with no history), Back is gone.
   assert.doesNotMatch(render(true, undefined), /common\.back/);
 });
-test("provider setup exposes a single transcription stage", async (t) => {
+test("provider setup exposes a single transcription stage", async (t: TestContext) => {
   const vite = await createOnboardingRenderer(t);
   const { SetupStageStepper } = await vite.ssrLoadModule(
     "/components/onboarding/ProviderSetupStep.tsx"

@@ -40,8 +40,8 @@ test("the app provider supplies the active i18n direction through real Radix con
   assert.match(renderDirection(), /data-radix-direction="ltr"/);
 });
 
-test("Radix direction reacts to language changes without remounting the app", async (t) => {
-  let root = null;
+test("Radix direction reacts to language changes without remounting the app", async (t: import("node:test").TestContext) => {
+  let root: ReturnType<typeof createRoot> | null = null;
   t.after(async () => {
     if (root) await React.act(async () => root.unmount());
   });
@@ -56,7 +56,7 @@ test("Radix direction reacts to language changes without remounting the app", as
     fallbackLng: "en",
     resources: { ar: { translation: {} }, en: { translation: {} } },
   });
-  const observed = [];
+  const observed: string[] = [];
 
   function DirectionProbe() {
     observed.push(useDirection());

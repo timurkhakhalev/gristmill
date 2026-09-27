@@ -14,16 +14,49 @@ const vm = require("node:vm");
 
 const root = path.join(__dirname, "../..");
 const tick = () => new Promise((resolve) => setImmediate(resolve));
-const deferred = () => {
-  let resolve;
-  const promise = new Promise((r) => {
+
+interface TestDeferred {
+  promise: Promise<unknown>;
+  resolve: (value?: unknown) => void;
+}
+
+const deferred = (): TestDeferred => {
+  let resolve!: (value?: unknown) => void;
+  const promise = new Promise<unknown>((r) => {
     resolve = r;
   });
   return { promise, resolve };
 };
 
-let registerUploadCancelHandler;
-let createUploadCancelRegistry;
+// The view closure stand-in: the extracted initializers are installed onto it
+// below, so the seams the tests drive are declared and stubbed here.
+interface Sandbox {
+  runIdRef: { current: number };
+  singleRequestIdRef: { current: string | null };
+  executionTempRef: { current: string | null };
+  downloadedTempPathRef: { current: string | null };
+  mountedRef: { current: boolean };
+  downloadedTempPath: string | null;
+  file: Record<string, unknown> | null;
+  setDownloadedTempPath(value: string | null): void;
+  t(key: string): string;
+  window: {
+    electronAPI: {
+      deleteTempFile(path: string): void;
+      cancelUploadTranscription?: (payload: unknown) => unknown;
+    };
+  };
+  transcribeFileWithSpeakers(): Promise<unknown>;
+  transcription?: Promise<unknown>;
+  handleTranscribe(): Promise<unknown>;
+  cancelTranscription(): Promise<unknown>;
+  reset(): void;
+  runMountEffect(): () => void;
+  [key: string]: unknown;
+}
+
+let registerUploadCancelHandler!: typeof import("../../src/helpers/uploadCancelIpcHandler.ts")["registerUploadCancelHandler"];
+let createUploadCancelRegistry!: typeof import("../../src/helpers/uploadCancelRegistry.ts")["createUploadCancelRegistry"];
 
 test.before(async () => {
   ({ registerUploadCancelHandler } = await import("../../src/helpers/uploadCancelIpcHandler.ts"));
@@ -33,14 +66,14 @@ test.before(async () => {
 // Extracts the component-scope callbacks by name and wires them into one
 // sandbox that stands in for the component closure. setDownloadedTempPath
 // updates the same binding reset() reads, like the React state would.
-function buildSandbox({ deletes }) {
+function buildSandbox({ deletes }: { deletes: string[] }) {
   const source = fs.readFileSync(
     path.join(root, "src/components/notes/UploadAudioView.tsx"),
     "utf8"
   );
-  const ts = require(path.join(root, "node_modules/typescript"));
+  const ts: typeof import("typescript") = require(path.join(root, "node_modules/typescript"));
   const tree = ts.createSourceFile("view.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const initializers = {};
+  const initializers: Record<string, string> = {};
   const wanted = new Set([
     "reset",
     "cancelTranscription",
@@ -48,7 +81,7 @@ function buildSandbox({ deletes }) {
     "releaseExecutionTemp",
     "keepExecutionTempForRetry",
   ]);
-  const visit = (node) => {
+  const visit = (node: import("typescript").Node) => {
     if (
       ts.isVariableDeclaration(node) &&
       wanted.has(node.name.getText(tree)) &&
@@ -63,7 +96,7 @@ function buildSandbox({ deletes }) {
     assert.ok(initializers[name], `${name} found in UploadAudioView`);
   }
 
-  const sandbox = {
+  const sandbox: Sandbox = {
     // refs
     runIdRef: { current: 0 },
     singleRequestIdRef: { current: null },
@@ -116,6 +149,11 @@ function buildSandbox({ deletes }) {
       numSpeakers: null,
     }),
     buildTranscriptionConfig: () => ({}),
+    // stubs for the seams the extracted initializers overwrite below
+    reset: () => {},
+    cancelTranscription: async () => {},
+    handleTranscribe: async () => {},
+    runMountEffect: () => () => {},
   };
   for (const name of wanted) {
     // The initializers are TS source (type annotations inside the bodies);
@@ -129,8 +167,8 @@ function buildSandbox({ deletes }) {
   // The mount effect owns the real unmount cleanup (mountedRef flip +
   // view-owned temp deletion); expose it so tests unmount through the real
   // component path instead of poking mountedRef directly.
-  const mountEffects = [];
-  const visitEffects = (node) => {
+  const mountEffects: string[] = [];
+  const visitEffects = (node: import("typescript").Node) => {
     if (ts.isCallExpression(node) && node.expression.getText(tree) === "useEffect") {
       const arg = node.arguments[0];
       if (arg && arg.getText(tree).includes("mountedRef.current = true")) {
@@ -147,7 +185,7 @@ function buildSandbox({ deletes }) {
 
 // Drives the component's real mount effect and its cleanup, exactly like
 // React would on unmount.
-function unmountView(sandbox) {
+function unmountView(sandbox: Sandbox) {
   sandbox.mountedRef.current = true;
   const cleanup = sandbox.runMountEffect();
   cleanup();
@@ -155,18 +193,18 @@ function unmountView(sandbox) {
 
 // Real main-side cancel: the handler aborts the registry registration, whose
 // release is gated behind a deferred "reader close" the test controls.
-async function installCancelHandler({ sandbox, childClose }) {
+async function installCancelHandler({ sandbox, childClose }: { sandbox: Sandbox; childClose: TestDeferred }) {
   let closed = false;
   const handlers = new Map();
   const registry = createUploadCancelRegistry();
   registerUploadCancelHandler({ handle: (channel, fn) => handlers.set(channel, fn) }, {
     uploadCancelRegistry: registry,
   });
-  const cancel = async (_event, payload) =>
+  const cancel = async (_event: unknown, payload: unknown) =>
     handlers.get("cancel-upload-transcription")(_event, payload);
   sandbox.transcribeFileWithSpeakers = async () => {
     const registration = registry.register(sandbox.singleRequestIdRef.current);
-    registration.signal.addEventListener("abort", () => {
+    registration.signal!.addEventListener("abort", () => {
       void childClose.promise.then(() => {
         closed = true;
         registration.release();
@@ -180,7 +218,7 @@ async function installCancelHandler({ sandbox, childClose }) {
   };
 }
 
-const fromUrlFile = (tempPath) => ({
+const fromUrlFile = (tempPath: string) => ({
   name: "video.mp4",
   path: tempPath,
   size: "1 KB",
@@ -190,7 +228,7 @@ const fromUrlFile = (tempPath) => ({
 });
 
 test("a Stop's reset never deletes the temp; the settling execution deletes it after close", async () => {
-  const deletes = [];
+  const deletes: string[] = [];
   const sandbox = buildSandbox({ deletes });
   const childClose = deferred();
   const { isClosed, cancel } = await installCancelHandler({ sandbox, childClose });
@@ -251,7 +289,7 @@ test("a Stop's reset never deletes the temp; the settling execution deletes it a
 });
 
 test("a settled error keeps the temp for Retry and hands it back to the view", async () => {
-  const deletes = [];
+  const deletes: string[] = [];
   const sandbox = buildSandbox({ deletes });
   sandbox.downloadedTempPath = "/tmp/dl-3.wav";
   sandbox.downloadedTempPathRef.current = "/tmp/dl-3.wav";
@@ -270,7 +308,7 @@ test("a settled error keeps the temp for Retry and hands it back to the view", a
 });
 
 test("a user-picked source file is never deleted, including by a Stop", async () => {
-  const deletes = [];
+  const deletes: string[] = [];
   const sandbox = buildSandbox({ deletes });
   sandbox.file = { name: "rec.wav", path: "/Users/me/rec.wav", size: "2 KB", sizeBytes: 2048 };
 
@@ -290,7 +328,7 @@ test("a user-picked source file is never deleted, including by a Stop", async ()
 // a view that no longer exists — its unmount cleanup had already run and
 // found no view-owned temp, so nothing ever deleted the file.
 test("a failure settling after unmount deletes the temp instead of leaking it", async () => {
-  const deletes = [];
+  const deletes: string[] = [];
   const sandbox = buildSandbox({ deletes });
   sandbox.downloadedTempPath = "/tmp/dl-4.wav";
   sandbox.downloadedTempPathRef.current = "/tmp/dl-4.wav";
@@ -324,7 +362,7 @@ test("a failure settling after unmount deletes the temp instead of leaking it", 
 });
 
 test("a thrown settlement after unmount deletes the temp instead of leaking it", async () => {
-  const deletes = [];
+  const deletes: string[] = [];
   const sandbox = buildSandbox({ deletes });
   sandbox.downloadedTempPath = "/tmp/dl-5.wav";
   sandbox.downloadedTempPathRef.current = "/tmp/dl-5.wav";

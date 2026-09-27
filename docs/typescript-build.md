@@ -72,7 +72,7 @@ Electron уже типобезопасен. TS-модули графа пров�
 Полный прогон и проверка mainBuild требуют сборки. Для отдельного прогона:
 
 ```sh
-pnpm test -- test/scripts/mainBuild.test.js
+pnpm test -- test/scripts/mainBuild.test.ts
 ```
 
 Эти тесты проверяют относительные зависимости всего выходного графа,

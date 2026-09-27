@@ -4,6 +4,8 @@ const { createElement } = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
+type TestContext = import("node:test").TestContext;
+
 const heroMock = `
 import React from "react";
 const passthrough = ({children}) => React.createElement(React.Fragment, null, children);
@@ -11,7 +13,7 @@ export const Popover = Object.assign(passthrough, { Content: passthrough, Dialog
 export const Pressable = passthrough;
 `;
 
-function event(overrides = {}) {
+function makeEvent(overrides = {}) {
   return {
     id: "evt-1",
     calendar_id: "cal-1",
@@ -33,7 +35,7 @@ function event(overrides = {}) {
   };
 }
 
-async function renderCard(t, props) {
+async function renderCard(t: TestContext, props: Record<string, unknown>) {
   installBrowserGlobals(t, {
     window: { electronAPI: { searchContacts: async () => ({ success: true, contacts: [] }) } },
   });
@@ -53,15 +55,15 @@ async function renderCard(t, props) {
   );
 }
 
-test("a linked event shows its title, join link and calendar button", async (t) => {
-  const html = await renderCard(t, { event: event() });
+test("a linked event shows its title, join link and calendar button", async (t: TestContext) => {
+  const html = await renderCard(t, { event: makeEvent() });
 
   assert.match(html, /Vol\.44 call LLM Neighbors/, "real event title");
   assert.match(html, /meet\.google\.com\/xng-tmak-ich/, "join link");
   assert.match(html, /Open in calendar/, "calendar button");
 });
 
-test("an unlinked note keeps participant editing with no empty link or calendar blocks", async (t) => {
+test("an unlinked note keeps participant editing with no empty link or calendar blocks", async (t: TestContext) => {
   const html = await renderCard(t, { event: null });
 
   assert.match(html, /Add attendees/, "attendee search stays available");
@@ -69,8 +71,8 @@ test("an unlinked note keeps participant editing with no empty link or calendar 
   assert.doesNotMatch(html, /meet\.google\.com/, "no join link");
 });
 
-test("a missing event_url hides the calendar button but keeps the join link", async (t) => {
-  const html = await renderCard(t, { event: event({ event_url: null }) });
+test("a missing event_url hides the calendar button but keeps the join link", async (t: TestContext) => {
+  const html = await renderCard(t, { event: makeEvent({ event_url: null }) });
 
   assert.match(html, /meet\.google\.com\/xng-tmak-ich/, "join link survives");
   assert.doesNotMatch(html, /Open in calendar/, "calendar button hidden without event_url");

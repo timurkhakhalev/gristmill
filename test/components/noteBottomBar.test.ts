@@ -4,8 +4,10 @@ const { createElement } = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
+type TestContext = import("node:test").TestContext;
+
 // Assertions are class-based, so the untranslated i18n fallback (raw keys) is fine.
-async function renderBottomBar(t, props) {
+async function renderBottomBar(t: TestContext, props: Record<string, unknown>) {
   installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-note-bottom-bar-test-",
@@ -26,7 +28,7 @@ async function renderBottomBar(t, props) {
   );
 }
 
-test("recording state renders no backdrop-filter surface over the live transcript", async (t) => {
+test("recording state renders no backdrop-filter surface over the live transcript", async (t: TestContext) => {
   const html = await renderBottomBar(t, { isRecording: true });
 
   // The 1.9.0 CPU regression: every transcript partial re-blurred the strip.
@@ -36,14 +38,14 @@ test("recording state renders no backdrop-filter surface over the live transcrip
   assert.ok(html.includes("shadow-(--shadow-glass)"), "capsules keep the glass rim shadow");
 });
 
-test("idle state keeps the liquid-glass capsule", async (t) => {
+test("idle state keeps the liquid-glass capsule", async (t: TestContext) => {
   const html = await renderBottomBar(t, { isRecording: false });
 
   assert.ok(html.includes("backdrop-blur-xl"));
   assert.ok(html.includes("backdrop-saturate-150"));
 });
 
-test("the ask capsule never transitions its surface between the two states", async (t) => {
+test("the ask capsule never transitions its surface between the two states", async (t: TestContext) => {
   // transition-all would tween backdrop-filter and background-color for 500ms
   // on every recording start and stop, re-paying the cost this change removes.
   for (const isRecording of [false, true]) {

@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const repoRoot = path.join(__dirname, "../..");
-const source = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+const source = (relativePath: string) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 test("nav drawer slides in from the start edge in both document directions", () => {
   const drawer = source("src/components/ControlPanelNavDrawer.tsx");

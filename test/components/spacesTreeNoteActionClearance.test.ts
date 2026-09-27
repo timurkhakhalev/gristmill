@@ -6,10 +6,12 @@ const i18next = require("i18next");
 const { initReactI18next } = require("react-i18next");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
+type TestContext = import("node:test").TestContext;
+
 const PRIVATE_NOTE_TITLE = "خطة Private 2026";
 const TEAM_NOTE_TITLE = "Engineering ملاحظات";
 
-async function renderTree(t, direction) {
+async function renderTree(t: TestContext, direction: string) {
   installBrowserGlobals(t);
   const i18n = i18next.createInstance();
   await i18n.use(initReactI18next).init({
@@ -143,15 +145,15 @@ async function renderTree(t, direction) {
   );
 }
 
-function openingTagForTitle(markup, title) {
+function openingTagForTitle(markup: string, title: string) {
   const encodedTitle = title.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
   const match = markup.match(new RegExp(`<div[^>]*title="${encodedTitle}"[^>]*>`));
   assert.ok(match, `rendered note row for ${JSON.stringify(title)}`);
-  return match[0];
+  return match![0];
 }
 
 for (const direction of ["ltr", "rtl"]) {
-  test(`folder note titles and action triggers remain separate flex children in ${direction}`, async (t) => {
+  test(`folder note titles and action triggers remain separate flex children in ${direction}`, async (t: TestContext) => {
     const markup = await renderTree(t, direction);
 
     for (const title of [PRIVATE_NOTE_TITLE, TEAM_NOTE_TITLE]) {

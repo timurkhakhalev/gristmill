@@ -2328,16 +2328,31 @@
     }
   },
   "bbAgent": {
-    "mode": "Agent (bb)",
-    "modeDescription": "Use your bb subscription",
+    "mode": "bb",
+    "modeDescription": "Coding-agent subscriptions through bb",
     "harness": "Harness",
+    "harnesses": "bb harnesses",
     "model": "Model",
     "reasoning": "Reasoning",
     "noHarness": "No bb harness is available",
     "noModel": "No bb models are available",
     "chooseModel": "Choose model",
-    "chatSettings": "Chat model settings",
-    "chatMode": "Chat mode",
-    "otherSettings": "Configure this route in Settings → Chat."
+    "chatSettings": "Chat model",
+    "searchModels": "Search models",
+    "loadingModels": "Loading models…",
+    "noMatches": "No matching models",
+    "apiTab": "API",
+    "apiRoute": "Chat uses the route configured in Settings → Language Models: {{route}}.",
+    "loadingHarnesses": "Loading bb harnesses…",
+    "settingsDescription": "Set the default harness, its model and the order in pickers. Disabled harnesses are hidden from pickers.",
+    "reorder": "Reorder {{harness}}",
+    "reorderHint": "Drag, or use the arrow keys",
+    "default": "Default",
+    "makeDefault": "Make default",
+    "enableHarness": "Enable {{harness}}",
+    "defaultModelFor": "Default model for {{harness}}",
+    "useDefault": "Use default harness",
+    "useDefaultHelp": "Follow the default harness and model from the bb tab.",
+    "noSelection": "No enabled bb harness is selected. Choose one or enable it in the bb tab."
   }
 }

@@ -2328,16 +2328,31 @@
     }
   },
   "bbAgent": {
-    "mode": "エージェント (bb)",
-    "modeDescription": "bb のサブスクリプションを使用",
+    "mode": "bb",
+    "modeDescription": "bb 経由のコーディングエージェントのサブスクリプション",
     "harness": "ハーネス",
+    "harnesses": "bb ハーネス",
     "model": "モデル",
     "reasoning": "推論レベル",
     "noHarness": "利用可能な bb ハーネスがありません",
     "noModel": "利用可能な bb モデルがありません",
     "chooseModel": "モデルを選択",
-    "chatSettings": "チャットモデル設定",
-    "chatMode": "チャットモード",
-    "otherSettings": "設定 → チャットでこのモードを設定してください。"
+    "chatSettings": "チャットモデル",
+    "searchModels": "モデルを検索",
+    "loadingModels": "モデルを読み込み中…",
+    "noMatches": "一致するモデルがありません",
+    "apiTab": "API",
+    "apiRoute": "チャットは「設定 → 言語モデル」で設定したルートを使用します: {{route}}。",
+    "loadingHarnesses": "bb ハーネスを読み込み中…",
+    "settingsDescription": "既定のハーネス、そのモデル、ピッカーでの順序を設定します。無効なハーネスは非表示になります。",
+    "reorder": "{{harness}} を並べ替え",
+    "reorderHint": "ドラッグするか矢印キーを使用",
+    "default": "既定",
+    "makeDefault": "既定にする",
+    "enableHarness": "{{harness}} を有効化",
+    "defaultModelFor": "{{harness}} の既定モデル",
+    "useDefault": "既定のハーネスを使用",
+    "useDefaultHelp": "bb タブの既定のハーネスとモデルを使用します。",
+    "noSelection": "有効な bb ハーネスが選択されていません。選択するか bb タブで有効にしてください。"
   }
 }

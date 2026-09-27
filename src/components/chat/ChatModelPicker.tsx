@@ -4,29 +4,87 @@ import { useSettingsStore, setResolvedLLMConfig } from "../../stores/settingsSto
 import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
 import type { InferenceMode } from "../../contracts/inferenceSettings";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import BbAgentControls from "../settings/BbAgentControls";
+import { ChevronDown, Key } from "../icons";
+import { cn } from "../lib/utils";
+import { BbModelPanel } from "../bb/BbModelPanel";
+import { BbSelectionLabel } from "../bb/BbSelectionLabel";
+import { useBbCatalog } from "../bb/useBbCatalog";
 
-export default function ChatModelPicker({ disabled }: { disabled: boolean }) {
+// The API route the chat returns to from bb; remembered so switching back keeps it.
+const LAST_API_MODE_KEY = "chatAgentLastApiMode";
+
+function lastApiMode(): InferenceMode {
+  const stored = localStorage.getItem(LAST_API_MODE_KEY);
+  return stored === "local" || stored === "self-hosted" || stored === "enterprise" ? stored : "providers";
+}
+
+/** Composer model picker: bb harness tabs plus an "API" tab for the configured non-bb route. */
+export default function ChatModelPicker({ disabled, className }: { disabled?: boolean; className?: string }) {
   const { t } = useTranslation();
-  const modes: Array<{ id: InferenceMode; label: string }> = [
-    { id: "providers", label: t("settingsPage.aiModels.modes.providers") },
-    { id: "local", label: t("settingsPage.aiModels.modes.local") },
-    { id: "self-hosted", label: t("settingsPage.aiModels.modes.selfHosted") },
-    { id: "agent", label: t("bbAgent.mode") },
-  ];
   const config = useSettingsStore(useShallow((state) => selectResolvedLLMConfig(state, "chatIntelligence")));
-  const label = config.mode === "agent" ? `bb · ${config.agentModel || t("bbAgent.chooseModel")}` : config.model || modes.find((mode) => mode.id === config.mode)?.label;
-  return <Popover>
-    <PopoverTrigger asChild>
-      <button type="button" disabled={disabled} aria-label={t("bbAgent.chatSettings")} className="max-w-44 truncate rounded-lg px-2 py-1 text-xs text-muted hover:bg-default hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50">{label}</button>
-    </PopoverTrigger>
-    <PopoverContent align="start" className="w-64 space-y-3 p-3">
-      <label className="block text-sm">{t("bbAgent.chatMode")}
-        <select aria-label="Chat mode" disabled={disabled} className="mt-1 w-full rounded-lg border border-border bg-surface p-2" value={config.mode} onChange={(event) => setResolvedLLMConfig("chatIntelligence", { mode: event.target.value as InferenceMode })}>
-          {modes.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
-        </select>
-      </label>
-      {config.mode === "agent" ? <BbAgentControls scope="chatIntelligence" disabled={disabled} /> : <p className="text-xs text-muted">{t("bbAgent.otherSettings")}</p>}
-    </PopoverContent>
-  </Popover>;
+  const { enabled, error } = useBbCatalog();
+  const isBb = config.mode === "agent";
+  const harness = enabled.find((item) => item.id === config.agentProvider);
+  const modeLabels: Partial<Record<InferenceMode, string>> = {
+    providers: t("settingsPage.aiModels.modes.providers"),
+    local: t("settingsPage.aiModels.modes.local"),
+    "self-hosted": t("settingsPage.aiModels.modes.selfHosted"),
+  };
+  const apiMode = isBb ? lastApiMode() : config.mode;
+  const apiLabel = modeLabels[apiMode] ?? apiMode;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={t("bbAgent.chatSettings")}
+          className={cn(
+            "flex h-7 max-w-52 min-w-0 shrink items-center gap-1 rounded-full px-2 text-xs text-muted outline-none transition-colors",
+            "hover:bg-default hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50",
+            className
+          )}
+        >
+          {isBb ? (
+            <BbSelectionLabel harness={harness} model={config.agentModel ?? ""} reasoningLevel={config.agentReasoningLevel ?? ""} />
+          ) : (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <Key size={13} className="shrink-0" />
+              <span className="truncate">{config.model || apiLabel}</span>
+            </span>
+          )}
+          <ChevronDown size={12} className="shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" className="p-2">
+        <BbModelPanel
+          harnesses={enabled}
+          selection={isBb && config.agentProvider ? { provider: config.agentProvider, model: config.agentModel ?? "", reasoningLevel: config.agentReasoningLevel ?? "" } : null}
+          onSelect={(selection) => {
+            if (!isBb) localStorage.setItem(LAST_API_MODE_KEY, config.mode);
+            setResolvedLLMConfig("chatIntelligence", {
+              mode: "agent",
+              agentProvider: selection.provider,
+              agentModel: selection.model,
+              agentReasoningLevel: selection.reasoningLevel,
+            });
+          }}
+          leadingTabs={[{
+            id: "api",
+            label: t("bbAgent.apiTab"),
+            icon: <Key size={14} />,
+            active: !isBb,
+            onSelect: () => { if (isBb) setResolvedLLMConfig("chatIntelligence", { mode: apiMode }); },
+          }]}
+          leadingContent={
+            <p className="px-1 py-3 text-xs text-muted">
+              {t("bbAgent.apiRoute", { route: config.model ? `${apiLabel} · ${config.model}` : apiLabel })}
+            </p>
+          }
+        />
+        {error && <p role="alert" className="px-1 pt-2 text-xs text-danger">{error}</p>}
+      </PopoverContent>
+    </Popover>
+  );
 }

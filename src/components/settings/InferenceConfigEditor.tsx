@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
-import { Key, Cpu, Network } from "../icons";
+import { Key, Cpu, Network, Terminal } from "../icons";
 import { useSettingsStore, setResolvedLLMConfig } from "../../stores/settingsStore";
 import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
 import { InferenceModeSelector } from "../ui/SettingsSection";
@@ -23,7 +23,7 @@ export default function InferenceConfigEditor({ scope, onModeChange, allowedMode
     { id: "providers", label: t("settingsPage.aiModels.modes.providers"), description: t("settingsPage.aiModels.modes.providersDesc"), icon: <Key className="w-4 h-4" /> },
     { id: "local", label: t("settingsPage.aiModels.modes.local"), description: t("settingsPage.aiModels.modes.localDesc"), icon: <Cpu className="w-4 h-4" /> },
     { id: "self-hosted", label: t("settingsPage.aiModels.modes.selfHosted"), description: t("settingsPage.aiModels.modes.selfHostedDesc"), icon: <Network className="w-4 h-4" /> },
-    ...(scope === "cleanup" ? [] : [{ id: "agent" as const, label: t("bbAgent.mode"), description: t("bbAgent.modeDescription"), icon: <Cpu className="w-4 h-4" /> }]),
+    ...(scope === "cleanup" ? [] : [{ id: "agent" as const, label: t("bbAgent.mode"), description: t("bbAgent.modeDescription"), icon: <Terminal className="w-4 h-4" /> }]),
   ] as InferenceModeOption[];
   const selectableModes = modes.filter((mode) => !allowedModes || allowedModes.includes(mode.id));
   const setField = useCallback(<K extends keyof Omit<typeof config, "scope">>(field: K) => (value: NonNullable<(typeof config)[K]>) => setResolvedLLMConfig(scope, { [field]: value }), [scope]);

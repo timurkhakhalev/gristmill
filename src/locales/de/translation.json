@@ -2328,16 +2328,31 @@
     }
   },
   "bbAgent": {
-    "mode": "Agent (bb)",
-    "modeDescription": "bb-Abonnement verwenden",
+    "mode": "bb",
+    "modeDescription": "Coding-Agent-Abos über bb",
     "harness": "Harness",
+    "harnesses": "bb-Harnesses",
     "model": "Modell",
     "reasoning": "Denkstufe",
     "noHarness": "Kein bb-Harness verfügbar",
     "noModel": "Keine bb-Modelle verfügbar",
     "chooseModel": "Modell wählen",
-    "chatSettings": "Chat-Modelleinstellungen",
-    "chatMode": "Chat-Modus",
-    "otherSettings": "Diesen Modus unter Einstellungen → Chat konfigurieren."
+    "chatSettings": "Chat-Modell",
+    "searchModels": "Modelle suchen",
+    "loadingModels": "Modelle werden geladen…",
+    "noMatches": "Keine passenden Modelle",
+    "apiTab": "API",
+    "apiRoute": "Der Chat nutzt die Route aus Einstellungen → Sprachmodelle: {{route}}.",
+    "loadingHarnesses": "bb-Harnesses werden geladen…",
+    "settingsDescription": "Standard-Harness, sein Modell und die Reihenfolge in Auswahllisten festlegen. Deaktivierte Harnesses werden ausgeblendet.",
+    "reorder": "{{harness}} verschieben",
+    "reorderHint": "Ziehen oder Pfeiltasten verwenden",
+    "default": "Standard",
+    "makeDefault": "Als Standard",
+    "enableHarness": "{{harness}} aktivieren",
+    "defaultModelFor": "Standardmodell für {{harness}}",
+    "useDefault": "Standard-Harness verwenden",
+    "useDefaultHelp": "Standard-Harness und -Modell aus dem bb-Tab verwenden.",
+    "noSelection": "Kein aktiviertes bb-Harness ausgewählt. Wählen Sie eines oder aktivieren Sie es im bb-Tab."
   }
 }

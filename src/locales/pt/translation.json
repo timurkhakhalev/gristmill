@@ -2328,16 +2328,31 @@
     }
   },
   "bbAgent": {
-    "mode": "Agente (bb)",
-    "modeDescription": "Usar sua assinatura bb",
+    "mode": "bb",
+    "modeDescription": "Assinaturas de agentes de código via bb",
     "harness": "Ambiente",
+    "harnesses": "Harnesses do bb",
     "model": "Modelo",
     "reasoning": "Raciocínio",
     "noHarness": "Nenhum ambiente bb disponível",
     "noModel": "Nenhum modelo bb disponível",
     "chooseModel": "Escolher modelo",
-    "chatSettings": "Configurações do modelo do chat",
-    "chatMode": "Modo do chat",
-    "otherSettings": "Configure este modo em Configurações → Chat."
+    "chatSettings": "Modelo do chat",
+    "searchModels": "Pesquisar modelos",
+    "loadingModels": "Carregando modelos…",
+    "noMatches": "Nenhum modelo correspondente",
+    "apiTab": "API",
+    "apiRoute": "O chat usa a rota configurada em Configurações → Modelos de linguagem: {{route}}.",
+    "loadingHarnesses": "Carregando harnesses do bb…",
+    "settingsDescription": "Defina o harness padrão, seu modelo e a ordem nos seletores. Harnesses desativados ficam ocultos.",
+    "reorder": "Reordenar {{harness}}",
+    "reorderHint": "Arraste ou use as setas",
+    "default": "Padrão",
+    "makeDefault": "Tornar padrão",
+    "enableHarness": "Ativar {{harness}}",
+    "defaultModelFor": "Modelo padrão para {{harness}}",
+    "useDefault": "Usar harness padrão",
+    "useDefaultHelp": "Usa o harness e o modelo padrão da aba bb.",
+    "noSelection": "Nenhum harness do bb ativado foi selecionado. Escolha um ou ative-o na aba bb."
   }
 }

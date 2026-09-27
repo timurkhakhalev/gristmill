@@ -3,7 +3,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { z } from "zod";
-import { bbProviderSchema, bbModelSchema, bbEventSchema, type BbProvider, type BbModel, type BbSelection } from "../contracts/bb.js";
+import {
+  bbProviderSchema, bbModelSchema, bbEventSchema,
+  type BbHarness, type BbHostPreferences, type BbLogo, type BbProvider, type BbModel, type BbSelection,
+} from "../contracts/bb.js";
 
 // Update this together with the JSON fixtures and the runtime smoke check.
 export const SUPPORTED_BB_VERSION = "0.44.0";
@@ -71,11 +74,27 @@ async function jsonCommand(args: string[], input?: string, signal?: AbortSignal)
   }
 }
 
+// Pickers query the catalog on every open; a short-lived cache keeps that from
+// spawning several bb processes each time while still noticing an upgrade soon.
+const VERSION_TTL_MS = 60_000;
+const MODELS_TTL_MS = 5 * 60_000;
+let versionCheckedAt = 0;
+const modelCache = new Map<string, { at: number; models: BbModel[] }>();
+const logoCache = new Map<string, BbLogo | null>();
+
+export function clearBbCaches(): void {
+  versionCheckedAt = 0;
+  modelCache.clear();
+  logoCache.clear();
+}
+
 export async function assertBbVersion(): Promise<void> {
+  if (Date.now() - versionCheckedAt < VERSION_TTL_MS) return;
   const version = await execute(["--version"]);
   if (version !== SUPPORTED_BB_VERSION) {
     throw new BbCliError("bb-version-unsupported", `bb ${SUPPORTED_BB_VERSION} is required; found ${version}`);
   }
+  versionCheckedAt = Date.now();
 }
 
 export async function listBbProviders(): Promise<BbProvider[]> {
@@ -85,7 +104,76 @@ export async function listBbProviders(): Promise<BbProvider[]> {
 
 export async function listBbModels(provider: string): Promise<BbModel[]> {
   await assertBbVersion();
-  return z.array(bbModelSchema).parse(await jsonCommand(["provider", "models", provider]));
+  const cached = modelCache.get(provider);
+  if (cached && Date.now() - cached.at < MODELS_TTL_MS) return cached.models;
+  const models = z.array(bbModelSchema).parse(await jsonCommand(["provider", "models", provider]));
+  modelCache.set(provider, { at: Date.now(), models });
+  return models;
+}
+
+const bbSettingsSchema = z.object({
+  serverUrl: z.string(),
+  generalSettings: z.object({
+    providerOrder: z.array(z.string()).optional(),
+    defaultProviderId: z.string().nullable().optional(),
+  }),
+});
+
+async function readBbSettings(): Promise<z.infer<typeof bbSettingsSchema>> {
+  await assertBbVersion();
+  return bbSettingsSchema.parse(await jsonCommand(["settings", "show"]));
+}
+
+/** bb's own provider order and default, used once to seed OpenHercules preferences. */
+export async function getBbHostPreferences(): Promise<BbHostPreferences> {
+  const settings = await readBbSettings();
+  return {
+    providerOrder: settings.generalSettings.providerOrder ?? [],
+    defaultProviderId: settings.generalSettings.defaultProviderId ?? null,
+  };
+}
+
+const MAX_LOGO_BYTES = 64 * 1024;
+
+/** Accepts only a bounded SVG document; the renderer shows it as an image, never inline markup. */
+export function toBbLogo(contentType: string | null, body: string): BbLogo | null {
+  if (!contentType?.startsWith("image/svg+xml")) return null;
+  if (Buffer.byteLength(body) > MAX_LOGO_BYTES || !/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(body)) return null;
+  return {
+    dataUrl: `data:image/svg+xml;base64,${Buffer.from(body).toString("base64")}`,
+    monochrome: /currentColor/i.test(body),
+  };
+}
+
+async function fetchBbLogo(serverUrl: string, logoUrl: string): Promise<BbLogo | null> {
+  if (logoCache.has(logoUrl)) return logoCache.get(logoUrl) ?? null;
+  let logo: BbLogo | null = null;
+  try {
+    const server = new URL(serverUrl);
+    const url = new URL(logoUrl, server);
+    // Only bb's loopback provider-logo route; a catalog entry cannot redirect the fetch elsewhere.
+    if (server.protocol === "http:" && ["127.0.0.1", "localhost"].includes(server.hostname)
+      && url.origin === server.origin && url.pathname.startsWith("/api/v1/system/providers/")) {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5_000), redirect: "error" });
+      if (response.ok) logo = toBbLogo(response.headers.get("content-type"), await response.text());
+    }
+  } catch {
+    logo = null;
+  }
+  logoCache.set(logoUrl, logo);
+  return logo;
+}
+
+/** Providers with their logos; a missing logo falls back to a generic icon in the renderer. */
+export async function listBbHarnesses(): Promise<BbHarness[]> {
+  const providers = await listBbProviders();
+  const serverUrl = providers.some((provider) => provider.logoUrl)
+    ? await readBbSettings().then((settings) => settings.serverUrl, () => null)
+    : null;
+  return Promise.all(providers.map(async ({ logoUrl, ...provider }) => ({
+    ...provider,
+    logo: serverUrl && logoUrl ? await fetchBbLogo(serverUrl, logoUrl) : null,
+  })));
 }
 
 const projectRequests = new Map<string, Promise<string>>();

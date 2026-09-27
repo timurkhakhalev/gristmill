@@ -1,7 +1,7 @@
 import { bbChannels, bbSelectionSchema, bbStreamStartSchema } from "../contracts/bb.js";
 import { AgentStreamRequestRegistry } from "./agentStreamRequestRegistry.js";
 import { ensureBbWorkspace } from "./bbWorkspace.js";
-import { getBbThreadOutput, listBbModels, listBbProviders, spawnBbThread, stopBbThread, watchBbThread } from "./bbCli.js";
+import { getBbHostPreferences, getBbThreadOutput, listBbHarnesses, listBbModels, spawnBbThread, stopBbThread, watchBbThread } from "./bbCli.js";
 
 interface Sender {
   id: number;
@@ -20,7 +20,8 @@ export function registerBbHandlers(ipcMain: IpcMain, userData: string): void {
   const observedSenders = new Set<number>();
   const workspace = () => ensureBbWorkspace(userData);
 
-  ipcMain.handle(bbChannels.catalog, () => listBbProviders());
+  ipcMain.handle(bbChannels.catalog, () => listBbHarnesses());
+  ipcMain.handle(bbChannels.hostPreferences, () => getBbHostPreferences());
   ipcMain.handle(bbChannels.models, (_event, provider: unknown) => {
     if (typeof provider !== "string" || !provider.trim()) throw new Error("bb provider is required");
     return listBbModels(provider);

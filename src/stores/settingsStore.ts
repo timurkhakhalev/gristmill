@@ -7,10 +7,12 @@ import logger from "../utils/logger";
 import whisperVadConstants from "../constants/whisperVad.json";
 import type { ChineseScriptPreference } from "../types/electron";
 import type {
+  BbAgentPreferences,
   LocalTranscriptionProvider,
   InferenceMode,
   SelfHostedType,
 } from "../contracts/inferenceSettings";
+import { parseBbAgentPreferences } from "../config/bbAgentPreferences";
 import type { CalendarAccount } from "../contracts/calendar";
 import { PROMPT_KIND_LIST, type PromptKind } from "../config/prompts/registry";
 import { sweepRetiredPromptOverrides } from "../config/retiredPrompts";
@@ -825,6 +827,8 @@ export interface SettingsState
   noteFormattingBbProvider: string;
   noteFormattingBbModel: string;
   noteFormattingBbReasoningLevel: string;
+  bbAgentPreferences: BbAgentPreferences | null;
+  setBbAgentPreferences: (preferences: BbAgentPreferences) => void;
 
   cleanupDisableThinking: boolean;
   noteFormattingDisableThinking: boolean;
@@ -1473,9 +1477,14 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   noteFormattingCloudBaseUrl: readString("noteFormattingCloudBaseUrl", ""),
   noteFormattingRemoteUrl: readString("noteFormattingRemoteUrl", ""),
   noteFormattingCustomApiKey: "",
-  noteFormattingBbProvider: readString("noteFormattingBbProvider", "codex"),
+  noteFormattingBbProvider: readString("noteFormattingBbProvider", ""),
   noteFormattingBbModel: readString("noteFormattingBbModel", ""),
-  noteFormattingBbReasoningLevel: readString("noteFormattingBbReasoningLevel", "medium"),
+  noteFormattingBbReasoningLevel: readString("noteFormattingBbReasoningLevel", ""),
+  bbAgentPreferences: isBrowser ? parseBbAgentPreferences(localStorage.getItem("bbAgentPreferences")) : null,
+  setBbAgentPreferences: (preferences: BbAgentPreferences) => {
+    if (isBrowser) localStorage.setItem("bbAgentPreferences", JSON.stringify(preferences));
+    set({ bbAgentPreferences: preferences });
+  },
 
   setTranscriptionMode: createStringSetter("transcriptionMode") as (mode: InferenceMode) => void,
   setRemoteTranscriptionType: createStringSetter("remoteTranscriptionType") as (
@@ -1541,9 +1550,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   chatAgentRemoteUrl: readString("chatAgentRemoteUrl", ""),
   chatAgentCloudBaseUrl: readString("chatAgentCloudBaseUrl", ""),
   chatAgentCustomApiKey: "",
-  chatAgentBbProvider: readString("chatAgentBbProvider", "codex"),
+  chatAgentBbProvider: readString("chatAgentBbProvider", ""),
   chatAgentBbModel: readString("chatAgentBbModel", ""),
-  chatAgentBbReasoningLevel: readString("chatAgentBbReasoningLevel", "medium"),
+  chatAgentBbReasoningLevel: readString("chatAgentBbReasoningLevel", ""),
 
   cleanupDisableThinking: readBoolean("cleanupDisableThinking", true),
   noteFormattingDisableThinking: readBoolean("noteFormattingDisableThinking", true),

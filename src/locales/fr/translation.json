@@ -2328,16 +2328,31 @@
     }
   },
   "bbAgent": {
-    "mode": "Agent (bb)",
-    "modeDescription": "Utiliser votre abonnement bb",
+    "mode": "bb",
+    "modeDescription": "Abonnements d’agents de code via bb",
     "harness": "Environnement",
+    "harnesses": "Harnesses bb",
     "model": "Modèle",
     "reasoning": "Raisonnement",
     "noHarness": "Aucun environnement bb disponible",
     "noModel": "Aucun modèle bb disponible",
     "chooseModel": "Choisir un modèle",
-    "chatSettings": "Paramètres du modèle de chat",
-    "chatMode": "Mode de chat",
-    "otherSettings": "Configurez ce mode dans Paramètres → Chat."
+    "chatSettings": "Modèle du chat",
+    "searchModels": "Rechercher des modèles",
+    "loadingModels": "Chargement des modèles…",
+    "noMatches": "Aucun modèle correspondant",
+    "apiTab": "API",
+    "apiRoute": "Le chat utilise la route définie dans Réglages → Modèles de langage : {{route}}.",
+    "loadingHarnesses": "Chargement des harnesses bb…",
+    "settingsDescription": "Définissez le harness par défaut, son modèle et l’ordre dans les sélecteurs. Les harnesses désactivés sont masqués.",
+    "reorder": "Déplacer {{harness}}",
+    "reorderHint": "Faites glisser ou utilisez les flèches",
+    "default": "Par défaut",
+    "makeDefault": "Définir par défaut",
+    "enableHarness": "Activer {{harness}}",
+    "defaultModelFor": "Modèle par défaut pour {{harness}}",
+    "useDefault": "Utiliser le harness par défaut",
+    "useDefaultHelp": "Utilise le harness et le modèle par défaut de l’onglet bb.",
+    "noSelection": "Aucun harness bb activé n’est sélectionné. Choisissez-en un ou activez-le dans l’onglet bb."
   }
 }

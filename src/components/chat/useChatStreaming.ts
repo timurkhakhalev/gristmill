@@ -233,6 +233,10 @@ export function useChatStreaming({
         let fullContent = "";
         let stream: AsyncGenerator<AgentStreamChunk>;
 
+        // A disabled or never-chosen harness resolves empty; say so instead of spawning.
+        if (isBbAgent && (!llmConfig.agentProvider || !llmConfig.agentModel)) {
+          throw new Error(t("bbAgent.noSelection"));
+        }
         const aiTools = registry?.toAISDKFormat();
         stream = ReasoningService.processTextStreamingAI(
           llmMessages,

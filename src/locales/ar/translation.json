@@ -2368,16 +2368,31 @@
     }
   },
   "bbAgent": {
-    "mode": "وكيل (bb)",
-    "modeDescription": "استخدم اشتراك bb",
+    "mode": "bb",
+    "modeDescription": "اشتراكات وكلاء البرمجة عبر bb",
     "harness": "بيئة التشغيل",
+    "harnesses": "أدوات bb",
     "model": "النموذج",
     "reasoning": "مستوى الاستدلال",
     "noHarness": "لا توجد بيئات bb متاحة",
     "noModel": "لا توجد نماذج bb متاحة",
     "chooseModel": "اختر النموذج",
-    "chatSettings": "إعدادات نموذج المحادثة",
-    "chatMode": "وضع المحادثة",
-    "otherSettings": "اضبط هذا الوضع من الإعدادات ← المحادثة."
+    "chatSettings": "نموذج الدردشة",
+    "searchModels": "ابحث عن النماذج",
+    "loadingModels": "جارٍ تحميل النماذج…",
+    "noMatches": "لا توجد نماذج مطابقة",
+    "apiTab": "API",
+    "apiRoute": "تستخدم الدردشة المسار المضبوط في الإعدادات ← نماذج اللغة: {{route}}.",
+    "loadingHarnesses": "جارٍ تحميل أدوات bb…",
+    "settingsDescription": "حدّد الأداة الافتراضية ونموذجها وترتيبها في القوائم. الأدوات المعطّلة مخفية.",
+    "reorder": "إعادة ترتيب {{harness}}",
+    "reorderHint": "اسحب أو استخدم مفاتيح الأسهم",
+    "default": "افتراضي",
+    "makeDefault": "اجعلها افتراضية",
+    "enableHarness": "تفعيل {{harness}}",
+    "defaultModelFor": "النموذج الافتراضي لـ {{harness}}",
+    "useDefault": "استخدام الأداة الافتراضية",
+    "useDefaultHelp": "استخدم الأداة والنموذج الافتراضيين من تبويب bb.",
+    "noSelection": "لم يتم اختيار أداة bb مفعّلة. اختر واحدة أو فعّلها في تبويب bb."
   }
 }

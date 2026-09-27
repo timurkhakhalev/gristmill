@@ -14,6 +14,7 @@ import { SettingsCard, SettingsCardRow, SettingsPanelRow } from "./ui/SettingsSe
 import { SelectField } from "./ui/SelectField";
 import { Toggle } from "./ui/toggle";
 import InferenceConfigEditor from "./settings/InferenceConfigEditor";
+import BbAgentSettings from "./settings/BbAgentSettings";
 import { ColorSchemePicker } from "./settings/ColorSchemePicker";
 import ChatAgentSettings from "./settings/ChatAgentSettings";
 import { MeetingTranscriptionPanel } from "./settings/MeetingSettings";
@@ -354,10 +355,12 @@ function LlmSettings() {
         tabs={[
           { id: "summary", label: t("settingsPage.aiModels.summaryTask") },
           { id: "chat", label: t("settingsPage.aiModels.chatTitle") },
+          { id: "bb", label: t("bbAgent.mode") },
         ]}
       />
       {task === "summary" && <InferenceConfigEditor scope="noteFormatting" />}
       {task === "chat" && <ChatAgentSettings />}
+      {task === "bb" && <BbAgentSettings />}
     </Section>
   );
 }

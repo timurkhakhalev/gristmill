@@ -2328,16 +2328,31 @@
     }
   },
   "bbAgent": {
-    "mode": "智能体 (bb)",
-    "modeDescription": "使用 bb 订阅",
+    "mode": "bb",
+    "modeDescription": "通过 bb 使用编程智能体订阅",
     "harness": "运行环境",
+    "harnesses": "bb 智能体",
     "model": "模型",
     "reasoning": "推理级别",
     "noHarness": "没有可用的 bb 运行环境",
     "noModel": "没有可用的 bb 模型",
     "chooseModel": "选择模型",
-    "chatSettings": "聊天模型设置",
-    "chatMode": "聊天模式",
-    "otherSettings": "请在设置 → 聊天中配置此模式。"
+    "chatSettings": "聊天模型",
+    "searchModels": "搜索模型",
+    "loadingModels": "正在加载模型…",
+    "noMatches": "没有匹配的模型",
+    "apiTab": "API",
+    "apiRoute": "聊天使用“设置 → 语言模型”中配置的路由：{{route}}。",
+    "loadingHarnesses": "正在加载 bb 智能体…",
+    "settingsDescription": "设置默认智能体、其模型以及在选择器中的顺序。已停用的智能体将被隐藏。",
+    "reorder": "调整 {{harness}} 顺序",
+    "reorderHint": "拖动或使用方向键",
+    "default": "默认",
+    "makeDefault": "设为默认",
+    "enableHarness": "启用 {{harness}}",
+    "defaultModelFor": "{{harness}} 的默认模型",
+    "useDefault": "使用默认智能体",
+    "useDefaultHelp": "使用 bb 标签页中的默认智能体和模型。",
+    "noSelection": "未选择已启用的 bb 智能体。请选择一个，或在 bb 标签页中启用。"
   }
 }

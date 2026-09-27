@@ -2328,16 +2328,31 @@
     }
   },
   "bbAgent": {
-    "mode": "代理程式 (bb)",
-    "modeDescription": "使用 bb 訂閱",
+    "mode": "bb",
+    "modeDescription": "透過 bb 使用程式設計代理訂閱",
     "harness": "執行環境",
+    "harnesses": "bb 代理",
     "model": "模型",
     "reasoning": "推理層級",
     "noHarness": "沒有可用的 bb 執行環境",
     "noModel": "沒有可用的 bb 模型",
     "chooseModel": "選擇模型",
-    "chatSettings": "聊天模型設定",
-    "chatMode": "聊天模式",
-    "otherSettings": "請在設定 → 聊天中設定此模式。"
+    "chatSettings": "聊天模型",
+    "searchModels": "搜尋模型",
+    "loadingModels": "正在載入模型…",
+    "noMatches": "沒有符合的模型",
+    "apiTab": "API",
+    "apiRoute": "聊天使用「設定 → 語言模型」中設定的路由：{{route}}。",
+    "loadingHarnesses": "正在載入 bb 代理…",
+    "settingsDescription": "設定預設代理、其模型以及在選擇器中的順序。已停用的代理會被隱藏。",
+    "reorder": "調整 {{harness}} 順序",
+    "reorderHint": "拖曳或使用方向鍵",
+    "default": "預設",
+    "makeDefault": "設為預設",
+    "enableHarness": "啟用 {{harness}}",
+    "defaultModelFor": "{{harness}} 的預設模型",
+    "useDefault": "使用預設代理",
+    "useDefaultHelp": "使用 bb 分頁中的預設代理與模型。",
+    "noSelection": "未選擇已啟用的 bb 代理。請選擇一個，或在 bb 分頁中啟用。"
   }
 }

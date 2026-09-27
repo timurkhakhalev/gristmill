@@ -12,6 +12,7 @@ import type {
 import { inferenceScopeDefinition, type InferenceScope } from "./inferenceScopes";
 import { DEFAULT_CLOUD_TRANSCRIPTION_PROVIDER, STREAMING_ONLY_PROVIDERS } from "./transcriptionCapabilities";
 import { inheritsFallbackEndpoint } from "../helpers/reasoningRouting";
+import { resolveBbSelection } from "./bbAgentPreferences";
 
 export interface ResolvedMeetingTranscription {
   useLocalWhisper: boolean;
@@ -145,6 +146,8 @@ export interface ResolvedLLMConfig {
   agentProvider?: string;
   agentModel?: string;
   agentReasoningLevel?: string;
+  /** True when the scope follows the app-wide default bb harness. */
+  agentUsesDefault?: boolean;
 }
 
 export const selectResolvedLLMConfig = (
@@ -179,11 +182,19 @@ export const selectResolvedLLMConfig = (
     // belongs on the request path — see selectResolvedNoteFormatting.
     customApiKey: readString("customApiKey"),
     disableThinking,
-    ...(state[def.storeKeys.mode] === "agent" ? {
-      agentProvider: readString("agentProvider"),
-      agentModel: readString("agentModel"),
-      agentReasoningLevel: readString("agentReasoningLevel"),
-    } : {}),
+    ...(state[def.storeKeys.mode] === "agent" ? (() => {
+      const selection = resolveBbSelection(state.bbAgentPreferences, {
+        provider: readString("agentProvider"),
+        model: readString("agentModel"),
+        reasoningLevel: readString("agentReasoningLevel"),
+      });
+      return {
+        agentProvider: selection.provider,
+        agentModel: selection.model,
+        agentReasoningLevel: selection.reasoningLevel,
+        agentUsesDefault: !readString("agentProvider"),
+      };
+    })() : {}),
   };
   return localConfig;
 };

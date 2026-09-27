@@ -247,6 +247,52 @@ test("cleanup and chatIntelligence do not gain a fallback scope", async () => {
   assert.equal(chat.model, "");
 });
 
+test("bb scopes follow the default harness model, keep overrides and never swap a disabled harness", async () => {
+  const { selectResolvedLLMConfig } = await loadSelectors();
+  const bbAgentPreferences = {
+    order: ["codex", "claude-code"],
+    disabled: [],
+    defaultProvider: "codex",
+    defaults: { codex: { model: "gpt-6", reasoningLevel: "high" }, "claude-code": { model: "opus", reasoningLevel: "low" } },
+  };
+  const chat = (overrides) => selectResolvedLLMConfig(
+    llmFixture({ chatAgentMode: "agent", chatAgentBbProvider: "", chatAgentBbModel: "", chatAgentBbReasoningLevel: "", bbAgentPreferences, ...overrides }),
+    "chatIntelligence"
+  );
+
+  const followsDefault = chat({});
+  assert.deepEqual(
+    [followsDefault.agentProvider, followsDefault.agentModel, followsDefault.agentReasoningLevel, followsDefault.agentUsesDefault],
+    ["codex", "gpt-6", "high", true]
+  );
+
+  const pinned = chat({ chatAgentBbProvider: "claude-code", chatAgentBbModel: "sonnet", chatAgentBbReasoningLevel: "medium" });
+  assert.deepEqual([pinned.agentProvider, pinned.agentModel, pinned.agentReasoningLevel, pinned.agentUsesDefault], ["claude-code", "sonnet", "medium", false]);
+
+  const harnessOnly = chat({ chatAgentBbProvider: "claude-code" });
+  assert.deepEqual([harnessOnly.agentModel, harnessOnly.agentReasoningLevel], ["opus", "low"], "a pinned harness without a model uses its default model");
+
+  const disabled = chat({
+    chatAgentBbProvider: "claude-code", chatAgentBbModel: "sonnet", chatAgentBbReasoningLevel: "medium",
+    bbAgentPreferences: { ...bbAgentPreferences, disabled: ["claude-code"] },
+  });
+  assert.deepEqual([disabled.agentProvider, disabled.agentModel], ["", ""], "a disabled harness is reported, not replaced by the default");
+
+  const unseeded = chat({ bbAgentPreferences: null });
+  assert.equal(unseeded.agentProvider, "");
+});
+
+test("bb harness order keeps saved positions and appends new harnesses in bb order", async () => {
+  const { orderBbHarnesses, moveBbHarness, parseBbAgentPreferences } = await import("../../src/config/bbAgentPreferences.ts");
+  const items = ["codex", "pi", "claude-code", "acp-cursor"].map((id) => ({ id }));
+  const ordered = orderBbHarnesses(items, { order: ["claude-code", "codex"], disabled: [], defaultProvider: "codex", defaults: {} });
+  assert.deepEqual(ordered.map((item) => item.id), ["claude-code", "codex", "pi", "acp-cursor"]);
+  assert.deepEqual(moveBbHarness(["a", "b", "c"], "c", 0), ["c", "a", "b"]);
+  assert.deepEqual(moveBbHarness(["a", "b", "c"], "a", 9), ["b", "c", "a"]);
+  assert.equal(parseBbAgentPreferences("{\"order\":\"codex\"}"), null, "malformed preferences are treated as unseeded");
+  assert.equal(parseBbAgentPreferences("not json"), null);
+});
+
 test("empty noteFormatting fields inherit cleanup; mode does not", async () => {
   const { selectResolvedLLMConfig } = await loadSelectors();
   const cfg = selectResolvedLLMConfig(llmFixture(), "noteFormatting");

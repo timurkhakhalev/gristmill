@@ -99,10 +99,21 @@ export interface ChatAgentScopeSettings {
   chatAgentBbReasoningLevel?: string;
 }
 
+/**
+ * App-wide bb harness preferences. Seeded once from bb's own provider order and
+ * default, then owned by OpenHercules and never written back to bb.
+ */
+export interface BbAgentPreferences {
+  order: string[];
+  disabled: string[];
+  defaultProvider: string;
+  defaults: Record<string, { model: string; reasoningLevel: string }>;
+}
+
 /** Everything the four selectors read from a settings snapshot. */
 export type InferenceSettingsSnapshot = BaseTranscriptionSettings &
   MeetingTranscriptionSettings &
   UploadTranscriptionSettings &
   CleanupScopeSettings &
   NoteFormattingScopeSettings &
-  ChatAgentScopeSettings;
+  ChatAgentScopeSettings & { bbAgentPreferences?: BbAgentPreferences | null };

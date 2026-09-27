@@ -102,7 +102,6 @@ export default function ChatPanel({
         />
       )}
       <div className="flex-1" />
-      <ChatModelPicker disabled={agentState !== "idle"} />
       <div className="flex items-center gap-0.5">
         {onNewChat && (
           <HeaderButton label={t("embeddedChat.newChat")} onPress={onNewChat}>
@@ -167,6 +166,7 @@ export default function ChatPanel({
         onCancel={onCancel}
         voiceDraft={voiceDraft}
         placeholder={t("embeddedChat.askPlaceholder")}
+        modelPicker={<ChatModelPicker disabled={!isIdle} />}
         autoFocus
       />
     </>

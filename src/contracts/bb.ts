@@ -5,6 +5,19 @@ export const bbProviderSchema = z.object({
   displayName: z.string(),
   available: z.boolean(),
   reasoningLevels: z.array(z.object({ id: z.string(), label: z.string() })).optional(),
+  logoUrl: z.string().optional(),
+});
+/** A validated SVG logo; `monochrome` logos draw with the current text colour. */
+export const bbLogoSchema = z.object({
+  dataUrl: z.string().startsWith("data:image/svg+xml;base64,"),
+  monochrome: z.boolean(),
+});
+export const bbHarnessSchema = bbProviderSchema.omit({ logoUrl: true }).extend({
+  logo: bbLogoSchema.nullable(),
+});
+export const bbHostPreferencesSchema = z.object({
+  providerOrder: z.array(z.string()),
+  defaultProviderId: z.string().nullable(),
 });
 export const bbModelSchema = z.object({
   id: z.string(),
@@ -24,12 +37,16 @@ export const bbSelectionSchema = z.object({
 });
 
 export type BbProvider = z.infer<typeof bbProviderSchema>;
+export type BbLogo = z.infer<typeof bbLogoSchema>;
+export type BbHarness = z.infer<typeof bbHarnessSchema>;
+export type BbHostPreferences = z.infer<typeof bbHostPreferencesSchema>;
 export type BbModel = z.infer<typeof bbModelSchema>;
 export type BbSelection = z.infer<typeof bbSelectionSchema>;
 
 export const bbChannels = {
   catalog: "bb-catalog",
   models: "bb-models",
+  hostPreferences: "bb-host-preferences",
   streamStart: "bb-stream-start",
   streamCancel: "bb-stream-cancel",
   streamPart: "bb-stream-part",
@@ -50,8 +67,9 @@ export const bbStreamEnvelopeSchema = z.object({
 export type BbStreamEnvelope = z.infer<typeof bbStreamEnvelopeSchema>;
 
 export interface BbApi {
-  bbCatalog(): Promise<BbProvider[]>;
+  bbCatalog(): Promise<BbHarness[]>;
   bbModels(provider: string): Promise<BbModel[]>;
+  bbHostPreferences(): Promise<BbHostPreferences>;
   bbStreamStart(request: z.infer<typeof bbStreamStartSchema>): Promise<void>;
   bbStreamCancel(streamId: string): Promise<void>;
   onBbStreamPart(callback: (part: BbStreamEnvelope) => void): () => void;

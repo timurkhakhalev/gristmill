@@ -221,7 +221,7 @@ test("Check connection retries timed-out Bedrock attempts with the existing time
   };
   const originalRandom = Math.random;
   Math.random = () => 0;
-  let watchdog!: NodeJS.Timeout;
+  let watchdog!: ReturnType<typeof setTimeout>;
   try {
     const request: any = handlers.get("test-enterprise-connection")!({ sender: sender(1) }, "bedrock", {
       model: "anthropic.claude-haiku",

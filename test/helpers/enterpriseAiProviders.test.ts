@@ -24,7 +24,7 @@ test("direct Bedrock credentials are passed to the real SDK", async (t: import("
   global.fetch = async (url: unknown, init?: { headers?: unknown }) => {
     request = {
       url: String(url),
-      headers: Object.fromEntries(new Headers(init!.headers as HeadersInit)),
+      headers: Object.fromEntries(new Headers(init!.headers as never)),
     };
     return new Response("{}", {
       status: 200,
@@ -196,7 +196,7 @@ test("Bedrock environment fallback remains available without an explicit credent
   global.fetch = async (url: unknown, init?: { headers?: unknown }) => {
     request = {
       url: String(url),
-      headers: Object.fromEntries(new Headers(init!.headers as HeadersInit)),
+      headers: Object.fromEntries(new Headers(init!.headers as never)),
     };
     return new Response("{}", {
       status: 200,
@@ -232,7 +232,7 @@ test("direct Azure setup uses API-key auth", async (t: import("node:test").TestC
   global.fetch = async (url: unknown, init?: { headers?: unknown; body?: unknown }) => {
     request = {
       url: String(url),
-      headers: Object.fromEntries(new Headers(init!.headers as HeadersInit)),
+      headers: Object.fromEntries(new Headers(init!.headers as never)),
       body: JSON.parse(String(init!.body)),
     };
     return new Response("{}", {
@@ -265,7 +265,7 @@ test("manual Azure setup preserves legacy endpoints and API-key auth", async (t:
   global.fetch = async (url: unknown, init?: { headers?: unknown }) => {
     request = {
       url: String(url),
-      headers: Object.fromEntries(new Headers(init!.headers as HeadersInit)),
+      headers: Object.fromEntries(new Headers(init!.headers as never)),
     };
     return new Response("{}", {
       status: 200,

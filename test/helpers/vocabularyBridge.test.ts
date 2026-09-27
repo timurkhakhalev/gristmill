@@ -3,8 +3,8 @@
 // event sends are dispatched back into the preload-registered listeners,
 // closing the loop like Electron does. Malformed events are injected directly
 // at the preload boundary to prove they are dropped there.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

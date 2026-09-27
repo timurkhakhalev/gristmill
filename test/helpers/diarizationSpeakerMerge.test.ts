@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 // mergeWithTranscript is pure, but diarization.js pulls in helpers that reach
 // for electron at load time. Stub the pieces they touch so the merge rules can

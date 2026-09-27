@@ -1,7 +1,7 @@
 const { createRequire } = require("node:module");
 const requireRepo = createRequire(require("node:path").resolve(__dirname, "../../package.json"));
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const React = requireRepo("react");
 const { createRoot } = requireRepo("react-dom/client");
 const { createRendererServer, installBrowserGlobals, installHookDom, installMicCaptureGlobals } =

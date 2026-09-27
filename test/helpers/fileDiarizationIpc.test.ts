@@ -4,8 +4,8 @@
 // numSpeakers normalization, signal propagation into FFmpeg and the diarizer,
 // the cancel checks between stages, temp WAV cleanup and release, plus the
 // merge handler's normalizing behavior and limits.
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

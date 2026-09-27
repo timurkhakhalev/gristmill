@@ -2,8 +2,8 @@
 // resolution over a temp dir, fake managers, real shared cancel registry.
 // Pins path rejection before reads, the cancelled shape, cleanup release on
 // success/throw/abort and per-operation result validation.
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

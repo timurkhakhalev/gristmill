@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -35,7 +35,9 @@ test("the default scheme lives in :root and .dark", async () => {
   const { DEFAULT_COLOR_SCHEME } = await load();
 
   assert.equal(block(`[data-color-scheme="${DEFAULT_COLOR_SCHEME}"]`), null);
-  assert.match(block(":root"), /--a-h:/);
+  const rootBlock = block(":root");
+  assert.ok(rootBlock);
+  assert.match(rootBlock, /--a-h:/);
 });
 
 test("unknown stored values fall back to the default scheme", async () => {

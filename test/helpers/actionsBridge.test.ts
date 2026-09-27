@@ -3,8 +3,8 @@
 // does. Covers: full custom-action lifecycle across a restart, builtin
 // delete protection, event delivery exactly once, independent listeners
 // with exact unsubscribe and malformed response/event rejection.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

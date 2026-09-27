@@ -1,8 +1,8 @@
 // The real bundled preload talks to the real typed calendar availability
 // handler over a spy database: success/failure shapes, extra private fields
 // dropped at the preload boundary, and user-correctable vs generic errors.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

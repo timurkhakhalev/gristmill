@@ -1,10 +1,10 @@
-const assert = require("node:assert/strict");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const test = require("node:test");
+const test: typeof import("node:test") = require("node:test");
 
 const root = path.join(__dirname, "../..");
-const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
+const read = (relativePath: string) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
 test("macOS packaging uses the OpenHercules icon", () => {
   const builder = JSON.parse(read("electron-builder.json"));

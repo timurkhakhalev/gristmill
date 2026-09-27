@@ -1,7 +1,7 @@
-const assert = require("node:assert/strict");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const test = require("node:test");
+const test: typeof import("node:test") = require("node:test");
 const { createDb } = require("./harness/db.ts");
 const { getUserDataDir } = require("./harness/electronStub.ts");
 const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
@@ -35,7 +35,7 @@ function saveMeetingNote(db: any, title = "Meeting") {
   return db.saveNote(title, "Manual note text", "meeting").note;
 }
 
-function createFinishedRecording(db: any, storage: any, note: any, config = validConfig) {
+function createFinishedRecording(db: any, storage: any, note: any, config: typeof validConfig | null = validConfig) {
   const recording = db.createMeetingRecording(note.id, { config });
   db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
   storage.openEpochWriter(recording.id, "mic", 0);

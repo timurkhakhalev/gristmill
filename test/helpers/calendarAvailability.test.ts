@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 type AvailModule = typeof import("../../src/helpers/calendarAvailability.js");
 let MAX_AVAILABILITY_HORIZON_DAYS: AvailModule["MAX_AVAILABILITY_HORIZON_DAYS"];

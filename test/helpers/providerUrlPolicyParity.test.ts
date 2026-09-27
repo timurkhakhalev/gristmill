@@ -4,8 +4,8 @@
 // .local/.ts.net hosts, URL decorators, endpoint suffix stripping and
 // model-list candidate ordering. Pins the equivalence the connection test
 // now relies on by importing the shared helpers directly.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const providerTest = require("../../src/helpers/providerConnectionTest.ts");
 const { isSecureHttpEndpoint } = require("../../src/utils/urlUtils.ts");

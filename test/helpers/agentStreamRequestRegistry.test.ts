@@ -4,8 +4,8 @@
 // previous controller; completion is identity-guarded so a late finish never
 // removes a replacement; isActive is the replacement-protection probe the
 // enterprise stream handler uses before sending terminal events.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const { AgentStreamRequestRegistry } = require("../../src/helpers/agentStreamRequestRegistry");
 

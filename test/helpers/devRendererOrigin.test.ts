@@ -1,9 +1,9 @@
-const assert = require("node:assert/strict");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const test = require("node:test");
+const test: typeof import("node:test") = require("node:test");
 
 // Compile the authored TS entrypoint to a CJS artifact for the GUI Electron
 // subprocess (it has no tsx loader). Same pattern as preload in build-main.

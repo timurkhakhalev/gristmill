@@ -6,10 +6,10 @@
 // real component callbacks (extracted from the source, since the view has no
 // standalone hook boundary) against the real main-side cancel handler and
 // registry.
-const assert = require("node:assert/strict");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const test = require("node:test");
+const test: typeof import("node:test") = require("node:test");
 const vm = require("node:vm");
 
 const root = path.join(__dirname, "../..");

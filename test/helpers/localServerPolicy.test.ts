@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/localServerPolicy.ts");
 
@@ -24,7 +24,8 @@ test("a local selection is recognized by its mode, not its provider id", async (
   // Regression guard: scopes store the catalog family id (qwen, gemma, …) as
   // their provider, never the literal "local". Keying off the provider left
   // pre-warming permanently off and stopped the server for active local users.
-  const needs = resolveLocalServerNeeds({ ...LOCAL_CLEANUP, cleanupProvider: "qwen" });
+  const settings = { ...LOCAL_CLEANUP, cleanupProvider: "qwen" };
+  const needs = resolveLocalServerNeeds(settings);
 
   assert.equal(needs.cleanup, "qwen3-8b-q4_k_m");
   assert.equal(needs.stopServer, false);

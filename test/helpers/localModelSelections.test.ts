@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/localModelSelections.ts");
 
@@ -8,9 +8,9 @@ const SCOPES = [
   { storeKeys: { mode: "chatAgentMode", model: "chatAgentModel" } },
 ];
 
-const installed = (...ids) => {
+const installed = (...ids: string[]) => {
   const set = new Set(ids);
-  return (id: unknown) => set.has(id);
+  return (id: string) => set.has(id);
 };
 
 test("flags a local scope whose model is gone", async () => {

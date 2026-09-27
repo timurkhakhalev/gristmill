@@ -1,8 +1,8 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
-const modelRegistryData = require("../../src/models/modelRegistryData.json");
+const modelRegistryData = require("../../src/models/modelRegistryData.json") as typeof import("../../src/models/modelRegistryData.json");
 
 // getModelProvider falls back to id heuristics for ids outside the registry
 // (a GGUF the user renamed, a catalog entry not yet synced). Every local model
@@ -37,8 +37,8 @@ test("gemma fallback does not capture gemini ids or registry cloud gemma models"
 
   // Gemini and Tinfoil serve Gemma too; those ids are in the registry, so the
   // catalog lookup must keep winning over the local-family heuristic.
-  const cloudGemmaIds = modelRegistryData.cloudProviders.flatMap((provider: string) =>
-    provider.models.filter((model: any) => /gemma/i.test(model.id)).map((model: any) => model.id)
+  const cloudGemmaIds = modelRegistryData.cloudProviders.flatMap((provider) =>
+    provider.models.filter((model) => /gemma/i.test(model.id)).map((model) => model.id)
   );
   assert.ok(cloudGemmaIds.length > 0, "expected at least one cloud gemma id in the registry");
   for (const modelId of cloudGemmaIds) {

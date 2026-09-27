@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { mergeSpeakersWithText, formatSpeakerTranscript } = require("../../src/helpers/speakerMerge.ts");
 
 test("mergeSpeakersWithText assigns sentences to speakers by time proportion", () => {

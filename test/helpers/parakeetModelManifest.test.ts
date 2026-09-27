@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -34,7 +34,7 @@ function setup(t: import("node:test").TestContext, options = {}) {
         },
       }
     : fs;
-  stubs: any = {
+  const stubs: any = {
     fs: fakeFs,
     "./debugLogger": {
       info() {},

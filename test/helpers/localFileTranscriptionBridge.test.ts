@@ -2,8 +2,8 @@
 // over fake managers (no binaries): full response shapes crossing the wire,
 // path rejection, the cancelled shape, and the shared main registration
 // duplicate-channel guard.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

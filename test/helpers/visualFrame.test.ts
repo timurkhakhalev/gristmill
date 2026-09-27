@@ -1,9 +1,9 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 test("visual work waits for the requested number of compositor frames", async () => {
   const { waitForVisualFrames } = await import("../../src/utils/visualFrame.ts");
-  const queued: unknown[] = [];
+  const queued: Array<(time: number) => void> = [];
   let resolved = false;
   const waiting = waitForVisualFrames(2, (callback) => {
     queued.push(callback);
@@ -13,12 +13,12 @@ test("visual work waits for the requested number of compositor frames", async ()
   });
 
   assert.equal(queued.length, 1);
-  queued.shift()(0);
+  queued.shift()!(0);
   await Promise.resolve();
   assert.equal(resolved, false);
   assert.equal(queued.length, 1);
 
-  queued.shift()(16);
+  queued.shift()!(16);
   await waiting;
   assert.equal(resolved, true);
 });

@@ -1,6 +1,6 @@
-const test = require("node:test");
+const test: typeof import("node:test") = require("node:test");
 const { afterEach } = require("node:test");
-const assert = require("node:assert/strict");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
 const path = require("node:path");
 const { EventEmitter } = require("node:events");

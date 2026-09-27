@@ -3,8 +3,8 @@
 // shapes crossing the wire for all four operations, malformed main responses
 // rejected at the preload boundary, and the shared main registration
 // duplicate-channel guard.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

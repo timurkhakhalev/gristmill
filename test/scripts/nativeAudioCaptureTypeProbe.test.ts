@@ -1,14 +1,14 @@
 // Strict compiler probes for the native audio/PCM migration. The probe is
 // compile-only: native helpers are never loaded or executed by vm.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const path = require("node:path");
-const ts = require("typescript");
+const ts: typeof import("typescript") = require("typescript");
 
 const root = path.resolve(__dirname, "../..");
 const configPath = path.join(root, "tsconfig.main.json");
 
-function diagnosticsFor(source) {
+function diagnosticsFor(source: string) {
   const config = ts.readConfigFile(configPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
   assert.equal(parsed.options.strict, true);

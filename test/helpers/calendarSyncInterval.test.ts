@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const CalendarSyncInterval = require("../../src/helpers/calendarSyncInterval.ts");
 const { FOCUS_SYNC_THROTTLE_MS } = CalendarSyncInterval;

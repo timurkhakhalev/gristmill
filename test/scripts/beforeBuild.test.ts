@@ -1,21 +1,22 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
 test("packaging rebuilds native modules even after Node tests replaced the binary", async () => {
-  const calls = [];
-  const module = { exports: {} };
+  const calls: Array<Record<string, unknown>> = [];
+  const module: { exports: unknown } = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../../scripts/beforeBuild.js"), "utf8"), {
     module,
-    require(name) {
-      if (name === "@electron/rebuild") return { rebuild: async (options) => calls.push(options) };
+    require(name: string) {
+      if (name === "@electron/rebuild") return { rebuild: async (options: Record<string, unknown>) => calls.push(options) };
       if (name === "electron/package.json") return { version: "41.10.5" };
       throw new Error(name);
     },
   });
-  const result = await module.exports({ appDir: "/app", platform: { nodeName: "darwin" }, arch: "arm64" });
+  const beforeBuild = module.exports as (context: { appDir: string; platform: { nodeName: string }; arch: string }) => Promise<boolean>;
+  const result = await beforeBuild({ appDir: "/app", platform: { nodeName: "darwin" }, arch: "arm64" });
   assert.equal(result, true);
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{
     buildPath: "/app", electronVersion: "41.10.5", platform: "darwin", arch: "arm64",

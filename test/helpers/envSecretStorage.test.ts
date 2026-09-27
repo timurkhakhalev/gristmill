@@ -3,8 +3,8 @@
 // storage contract: backend modes, master-key persistence, re-encrypt on
 // legacy encrypted blobs, atomic writes, fail-closed saves, and no secret
 // value in logs or plaintext .env files.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

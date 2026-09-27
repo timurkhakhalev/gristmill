@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
 const { EventEmitter } = require("node:events");
 
@@ -9,7 +9,7 @@ const originalLoad = Module._load;
 // A fake utility-process graph: MessageChannelMain ports are EventEmitters
 // wired both ways, and fork() returns a scripted child the test controls.
 function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
-  state: any = { children: [], forkCalls: 0 };
+  const state: any = { children: [], forkCalls: 0 };
 
   class FakePort extends EventEmitter {
     constructor(peer: any) {

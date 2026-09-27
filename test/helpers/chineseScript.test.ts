@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 async function load() {
   return import("../../src/utils/chineseScript.ts");
@@ -122,11 +122,17 @@ test("applyChineseScript is a no-op for Japanese and Korean when target is null"
 
 test("Whisper prompt bias and merge", async () => {
   const { getChineseScriptPromptBias, mergeWhisperPrompt } = await load();
-  assert.match(getChineseScriptPromptBias("simplified"), /简体/);
-  assert.match(getChineseScriptPromptBias("traditional"), /繁體/);
+  const simplifiedBias = getChineseScriptPromptBias("simplified");
+  assert.ok(simplifiedBias);
+  assert.match(simplifiedBias, /简体/);
+  const traditionalBias = getChineseScriptPromptBias("traditional");
+  assert.ok(traditionalBias);
+  assert.match(traditionalBias, /繁體/);
   assert.equal(getChineseScriptPromptBias(null), null);
   assert.equal((mergeWhisperPrompt("foo, bar", "simplified") as string).includes("foo, bar"), true);
-  assert.match(mergeWhisperPrompt(null, "simplified"), /简体/);
+  const mergedPrompt = mergeWhisperPrompt(null, "simplified");
+  assert.ok(mergedPrompt);
+  assert.match(mergedPrompt, /简体/);
   assert.equal(mergeWhisperPrompt("foo", null), "foo");
   assert.equal(mergeWhisperPrompt("  ", null), null);
 });

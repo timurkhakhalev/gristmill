@@ -4,8 +4,8 @@
 // primary-only validation, the provider-neutral upcoming/event reads
 // (invalid input rejected before the DB, malformed rows dropped) and the
 // Calendar privacy opener.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 type CalModule = typeof import("../../src/helpers/calendarIpcHandlers.js");
 let registerCalendarIntegrationHandlers: CalModule["registerCalendarIntegrationHandlers"];

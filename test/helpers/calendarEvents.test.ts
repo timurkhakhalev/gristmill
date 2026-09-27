@@ -2,8 +2,8 @@
 // malformed payload is dropped and diagnosed before reaching renderers —
 // only the validation result ever crosses. Electron's BrowserWindow is
 // stubbed to capture broadcasts.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
 
 const sent: Array<{ channel: string; payload: unknown }> = [];
@@ -59,7 +59,7 @@ test("account and status events broadcast only valid payloads", () => {
 
 test("malformed payloads are dropped, not broadcast", () => {
   sent.length = 0;
-  const errors: unknown[] = [];
+  const errors: string[] = [];
   const originalError = console.error;
   console.error = (...args) => errors.push(args.join(" "));
   try {

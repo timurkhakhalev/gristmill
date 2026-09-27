@@ -3,8 +3,8 @@
 // responses rejected at the preload boundary, stream envelopes forwarded with
 // malformed ones dropped before the callback, unsubscribe, and the shared
 // main registration duplicate-channel guard.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
@@ -82,7 +82,7 @@ const plain = (value: any) => JSON.parse(JSON.stringify(value));
 async function createFixture() {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
-  ipcMain: any = {
+  const ipcMain: any = {
     handle: (channel: string, listener: any) => activeHandlers.set(channel, listener),
     on: (channel: string, listener: any) => activeHandlers.set(channel, listener),
   };

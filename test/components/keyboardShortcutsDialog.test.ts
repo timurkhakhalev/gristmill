@@ -1,5 +1,5 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const { createElement } = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
@@ -46,7 +46,7 @@ test("the shortcut cheat sheet lists every wired action and its chord", async (t
   ]) {
     const row = html.match(new RegExp(`<span[^>]*>${String(label).replaceAll("/", "\\/")}</span><span[^>]*>(.*?)</span>`));
     assert.ok(row, `${label} row`);
-    assert.deepEqual([...row[1].matchAll(/<kbd[^>]*>(.*?)<\/kbd>/g)].map((match) => match[1]), chord, label);
+    assert.deepEqual([...row[1].matchAll(/<kbd[^>]*>(.*?)<\/kbd>/g)].map((match) => match[1]), chord, String(label));
   }
 });
 

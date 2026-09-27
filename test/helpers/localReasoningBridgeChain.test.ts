@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
 const fs = require("node:fs/promises");
 const http = require("node:http");
@@ -135,7 +135,7 @@ test("a caller's contextSize reaches the server start (regression: it was droppe
   const { bridge, modelId, serverManager } = await setupChain(t, () => completion("stop", "ok"));
 
   const started: any[] = [];
-  serverManager._doStart = async (modelPath: string, options = {}) => {
+  serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     started.push(options.contextSize);
     serverManager.ready = true;
     serverManager.process = {};

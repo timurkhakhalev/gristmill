@@ -62,7 +62,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/bbModelPanel.test.js",
+      "test/components/bbModelPanel.test.ts",
       "test/components/floatingChatLayout.test.ts",
       "test/helpers/actionsCatalogBehavior.test.ts",
       "test/helpers/actionsIpc.test.ts",
@@ -302,9 +302,9 @@
       "test/m1IdentitySourceContract.test.ts",
       "test/m2ServerLayerRemovalContract.test.ts",
       "test/m8PlatformSourceContract.test.ts",
-      "test/scripts/beforeBuild.test.js",
+      "test/scripts/beforeBuild.test.ts",
       "test/scripts/downloadLifecycle.test.js",
-      "test/scripts/macosIdentitySourceContract.test.js",
+      "test/scripts/macosIdentitySourceContract.test.ts",
       "test/scripts/sqliteRuntime.test.js",
       "test/scripts/testSelection.test.js",
       "test/utils/formatDuration.test.ts",
@@ -1223,7 +1223,7 @@
     "buildMain": false,
     "files": [
       "test/scripts/type-probes/meeting-coordinator.test.ts",
-      "test/scripts/nativeAudioCaptureTypeProbe.test.js",
+      "test/scripts/nativeAudioCaptureTypeProbe.test.ts",
       "test/scripts/type-probes/speaker-onnx.test.ts"
     ]
   },

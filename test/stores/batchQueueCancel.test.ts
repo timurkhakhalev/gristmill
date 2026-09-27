@@ -2,8 +2,8 @@
 // managed requestId into the BYOK call (it previously only reached the local
 // route), and cancelBatch hard-cancels the current batch item's execution
 // instead of only discarding its late result.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;

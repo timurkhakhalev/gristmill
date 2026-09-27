@@ -3,8 +3,8 @@
 // and the real shared cancel registry. Pins payload validation before any
 // work, the auth/route dialects, provider size caps, the diarization
 // projection, malformed provider responses and the hard-cancel contract.
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

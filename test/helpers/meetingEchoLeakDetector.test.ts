@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const MeetingEchoLeakDetector = require("../../src/helpers/meetingEchoLeakDetector.ts");
 
@@ -79,7 +79,7 @@ const CHUNK = 800; // renderer mic chunk = 800 samples @ 24 kHz ≈ 33 ms
 const REF_MS = 1200; // ≥ 800 + 12000 samples so the lag search has a full window
 
 // Feeds `reference` to the detector as system chunks and returns the sample index of the window end.
-function feedReference(detector: any, reference: string, startMs = 0) {
+function feedReference(detector: any, reference: Float32Array, startMs = 0) {
   const chunks = fx.chunkBuffer(fx.toInt16Buffer(reference), CHUNK);
   chunks.forEach((chunk: unknown, i: any) =>
     detector.recordSystemChunk(chunk, startMs + Math.round((i * CHUNK * 1000) / 24000))
@@ -89,7 +89,7 @@ function feedReference(detector: any, reference: string, startMs = 0) {
 
 // Mic chunk that "hears" the reference `delayMs` late: the reference slice that
 // ends `delayMs` before the window end.
-function delayedReferenceSlice(reference: string, delayMs: any, gain: number) {
+function delayedReferenceSlice(reference: Float32Array, delayMs: number, gain: number) {
   const delaySamples = Math.round((delayMs / 1000) * 24000);
   const end = reference.length - delaySamples;
   return fx.scale(reference.subarray(end - CHUNK, end), gain);

@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const { localModelChannels } = require("../../src/contracts/localModelLifecycle.ts");
 const {
@@ -42,7 +42,7 @@ function createHarness(overrides = {}) {
   const calls : any = { persist: [], clear: 0, started: [], finished: [] };
   const active = new Map();
 
-  downloadStatus: any = {
+  const downloadStatus: any = {
     has: (modelType: string, modelId: string) => active.has(`${modelType}:${modelId}`),
     start: (modelType: string, modelId: string) => {
       calls.started.push(`${modelType}:${modelId}`);
@@ -59,7 +59,7 @@ function createHarness(overrides = {}) {
 
   const vadStore = overrides.vadStore || createVadSettingsStore();
 
-  deps: any = {
+  const deps: any = {
     whisperManager: {
       downloadWhisperModel: async (modelName: string, onProgress: unknown) => {
         onProgress({ type: "progress", model: modelName, percentage: 10 });

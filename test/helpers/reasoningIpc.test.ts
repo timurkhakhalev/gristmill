@@ -5,8 +5,8 @@
 // isolation, and the enterprise stream lifecycle: start → parts → done/error,
 // explicit cancel, duplicate ids, navigation/destroy, sender isolation,
 // replacement protection and the structured-clone part adapter.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 let registerReasoningHandlers: any;
 let AgentStreamRequestRegistry: any;
@@ -54,7 +54,7 @@ function fakeSender(id: any) {
 
 function makeDeps(overrides = {}) {
   const generateCalls: any[] = [];
-  deps: any = {
+  const deps: any = {
     localService: {
       isAvailable: async () => true,
       processText: async () => "local result",

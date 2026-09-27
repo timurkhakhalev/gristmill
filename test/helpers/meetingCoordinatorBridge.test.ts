@@ -3,8 +3,8 @@
 // with malformed ones dropped, payload-only listeners, unsubscribe removing
 // exactly its own listener, and junk invoke responses rejected at the preload
 // boundary. Run pnpm run build:main first so dist-main/preload.js exists.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");

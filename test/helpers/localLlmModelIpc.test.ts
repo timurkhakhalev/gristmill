@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const { localLlmChannels } = require("../../src/contracts/localLlmModels.ts");
 const {
@@ -13,7 +13,7 @@ function createHarness(overrides = {}) {
   const calls : any = { persist: 0, stopServer: 0 };
   const active = new Map();
 
-  deps: any = {
+  const deps: any = {
     modelManager: {
       getModelsWithStatus: async () => [],
       isModelDownloaded: async () => false,

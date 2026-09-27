@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -25,7 +25,7 @@ test("a note title ending in transcript keeps both mirrored files", (t: import("
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
-  note: any = {
+  const note: any = {
     id: 7,
     title: "Meeting transcript",
     content: "Decisions and action items",
@@ -232,7 +232,7 @@ test("a title with control characters keeps the frontmatter a valid single-line 
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
-  note: any = {
+  const note: any = {
     id: 5,
     title: "Q3 Review\nconfidential\ttag",
     content: "Body text",

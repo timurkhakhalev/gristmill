@@ -3,8 +3,8 @@
 // layer), executed through registerChatPersistenceHandlers with a database
 // double: defaults are applied at the handler boundary, wrong-shaped calls
 // throw before the DB is touched, results are validated per operation.
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const Module = require("node:module");
 
 type ChatModule = typeof import("../../src/helpers/chatPersistenceIpcHandlers.js");

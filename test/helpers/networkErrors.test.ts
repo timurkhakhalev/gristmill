@@ -1,5 +1,5 @@
 const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const { classifyNetworkError } = require("../../src/helpers/networkErrors");
 

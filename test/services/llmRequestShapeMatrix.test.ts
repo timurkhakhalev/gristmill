@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 // Exhaustive provider × model-family snapshot of every tunable request param
 // the chat-completions shaping layer produces. Each row asserts the FULL param

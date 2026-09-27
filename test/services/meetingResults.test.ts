@@ -1,8 +1,8 @@
-const assert = require("node:assert/strict");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const test = require("node:test");
+const test: typeof import("node:test") = require("node:test");
 const { createDb } = require("../helpers/harness/db.ts");
 const { getUserDataDir, setUserDataDir } = require("../helpers/harness/electronStub.ts");
 const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");

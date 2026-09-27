@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -82,7 +82,7 @@ async function createFixture(t: import("node:test").TestContext) {
   handlers.clear();
 
   const effects : any = { mirrorWrites: [], autoLabels: [], speakerRefreshes: [] };
-  deps: any = {
+  const deps: any = {
     saveNote: (title: any, content: string, noteType: string, sourceFile: any, audioDuration: any, folderId: any, spaceId: any) =>
       db.saveNote(title, content, noteType, sourceFile, audioDuration, folderId, spaceId),
     getNote: (id: any) => db.getNote(id),

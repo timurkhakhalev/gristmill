@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
   createMeetingAudioActivityMonitor,
@@ -24,9 +24,9 @@ function pcmAtRms(rms: any, sampleCount = 800) {
 }
 
 function createMonitor() {
-  const changes: unknown[] = [];
+  const changes: import("../../src/helpers/meetingAudioActivityMonitor.js").MeetingAudioActivityState[] = [];
   const monitor = createMeetingAudioActivityMonitor({
-    onActivityChanged: (state: unknown) => changes.push({ ...state }),
+    onActivityChanged: (state: import("../../src/helpers/meetingAudioActivityMonitor.js").MeetingAudioActivityState) => changes.push({ ...state }),
   });
   return { monitor, changes };
 }

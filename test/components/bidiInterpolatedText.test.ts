@@ -1,10 +1,10 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { createRendererServer } = require("../lib/rendererTestHarness.ts");
 
-test("technical values are isolated without changing localized sentence order", async (t: (key: string, options?: Record<string, unknown>) => string) => {
+test("technical values are isolated without changing localized sentence order", async (t: import("node:test").TestContext) => {
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-bidi-interpolation-",
   });
@@ -22,7 +22,7 @@ test("technical values are isolated without changing localized sentence order", 
   assert.equal(markup, 'قبل <bdi dir="ltr">v1.9.2-beta.1</bdi> بعد');
 });
 
-test("a missing interpolation marker fails closed to the translated text", async (t: (key: string, options?: Record<string, unknown>) => string) => {
+test("a missing interpolation marker fails closed to the translated text", async (t: import("node:test").TestContext) => {
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-bidi-interpolation-fallback-",
   });

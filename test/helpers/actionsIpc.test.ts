@@ -3,8 +3,8 @@
 // layer), executed through registerActionsHandlers with a database double:
 // wrong-shaped calls throw before the DB runs, failures send no event,
 // successes defer exactly one validated event.
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const Module = require("node:module");
 
 type ActionsModule = typeof import("../../src/helpers/actionsIpcHandlers.js");

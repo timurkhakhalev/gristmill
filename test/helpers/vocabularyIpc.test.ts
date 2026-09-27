@@ -2,8 +2,8 @@
 // the typed module. The handlers run against the real registration logic with
 // a database double, so the normalization/throw behavior pinned here is the
 // behavior the JS boundary had — not the DB layer's.
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const Module = require("node:module");
 
 let registerVocabularyHandlers: any;

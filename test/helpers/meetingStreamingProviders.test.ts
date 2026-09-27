@@ -7,8 +7,7 @@ test("tinfoil-realtime resolves to the Tinfoil client, never the OpenAI default"
   const { STREAMING_CLIENT_BY_PROVIDER } = await load();
   const { TinfoilRealtimeStreaming } =
     await import("../../src/helpers/tinfoilRealtimeStreaming.ts");
-  const OpenAIRealtimeStreaming = (await import("../../src/helpers/openaiRealtimeStreaming.ts"))
-    .default;
+  const { OpenAIRealtimeStreaming } = await import("../../src/helpers/openaiRealtimeStreaming.ts");
 
   assert.equal(STREAMING_CLIENT_BY_PROVIDER["tinfoil-realtime"], TinfoilRealtimeStreaming);
   assert.notEqual(STREAMING_CLIENT_BY_PROVIDER["tinfoil-realtime"], OpenAIRealtimeStreaming);
@@ -55,8 +54,8 @@ test("a dictation-only streaming provider is not offered for note recording", as
   const { getStreamingTranscriptionProviders, getMeetingStreamingTranscriptionProviders } =
     await import("../../src/models/ModelRegistry.ts");
 
-  const streamingIds = getStreamingTranscriptionProviders().map((provider) => provider.id);
-  const meetingIds = getMeetingStreamingTranscriptionProviders().map((provider) => provider.id);
+  const streamingIds: string[] = getStreamingTranscriptionProviders().map((provider) => provider.id);
+  const meetingIds: string[] = getMeetingStreamingTranscriptionProviders().map((provider) => provider.id);
 
   assert.ok(streamingIds.includes("gemini"), "gemini ships a streaming dictation model");
   assert.equal(meetingIds.includes("gemini"), false);
@@ -89,14 +88,14 @@ test("allow-list rejects unknown and batch-only providers", async () => {
     "",
     undefined,
   ]) {
-    assert.equal(ALLOWED_MEETING_PROVIDERS.has(provider), false, `${provider} must be rejected`);
+    assert.equal(Reflect.apply(ALLOWED_MEETING_PROVIDERS.has, ALLOWED_MEETING_PROVIDERS, [provider]), false, `${provider} must be rejected`);
   }
 });
 
 test("client lookup fails closed instead of defaulting to OpenAI", async () => {
   const { STREAMING_CLIENT_BY_PROVIDER, getMeetingStreamingClient } = await load();
 
-  assert.throws(() => getMeetingStreamingClient("unknown-realtime"), /Unsupported meeting/);
+  assert.throws(() => Reflect.apply(getMeetingStreamingClient, undefined, ["unknown-realtime"]), /Unsupported meeting/);
   assert.equal(
     getMeetingStreamingClient(Object("openai-realtime")),
     STREAMING_CLIENT_BY_PROVIDER["openai-realtime"]
@@ -105,18 +104,19 @@ test("client lookup fails closed instead of defaulting to OpenAI", async () => {
 
 test("OpenAI-derived streaming clients carry their own provider log label", async () => {
   const { STREAMING_CLIENT_BY_PROVIDER } = await load();
-  const OpenAIRealtimeStreaming = (await import("../../src/helpers/openaiRealtimeStreaming.ts"))
-    .default;
-  const baseLabel = new (OpenAIRealtimeStreaming as unknown as new () => any)().providerLabel;
+  const { OpenAIRealtimeStreaming } = await import("../../src/helpers/openaiRealtimeStreaming.ts");
+  const baseLabel = new OpenAIRealtimeStreaming().providerLabel;
 
   assert.equal(typeof baseLabel, "string");
   assert.ok(baseLabel.length > 0, "the base class must define a provider log label");
 
   for (const [provider, StreamingClient] of Object.entries(STREAMING_CLIENT_BY_PROVIDER)) {
     if (StreamingClient === OpenAIRealtimeStreaming) continue;
-    if (!(StreamingClient.prototype instanceof OpenAIRealtimeStreaming)) continue;
+    if (!Object.prototype.isPrototypeOf.call(OpenAIRealtimeStreaming.prototype, StreamingClient.prototype)) continue;
+    const client = new StreamingClient();
+    assert.ok("providerLabel" in client);
     assert.notEqual(
-      new StreamingClient().providerLabel,
+      client.providerLabel,
       baseLabel,
       `${provider} inherits the OpenAI log label and would misreport where audio goes`
     );

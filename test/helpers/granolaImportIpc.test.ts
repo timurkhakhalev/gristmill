@@ -57,7 +57,7 @@ const electronStub = {
   MessageChannelMain: class {},
 };
 
-Module._load = function loadWithElectronStub(request: string, parent: unknown, isMain: boolean) {
+Module._load = function loadWithElectronStub(request: string, parent: { filename?: string } | undefined, isMain: boolean) {
   if (request === "electron") return electronStub;
   if (parent?.filename === handlersModulePath && request === "./debugLogger") {
     return new Proxy({}, { get: () => () => {} });
@@ -65,7 +65,7 @@ Module._load = function loadWithElectronStub(request: string, parent: unknown, i
   return originalLoad.call(this, request, parent, isMain);
 };
 
-function anything() {
+function anything(): (...args: unknown[]) => unknown {
   return new Proxy(function () {}, {
     get: (_target, property) => {
       if (property === Symbol.toPrimitive || property === "toString") return () => "";
@@ -117,7 +117,7 @@ test("multi-file Granola preview is stable when file picker order changes", asyn
   const firstIdsByContent = Object.fromEntries(
     target._granolaImportPending.notes
       .map((note: any) => [note.content, note.sourceFile])
-      .sort(([leftContent], [rightContent]) => leftContent.localeCompare(rightContent))
+      .sort(([leftContent]: [string, string], [rightContent]: [string, string]) => leftContent.localeCompare(rightContent))
   );
 
   selectedCsvPaths = [...csvPaths].reverse();
@@ -125,7 +125,7 @@ test("multi-file Granola preview is stable when file picker order changes", asyn
   const reversedIdsByContent = Object.fromEntries(
     target._granolaImportPending.notes
       .map((note: any) => [note.content, note.sourceFile])
-      .sort(([leftContent], [rightContent]) => leftContent.localeCompare(rightContent))
+      .sort(([leftContent]: [string, string], [rightContent]: [string, string]) => leftContent.localeCompare(rightContent))
   );
 
   assert.deepEqual(reversedIdsByContent, firstIdsByContent);

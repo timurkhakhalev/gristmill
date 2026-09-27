@@ -10,9 +10,9 @@ const TICK_MS = 2_000;
 
 // The restart hook settles on the microtask queue, so every helper that can
 // trigger one yields the loop before the caller inspects state.
-const flush = () => new Promise((resolve) => setImmediate(resolve));
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-const createHarness = ({ startImpl, stopImpl } = {}) => {
+const createHarness = ({ startImpl, stopImpl }: { startImpl?: () => Promise<void> | void; stopImpl?: () => Promise<void> | void } = {}) => {
   let now = START_TIME;
   const calls: any[] = [];
   const interruptions: any[] = [];
@@ -221,9 +221,9 @@ test("a restart that throws still clears the in-flight flag", async () => {
 });
 
 test("nothing is judged while a restart is still in flight", async () => {
-  let release;
+  let release!: () => void;
   const h = createHarness({
-    startImpl: () => new Promise((resolve) => (release = resolve)),
+    startImpl: () => new Promise<void>((resolve) => (release = resolve)),
   });
   startNative(h);
 
@@ -390,9 +390,9 @@ test("audible audio after exhausted recovery does not rearm the weaker quiet war
 });
 
 test("stop ends the session and a late restart cannot resurrect it", async () => {
-  let release;
+  let release!: () => void;
   const h = createHarness({
-    startImpl: () => new Promise((resolve) => (release = resolve)),
+    startImpl: () => new Promise<void>((resolve) => (release = resolve)),
   });
   startNative(h);
 
@@ -411,9 +411,9 @@ test("stop ends the session and a late restart cannot resurrect it", async () =>
 // replacement being spawned. Without the generation check the restart would
 // complete anyway and leave an orphan process holding a CoreAudio process tap.
 test("a session that ends mid-restart never starts a replacement helper", async () => {
-  let releaseStop;
+  let releaseStop!: () => void;
   const h = createHarness({
-    stopImpl: () => new Promise((resolve) => (releaseStop = resolve)),
+    stopImpl: () => new Promise<void>((resolve) => (releaseStop = resolve)),
   });
   startNative(h);
 
@@ -429,9 +429,9 @@ test("a session that ends mid-restart never starts a replacement helper", async 
 });
 
 test("a session that ends while the replacement is starting stops the orphan", async () => {
-  let releaseStart;
+  let releaseStart!: () => void;
   const h = createHarness({
-    startImpl: () => new Promise((resolve) => (releaseStart = resolve)),
+    startImpl: () => new Promise<void>((resolve) => (releaseStart = resolve)),
   });
   startNative(h);
 

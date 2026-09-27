@@ -1,13 +1,14 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const test: typeof import("node:test") = require("node:test");
 const { createRendererServer } = require("../lib/rendererTestHarness.ts");
+const routeGlobals = globalThis as typeof globalThis & { __meetingSnapshotRouteReads?: number };
 
 test("saved transcription bypasses an unsupported current meeting route while snapshotting current summary settings", async (t: import("node:test").TestContext) => {
-  const previousRouteReads = globalThis.__meetingSnapshotRouteReads;
-  globalThis.__meetingSnapshotRouteReads = 0;
+  const previousRouteReads = routeGlobals.__meetingSnapshotRouteReads;
+  routeGlobals.__meetingSnapshotRouteReads = 0;
   t.after(() => {
-    if (previousRouteReads === undefined) delete globalThis.__meetingSnapshotRouteReads;
-    else globalThis.__meetingSnapshotRouteReads = previousRouteReads;
+    if (previousRouteReads === undefined) delete routeGlobals.__meetingSnapshotRouteReads;
+    else routeGlobals.__meetingSnapshotRouteReads = previousRouteReads;
   });
 
   const vite = await createRendererServer(t, {
@@ -28,7 +29,7 @@ test("saved transcription bypasses an unsupported current meeting route while sn
   };
 
   const corrected = snapshotMeetingRecordingConfig(savedTranscription);
-  assert.equal(globalThis.__meetingSnapshotRouteReads, 0, "summary correction does not resolve the current ASR route");
+  assert.equal(routeGlobals.__meetingSnapshotRouteReads, 0, "summary correction does not resolve the current ASR route");
   assert.equal(corrected.configError, null);
   assert.deepEqual(corrected.config.transcription, savedTranscription);
   assert.equal(corrected.config.summary.provider, "openai");
@@ -40,7 +41,7 @@ test("saved transcription bypasses an unsupported current meeting route while sn
     config: null,
     configError: { code: "unsupported-transcription-route" },
   });
-  assert.equal(globalThis.__meetingSnapshotRouteReads, 1, "ordinary capture still validates current meeting settings");
+  assert.equal(routeGlobals.__meetingSnapshotRouteReads, 1, "ordinary capture still validates current meeting settings");
 });
 
 test("meeting summary snapshots the selected bb harness, model and reasoning level", async (t: import("node:test").TestContext) => {

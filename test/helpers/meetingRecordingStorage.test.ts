@@ -101,7 +101,7 @@ test("recovery finalizes both source epochs, keeps timeline gaps, and creates on
   assert.equal(runs[0].status, "pending");
   assert.equal(runs[0].config.transcription.provider, "deepgram");
   assert.deepEqual(
-    db.listMeetingRecordingEpochs(recording.id).map(({ source, epochIndex, startFrame, frameCount, ignoredTrailingBytes }) => ({
+    db.listMeetingRecordingEpochs(recording.id).map(({ source, epochIndex, startFrame, frameCount, ignoredTrailingBytes }: import("../../src/contracts/meetingRecording.ts").MeetingRecordingEpochDto) => ({
       source,
       epochIndex,
       startFrame,

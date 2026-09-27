@@ -5,12 +5,12 @@ const test: typeof import("node:test") = require("node:test");
 const vm = require("node:vm");
 
 function loadPreloadApi() {
-  let exposedApi;
+  let exposedApi: { setOnboardingActive(active: boolean): Promise<unknown>; markMacAccessibilityFeaturesReady?: unknown } | undefined;
   const invocations: unknown[] = [];
   const sends: unknown[] = [];
   const listeners = new Map();
   const ipcRenderer = {
-    invoke: async (channel: string, ...args) => {
+    invoke: async (channel: string, ...args: unknown[]) => {
       invocations.push([channel, ...args]);
       return true;
     },
@@ -18,12 +18,12 @@ function loadPreloadApi() {
     removeListener: (channel: string, listener: unknown) => {
       if (listeners.get(channel) === listener) listeners.delete(channel);
     },
-    send: (channel: string, ...args) => sends.push([channel, ...args]),
+    send: (channel: string, ...args: unknown[]) => sends.push([channel, ...args]),
     sendSync: () => undefined,
   };
   const electron = {
     contextBridge: {
-      exposeInMainWorld: (_name: string, api: any) => {
+      exposeInMainWorld: (_name: string, api: typeof exposedApi) => {
         exposedApi = api;
       },
     },
@@ -42,6 +42,7 @@ function loadPreloadApi() {
     },
     process,
   });
+  assert.ok(exposedApi, "preload must expose its API");
   return { api: exposedApi, invocations, listeners, sends };
 }
 

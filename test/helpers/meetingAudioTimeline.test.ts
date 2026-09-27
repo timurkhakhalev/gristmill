@@ -9,15 +9,15 @@ test("audio timeline records only received PCM and preserves delivery gaps as of
   const originAt = 10_000;
   let wallNow = originAt + 500;
   const timeline = createMeetingAudioTimeline({ originAt, wallNow: () => wallNow });
-  const writes: unknown[] = [];
+  const writes: { buffer: Buffer; sampleOffset: number; capturedAt: number }[] = [];
   const first = Buffer.alloc(4_800, 1); // 100 ms at 24 kHz, mono PCM16
   const second = Buffer.alloc(4_800, 2);
 
-  timeline.write(first, (buffer: unknown, sampleOffset: number, capturedAt: any) => {
+  timeline.write(first, (buffer: Buffer, sampleOffset: number, capturedAt: number) => {
     writes.push({ buffer, sampleOffset, capturedAt });
   });
   wallNow += 2_000; // IPC delivery jitter does not synthesize silence.
-  timeline.write(second, (buffer: unknown, sampleOffset: number, capturedAt: any) => {
+  timeline.write(second, (buffer: Buffer, sampleOffset: number, capturedAt: number) => {
     writes.push({ buffer, sampleOffset, capturedAt });
   });
 
@@ -31,14 +31,14 @@ test("a restarted source begins at the later of its wall-clock offset and prior 
   const originAt = 50_000;
   let wallNow = originAt + 100;
   const timeline = createMeetingAudioTimeline({ originAt, wallNow: () => wallNow });
-  const writes: unknown[] = [];
-  timeline.write(Buffer.alloc(4_800), (buffer: unknown, sampleOffset: number) => {
+  const writes: { buffer: Buffer; sampleOffset: number }[] = [];
+  timeline.write(Buffer.alloc(4_800), (buffer: Buffer, sampleOffset: number) => {
     writes.push({ buffer, sampleOffset });
   });
 
   wallNow = originAt + 1_000;
   const restartOffset = timeline.markRestart();
-  timeline.write(Buffer.alloc(2_400), (buffer: unknown, sampleOffset: number) => {
+  timeline.write(Buffer.alloc(2_400), (buffer: Buffer, sampleOffset: number) => {
     writes.push({ buffer, sampleOffset });
   });
 

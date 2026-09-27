@@ -2,9 +2,10 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/meetingTranscriptPersistence.ts");
+type TranscriptSegment = import("../../src/stores/meetingRecordingStore.ts").TranscriptSegment;
 
-const segment = (id: unknown, text: string) => ({ id, text, source: "system" });
-const serialize = (segments: any) => segments.map((s: string) => s.text).join("|");
+const segment = (id: string, text: string): TranscriptSegment => ({ id, text, source: "system" });
+const serialize = (segments: TranscriptSegment[]) => segments.map((s) => s.text).join("|");
 
 // The note editor swaps from live segments to the stored transcript the moment
 // isRecording flips, while the main-side stop can take seconds — so the
@@ -77,8 +78,8 @@ test("nothing is written when there are neither segments nor a fallback transcri
 
 test("the stop result is only returned once the early write has settled", async () => {
   const { persistFinalTranscriptAroundStop } = await load();
-  let releaseWrite;
-  const write = new Promise((resolve) => {
+  let releaseWrite!: () => void;
+  const write = new Promise<void>((resolve) => {
     releaseWrite = resolve;
   });
   let settled = false;

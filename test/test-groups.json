@@ -16,8 +16,8 @@
       "test/helpers/extractArchive.test.ts",
       "test/helpers/sidecarPidFile.test.ts",
       "test/helpers/translationHistory.test.ts",
-      "test/scripts/downloadSherpaMacos.test.js",
-      "test/scripts/runTestsRuntime.test.js"
+      "test/scripts/downloadSherpaMacos.test.ts",
+      "test/scripts/runTestsRuntime.test.ts"
     ]
   },
   {
@@ -303,10 +303,10 @@
       "test/m2ServerLayerRemovalContract.test.ts",
       "test/m8PlatformSourceContract.test.ts",
       "test/scripts/beforeBuild.test.ts",
-      "test/scripts/downloadLifecycle.test.js",
+      "test/scripts/downloadLifecycle.test.ts",
       "test/scripts/macosIdentitySourceContract.test.ts",
-      "test/scripts/sqliteRuntime.test.js",
-      "test/scripts/testSelection.test.js",
+      "test/scripts/sqliteRuntime.test.ts",
+      "test/scripts/testSelection.test.ts",
       "test/utils/formatDuration.test.ts",
       "test/utils/serialQueue.test.ts"
     ]
@@ -1155,7 +1155,7 @@
     "buildMain": false,
     "files": [
       "test/scripts/type-probes/database.test.ts",
-      "test/scripts/sharedHelpersTypeProbe.test.js"
+      "test/scripts/sharedHelpersTypeProbe.test.ts"
     ]
   },
   {
@@ -1211,7 +1211,7 @@
     "kind": "types",
     "buildMain": true,
     "files": [
-      "test/scripts/mainBuild.test.js"
+      "test/scripts/mainBuild.test.ts"
     ]
   },
   {

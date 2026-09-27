@@ -1,12 +1,25 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { runTests, runCommand, acquireFullRunLock } = require("../../scripts/run-tests");
 
-function fakeRunner(extra = {}) {
-  const calls = [];
+type RunnerCall = { prepare: string } | { binary: string; args: string[]; env: Record<string, string | undefined> };
+
+function runCall(calls: RunnerCall[], index: number) {
+  const call = calls[index];
+  assert.ok(call && "binary" in call);
+  return call;
+}
+
+function fakeRunner(extra: Partial<{
+  platform: string;
+  prepare: (runtime: string) => Promise<void>;
+  run: (binary: string, args: string[], env: Record<string, string | undefined>) => Promise<number>;
+  lock: () => () => void;
+}> = {}) {
+  const calls: RunnerCall[] = [];
   return {
     calls,
     options: {
@@ -14,17 +27,17 @@ function fakeRunner(extra = {}) {
       platform: "darwin",
       electronBinary: () => "/electron",
       nodeBinary: "/node",
-      prepare: async (runtime) => { calls.push({ prepare: runtime }); },
-      run: async (binary, args, env) => { calls.push({ binary, args, env: { ...env } }); return 0; },
+      prepare: async (runtime: string) => { calls.push({ prepare: runtime }); },
+      run: async (binary: string, args: string[], env: Record<string, string | undefined>) => { calls.push({ binary, args, env: { ...env } }); return 0; },
       ...extra,
     },
   };
 }
 
-function killOwnedGroupIfPresent(pidFile) {
+function killOwnedGroupIfPresent(pidFile: string) {
   if (!fs.existsSync(pidFile)) return;
   try { process.kill(-Number(fs.readFileSync(pidFile, "utf8")), "SIGKILL"); }
-  catch (error) { if (error.code !== "ESRCH") throw error; }
+  catch (error) { if ((error as Error & { code?: string }).code !== "ESRCH") throw error; }
 }
 
 test("macOS unit selection uses Electron as Node without a main build", async () => {
@@ -32,33 +45,33 @@ test("macOS unit selection uses Electron as Node without a main build", async ()
   assert.equal(await runTests(["--processes", "1", "test/utils/formatDuration.test.ts"], options), 0);
   assert.deepEqual(calls[0], { prepare: "electron" });
   assert.equal(calls.length, 2);
-  assert.equal(calls[1].binary, "/electron");
-  assert.equal(calls[1].env.ELECTRON_RUN_AS_NODE, "1");
-  assert.equal(calls[1].env.REQUIRE_DB_TESTS, "1");
-  assert.ok(calls[1].args.includes("--test-concurrency=1"));
+  assert.equal(runCall(calls, 1).binary, "/electron");
+  assert.equal(runCall(calls, 1).env.ELECTRON_RUN_AS_NODE, "1");
+  assert.equal(runCall(calls, 1).env.REQUIRE_DB_TESTS, "1");
+  assert.ok(runCall(calls, 1).args.includes("--test-concurrency=1"));
 });
 
 test("compiled bridge selection builds once and Linux uses Node", async () => {
   const { calls, options } = fakeRunner({ platform: "linux" });
-  assert.equal(await runTests(["test/helpers/notesBridge.test.js", "test/helpers/calendarBridge.test.ts"], options), 0);
+  assert.equal(await runTests(["test/helpers/notesBridge.test.ts", "test/helpers/calendarBridge.test.ts"], options), 0);
   assert.deepEqual(calls[0], { prepare: "node" });
   assert.equal(calls.length, 3);
-  assert.equal(calls[1].binary, "pnpm");
-  assert.deepEqual(calls[1].args, ["run", "build:main"]);
-  assert.equal(calls[1].env.ELECTRON_RUN_AS_NODE, undefined);
-  assert.equal(calls[2].binary, "/node");
-  assert.equal(calls[2].env.ELECTRON_RUN_AS_NODE, undefined);
+  assert.equal(runCall(calls, 1).binary, "pnpm");
+  assert.deepEqual(runCall(calls, 1).args, ["run", "build:main"]);
+  assert.equal(runCall(calls, 1).env.ELECTRON_RUN_AS_NODE, undefined);
+  assert.equal(runCall(calls, 2).binary, "/node");
+  assert.equal(runCall(calls, 2).env.ELECTRON_RUN_AS_NODE, undefined);
 });
 
 test("two processes run ordinary files before serial compiler and native files", async () => {
   const { calls, options } = fakeRunner({ platform: "linux" });
-  const files = ["test/utils/formatDuration.test.ts", "test/scripts/mainBuild.test.js", "test/helpers/notesBridge.test.js"];
+  const files = ["test/utils/formatDuration.test.ts", "test/scripts/mainBuild.test.ts", "test/helpers/notesBridge.test.ts"];
   assert.equal(await runTests(["--processes", "2", ...files], options), 0);
   assert.deepEqual(calls[0], { prepare: "node" });
-  assert.deepEqual(calls[1].args, ["run", "build:main"]);
-  assert.equal(calls[2].args.find((arg) => arg.startsWith("--test-concurrency")), "--test-concurrency=2");
-  assert.equal(calls[3].args.find((arg) => arg.startsWith("--test-concurrency")), "--test-concurrency=1");
-  assert.deepEqual(calls.slice(2).flatMap((call) => call.args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts"))).sort(), files.slice().sort());
+  assert.deepEqual(runCall(calls, 1).args, ["run", "build:main"]);
+  assert.equal(runCall(calls, 2).args.find((arg) => arg.startsWith("--test-concurrency")), "--test-concurrency=2");
+  assert.equal(runCall(calls, 3).args.find((arg) => arg.startsWith("--test-concurrency")), "--test-concurrency=1");
+  assert.deepEqual(calls.slice(2).flatMap((call) => "binary" in call ? call.args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts")) : []).sort(), files.slice().sort());
 });
 
 test("type probe files share one serial compiler process without changing selected domains", async () => {
@@ -66,23 +79,23 @@ test("type probe files share one serial compiler process without changing select
   const files = [
     "test/scripts/type-probes/actions.test.ts",
     "test/scripts/type-probes/calendar.test.ts",
-    "test/scripts/mainBuild.test.js",
+    "test/scripts/mainBuild.test.ts",
   ];
   assert.equal(await runTests(files, options), 0);
   assert.deepEqual(calls[0], { prepare: "node" });
-  assert.equal(calls[1].binary, "pnpm");
-  assert.equal(calls[2].args.includes("--test-isolation=none"), true);
-  assert.deepEqual(JSON.parse(calls[2].env.OPENHERCULES_TYPE_PROBE_GROUPS), ["actions", "calendar"]);
-  assert.deepEqual(calls[2].args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts")), files.slice(0, 2));
-  assert.equal(calls[3].args.includes("--test-isolation=none"), false);
-  assert.deepEqual(calls[3].args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts")), [files[2]]);
+  assert.equal(runCall(calls, 1).binary, "pnpm");
+  assert.equal(runCall(calls, 2).args.includes("--test-isolation=none"), true);
+  assert.deepEqual(JSON.parse(runCall(calls, 2).env.OPENHERCULES_TYPE_PROBE_GROUPS!), ["actions", "calendar"]);
+  assert.deepEqual(runCall(calls, 2).args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts")), files.slice(0, 2));
+  assert.equal(runCall(calls, 3).args.includes("--test-isolation=none"), false);
+  assert.deepEqual(runCall(calls, 3).args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts")), [files[2]]);
 });
 
 test("a failed parallel phase still runs serial tests and preserves failure", async () => {
   const { options } = fakeRunner({ platform: "linux" });
   let testsRun = 0;
   options.run = async (binary) => binary === "pnpm" ? 0 : (++testsRun === 1 ? 3 : 0);
-  assert.equal(await runTests(["--processes", "2", "test/utils/formatDuration.test.ts", "test/scripts/mainBuild.test.js"], options), 3);
+  assert.equal(await runTests(["--processes", "2", "test/utils/formatDuration.test.ts", "test/scripts/mainBuild.test.ts"], options), 3);
   assert.equal(testsRun, 2);
 });
 
@@ -199,11 +212,11 @@ test("listing and invalid selection never prepare dependencies or launch process
 
 test("failed preparation or build prevents test execution; test status is preserved", async () => {
   const failedPrepare = fakeRunner({ prepare: async () => { throw new Error("probe failed"); } });
-  await assert.rejects(runTests(["test/helpers/notesBridge.test.js"], failedPrepare.options), /probe failed/);
+  await assert.rejects(runTests(["test/helpers/notesBridge.test.ts"], failedPrepare.options), /probe failed/);
   assert.equal(failedPrepare.calls.length, 0);
-  const commands = [];
+  const commands: string[] = [];
   const failedBuild = fakeRunner({ run: async (binary) => { commands.push(binary); return 7; } });
-  assert.equal(await runTests(["test/helpers/notesBridge.test.js"], failedBuild.options), 7);
+  assert.equal(await runTests(["test/helpers/notesBridge.test.ts"], failedBuild.options), 7);
   assert.deepEqual(commands, ["pnpm"]);
   const failedTests = fakeRunner({ run: async () => 3 });
   assert.equal(await runTests(["test/utils/formatDuration.test.ts"], failedTests.options), 3);

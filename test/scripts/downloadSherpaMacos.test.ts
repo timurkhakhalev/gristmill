@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 
@@ -64,7 +64,7 @@ test("validates the versioned ONNX Runtime library from a packaged app", () => {
   );
 });
 
-test("macOS install marker requires the arm64 ONNX Runtime replacement", (t) => {
+test("macOS install marker requires the arm64 ONNX Runtime replacement", (t: import("node:test").TestContext) => {
   const dir = fs.mkdtempSync(path.join(require("os").tmpdir(), "sherpa-macos-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const binary = path.join(dir, "sherpa-onnx-ws-darwin-arm64");

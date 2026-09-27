@@ -1,10 +1,10 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { execFileSync } = require("node:child_process");
-const ts = require("typescript");
+const ts: typeof import("typescript") = require("typescript");
 
 const root = path.resolve(__dirname, "../..");
 const output = path.join(root, "dist-main");
@@ -15,7 +15,7 @@ test("emitted Electron graph contains every relative import and no TypeScript ru
   assert.ok(fs.existsSync(path.join(root, pkg.main)), "Run pnpm run build:main first");
   const files = fs
     .readdirSync(output, { recursive: true })
-    .filter((name) => /\.(?:js|mjs)$/.test(name));
+    .filter((name: string) => /\.(?:js|mjs)$/.test(name));
   assert.ok(files.length > 0);
   for (const name of files) {
     const file = path.join(output, name);
@@ -25,8 +25,8 @@ test("emitted Electron graph contains every relative import and no TypeScript ru
       ts.ScriptTarget.Latest,
       true
     );
-    function visit(node) {
-      let specifier;
+    function visit(node: import("typescript").Node): void {
+      let specifier: import("typescript").Expression | undefined;
       if (
         ts.isCallExpression(node) &&
         ((ts.isIdentifier(node.expression) && node.expression.text === "require") ||
@@ -56,30 +56,31 @@ test("emitted Electron graph contains every relative import and no TypeScript ru
 });
 
 test("emitted preload loads with the sandbox Electron API and forwards arguments", async () => {
-  let api;
-  const calls = [];
-  const listeners = new Map();
+  type PreloadApi = { getNote(id: number): Promise<unknown>; onMeetingTranscriptionSegment(callback: () => void): () => void };
+  let api: PreloadApi | undefined;
+  const calls: unknown[][] = [];
+  const listeners = new Map<string, (...args: unknown[]) => void>();
   const preloadModule = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(output, "preload.js"), "utf8"), {
     module: preloadModule,
     exports: preloadModule.exports,
-    require(name) {
+    require(name: string) {
       assert.equal(name, "electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name, value) => {
+          exposeInMainWorld: (_name: string, value: PreloadApi) => {
             api = value;
           },
         },
         ipcRenderer: {
-          invoke: async (...args) => {
+          invoke: async (...args: unknown[]) => {
             calls.push(args);
             // Notes contract: getNote resolves to a row or null.
             return args[0] === "db-get-note" ? null : { success: true };
           },
           send() {},
-          on: (channel, listener) => listeners.set(channel, listener),
-          removeListener: (channel, listener) => {
+          on: (channel: string, listener: (...args: unknown[]) => void) => listeners.set(channel, listener),
+          removeListener: (channel: string, listener: (...args: unknown[]) => void) => {
             assert.equal(listeners.get(channel), listener);
             listeners.delete(channel);
           },
@@ -89,6 +90,7 @@ test("emitted preload loads with the sandbox Electron API and forwards arguments
     },
     process: { platform: "darwin", versions: {} },
   });
+  assert.ok(api);
   await api.getNote(17);
   assert.deepEqual(calls, [["db-get-note", 17]]);
   const unsubscribe = api.onMeetingTranscriptionSegment(() => {});
@@ -268,18 +270,19 @@ test("emitted modules resolve preload beside code and native resources from the 
     exports: module.exports,
     __dirname: path.join(output, "src/helpers"),
     process: { resourcesPath: undefined },
-    require(name) {
+    require(name: string) {
       if (name === "electron") return { app: { getAppPath: () => appRoot } };
       if (name === "path") return path;
       if (name === "./debugLogger") return { info() {} };
       if (name === "fs")
         return {
-          existsSync: (candidate) => candidate === expected,
-          accessSync: (candidate) => assert.equal(candidate, expected),
+          existsSync: (candidate: string) => candidate === expected,
+          accessSync: (candidate: string) => assert.equal(candidate, expected),
           constants: { X_OK: 1 },
         };
       throw new Error(`Unexpected module: ${name}`);
     },
   });
-  assert.equal(module.exports.resolveBundledBinary("probe", "test"), expected);
+  const { resolveBundledBinary } = module.exports as { resolveBundledBinary: (name: string, scope: string) => string };
+  assert.equal(resolveBundledBinary("probe", "test"), expected);
 });

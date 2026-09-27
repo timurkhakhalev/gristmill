@@ -4,11 +4,11 @@
 // files are pure policy — any Electron/DOM/import.meta.env dependency fails
 // the Node arm. A negative probe confirms the checker actually rejects a
 // strict violation inside a migrated file.
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const ts = require("typescript");
+const ts: typeof import("typescript") = require("typescript");
 
 const root = path.resolve(__dirname, "../..");
 
@@ -30,7 +30,11 @@ const SHARED_FILES = [
   "src/utils/dictionaryPromptCap.ts",
 ].map((file) => path.join(root, file));
 
-function programDiagnostics(rootNames, options, { patch } = {}) {
+function programDiagnostics(
+  rootNames: string[],
+  options: import("typescript").CompilerOptions,
+  { patch }: { patch?: { file: string; source: string } } = {}
+) {
   const host = ts.createCompilerHost(options);
   const readSource = host.getSourceFile.bind(host);
   host.getSourceFile = (file, languageVersion, ...args) => {

@@ -1,11 +1,13 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { validateRegistry, parseArgs, selectTests, createPlan } = require("../../scripts/test-selection");
 
-const entries = [
+interface Entry { file: string; domains: string[]; kind: string; buildMain: boolean; serial?: boolean }
+
+const entries: Entry[] = [
   { file: "test/a.test.js", domains: ["notes", "calendar"], kind: "unit", buildMain: false },
   { file: "test/b.test.ts", domains: ["notes"], kind: "integration", buildMain: true },
   { file: "test/c.test.js", domains: ["ai"], kind: "unit", buildMain: false },
@@ -14,7 +16,7 @@ const group = { domains: ["notes"], kind: "unit", buildMain: false, files: ["tes
 
 test("domains union and kinds intersect without duplicate execution", () => {
   const plan = selectTests(entries, parseArgs(["--domain", "calendar", "--domain", "notes", "--kind", "unit"]));
-  assert.deepEqual(plan.tests.map((t) => t.file), ["test/a.test.js"]);
+  assert.deepEqual(plan.tests.map((t: Entry) => t.file), ["test/a.test.js"]);
   assert.equal(plan.buildMain, false);
   assert.equal(selectTests(entries, parseArgs(["--domain", "notes"])).buildMain, true);
   assert.equal(selectTests(entries, parseArgs(["--kind", "unit", "--kind", "integration"])).tests.length, 3);
@@ -45,10 +47,10 @@ test("registry catches missing, stale, duplicate and invalid registrations", () 
   assert.equal(validateRegistry(["test/a.test.js"], [{ ...group, serial: true }])[0].serial, true);
 });
 
-test("a new ordinary test is discovered by domain and kind without path registration", (t) => {
+test("a new ordinary test is discovered by domain and kind without path registration", (t: import("node:test").TestContext) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-test-selection-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  const file = "test/cases/notes/unit/newBehavior.test.js";
+  const file = "test/cases/notes/unit/newBehavior.test.ts";
   fs.mkdirSync(path.join(directory, "test/cases/notes/unit"), { recursive: true });
   fs.writeFileSync(path.join(directory, file), "const test = require('node:test'); test('new behavior', () => {});\n");
   fs.writeFileSync(path.join(directory, "test/test-groups.json"), "[]\n");
@@ -58,14 +60,14 @@ test("a new ordinary test is discovered by domain and kind without path registra
   assert.equal(createPlan(["--", file], directory).tests.length, 1);
   assert.throws(() => createPlan(["--domain", "calendar"], directory), /No tests/);
 
-  const mainFile = "test/cases/platform/integration/main/emittedBridge.test.js";
+  const mainFile = "test/cases/platform/integration/main/emittedBridge.test.ts";
   fs.mkdirSync(path.join(directory, "test/cases/platform/integration/main"), { recursive: true });
   fs.writeFileSync(path.join(directory, mainFile), "const test = require('node:test'); test('emitted bridge', () => {});\n");
   const mainPlan = createPlan(["--domain", "platform", "--kind", "integration"], directory);
   assert.equal(mainPlan.buildMain, true);
-  assert.deepEqual(mainPlan.tests.map((entry) => entry.file), [mainFile]);
+  assert.deepEqual(mainPlan.tests.map((entry: Entry) => entry.file), [mainFile]);
 
-  const serialFile = "test/cases/recording/integration/serial/capture.test.js";
+  const serialFile = "test/cases/recording/integration/serial/capture.test.ts";
   fs.mkdirSync(path.join(directory, "test/cases/recording/integration/serial"), { recursive: true });
   fs.writeFileSync(path.join(directory, serialFile), "const test = require('node:test'); test('capture', () => {});\n");
   assert.equal(createPlan(["--", serialFile], directory).tests[0].serial, true);
@@ -81,9 +83,15 @@ test("repository registry covers every test and compiled-output consumers reques
       assert.equal(entry.buildMain, true, entry.file);
     }
   }
-  const byFile = new Map(plan.tests.map((entry) => [entry.file, entry]));
+  const byFile = new Map<string, Entry>(plan.tests.map((entry: Entry) => [entry.file, entry]));
   // This fixture requires the emitted WindowManager, not the test file itself.
-  assert.equal(byFile.get("test/helpers/devRendererOrigin.test.ts").buildMain, true);
-  assert.equal(byFile.get("test/components/noteParticipantsMeetingCard.test.ts").domains.includes("calendar"), true);
-  assert.equal(byFile.get("test/helpers/settingsSelectors.test.js").domains.includes("transcription"), true);
+  const devOrigin = byFile.get("test/helpers/devRendererOrigin.test.ts");
+  assert.ok(devOrigin);
+  assert.equal(devOrigin.buildMain, true);
+  const participants = byFile.get("test/components/noteParticipantsMeetingCard.test.ts");
+  assert.ok(participants);
+  assert.equal(participants.domains.includes("calendar"), true);
+  const selectors = byFile.get("test/helpers/settingsSelectors.test.ts");
+  assert.ok(selectors);
+  assert.equal(selectors.domains.includes("transcription"), true);
 });

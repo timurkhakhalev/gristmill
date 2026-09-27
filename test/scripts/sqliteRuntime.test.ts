@@ -1,7 +1,10 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const test: typeof import("node:test") = require("node:test");
 const { ensureSqliteRuntime, probeSqlite, repairSqlite } = require("../../scripts/ensure-sqlite-runtime");
 const { runElectron } = require("../../scripts/run-electron");
+
+type SpawnCall = [binary: string, args: string[], options: { env: Record<string, string | undefined>; timeout: number }];
+type LaunchCall = [binary: string, args: string[], options: { env: Record<string, string | undefined> }];
 
 const ABI_ERROR = `The module was compiled against a different Node.js version using
 NODE_MODULE_VERSION 137. This version of Node.js requires NODE_MODULE_VERSION 145.`;
@@ -17,10 +20,10 @@ test("healthy SQLite runtime does not rebuild", async () => {
 });
 
 test("Electron probe uses the binary as Node without opening an app profile", () => {
-  const calls = [];
+  const calls: SpawnCall[] = [];
   const result = probeSqlite("electron", {
     electronBinary: () => "/electron",
-    spawn: (...args) => { calls.push(args); return { status: 0 }; },
+    spawn: (...args: SpawnCall) => { calls.push(args); return { status: 0 }; },
   });
   assert.equal(result.status, 0);
   assert.equal(calls[0][0], "/electron");
@@ -30,11 +33,12 @@ test("Electron probe uses the binary as Node without opening an app profile", ()
 });
 
 test("Electron repair targets only SQLite and ignores stale rebuild metadata", async () => {
-  let options;
+  let options: Record<string, unknown> | undefined;
   await repairSqlite("electron", {
-    loadRebuild: async () => ({ rebuild: async (value) => { options = value; } }),
+    loadRebuild: async () => ({ rebuild: async (value: Record<string, unknown>) => { options = value; } }),
     electronVersion: () => "41.10.5",
   });
+  assert.ok(options);
   assert.equal(options.electronVersion, "41.10.5");
   assert.deepEqual(options.onlyModules, ["better-sqlite3"]);
   assert.equal(options.force, true);
@@ -43,9 +47,9 @@ test("Electron repair targets only SQLite and ignores stale rebuild metadata", a
 });
 
 test("Node repair invokes the installed prebuild tool", async () => {
-  const calls = [];
+  const calls: SpawnCall[] = [];
   await repairSqlite("node", {
-    spawn: (...args) => { calls.push(args); return { status: 0 }; },
+    spawn: (...args: SpawnCall) => { calls.push(args); return { status: 0 }; },
   });
   assert.equal(calls[0][0], "pnpm");
   assert.deepEqual(calls[0][1].slice(-2), ["exec", "prebuild-install"]);
@@ -53,11 +57,11 @@ test("Node repair invokes the installed prebuild tool", async () => {
 });
 
 test("ABI mismatch repairs the requested runtime once and verifies it", async () => {
-  const calls = [];
+  const calls: string[] = [];
   const results = [{ status: 1, stderr: ABI_ERROR }, { status: 0 }];
   const changed = await ensureSqliteRuntime("node", {
-    probe: (runtime) => { calls.push(`probe:${runtime}`); return results.shift(); },
-    repair: async (runtime) => { calls.push(`repair:${runtime}`); },
+    probe: (runtime: string) => { calls.push(`probe:${runtime}`); return results.shift(); },
+    repair: async (runtime: string) => { calls.push(`repair:${runtime}`); },
     log: () => {},
   });
   assert.equal(changed, true);
@@ -88,11 +92,11 @@ test("Electron launch preserves app and CDP flags with a clean environment", asy
   const oldCdp = process.env.OPENHERCULES_DEBUG_CDP;
   process.env.ELECTRON_RUN_AS_NODE = "1";
   process.env.OPENHERCULES_DEBUG_CDP = "9222";
-  let launch;
+  let launch: LaunchCall | undefined;
   try {
     await runElectron({
       ensureRuntime: async () => false,
-      spawnProcess: (...args) => { launch = args; return {}; },
+      spawnProcess: (...args: LaunchCall) => { launch = args; return {}; },
       electronPath: "/electron",
       platform: "linux",
       args: ["--user-data-dir", "/tmp/isolated"],
@@ -103,6 +107,7 @@ test("Electron launch preserves app and CDP flags with a clean environment", asy
     if (oldCdp === undefined) delete process.env.OPENHERCULES_DEBUG_CDP;
     else process.env.OPENHERCULES_DEBUG_CDP = oldCdp;
   }
+  assert.ok(launch);
   assert.equal(launch[0], "/electron");
   assert.deepEqual(launch[1].slice(0, 2), ["--remote-debugging-port=9222", require("node:path").resolve(__dirname, "../..")]);
   assert.deepEqual(launch[1].slice(2), ["--user-data-dir", "/tmp/isolated"]);
@@ -123,15 +128,16 @@ test("macOS launch uses LaunchServices with isolated logs and preserves applicat
   const { EventEmitter } = require("node:events");
   const fs = require("node:fs");
   const child = new EventEmitter();
-  let launch;
+  let launch: [binary: string, args: string[]] | undefined;
   const before = process.listenerCount("SIGINT");
   await runElectron({
     ensureRuntime: async () => false,
-    spawnProcess: (...args) => { launch = args; return child; },
+    spawnProcess: (...args: [string, string[]]) => { launch = args; return child; },
     electronPath: "/tmp/Electron.app/Contents/MacOS/Electron",
     platform: "darwin",
     args: ["--dev", "--user-data-dir=/tmp/isolated"],
   });
+  assert.ok(launch);
   const logPath = launch[1][launch[1].indexOf("--stdout") + 1];
   try {
     assert.equal(launch[0], "/usr/bin/open");

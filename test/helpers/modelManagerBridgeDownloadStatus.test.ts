@@ -101,7 +101,7 @@ for (const outcome of ["cancel", "error", "complete"]) {
     const transferFinished = Promise.withResolvers();
     const modelManager = loadModelManager({
       checkDiskSpace: async () => ({ ok: true, availableBytes: Infinity }),
-      downloadFile: async (_url, destination, { signal, onProgress }) => {
+      downloadFile: async (_url: string, destination: string, { signal, onProgress }) => {
         signal.onAbort = () =>
           transferFinished.reject(Object.assign(new Error("cancelled"), { isAbort: true }));
         onProgress(420_000, 1_000_001);
@@ -181,7 +181,7 @@ test("the IPC registry permits distinct LLM transfers and settles them independe
   let startedCount = 0;
   const modelManager = loadModelManager({
     checkDiskSpace: async () => ({ ok: true, availableBytes: Infinity }),
-    downloadFile: async (_url, destination, { onProgress }) => {
+    downloadFile: async (_url: string, destination: string, { onProgress }) => {
       const transfer = destination.endsWith(firstModel.fileName) ? firstTransfer : secondTransfer;
       onProgress(420_000, 1_000_001);
       startedCount += 1;
@@ -315,7 +315,7 @@ test("downloadModel permits distinct local models to download concurrently", asy
     continueDownloads = resolve;
   });
   const modelManager = loadModelManager({
-    downloadFile: async (_url, destination, options: unknown) => {
+    downloadFile: async (_url: string, destination: string, options: unknown) => {
       started.push(destination);
       options.onProgress?.(1, 2);
       if (started.length === 2) releaseDownloads();
@@ -361,7 +361,7 @@ test("parallel downloads reserve their combined disk space", async (t: unknown) 
       ok: requiredBytes <= availableBytes,
       availableBytes,
     }),
-    downloadFile: async (_url, destination) => {
+    downloadFile: async (_url: string, destination: string) => {
       firstStarted();
       await firstCanFinish;
       await fs.writeFile(destination, Buffer.alloc(1_000_001));
@@ -388,7 +388,7 @@ test("cancelling an optional drafter does not complete the model download", asyn
   let downloadCount = 0;
   const modelManager = loadModelManager({
     checkDiskSpace: async () => ({ ok: true, availableBytes: Number.MAX_SAFE_INTEGER }),
-    downloadFile: async (_url, destination) => {
+    downloadFile: async (_url: string, destination: string) => {
       downloadCount += 1;
       if (downloadCount === 1) {
         await fs.writeFile(destination, Buffer.alloc(1_000_001));

@@ -9,7 +9,7 @@ const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
 function makeManager() {
   const manager = new LlamaServerManager();
   const starts: unknown[] = [];
-  manager._doStart = async (modelPath, options = {}) => {
+  manager._doStart = async (modelPath: string, options = {}) => {
     manager.ready = true;
     manager.modelPath = modelPath;
     manager.draftModelPath = options.draftModelPath || null;

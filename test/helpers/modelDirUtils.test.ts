@@ -30,7 +30,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     return require("../../src/helpers/modelDirUtils");
   }
 
-  function setPlatform(platform) {
+  function setPlatform(platform: string) {
     Object.defineProperty(process, "platform", { value: platform });
   }
 
@@ -287,7 +287,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     const originalRenameSync = fs.renameSync;
     const root = withFsOverrides(
       {
-        renameSync: (from, to) => {
+        renameSync: (from: string, to: string) => {
           if (from === legacyModels && to === redirectedModels) {
             const error = new Error("cross-volume move");
             error.code = "EXDEV";
@@ -316,7 +316,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     const originalCpSync = fs.cpSync;
     const firstResolution = withFsOverrides(
       {
-        renameSync: (from, to) => {
+        renameSync: (from: string, to: string) => {
           if (from === legacyModels && to === redirectedModels) {
             const error = new Error("cross-volume move blocked");
             error.code = "EXDEV";
@@ -324,7 +324,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
           }
           return originalRenameSync(from, to);
         },
-        cpSync: (from, to, options: unknown) => {
+        cpSync: (from: string, to: string, options: unknown) => {
           if (from === legacyModels) throw new Error("copy blocked");
           return originalCpSync(from, to, options);
         },
@@ -356,7 +356,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     const originalRmSync = fs.rmSync;
     const root = withFsOverrides(
       {
-        renameSync: (from, to) => {
+        renameSync: (from: string, to: string) => {
           if (from === legacyParakeet && to === redirectedParakeet) {
             const error = new Error("cross-volume move");
             error.code = "EXDEV";
@@ -391,7 +391,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     const originalRmSync = fs.rmSync;
     const root = withFsOverrides(
       {
-        renameSync: (from, to) => {
+        renameSync: (from: string, to: string) => {
           if (from === legacyModels && to === redirectedModels) {
             const error = new Error("cross-volume move");
             error.code = "EXDEV";

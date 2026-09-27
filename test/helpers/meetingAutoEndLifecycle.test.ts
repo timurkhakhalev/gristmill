@@ -11,7 +11,7 @@ test("stop-completion validation rejects invalid, stale, and non-owning sessions
   const owner = { id: "owner" };
   const calls: unknown[] = [];
   const engine = {
-    completeAutoEndSession: async (sessionId, sender: unknown) => {
+    completeAutoEndSession: async (sessionId: string, sender: unknown) => {
       calls.push({ sessionId, sender });
       return sessionId === "meeting-2" && sender === owner;
     },
@@ -43,7 +43,7 @@ test("overlay response validation accepts only restart or dismiss for a live off
   const overlay = { id: "overlay" };
   const calls: unknown[] = [];
   const engine = {
-    respondToAutoEndNotification: (sessionId, action, sender: unknown) => {
+    respondToAutoEndNotification: (sessionId: string, action: string, sender: unknown) => {
       calls.push({ sessionId, action, sender });
       return sessionId === "meeting-2" && action === "restart" && sender === overlay;
     },
@@ -89,11 +89,11 @@ test("main IPC resolves the current engine and scopes both actions to event.send
   );
 
   engine = {
-    completeAutoEndSession: async (sessionId, eventSender) => {
+    completeAutoEndSession: async (sessionId: string, eventSender) => {
       calls.push(["completed", sessionId, eventSender]);
       return true;
     },
-    respondToAutoEndNotification: (sessionId, action, eventSender) => {
+    respondToAutoEndNotification: (sessionId: string, action: string, eventSender) => {
       calls.push(["respond", sessionId, action, eventSender]);
       return true;
     },

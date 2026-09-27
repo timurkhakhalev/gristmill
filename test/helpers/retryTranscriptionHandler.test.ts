@@ -39,7 +39,7 @@ const electronStub = {
     removeHandler: () => {},
   },
   net: {
-    fetch: async (url: string, init) => {
+    fetch: async (url: string, init: unknown) => {
       fetches.push({ url: String(url), init });
       return fetchResponse(String(url), init);
     },
@@ -131,7 +131,7 @@ function buildExecutionDeps() {
       getCortiClientId: () => "corti-id",
       getCortiClientSecret: () => "corti-secret",
     },
-    proxyFetch: async (url: string, init) => {
+    proxyFetch: async (url: string, init: unknown) => {
       fetches.push({ url: String(url), init });
       return fetchResponse(String(url), init);
     },
@@ -204,7 +204,7 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-const invoke = (settings, id = 7) => retryHandler({ sender: {} }, id, settings);
+const invoke = (settings: unknown, id = 7) => retryHandler({ sender: {} }, id, settings);
 
 test("retry: corti routes to the corti client, never OpenAI", async () => {
   fetches.length = 0;

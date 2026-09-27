@@ -49,7 +49,7 @@ test("platform defaults to the current process platform", async () => {
   const { supportsLiveSpeakerIdentification } = await load();
   const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
 
-  const onPlatform = (platform, run: unknown) => {
+  const onPlatform = (platform: string, run: unknown) => {
     Object.defineProperty(process, "platform", { value: platform, configurable: true });
     try {
       run();

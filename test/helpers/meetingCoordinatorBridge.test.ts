@@ -51,7 +51,7 @@ function registerRealHandlers(deps) {
   }
 }
 
-function loadBundledPreload(transport) {
+function loadBundledPreload(transport: unknown) {
   let api;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
@@ -62,7 +62,7 @@ function loadBundledPreload(transport) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: unknown) => {
             api = value;
           },
         },
@@ -92,7 +92,7 @@ async function createFixture({ responses = {}, engine } = {}) {
     async handleNotificationResponse() {},
     async joinCalendarMeeting() {},
     completeAutoEndSession: async (sessionId: any) => sessionId === "meeting-1",
-    respondToAutoEndNotification: (sessionId, action) =>
+    respondToAutoEndNotification: (sessionId: string, action: string) =>
       sessionId === "meeting-1" && action === "restart",
     setMicWarmHold() {},
   };
@@ -201,7 +201,7 @@ test("command shapes cross the bundled preload and results are passed through", 
 test("capture send crosses with source and sequencing metadata and returns its write acknowledgement", async () => {
   const { api, invoked } = await createFixture({
     responses: {
-      "meeting-transcription-send": (_buffer, _source, _sessionId, packet) => ({
+      "meeting-transcription-send": (_buffer: unknown, _source, _sessionId, packet) => ({
         success: true,
         sequence: packet.sequence,
       }),

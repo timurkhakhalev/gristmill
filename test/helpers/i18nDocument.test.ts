@@ -3,7 +3,7 @@ const test = require("node:test");
 
 const load = () => import("../../src/utils/i18nDocument.ts");
 
-function createI18n(language) {
+function createI18n(language: string) {
   const listeners = new Set();
   return {
     language,

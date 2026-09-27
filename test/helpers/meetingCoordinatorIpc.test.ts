@@ -58,12 +58,12 @@ function loadCoordinator() {
   }
 }
 
-function createDatabaseFake(events) {
+function createDatabaseFake(events: unknown) {
   return {
     recordings: new Map(),
     epochs: [],
     finalized: [],
-    createMeetingRecording(noteId: unknown, input, startedAt: number, id: unknown) {
+    createMeetingRecording(noteId: unknown, input: string, startedAt: number, id: unknown) {
       events.push("recording-created");
       const recording = {
         id,
@@ -76,16 +76,16 @@ function createDatabaseFake(events) {
       this.recordings.set(id, recording);
       return recording;
     },
-    createMeetingRecordingEpoch(recordingId, source, epochIndex, startFrame) {
+    createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, startFrame: number) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },
-    updateMeetingRecordingEpochRecovery(recordingId, source, epochIndex, result: unknown) {
+    updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: unknown) {
       Object.assign(this.epochs.find((item) => item.recordingId === recordingId && item.source === source && item.epochIndex === epochIndex), result);
     },
-    markMeetingRecordingFinalizing(recordingId) {
+    markMeetingRecordingFinalizing(recordingId: string) {
       this.recordings.get(recordingId).captureState = "finalizing";
     },
-    finalizeMeetingRecording(recordingId, input) {
+    finalizeMeetingRecording(recordingId: string, input: string) {
       this.finalized.push({ recordingId, input });
       const recording = this.recordings.get(recordingId);
       recording.captureState = input.captureState;
@@ -102,22 +102,22 @@ function createDatabaseFake(events) {
   };
 }
 
-function createStorageFake(events, { failWrite = false } = {}) {
+function createStorageFake(events: unknown, { failWrite = false } = {}) {
   return {
     files: new Map(),
-    openEpochWriter(recordingId, source, epochIndex) {
+    openEpochWriter(recordingId: string, source: string, epochIndex: number) {
       this.files.set(`${recordingId}:${source}:${epochIndex}`, []);
     },
-    appendEpochSamples(recordingId, source, epochIndex, samples) {
+    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: unknown) {
       if (failWrite) throw new Error("disk full");
       events.push("pcm-written");
       this.files.get(`${recordingId}:${source}:${epochIndex}`).push(Buffer.from(samples));
     },
     closeEpochWriter() {},
-    recoverEpoch(recordingId, source, epochIndex) {
+    recoverEpoch(recordingId: string, source: string, epochIndex: number) {
       const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`) ?? [];
       return {
-        frameCount: buffers.reduce((total, buffer) => total + buffer.length / 2, 0),
+        frameCount: buffers.reduce((total: number, buffer: unknown) => total + buffer.length / 2, 0),
         ignoredTrailingBytes: 0,
         errorCode: null,
       };
@@ -129,7 +129,7 @@ function createEngineFake() {
   return {
     activeSessionId: null,
     async beginRecordingSession({ sessionId }) { this.activeSessionId = sessionId; },
-    endRecordingSession(sessionId) {
+    endRecordingSession(sessionId: string) {
       if (this.activeSessionId !== sessionId) return false;
       this.activeSessionId = null;
       return true;
@@ -137,7 +137,7 @@ function createEngineFake() {
     setUserRecording() {},
     setMicWarmHold() {},
     recordMeetingAudioChunk() {},
-    async setRecordingSystemAudioAvailable(sessionId) { return this.activeSessionId === sessionId; },
+    async setRecordingSystemAudioAvailable(sessionId: string) { return this.activeSessionId === sessionId; },
     getPreferences: () => ({ processDetection: true, audioDetection: true }),
     setPreferences() {},
     async handleNotificationResponse() {},

@@ -263,7 +263,7 @@ test("Whisper emits a complete event after validating the downloaded model", asy
       return {
         ...downloadUtils,
         checkDiskSpace: async () => ({ ok: true, availableBytes: Infinity }),
-        downloadFile: async (_url, destination, options: unknown) => {
+        downloadFile: async (_url: string, destination: string, options: unknown) => {
           await fs.writeFile(destination, Buffer.alloc(16));
           options.onProgress?.(16, 16);
           return destination;

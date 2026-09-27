@@ -122,7 +122,7 @@ function requestPath(redirectUri, path: string) {
   });
 }
 
-async function parkPartialRequest(redirectUri, server) {
+async function parkPartialRequest(redirectUri, server: unknown) {
   const { hostname, port } = new URL(redirectUri);
   let response = "";
   let responseStatus: any;

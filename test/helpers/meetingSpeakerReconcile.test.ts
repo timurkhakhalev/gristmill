@@ -63,10 +63,10 @@ function createMappingRecorder(existingMappings) {
   const calls = { set: [], remove: [] };
   const databaseManager = {
     getSpeakerMappings: () => existingMappings,
-    setSpeakerMapping: (noteId: unknown, speakerId, profileId, displayName) => {
+    setSpeakerMapping: (noteId: unknown, speakerId: string, profileId: string, displayName) => {
       calls.set.push({ noteId, speakerId, profileId, displayName });
     },
-    removeSpeakerMapping: (noteId: unknown, speakerId) => {
+    removeSpeakerMapping: (noteId: unknown, speakerId: string) => {
       calls.remove.push({ noteId, speakerId });
     },
   };

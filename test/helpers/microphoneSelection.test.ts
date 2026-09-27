@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const mic = (deviceId, label: string) => ({ kind: "audioinput", deviceId, label });
+const mic = (deviceId: string, label: string) => ({ kind: "audioinput", deviceId, label });
 
 test("system mode maps the native default name to an exact Chromium input", async () => {
   const { resolveMicrophoneSelection } = await import("../../src/helpers/microphoneSelection.ts");

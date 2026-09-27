@@ -54,12 +54,12 @@ function embedding(values) {
   return Buffer.from(new Float32Array(values).buffer);
 }
 
-async function runRetroactive(db, profile) {
+async function runRetroactive(db: any, profile) {
   Ctor.prototype._retroactiveMapping.call({ databaseManager: db }, profile);
   await new Promise((resolve) => setImmediate(() => setTimeout(resolve, 0)));
 }
 
-function unmappedNote(db, transcriptSegments, embeddingValues, speakerId = "SPEAKER_00") {
+function unmappedNote(db: any, transcriptSegments, embeddingValues, speakerId = "SPEAKER_00") {
   const { note } = db.saveNote("Meeting", "content");
   db.setSpeakerMapping(note.id, speakerId, null, speakerId);
   if (transcriptSegments) {

@@ -89,7 +89,7 @@ function feedReference(detector, reference, startMs = 0) {
 
 // Mic chunk that "hears" the reference `delayMs` late: the reference slice that
 // ends `delayMs` before the window end.
-function delayedReferenceSlice(reference, delayMs, gain) {
+function delayedReferenceSlice(reference, delayMs, gain: number) {
   const delaySamples = Math.round((delayMs / 1000) * 24000);
   const end = reference.length - delaySamples;
   return fx.scale(reference.subarray(end - CHUNK, end), gain);

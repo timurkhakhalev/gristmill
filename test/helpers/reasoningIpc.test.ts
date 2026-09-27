@@ -167,7 +167,7 @@ test("anthropic one-shot: key check, screenContext, complete-output and error di
   const fetches: unknown[] = [];
   const ctx = setup({
     deps: {
-      proxyFetch: async (url: string, init) => {
+      proxyFetch: async (url: string, init: unknown) => {
         fetches.push({ url, init });
         return {
           ok: true,

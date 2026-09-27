@@ -38,7 +38,7 @@ const AUDIO = {
 
 test("posts to the attested transcriptions path with the registry's batch model", async () => {
   const calls: unknown[] = [];
-  const { transcribeWithTinfoil } = loadTranscription(async (path: string, init) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (path: string, init: unknown) => {
     calls.push({ path, init });
     return okResponse("hello world");
   });
@@ -59,7 +59,7 @@ test("posts to the attested transcriptions path with the registry's batch model"
 
 test("never sends the realtime model, which only serves /v1/realtime", async () => {
   let sentModel;
-  const { transcribeWithTinfoil } = loadTranscription(async (_path, init) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: unknown) => {
     sentModel = init.body.get("model");
     return okResponse("x");
   });
@@ -71,7 +71,7 @@ test("never sends the realtime model, which only serves /v1/realtime", async () 
 
 test("omits language when auto-detecting", async () => {
   let form;
-  const { transcribeWithTinfoil } = loadTranscription(async (_path, init) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: unknown) => {
     form = init.body;
     return okResponse("x");
   });
@@ -136,7 +136,7 @@ test("429 surfaces as PROVIDER_RATE_LIMITED, 5xx as SERVER_ERROR", async () => {
 
 test("forwards the dictionary prompt, and omits it when blank", async () => {
   let form;
-  const { transcribeWithTinfoil } = loadTranscription(async (_path, init) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: unknown) => {
     form = init.body;
     return okResponse("x");
   });

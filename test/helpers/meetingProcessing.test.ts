@@ -37,7 +37,7 @@ const elevenResponse = {
   ],
 };
 
-function createFinishedRecording(db, storage, config = validConfig, noteText = "") {
+function createFinishedRecording(db: any, storage: unknown, config = validConfig, noteText = "") {
   const note = db.saveNote("Meeting", noteText, "meeting").note;
   const recording = db.createMeetingRecording(note.id, { config });
   db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
@@ -54,12 +54,12 @@ function createFinishedRecording(db, storage, config = validConfig, noteText = "
   return { note, recording: finalized.recording, run: finalized.initialRun };
 }
 
-function workerFor(db, storage, overrides = {}) {
+function workerFor(db: any, storage: unknown, overrides = {}) {
   const deps = {
     database: db,
     storage,
     isCaptureActive: () => false,
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       await saveRaw(elevenResponse);
       return { success: true, text: "parsed by adapter" };
     },
@@ -67,7 +67,7 @@ function workerFor(db, storage, overrides = {}) {
     diarizeLocal: async () => [],
     summarize: async () => "## Summary\n- A useful result.",
     getCredential: () => "test-key",
-    mixAudio: async (recording, runId) => ({
+    mixAudio: async (recording, runId: string) => ({
       path: storage.getDerivedAudioPath(recording.id, runId),
       frameCount: 24_000,
       durationSeconds: 1,
@@ -98,11 +98,11 @@ test("paused audio parts produce one persisted whole-meeting run and one ASR req
   let asrCalls = 0;
   let mixed;
   const worker = workerFor(db, storage, {
-    mixAudio: async (recording, runId, epochs) => {
+    mixAudio: async (recording, runId: string, epochs) => {
       mixed = { recording, epochs };
       return { path: storage.getDerivedAudioPath(recording.id, runId), frameCount: 48_000, durationSeconds: 2, sizeBytes: 4096 };
     },
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       asrCalls++;
       await saveRaw(elevenResponse);
       return { success: true, text: "Hello." };
@@ -134,7 +134,7 @@ test("waits for retention and capture to finish, then persists the response, tra
   let summaryInput = "";
   const worker = workerFor(db, storage, {
     isCaptureActive: () => capturing,
-    transcribeRemote: async (request: string, saveRaw) => {
+    transcribeRemote: async (request: string, saveRaw: unknown) => {
       transcribeCalls += 1;
       assert.equal(request.provider, "elevenlabs");
       assert.equal(request.model, "scribe_v2");
@@ -195,7 +195,7 @@ test("OpenAI meeting route persists diarized raw response and finishes transcrip
     segments: [{ type: "transcript.text.segment", speaker: "A", text: "Hello.", start: 0.1, end: 0.5 }],
   };
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (request: string, saveRaw) => {
+    transcribeRemote: async (request: string, saveRaw: unknown) => {
       assert.equal(request.provider, "openai");
       assert.equal(request.model, "gpt-4o-mini-transcribe");
       assert.equal(request.diarize, true);
@@ -227,7 +227,7 @@ test("OpenAI text without speaker segments remains visible as a failed run", asy
   });
   const raw = { text: "Speech was recognized.", segments: [] };
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       await saveRaw(raw);
       return { success: true, text: raw.text };
     },
@@ -250,7 +250,7 @@ test("a bad provider response stays saved and retry re-enters normalize without 
   const { run } = createFinishedRecording(db, storage);
   let transcribeCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       transcribeCalls += 1;
       await saveRaw({ malformed: true });
       return { success: true, text: "the parser result is ignored" };
@@ -278,7 +278,7 @@ test("a valid empty transcript completes without generating a summary", async (t
   const { run } = createFinishedRecording(db, storage);
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       await saveRaw({ text: "" });
       return { success: true, text: "" };
     },
@@ -377,7 +377,7 @@ test("main corrects summary-only configuration and resumes from saved artifacts 
   let transcribeCalls = 0;
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       transcribeCalls += 1;
       await saveRaw(elevenResponse);
       return { success: true, text: "adapter output is not the saved source" };
@@ -442,7 +442,7 @@ test("viewing old transcript leaves a pending current run and Note projection in
   let response = elevenResponse;
   let transcribeCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       transcribeCalls += 1;
       await saveRaw(response);
       return { success: true, text: "ignored adapter projection" };
@@ -485,7 +485,7 @@ test("viewing old transcript leaves a pending current run and Note projection in
     words: [{ type: "word", text: "New saved transcript", start: 0, end: 0.8, speaker_id: "speaker_0" }],
   };
   const resumedWorker = workerFor(db, storage, {
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       transcribeCalls += 1;
       await saveRaw(response);
       return { success: true, text: "ignored adapter projection" };
@@ -574,7 +574,7 @@ test("summary retry preserves the transcript and does not repeat ASR", async (t:
   let transcribeCalls = 0;
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       transcribeCalls += 1;
       await saveRaw(elevenResponse);
       return { success: true, text: "ignored adapter projection" };
@@ -616,14 +616,14 @@ test("local meeting transcription uses post-Stop diarization and speaker-text me
   let localCalls = 0;
   let diarizationCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeLocal: async (_path, options: unknown) => {
+    transcribeLocal: async (_path: string, options: unknown) => {
       localCalls += 1;
       assert.equal(options.provider, "whisper");
       assert.equal(options.model, "base");
       assert.ok(options.signal instanceof AbortSignal);
       return { success: true, text: "We agreed. Next action." };
     },
-    diarizeLocal: async (_path, options: unknown) => {
+    diarizeLocal: async (_path: string, options: unknown) => {
       diarizationCalls += 1;
       assert.equal(options.durationSeconds, 1);
       return [
@@ -662,7 +662,7 @@ test("new capture lets an issued remote request save raw but defers normalize an
   const requestResult = new Promise((resolve) => { finishRequest = resolve; });
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       started();
       await requestResult;
       await saveRaw(elevenResponse);
@@ -790,7 +790,7 @@ test("a bb summary resumes its saved thread after process restart without repeat
   let agentCalls = 0;
   const worker = workerFor(db, storage, {
     transcribeRemote: async () => { asrCalls++; throw new Error("ASR must not repeat"); },
-    summarizeAgent: async (input, summaryConfig, savedRun) => {
+    summarizeAgent: async (input: string, summaryConfig, savedRun) => {
       agentCalls++;
       assert.match(input, /Saved transcript/);
       assert.equal(summaryConfig.agentProvider, "codex");
@@ -817,7 +817,7 @@ test("a missing provider key blocks the saved route and a later key repairs that
   let requests = 0;
   const worker = workerFor(db, storage, {
     getCredential: () => key,
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       requests += 1;
       await saveRaw(elevenResponse);
       return { success: true };
@@ -865,13 +865,13 @@ test("provider size limits block only that run and another provider keeps its ow
   const { recording, run: deepgramRun } = createFinishedRecording(db, storage, deepgramConfig);
   let requests = 0;
   const worker = workerFor(db, storage, {
-    mixAudio: async (recordingValue, runId) => ({
+    mixAudio: async (recordingValue, runId: string) => ({
       path: storage.getDerivedAudioPath(recordingValue.id, runId),
       frameCount: 24_000,
       durationSeconds: 1,
       sizeBytes: 2 * 1024 * 1024 * 1024 + 1,
     }),
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       requests += 1;
       await saveRaw(elevenResponse);
       return { success: true };
@@ -969,7 +969,7 @@ test("a late HTTP result cannot publish after durable audio deletion starts", as
   let finishRequest;
   const requestResult = new Promise((resolve) => { finishRequest = resolve; });
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request, saveRaw) => {
+    transcribeRemote: async (_request: unknown, saveRaw: unknown) => {
       started();
       await requestResult;
       await saveRaw(elevenResponse);
@@ -1005,7 +1005,7 @@ test("recovery marks an in-flight ASR outcome unknown and counts its possible re
   assert.equal(recovered.retryCount, 1);
 });
 
-function writePcmWav(filePath: string, frames) {
+function writePcmWav(filePath: string, frames: unknown) {
   const dataBytes = frames * 2;
   const wav = Buffer.alloc(44 + dataBytes);
   wav.write("RIFF", 0);

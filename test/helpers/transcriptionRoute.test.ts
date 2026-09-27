@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/transcriptionRoute.ts");
 
-const resolve = async (settings, extra = {}) => {
+const resolve = async (settings: unknown, extra = {}) => {
   const { resolveTranscriptionRoute } = await load();
   return resolveTranscriptionRoute({ settings, ...extra });
 };

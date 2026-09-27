@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/micDeviceSelection.ts");
 
-const mic = (deviceId, label: string) => ({ kind: "audioinput", deviceId, label });
+const mic = (deviceId: string, label: string) => ({ kind: "audioinput", deviceId, label });
 
 test("uses the saved device ID while it is still available", async () => {
   const { resolveMicDeviceSelection } = await load();

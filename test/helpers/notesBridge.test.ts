@@ -60,7 +60,7 @@ function isNativeBindingUnavailable(error: unknown) {
   );
 }
 
-function loadBundledPreload(invoke) {
+function loadBundledPreload(invoke: unknown) {
   // A channel can have several listeners (Electron supports that); keep arrays.
   const listeners = new Map();
   let api;
@@ -73,7 +73,7 @@ function loadBundledPreload(invoke) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: unknown) => {
             api = value;
           },
         },

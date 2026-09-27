@@ -35,7 +35,7 @@ test("isPrivateIp covers private, mapped, NAT64 and public addresses", () => {
 
 test("ssrfSafeLookup rejects private entries in an all-address lookup", async () => {
   const original = dns.lookup;
-  dns.lookup = (_host, _options, callback: unknown) =>
+  dns.lookup = (_host: string, _options: unknown, callback: unknown) =>
     callback(null, [{ address: "93.184.216.34", family: 4 }, { address: "10.0.0.1", family: 4 }]);
   try {
     await new Promise((resolve, reject) => {
@@ -55,7 +55,7 @@ test("ssrfSafeLookup rejects private entries in an all-address lookup", async ()
 
 test("ssrfSafeLookup rejects a private address in the legacy single-address form", async () => {
   const original = dns.lookup;
-  dns.lookup = (_host, _options, callback: unknown) => callback(null, "127.0.0.1", 4);
+  dns.lookup = (_host: string, _options: unknown, callback: unknown) => callback(null, "127.0.0.1", 4);
   try {
     await new Promise((resolve, reject) => {
       downloader.ssrfSafeLookup("example.com", {}, (error: unknown) => {
@@ -78,7 +78,7 @@ test("ssrfSafeLookup forwards an all-public lookup unchanged", async () => {
     { address: "93.184.216.34", family: 4 },
     { address: "2606:2800:220:1:248:1893:25c8:1946", family: 6 },
   ];
-  dns.lookup = (_host, _options, callback: unknown) => callback(null, addresses);
+  dns.lookup = (_host: string, _options: unknown, callback: unknown) => callback(null, addresses);
   try {
     await new Promise((resolve, reject) => {
       downloader.ssrfSafeLookup("example.com", { all: true }, (error: unknown, value: unknown) => {
@@ -112,7 +112,7 @@ function makeResponse(body: unknown, headers = {}) {
 test("download streams a validated direct HTTPS response to a temp file", async () => {
   const original = https.request;
   const calls: unknown[] = [];
-  https.request = (parsed, options: unknown, callback: unknown) => {
+  https.request = (parsed: unknown, options: unknown, callback: unknown) => {
     calls.push(options.method);
     const request = new EventEmitter();
     request.end = () => setImmediate(() => callback(options.method === "HEAD" ? makeResponse("") : makeResponse("audio")));
@@ -144,7 +144,7 @@ function makeDirectResponse({ statusCode = 200, headers = {}, body = null } = {}
 async function withFakeHttps(handler: unknown, callback: unknown) {
   const original = https.request;
   const calls: unknown[] = [];
-  https.request = (parsed, options: unknown, responseCallback) => {
+  https.request = (parsed: unknown, options: unknown, responseCallback) => {
     calls.push({ method: options.method, url: parsed.href });
     const request = new EventEmitter();
     request.destroy = () => {};

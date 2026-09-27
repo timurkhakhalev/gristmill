@@ -9,7 +9,7 @@ let currentSettings: unknown = null;
 async function loadRecovery() {
   delete require.cache[recoveryModulePath];
   const settings = {
-    setSelectedMicDevice(deviceId, label: string) {
+    setSelectedMicDevice(deviceId: string, label: string) {
       settings.saved = { deviceId, label };
     },
     saved: null,

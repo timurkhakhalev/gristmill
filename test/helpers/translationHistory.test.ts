@@ -46,7 +46,7 @@ function createDb(t: unknown) {
   }
 }
 
-function findById(rows, id: unknown) {
+function findById(rows: unknown, id: unknown) {
   return rows.find((row: unknown) => row.id === id) || null;
 }
 

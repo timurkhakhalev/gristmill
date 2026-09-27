@@ -13,7 +13,7 @@ const { createMeetingAudioOperationRegistry } = require("../../src/helpers/meeti
 const DAY = 86_400_000;
 const config = { transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "en" } };
 
-function createFinishedRecording(db, storage, anchor, ageDays) {
+function createFinishedRecording(db: any, storage: unknown, anchor, ageDays) {
   const note = db.saveNote("Retention test", "Manual note stays", "meeting").note;
   const startedAt = new Date(anchor - (ageDays + 1) * DAY).toISOString();
   const recording = db.createMeetingRecording(note.id, { config }, startedAt);
@@ -31,14 +31,14 @@ function createFinishedRecording(db, storage, anchor, ageDays) {
   return { note, recording: finalized.recording, initialRun: finalized.initialRun };
 }
 
-function storeTranscript(db, storage, run: unknown, text: string) {
+function storeTranscript(db: any, storage: unknown, run: unknown, text: string) {
   storage.writeRunArtifact(run.id, "provider-response", { runId: run.id });
   assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
   storage.writeRunArtifact(run.id, "transcript", { text });
   assert.equal(db.setMeetingRunArtifact(run.id, "transcript").success, true);
 }
 
-function runCleanup(db, storage, settings, overrides = {}) {
+function runCleanup(db: any, storage: unknown, settings: unknown, overrides = {}) {
   const context = {
     databaseManager: db,
     audioStorageManager: {
@@ -56,7 +56,7 @@ function runCleanup(db, storage, settings, overrides = {}) {
   return IPCHandlers.prototype._runRetentionCleanup.call(context);
 }
 
-function holdAudioOperation(registry, recordingId) {
+function holdAudioOperation(registry, recordingId: string) {
   let start: any;
   const started = new Promise((resolve) => { start = resolve; });
   let closed = false;

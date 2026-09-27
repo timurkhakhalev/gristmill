@@ -8,7 +8,7 @@ const { getRequiredModelFiles } = require("../../src/helpers/parakeetModelInfo")
 
 const MODEL_NAME = "parakeet-tdt-0.6b-v3";
 
-function createFloat32Wav(sampleValue, sampleCount = 160) {
+function createFloat32Wav(sampleValue: number, sampleCount = 160) {
   const dataSize = sampleCount * 4;
   const wav = Buffer.alloc(44 + dataSize);
 
@@ -33,7 +33,7 @@ function createFloat32Wav(sampleValue, sampleCount = 160) {
   return wav;
 }
 
-function createPcm16Wav(sampleValue, sampleCount = 160) {
+function createPcm16Wav(sampleValue: number, sampleCount = 160) {
   const dataSize = sampleCount * 2;
   const wav = Buffer.alloc(44 + dataSize);
 

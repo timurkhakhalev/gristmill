@@ -135,7 +135,7 @@ test("a caller's contextSize reaches the server start (regression: it was droppe
   const { bridge, modelId, serverManager } = await setupChain(t, () => completion("stop", "ok"));
 
   const started: unknown[] = [];
-  serverManager._doStart = async (modelPath, options = {}) => {
+  serverManager._doStart = async (modelPath: string, options = {}) => {
     started.push(options.contextSize);
     serverManager.ready = true;
     serverManager.process = {};

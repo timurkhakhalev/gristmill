@@ -17,7 +17,7 @@ function createHarness(overrides = {}) {
     modelManager: {
       getModelsWithStatus: async () => [],
       isModelDownloaded: async () => false,
-      downloadModel: async (modelId, onProgress) => {
+      downloadModel: async (modelId: string, onProgress: unknown) => {
         onProgress(50, 5, 10);
         return `/models/${modelId}.gguf`;
       },
@@ -51,16 +51,16 @@ function createHarness(overrides = {}) {
       ...overrides.llamaCppInstaller,
     },
     downloadStatus: {
-      has: (type, id: unknown) => active.has(`${type}:${id}`),
-      start: (type, id: unknown) => {
+      has: (type: string, id: unknown) => active.has(`${type}:${id}`),
+      start: (type: string, id: unknown) => {
         active.set(`${type}:${id}`, true);
       },
-      update: (type, id: unknown, updates) => {
+      update: (type: string, id: unknown, updates: unknown) => {
         const current = { progress: 0, downloadedBytes: 0, totalBytes: 0, ...active.get(`${type}:${id}`), ...updates };
         active.set(`${type}:${id}`, current);
         return { modelType: type, modelId: id, phase: "downloading", sequence: 3, ...current };
       },
-      finish: (type, id: unknown) => {
+      finish: (type: string, id: unknown) => {
         if (!active.has(`${type}:${id}`)) return null;
         const current = active.get(`${type}:${id}`);
         active.delete(`${type}:${id}`);
@@ -77,7 +77,7 @@ function createHarness(overrides = {}) {
     ...overrides.deps,
   };
 
-  registerLocalLlmModelHandlers({ handle: (c, fn: unknown) => handlers.set(c, fn) }, deps);
+  registerLocalLlmModelHandlers({ handle: (c: unknown, fn: unknown) => handlers.set(c, fn) }, deps);
   const invoke = (channel: string, ...args) => handlers.get(channel)({}, ...args);
   return { handlers, invoke, sent, calls };
 }
@@ -230,12 +230,12 @@ test("progress sequences come from the shared tracker", async () => {
   const sent: unknown[] = [];
   const handlers = new Map();
   registerLocalLlmModelHandlers(
-    { handle: (c, fn: unknown) => handlers.set(c, fn) },
+    { handle: (c: unknown, fn: unknown) => handlers.set(c, fn) },
     {
       modelManager: {
         getModelsWithStatus: async () => [],
         isModelDownloaded: async () => false,
-        downloadModel: async (modelId, onProgress) => {
+        downloadModel: async (modelId: string, onProgress: unknown) => {
           onProgress(10, 1, 10);
           return "/models/x.gguf";
         },

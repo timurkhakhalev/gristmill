@@ -44,8 +44,8 @@ test("auto-end stop requests acknowledge only a completed scoped stop", async ()
     requestedSessions.push(sessionId);
     return { stopped: sessionId === "meeting-2" };
   };
-  const onStopped = (sessionId, stopped) => completedSessions.push({ sessionId, stopped });
-  const onError = (error: unknown, sessionId) => errors.push({ error, sessionId });
+  const onStopped = (sessionId: string, stopped) => completedSessions.push({ sessionId, stopped });
+  const onError = (error: unknown, sessionId: string) => errors.push({ error, sessionId });
 
   assert.equal(
     requestMeetingRecordingAutoEnd(

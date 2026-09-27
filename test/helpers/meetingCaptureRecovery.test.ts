@@ -23,17 +23,17 @@ function createCaptureFakes({ failWrite = false } = {}) {
       this.recordings.push(recording);
       return recording;
     },
-    createMeetingRecordingEpoch(recordingId, source, epochIndex, startFrame) {
+    createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, startFrame: number) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },
-    updateMeetingRecordingEpochRecovery(recordingId, source, epochIndex, result: unknown) {
+    updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: unknown) {
       this.recoveries.push({ recordingId, source, epochIndex, ...result });
     },
-    markMeetingRecordingFinalizing(recordingId) {
+    markMeetingRecordingFinalizing(recordingId: string) {
       const recording = this.recordings.find((item) => item.id === recordingId);
       recording.captureState = "finalizing";
     },
-    finalizeMeetingRecording(recordingId, input) {
+    finalizeMeetingRecording(recordingId: string, input: string) {
       this.finalizations.push({ recordingId, input });
       const recording = this.recordings.find((item) => item.id === recordingId);
       recording.captureState = input.captureState;
@@ -43,18 +43,18 @@ function createCaptureFakes({ failWrite = false } = {}) {
   };
   const storage = {
     files: new Map(),
-    openEpochWriter(recordingId, source, epochIndex) {
+    openEpochWriter(recordingId: string, source: string, epochIndex: number) {
       this.files.set(`${recordingId}:${source}:${epochIndex}`, []);
     },
-    appendEpochSamples(recordingId, source, epochIndex, samples) {
+    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: unknown) {
       if (failWrite) throw new Error("disk full");
       this.files.get(`${recordingId}:${source}:${epochIndex}`).push(Buffer.from(samples));
     },
     closeEpochWriter() {},
-    recoverEpoch(recordingId, source, epochIndex) {
+    recoverEpoch(recordingId: string, source: string, epochIndex: number) {
       const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`) ?? [];
       return {
-        frameCount: buffers.reduce((total, buffer) => total + buffer.length / 2, 0),
+        frameCount: buffers.reduce((total: number, buffer: unknown) => total + buffer.length / 2, 0),
         ignoredTrailingBytes: 0,
         errorCode: null,
       };
@@ -63,7 +63,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
   return { database, storage };
 }
 
-const packet = (epochIndex, epochStartFrame, sequence, sampleOffset) => ({
+const packet = (epochIndex: number, epochStartFrame, sequence, sampleOffset: number) => ({
   epochIndex,
   epochStartFrame,
   sequence,
@@ -182,7 +182,7 @@ test("main-owned native system audio drains without a renderer sequence", async 
   assert.equal(result.captureState, "ready");
   const nativeChunks = storage.files.get(`${RECORDING_ID}:system:0`);
   assert.equal(nativeChunks.length, 10);
-  assert.equal(nativeChunks.reduce((total, chunk: unknown) => total + chunk.length, 0), 48_000);
+  assert.equal(nativeChunks.reduce((total: number, chunk: unknown) => total + chunk.length, 0), 48_000);
   assert.equal(nativeChunks.every((chunk: unknown) => chunk.length <= 4_800), true);
   assert.equal(database.finalizations.length, 1);
 });

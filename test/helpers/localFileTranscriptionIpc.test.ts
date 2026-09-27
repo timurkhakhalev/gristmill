@@ -79,7 +79,7 @@ function setup({ whisper, parakeet } = {}) {
 
 test("happy path: whisper dispatch with VAD merge, result validated", async () => {
   const { call, calls } = setup({
-    whisper: (_buffer, options: unknown) => ({ success: true, text: "hello", model: options.model }),
+    whisper: (_buffer: unknown, options: unknown) => ({ success: true, text: "hello", model: options.model }),
   });
   const result = await call(audioFile, { model: "base", language: "en", requestId: "r1" });
   assert.equal(result.success, true);
@@ -95,7 +95,7 @@ test("happy path: whisper dispatch with VAD merge, result validated", async () =
 test("nvidia/cohere dispatch to sherpa, with a signal only when requestId is present", async () => {
   for (const provider of ["nvidia", "cohere"]) {
     const { call, calls } = setup({
-      parakeet: (_buffer, options: unknown) => ({ success: true, text: options.model }),
+      parakeet: (_buffer: unknown, options: unknown) => ({ success: true, text: options.model }),
     });
     const result = await call(audioFile, { provider, model: "parakeet-tdt-0.6b-v3" });
     assert.deepEqual(result, { success: true, text: "parakeet-tdt-0.6b-v3" });
@@ -201,7 +201,7 @@ test("abort maps to the cancelled shape and release always runs", async () => {
 test("shared registry cancels a pending real handler and leaves no registration", async () => {
   let signal: any;
   const { call, registry } = setup({
-    whisper: (_buffer, options: unknown) => {
+    whisper: (_buffer: unknown, options: unknown) => {
       signal = options.signal;
       return new Promise((_resolve, reject) => {
         signal.addEventListener("abort", () => reject(Object.assign(new Error("cancelled"), { name: "AbortError" })));

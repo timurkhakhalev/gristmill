@@ -8,7 +8,7 @@ const SEGMENT_BYTES = 15 * SAMPLE_RATE * 4; // float32, mirrors MAX_SEGMENT_SECO
 
 // Minimal 16kHz mono 16-bit WAV so _ensureWav uses the buffer as-is (no FFmpeg).
 function wavFromSeconds(spans) {
-  const totalSamples = spans.reduce((sum, span) => sum + span.seconds * SAMPLE_RATE, 0);
+  const totalSamples = spans.reduce((sum: number, span) => sum + span.seconds * SAMPLE_RATE, 0);
   const dataSize = totalSamples * 2;
   const buf = Buffer.alloc(44 + dataSize);
   buf.write("RIFF", 0);

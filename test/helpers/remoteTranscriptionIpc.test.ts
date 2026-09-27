@@ -27,7 +27,7 @@ function makeTransport({ statusCode = 200, data = { text: "transcribed" } } = {}
   const calls: unknown[] = [];
   return {
     calls,
-    postMultipart: async (url: string, body: unknown, boundary, headers, options: unknown) => {
+    postMultipart: async (url: string, body: unknown, boundary, headers: unknown, options: unknown) => {
       calls.push({ url: String(url), body, boundary, headers, options });
       return { statusCode, data };
     },
@@ -703,7 +703,7 @@ test("invalid payloads are rejected before path resolution, read or network", as
 test("hard cancel aborts the in-flight transport and reports UPLOAD_CANCELLED", async () => {
   const { call, registry } = setup({
     transport: {
-      postMultipart: (url: string, body: unknown, boundary, headers, options: unknown) =>
+      postMultipart: (url: string, body: unknown, boundary, headers: unknown, options: unknown) =>
         new Promise((_resolve, reject) => {
           options.signal.addEventListener("abort", () => {
             const error = new Error("The operation was aborted");

@@ -21,7 +21,7 @@ function makeFakeSocket(readyState) {
   return socket;
 }
 
-async function connectDirect(streaming, socket: unknown) {
+async function connectDirect(streaming: unknown, socket: unknown) {
   const connected = streaming.connect({
     apiKey: "key",
     createSocket: async () => socket,
@@ -33,10 +33,10 @@ async function connectDirect(streaming, socket: unknown) {
   await connected;
 }
 
-const sentEvents = (socket: unknown, type) =>
+const sentEvents = (socket: unknown, type: string) =>
   socket.sent.map((raw: any) => JSON.parse(raw)).filter((e: unknown) => e.type === type);
 
-async function connectByok(streaming, socket: unknown, options: unknown) {
+async function connectByok(streaming: unknown, socket: unknown, options: unknown) {
   const connected = streaming.connect({
     apiKey: "sk-test",
     createSocket: async () => socket,

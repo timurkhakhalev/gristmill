@@ -33,7 +33,7 @@ function makeRecordingFactory(socket: unknown) {
   };
 }
 
-function sentEvents(socket: unknown, type) {
+function sentEvents(socket: unknown, type: string) {
   return socket.sent.map((raw: any) => JSON.parse(raw)).filter((event: unknown) => event.type === type);
 }
 
@@ -64,7 +64,7 @@ async function makeConnected() {
   return streaming;
 }
 
-async function finishConnect(streaming, socket: unknown, preconfigured = false) {
+async function finishConnect(streaming: unknown, socket: unknown, preconfigured = false) {
   await new Promise((resolve) => setImmediate(resolve));
   socket.readyState = WS.OPEN;
   socket.emit("message", JSON.stringify({ type: "session.created" }));

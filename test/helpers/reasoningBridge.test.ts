@@ -46,7 +46,7 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function loadBundledPreload(transport) {
+function loadBundledPreload(transport: unknown) {
   let api;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
@@ -57,7 +57,7 @@ function loadBundledPreload(transport) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: unknown) => {
             api = value;
           },
         },

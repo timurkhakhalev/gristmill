@@ -7,7 +7,7 @@ const Module = require("node:module");
 
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
-function installNavigatorLanguage(t: unknown, language) {
+function installNavigatorLanguage(t: unknown, language: string) {
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,

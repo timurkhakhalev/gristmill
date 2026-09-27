@@ -23,7 +23,7 @@ function loadPreloadApi() {
   };
   const electron = {
     contextBridge: {
-      exposeInMainWorld: (_name, api) => {
+      exposeInMainWorld: (_name: string, api) => {
         exposedApi = api;
       },
     },

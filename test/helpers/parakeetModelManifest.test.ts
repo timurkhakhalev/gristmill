@@ -93,7 +93,7 @@ function setup(t: unknown, options = {}) {
       checkDiskSpace: async () => ({ ok: true }),
       // Mirrors the real helper's contract (test/helpers/downloadUtils.test.js):
       // non-2xx rejects, otherwise the parsed body comes back.
-      async fetchJson(url: string, init) {
+      async fetchJson(url: string, init: unknown) {
         calls.manifests.push({ url, init });
         calls.events.push("manifest");
         const response = options.fetch ? await options.fetch(url, init) : Response.json(manifest);
@@ -142,7 +142,7 @@ function setup(t: unknown, options = {}) {
   }
   const manager = new ParakeetManager();
   let extracts = 0;
-  manager._runTarExtract = async (_archive, destination) => {
+  manager._runTarExtract = async (_archive, destination: string) => {
     extracts++;
     if (options.extractionError || (options.retryExtraction && extracts === 1))
       throw new Error("bad archive");
@@ -265,7 +265,7 @@ test(
   { timeout: 2000 },
   async (t: unknown) => {
     const h = setup(t, {
-      fetch: (_url, { signal }) =>
+      fetch: (_url: string, { signal }) =>
         new Promise((_resolve, reject) => {
           signal.addEventListener("abort", () => reject(signal.reason), { once: true });
         }),

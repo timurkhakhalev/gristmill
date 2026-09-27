@@ -63,7 +63,7 @@ function loadIdentifier(options = {}) {
 }
 
 const unit = (values: any) => {
-  const norm = Math.sqrt(values.reduce((sum, v: unknown) => sum + v * v, 0));
+  const norm = Math.sqrt(values.reduce((sum: number, v: unknown) => sum + v * v, 0));
   return new Float32Array(values.map((v: unknown) => v / norm));
 };
 
@@ -74,7 +74,7 @@ const voiceB = unit([0, 1, 0]);
 const ambiguousVoice = unit([0.7, 0.7, 0.14]);
 const voiceC = unit([0.05, 0.05, 0.99]);
 
-function seedMergedSession(identifier) {
+function seedMergedSession(identifier: string) {
   identifier.setMaxSpeakers(3);
   identifier._resolveSpeakerForEmbedding(voiceA, { updateCentroid: true });
   identifier._resolveSpeakerForEmbedding(voiceB, { updateCentroid: true });
@@ -163,7 +163,7 @@ test("mapSpeaker stays quiet when no session is running", () => {
 
 // Plants exactly two clusters ~0.70 similar (above the 0.65 recluster
 // threshold) — creating them via resolution would just match them together.
-function seedSimilarIdentifiedPair(identifier) {
+function seedSimilarIdentifiedPair(identifier: string) {
   identifier.setMaxSpeakers(3);
   identifier._assignSpeakerId(voiceA);
   identifier._assignSpeakerId(ambiguousVoice);
@@ -266,7 +266,7 @@ function missingBindingRequire() {
   throw error;
 }
 
-function stubDownloadedModels(identifier) {
+function stubDownloadedModels(identifier: string) {
   identifier.setDiarizationManager({
     isVadModelDownloaded: () => true,
     getVadModelPath: () => __filename,

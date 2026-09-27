@@ -18,7 +18,7 @@ const createHarness = () => {
   const stops: unknown[] = [];
   const controller = createMeetingAutoEndController({
     now: () => now,
-    onStop: (sessionId, reason: unknown) => stops.push({ sessionId, reason }),
+    onStop: (sessionId: string, reason: unknown) => stops.push({ sessionId, reason }),
   });
 
   const runFor = (ms: number) => {
@@ -41,19 +41,19 @@ const createHarness = () => {
   };
 };
 
-const beginOwnership = (controller, sessionId = "s1") =>
+const beginOwnership = (controller: unknown, sessionId = "s1") =>
   controller.beginSession({ sessionId, eligible: true, reliable: true, externalMicActive: true });
 
-const beginFallback = (controller, sessionId = "s1", { reliable = true } = {}) =>
+const beginFallback = (controller: unknown, sessionId = "s1", { reliable = true } = {}) =>
   controller.beginSession({ sessionId, eligible: true, reliable, externalMicActive: false });
 
-const micReleased = (controller, sessionId = "s1") =>
+const micReleased = (controller: unknown, sessionId = "s1") =>
   controller.handleExternalMicState({ sessionId, reliable: true, externalMicActive: false });
 
-const micAcquired = (controller, sessionId = "s1") =>
+const micAcquired = (controller: unknown, sessionId = "s1") =>
   controller.handleExternalMicState({ sessionId, reliable: true, externalMicActive: true });
 
-const audio = (controller, micActive, systemActive, sessionId = "s1") =>
+const audio = (controller: unknown, micActive, systemActive, sessionId = "s1") =>
   controller.handleAudioActivity({ sessionId, micActive, systemActive });
 
 test("ownership: a qualifying mic release stops after the confirm window", () => {

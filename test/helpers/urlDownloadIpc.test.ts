@@ -44,7 +44,7 @@ function registration() {
       handle: (channel: string, fn: unknown) => handlers.set(channel, fn),
     },
     {
-      download: (url: string, onProgress, signal: unknown) => {
+      download: (url: string, onProgress: unknown, signal: unknown) => {
         const call = { url, onProgress, signal, deferred: deferred() };
         downloadCalls.push(call);
         return downloadBehavior(call);
@@ -440,8 +440,8 @@ test("delete-temp-file removes ow-diarize- files too", async () => {
 });
 
 test("each registration owns its pending downloads", async (t: unknown) => {
-  const a = { handle: (c, fn: unknown) => handlers.set("a-" + c, fn) };
-  const b = { handle: (c, fn: unknown) => handlers.set("b-" + c, fn) };
+  const a = { handle: (c: unknown, fn: unknown) => handlers.set("a-" + c, fn) };
+  const b = { handle: (c: unknown, fn: unknown) => handlers.set("b-" + c, fn) };
   handlers.clear();
   safeTempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ow-urltest-"));
   t.after(() => fs.rmSync(safeTempRoot, { recursive: true, force: true }));
@@ -450,13 +450,13 @@ test("each registration owns its pending downloads", async (t: unknown) => {
   let firstSignal;
   let secondSignal;
   register(a, {
-    download: (_url, _progress, signal: unknown) => { firstSignal = signal; return first.promise; },
+    download: (_url: string, _progress, signal: unknown) => { firstSignal = signal; return first.promise; },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },
   });
   register(b, {
-    download: (_url, _progress, signal: unknown) => { secondSignal = signal; return second.promise; },
+    download: (_url: string, _progress, signal: unknown) => { secondSignal = signal; return second.promise; },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },

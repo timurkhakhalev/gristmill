@@ -49,7 +49,7 @@ test.after(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-function loadBundledPreload(invoke) {
+function loadBundledPreload(invoke: unknown) {
   let api;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
@@ -60,7 +60,7 @@ function loadBundledPreload(invoke) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: unknown) => {
             api = value;
           },
         },

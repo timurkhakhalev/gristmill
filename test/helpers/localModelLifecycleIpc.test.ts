@@ -43,12 +43,12 @@ function createHarness(overrides = {}) {
   const active = new Map();
 
   const downloadStatus = {
-    has: (modelType, modelId) => active.has(`${modelType}:${modelId}`),
-    start: (modelType, modelId) => {
+    has: (modelType: string, modelId: string) => active.has(`${modelType}:${modelId}`),
+    start: (modelType: string, modelId: string) => {
       calls.started.push(`${modelType}:${modelId}`);
       active.set(`${modelType}:${modelId}`, true);
     },
-    finish: (modelType, modelId) => {
+    finish: (modelType: string, modelId: string) => {
       const key = `${modelType}:${modelId}`;
       calls.finished.push(key);
       if (!active.has(key)) return null;
@@ -61,7 +61,7 @@ function createHarness(overrides = {}) {
 
   const deps = {
     whisperManager: {
-      downloadWhisperModel: async (modelName, onProgress) => {
+      downloadWhisperModel: async (modelName, onProgress: unknown) => {
         onProgress({ type: "progress", model: modelName, percentage: 10 });
         return { success: true, model: modelName };
       },
@@ -87,7 +87,7 @@ function createHarness(overrides = {}) {
     ...overrides.deps,
   };
 
-  registerLocalModelLifecycleHandlers({ handle: (c, fn: unknown) => handlers.set(c, fn) }, deps);
+  registerLocalModelLifecycleHandlers({ handle: (c: unknown, fn: unknown) => handlers.set(c, fn) }, deps);
   const invoke = (channel: string, ...args) => handlers.get(channel)({}, ...args);
   return { handlers, invoke, sent, calls };
 }

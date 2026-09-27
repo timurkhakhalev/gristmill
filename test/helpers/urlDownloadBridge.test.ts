@@ -32,7 +32,7 @@ function resetDownloader() {
   downloadBehavior = (call: any) => call.deferred.promise;
 }
 
-function loadBundledPreload(invoke) {
+function loadBundledPreload(invoke: unknown) {
   const listeners = new Map();
   let api;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
@@ -44,7 +44,7 @@ function loadBundledPreload(invoke) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: unknown) => {
             api = value;
           },
         },
@@ -98,7 +98,7 @@ async function createFixture(t: unknown) {
   const invoke = async (channel: string, ...args) => {
     const handler = handlersSnapshot.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
-    return handler({ sender: { isDestroyed: () => false, send: (c, p: string) => dispatchSend?.(c, p) } }, ...args);
+    return handler({ sender: { isDestroyed: () => false, send: (c: unknown, p: string) => dispatchSend?.(c, p) } }, ...args);
   };
   const { api, listeners } = loadBundledPreload(invoke);
   // Close the event loop: main-side sends dispatch into the listeners the

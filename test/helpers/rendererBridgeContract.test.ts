@@ -17,7 +17,7 @@ function loadBridge() {
       assert.equal(name, "electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: unknown) => {
             api = value;
           },
         },

@@ -261,7 +261,7 @@ test("isRiskyMicDuplicateProfile: bleed evidence, render bleed, or double_talk a
 
 test("isDuplicateMicSegment: bleed evidence uses the strict matcher; double_talk uses the relaxed matcher", () => {
   const calls: unknown[] = [];
-  const matcher = (source, text: string, timestamp: unknown, options: unknown) => {
+  const matcher = (source: string, text: string, timestamp: unknown, options: unknown) => {
     calls.push({ source, text, timestamp, options });
     return true;
   };
@@ -289,7 +289,7 @@ test("isDuplicateMicSegment: bleed evidence uses the strict matcher; double_talk
 });
 
 test("isDuplicateMicSegment: bleed evidence without a strict match falls through to double_talk only if flagged", () => {
-  const strictFalseRelaxedTrue = (source, text: string, timestamp: unknown, options: unknown) => !!options?.relaxed;
+  const strictFalseRelaxedTrue = (source: string, text: string, timestamp: unknown, options: unknown) => !!options?.relaxed;
   assert.equal(
     isDuplicateMicSegment({
       text: "hi",
@@ -358,7 +358,7 @@ test("selectRacingMicEntryIndices removes bleed-flagged mic entries that overlap
     micSeg({ suppressionReason: "double_talk", timestamp: NOW - 1000, committedAt: NOW - 900 }),
   ];
   const seen: unknown[] = [];
-  const matcher = (source, text: string, timestamp: unknown, options: unknown) => {
+  const matcher = (source: string, text: string, timestamp: unknown, options: unknown) => {
     seen.push({ text, relaxed: !!options?.relaxed, extra: options?.extraSegment });
     return true;
   };
@@ -436,7 +436,7 @@ test("partitionOverlappingPendingMicFinals splits pending finals by system overl
     entry({ text: "c", micSuppression: { hasBleedEvidence: true } }),
   ];
   const seen: unknown[] = [];
-  const matcher = (source, text: string, timestamp: unknown, options: unknown) => {
+  const matcher = (source: string, text: string, timestamp: unknown, options: unknown) => {
     seen.push({ text, relaxed: !!options?.relaxed });
     return text !== "b";
   };

@@ -17,7 +17,7 @@ const config = {
   },
 };
 
-function createRecording(db) {
+function createRecording(db: any) {
   const note = db.saveNote("Meeting", "", "meeting").note;
   return db.createMeetingRecording(note.id, { config });
 }
@@ -31,7 +31,7 @@ test("recording epochs append complete PCM frames through short writes", (t: unk
   let writes = 0;
   const storage = new MeetingRecordingStorage({
     userDataPath: root,
-    writeSync(fd, buffer, offset, length, position) {
+    writeSync(fd, buffer: unknown, offset, length, position) {
       writes += 1;
       return fs.writeSync(fd, buffer, offset, Math.min(length, 1), position);
     },
@@ -56,7 +56,7 @@ test("write failure leaves a partial frame that recovery ignores without rewriti
   let calls = 0;
   const storage = new MeetingRecordingStorage({
     userDataPath: root,
-    writeSync(fd, buffer, offset, length, position) {
+    writeSync(fd, buffer: unknown, offset, length, position) {
       calls += 1;
       if (calls > 1) throw new Error("disk full");
       return fs.writeSync(fd, buffer, offset, Math.min(length, 1), position);

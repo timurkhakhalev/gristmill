@@ -11,7 +11,7 @@ const source = fs.readFileSync(
   "utf8"
 );
 
-function section(from, to) {
+function section(from: string, to: string) {
   const start = source.indexOf(from);
   const end = source.indexOf(to, start + from.length);
   assert.ok(start >= 0 && end > start, `source section ${from}..${to} must exist`);

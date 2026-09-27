@@ -31,11 +31,11 @@ const validConfig = {
   unknownTopLevel: "drop-me",
 };
 
-function saveMeetingNote(db, title = "Meeting") {
+function saveMeetingNote(db: any, title = "Meeting") {
   return db.saveNote(title, "Manual note text", "meeting").note;
 }
 
-function createFinishedRecording(db, storage, note: unknown, config = validConfig) {
+function createFinishedRecording(db: any, storage: unknown, note: unknown, config = validConfig) {
   const recording = db.createMeetingRecording(note.id, { config });
   db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
   storage.openEpochWriter(recording.id, "mic", 0);

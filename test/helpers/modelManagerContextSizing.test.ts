@@ -116,7 +116,7 @@ async function setup(t: unknown, { tokenCount = null, totalMemoryBytes = 48 * GI
   // Stand in for the spawn. The real _doStart leaves the manager ready on a
   // live port, so the stub must too, or the preflight would see a dead server.
   const restarts: unknown[] = [];
-  serverManager._doStart = async (modelPath, options = {}) => {
+  serverManager._doStart = async (modelPath: string, options = {}) => {
     restarts.push(options.contextSize);
     serverManager.ready = true;
     serverManager.process = {};
@@ -330,7 +330,7 @@ test("a grow that fails comes back at the window that was working", async (t: un
   const { modelManager, modelId, serverManager } = await setup(t, { tokenCount: 20514 });
   const port = serverManager.port;
   const attempts: unknown[] = [];
-  serverManager._doStart = async (modelPath, options = {}) => {
+  serverManager._doStart = async (modelPath: string, options = {}) => {
     attempts.push(options.contextSize);
     if (options.contextSize > 16384) {
       throw new Error(
@@ -408,7 +408,7 @@ test("a start that steps the context down is not retried at the size that steppe
   const { modelManager, modelId, serverManager } = await setup(t, { tokenCount: 20514 });
   const port = serverManager.port;
   const attempts: unknown[] = [];
-  serverManager._doStart = async (modelPath, options = {}) => {
+  serverManager._doStart = async (modelPath: string, options = {}) => {
     attempts.push(options.contextSize);
     serverManager.ready = true;
     serverManager.process = {};
@@ -434,7 +434,7 @@ test("a server that already died is not restored to a window it no longer has", 
   serverManager.process = null;
 
   const attempts: unknown[] = [];
-  serverManager._doStart = async (modelPath, options = {}) => {
+  serverManager._doStart = async (modelPath: string, options = {}) => {
     attempts.push(options.contextSize);
     throw new Error("llama-server process died during startup (signal: SIGKILL)");
   };

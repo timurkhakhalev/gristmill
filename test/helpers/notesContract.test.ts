@@ -50,7 +50,7 @@ function compileRendererProbes() {
   ]));
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
-  host.getSourceFile = (file: string, languageVersion, ...args) =>
+  host.getSourceFile = (file: string, languageVersion: number, ...args) =>
     sources.has(file)
       ? ts.createSourceFile(file, sources.get(file), languageVersion, true)
       : readSource(file, languageVersion, ...args);
@@ -179,7 +179,7 @@ function compileMainProbes() {
   ]));
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
-  host.getSourceFile = (file: string, languageVersion, ...args) =>
+  host.getSourceFile = (file: string, languageVersion: number, ...args) =>
     sources.has(file)
       ? ts.createSourceFile(file, sources.get(file), languageVersion, true)
       : readSource(file, languageVersion, ...args);

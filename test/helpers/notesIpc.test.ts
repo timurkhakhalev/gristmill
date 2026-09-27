@@ -86,14 +86,14 @@ async function createFixture(t: unknown) {
     saveNote: (title, content: string, noteType, sourceFile, audioDuration, folderId: unknown, spaceId: unknown) =>
       db.saveNote(title, content, noteType, sourceFile, audioDuration, folderId, spaceId),
     getNote: (id: unknown) => db.getNote(id),
-    getNotes: (noteType, limit, folderId: unknown, spaceId: unknown) =>
+    getNotes: (noteType, limit: number, folderId: unknown, spaceId: unknown) =>
       db.getNotes(noteType, limit, folderId, spaceId),
-    getNotesForSpace: (spaceId: unknown, limit) => db.getNotesForSpace(spaceId, limit),
-    updateNote: (id: unknown, updates) => db.updateNote(id, updates),
+    getNotesForSpace: (spaceId: unknown, limit: number) => db.getNotesForSpace(spaceId, limit),
+    updateNote: (id: unknown, updates: unknown) => db.updateNote(id, updates),
     deleteNoteInternal: () => {
       throw new Error("replaced below");
     },
-    searchNotes: (query: string, limit, spaceId: unknown, folderId: unknown) =>
+    searchNotes: (query: string, limit: number, spaceId: unknown, folderId: unknown) =>
       db.searchNotes(query, limit, spaceId, folderId),
     asyncMirrorWrite: (note: unknown) => effects.mirrorWrites.push(note.id),
     tryAutoLabelOneOnOne: (id: unknown) => effects.autoLabels.push(id),

@@ -60,10 +60,10 @@ function loadCoordinator() {
 
 function createDatabaseFake(events: any) {
   return {
-    recordings: new Map(),
-    epochs: [],
-    finalized: [],
-    createMeetingRecording(noteId: any, input: string, startedAt: number, id: any) {
+    recordings: new Map<string, any>(),
+    epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
+    finalized: [] as { recordingId: string; input: { captureState: string; errorCode?: string } }[],
+    createMeetingRecording(noteId: number, input: { config: unknown }, startedAt: string, id: string) {
       events.push("recording-created");
       const recording = {
         id,
@@ -80,12 +80,14 @@ function createDatabaseFake(events: any) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },
     updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: any) {
-      Object.assign(this.epochs.find((item) => item.recordingId === recordingId && item.source === source && item.epochIndex === epochIndex), result);
+      const epoch = this.epochs.find((item) => item.recordingId === recordingId && item.source === source && item.epochIndex === epochIndex);
+      if (!epoch) throw new Error("Recording epoch not found");
+      Object.assign(epoch, result);
     },
     markMeetingRecordingFinalizing(recordingId: string) {
       this.recordings.get(recordingId).captureState = "finalizing";
     },
-    finalizeMeetingRecording(recordingId: string, input: string) {
+    finalizeMeetingRecording(recordingId: string, input: { captureState: string; errorCode?: string }) {
       this.finalized.push({ recordingId, input });
       const recording = this.recordings.get(recordingId);
       recording.captureState = input.captureState;
@@ -127,8 +129,8 @@ function createStorageFake(events: any, { failWrite = false } = {}) {
 
 function createEngineFake() {
   return {
-    activeSessionId: null,
-    async beginRecordingSession({ sessionId }) { this.activeSessionId = sessionId; },
+    activeSessionId: null as string | null,
+    async beginRecordingSession({ sessionId }: { sessionId: string }) { this.activeSessionId = sessionId; },
     endRecordingSession(sessionId: string) {
       if (this.activeSessionId !== sessionId) return false;
       this.activeSessionId = null;
@@ -199,7 +201,7 @@ function buildHarness({ failWrite = false } = {}) {
   return { runtime, handlers, listeners, events, databaseManager, meetingRecordingStorage, tokenCalls: () => tokenCalls, asrCalls: () => asrCalls, engine };
 }
 
-const invoke = (harness: any, channel: string, ...args) => harness.handlers.get(channel)(...args);
+const invoke = (harness: any, channel: string, ...args: any[]) => harness.handlers.get(channel)(...args);
 const START = {
   noteId: 11,
   sessionId: "session-m2",

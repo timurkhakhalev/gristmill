@@ -27,6 +27,8 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
   }
 
   class FakeMessageChannelMain {
+    port1: InstanceType<typeof FakePort>;
+    port2: InstanceType<typeof FakePort>;
     constructor() {
       const a = new FakePort(null);
       const b = new FakePort(a);
@@ -45,8 +47,8 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
     child.kill = () => {
       child.killCalls += 1;
     };
-    child.postMessage = (_message: any, [port]) => {
-      port.on("message", ({ data }) => {
+    child.postMessage = (_message: any, [port]: any[]) => {
+      port.on("message", ({ data }: { data: any }) => {
         if (exitOnShutdown && data?.method === "shutdown") {
           setImmediate(() => child.emit("exit", 0));
         }
@@ -88,7 +90,7 @@ function loadClient(runtime: any) {
 // Waits until the spawned client has its port, then hands the test a
 // deliver() that injects a reply as if the worker sent it.
 function whenPortReady(client: any) {
-  return new Promise((resolve, reject) => {
+  return new Promise<(message: unknown) => void>((resolve, reject) => {
     const poll = setInterval(() => {
       if (client.port) {
         clearInterval(poll);

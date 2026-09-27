@@ -10,11 +10,11 @@ const originalLoad = Module._load;
 const originalPlatform = process.platform;
 const originalSystemRoot = process.env.SystemRoot;
 
-function setPlatform(platform) {
+function setPlatform(platform: string) {
   Object.defineProperty(process, "platform", { value: platform, configurable: true });
 }
 
-function setSystemRoot(value: unknown) {
+function setSystemRoot(value: string | undefined) {
   if (value === undefined) delete process.env.SystemRoot;
   else process.env.SystemRoot = value;
 }

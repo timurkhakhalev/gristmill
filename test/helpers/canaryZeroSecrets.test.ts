@@ -10,7 +10,7 @@ const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "../..");
 
-function runCanaryWithoutSecrets(scriptArgs) {
+function runCanaryWithoutSecrets(scriptArgs: string | string[]) {
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([name]) => !name.includes("_CANARY_"))
   );

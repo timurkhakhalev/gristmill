@@ -25,7 +25,7 @@ function createDb(t: import("node:test").TestContext) {
   try {
     return new DatabaseManager();
   } catch (error) {
-    const message = String(error?.message || error);
+    const message = String((error as { message?: unknown })?.message || error);
     if (message.includes("NODE_MODULE_VERSION") || message.includes("Could not locate the bindings file")) {
       if (process.env.REQUIRE_DB_TESTS) throw error;
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
@@ -38,8 +38,8 @@ function createDb(t: import("node:test").TestContext) {
 test("clean profile seeds one private space and local folders", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
-  assert.deepEqual(db.getSpaces().map((space) => space.kind), ["private"]);
-  assert.deepEqual(db.getFolders().map((folder: unknown) => folder.name), ["Personal", "Meetings", "Videos"]);
+  assert.deepEqual(db.getSpaces().map((space: any) => space.kind), ["private"]);
+  assert.deepEqual(db.getFolders().map((folder: any) => folder.name), ["Personal", "Meetings", "Videos"]);
   db.close();
 });
 
@@ -63,7 +63,7 @@ test("dictionary and snippets persist as local rows", (t: import("node:test").Te
   db.setSnippets([{ trigger: " signoff ", replacement: " Regards " }]);
   assert.deepEqual(db.getDictionary(), ["Alpha", "Beta"]);
   assert.deepEqual(db.getSnippets(), [{ trigger: "signoff", replacement: "Regards" }]);
-  const tables = db.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name);
+  const tables = db.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row: any) => row.name);
   assert.equal(tables.includes("analytics_events"), false);
   assert.equal(tables.includes("space_accounts"), false);
   db.close();

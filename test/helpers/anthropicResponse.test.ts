@@ -60,7 +60,7 @@ describe("extractAnthropicText", () => {
       { content: [{ type: "thinking", thinking: "..." }] },
     ];
     for (const data of shapes) {
-      assert.throws(() => data.content[0].text.trim(), TypeError);
+      assert.throws(() => (data.content[0] as any).text.trim(), TypeError);
       assert.doesNotThrow(() => extractAnthropicText(data));
     }
   });

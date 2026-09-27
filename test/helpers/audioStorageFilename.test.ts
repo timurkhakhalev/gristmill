@@ -11,7 +11,7 @@ const AudioStorageManager = require("../../src/helpers/audioStorage.ts");
 // bare SQLite CURRENT_TIMESTAMP form, which is UTC with no designator, and the
 // zoned form saveTranscription now writes. Only the second is unambiguous to
 // `new Date`, so the first has to be pinned to UTC before it is read.
-function filenameFor(timestamp) {
+function filenameFor(timestamp: unknown) {
   return Object.create(AudioStorageManager.prototype)._buildFilename(42, timestamp);
 }
 

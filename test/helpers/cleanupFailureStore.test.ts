@@ -6,7 +6,7 @@ const assert = require("node:assert/strict");
 
 const load = () => import("../../src/stores/cleanupFailureStore.ts");
 
-const reset = (store) => store.useCleanupFailureStore.setState({ pending: 0 });
+const reset = (store: any) => store.useCleanupFailureStore.setState({ pending: 0 });
 
 test("recordCleanupFailure increments the pending count", async () => {
   const store = await load();

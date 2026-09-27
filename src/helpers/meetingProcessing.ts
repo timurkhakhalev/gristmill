@@ -909,7 +909,7 @@ function failureFromUnknown(value: unknown): MeetingProcessingFailure {
     return new MeetingProcessingFailure("TRANSIENT_NETWORK_ERROR", "failed", error.message);
   }
   const code = detail.code || "processing-error";
-  if (["api-key-missing", "invalid-key", "INVALID_KEY", "API_KEY_MISSING", "reasoning-model-missing", "reasoning-endpoint-missing", "reasoning-endpoint-invalid", "reasoning-provider-missing", "unsupported-reasoning-provider", "unsupported-enterprise-reasoning-route", "enterprise-reasoning-unavailable", "SELF_HOSTED_ENDPOINT_INVALID", "DIARIZATION_MODEL_MISSING", "MODEL_NOT_DOWNLOADED", "MODEL_NOT_FOUND", "LLAMASERVER_NOT_FOUND", "LOCAL_SERVER_UNAVAILABLE"].includes(code)) {
+  if (["api-key-missing", "invalid-key", "INVALID_KEY", "API_KEY_MISSING", "reasoning-model-missing", "reasoning-endpoint-missing", "reasoning-endpoint-invalid", "reasoning-provider-missing", "unsupported-reasoning-provider", "unsupported-enterprise-reasoning-route", "enterprise-reasoning-unavailable", "SELF_HOSTED_ENDPOINT_INVALID", "DIARIZATION_MODEL_MISSING", "MODEL_NOT_DOWNLOADED", "MODEL_NOT_FOUND", "LLAMASERVER_NOT_FOUND", "LOCAL_SERVER_UNAVAILABLE", "bb-not-installed", "bb-version-unsupported", "bb-project-mismatch"].includes(code)) {
     return new MeetingProcessingFailure(code, "blocked", error.message);
   }
   return new MeetingProcessingFailure(code, "failed", error.message);

@@ -10,6 +10,8 @@ const { meetingProcessingChannels } = require("../../src/contracts/meetingProces
 const { createMeetingProcessingBridge } = require("../../src/preload/meetingProcessingBridge.ts");
 const { prepareMeetingAudio } = require("../../src/helpers/meetingAudioMixer.ts");
 const { getFFmpegPath } = require("../../src/helpers/ffmpegUtils.ts");
+import type { MeetingProcessingConfig } from "../../src/contracts/meetingRecording";
+import type { MeetingProcessingWorkerDeps } from "../../src/helpers/meetingProcessing";
 
 const validConfig = {
   transcription: {
@@ -27,7 +29,7 @@ const validConfig = {
     model: "gpt-4o-mini",
     credentialRef: "OPENAI_API_KEY",
   },
-};
+} satisfies MeetingProcessingConfig;
 
 const elevenResponse = {
   text: "Hello.",
@@ -37,7 +39,7 @@ const elevenResponse = {
   ],
 };
 
-function createFinishedRecording(db: any, storage: any, config = validConfig, noteText = "") {
+function createFinishedRecording(db: any, storage: any, config: MeetingProcessingConfig | null = validConfig, noteText = "") {
   const note = db.saveNote("Meeting", noteText, "meeting").note;
   const recording = db.createMeetingRecording(note.id, { config });
   db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
@@ -54,7 +56,7 @@ function createFinishedRecording(db: any, storage: any, config = validConfig, no
   return { note, recording: finalized.recording, run: finalized.initialRun };
 }
 
-function workerFor(db: any, storage: any, overrides = {}) {
+function workerFor(db: any, storage: any, overrides: Partial<MeetingProcessingWorkerDeps> = {}) {
   const deps = {
     database: db,
     storage,
@@ -96,7 +98,7 @@ test("paused audio parts produce one persisted whole-meeting run and one ASR req
     captureState: "ready", endedAt: new Date(Date.parse(second.startedAt) + 1000).toISOString(),
   });
   let asrCalls = 0;
-  let mixed;
+  let mixed: any;
   const worker = workerFor(db, storage, {
     mixAudio: async (recording: any, runId: string, epochs: any) => {
       mixed = { recording, epochs };
@@ -134,7 +136,7 @@ test("waits for retention and capture to finish, then persists the response, tra
   let summaryInput = "";
   const worker = workerFor(db, storage, {
     isCaptureActive: () => capturing,
-    transcribeRemote: async (request: string, saveRaw: any) => {
+    transcribeRemote: async (request, saveRaw) => {
       transcribeCalls += 1;
       assert.equal(request.provider, "elevenlabs");
       assert.equal(request.model, "scribe_v2");
@@ -179,7 +181,7 @@ test("OpenAI meeting route persists diarized raw response and finishes transcrip
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
-  const config = {
+  const config: MeetingProcessingConfig = {
     transcription: {
       mode: "providers",
       provider: "openai",
@@ -195,7 +197,7 @@ test("OpenAI meeting route persists diarized raw response and finishes transcrip
     segments: [{ type: "transcript.text.segment", speaker: "A", text: "Hello.", start: 0.1, end: 0.5 }],
   };
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (request: string, saveRaw: any) => {
+    transcribeRemote: async (request, saveRaw) => {
       assert.equal(request.provider, "openai");
       assert.equal(request.model, "gpt-4o-mini-transcribe");
       assert.equal(request.diarize, true);
@@ -536,7 +538,7 @@ test("blocked config correction refuses an unindexed raw response file", async (
 test("preload validates blocked-run config correction before invoking main", async () => {
   const calls: any[] = [];
   const bridge = createMeetingProcessingBridge({
-    invoke: async (...args) => {
+      invoke: async (...args: any[]) => {
       calls.push(args);
       return { success: false, error: "rejected" };
     },
@@ -604,7 +606,7 @@ test("local meeting transcription uses post-Stop diarization and speaker-text me
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
-  const localConfig = {
+  const localConfig: MeetingProcessingConfig = {
     transcription: {
       mode: "local",
       language: "en",
@@ -658,8 +660,8 @@ test("new capture lets an issued remote request save raw but defers normalize an
   const { run } = createFinishedRecording(db, storage);
   let started: any;
   const requestStarted = new Promise((resolve) => { started = resolve; });
-  let finishRequest;
-  const requestResult = new Promise((resolve) => { finishRequest = resolve; });
+  let finishRequest!: () => void;
+  const requestResult = new Promise<void>((resolve) => { finishRequest = resolve; });
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
     transcribeRemote: async (_request: any, saveRaw: any) => {
@@ -762,7 +764,7 @@ test("a bb summary resumes its saved thread after process restart without repeat
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
-  const config = {
+  const config: MeetingProcessingConfig = {
     ...validConfig,
     summary: {
       actionId: validConfig.summary.actionId,
@@ -842,7 +844,7 @@ test("provider size limits block only that run and another provider keeps its ow
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
-  const deepgramConfig = {
+  const deepgramConfig: MeetingProcessingConfig = {
     transcription: {
       mode: "providers",
       provider: "deepgram",
@@ -852,7 +854,7 @@ test("provider size limits block only that run and another provider keeps its ow
     },
     summary: null,
   };
-  const elevenConfig = {
+  const elevenConfig: MeetingProcessingConfig = {
     transcription: {
       mode: "providers",
       provider: "elevenlabs",
@@ -916,10 +918,10 @@ test("rate limits allow three persisted automatic retries then manual retry star
   let transcribeCalls = 0;
   const worker = workerFor(db, storage, {
     now: () => new Date(now),
-    setTimeout: (_callback: any, milliseconds: any) => {
+    setTimeout: ((_callback: any, milliseconds: any) => {
       backoffs.push(milliseconds);
       return backoffs.length;
-    },
+    }) as unknown as typeof setTimeout,
     clearTimeout: () => {},
     transcribeRemote: async () => {
       transcribeCalls += 1;
@@ -966,8 +968,8 @@ test("a late HTTP result cannot publish after durable audio deletion starts", as
   const { recording, run } = createFinishedRecording(db, storage);
   let started: any;
   const requestStarted = new Promise((resolve) => { started = resolve; });
-  let finishRequest;
-  const requestResult = new Promise((resolve) => { finishRequest = resolve; });
+  let finishRequest!: () => void;
+  const requestResult = new Promise<void>((resolve) => { finishRequest = resolve; });
   const worker = workerFor(db, storage, {
     transcribeRemote: async (_request: any, saveRaw: any) => {
       started();
@@ -1052,7 +1054,7 @@ test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration",
   const originalRaw = epochs.map((epoch) =>
     fs.readFileSync(storage.getEpochFilePath(recording.id, epoch.source, epoch.index))
   );
-  let argsSeen;
+  let argsSeen: string[] = [];
   const outputChild = new EventEmitter();
   outputChild.stderr = new EventEmitter();
   outputChild.kill = () => {};
@@ -1109,7 +1111,7 @@ test("ffmpeg output preserves audible source offsets, a silent gap, and full tim
   const note = db.saveNote("Measured mixer", "", "meeting").note;
   const startedAt = new Date("2026-09-24T10:00:00.000Z");
   const recording = db.createMeetingRecording(note.id, { config: validConfig }, startedAt.toISOString());
-  const sourceEpochs = [
+  const sourceEpochs: { source: string; offset: number; values: number[][]; raw?: Buffer }[] = [
     { source: "mic", offset: 0, values: [[5, 10_000], [6, 10_000]] },
     { source: "system", offset: 480, values: [[5, 6_000], [6, 6_000]] },
   ];

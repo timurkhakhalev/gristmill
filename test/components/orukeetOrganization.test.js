@@ -10,18 +10,29 @@ const {
   installHookDom,
 } = require("../lib/rendererTestHarness");
 
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+
 const noop = () => {};
 async function renderer(t) {
   installBrowserGlobals(t, {
     window: { location: { search: "" }, electronAPI: { getPlatform: () => "darwin" } },
   });
-  return createRendererServer(t, {
+  const vite = await (vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
     cachePrefix: "openwhispr-oruk-organization-",
     resolveAlias: { "@": path.resolve(__dirname, "../../src") },
     mockModules: {
       "react-i18next": `export function useTranslation() { return {t(key) {return key;}}; }`,
     },
-  });
+  }));
+  for (const url of ["/components/TranscriptionModelPicker.tsx", "/stores/settingsStore.ts", "/components/ui/Toast.tsx"]) {
+    const module = await vite.moduleGraph.getModuleByUrl(url);
+    if (module) vite.moduleGraph.invalidateModule(module);
+  }
+  return vite;
 }
 
 async function render(vite, element) {

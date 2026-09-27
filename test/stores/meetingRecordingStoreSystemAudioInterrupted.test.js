@@ -6,6 +6,17 @@ const {
   installMicCaptureGlobals,
 } = require("../lib/rendererTestHarness");
 
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+function getVite() {
+  return vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
+    cachePrefix: "openwhispr-meeting-system-audio-interrupted-test-",
+  });
+}
+
 // Sibling of meetingRecordingStoreSystemAudioSilence: that warning latches once
 // per recording, this one repeats, because capture can stop and be restarted
 // several times in one call and each break is worth surfacing (#1990).
@@ -67,9 +78,9 @@ async function loadStore(t, api) {
   installBrowserGlobals(t, {
     window: { electronAPI: api },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-meeting-system-audio-interrupted-test-",
-  });
+  const vite = await getVite();
+  const module = await vite.moduleGraph.getModuleByUrl("/stores/meetingRecordingStore.ts");
+  if (module) vite.moduleGraph.invalidateModule(module);
   return vite.ssrLoadModule("/stores/meetingRecordingStore.ts");
 }
 

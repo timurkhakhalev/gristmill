@@ -4,6 +4,12 @@ const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
 
+const servers = new Map();
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+
 const noop = () => {};
 const asyncNoop = async () => {};
 
@@ -11,7 +17,7 @@ async function createOnboardingRenderer(t, platform = "linux") {
   installBrowserGlobals(t, {
     window: { electronAPI: { getPlatform: () => platform } },
   });
-  return createRendererServer(t, {
+  if (!servers.has(platform)) servers.set(platform, createRendererServer({ after: (close) => cleanup.push(close) }, {
     cachePrefix: "openwhispr-onboarding-compatibility-",
     noExternal: ["react-i18next"],
     mockModules: {
@@ -39,7 +45,13 @@ async function createOnboardingRenderer(t, platform = "linux") {
         export function ProviderIcon() { return React.createElement("span"); }
       `,
     },
-  });
+  }));
+  const vite = await servers.get(platform);
+  for (const url of ["/components/onboarding/OnboardingShell.tsx", "/components/onboarding/CompactPermissionsStep.tsx"]) {
+    const module = await vite.moduleGraph.getModuleByUrl(url);
+    if (module) vite.moduleGraph.invalidateModule(module);
+  }
+  return vite;
 }
 
 function permissions(overrides = {}) {

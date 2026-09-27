@@ -7,10 +7,18 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
 
-async function loadModel(t) {
-  const vite = await createRendererServer(t, {
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+
+async function loadModel() {
+  const vite = await (vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
     cachePrefix: "openh-enterprise-chat-model-",
-  });
+  }));
+  const module = await vite.moduleGraph.getModuleByUrl("/services/ai/enterpriseChatModel.ts");
+  if (module) vite.moduleGraph.invalidateModule(module);
   return vite.ssrLoadModule("/services/ai/enterpriseChatModel.ts");
 }
 
@@ -56,7 +64,7 @@ function stubApi() {
 test("parts flow, done settles, and both listeners are cleaned up once", async (t) => {
   const { api, state } = stubApi();
   installBrowserGlobals(t, { window: { electronAPI: api } });
-  const { createEnterpriseChatModel } = await loadModel(t);
+  const { createEnterpriseChatModel } = await loadModel();
 
   const controller = new AbortController();
   const model = createEnterpriseChatModel("bedrock", "anthropic.claude-haiku");
@@ -88,7 +96,7 @@ test("parts flow, done settles, and both listeners are cleaned up once", async (
 test("an already-aborted signal never starts a provider request", async (t) => {
   const { api, state } = stubApi();
   installBrowserGlobals(t, { window: { electronAPI: api } });
-  const { createEnterpriseChatModel } = await loadModel(t);
+  const { createEnterpriseChatModel } = await loadModel();
 
   const controller = new AbortController();
   controller.abort();
@@ -104,7 +112,7 @@ test("a failed invoke errors the local stream and cleans up", async (t) => {
   const { api, state } = stubApi();
   api.startBehavior = async () => ({ success: false, error: "provider says no" });
   installBrowserGlobals(t, { window: { electronAPI: api } });
-  const { createEnterpriseChatModel } = await loadModel(t);
+  const { createEnterpriseChatModel } = await loadModel();
 
   const controller = new AbortController();
   const model = createEnterpriseChatModel("azure", "gpt-4.1");
@@ -126,7 +134,7 @@ test("abort between subscribe and start cancels the started stream", async (t) =
     return { success: true };
   };
   installBrowserGlobals(t, { window: { electronAPI: api } });
-  const { createEnterpriseChatModel } = await loadModel(t);
+  const { createEnterpriseChatModel } = await loadModel();
 
   const controller = new AbortController();
   const model = createEnterpriseChatModel("bedrock", "m");
@@ -156,7 +164,7 @@ test("abort settles the local read immediately while the start invoke is pending
     return { success: true };
   };
   installBrowserGlobals(t, { window: { electronAPI: api } });
-  const { createEnterpriseChatModel } = await loadModel(t);
+  const { createEnterpriseChatModel } = await loadModel();
 
   const controller = new AbortController();
   const model = createEnterpriseChatModel("bedrock", "m");
@@ -199,7 +207,7 @@ test("abort settles the local read immediately while the start invoke is pending
 test("explicit consumer cancel settles locally and aborts main", async (t) => {
   const { api, state } = stubApi();
   installBrowserGlobals(t, { window: { electronAPI: api } });
-  const { createEnterpriseChatModel } = await loadModel(t);
+  const { createEnterpriseChatModel } = await loadModel();
 
   const controller = new AbortController();
   const model = createEnterpriseChatModel("vertex", "gemini-pro");
@@ -215,7 +223,7 @@ test("explicit consumer cancel settles locally and aborts main", async (t) => {
 test("an error envelope fails the stream once", async (t) => {
   const { api, state } = stubApi();
   installBrowserGlobals(t, { window: { electronAPI: api } });
-  const { createEnterpriseChatModel } = await loadModel(t);
+  const { createEnterpriseChatModel } = await loadModel();
 
   const model = createEnterpriseChatModel("bedrock", "m");
   const { stream } = await model.doStream({ prompt: [] });

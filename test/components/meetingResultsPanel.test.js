@@ -4,6 +4,12 @@ const React = require("react");
 const { createRoot } = require("react-dom/client");
 const { createRendererServer, installBrowserGlobals, installHookDom } = require("../lib/rendererTestHarness");
 
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+
 const FIRST = "00000000-0000-4000-8000-000000000001";
 const SECOND = "00000000-0000-4000-8000-000000000002";
 const RUN = "00000000-0000-4000-8000-000000000003";
@@ -68,7 +74,7 @@ function textOf(value) {
   return value?.props ? textOf(value.props.children) : "";
 }
 
-async function mountPanel(t, items, { viewMode = "raw", config = CONFIG, playback = { success: false, error: "mixer-failed" }, preview = false } = {}) {
+async function mountPanel(t, items, { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false } = {}) {
   const calls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], retry: [] };
   const api = {
     meetingProcessingListForNote: async () => ({ success: true, recordings: items }),
@@ -96,16 +102,18 @@ async function mountPanel(t, items, { viewMode = "raw", config = CONFIG, playbac
   };
   const previousDialog = globalThis.__meetingResultsConfirmDialog;
   t.after(() => previousDialog === undefined ? delete globalThis.__meetingResultsConfirmDialog : globalThis.__meetingResultsConfirmDialog = previousDialog);
-  const vite = await createRendererServer(t, {
+  const vite = await (vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
     cachePrefix: "meeting-results-panel-hero-",
     noExternal: ["@heroui/react"],
     mockModules: {
       "@heroui/react": heroMock,
       "react-i18next": `export function useTranslation() { return { t: (key, options) => options?.defaultValue ?? key }; }`,
       "/ui/dialog": `export const ConfirmDialog = (props) => { globalThis.__meetingResultsConfirmDialog = props; return null; };`,
-      "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig(transcriptionOverride) { const config = ${JSON.stringify(config)}; return { config: transcriptionOverride ? { ...config, transcription: transcriptionOverride } : config, configError: null }; } export function builtinMeetingSummaryInstruction() { return "Built-in summary instruction"; }`,
+      "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig(transcriptionOverride) { const config = ${JSON.stringify(CONFIG)}; return { config: transcriptionOverride ? { ...config, transcription: transcriptionOverride } : config, configError: null }; } export function builtinMeetingSummaryInstruction() { return "Built-in summary instruction"; }`,
     },
-  });
+  }));
+  const module = await vite.moduleGraph.getModuleByUrl("/components/notes/MeetingResultsPanel.tsx");
+  if (module) vite.moduleGraph.invalidateModule(module);
   const { default: MeetingResultsPanel } = await vite.ssrLoadModule("/components/notes/MeetingResultsPanel.tsx");
   let tree;
   function Harness() {

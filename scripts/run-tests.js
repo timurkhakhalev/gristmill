@@ -3,6 +3,7 @@ const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { performance } = require("node:perf_hooks");
 const { ensureSqliteRuntime } = require("./ensure-sqlite-runtime");
 const { createPlan, DOMAINS, KINDS } = require("./test-selection");
 const root = path.resolve(__dirname, "..");
@@ -28,30 +29,64 @@ function acquireFullRunLock(file) {
 function runCommand(binary, args, env) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { cwd: root, env, stdio: "inherit", detached: process.platform !== "win32" });
-    let terminated = false;
+    let requestedSignal;
+    let killTimer;
     const signalGroup = (signal) => {
       if (!child.pid) return;
       try {
         if (process.platform === "win32") child.kill(signal);
         else process.kill(-child.pid, signal);
-        if (signal === "SIGTERM") terminated = true;
       } catch (error) {
-        if (error.code !== "ESRCH") throw error;
+        if (error.code !== "ESRCH" && error.code !== "EPERM") throw error;
       }
     };
-    const interrupt = () => signalGroup("SIGINT");
-    const terminate = () => signalGroup("SIGTERM");
+    const groupAlive = () => {
+      if (process.platform === "win32") return false;
+      try {
+        process.kill(-child.pid, 0);
+        return true;
+      } catch (error) {
+        if (error.code === "ESRCH" || error.code === "EPERM") return false;
+        throw error;
+      }
+    };
+    const stop = (signal) => {
+      requestedSignal = signal;
+      signalGroup(signal);
+      killTimer ??= setTimeout(() => signalGroup("SIGKILL"), 1000);
+    };
+    const interrupt = () => stop("SIGINT");
+    const terminate = () => stop("SIGTERM");
     process.on("SIGINT", interrupt);
     process.on("SIGTERM", terminate);
     const cleanup = () => {
       process.off("SIGINT", interrupt);
       process.off("SIGTERM", terminate);
+      clearTimeout(killTimer);
     };
     child.once("error", (error) => { cleanup(); reject(error); });
-    child.once("close", (code, signal) => {
+    child.once("close", async (code, signal) => {
       cleanup();
-      if (!terminated) signalGroup("SIGTERM");
-      resolve(signal ? 128 + os.constants.signals[signal] : (code ?? 1));
+      try {
+        if (groupAlive()) {
+          if (requestedSignal !== "SIGTERM") signalGroup("SIGTERM");
+          const deadline = Date.now() + 1000;
+          while (groupAlive() && Date.now() < deadline) {
+            await new Promise((done) => setTimeout(done, 25));
+          }
+          if (groupAlive()) signalGroup("SIGKILL");
+          const killDeadline = Date.now() + 1000;
+          while (groupAlive() && Date.now() < killDeadline) {
+            await new Promise((done) => setTimeout(done, 25));
+          }
+          if (groupAlive()) throw new Error(`Owned process group ${child.pid} did not exit`);
+        }
+        resolve(requestedSignal
+          ? 128 + os.constants.signals[requestedSignal]
+          : signal ? 128 + os.constants.signals[signal] : (code ?? 1));
+      } catch (error) {
+        reject(error);
+      }
     });
   });
 }
@@ -82,29 +117,50 @@ async function runTests(args, {
   const onTerminate = () => { interrupted = 143; };
   process.on("SIGINT", onInterrupt);
   process.on("SIGTERM", onTerminate);
+  const started = performance.now();
+  let phaseStarted = started;
+  const reportPhase = (name) => {
+    const now = performance.now();
+    log(`[test:timing] ${name} ${(now - phaseStarted).toFixed(0)}ms`);
+    phaseStarted = now;
+  };
   try {
     const runtime = platform === "darwin" ? "electron" : "node";
     await prepare(runtime);
+    reportPhase("prepare");
     if (interrupted) return interrupted;
     const env = { ...process.env, REQUIRE_DB_TESTS: "1" };
     delete env.ELECTRON_RUN_AS_NODE;
     if (plan.buildMain) {
       const code = await run("pnpm", ["run", "build:main"], env);
+      reportPhase("build:main");
       if (code !== 0 || interrupted) return interrupted || code;
     }
     const binary = runtime === "electron" ? electronBinary() : nodeBinary;
     if (runtime === "electron") env.ELECTRON_RUN_AS_NODE = "1";
+    const typeProbes = plan.tests.filter((test) => test.file.startsWith("test/scripts/type-probes/"));
+    const otherTests = plan.tests.filter((test) => !typeProbes.includes(test));
     const phases = plan.options.processes === 1
-      ? [{ tests: plan.tests, concurrency: 1 }]
+      ? [
+          { tests: otherTests, concurrency: 1 },
+          { tests: typeProbes, concurrency: 1, sharedTypeProgram: true },
+        ]
       : [
-          { tests: plan.tests.filter((test) => !test.serial && test.kind !== "types" && test.kind !== "native"), concurrency: 2 },
-          { tests: plan.tests.filter((test) => test.serial || test.kind === "types" || test.kind === "native"), concurrency: 1 },
+          { tests: otherTests.filter((test) => !test.serial && test.kind !== "types" && test.kind !== "native"), concurrency: 2 },
+          { tests: typeProbes, concurrency: 1, sharedTypeProgram: true },
+          { tests: otherTests.filter((test) => test.serial || test.kind === "types" || test.kind === "native"), concurrency: 1 },
         ];
     let status = 0;
-    for (const phase of phases) {
+    for (const [index, phase] of phases.entries()) {
       if (!phase.tests.length) continue;
       if (interrupted) break;
-      const code = await run(binary, ["--import", "tsx", "--test", `--test-concurrency=${phase.concurrency}`, "--test-timeout=30000", ...phase.tests.map((test) => test.file)], env);
+      const phaseEnv = phase.sharedTypeProgram
+        ? { ...env, OPENHERCULES_TYPE_PROBE_GROUPS: JSON.stringify(phase.tests.map((test) => path.basename(test.file, ".test.js"))) }
+        : env;
+      const code = await run(binary, ["--import", "tsx", "--test", `--test-concurrency=${phase.concurrency}`,
+        ...(phase.sharedTypeProgram ? ["--test-isolation=none"] : []), "--test-timeout=30000",
+        ...phase.tests.map((test) => test.file)], phaseEnv);
+      reportPhase(`tests:${index + 1}`);
       if (code !== 0) {
         status ||= code;
         if (code === 130 || code === 143) break;
@@ -113,6 +169,7 @@ async function runTests(args, {
     }
     return interrupted || status;
   } finally {
+    log(`[test:timing] total ${(performance.now() - started).toFixed(0)}ms`);
     process.off("SIGINT", onInterrupt);
     process.off("SIGTERM", onTerminate);
     release?.();

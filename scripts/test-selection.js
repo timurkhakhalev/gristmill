@@ -46,8 +46,23 @@ function validateRegistry(files, groups) {
       }
     }
   }
-  const missing = files.filter((file) => !assigned.has(file));
-  if (missing.length) throw new Error(`Unregistered tests (update test/test-groups.json):\n${missing.join("\n")}`);
+  const missing = [];
+  for (const file of files) {
+    if (assigned.has(file)) continue;
+    const parts = file.split("/");
+    if (parts.length >= 5 && parts[0] === "test" && parts[1] === "cases" &&
+        DOMAINS.includes(parts[2]) && KINDS.includes(parts[3])) {
+      const directories = parts.slice(4, -1);
+      assigned.set(file, {
+        file,
+        domains: [parts[2]],
+        kind: parts[3],
+        buildMain: directories.includes("main"),
+        serial: directories.includes("serial"),
+      });
+    } else missing.push(file);
+  }
+  if (missing.length) throw new Error(`Unclassified tests (put new tests under test/cases/<domain>/<kind>/):\n${missing.join("\n")}`);
   return files.map((file) => assigned.get(file));
 }
 

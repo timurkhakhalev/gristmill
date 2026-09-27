@@ -30,6 +30,21 @@ const gateMocks = {
   "./policyRules": "export const isTranscriptionContextAllowed = () => true;",
 };
 
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+async function getVite() {
+  const vite = await (vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
+    cachePrefix: "openwhispr-upload-diarization-test-",
+    mockModules: gateMocks,
+  }));
+  const module = await vite.moduleGraph.getModuleByUrl("/stores/batchQueueStore.ts");
+  if (module) vite.moduleGraph.invalidateModule(module);
+  return vite;
+}
+
 async function waitForQueueSettled(store, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -76,10 +91,7 @@ function installUploadElectronAPI(window, { diarizedDurationSeconds }) {
 
 test("a diarized file upload persists the diarization metadata", async (t) => {
   const { window } = installBrowserGlobals(t);
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-upload-diarization-file-test-",
-    mockModules: gateMocks,
-  });
+  const vite = await getVite();
   // The renderer never knows a picked file's duration up front; the diarizer's
   // measured duration is the only source, so it must land on the note row.
   const calls = installUploadElectronAPI(window, { diarizedDurationSeconds: 4359.87 });
@@ -119,10 +131,7 @@ test("a diarized file upload persists the diarization metadata", async (t) => {
 
 test("a diarized URL ingest persists the diarization metadata", async (t) => {
   const { window } = installBrowserGlobals(t);
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-upload-diarization-url-test-",
-    mockModules: gateMocks,
-  });
+  const vite = await getVite();
   // The download's known duration beats the diarizer's measurement.
   const calls = installUploadElectronAPI(window, { diarizedDurationSeconds: 9999 });
   Object.assign(window.electronAPI, {
@@ -162,10 +171,7 @@ test("a diarized URL ingest persists the diarization metadata", async (t) => {
 
 test("an upload without diarization leaves the note columns untouched", async (t) => {
   const { window } = installBrowserGlobals(t);
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-upload-diarization-off-test-",
-    mockModules: gateMocks,
-  });
+  const vite = await getVite();
   const calls = installUploadElectronAPI(window, { diarizedDurationSeconds: 4359.87 });
 
   const store = await vite.ssrLoadModule("/stores/batchQueueStore.ts");

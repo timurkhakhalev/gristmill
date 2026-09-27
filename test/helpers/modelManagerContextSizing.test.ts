@@ -50,7 +50,10 @@ const SHORT_PROMPT = "Clean up this sentence.";
 // ~20k estimated tokens, the size that fails on main today.
 const LONG_PROMPT = "word ".repeat(12000);
 
-async function setup(t: import("node:test").TestContext, { tokenCount = null, totalMemoryBytes = 48 * GIB } = {}) {
+async function setup(t: import("node:test").TestContext, { tokenCount = null, totalMemoryBytes = 48 * GIB }: {
+  tokenCount?: number | null;
+  totalMemoryBytes?: number;
+} = {}) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-ctx-sizing-"));
   electronHome = home;
   t.after(() => fs.rm(home, { recursive: true, force: true }));
@@ -116,7 +119,7 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
   // Stand in for the spawn. The real _doStart leaves the manager ready on a
   // live port, so the stub must too, or the preflight would see a dead server.
   const restarts: any[] = [];
-  serverManager._doStart = async (modelPath: string, options = {}) => {
+  serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     restarts.push(options.contextSize);
     serverManager.ready = true;
     serverManager.process = {};
@@ -330,9 +333,9 @@ test("a grow that fails comes back at the window that was working", async (t: im
   const { modelManager, modelId, serverManager } = await setup(t, { tokenCount: 20514 });
   const port = serverManager.port;
   const attempts: any[] = [];
-  serverManager._doStart = async (modelPath: string, options = {}) => {
+  serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     attempts.push(options.contextSize);
-    if (options.contextSize > 16384) {
+    if ((options.contextSize ?? 0) > 16384) {
       throw new Error(
         "llama-server process died during startup (signal: SIGKILL)\n" +
           "Process output: ggml_metal: failed to allocate buffer of size 4096.00 MiB"
@@ -408,7 +411,7 @@ test("a start that steps the context down is not retried at the size that steppe
   const { modelManager, modelId, serverManager } = await setup(t, { tokenCount: 20514 });
   const port = serverManager.port;
   const attempts: any[] = [];
-  serverManager._doStart = async (modelPath: string, options = {}) => {
+  serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     attempts.push(options.contextSize);
     serverManager.ready = true;
     serverManager.process = {};
@@ -434,7 +437,7 @@ test("a server that already died is not restored to a window it no longer has", 
   serverManager.process = null;
 
   const attempts: any[] = [];
-  serverManager._doStart = async (modelPath: string, options = {}) => {
+  serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     attempts.push(options.contextSize);
     throw new Error("llama-server process died during startup (signal: SIGKILL)");
   };

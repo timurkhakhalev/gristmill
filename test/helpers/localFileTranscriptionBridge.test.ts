@@ -13,7 +13,7 @@ const Module = require("node:module");
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
-let activeHandlers: any = null;
+let activeHandlers: Map<string, (...args: any[]) => any> | null = null;
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-"));
 const originalNodeEnv = process.env.NODE_ENV;
 
@@ -50,7 +50,7 @@ test.after(() => {
 });
 
 function loadBundledPreload(invoke: any) {
-  let api;
+  let api: Record<string, any> | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -76,6 +76,7 @@ function loadBundledPreload(invoke: any) {
     process: { platform: "darwin", versions: {} },
     console,
   });
+  if (!api) throw new Error("Bundled preload did not expose its API");
   return api;
 }
 
@@ -86,7 +87,10 @@ fs.writeFileSync(audioFile, "RIFF....");
 // Objects from vm.runInNewContext have a different prototype; compare by JSON.
 const plain = (value: any) => JSON.parse(JSON.stringify(value));
 
-async function createFixture(t: import("node:test").TestContext, managers = {}) {
+async function createFixture(t: import("node:test").TestContext, managers: {
+  whisper?: (...args: any[]) => any;
+  parakeet?: (...args: any[]) => any;
+} = {}) {
   activeHandlers = new Map();
   t.after(() => { activeHandlers = null; });
 
@@ -96,7 +100,7 @@ async function createFixture(t: import("node:test").TestContext, managers = {}) 
   );
   const { createUploadCancelRegistry } = await import("../../src/helpers/uploadCancelRegistry.ts");
   registerLocalFileTranscriptionHandler(
-    { handle: (channel, listener) => activeHandlers.set(channel, listener) },
+    { handle: (channel, listener) => activeHandlers!.set(channel, listener) },
     {
       readFile: (filePath) => {
         calls.reads.push(filePath);
@@ -123,7 +127,7 @@ async function createFixture(t: import("node:test").TestContext, managers = {}) 
   );
 
   const handlersSnapshot = new Map(activeHandlers);
-  const invoke = async (channel: string, ...args) => {
+  const invoke = async (channel: string, ...args: any[]) => {
     const handler = handlersSnapshot.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler(null, ...args);
@@ -212,11 +216,11 @@ test("path rejection and the cancelled shape through the bridge", async (t: impo
 
 test("a junk main response rejects at the preload boundary", async (t: import("node:test").TestContext) => {
   await createFixture(t);
-  if (!activeHandlers || !activeHandlers.get("transcribe-audio-file")) {
+  const realHandler = activeHandlers?.get("transcribe-audio-file");
+  if (!realHandler) {
     return t.skip("handler missing");
   }
-  const realHandler = activeHandlers.get("transcribe-audio-file");
-  const api = loadBundledPreload(async (channel: string, ...args) => {
+  const api = loadBundledPreload(async (channel: string, ...args: any[]) => {
     if (channel === "transcribe-audio-file") return { silentlyWrong: true };
     return realHandler(null, ...args);
   });
@@ -234,7 +238,7 @@ test("the shared main registration registers the transcription channel once", as
   const IPCHandlers = require(handlersModulePath);
   const Ctor = IPCHandlers.default || IPCHandlers;
 
-  const anything = () =>
+  const anything = (): any =>
     new Proxy(function () {}, {
       get: (_target, property) => {
         if (property === Symbol.toPrimitive || property === "toString") return () => "";
@@ -247,7 +251,7 @@ test("the shared main registration registers the transcription channel once", as
       apply: () => anything(),
     });
 
-  const target = {
+  const target: Record<PropertyKey, unknown> = {
     databaseManager: { recoverRunningMeetingProcessingRuns: () => 0 },
   };
   Ctor.prototype.setupHandlers.call(

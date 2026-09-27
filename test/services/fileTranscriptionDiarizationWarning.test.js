@@ -2,6 +2,20 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
 
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+function getVite() {
+  return vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
+    cachePrefix: "openwhispr-file-diarization-warning-test-",
+    mockModules: {
+      "/lib/auth": "export const withSessionRefresh = (fn) => fn();",
+    },
+  });
+}
+
 function localConfig() {
   return {
     useLocalWhisper: true,
@@ -21,12 +35,9 @@ function localConfig() {
 
 async function loadFileTranscription(t) {
   const { window } = installBrowserGlobals(t);
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-file-diarization-warning-test-",
-    mockModules: {
-      "/lib/auth": "export const withSessionRefresh = (fn) => fn();",
-    },
-  });
+  const vite = await getVite();
+  const module = await vite.moduleGraph.getModuleByUrl("/services/fileTranscription.ts");
+  if (module) vite.moduleGraph.invalidateModule(module);
   const mod = await vite.ssrLoadModule("/services/fileTranscription.ts");
   window.electronAPI.transcribeAudioFile = async () => ({
     success: true,

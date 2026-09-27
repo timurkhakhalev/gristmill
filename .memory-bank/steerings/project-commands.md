@@ -18,8 +18,12 @@ Executable command semantics live here. Select checks using the
 
 Repeated domains are OR; repeated kinds are OR; domain and kind filters intersect.
 Unknown options/values, missing values and empty selections fail before preparing
-the runtime. `--list` validates the registry but does not prepare SQLite, build or
-run tests. No selectors means the full suite.
+the runtime. `--list` validates test classification but does not prepare SQLite,
+build or run tests. New ordinary tests under `test/cases/<domain>/<kind>/` are
+discovered automatically; exceptional classifications remain in
+`test/test-groups.json`. Put compiled main/preload consumers under a `main/`
+subdirectory and shared-resource tests under `serial/`. No selectors means the
+full suite.
 
 For a particular regression, `pnpm test -- <explicit test files>` accepts exact
 registered paths under `test/` ending in `.test.js` or `.test.ts`. Do not combine

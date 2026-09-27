@@ -6,6 +6,17 @@ const {
   installMicCaptureGlobals,
 } = require("../lib/rendererTestHarness");
 
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+function getVite() {
+  return vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
+    cachePrefix: "openhercules-meeting-capture-stop-test-",
+  });
+}
+
 const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
 const RUN_ID = "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2";
 const SECOND_RECORDING_ID = "d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4";
@@ -76,9 +87,9 @@ async function loadStore(t, api) {
   installBrowserGlobals(t, {
     window: { electronAPI: api.api },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openhercules-meeting-capture-stop-test-",
-  });
+  const vite = await getVite();
+  const module = await vite.moduleGraph.getModuleByUrl("/stores/meetingRecordingStore.ts");
+  if (module) vite.moduleGraph.invalidateModule(module);
   return vite.ssrLoadModule("/stores/meetingRecordingStore.ts");
 }
 

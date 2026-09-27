@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const Module = require("node:module");
+type NoteItem = import("../../src/contracts/notes.ts").NoteItem;
 
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-db-"));
 const originalLoad = Module._load;
@@ -25,7 +26,7 @@ function createDb(t: import("node:test").TestContext) {
   try {
     return new DatabaseManager();
   } catch (error) {
-    const message = String(error?.message || error);
+    const message = error instanceof Error ? error.message : String(error);
     if (message.includes("NODE_MODULE_VERSION") || message.includes("Could not locate the bindings file")) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
       return null;
@@ -174,12 +175,12 @@ test("getNotes with a space filters to root notes; getNotesForSpace includes fol
   assert.ok(db.updateNote(rootNote.id, { folder_id: null }).success);
 
   const rootNotes = db.getNotes(null, 100, null, spaceId);
-  assert.ok(rootNotes.some((n: string) => n.id === rootNote.id));
-  assert.ok(!rootNotes.some((n: string) => n.id === folderNote.id));
+  assert.ok(rootNotes.some((n: NoteItem) => n.id === rootNote.id));
+  assert.ok(!rootNotes.some((n: NoteItem) => n.id === folderNote.id));
 
   const spaceNotes = db.getNotesForSpace(spaceId);
-  assert.ok(spaceNotes.some((n: string) => n.id === rootNote.id));
-  assert.ok(spaceNotes.some((n: string) => n.id === folderNote.id));
+  assert.ok(spaceNotes.some((n: NoteItem) => n.id === rootNote.id));
+  assert.ok(spaceNotes.some((n: NoteItem) => n.id === folderNote.id));
   db.close();
 });
 
@@ -245,12 +246,12 @@ test("searchNotes returns [] for an empty query and keeps space/folder filters",
   const hit = db.saveNote("Quarterly Roadmap", "unique_zebra_content").note;
   db.saveNote("Unrelated", "nothing to see");
 
-  assert.ok(db.searchNotes("zebra").some((n: string) => n.id === hit.id));
+  assert.ok(db.searchNotes("zebra").some((n: NoteItem) => n.id === hit.id));
   assert.deepEqual(db.searchNotes("zebra", 50, 987654), []);
   assert.deepEqual(db.searchNotes("zebra", 50, null, 987654), []);
-  assert.ok(db.searchNotes("zebra", 50, spaceId).some((n: string) => n.id === hit.id));
+  assert.ok(db.searchNotes("zebra", 50, spaceId).some((n: NoteItem) => n.id === hit.id));
   assert.ok(
-    db.searchNotes("zebra", 50, null, folders.Personal).some((n: string) => n.id === hit.id)
+    db.searchNotes("zebra", 50, null, folders.Personal).some((n: NoteItem) => n.id === hit.id)
   );
   db.close();
 });

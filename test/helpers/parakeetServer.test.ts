@@ -35,8 +35,8 @@ function wavFromSeconds(spans: any) {
   return buf;
 }
 
-function fakeWsServer(responses: any, { onCall } = {}) {
-  const calls: unknown[] = [];
+function fakeWsServer(responses: { text: string; truncated?: boolean }[], { onCall }: { onCall?: (count: number) => void } = {}) {
+  const calls: number[] = [];
   return {
     calls,
     async start() {},
@@ -51,6 +51,7 @@ function fakeWsServer(responses: any, { onCall } = {}) {
 }
 
 function isAbortError(err: unknown) {
+  assert.ok(err instanceof Error);
   assert.equal(err.name, "AbortError");
   return true;
 }
@@ -184,7 +185,7 @@ test("transcribe without a signal is unchanged", async () => {
 
 test("cohere models segment at 30s and start the server with the resolved language", async () => {
   const fake = fakeWsServer([{ text: "one" }, { text: "two" }]);
-  const startArgs: unknown[] = [];
+  const startArgs: unknown[][] = [];
   fake.start = async (...args) => {
     startArgs.push(args);
   };
@@ -205,7 +206,7 @@ test("cohere models segment at 30s and start the server with the resolved langua
 
 test("cohere models fall back to English when the app language has no match", async () => {
   const fake = fakeWsServer([{ text: "hello" }]);
-  const startArgs: unknown[] = [];
+  const startArgs: unknown[][] = [];
   fake.start = async (...args) => {
     startArgs.push(args);
   };
@@ -221,7 +222,7 @@ test("cohere models fall back to English when the app language has no match", as
 
 test("transducer models start the server without a language", async () => {
   const fake = fakeWsServer([{ text: "hello" }]);
-  const startArgs: unknown[] = [];
+  const startArgs: unknown[][] = [];
   fake.start = async (...args) => {
     startArgs.push(args);
   };

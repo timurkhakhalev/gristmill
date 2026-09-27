@@ -1,26 +1,31 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const http = require("node:http");
+const http: typeof import("node:http") = require("node:http");
 
 const WhisperServerManager = require("../../src/helpers/whisperServer");
 const WhisperManager = require("../../src/helpers/whisper");
 const { INFERENCE_DECODER_FIELDS } = WhisperServerManager;
 
 function startCapturingServer() {
-  let captured: any = null;
-  const server = http.createServer((req: any, res: any) => {
-    const chunks: any[] = [];
-    req.on("data", (chunk: any) => chunks.push(chunk));
+  let captured: string | null = null;
+  const server = http.createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
       captured = Buffer.concat(chunks).toString("latin1");
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ text: "ok" }));
     });
   });
-  return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () =>
-      resolve({ server, port: server.address().port, getBody: () => captured })
-    );
+  return new Promise<{ server: import("node:http").Server; port: number; getBody: () => string }>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("Expected TCP address");
+      resolve({ server, port: address.port, getBody: () => {
+        assert.ok(captured);
+        return captured;
+      } });
+    });
   });
 }
 
@@ -36,7 +41,7 @@ function createManager(port: number) {
   return manager;
 }
 
-function fieldValue(body: any, name: string) {
+function fieldValue(body: string, name: string) {
   const match = body.match(
     new RegExp(`Content-Disposition: form-data; name="${name}"\\r\\n\\r\\n([^\\r]*)\\r\\n`)
   );

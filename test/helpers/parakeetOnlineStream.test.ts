@@ -8,7 +8,10 @@ const ParakeetWsServer = require("../../src/helpers/parakeetWsServer");
 const { pcm16ToFloat32 } = require("../../src/utils/audioUtils.ts");
 
 // Mock sherpa online WS protocol: float32 binary frames in, JSON results out, "Done"/"Done!" handshake.
-async function startMockOnlineServer({ onBinary, finalSegment = 0 }) {
+async function startMockOnlineServer({ onBinary, finalSegment = 0 }: {
+  onBinary?: (socket: { send(data: string): void; close(): void }, data: Buffer, frameCount: number) => void;
+  finalSegment?: number;
+} = {}) {
   const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
   await once(wss, "listening");
 

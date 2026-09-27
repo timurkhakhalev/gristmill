@@ -3,11 +3,11 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const { EventEmitter } = require("node:events");
 const Module = require("node:module");
 
-function createDeferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
+function createDeferred<T = void>() {
+  let resolve!: (value?: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = (value) => resolvePromise(value!);
     reject = rejectPromise;
   });
   return { promise, reject, resolve };
@@ -19,7 +19,7 @@ const hotkeyManagers: any[] = [];
 let appQuitCount = 0;
 let dialogResponse = 1;
 const dialogCalls: any[] = [];
-let devServerWaitPromise = Promise.resolve();
+let devServerWaitPromise: Promise<void> = Promise.resolve();
 
 class FakeBrowserWindow extends EventEmitter {
   constructor(options: any) {
@@ -72,6 +72,8 @@ class FakeBrowserWindow extends EventEmitter {
 }
 
 class FakeHotkeyManager {
+  unregisterCount: number;
+  static isGlobeLikeHotkey() { return false; }
   constructor() {
     this.unregisterCount = 0;
     hotkeyManagers.push(this);
@@ -85,7 +87,6 @@ class FakeHotkeyManager {
     return false;
   }
 }
-FakeHotkeyManager.isGlobeLikeHotkey = () => false;
 
 class FakeDragManager {
   cleanup() {}
@@ -182,12 +183,14 @@ function installFakeTimers() {
   let nextTimerId = 1;
   const timers = new Map();
 
-  global.setTimeout = (callback: any, delay = 0) => {
+  // Node and DOM overloads disagree on the timer handle; this fake only uses numeric IDs.
+  global.setTimeout = Object.assign((callback: string | ((...args: unknown[]) => void), delay = 0, ...args: unknown[]) => {
+    if (typeof callback !== "function") throw new TypeError("Expected timer callback");
     const timerId = nextTimerId;
     nextTimerId += 1;
-    timers.set(timerId, { callback, delay });
+    timers.set(timerId, { callback: () => callback(...args), delay });
     return timerId;
-  };
+  }, { __promisify__: originalSetTimeout.__promisify__ }) as unknown as typeof setTimeout;
   global.clearTimeout = (timerId) => timers.delete(timerId);
 
   return {
@@ -244,7 +247,7 @@ test("canceling quit during capture preserves capture and hotkeys", async () => 
 
 test("confirming quit waits for safe capture stop before shutdown", async () => {
   const manager = createNormalWindowManager();
-  const stopDeferred = createDeferred();
+  const stopDeferred = createDeferred<{ success: boolean }>();
   let stopCount = 0;
   manager.setMeetingCaptureQuitGuard({
     isRecording: () => true,

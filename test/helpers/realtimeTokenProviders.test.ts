@@ -2,6 +2,13 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/realtimeTokenProviders.ts");
+type TokenDeps = import("../../src/helpers/realtimeTokenProviders.ts").RealtimeTokenDependencies;
+type DependencyOverrides = {
+  environmentManager?: Partial<TokenDeps["environmentManager"]>;
+  proxyFetch?: TokenDeps["proxyFetch"];
+  postServerToken?: () => Promise<{ token: string }>;
+  mintCortiToken?: TokenDeps["mintCortiToken"];
+};
 
 const jsonResponse = (status: number, body: unknown) => ({
   ok: status >= 200 && status < 300,
@@ -9,7 +16,7 @@ const jsonResponse = (status: number, body: unknown) => ({
   json: async () => body,
 });
 
-const deps = (overrides = {}) => ({
+const deps = (overrides: DependencyOverrides = {}) => ({
   environmentManager: {
     getOpenAIKey: () => "sk-openai",
     getTinfoilKey: () => "tk-tinfoil",
@@ -27,7 +34,7 @@ test("provider-less and unknown providers fail closed with the exact #1480 messa
   const { fetchRealtimeTokenForProvider } = await load();
   for (const provider of [undefined, "grok-realtime", "openai"]) {
     await assert.rejects(
-      fetchRealtimeTokenForProvider(provider, deps(), { mode: "byok" }),
+      Reflect.apply(fetchRealtimeTokenForProvider, undefined, [provider, deps(), { mode: "byok" }]),
       new Error(`Unsupported realtime token provider: ${provider}`)
     );
   }
@@ -136,7 +143,7 @@ test("missing byok keys throw configuration errors, not token errors", async () 
     "deepgram-realtime",
     "assemblyai-realtime",
     "gemini-realtime",
-  ]) {
+  ] as const) {
     await assert.rejects(
       fetchRealtimeTokenForProvider(provider, deps({ environmentManager: empty }), {
         mode: "byok",
@@ -160,7 +167,7 @@ test("managed modes never call the OpenWhispr token bootstrap", async () => {
     "assemblyai-realtime",
     "deepgram-realtime",
     "gemini-realtime",
-  ]) {
+  ] as const) {
     await assert.rejects(
       fetchRealtimeTokenForProvider(provider, directOnlyDeps, { mode: "openwhispr" }),
       /requires a direct provider API key/

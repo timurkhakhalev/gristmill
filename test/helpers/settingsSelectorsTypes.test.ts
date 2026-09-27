@@ -1,6 +1,6 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const ts = require("typescript");
+const ts: typeof import("typescript") = require("typescript");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -10,12 +10,12 @@ const path = require("node:path");
 
 const ROOT = path.join(__dirname, "..", "..");
 
-function compileWithProbe(probeSource: any, probeName: any, mutateSources: any) {
+function compileWithProbe(probeSource: string, probeName: string, mutateSources?: (files: Map<string, string>) => void) {
   const configPath = path.join(ROOT, "tsconfig.settings-selectors.json");
   const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, ROOT);
   const probe = path.join(ROOT, probeName);
-  const virtualFiles = new Map(
+  const virtualFiles = new Map<string, string>(
     parsed.fileNames.map((file: string) => [
       path.relative(ROOT, file).split(path.sep).join("/"),
       fs.readFileSync(file, "utf8"),
@@ -24,21 +24,22 @@ function compileWithProbe(probeSource: any, probeName: any, mutateSources: any) 
   if (mutateSources) mutateSources(virtualFiles);
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
-  host.getSourceFile = (file: string, languageVersion: number, onError: any, shouldCreate: any, ...rest) => {
+  host.getSourceFile = (file, languageVersion, onError, shouldCreate) => {
     const relative = path.relative(ROOT, file).split(path.sep).join("/");
     if (file === probe) {
       return ts.createSourceFile(file, probeSource, languageVersion, true);
     }
-    if (virtualFiles.has(relative)) {
-      return ts.createSourceFile(file, virtualFiles.get(relative), languageVersion, true);
+    const virtualSource = virtualFiles.get(relative);
+    if (virtualSource !== undefined) {
+      return ts.createSourceFile(file, virtualSource, languageVersion, true);
     }
-    return readSource(file, languageVersion, onError, shouldCreate, ...rest);
+    return readSource(file, languageVersion, onError, shouldCreate);
   };
   const program = ts.createProgram([...parsed.fileNames, probe], parsed.options, host);
   // Full-program verdict: implementation files and file-less diagnostics all
   // count, so a broken graph can never hide behind a filtered probe.
   const diagnostics = ts.getPreEmitDiagnostics(program);
-  return { codes: diagnostics.map((d: any) => d.code) };
+  return { codes: diagnostics.map((d) => d.code) };
 }
 
 test("probe: a wrong InferenceMode is rejected at compile time", () => {
@@ -73,7 +74,7 @@ const snapshot = {} as InferenceSettingsSnapshot;
 selectResolvedLLMConfig(snapshot, "cleanup");
 `,
     "settings-selectors-probe.ts",
-    (virtualFiles: any) => {
+    (virtualFiles) => {
       const target = "src/config/settingsSelectors.ts";
       virtualFiles.set(target, virtualFiles.get(target) + "\nconst broken: number = \"wrong\";\n");
     }

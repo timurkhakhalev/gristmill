@@ -3,11 +3,11 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 
 const load = () => import("../../src/lib/versionedIntro.ts");
 
-function memoryStorage(initial = {}) {
-  const values = new Map(Object.entries(initial));
+function memoryStorage(initial: Record<string, string> = {}) {
+  const values = new Map<string, string>(Object.entries(initial));
   return {
     getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: unknown) => values.set(key, value),
+    setItem: (key: string, value: string) => { values.set(key, value); },
   };
 }
 

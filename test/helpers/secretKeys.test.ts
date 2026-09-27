@@ -1,5 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
-const assert = require("node:assert");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const os = require("os");
 const path = require("path");
 const fs = require("fs");
@@ -9,19 +9,19 @@ const Module = require("module");
 // so tests prove that unavailable secure storage fails closed.
 const tmpUserData = fs.mkdtempSync(path.join(os.tmpdir(), "ow-secret-test-"));
 const originalResourcesPath = Object.getOwnPropertyDescriptor(process, "resourcesPath");
-process.resourcesPath = tmpUserData; // Electron-only global; harmless dummy for the .env fallback scan
+Object.defineProperty(process, "resourcesPath", { configurable: true, value: tmpUserData }); // Electron-only global; harmless dummy for the .env fallback scan
 const fakeElectron = {
   app: { getPath: () => tmpUserData, getAppPath: () => tmpUserData },
   safeStorage: { isEncryptionAvailable: () => false },
 };
 const origLoad = Module._load;
-Module._load = function (request: string, ...rest) {
+Module._load = function (request: string, ...rest: unknown[]) {
   if (request === "electron") return fakeElectron;
   if (request === "@napi-rs/keyring") throw new Error("keyring disabled in tests");
   return origLoad.call(this, request, ...rest);
 };
 
-const { BYOK_API_KEYS, SECRET_ENV_KEYS } = require("../../src/config/secretKeys");
+const { BYOK_API_KEYS, SECRET_ENV_KEYS } = require("../../src/config/secretKeys") as typeof import("../../src/config/secretKeys");
 const originalSecrets = new Map(
   SECRET_ENV_KEYS.map((key: string) => [key, process.env[key]])
 );
@@ -30,7 +30,7 @@ const EnvironmentManager = require("../../src/helpers/environment");
 test.after(() => {
   Module._load = origLoad;
   if (originalResourcesPath) Object.defineProperty(process, "resourcesPath", originalResourcesPath);
-  else delete process.resourcesPath;
+  else Reflect.deleteProperty(process, "resourcesPath");
   for (const [key, value] of originalSecrets) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -39,12 +39,12 @@ test.after(() => {
 });
 
 test("manifest entries are unique and complete", () => {
-  const seen = { base: new Set(), env: new Set(), storeKey: new Set() };
+  const seen = { base: new Set<string>(), env: new Set<string>(), storeKey: new Set<string>() };
   for (const k of BYOK_API_KEYS) {
-    for (const field of ["base", "env", "get", "save", "storeKey"]) {
+    for (const field of ["base", "env", "get", "save", "storeKey"] as const) {
       assert.ok(k[field], `${field} present on ${k.base}`);
     }
-    for (const field of ["base", "env", "storeKey"]) {
+    for (const field of ["base", "env", "storeKey"] as const) {
       assert.ok(!seen[field].has(k[field]), `duplicate ${field}: ${k[field]}`);
       seen[field].add(k[field]);
     }
@@ -73,7 +73,7 @@ test("every BYOK key accessor fails closed when secure storage is unavailable", 
 });
 
 test("openrouter is a first-class secret", async () => {
-  const or = BYOK_API_KEYS.find((k: string) => k.base === "openrouter");
+  const or = BYOK_API_KEYS.find((k) => k.base === "openrouter");
   assert.ok(or, "openrouter present in manifest");
   assert.equal(or.env, "OPENROUTER_API_KEY");
   const env = new EnvironmentManager();

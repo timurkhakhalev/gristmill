@@ -18,7 +18,7 @@ const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercu
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, Buffer.alloc(64));
 
-let activeHandlers = new Map();
+let activeHandlers = new Map<string, (...args: any[]) => any>();
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -30,7 +30,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
         isReady: () => false,
       },
       ipcMain: {
-        handle: (channel: string, listener: unknown) => {
+        handle: (channel: string, listener: (...args: any[]) => any) => {
           if (activeHandlers.has(channel)) {
             throw new Error(`Attempted to register a second handler for '${channel}'`);
           }
@@ -52,7 +52,7 @@ test.after(() => {
 });
 
 function loadBundledPreload(invoke: unknown) {
-  let api;
+  let api: Record<string, any> | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -63,7 +63,8 @@ function loadBundledPreload(invoke: unknown) {
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: unknown) => {
-            api = value;
+            if (typeof value !== "object" || value === null) throw new Error("Invalid preload API");
+            api = value as Record<string, any>;
           },
         },
         ipcRenderer: {
@@ -78,6 +79,7 @@ function loadBundledPreload(invoke: unknown) {
     process: { platform: "darwin", versions: {} },
     console,
   });
+  if (!api) throw new Error("Bundled preload did not expose its API");
   return api;
 }
 
@@ -87,7 +89,7 @@ const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 async function createFixture() {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
-  const ipcMain = { handle: (channel: string, listener: unknown) => activeHandlers.set(channel, listener) };
+  const ipcMain = { handle: (channel: string, listener: (...args: any[]) => any) => activeHandlers.set(channel, listener) };
 
   const { createUploadCancelRegistry } = await import("../../src/helpers/uploadCancelRegistry.ts");
   const { registerUploadCancelHandler } = await import("../../src/helpers/uploadCancelIpcHandler.ts");
@@ -114,6 +116,7 @@ async function createFixture() {
         segments: [{ speaker: "A", text: "hello", start: 0, end: 1 }],
       },
     }),
+    postRawAudioFile: async () => ({ statusCode: 200, data: { text: "plain" } }),
     transcribeWithTinfoil: async () => ({ text: "tinfoil" }),
     transcribeGeminiFile: async () => ({ success: true, text: "gemini" }),
     transcribeWithCorti: async () => ({ text: "corti" }),
@@ -151,7 +154,7 @@ async function createFixture() {
   });
 
   const handlersSnapshot = new Map(activeHandlers);
-  const invoke = async (channel: string, ...args) => {
+  const invoke = async (channel: string, ...args: any[]) => {
     const handler = handlersSnapshot.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler(null, ...args);
@@ -230,10 +233,12 @@ test("failure shapes cross the boundary intact", async () => {
 test("a junk main response rejects at the preload boundary", async () => {
   await createFixture();
   const realHandlers = new Map(activeHandlers);
-  const api = loadBundledPreload(async (channel: string, ...args) => {
+  const api = loadBundledPreload(async (channel: string, ...args: any[]) => {
     if (channel === "transcribe-audio-file-byok") return { silentlyWrong: true };
     if (channel === "cancel-upload-transcription") return { nope: 1 };
-    return realHandlers.get(channel)(null, ...args);
+    const handler = realHandlers.get(channel);
+    if (!handler) throw new Error(`No handler registered for ${channel}`);
+    return handler(null, ...args);
   });
   await assert.rejects(api.transcribeAudioFileByok({ filePath: audioFile }));
   await assert.rejects(api.cancelUploadTranscription({ requestId: "x" }));
@@ -247,7 +252,7 @@ test("the shared main registration registers each upload channel exactly once", 
   const IPCHandlers = require(handlersModulePath);
   const Ctor = IPCHandlers.default || IPCHandlers;
 
-  const anything = () =>
+  const anything = (): any =>
     new Proxy(function () {}, {
       get: (_target, property) => {
         if (property === Symbol.toPrimitive || property === "toString") return () => "";
@@ -260,7 +265,7 @@ test("the shared main registration registers each upload channel exactly once", 
       apply: () => anything(),
     });
 
-  const target = {};
+  const target: Record<PropertyKey, unknown> = {};
   Ctor.prototype.setupHandlers.call(
     new Proxy(target, {
       get: (value, property) => (property in value ? value[property] : anything()),

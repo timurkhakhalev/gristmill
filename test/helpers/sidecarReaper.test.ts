@@ -4,6 +4,7 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
 let userDataDir: any;
 const electronPath = require.resolve("electron");
@@ -15,7 +16,7 @@ require.cache[electronPath] = {
       isReady: () => false,
     },
   },
-};
+} as NonNullable<(typeof require.cache)[string]>;
 test.after(() => {
   if (originalElectronCache) require.cache[electronPath] = originalElectronCache;
   else delete require.cache[electronPath];
@@ -41,20 +42,25 @@ function createUserDataDir(t: import("node:test").TestContext) {
 
 // The script filename must contain "whisper-server" so processCommand() matches
 // the expected binary fragment for the preserved whisper sidecar.
-function spawnFakeSidecar(t: import("node:test").TestContext, { scriptName, ignoreSigterm }) {
+function spawnFakeSidecar(t: import("node:test").TestContext, { scriptName, ignoreSigterm }: {
+  scriptName: string;
+  ignoreSigterm: boolean;
+}): Promise<ChildProcessWithoutNullStreams & { pid: number }> {
   const handler = ignoreSigterm ? 'process.on("SIGTERM", () => {});' : "";
   const scriptPath = path.join(userDataDir, scriptName);
   fs.writeFileSync(scriptPath, `${handler}console.log("ready");setInterval(() => {}, 1000);`);
-  const child = spawn(process.execPath, [scriptPath], { stdio: ["ignore", "pipe", "ignore"] });
+  const child = spawn(process.execPath, [scriptPath], { stdio: ["ignore", "pipe", "ignore"] }) as ChildProcessWithoutNullStreams;
+  if (child.pid === undefined) throw new Error("Failed to start fake sidecar");
+  const runningChild = child as ChildProcessWithoutNullStreams & { pid: number };
   t.after(() => {
     try {
-      process.kill(child.pid, "SIGKILL");
+      process.kill(runningChild.pid, "SIGKILL");
     } catch {
       // Already dead.
     }
   });
   return new Promise((resolve) => {
-    child.stdout.once("data", () => resolve(child));
+    runningChild.stdout.once("data", () => resolve(runningChild));
   });
 }
 

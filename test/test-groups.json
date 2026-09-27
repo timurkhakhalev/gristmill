@@ -62,6 +62,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
+      "test/components/bbModelPanel.test.js",
       "test/components/floatingChatLayout.test.js",
       "test/helpers/actionsCatalogBehavior.test.js",
       "test/helpers/actionsIpc.test.js",

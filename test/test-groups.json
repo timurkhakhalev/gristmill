@@ -79,10 +79,10 @@
       "test/helpers/reasoningIpc.test.js",
       "test/helpers/tinfoilDefaultModel.test.js",
       "test/helpers/useChatStreamingCancellation.test.js",
-      "test/services/enterpriseChatModel.test.js",
-      "test/services/enterpriseInferenceErrors.test.js",
-      "test/services/reasoningServiceOpenCodeSession.test.js",
-      "test/services/reasoningServiceStreamingThink.test.js"
+      "test/services/enterpriseChatModel.test.ts",
+      "test/services/enterpriseInferenceErrors.test.ts",
+      "test/services/reasoningServiceOpenCodeSession.test.ts",
+      "test/services/reasoningServiceStreamingThink.test.ts"
     ]
   },
   {
@@ -130,10 +130,10 @@
       "test/helpers/meetingRecordingStorage.test.js",
       "test/helpers/speakerIpc.test.js",
       "test/helpers/speakerRetroactiveMapping.test.js",
-      "test/stores/meetingRecordingStoreAutoEndStop.test.js",
-      "test/stores/meetingRecordingStoreSystemAudioDegraded.test.js",
-      "test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js",
-      "test/stores/meetingRecordingStoreSystemAudioSilence.test.js"
+      "test/stores/meetingRecordingStoreAutoEndStop.test.ts",
+      "test/stores/meetingRecordingStoreSystemAudioDegraded.test.ts",
+      "test/stores/meetingRecordingStoreSystemAudioInterrupted.test.ts",
+      "test/stores/meetingRecordingStoreSystemAudioSilence.test.ts"
     ]
   },
   {
@@ -163,10 +163,10 @@
       "test/helpers/fileDiarizationIpc.test.js",
       "test/helpers/meetingSpeakerReconcile.test.js",
       "test/helpers/transcriptionDataDeleteAllAudio.test.js",
-      "test/services/fileTranscriptionDiarizationWarning.test.js",
-      "test/services/uploadDiarizationPersistence.test.js",
-      "test/stores/batchQueueDiarizationWarning.test.js",
-      "test/stores/meetingRecordingStoreDiarizationPublish.test.js"
+      "test/services/fileTranscriptionDiarizationWarning.test.ts",
+      "test/services/uploadDiarizationPersistence.test.ts",
+      "test/stores/batchQueueDiarizationWarning.test.ts",
+      "test/stores/meetingRecordingStoreDiarizationPublish.test.ts"
     ]
   },
   {
@@ -179,7 +179,7 @@
     "buildMain": false,
     "files": [
       "test/components/meetingResultsPanel.test.js",
-      "test/services/meetingResults.test.js"
+      "test/services/meetingResults.test.ts"
     ]
   },
   {
@@ -248,9 +248,9 @@
       "test/helpers/remoteTranscriptionIpc.test.js",
       "test/helpers/uploadCancelIpc.test.js",
       "test/helpers/whisperServerInferenceFields.test.js",
-      "test/services/fileTranscriptionManaged.test.js",
-      "test/services/fileTranscriptionTimestamps.test.js",
-      "test/stores/batchQueueCancel.test.js"
+      "test/services/fileTranscriptionManaged.test.ts",
+      "test/services/fileTranscriptionTimestamps.test.ts",
+      "test/stores/batchQueueCancel.test.ts"
     ]
   },
   {
@@ -389,9 +389,9 @@
       "test/helpers/noteFormattingOverrides.test.js",
       "test/helpers/regenerableNoteTitle.test.js",
       "test/lib/conversationTitle.test.ts",
-      "test/services/dictionaryTool.test.js",
-      "test/services/searchNotesTool.test.js",
-      "test/services/snippetTool.test.js",
+      "test/services/dictionaryTool.test.ts",
+      "test/services/searchNotesTool.test.ts",
+      "test/services/snippetTool.test.ts",
       "test/utils/sanitizeGeneratedTitle.test.ts"
     ]
   },
@@ -426,14 +426,14 @@
       "test/helpers/thinkingSuppressionDialects.test.js",
       "test/helpers/tinfoilCatalog.test.js",
       "test/locales/orukeetModelCard.test.ts",
-      "test/services/fetchWithParamFallback.test.js",
-      "test/services/geminiProviderResponse.test.js",
-      "test/services/llmRequestShapeMatrix.test.js",
-      "test/services/modelFamilyConstraints.test.js",
-      "test/services/openCodeSession.test.js",
-      "test/services/openaiOpenCodeSession.test.js",
-      "test/services/streamingThinkFilter.test.js",
-      "test/services/toolUtils.test.js",
+      "test/services/fetchWithParamFallback.test.ts",
+      "test/services/geminiProviderResponse.test.ts",
+      "test/services/llmRequestShapeMatrix.test.ts",
+      "test/services/modelFamilyConstraints.test.ts",
+      "test/services/openCodeSession.test.ts",
+      "test/services/openaiOpenCodeSession.test.ts",
+      "test/services/streamingThinkFilter.test.ts",
+      "test/services/toolUtils.test.ts",
       "test/utils/bedrockRegions.test.ts",
       "test/utils/localInferenceError.test.ts"
     ]
@@ -671,7 +671,7 @@
       "test/helpers/enterpriseEndpointGuard.test.js",
       "test/helpers/localModelDownloadStatus.test.js",
       "test/helpers/secureEndpoint.test.js",
-      "test/services/openaiEndpointRetry.test.js"
+      "test/services/openaiEndpointRetry.test.ts"
     ]
   },
   {
@@ -709,7 +709,7 @@
       "test/helpers/whisperVadConfig.test.js",
       "test/helpers/whisperVadModel.test.js",
       "test/helpers/whisperWakeRewarm.test.js",
-      "test/services/transcriptionBaseUrl.test.js"
+      "test/services/transcriptionBaseUrl.test.ts"
     ]
   },
   {
@@ -1048,7 +1048,7 @@
     "buildMain": false,
     "files": [
       "test/helpers/transcriptionModelDownloadStatus.test.js",
-      "test/services/fileTranscriptionCustomEndpoint.test.js"
+      "test/services/fileTranscriptionCustomEndpoint.test.ts"
     ]
   },
   {
@@ -1234,8 +1234,8 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/services/calendarAvailabilityTool.test.js",
-      "test/services/calendarTool.test.js"
+      "test/services/calendarAvailabilityTool.test.ts",
+      "test/services/calendarTool.test.ts"
     ]
   },
   {
@@ -1246,7 +1246,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/services/uploadNotes.test.js"
+      "test/services/uploadNotes.test.ts"
     ]
   },
   {
@@ -1258,7 +1258,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/stores/actionProcessingNoteOutput.test.js"
+      "test/stores/actionProcessingNoteOutput.test.ts"
     ]
   }
 ]

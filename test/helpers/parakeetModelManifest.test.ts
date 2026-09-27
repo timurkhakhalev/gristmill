@@ -17,7 +17,19 @@ const manifest = {
 };
 const managerFile = path.resolve(__dirname, "../../src/helpers/parakeet.ts");
 
-function setup(t: import("node:test").TestContext, options = {}) {
+interface SetupOptions {
+  writeError?: boolean;
+  running?: boolean;
+  cancel?: boolean;
+  downloadError?: boolean;
+  fetch?: (url: string, init: { signal: AbortSignal }) => Promise<Response>;
+  extractionError?: boolean;
+  retryExtraction?: boolean;
+  model?: string;
+  abortDuringInstall?: boolean;
+}
+
+function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "parakeet-manifest-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const calls : any = { downloads: [], manifests: [], events: [], errors: [], warms: 0, timeouts: [] };
@@ -68,7 +80,7 @@ function setup(t: import("node:test").TestContext, options = {}) {
       },
     },
     "./downloadUtils": {
-      async downloadFile(url: string, target: unknown, { signal }) {
+      async downloadFile(url: string, target: unknown, { signal }: { signal: { aborted: boolean } }) {
         calls.downloads.push(url);
         if (options.cancel) {
           signal.aborted = true;
@@ -93,7 +105,7 @@ function setup(t: import("node:test").TestContext, options = {}) {
       checkDiskSpace: async () => ({ ok: true }),
       // Mirrors the real helper's contract (test/helpers/downloadUtils.test.js):
       // non-2xx rejects, otherwise the parsed body comes back.
-      async fetchJson(url: string, init: unknown) {
+      async fetchJson(url: string, init: { signal: AbortSignal }) {
         calls.manifests.push({ url, init });
         calls.events.push("manifest");
         const response = options.fetch ? await options.fetch(url, init) : Response.json(manifest);
@@ -156,7 +168,7 @@ function setup(t: import("node:test").TestContext, options = {}) {
   };
   let manifestTask: any;
   const save = manager._saveModelManifest.bind(manager);
-  manager._saveModelManifest = (...args) => {
+  manager._saveModelManifest = (...args: any[]) => {
     manifestTask = save(...args);
     return manifestTask;
   };
@@ -266,7 +278,7 @@ test(
   async (t: import("node:test").TestContext) => {
     const h = setup(t, {
       fetch: (_url: string, { signal }) =>
-        new Promise((_resolve, reject) => {
+        new Promise<Response>((_resolve, reject) => {
           signal.addEventListener("abort", () => reject(signal.reason), { once: true });
         }),
     });
@@ -283,7 +295,7 @@ test(
   }
 );
 
-const failures = [
+const failures: [string, SetupOptions][] = [
   [
     "network rejection",
     {
@@ -336,10 +348,10 @@ test("a model without expectedSizeBytes skips the archive-size check", async (t:
 });
 
 test("a late manifest never recreates a deleted model directory", async (t: import("node:test").TestContext) => {
-  let finish;
+  let finish!: (response: Response) => void;
   const h = setup(t, {
     fetch: () =>
-      new Promise((resolve) => {
+      new Promise<Response>((resolve) => {
         finish = resolve;
       }),
   });
@@ -352,10 +364,10 @@ test("a late manifest never recreates a deleted model directory", async (t: impo
 });
 
 test("a late manifest never overwrites an existing sidecar", async (t: import("node:test").TestContext) => {
-  let finish;
+  let finish!: (response: Response) => void;
   const h = setup(t, {
     fetch: () =>
-      new Promise((resolve) => {
+      new Promise<Response>((resolve) => {
         finish = resolve;
       }),
   });

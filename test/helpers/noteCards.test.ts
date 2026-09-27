@@ -2,7 +2,7 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { extractNoteCards } = require("../../src/components/chat/noteCards.ts");
 
-const completed = (name: string, metadata: unknown, result: unknown) => ({
+const completed = (name: string, metadata: unknown, result?: unknown) => ({
   id: "tc-1",
   name,
   arguments: "{}",

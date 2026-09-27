@@ -2,9 +2,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const load = () => import("../../src/utils/transcriptSpeakerState.js");
-type TranscriptSegment = import("../../src/stores/meetingRecordingStore.js").TranscriptSegment;
+type TranscriptSegment = import("../../src/contracts/meetingCoordinator.js").MeetingTranscriptSegment;
 
-const seg = (segment: Omit<TranscriptSegment, "id" | "text">): TranscriptSegment => ({ id: "seg", text: "hi", ...segment });
+const seg = (segment: Omit<TranscriptSegment, "id" | "text" | "source">): TranscriptSegment => ({ id: "seg", text: "hi", source: "system", ...segment });
 
 const userAssigned = (speaker: string, speakerName: string) =>
   seg({

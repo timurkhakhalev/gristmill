@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.join(__dirname, "..");
-const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
+const read = (file: string): string => fs.readFileSync(path.join(root, file), "utf8");
 
 test("M1 build identity belongs to OpenHercules and has no publish destination", () => {
   const builder = JSON.parse(read("electron-builder.json"));

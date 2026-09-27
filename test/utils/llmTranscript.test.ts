@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const load = () => import("../../src/utils/llmTranscript.js");
-type TranscriptSegment = import("../../src/stores/meetingRecordingStore.js").TranscriptSegment;
+type TranscriptSegment = import("../../src/contracts/meetingCoordinator.js").MeetingTranscriptSegment;
 
 const t = (key: string, options: { n?: number } = {}) => {
   if (key === "notes.speaker.label") return `Speaker ${options.n}`;
@@ -18,7 +18,7 @@ const attendee = (email: string, displayName: string | null, self = false) => ({
   self,
 });
 
-const seg = (segment: Omit<TranscriptSegment, "id">): TranscriptSegment => ({ id: "seg", ...segment });
+const seg = (segment: Omit<TranscriptSegment, "id" | "text" | "source">): TranscriptSegment => ({ id: "seg", text: "hi", source: "system", ...segment });
 
 test("mic segments carry the note owner's label", async () => {
   const { resolveLlmSpeakerLabel } = await load();

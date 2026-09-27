@@ -1,9 +1,16 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/lib/noteEditorPendingSave.ts");
+const load = () => import("../../src/lib/noteEditorPendingSave.js");
 
-function note(id, content, enhancedContent = null) {
+interface SourceNote {
+  id: number;
+  title: string;
+  content: string;
+  enhanced_content: string | null;
+}
+
+function note(id: number, content: string, enhancedContent: string | null = null): SourceNote {
   return {
     id,
     title: `Note ${id}`,
@@ -66,7 +73,7 @@ test("rejects foreign and stale source-note mutations without changing the draft
     { sourceNoteId: 2, field: "title", value: "B title" },
     { sourceNoteId: 2, field: "content", value: "B body" },
     { sourceNoteId: 2, field: "enhancedContent", value: "B enhancement" },
-  ]) {
+  ] as import("../../src/lib/noteEditorPendingSave.js").NoteDraftMutation[]) {
     assert.equal(applyNoteDraftMutation(draftA, mutation), null);
   }
   assert.equal(
@@ -151,7 +158,7 @@ test("models B's editor event before the A-to-B parent transition, then returns 
   const noteA = note(1, "A body", "A enhancement");
   const noteB = note(2, "B body", "B enhancement");
 
-  let draft = planNoteTransition(noteA, null, null).nextDraft;
+  let draft = planNoteTransition(noteA, null, null).nextDraft!;
   assert.equal(
     applyNoteDraftMutation(draft, {
       sourceNoteId: 2,
@@ -170,7 +177,7 @@ test("models B's editor event before the A-to-B parent transition, then returns 
     enhancedContent: "B enhancement",
   });
 
-  draft = toB.nextDraft;
+  draft = toB.nextDraft!;
   assert.equal(
     applyNoteDraftMutation(draft, {
       sourceNoteId: 1,
@@ -196,21 +203,22 @@ test("edit A then immediately switch to B keeps empty, zero, and raw content own
   const noteB = note(2, "Original B");
 
   for (const content of ["", "0", "Edited raw A"]) {
-    const draftA = planNoteTransition(noteA, null, null).nextDraft;
+    const draftA = planNoteTransition(noteA, null, null).nextDraft!;
     const editedA = applyNoteDraftMutation(draftA, {
       sourceNoteId: 1,
       field: "content",
       value: content,
     });
     assert.ok(editedA);
+    const edited = editedA!;
 
     const pendingA = {
-      noteId: editedA.noteId,
-      title: editedA.title,
-      content: editedA.content,
+      noteId: edited.noteId,
+      title: edited.title,
+      content: edited.content,
     };
     assert.equal(
-      applyNoteDraftMutation(editedA, {
+      applyNoteDraftMutation(edited, {
         sourceNoteId: 2,
         field: "content",
         value: "B early mount event",
@@ -225,7 +233,7 @@ test("edit A then immediately switch to B keeps empty, zero, and raw content own
         updates: { title: "Note 1", content },
       },
     ]);
-    assert.equal(toB.nextDraft.noteId, 2);
+    assert.equal(toB.nextDraft!.noteId, 2);
     assert.equal(pendingA.noteId, 1);
   }
 });
@@ -234,20 +242,21 @@ test("an enhanced A edit flushes only to A during an immediate B transition", as
   const { applyNoteDraftMutation, planNoteTransition } = await load();
   const noteA = note(1, "A body", "Old enhanced A");
   const noteB = note(2, "B body", "Enhanced B");
-  const draftA = planNoteTransition(noteA, null, null).nextDraft;
+  const draftA = planNoteTransition(noteA, null, null).nextDraft!;
   const editedA = applyNoteDraftMutation(draftA, {
     sourceNoteId: 1,
     field: "enhancedContent",
     value: "New enhanced A",
   });
   assert.ok(editedA);
+  const edited = editedA!;
 
   const pendingEnhancedA = {
-    noteId: editedA.noteId,
-    enhancedContent: editedA.enhancedContent,
+    noteId: edited.noteId,
+    enhancedContent: edited.enhancedContent,
   };
   assert.equal(
-    applyNoteDraftMutation(editedA, {
+    applyNoteDraftMutation(edited, {
       sourceNoteId: 2,
       field: "enhancedContent",
       value: "B early enhanced event",
@@ -262,7 +271,7 @@ test("an enhanced A edit flushes only to A during an immediate B transition", as
       updates: { enhanced_content: "New enhanced A" },
     },
   ]);
-  assert.equal(toB.nextDraft.noteId, 2);
+  assert.equal(toB.nextDraft!.noteId, 2);
   assert.equal(pendingEnhancedA.noteId, 1);
 });
 

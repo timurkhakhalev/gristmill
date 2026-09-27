@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const React = require("react");
+import type { ComponentType } from "react";
+const React = require("react") as typeof import("react");
 const { createRoot } = require("react-dom/client");
 const {
   createRendererServer,
@@ -8,16 +9,42 @@ const {
   installHookDom,
 } = require("../lib/rendererTestHarness.ts");
 
-function deferred() {
-  let resolve;
-  const promise = new Promise((done) => {
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function deferred<T = unknown>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
     resolve = done;
   });
   return { promise, resolve };
 }
 
-async function createDownloadRenderer(t, electronAPI) {
-  let root = null;
+interface DownloadState {
+  modelType: string;
+  modelId: string;
+  phase: string;
+  progress: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  sequence: number;
+}
+
+type DownloadApi = {
+  modelGetActiveDownloads?: () => Promise<DownloadState[]>;
+  onModelDownloadProgress?: (listener: (event: Record<string, unknown>) => void) => () => void;
+  onWhisperDownloadProgress?: (listener: unknown) => () => void;
+  onParakeetDownloadProgress?: (listener: unknown) => () => void;
+  modelCancelDownload?: (modelId: string) => Promise<{ success: boolean }>;
+  modelDownload?: (modelId: string, onSelected?: () => void) => Promise<unknown>;
+  downloadWhisperModel?: (modelId: string) => Promise<unknown>;
+  downloadParakeetModel?: (modelId: string) => Promise<unknown>;
+};
+
+async function createDownloadRenderer(t: import("node:test").TestContext, electronAPI: DownloadApi) {
+  let root: ReturnType<typeof createRoot> | null = null;
   t.after(async () => {
     if (root) await React.act(async () => root.unmount());
   });
@@ -48,8 +75,8 @@ async function createDownloadRenderer(t, electronAPI) {
   });
   return {
     vite,
-    async render(Component) {
-      root ??= createRoot(container);
+    async render(Component: ComponentType) {
+      root ??= createRoot(container as unknown as Element);
       await React.act(async () => root.render(React.createElement(Component)));
     },
     async unmount() {
@@ -59,8 +86,8 @@ async function createDownloadRenderer(t, electronAPI) {
   };
 }
 
-test("remount restores concurrent LLM downloads and cancellation settles only its model", async (t) => {
-  let activeDownloads = [
+test("remount restores concurrent LLM downloads and cancellation settles only its model", async (t: import("node:test").TestContext) => {
+  let activeDownloads: DownloadState[] = [
     {
       modelType: "llm",
       modelId: "model-a",
@@ -80,8 +107,8 @@ test("remount restores concurrent LLM downloads and cancellation settles only it
       sequence: 2,
     },
   ];
-  const listeners = new Set();
-  const cancellations = [];
+  const listeners = new Set<(event: Record<string, unknown>) => void>();
+  const cancellations: string[] = [];
   let refreshes = 0;
   const renderer = await createDownloadRenderer(t, {
     modelGetActiveDownloads: async () => activeDownloads,
@@ -95,7 +122,7 @@ test("remount restores concurrent LLM downloads and cancellation settles only it
     },
   });
   const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
-  let download;
+  let download: ReturnType<typeof useModelDownload> | undefined;
   function Harness() {
     download = useModelDownload({
       modelType: "llm",
@@ -107,7 +134,7 @@ test("remount restores concurrent LLM downloads and cancellation settles only it
   }
 
   await renderer.render(Harness);
-  assert.deepEqual(Object.keys(download.downloads), ["model-a", "model-b"]);
+  assert.deepEqual(Object.keys(download!.downloads), ["model-a", "model-b"]);
   await renderer.unmount();
   assert.equal(listeners.size, 0);
 
@@ -116,13 +143,13 @@ test("remount restores concurrent LLM downloads and cancellation settles only it
     { ...activeDownloads[1], progress: 50, downloadedBytes: 500, sequence: 4 },
   ];
   await renderer.render(Harness);
-  assert.equal(download.downloads["model-a"].progress, 40);
-  assert.equal(download.downloads["model-b"].progress, 50);
+  assert.equal(download!.downloads["model-a"].progress, 40);
+  assert.equal(download!.downloads["model-b"].progress, 50);
 
-  await React.act(async () => download.cancelDownload("model-a"));
+  await React.act(async () => download!.cancelDownload("model-a"));
   assert.deepEqual(cancellations, ["model-a"]);
-  assert.equal(download.isCancellingModel("model-a"), true);
-  assert.equal(download.isCancellingModel("model-b"), false);
+  assert.equal(download!.isCancellingModel("model-a"), true);
+  assert.equal(download!.isCancellingModel("model-b"), false);
 
   await React.act(async () => {
     for (const listener of listeners) {
@@ -135,25 +162,25 @@ test("remount restores concurrent LLM downloads and cancellation settles only it
       });
     }
   });
-  assert.deepEqual(Object.keys(download.downloads), ["model-b"]);
-  assert.equal(download.isCancellingModel("model-a"), false);
-  assert.deepEqual(download.downloadErrors, {});
+  assert.deepEqual(Object.keys(download!.downloads), ["model-b"]);
+  assert.equal(download!.isCancellingModel("model-a"), false);
+  assert.deepEqual(download!.downloadErrors, {});
 
   await React.act(async () => {
     for (const listener of listeners) {
       listener({ type: "complete", modelId: "model-b", progress: 100, sequence: 6 });
     }
   });
-  assert.equal(download.isDownloading, false);
+  assert.equal(download!.isDownloading, false);
   assert.equal(refreshes, 2);
 });
 
 for (const outcome of ["error", "complete", "cancel"]) {
-  test(`LLM duplicate recovery preserves ${outcome} before an empty snapshot`, async (t) => {
+  test(`LLM duplicate recovery preserves ${outcome} before an empty snapshot`, async (t: import("node:test").TestContext) => {
     const duplicateResponse = deferred();
     const recoverySnapshot = deferred();
     let snapshotCalls = 0;
-    let progressListener;
+    let progressListener!: (event: Record<string, unknown>) => void;
     let refreshes = 0;
     let selections = 0;
     const renderer = await createDownloadRenderer(t, {
@@ -161,13 +188,12 @@ for (const outcome of ["error", "complete", "cancel"]) {
         progressListener = listener;
         return () => {};
       },
-      modelGetActiveDownloads() {
-        return ++snapshotCalls === 1 ? Promise.resolve([]) : recoverySnapshot.promise;
-      },
+      modelGetActiveDownloads: () =>
+        ++snapshotCalls === 1 ? Promise.resolve([]) : recoverySnapshot.promise as Promise<DownloadState[]>,
       modelDownload: () => duplicateResponse.promise,
     });
     const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
-    let download;
+    let download: ReturnType<typeof useModelDownload> | undefined;
     function Harness() {
       download = useModelDownload({
         modelType: "llm",
@@ -178,9 +204,9 @@ for (const outcome of ["error", "complete", "cancel"]) {
       return null;
     }
     await renderer.render(Harness);
-    let request;
+    let request!: Promise<unknown>;
     await React.act(async () => {
-      request = download.downloadModel("model-a", () => {
+      request = download!.downloadModel("model-a", () => {
         selections += 1;
       });
     });
@@ -205,9 +231,9 @@ for (const outcome of ["error", "complete", "cancel"]) {
       recoverySnapshot.resolve([]);
       await request;
     });
-    assert.equal(download.isDownloading, false);
+    assert.equal(download!.isDownloading, false);
     assert.equal(
-      download.downloadError,
+      download!.downloadError,
       outcome === "error" ? "hooks.modelDownload.errors.notFound" : null
     );
     assert.equal(refreshes, 1);
@@ -216,7 +242,7 @@ for (const outcome of ["error", "complete", "cancel"]) {
 }
 
 for (const modelType of ["whisper", "parakeet", "llm"]) {
-  test(`${modelType} duplicate recovery ${modelType === "llm" ? "keeps exact model ownership" : "restores the active family model"}`, async (t) => {
+  test(`${modelType} duplicate recovery ${modelType === "llm" ? "keeps exact model ownership" : "restores the active family model"}`, async (t: import("node:test").TestContext) => {
     let snapshotCalls = 0;
     const subscribe = () => () => {};
     const refuseDownload = async () => ({ success: false, code: "DOWNLOAD_IN_PROGRESS" });
@@ -233,21 +259,21 @@ for (const modelType of ["whisper", "parakeet", "llm"]) {
       onWhisperDownloadProgress: subscribe,
       onParakeetDownloadProgress: subscribe,
       onModelDownloadProgress: subscribe,
-      modelGetActiveDownloads: async () => (++snapshotCalls === 1 ? [] : [active]),
+      modelGetActiveDownloads: async (): Promise<DownloadState[]> => (++snapshotCalls === 1 ? [] : [active]),
       downloadWhisperModel: refuseDownload,
       downloadParakeetModel: refuseDownload,
       modelDownload: refuseDownload,
     });
     const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
-    let download;
+    let download: ReturnType<typeof useModelDownload> | undefined;
     function Harness() {
       download = useModelDownload({ modelType });
       return null;
     }
     await renderer.render(Harness);
-    await React.act(async () => download.downloadModel("requested-model"));
-    assert.equal(download.isDownloadingModel("requested-model"), false);
-    assert.equal(download.downloadingModel, modelType === "llm" ? null : "active-model");
-    if (modelType !== "llm") assert.equal(download.downloadProgress.percentage, 42);
+    await React.act(async () => download!.downloadModel("requested-model"));
+    assert.equal(download!.isDownloadingModel("requested-model"), false);
+    assert.equal(download!.downloadingModel, modelType === "llm" ? null : "active-model");
+    if (modelType !== "llm") assert.equal(download!.downloadProgress.percentage, 42);
   });
 }

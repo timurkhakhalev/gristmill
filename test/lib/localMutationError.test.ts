@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/lib/localMutationError.ts");
+const load = () => import("../../src/lib/localMutationError.js");
 
 test("maps database validation messages to translation keys", async () => {
   const { localMutationErrorKey } = await load();

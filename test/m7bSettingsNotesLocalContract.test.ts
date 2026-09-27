@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.join(__dirname, "..");
-const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
+const read = (file: string): string => fs.readFileSync(path.join(root, file), "utf8");
 
 test("M7b settings and notes surfaces stay local-only", () => {
   const files = [

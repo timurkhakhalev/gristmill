@@ -39,12 +39,12 @@ const ARABIC_NUMBER_NEUTRAL_TEMPLATES = {
 
 const languages = fs
   .readdirSync(LOCALES)
-  .filter((entry) => fs.statSync(path.join(LOCALES, entry)).isDirectory());
+  .filter((entry: string) => fs.statSync(path.join(LOCALES, entry)).isDirectory());
 
-const load = (lang, namespace) =>
+const load = (lang: string, namespace: string): Record<string, unknown> =>
   JSON.parse(fs.readFileSync(path.join(LOCALES, lang, `${namespace}.json`), "utf8"));
 
-function flatten(value, prefix = "", out = new Map()) {
+function flatten(value: unknown, prefix = "", out: Map<string, unknown> = new Map()): Map<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     for (const [key, child] of Object.entries(value)) {
       flatten(child, prefix ? `${prefix}.${key}` : key, out);
@@ -55,8 +55,8 @@ function flatten(value, prefix = "", out = new Map()) {
   return out;
 }
 
-function sourceFiles(dir, out = []) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+function sourceFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true }) as import("node:fs").Dirent[]) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       if (entry.name !== "locales" && entry.name !== "dist") sourceFiles(full, out);
@@ -67,26 +67,26 @@ function sourceFiles(dir, out = []) {
   return out;
 }
 
-const stripPlural = (key) => key.replace(PLURAL_SUFFIX, "");
+const stripPlural = (key: string): string => key.replace(PLURAL_SUFFIX, "");
 
-function registryDescriptionKeys(node, out = []) {
+function registryDescriptionKeys(node: unknown, out: string[] = []): string[] {
   if (Array.isArray(node)) {
     for (const child of node) registryDescriptionKeys(child, out);
   } else if (node && typeof node === "object") {
-    if (typeof node.descriptionKey === "string") out.push(node.descriptionKey);
-    for (const child of Object.values(node)) registryDescriptionKeys(child, out);
+    if (typeof (node as { descriptionKey?: unknown }).descriptionKey === "string") out.push((node as { descriptionKey: string }).descriptionKey);
+    for (const child of Object.values(node as Record<string, unknown>)) registryDescriptionKeys(child, out);
   }
   return out;
 }
 
 test("every t() key referenced in source resolves in en", () => {
-  const keys = new Set();
+  const keys = new Set<string>();
   for (const namespace of NAMESPACES) {
     for (const key of flatten(load("en", namespace)).keys()) keys.add(key);
   }
   // i18next also resolves a plural base and a parent path returned as an object.
   const bases = new Set([...keys].map(stripPlural));
-  const parents = new Set();
+  const parents = new Set<string>();
   for (const key of keys) {
     const parts = key.split(".");
     for (let i = 1; i < parts.length; i += 1) parents.add(parts.slice(0, i).join("."));
@@ -140,7 +140,7 @@ test("every en key is present in every other language", () => {
 test("interpolation variables match en in every language", () => {
   // Compares names, not repeat counts — word order can make a translation
   // reference the same variable a different number of times.
-  const variables = (value) =>
+  const variables = (value: unknown): string[] =>
     typeof value === "string"
       ? [...new Set([...value.matchAll(INTERPOLATION)].map((m) => m[1]))].sort()
       : [];
@@ -162,7 +162,7 @@ test("interpolation variables match en in every language", () => {
 });
 
 test("every messageKey literal resolves in en", () => {
-  const keys = new Set();
+  const keys = new Set<string>();
   for (const namespace of NAMESPACES) {
     for (const key of flatten(load("en", namespace)).keys()) keys.add(key);
   }

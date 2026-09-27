@@ -3,10 +3,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const load = () => import("../../src/config/colorSchemes.ts");
+const load = () => import("../../src/config/colorSchemes.js");
 const css = fs.readFileSync(path.join(__dirname, "../../src/index.css"), "utf8");
 
-const block = (selector) => {
+const block = (selector: string): string | null => {
   const start = css.indexOf(`${selector} {`);
   if (start === -1) return null;
   return css.slice(start, css.indexOf("}", start));

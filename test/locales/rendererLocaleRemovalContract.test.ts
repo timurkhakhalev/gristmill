@@ -6,16 +6,16 @@ const test = require("node:test");
 const localesDir = path.join(__dirname, "..", "..", "src", "locales");
 const locales = fs
   .readdirSync(localesDir)
-  .filter((locale) => fs.existsSync(path.join(localesDir, locale, "translation.json")));
+  .filter((locale: string) => fs.existsSync(path.join(localesDir, locale, "translation.json")));
 
-const readJson = (locale, file) =>
+const readJson = (locale: string, file: string): Record<string, unknown> =>
   JSON.parse(fs.readFileSync(path.join(localesDir, locale, file), "utf8"));
 
-const getPath = (value, dottedPath) => {
+const getPath = (value: unknown, dottedPath: string): unknown => {
   let current = value;
   for (const part of dottedPath.split(".")) {
     if (!current || typeof current !== "object") return undefined;
-    current = current[part];
+    current = (current as Record<string, unknown>)[part];
   }
   return current;
 };
@@ -25,7 +25,7 @@ test("calendar integrations provide an OAuth not-configured state in every local
     const translation = readJson(locale, "translation.json");
     for (const provider of ["googleCalendar", "microsoftCalendar"]) {
       assert.equal(
-        typeof translation.integrations?.[provider]?.notConfigured,
+        typeof (translation.integrations as Record<string, { notConfigured?: unknown }> | undefined)?.[provider]?.notConfigured,
         "string",
         `${locale}: integrations.${provider}.notConfigured`
       );
@@ -81,7 +81,7 @@ test("prompt locale bundles expose cleanup and dictionary only", () => {
 });
 
 test("supported locale values use the OpenHercules brand", () => {
-  const visit = (value, path) => {
+  const visit = (value: unknown, path: string): void => {
     if (typeof value === "string") {
       assert.doesNotMatch(value, /OpenWhispr|OpenWispr|Whispr/i, path);
       return;

@@ -97,8 +97,8 @@
       "test/components/onboardingCompatibility.test.js",
       "test/components/onboardingFlow.test.js",
       "test/components/onboardingLanguageSelection.test.js",
-      "test/hooks/usePermissionsAccessibilityGate.test.js",
-      "test/locales/i18nImports.test.js"
+      "test/hooks/usePermissionsAccessibilityGate.test.ts",
+      "test/locales/i18nImports.test.ts"
     ]
   },
   {
@@ -146,7 +146,7 @@
     "files": [
       "test/helpers/hotkeyValidation.test.js",
       "test/helpers/onboardingWindowBounds.test.js",
-      "test/locales/rendererLocaleRemovalContract.test.js"
+      "test/locales/rendererLocaleRemovalContract.test.ts"
     ]
   },
   {
@@ -228,7 +228,7 @@
       "test/helpers/granolaImport.test.js",
       "test/helpers/noteCards.test.js",
       "test/helpers/noteListOps.test.js",
-      "test/lib/noteEditorPendingSave.test.js",
+      "test/lib/noteEditorPendingSave.test.ts",
       "test/utils/findMatches.test.ts",
       "test/utils/mentionMarkdown.test.ts",
       "test/utils/snippets.test.ts"
@@ -271,8 +271,8 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/config/rendererInferenceRemovalContract.test.js",
-      "test/config/colorSchemes.test.js",
+      "test/config/rendererInferenceRemovalContract.test.ts",
+      "test/config/colorSchemes.test.ts",
       "test/helpers/appVersion.test.js",
       "test/helpers/assetDownloadOffline.test.js",
       "test/helpers/autoStartPolicy.test.js",
@@ -296,11 +296,11 @@
       "test/helpers/windowContext.test.js",
       "test/helpers/windowManagerNavigation.test.js",
       "test/helpers/windowPositionClamp.test.js",
-      "test/lib/localMutationError.test.js",
-      "test/locales/translationCoverage.test.js",
-      "test/m1IdentitySourceContract.test.js",
-      "test/m2ServerLayerRemovalContract.test.js",
-      "test/m8PlatformSourceContract.test.js",
+      "test/lib/localMutationError.test.ts",
+      "test/locales/translationCoverage.test.ts",
+      "test/m1IdentitySourceContract.test.ts",
+      "test/m2ServerLayerRemovalContract.test.ts",
+      "test/m8PlatformSourceContract.test.ts",
       "test/scripts/beforeBuild.test.js",
       "test/scripts/downloadLifecycle.test.js",
       "test/scripts/macosIdentitySourceContract.test.js",
@@ -388,7 +388,7 @@
       "test/helpers/cleanupFailureStore.test.js",
       "test/helpers/noteFormattingOverrides.test.js",
       "test/helpers/regenerableNoteTitle.test.js",
-      "test/lib/conversationTitle.test.js",
+      "test/lib/conversationTitle.test.ts",
       "test/services/dictionaryTool.test.js",
       "test/services/searchNotesTool.test.js",
       "test/services/snippetTool.test.js",
@@ -425,7 +425,7 @@
       "test/helpers/stripThinking.test.js",
       "test/helpers/thinkingSuppressionDialects.test.js",
       "test/helpers/tinfoilCatalog.test.js",
-      "test/locales/orukeetModelCard.test.js",
+      "test/locales/orukeetModelCard.test.ts",
       "test/services/fetchWithParamFallback.test.js",
       "test/services/geminiProviderResponse.test.js",
       "test/services/llmRequestShapeMatrix.test.js",
@@ -868,7 +868,7 @@
     "buildMain": false,
     "files": [
       "test/helpers/modelManagerBridgeDownloadStatus.test.js",
-      "test/hooks/modelDownloadErrors.test.js"
+      "test/hooks/modelDownloadErrors.test.ts"
     ]
   },
   {
@@ -1095,7 +1095,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/m7bSettingsNotesLocalContract.test.js"
+      "test/m7bSettingsNotesLocalContract.test.ts"
     ]
   },
   {

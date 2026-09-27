@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const src = path.join(__dirname, "..", "..", "src");
-const read = (file) => fs.readFileSync(path.join(src, file), "utf8");
+const read = (file: string): string => fs.readFileSync(path.join(src, file), "utf8");
 
 test("renderer keeps only cleanup, note formatting, and chat inference scopes", () => {
   const source = read("config/inferenceScopes.ts");

@@ -13,12 +13,13 @@ const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
 const RUN_ID = "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2";
 
 function createCaptureFakes({ failWrite = false } = {}) {
+  type Recording = { id: string; noteId: number; config: unknown; startedAt: string; captureState: string; captureErrorCode?: string | null };
   const database = {
-    recordings: [],
-    epochs: [],
-    recoveries: [],
-    finalizations: [],
-    createMeetingRecording(noteId: any, config: any, startedAt: number, id: any) {
+    recordings: [] as Recording[],
+    epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
+    recoveries: [] as unknown[],
+    finalizations: [] as { recordingId: string; input: { captureState: string; errorCode?: string | null } }[],
+    createMeetingRecording(noteId: number, config: unknown, startedAt: string, id: string) {
       const recording = { id, noteId, config, startedAt, captureState: "recording" };
       this.recordings.push(recording);
       return recording;
@@ -31,11 +32,13 @@ function createCaptureFakes({ failWrite = false } = {}) {
     },
     markMeetingRecordingFinalizing(recordingId: string) {
       const recording = this.recordings.find((item) => item.id === recordingId);
+      if (!recording) throw new Error("Recording not found");
       recording.captureState = "finalizing";
     },
-    finalizeMeetingRecording(recordingId: string, input: string) {
+    finalizeMeetingRecording(recordingId: string, input: { captureState: string; errorCode?: string | null }) {
       this.finalizations.push({ recordingId, input });
       const recording = this.recordings.find((item) => item.id === recordingId);
+      if (!recording) throw new Error("Recording not found");
       recording.captureState = input.captureState;
       recording.captureErrorCode = input.errorCode ?? null;
       return { recording, initialRun: { id: RUN_ID } };
@@ -222,9 +225,9 @@ test("short PCM frames and out-of-order packets are rejected", async () => {
 });
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  let resolve!: () => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
 

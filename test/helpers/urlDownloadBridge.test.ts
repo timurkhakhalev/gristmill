@@ -4,37 +4,38 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
+const { deferred } = require("./harness/deferred.ts") as typeof import("./harness/deferred.js");
+import type { UrlDownloadApi, UrlDownloadProgress, UrlDownloadSuccess } from "../../src/contracts/urlDownload.js";
 
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 // Deferred-controlled fake downloader; every call is recorded and can be held
 // open or failed from the test. No network, no real temp writes.
-const downloadCalls: unknown[] = [];
-let downloadBehavior = () => {
+type DownloadPayload = Omit<UrlDownloadSuccess, "success">;
+type DownloadCall = {
+  url: string;
+  onProgress: (progress: unknown) => void;
+  signal: AbortSignal;
+  deferred: import("./harness/deferred.js").Deferred<DownloadPayload>;
+};
+type Listener = (event: unknown, data: unknown) => void;
+type Handler = (event: unknown, ...args: unknown[]) => unknown;
+const downloadCalls: DownloadCall[] = [];
+let downloadBehavior: (call: DownloadCall) => Promise<unknown> = () => {
   throw new Error("fake download has no behavior set");
 };
-const activeHandlers = new Map();
-let dispatchSend: unknown = null;
-
-function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
+const activeHandlers = new Map<string, Handler>();
+let dispatchSend: ((channel: string, data: unknown) => void) | null = null;
 
 function resetDownloader() {
   downloadCalls.length = 0;
-  downloadBehavior = (call: any) => call.deferred.promise;
+  downloadBehavior = (call) => call.deferred.promise;
 }
 
-function loadBundledPreload(invoke: unknown) {
-  const listeners = new Map();
-  let api;
+function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
+  const listeners = new Map<string, Listener[]>();
+  let api: UrlDownloadApi | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -44,19 +45,19 @@ function loadBundledPreload(invoke: unknown) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name: string, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: UrlDownloadApi) => {
             api = value;
           },
         },
         ipcRenderer: {
           invoke,
           send() {},
-          on(channel: string, listener: unknown) {
+          on(channel: string, listener: Listener) {
             const list = listeners.get(channel) || [];
             list.push(listener);
             listeners.set(channel, list);
           },
-          removeListener(channel: string, listener: unknown) {
+          removeListener(channel: string, listener: Listener) {
             const list = listeners.get(channel) || [];
             const index = list.indexOf(listener);
             if (index !== -1) list.splice(index, 1);
@@ -68,6 +69,7 @@ function loadBundledPreload(invoke: unknown) {
     process: { platform: "darwin", versions: {} },
     console,
   });
+  assert.ok(api);
   return { api, listeners };
 }
 
@@ -84,7 +86,7 @@ async function createFixture(t: import("node:test").TestContext) {
     { handle: (channel, listener) => activeHandlers.set(channel, listener) },
     {
       download: (url, onProgress, signal) => {
-        const call = { url, onProgress, signal, deferred: deferred() };
+        const call: DownloadCall = { url, onProgress, signal, deferred: deferred<DownloadPayload>() };
         downloadCalls.push(call);
         return downloadBehavior(call);
       },
@@ -95,10 +97,10 @@ async function createFixture(t: import("node:test").TestContext) {
   );
 
   const handlersSnapshot = new Map(activeHandlers);
-  const invoke = async (channel: string, ...args) => {
+  const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
-    return handler({ sender: { isDestroyed: () => false, send: (c: unknown, p: string) => dispatchSend?.(c, p) } }, ...args);
+    return handler({ sender: { isDestroyed: () => false, send: (c: string, p: unknown) => dispatchSend?.(c, p) } }, ...args);
   };
   const { api, listeners } = loadBundledPreload(invoke);
   // Close the event loop: main-side sends dispatch into the listeners the
@@ -113,8 +115,8 @@ test("the full bundled preload chain downloads, reports progress and resolves", 
   const { api } = await createFixture(t);
   resetDownloader();
 
-  const progressEvents: unknown[] = [];
-  const unsubscribe = api.onUrlDownloadProgress((p: string) => progressEvents.push(p));
+  const progressEvents: UrlDownloadProgress[] = [];
+  const unsubscribe = api.onUrlDownloadProgress((p) => progressEvents.push(p));
   const pending = api.downloadUrlAudio("https://example.com/a.mp3", "job-1");
   downloadCalls[0].onProgress({ stage: "resolving", percent: 0 });
   downloadCalls[0].onProgress({ stage: "downloading", percent: 55 });
@@ -126,7 +128,7 @@ test("the full bundled preload chain downloads, reports progress and resolves", 
   });
   const result = await pending;
   unsubscribe();
-  assert.equal(result.success, true);
+  assert.ok(result.success);
   assert.equal(result.tempPath, "/t/ow-url-x");
   assert.equal(result.title, "Track");
   assert.equal(result.sizeBytes, 4);
@@ -143,8 +145,8 @@ test("unsubscribe stops progress; a resubscribed listener sees the next download
   const { api } = await createFixture(t);
   resetDownloader();
 
-  const events: unknown[] = [];
-  const unsubscribe = api.onUrlDownloadProgress((p: string) => events.push(p));
+  const events: UrlDownloadProgress[] = [];
+  const unsubscribe = api.onUrlDownloadProgress((p) => events.push(p));
   unsubscribe();
 
   const pending = api.downloadUrlAudio("https://example.com/b.mp3", "job-2");
@@ -156,8 +158,8 @@ test("unsubscribe stops progress; a resubscribed listener sees the next download
 
 test("a malformed progress event is dropped at the preload boundary; the next valid one passes", async (t: import("node:test").TestContext) => {
   const { api, listeners } = await createFixture(t);
-  const events: unknown[] = [];
-  const unsubscribe = api.onUrlDownloadProgress((p: string) => events.push(p));
+  const events: UrlDownloadProgress[] = [];
+  const unsubscribe = api.onUrlDownloadProgress((p) => events.push(p));
   // Inject straight at the preload input, past the main-side validation, to
   // prove the bridge itself filters junk.
   for (const listener of listeners.get("url-download-progress") || []) {
@@ -195,9 +197,10 @@ test("cancel-one aborts only its job; bare cancel aborts the rest; finished id f
 test("raw JS calls with non-string ids keep the tolerant behavior", async (t: import("node:test").TestContext) => {
   await createFixture(t);
   resetDownloader();
-  const rawInvoke = async (channel: string, ...args) => {
+  const rawInvoke = async (channel: string, ...args: unknown[]): Promise<{ success: boolean }> => {
     const handler = activeHandlers.get(channel);
-    return handler({ sender: { isDestroyed: () => false, send() {} } }, ...args);
+    assert.ok(handler);
+    return await handler({ sender: { isDestroyed: () => false, send() {} } }, ...args) as { success: boolean };
   };
   const pending = rawInvoke("download-url-audio", "https://example.com/raw.mp3", 7);
   const cancelAll = await rawInvoke("cancel-url-download", 7);
@@ -213,7 +216,7 @@ test("error results keep message and code through the bridge", async (t: import(
   resetDownloader();
   downloadBehavior = () => Promise.reject(Object.assign(new Error("no space"), { code: "DISK" }));
   const result = await api.downloadUrlAudio("https://example.com/x.mp3", "err1");
-  assert.equal(result.success, false);
+  assert.ok(!result.success);
   assert.equal(result.error, "no space");
   assert.equal(result.code, "DISK");
 });
@@ -222,10 +225,10 @@ test("wrong arguments resolve to failure envelopes, not rejections", async (t: i
   const { api } = await createFixture(t);
   // The download boundary reports invalid URLs as a failure result — same as
   // the JS handlers did; only deleteTempFile type-checks its string.
-  const badUrl = await api.downloadUrlAudio(42);
-  assert.equal(badUrl.success, false);
+  const badUrl = await api.downloadUrlAudio(42 as unknown as string);
+  assert.ok(!badUrl.success);
   assert.equal(badUrl.code, "INVALID_URL");
-  const badPath = await api.deleteTempFile(17);
+  const badPath = await api.deleteTempFile(17 as unknown as string);
   assert.equal(badPath.success, false);
   assert.equal(badPath.error, "Invalid file path");
 });

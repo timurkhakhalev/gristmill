@@ -3,6 +3,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+import type { UrlDownloadProgress, UrlDownloadSuccess } from "../../src/contracts/urlDownload.js";
 
 const handlers = new Map();
 
@@ -15,10 +16,11 @@ let downloadBehavior: (...args: any[]) => any = () => {
 const sweepCalls = [];
 let safeTempRoot = "";
 
-function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => {
+
+function deferred<T = unknown>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
     resolve = res;
     reject = rej;
   });
@@ -57,15 +59,15 @@ function registration() {
 }
 
 function sender() {
-  const sent: any[] = [];
+  const sent: Array<[string, UrlDownloadProgress]> = [];
   return {
     sent,
-    send: (channel: string, payload: any) => sent.push([channel, payload]),
+    send: (channel: string, payload: UrlDownloadProgress) => sent.push([channel, payload]),
     isDestroyed: () => false,
   };
 }
 
-function eventFrom(s: string) {
+function eventFrom(s: ReturnType<typeof sender>) {
   return { sender: s };
 }
 
@@ -179,7 +181,7 @@ test("a url of exactly 2048 chars is accepted by the boundary", async () => {
 test("missing, empty or non-string downloadId gets a generated dl-N id", async () => {
   registration();
   resetDownloader();
-  const seen: any[] = [];
+  const seen: Array<{ s: ReturnType<typeof sender>; url: string }> = [];
   const pendings = ["https://example.com/1", "https://example.com/2", "https://example.com/3"].map(
     (url) => {
       const s = sender();
@@ -193,7 +195,10 @@ test("missing, empty or non-string downloadId gets a generated dl-N id", async (
     call.deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
   }
   await Promise.all(pendings);
-  const ids = seen.flatMap((c) => c.s.sent.map(([, payload]) => payload.downloadId));
+  const ids = seen.flatMap((c) => c.s.sent.map(([, payload]) => {
+    assert.ok(payload.downloadId);
+    return payload.downloadId;
+  }));
   assert.match(ids[0], /^dl-\d+$/);
   assert.match(ids[1], /^dl-\d+$/);
   assert.match(ids[2], /^dl-\d+$/);
@@ -445,10 +450,10 @@ test("each registration owns its pending downloads", async (t: import("node:test
   handlers.clear();
   safeTempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ow-urltest-"));
   t.after(() => fs.rmSync(safeTempRoot, { recursive: true, force: true }));
-  const first = deferred();
-  const second = deferred();
-  let firstSignal;
-  let secondSignal;
+  const first = deferred<Omit<UrlDownloadSuccess, "success">>();
+  const second = deferred<Omit<UrlDownloadSuccess, "success">>();
+  let firstSignal: AbortSignal | undefined;
+  let secondSignal: AbortSignal | undefined;
   register(a, {
     download: (_url: string, _progress: any, signal: any) => { firstSignal = signal; return first.promise; },
     sweepStaleTempArtifacts: () => {},
@@ -464,6 +469,8 @@ test("each registration owns its pending downloads", async (t: import("node:test
   const firstResult = handlers.get("a-download-url-audio")({ sender: sender() }, "https://example.com/1", "shared-id");
   const secondResult = handlers.get("b-download-url-audio")({ sender: sender() }, "https://example.com/2", "shared-id");
   assert.deepEqual(await handlers.get("b-cancel-url-download")({ sender: sender() }, "shared-id"), { success: true });
+  assert.ok(secondSignal);
+  assert.ok(firstSignal);
   assert.equal(secondSignal.aborted, true);
   assert.equal(firstSignal.aborted, false);
   assert.deepEqual(await handlers.get("a-cancel-url-download")({ sender: sender() }, "shared-id"), { success: true });

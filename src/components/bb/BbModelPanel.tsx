@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, Search } from "../icons";
@@ -42,21 +42,9 @@ export function BbModelPanel({ harnesses, selection, onSelect, leadingTabs = [],
   });
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
-  const [bodySize, setBodySize] = useState<{ w: number; h: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const leadingActive = tab.startsWith("lead:");
-  // Freeze the panel's box while a body is loaded; switching tabs keeps it stable.
-  const showBody = !leadingActive;
-  useLayoutEffect(() => {
-    if (!showBody || !scrollRef.current) return;
-    const body = scrollRef.current.closest<HTMLElement>("[data-bb-body]");
-    if (!body) return;
-    const rect = body.getBoundingClientRect();
-    if (rect.width && rect.height && (!bodySize || bodySize.w !== rect.width || bodySize.h !== rect.height)) {
-      setBodySize({ w: rect.width, h: rect.height });
-    }
-  });
   const viewing = harnesses.some((item) => item.id === tab) ? tab : harnesses[0]?.id || "";
   const { models, error, loading } = useBbModels(leadingActive ? "" : viewing);
   const harness = harnesses.find((item) => item.id === viewing);
@@ -147,12 +135,9 @@ export function BbModelPanel({ harnesses, selection, onSelect, leadingTabs = [],
           })}
         </div>
       )}
-      {leadingActive ? leadingContent : (
-        <div
-          data-bb-body
-          className="flex flex-col overflow-hidden"
-          style={bodySize ? { width: bodySize.w, height: bodySize.h, minHeight: bodySize.h } : undefined}
-        >
+      <div className="flex h-64 min-h-0 flex-col">
+        {leadingActive ? leadingContent : (
+          <>
           <label className="flex shrink-0 items-center gap-2 border-b border-border px-1 py-2">
             <Search size={14} className="shrink-0 text-muted" />
             <input
@@ -167,7 +152,7 @@ export function BbModelPanel({ harnesses, selection, onSelect, leadingTabs = [],
             />
           </label>
           <div className="shrink-0 px-1 pt-2 pb-1 text-2xs font-medium uppercase tracking-wide text-muted">{t("bbAgent.model")}</div>
-          <div ref={scrollRef} className="max-h-72 min-h-0 flex-1 overflow-y-auto">
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
             {error ? (
               <p role="alert" className="px-2 py-3 text-xs text-danger">{error}</p>
             ) : loading ? (
@@ -224,8 +209,9 @@ export function BbModelPanel({ harnesses, selection, onSelect, leadingTabs = [],
               </div>
             </div>
           )}
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -6,12 +6,12 @@ const load = () => import("../../src/config/retiredCloudModels.ts");
 const CLEANUP = { provider: "cleanupProvider", model: "cleanupModel" };
 const CHAT = { provider: "chatAgentProvider", model: "chatAgentModel" };
 
-const makeStorage = (initial = {}) => {
-  const map = new Map(Object.entries(initial));
+const makeStorage = (initial: Record<string, string> = {}) => {
+  const map = new Map<string, string>(Object.entries(initial));
   return {
     map,
     getItem(key: string) {
-      return map.has(key) ? map.get(key) : null;
+      return map.get(key) ?? null;
     },
     setItem(key: string, value: unknown) {
       map.set(key, String(value));

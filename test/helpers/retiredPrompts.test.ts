@@ -16,22 +16,22 @@ const BUNDLE_KEYS = ["cleanupPrompt"];
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 
 const readLocaleBundles = () => {
-  const bundles = {};
+  const bundles: Record<string, Record<string, string>> = {};
   for (const entry of fs.readdirSync(LOCALES_DIR, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const bundlePath = path.join(LOCALES_DIR, entry.name, "prompts.json");
     if (!fs.existsSync(bundlePath)) continue;
-    bundles[entry.name] = JSON.parse(fs.readFileSync(bundlePath, "utf8"));
+    bundles[entry.name] = JSON.parse(fs.readFileSync(bundlePath, "utf8")) as Record<string, string>;
   }
   return bundles;
 };
 
-const makeStorage = (initial = {}) => {
-  const map = new Map(Object.entries(initial));
+const makeStorage = (initial: Record<string, string> = {}) => {
+  const map = new Map<string, string>(Object.entries(initial));
   return {
     map,
     getItem(key: string) {
-      return map.has(key) ? map.get(key) : null;
+      return map.get(key) ?? null;
     },
     setItem(key: string, value: any) {
       map.set(key, String(value));

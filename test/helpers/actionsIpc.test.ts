@@ -7,9 +7,11 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const Module = require("node:module");
 
-let registerActionsHandlers;
+type ActionsModule = typeof import("../../src/helpers/actionsIpcHandlers.js");
+type ActionsDb = Parameters<ActionsModule["registerActionsHandlers"]>[1]["database"];
+let registerActionsHandlers: ActionsModule["registerActionsHandlers"];
 const handlers = new Map();
-let sent: unknown = null;
+let sent: Array<{ channel: string; data: unknown }> | null = null;
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -21,7 +23,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
           {
             isDestroyed: () => false,
             webContents: {
-              send: (ch, data: unknown) => {
+              send: (ch: string, data: unknown) => {
                 if (sent) sent.push({ channel: ch, data });
               },
             },
@@ -41,20 +43,20 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function setup(database) {
+function setup(database: ActionsDb) {
   handlers.clear();
   sent = [];
   registerActionsHandlers(
-    { handle: (channel: string, fn) => handlers.set(channel, fn) },
+    { handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => handlers.set(channel, fn) },
     { database }
   );
   return handlers;
 }
 
-function call(handlers, channel: string, ...args) {
+function call(handlers: Map<string, (event: unknown, ...args: unknown[]) => unknown>, channel: string, ...args: unknown[]): any {
   const handler = handlers.get(channel);
   assert.ok(handler, `handler registered for ${channel}`);
-  return handler(null, ...args);
+  return handler!(null, ...args);
 }
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -95,7 +97,7 @@ test("get channels pass through rows and null for missing ids", async () => {
   assert.deepEqual(await call(h, "db-get-actions"), [ACTION]);
   assert.deepEqual(await call(h, "db-get-action", 9), ACTION);
   assert.equal(await call(h, "db-get-action", 987654), null);
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, []);
 });
 
 test("create defers action-created exactly once on success, never on failure", async () => {
@@ -107,9 +109,9 @@ test("create defers action-created exactly once on success, never on failure", a
   const result = await call(h, "db-create-action", "Summarize", "d", "p");
   assert.equal(result.success, true);
   // The response returns before the deferred event.
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, []);
   await flush();
-  assert.deepEqual(sent, [{ channel: "action-created", data: ACTION }]);
+  assert.deepEqual(sent!, [{ channel: "action-created", data: ACTION }]);
 
   const failing = {
     ...fakeDb(),
@@ -119,7 +121,7 @@ test("create defers action-created exactly once on success, never on failure", a
   const failed = await call(h2, "db-create-action", "", "", "");
   assert.equal(failed.success, false);
   await flush();
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, []);
 });
 
 test("update defers action-updated; unknown id yields success false without event", async () => {
@@ -132,13 +134,13 @@ test("update defers action-updated; unknown id yields success false without even
   const ok = await call(h, "db-update-action", 9, { name: "Renamed" });
   assert.equal(ok.action.name, "Renamed");
   await flush();
-  assert.deepEqual(sent, [{ channel: "action-updated", data: { ...ACTION, name: "Renamed" } }]);
+  assert.deepEqual(sent!, [{ channel: "action-updated", data: { ...ACTION, name: "Renamed" } }]);
 
-  sent.length = 0;
+  sent!.length = 0;
   const miss = await call(h, "db-update-action", 987654, { name: "x" });
   assert.deepEqual(miss, { success: false, action: null });
   await flush();
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, []);
 });
 
 test("delete defers action-deleted with the called id; builtin delete stays silent", async () => {
@@ -149,12 +151,12 @@ test("delete defers action-deleted with the called id; builtin delete stays sile
   const h = setup(db);
   assert.deepEqual(await call(h, "db-delete-action", 9), { success: true });
   await flush();
-  assert.deepEqual(sent, [{ channel: "action-deleted", data: { id: 9 } }]);
+  assert.deepEqual(sent!, [{ channel: "action-deleted", data: { id: 9 } }]);
 
-  sent.length = 0;
+  sent!.length = 0;
   assert.deepEqual(await call(h, "db-delete-action", 987654), { success: false });
   await flush();
-  assert.deepEqual(sent, []);
+  assert.deepEqual(sent!, []);
 });
 
 test("wrong-shaped args reject before the database runs", async () => {

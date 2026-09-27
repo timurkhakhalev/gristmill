@@ -10,7 +10,8 @@ const dragManagerPath = require.resolve("../../src/helpers/dragManager.ts");
 const originalLoad = Module._load;
 const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
 
-function withRuntime({ platform, argv = [], env = {}, electron }, loadModule) {
+interface RuntimeOverrides { platform: string; argv?: string[]; env?: Record<string, string>; electron: unknown }
+function withRuntime({ platform, argv = [], env = {}, electron }: RuntimeOverrides, loadModule: () => unknown) {
   const previousArgv = process.argv;
   const previousEnvironment = {
     LOG_LEVEL: process.env.LOG_LEVEL,
@@ -34,7 +35,7 @@ function withRuntime({ platform, argv = [], env = {}, electron }, loadModule) {
     return loadModule();
   } finally {
     Module._load = originalLoad;
-    Object.defineProperty(process, "platform", originalPlatform);
+    Object.defineProperty(process, "platform", originalPlatform as PropertyDescriptor);
     process.argv = previousArgv;
     delete process.env.LOG_LEVEL;
     delete process.env.NODE_ENV;
@@ -52,7 +53,7 @@ function loadLogger({
   env,
   isReady = false,
   userDataPath = os.tmpdir(),
-}) {
+}: { platform: string; isPackaged: boolean; argv?: string[]; env?: Record<string, string>; isReady?: boolean; userDataPath?: string }) {
   delete require.cache[loggerPath];
   return withRuntime(
     {
@@ -73,7 +74,7 @@ function loadLogger({
   );
 }
 
-async function captureConsole(run) {
+async function captureConsole(run: () => Promise<void> | void) {
   const calls: unknown[] = [];
   const originalConsole = {
     error: console.error,
@@ -81,9 +82,9 @@ async function captureConsole(run) {
     warn: console.warn,
   };
 
-  console.error = (...args) => calls.push(["error", ...args]);
-  console.log = (...args) => calls.push(["log", ...args]);
-  console.warn = (...args) => calls.push(["warn", ...args]);
+  console.error = (...args: unknown[]) => { calls.push(["error", ...args]); };
+  console.log = (...args: unknown[]) => { calls.push(["log", ...args]); };
+  console.warn = (...args: unknown[]) => { calls.push(["warn", ...args]); };
   try {
     await run();
   } finally {
@@ -92,20 +93,21 @@ async function captureConsole(run) {
   return calls;
 }
 
-async function closeLogStream(logger) {
+type LoggerUnderTest = { logStream: { once: (e: string, cb: (e: Error) => void) => void; end: (cb: () => void) => void } | null; logStream2?: never } & { [k: string]: any };
+async function closeLogStream(logger: LoggerUnderTest) {
   if (!logger.logStream) return;
   const logStream = logger.logStream;
   logger.logStream = null;
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     logStream.once("error", reject);
-    logStream.end(resolve);
+    logStream.end(() => resolve());
   });
 }
 
 test(
   "packaged Windows suppresses main and renderer console logging at the default level",
   async () => {
-    const logger = loadLogger({ platform: "win32", isPackaged: true });
+    const logger = loadLogger({ platform: "win32", isPackaged: true }) as LoggerUnderTest;
 
     const calls = await captureConsole(() => {
       logger.info("Recording started", { microphone: "Default" }, "audio");
@@ -126,7 +128,7 @@ test(
 );
 
 test("log-level settings never opt a packaged Windows build into console logging", async (t: import("node:test").TestContext) => {
-  const cases = [
+  const cases: Array<{ name: string; argv?: string[]; env?: Record<string, string> }> = [
     { name: "--log-level", argv: ["--log-level=debug"] },
     {
       name: "OPENHERCULES_LOG_LEVEL=debug",
@@ -146,7 +148,7 @@ test("log-level settings never opt a packaged Windows build into console logging
         isPackaged: true,
         argv: testCase.argv,
         env: testCase.env,
-      });
+      }) as LoggerUnderTest;
 
       const calls = await captureConsole(() => logger.info("Configured log level"));
 
@@ -160,7 +162,7 @@ test("--console-logs explicitly enables console logging in packaged Windows", as
     platform: "win32",
     isPackaged: true,
     argv: ["--console-logs"],
-  });
+  }) as LoggerUnderTest;
 
   const calls = await captureConsole(() => logger.info("Console diagnostics enabled"));
 
@@ -174,9 +176,9 @@ test("development and non-Windows packaged builds preserve console logging", asy
     { name: "packaged Linux", platform: "linux", isPackaged: true },
   ];
 
-  for (const testCase of cases) {
+  for (const testCase of cases as Array<{ name: string; platform: string; isPackaged: boolean }>) {
     await t.test(testCase.name, async () => {
-      const logger = loadLogger(testCase);
+      const logger = loadLogger(testCase) as LoggerUnderTest;
 
       const calls = await captureConsole(() => logger.info("Existing console behavior"));
 
@@ -195,7 +197,7 @@ test(
       env: { OPENHERCULES_LOG_LEVEL: "debug" },
       isReady: true,
       userDataPath,
-    });
+    }) as LoggerUnderTest;
 
     try {
       const calls = await captureConsole(() => {
@@ -242,7 +244,7 @@ test("routine window-drag activity obeys the packaged Windows console policy", a
     },
     () => require(dragManagerPath)
   );
-  const dragManager = new DragManager();
+  const dragManager = new (DragManager as new () => { setTargetWindow: (w: unknown) => void; startWindowDrag: () => void; stopWindowDrag: () => void });
   dragManager.setTargetWindow({
     getPosition: () => [100, 50],
     isDestroyed: () => false,

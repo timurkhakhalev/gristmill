@@ -26,7 +26,7 @@ test.after(() => {
 });
 
 function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error?.message || error);
+  const message = String((error as { message?: unknown })?.message || error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -91,7 +91,7 @@ test("getAgentConversations defaults to 50 and excludes archived", (t: import("n
   db.archiveAgentConversation(archived.id);
   const list = db.getAgentConversations();
   assert.equal(list.length, 3);
-  assert.equal(list.some((c) => c.id === archived.id), false);
+  assert.equal(list.some((c: any) => c.id === archived.id), false);
   // Rows are plain SELECT *: no message_count, no preview.
   assert.equal("message_count" in list[0], false);
   assert.equal("preview" in list[0], false);
@@ -107,7 +107,7 @@ test("getConversationsForNote defaults to 20 and includes archived rows", (t: im
   const b = db.createAgentConversation("b", note.id);
   db.archiveAgentConversation(b.id);
   const list = db.getConversationsForNote(note.id);
-  assert.deepEqual(list.map((c) => c.id).sort(), [a.id, b.id].sort());
+  assert.deepEqual(list.map((c: any) => c.id).sort(), [a.id, b.id].sort());
   // Plain rows: the SQL carries no message_count despite old renderer types.
   assert.equal("message_count" in list[0], false);
   assert.deepEqual(db.getConversationsForNote(987654), []);
@@ -124,16 +124,16 @@ test("getConversationsForContainer: null folder picks the space root only", (t: 
   const other = db.createAgentConversation("note-attached", null, null, null);
 
   const rootList = db.getConversationsForContainer(spaceId, null);
-  assert.deepEqual(rootList.map((c) => c.id), [root.id]);
+  assert.deepEqual(rootList.map((c: any) => c.id), [root.id]);
   // Container list adds message_count on top of the row.
   assert.equal(rootList[0].message_count, 0);
   db.addAgentMessage(root.id, "user", "hi");
   assert.equal(db.getConversationsForContainer(spaceId, null)[0].message_count, 1);
 
   const folderList = db.getConversationsForContainer(spaceId, folder.id);
-  assert.deepEqual(folderList.map((c) => c.id), [inner.id]);
+  assert.deepEqual(folderList.map((c: any) => c.id), [inner.id]);
   // Note-attached (space_id null) never leaks into the container list.
-  assert.equal(rootList.some((c) => c.id === other.id), false);
+  assert.equal(rootList.some((c: any) => c.id === other.id), false);
   db.close();
 });
 
@@ -165,7 +165,7 @@ test("getAgentMessages returns conversation rows in creation order", (t: import(
   db.addAgentMessage(conv.id, "assistant", "two", { toolCalls: [{ id: "t" }] });
   const messages = db.getAgentMessages(conv.id);
   assert.deepEqual(
-    messages.map((m: unknown) => [m.role, m.content]),
+    messages.map((m: { role: string; content: string }) => [m.role, m.content]),
     [
       ["user", "one"],
       ["assistant", "two"],
@@ -192,7 +192,7 @@ test("preview pagination skips rows and preview falls back to null", async (t: i
   // Newest first; an empty chat keeps preview null, the others carry their
   // last message content.
   assert.deepEqual(
-    page.map((c) => [c.id, c.preview]),
+    page.map((c: any) => [c.id, c.preview]),
     [
       [second.id, "newest answer"],
       [first.id, "oldest answer"],
@@ -202,12 +202,12 @@ test("preview pagination skips rows and preview falls back to null", async (t: i
 
   // Page 2 holds the older remainder.
   const offsetPage = db.getAgentConversationsWithPreview(2, 2, false);
-  assert.deepEqual(offsetPage.map((c) => c.id), [empty.id]);
+  assert.deepEqual(offsetPage.map((c: any) => c.id), [empty.id]);
 
   // Archived rows are hidden until includeArchived.
   db.archiveAgentConversation(second.id);
-  assert.equal(db.getAgentConversationsWithPreview(50, 0, false).some((c) => c.id === second.id), false);
-  assert.equal(db.getAgentConversationsWithPreview(50, 0, true).some((c) => c.id === second.id), true);
+  assert.equal(db.getAgentConversationsWithPreview(50, 0, false).some((c: any) => c.id === second.id), false);
+  assert.equal(db.getAgentConversationsWithPreview(50, 0, true).some((c: any) => c.id === second.id), true);
   db.close();
 });
 
@@ -217,7 +217,7 @@ test("searchAgentConversations is a plain title LIKE with the empty-match-all", 
   const hit = db.createAgentConversation("Growth plan");
   db.createAgentConversation("Other");
   const found = db.searchAgentConversations("growth");
-  assert.deepEqual(found.map((c) => c.id), [hit.id]);
+  assert.deepEqual(found.map((c: any) => c.id), [hit.id]);
   assert.equal("preview" in found[0], false);
   // Empty query degenerates to LIKE %% — every conversation matches.
   assert.equal(db.searchAgentConversations("").length, 2);
@@ -235,7 +235,7 @@ test("title updates report success and archive/unarchive flip the flag", (t: imp
   assert.deepEqual(db.updateAgentConversationTitle(987654, "x"), { success: false });
   assert.deepEqual(db.archiveAgentConversation(conv.id), { success: true });
   assert.notEqual(db.getAgentConversation(conv.id).archived_at, null);
-  assert.deepEqual(db.getAgentConversations().map((c) => c.id), []);
+  assert.deepEqual(db.getAgentConversations().map((c: any) => c.id), []);
   assert.deepEqual(db.unarchiveAgentConversation(conv.id), { success: true });
   assert.equal(db.getAgentConversation(conv.id).archived_at, null);
   assert.deepEqual(db.archiveAgentConversation(987654), { success: false });

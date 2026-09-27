@@ -7,8 +7,9 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const Module = require("node:module");
 
-let registerChatPersistenceHandlers;
-const handlers = new Map();
+type ChatModule = typeof import("../../src/helpers/chatPersistenceIpcHandlers.js");
+let registerChatPersistenceHandlers: ChatModule["registerChatPersistenceHandlers"];
+const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -31,19 +32,20 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function setup(database) {
+type ChatDb = Parameters<ChatModule["registerChatPersistenceHandlers"]>[1]["database"];
+function setup(database: ChatDb) {
   handlers.clear();
   registerChatPersistenceHandlers(
-    { handle: (channel: string, fn) => handlers.set(channel, fn) },
+    { handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => handlers.set(channel, fn) },
     { database }
   );
-  return handlers;
+  return handlers as Map<string, (event: unknown, ...args: unknown[]) => unknown>;
 }
 
-function call(handlers, channel: string, ...args) {
+function call(handlers: Map<string, (event: unknown, ...args: unknown[]) => unknown>, channel: string, ...args: unknown[]): any {
   const handler = handlers.get(channel);
   assert.ok(handler, `handler registered for ${channel}`);
-  return handler(null, ...args);
+  return handler!(null, ...args);
 }
 
 function fakeDb() {
@@ -82,7 +84,7 @@ test("create passes title through untouched and normalizes only omitted ids", as
   const seen: unknown[] = [];
   const db = {
     ...fakeDb(),
-    createAgentConversation: (...args) => (seen.push(args), { ...CONV, messages: [] }),
+    createAgentConversation: (...args: unknown[]) => (seen.push(args), { ...CONV, messages: [] }),
   };
   const h = setup(db);
   const created = await call(h, "db-create-agent-conversation");
@@ -118,11 +120,11 @@ test("list channels apply their documented defaults", async () => {
   const seen: unknown[] = [];
   const db = {
     ...fakeDb(),
-    getConversationsForNote: (...args) => (seen.push(["note", ...args]), []),
-    getConversationsForContainer: (...args) => (seen.push(["container", ...args]), []),
-    getAgentConversations: (...args) => (seen.push(["all", ...args]), []),
-    searchAgentConversations: (...args) => (seen.push(["search", ...args]), []),
-    getAgentConversationsWithPreview: (...args) => (seen.push(["preview", ...args]), []),
+    getConversationsForNote: (...args: unknown[]) => (seen.push(["note", ...args]), []),
+    getConversationsForContainer: (...args: unknown[]) => (seen.push(["container", ...args]), []),
+    getAgentConversations: (...args: unknown[]) => (seen.push(["all", ...args]), []),
+    searchAgentConversations: (...args: unknown[]) => (seen.push(["search", ...args]), []),
+    getAgentConversationsWithPreview: (...args: unknown[]) => (seen.push(["preview", ...args]), []),
   };
   const h = setup(db);
   await call(h, "db-get-conversations-for-note", 7);
@@ -158,7 +160,7 @@ test("addAgentMessage validates the role and passes metadata through untouched",
   const seen: unknown[] = [];
   const db = {
     ...fakeDb(),
-    addAgentMessage: (...args) => (seen.push(args), null),
+    addAgentMessage: (...args: unknown[]) => (seen.push(args), null),
   };
   const h = setup(db);
   const toolCalls = [{ id: "t1", name: "search_notes" }];
@@ -213,7 +215,7 @@ test("updating a title passes the raw value through and validates the result", a
   const seen: unknown[] = [];
   const db = {
     ...fakeDb(),
-    updateAgentConversationTitle: (...args) => (seen.push(args), { success: true }),
+    updateAgentConversationTitle: (...args: unknown[]) => (seen.push(args), { success: true }),
   };
   const h = setup(db);
   assert.deepEqual(await call(h, "db-update-agent-conversation-title", 5, "New"), { success: true });

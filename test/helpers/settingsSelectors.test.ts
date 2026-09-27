@@ -2,6 +2,11 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+import type {
+  BaseTranscriptionSettings, MeetingTranscriptionSettings, UploadTranscriptionSettings,
+  CleanupScopeSettings, NoteFormattingScopeSettings, ChatAgentScopeSettings,
+  InferenceSettingsSnapshot,
+} from "../../src/contracts/inferenceSettings.js";
 
 const ROOT = path.join(__dirname, "..", "..");
 
@@ -16,7 +21,7 @@ const ROOT = path.join(__dirname, "..", "..");
 const loadSelectors = async () => import("../../src/config/settingsSelectors.ts");
 const loadRouting = async () => import("../../src/helpers/reasoningRouting.ts");
 
-const transcriptionFixture = (overrides = {}) => ({
+const transcriptionDefaults = {
   useLocalWhisper: false,
   whisperModel: "base",
   localTranscriptionProvider: "whisper",
@@ -51,10 +56,9 @@ const transcriptionFixture = (overrides = {}) => ({
   uploadCloudTranscriptionModel: "",
   uploadCloudTranscriptionBaseUrl: "",
   uploadCloudTranscriptionMode: "",
-  ...overrides,
-});
+} satisfies BaseTranscriptionSettings & MeetingTranscriptionSettings & UploadTranscriptionSettings;
 
-const llmFixture = (overrides = {}) => ({
+const llmDefaults = {
   cleanupMode: "providers",
   cleanupProvider: "openai",
   cleanupModel: "gpt-5-mini",
@@ -79,13 +83,18 @@ const llmFixture = (overrides = {}) => ({
   chatAgentRemoteUrl: "",
   chatAgentCustomApiKey: "sk-chat",
   chatAgentDisableThinking: true,
+} satisfies CleanupScopeSettings & NoteFormattingScopeSettings & ChatAgentScopeSettings;
+
+const settingsFixture = (overrides: Partial<InferenceSettingsSnapshot> = {}): InferenceSettingsSnapshot => ({
+  ...transcriptionDefaults,
+  ...llmDefaults,
   ...overrides,
 });
 
 test("meeting overrides win; empty routing fields inherit the base scope", async () => {
   const { selectResolvedMeetingTranscription } = await loadSelectors();
   const resolved = selectResolvedMeetingTranscription(
-    transcriptionFixture({
+    settingsFixture({
       meetingUseLocalWhisper: true,
       meetingLocalTranscriptionProvider: "nvidia",
       meetingTranscriptionMode: "local",
@@ -118,7 +127,7 @@ test("meeting overrides win; empty routing fields inherit the base scope", async
 
 test("meeting empty strings inherit base fields through ||", async () => {
   const { selectResolvedMeetingTranscription } = await loadSelectors();
-  const resolved = selectResolvedMeetingTranscription(transcriptionFixture());
+  const resolved = selectResolvedMeetingTranscription(settingsFixture());
   assert.equal(resolved.whisperModel, "base");
   assert.equal(resolved.parakeetModel, "parakeet-base");
   assert.equal(resolved.cohereModel, "cohere-base");
@@ -135,7 +144,7 @@ test("meeting empty strings inherit base fields through ||", async () => {
 test("upload overrides win and empty fields inherit the base scope", async () => {
   const { selectResolvedUploadTranscription } = await loadSelectors();
   const resolved = selectResolvedUploadTranscription(
-    transcriptionFixture({
+    settingsFixture({
       uploadUseLocalWhisper: true,
       uploadLocalTranscriptionProvider: "cohere",
       uploadTranscriptionMode: "local",
@@ -166,7 +175,7 @@ test("streaming-only base provider is not inherited by upload", async () => {
   const { selectResolvedUploadTranscription } = await loadSelectors();
   for (const provider of ["assemblyai"]) {
     const resolved = selectResolvedUploadTranscription(
-      transcriptionFixture({
+      settingsFixture({
         cloudTranscriptionProvider: provider,
         cloudTranscriptionModel: "nova-3",
         uploadCloudTranscriptionProvider: "",
@@ -178,7 +187,7 @@ test("streaming-only base provider is not inherited by upload", async () => {
   }
   // The streaming-only exception does not extend to base URL or cloud mode.
   const stillInheritsOther = selectResolvedUploadTranscription(
-    transcriptionFixture({
+    settingsFixture({
       cloudTranscriptionProvider: "assemblyai",
       cloudTranscriptionBaseUrl: "https://deepgram.example/v1",
       cloudTranscriptionMode: "byok",
@@ -188,7 +197,7 @@ test("streaming-only base provider is not inherited by upload", async () => {
   assert.equal(stillInheritsOther.cloudTranscriptionMode, "byok");
 
   const deepgram = selectResolvedUploadTranscription(
-    transcriptionFixture({
+    settingsFixture({
       cloudTranscriptionProvider: "deepgram",
       cloudTranscriptionModel: "nova-3",
       uploadCloudTranscriptionProvider: "",
@@ -199,7 +208,7 @@ test("streaming-only base provider is not inherited by upload", async () => {
   assert.equal(deepgram.cloudTranscriptionModel, "nova-3");
 
   const groq = selectResolvedUploadTranscription(
-    transcriptionFixture({
+    settingsFixture({
       cloudTranscriptionProvider: "groq",
       cloudTranscriptionModel: "whisper-large-v3-turbo",
     })
@@ -211,7 +220,7 @@ test("streaming-only base provider is not inherited by upload", async () => {
 test("an explicit streaming-only upload provider is kept for the route guard", async () => {
   const { selectResolvedUploadTranscription } = await loadSelectors();
   const resolved = selectResolvedUploadTranscription(
-    transcriptionFixture({
+    settingsFixture({
       cloudTranscriptionProvider: "deepgram",
       uploadCloudTranscriptionProvider: "assemblyai",
       uploadCloudTranscriptionModel: "universal",
@@ -221,7 +230,7 @@ test("an explicit streaming-only upload provider is kept for the route guard", a
   assert.equal(resolved.cloudTranscriptionModel, "universal");
 
   const groq = selectResolvedUploadTranscription(
-    transcriptionFixture({
+    settingsFixture({
       cloudTranscriptionProvider: "deepgram",
       uploadCloudTranscriptionProvider: "groq",
       uploadCloudTranscriptionModel: "whisper-large-v3",
@@ -234,13 +243,13 @@ test("an explicit streaming-only upload provider is kept for the route guard", a
 test("cleanup and chatIntelligence do not gain a fallback scope", async () => {
   const { selectResolvedLLMConfig } = await loadSelectors();
   const cleanup = selectResolvedLLMConfig(
-    llmFixture({ cleanupProvider: "", cleanupModel: "" }),
+    settingsFixture({ cleanupProvider: "", cleanupModel: "" }),
     "cleanup"
   );
   assert.equal(cleanup.provider, "");
   assert.equal(cleanup.model, "");
   const chat = selectResolvedLLMConfig(
-    llmFixture({ chatAgentProvider: "", chatAgentModel: "" }),
+    settingsFixture({ chatAgentProvider: "", chatAgentModel: "" }),
     "chatIntelligence"
   );
   assert.equal(chat.provider, "");
@@ -255,8 +264,8 @@ test("bb scopes follow the default harness model, keep overrides and never swap 
     defaultProvider: "codex",
     defaults: { codex: { model: "gpt-6", reasoningLevel: "high" }, "claude-code": { model: "opus", reasoningLevel: "low" } },
   };
-  const chat = (overrides: any) => selectResolvedLLMConfig(
-    llmFixture({ chatAgentMode: "agent", chatAgentBbProvider: "", chatAgentBbModel: "", chatAgentBbReasoningLevel: "", bbAgentPreferences, ...overrides }),
+  const chat = (overrides: Partial<InferenceSettingsSnapshot>) => selectResolvedLLMConfig(
+    settingsFixture({ chatAgentMode: "agent", chatAgentBbProvider: "", chatAgentBbModel: "", chatAgentBbReasoningLevel: "", bbAgentPreferences, ...overrides }),
     "chatIntelligence"
   );
 
@@ -295,7 +304,7 @@ test("bb harness order keeps saved positions and appends new harnesses in bb ord
 
 test("empty noteFormatting fields inherit cleanup; mode does not", async () => {
   const { selectResolvedLLMConfig } = await loadSelectors();
-  const cfg = selectResolvedLLMConfig(llmFixture(), "noteFormatting");
+  const cfg = selectResolvedLLMConfig(settingsFixture(), "noteFormatting");
   assert.deepEqual(cfg, {
     scope: "noteFormatting",
     mode: "providers",
@@ -312,7 +321,7 @@ test("empty noteFormatting fields inherit cleanup; mode does not", async () => {
 test("noteFormatting keeps its own mode while inheriting cleanup routing", async () => {
   const { selectResolvedLLMConfig } = await loadSelectors();
   const cfg = selectResolvedLLMConfig(
-    llmFixture({ noteFormattingMode: "local" }),
+    settingsFixture({ noteFormattingMode: "local" }),
     "noteFormatting"
   );
   assert.equal(cfg.mode, "local");
@@ -321,10 +330,10 @@ test("noteFormatting keeps its own mode while inheriting cleanup routing", async
 
 test("disableThinking=false survives as false and true stays true", async () => {
   const { selectResolvedLLMConfig } = await loadSelectors();
-  const cleanup = selectResolvedLLMConfig(llmFixture(), "cleanup");
+  const cleanup = selectResolvedLLMConfig(settingsFixture(), "cleanup");
   assert.equal(cleanup.disableThinking, false);
   const withoutKey = selectResolvedLLMConfig(
-    llmFixture({ chatAgentDisableThinking: false, chatAgentCustomApiKey: "" }),
+    settingsFixture({ chatAgentDisableThinking: false, chatAgentCustomApiKey: "" }),
     "chatIntelligence"
   );
   assert.equal(withoutKey.disableThinking, false);
@@ -332,10 +341,10 @@ test("disableThinking=false survives as false and true stays true", async () => 
 
 test("selectResolvedLLMConfig customApiKey is scope-owned, never borrowed", async () => {
   const { selectResolvedLLMConfig } = await loadSelectors();
-  const cfg = selectResolvedLLMConfig(llmFixture(), "noteFormatting");
+  const cfg = selectResolvedLLMConfig(settingsFixture(), "noteFormatting");
   assert.equal(cfg.customApiKey, undefined);
   const own = selectResolvedLLMConfig(
-    llmFixture({ noteFormattingCustomApiKey: "sk-own" }),
+    settingsFixture({ noteFormattingCustomApiKey: "sk-own" }),
     "noteFormatting"
   );
   assert.equal(own.customApiKey, "sk-own");
@@ -343,38 +352,38 @@ test("selectResolvedLLMConfig customApiKey is scope-owned, never borrowed", asyn
 
 test("selectResolvedNoteFormatting: own key wins, inherited endpoint borrows the cleanup key", async () => {
   const { selectResolvedNoteFormatting } = await loadSelectors();
-  const borrowed = selectResolvedNoteFormatting(llmFixture());
+  const borrowed = selectResolvedNoteFormatting(settingsFixture());
   assert.equal(borrowed.customApiKey, "sk-cleanup");
 
-  const own = selectResolvedNoteFormatting(llmFixture({ noteFormattingCustomApiKey: "sk-own" }));
+  const own = selectResolvedNoteFormatting(settingsFixture({ noteFormattingCustomApiKey: "sk-own" }));
   assert.equal(own.customApiKey, "sk-own");
 
   // Own endpoint (cloudBaseUrl or remoteUrl set): no borrowed key.
   const ownUrl = selectResolvedNoteFormatting(
-    llmFixture({ noteFormattingCloudBaseUrl: "https://nf.example/v1" })
+    settingsFixture({ noteFormattingCloudBaseUrl: "https://nf.example/v1" })
   );
   assert.equal(ownUrl.customApiKey, "");
   const ownRemote = selectResolvedNoteFormatting(
-    llmFixture({ noteFormattingRemoteUrl: "http://host:11434/v1" })
+    settingsFixture({ noteFormattingRemoteUrl: "http://host:11434/v1" })
   );
   assert.equal(ownRemote.customApiKey, "");
 
   // Different mode with empty endpoints: still no borrowed key.
   const otherMode = selectResolvedNoteFormatting(
-    llmFixture({ noteFormattingMode: "local", cleanupMode: "providers" })
+    settingsFixture({ noteFormattingMode: "local", cleanupMode: "providers" })
   );
   assert.equal(otherMode.customApiKey, "");
 
   // A textually identical URL is still an own endpoint.
   const sameTextUrl = selectResolvedNoteFormatting(
-    llmFixture({ noteFormattingCloudBaseUrl: "https://api.openai.com/v1" })
+    settingsFixture({ noteFormattingCloudBaseUrl: "https://api.openai.com/v1" })
   );
   assert.equal(sameTextUrl.customApiKey, "");
 });
 
 test("selectResolvedNoteFormatting falls back to empty strings, keeps undefined vs '' split", async () => {
   const { selectResolvedNoteFormatting } = await loadSelectors();
-  const resolved = selectResolvedNoteFormatting(llmFixture());
+  const resolved = selectResolvedNoteFormatting(settingsFixture());
   assert.deepEqual(resolved, {
     provider: "openai",
     model: "gpt-5-mini",
@@ -385,7 +394,7 @@ test("selectResolvedNoteFormatting falls back to empty strings, keeps undefined 
     customApiKey: "sk-cleanup",
   });
   const empty = selectResolvedNoteFormatting(
-    llmFixture({
+    settingsFixture({
       cleanupProvider: "",
       cleanupModel: "",
       cleanupCloudMode: "",
@@ -422,7 +431,7 @@ test("reasoningRouting keeps mirroring undefined routing fields and endpoint rul
 test("selectors import and run without window, with a throwing localStorage", async (t: import("node:test").TestContext) => {
   const originalWindow = globalThis.window;
   const originalLocalStorage = globalThis.localStorage;
-  delete globalThis.window;
+  Reflect.deleteProperty(globalThis, "window");
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
     get() {
@@ -430,9 +439,9 @@ test("selectors import and run without window, with a throwing localStorage", as
     },
   });
   t.after(() => {
-    if (originalWindow === undefined) delete globalThis.window;
+    if (originalWindow === undefined) Reflect.deleteProperty(globalThis, "window");
     else globalThis.window = originalWindow;
-    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+    if (originalLocalStorage === undefined) Reflect.deleteProperty(globalThis, "localStorage");
     else
       Object.defineProperty(globalThis, "localStorage", {
         configurable: true,
@@ -441,11 +450,11 @@ test("selectors import and run without window, with a throwing localStorage", as
   });
 
   const selectors = await loadSelectors();
-  const resolved = selectors.selectResolvedUploadTranscription(transcriptionFixture());
+  const resolved = selectors.selectResolvedUploadTranscription(settingsFixture());
   assert.equal(resolved.transcriptionMode, "providers");
-  const cfg = selectors.selectResolvedLLMConfig(llmFixture(), "noteFormatting");
+  const cfg = selectors.selectResolvedLLMConfig(settingsFixture(), "noteFormatting");
   assert.equal(cfg.provider, "openai");
-  assert.equal(selectors.selectResolvedNoteFormatting(llmFixture()).customApiKey, "sk-cleanup");
+  assert.equal(selectors.selectResolvedNoteFormatting(settingsFixture()).customApiKey, "sk-cleanup");
 });
 
 test("selectors never mutate the snapshot they read", async () => {
@@ -455,7 +464,7 @@ test("selectors never mutate the snapshot they read", async () => {
     selectResolvedLLMConfig,
     selectResolvedNoteFormatting,
   } = await loadSelectors();
-  const snapshot = Object.freeze({ ...transcriptionFixture(), ...llmFixture() });
+  const snapshot = Object.freeze({ ...settingsFixture(), ...settingsFixture() });
   assert.doesNotThrow(() => selectResolvedMeetingTranscription(snapshot));
   assert.doesNotThrow(() => selectResolvedUploadTranscription(snapshot));
   assert.doesNotThrow(() => selectResolvedLLMConfig(snapshot, "noteFormatting"));

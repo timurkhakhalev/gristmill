@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
 const Module = require("node:module");
+import type { NotesApi, NoteItem, NoteDeletedPayload } from "../../src/contracts/notes.js";
 
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
@@ -13,8 +14,10 @@ const bundledPreload = path.join(root, "dist-main", "preload.js");
 // over a temporary SQLite database. Main-side event sends are dispatched back
 // into the preload-registered listeners, closing the loop like Electron does,
 // without exposing any event object to renderer callbacks.
-let activeHandlers: unknown = null;
-let dispatchSend: unknown = null;
+type Handler = (event: unknown, ...args: unknown[]) => unknown;
+type Listener = (event: unknown, data: unknown) => void;
+let activeHandlers: Map<string, Handler> | null = null;
+let dispatchSend: ((channel: string, data: unknown) => void) | null = null;
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-bridge-"));
 
 const originalLoad = Module._load;
@@ -23,7 +26,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
     return {
       app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
       ipcMain: {
-        handle: (channel: string, listener: unknown) => {
+        handle: (channel: string, listener: Handler) => {
           if (!activeHandlers) activeHandlers = new Map();
           activeHandlers.set(channel, listener);
         },
@@ -53,17 +56,17 @@ test.after(() => {
 });
 
 function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error?.message || error);
+  const message = String(error instanceof Error ? error.message : error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
   );
 }
 
-function loadBundledPreload(invoke: unknown) {
+function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
   // A channel can have several listeners (Electron supports that); keep arrays.
-  const listeners = new Map();
-  let api;
+  const listeners = new Map<string, Listener[]>();
+  let api: NotesApi | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -73,19 +76,19 @@ function loadBundledPreload(invoke: unknown) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name: string, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: NotesApi) => {
             api = value;
           },
         },
         ipcRenderer: {
           invoke,
           send() {},
-          on(channel: string, listener: unknown) {
+          on(channel: string, listener: Listener) {
             const list = listeners.get(channel) || [];
             list.push(listener);
             listeners.set(channel, list);
           },
-          removeListener(channel: string, listener: unknown) {
+          removeListener(channel: string, listener: Listener) {
             const list = listeners.get(channel) || [];
             const index = list.indexOf(listener);
             if (index !== -1) list.splice(index, 1);
@@ -97,6 +100,7 @@ function loadBundledPreload(invoke: unknown) {
     process: { platform: "darwin", versions: {} },
     console,
   });
+  assert.ok(api);
   return { api, listeners };
 }
 
@@ -117,8 +121,10 @@ async function createFixture(t: import("node:test").TestContext) {
   t.after(() => db.close());
 
   const { registerNotesHandlers } = await import("../../src/helpers/notesIpcHandlers.ts");
+  const handlers = activeHandlers;
+  assert.ok(handlers);
   registerNotesHandlers(
-    { handle: (channel, listener) => activeHandlers.set(channel, listener) },
+    { handle: (channel, listener) => handlers.set(channel, listener) },
     {
       saveNote: (...args) => db.saveNote(...args),
       getNote: (id) => db.getNote(id),
@@ -141,8 +147,8 @@ async function createFixture(t: import("node:test").TestContext) {
     }
   );
 
-  const handlersSnapshot = new Map(activeHandlers);
-  const invoke = async (channel: string, ...args) => {
+  const handlersSnapshot = new Map(handlers);
+  const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler(null, ...args);
@@ -155,7 +161,7 @@ async function createFixture(t: import("node:test").TestContext) {
       listener(null, data);
     }
   };
-  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
   return { db, api, listeners, flush };
 }
 
@@ -165,25 +171,25 @@ test("the full bundled preload chain round-trips a note", async (t: import("node
   const { api, flush } = ctx;
 
   const saved = await api.saveNote("Bridge", "Body", "personal", null, null, null, null);
-  assert.equal(saved.success, true);
+  assert.ok(saved.success);
   assert.equal(saved.note.title, "Bridge");
 
   assert.deepEqual(await api.getNote(saved.note.id), saved.note);
   assert.equal(await api.getNote(987654), null);
 
   const updated = await api.updateNote(saved.note.id, { title: "Bridge2" });
-  assert.equal(updated.success, true);
+  assert.ok(updated.success);
   assert.equal(updated.note.title, "Bridge2");
 
   const listed = await api.getNotes(null, 100, null, null);
-  assert.ok(listed.some((n: any) => n.id === saved.note.id));
+  assert.ok(listed.some((n) => n.id === saved.note.id));
 
   const spaceId = saved.note.space_id;
   const spaceNotes = await api.getSpaceNotes(spaceId, 50);
-  assert.ok(spaceNotes.some((n: any) => n.id === saved.note.id));
+  assert.ok(spaceNotes.some((n) => n.id === saved.note.id));
 
   const found = await api.searchNotes("Bridge2", 50, null, null);
-  assert.ok(found.some((n: any) => n.id === saved.note.id));
+  assert.ok(found.some((n) => n.id === saved.note.id));
   assert.equal((await api.searchNotes("", 50, null, null)).length, 0);
 
   const deleted = await api.deleteNote(saved.note.id);
@@ -197,9 +203,9 @@ test("wrong arguments reject through the bridge before the DB runs", async (t: i
   if (!ctx) return;
   const { api } = ctx;
 
-  await assert.rejects(() => api.getNote("nope"));
-  await assert.rejects(() => api.updateNote(1, { title: 42 }));
-  await assert.rejects(() => api.saveNote(1, "x"));
+  await assert.rejects(() => api.getNote("nope" as unknown as number));
+  await assert.rejects(() => api.updateNote(1, { title: 42 as unknown as string }));
+  await assert.rejects(() => api.saveNote(1 as unknown as string, "x"));
 });
 
 test("independent subscriptions receive events and unsubscribe cleanly", async (t: import("node:test").TestContext) => {
@@ -207,12 +213,13 @@ test("independent subscriptions receive events and unsubscribe cleanly", async (
   if (!ctx) return;
   const { api, flush } = ctx;
 
-  const added: unknown[] = [];
-  const addedToo: unknown[] = [];
-  const unsubA = api.onNoteAdded((note: any) => added.push(note));
-  const unsubB = api.onNoteAdded((note: any) => addedToo.push(note));
+  const added: NoteItem[] = [];
+  const addedToo: NoteItem[] = [];
+  const unsubA = api.onNoteAdded((note) => added.push(note));
+  const unsubB = api.onNoteAdded((note) => addedToo.push(note));
 
   const saved = await api.saveNote("Sub", "");
+  assert.ok(saved.success);
   await flush();
 
   assert.equal(added.length, 1);
@@ -221,6 +228,7 @@ test("independent subscriptions receive events and unsubscribe cleanly", async (
 
   unsubA();
   const second = await api.saveNote("Sub2", "");
+  assert.ok(second.success);
   await flush();
 
   assert.equal(added.length, 1, "unsubscribed listener is not called again");
@@ -234,16 +242,17 @@ test("malformed events are dropped; the next valid one is delivered", async (t: 
   if (!ctx) return;
   const { api, flush } = ctx;
 
-  const received: unknown[] = [];
-  api.onNoteAdded((note: any) => received.push(note));
+  const received: NoteItem[] = [];
+  api.onNoteAdded((note) => received.push(note));
 
   // Simulate a main-side producer emitting a malformed payload.
   const { sendNoteAdded } = await import("../../src/helpers/notesEvents.ts");
   sendNoteAdded({ id: 1, broken: true });
   await flush();
-  assert.deepEqual(received, [], "malformed payloads never reach the renderer");
+  assert.equal(received.length, 0, "malformed payloads never reach the renderer");
 
   const saved = await api.saveNote("Valid", "");
+  assert.ok(saved.success);
   await flush();
   assert.equal(received.length, 1);
   assert.equal(received[0].id, saved.note.id);
@@ -254,9 +263,10 @@ test("deleted notes are not resurrectable and emit note-deleted once", async (t:
   if (!ctx) return;
   const { api, flush } = ctx;
 
-  const deletions: unknown[] = [];
-  const unsub = api.onNoteDeleted((payload: any) => deletions.push(payload));
+  const deletions: NoteDeletedPayload[] = [];
+  const unsub = api.onNoteDeleted((payload) => deletions.push(payload));
   const saved = await api.saveNote("Gone", "");
+  assert.ok(saved.success);
   assert.equal((await api.deleteNote(saved.note.id)).success, true);
   await flush();
   assert.equal(deletions.length, 1);

@@ -8,7 +8,14 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
+  reloadSettingsStore,
 } = require("../lib/rendererTestHarness");
+
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
 
 // Real end-to-end coverage for useChatStreaming.ts's empty-response fallback
 // and its interaction with cancellation (Esc/Stop, or an unmount mid-stream).
@@ -52,9 +59,9 @@ async function renderChatStreaming(
 ) {
   installBrowserGlobals(t, { window: { electronAPI } });
   const container = live ? installHookDom(t) : null;
-  const vite = await createRendererServer(t, {
+  const vite = await (vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
     cachePrefix: "openwhispr-chat-streaming-cancellation-test-",
-  });
+  }));
   const [{ default: viteI18next }, { initReactI18next }] = await Promise.all([
     vite.ssrLoadModule("i18next"),
     vite.ssrLoadModule("react-i18next"),
@@ -70,7 +77,7 @@ async function renderChatStreaming(
     });
   }
 
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  const { useSettingsStore } = await reloadSettingsStore(vite);
   // A self-hosted (LAN) chat agent with no tools in play: 4B+ in the model
   // name makes it tool-eligible by the size heuristic, but the fixture
   // fetch never emits a tool call, so it stays on the plain-content path.

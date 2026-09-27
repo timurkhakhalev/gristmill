@@ -43,8 +43,7 @@ tests or preparing the runtime. Other kinds are `integration`, `types` and `nati
 the full suite. The registry validates coverage of all test files. Main is built
 once only when selected tests require its output. See
 [project commands](.memory-bank/steerings/project-commands.md) for selector rules.
-On macOS, the test run uses
-background scheduling and one test worker. pnpm refuses to run scripts
+pnpm refuses to run scripts
 when `node_modules` does not match this worktree's lockfile; install with
 `pnpm install --frozen-lockfile` in that worktree first. Dependency install
 builds one child package at a time.

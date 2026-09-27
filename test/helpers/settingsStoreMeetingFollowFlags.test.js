@@ -63,8 +63,8 @@ const meetingRoute = (mod, state) => {
   });
 };
 
-// The migration cases share a Vite server. Allow extra time under macOS
-// background scheduling so the parent test does not close it mid-run.
+// The migration cases share a Vite server. Allow extra time for a cold import
+// so the parent test does not close it mid-run.
 test("Note Recording modes survive the follow-flag migration", { timeout: 300_000 }, async (t) => {
   const { storage } = installBrowserGlobals(t);
   const vite = await createRendererServer(t, {

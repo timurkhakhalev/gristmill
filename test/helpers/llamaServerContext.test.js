@@ -75,8 +75,6 @@ test("a context grown for one model does not carry over to another", async () =>
 
 test("stopping the server forgets the grown context", async () => {
   const { manager } = makeManager();
-  manager._killCurrentProcess = async () => {};
-  manager.process = {};
 
   await manager.start("/models/main.gguf", { contextSize: 65536 });
   assert.equal(manager.contextSize, 65536);

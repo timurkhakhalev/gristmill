@@ -83,7 +83,7 @@
     "format": "pnpm run format:js",
     "lint": "eslint --config eslint.config.js . && cd src && eslint .",
     "knip": "knip",
-    "test": "sh scripts/run-tests.sh",
+    "test": "node scripts/run-tests.js",
     "typecheck": "pnpm run typecheck:main && pnpm run typecheck:renderer && pnpm run typecheck:settings-selectors",
     "i18n:check": "node scripts/check-i18n.js",
     "build:main": "node scripts/build-main.js",

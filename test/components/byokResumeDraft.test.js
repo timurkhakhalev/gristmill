@@ -6,7 +6,14 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
+  reloadSettingsStore,
 } = require("../lib/rendererTestHarness");
+
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
 
 // The onboarding session is plain-text localStorage, while every one of these is a
 // safeStorage secret. Named literally so a leak shows up as the value, not just as
@@ -26,7 +33,7 @@ async function collectByokDrafts(t, { selfHostedRequested, resumeState }) {
     window: { electronAPI: { getPlatform: () => "linux" } },
   });
   const container = installHookDom(t);
-  const vite = await createRendererServer(t, {
+  const vite = await (vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
     cachePrefix: "openwhispr-byok-resume-draft-",
     noExternal: ["react-i18next"],
     mockModules: {
@@ -39,8 +46,8 @@ async function collectByokDrafts(t, { selfHostedRequested, resumeState }) {
       "/OnboardingShell": `export function BrandMark() { return null; }`,
       "/ui/ProviderIcon": `export function ProviderIcon() { return null; }`,
     },
-  });
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  }));
+  const { useSettingsStore } = await reloadSettingsStore(vite);
   useSettingsStore.setState(SECRETS);
   const { ByokProviderStep } = await vite.ssrLoadModule(
     "/components/onboarding/ProviderSetupStep.tsx"

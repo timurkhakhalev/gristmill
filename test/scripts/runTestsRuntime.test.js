@@ -40,7 +40,7 @@ test("macOS unit selection uses Electron as Node without a main build", async ()
 
 test("compiled bridge selection builds once and Linux uses Node", async () => {
   const { calls, options } = fakeRunner({ platform: "linux" });
-  assert.equal(await runTests(["test/helpers/notesBridge.test.js", "test/helpers/calendarBridge.test.js"], options), 0);
+  assert.equal(await runTests(["test/helpers/notesBridge.test.js", "test/helpers/calendarBridge.test.ts"], options), 0);
   assert.deepEqual(calls[0], { prepare: "node" });
   assert.equal(calls.length, 3);
   assert.equal(calls[1].binary, "pnpm");

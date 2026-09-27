@@ -83,7 +83,7 @@ test("repository registry covers every test and compiled-output consumers reques
   }
   const byFile = new Map(plan.tests.map((entry) => [entry.file, entry]));
   // This fixture requires the emitted WindowManager, not the test file itself.
-  assert.equal(byFile.get("test/helpers/devRendererOrigin.test.js").buildMain, true);
-  assert.equal(byFile.get("test/components/noteParticipantsMeetingCard.test.js").domains.includes("calendar"), true);
+  assert.equal(byFile.get("test/helpers/devRendererOrigin.test.ts").buildMain, true);
+  assert.equal(byFile.get("test/components/noteParticipantsMeetingCard.test.ts").domains.includes("calendar"), true);
   assert.equal(byFile.get("test/helpers/settingsSelectors.test.js").domains.includes("transcription"), true);
 });

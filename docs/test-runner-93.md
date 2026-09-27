@@ -57,3 +57,58 @@ required full test plus renderer check therefore took 308.82 s. The full
 existing warnings. The full-run lock was absent afterward. A fresh checkout
 with missing native runtime would also include any required preparation or
 rebuild; that cold condition has not been measured here.
+
+## Final stage: default run under 120 seconds
+
+The next profile measured actual process lifetime for all 367 independently
+launched test files, alongside top-level case times. The 357 ordinary files
+totalled 325.6 s of process lifetime across two workers: 232.3 s in cases and
+93.3 s outside cases. The ten serial files totalled 36.6 s, with 30.7 s in
+cases. The most expensive processes were `meetingFileTranscriptionPicker`
+(11.35 s), `byokResumeDraft` (10.03 s), `spacesTreeNoteActionClearance`
+(9.09 s), `notesContract` (9.07 s), `useChatStreamingCancellation` (8.12 s),
+`onboardingCompatibility` (6.85 s), `orukeetOrganization` (6.48 s),
+`reasoningServiceOpenCodeSession` (6.00 s),
+`meetingRecordingStoreDiarizationPublish` (5.56 s), and `meetingResultsPanel`
+(5.48 s). These are overlapping file lifetimes, not additive wall time.
+`llamaServerContext` spent 5.12 s after its cases because a fake process left
+a real five-second shutdown timer pending.
+
+The fixture now tests context reset without that fake process. Focused process
+time fell from 5.23 to 0.29 s, with all 11 cases intact. One Vite server per
+file and fresh settings-store modules reduced `byokResumeDraft` from 9.63 to
+5.96 s and `useChatStreamingCancellation` from 8.99 to 3.66 s in focused
+process measurements. Five renderer and two main `notesContract` type probes
+now use one compiler program per target, preserving their separate expected
+diagnostics and a clean implementation-graph check; focused process time fell
+from 9.07 to 4.39 s. The other renderer fixtures kept their distinct mock
+environments: in the final scheduling mode, the picker took 1.64 s and
+`meetingRecordingStoreAutoEndStop` 0.64 s as complete files.
+
+The largest gain came from scheduling. `run-tests.sh` had placed every macOS
+test, build and compiler process under `taskpolicy -b nice -n 15`. The same
+`build:main` took 21.45 s there and 2.90 s at normal priority. The canonical
+`pnpm test` command now calls the existing runner directly. The two-process
+limit, serial phases, SQLite preparation, process-group cleanup and full-run
+lock remain in the runner. No incremental build cache or shared-process pool
+was added: a clean main build is about 3 s at normal priority, and the target
+is met without extra state or fixture isolation risk.
+
+| Full-run snapshot | Command | Pass / fail / skip / cancel | Test wall | Peak descendant RSS | Peak CPU | Swap growth |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| First normal-priority experiment | `OPENHERCULES_TEST_BACKGROUND=1 pnpm test -- --processes 2` | 2753 / 0 / 0 / 0 | 62.52 s | 1011 MiB | 261% | 0 MiB |
+| Final default command | `pnpm test -- --processes 2` | 2753 / 0 / 0 / 0 | **60.43 s** | 1249 MiB | 276% | 0 MiB |
+
+The first row used the former wrapper's bypass variable only as an experiment;
+that variable is no longer needed. The final run covered 388 files. Its phases
+were 0.08 s preparation, 3.00 s main build, 45.47 s ordinary files, 2.02 s
+batched type probes and 9.58 s remaining serial files. The separately required
+`pnpm run typecheck:renderer` passed in 5.84 s: **66.27 s combined**, below
+the 120 s target. `pnpm run typecheck` passed in 9.08 s; `pnpm run lint`
+passed with existing warnings. The full-run lock was absent afterward.
+The monitor sampled the process tree and swap about once per second and would
+terminate its own run above 3 GiB RSS or 512 MiB swap growth. Neither limit
+was reached. `pmset -g therm` reported no recorded thermal or performance
+warning after the run. These samples do not establish a continuous thermal
+bound. The result is for an installed, healthy SQLite runtime; a cold native
+rebuild was not forced or measured and would add preparation time.

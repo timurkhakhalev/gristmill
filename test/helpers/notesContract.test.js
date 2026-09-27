@@ -1,6 +1,5 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
 const path = require("node:path");
 
 // The contract is renderer/main-neutral; loading it under plain node only needs
@@ -9,27 +8,61 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "../..");
 const ts = require("typescript");
 
-function compileWithProbe(probeSource, probeName) {
+const rendererProbes = {
+  cloudKey: `import type { NoteUpdate } from "./contracts/notes";
+const bad: NoteUpdate = { left_team: 1 };
+export { bad };
+`,
+  incompleteNote: `import type { NoteItem } from "./contracts/notes";
+const bad: NoteItem = { id: 1, title: "T" };
+export { bad };
+`,
+  wrongSaveArg: `import type { NotesApi } from "./contracts/notes";
+const api: NotesApi = {} as NotesApi;
+const bad = api.saveNote(123, "content");
+export { bad };
+`,
+  valid: `import type { NotesApi, NoteItem } from "./contracts/notes";
+const api: NotesApi = {} as NotesApi;
+async function ok(): Promise<NoteItem | null> {
+  return api.getNote(17);
+}
+export { ok };
+`,
+  updateResult: `import type { NotesApi } from "./contracts/notes";
+async function check(api: NotesApi): Promise<string | undefined> {
+  const result = await api.updateNote(1, { title: "T" });
+  if (result.success === false) return result.error;
+  return result.note.title ? undefined : undefined;
+}
+export { check };
+`,
+};
+let rendererProbeResults;
+
+function compileRendererProbes() {
+  if (rendererProbeResults) return rendererProbeResults;
   const configPath = path.join(root, "src", "tsconfig.json");
   const config = ts.readConfigFile(configPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, path.join(root, "src"));
-  const probe = path.join(root, "src", probeName);
+  const sources = new Map(Object.entries(rendererProbes).map(([name, source]) => [
+    path.join(root, "src", `notes-type-probe-${name}.ts`), source,
+  ]));
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
   host.getSourceFile = (file, languageVersion, ...args) =>
-    file === probe
-      ? ts.createSourceFile(file, probeSource, languageVersion, true)
+    sources.has(file)
+      ? ts.createSourceFile(file, sources.get(file), languageVersion, true)
       : readSource(file, languageVersion, ...args);
-  const program = ts.createProgram([probe], { ...parsed.options, noEmit: true }, host);
-  const diagnostics = ts.getPreEmitDiagnostics(program).filter(
-    (d) => d.file && d.file.fileName === probe
-  );
-  const before = fs.existsSync(probe);
-  try {
-    return { codes: diagnostics.map((d) => d.code), messageText: diagnostics[0]?.messageText };
-  } finally {
-    if (!before) fs.rmSync(probe, { force: true });
-  }
+  const program = ts.createProgram([...sources.keys()], { ...parsed.options, noEmit: true }, host);
+  const diagnostics = ts.getPreEmitDiagnostics(program);
+  assert.deepEqual(diagnostics.filter((d) => !d.file || !sources.has(d.file.fileName)), []);
+  rendererProbeResults = Object.fromEntries(Object.keys(rendererProbes).map((name) => [
+    name,
+    diagnostics.filter((d) => d.file?.fileName === path.join(root, "src", `notes-type-probe-${name}.ts`))
+      .map((d) => d.code),
+  ]));
+  return rendererProbeResults;
 }
 
 test("noteUpdateSchema strips unknown keys and keeps known ones", async () => {
@@ -80,86 +113,31 @@ test("event payload schemas reject malformed notes", async () => {
 });
 
 test("type probe: a cloud-only update key is rejected at compile time", () => {
-  const { codes } = compileWithProbe(
-    `import type { NoteUpdate } from "./contracts/notes";
-const bad: NoteUpdate = { left_team: 1 };
-export { bad };
-`,
-    "notes-type-probe.ts"
-  );
-  assert.deepEqual(codes, [2353]);
+  assert.deepEqual(compileRendererProbes().cloudKey, [2353]);
 });
 
 test("type probe: an incomplete NoteItem is rejected at compile time", () => {
-  const { codes } = compileWithProbe(
-    `import type { NoteItem } from "./contracts/notes";
-const bad: NoteItem = { id: 1, title: "T" };
-export { bad };
-`,
-    "notes-type-probe.ts"
-  );
   // src/tsconfig.json is strict now: for zod-inferred object types the same
   // missing-properties rejection is reported as 2740 instead of 2739
   // (verified both ways; the rejection semantics are unchanged).
-  assert.deepEqual(codes, [2740]);
+  assert.deepEqual(compileRendererProbes().incompleteNote, [2740]);
 });
 
 test("type probe: wrong argument type on saveNote is rejected at compile time", () => {
-  const { codes } = compileWithProbe(
-    `import type { NotesApi } from "./contracts/notes";
-const api: NotesApi = {} as NotesApi;
-const bad = api.saveNote(123, "content");
-export { bad };
-`,
-    "notes-type-probe.ts"
-  );
-  assert.deepEqual(codes, [2345]);
+  assert.deepEqual(compileRendererProbes().wrongSaveArg, [2345]);
 });
 
 test("type probe: correct usage compiles cleanly", () => {
-  const { codes } = compileWithProbe(
-    `import type { NotesApi, NoteItem } from "./contracts/notes";
-const api: NotesApi = {} as NotesApi;
-async function ok(): Promise<NoteItem | null> {
-  return api.getNote(17);
-}
-export { ok };
-`,
-    "notes-type-probe.ts"
-  );
-  assert.deepEqual(codes, []);
+  assert.deepEqual(compileRendererProbes().valid, []);
 });
 
-// The main boundary probe compiles against tsconfig.main.json (strict, Node)
-// because that is where registerNotesHandlers runs. It pins the P2 fix: the
-// handler listener takes unknown[] and only schema-derived values reach deps,
-// so swapped or wrong-typed arguments fail compilation.
-function compileMainWithProbe(probeSource, probeName) {
-  const configPath = path.join(root, "tsconfig.main.json");
-  const config = ts.readConfigFile(configPath, ts.sys.readFile);
-  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
-  const probe = path.join(root, probeName);
-  const host = ts.createCompilerHost(parsed.options);
-  const readSource = host.getSourceFile.bind(host);
-  host.getSourceFile = (file, languageVersion, ...args) =>
-    file === probe
-      ? ts.createSourceFile(file, probeSource, languageVersion, true)
-      : readSource(file, languageVersion, ...args);
-  const program = ts.createProgram([probe], { ...parsed.options, noEmit: true }, host);
-  const diagnostics = ts.getPreEmitDiagnostics(program).filter(
-    (d) => d.file && d.file.fileName === probe
-  );
-  return { codes: diagnostics.map((d) => d.code) };
-}
-
-test("main boundary probe: wrong-typed deps fail strict compilation", () => {
-  const { codes } = compileMainWithProbe(
-    `import { registerNotesHandlers } from "./src/helpers/notesIpcHandlers.js";
+// The main boundary probes compile under the strict Node config used by
+// registerNotesHandlers. Both cases share one program but keep separate results.
+const mainProbes = {
+  wrongDeps: `import { registerNotesHandlers } from "./src/helpers/notesIpcHandlers.js";
 registerNotesHandlers(
   { handle() {} },
   {
-    // saveNote's first parameter must be a string, not a number: the handler
-    // passes schema-parsed values, so a swap cannot compile through.
     saveNote: (title: number) => null,
     getNote: (id: number) => null,
     getNotes: () => null,
@@ -173,14 +151,7 @@ registerNotesHandlers(
   }
 );
 `,
-    "notes-main-probe.ts"
-  );
-  assert.deepEqual(codes, [2322]);
-});
-
-test("main boundary probe: correctly typed deps compile cleanly", () => {
-  const { codes } = compileMainWithProbe(
-    `import { registerNotesHandlers, type NotesHandlerDeps } from "./src/helpers/notesIpcHandlers.js";
+  validDeps: `import { registerNotesHandlers, type NotesHandlerDeps } from "./src/helpers/notesIpcHandlers.js";
 const deps: NotesHandlerDeps = {
   saveNote: () => null,
   getNote: () => null,
@@ -195,24 +166,42 @@ const deps: NotesHandlerDeps = {
 };
 registerNotesHandlers({ handle() {} }, deps);
 `,
-    "notes-main-probe.ts"
-  );
-  assert.deepEqual(codes, []);
+};
+let mainProbeResults;
+
+function compileMainProbes() {
+  if (mainProbeResults) return mainProbeResults;
+  const configPath = path.join(root, "tsconfig.main.json");
+  const config = ts.readConfigFile(configPath, ts.sys.readFile);
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
+  const sources = new Map(Object.entries(mainProbes).map(([name, source]) => [
+    path.join(root, `notes-main-probe-${name}.ts`), source,
+  ]));
+  const host = ts.createCompilerHost(parsed.options);
+  const readSource = host.getSourceFile.bind(host);
+  host.getSourceFile = (file, languageVersion, ...args) =>
+    sources.has(file)
+      ? ts.createSourceFile(file, sources.get(file), languageVersion, true)
+      : readSource(file, languageVersion, ...args);
+  const program = ts.createProgram([...sources.keys()], { ...parsed.options, noEmit: true }, host);
+  const diagnostics = ts.getPreEmitDiagnostics(program);
+  assert.deepEqual(diagnostics.filter((d) => !d.file || !sources.has(d.file.fileName)), []);
+  mainProbeResults = Object.fromEntries(Object.keys(mainProbes).map((name) => [
+    name,
+    diagnostics.filter((d) => d.file?.fileName === path.join(root, `notes-main-probe-${name}.ts`))
+      .map((d) => d.code),
+  ]));
+  return mainProbeResults;
+}
+
+test("main boundary probe: wrong-typed deps fail strict compilation", () => {
+  assert.deepEqual(compileMainProbes().wrongDeps, [2322]);
+});
+
+test("main boundary probe: correctly typed deps compile cleanly", () => {
+  assert.deepEqual(compileMainProbes().validDeps, []);
 });
 
 test("renderer probe: NotesApi exposes the error discriminant on update results", () => {
-  const { codes } = compileWithProbe(
-    `import type { NotesApi } from "./contracts/notes";
-// The renderer tsconfig is not strict, so narrow with "=== false": truthiness
-// checks on the literal discriminant only narrow under strictNullChecks.
-async function check(api: NotesApi): Promise<string | undefined> {
-  const result = await api.updateNote(1, { title: "T" });
-  if (result.success === false) return result.error;
-  return result.note.title ? undefined : undefined;
-}
-export { check };
-`,
-    "notes-type-probe.ts"
-  );
-  assert.deepEqual(codes, []);
+  assert.deepEqual(compileRendererProbes().updateResult, []);
 });

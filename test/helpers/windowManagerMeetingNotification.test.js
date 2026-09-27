@@ -450,13 +450,15 @@ test("auto-end recovery subtracts load time from its expiry and hover cannot ext
 });
 
 test("only the active detection card can pause and resume its countdown", async () => {
+  const originalDateNow = Date.now;
+  Date.now = () => 50_000;
   const timers = installFakeTimers();
   const manager = createNormalWindowManager();
-  const showing = manager.showMeetingNotification({ kind: "detection", detectionId: "meeting-1", source: "audio" });
-  const window = createdWindows[0];
-  window.loadDeferred.resolve();
-  await showing;
   try {
+    const showing = manager.showMeetingNotification({ kind: "detection", detectionId: "meeting-1", source: "audio" });
+    const window = createdWindows[0];
+    window.loadDeferred.resolve();
+    await showing;
     assert.equal(timers.pendingDelays().includes(60_000), true);
     const before = window.ignoreMouseEvents.length;
     manager.setNotificationInteractivity({ send() {} }, true);
@@ -470,6 +472,7 @@ test("only the active detection card can pause and resume its countdown", async 
     }
     assert.equal(window.ignoreMouseEvents.length, before + 6);
   } finally {
+    Date.now = originalDateNow;
     manager.dismissMeetingNotification();
     timers.restore();
   }

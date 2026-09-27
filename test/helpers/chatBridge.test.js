@@ -263,7 +263,12 @@ test("the shared main registration registers every channel exactly once", async 
   if (!ctx) return;
 
   const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
+  const previousHandlersModule = require.cache[handlersModulePath];
   delete require.cache[handlersModulePath];
+  t.after(() => {
+    if (previousHandlersModule) require.cache[handlersModulePath] = previousHandlersModule;
+    else delete require.cache[handlersModulePath];
+  });
   const IPCHandlers = require(handlersModulePath);
   const Ctor = IPCHandlers.default || IPCHandlers;
 

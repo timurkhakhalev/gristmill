@@ -290,6 +290,7 @@
       "test/helpers/notificationTimer.test.js",
       "test/helpers/pillVisibilityHandoff.test.js",
       "test/helpers/scrollFollowState.test.js",
+      "test/helpers/systemTar.test.js",
       "test/helpers/versionedIntro.test.js",
       "test/helpers/visualFrame.test.js",
       "test/helpers/windowConfigTypes.test.js",
@@ -485,11 +486,22 @@
       "test/helpers/assemblyAiStreaming.test.js",
       "test/helpers/cortiStreaming.test.js",
       "test/helpers/deepgramStreaming.test.js",
-      "test/helpers/geminiLiveStreaming.test.js",
       "test/helpers/meetingStreamingProviders.test.js",
       "test/helpers/openaiRealtimeStreaming.test.js",
       "test/helpers/realtimeTokenProviders.test.js",
       "test/helpers/tinfoilRealtimeStreaming.test.js"
+    ]
+  },
+  {
+    "domains": [
+      "ai",
+      "recording",
+      "transcription"
+    ],
+    "kind": "integration",
+    "buildMain": false,
+    "files": [
+      "test/helpers/geminiLiveStreaming.test.js"
     ]
   },
   {
@@ -685,7 +697,6 @@
     "files": [
       "test/helpers/fileRetryStrategy.test.js",
       "test/helpers/parakeetCapability.test.js",
-      "test/helpers/parakeetOnlineStream.test.js",
       "test/helpers/parakeetServer.test.js",
       "test/helpers/parakeetWsResult.test.js",
       "test/helpers/selfHostedTranscription.test.js",
@@ -700,6 +711,16 @@
       "test/helpers/whisperVadModel.test.js",
       "test/helpers/whisperWakeRewarm.test.js",
       "test/services/transcriptionBaseUrl.test.js"
+    ]
+  },
+  {
+    "domains": [
+      "transcription"
+    ],
+    "kind": "integration",
+    "buildMain": false,
+    "files": [
+      "test/helpers/parakeetOnlineStream.test.js"
     ]
   },
   {
@@ -1015,8 +1036,7 @@
     "kind": "native",
     "buildMain": false,
     "files": [
-      "test/helpers/sidecarReaper.test.js",
-      "test/helpers/systemTar.test.js"
+      "test/helpers/sidecarReaper.test.js"
     ]
   },
   {

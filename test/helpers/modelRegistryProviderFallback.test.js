@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const { installBrowserGlobals } = require("../lib/rendererTestHarness");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 
@@ -12,10 +12,7 @@ test("non-registry ids of every local family fall back to the local provider", a
   installBrowserGlobals(t, {
     initialStorage: { _providerSettingsMigrated: "1", cleanupMode: "local" },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-model-provider-fallback-test-",
-  });
-  const { getModelProvider } = await vite.ssrLoadModule("/models/ModelRegistry.ts");
+  const { getModelProvider } = await import("../../src/models/ModelRegistry.ts");
 
   const nonRegistryLocalIds = [
     "qwen3-4b-custom-finetune-q4_k_m",
@@ -34,10 +31,7 @@ test("gemma fallback does not capture gemini ids or registry cloud gemma models"
   installBrowserGlobals(t, {
     initialStorage: { _providerSettingsMigrated: "1", cleanupMode: "local" },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-model-provider-fallback-test-",
-  });
-  const { getModelProvider } = await vite.ssrLoadModule("/models/ModelRegistry.ts");
+  const { getModelProvider } = await import("../../src/models/ModelRegistry.ts");
 
   assert.equal(getModelProvider("gemini-9-ultra-preview"), "gemini");
 

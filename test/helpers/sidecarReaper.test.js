@@ -7,6 +7,7 @@ const path = require("path");
 
 let userDataDir;
 const electronPath = require.resolve("electron");
+const originalElectronCache = require.cache[electronPath];
 require.cache[electronPath] = {
   exports: {
     app: {
@@ -15,6 +16,10 @@ require.cache[electronPath] = {
     },
   },
 };
+test.after(() => {
+  if (originalElectronCache) require.cache[electronPath] = originalElectronCache;
+  else delete require.cache[electronPath];
+});
 
 const sidecarPidFile = require("../../src/helpers/sidecarPidFile");
 const { reapStaleSidecars, waitForExit } = require("../../src/helpers/sidecarReaper");

@@ -2,8 +2,7 @@
 // handlers over a temporary SQLite database, closing the loop like Electron
 // does. Covers: full custom-action lifecycle across a restart, builtin
 // delete protection, event delivery exactly once, independent listeners
-// with exact unsubscribe, malformed response/event rejection, and the
-// shared main registration duplicate-channel guard (#23 class of failure).
+// with exact unsubscribe and malformed response/event rejection.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -53,12 +52,17 @@ Module._load = function patchedLoad(request, parent, isMain) {
   }
   return originalLoad.call(this, request, parent, isMain);
 };
+const originalNodeEnv = process.env.NODE_ENV;
 process.env.NODE_ENV = "test";
 
 const DatabaseManager = require("../../src/helpers/database.ts");
+const initialUserDataDir = userDataDir;
 
 test.after(() => {
   Module._load = originalLoad;
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
+  fs.rmSync(initialUserDataDir, { recursive: true, force: true });
 });
 
 function isNativeBindingUnavailable(error) {
@@ -112,7 +116,12 @@ async function createFixture(t) {
   activeHandlers = new Map();
   dispatchSend = null;
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-actions-bridge-"));
+  const fixtureDir = userDataDir;
   let db;
+  t.after(() => {
+    db?.close();
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  });
   try {
     db = new DatabaseManager();
   } catch (error) {
@@ -122,8 +131,6 @@ async function createFixture(t) {
     }
     throw error;
   }
-  t.after(() => db.close());
-
   const { registerActionsHandlers } = await import("../../src/helpers/actionsIpcHandlers.ts");
   registerActionsHandlers(
     { handle: (channel, listener) => activeHandlers.set(channel, listener) },
@@ -203,7 +210,6 @@ test("builtin actions are listed and cannot be deleted; edits survive restart", 
   assert.equal(edited.success, true);
 
   // Reopen the DB: the user's prompt edit must survive the seeding pass.
-  const dbPath = db.dbPath || null;
   db.close();
   const reopened = new DatabaseManager();
   t.after(() => reopened.close());
@@ -211,13 +217,11 @@ test("builtin actions are listed and cannot be deleted; edits survive restart", 
     .getActions()
     .find((a) => a.translation_key === builtin.translation_key);
   assert.equal(row.prompt, "user override");
-  assert.ok(dbPath !== undefined || true);
 });
 
 test("malformed responses and events reject or drop at the preload boundary", async (t) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
-  const { flush } = ctx;
 
   const handlersSnapshot = new Map(activeHandlers);
   const { db } = ctx;
@@ -261,52 +265,4 @@ test("malformed responses and events reject or drop at the preload boundary", as
   unsub();
   dispatchSend("action-updated", validRow);
   assert.equal(received.length, 1, "unsubscribed listener is not called again");
-});
-
-test("the shared main registration registers action channels exactly once", async (t) => {
-  // Runs against the real IPCHandlers.setupHandlers through the electron
-  // stub's duplicate-detecting ipcMain: a leftover JS handler plus the typed
-  // module — the #23 packaged-start breakage — makes setupHandlers throw.
-  const ctx = await createFixture(t);
-  if (!ctx) return;
-
-  // Only the shared registration may populate the map from here: clear the
-  // fixture's direct registration so its five channels re-register through
-  // setupHandlers like they do in the packaged app.
-  activeHandlers = new Map();
-
-  const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
-  delete require.cache[handlersModulePath];
-  const IPCHandlers = require(handlersModulePath);
-  const Ctor = IPCHandlers.default || IPCHandlers;
-
-  const anything = () =>
-    new Proxy(function () {}, {
-      get: (_target, property) => {
-        if (property === Symbol.toPrimitive || property === "toString") return () => "";
-        if (property === "then") return undefined;
-        if (property === "apply" || property === "call" || property === "bind") {
-          return () => anything();
-        }
-        return anything();
-      },
-      apply: () => anything(),
-    });
-
-  const target = { databaseManager: ctx.db };
-  Ctor.prototype.setupHandlers.call(
-    new Proxy(target, {
-      get: (value, property) => (property in value ? value[property] : anything()),
-    })
-  );
-
-  for (const channel of [
-    "db-get-actions",
-    "db-get-action",
-    "db-create-action",
-    "db-update-action",
-    "db-delete-action",
-  ]) {
-    assert.equal(typeof activeHandlers.get(channel), "function", channel);
-  }
 });

@@ -40,8 +40,13 @@ test("keeps explicit system/default preference semantics", async () => {
   assert.equal(module.followsSystemDefaultMic({ preferBuiltInMic: true }), false);
 });
 
-test("remaps a rotated device ID only when its label is unique", async () => {
+test("remaps a rotated device ID only when its label is unique", async (t) => {
   const { module, settings } = await loadRecovery();
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  t.after(() => {
+    if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
+    else delete globalThis.navigator;
+  });
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     value: {

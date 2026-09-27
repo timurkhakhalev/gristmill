@@ -10,11 +10,13 @@ const path = require("node:path");
 const Module = require("node:module");
 
 let registerLocalFileTranscriptionHandler;
+let createUploadCancelRegistry;
 
 test.before(async () => {
   ({ registerLocalFileTranscriptionHandler } = await import(
     "../../src/helpers/localFileTranscriptionIpcHandler.ts"
   ));
+  ({ createUploadCancelRegistry } = await import("../../src/helpers/uploadCancelRegistry.ts"));
 });
 
 test.after(() => {
@@ -35,32 +37,11 @@ const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercu
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, "RIFF....");
 
-function createRegistry() {
-  const controllers = new Map();
-  return {
-    controllers,
-    register(id) {
-      if (typeof id !== "string" || !id) return { signal: undefined, release: () => {} };
-      let set = controllers.get(id);
-      if (!set) {
-        set = new Set();
-        controllers.set(id, set);
-      }
-      const controller = new AbortController();
-      set.add(controller);
-      return {
-        signal: controller.signal,
-        release: () => set.delete(controller),
-      };
-    },
-  };
-}
-
 const logs = { debug: [], error: [] };
 
 function setup({ whisper, parakeet } = {}) {
   const handlers = new Map();
-  const registry = createRegistry();
+  const registry = createUploadCancelRegistry();
   const calls = { whisper: [], parakeet: [], reads: [] };
   registerLocalFileTranscriptionHandler(
     { handle: (channel, fn) => handlers.set(channel, fn) },
@@ -100,24 +81,30 @@ test("happy path: whisper dispatch with VAD merge, result validated", async () =
   const { call, calls } = setup({
     whisper: (_buffer, options) => ({ success: true, text: "hello", model: options.model }),
   });
-  const result = await call(audioFile, { model: "base", requestId: "r1" });
+  const result = await call(audioFile, { model: "base", language: "en", requestId: "r1" });
   assert.equal(result.success, true);
   assert.equal(result.text, "hello");
   assert.equal(calls.whisper[0].options.vadEnabled, true, "noteRecording VAD merged in");
   assert.equal(calls.whisper[0].options.model, "base");
+  assert.equal(calls.whisper[0].options.language, "en");
   assert.equal(calls.whisper[0].options.requestId, "r1");
   assert.ok(calls.reads[0].endsWith("audio.wav"));
   assert.ok(Buffer.isBuffer(calls.whisper[0].audioBuffer));
 });
 
-test("nvidia/cohere dispatch to sherpa with the signal, whisper options untouched", async () => {
-  const { call, calls } = setup({
-    parakeet: () => ({ success: true, text: "sherpa" }),
-  });
-  const result = await call(audioFile, { provider: "nvidia", requestId: "r2" });
-  assert.deepEqual(result, { success: true, text: "sherpa" });
-  assert.ok(calls.parakeet[0].options.signal instanceof AbortSignal);
-  assert.equal(calls.whisper.length, 0);
+test("nvidia/cohere dispatch to sherpa, with a signal only when requestId is present", async () => {
+  for (const provider of ["nvidia", "cohere"]) {
+    const { call, calls } = setup({
+      parakeet: (_buffer, options) => ({ success: true, text: options.model }),
+    });
+    const result = await call(audioFile, { provider, model: "parakeet-tdt-0.6b-v3" });
+    assert.deepEqual(result, { success: true, text: "parakeet-tdt-0.6b-v3" });
+    assert.equal(calls.parakeet[0].options.signal, undefined);
+    assert.equal(calls.whisper.length, 0);
+    await call(audioFile, { provider, requestId: "r2" });
+    assert.ok(calls.parakeet[1].options.signal instanceof AbortSignal);
+    assert.equal(calls.whisper.length, 0);
+  }
 });
 
 test("options omitted or undefined default to empty; explicit null rejects", async () => {
@@ -174,6 +161,15 @@ test("failure shapes survive validation; throws map to error strings", async () 
     warning: "truncated",
   });
 
+  const noSpeech = setup({
+    parakeet: () => ({ success: false, code: "NO_SPEECH_DETECTED", message: "No audio detected" }),
+  });
+  assert.deepEqual(await noSpeech.call(audioFile, { provider: "cohere" }), {
+    success: false,
+    code: "NO_SPEECH_DETECTED",
+    message: "No audio detected",
+  });
+
   const throwing = setup({
     whisper: () => {
       throw new Error("whisper-server binary not found");
@@ -199,8 +195,25 @@ test("abort maps to the cancelled shape and release always runs", async () => {
     error: "Cancelled",
     code: "UPLOAD_CANCELLED",
   });
-  const releasedSet = registry.controllers.get("req-x");
-  assert.ok(!releasedSet || releasedSet.size === 0, "controller released");
+  assert.equal(registry.cancel("req-x"), 0, "controller released");
+});
+
+test("shared registry cancels a pending real handler and leaves no registration", async () => {
+  let signal;
+  const { call, registry } = setup({
+    whisper: (_buffer, options) => {
+      signal = options.signal;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(Object.assign(new Error("cancelled"), { name: "AbortError" })));
+      });
+    },
+  });
+  const pending = call(audioFile, { requestId: "pending-1", language: "en" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(signal instanceof AbortSignal);
+  assert.equal(registry.cancel("pending-1"), 1);
+  assert.deepEqual(await pending, { success: false, error: "Cancelled", code: "UPLOAD_CANCELLED" });
+  assert.equal(registry.cancel("pending-1"), 0);
 });
 
 test("a junk manager result becomes an error result, never a fake success", async () => {

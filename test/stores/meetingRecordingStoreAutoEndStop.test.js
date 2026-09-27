@@ -93,6 +93,10 @@ const finalized = (captureState = "ready") => ({
 test("ending a paused call queues its saved parts once without another ASR request", async (t) => {
   const api = createElectronAPI({ stopResult: () => finalized() });
   const store = await loadStore(t, api);
+  const initial = store.useMeetingRecordingStore.getState();
+  assert.deepEqual(initial.segments, []);
+  assert.equal(initial.micPartial, "");
+  assert.equal(initial.systemPartial, "");
   assert.equal(await store.startRecording(START_ARGS), true);
   const groupId = store.useMeetingRecordingStore.getState().meetingGroupId;
   api.recordings = [{

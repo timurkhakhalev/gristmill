@@ -263,26 +263,22 @@ test("updateSpace defers space-synced only on success with a space", async () =>
 });
 
 test("wrong-shaped ids reject before the DB is touched", async () => {
+  const touched = [];
+  const unexpected = (name) => () => { touched.push(name); };
   const db = {
     ...fakeDb(),
-    deleteFolder: () => {
-      throw new Error("must not run");
-    },
-    renameFolder: () => {
-      throw new Error("must not run");
-    },
-    moveFolderToSpace: () => {
-      throw new Error("must not run");
-    },
-    updateSpace: () => {
-      throw new Error("must not run");
-    },
+    deleteFolder: unexpected("deleteFolder"),
+    renameFolder: unexpected("renameFolder"),
+    moveFolderToSpace: unexpected("moveFolderToSpace"),
+    updateSpace: unexpected("updateSpace"),
+    getFolders: unexpected("getFolders"),
   };
   const h = setup(db);
-  await assert.rejects(() => call(h, "db-delete-folder", "nope"));
-  await assert.rejects(() => call(h, "db-rename-folder", 7, null, "extra"));
-  await assert.rejects(() => call(h, "db-move-folder-to-space", 7, "x"));
-  await assert.rejects(() => call(h, "db-update-space", "x", {}));
+  await assert.rejects(() => call(h, "db-delete-folder", "nope"), /Invalid arguments/);
+  await assert.rejects(() => call(h, "db-rename-folder", 7, null, "extra"), /Invalid arguments/);
+  await assert.rejects(() => call(h, "db-move-folder-to-space", 7, "x"), /Invalid arguments/);
+  await assert.rejects(() => call(h, "db-update-space", "x", {}), /Invalid arguments/);
   // getFolders keeps its tolerant spaceId (unknown is still not a valid id).
-  await assert.rejects(() => call(h, "db-get-folders", "x"));
+  await assert.rejects(() => call(h, "db-get-folders", "x"), /Invalid arguments/);
+  assert.deepEqual(touched, []);
 });

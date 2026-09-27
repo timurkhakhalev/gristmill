@@ -151,17 +151,19 @@ function openingTagForTitle(markup, title) {
 }
 
 for (const direction of ["ltr", "rtl"]) {
-  test(`folder note titles clear their actions in ${direction}`, async (t) => {
+  test(`folder note titles and action triggers remain separate flex children in ${direction}`, async (t) => {
     const markup = await renderTree(t, direction);
 
-    assert.match(markup, /class="[^"]*min-w-0[^"]*flex-1/);
-    assert.match(markup, /class="[^"]*h-5 w-5 shrink-0/);
     for (const title of [PRIVATE_NOTE_TITLE, TEAM_NOTE_TITLE]) {
-      assert.match(
-        openingTagForTitle(markup, title),
-        /class="[^"]*flex[^"]*"/,
-        `${title} uses a flex row for a separate action slot`
-      );
+      const openingTag = openingTagForTitle(markup, title);
+      const row = markup.slice(markup.indexOf(openingTag), markup.indexOf(openingTag) + 1800);
+      assert.match(openingTag, /class="[^"]*flex[^"]*"/, `${title} row uses flex layout`);
+      const titlePosition = row.indexOf(`>${title}</span>`);
+      const actionPosition = row.indexOf('<button data-slot="dropdown-trigger"', titlePosition);
+      assert.ok(titlePosition >= 0, `${title} is rendered in its own title span`);
+      assert.ok(actionPosition > titlePosition, `${title} has a following action trigger`);
+      assert.match(row.slice(0, titlePosition), /<span dir="auto" class="[^"]*truncate min-w-0 flex-1/);
+      assert.match(row.slice(actionPosition, actionPosition + 500), /class="[^"]*h-5 w-5 shrink-0/);
     }
   });
 }

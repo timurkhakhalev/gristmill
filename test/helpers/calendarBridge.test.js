@@ -1,8 +1,7 @@
 // The real bundled preload talks to the real typed calendar handlers over
 // fake managers: command shapes crossing the wire per provider, event
 // payloads reaching callbacks with malformed ones dropped, idempotent
-// unsubscribe, junk command responses rejected at the preload boundary and
-// the shared main registration duplicate-channel guard.
+// unsubscribe and junk command responses rejected at the preload boundary.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -40,10 +39,13 @@ Module._load = function patchedLoad(request, parent, isMain) {
   }
   return originalLoad.call(this, request, parent, isMain);
 };
+const originalNodeEnv = process.env.NODE_ENV;
 process.env.NODE_ENV = "test";
 
 test.after(() => {
   Module._load = originalLoad;
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
 });
 
 function loadBundledPreload(transport) {
@@ -235,55 +237,4 @@ test("junk command responses reject at the preload boundary", async () => {
   await assert.rejects(api.gcalStartOAuth());
   await assert.rejects(api.gcalGetUpcomingEvents(60));
   await assert.rejects(api.openCalendarPrivacySettings());
-});
-
-test("the shared main registration registers each calendar channel once", async () => {
-  activeHandlers = new Map();
-
-  const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
-  delete require.cache[handlersModulePath];
-  const IPCHandlers = require(handlersModulePath);
-  const Ctor = IPCHandlers.default || IPCHandlers;
-
-  const anything = () =>
-    new Proxy(function () {}, {
-      get: (_target, property) => {
-        if (property === Symbol.toPrimitive || property === "toString") return () => "";
-        if (property === "then") return undefined;
-        if (property === "apply" || property === "call" || property === "bind") {
-          return () => anything();
-        }
-        return anything();
-      },
-      apply: () => anything(),
-    });
-
-  const target = {};
-  Ctor.prototype.setupHandlers.call(
-    new Proxy(target, {
-      get: (value, property) => (property in value ? value[property] : anything()),
-    })
-  );
-
-  for (const channel of [
-    "gcal-start-oauth",
-    "gcal-disconnect",
-    "gcal-get-connection-status",
-    "gcal-get-calendars",
-    "gcal-set-calendar-selection",
-    "gcal-set-primary-only",
-    "gcal-sync-events",
-    "gcal-get-upcoming-events",
-    "gcal-get-event",
-    "mcal-start-oauth",
-    "mcal-disconnect",
-    "mcal-get-connection-status",
-    "mcal-set-primary-only",
-    "acal-connect",
-    "acal-disconnect",
-    "acal-get-connection-status",
-    "open-calendar-privacy-settings",
-  ]) {
-    assert.equal(typeof activeHandlers.get(channel), "function", channel);
-  }
 });

@@ -31,7 +31,8 @@ full-suite triggers, runtime isolation and required verification evidence.
   executing them. Repeat this restriction in every delegated task.
 - The orchestrator waits for the parallel wave to finish, then runs expensive
   checks sequentially, never multiple test/build/install processes at once.
-  Use `--test-concurrency=1` for Node tests. After a failure, rerun focused tests
+  Use the canonical runner's measured two-process limit; compiler/native and
+  shared-resource phases stay sequential. After a failure, rerun focused tests
   first. When the quality steering requires the full suite, run it once after
   integration, not once per subagent.
 

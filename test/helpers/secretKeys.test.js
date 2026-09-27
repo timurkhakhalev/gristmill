@@ -8,6 +8,7 @@ const Module = require("module");
 // Mock electron and the OS keyring before environment.js / secretCrypto load
 // so tests prove that unavailable secure storage fails closed.
 const tmpUserData = fs.mkdtempSync(path.join(os.tmpdir(), "ow-secret-test-"));
+const originalResourcesPath = Object.getOwnPropertyDescriptor(process, "resourcesPath");
 process.resourcesPath = tmpUserData; // Electron-only global; harmless dummy for the .env fallback scan
 const fakeElectron = {
   app: { getPath: () => tmpUserData, getAppPath: () => tmpUserData },
@@ -21,7 +22,21 @@ Module._load = function (request, ...rest) {
 };
 
 const { BYOK_API_KEYS, SECRET_ENV_KEYS } = require("../../src/config/secretKeys");
+const originalSecrets = new Map(
+  SECRET_ENV_KEYS.map((key) => [key, process.env[key]])
+);
 const EnvironmentManager = require("../../src/helpers/environment");
+
+test.after(() => {
+  Module._load = origLoad;
+  if (originalResourcesPath) Object.defineProperty(process, "resourcesPath", originalResourcesPath);
+  else delete process.resourcesPath;
+  for (const [key, value] of originalSecrets) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  fs.rmSync(tmpUserData, { recursive: true, force: true });
+});
 
 test("manifest entries are unique and complete", () => {
   const seen = { base: new Set(), env: new Set(), storeKey: new Set() };

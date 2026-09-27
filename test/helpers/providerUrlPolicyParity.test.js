@@ -64,8 +64,16 @@ test("secure-host policy agrees on private/public HTTP across the matrix", () =>
 });
 
 test("normalizeBaseUrl and candidates agree across suffixes and decorators", () => {
-  const expected = BASE_URLS.map((url) => normalizeBaseUrl(url));
-  assert.deepEqual(expected, BASE_URLS.map((url) => normalizeBaseUrl(url)));
+  for (const [url, expected] of [
+    ["https://api.example.com/v1/chat/completions", "https://api.example.com/v1"],
+    ["https://api.example.com/v1/models", "https://api.example.com/v1"],
+    ["https://api.example.com/v1/audio/transcriptions", "https://api.example.com/v1"],
+    ["https://api.example.com/v1/responses", "https://api.example.com/v1"],
+    ["https://api.example.com/v1/chat/completions?api-version=2025-03-01-preview", "https://api.example.com/v1?api-version=2025-03-01-preview"],
+    ["  https://api.example.com/v1/  ", "https://api.example.com/v1"],
+  ]) {
+    assert.equal(normalizeBaseUrl(url), expected, url);
+  }
   // Every candidate ends in a bare base; /models endpoints are derived from it.
   for (const url of BASE_URLS) {
     for (const candidate of getModelListBaseCandidates(url)) {

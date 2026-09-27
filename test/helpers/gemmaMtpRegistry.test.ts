@@ -37,17 +37,19 @@ const EXPECTED = {
   },
 };
 
-function allLocalModels() {
-  return modelData.localProviders.flatMap((provider: string) =>
-    provider.models.map((model: string) => ({ provider, model }))
+type LocalProvider = { models: Array<Record<string, any>> };
+type LocalModelEntry = { provider: LocalProvider; model: Record<string, any> };
+function allLocalModels(): LocalModelEntry[] {
+  return (modelData.localProviders as LocalProvider[]).flatMap((provider) =>
+    provider.models.map((model) => ({ provider, model }))
   );
 }
 
 test("the four Gemma 4 QAT entries carry the exact drafter field triplets", () => {
-  const byId = new Map(allLocalModels().map(({ model }) => [model.id, model]));
+  const byId = new Map(allLocalModels().map(({ model }) => [model.id as string, model]));
 
   for (const [id, expected] of Object.entries(EXPECTED)) {
-    const model = byId.get(id);
+    const model = byId.get(id) as Record<string, any>;
     assert.ok(model, `missing QAT entry ${id}`);
     assert.equal(model.size, expected.size, `${id} size label`);
     assert.equal(model.sizeBytes, expected.sizeBytes, `${id} main sizeBytes unchanged`);
@@ -59,10 +61,10 @@ test("the four Gemma 4 QAT entries carry the exact drafter field triplets", () =
 
 test("no entry outside the four QAT ids gained any drafter field", () => {
   for (const { model } of allLocalModels()) {
-    if (EXPECTED[model.id]) continue;
+    if ((EXPECTED as Record<string, unknown>)[model.id as string]) continue;
     for (const field of DRAFT_FIELDS) {
       assert.equal(
-        model[field],
+        (model as Record<string, any>)[field as string],
         undefined,
         `${model.id} unexpectedly has ${field}=${model[field]}`
       );
@@ -71,9 +73,9 @@ test("no entry outside the four QAT ids gained any drafter field", () => {
 });
 
 test("combined size label equals (main + drafter) bytes rounded to one decimal", () => {
-  const byId = new Map(allLocalModels().map(({ model }) => [model.id, model]));
+  const byId = new Map(allLocalModels().map(({ model }) => [model.id as string, model]));
   for (const id of Object.keys(EXPECTED)) {
-    const model = byId.get(id);
+    const model = byId.get(id)!;
     const combined = (model.sizeBytes + model.draftSizeBytes) / 1e9;
     assert.equal(model.size, `${combined.toFixed(1)}GB`, `${id} combined size label`);
   }

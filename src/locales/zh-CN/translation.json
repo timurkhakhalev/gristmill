@@ -163,15 +163,12 @@
     "download": "下载",
     "cancel": "取消",
     "recommended": "推荐",
-    "active": "已激活",
     "comingSoon": "即将推出",
     "cloud": "云端",
     "local": "本地",
     "apiKey": "API Key",
     "model": "模型",
     "loading": "加载中...",
-    "unknown": "未知",
-    "availableModels": "可用模型",
     "fast": "快速",
     "hold": "按住",
     "private": "隐私",
@@ -409,12 +406,6 @@
     "backToNotes": "返回笔记"
   },
   "reasoning": {
-    "mode": {
-      "cloud": "云端",
-      "local": "本地",
-      "localDescription": "在你的设备上运行，完全隐私，离线可用。",
-      "cloudDescription": "通过 API 使用高级模型，快速且强大，需要联网。"
-    },
     "custom": {
       "endpointWithProtocol": "请输入包含协议的完整 URL（例如 https://server/v1）。",
       "httpsRequired": "需要 HTTPS（仅本地网络允许 HTTP）。",
@@ -433,7 +424,6 @@
       "enterEndpoint": "请在上方输入端点 URL 以加载模型。",
       "fetchingModels": "正在从端点获取模型列表...",
       "noModels": "未返回任何模型，请检查端点 URL。",
-      "providerName": "自定义",
       "ownerLabel": "所有者：{{owner}}",
       "unableToLoadModels": "无法从端点加载模型。",
       "searchPlaceholder": "搜索模型…",
@@ -444,7 +434,6 @@
       "keyRequiredHint": "推理需要 API 密钥 — 请添加密钥以使用此提供商。"
     },
     "getApiKey": "获取你的 API Key",
-    "selectModel": "选择模型",
     "availableModels": "可用模型",
     "disableThinking": {
       "label": "禁用思考输出",
@@ -525,8 +514,7 @@
     },
     "tinfoil": {
       "modelRetiredTitle": "模型已不可用",
-      "modelRetired": "Tinfoil 已停用 {{from}}，已切换至 {{to}}。",
-      "refreshingModels": "正在刷新模型…"
+      "modelRetired": "Tinfoil 已停用 {{from}}，已切换至 {{to}}。"
     },
     "corti": {
       "euOnly": "Corti 模型仅在欧盟地区可用。"
@@ -545,25 +533,14 @@
       "unavailable": "不可用"
     },
     "apiKeyOptional": "API Key（可选）",
-    "getKey": "获取密钥",
     "endpointUrl": "端点 URL",
     "azureHint": "Azure AI Foundry：输入你的资源终结点（例如 https://your-resource.cognitiveservices.azure.com），并将“模型”设置为你的确切部署名称。",
-    "customProvider": "自定义",
-    "fallback": {
-      "whisperModelDescription": "模型",
-      "parakeetModelDescription": "NVIDIA Parakeet 模型"
-    },
-    "whisperModels": "Whisper 模型",
     "corti": {
       "clientId": "客户端 ID",
       "clientSecret": "客户端密钥",
       "apiKey": "API Key",
       "environment": "数据区域",
       "tenant": "租户"
-    },
-    "tinfoil": {
-      "transportNote": "Tinfoil 流式转录使用 Voxtral Mini 4B，批量转录使用 Voxtral Small 24B。",
-      "docsLink": "查看文档"
     }
   },
   "hooks": {
@@ -910,14 +887,6 @@
         "description": "会议模式的键盘快捷键",
         "label": "快捷键"
       },
-      "speechToText": {
-        "description": "录音和上传文件的转写方式",
-        "label": "语音转文字"
-      },
-      "llms": {
-        "description": "用于会议摘要和聊天的模型",
-        "label": "语言模型"
-      },
       "dictionary": {
         "label": "词典",
         "description": "用于转写的自定义词语和片段"
@@ -929,6 +898,10 @@
       "system": {
         "description": "启动、录音设备和诊断",
         "label": "系统"
+      },
+      "models": {
+        "label": "模型",
+        "description": "转写、摘要和聊天"
       }
     },
     "title": "设置"
@@ -936,7 +909,6 @@
   "settingsPage": {
     "aiModels": {
       "transcriptionTask": "Transcription",
-      "summaryTask": "Meeting summary",
       "customSetup": "自定义设置",
       "customSetupDescription": "使用你自己的服务商和 API Key。",
       "description": "整理转录文本、处理指令、修正错误，同时保留你的语气风格。",
@@ -945,12 +917,8 @@
       "modes": {
         "providers": "云服务商",
         "local": "本地",
-        "selfHosted": "自托管",
-        "providersDesc": "使用你自己的 API Key。",
-        "localDesc": "设备端模型，完全私密。",
-        "selfHostedDesc": "你的服务器，在你的网络上。"
+        "selfHosted": "自托管"
       },
-      "title": "AI 文本增强",
       "toasts": {
         "switchedCustom": {
           "description": "请配置你的服务商和 API Key。",
@@ -968,8 +936,7 @@
           "title": "自托管",
           "description": "使用你自己的服务器。"
         }
-      },
-      "chatTitle": "Embedded chat"
+      }
     },
     "developer": {
       "clearCache": "清除缓存",
@@ -1149,12 +1116,7 @@
       "title": "提示词工作室"
     },
     "speechToText": {
-      "title": "语音转文字",
       "description": "为听写和笔记录音选择一个引擎",
-      "tabs": {
-        "noteRecording": "笔记录音",
-        "upload": "上传音频"
-      },
       "selfHostedStreamingNote": "需要支持流式转录的服务器。"
     },
     "llms": {
@@ -1173,12 +1135,7 @@
       "customSetup": "自定义设置",
       "customSetupDescription": "使用你自己的服务商和 API Key。",
       "modes": {
-        "providers": "云服务商",
-        "local": "本地",
-        "selfHosted": "自托管",
-        "providersDesc": "使用你自己的 API Key。",
-        "localDesc": "设备端模型，完全私密。",
-        "selfHostedDesc": "你的服务器，在你的网络上。"
+        "selfHosted": "自托管"
       },
       "title": "语音转文字",
       "toasts": {
@@ -2326,5 +2283,98 @@
       "participantsMore_other": "{{names}} 等 {{count}} 人",
       "empty": "还没有笔记"
     }
+  },
+  "bbAgent": {
+    "harness": "运行环境",
+    "harnesses": "bb 智能体",
+    "model": "模型",
+    "reasoning": "推理级别",
+    "noHarness": "没有可用的 bb 运行环境",
+    "noModel": "没有可用的 bb 模型",
+    "chooseModel": "选择模型",
+    "chatSettings": "聊天模型",
+    "searchModels": "搜索模型",
+    "loadingModels": "正在加载模型…",
+    "noMatches": "没有匹配的模型",
+    "apiTab": "API",
+    "apiRoute": "聊天使用“设置 → 模型”中的路由：{{route}}。",
+    "loadingHarnesses": "正在加载 bb 智能体…",
+    "settingsDescription": "设置默认智能体、其模型以及在选择器中的顺序。已停用的智能体将被隐藏。",
+    "reorder": "调整 {{harness}} 顺序",
+    "reorderHint": "拖动或使用方向键",
+    "default": "默认",
+    "makeDefault": "设为默认",
+    "enableHarness": "启用 {{harness}}",
+    "defaultModelFor": "{{harness}} 的默认模型",
+    "noSelection": "未选择已启用的 bb 智能体。请选择一个，或在 bb 标签页中启用。"
+  },
+  "modelsSettings": {
+    "tasks": {
+      "title": "任务",
+      "meeting": "会议录音",
+      "meetingDescription": "停止录音后进行转写",
+      "upload": "音频上传",
+      "uploadDescription": "转写你上传的音频文件",
+      "summary": "会议摘要",
+      "summaryDescription": "根据转写内容撰写笔记",
+      "chat": "聊天",
+      "chatDescription": "回答关于笔记的问题"
+    },
+    "sources": {
+      "cloud": "云端",
+      "local": "本机",
+      "self-hosted": "自托管",
+      "bb": "bb",
+      "enterprise": "企业版"
+    },
+    "status": {
+      "chooseModel": "选择模型",
+      "needsKey": "添加 API 密钥",
+      "needsEndpoint": "添加服务器地址",
+      "notDownloaded": "模型未下载",
+      "noHarness": "未选择 bb 智能体"
+    },
+    "picker": {
+      "source": "模型来源",
+      "customEndpoint": "自定义端点",
+      "openrouterAction": "浏览 OpenRouter 模型",
+      "openrouterHint": "OpenRouter 上的任意模型",
+      "customAction": "配置端点",
+      "customHint": "任意 OpenAI 兼容 API",
+      "useThis": "使用",
+      "inUse": "使用中",
+      "localHint": "下载模型即可离线使用。",
+      "selfHostedSpeechHint": "你网络中的转写服务器。",
+      "bbDefault": "默认智能体"
+    },
+    "providers": {
+      "title": "服务商",
+      "description": "API 密钥由所有任务共享。",
+      "connected": "已连接",
+      "notConnected": "未连接",
+      "addKey": "添加密钥",
+      "capability": {
+        "speech": "语音",
+        "language": "文本"
+      },
+      "corti": {
+        "languageKey": "API 密钥（语言模型）"
+      }
+    },
+    "bb": {
+      "title": "编程智能体（bb）"
+    },
+    "local": {
+      "title": "本机模型",
+      "description": "在这台 Mac 上运行，音频和文本不会离开你的电脑。",
+      "speech": "语音识别",
+      "language": "语言模型",
+      "downloaded": "已下载",
+      "inUse": "使用中",
+      "installing": "正在安装…",
+      "remove": "删除 {{model}}"
+    },
+    "chatPrompt": "聊天指令",
+    "description": "为每个任务选择模型、连接服务商并管理本机模型。"
   }
 }

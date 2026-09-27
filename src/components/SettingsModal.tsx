@@ -2,7 +2,6 @@ import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Sliders,
-  Mic,
   Brain,
   Wrench,
   Keyboard,
@@ -15,33 +14,40 @@ import SettingsPage, { SettingsSectionType } from "./SettingsPage";
 
 export type { SettingsSectionType };
 
-// The old AI Models sidebar had four items (transcription, meetings,
-// intelligence, agentMode) — they now collapse into two: speechToText + llms.
-// Legacy deep-links land on the matching sub-tab via LEGACY_SUB_TAB.
+// Old AI-model sections (transcription, meetings, intelligence, agent mode) are
+// one Models page now. Legacy deep links land on the matching task row.
 const SECTION_ALIASES: Record<string, SettingsSectionType> = {
-  aiModels: "llms",
-  agentConfig: "llms",
-  agentMode: "llms",
-  intelligence: "llms",
-  meetings: "llms",
-  prompts: "llms",
-  transcription: "speechToText",
-  uploadTranscription: "speechToText",
+  aiModels: "models",
+  agentConfig: "models",
+  agentMode: "models",
+  intelligence: "models",
+  meetings: "models",
+  prompts: "models",
+  transcription: "models",
+  uploadTranscription: "models",
   softwareUpdates: "system",
   privacy: "privacyData",
   permissions: "privacyData",
   developer: "system",
 };
 
-const LEGACY_SUB_TAB: Record<string, string> = {
+const LEGACY_FOCUS: Record<string, string> = {
+  transcription: "meeting",
   uploadTranscription: "upload",
-  meetings: "noteFormatting",
-  intelligence: "chatIntelligence",
-  agentMode: "chatIntelligence",
-  agentConfig: "chatIntelligence",
-  aiModels: "noteFormatting",
-  prompts: "noteFormatting",
+  meetings: "summary",
+  aiModels: "summary",
+  prompts: "summary",
+  intelligence: "chat",
+  agentMode: "chat",
+  agentConfig: "chat",
 };
+
+/** "models#summary" opens a section focused on one of its anchors. */
+function parseSection(section: string | undefined): { section: SettingsSectionType; focus?: string } {
+  if (!section) return { section: "general" };
+  const [id, anchor] = section.split("#");
+  return { section: (SECTION_ALIASES[id] ?? id) as SettingsSectionType, focus: anchor || LEGACY_FOCUS[id] };
+}
 
 interface SettingsModalProps {
   open: boolean;
@@ -68,17 +74,10 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
         group: t("settingsModal.groups.app"),
       },
       {
-        id: "speechToText",
-        label: t("settingsModal.sections.speechToText.label"),
-        icon: Mic,
-        description: t("settingsModal.sections.speechToText.description"),
-        group: t("settingsModal.groups.aiModels"),
-      },
-      {
-        id: "llms",
-        label: t("settingsModal.sections.llms.label"),
+        id: "models",
+        label: t("settingsModal.sections.models.label"),
         icon: Brain,
-        description: t("settingsModal.sections.llms.description"),
+        description: t("settingsModal.sections.models.description"),
         group: t("settingsModal.groups.aiModels"),
       },
       {
@@ -113,23 +112,15 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
     return items;
   }, [t]);
 
-  const resolveSection = (section: string | undefined): SettingsSectionType => {
-    if (!section) return "general";
-    return (SECTION_ALIASES[section] ?? section) as SettingsSectionType;
-  };
-
-  const [activeSection, setActiveSection] = React.useState<SettingsSectionType>(() =>
-    resolveSection(initialSection)
-  );
-  const [initialSubTab, setInitialSubTab] = useState<string | undefined>(() =>
-    initialSection ? LEGACY_SUB_TAB[initialSection] : undefined
-  );
+  const [activeSection, setActiveSection] = React.useState<SettingsSectionType>(() => parseSection(initialSection).section);
+  const [initialSubTab, setInitialSubTab] = useState<string | undefined>(() => parseSection(initialSection).focus);
   const [prevOpen, setPrevOpen] = useState(open);
 
   if (open && !prevOpen && initialSection) {
+    const parsed = parseSection(initialSection);
     setPrevOpen(open);
-    setActiveSection(resolveSection(initialSection));
-    setInitialSubTab(LEGACY_SUB_TAB[initialSection]);
+    setActiveSection(parsed.section);
+    setInitialSubTab(parsed.focus);
   } else if (open !== prevOpen) {
     setPrevOpen(open);
     if (!open) setInitialSubTab(undefined);

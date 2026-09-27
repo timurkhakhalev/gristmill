@@ -163,15 +163,12 @@
     "download": "Scarica",
     "cancel": "Annulla",
     "recommended": "Consigliato",
-    "active": "Attivo",
     "comingSoon": "Prossimamente",
     "cloud": "Cloud",
     "local": "Locale",
     "apiKey": "Chiave API",
     "model": "Modello",
     "loading": "Caricamento...",
-    "unknown": "Sconosciuto",
-    "availableModels": "Modelli disponibili",
     "fast": "Veloce",
     "hold": "Tieni premuto",
     "private": "Privato",
@@ -409,12 +406,6 @@
     "backToNotes": "Torna alle note"
   },
   "reasoning": {
-    "mode": {
-      "cloud": "Cloud",
-      "local": "Locale",
-      "localDescription": "Funziona sul tuo dispositivo. Privacy completa, funziona offline.",
-      "cloudDescription": "Modelli avanzati via API. Veloci e potenti, richiedono internet."
-    },
     "custom": {
       "endpointWithProtocol": "Inserisci un URL base completo di protocollo (ad esempio, https://server/v1).",
       "httpsRequired": "HTTPS richiesto (HTTP consentito solo in rete locale).",
@@ -433,7 +424,6 @@
       "enterEndpoint": "Inserisci un URL endpoint qui sopra per caricare i modelli.",
       "fetchingModels": "Recupero elenco modelli dall'endpoint...",
       "noModels": "Nessun modello restituito. Controlla l'URL dell'endpoint.",
-      "providerName": "Personalizzato",
       "ownerLabel": "Proprietario: {{owner}}",
       "unableToLoadModels": "Impossibile caricare i modelli dall'endpoint.",
       "searchPlaceholder": "Cerca modelli…",
@@ -444,7 +434,6 @@
       "keyRequiredHint": "Per l'inferenza è richiesta una chiave API — aggiungine una per usare questo provider."
     },
     "getApiKey": "Ottieni la chiave API",
-    "selectModel": "Seleziona modello",
     "availableModels": "Modelli disponibili",
     "disableThinking": {
       "label": "Disattiva output di ragionamento",
@@ -525,8 +514,7 @@
     },
     "tinfoil": {
       "modelRetiredTitle": "Modello non più disponibile",
-      "modelRetired": "Tinfoil ha ritirato {{from}}. Passato a {{to}}.",
-      "refreshingModels": "Aggiornamento dei modelli…"
+      "modelRetired": "Tinfoil ha ritirato {{from}}. Passato a {{to}}."
     },
     "corti": {
       "euOnly": "I modelli Corti sono disponibili solo nella regione UE."
@@ -545,25 +533,14 @@
       "unavailable": "Non disponibile"
     },
     "apiKeyOptional": "Chiave API (opzionale)",
-    "getKey": "Ottieni chiave",
     "endpointUrl": "URL endpoint",
     "azureHint": "Azure AI Foundry: inserisci l'endpoint della tua risorsa (es. https://your-resource.cognitiveservices.azure.com) e imposta Modello con il nome esatto della tua distribuzione.",
-    "customProvider": "Personalizzato",
-    "fallback": {
-      "whisperModelDescription": "Modello",
-      "parakeetModelDescription": "Modello NVIDIA Parakeet"
-    },
-    "whisperModels": "Modelli Whisper",
     "corti": {
       "clientId": "ID client",
       "clientSecret": "Client secret",
       "apiKey": "Chiave API",
       "environment": "Regione dei dati",
       "tenant": "Tenant"
-    },
-    "tinfoil": {
-      "transportNote": "Tinfoil trasmette con Voxtral Mini 4B ed elabora i batch con Voxtral Small 24B.",
-      "docsLink": "Leggi la documentazione"
     }
   },
   "hooks": {
@@ -910,14 +887,6 @@
         "description": "Scorciatoie da tastiera per la modalità riunione",
         "label": "Scorciatoie"
       },
-      "speechToText": {
-        "description": "Come vengono trascritte le registrazioni e i file caricati",
-        "label": "Riconoscimento vocale"
-      },
-      "llms": {
-        "description": "Modelli per i riepiloghi delle riunioni e la chat",
-        "label": "Modelli linguistici"
-      },
       "dictionary": {
         "label": "Dizionario",
         "description": "Parole personalizzate e snippet per la trascrizione"
@@ -929,6 +898,10 @@
       "system": {
         "description": "Avvio, dispositivi di registrazione e diagnostica",
         "label": "Sistema"
+      },
+      "models": {
+        "label": "Modelli",
+        "description": "Trascrizione, riepiloghi e chat"
       }
     },
     "title": "Impostazioni"
@@ -936,7 +909,6 @@
   "settingsPage": {
     "aiModels": {
       "transcriptionTask": "Transcription",
-      "summaryTask": "Meeting summary",
       "customSetup": "Configurazione personalizzata",
       "customSetupDescription": "Usa il tuo provider e la tua chiave API.",
       "description": "Correggi le trascrizioni, gestisci i comandi e risolvi gli errori preservando il tuo tono.",
@@ -945,12 +917,8 @@
       "modes": {
         "providers": "Provider cloud",
         "local": "Locale",
-        "selfHosted": "Self-hosted",
-        "providersDesc": "Usa la tua chiave API.",
-        "localDesc": "Modelli sul dispositivo. Totalmente privato.",
-        "selfHostedDesc": "Il tuo server nella tua rete."
+        "selfHosted": "Self-hosted"
       },
-      "title": "Miglioramento testo con IA",
       "toasts": {
         "switchedCustom": {
           "description": "Configura il tuo provider e la tua chiave API.",
@@ -968,8 +936,7 @@
           "title": "Self-hosted",
           "description": "Utilizzo del tuo server."
         }
-      },
-      "chatTitle": "Embedded chat"
+      }
     },
     "developer": {
       "clearCache": "Svuota cache",
@@ -1149,12 +1116,7 @@
       "title": "Prompt Studio"
     },
     "speechToText": {
-      "title": "Riconoscimento vocale",
       "description": "Scegli un motore per dettatura e registrazione di note",
-      "tabs": {
-        "noteRecording": "Registrazione note",
-        "upload": "Carica audio"
-      },
       "selfHostedStreamingNote": "Richiede un server che supporti la trascrizione in streaming."
     },
     "llms": {
@@ -1173,12 +1135,7 @@
       "customSetup": "Configurazione personalizzata",
       "customSetupDescription": "Usa il tuo provider e la tua chiave API.",
       "modes": {
-        "providers": "Provider cloud",
-        "local": "Locale",
-        "selfHosted": "Self-hosted",
-        "providersDesc": "Usa la tua chiave API.",
-        "localDesc": "Modelli sul dispositivo. Totalmente privato.",
-        "selfHostedDesc": "Il tuo server nella tua rete."
+        "selfHosted": "Self-hosted"
       },
       "title": "Riconoscimento vocale",
       "toasts": {
@@ -2326,5 +2283,98 @@
       "participantsMore_other": "{{names}} e altri {{count}}",
       "empty": "Ancora nessuna nota"
     }
+  },
+  "bbAgent": {
+    "harness": "Ambiente",
+    "harnesses": "Harness bb",
+    "model": "Modello",
+    "reasoning": "Ragionamento",
+    "noHarness": "Nessun ambiente bb disponibile",
+    "noModel": "Nessun modello bb disponibile",
+    "chooseModel": "Scegli il modello",
+    "chatSettings": "Modello della chat",
+    "searchModels": "Cerca modelli",
+    "loadingModels": "Caricamento modelli…",
+    "noMatches": "Nessun modello corrispondente",
+    "apiTab": "API",
+    "apiRoute": "La chat usa il percorso impostato in Impostazioni → Modelli: {{route}}.",
+    "loadingHarnesses": "Caricamento harness bb…",
+    "settingsDescription": "Imposta l’harness predefinito, il suo modello e l’ordine nei selettori. Gli harness disattivati sono nascosti.",
+    "reorder": "Riordina {{harness}}",
+    "reorderHint": "Trascina o usa le frecce",
+    "default": "Predefinito",
+    "makeDefault": "Imposta come predefinito",
+    "enableHarness": "Attiva {{harness}}",
+    "defaultModelFor": "Modello predefinito per {{harness}}",
+    "noSelection": "Nessun harness bb attivo selezionato. Scegline uno o attivalo nella scheda bb."
+  },
+  "modelsSettings": {
+    "tasks": {
+      "title": "Attività",
+      "meeting": "Registrazione riunione",
+      "meetingDescription": "Trascrive la registrazione quando la interrompi",
+      "upload": "Caricamento audio",
+      "uploadDescription": "Trascrive i file audio caricati",
+      "summary": "Riepilogo riunione",
+      "summaryDescription": "Scrive note dalla trascrizione",
+      "chat": "Chat",
+      "chatDescription": "Risponde a domande sulle tue note"
+    },
+    "sources": {
+      "cloud": "Cloud",
+      "local": "Sul dispositivo",
+      "self-hosted": "Self-hosted",
+      "bb": "bb",
+      "enterprise": "Enterprise"
+    },
+    "status": {
+      "chooseModel": "Scegli un modello",
+      "needsKey": "Aggiungi una chiave API",
+      "needsEndpoint": "Aggiungi l’URL del server",
+      "notDownloaded": "Modello non scaricato",
+      "noHarness": "Nessun harness bb selezionato"
+    },
+    "picker": {
+      "source": "Origine del modello",
+      "customEndpoint": "Endpoint personalizzato",
+      "openrouterAction": "Sfoglia i modelli OpenRouter",
+      "openrouterHint": "Qualsiasi modello su OpenRouter",
+      "customAction": "Configura endpoint",
+      "customHint": "Qualsiasi API compatibile con OpenAI",
+      "useThis": "Usa",
+      "inUse": "In uso",
+      "localHint": "Scarica un modello per usarlo offline.",
+      "selfHostedSpeechHint": "Un server di trascrizione nella tua rete.",
+      "bbDefault": "Harness predefinito"
+    },
+    "providers": {
+      "title": "Provider",
+      "description": "Le chiavi API sono condivise da tutte le attività.",
+      "connected": "Connesso",
+      "notConnected": "Non connesso",
+      "addKey": "Aggiungi chiave",
+      "capability": {
+        "speech": "Voce",
+        "language": "Testo"
+      },
+      "corti": {
+        "languageKey": "Chiave API (modelli linguistici)"
+      }
+    },
+    "bb": {
+      "title": "Agenti di coding (bb)"
+    },
+    "local": {
+      "title": "Modelli sul dispositivo",
+      "description": "Girano su questo Mac. Audio e testo restano sul tuo computer.",
+      "speech": "Riconoscimento vocale",
+      "language": "Modelli linguistici",
+      "downloaded": "Scaricato",
+      "inUse": "In uso",
+      "installing": "Installazione…",
+      "remove": "Rimuovi {{model}}"
+    },
+    "chatPrompt": "Istruzioni della chat",
+    "description": "Scegli il modello per ogni attività, collega i provider e gestisci i modelli sul dispositivo."
   }
 }

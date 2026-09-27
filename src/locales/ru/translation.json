@@ -163,15 +163,12 @@
     "download": "Скачать",
     "cancel": "Отмена",
     "recommended": "Рекомендуется",
-    "active": "Активно",
     "comingSoon": "Скоро",
     "cloud": "Облако",
     "local": "Локально",
     "apiKey": "API-ключ",
     "model": "Модель",
     "loading": "Загрузка...",
-    "unknown": "Неизвестно",
-    "availableModels": "Доступные модели",
     "fast": "Быстрый",
     "hold": "Удержание",
     "private": "Приватный",
@@ -409,12 +406,6 @@
     "backToNotes": "Назад к заметкам"
   },
   "reasoning": {
-    "mode": {
-      "cloud": "Облако",
-      "local": "Локально",
-      "localDescription": "Работает на вашем устройстве. Полная приватность, работает офлайн.",
-      "cloudDescription": "Продвинутые модели через API. Быстро и мощно, требуется интернет."
-    },
     "custom": {
       "endpointWithProtocol": "Введите полный базовый URL, включая протокол (например, https://server/v1).",
       "httpsRequired": "Требуется HTTPS (HTTP допускается только для локальной сети).",
@@ -433,7 +424,6 @@
       "enterEndpoint": "Введите URL конечной точки выше для загрузки моделей.",
       "fetchingModels": "Получение списка моделей с конечной точки...",
       "noModels": "Модели не найдены. Проверьте URL конечной точки.",
-      "providerName": "Пользовательский",
       "ownerLabel": "Автор: {{owner}}",
       "unableToLoadModels": "Не удалось загрузить модели с конечной точки.",
       "searchPlaceholder": "Поиск моделей…",
@@ -444,7 +434,6 @@
       "keyRequiredHint": "Для инференса требуется API-ключ — добавьте его, чтобы использовать этого провайдера."
     },
     "getApiKey": "Получить API-ключ",
-    "selectModel": "Выберите модель",
     "availableModels": "Доступные модели",
     "disableThinking": {
       "label": "Отключить вывод рассуждений",
@@ -525,8 +514,7 @@
     },
     "tinfoil": {
       "modelRetiredTitle": "Модель больше недоступна",
-      "modelRetired": "Tinfoil прекратил поддержку {{from}}. Выполнен переход на {{to}}.",
-      "refreshingModels": "Обновление моделей…"
+      "modelRetired": "Tinfoil прекратил поддержку {{from}}. Выполнен переход на {{to}}."
     },
     "corti": {
       "euOnly": "Модели Corti доступны только в регионе ЕС."
@@ -545,25 +533,14 @@
       "unavailable": "Недоступно"
     },
     "apiKeyOptional": "API-ключ (необязательно)",
-    "getKey": "Получить ключ",
     "endpointUrl": "URL конечной точки",
     "azureHint": "Azure AI Foundry: укажите endpoint вашего ресурса (например, https://your-resource.cognitiveservices.azure.com) и задайте в поле «Model» точное имя вашего развёртывания.",
-    "customProvider": "Пользовательский",
-    "fallback": {
-      "whisperModelDescription": "Модель",
-      "parakeetModelDescription": "Модель NVIDIA Parakeet"
-    },
-    "whisperModels": "Модели Whisper",
     "corti": {
       "clientId": "ID клиента",
       "clientSecret": "Секрет клиента",
       "apiKey": "API-ключ",
       "environment": "Регион данных",
       "tenant": "Тенант"
-    },
-    "tinfoil": {
-      "transportNote": "Tinfoil использует Voxtral Mini 4B для потоковой обработки и Voxtral Small 24B для пакетной.",
-      "docsLink": "Открыть документацию"
     }
   },
   "hooks": {
@@ -910,14 +887,6 @@
         "description": "Сочетания клавиш для режима встречи",
         "label": "Горячие клавиши"
       },
-      "speechToText": {
-        "description": "Как расшифровываются записи и загруженные файлы",
-        "label": "Речь в текст"
-      },
-      "llms": {
-        "description": "Модели для итогов встреч и чата",
-        "label": "Языковые модели"
-      },
       "dictionary": {
         "label": "Словарь",
         "description": "Пользовательские слова и сниппеты для расшифровки"
@@ -929,6 +898,10 @@
       "system": {
         "description": "Запуск, устройства записи и диагностика",
         "label": "Система"
+      },
+      "models": {
+        "label": "Модели",
+        "description": "Транскрипция, саммари и чат"
       }
     },
     "title": "Настройки"
@@ -936,7 +909,6 @@
   "settingsPage": {
     "aiModels": {
       "transcriptionTask": "Транскрипция",
-      "summaryTask": "Итоги",
       "customSetup": "Пользовательская настройка",
       "customSetupDescription": "Используйте собственного провайдера и API-ключ.",
       "description": "Очищайте транскрипции, обрабатывайте команды и исправляйте ошибки, сохраняя вашу манеру речи.",
@@ -945,12 +917,8 @@
       "modes": {
         "providers": "Облачные провайдеры",
         "local": "Локально",
-        "selfHosted": "Свой сервер",
-        "providersDesc": "Используйте свой API-ключ.",
-        "localDesc": "Модели на устройстве. Полная приватность.",
-        "selfHostedDesc": "Свой сервер в вашей сети."
+        "selfHosted": "Свой сервер"
       },
-      "title": "ИИ-улучшение текста",
       "toasts": {
         "switchedCustom": {
           "description": "Настройте собственного провайдера и API-ключ.",
@@ -968,8 +936,7 @@
           "title": "Свой сервер",
           "description": "Используется ваш собственный сервер."
         }
-      },
-      "chatTitle": "Чат заметки"
+      }
     },
     "developer": {
       "clearCache": "Очистить кеш",
@@ -1151,12 +1118,7 @@
       "title": "Студия промптов"
     },
     "speechToText": {
-      "title": "Речь в текст",
       "description": "Выберите движок для диктовки и записи заметок",
-      "tabs": {
-        "noteRecording": "Запись заметок",
-        "upload": "Загрузка аудио"
-      },
       "selfHostedStreamingNote": "Требуется сервер с поддержкой потоковой транскрипции."
     },
     "llms": {
@@ -1175,12 +1137,7 @@
       "customSetup": "Пользовательская настройка",
       "customSetupDescription": "Используйте собственного провайдера и API-ключ.",
       "modes": {
-        "providers": "Облачные провайдеры",
-        "local": "Локально",
-        "selfHosted": "Свой сервер",
-        "providersDesc": "Используйте свой API-ключ.",
-        "localDesc": "Модели на устройстве. Полная приватность.",
-        "selfHostedDesc": "Свой сервер в вашей сети."
+        "selfHosted": "Свой сервер"
       },
       "title": "Распознавание речи",
       "toasts": {
@@ -2334,5 +2291,98 @@
       "participantsMore_few": "{{names}} и ещё {{count}}",
       "participantsMore_many": "{{names}} и ещё {{count}}"
     }
+  },
+  "bbAgent": {
+    "harness": "Harness",
+    "harnesses": "Harness в bb",
+    "model": "Модель",
+    "reasoning": "Рассуждение",
+    "noHarness": "Нет доступных harness в bb",
+    "noModel": "Нет доступных моделей bb",
+    "chooseModel": "Выберите модель",
+    "chatSettings": "Модель чата",
+    "searchModels": "Поиск моделей",
+    "loadingModels": "Загрузка моделей…",
+    "noMatches": "Нет подходящих моделей",
+    "apiTab": "API",
+    "apiRoute": "Чат использует маршрут из «Настройки → Модели»: {{route}}.",
+    "loadingHarnesses": "Загрузка harness bb…",
+    "settingsDescription": "Задайте harness по умолчанию, его модель и порядок в пикерах. Выключенные harness скрыты из пикеров.",
+    "reorder": "Переместить {{harness}}",
+    "reorderHint": "Перетащите или используйте стрелки",
+    "default": "По умолчанию",
+    "makeDefault": "Сделать основным",
+    "enableHarness": "Включить {{harness}}",
+    "defaultModelFor": "Модель по умолчанию для {{harness}}",
+    "noSelection": "Не выбран включённый harness bb. Выберите его или включите во вкладке bb."
+  },
+  "modelsSettings": {
+    "tasks": {
+      "title": "Задачи",
+      "meeting": "Запись встречи",
+      "meetingDescription": "Расшифровывает запись после остановки",
+      "upload": "Загрузка аудио",
+      "uploadDescription": "Расшифровывает загруженные аудиофайлы",
+      "summary": "Саммари встречи",
+      "summaryDescription": "Составляет заметки по транскрипту",
+      "chat": "Чат",
+      "chatDescription": "Отвечает на вопросы по заметкам"
+    },
+    "sources": {
+      "cloud": "Облако",
+      "local": "На устройстве",
+      "self-hosted": "Свой сервер",
+      "bb": "bb",
+      "enterprise": "Enterprise"
+    },
+    "status": {
+      "chooseModel": "Выберите модель",
+      "needsKey": "Добавьте API-ключ",
+      "needsEndpoint": "Укажите адрес сервера",
+      "notDownloaded": "Модель не скачана",
+      "noHarness": "Не выбран harness bb"
+    },
+    "picker": {
+      "source": "Источник модели",
+      "customEndpoint": "Свой endpoint",
+      "openrouterAction": "Выбрать модель OpenRouter",
+      "openrouterHint": "Любая модель из OpenRouter",
+      "customAction": "Настроить endpoint",
+      "customHint": "Любой OpenAI-совместимый API",
+      "useThis": "Использовать",
+      "inUse": "Используется",
+      "localHint": "Скачайте модель, чтобы работать офлайн.",
+      "selfHostedSpeechHint": "Сервер транскрипции в вашей сети.",
+      "bbDefault": "Harness по умолчанию"
+    },
+    "providers": {
+      "title": "Провайдеры",
+      "description": "API-ключи общие для всех задач.",
+      "connected": "Подключён",
+      "notConnected": "Не подключён",
+      "addKey": "Добавить ключ",
+      "capability": {
+        "speech": "Речь",
+        "language": "Текст"
+      },
+      "corti": {
+        "languageKey": "API-ключ (языковые модели)"
+      }
+    },
+    "bb": {
+      "title": "Агенты для кода (bb)"
+    },
+    "local": {
+      "title": "Локальные модели",
+      "description": "Работают на этом Mac. Аудио и текст не покидают компьютер.",
+      "speech": "Распознавание речи",
+      "language": "Языковые модели",
+      "downloaded": "Скачана",
+      "inUse": "Используется",
+      "installing": "Установка…",
+      "remove": "Удалить {{model}}"
+    },
+    "chatPrompt": "Инструкции для чата",
+    "description": "Выберите модель для каждой задачи, подключите провайдеров и управляйте локальными моделями."
   }
 }

@@ -62,11 +62,12 @@ const EXPECTED_SHARED_FIELD_DIRECTIONS = {
   "src/components/OpenAICompatiblePanel.tsx": ["ltr"],
   "src/components/SelfHostedPanel.tsx": ["ltr", "ltr"],
   "src/components/SnippetsView.tsx": ["auto", "auto", "auto", "auto"],
-  "src/components/TranscriptionModelPicker.tsx": ["ltr", "ltr", "ltr"],
   "src/components/notes/ActionManagerDialog.tsx": ["auto", "auto"],
   "src/components/notes/EmojiPickerInput.tsx": ["inherit"],
   "src/components/notes/UploadAudioView.tsx": ["auto"],
   "src/components/onboarding/ProviderSetupStep.tsx": ["ltr", "ltr", "ltr", "ltr"],
+  "src/components/settings/models/ProviderCredentialsForm.tsx": ["ltr"],
+  "src/components/settings/models/TaskModelPicker.tsx": ["ltr", "ltr"],
   "src/components/ui/ApiKeyInput.tsx": ["ltr"],
   "src/components/ui/CustomModelInput.tsx": ["ltr"],
   "src/components/ui/PromptStudio.tsx": ["auto", "auto"],
@@ -76,6 +77,7 @@ const EXPECTED_SHARED_FIELD_DIRECTIONS = {
 const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/CommandSearch.tsx": ["auto"],
   "src/components/SettingsPage.tsx": ["ltr"],
+  "src/components/bb/BbModelPanel.tsx": ["auto"],
   "src/components/chat/ChatInput.tsx": ["auto"],
   "src/components/notes/ActionManagerDialog.tsx": ["auto"],
   "src/components/notes/AddNotesToFolderDialog.tsx": ["auto"],
@@ -88,7 +90,8 @@ const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/notes/SpacesTree.tsx": ["auto", "auto", "auto", "auto"],
   "src/components/notes/UploadAudioView.tsx": ["ltr", "ltr", "inherit", "inherit"],
   "src/components/onboarding/LanguageSelectionStep.tsx": ["auto"],
-  "src/components/settings/ChatAgentSettings.tsx": ["auto"],
+  "src/components/settings/models/ModelsSettings.tsx": ["auto"],
+  "src/components/settings/models/TaskModelPicker.tsx": ["auto"],
 };
 
 test("shared field primitives inherit unless a consumer declares its content direction", async (t) => {

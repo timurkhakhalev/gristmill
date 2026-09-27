@@ -4,6 +4,7 @@ import { resolveCleanupLanguage } from "../utils/chineseScript";
 import { getDictionaryHintWords } from "../utils/snippets";
 import type { InferenceScope } from "../config/inferenceScopes";
 import type { ScreenContextImage } from "../types/electron";
+import type { BbSelection } from "../contracts/bb";
 
 export interface ReasoningConfig {
   maxTokens?: number;
@@ -23,6 +24,7 @@ export interface ReasoningConfig {
   requireCompleteOutput?: boolean;
   requiresAgent?: boolean;
   inferenceScope?: InferenceScope;
+  agentSelection?: BbSelection;
 }
 
 export abstract class BaseReasoningService {

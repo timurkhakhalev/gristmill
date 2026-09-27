@@ -36,6 +36,7 @@ import { createStreamingThinkFilter } from "./ai/streamingThinkFilter";
 import { extractApiErrorMessage } from "./ai/apiErrorMessage";
 import { clearTinfoilClientCache } from "./ai/tinfoilClient";
 import { resolveChatRoute } from "../helpers/chatRouting";
+import type { BbSelection } from "../contracts/bb";
 
 export type ToolMetadata = Record<string, unknown> | Array<Record<string, unknown>>;
 
@@ -675,6 +676,10 @@ class ReasoningService extends BaseReasoningService {
     config: ReasoningConfig & { systemPrompt: string },
     tools?: Record<string, import("ai").Tool>
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
+    if (config.agentSelection) {
+      yield* this.processBbStreaming(messages, config.agentSelection);
+      return;
+    }
     const route = resolveChatRoute({
       provider,
       lanUrl: config.lanUrl,
@@ -864,6 +869,49 @@ class ReasoningService extends BaseReasoningService {
       if (this.streamAbortController === abortController) {
         this.streamAbortController = null;
       }
+    }
+  }
+
+  private async *processBbStreaming(
+    messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>,
+    selection: BbSelection
+  ): AsyncGenerator<AgentStreamChunk, void, unknown> {
+    const streamId = crypto.randomUUID();
+    const controller = new AbortController();
+    this.streamAbortController = controller;
+    const queue: Array<{ text?: string; done?: boolean; error?: string }> = [];
+    let wake: (() => void) | null = null;
+    const unsubscribe = window.electronAPI.onBbStreamPart((part) => {
+      if (part.streamId !== streamId) return;
+      queue.push(part);
+      wake?.();
+    });
+    const onAbort = () => { wake?.(); void window.electronAPI.bbStreamCancel(streamId).catch(() => {}); };
+    controller.signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      const prompt = messages.map((message) => {
+        const content = typeof message.content === "string"
+          ? message.content
+          : message.content.filter((part) => part.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
+        return `${message.role.toUpperCase()}:\n${content}`;
+      }).join("\n\n");
+      await window.electronAPI.bbStreamStart({ streamId, prompt, selection });
+      while (!controller.signal.aborted) {
+        if (queue.length === 0) await new Promise<void>((resolve) => { wake = resolve; });
+        wake = null;
+        const part = queue.shift();
+        if (!part) continue;
+        if (part.error) throw new Error(part.error);
+        if (part.text) yield { type: "content", text: part.text };
+        if (part.done) {
+          yield { type: "done", finishReason: "stop" };
+          return;
+        }
+      }
+    } finally {
+      controller.signal.removeEventListener("abort", onAbort);
+      unsubscribe();
+      if (this.streamAbortController === controller) this.streamAbortController = null;
     }
   }
 

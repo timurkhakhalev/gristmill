@@ -12,6 +12,7 @@ import type {
 import { inferenceScopeDefinition, type InferenceScope } from "./inferenceScopes";
 import { DEFAULT_CLOUD_TRANSCRIPTION_PROVIDER, STREAMING_ONLY_PROVIDERS } from "./transcriptionCapabilities";
 import { inheritsFallbackEndpoint } from "../helpers/reasoningRouting";
+import { resolveBbSelection } from "./bbAgentPreferences";
 
 export interface ResolvedMeetingTranscription {
   useLocalWhisper: boolean;
@@ -98,6 +99,9 @@ export interface ResolvedNoteFormatting {
   cloudBaseUrl: string;
   remoteUrl: string;
   customApiKey: string;
+  agentProvider?: string;
+  agentModel?: string;
+  agentReasoningLevel?: string;
 }
 
 export const selectResolvedNoteFormatting = (state: InferenceSettingsSnapshot): ResolvedNoteFormatting => {
@@ -121,6 +125,11 @@ export const selectResolvedNoteFormatting = (state: InferenceSettingsSnapshot): 
     cloudBaseUrl: cfg.cloudBaseUrl || "",
     remoteUrl: cfg.remoteUrl || "",
     customApiKey: cfg.customApiKey || (borrowsEndpoint ? cleanup.customApiKey || "" : ""),
+    ...(cfg.mode === "agent" ? {
+      agentProvider: cfg.agentProvider,
+      agentModel: cfg.agentModel,
+      agentReasoningLevel: cfg.agentReasoningLevel,
+    } : {}),
   };
 };
 
@@ -134,6 +143,11 @@ export interface ResolvedLLMConfig {
   remoteUrl?: string;
   customApiKey?: string;
   disableThinking: boolean;
+  agentProvider?: string;
+  agentModel?: string;
+  agentReasoningLevel?: string;
+  /** True when the scope follows the app-wide default bb harness. */
+  agentUsesDefault?: boolean;
 }
 
 export const selectResolvedLLMConfig = (
@@ -146,7 +160,7 @@ export const selectResolvedLLMConfig = (
     : undefined;
 
 
-  const readString = (field: "provider" | "model" | "cloudMode" | "cloudBaseUrl" | "remoteUrl" | "customApiKey"): string | undefined => {
+  const readString = (field: "provider" | "model" | "cloudMode" | "cloudBaseUrl" | "remoteUrl" | "customApiKey" | "agentProvider" | "agentModel" | "agentReasoningLevel"): string | undefined => {
     const key = def.storeKeys[field];
     if (!key) return undefined;
     return state[key] || undefined;
@@ -168,6 +182,19 @@ export const selectResolvedLLMConfig = (
     // belongs on the request path — see selectResolvedNoteFormatting.
     customApiKey: readString("customApiKey"),
     disableThinking,
+    ...(state[def.storeKeys.mode] === "agent" ? (() => {
+      const selection = resolveBbSelection(state.bbAgentPreferences, {
+        provider: readString("agentProvider"),
+        model: readString("agentModel"),
+        reasoningLevel: readString("agentReasoningLevel"),
+      });
+      return {
+        agentProvider: selection.provider,
+        agentModel: selection.model,
+        agentReasoningLevel: selection.reasoningLevel,
+        agentUsesDefault: !readString("agentProvider"),
+      };
+    })() : {}),
   };
   return localConfig;
 };

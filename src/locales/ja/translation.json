@@ -163,15 +163,12 @@
     "download": "ダウンロード",
     "cancel": "キャンセル",
     "recommended": "推奨",
-    "active": "有効",
     "comingSoon": "近日公開",
     "cloud": "クラウド",
     "local": "ローカル",
     "apiKey": "API キー",
     "model": "モデル",
     "loading": "読み込み中...",
-    "unknown": "不明",
-    "availableModels": "利用可能なモデル",
     "fast": "高速",
     "hold": "ホールド",
     "private": "プライベート",
@@ -409,12 +406,6 @@
     "backToNotes": "ノートに戻る"
   },
   "reasoning": {
-    "mode": {
-      "cloud": "クラウド",
-      "local": "ローカル",
-      "localDescription": "デバイス上で動作。完全なプライバシー保護、オフライン対応。",
-      "cloudDescription": "API 経由の高度なモデル。高速・高機能、インターネット接続が必要。"
-    },
     "custom": {
       "endpointWithProtocol": "プロトコルを含む完全なベース URL を入力してください（例: https://server/v1）。",
       "httpsRequired": "HTTPS が必要です（ローカルネットワークのみ HTTP を許可）。",
@@ -433,7 +424,6 @@
       "enterEndpoint": "上にエンドポイント URL を入力してモデルを読み込んでください。",
       "fetchingModels": "エンドポイントからモデル一覧を取得中...",
       "noModels": "モデルが見つかりません。エンドポイント URL を確認してください。",
-      "providerName": "カスタム",
       "ownerLabel": "提供元: {{owner}}",
       "unableToLoadModels": "エンドポイントからモデルを読み込めませんでした。",
       "searchPlaceholder": "モデルを検索…",
@@ -444,7 +434,6 @@
       "keyRequiredHint": "推論には API キーが必要です — このプロバイダーを使用するには追加してください。"
     },
     "getApiKey": "API キーを取得",
-    "selectModel": "モデルを選択",
     "availableModels": "利用可能なモデル",
     "disableThinking": {
       "label": "思考出力を無効にする",
@@ -525,8 +514,7 @@
     },
     "tinfoil": {
       "modelRetiredTitle": "モデルが利用できません",
-      "modelRetired": "Tinfoil は {{from}} を提供終了しました。{{to}} に切り替えました。",
-      "refreshingModels": "モデルを更新しています…"
+      "modelRetired": "Tinfoil は {{from}} を提供終了しました。{{to}} に切り替えました。"
     },
     "corti": {
       "euOnly": "Corti のモデルは EU リージョンでのみ利用できます。"
@@ -545,25 +533,14 @@
       "unavailable": "利用不可"
     },
     "apiKeyOptional": "API キー（任意）",
-    "getKey": "キーを取得",
     "endpointUrl": "エンドポイント URL",
     "azureHint": "Azure AI Foundry: リソースのエンドポイント（例: https://your-resource.cognitiveservices.azure.com）を入力し、モデルにデプロイの正確な名前を設定してください。",
-    "customProvider": "カスタム",
-    "fallback": {
-      "whisperModelDescription": "モデル",
-      "parakeetModelDescription": "NVIDIA Parakeet モデル"
-    },
-    "whisperModels": "Whisper モデル",
     "corti": {
       "clientId": "クライアントID",
       "clientSecret": "クライアントシークレット",
       "apiKey": "API キー",
       "environment": "データリージョン",
       "tenant": "テナント"
-    },
-    "tinfoil": {
-      "transportNote": "Tinfoil はストリーミングに Voxtral Mini 4B を、バッチ処理に Voxtral Small 24B を使用します。",
-      "docsLink": "ドキュメントを見る"
     }
   },
   "hooks": {
@@ -910,14 +887,6 @@
         "description": "ミーティングモードのキーボードショートカット",
         "label": "ホットキー"
       },
-      "speechToText": {
-        "description": "録音とアップロードしたファイルの文字起こし方法",
-        "label": "音声認識"
-      },
-      "llms": {
-        "description": "会議の要約とチャットに使うモデル",
-        "label": "言語モデル"
-      },
       "dictionary": {
         "label": "辞書",
         "description": "文字起こし用のカスタム単語とスニペット"
@@ -929,6 +898,10 @@
       "system": {
         "description": "起動、録音デバイス、診断",
         "label": "システム"
+      },
+      "models": {
+        "label": "モデル",
+        "description": "文字起こし、要約、チャット"
       }
     },
     "title": "設定"
@@ -936,7 +909,6 @@
   "settingsPage": {
     "aiModels": {
       "transcriptionTask": "Transcription",
-      "summaryTask": "Meeting summary",
       "customSetup": "カスタム設定",
       "customSetupDescription": "独自のプロバイダーと API キーを使用。",
       "description": "文字起こしのクリーンアップ、コマンド処理、エラー修正を行いながら、あなたの話し方を維持します。",
@@ -945,12 +917,8 @@
       "modes": {
         "providers": "クラウドプロバイダー",
         "local": "ローカル",
-        "selfHosted": "セルフホスト",
-        "providersDesc": "自分のAPIキーを使用。",
-        "localDesc": "端末上のモデル。完全プライベート。",
-        "selfHostedDesc": "自前サーバーをネットワーク上に。"
+        "selfHosted": "セルフホスト"
       },
-      "title": "AI テキスト補正",
       "toasts": {
         "switchedCustom": {
           "description": "独自のプロバイダーと API キーを設定してください。",
@@ -968,8 +936,7 @@
           "title": "セルフホスト",
           "description": "独自のサーバーを使用します。"
         }
-      },
-      "chatTitle": "Embedded chat"
+      }
     },
     "developer": {
       "clearCache": "キャッシュをクリア",
@@ -1149,12 +1116,7 @@
       "title": "プロンプトスタジオ"
     },
     "speechToText": {
-      "title": "音声認識",
       "description": "ディクテーションとノート録音用のエンジンを選択",
-      "tabs": {
-        "noteRecording": "ノート録音",
-        "upload": "音声のアップロード"
-      },
       "selfHostedStreamingNote": "ストリーミング文字起こしに対応したサーバーが必要です。"
     },
     "llms": {
@@ -1173,12 +1135,7 @@
       "customSetup": "カスタム設定",
       "customSetupDescription": "独自のプロバイダーと API キーを使用。",
       "modes": {
-        "providers": "クラウドプロバイダー",
-        "local": "ローカル",
-        "selfHosted": "セルフホスト",
-        "providersDesc": "自分のAPIキーを使用。",
-        "localDesc": "端末上のモデル。完全プライベート。",
-        "selfHostedDesc": "自前サーバーをネットワーク上に。"
+        "selfHosted": "セルフホスト"
       },
       "title": "音声テキスト変換",
       "toasts": {
@@ -2326,5 +2283,98 @@
       "participantsMore_other": "{{names}} ほか{{count}}人",
       "empty": "まだメモはありません"
     }
+  },
+  "bbAgent": {
+    "harness": "ハーネス",
+    "harnesses": "bb ハーネス",
+    "model": "モデル",
+    "reasoning": "推論レベル",
+    "noHarness": "利用可能な bb ハーネスがありません",
+    "noModel": "利用可能な bb モデルがありません",
+    "chooseModel": "モデルを選択",
+    "chatSettings": "チャットモデル",
+    "searchModels": "モデルを検索",
+    "loadingModels": "モデルを読み込み中…",
+    "noMatches": "一致するモデルがありません",
+    "apiTab": "API",
+    "apiRoute": "チャットは「設定 → モデル」のルートを使用します: {{route}}。",
+    "loadingHarnesses": "bb ハーネスを読み込み中…",
+    "settingsDescription": "既定のハーネス、そのモデル、ピッカーでの順序を設定します。無効なハーネスは非表示になります。",
+    "reorder": "{{harness}} を並べ替え",
+    "reorderHint": "ドラッグするか矢印キーを使用",
+    "default": "既定",
+    "makeDefault": "既定にする",
+    "enableHarness": "{{harness}} を有効化",
+    "defaultModelFor": "{{harness}} の既定モデル",
+    "noSelection": "有効な bb ハーネスが選択されていません。選択するか bb タブで有効にしてください。"
+  },
+  "modelsSettings": {
+    "tasks": {
+      "title": "タスク",
+      "meeting": "会議の録音",
+      "meetingDescription": "録音を停止した後に文字起こしします",
+      "upload": "音声のアップロード",
+      "uploadDescription": "アップロードした音声ファイルを文字起こしします",
+      "summary": "会議の要約",
+      "summaryDescription": "文字起こしからノートを作成します",
+      "chat": "チャット",
+      "chatDescription": "ノートに関する質問に答えます"
+    },
+    "sources": {
+      "cloud": "クラウド",
+      "local": "デバイス上",
+      "self-hosted": "セルフホスト",
+      "bb": "bb",
+      "enterprise": "エンタープライズ"
+    },
+    "status": {
+      "chooseModel": "モデルを選択",
+      "needsKey": "API キーを追加",
+      "needsEndpoint": "サーバー URL を追加",
+      "notDownloaded": "モデルが未ダウンロード",
+      "noHarness": "bb ハーネスが未選択"
+    },
+    "picker": {
+      "source": "モデルのソース",
+      "customEndpoint": "カスタムエンドポイント",
+      "openrouterAction": "OpenRouter のモデルを探す",
+      "openrouterHint": "OpenRouter のすべてのモデル",
+      "customAction": "エンドポイントを設定",
+      "customHint": "OpenAI 互換 API",
+      "useThis": "使用する",
+      "inUse": "使用中",
+      "localHint": "オフラインで使うにはモデルをダウンロードしてください。",
+      "selfHostedSpeechHint": "ネットワーク上の文字起こしサーバー。",
+      "bbDefault": "既定のハーネス"
+    },
+    "providers": {
+      "title": "プロバイダー",
+      "description": "API キーはすべてのタスクで共有されます。",
+      "connected": "接続済み",
+      "notConnected": "未接続",
+      "addKey": "キーを追加",
+      "capability": {
+        "speech": "音声",
+        "language": "テキスト"
+      },
+      "corti": {
+        "languageKey": "API キー（言語モデル）"
+      }
+    },
+    "bb": {
+      "title": "コーディングエージェント（bb）"
+    },
+    "local": {
+      "title": "デバイス上のモデル",
+      "description": "この Mac で動作します。音声とテキストはコンピューターの外に出ません。",
+      "speech": "音声認識",
+      "language": "言語モデル",
+      "downloaded": "ダウンロード済み",
+      "inUse": "使用中",
+      "installing": "インストール中…",
+      "remove": "{{model}} を削除"
+    },
+    "chatPrompt": "チャットの指示",
+    "description": "タスクごとにモデルを選び、プロバイダーを接続し、デバイス上のモデルを管理します。"
   }
 }

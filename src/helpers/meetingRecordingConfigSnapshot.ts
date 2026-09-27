@@ -72,7 +72,7 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
   let summary: Record<string, unknown> | null = null;
   if (
     detailedNotes &&
-    (formatting.mode === "providers" || formatting.mode === "local" || formatting.mode === "self-hosted" || formatting.mode === "enterprise")
+    (formatting.mode === "providers" || formatting.mode === "local" || formatting.mode === "self-hosted" || formatting.mode === "enterprise" || formatting.mode === "agent")
   ) {
     summary = {
       actionId: DETAILED_NOTES_KEY,
@@ -82,8 +82,9 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
         state.uiLanguage
       ),
       reasoningMode: formatting.mode,
-      ...(formatting.provider ? { provider: formatting.provider } : {}),
-      ...(formatting.model ? { model: formatting.model } : {}),
+      ...(formatting.mode === "agent"
+        ? { agentProvider: formatting.agentProvider, model: formatting.agentModel, agentReasoningLevel: formatting.agentReasoningLevel }
+        : { ...(formatting.provider ? { provider: formatting.provider } : {}), ...(formatting.model ? { model: formatting.model } : {}) }),
       ...(formatting.mode === "providers" && formatting.cloudBaseUrl
         ? { cloudBaseUrl: formatting.cloudBaseUrl }
         : {}),

@@ -1,13 +1,9 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const React = require("react");
 const path = require("node:path");
-const { renderToStaticMarkup } = require("react-dom/server");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
 
-const noop = () => {};
-
-test("meeting picker offers only models the post-Stop file worker can process", async (t) => {
+test("meeting model choices are only models the post-Stop file worker can process", async (t) => {
   installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
     cachePrefix: "meeting-file-picker-",
@@ -23,9 +19,8 @@ test("meeting picker offers only models the post-Stop file worker can process", 
     "/helpers/meetingFileTranscription.ts"
   );
   const { resolveTranscriptionRoute } = await vite.ssrLoadModule("/helpers/transcriptionRoute.ts");
-  const { default: Picker } = await vite.ssrLoadModule("/components/TranscriptionModelPicker.tsx");
-  const { ToastProvider } = await vite.ssrLoadModule("/components/ui/Toast.tsx");
-
+  const { cloudGroups } = await vite.ssrLoadModule("/components/settings/models/taskCatalog.ts");
+  const translate = (key) => key;
   const providers = getMeetingFileTranscriptionProviders();
   assert.deepEqual(
     providers.map((provider) => provider.id),
@@ -57,31 +52,21 @@ test("meeting picker offers only models the post-Stop file worker can process", 
       assert.equal(route.provider, provider.id);
       assert.equal(route.model, model.id);
 
-      const html = renderToStaticMarkup(
-        React.createElement(
-          ToastProvider,
-          null,
-          React.createElement(Picker, {
-            transcriptionContext: "meeting",
-            mode: "cloud",
-            selectedCloudProvider: provider.id,
-            selectedCloudModel: model.id,
-            selectedLocalModel: "base",
-            useLocalWhisper: false,
-            onCloudProviderSelect: noop,
-            onCloudModelSelect: noop,
-            onLocalModelSelect: noop,
-            onModeChange: noop,
-          })
-        )
-      );
-      assert.match(html, new RegExp(model.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-      assert.doesNotMatch(
-        html,
-        /Gemini 3\.5 Transcribe Live|GPT-4o Mini Transcribe|Universal Streaming/
-      );
     }
   }
+
+  // The Models page offers a meeting exactly these providers and models, no live/streaming ones.
+  const meetingGroups = cloudGroups("meeting", translate, []);
+  assert.deepEqual(
+    Object.fromEntries(meetingGroups.map((group) => [group.providerId, group.models.map((model) => model.id)])),
+    Object.fromEntries(providers.map((provider) => [provider.id, provider.models.map((model) => model.id)]))
+  );
+  assert.equal(meetingGroups.some((group) => group.form), false, "meetings have no custom endpoint");
+  const names = meetingGroups.flatMap((group) => group.models.map((model) => model.name)).join("\n");
+  assert.doesNotMatch(names, /Gemini 3\.5 Transcribe Live|GPT-4o Mini Transcribe|Universal Streaming/);
+
+  const uploadGroups = cloudGroups("upload", translate, []);
+  assert.ok(uploadGroups.some((group) => group.form === "custom"), "uploads keep the custom endpoint");
 });
 
 test("switching meeting providers selects a file model, including ElevenLabs and Gemini", async (t) => {

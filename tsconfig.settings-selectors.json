@@ -16,6 +16,7 @@
   "include": [
     "src/contracts/inferenceSettings.ts",
     "src/config/settingsSelectors.ts",
+    "src/config/bbAgentPreferences.ts",
     "src/config/inferenceScopes.ts",
     "src/config/transcriptionCapabilities.ts",
     "src/helpers/reasoningRouting.ts",

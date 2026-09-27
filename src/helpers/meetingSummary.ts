@@ -34,6 +34,8 @@ export async function generateMeetingSummary(
     return deps.processLocalText(input, model, shared, signal);
   }
 
+  if (summary.reasoningMode === "agent") throw codedError("bb-summary-route-unavailable");
+
   if (summary.reasoningMode === "enterprise") {
     const provider = summary.provider;
     const saved = summary.enterprise;

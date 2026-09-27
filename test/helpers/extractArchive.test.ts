@@ -17,7 +17,7 @@ function makeTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "extractArchive-test-"));
 }
 
-function writeZip(dir, name: string, buf) {
+function writeZip(dir: string, name: string, buf: Buffer) {
   const p = path.join(dir, name);
   fs.writeFileSync(p, buf);
   return p;
@@ -26,7 +26,7 @@ function writeZip(dir, name: string, buf) {
 const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.ts");
 const originalLoad = Module._load;
 
-function freshRequire({ runSystemTar } = {}) {
+function freshRequire({ runSystemTar }: { runSystemTar?: unknown } = {}) {
   delete require.cache[downloadUtilsPath];
 
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
@@ -46,7 +46,7 @@ function freshRequire({ runSystemTar } = {}) {
   }
 }
 
-async function withModuleMock(requestToMock, mock, callback: unknown) {
+async function withModuleMock(requestToMock: string, mock: unknown, callback: () => Promise<void>) {
   Module._load = function loadWithMock(request: string, parent: unknown, isMain: boolean) {
     if (request === requestToMock) return mock;
     return originalLoad.call(this, request, parent, isMain);
@@ -78,14 +78,14 @@ test("extractArchive extracts a zip file on Linux", async () => {
 
 test("extractArchive falls back to unzipper when system unzip is unavailable", async () => {
   const origExecFile = cp.execFile;
-  cp.execFile = function (cmd, _args, cb) {
+  cp.execFile = function (this: unknown, cmd: string, _args: unknown, cb: (err: Error | null) => void) {
     if (cmd === "unzip") {
       const err = new Error("spawn unzip ENOENT");
-      err.code = "ENOENT";
+      (err as NodeJS.ErrnoException).code = "ENOENT";
       return cb(err);
     }
-    return origExecFile.apply(this, arguments);
-  };
+    return (origExecFile as (...a: unknown[]) => unknown).apply(this, arguments as unknown as unknown[]);
+  } as typeof cp.execFile;
 
   const tmp = makeTmpDir();
   try {
@@ -107,12 +107,12 @@ test("extractArchive falls back to unzipper when system unzip is unavailable", a
 
 test("extractArchive rejects on corrupt zip when both extraction methods fail", async () => {
   const origExecFile = cp.execFile;
-  cp.execFile = function (cmd, _args, cb) {
+  cp.execFile = function (this: unknown, cmd: string, _args: unknown, cb: (err: Error | null) => void) {
     if (cmd === "unzip") {
       return cb(new Error("spawn unzip ENOENT"));
     }
-    return origExecFile.apply(this, arguments);
-  };
+    return (origExecFile as (...a: unknown[]) => unknown).apply(this, arguments as unknown as unknown[]);
+  } as typeof cp.execFile;
 
   const tmp = makeTmpDir();
   try {
@@ -137,7 +137,7 @@ test("extractArchive falls back to JS tar when system tar rejects a tar.gz archi
   const archivePath = "/cache/model.tar.gz";
   const destDir = "/cache/extract";
   const { extractArchive } = freshRequire({
-    runSystemTar: async (...args) => {
+    runSystemTar: async (...args: unknown[]) => {
       systemTarCalls.push(args);
       throw new Error("tar extraction timed out");
     },
@@ -161,15 +161,15 @@ test("extractArchive falls back to PowerShell when Windows tar rejects a zip arc
   const systemTarCalls: unknown[] = [];
 
   Object.defineProperty(process, "platform", { value: "win32" });
-  cp.execFile = (command: string, args: unknown, callback: unknown) => {
+  cp.execFile = ((command: string, args: unknown, callback: (err: Error | null) => void) => {
     execCalls.push({ command, args });
     callback(null);
-  };
+  }) as typeof cp.execFile;
 
   const archivePath = "C:\\cache\\binary.zip";
   const destDir = "C:\\cache\\extract";
   const { extractArchive } = freshRequire({
-    runSystemTar: async (...args) => {
+    runSystemTar: async (...args: unknown[]) => {
       systemTarCalls.push(args);
       throw new Error("tar extraction timed out");
     },
@@ -190,7 +190,7 @@ test("extractArchive falls back to PowerShell when Windows tar rejects a zip arc
     ]);
   } finally {
     cp.execFile = originalExecFile;
-    Object.defineProperty(process, "platform", originalPlatform);
+    Object.defineProperty(process, "platform", originalPlatform as PropertyDescriptor);
     delete require.cache[downloadUtilsPath];
   }
 });

@@ -12,7 +12,8 @@ const createMeetingSystemAudioWatchdog = require("../../src/helpers/meetingSyste
 const managerModulePath = require.resolve("../../src/helpers/audioTapManager.ts");
 const originalLoad = Module._load;
 
-let lastChild: unknown = null;
+type FakeChildLike = { stderr: { emit: (e: string, data: unknown) => void } };
+let lastChild: FakeChildLike | null = null;
 
 function createFakeChild() {
   const child = new EventEmitter();
@@ -63,7 +64,7 @@ function createManager() {
   return manager;
 }
 
-const emitLine = (child, message: unknown) => child.stderr.emit("data", `${JSON.stringify(message)}\n`);
+const emitLine = (child: FakeChildLike, message: unknown) => child.stderr.emit("data", `${JSON.stringify(message)}\n`);
 
 test("a device_invalidated warning reaches onWarning and not onError", async () => {
   const manager = createManager();
@@ -73,12 +74,12 @@ test("a device_invalidated warning reaches onWarning and not onError", async () 
   const started = manager.start({
     onChunk: () => {},
     onError: (error: unknown) => errors.push(error),
-    onWarning: (warning) => warnings.push(warning),
+    onWarning: (warning: unknown) => warnings.push(warning),
   });
-  emitLine(lastChild, { type: "start" });
+  emitLine(lastChild!, { type: "start" });
   await started;
 
-  emitLine(lastChild, {
+  emitLine(lastChild!, {
     type: "warning",
     code: "device_invalidated",
     reason: "default_output_changed",
@@ -86,8 +87,8 @@ test("a device_invalidated warning reaches onWarning and not onError", async () 
   });
 
   assert.equal(warnings.length, 1);
-  assert.equal(warnings[0].code, "device_invalidated");
-  assert.equal(warnings[0].reason, "default_output_changed");
+  assert.equal((warnings[0] as { code: string }).code, "device_invalidated");
+  assert.equal((warnings[0] as { reason: string }).reason, "default_output_changed");
   assert.deepEqual(errors, []);
 });
 
@@ -96,11 +97,11 @@ test("a warning during the start handshake neither resolves nor rejects it", asy
   const warnings = [];
   let settled = false;
 
-  const started = manager.start({ onWarning: (warning) => warnings.push(warning) }).then(() => {
+  const started = manager.start({ onWarning: (warning: unknown) => warnings.push(warning) }).then(() => {
     settled = true;
   });
 
-  const child = lastChild;
+  const child = lastChild!;
   emitLine(child, { type: "warning", code: "listener_unavailable", message: "no listener" });
   await new Promise((resolve) => setImmediate(resolve));
 
@@ -117,14 +118,14 @@ test("restarting an already-running manager re-points the warning handler", asyn
   const first: unknown[] = [];
   const second = [];
 
-  const started = manager.start({ onWarning: (warning) => first.push(warning) });
-  const child = lastChild;
+  const started = manager.start({ onWarning: (warning: unknown) => first.push(warning) });
+  const child = lastChild!;
   emitLine(child, { type: "start" });
   await started;
 
   // startManagedMeetingSystemAudio calls start() again on the live manager, and
   // the new session's callbacks have to take over from the previous ones.
-  await manager.start({ onWarning: (warning) => second.push(warning) });
+  await manager.start({ onWarning: (warning: unknown) => second.push(warning) });
   emitLine(child, { type: "warning", code: "device_invalidated", message: "changed" });
 
   assert.deepEqual(first, []);
@@ -135,8 +136,8 @@ test("stop drops the warning handler along with the rest of the callbacks", asyn
   const manager = createManager();
   const warnings: unknown[] = [];
 
-  const started = manager.start({ onWarning: (warning) => warnings.push(warning) });
-  const child = lastChild;
+  const started = manager.start({ onWarning: (warning: unknown) => warnings.push(warning) });
+  const child = lastChild!;
   emitLine(child, { type: "start" });
   await started;
 
@@ -149,15 +150,15 @@ test("stop drops the warning handler along with the rest of the callbacks", asyn
 
 test("a device warning beside the replacement start acknowledgement triggers another recovery", async (t: import("node:test").TestContext) => {
   const manager = createManager();
-  const interruptions: unknown[] = [];
+  const interruptions: Array<{ reason: string; recovering: boolean }> = [];
   const watchdog = createMeetingSystemAudioWatchdog({
-    onInterrupted: (payload: unknown) => interruptions.push(payload),
+    onInterrupted: (payload: { reason: string; recovering: boolean }) => interruptions.push(payload),
   });
   const flush = () => new Promise((resolve) => setImmediate(resolve));
   const startCapture = () =>
     manager.start({
-      onWarning: (warning) => {
-        if (warning.code === "device_invalidated") watchdog.reportDeviceInvalidated();
+      onWarning: (warning: unknown) => {
+        if ((warning as { code?: string }).code === "device_invalidated") watchdog.reportDeviceInvalidated();
       },
     });
   watchdog.attachCapture({ stop: () => manager.stop(), start: startCapture });
@@ -167,13 +168,13 @@ test("a device warning beside the replacement start acknowledgement triggers ano
   });
 
   const started = startCapture();
-  emitLine(lastChild, { type: "start" });
+  emitLine(lastChild!, { type: "start" });
   await started;
   watchdog.start({ systemAudioStrategy: "native", watchesDelivery: true });
-  emitLine(lastChild, { type: "warning", code: "device_invalidated" });
+  emitLine(lastChild!, { type: "warning", code: "device_invalidated" });
   await flush();
   await flush();
-  const replacement = lastChild;
+  const replacement = lastChild!;
 
   // A busy main process can read both native messages in the same pipe chunk.
   replacement.stderr.emit(
@@ -184,10 +185,10 @@ test("a device warning beside the replacement start acknowledgement triggers ano
   await flush();
 
   assert.notEqual(lastChild, replacement, "the invalidated replacement must be replaced too");
-  emitLine(lastChild, { type: "start" });
+  emitLine(lastChild!, { type: "start" });
   await flush();
   assert.equal(interruptions.length, 2);
   assert.ok(
-    interruptions.every((entry) => entry.reason === "device_invalidated" && entry.recovering)
+    interruptions.every((entry: { reason: string; recovering: boolean }) => entry.reason === "device_invalidated" && entry.recovering)
   );
 });

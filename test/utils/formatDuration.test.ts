@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const load = async () => {
-  const m = await import("../../src/utils/formatDuration.ts");
+  const m = await import("../../src/utils/formatDuration.js");
   return m.default || m;
 };
 
@@ -20,6 +20,7 @@ test("formatMmSs handles sub-zero, non-finite, NaN, and nullish inputs safely", 
   assert.equal(formatMmSs(NaN), "00:00");
   assert.equal(formatMmSs(Infinity), "00:00");
   assert.equal(formatMmSs(-Infinity), "00:00");
-  assert.equal(formatMmSs(null), "00:00");
-  assert.equal(formatMmSs(undefined), "00:00");
+  // Deliberately invalid nullish inputs at the call boundary.
+  assert.equal(formatMmSs(null as unknown as number), "00:00");
+  assert.equal(formatMmSs(undefined as unknown as number), "00:00");
 });

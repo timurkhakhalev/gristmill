@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 // --experimental-strip-types, on by default in Node 23.6+/24). CI runs Node 24.
 
 test("bedrockGeoPrefix maps regions to inference profile geographies", async () => {
-  const { bedrockGeoPrefix } = await import("../../src/utils/bedrockRegions.ts");
+  const { bedrockGeoPrefix } = await import("../../src/utils/bedrockRegions.js");
 
   assert.equal(bedrockGeoPrefix("us-east-1"), "us");
   assert.equal(bedrockGeoPrefix("us-west-2"), "us");
@@ -17,7 +17,7 @@ test("bedrockGeoPrefix maps regions to inference profile geographies", async () 
 });
 
 test("adjustBedrockModelForRegion rewrites geo-prefixed profile IDs", async () => {
-  const { adjustBedrockModelForRegion } = await import("../../src/utils/bedrockRegions.ts");
+  const { adjustBedrockModelForRegion } = await import("../../src/utils/bedrockRegions.js");
 
   assert.equal(
     adjustBedrockModelForRegion("us.anthropic.claude-haiku-4-5-20251001-v1:0", "eu-west-2"),
@@ -34,7 +34,7 @@ test("adjustBedrockModelForRegion rewrites geo-prefixed profile IDs", async () =
 });
 
 test("adjustBedrockModelForRegion leaves on-demand and custom IDs untouched", async () => {
-  const { adjustBedrockModelForRegion } = await import("../../src/utils/bedrockRegions.ts");
+  const { adjustBedrockModelForRegion } = await import("../../src/utils/bedrockRegions.js");
 
   assert.equal(
     adjustBedrockModelForRegion("openai.gpt-oss-120b-1:0", "eu-west-2"),

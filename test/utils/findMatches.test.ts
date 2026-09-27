@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = async () => import("../../src/utils/findMatches.ts");
+const load = async () => import("../../src/utils/findMatches.js");
 
 test("finds every non-overlapping match with offsets", async () => {
   const { matchOffsets } = await load();

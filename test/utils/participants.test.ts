@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const load = async () => {
-  const m = await import("../../src/utils/participants.ts");
+  const m = await import("../../src/utils/participants.js");
   return m.default || m;
 };
 

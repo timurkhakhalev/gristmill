@@ -48,7 +48,7 @@ export function installBrowserGlobals(
     if (originalLocalStorage === undefined) delete globals.localStorage;
     else globals.localStorage = originalLocalStorage;
   });
-  return { window: (globalThis as { window: FakeWindow }).window, storage };
+  return { window: (globalThis as unknown as { window: FakeWindow }).window, storage };
 }
 
 interface FakeNode {

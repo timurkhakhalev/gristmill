@@ -229,9 +229,9 @@
       "test/helpers/noteCards.test.js",
       "test/helpers/noteListOps.test.js",
       "test/lib/noteEditorPendingSave.test.js",
-      "test/utils/findMatches.test.js",
-      "test/utils/mentionMarkdown.test.js",
-      "test/utils/snippets.test.js"
+      "test/utils/findMatches.test.ts",
+      "test/utils/mentionMarkdown.test.ts",
+      "test/utils/snippets.test.ts"
     ]
   },
   {
@@ -306,8 +306,8 @@
       "test/scripts/macosIdentitySourceContract.test.js",
       "test/scripts/sqliteRuntime.test.js",
       "test/scripts/testSelection.test.js",
-      "test/utils/formatDuration.test.js",
-      "test/utils/serialQueue.test.js"
+      "test/utils/formatDuration.test.ts",
+      "test/utils/serialQueue.test.ts"
     ]
   },
   {
@@ -338,7 +338,7 @@
       "test/helpers/i18nDocument.test.js",
       "test/helpers/i18nMain.test.js",
       "test/helpers/retiredPrompts.test.js",
-      "test/utils/appShortcuts.test.js"
+      "test/utils/appShortcuts.test.ts"
     ]
   },
   {
@@ -373,7 +373,7 @@
       "test/helpers/speakerMerge.test.js",
       "test/helpers/streamingConnectionLifecycle.test.js",
       "test/helpers/systemDefaultMicrophone.test.js",
-      "test/utils/segmentSpeakerName.test.js"
+      "test/utils/segmentSpeakerName.test.ts"
     ]
   },
   {
@@ -392,7 +392,7 @@
       "test/services/dictionaryTool.test.js",
       "test/services/searchNotesTool.test.js",
       "test/services/snippetTool.test.js",
-      "test/utils/sanitizeGeneratedTitle.test.js"
+      "test/utils/sanitizeGeneratedTitle.test.ts"
     ]
   },
   {
@@ -434,8 +434,8 @@
       "test/services/openaiOpenCodeSession.test.js",
       "test/services/streamingThinkFilter.test.js",
       "test/services/toolUtils.test.js",
-      "test/utils/bedrockRegions.test.js",
-      "test/utils/localInferenceError.test.js"
+      "test/utils/bedrockRegions.test.ts",
+      "test/utils/localInferenceError.test.ts"
     ]
   },
   {
@@ -452,7 +452,7 @@
       "test/helpers/parakeetModelRegistry.test.js",
       "test/helpers/tinfoilTranscription.test.js",
       "test/helpers/transcriptionRouteModelAgreement.test.js",
-      "test/utils/llmTranscript.test.js"
+      "test/utils/llmTranscript.test.ts"
     ]
   },
   {
@@ -470,7 +470,7 @@
       "test/helpers/calendarSyncInterval.test.js",
       "test/helpers/googleCalendarManager.test.js",
       "test/helpers/microsoftCalendarManager.test.js",
-      "test/utils/calendarAttendees.test.js"
+      "test/utils/calendarAttendees.test.ts"
     ]
   },
   {
@@ -656,8 +656,8 @@
       "test/helpers/meetingTranscriptionRouting.test.js",
       "test/helpers/transcriptFormatter.test.js",
       "test/helpers/transcriptText.test.js",
-      "test/utils/audioDeviceUtils.test.js",
-      "test/utils/diarizationCompletion.test.js"
+      "test/utils/audioDeviceUtils.test.ts",
+      "test/utils/diarizationCompletion.test.ts"
     ]
   },
   {
@@ -929,8 +929,8 @@
     "files": [
       "test/helpers/participants.test.js",
       "test/helpers/personalEmailDomains.test.js",
-      "test/utils/dateFormatting.test.js",
-      "test/utils/participants.test.js"
+      "test/utils/dateFormatting.test.ts",
+      "test/utils/participants.test.ts"
     ]
   },
   {

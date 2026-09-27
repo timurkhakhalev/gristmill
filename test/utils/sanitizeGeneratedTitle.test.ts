@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/utils/sanitizeGeneratedTitle.ts");
+const load = () => import("../../src/utils/sanitizeGeneratedTitle.js");
 
 test("strips wrapping ASCII quotes", async () => {
   const { sanitizeGeneratedTitle } = await load();

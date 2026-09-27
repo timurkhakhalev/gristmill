@@ -1,18 +1,22 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/utils/transcriptSpeakerState.ts");
+const load = () => import("../../src/utils/transcriptSpeakerState.js");
+type TranscriptSegment = import("../../src/stores/meetingRecordingStore.js").TranscriptSegment;
 
-const userAssigned = (speaker, speakerName) => ({
-  source: "system",
-  speaker,
-  speakerName,
-  speakerLocked: true,
-  speakerLockSource: "user",
-  speakerStatus: "locked",
-});
+const seg = (segment: Omit<TranscriptSegment, "id" | "text">): TranscriptSegment => ({ id: "seg", text: "hi", ...segment });
 
-const clusterOnly = (speaker) => ({ source: "system", speaker });
+const userAssigned = (speaker: string, speakerName: string) =>
+  seg({
+    source: "system",
+    speaker,
+    speakerName,
+    speakerLocked: true,
+    speakerLockSource: "user",
+    speakerStatus: "locked",
+  });
+
+const clusterOnly = (speaker: string) => seg({ source: "system", speaker });
 
 test("a user-assigned segment name outranks the cluster mapping", async () => {
   const { resolveSegmentSpeakerName } = await load();
@@ -33,12 +37,12 @@ test("the cluster mapping still names segments the user has not touched", async 
 test("an auto-assigned name does not outrank the mapping", async () => {
   const { resolveSegmentSpeakerName } = await load();
   // Diarization sets confirmed, not locked; only a user edit should win.
-  const segment = {
+  const segment = seg({
     source: "system",
     speaker: "speaker_0",
     speakerName: "Speaker 1",
     speakerStatus: "confirmed",
-  };
+  });
 
   assert.equal(resolveSegmentSpeakerName(segment, { speaker_0: "Alice" }), "Alice");
 });
@@ -46,14 +50,14 @@ test("an auto-assigned name does not outrank the mapping", async () => {
 test("falls back to the segment name, then to nothing", async () => {
   const { resolveSegmentSpeakerName } = await load();
 
-  assert.equal(resolveSegmentSpeakerName({ source: "system", speakerName: "Bob" }, {}), "Bob");
+  assert.equal(resolveSegmentSpeakerName(seg({ source: "system", speakerName: "Bob" }), {}), "Bob");
   assert.equal(resolveSegmentSpeakerName(clusterOnly("speaker_0"), {}), undefined);
-  assert.equal(resolveSegmentSpeakerName({ source: "mic" }, undefined), undefined);
+  assert.equal(resolveSegmentSpeakerName(seg({ source: "mic" }), undefined), undefined);
 });
 
 test("own-voice segments are unaffected by a mapping on another cluster", async () => {
   const { resolveSegmentSpeakerName } = await load();
-  const you = { source: "mic", speaker: "you" };
+  const you = seg({ source: "mic", speaker: "you" });
 
   assert.equal(resolveSegmentSpeakerName(you, { speaker_0: "Alice" }), undefined);
 });

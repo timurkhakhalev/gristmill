@@ -1,57 +1,60 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/utils/llmTranscript.ts");
+const load = () => import("../../src/utils/llmTranscript.js");
+type TranscriptSegment = import("../../src/stores/meetingRecordingStore.js").TranscriptSegment;
 
-const t = (key, options) => {
+const t = (key: string, options: { n?: number } = {}) => {
   if (key === "notes.speaker.label") return `Speaker ${options.n}`;
   if (key === "notes.speaker.them") return "Them";
   if (key === "notes.speaker.you") return "You";
   return key;
 };
 
-const attendee = (email, displayName, self = false) => ({
+const attendee = (email: string, displayName: string | null, self = false) => ({
   email,
   displayName,
   responseStatus: null,
   self,
 });
 
+const seg = (segment: Omit<TranscriptSegment, "id">): TranscriptSegment => ({ id: "seg", ...segment });
+
 test("mic segments carry the note owner's label", async () => {
   const { resolveLlmSpeakerLabel } = await load();
-  assert.equal(resolveLlmSpeakerLabel({ source: "mic", text: "hi" }, {}, "Gabriel Stein", t), "Gabriel Stein");
+  assert.equal(resolveLlmSpeakerLabel(seg({ source: "mic", text: "hi" }), {}, "Gabriel Stein", t), "Gabriel Stein");
   assert.equal(
-    resolveLlmSpeakerLabel({ source: "system", speaker: "you", text: "hi" }, {}, "Gabriel Stein", t),
+    resolveLlmSpeakerLabel(seg({ source: "system", speaker: "you", text: "hi" }), {}, "Gabriel Stein", t),
     "Gabriel Stein"
   );
 });
 
 test("system segments resolve name → mapping → Speaker N → Them", async () => {
   const { resolveLlmSpeakerLabel } = await load();
-  const locked = {
+  const locked = seg({
     source: "system",
     speaker: "speaker_0",
     speakerName: "Michael",
     speakerLocked: true,
     text: "hi",
-  };
+  });
   assert.equal(resolveLlmSpeakerLabel(locked, { speaker_0: "Wrong" }, "You", t), "Michael");
   assert.equal(
-    resolveLlmSpeakerLabel({ source: "system", speaker: "speaker_1", text: "hi" }, { speaker_1: "Sean" }, "You", t),
+    resolveLlmSpeakerLabel(seg({ source: "system", speaker: "speaker_1", text: "hi" }), { speaker_1: "Sean" }, "You", t),
     "Sean"
   );
   assert.equal(
-    resolveLlmSpeakerLabel({ source: "system", speaker: "speaker_2", text: "hi" }, {}, "You", t),
+    resolveLlmSpeakerLabel(seg({ source: "system", speaker: "speaker_2", text: "hi" }), {}, "You", t),
     "Speaker 3"
   );
-  assert.equal(resolveLlmSpeakerLabel({ source: "system", text: "hi" }, {}, "You", t), "Them");
+  assert.equal(resolveLlmSpeakerLabel(seg({ source: "system", text: "hi" }), {}, "You", t), "Them");
 });
 
 test("buildLlmTranscript prefixes every line with the resolved label", async () => {
   const { buildLlmTranscript } = await load();
-  const segments = [
-    { source: "mic", text: "Morning everyone" },
-    { source: "system", speaker: "speaker_0", text: "Morning" },
+  const segments: TranscriptSegment[] = [
+    seg({ source: "mic", text: "Morning everyone" }),
+    seg({ source: "system", speaker: "speaker_0", text: "Morning" }),
   ];
   assert.equal(
     buildLlmTranscript(segments, { speaker_0: "Michael" }, "Gabriel", t),
@@ -105,7 +108,7 @@ test("collectKnownPeople merges owner, participants, mappings, and named segment
       ],
     },
     { speaker_0: "Michael Chen", speaker_1: "Priya" },
-    [{ source: "system", speaker: "speaker_2", speakerName: "Ada", text: "hi" }]
+    [{ source: "system", speaker: "speaker_2", speakerName: "Ada", text: "hi" } as TranscriptSegment]
   );
   assert.deepEqual(people, [
     { name: "Gabriel Stein", email: "gabe@openwhispr.com" },

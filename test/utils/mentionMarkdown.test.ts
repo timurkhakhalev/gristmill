@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = () => import("../../src/utils/mentionMarkdown.ts");
+const load = () => import("../../src/utils/mentionMarkdown.js");
 
 const PEOPLE = [
   { name: "Gabriel Stein", email: "gabe@openwhispr.com" },

@@ -5,9 +5,9 @@ const { createSerialQueue } = require("../../src/utils/serialQueue.ts");
 
 test("runs tasks one at a time in enqueue order", async () => {
   const run = createSerialQueue();
-  const events = [];
-  let releaseFirst;
-  const firstGate = new Promise((resolve) => {
+  const events: string[] = [];
+  let releaseFirst!: () => void;
+  const firstGate = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
 
@@ -36,7 +36,7 @@ test("resolves each task with its own result", async () => {
 
 test("a rejected task does not stall the queue", async () => {
   const run = createSerialQueue();
-  const events = [];
+  const events: string[] = [];
 
   const failing = run(async () => {
     throw new Error("boom");

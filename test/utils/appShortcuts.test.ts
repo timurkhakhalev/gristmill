@@ -1,16 +1,17 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const load = async () => import("../../src/utils/appShortcuts.ts");
+const load = async () => import("../../src/utils/appShortcuts.js");
+type ShortcutEvent = import("../../src/utils/appShortcuts.js").ShortcutEvent;
 
-const key = (key, mods = {}) => ({
+const key = (key: string, mods: Partial<ShortcutEvent> = {}): ShortcutEvent => ({
   key,
   metaKey: false,
   ctrlKey: false,
   altKey: false,
   shiftKey: false,
   ...mods,
-});
+} as ShortcutEvent);
 
 test("resolves the primary app shortcuts", async () => {
   const { resolveAppShortcut } = await load();

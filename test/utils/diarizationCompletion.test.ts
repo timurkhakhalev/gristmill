@@ -92,7 +92,7 @@ test("a payload without a noteId is dropped", () => {
   assert.deepEqual(result, { targetNoteId: null, isCurrentSession: true });
 });
 
-const seg = (id) => ({ id, text: id, source: "mic" });
+const seg = (id: string) => ({ id, text: id, source: "mic" as const });
 
 test("persisted segments of the target note win over live segments", () => {
   const persisted = [seg("p1")];
@@ -108,7 +108,7 @@ test("persisted segments of the target note win over live segments", () => {
 test("an empty persisted transcript still wins over the fallbacks", () => {
   // A transcript that parses to zero segments is authoritative for the note;
   // falling back to live segments would reintroduce stale data.
-  const persisted = [];
+  const persisted: ReturnType<typeof seg>[] = [];
   const result = selectBaseSegments({
     persistedSegments: persisted,
     liveSegments: [seg("l1")],

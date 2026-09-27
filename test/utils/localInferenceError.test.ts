@@ -1,10 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-let errors;
+let errors: typeof import("../../src/utils/localInferenceError.js");
 
 test.before(async () => {
-  errors = await import("../../src/utils/localInferenceError.ts");
+  errors = await import("../../src/utils/localInferenceError.js");
 });
 
 // The local path is the only one that can fail because the machine is too

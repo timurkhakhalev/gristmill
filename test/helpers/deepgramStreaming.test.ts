@@ -6,19 +6,20 @@ const DeepgramStreaming = require("../../src/helpers/deepgramStreaming.ts");
 
 // Loopback Deepgram: warmup resolves on the socket opening, connect on the
 // first server message, so every accepted socket answers with Metadata.
-async function withMetadataServer(run) {
+type DgStreaming = InstanceType<typeof DeepgramStreaming> & { buildWebSocketUrl: (options?: unknown) => string };
+async function withMetadataServer(run: (url: string, connections: string[], authHeaders: unknown[]) => Promise<void>) {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolve) => server.once("listening", resolve));
-  const connections: unknown[] = [];
+  const connections: string[] = [];
   const authHeaders: unknown[] = [];
-  server.on("connection", (socket, request: string) => {
+  server.on("connection", (socket: unknown, request: { url: string; headers: Record<string, string | undefined> }) => {
     connections.push(request.url);
     authHeaders.push(request.headers.authorization);
-    socket.send(JSON.stringify({ type: "Metadata", request_id: `req-${connections.length}` }));
+    (socket as { send: (data: string) => void }).send(JSON.stringify({ type: "Metadata", request_id: `req-${connections.length}` }));
   });
 
   try {
-    await run(`ws://127.0.0.1:${server.address().port}`, connections, authHeaders);
+    await run(`ws://127.0.0.1:${(server.address() as { port: number }).port}`, connections, authHeaders);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -38,7 +39,7 @@ test("Results fixtures preserve partial, final, and session-relative timing call
   const finals: unknown[] = [];
   streaming.sessionStartedAt = 2_000;
   streaming.onPartialTranscript = (text: string) => partials.push(text);
-  streaming.onFinalTranscript = (text: string, startedAt) => finals.push({ text, startedAt });
+  streaming.onFinalTranscript = (text: string, startedAt: number) => finals.push({ text, startedAt });
 
   streaming.handleMessage(Buffer.from("{"));
   streaming.handleMessage(
@@ -74,9 +75,9 @@ test("Results fixtures preserve partial, final, and session-relative timing call
 });
 
 // Keeps the real query string (language, keyterms) while dialing the loopback server.
-function dialLoopback(streaming, url: string) {
+function dialLoopback(streaming: DgStreaming, url: string) {
   const buildRealUrl = streaming.buildWebSocketUrl.bind(streaming);
-  streaming.buildWebSocketUrl = (options: unknown) =>
+  streaming.buildWebSocketUrl = (options?: unknown) =>
     buildRealUrl(options).replace("wss://api.deepgram.com/v1/listen", url);
 }
 

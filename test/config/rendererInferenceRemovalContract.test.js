@@ -22,13 +22,11 @@ test("renderer prompt helpers do not expose screen context or translation substi
 
 test("renderer inference uses direct providers instead of the retired hosted route", () => {
   const settings = read("stores/settingsStore.ts");
-  const promptStudio = read("components/ui/PromptStudio.tsx");
   const notes = read("components/notes/PersonalNotesView.tsx");
   assert.doesNotMatch(
     settings,
     /openwhispr|selectIsCloud|isCloud(?:Cleanup|ChatAgent|NoteFormatting)/i
   );
-  assert.doesNotMatch(promptStudio, /openwhispr|isCloud/i);
   assert.doesNotMatch(notes, /mode\s*===\s*["']openwhispr["']/i);
 });
 

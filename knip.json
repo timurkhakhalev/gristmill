@@ -9,12 +9,13 @@
     "electron-builder.dev.cjs",
     "scripts/afterPack.js",
     "scripts/beforeBuild.js",
-    "scripts/run-tests.js",
-    "scripts/smoke-electron.js",
     "scripts/meeting-diarization-eval.js",
     "scripts/sync-nucleo-icons.js",
     "test/helpers/audioFileUploadElectron.cjs",
     "test/helpers/devRendererOriginElectron.cjs",
-    "test/**/*.test.{js,ts}"
-  ]
+    "test/**/*.test.{js,ts}",
+    "test/scripts/type-probes/*.ts",
+    "src/assets/fonts/noto-sans.css"
+  ],
+  "ignoreUnresolved": ["^\\./src/"]
 }

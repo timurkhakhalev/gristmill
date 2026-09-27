@@ -481,8 +481,8 @@ Inventory графа Electron: 131 JS, 37 TS, 1 MTS, 25 JSON.
 note-списков удалено вместе с cloud-era `ConversationPreview`
 (`cloud_id`, `client_conversation_id`, `sync_status`, `folder_delete_pending`);
 `NoteConversationItem`/`ContainerConversationItem` в потребителях
-схлопнуты в `ConversationRow`/`ContainerConversation` из контракта,
-`chatStore.ConversationItem` — алиас shared row. Metadata остаётся
+схлопнуты в `ConversationRow`/`ContainerConversation` из контракта
+(историческая ссылка: chatStore удалён). Metadata остаётся
 непрозрачной областью: structured payload на записи (сериализует DB-слой),
 JSON-строка на чтении; renderer сохраняет разбор toolCalls. Null-семантика
 отсутствующих id, дефолты (Untitled, 50/20, offset 0, exclude archived),
@@ -729,8 +729,9 @@ channel/event names (существующие имена без aliases), арг
 events до callback, подписки возвращают idempotent unsubscribe. Ручные
 calendar entries/listeners удалены из `preload.js` и `src/types/electron.ts`;
 `CalendarEvent`/account/status/attendee типы переехали из
-`src/types/calendar.ts` в контракт (там остались только meeting-detection и
-contacts), consumers обновлены без compatibility re-export.
+`src/types/calendar.ts` в контракт (историческая ссылка: файл удалён,
+meeting-detection и contacts переехали в контракт), consumers обновлены
+без compatibility re-export.
 
 - `src/helpers/calendarIpcHandlers.ts`: один registration module с узкими
   Google/Microsoft/Apple manager interfaces (обязательные методы — required

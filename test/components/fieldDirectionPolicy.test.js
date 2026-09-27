@@ -58,19 +58,15 @@ function inventoryByFile(inventory) {
 const EXPECTED_SHARED_FIELD_DIRECTIONS = {
   "src/components/ControlPanel.tsx": ["auto"],
   "src/components/DictionaryView.tsx": ["auto", "auto", "auto"],
-  "src/components/EnterpriseProviderConfig.tsx": ["ltr", "ltr", "ltr", "ltr", "ltr"],
   "src/components/OpenAICompatiblePanel.tsx": ["ltr"],
   "src/components/SelfHostedPanel.tsx": ["ltr", "ltr"],
   "src/components/SnippetsView.tsx": ["auto", "auto", "auto", "auto"],
   "src/components/notes/ActionManagerDialog.tsx": ["auto", "auto"],
-  "src/components/notes/EmojiPickerInput.tsx": ["inherit"],
   "src/components/notes/UploadAudioView.tsx": ["auto"],
   "src/components/onboarding/ProviderSetupStep.tsx": ["ltr", "ltr", "ltr", "ltr"],
   "src/components/settings/models/ProviderCredentialsForm.tsx": ["ltr"],
   "src/components/settings/models/TaskModelPicker.tsx": ["ltr", "ltr"],
   "src/components/ui/ApiKeyInput.tsx": ["ltr"],
-  "src/components/ui/CustomModelInput.tsx": ["ltr"],
-  "src/components/ui/PromptStudio.tsx": ["auto", "auto"],
   "src/components/ui/SearchableModelList.tsx": ["ltr"],
 };
 
@@ -162,7 +158,6 @@ test("representative prose, identity, secret, and rich-editor surfaces keep thei
     source("src/components/ui/ApiKeyInput.tsx"),
     /<Input\s+dir="ltr"[\s\S]*?value=\{draft\}/
   );
-  assert.match(source("src/components/ui/CopyableCommand.tsx"), /<div\s+dir="ltr"/);
   assert.match(source("src/components/ui/HotkeyInput.tsx"), /<div\s+dir="ltr"/);
   assert.match(source("src/components/ErrorBoundary.tsx"), /<pre\s+dir="ltr"/);
   assert.match(

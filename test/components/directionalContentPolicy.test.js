@@ -30,20 +30,7 @@ test("dynamic prose and identity values keep their own direction", () => {
 test("technical output values remain LTR inside an Arabic document", () => {
   const expectations = [
     ["src/components/DeveloperSection.tsx", /<code\s+dir="ltr"[\s\S]*?\{logPath\}/],
-    [
-      "src/components/TestConnectionButton.tsx",
-      /<code\s+dir="ltr"[^>]*>\s*\{errorInfo\.copyCommand\}/,
-    ],
     ["src/components/ui/TechnicalErrorDetails.tsx", /<pre\s+dir="ltr"[\s\S]*?\{text\}/],
-
-    [
-      "src/components/EnterpriseProviderConfig.tsx",
-      /<select\s+dir="ltr"\s+value=\{store\.bedrockRegion\}/,
-    ],
-    [
-      "src/components/EnterpriseProviderConfig.tsx",
-      /<select\s+dir="ltr"\s+value=\{store\.vertexLocation\}/,
-    ],
     [
       "src/components/notes/UploadAudioView.tsx",
       /<p\s+dir="ltr"[^>]*font-medium[^>]*>\s*\{file\.name\}/,

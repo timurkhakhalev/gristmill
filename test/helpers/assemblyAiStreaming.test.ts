@@ -5,15 +5,16 @@ const { WebSocketServer } = require("ws");
 const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming.ts");
 const { deferred } = require("./harness/deferred.ts");
 
-async function withPrematureCloseServer(run) {
+type AaiStreaming = InstanceType<typeof AssemblyAiStreaming> & { buildWebSocketUrl: (options?: unknown) => string; onAudioFrame?: (cb: unknown) => void };
+async function withPrematureCloseServer(run: (url: string) => Promise<void>) {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolve) => server.once("listening", resolve));
-  server.on("connection", (socket) => {
+  server.on("connection", (socket: { close: (code: number, reason: string) => void }) => {
     socket.close(1008, "rejected before Begin");
   });
 
   try {
-    await run(`ws://127.0.0.1:${server.address().port}`);
+    await run(`ws://127.0.0.1:${(server.address() as { port: number }).port}`);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -22,29 +23,30 @@ async function withPrematureCloseServer(run) {
 // `connections` collects each accepted request URL so a test can count sockets
 // and read the query the client actually sent. `onAudioFrame` reports each
 // binary frame the server receives.
-async function withBeginServer(run, { onAudioFrame } = {}) {
+async function withBeginServer(run: (url: string, connections: string[]) => Promise<void>, { onAudioFrame }: { onAudioFrame?: (data: Buffer) => void } = {}) {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolve) => server.once("listening", resolve));
-  const connections: unknown[] = [];
-  server.on("connection", (socket, request: string) => {
+  const connections: string[] = [];
+  server.on("connection", (socket: unknown, request: { url: string }) => {
     connections.push(request.url);
-    socket.on("message", (data: unknown, isBinary) => {
+    const ws = socket as { on: (event: string, cb: (data: Buffer, isBinary: boolean) => void) => void; send: (data: string) => void };
+    ws.on("message", (data: Buffer, isBinary: boolean) => {
       if (isBinary) onAudioFrame?.(data);
     });
-    socket.send(JSON.stringify({ type: "Begin", id: "test-session" }));
+    ws.send(JSON.stringify({ type: "Begin", id: "test-session" }));
   });
 
   try {
-    await run(`ws://127.0.0.1:${server.address().port}`, connections);
+    await run(`ws://127.0.0.1:${(server.address() as { port: number }).port}`, connections);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
 }
 
 // Keeps the real query string (speech_model, token) while dialing the loopback server.
-function dialLoopback(streaming, url: string) {
+function dialLoopback(streaming: AaiStreaming, url: string) {
   const buildRealUrl = streaming.buildWebSocketUrl.bind(streaming);
-  streaming.buildWebSocketUrl = (options: unknown) =>
+  streaming.buildWebSocketUrl = (options?: unknown) =>
     buildRealUrl(options).replace("wss://streaming.assemblyai.com/v3/ws", url);
 }
 
@@ -125,7 +127,7 @@ test("Turn fixtures preserve partial, final, and formatted replacement callbacks
   const partials: unknown[] = [];
   const finals: unknown[] = [];
   streaming.onPartialTranscript = (text: string) => partials.push(text);
-  streaming.onFinalTranscript = (text: string, startedAt) => finals.push({ text, startedAt });
+  streaming.onFinalTranscript = (text: string, startedAt: number) => finals.push({ text, startedAt });
 
   streaming.handleMessage(Buffer.from("{"));
   streaming.handleMessage(
@@ -198,18 +200,18 @@ test("a warm connection opened for another speech model is not reused", async ()
 
 // Note Recording's MEETING_STREAM_SAMPLE_RATE (#2140).
 const MEETING_SAMPLE_RATE = 24000;
-const frameDurationMs = (bytes) => (bytes / 2 / MEETING_SAMPLE_RATE) * 1000;
+const frameDurationMs = (bytes: number) => (bytes / 2 / MEETING_SAMPLE_RATE) * 1000;
 
 // node:test has no default timeout, so the wait is bounded here: withheld audio
 // must fail the run rather than hang it.
-async function collectFrames(chunks, assertFrames) {
-  const frames: unknown[] = [];
+async function collectFrames(chunks: number[], assertFrames: (frames: number[]) => void) {
+  const frames: number[] = [];
   let receivedBytes = 0;
   const allReceived = deferred();
-  const expectedBytes = chunks.reduce((total, bytes) => total + bytes, 0);
+  const expectedBytes = chunks.reduce((total: number, bytes: number) => total + bytes, 0);
 
   await withBeginServer(
-    async (url: string, connections) => {
+    async (url: string, connections: string[]) => {
       const streaming = new AssemblyAiStreaming();
       // The real builder is what pins the session's sample rate: do not stub it.
       dialLoopback(streaming, url);
@@ -245,7 +247,7 @@ async function collectFrames(chunks, assertFrames) {
       }
     },
     {
-      onAudioFrame: (data: unknown) => {
+      onAudioFrame: (data: Buffer) => {
         frames.push(data.length);
         receivedBytes += data.length;
         if (receivedBytes >= expectedBytes) allReceived.resolve();

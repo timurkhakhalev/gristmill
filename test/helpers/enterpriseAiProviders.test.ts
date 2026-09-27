@@ -5,13 +5,14 @@ const { mapEnterpriseError } = require("../../src/helpers/enterpriseProviderErro
 
 const bedrockPrompt = [{ role: "user", content: [{ type: "text", text: "Hello" }] }];
 
-async function captureBedrockGenerationError(model: string) {
-  let error;
-  await assert.rejects(model.doGenerate({ prompt: bedrockPrompt }), (caught) => {
+type EnterpriseModel = Awaited<ReturnType<typeof getEnterpriseAIModel>>;
+async function captureBedrockGenerationError(model: EnterpriseModel) {
+  let error: unknown;
+  await assert.rejects(model.doGenerate({ prompt: bedrockPrompt } as never), (caught: unknown) => {
     error = caught;
     return true;
   });
-  return error;
+  return error as Error;
 }
 
 test("direct Bedrock credentials are passed to the real SDK", async (t: import("node:test").TestContext) => {
@@ -19,11 +20,11 @@ test("direct Bedrock credentials are passed to the real SDK", async (t: import("
   t.after(() => {
     global.fetch = originalFetch;
   });
-  let request;
-  global.fetch = async (url, init) => {
+  let request: { url: string; headers: Record<string, string> } | undefined;
+  global.fetch = async (url: unknown, init?: { headers?: unknown }) => {
     request = {
       url: String(url),
-      headers: Object.fromEntries(new Headers(init.headers)),
+      headers: Object.fromEntries(new Headers(init!.headers as HeadersInit)),
     };
     return new Response("{}", {
       status: 200,
@@ -40,9 +41,9 @@ test("direct Bedrock credentials are passed to the real SDK", async (t: import("
   await assert.rejects(
     model.doGenerate({ prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }] })
   );
-  assert.match(request.url, /^https:\/\/bedrock-runtime\.us-west-2\.amazonaws\.com\//);
-  assert.match(request.headers.authorization, /^AWS4-HMAC-SHA256 /);
-  assert.equal(request.headers["x-amz-security-token"], "example-session-token");
+  assert.match(request!.url, /^https:\/\/bedrock-runtime\.us-west-2\.amazonaws\.com\//);
+  assert.match(request!.headers.authorization, /^AWS4-HMAC-SHA256 /);
+  assert.equal(request!.headers["x-amz-security-token"], "example-session-token");
 });
 
 test("real Bedrock provider maps header-only AWS exception identities", async (t: import("node:test").TestContext) => {
@@ -157,15 +158,15 @@ test("explicit Bedrock credential sources cannot fall through to populated AWS e
 
   for (const [label, enterprise] of [
     ["partial manual static keys", { bedrockAccessKeyId: "AKIAEXPLICIT" }],
-  ]) {
+  ] as Array<[string, Record<string, string>]>) {
     await assert.rejects(
       getEnterpriseAIModel("bedrock", "anthropic.claude-haiku", "", {
         bedrockRegion: "us-west-2",
         ...enterprise,
       }),
       (error: unknown) =>
-        error?.name === "CredentialsProviderError" &&
-        /accessKeyId and secretAccessKey/.test(error.message),
+        (error as { name?: string })?.name === "CredentialsProviderError" &&
+        /accessKeyId and secretAccessKey/.test((error as Error).message),
       label
     );
   }
@@ -188,14 +189,14 @@ test("Bedrock environment fallback remains available without an explicit credent
     ])
   );
   const originalFetch = global.fetch;
-  let request;
+  let request: { url: string; headers: Record<string, string> } | undefined;
   process.env.AWS_ACCESS_KEY_ID = "AKIAENVIRONMENT";
   process.env.AWS_SECRET_ACCESS_KEY = "environment-secret";
   process.env.AWS_SESSION_TOKEN = "environment-session-token";
-  global.fetch = async (url, init) => {
+  global.fetch = async (url: unknown, init?: { headers?: unknown }) => {
     request = {
       url: String(url),
-      headers: Object.fromEntries(new Headers(init.headers)),
+      headers: Object.fromEntries(new Headers(init!.headers as HeadersInit)),
     };
     return new Response("{}", {
       status: 200,
@@ -217,9 +218,9 @@ test("Bedrock environment fallback remains available without an explicit credent
     model.doGenerate({ prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }] })
   );
 
-  assert.match(request.url, /^https:\/\/bedrock-runtime\.us-west-2\.amazonaws\.com\//);
-  assert.match(request.headers.authorization, /^AWS4-HMAC-SHA256 /);
-  assert.equal(request.headers["x-amz-security-token"], "environment-session-token");
+  assert.match(request!.url, /^https:\/\/bedrock-runtime\.us-west-2\.amazonaws\.com\//);
+  assert.match(request!.headers.authorization, /^AWS4-HMAC-SHA256 /);
+  assert.equal(request!.headers["x-amz-security-token"], "environment-session-token");
 });
 
 test("direct Azure setup uses API-key auth", async (t: import("node:test").TestContext) => {
@@ -227,12 +228,12 @@ test("direct Azure setup uses API-key auth", async (t: import("node:test").TestC
   t.after(() => {
     global.fetch = originalFetch;
   });
-  let request;
-  global.fetch = async (url, init) => {
+  let request: { url: string; headers: Record<string, string>; body: unknown } | undefined;
+  global.fetch = async (url: unknown, init?: { headers?: unknown; body?: unknown }) => {
     request = {
       url: String(url),
-      headers: Object.fromEntries(new Headers(init.headers)),
-      body: JSON.parse(init.body),
+      headers: Object.fromEntries(new Headers(init!.headers as HeadersInit)),
+      body: JSON.parse(String(init!.body)),
     };
     return new Response("{}", {
       status: 200,
@@ -248,11 +249,11 @@ test("direct Azure setup uses API-key auth", async (t: import("node:test").TestC
     model.doGenerate({ prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }] })
   );
   assert.equal(
-    request.url,
+    request!.url,
     "https://legacy.example.com/custom/openai/responses"
   );
-  assert.equal(request.headers["api-key"], "direct-api-key");
-  assert.equal(request.body.model, "deployment-a");
+  assert.equal(request!.headers["api-key"], "direct-api-key");
+  assert.equal((request!.body as { model: string }).model, "deployment-a");
 });
 
 test("manual Azure setup preserves legacy endpoints and API-key auth", async (t: import("node:test").TestContext) => {
@@ -260,11 +261,11 @@ test("manual Azure setup preserves legacy endpoints and API-key auth", async (t:
   t.after(() => {
     global.fetch = originalFetch;
   });
-  let request;
-  global.fetch = async (url, init) => {
+  let request: { url: string; headers: Record<string, string> } | undefined;
+  global.fetch = async (url: unknown, init?: { headers?: unknown }) => {
     request = {
       url: String(url),
-      headers: Object.fromEntries(new Headers(init.headers)),
+      headers: Object.fromEntries(new Headers(init!.headers as HeadersInit)),
     };
     return new Response("{}", {
       status: 200,
@@ -280,8 +281,8 @@ test("manual Azure setup preserves legacy endpoints and API-key auth", async (t:
     model.doGenerate({ prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }] })
   );
   assert.equal(
-    request.url,
+    request!.url,
     "https://legacy.example.com/custom/openai/responses"
   );
-  assert.equal(request.headers["api-key"], "legacy-api-key");
+  assert.equal(request!.headers["api-key"], "legacy-api-key");
 });

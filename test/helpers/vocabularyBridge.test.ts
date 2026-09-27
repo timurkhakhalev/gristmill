@@ -14,7 +14,7 @@ const Module = require("node:module");
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
-let activeHandlers: any = null;
+let activeHandlers: Map<string, (...args: any[]) => any> | null = null;
 let dispatchSend: any = null;
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-vocab-bridge-"));
 
@@ -63,7 +63,7 @@ function isNativeBindingUnavailable(error: any) {
 
 function loadBundledPreload(invoke: any) {
   const listeners = new Map();
-  let api;
+  let api: Record<string, any> | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -97,6 +97,7 @@ function loadBundledPreload(invoke: any) {
     process: { platform: "darwin", versions: {} },
     console,
   });
+  if (!api) throw new Error("Bundled preload did not expose its API");
   return { api, listeners };
 }
 
@@ -118,12 +119,12 @@ async function createFixture(t: import("node:test").TestContext) {
 
   const { registerVocabularyHandlers } = await import("../../src/helpers/vocabularyIpcHandlers.ts");
   registerVocabularyHandlers(
-    { handle: (channel, listener) => activeHandlers.set(channel, listener) },
-    { database: db, debugLogger: { debug() {}, warn() {}, error() {} } }
+    { handle: (channel, listener) => activeHandlers!.set(channel, listener) },
+    { database: db, debugLogger: { debug() {} } }
   );
 
   const handlersSnapshot = new Map(activeHandlers);
-  const invoke = async (channel: string, ...args) => {
+  const invoke = async (channel: string, ...args: any[]) => {
     const handler = handlersSnapshot.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler(null, ...args);
@@ -190,14 +191,19 @@ test("dictionary events reach the renderer through the bridge and unsubscribe cl
   assert.equal(delta.removed, 0);
   // Broadcast pull goes main-only: handlers re-read SQLite, events flow back.
   const handlers = activeHandlers;
-  await handlers.get("db-broadcast-dictionary-updated")();
-  await handlers.get("db-broadcast-snippets-updated")();
+  const broadcast = async (channel: string) => {
+    const handler = handlers?.get(channel);
+    if (!handler) throw new Error(`No handler registered for ${channel}`);
+    await handler();
+  };
+  await broadcast("db-broadcast-dictionary-updated");
+  await broadcast("db-broadcast-snippets-updated");
   const fromEvents = received.map((payload) => ({ ...payload }));
   assert.ok(fromEvents.length >= 2);
   unsubscribe();
   unsubscribeSnippets();
 
-  await handlers.get("db-broadcast-dictionary-updated")();
+  await broadcast("db-broadcast-dictionary-updated");
   // No delivery after unsubscribe: only its own listener is removed, payload
   // count stays frozen.
   assert.equal(received.length, fromEvents.length);

@@ -39,10 +39,17 @@ fs.writeFileSync(audioFile, "RIFF....");
 
 const logs : any = { debug: [], error: [] };
 
-function setup({ whisper, parakeet } = {}) {
-  const handlers = new Map();
+function setup({ whisper, parakeet }: {
+  whisper?: (...args: any[]) => any;
+  parakeet?: (...args: any[]) => any;
+} = {}) {
+  const handlers = new Map<string, (...args: any[]) => any>();
   const registry = createUploadCancelRegistry();
-  const calls = { whisper: [], parakeet: [], reads: [] };
+  const calls: {
+    whisper: { audioBuffer: Buffer; options: Record<string, any> }[];
+    parakeet: { audioBuffer: Buffer; options: Record<string, any> }[];
+    reads: string[];
+  } = { whisper: [], parakeet: [], reads: [] };
   registerLocalFileTranscriptionHandler(
     { handle: (channel: string, fn: any) => handlers.set(channel, fn) },
     {
@@ -73,7 +80,11 @@ function setup({ whisper, parakeet } = {}) {
       logError: (message: any, data: any) => logs.error.push({ message, data }),
     }
   );
-  const call = (...args) => handlers.get("transcribe-audio-file")(null, ...args);
+  const call = (...args: any[]) => {
+    const handler = handlers.get("transcribe-audio-file");
+    if (!handler) throw new Error("Transcription handler was not registered");
+    return handler(null, ...args);
+  };
   return { call, calls, registry };
 }
 

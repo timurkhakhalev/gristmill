@@ -28,11 +28,13 @@ function acquireFullRunLock(file) {
 function runCommand(binary, args, env) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { cwd: root, env, stdio: "inherit", detached: process.platform !== "win32" });
+    let terminated = false;
     const signalGroup = (signal) => {
       if (!child.pid) return;
       try {
         if (process.platform === "win32") child.kill(signal);
         else process.kill(-child.pid, signal);
+        if (signal === "SIGTERM") terminated = true;
       } catch (error) {
         if (error.code !== "ESRCH") throw error;
       }
@@ -48,7 +50,7 @@ function runCommand(binary, args, env) {
     child.once("error", (error) => { cleanup(); reject(error); });
     child.once("close", (code, signal) => {
       cleanup();
-      signalGroup("SIGTERM");
+      if (!terminated) signalGroup("SIGTERM");
       resolve(signal ? 128 + os.constants.signals[signal] : (code ?? 1));
     });
   });

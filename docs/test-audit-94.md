@@ -74,6 +74,22 @@ Negative control: temporarily changed the `/v1/models` normalization in
 exit 1 with the normalization case failing (2 pass, 1 fail). The original
 source bytes were restored immediately.
 
+Further negative controls confirmed the strengthened checks: bypassing the
+container IPC argument guard made `wrong-shaped ids reject before the DB is
+touched` fail (7 pass, 1 fail); omitting a synthetic VAD asset made the offline
+download case fail (1 pass, 1 fail). Both temporary changes were restored.
+
+In the final fixture pass, the model registry fallback and pure Tinfoil default
+selection checks import their TypeScript modules directly, removing three Vite
+servers. Tinfoil catalog hydration and the reasoning/transcription model-memory
+checks keep Vite because they exercise the real renderer store and persisted
+selection. The action-processing fixture cancels its owned success timers; the
+chat bridge and sidecar reaper fixtures restore their previous module-cache
+entries. `geminiLiveStreaming` and `parakeetOnlineStream` are classified as
+integration because they open loopback WebSocket servers. `systemTar` is unit:
+every process spawn in that file is an injected mock. The focused run of all
+ten changed files passed 80/80 cases with no skips or failures.
+
 ## Verification and new baseline
 
 The first integrated full run found two stale references in
@@ -82,19 +98,35 @@ The first integrated full run found two stale references in
 235% tree CPU, with no swap growth. The references were removed and the
 four affected cases passed focused.
 
-| Final check | Result |
+| First merged check | Result |
 | --- | --- |
 | `pnpm run lint` | Exit 0; no errors. Existing warnings remain outside changed code. |
 | `pnpm run typecheck` | Exit 0, including strict renderer and settings selectors. |
 | `pnpm test -- --processes 2` | 388 files, 2586 + 163 = 2749 pass, 0 fail/skip/cancel. |
 | `git diff --check` | Exit 0. |
 
-The final full run took **476.06 s** including SQLite preparation and one
+The first merged full run took **476.06 s** including SQLite preparation and one
 main build. Peak descendant-tree RSS was **1286 MiB**, peak tree CPU **232%**;
 swap stayed at **5421 MiB** (0 MiB growth). System-wide free memory was 61%
 after the run, and `pmset -g therm` reported no thermal or performance warning.
-The runner lock was removed and no owned test process remained. This is the
-new baseline for #93; the 413-file #95 measurement is a different workload.
+The runner lock was removed and no owned test process remained.
+
+The final fixture pass exposed two timing failures in full runs. The process
+lifecycle test found that the runner sent a redundant `SIGTERM` to a process
+group after it had already terminated; macOS could return `EPERM` if the group
+ID was no longer owned. The runner now avoids that second signal. The
+notification hover test compared the resumed delay to exactly 60 seconds
+while reading wall time; it now freezes `Date.now` within that case and restores
+it afterward. Each affected file passed focused after its fix.
+
+The final `pnpm test -- --processes 2` run passed **2749/2749** cases across
+**388** files with 0 failures, skips or cancellations. It took **452.60 s**
+including preparation, peaked at **1334 MiB** descendant-tree RSS and **224%**
+tree CPU, and added **0 MiB** swap. `pnpm run lint` exited 0 with existing
+warnings; `pnpm run typecheck` exited 0, including the strict renderer program.
+`git diff --check` passed, the runner lock was absent, no owned test process
+remained, and `pmset -g therm` reported no warning. This is the baseline for
+#93; its compiler, Vite and shared-runner optimization was not attempted here.
 
 Automated tests do not establish live microphone/system-audio or real provider
 behavior.

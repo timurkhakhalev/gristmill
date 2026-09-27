@@ -16,10 +16,9 @@ const LIVE_CATALOG = [
 
 test("tinfoil default model follows the glm-5-3 replacement", async (t) => {
   installBrowserGlobals(t);
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-tinfoil-default-model-test-",
-  });
-  const { pickDefaultTinfoilModel } = await vite.ssrLoadModule("/models/tinfoilModels.ts");
+  const { pickDefaultTinfoilModel, DESCRIPTION_KEYS } = await import(
+    "../../src/models/tinfoilModels.ts"
+  );
 
   await t.test("picks glm-5-3 even when Tinfoil lists another model first", () => {
     assert.equal(pickDefaultTinfoilModel(LIVE_CATALOG)?.id, "glm-5-3");
@@ -38,8 +37,7 @@ test("tinfoil default model follows the glm-5-3 replacement", async (t) => {
     );
   });
 
-  await t.test("every curated description key resolves in English", async () => {
-    const { DESCRIPTION_KEYS } = await vite.ssrLoadModule("/models/tinfoilModels.ts");
+  await t.test("every curated description key resolves in English", () => {
     for (const key of Object.values(DESCRIPTION_KEYS)) {
       const path = key.split(".");
       const value = path.reduce((node, segment) => node?.[segment], english);
@@ -153,11 +151,7 @@ test("a Groq remap is not announced as a Tinfoil retirement", async (t) => {
 // Every live site that resolves a provider's default reads the name the
 // registry gives it, through one helper.
 test("a provider's named default beats its list position", async (t) => {
-  installBrowserGlobals(t);
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-provider-default-hops-test-",
-  });
-  const { pickDefaultModelId } = await vite.ssrLoadModule("/models/providerDefaultModel.ts");
+  const { pickDefaultModelId } = await import("../../src/models/providerDefaultModel.ts");
 
   const byId = Object.fromEntries(
     modelRegistryData.cloudProviders.map((provider) => [provider.id, provider])

@@ -13,14 +13,14 @@ const testCryptoKey = Buffer.alloc(32, 19);
 let encryptionAvailable = true;
 const testSecretCrypto = {
   isAvailable: () => encryptionAvailable,
-  encrypt(plaintext) {
+  encrypt(plaintext: string) {
     if (!encryptionAvailable) throw new Error("test encryption unavailable");
     const iv = nodeCrypto.randomBytes(12);
     const cipher = nodeCrypto.createCipheriv("aes-256-gcm", testCryptoKey, iv);
     const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
     return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
   },
-  decrypt(blob) {
+  decrypt(blob: Buffer) {
     if (!encryptionAvailable) throw new Error("test decryption unavailable");
     const decipher = nodeCrypto.createDecipheriv("aes-256-gcm", testCryptoKey, blob.subarray(0, 12));
     decipher.setAuthTag(blob.subarray(12, 28));
@@ -41,7 +41,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
-  if (parent?.filename === databaseModulePath && request === "./secretCrypto.js") {
+  if ((parent as { filename?: string } | null)?.filename === databaseModulePath && request === "./secretCrypto.js") {
     return testSecretCrypto;
   }
   return originalLoad.call(this, request, parent, isMain);
@@ -52,17 +52,18 @@ process.env.NODE_ENV = "test";
 const DatabaseManager = require("../../src/helpers/database.ts");
 
 function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error?.message || error);
+  const message = String((error as { message?: unknown })?.message || error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
   );
 }
 
-function createDb(t: import("node:test").TestContext, directory: string) {
+type DbUnderTest = import("../../src/helpers/database.js").DatabaseManager;
+function createDb(t: import("node:test").TestContext, directory?: string): DbUnderTest | null {
   userDataDir = directory ?? fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-calendar-db-"));
   try {
-    return new DatabaseManager();
+    return new DatabaseManager() as DbUnderTest;
   } catch (error) {
     if (isNativeBindingUnavailable(error)) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
@@ -78,8 +79,8 @@ function databaseFiles(directory: string) {
     .map((name: string) => fs.readFileSync(path.join(directory, name)));
 }
 
-function includesSecret(directory: string, secret) {
-  return databaseFiles(directory).some((buffer) => buffer.includes(Buffer.from(secret)));
+function includesSecret(directory: string, secret: string) {
+  return databaseFiles(directory).some((buffer: Buffer) => buffer.includes(Buffer.from(secret)));
 }
 
 test("Google and Microsoft calendar tokens are encrypted and survive reopening", (t: import("node:test").TestContext) => {
@@ -104,8 +105,8 @@ test("Google and Microsoft calendar tokens are encrypted and survive reopening",
   db.saveGoogleTokens(google);
   db.saveMicrosoftTokens(microsoft);
 
-  const storedGoogle = db.db.prepare("SELECT access_token, refresh_token FROM google_calendar_tokens").get();
-  const storedMicrosoft = db.db.prepare("SELECT access_token, refresh_token FROM microsoft_calendar_tokens").get();
+  const storedGoogle = db.db.prepare("SELECT access_token, refresh_token FROM google_calendar_tokens").get() as Record<string, string>;
+  const storedMicrosoft = db.db.prepare("SELECT access_token, refresh_token FROM microsoft_calendar_tokens").get() as Record<string, string>;
   assert.ok(storedGoogle.access_token.startsWith("ohenc:v1:"));
   assert.ok(storedGoogle.refresh_token.startsWith("ohenc:v1:"));
   assert.ok(storedMicrosoft.access_token.startsWith("ohenc:v1:"));
@@ -121,13 +122,13 @@ test("Google and Microsoft calendar tokens are encrypted and survive reopening",
 
   const reopened = createDb(t, directory);
   if (!reopened) return;
-  assert.equal(reopened.getGoogleTokensByEmail(google.google_email).refresh_token, google.refresh_token);
-  assert.equal(reopened.getMicrosoftTokensByEmail(microsoft.microsoft_email).access_token, microsoft.access_token);
+  assert.equal(reopened.getGoogleTokensByEmail(google.google_email)!.refresh_token, google.refresh_token);
+  assert.equal(reopened.getMicrosoftTokensByEmail(microsoft.microsoft_email)!.access_token, microsoft.access_token);
   reopened.db.close();
 });
 
 test("calendar credential saves fail closed when encryption is unavailable", (t: import("node:test").TestContext) => {
-  const db = createDb(t);
+  const db = createDb(t) as DbUnderTest;
   if (!db) return;
   encryptionAvailable = false;
   try {
@@ -175,7 +176,7 @@ test("startup removes legacy plaintext calendar tokens and leaves both providers
   reopened.db.close();
 });
 
-function appleEvent(id: unknown, overrides = {}) {
+function appleEvent(id: string, overrides: Record<string, unknown> = {}): import("../../src/helpers/database.js").CalendarEventInput {
   return {
     id,
     calendar_id: "apple-calendar",
@@ -190,12 +191,12 @@ function appleEvent(id: unknown, overrides = {}) {
 }
 
 test("Apple snapshots retain events referenced by meeting notes", (t: import("node:test").TestContext) => {
-  const db = createDb(t);
+  const db = createDb(t) as DbUnderTest;
   if (!db) return;
 
   db.upsertCalendarEvents([appleEvent("linked-event"), appleEvent("unlinked-event")]);
   const note = db.saveNote("Linked meeting", "", "meeting").note;
-  db.updateNote(note.id, { calendar_event_id: "linked-event" });
+  db.updateNote(note!.id, { calendar_event_id: "linked-event" });
 
   db.replaceAppleCalendarEvents([]);
 
@@ -204,7 +205,7 @@ test("Apple snapshots retain events referenced by meeting notes", (t: import("no
   db.db.close();
 });
 
-function restEvent(provider: string, calendarId, id: unknown, overrides = {}) {
+function restEvent(provider: string, calendarId: string, id: string, overrides: Record<string, unknown> = {}): import("../../src/helpers/database.js").CalendarEventInput {
   return {
     id,
     calendar_id: calendarId,
@@ -219,7 +220,7 @@ function restEvent(provider: string, calendarId, id: unknown, overrides = {}) {
 }
 
 test("full-sync prune drops stale events but keeps fresh, note-linked, and other-scope rows", (t: import("node:test").TestContext) => {
-  const db = createDb(t);
+  const db = createDb(t) as DbUnderTest;
   if (!db) return;
 
   db.upsertCalendarEvents([
@@ -230,7 +231,7 @@ test("full-sync prune drops stale events but keeps fresh, note-linked, and other
     restEvent("google", "ms-cal", "other-provider"),
   ]);
   const note = db.saveNote("Linked meeting", "", "meeting").note;
-  db.updateNote(note.id, { calendar_event_id: "stale-linked" });
+  db.updateNote(note!.id, { calendar_event_id: "stale-linked" });
 
   db.removeStaleCalendarEvents("microsoft", "ms-cal", ["fresh"]);
 
@@ -243,7 +244,7 @@ test("full-sync prune drops stale events but keeps fresh, note-linked, and other
 });
 
 test("full-sync prune with an empty fresh set clears the calendar's unlinked events", (t: import("node:test").TestContext) => {
-  const db = createDb(t);
+  const db = createDb(t) as DbUnderTest;
   if (!db) return;
 
   db.upsertCalendarEvents([restEvent("microsoft", "ms-cal", "stale")]);
@@ -255,7 +256,7 @@ test("full-sync prune with an empty fresh set clears the calendar's unlinked eve
 });
 
 test("tentative Apple events remain visible in upcoming meetings", (t: import("node:test").TestContext) => {
-  const db = createDb(t);
+  const db = createDb(t) as DbUnderTest;
   if (!db) return;
 
   const now = Date.now();
@@ -269,13 +270,13 @@ test("tentative Apple events remain visible in upcoming meetings", (t: import("n
 
   const events = db.getUpcomingEvents(15);
   assert.equal(
-    events.some((event: unknown) => event.id === "tentative-event"),
+    events.some((event: { id: string }) => event.id === "tentative-event"),
     true
   );
   db.db.close();
 });
 
-function insertCalendar(db, provider: string, id: unknown, selected = 1) {
+function insertCalendar(db: DbUnderTest, provider: string, id: string, selected = 1) {
   const table = provider === "google" ? "google_calendars" : "microsoft_calendars";
   db.db
     .prepare(
@@ -285,7 +286,7 @@ function insertCalendar(db, provider: string, id: unknown, selected = 1) {
 }
 
 test("calendar availability fields are persisted with events", (t: import("node:test").TestContext) => {
-  const db = createDb(t);
+  const db = createDb(t) as DbUnderTest;
   if (!db) return;
 
   db.upsertCalendarEvents([
@@ -296,13 +297,13 @@ test("calendar availability fields are persisted with events", (t: import("node:
   ]);
 
   const event = db.getCalendarEventById("free-declined");
-  assert.equal(event.availability_status, "free");
-  assert.equal(event.self_response_status, "declined");
+  assert.equal(event!.availability_status, "free");
+  assert.equal(event!.self_response_status, "declined");
   db.db.close();
 });
 
 test("upsertCalendarEvents round-trips event_url and defaults it to null", (t: import("node:test").TestContext) => {
-  const db = createDb(t);
+  const db = createDb(t) as DbUnderTest;
   if (!db) return;
 
   db.upsertCalendarEvents([
@@ -313,15 +314,15 @@ test("upsertCalendarEvents round-trips event_url and defaults it to null", (t: i
   ]);
 
   assert.equal(
-    db.getCalendarEventById("with-url").event_url,
+    db.getCalendarEventById("with-url")!.event_url,
     "https://www.google.com/calendar/event?eid=with-url"
   );
-  assert.equal(db.getCalendarEventById("without-url").event_url, null);
+  assert.equal(db.getCalendarEventById("without-url")!.event_url, null);
   db.db.close();
 });
 
 test("availability range query uses overlap boundaries and selected calendars", (t: import("node:test").TestContext) => {
-  const db = createDb(t);
+  const db = createDb(t) as DbUnderTest;
   if (!db) return;
   insertCalendar(db, "google", "selected-google");
   insertCalendar(db, "google", "hidden-google", 0);
@@ -350,14 +351,14 @@ test("availability range query uses overlap boundaries and selected calendars", 
     "google",
   ]);
   assert.deepEqual(
-    events.map((event: unknown) => event.id),
+    events.map((event: { id: string }) => event.id),
     ["overlaps"]
   );
   db.db.close();
 });
 
 test("availability range query treats date-only all-day events as local dates", (t: import("node:test").TestContext) => {
-  const db = createDb(t);
+  const db = createDb(t) as DbUnderTest;
   if (!db) return;
   db.db
     .prepare("INSERT INTO apple_calendars (id, title) VALUES (?, ?)")
@@ -376,14 +377,14 @@ test("availability range query treats date-only all-day events as local dates", 
     ["apple"]
   );
   assert.deepEqual(
-    events.map((event: unknown) => event.id),
+    events.map((event: { id: string }) => event.id),
     ["all-day"]
   );
   db.db.close();
 });
 
 test("google sync token persists alongside its expiry", (t: import("node:test").TestContext) => {
-  const db = createDb(t);
+  const db = createDb(t) as DbUnderTest;
   if (!db) return;
   insertCalendar(db, "google", "google-calendar");
 
@@ -391,7 +392,7 @@ test("google sync token persists alongside its expiry", (t: import("node:test").
   db.updateCalendarSyncToken("google-calendar", "sync-token", expiresAt);
 
   const calendar = db.getGoogleCalendars().find((row) => row.id === "google-calendar");
-  assert.equal(calendar.sync_token, "sync-token");
-  assert.equal(calendar.sync_token_expires_at, expiresAt);
+  assert.equal(calendar!.sync_token, "sync-token");
+  assert.equal(calendar!.sync_token_expires_at, expiresAt);
   db.db.close();
 });

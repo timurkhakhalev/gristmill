@@ -7,6 +7,20 @@ const { createRoot } = requireRepo("react-dom/client");
 const { createRendererServer, installBrowserGlobals, installHookDom, installMicCaptureGlobals } =
   requireRepo("./test/lib/rendererTestHarness");
 
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+function getVite() {
+  return vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
+    cachePrefix: "pr2040-renderer-warning-review-",
+    mockModules: {
+      "/ui/useToast": `const toast = (props) => { globalThis.__interruptionToasts.push({ ...props, visibility: globalThis.document.visibilityState }); return String(globalThis.__interruptionToasts.length); }; const dismiss = (id) => globalThis.__interruptionDismissals.push(id); export const useToast = () => ({ toast, dismiss });`,
+    },
+  });
+}
+
 async function setup(t) {
   let root;
   let store;
@@ -80,12 +94,11 @@ async function setup(t) {
   };
   globalThis.__interruptionToasts = [];
   globalThis.__interruptionDismissals = [];
-  const vite = await createRendererServer(t, {
-    cachePrefix: "pr2040-renderer-warning-review-",
-    mockModules: {
-      "/ui/useToast": `const toast = (props) => { globalThis.__interruptionToasts.push({ ...props, visibility: globalThis.document.visibilityState }); return String(globalThis.__interruptionToasts.length); }; const dismiss = (id) => globalThis.__interruptionDismissals.push(id); export const useToast = () => ({ toast, dismiss });`,
-    },
-  });
+  const vite = await getVite();
+  for (const url of ["/components/MeetingRecordingMount.tsx", "/stores/meetingRecordingStore.ts", "/i18n.ts"]) {
+    const module = await vite.moduleGraph.getModuleByUrl(url);
+    if (module) vite.moduleGraph.invalidateModule(module);
+  }
   const { default: Mount } = await vite.ssrLoadModule("/components/MeetingRecordingMount.tsx");
   store = await vite.ssrLoadModule("/stores/meetingRecordingStore.ts");
   root = createRoot(container);

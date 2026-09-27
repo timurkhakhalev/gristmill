@@ -1107,12 +1107,12 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/actionsTypeProbe.test.js",
-      "test/scripts/chatPersistenceTypeProbe.test.js",
-      "test/scripts/localLlmModelsTypeProbe.test.js",
-      "test/scripts/localModelLifecycleTypeProbe.test.js",
-      "test/scripts/providerAdaptersTypeProbe.test.js",
-      "test/scripts/reasoningTypeProbe.test.js"
+      "test/scripts/type-probes/actions.test.js",
+      "test/scripts/type-probes/chat-persistence.test.js",
+      "test/scripts/type-probes/local-llm-models.test.js",
+      "test/scripts/type-probes/local-model-lifecycle.test.js",
+      "test/scripts/type-probes/provider-adapters.test.js",
+      "test/scripts/type-probes/reasoning.test.js"
     ]
   },
   {
@@ -1123,9 +1123,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/calendarAvailabilityTypeProbe.test.js",
-      "test/scripts/calendarManagersTypeProbe.test.js",
-      "test/scripts/calendarTypeProbe.test.js"
+      "test/scripts/type-probes/calendar-availability.test.js",
+      "test/scripts/type-probes/calendar-managers.test.js",
+      "test/scripts/type-probes/calendar.test.js"
     ]
   },
   {
@@ -1136,9 +1136,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/containersTypeProbe.test.js",
-      "test/scripts/noteFilesTypeProbe.test.js",
-      "test/scripts/vocabularyTypeProbe.test.js"
+      "test/scripts/type-probes/containers.test.js",
+      "test/scripts/type-probes/note-files.test.js",
+      "test/scripts/type-probes/vocabulary.test.js"
     ]
   },
   {
@@ -1154,7 +1154,7 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/databaseTypeProbe.test.js",
+      "test/scripts/type-probes/database.test.js",
       "test/scripts/sharedHelpersTypeProbe.test.js"
     ]
   },
@@ -1168,8 +1168,8 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/downloadsTypeProbe.test.js",
-      "test/scripts/realtimeStreamingTypeProbe.test.js"
+      "test/scripts/type-probes/downloads.test.js",
+      "test/scripts/type-probes/realtime-streaming.test.js"
     ]
   },
   {
@@ -1182,7 +1182,7 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/envSecretTypeProbe.test.js"
+      "test/scripts/type-probes/env-secret.test.js"
     ]
   },
   {
@@ -1193,9 +1193,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/localFileTranscriptionTypeProbe.test.js",
-      "test/scripts/uploadTranscriptionTypeProbe.test.js",
-      "test/scripts/urlDownloadTypeProbe.test.js"
+      "test/scripts/type-probes/local-file-transcription.test.js",
+      "test/scripts/type-probes/upload-transcription.test.js",
+      "test/scripts/type-probes/url-download.test.js"
     ]
   },
   {
@@ -1222,9 +1222,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/meetingCoordinatorTypeProbe.test.js",
+      "test/scripts/type-probes/meeting-coordinator.test.js",
       "test/scripts/nativeAudioCaptureTypeProbe.test.js",
-      "test/scripts/speakerOnnxTypeProbe.test.js"
+      "test/scripts/type-probes/speaker-onnx.test.js"
     ]
   },
   {

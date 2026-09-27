@@ -5,6 +5,22 @@ const { createRendererServer, installBrowserGlobals } = require("../lib/renderer
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 const english = require("../../src/locales/en/translation.json");
 
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+async function getVite() {
+  const vite = await (vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
+    cachePrefix: "openwhispr-tinfoil-default-model-test-",
+  }));
+  for (const url of ["/models/ModelRegistry.ts", "/stores/settingsStore.ts", "/stores/tinfoilModelSwitchStore.ts"]) {
+    const module = await vite.moduleGraph.getModuleByUrl(url);
+    if (module) vite.moduleGraph.invalidateModule(module);
+  }
+  return vite;
+}
+
 // Tinfoil retires GLM-5.2 on 2026-09-10 (replaced by glm-5-3) and its live
 // /v1/models list already omits it. The default lookup must follow, otherwise
 // every reconciled selection lands on whatever Tinfoil happens to list first.
@@ -60,9 +76,7 @@ test("a cached catalog does not displace the named Tinfoil default", async (t) =
       cleanupModel: "glm-5-3",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-tinfoil-cached-default-test-",
-  });
+  const vite = await getVite();
   // Loading the registry applies the cached list, exactly as app startup does.
   await vite.ssrLoadModule("/models/ModelRegistry.ts");
   const { useSettingsStore } = await vite.ssrLoadModule(
@@ -84,9 +98,7 @@ test("a persisted glm-5-2 selection is repointed before any request", async (t) 
       cleanupModel: "glm-5-2",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-tinfoil-retired-selection-test-",
-  });
+  const vite = await getVite();
   const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
 
   // No catalog fetch and no network: the store repairs the selection on load,
@@ -114,9 +126,7 @@ test("the retirement notice fires when the startup sweep is what moved the user"
       chatAgentModel: "glm-5-2",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-tinfoil-sweep-notice-test-",
-  });
+  const vite = await getVite();
   const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
   const { consumeTinfoilModelSwitches } = await vite.ssrLoadModule(
     "/stores/tinfoilModelSwitchStore.ts"
@@ -136,9 +146,7 @@ test("a Groq remap is not announced as a Tinfoil retirement", async (t) => {
       cleanupModel: "llama-3.3-70b-versatile",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-groq-sweep-notice-test-",
-  });
+  const vite = await getVite();
   const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
   const { consumeTinfoilModelSwitches } = await vite.ssrLoadModule(
     "/stores/tinfoilModelSwitchStore.ts"
@@ -189,9 +197,7 @@ test("a replacement with no curated name is still announced, by id", async (t) =
       cleanupModel: "kimi-k2-6",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-tinfoil-unnamed-replacement-test-",
-  });
+  const vite = await getVite();
   const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
   const { consumeTinfoilModelSwitches } = await vite.ssrLoadModule(
     "/stores/tinfoilModelSwitchStore.ts"

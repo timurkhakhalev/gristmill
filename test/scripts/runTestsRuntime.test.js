@@ -21,6 +21,12 @@ function fakeRunner(extra = {}) {
   };
 }
 
+function killOwnedGroupIfPresent(pidFile) {
+  if (!fs.existsSync(pidFile)) return;
+  try { process.kill(-Number(fs.readFileSync(pidFile, "utf8")), "SIGKILL"); }
+  catch (error) { if (error.code !== "ESRCH") throw error; }
+}
+
 test("macOS unit selection uses Electron as Node without a main build", async () => {
   const { calls, options } = fakeRunner();
   assert.equal(await runTests(["--processes", "1", "test/utils/formatDuration.test.js"], options), 0);
@@ -53,6 +59,23 @@ test("two processes run ordinary files before serial compiler and native files",
   assert.equal(calls[2].args.find((arg) => arg.startsWith("--test-concurrency")), "--test-concurrency=2");
   assert.equal(calls[3].args.find((arg) => arg.startsWith("--test-concurrency")), "--test-concurrency=1");
   assert.deepEqual(calls.slice(2).flatMap((call) => call.args.filter((arg) => arg.endsWith(".test.js"))).sort(), files.sort());
+});
+
+test("type probe files share one serial compiler process without changing selected domains", async () => {
+  const { calls, options } = fakeRunner({ platform: "linux" });
+  const files = [
+    "test/scripts/type-probes/actions.test.js",
+    "test/scripts/type-probes/calendar.test.js",
+    "test/scripts/mainBuild.test.js",
+  ];
+  assert.equal(await runTests(files, options), 0);
+  assert.deepEqual(calls[0], { prepare: "node" });
+  assert.equal(calls[1].binary, "pnpm");
+  assert.equal(calls[2].args.includes("--test-isolation=none"), true);
+  assert.deepEqual(JSON.parse(calls[2].env.OPENHERCULES_TYPE_PROBE_GROUPS), ["actions", "calendar"]);
+  assert.deepEqual(calls[2].args.filter((arg) => arg.endsWith(".test.js")), files.slice(0, 2));
+  assert.equal(calls[3].args.includes("--test-isolation=none"), false);
+  assert.deepEqual(calls[3].args.filter((arg) => arg.endsWith(".test.js")), [files[2]]);
 });
 
 test("a failed parallel phase still runs serial tests and preserves failure", async () => {
@@ -120,6 +143,47 @@ test("termination stops an owned child and grandchild", { timeout: 5000 }, async
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.equal(fs.statSync(heartbeat).mtimeMs, stoppedAt, "grandchild stopped");
   } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("termination kills descendants that ignore SIGTERM before returning", { timeout: 6000 }, async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "oh-runner-stubborn-"));
+  const heartbeat = path.join(directory, "heartbeat");
+  const pidFile = path.join(directory, "pid");
+  const grandchild = `const fs = require('node:fs'); process.on('SIGTERM', () => {}); setInterval(() => fs.writeFileSync(${JSON.stringify(heartbeat)}, String(Date.now())), 20);`;
+  const child = `const { spawn } = require('node:child_process'); const fs = require('node:fs'); process.on('SIGTERM', () => {}); spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' }); fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
+  try {
+    const running = runCommand(process.execPath, ["-e", child], process.env);
+    for (let i = 0; i < 200 && !fs.existsSync(heartbeat); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(fs.existsSync(heartbeat), true, "grandchild started");
+    process.emit("SIGTERM");
+    assert.equal(await running, 143);
+    const stoppedAt = fs.statSync(heartbeat).mtimeMs;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(fs.statSync(heartbeat).mtimeMs, stoppedAt, "no owned descendant remains");
+  } finally {
+    killOwnedGroupIfPresent(pidFile);
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a normally exiting child cannot leave a TERM-ignoring grandchild", { timeout: 6000 }, async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "oh-runner-orphan-"));
+  const heartbeat = path.join(directory, "heartbeat");
+  const pidFile = path.join(directory, "pid");
+  const grandchild = `const fs = require('node:fs'); process.on('SIGTERM', () => {}); setInterval(() => fs.writeFileSync(${JSON.stringify(heartbeat)}, String(Date.now())), 20);`;
+  const child = `const { spawn } = require('node:child_process'); const fs = require('node:fs'); spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' }); fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); const timer = setInterval(() => { if (fs.existsSync(${JSON.stringify(heartbeat)})) { clearInterval(timer); process.exit(0); } }, 10);`;
+  try {
+    assert.equal(await runCommand(process.execPath, ["-e", child], process.env), 0);
+    assert.equal(fs.existsSync(heartbeat), true, "grandchild started before the parent exited");
+    const stoppedAt = fs.statSync(heartbeat).mtimeMs;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(fs.statSync(heartbeat).mtimeMs, stoppedAt, "orphan was reaped before return");
+  } finally {
+    killOwnedGroupIfPresent(pidFile);
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });

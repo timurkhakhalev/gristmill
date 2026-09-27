@@ -1,6 +1,17 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const { createRendererServer, installBrowserGlobals, reloadSettingsStore } = require("../lib/rendererTestHarness");
+
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+function getVite() {
+  return vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
+    cachePrefix: "openwhispr-reasoning-model-memory-test-",
+  });
+}
 
 test("per-provider reasoning model memory", async (t) => {
   installBrowserGlobals(t, {
@@ -12,10 +23,8 @@ test("per-provider reasoning model memory", async (t) => {
       cleanupCloudBaseUrl: "https://llm.parasail.example.com/v1",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-reasoning-model-memory-test-",
-  });
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  const vite = await getVite();
+  const { useSettingsStore } = await reloadSettingsStore(vite);
   const state = () => useSettingsStore.getState();
 
   await t.test("switch-and-return restores the custom model (Parasail scenario)", () => {
@@ -81,10 +90,8 @@ test("explicit model click commits the (provider, model) pair atomically", async
       cleanupModel: "gpt-5-mini",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-reasoning-click-commit-test-",
-  });
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  const vite = await getVite();
+  const { useSettingsStore } = await reloadSettingsStore(vite);
   const state = () => useSettingsStore.getState();
 
   // Seed per-provider memory: anthropic remembers claude-opus-4-6.
@@ -121,10 +128,8 @@ test("corrupt persisted reasoning model memory hydrates as empty, not a crash", 
       reasoningModelByProvider: "{not json",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-reasoning-model-memory-corrupt-test-",
-  });
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  const vite = await getVite();
+  const { useSettingsStore } = await reloadSettingsStore(vite);
   assert.deepEqual(useSettingsStore.getState().reasoningModelByProvider, {});
 });
 
@@ -140,12 +145,8 @@ test("retired cloud model selections are repointed to the provider default", asy
       noteFormattingModel: "my-endpoint-model",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-retired-cloud-model-test-",
-  });
-  const { useSettingsStore, reconcileRetiredCloudModelSelections } = await vite.ssrLoadModule(
-    "/stores/settingsStore.ts"
-  );
+  const vite = await getVite();
+  const { useSettingsStore, reconcileRetiredCloudModelSelections } = await reloadSettingsStore(vite);
 
   reconcileRetiredCloudModelSelections();
 

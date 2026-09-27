@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { validateRegistry, parseArgs, selectTests, createPlan } = require("../../scripts/test-selection");
 
@@ -36,12 +37,38 @@ test("invalid, ambiguous and empty selections fail closed", () => {
 
 test("registry catches missing, stale, duplicate and invalid registrations", () => {
   assert.equal(validateRegistry(["test/a.test.js"], [group]).length, 1);
-  assert.throws(() => validateRegistry(["test/a.test.js", "test/b.test.ts"], [group]), /Unregistered/);
+  assert.throws(() => validateRegistry(["test/a.test.js", "test/b.test.ts"], [group]), /Unclassified/);
   assert.throws(() => validateRegistry([], [group]), /Stale/);
   assert.throws(() => validateRegistry(["test/a.test.js"], [group, group]), /Duplicate/);
   assert.throws(() => validateRegistry(["test/a.test.js"], [{ ...group, kind: "fast" }]), /Invalid/);
   assert.throws(() => validateRegistry(["test/a.test.js"], [{ ...group, serial: "yes" }]), /Invalid/);
   assert.equal(validateRegistry(["test/a.test.js"], [{ ...group, serial: true }])[0].serial, true);
+});
+
+test("a new ordinary test is discovered by domain and kind without path registration", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-test-selection-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = "test/cases/notes/unit/newBehavior.test.js";
+  fs.mkdirSync(path.join(directory, "test/cases/notes/unit"), { recursive: true });
+  fs.writeFileSync(path.join(directory, file), "const test = require('node:test'); test('new behavior', () => {});\n");
+  fs.writeFileSync(path.join(directory, "test/test-groups.json"), "[]\n");
+
+  const entry = createPlan(["--domain", "notes", "--kind", "unit"], directory).tests[0];
+  assert.deepEqual(entry, { file, domains: ["notes"], kind: "unit", buildMain: false, serial: false });
+  assert.equal(createPlan(["--", file], directory).tests.length, 1);
+  assert.throws(() => createPlan(["--domain", "calendar"], directory), /No tests/);
+
+  const mainFile = "test/cases/platform/integration/main/emittedBridge.test.js";
+  fs.mkdirSync(path.join(directory, "test/cases/platform/integration/main"), { recursive: true });
+  fs.writeFileSync(path.join(directory, mainFile), "const test = require('node:test'); test('emitted bridge', () => {});\n");
+  const mainPlan = createPlan(["--domain", "platform", "--kind", "integration"], directory);
+  assert.equal(mainPlan.buildMain, true);
+  assert.deepEqual(mainPlan.tests.map((entry) => entry.file), [mainFile]);
+
+  const serialFile = "test/cases/recording/integration/serial/capture.test.js";
+  fs.mkdirSync(path.join(directory, "test/cases/recording/integration/serial"), { recursive: true });
+  fs.writeFileSync(path.join(directory, serialFile), "const test = require('node:test'); test('capture', () => {});\n");
+  assert.equal(createPlan(["--", serialFile], directory).tests[0].serial, true);
 });
 
 test("repository registry covers every test and compiled-output consumers request a build", () => {

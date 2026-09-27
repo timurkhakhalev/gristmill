@@ -4,19 +4,31 @@ const { createElement } = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
 
+const servers = new Map();
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+function getVite(cachePrefix) {
+  if (!servers.has(cachePrefix)) {
+    servers.set(cachePrefix, createRendererServer({ after: (close) => cleanup.push(close) }, { cachePrefix }));
+  }
+  return servers.get(cachePrefix);
+}
+
 async function loadFeedback(t) {
   installBrowserGlobals(t);
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-upload-audio-feedback-test-",
-  });
+  const vite = await getVite("openwhispr-upload-audio-feedback-test-");
+  const module = await vite.moduleGraph.getModuleByUrl("/components/notes/UploadAudioFeedback.tsx");
+  if (module) vite.moduleGraph.invalidateModule(module);
   return vite.ssrLoadModule("/components/notes/UploadAudioFeedback.tsx");
 }
 
 async function loadBatchQueueView(t) {
   installBrowserGlobals(t);
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-batch-warning-indicator-test-",
-  });
+  const vite = await getVite("openwhispr-batch-warning-indicator-test-");
+  const module = await vite.moduleGraph.getModuleByUrl("/components/notes/BatchQueueView.tsx");
+  if (module) vite.moduleGraph.invalidateModule(module);
   return vite.ssrLoadModule("/components/notes/BatchQueueView.tsx");
 }
 

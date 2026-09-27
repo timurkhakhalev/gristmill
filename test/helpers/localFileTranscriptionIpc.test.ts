@@ -59,11 +59,11 @@ function setup({ whisper, parakeet } = {}) {
         }
       },
       isSherpaLocalProvider: (provider: string) => provider === "nvidia" || provider === "cohere",
-      transcribeLocalWhisper: async (audioBuffer, options: unknown) => {
+      transcribeLocalWhisper: async (audioBuffer: any, options: unknown) => {
         calls.whisper.push({ audioBuffer, options });
         return whisper ? whisper(audioBuffer, options) : { success: true, text: "whisper text" };
       },
-      transcribeLocalParakeet: async (audioBuffer, options: unknown) => {
+      transcribeLocalParakeet: async (audioBuffer: any, options: unknown) => {
         calls.parakeet.push({ audioBuffer, options });
         return parakeet ? parakeet(audioBuffer, options) : { success: true, text: "sherpa text" };
       },

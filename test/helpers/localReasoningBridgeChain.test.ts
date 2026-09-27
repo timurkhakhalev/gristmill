@@ -61,7 +61,7 @@ const ROOMY_MACHINE_BYTES = 48 * 1024 * 1024 * 1024;
 
 // Stands up the stub server plus a bridge whose model manager already
 // believes llama-server is running that model on the stub's port.
-async function setupChain(t: unknown, respond) {
+async function setupChain(t: unknown, respond: any) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-local-chain-"));
   electronHome = home;
   t.after(() => fs.rm(home, { recursive: true, force: true }));
@@ -97,7 +97,7 @@ async function setupChain(t: unknown, respond) {
   return { bridge, modelId: model.id, requests, serverManager };
 }
 
-const completion = (finishReason, content: string) => ({
+const completion = (finishReason: any, content: string) => ({
   choices: [{ finish_reason: finishReason, message: { content } }],
 });
 

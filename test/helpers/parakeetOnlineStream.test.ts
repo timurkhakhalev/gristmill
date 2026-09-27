@@ -15,7 +15,7 @@ async function startMockOnlineServer({ onBinary, finalSegment = 0 }) {
   let ignoringDone = false;
   wss.on("connection", (socket: unknown) => {
     let binaryFrames = 0;
-    socket.on("message", (data: unknown, isBinary) => {
+    socket.on("message", (data: unknown, isBinary: any) => {
       if (isBinary) {
         binaryFrames += 1;
         onBinary?.(socket, data, binaryFrames);
@@ -54,7 +54,7 @@ function onlineWsServerAt(port: number) {
 
 test("online stream emits live updates and finish resolves with the final text", async () => {
   const mock = await startMockOnlineServer({
-    onBinary: (socket: unknown, _data, frameCount) => {
+    onBinary: (socket: unknown, _data: any, frameCount: number) => {
       socket.send(JSON.stringify({ text: `partial ${frameCount}`, segment: 0, is_final: false }));
     },
   });
@@ -83,7 +83,7 @@ test("finalized segments accumulate across endpoints in live updates", async () 
   let segment = 0;
   const mock = await startMockOnlineServer({
     finalSegment: 2,
-    onBinary: (socket: unknown, _data, frameCount) => {
+    onBinary: (socket: unknown, _data: any, frameCount: number) => {
       // Simulate endpointing: every frame finalizes a segment.
       socket.send(
         JSON.stringify({ text: `segment ${frameCount}`, segment: segment++, is_final: true })

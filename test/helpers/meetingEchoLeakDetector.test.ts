@@ -79,9 +79,9 @@ const CHUNK = 800; // renderer mic chunk = 800 samples @ 24 kHz ≈ 33 ms
 const REF_MS = 1200; // ≥ 800 + 12000 samples so the lag search has a full window
 
 // Feeds `reference` to the detector as system chunks and returns the sample index of the window end.
-function feedReference(detector, reference, startMs = 0) {
+function feedReference(detector: any, reference: string, startMs = 0) {
   const chunks = fx.chunkBuffer(fx.toInt16Buffer(reference), CHUNK);
-  chunks.forEach((chunk: unknown, i) =>
+  chunks.forEach((chunk: unknown, i: any) =>
     detector.recordSystemChunk(chunk, startMs + Math.round((i * CHUNK * 1000) / 24000))
   );
   return reference.length;
@@ -89,7 +89,7 @@ function feedReference(detector, reference, startMs = 0) {
 
 // Mic chunk that "hears" the reference `delayMs` late: the reference slice that
 // ends `delayMs` before the window end.
-function delayedReferenceSlice(reference, delayMs, gain: number) {
+function delayedReferenceSlice(reference: string, delayMs: any, gain: number) {
   const delaySamples = Math.round((delayMs / 1000) * 24000);
   const end = reference.length - delaySamples;
   return fx.scale(reference.subarray(end - CHUNK, end), gain);

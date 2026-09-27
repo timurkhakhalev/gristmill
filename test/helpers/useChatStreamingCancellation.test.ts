@@ -39,7 +39,7 @@ test.after(async () => {
 // hook for real (installHookDom + createRoot) to drive the actual unmount
 // cleanup, whose cancel must persist the partial reply rather than drop it
 // the way an explicit Esc/Stop cancel does.
-function createOpenAiChunk(delta, finishReason = null) {
+function createOpenAiChunk(delta: any, finishReason = null) {
   return {
     id: "chatcmpl-cancellation-test",
     object: "chat.completion.chunk",
@@ -245,7 +245,7 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
   const persisted: unknown[] = [];
   const { captured, getMessages, unmount } = await renderChatStreaming(t, {
     live: true,
-    onStreamComplete: (_id, content: string) => persisted.push(content),
+    onStreamComplete: (_id: any, content: string) => persisted.push(content),
   });
 
   let sendPromise;

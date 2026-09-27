@@ -13,11 +13,11 @@ test("audio timeline records only received PCM and preserves delivery gaps as of
   const first = Buffer.alloc(4_800, 1); // 100 ms at 24 kHz, mono PCM16
   const second = Buffer.alloc(4_800, 2);
 
-  timeline.write(first, (buffer: unknown, sampleOffset: number, capturedAt) => {
+  timeline.write(first, (buffer: unknown, sampleOffset: number, capturedAt: any) => {
     writes.push({ buffer, sampleOffset, capturedAt });
   });
   wallNow += 2_000; // IPC delivery jitter does not synthesize silence.
-  timeline.write(second, (buffer: unknown, sampleOffset: number, capturedAt) => {
+  timeline.write(second, (buffer: unknown, sampleOffset: number, capturedAt: any) => {
     writes.push({ buffer, sampleOffset, capturedAt });
   });
 

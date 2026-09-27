@@ -61,7 +61,7 @@ function createHarness(overrides = {}) {
 
   const deps = {
     whisperManager: {
-      downloadWhisperModel: async (modelName, onProgress: unknown) => {
+      downloadWhisperModel: async (modelName: string, onProgress: unknown) => {
         onProgress({ type: "progress", model: modelName, percentage: 10 });
         return { success: true, model: modelName };
       },

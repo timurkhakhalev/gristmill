@@ -83,7 +83,7 @@ function setup(t: unknown) {
   return { db, audioStorage, handlers };
 }
 
-function audioBackedTranscription(db: any, audioStorage, text: string) {
+function audioBackedTranscription(db: any, audioStorage: any, text: string) {
   const { id } = db.saveTranscription(text);
   const saved = audioStorage.saveAudio(id, Buffer.from(`audio-${text}`));
   assert.equal(saved.success, true);

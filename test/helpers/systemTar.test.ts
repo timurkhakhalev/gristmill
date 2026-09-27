@@ -92,7 +92,7 @@ test("derives tar flags from the archive extension", async () => {
     let args;
     await runSystemTar(`/cache/${archive}`, "/cache/extract", {
       platform: "linux",
-      spawnImpl: (_command, spawnArgs) => {
+      spawnImpl: (_command: any, spawnArgs: any) => {
         args = spawnArgs;
         setImmediate(() => child.emit("close", 0));
         return child;

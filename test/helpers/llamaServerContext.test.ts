@@ -157,7 +157,7 @@ test("other llama-server failures keep their existing shape", async () => {
 // (which can differ from what we asked for), and /apply-template + /tokenize
 // price the real prompt, chat template and all.
 
-function withStubServer(routes) {
+function withStubServer(routes: any) {
   // A Map rather than indexing the object: req.url is request-controlled, so a
   // plain lookup answers /toString or /constructor with an inherited
   // Object.prototype method and then calls it.

@@ -41,7 +41,7 @@ function loadWindowConfig({ platform, environment }) {
 
 const OVERLAY_ROLES = ["main", "notification"];
 
-function resolveAllOverlayTypes(platform: string, session) {
+function resolveAllOverlayTypes(platform: string, session: unknown) {
   return Object.fromEntries(
     OVERLAY_ROLES.map((role) => [
       role,

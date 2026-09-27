@@ -144,7 +144,7 @@ function makeDirectResponse({ statusCode = 200, headers = {}, body = null } = {}
 async function withFakeHttps(handler: unknown, callback: unknown) {
   const original = https.request;
   const calls: unknown[] = [];
-  https.request = (parsed: unknown, options: unknown, responseCallback) => {
+  https.request = (parsed: unknown, options: unknown, responseCallback: any) => {
     calls.push({ method: options.method, url: parsed.href });
     const request = new EventEmitter();
     request.destroy = () => {};
@@ -167,7 +167,7 @@ test("download rejects a HEAD redirect to a private IP", async () => {
 
 test("download rejects a GET redirect to a non-HTTPS URL", async () => {
   await withFakeHttps(
-    (_parsed, options: unknown) => options.method === "HEAD"
+    (_parsed: any, options: unknown) => options.method === "HEAD"
       ? makeDirectResponse({ statusCode: 405 })
       : makeDirectResponse({ statusCode: 302, headers: { location: "http://93.184.216.34/x.mp3" } }),
     async () => assert.rejects(downloader.download("https://93.184.216.34/file.mp3"), { code: "INVALID_URL" })
@@ -183,7 +183,7 @@ test("download rejects a redirect to YouTube", async () => {
 
 test("download validates GET content type when HEAD is unavailable", async () => {
   await withFakeHttps(
-    (_parsed, options: unknown) => options.method === "HEAD"
+    (_parsed: any, options: unknown) => options.method === "HEAD"
       ? makeDirectResponse({ statusCode: 405 })
       : makeDirectResponse({ headers: { "content-type": "text/html" }, body: "<html>" }),
     async () => assert.rejects(downloader.download("https://93.184.216.34/file.mp3"), { code: "CONTENT_TYPE_INVALID" })

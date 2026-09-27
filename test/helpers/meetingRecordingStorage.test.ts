@@ -31,7 +31,7 @@ test("recording epochs append complete PCM frames through short writes", (t: unk
   let writes = 0;
   const storage = new MeetingRecordingStorage({
     userDataPath: root,
-    writeSync(fd, buffer: unknown, offset, length, position) {
+    writeSync(fd: number, buffer: unknown, offset: number, length: number, position: number) {
       writes += 1;
       return fs.writeSync(fd, buffer, offset, Math.min(length, 1), position);
     },
@@ -56,7 +56,7 @@ test("write failure leaves a partial frame that recovery ignores without rewriti
   let calls = 0;
   const storage = new MeetingRecordingStorage({
     userDataPath: root,
-    writeSync(fd, buffer: unknown, offset, length, position) {
+    writeSync(fd: number, buffer: unknown, offset: number, length: number, position: number) {
       calls += 1;
       if (calls > 1) throw new Error("disk full");
       return fs.writeSync(fd, buffer, offset, Math.min(length, 1), position);

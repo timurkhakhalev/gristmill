@@ -6,7 +6,7 @@ const WS = require("ws");
 const load = () => import("../../src/helpers/tinfoilRealtimeStreaming.ts");
 const COMPLETED_EVENT = "conversation.item.input_audio_transcription.completed";
 
-function makeFakeSocket(readyState) {
+function makeFakeSocket(readyState: string) {
   const socket = new EventEmitter();
   socket.readyState = readyState;
   socket.sent = [];
@@ -37,7 +37,7 @@ function sentEvents(socket: unknown, type: string) {
   return socket.sent.map((raw: any) => JSON.parse(raw)).filter((event: unknown) => event.type === type);
 }
 
-function completed(transcript) {
+function completed(transcript: any) {
   return JSON.stringify({ type: COMPLETED_EVENT, transcript });
 }
 
@@ -323,7 +323,7 @@ test("completed re-arms the next buffered turn", (t: unknown) => {
   return (async () => {
     const streaming = await makeConnected();
     const finals: unknown[] = [];
-    streaming.onFinalTranscript = (text) => finals.push(text);
+    streaming.onFinalTranscript = (text: any) => finals.push(text);
 
     streaming.sendAudio(speechPcm());
     t.mock.timers.tick(750);
@@ -345,7 +345,7 @@ test("commit timeout requests recovery without sending a duplicate commit", (t: 
   return (async () => {
     const streaming = await makeConnected();
     const errors: unknown[] = [];
-    streaming.onConnectionLost = (error) => errors.push(error.message);
+    streaming.onConnectionLost = (error: unknown) => errors.push(error.message);
 
     streaming.sendAudio(speechPcm());
     t.mock.timers.tick(750);
@@ -418,7 +418,7 @@ test("disconnect uses one drain deadline across the active turn and its tail", (
     streaming.sendAudio(speechPcm());
 
     let finished = false;
-    const disconnected = streaming.disconnect().then((result) => {
+    const disconnected = streaming.disconnect().then((result: any) => {
       finished = true;
       return result;
     });
@@ -462,8 +462,8 @@ test("provider errors surface and request connection recovery", (t: unknown) => 
     const streaming = await makeConnected();
     const errors: unknown[] = [];
     const recoveries: unknown[] = [];
-    streaming.onError = (error) => errors.push(error.message);
-    streaming.onConnectionLost = (error) => recoveries.push(error.message);
+    streaming.onError = (error: unknown) => errors.push(error.message);
+    streaming.onConnectionLost = (error: unknown) => recoveries.push(error.message);
 
     streaming.sendAudio(speechPcm());
     t.mock.timers.tick(750);

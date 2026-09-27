@@ -109,7 +109,7 @@ class FakeMeetingProcessDetector extends EventEmitter {
     return this.detected.map((processKey: any) => ({ processKey, appName: processKey }));
   }
 
-  endProcess(processKey) {
+  endProcess(processKey: any) {
     this.detected = this.detected.filter((key: string) => key !== processKey);
     this.emit("meeting-process-ended", { processKey, appName: processKey });
   }
@@ -148,7 +148,7 @@ function createEngine(windowManagerOverrides = {}) {
     }
   );
 
-  const micState = (reliable, externalMicActive) =>
+  const micState = (reliable: any, externalMicActive: any) =>
     audioActivityDetector.emit("external-mic-state-changed", { reliable, externalMicActive });
 
   const owner = (messages = []) => ({
@@ -170,7 +170,7 @@ function createEngine(windowManagerOverrides = {}) {
   };
 }
 
-async function triggerOwnershipStop(engineHarness, ownerWebContents) {
+async function triggerOwnershipStop(engineHarness: any, ownerWebContents: any) {
   await engineHarness.engine.beginRecordingSession({
     sessionId: "meeting-1",
     autoEndEligible: true,

@@ -13,7 +13,7 @@ const { createMeetingAudioOperationRegistry } = require("../../src/helpers/meeti
 const DAY = 86_400_000;
 const config = { transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "en" } };
 
-function createFinishedRecording(db: any, storage: unknown, anchor, ageDays) {
+function createFinishedRecording(db: any, storage: unknown, anchor: any, ageDays: any) {
   const note = db.saveNote("Retention test", "Manual note stays", "meeting").note;
   const startedAt = new Date(anchor - (ageDays + 1) * DAY).toISOString();
   const recording = db.createMeetingRecording(note.id, { config }, startedAt);
@@ -56,7 +56,7 @@ function runCleanup(db: any, storage: unknown, settings: unknown, overrides = {}
   return IPCHandlers.prototype._runRetentionCleanup.call(context);
 }
 
-function holdAudioOperation(registry, recordingId: string) {
+function holdAudioOperation(registry: any, recordingId: string) {
   let start: any;
   const started = new Promise((resolve) => { start = resolve; });
   let closed = false;
@@ -172,7 +172,7 @@ test("note deletion waits for the active reader before removing its Note and run
     audioStorageManager: { meetingRecordings: storage },
     _meetingAudioOperations: audioOperations,
     _meetingProcessing: {
-      cancelRecordingForDeletion: async (id: unknown, includeNonAudio) => {
+      cancelRecordingForDeletion: async (id: unknown, includeNonAudio: any) => {
         assert.equal(id, recording.id);
         assert.equal(includeNonAudio, true);
         assert.equal(audioRead.isClosed(), true, "audio operations must settle before Note cleanup proceeds");

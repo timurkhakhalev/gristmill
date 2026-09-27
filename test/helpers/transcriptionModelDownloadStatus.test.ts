@@ -30,7 +30,7 @@ function activeDownload(model: string, overrides = {}) {
   };
 }
 
-function stubMacosVersion(t: unknown, version) {
+function stubMacosVersion(t: unknown, version: any) {
   const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
   const systemVersionDescriptor = Object.getOwnPropertyDescriptor(process, "getSystemVersion");
 

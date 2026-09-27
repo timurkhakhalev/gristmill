@@ -53,7 +53,7 @@ const micReleased = (controller: unknown, sessionId = "s1") =>
 const micAcquired = (controller: unknown, sessionId = "s1") =>
   controller.handleExternalMicState({ sessionId, reliable: true, externalMicActive: true });
 
-const audio = (controller: unknown, micActive, systemActive, sessionId = "s1") =>
+const audio = (controller: unknown, micActive: any, systemActive: any, sessionId = "s1") =>
   controller.handleAudioActivity({ sessionId, micActive, systemActive });
 
 test("ownership: a qualifying mic release stops after the confirm window", () => {

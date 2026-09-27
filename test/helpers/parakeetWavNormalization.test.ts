@@ -75,7 +75,7 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
       return {
         ...ffmpegUtils,
         getFFmpegPath: () => "/mock/ffmpeg",
-        convertToWav: async (_inputPath, outputPath) => {
+        convertToWav: async (_inputPath: any, outputPath: any) => {
           fs.writeFileSync(outputPath, createPcm16Wav(0.5));
         },
       };

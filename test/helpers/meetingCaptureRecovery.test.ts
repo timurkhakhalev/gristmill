@@ -63,7 +63,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
   return { database, storage };
 }
 
-const packet = (epochIndex: number, epochStartFrame, sequence, sampleOffset: number) => ({
+const packet = (epochIndex: number, epochStartFrame: any, sequence: any, sampleOffset: number) => ({
   epochIndex,
   epochStartFrame,
   sequence,

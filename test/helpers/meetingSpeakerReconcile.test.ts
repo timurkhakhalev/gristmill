@@ -59,11 +59,11 @@ Module._load = originalLoad;
 const NOTE_ID = 42;
 const embedding = Array.from({ length: 8 }, (_, i) => (i === 0 ? 1 : 0));
 
-function createMappingRecorder(existingMappings) {
+function createMappingRecorder(existingMappings: any) {
   const calls = { set: [], remove: [] };
   const databaseManager = {
     getSpeakerMappings: () => existingMappings,
-    setSpeakerMapping: (noteId: unknown, speakerId: string, profileId: string, displayName) => {
+    setSpeakerMapping: (noteId: unknown, speakerId: string, profileId: string, displayName: any) => {
       calls.set.push({ noteId, speakerId, profileId, displayName });
     },
     removeSpeakerMapping: (noteId: unknown, speakerId: string) => {
@@ -75,7 +75,7 @@ function createMappingRecorder(existingMappings) {
 
 const fakeEmbeddings = () => ({ cosineSimilarity: () => 0.9 });
 
-function reconcile(databaseManager, liveSpeakerId) {
+function reconcile(databaseManager: any, liveSpeakerId: any) {
   const deps = { databaseManager, speakerEmbeddings: fakeEmbeddings };
   const liveState = {
     [liveSpeakerId]: {
@@ -132,7 +132,7 @@ const THREE_ATTENDEES = [
 // note. Seed the session through the registered session-speaker-config
 // handler and the runtime link, then drive the refresh like the notes
 // vertical does.
-function refreshConfig(explicit, { expectedCount = 2, attendees = THREE_ATTENDEES } = {}) {
+function refreshConfig(explicit: any, { expectedCount = 2, attendees = THREE_ATTENDEES } = {}) {
   const databaseManager = {
     getGoogleAccounts: () => [],
     getNote: () => null,

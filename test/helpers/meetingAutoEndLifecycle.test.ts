@@ -89,11 +89,11 @@ test("main IPC resolves the current engine and scopes both actions to event.send
   );
 
   engine = {
-    completeAutoEndSession: async (sessionId: string, eventSender) => {
+    completeAutoEndSession: async (sessionId: string, eventSender: any) => {
       calls.push(["completed", sessionId, eventSender]);
       return true;
     },
-    respondToAutoEndNotification: (sessionId: string, action: string, eventSender) => {
+    respondToAutoEndNotification: (sessionId: string, action: string, eventSender: any) => {
       calls.push(["respond", sessionId, action, eventSender]);
       return true;
     },

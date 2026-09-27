@@ -5,7 +5,7 @@ const Module = require("node:module");
 const transcriptionModulePath = require.resolve("../../src/helpers/tinfoilTranscription.ts");
 const originalLoad = Module._load;
 
-function loadTranscription(fetchImpl) {
+function loadTranscription(fetchImpl: unknown) {
   delete require.cache[transcriptionModulePath];
 
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {

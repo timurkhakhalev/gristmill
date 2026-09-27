@@ -35,7 +35,7 @@ function startFlow(handleCallback = async () => ({ ok: true })) {
 
   try {
     const flow = runOAuthLoopbackFlow({
-      buildAuthUrl: (uri, flowState) => {
+      buildAuthUrl: (uri: any, flowState: any) => {
         redirectUri = uri;
         state = flowState;
         return "https://example.test/auth";
@@ -74,7 +74,7 @@ function startBlockedFlow() {
   };
 }
 
-function startFlowWithControlledTimeout(handleCallback) {
+function startFlowWithControlledTimeout(handleCallback: any) {
   const originalSetTimeout = global.setTimeout;
   let runFlowTimeout: any;
 
@@ -100,7 +100,7 @@ function startFlowWithControlledTimeout(handleCallback) {
   }
 }
 
-async function waitForListen(getRedirectUri) {
+async function waitForListen(getRedirectUri: any) {
   for (let i = 0; i < 50; i++) {
     if (getRedirectUri()) return getRedirectUri();
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -108,7 +108,7 @@ async function waitForListen(getRedirectUri) {
   throw new Error("loopback server did not start");
 }
 
-function requestPath(redirectUri, path: string) {
+function requestPath(redirectUri: string, path: string) {
   const { hostname, port } = new URL(redirectUri);
   return new Promise((resolve, reject) => {
     const request = http.get(
@@ -122,7 +122,7 @@ function requestPath(redirectUri, path: string) {
   });
 }
 
-async function parkPartialRequest(redirectUri, server: unknown) {
+async function parkPartialRequest(redirectUri: string, server: unknown) {
   const { hostname, port } = new URL(redirectUri);
   let response = "";
   let responseStatus: any;

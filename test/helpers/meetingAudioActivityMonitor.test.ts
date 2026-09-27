@@ -14,7 +14,7 @@ const {
 const START = 1_000_000;
 
 // A constant-amplitude s16le buffer whose RMS is exactly `rms`.
-function pcmAtRms(rms, sampleCount = 800) {
+function pcmAtRms(rms: any, sampleCount = 800) {
   const buffer = Buffer.alloc(sampleCount * 2);
   const amplitude = Math.round(rms * 32768);
   for (let i = 0; i < sampleCount; i += 1) {

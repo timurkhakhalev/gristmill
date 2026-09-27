@@ -19,7 +19,7 @@ function createHarness(overrides = {}) {
     upsertContacts: (contacts: any) => {
       calls.upserts.push(contacts);
     },
-    upsertSpeakerProfile: (displayName, email, embedding, profileId: string) => {
+    upsertSpeakerProfile: (displayName: any, email: any, embedding: any, profileId: string) => {
       const profile = {
         id: 11,
         display_name: displayName,
@@ -44,13 +44,13 @@ function createHarness(overrides = {}) {
     getSpeakerProfiles: () => [
       { id: 11, display_name: "A", email: null, sample_count: 1, created_at: "t", updated_at: "t" },
     ],
-    attachEmailToProfile: (profileId: string, email) => ({
+    attachEmailToProfile: (profileId: string, email: any) => ({
       id: profileId,
       display_name: "A",
       email,
       sample_count: 2,
     }),
-    saveNoteSpeakerEmbeddings: (noteId: unknown, buffers) => {
+    saveNoteSpeakerEmbeddings: (noteId: unknown, buffers: any) => {
       calls.savedEmbeddings.push({ noteId, buffers });
     },
     ...overrides.database,

@@ -39,7 +39,7 @@ class FakeBrowserWindow extends EventEmitter {
 
   setContentProtection() {}
 
-  setIgnoreMouseEvents(ignore, options: unknown) {
+  setIgnoreMouseEvents(ignore: boolean, options: unknown) {
     this.ignoreMouseEvents.push({ ignore, options });
   }
 
@@ -154,7 +154,7 @@ Module._load = function loadWindowManagerWithStubs(request: string, parent: unkn
         data?.kind === "auto-end" ? autoEndSize : detectionSize,
       WINDOW_SIZES: {},
       WindowPositionUtil: {
-        getNotificationPosition: (_display, size = detectionSize) => ({
+        getNotificationPosition: (_display: unknown, size = detectionSize) => ({
           ...size,
           x: 1000 - size.width,
           y: 16,

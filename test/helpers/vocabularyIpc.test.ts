@@ -36,7 +36,7 @@ test.before(async () => {
   ({ registerVocabularyHandlers } = await import("../../src/helpers/vocabularyIpcHandlers.ts"));
 });
 
-function setup(database) {
+function setup(database: any) {
   handlers.clear();
   sent = [];
   registerVocabularyHandlers(
@@ -227,7 +227,7 @@ test("registrations are isolated per call and do not share broadcast state", asy
   sent = [];
   const first = new Map();
   const second = new Map();
-  const register = (map, words) => registerVocabularyHandlers(
+  const register = (map: any, words: any) => registerVocabularyHandlers(
     { handle: (channel: string, handler: unknown) => map.set(channel, handler) },
     { database: { ...fakeDb(), getDictionary: () => words }, debugLogger: { debug() {}, warn() {}, error() {} } }
   );

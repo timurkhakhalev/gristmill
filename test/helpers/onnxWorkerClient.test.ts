@@ -12,7 +12,7 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
   const state = { children: [], forkCalls: 0 };
 
   class FakePort extends EventEmitter {
-    constructor(peer) {
+    constructor(peer: any) {
       super();
       this.peer = peer;
       this.closed = false;
@@ -45,7 +45,7 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
     child.kill = () => {
       child.killCalls += 1;
     };
-    child.postMessage = (_message, [port]) => {
+    child.postMessage = (_message: any, [port]) => {
       port.on("message", ({ data }) => {
         if (exitOnShutdown && data?.method === "shutdown") {
           setImmediate(() => child.emit("exit", 0));
@@ -63,7 +63,7 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
   return state;
 }
 
-function loadClient(runtime) {
+function loadClient(runtime: any) {
   delete require.cache[clientModulePath];
   Module._load = function (request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") {
@@ -87,7 +87,7 @@ function loadClient(runtime) {
 
 // Waits until the spawned client has its port, then hands the test a
 // deliver() that injects a reply as if the worker sent it.
-function whenPortReady(client) {
+function whenPortReady(client: any) {
   return new Promise((resolve, reject) => {
     const poll = setInterval(() => {
       if (client.port) {

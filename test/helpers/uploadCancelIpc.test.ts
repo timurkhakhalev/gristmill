@@ -111,7 +111,7 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
     readFile: () => Buffer.alloc(64),
     fileSize: () => 64,
     providerBaseUrls: () => [],
-    postMultipart: (_url: string, _body, _boundary, _headers, options: unknown) => hangOnSignal(options),
+    postMultipart: (_url: string, _body: any, _boundary: any, _headers: any, options: unknown) => hangOnSignal(options),
     transcribeWithTinfoil: async () => ({ text: "t" }),
     transcribeGeminiFile: async () => ({ success: true, text: "t" }),
     transcribeWithCorti: async () => ({ text: "t" }),
@@ -128,14 +128,14 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
   registerFileDiarizationHandlers(ipcMain, {
     diarizationManager: {
       isModelDownloaded: () => true,
-      diarize: (_wavPath, options: unknown) =>
+      diarize: (_wavPath: any, options: unknown) =>
         new Promise((resolve) => {
           options.signal?.addEventListener("abort", () => resolve([]), { once: true });
         }),
       capSpeakerClusters: (segments: any) => segments,
     },
     resolveAllowedAudioPath: () => audioFile,
-    convertToWav: async (_i, _o, options: unknown) => {
+    convertToWav: async (_i: any, _o: any, options: unknown) => {
       await new Promise((resolve) => setImmediate(resolve));
       if (options.signal?.aborted) {
         const error = new Error("Aborted");

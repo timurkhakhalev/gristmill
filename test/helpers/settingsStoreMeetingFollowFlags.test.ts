@@ -46,7 +46,7 @@ const LATCHED_LOCAL = {
   noteFormattingProvider: "llama",
 };
 
-const meetingRoute = (mod, state: unknown) => {
+const meetingRoute = (mod: any, state: unknown) => {
   const resolved = mod.selectResolvedMeetingTranscription(state);
   return resolveMeetingTranscriptionOptions({
     transcriptionMode: resolved.transcriptionMode,

@@ -63,7 +63,7 @@ function loadModelManager({ downloadFile, checkDiskSpace } = {}) {
 
 // The production registration moved behind the typed handler module; drive
 // it directly instead of slicing the handler source out of ipcHandlers.js.
-async function loadModelDownloadHandler(modelManager) {
+async function loadModelDownloadHandler(modelManager: any) {
   const events: unknown[] = [];
   const status = new LocalModelDownloadStatus();
   const handlers = new Map();
@@ -357,7 +357,7 @@ test("parallel downloads reserve their combined disk space", async (t: unknown) 
     firstStarted = resolve;
   });
   const modelManager = loadModelManager({
-    checkDiskSpace: async (_directory, requiredBytes) => ({
+    checkDiskSpace: async (_directory: any, requiredBytes: any) => ({
       ok: requiredBytes <= availableBytes,
       availableBytes,
     }),

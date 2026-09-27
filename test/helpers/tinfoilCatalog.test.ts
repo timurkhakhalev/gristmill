@@ -5,7 +5,7 @@ const Module = require("node:module");
 const catalogModulePath = require.resolve("../../src/helpers/tinfoilCatalog.ts");
 const originalLoad = Module._load;
 
-function loadCatalog(fetchImpl) {
+function loadCatalog(fetchImpl: unknown) {
   delete require.cache[catalogModulePath];
 
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {

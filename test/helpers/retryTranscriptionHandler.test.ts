@@ -419,11 +419,11 @@ function mockHttpsUpload({ onRequest }) {
     const { EventEmitter } = require("node:events");
     const request = new EventEmitter();
     const uploaded: unknown[] = [];
-    request.write = (chunk: unknown, _encoding, cb: unknown) => {
+    request.write = (chunk: unknown, _encoding: any, cb: unknown) => {
       uploaded.push(Buffer.from(chunk));
       cb?.();
     };
-    request.end = (tail: unknown, _cb) => {
+    request.end = (tail: unknown, _cb: any) => {
       // The multipart footer rides on end() in postRawAudioFile.
       if (tail) uploaded.push(Buffer.from(tail));
       queueMicrotask(() => {

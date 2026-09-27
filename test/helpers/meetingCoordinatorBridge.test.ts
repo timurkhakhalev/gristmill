@@ -25,7 +25,7 @@ const electronStub = {
 
 const originalLoad = Module._load;
 
-function registerRealHandlers(deps) {
+function registerRealHandlers(deps: any) {
   Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") return electronStub;
     if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
@@ -201,7 +201,7 @@ test("command shapes cross the bundled preload and results are passed through", 
 test("capture send crosses with source and sequencing metadata and returns its write acknowledgement", async () => {
   const { api, invoked } = await createFixture({
     responses: {
-      "meeting-transcription-send": (_buffer: unknown, _source, _sessionId, packet) => ({
+      "meeting-transcription-send": (_buffer: unknown, _source: any, _sessionId: any, packet: any) => ({
         success: true,
         sequence: packet.sequence,
       }),

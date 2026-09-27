@@ -199,7 +199,7 @@ function buildHarness({ failWrite = false } = {}) {
   return { runtime, handlers, listeners, events, databaseManager, meetingRecordingStorage, tokenCalls: () => tokenCalls, asrCalls: () => asrCalls, engine };
 }
 
-const invoke = (harness, channel: string, ...args) => harness.handlers.get(channel)(...args);
+const invoke = (harness: unknown, channel: string, ...args) => harness.handlers.get(channel)(...args);
 const START = {
   noteId: 11,
   sessionId: "session-m2",

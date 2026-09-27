@@ -12,7 +12,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
   let tempRoot: any;
   let mockedHome: any;
 
-  function loadFresh(homeDir) {
+  function loadFresh(homeDir: any) {
     mockedHome = homeDir;
     Module._load = function loadWithElectronStub(request: string, parent: unknown, isMain: boolean) {
       if (request === "electron") {
@@ -44,14 +44,14 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     return { home, legacyRoot, redirectedRoot };
   }
 
-  function writeModel(directory: string, name: string, contents) {
+  function writeModel(directory: string, name: string, contents: any) {
     fs.mkdirSync(directory, { recursive: true });
     const filePath = path.join(directory, name);
     fs.writeFileSync(filePath, contents);
     return filePath;
   }
 
-  function withFsOverrides(overrides, callback: unknown) {
+  function withFsOverrides(overrides: any, callback: unknown) {
     const originals = Object.fromEntries(
       Object.keys(overrides).map((method) => [method, fs[method]])
     );

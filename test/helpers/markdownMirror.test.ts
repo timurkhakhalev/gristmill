@@ -206,7 +206,7 @@ test("renaming a mirrored note cleans up both stale files and reveals the note",
   assert.match(fs.readFileSync(notePath, "utf-8"), /Updated notes$/);
 });
 
-function readFrontmatter(fileContent) {
+function readFrontmatter(fileContent: any) {
   const match = fileContent.match(/^---\n([\s\S]*?)\n---\n/);
   assert.ok(match, "file should start with a --- fenced frontmatter block");
   const map = {};

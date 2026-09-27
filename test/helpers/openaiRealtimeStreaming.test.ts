@@ -5,7 +5,7 @@ const WS = require("ws");
 
 const load = () => import("../../src/helpers/openaiRealtimeStreaming.ts");
 
-function makeFakeSocket(readyState) {
+function makeFakeSocket(readyState: string) {
   const socket = new EventEmitter();
   socket.readyState = readyState;
   socket.sent = [];
@@ -973,7 +973,7 @@ test("gpt-live-transcribe stop outlives the legacy 3 s commit budget; legacy kee
     const OpenAIRealtimeStreaming = (await load()).default;
     const settle = async () => new Promise((resolve) => setImmediate(resolve));
 
-    const live = new OpenAIRealtimeStreaming();
+    const live = new (OpenAIRealtimeStreaming as unknown as new () => any)();
     const liveSocket = makeFakeSocket(WS.CONNECTING);
     await connectByok(live, liveSocket, { model: "gpt-live-transcribe" });
     live.sendAudio(Buffer.alloc(4800, 1));
@@ -989,7 +989,7 @@ test("gpt-live-transcribe stop outlives the legacy 3 s commit budget; legacy kee
     liveSocket.emit("message", completedEvent("late tail"));
     assert.equal((await liveDisconnect).text, "late tail");
 
-    const legacy = new OpenAIRealtimeStreaming();
+    const legacy = new (OpenAIRealtimeStreaming as unknown as new () => any)();
     const legacySocket = makeFakeSocket(WS.CONNECTING);
     await connectByok(legacy, legacySocket, { model: "gpt-4o-mini-transcribe" });
     legacy.sendAudio(Buffer.alloc(4800, 1));
@@ -1096,7 +1096,7 @@ test("direct sessions keep the requested model and send session.update", async (
   streaming.cleanup();
 
   // Bare mocks still use the caller's direct model.
-  const bare = new OpenAIRealtimeStreaming();
+  const bare = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   await connectDirect(bare, makeFakeSocket(WS.CONNECTING));
   assert.equal(bare.model, "gpt-4o-mini-transcribe");
   bare.cleanup();

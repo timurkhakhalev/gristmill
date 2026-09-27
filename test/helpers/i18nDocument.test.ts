@@ -17,7 +17,7 @@ function createI18n(language: string) {
       assert.equal(event, "languageChanged");
       listeners.delete(listener);
     },
-    emit(nextLanguage) {
+    emit(nextLanguage: any) {
       this.language = nextLanguage;
       this.resolvedLanguage = nextLanguage;
       for (const listener of listeners) listener(nextLanguage);

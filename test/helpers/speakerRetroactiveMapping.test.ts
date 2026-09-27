@@ -50,16 +50,16 @@ function createDb(t: unknown) {
 }
 
 // Float32-LE buffers, the storage format the retroactive path reads back.
-function embedding(values) {
+function embedding(values: any) {
   return Buffer.from(new Float32Array(values).buffer);
 }
 
-async function runRetroactive(db: any, profile) {
+async function runRetroactive(db: any, profile: any) {
   Ctor.prototype._retroactiveMapping.call({ databaseManager: db }, profile);
   await new Promise((resolve) => setImmediate(() => setTimeout(resolve, 0)));
 }
 
-function unmappedNote(db: any, transcriptSegments, embeddingValues, speakerId = "SPEAKER_00") {
+function unmappedNote(db: any, transcriptSegments: any, embeddingValues: any, speakerId = "SPEAKER_00") {
   const { note } = db.saveNote("Meeting", "content");
   db.setSpeakerMapping(note.id, speakerId, null, speakerId);
   if (transcriptSegments) {

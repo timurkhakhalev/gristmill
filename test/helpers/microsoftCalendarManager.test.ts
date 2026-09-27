@@ -155,7 +155,7 @@ test("_mapEvent falls back to a meeting link found in location or body text", ()
   assert.equal(mapped.attendees, null);
 });
 
-function createManager(MicrosoftCalendarManager, upserted, contacts = [], overrides = {}) {
+function createManager(MicrosoftCalendarManager: any, upserted: any, contacts = [], overrides = {}) {
   return new MicrosoftCalendarManager(
     {
       removeStaleCalendarEvents: () => {},
@@ -184,7 +184,7 @@ test("_syncCalendar backfills stripped recurring occurrences from their series m
   const contacts: unknown[] = [];
   const tokenWrites: unknown[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted, contacts, {
-    updateMicrosoftCalendarSyncToken: (id: unknown, token: string, expiresAt) =>
+    updateMicrosoftCalendarSyncToken: (id: unknown, token: string, expiresAt: number) =>
       tokenWrites.push({ id, token, expiresAt }),
   });
 
@@ -268,7 +268,7 @@ test("_syncCalendar shortens the delta token TTL when a master fetch fails", asy
   const upserted: unknown[] = [];
   const tokenWrites: unknown[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted, [], {
-    updateMicrosoftCalendarSyncToken: (id: unknown, token: string, expiresAt) =>
+    updateMicrosoftCalendarSyncToken: (id: unknown, token: string, expiresAt: number) =>
       tokenWrites.push({ id, token, expiresAt }),
   });
 
@@ -296,7 +296,7 @@ test("_syncCalendar keeps the stored row when a stripped occurrence's master fet
   const staleKeepLists: unknown[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted, [], {
     getCalendarEventById: (id: unknown) => (id === "occ-1" ? { id, summary: "Standup" } : null),
-    removeStaleCalendarEvents: (_provider, _calendarId, keepIds) => staleKeepLists.push(keepIds),
+    removeStaleCalendarEvents: (_provider: any, _calendarId: any, keepIds: any) => staleKeepLists.push(keepIds),
   });
 
   manager._apiGet = async (url: string) => {

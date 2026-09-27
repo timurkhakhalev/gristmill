@@ -363,7 +363,7 @@ test("bedrock cleanup keeps the retry policy with nested retries disabled", asyn
 
 // --- Enterprise streams ------------------------------------------------------
 
-function streamSetup(modelParts, overrides = {}) {
+function streamSetup(modelParts: any, overrides = {}) {
   const { deps, handlers, listeners } = setup({
     deps: {
       getEnterpriseAIModel: async () => ({

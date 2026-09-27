@@ -142,7 +142,7 @@ function setup(t: unknown, options = {}) {
   }
   const manager = new ParakeetManager();
   let extracts = 0;
-  manager._runTarExtract = async (_archive, destination: string) => {
+  manager._runTarExtract = async (_archive: any, destination: string) => {
     extracts++;
     if (options.extractionError || (options.retryExtraction && extracts === 1))
       throw new Error("bad archive");

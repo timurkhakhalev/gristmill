@@ -27,7 +27,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
     const real = originalLoad.call(this, request, parent, isMain);
     return {
       ...real,
-      downloadFile: async (url: string, dest) => {
+      downloadFile: async (url: string, dest: string) => {
         downloadCalls++;
         assert.match(url, /ggml-silero/);
         fs.mkdirSync(path.dirname(dest), { recursive: true });

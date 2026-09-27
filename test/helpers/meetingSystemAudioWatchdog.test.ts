@@ -65,7 +65,7 @@ const createHarness = ({ startImpl, stopImpl } = {}) => {
 };
 
 // Real ordering: attach, arm, then the first chunk proves the stream delivers.
-const startNative = (harness, { deliver = true } = {}) => {
+const startNative = (harness: unknown, { deliver = true } = {}) => {
   harness.attach();
   harness.watchdog.start({ systemAudioStrategy: "native", watchesDelivery: true });
   if (deliver) harness.deliver(true);

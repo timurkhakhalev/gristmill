@@ -83,10 +83,10 @@ async function createFixture(t: unknown) {
 
   const effects = { mirrorWrites: [], autoLabels: [], speakerRefreshes: [] };
   const deps = {
-    saveNote: (title, content: string, noteType, sourceFile, audioDuration, folderId: unknown, spaceId: unknown) =>
+    saveNote: (title: any, content: string, noteType: string, sourceFile: any, audioDuration: any, folderId: unknown, spaceId: unknown) =>
       db.saveNote(title, content, noteType, sourceFile, audioDuration, folderId, spaceId),
     getNote: (id: unknown) => db.getNote(id),
-    getNotes: (noteType, limit: number, folderId: unknown, spaceId: unknown) =>
+    getNotes: (noteType: string, limit: number, folderId: unknown, spaceId: unknown) =>
       db.getNotes(noteType, limit, folderId, spaceId),
     getNotesForSpace: (spaceId: unknown, limit: number) => db.getNotesForSpace(spaceId, limit),
     updateNote: (id: unknown, updates: unknown) => db.updateNote(id, updates),

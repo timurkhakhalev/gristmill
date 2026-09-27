@@ -10,7 +10,7 @@ const path = require("node:path");
 
 const ROOT = path.join(__dirname, "..", "..");
 
-function compileWithProbe(probeSource, probeName, mutateSources) {
+function compileWithProbe(probeSource: any, probeName: any, mutateSources: any) {
   const configPath = path.join(ROOT, "tsconfig.settings-selectors.json");
   const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, ROOT);
@@ -24,7 +24,7 @@ function compileWithProbe(probeSource, probeName, mutateSources) {
   if (mutateSources) mutateSources(virtualFiles);
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
-  host.getSourceFile = (file: string, languageVersion: number, onError, shouldCreate, ...rest) => {
+  host.getSourceFile = (file: string, languageVersion: number, onError: any, shouldCreate: any, ...rest) => {
     const relative = path.relative(ROOT, file).split(path.sep).join("/");
     if (file === probe) {
       return ts.createSourceFile(file, probeSource, languageVersion, true);

@@ -450,13 +450,13 @@ test("each registration owns its pending downloads", async (t: unknown) => {
   let firstSignal;
   let secondSignal;
   register(a, {
-    download: (_url: string, _progress, signal: unknown) => { firstSignal = signal; return first.promise; },
+    download: (_url: string, _progress: any, signal: unknown) => { firstSignal = signal; return first.promise; },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },
   });
   register(b, {
-    download: (_url: string, _progress, signal: unknown) => { secondSignal = signal; return second.promise; },
+    download: (_url: string, _progress: any, signal: unknown) => { secondSignal = signal; return second.promise; },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },

@@ -22,7 +22,7 @@ function installNavigatorLanguage(t: unknown, language: string) {
   });
 }
 
-function loadEnvironmentManager(t: unknown, userDataDirectory) {
+function loadEnvironmentManager(t: unknown, userDataDirectory: any) {
   const originalLoad = Module._load;
   const environmentPath = require.resolve("../../src/helpers/environment");
   delete require.cache[environmentPath];

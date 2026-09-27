@@ -10,7 +10,7 @@ const modelData = require("../../src/models/modelRegistryData.json");
 // requests (post-cutover specifiers carry a .js extension) route through
 // Module._load. Mock keys stay extensionless; the hook strips the emitted
 // ".js" suffix before matching.
-function loadHelper(name: string, mocks) {
+function loadHelper(name: string, mocks: any) {
   const filename = require.resolve(`../../src/helpers/${name}`);
   const originalLoad = Module._load;
   const mockFor = (request: string) => {
@@ -30,14 +30,14 @@ function loadHelper(name: string, mocks) {
   }
 }
 
-async function startupArgs(modelName, runtime = "offline", language = null, registry = modelData) {
+async function startupArgs(modelName: string, runtime = "offline", language = null, registry = modelData) {
   const calls: unknown[] = [];
   const modelInfo = loadHelper("parakeetModelInfo", {
     "../models/modelRegistryData.json": registry,
   });
   const Server = loadHelper("parakeetWsServer", {
     child_process: {
-      spawn: (binary, args: unknown) => {
+      spawn: (binary: any, args: unknown) => {
         calls.push({ binary, args: Array.from(args) });
         const child = new EventEmitter();
         child.stdout = new EventEmitter();

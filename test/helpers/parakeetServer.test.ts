@@ -7,8 +7,8 @@ const SAMPLE_RATE = 16000;
 const SEGMENT_BYTES = 15 * SAMPLE_RATE * 4; // float32, mirrors MAX_SEGMENT_SECONDS
 
 // Minimal 16kHz mono 16-bit WAV so _ensureWav uses the buffer as-is (no FFmpeg).
-function wavFromSeconds(spans) {
-  const totalSamples = spans.reduce((sum: number, span) => sum + span.seconds * SAMPLE_RATE, 0);
+function wavFromSeconds(spans: any) {
+  const totalSamples = spans.reduce((sum: number, span: any) => sum + span.seconds * SAMPLE_RATE, 0);
   const dataSize = totalSamples * 2;
   const buf = Buffer.alloc(44 + dataSize);
   buf.write("RIFF", 0);
@@ -35,12 +35,12 @@ function wavFromSeconds(spans) {
   return buf;
 }
 
-function fakeWsServer(responses, { onCall } = {}) {
+function fakeWsServer(responses: any, { onCall } = {}) {
   const calls: unknown[] = [];
   return {
     calls,
     async start() {},
-    async transcribe(samplesBuffer) {
+    async transcribe(samplesBuffer: any) {
       calls.push(samplesBuffer.length);
       const next = responses.shift();
       assert.ok(next, "unexpected extra transcribe call");
@@ -55,7 +55,7 @@ function isAbortError(err: unknown) {
   return true;
 }
 
-function managerWith(fake) {
+function managerWith(fake: any) {
   const manager = new ParakeetServerManager();
   manager.isModelDownloaded = () => true;
   manager.wsServer = fake;

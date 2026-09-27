@@ -67,7 +67,7 @@ function workerFor(db: any, storage: unknown, overrides = {}) {
     diarizeLocal: async () => [],
     summarize: async () => "## Summary\n- A useful result.",
     getCredential: () => "test-key",
-    mixAudio: async (recording, runId: string) => ({
+    mixAudio: async (recording: unknown, runId: string) => ({
       path: storage.getDerivedAudioPath(recording.id, runId),
       frameCount: 24_000,
       durationSeconds: 1,
@@ -98,7 +98,7 @@ test("paused audio parts produce one persisted whole-meeting run and one ASR req
   let asrCalls = 0;
   let mixed;
   const worker = workerFor(db, storage, {
-    mixAudio: async (recording, runId: string, epochs) => {
+    mixAudio: async (recording: unknown, runId: string, epochs: any) => {
       mixed = { recording, epochs };
       return { path: storage.getDerivedAudioPath(recording.id, runId), frameCount: 48_000, durationSeconds: 2, sizeBytes: 4096 };
     },
@@ -790,7 +790,7 @@ test("a bb summary resumes its saved thread after process restart without repeat
   let agentCalls = 0;
   const worker = workerFor(db, storage, {
     transcribeRemote: async () => { asrCalls++; throw new Error("ASR must not repeat"); },
-    summarizeAgent: async (input: string, summaryConfig, savedRun) => {
+    summarizeAgent: async (input: string, summaryConfig: any, savedRun: any) => {
       agentCalls++;
       assert.match(input, /Saved transcript/);
       assert.equal(summaryConfig.agentProvider, "codex");
@@ -865,7 +865,7 @@ test("provider size limits block only that run and another provider keeps its ow
   const { recording, run: deepgramRun } = createFinishedRecording(db, storage, deepgramConfig);
   let requests = 0;
   const worker = workerFor(db, storage, {
-    mixAudio: async (recordingValue, runId: string) => ({
+    mixAudio: async (recordingValue: any, runId: string) => ({
       path: storage.getDerivedAudioPath(recordingValue.id, runId),
       frameCount: 24_000,
       durationSeconds: 1,
@@ -916,7 +916,7 @@ test("rate limits allow three persisted automatic retries then manual retry star
   let transcribeCalls = 0;
   const worker = workerFor(db, storage, {
     now: () => new Date(now),
-    setTimeout: (_callback, milliseconds) => {
+    setTimeout: (_callback: any, milliseconds: any) => {
       backoffs.push(milliseconds);
       return backoffs.length;
     },
@@ -1069,7 +1069,7 @@ test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration",
           assert.equal(fs.statSync(directory).isDirectory(), true);
           return 1_000_000;
         },
-        spawn: (_command, args: unknown) => {
+        spawn: (_command: any, args: unknown) => {
           argsSeen = args;
           queueMicrotask(() => {
             writePcmWav(args.at(-1), 24);

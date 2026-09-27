@@ -10,12 +10,14 @@ const CLOUD_CHAT_PROVIDERS = new Set([
 ]);
 
 export type ChatRoute =
+  | { kind: "agent"; baseUrl: string; apiKey: string }
   | { kind: "self-hosted"; baseUrl: string; apiKey: string }
   | { kind: "enterprise"; baseUrl: string; apiKey: string }
   | { kind: "local"; baseUrl: string; apiKey: string }
   | { kind: "provider"; baseUrl: string; apiKey: string };
 
 export interface ChatRouteInput {
+  mode?: string | null;
   provider?: string | null;
   lanUrl?: string | null;
   customApiKey?: string | null;
@@ -25,11 +27,13 @@ export interface ChatRouteInput {
 // Resolve Chat from Chat-owned settings only. In particular, this must never
 // consult Dictation Cleanup's mode or endpoint.
 export function resolveChatRoute({
+  mode,
   provider,
   lanUrl,
   customApiKey,
   isEnterpriseProvider = false,
 }: ChatRouteInput): ChatRoute {
+  if (mode === "agent") return { kind: "agent", baseUrl: "", apiKey: "" };
   // An explicit self-hosted URL is the caller's declared route — it wins even
   // over a stale enterprise provider id left in settings.
   const baseUrl = lanUrl?.trim() || "";

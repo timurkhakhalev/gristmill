@@ -154,10 +154,12 @@ export function useChatStreaming({
       };
       const settings = getSettings();
       const llmConfig = selectResolvedLLMConfig(settings, "chatIntelligence");
+      const isBbAgent = llmConfig.mode === "agent";
       setAgentState("thinking");
       const isLanAgent = llmConfig.mode === "self-hosted" && !!llmConfig.remoteUrl;
       const isCustomAgent = llmConfig.mode === "providers" && llmConfig.provider === "custom";
       const isLocalProvider =
+        !isBbAgent &&
         !isEnterpriseProvider(llmConfig.provider) &&
         ![
           "openai",
@@ -171,7 +173,7 @@ export function useChatStreaming({
         ].includes(llmConfig.provider);
       const localModelCanUseTool =
         isLocalProvider && estimateModelSizeB(llmConfig.model) >= LOCAL_TOOL_MIN_PARAMS_B;
-      const supportsTools = !isLocalProvider || localModelCanUseTool;
+      const supportsTools = !isBbAgent && (!isLocalProvider || localModelCanUseTool);
 
       const scope = searchScopeRef.current;
       let registry: ToolRegistry | null = null;
@@ -234,11 +236,18 @@ export function useChatStreaming({
         const aiTools = registry?.toAISDKFormat();
         stream = ReasoningService.processTextStreamingAI(
           llmMessages,
-          llmConfig.model,
-          llmConfig.provider,
+          isBbAgent ? llmConfig.agentModel || "" : llmConfig.model,
+          isBbAgent ? "bb" : llmConfig.provider,
           {
             systemPrompt,
             inferenceScope: llmConfig.scope,
+            ...(isBbAgent ? {
+              agentSelection: {
+                provider: llmConfig.agentProvider || "",
+                model: llmConfig.agentModel || "",
+                reasoningLevel: llmConfig.agentReasoningLevel || "",
+              },
+            } : {}),
             lanUrl: isLanAgent ? llmConfig.remoteUrl : undefined,
             baseUrl: isCustomAgent ? llmConfig.cloudBaseUrl || undefined : undefined,
             customApiKey:

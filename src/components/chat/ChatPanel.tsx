@@ -6,6 +6,7 @@ import { IconTooltip } from "../ui/IconTooltip";
 import { cn } from "../lib/utils";
 import { ChatMessages } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
+import ChatModelPicker from "./ChatModelPicker";
 import { ConversationPicker } from "./ConversationPicker";
 import type { Message, AgentState } from "./types";
 import type { ConversationRow } from "../../contracts/chatPersistence";
@@ -101,6 +102,7 @@ export default function ChatPanel({
         />
       )}
       <div className="flex-1" />
+      <ChatModelPicker disabled={agentState !== "idle"} />
       <div className="flex items-center gap-0.5">
         {onNewChat && (
           <HeaderButton label={t("embeddedChat.newChat")} onPress={onNewChat}>

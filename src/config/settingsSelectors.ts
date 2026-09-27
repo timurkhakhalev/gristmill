@@ -98,6 +98,9 @@ export interface ResolvedNoteFormatting {
   cloudBaseUrl: string;
   remoteUrl: string;
   customApiKey: string;
+  agentProvider?: string;
+  agentModel?: string;
+  agentReasoningLevel?: string;
 }
 
 export const selectResolvedNoteFormatting = (state: InferenceSettingsSnapshot): ResolvedNoteFormatting => {
@@ -121,6 +124,9 @@ export const selectResolvedNoteFormatting = (state: InferenceSettingsSnapshot): 
     cloudBaseUrl: cfg.cloudBaseUrl || "",
     remoteUrl: cfg.remoteUrl || "",
     customApiKey: cfg.customApiKey || (borrowsEndpoint ? cleanup.customApiKey || "" : ""),
+    agentProvider: cfg.agentProvider,
+    agentModel: cfg.agentModel,
+    agentReasoningLevel: cfg.agentReasoningLevel,
   };
 };
 
@@ -134,6 +140,9 @@ export interface ResolvedLLMConfig {
   remoteUrl?: string;
   customApiKey?: string;
   disableThinking: boolean;
+  agentProvider?: string;
+  agentModel?: string;
+  agentReasoningLevel?: string;
 }
 
 export const selectResolvedLLMConfig = (
@@ -146,7 +155,7 @@ export const selectResolvedLLMConfig = (
     : undefined;
 
 
-  const readString = (field: "provider" | "model" | "cloudMode" | "cloudBaseUrl" | "remoteUrl" | "customApiKey"): string | undefined => {
+  const readString = (field: "provider" | "model" | "cloudMode" | "cloudBaseUrl" | "remoteUrl" | "customApiKey" | "agentProvider" | "agentModel" | "agentReasoningLevel"): string | undefined => {
     const key = def.storeKeys[field];
     if (!key) return undefined;
     return state[key] || undefined;
@@ -168,6 +177,9 @@ export const selectResolvedLLMConfig = (
     // belongs on the request path — see selectResolvedNoteFormatting.
     customApiKey: readString("customApiKey"),
     disableThinking,
+    agentProvider: readString("agentProvider"),
+    agentModel: readString("agentModel"),
+    agentReasoningLevel: readString("agentReasoningLevel"),
   };
   return localConfig;
 };

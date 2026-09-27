@@ -1,0 +1,29 @@
+import { bbChannels, bbModelSchema, bbProviderSchema, bbStreamEnvelopeSchema, type BbApi, type BbSelection } from "../contracts/bb.js";
+import { z } from "zod";
+
+interface IpcRendererLike {
+  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+  on(channel: string, listener: (event: unknown, payload: unknown) => void): void;
+  removeListener(channel: string, listener: (event: unknown, payload: unknown) => void): void;
+}
+
+export function createBbBridge(ipc: IpcRendererLike): BbApi {
+  return {
+    bbCatalog: async () => z.array(bbProviderSchema).parse(await ipc.invoke(bbChannels.catalog)),
+    bbModels: async (provider) => z.array(bbModelSchema).parse(await ipc.invoke(bbChannels.models, provider)),
+    bbStreamStart: async (request) => { await ipc.invoke(bbChannels.streamStart, request); },
+    bbStreamCancel: async (streamId) => { await ipc.invoke(bbChannels.streamCancel, streamId); },
+    onBbStreamPart: (callback) => {
+      const listener = (_event: unknown, payload: unknown) => {
+        const parsed = bbStreamEnvelopeSchema.safeParse(payload);
+        if (parsed.success) callback(parsed.data);
+      };
+      ipc.on(bbChannels.streamPart, listener);
+      return () => ipc.removeListener(bbChannels.streamPart, listener);
+    },
+    bbGenerate: async (prompt: string, selection: BbSelection) => {
+      const result = await ipc.invoke(bbChannels.generate, prompt, selection);
+      return z.string().parse(result);
+    },
+  };
+}

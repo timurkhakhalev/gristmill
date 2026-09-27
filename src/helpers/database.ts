@@ -176,6 +176,7 @@ interface MeetingProcessingRunDbRow {
   source_recording_ids_json: string | null;
   kind: "initial" | "reprocess" | "summary";
   source_run_id: string | null;
+  bb_thread_id: string | null;
   provider: string | null;
   model: string | null;
   config_json: string | null;
@@ -518,6 +519,7 @@ function toMeetingRunDto(row: MeetingProcessingRunDbRow): MeetingProcessingRunDt
     sourceRecordingIds: row.source_recording_ids_json ? JSON.parse(row.source_recording_ids_json) : [row.recording_id],
     kind: row.kind,
     sourceRunId: row.source_run_id,
+    bbThreadId: row.bb_thread_id,
     provider: row.provider,
     model: row.model,
     config: parseConfig(row.config_json),
@@ -722,6 +724,7 @@ export class DatabaseManager {
           source_recording_ids_json TEXT,
           kind TEXT NOT NULL CHECK(kind IN ('initial', 'reprocess', 'summary')),
           source_run_id TEXT REFERENCES meeting_processing_runs(id) ON DELETE SET NULL,
+          bb_thread_id TEXT,
           provider TEXT,
           model TEXT,
           config_json TEXT,
@@ -939,6 +942,9 @@ export class DatabaseManager {
         this.sql.exec("ALTER TABLE meeting_recordings ADD COLUMN group_id TEXT");
       }
       const runColumns = this.sql.pragma("table_info(meeting_processing_runs)") as Array<{ name: string }>;
+      if (!runColumns.some((column) => column.name === "bb_thread_id")) {
+        this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN bb_thread_id TEXT");
+      }
       if (!runColumns.some((column) => column.name === "source_recording_ids_json")) {
         this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN source_recording_ids_json TEXT");
       }
@@ -1326,6 +1332,15 @@ export class DatabaseManager {
       | MeetingProcessingRunDbRow
       | undefined;
     return row ? toMeetingRunDto(row) : null;
+  }
+
+  setMeetingRunBbThreadId(id: string, bbThreadId: string): boolean {
+    meetingRecordingIdSchema.parse(id);
+    if (!/^thr_[a-z0-9]+$/.test(bbThreadId)) throw new Error("Invalid bb thread id");
+    const result = this.sql.prepare(
+      "UPDATE meeting_processing_runs SET bb_thread_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND stage = 'summary' AND status = 'running' AND bb_thread_id IS NULL"
+    ).run(bbThreadId, id);
+    return result.changes === 1;
   }
 
   listMeetingProcessingRuns(recordingId: string): MeetingProcessingRunDto[] {

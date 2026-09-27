@@ -295,10 +295,10 @@ function deriveLegacyReasoningMode(
   return "providers";
 }
 
-type DirectInferenceMode = "providers" | "local" | "self-hosted" | "enterprise";
+type DirectInferenceMode = "providers" | "local" | "self-hosted" | "enterprise" | "agent";
 
 function isDirectInferenceMode(value: string): value is DirectInferenceMode {
-  return value === "providers" || value === "local" || value === "self-hosted" || value === "enterprise";
+  return value === "providers" || value === "local" || value === "self-hosted" || value === "enterprise" || value === "agent";
 }
 
 function readTranscriptionMode(
@@ -822,6 +822,9 @@ export interface SettingsState
   noteFormattingCloudBaseUrl: string;
   noteFormattingRemoteUrl: string;
   noteFormattingCustomApiKey: string;
+  noteFormattingBbProvider: string;
+  noteFormattingBbModel: string;
+  noteFormattingBbReasoningLevel: string;
 
   cleanupDisableThinking: boolean;
   noteFormattingDisableThinking: boolean;
@@ -1470,6 +1473,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   noteFormattingCloudBaseUrl: readString("noteFormattingCloudBaseUrl", ""),
   noteFormattingRemoteUrl: readString("noteFormattingRemoteUrl", ""),
   noteFormattingCustomApiKey: "",
+  noteFormattingBbProvider: readString("noteFormattingBbProvider", "codex"),
+  noteFormattingBbModel: readString("noteFormattingBbModel", ""),
+  noteFormattingBbReasoningLevel: readString("noteFormattingBbReasoningLevel", "medium"),
 
   setTranscriptionMode: createStringSetter("transcriptionMode") as (mode: InferenceMode) => void,
   setRemoteTranscriptionType: createStringSetter("remoteTranscriptionType") as (
@@ -1535,6 +1541,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   chatAgentRemoteUrl: readString("chatAgentRemoteUrl", ""),
   chatAgentCloudBaseUrl: readString("chatAgentCloudBaseUrl", ""),
   chatAgentCustomApiKey: "",
+  chatAgentBbProvider: readString("chatAgentBbProvider", "codex"),
+  chatAgentBbModel: readString("chatAgentBbModel", ""),
+  chatAgentBbReasoningLevel: readString("chatAgentBbReasoningLevel", "medium"),
 
   cleanupDisableThinking: readBoolean("cleanupDisableThinking", true),
   noteFormattingDisableThinking: readBoolean("noteFormattingDisableThinking", true),

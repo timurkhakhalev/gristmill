@@ -9,6 +9,7 @@ import { createLocalFileTranscriptionBridge } from "./src/preload/localFileTrans
 import { createUploadTranscriptionBridge } from "./src/preload/uploadTranscriptionBridge";
 import { createCalendarAvailabilityBridge } from "./src/preload/calendarAvailabilityBridge";
 import { createReasoningBridge } from "./src/preload/reasoningBridge";
+import { createBbBridge } from "./src/preload/bbBridge";
 import { createCalendarIntegrationBridge } from "./src/preload/calendarBridge";
 import { createNoteFilesBridge } from "./src/preload/noteFilesBridge";
 import { createLocalModelLifecycleBridge } from "./src/preload/localModelLifecycleBridge";
@@ -58,6 +59,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ...createUploadTranscriptionBridge(ipcRenderer),
   ...createCalendarAvailabilityBridge(ipcRenderer),
   ...createReasoningBridge(ipcRenderer),
+  ...createBbBridge(ipcRenderer),
   ...createCalendarIntegrationBridge(ipcRenderer),
   ...createNoteFilesBridge(ipcRenderer),
   ...createLocalModelLifecycleBridge(ipcRenderer),

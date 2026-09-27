@@ -100,6 +100,7 @@ export interface MeetingProcessingWorkerDeps {
     signal: AbortSignal;
   }) => Promise<Array<{ speaker: string; start: number; end: number }>>;
   summarize: (input: string, config: NonNullable<MeetingProcessingConfig["summary"]>, signal: AbortSignal) => Promise<string>;
+  summarizeAgent?: (input: string, config: NonNullable<MeetingProcessingConfig["summary"]>, run: MeetingProcessingRunDto, signal: AbortSignal) => Promise<string>;
   getCredential: (reference: string | undefined, provider: string) => string;
   mixAudio?: (
     recording: MeetingRecordingDto,
@@ -581,7 +582,10 @@ export class MeetingProcessingWorker {
     const manual = note?.content ?? "";
     const input = [manual.trim() ? `## Manual Notes\n${manual}` : "", `## Transcript\n${transcript.text}`]
       .filter(Boolean).join("\n\n");
-    const generated = await this.deps.summarize(input, summaryConfig, signal);
+    const generated = summaryConfig.reasoningMode === "agent"
+      ? await this.deps.summarizeAgent?.(input, summaryConfig, run, signal)
+      : await this.deps.summarize(input, summaryConfig, signal);
+    if (generated === undefined) throw new MeetingProcessingFailure("bb-unavailable", "blocked");
     signal.throwIfAborted();
     if (!generated.trim()) throw new MeetingProcessingFailure("summary-empty-output", "failed");
     const summary = meetingSummaryArtifactSchema.parse({ text: generated.trim() });

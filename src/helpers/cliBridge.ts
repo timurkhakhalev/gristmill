@@ -215,6 +215,10 @@ export class CliBridge {
     debugLogger.info("CLI bridge started", { port: this.port }, "cli-bridge");
   }
 
+  getConnection(): { port: number; token: string } | null {
+    return this.server && this.port && this.token ? { port: this.port, token: this.token } : null;
+  }
+
   async stop(): Promise<void> {
     const server = this.server;
     if (!server) return;

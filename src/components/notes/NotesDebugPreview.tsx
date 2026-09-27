@@ -89,6 +89,7 @@ function makePreview(scenario: NotesDebugScenario) {
     sourceRecordingIds: [RECORDING_ID],
     kind: "initial",
     sourceRunId: null,
+    bbThreadId: null,
     provider: "deepgram",
     model: "nova-3",
     config:

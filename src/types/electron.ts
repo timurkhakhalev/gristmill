@@ -10,6 +10,7 @@ import type { LocalFileTranscriptionApi } from "../contracts/localFileTranscript
 import type { CalendarAvailabilityApi } from "../contracts/calendarAvailability";
 import type { UploadTranscriptionApi } from "../contracts/uploadTranscription";
 import type { ReasoningApi } from "../contracts/reasoning";
+import type { BbApi } from "../contracts/bb";
 import type { CalendarIntegrationApi } from "../contracts/calendar";
 import type { NoteFilesApi } from "../contracts/noteFiles";
 import type { LocalModelLifecycleApi } from "../contracts/localModelLifecycle";
@@ -564,7 +565,7 @@ declare global {
       // MeetingCoordinatorApi contract. register-meeting-hotkey lives there
       // too (its handler moved to the typed meetingHotkeyIpcHandler owner).
 
-      } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi & DesktopSettingsApi & MeetingCoordinatorApi & MeetingProcessingApi & MeetingCompanionApi;
+      } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & BbApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi & DesktopSettingsApi & MeetingCoordinatorApi & MeetingProcessingApi & MeetingCompanionApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

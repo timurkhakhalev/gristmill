@@ -46,6 +46,11 @@ async function loadStore(t, modelOutput = "# Notes\n- decided things") {
   });
 
   const store = await vite.ssrLoadModule("/stores/actionProcessingStore.ts");
+  t.after(async () => {
+    await new Promise(setImmediate);
+    store.cancelAction(7);
+    store.cancelAction(8);
+  });
   return { store, calls, updates };
 }
 

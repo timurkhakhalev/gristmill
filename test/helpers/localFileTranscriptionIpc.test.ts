@@ -24,7 +24,7 @@ test.after(() => {
 });
 
 const originalLoad = Module._load;
-Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
+Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
   if (request === "electron") {
     return {
       app: { getPath: () => "/tmp", getAppPath: () => process.cwd(), isReady: () => false },
@@ -44,7 +44,7 @@ function setup({ whisper, parakeet } = {}) {
   const registry = createUploadCancelRegistry();
   const calls = { whisper: [], parakeet: [], reads: [] };
   registerLocalFileTranscriptionHandler(
-    { handle: (channel: string, fn: unknown) => handlers.set(channel, fn) },
+    { handle: (channel: string, fn: any) => handlers.set(channel, fn) },
     {
       readFile: (filePath: string) => {
         calls.reads.push(filePath);
@@ -59,18 +59,18 @@ function setup({ whisper, parakeet } = {}) {
         }
       },
       isSherpaLocalProvider: (provider: string) => provider === "nvidia" || provider === "cohere",
-      transcribeLocalWhisper: async (audioBuffer: any, options: unknown) => {
+      transcribeLocalWhisper: async (audioBuffer: any, options: any) => {
         calls.whisper.push({ audioBuffer, options });
         return whisper ? whisper(audioBuffer, options) : { success: true, text: "whisper text" };
       },
-      transcribeLocalParakeet: async (audioBuffer: any, options: unknown) => {
+      transcribeLocalParakeet: async (audioBuffer: any, options: any) => {
         calls.parakeet.push({ audioBuffer, options });
         return parakeet ? parakeet(audioBuffer, options) : { success: true, text: "sherpa text" };
       },
       resolveWhisperVadOptions: (context: any) => ({ vadEnabled: context === "noteRecording" }),
       uploadCancelRegistry: registry,
-      logDebug: (message: unknown, data: unknown) => logs.debug.push({ message, data }),
-      logError: (message: unknown, data: unknown) => logs.error.push({ message, data }),
+      logDebug: (message: any, data: any) => logs.debug.push({ message, data }),
+      logError: (message: any, data: any) => logs.error.push({ message, data }),
     }
   );
   const call = (...args) => handlers.get("transcribe-audio-file")(null, ...args);
@@ -79,7 +79,7 @@ function setup({ whisper, parakeet } = {}) {
 
 test("happy path: whisper dispatch with VAD merge, result validated", async () => {
   const { call, calls } = setup({
-    whisper: (_buffer: unknown, options: unknown) => ({ success: true, text: "hello", model: options.model }),
+    whisper: (_buffer: any, options: any) => ({ success: true, text: "hello", model: options.model }),
   });
   const result = await call(audioFile, { model: "base", language: "en", requestId: "r1" });
   assert.equal(result.success, true);
@@ -95,7 +95,7 @@ test("happy path: whisper dispatch with VAD merge, result validated", async () =
 test("nvidia/cohere dispatch to sherpa, with a signal only when requestId is present", async () => {
   for (const provider of ["nvidia", "cohere"]) {
     const { call, calls } = setup({
-      parakeet: (_buffer: unknown, options: unknown) => ({ success: true, text: options.model }),
+      parakeet: (_buffer: any, options: any) => ({ success: true, text: options.model }),
     });
     const result = await call(audioFile, { provider, model: "parakeet-tdt-0.6b-v3" });
     assert.deepEqual(result, { success: true, text: "parakeet-tdt-0.6b-v3" });
@@ -201,7 +201,7 @@ test("abort maps to the cancelled shape and release always runs", async () => {
 test("shared registry cancels a pending real handler and leaves no registration", async () => {
   let signal: any;
   const { call, registry } = setup({
-    whisper: (_buffer: unknown, options: unknown) => {
+    whisper: (_buffer: any, options: any) => {
       signal = options.signal;
       return new Promise((_resolve, reject) => {
         signal.addEventListener("abort", () => reject(Object.assign(new Error("cancelled"), { name: "AbortError" })));

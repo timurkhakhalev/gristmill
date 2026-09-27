@@ -63,7 +63,7 @@ test("tinfoil missing key carries the NO_API code the renderer's fallback keys o
   const noKey = deps({ environmentManager: { getTinfoilKey: () => "" } });
   await assert.rejects(
     fetchRealtimeTokenForProvider("tinfoil-realtime", noKey, { mode: "byok" }),
-    (err: unknown) => err.code === "NO_API"
+    (err: any) => err.code === "NO_API"
   );
 });
 

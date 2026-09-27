@@ -13,9 +13,9 @@ async function startMockOnlineServer({ onBinary, finalSegment = 0 }) {
   await once(wss, "listening");
 
   let ignoringDone = false;
-  wss.on("connection", (socket: unknown) => {
+  wss.on("connection", (socket: any) => {
     let binaryFrames = 0;
-    socket.on("message", (data: unknown, isBinary: any) => {
+    socket.on("message", (data: any, isBinary: any) => {
       if (isBinary) {
         binaryFrames += 1;
         onBinary?.(socket, data, binaryFrames);
@@ -54,13 +54,13 @@ function onlineWsServerAt(port: number) {
 
 test("online stream emits live updates and finish resolves with the final text", async () => {
   const mock = await startMockOnlineServer({
-    onBinary: (socket: unknown, _data: any, frameCount: number) => {
+    onBinary: (socket: any, _data: any, frameCount: number) => {
       socket.send(JSON.stringify({ text: `partial ${frameCount}`, segment: 0, is_final: false }));
     },
   });
 
   try {
-    const updates: unknown[] = [];
+    const updates: any[] = [];
     const stream = onlineWsServerAt(mock.port).createOnlineStream({
       onUpdate: (text: string) => updates.push(text),
     });
@@ -83,7 +83,7 @@ test("finalized segments accumulate across endpoints in live updates", async () 
   let segment = 0;
   const mock = await startMockOnlineServer({
     finalSegment: 2,
-    onBinary: (socket: unknown, _data: any, frameCount: number) => {
+    onBinary: (socket: any, _data: any, frameCount: number) => {
       // Simulate endpointing: every frame finalizes a segment.
       socket.send(
         JSON.stringify({ text: `segment ${frameCount}`, segment: segment++, is_final: true })
@@ -138,7 +138,7 @@ test("abort closes the stream without waiting for the server", async () => {
 test("finish flags truncation when the server never acknowledges Done", async () => {
   // Server sends a partial but ignores "Done" entirely.
   const mock = await startMockOnlineServer({
-    onBinary: (socket: unknown) => {
+    onBinary: (socket: any) => {
       socket.send(JSON.stringify({ text: "partial", segment: 0, is_final: false }));
     },
   });
@@ -157,16 +157,16 @@ test("finish flags truncation when the server never acknowledges Done", async ()
 
 test("unexpected close before Done! reports an error and truncation", async () => {
   const mock = await startMockOnlineServer({
-    onBinary: (socket: unknown) => {
+    onBinary: (socket: any) => {
       socket.send(JSON.stringify({ text: "cut off", segment: 0, is_final: false }));
       socket.close();
     },
   });
 
   try {
-    const errors: unknown[] = [];
+    const errors: any[] = [];
     const stream = onlineWsServerAt(mock.port).createOnlineStream({
-      onError: (err: unknown) => errors.push(err),
+      onError: (err: any) => errors.push(err),
     });
     stream.sendPcm16(Buffer.alloc(3200));
     const { text, truncated } = await stream.finish({ idleTimeoutMs: 1000 });
@@ -197,7 +197,7 @@ test("a send error during the queued flush flags truncation", async () => {
   const WebSocket = require("ws");
   const realSend = WebSocket.prototype.send;
   // Only client audio frames are binary; the mock server sends strings, so gate on type.
-  WebSocket.prototype.send = function (data: unknown, cb: unknown) {
+  WebSocket.prototype.send = function (data: any, cb: any) {
     if (typeof data !== "string") {
       if (typeof cb === "function") cb(new Error("forced send failure"));
       return;
@@ -254,7 +254,7 @@ test("offline transcription rejects with AbortError when cancelled mid-flight", 
     server.modelRuntime = "offline";
     await assert.rejects(
       () => server.transcribe(Buffer.alloc(3200), 16000, { signal: controller.signal }),
-      (err: unknown) => {
+      (err: any) => {
         assert.equal(err.name, "AbortError");
         return true;
       }
@@ -272,7 +272,7 @@ test("offline transcription rejects immediately on a pre-aborted signal", async 
   server.modelRuntime = "offline";
   await assert.rejects(
     () => server.transcribe(Buffer.alloc(3200), 16000, { signal: controller.signal }),
-    (err: unknown) => {
+    (err: any) => {
       assert.equal(err.name, "AbortError");
       return true;
     }
@@ -290,7 +290,7 @@ test("online transcription rejects with AbortError when cancelled mid-flight", a
     setTimeout(() => controller.abort(), 20);
     await assert.rejects(
       () => server.transcribe(Buffer.alloc(3200), 16000, { signal: controller.signal }),
-      (err: unknown) => {
+      (err: any) => {
         assert.equal(err.name, "AbortError");
         return true;
       }
@@ -303,7 +303,7 @@ test("online transcription rejects with AbortError when cancelled mid-flight", a
 test("offline transcription rejects when the connection closes without a result", async () => {
   const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
   await once(wss, "listening");
-  wss.on("connection", (socket: unknown) => socket.close());
+  wss.on("connection", (socket: any) => socket.close());
 
   try {
     const server = onlineWsServerAt(wss.address().port);

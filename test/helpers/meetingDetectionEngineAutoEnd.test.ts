@@ -617,7 +617,7 @@ const nextMeetingReminder = (clock: any) => ({
   start_time: new Date(clock.now() + 60_000).toISOString(),
 });
 
-test("a detection during a live recording remains queued after the shared recording flag clears", async (t: unknown) => {
+test("a detection during a live recording remains queued after the shared recording flag clears", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { clock, engine, owner, shownNotifications } = createEngine();
   engine.setUserRecording(true);
@@ -640,7 +640,7 @@ test("a detection during a live recording remains queued after the shared record
   engine.stop();
 });
 
-test("a post-dictation queue flush holds detections while the meeting session is live", async (t: unknown) => {
+test("a post-dictation queue flush holds detections while the meeting session is live", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { clock, engine, owner, shownNotifications } = createEngine();
   engine.setUserRecording(true);
@@ -663,7 +663,7 @@ test("a post-dictation queue flush holds detections while the meeting session is
   engine.stop();
 });
 
-test("a detection-started recording allows a later confirmed call", async (t: unknown) => {
+test("a detection-started recording allows a later confirmed call", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { clock, engine, owner, shownNotifications } = createEngine();
   engine.setMeetingModeActive(true);
@@ -685,7 +685,7 @@ test("a detection-started recording allows a later confirmed call", async (t: un
   engine.stop();
 });
 
-test("the next reminder prompts after a detection-started recording ends", async (t: unknown) => {
+test("the next reminder prompts after a detection-started recording ends", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { clock, engine, owner, shownNotifications } = createEngine();
   engine.setMeetingModeActive(true);
@@ -707,7 +707,7 @@ test("the next reminder prompts after a detection-started recording ends", async
   engine.stop();
 });
 
-test("meeting mode still suppresses prompts while a detection-started recording is live", async (t: unknown) => {
+test("meeting mode still suppresses prompts while a detection-started recording is live", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { audioActivityDetector, clock, engine, owner, shownNotifications } = createEngine();
   engine.setMeetingModeActive(true);

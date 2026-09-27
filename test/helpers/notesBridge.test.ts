@@ -100,7 +100,7 @@ function loadBundledPreload(invoke: unknown) {
   return { api, listeners };
 }
 
-async function createFixture(t: unknown) {
+async function createFixture(t: import("node:test").TestContext) {
   activeHandlers = new Map();
   dispatchSend = null;
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-bridge-"));
@@ -159,7 +159,7 @@ async function createFixture(t: unknown) {
   return { db, api, listeners, flush };
 }
 
-test("the full bundled preload chain round-trips a note", async (t: unknown) => {
+test("the full bundled preload chain round-trips a note", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { api, flush } = ctx;
@@ -192,7 +192,7 @@ test("the full bundled preload chain round-trips a note", async (t: unknown) => 
   assert.equal(await api.getNote(saved.note.id), null);
 });
 
-test("wrong arguments reject through the bridge before the DB runs", async (t: unknown) => {
+test("wrong arguments reject through the bridge before the DB runs", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { api } = ctx;
@@ -202,15 +202,15 @@ test("wrong arguments reject through the bridge before the DB runs", async (t: u
   await assert.rejects(() => api.saveNote(1, "x"));
 });
 
-test("independent subscriptions receive events and unsubscribe cleanly", async (t: unknown) => {
+test("independent subscriptions receive events and unsubscribe cleanly", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { api, flush } = ctx;
 
   const added: unknown[] = [];
   const addedToo: unknown[] = [];
-  const unsubA = api.onNoteAdded((note: unknown) => added.push(note));
-  const unsubB = api.onNoteAdded((note: unknown) => addedToo.push(note));
+  const unsubA = api.onNoteAdded((note: any) => added.push(note));
+  const unsubB = api.onNoteAdded((note: any) => addedToo.push(note));
 
   const saved = await api.saveNote("Sub", "");
   await flush();
@@ -229,13 +229,13 @@ test("independent subscriptions receive events and unsubscribe cleanly", async (
   unsubB();
 });
 
-test("malformed events are dropped; the next valid one is delivered", async (t: unknown) => {
+test("malformed events are dropped; the next valid one is delivered", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { api, flush } = ctx;
 
   const received: unknown[] = [];
-  api.onNoteAdded((note: unknown) => received.push(note));
+  api.onNoteAdded((note: any) => received.push(note));
 
   // Simulate a main-side producer emitting a malformed payload.
   const { sendNoteAdded } = await import("../../src/helpers/notesEvents.ts");
@@ -249,13 +249,13 @@ test("malformed events are dropped; the next valid one is delivered", async (t: 
   assert.equal(received[0].id, saved.note.id);
 });
 
-test("deleted notes are not resurrectable and emit note-deleted once", async (t: unknown) => {
+test("deleted notes are not resurrectable and emit note-deleted once", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { api, flush } = ctx;
 
   const deletions: unknown[] = [];
-  const unsub = api.onNoteDeleted((payload: unknown) => deletions.push(payload));
+  const unsub = api.onNoteDeleted((payload: any) => deletions.push(payload));
   const saved = await api.saveNote("Gone", "");
   assert.equal((await api.deleteNote(saved.note.id)).success, true);
   await flush();

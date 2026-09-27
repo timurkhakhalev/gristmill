@@ -17,7 +17,7 @@ const manifest = {
 };
 const managerFile = path.resolve(__dirname, "../../src/helpers/parakeet.ts");
 
-function setup(t: unknown, options = {}) {
+function setup(t: import("node:test").TestContext, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "parakeet-manifest-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const calls = { downloads: [], manifests: [], events: [], errors: [], warms: 0, timeouts: [] };
@@ -181,7 +181,7 @@ test("Orukeet manifest is pinned beside its existing archive; other models are n
   );
 });
 
-test("fresh install fetches one manifest after extraction and warmup, then saves optional provenance", async (t: unknown) => {
+test("fresh install fetches one manifest after extraction and warmup, then saves optional provenance", async (t: import("node:test").TestContext) => {
   const h = setup(t);
   assert.equal((await h.manager.downloadParakeetModel(MODEL)).success, true);
   await h.settled();
@@ -205,7 +205,7 @@ test("fresh install fetches one manifest after extraction and warmup, then saves
 });
 
 for (const kind of ["installed", "cached archive", "other model"]) {
-  test(`${kind} does not fetch a manifest`, async (t: unknown) => {
+  test(`${kind} does not fetch a manifest`, async (t: import("node:test").TestContext) => {
     const model = kind === "other model" ? "parakeet-tdt-0.6b-v3" : MODEL;
     const h = setup(t, { model });
     if (kind === "installed") {
@@ -224,7 +224,7 @@ for (const kind of ["installed", "cached archive", "other model"]) {
 }
 
 for (const option of ["cancel", "downloadError", "extractionError"]) {
-  test(`${option} does not fetch a manifest or leave the download locked`, async (t: unknown) => {
+  test(`${option} does not fetch a manifest or leave the download locked`, async (t: import("node:test").TestContext) => {
     const h = setup(t, { [option]: true });
     await assert.rejects(h.manager.downloadParakeetModel(MODEL));
     assert.equal(h.calls.manifests.length, 0);
@@ -235,7 +235,7 @@ for (const option of ["cancel", "downloadError", "extractionError"]) {
 // downloadFile only checks the signal between retry attempts, so a cancel that
 // lands after the last byte (during the archive's cross-device move, say)
 // resolves normally and still installs. The install stands; the ping does not.
-test("a cancel landing after the download does not fetch a manifest", async (t: unknown) => {
+test("a cancel landing after the download does not fetch a manifest", async (t: import("node:test").TestContext) => {
   const h = setup(t, { abortDuringInstall: true });
   assert.equal((await h.manager.downloadParakeetModel(MODEL)).success, true);
   await h.settled();
@@ -244,14 +244,14 @@ test("a cancel landing after the download does not fetch a manifest", async (t: 
   assert.equal(h.manager.serverManager.isModelDownloaded(MODEL), true);
 });
 
-test("an extraction retry fetches only one manifest", async (t: unknown) => {
+test("an extraction retry fetches only one manifest", async (t: import("node:test").TestContext) => {
   const h = setup(t, { retryExtraction: true });
   assert.equal((await h.manager.downloadParakeetModel(MODEL)).success, true);
   await h.settled();
   assert.equal(h.calls.manifests.length, 1);
 });
 
-test("a truncated cached archive is downloaded again and gets one manifest", async (t: unknown) => {
+test("a truncated cached archive is downloaded again and gets one manifest", async (t: import("node:test").TestContext) => {
   const h = setup(t);
   fs.writeFileSync(path.join(h.root, `${MODEL}.tar.bz2`), "incomplete");
   await h.manager.downloadParakeetModel(MODEL);
@@ -263,7 +263,7 @@ test("a truncated cached archive is downloaded again and gets one manifest", asy
 test(
   "a stalled manifest cannot delay successful installation or warmup",
   { timeout: 2000 },
-  async (t: unknown) => {
+  async (t: import("node:test").TestContext) => {
     const h = setup(t, {
       fetch: (_url: string, { signal }) =>
         new Promise((_resolve, reject) => {
@@ -307,7 +307,7 @@ const failures = [
   ["sidecar write failure", { writeError: true }],
 ];
 for (const [label, options] of failures) {
-  test(`${label} leaves the installed model usable`, async (t: unknown) => {
+  test(`${label} leaves the installed model usable`, async (t: import("node:test").TestContext) => {
     const h = setup(t, options);
     assert.equal((await h.manager.downloadParakeetModel(MODEL)).success, true);
     await h.settled();
@@ -322,7 +322,7 @@ for (const [label, options] of failures) {
 
 // `sizeMb` describes the extracted model, not the archive, so a model whose entry
 // omits `expectedSizeBytes` has nothing to compare and must still save provenance.
-test("a model without expectedSizeBytes skips the archive-size check", async (t: unknown) => {
+test("a model without expectedSizeBytes skips the archive-size check", async (t: import("node:test").TestContext) => {
   const h = setup(t, { fetch: async () => Response.json({ ...manifest, archive_bytes: 1 }) });
   const modelDir = path.join(h.root, MODEL);
   fs.mkdirSync(modelDir, { recursive: true });
@@ -335,7 +335,7 @@ test("a model without expectedSizeBytes skips the archive-size check", async (t:
   assert.equal(JSON.parse(fs.readFileSync(h.sidecar)).archive_bytes, 1);
 });
 
-test("a late manifest never recreates a deleted model directory", async (t: unknown) => {
+test("a late manifest never recreates a deleted model directory", async (t: import("node:test").TestContext) => {
   let finish;
   const h = setup(t, {
     fetch: () =>
@@ -351,7 +351,7 @@ test("a late manifest never recreates a deleted model directory", async (t: unkn
   assert.equal(h.calls.errors.length, 1);
 });
 
-test("a late manifest never overwrites an existing sidecar", async (t: unknown) => {
+test("a late manifest never overwrites an existing sidecar", async (t: import("node:test").TestContext) => {
   let finish;
   const h = setup(t, {
     fetch: () =>
@@ -366,7 +366,7 @@ test("a late manifest never overwrites an existing sidecar", async (t: unknown) 
   assert.equal(fs.readFileSync(h.sidecar, "utf8"), "existing provenance");
 });
 
-test("manifest collection does not hijack a running model server", async (t: unknown) => {
+test("manifest collection does not hijack a running model server", async (t: import("node:test").TestContext) => {
   const h = setup(t, { running: true });
   await h.manager.downloadParakeetModel(MODEL);
   await h.settled();

@@ -71,7 +71,7 @@ function loadBundledPreload(invoke: unknown) {
   return { api, listeners };
 }
 
-async function createFixture(t: unknown) {
+async function createFixture(t: import("node:test").TestContext) {
   activeHandlers.clear();
   dispatchSend = null;
   const safeTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-url-bridge-"));
@@ -109,7 +109,7 @@ async function createFixture(t: unknown) {
   return { api, listeners, safeTempDir };
 }
 
-test("the full bundled preload chain downloads, reports progress and resolves", async (t: unknown) => {
+test("the full bundled preload chain downloads, reports progress and resolves", async (t: import("node:test").TestContext) => {
   const { api } = await createFixture(t);
   resetDownloader();
 
@@ -139,7 +139,7 @@ test("the full bundled preload chain downloads, reports progress and resolves", 
   );
 });
 
-test("unsubscribe stops progress; a resubscribed listener sees the next download", async (t: unknown) => {
+test("unsubscribe stops progress; a resubscribed listener sees the next download", async (t: import("node:test").TestContext) => {
   const { api } = await createFixture(t);
   resetDownloader();
 
@@ -154,7 +154,7 @@ test("unsubscribe stops progress; a resubscribed listener sees the next download
   assert.deepEqual(events, []);
 });
 
-test("a malformed progress event is dropped at the preload boundary; the next valid one passes", async (t: unknown) => {
+test("a malformed progress event is dropped at the preload boundary; the next valid one passes", async (t: import("node:test").TestContext) => {
   const { api, listeners } = await createFixture(t);
   const events: unknown[] = [];
   const unsubscribe = api.onUrlDownloadProgress((p: string) => events.push(p));
@@ -168,7 +168,7 @@ test("a malformed progress event is dropped at the preload boundary; the next va
   assert.deepEqual(events.map((p) => ({ ...p })), [{ stage: "ready", percent: 100, downloadId: "z" }]);
 });
 
-test("cancel-one aborts only its job; bare cancel aborts the rest; finished id fails", async (t: unknown) => {
+test("cancel-one aborts only its job; bare cancel aborts the rest; finished id fails", async (t: import("node:test").TestContext) => {
   const { api } = await createFixture(t);
   resetDownloader();
 
@@ -192,7 +192,7 @@ test("cancel-one aborts only its job; bare cancel aborts the rest; finished id f
 
 // Tolerant normalization is a main-side contract: even a JS caller bypassing
 // the typed bridge gets the old dl-N generation and cancel-all semantics.
-test("raw JS calls with non-string ids keep the tolerant behavior", async (t: unknown) => {
+test("raw JS calls with non-string ids keep the tolerant behavior", async (t: import("node:test").TestContext) => {
   await createFixture(t);
   resetDownloader();
   const rawInvoke = async (channel: string, ...args) => {
@@ -208,7 +208,7 @@ test("raw JS calls with non-string ids keep the tolerant behavior", async (t: un
   assert.equal(result.success, true);
 });
 
-test("error results keep message and code through the bridge", async (t: unknown) => {
+test("error results keep message and code through the bridge", async (t: import("node:test").TestContext) => {
   const { api } = await createFixture(t);
   resetDownloader();
   downloadBehavior = () => Promise.reject(Object.assign(new Error("no space"), { code: "DISK" }));
@@ -218,7 +218,7 @@ test("error results keep message and code through the bridge", async (t: unknown
   assert.equal(result.code, "DISK");
 });
 
-test("wrong arguments resolve to failure envelopes, not rejections", async (t: unknown) => {
+test("wrong arguments resolve to failure envelopes, not rejections", async (t: import("node:test").TestContext) => {
   const { api } = await createFixture(t);
   // The download boundary reports invalid URLs as a failure result — same as
   // the JS handlers did; only deleteTempFile type-checks its string.
@@ -230,7 +230,7 @@ test("wrong arguments resolve to failure envelopes, not rejections", async (t: u
   assert.equal(badPath.error, "Invalid file path");
 });
 
-test("deleteTempFile removes an ow- file inside the safe root only", async (t: unknown) => {
+test("deleteTempFile removes an ow- file inside the safe root only", async (t: import("node:test").TestContext) => {
   const { api, safeTempDir } = await createFixture(t);
   const ok = path.join(safeTempDir, "ow-url-fine.tmp");
   fs.writeFileSync(ok, "audio");

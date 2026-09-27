@@ -19,16 +19,16 @@ test("lists every registry model with provider, download state, and the app's de
   const sherpaCount = Object.keys(registry.parakeetModels).length;
   assert.equal(models.length, whisperCount + sherpaCount);
 
-  const base = models.find((m: unknown) => m.model === "base");
+  const base = models.find((m: any) => m.model === "base");
   assert.deepEqual(base, { provider: "whisper", model: "base", downloaded: true, default: true });
 
-  const cohere = models.find((m: unknown) => m.model === "cohere-transcribe-03-2026");
+  const cohere = models.find((m: any) => m.model === "cohere-transcribe-03-2026");
   assert.equal(cohere.provider, "cohere");
   assert.equal(cohere.downloaded, true);
   assert.equal(cohere.default, false);
 
-  assert.equal(models.filter((m: unknown) => m.default).length, 1);
-  assert.ok(models.some((m: unknown) => m.provider === "nvidia"));
+  assert.equal(models.filter((m: any) => m.default).length, 1);
+  assert.ok(models.some((m: any) => m.provider === "nvidia"));
 });
 
 test("a sherpa default is read from PARAKEET_MODEL, and cloud mode yields no default", () => {
@@ -43,7 +43,7 @@ test("a sherpa default is read from PARAKEET_MODEL, and cloud mode yields no def
 
   const cloudMode = listLocalTranscriptionModels({ ...managers(new Set()), env: {} });
   assert.equal(
-    cloudMode.some((m: unknown) => m.default),
+    cloudMode.some((m: any) => m.default),
     false
   );
 });

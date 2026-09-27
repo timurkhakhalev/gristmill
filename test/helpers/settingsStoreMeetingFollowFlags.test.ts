@@ -65,7 +65,7 @@ const meetingRoute = (mod: any, state: unknown) => {
 
 // The migration cases share a Vite server. Allow extra time for a cold import
 // so the parent test does not close it mid-run.
-test("Note Recording modes survive the follow-flag migration", { timeout: 300_000 }, async (t: unknown) => {
+test("Note Recording modes survive the follow-flag migration", { timeout: 300_000 }, async (t: import("node:test").TestContext) => {
   const { storage } = installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
     cachePrefix: "openhercules-meeting-follow-flags-test-",
@@ -241,7 +241,7 @@ test("Note Recording modes survive the follow-flag migration", { timeout: 300_00
   );
 
   await t.test("every registry local provider heals note formatting to local", async () => {
-    for (const provider of modelRegistryData.localProviders.map((entry: unknown) => entry.id)) {
+    for (const provider of modelRegistryData.localProviders.map((entry: any) => entry.id)) {
       const { state } = await load({ ...LATCHED_LOCAL, noteFormattingProvider: provider });
       assert.equal(state.noteFormattingMode, "local", provider);
     }

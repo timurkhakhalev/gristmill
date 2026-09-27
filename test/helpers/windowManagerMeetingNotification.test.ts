@@ -13,16 +13,16 @@ function createDeferred() {
   return { promise, reject, resolve };
 }
 
-const createdWindows: unknown[] = [];
+const createdWindows: any[] = [];
 const appListeners = new Map();
-const hotkeyManagers: unknown[] = [];
+const hotkeyManagers: any[] = [];
 let appQuitCount = 0;
 let dialogResponse = 1;
-const dialogCalls: unknown[] = [];
+const dialogCalls: any[] = [];
 let devServerWaitPromise = Promise.resolve();
 
 class FakeBrowserWindow extends EventEmitter {
-  constructor(options: unknown) {
+  constructor(options: any) {
     super();
     this.options = options;
     this.destroyed = false;
@@ -32,14 +32,14 @@ class FakeBrowserWindow extends EventEmitter {
     this.showCount = 0;
     this.ignoreMouseEvents = [];
     this.webContents = {
-      send: (channel: string, payload: unknown) => this.messages.push({ channel, payload }),
+      send: (channel: string, payload: any) => this.messages.push({ channel, payload }),
     };
     createdWindows.push(this);
   }
 
   setContentProtection() {}
 
-  setIgnoreMouseEvents(ignore: boolean, options: unknown) {
+  setIgnoreMouseEvents(ignore: boolean, options: any) {
     this.ignoreMouseEvents.push({ ignore, options });
   }
 
@@ -93,16 +93,16 @@ class FakeDragManager {
 
 const originalLoad = Module._load;
 const appStub = {
-  on: (event: unknown, listener: unknown) => appListeners.set(event, listener),
+  on: (event: any, listener: any) => appListeners.set(event, listener),
   quit: () => { appQuitCount += 1; },
 };
 const dialogStub = {
-  showMessageBox: async (options: unknown) => {
+  showMessageBox: async (options: any) => {
     dialogCalls.push(options);
     return { response: dialogResponse };
   },
 };
-Module._load = function loadWindowManagerWithStubs(request: string, parent: unknown, isMain: boolean) {
+Module._load = function loadWindowManagerWithStubs(request: string, parent: any, isMain: boolean) {
   if (request === "electron") {
     return {
       app: appStub,
@@ -150,11 +150,11 @@ Module._load = function loadWindowManagerWithStubs(request: string, parent: unkn
       },
       NOTIFICATION_WINDOW_CONFIG: { ...detectionSize, acceptFirstMouse: true },
       AUTO_END_NOTIFICATION_WINDOW_SIZE: autoEndSize,
-      getMeetingNotificationWindowSize: (data: unknown) =>
+      getMeetingNotificationWindowSize: (data: any) =>
         data?.kind === "auto-end" ? autoEndSize : detectionSize,
       WINDOW_SIZES: {},
       WindowPositionUtil: {
-        getNotificationPosition: (_display: unknown, size = detectionSize) => ({
+        getNotificationPosition: (_display: any, size = detectionSize) => ({
           ...size,
           x: 1000 - size.width,
           y: 16,
@@ -182,7 +182,7 @@ function installFakeTimers() {
   let nextTimerId = 1;
   const timers = new Map();
 
-  global.setTimeout = (callback: unknown, delay = 0) => {
+  global.setTimeout = (callback: any, delay = 0) => {
     const timerId = nextTimerId;
     nextTimerId += 1;
     timers.set(timerId, { callback, delay });
@@ -335,7 +335,7 @@ test("window creation uses the auto-end dimensions and variant-aware position", 
 
 test("unexpected auto-end window closure invalidates that restart offer", async () => {
   const manager = createNormalWindowManager();
-  const closedSessions: unknown[] = [];
+  const closedSessions: any[] = [];
   manager.meetingDetectionEngine = {
     handleAutoEndNotificationClosed: (sessionId: any) => closedSessions.push(sessionId),
   };
@@ -356,7 +356,7 @@ test("unexpected auto-end window closure invalidates that restart offer", async 
 
 test("replacing an auto-end notification invalidates its restart offer", async () => {
   const manager = createNormalWindowManager();
-  const closedSessions: unknown[] = [];
+  const closedSessions: any[] = [];
   manager.meetingDetectionEngine = {
     handleAutoEndNotificationClosed: (sessionId: any) => closedSessions.push(sessionId),
   };
@@ -412,7 +412,7 @@ test("auto-end recovery subtracts load time from its expiry and hover cannot ext
   const timers = installFakeTimers();
   const manager = createNormalWindowManager();
   const originalDateNow = Date.now;
-  const timedOutNotifications: unknown[] = [];
+  const timedOutNotifications: any[] = [];
   let now = 40_000;
   Date.now = () => now;
   manager.meetingDetectionEngine = {
@@ -670,7 +670,7 @@ test("a notification raised from the timeout handler survives the dismissal that
 
 test("unexpected detection card closure releases that detection", async () => {
   const manager = createNormalWindowManager();
-  const closedDetections: unknown[] = [];
+  const closedDetections: any[] = [];
   manager.meetingDetectionEngine = {
     handleDetectionNotificationClosed: (detectionId: any) => closedDetections.push(detectionId),
   };
@@ -708,7 +708,7 @@ test("ending a call closes only its own detection card", async () => {
 test("an expired detection reports the timeout once, not also as a close", async () => {
   const timers = installFakeTimers();
   const manager = createNormalWindowManager();
-  const closedDetections: unknown[] = [];
+  const closedDetections: any[] = [];
   let timeouts = 0;
   manager.meetingDetectionEngine = {
     handleDetectionNotificationClosed: (detectionId: any) => closedDetections.push(detectionId),
@@ -737,7 +737,7 @@ test("an expired detection reports the timeout once, not also as a close", async
 
 test("a detection card whose load fails releases that detection", async () => {
   const manager = createNormalWindowManager();
-  const closedDetections: unknown[] = [];
+  const closedDetections: any[] = [];
   manager.meetingDetectionEngine = {
     handleDetectionNotificationClosed: (detectionId: any) => closedDetections.push(detectionId),
   };

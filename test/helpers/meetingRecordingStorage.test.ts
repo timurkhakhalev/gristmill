@@ -22,7 +22,7 @@ function createRecording(db: any) {
   return db.createMeetingRecording(note.id, { config });
 }
 
-test("recording epochs append complete PCM frames through short writes", (t: unknown) => {
+test("recording epochs append complete PCM frames through short writes", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -47,7 +47,7 @@ test("recording epochs append complete PCM frames through short writes", (t: unk
   db.close();
 });
 
-test("write failure leaves a partial frame that recovery ignores without rewriting raw audio", (t: unknown) => {
+test("write failure leaves a partial frame that recovery ignores without rewriting raw audio", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -74,7 +74,7 @@ test("write failure leaves a partial frame that recovery ignores without rewriti
   db.close();
 });
 
-test("recovery finalizes both source epochs, keeps timeline gaps, and creates one initial run", (t: unknown) => {
+test("recovery finalizes both source epochs, keeps timeline gaps, and creates one initial run", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -97,7 +97,7 @@ test("recovery finalizes both source epochs, keeps timeline gaps, and creates on
   assert.equal(saved.captureState, "incomplete");
   assert.equal(saved.audioState, "available");
   assert.equal(recovered.finalized[0], recording.id);
-  assert.deepEqual(runs.map((run: unknown) => run.kind), ["initial"]);
+  assert.deepEqual(runs.map((run: any) => run.kind), ["initial"]);
   assert.equal(runs[0].status, "pending");
   assert.equal(runs[0].config.transcription.provider, "deepgram");
   assert.deepEqual(
@@ -131,7 +131,7 @@ test("recovery finalizes both source epochs, keeps timeline gaps, and creates on
   db.close();
 });
 
-test("run JSON recovers after rename and a failed replacement keeps the last valid result", (t: unknown) => {
+test("run JSON recovers after rename and a failed replacement keeps the last valid result", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();

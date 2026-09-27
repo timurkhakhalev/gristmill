@@ -30,7 +30,7 @@ const LIVE_CATALOG = [
   { id: "gpt-oss-120b", name: "GPT-OSS 120B", description: "", supportsThinking: true },
 ];
 
-test("tinfoil default model follows the glm-5-3 replacement", async (t: unknown) => {
+test("tinfoil default model follows the glm-5-3 replacement", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t);
   const { pickDefaultTinfoilModel, DESCRIPTION_KEYS } = await import(
     "../../src/models/tinfoilModels.ts"
@@ -66,7 +66,7 @@ test("tinfoil default model follows the glm-5-3 replacement", async (t: unknown)
 // Tinfoil's catalog is fetched live and cached, so its order is Tinfoil's, not
 // ours. Anything that resolves a default from list position lands on whatever
 // the enclave happens to serve first — deepseek-v4-flash today.
-test("a cached catalog does not displace the named Tinfoil default", async (t: unknown) => {
+test("a cached catalog does not displace the named Tinfoil default", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _llmScopeKeysMigrated: "1",
@@ -89,7 +89,7 @@ test("a cached catalog does not displace the named Tinfoil default", async (t: u
   assert.equal(effective.cleanupModel, "glm-5-3");
 });
 
-test("a persisted glm-5-2 selection is repointed before any request", async (t: unknown) => {
+test("a persisted glm-5-2 selection is repointed before any request", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _llmScopeKeysMigrated: "1",
@@ -109,7 +109,7 @@ test("a persisted glm-5-2 selection is repointed before any request", async (t: 
 // The app tells a user when Tinfoil retires the model they picked. The startup
 // sweep now moves them before the live-catalog reconcile can, so the notice has
 // to come from the sweep or it is lost.
-test("the retirement notice fires when the startup sweep is what moved the user", async (t: unknown) => {
+test("the retirement notice fires when the startup sweep is what moved the user", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _llmScopeKeysMigrated: "1",
@@ -137,7 +137,7 @@ test("the retirement notice fires when the startup sweep is what moved the user"
   assert.deepEqual(consumeTinfoilModelSwitches(), [{ from: "GLM-5.2", to: "GLM-5.3" }]);
 });
 
-test("a Groq remap is not announced as a Tinfoil retirement", async (t: unknown) => {
+test("a Groq remap is not announced as a Tinfoil retirement", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _llmScopeKeysMigrated: "1",
@@ -158,7 +158,7 @@ test("a Groq remap is not announced as a Tinfoil retirement", async (t: unknown)
 
 // Every live site that resolves a provider's default reads the name the
 // registry gives it, through one helper.
-test("a provider's named default beats its list position", async (t: unknown) => {
+test("a provider's named default beats its list position", async (t: import("node:test").TestContext) => {
   const { pickDefaultModelId } = await import("../../src/models/providerDefaultModel.ts");
 
   const byId = Object.fromEntries(
@@ -184,7 +184,7 @@ test("a provider's named default beats its list position", async (t: unknown) =>
 // The sweep runs before any fetch, so a replacement outside the curated seed
 // has no display name to show yet. Naming it by id keeps the notice truthful
 // rather than dropping it; reconcileSelectedModels degrades the same way.
-test("a replacement with no curated name is still announced, by id", async (t: unknown) => {
+test("a replacement with no curated name is still announced, by id", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _llmScopeKeysMigrated: "1",

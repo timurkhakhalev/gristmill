@@ -18,8 +18,8 @@ for (const [name, StreamingClient, notifyMethod] of clients) {
     const streaming = new StreamingClient();
     const recoveries: unknown[] = [];
     const errors: unknown[] = [];
-    streaming.onConnectionLost = (error: unknown) => recoveries.push(error.message);
-    streaming.onError = (error: unknown) => errors.push(error.message);
+    streaming.onConnectionLost = (error: any) => recoveries.push(error.message);
+    streaming.onError = (error: any) => errors.push(error.message);
 
     streaming[notifyMethod](new Error("socket failed"));
     streaming[notifyMethod](new Error("duplicate close"));
@@ -31,7 +31,7 @@ for (const [name, StreamingClient, notifyMethod] of clients) {
   test(`${name} preserves the existing error path outside meetings`, () => {
     const streaming = new StreamingClient();
     const errors: unknown[] = [];
-    streaming.onError = (error: unknown) => errors.push(error.message);
+    streaming.onError = (error: any) => errors.push(error.message);
 
     streaming[notifyMethod](new Error("socket failed"));
 

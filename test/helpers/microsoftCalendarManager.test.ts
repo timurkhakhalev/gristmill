@@ -25,7 +25,7 @@ test("getConnectionStatus reports Microsoft OAuth registration state", () => {
 
 function loadManagerModule() {
   delete require.cache[managerModulePath];
-  Module._load = function loadWithElectronMock(request: string, parent: unknown, isMain: boolean) {
+  Module._load = function loadWithElectronMock(request: string, parent: any, isMain: boolean) {
     if (request === "electron") {
       return { net: {}, BrowserWindow: { getAllWindows: () => [] } };
     }
@@ -180,15 +180,15 @@ const STRIPPED_OCCURRENCE = {
 
 test("_syncCalendar backfills stripped recurring occurrences from their series master", async () => {
   const MicrosoftCalendarManager = loadManagerModule();
-  const upserted: unknown[] = [];
-  const contacts: unknown[] = [];
-  const tokenWrites: unknown[] = [];
+  const upserted: any[] = [];
+  const contacts: any[] = [];
+  const tokenWrites: any[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted, contacts, {
-    updateMicrosoftCalendarSyncToken: (id: unknown, token: string, expiresAt: number) =>
+    updateMicrosoftCalendarSyncToken: (id: any, token: string, expiresAt: number) =>
       tokenWrites.push({ id, token, expiresAt }),
   });
 
-  const masterFetches: unknown[] = [];
+  const masterFetches: any[] = [];
   manager._apiGet = async (url: string) => {
     if (url.includes("/calendarView/delta")) {
       return {
@@ -245,7 +245,7 @@ test("_syncCalendar backfills stripped recurring occurrences from their series m
 
 test("_syncCalendar inserts a never-seen stripped occurrence bare when the series master fetch fails", async () => {
   const MicrosoftCalendarManager = loadManagerModule();
-  const upserted: unknown[] = [];
+  const upserted: any[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted);
 
   manager._apiGet = async (url: string) => {
@@ -265,10 +265,10 @@ test("_syncCalendar inserts a never-seen stripped occurrence bare when the serie
 
 test("_syncCalendar shortens the delta token TTL when a master fetch fails", async () => {
   const MicrosoftCalendarManager = loadManagerModule();
-  const upserted: unknown[] = [];
-  const tokenWrites: unknown[] = [];
+  const upserted: any[] = [];
+  const tokenWrites: any[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted, [], {
-    updateMicrosoftCalendarSyncToken: (id: unknown, token: string, expiresAt: number) =>
+    updateMicrosoftCalendarSyncToken: (id: any, token: string, expiresAt: number) =>
       tokenWrites.push({ id, token, expiresAt }),
   });
 
@@ -292,10 +292,10 @@ test("_syncCalendar shortens the delta token TTL when a master fetch fails", asy
 // scheduler treats as a time block — it must not overwrite a full row.
 test("_syncCalendar keeps the stored row when a stripped occurrence's master fetch fails", async () => {
   const MicrosoftCalendarManager = loadManagerModule();
-  const upserted: unknown[] = [];
-  const staleKeepLists: unknown[] = [];
+  const upserted: any[] = [];
+  const staleKeepLists: any[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted, [], {
-    getCalendarEventById: (id: unknown) => (id === "occ-1" ? { id, summary: "Standup" } : null),
+    getCalendarEventById: (id: any) => (id === "occ-1" ? { id, summary: "Standup" } : null),
     removeStaleCalendarEvents: (_provider: any, _calendarId: any, keepIds: any) => staleKeepLists.push(keepIds),
   });
 

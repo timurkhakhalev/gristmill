@@ -14,13 +14,13 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 const createHarness = ({ startImpl, stopImpl } = {}) => {
   let now = START_TIME;
-  const calls: unknown[] = [];
-  const interruptions: unknown[] = [];
-  const resumed: unknown[] = [];
+  const calls: any[] = [];
+  const interruptions: any[] = [];
+  const resumed: any[] = [];
 
   const watchdog = createMeetingSystemAudioWatchdog({
     now: () => now,
-    onInterrupted: (payload: unknown) => interruptions.push(payload),
+    onInterrupted: (payload: any) => interruptions.push(payload),
     onResumed: () => resumed.push(now),
   });
 
@@ -65,7 +65,7 @@ const createHarness = ({ startImpl, stopImpl } = {}) => {
 };
 
 // Real ordering: attach, arm, then the first chunk proves the stream delivers.
-const startNative = (harness: unknown, { deliver = true } = {}) => {
+const startNative = (harness: any, { deliver = true } = {}) => {
   harness.attach();
   harness.watchdog.start({ systemAudioStrategy: "native", watchesDelivery: true });
   if (deliver) harness.deliver(true);

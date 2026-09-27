@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const load = () => import("../../src/utils/windowContext.ts");
 
-test("a packaged dictation window ignores control in its install path", async (t: unknown) => {
+test("a packaged dictation window ignores control in its install path", async (t: import("node:test").TestContext) => {
   const originalWindow = globalThis.window;
   t.after(() => {
     globalThis.window = originalWindow;
@@ -22,7 +22,7 @@ test("a packaged dictation window ignores control in its install path", async (t
   assert.equal(isDictationPanelWindow(), true);
 });
 
-test("only the explicit panel=true query selects the control panel", async (t: unknown) => {
+test("only the explicit panel=true query selects the control panel", async (t: import("node:test").TestContext) => {
   const originalWindow = globalThis.window;
   t.after(() => {
     globalThis.window = originalWindow;

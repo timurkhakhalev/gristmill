@@ -13,17 +13,17 @@ const Module = require("node:module");
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
-let activeHandlers: unknown = null;
+let activeHandlers: any = null;
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-"));
 const originalNodeEnv = process.env.NODE_ENV;
 
 const originalLoad = Module._load;
-Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
+Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
   if (request === "electron") {
     return {
       app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
       ipcMain: {
-        handle: (channel: string, listener: unknown) => {
+        handle: (channel: string, listener: any) => {
           if (!activeHandlers) activeHandlers = new Map();
           if (activeHandlers.has(channel)) {
             throw new Error(`Attempted to register a second handler for '${channel}'`);
@@ -49,7 +49,7 @@ test.after(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-function loadBundledPreload(invoke: unknown) {
+function loadBundledPreload(invoke: any) {
   let api;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
@@ -60,7 +60,7 @@ function loadBundledPreload(invoke: unknown) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name: string, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: any) => {
             api = value;
           },
         },
@@ -84,9 +84,9 @@ const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, "RIFF....");
 
 // Objects from vm.runInNewContext have a different prototype; compare by JSON.
-const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
+const plain = (value: any) => JSON.parse(JSON.stringify(value));
 
-async function createFixture(t: unknown, managers = {}) {
+async function createFixture(t: import("node:test").TestContext, managers = {}) {
   activeHandlers = new Map();
   t.after(() => { activeHandlers = null; });
 
@@ -132,7 +132,7 @@ async function createFixture(t: unknown, managers = {}) {
   return { api, calls };
 }
 
-test("full response shapes cross the bundled preload boundary", async (t: unknown) => {
+test("full response shapes cross the bundled preload boundary", async (t: import("node:test").TestContext) => {
   let ctx = await createFixture(t, {
     whisper: () => ({ success: true, text: "whisper text" }),
   });
@@ -178,7 +178,7 @@ test("full response shapes cross the bundled preload boundary", async (t: unknow
   });
 });
 
-test("path rejection and the cancelled shape through the bridge", async (t: unknown) => {
+test("path rejection and the cancelled shape through the bridge", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { api } = ctx;
@@ -210,7 +210,7 @@ test("path rejection and the cancelled shape through the bridge", async (t: unkn
   );
 });
 
-test("a junk main response rejects at the preload boundary", async (t: unknown) => {
+test("a junk main response rejects at the preload boundary", async (t: import("node:test").TestContext) => {
   await createFixture(t);
   if (!activeHandlers || !activeHandlers.get("transcribe-audio-file")) {
     return t.skip("handler missing");
@@ -223,7 +223,7 @@ test("a junk main response rejects at the preload boundary", async (t: unknown) 
   await assert.rejects(api.transcribeAudioFile(audioFile, {}));
 });
 
-test("the shared main registration registers the transcription channel once", async (t: unknown) => {
+test("the shared main registration registers the transcription channel once", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
 

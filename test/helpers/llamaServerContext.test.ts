@@ -8,7 +8,7 @@ const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
 // options each start was asked for.
 function makeManager() {
   const manager = new LlamaServerManager();
-  const starts: unknown[] = [];
+  const starts: any[] = [];
   manager._doStart = async (modelPath: string, options = {}) => {
     manager.ready = true;
     manager.modelPath = modelPath;
@@ -96,7 +96,7 @@ test("a context overflow is reported as a typed error, not as llama.cpp JSON", a
     },
   });
 
-  const server = http.createServer((req: unknown, res: unknown) => {
+  const server = http.createServer((req: any, res: any) => {
     res.writeHead(400, { "Content-Type": "application/json" });
     res.end(overflowBody);
   });
@@ -109,7 +109,7 @@ test("a context overflow is reported as a typed error, not as llama.cpp JSON", a
   try {
     await assert.rejects(
       () => manager.inference([{ role: "user", content: "hi" }], {}),
-      (error: unknown) => {
+      (error: any) => {
         assert.equal(error.code, "CONTEXT_TOO_LARGE");
         assert.equal(error.neededTokens, 20514);
         assert.equal(error.maxContextTokens, 16384);
@@ -125,7 +125,7 @@ test("a context overflow is reported as a typed error, not as llama.cpp JSON", a
 });
 
 test("other llama-server failures keep their existing shape", async () => {
-  const server = http.createServer((req: unknown, res: unknown) => {
+  const server = http.createServer((req: any, res: any) => {
     res.writeHead(500, { "Content-Type": "text/plain" });
     res.end("internal error");
   });
@@ -138,7 +138,7 @@ test("other llama-server failures keep their existing shape", async () => {
   try {
     await assert.rejects(
       () => manager.inference([{ role: "user", content: "hi" }], {}),
-      (error: unknown) => {
+      (error: any) => {
         assert.equal(error.code, undefined);
         assert.match(error.message, /llama-server returned status 500/);
         return true;
@@ -162,15 +162,15 @@ function withStubServer(routes: any) {
   // plain lookup answers /toString or /constructor with an inherited
   // Object.prototype method and then calls it.
   const routeTable = new Map(Object.entries(routes));
-  return async (run: unknown) => {
-    const server = http.createServer((req: unknown, res: unknown) => {
+  return async (run: any) => {
+    const server = http.createServer((req: any, res: any) => {
       const handler = routeTable.get(req.url);
       if (typeof handler !== "function") {
         res.writeHead(404).end();
         return;
       }
       let body = "";
-      req.on("data", (chunk: unknown) => {
+      req.on("data", (chunk: any) => {
         body += chunk;
       });
       req.on("end", () => {
@@ -213,17 +213,17 @@ test("usableContextSize returns null rather than guessing when props is unreadab
 });
 
 test("countPromptTokens prices the rendered template, not just the message text", async () => {
-  let templatedWith: unknown = null;
-  let tokenized: unknown = null;
+  let templatedWith: any = null;
+  let tokenized: any = null;
 
   await withStubServer({
-    "/apply-template": (body: unknown) => {
+    "/apply-template": (body: any) => {
       templatedWith = JSON.parse(body);
       // The real server renders role tags and, with thinking disabled, an
       // empty <think></think> block. All of it costs context.
       return { payload: { prompt: "<|im_start|>system\nSYS<|im_end|>\nhello" } };
     },
-    "/tokenize": (body: unknown) => {
+    "/tokenize": (body: any) => {
       tokenized = JSON.parse(body);
       return { payload: { tokens: new Array(20514).fill(0) } };
     },

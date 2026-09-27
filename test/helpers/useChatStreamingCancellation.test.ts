@@ -12,7 +12,7 @@ const {
 } = require("../lib/rendererTestHarness.ts");
 
 let vitePromise;
-const cleanup: unknown[] = [];
+const cleanup: any[] = [];
 test.after(async () => {
   for (const close of cleanup) await close();
 });
@@ -54,7 +54,7 @@ const EMPTY_RESPONSE_TEXT = JSON.parse(
 ).agentMode.chat.emptyResponse;
 
 async function renderChatStreaming(
-  t: unknown,
+  t: import("node:test").TestContext,
   { electronAPI = {}, settings = {}, onStreamComplete, live = false } = {}
 ) {
   installBrowserGlobals(t, { window: { electronAPI } });
@@ -97,7 +97,7 @@ async function renderChatStreaming(
   // setInterval that otherwise keeps the process alive after the test ends.
   t.after(() => reasoningService.destroy());
 
-  let messages: unknown[] = [];
+  let messages: any[] = [];
   const setMessages = (updater: any) => {
     messages = typeof updater === "function" ? updater(messages) : updater;
   };
@@ -135,7 +135,7 @@ async function renderChatStreaming(
   };
 }
 
-test("a genuine empty completion still shows the empty-response fallback", async (t: unknown) => {
+test("a genuine empty completion still shows the empty-response fallback", async (t: import("node:test").TestContext) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -159,7 +159,7 @@ test("a genuine empty completion still shows the empty-response fallback", async
   assert.equal(message.isStreaming, false);
 });
 
-test("cancelling before any token arrives never shows the empty-response fallback", async (t: unknown) => {
+test("cancelling before any token arrives never shows the empty-response fallback", async (t: import("node:test").TestContext) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -209,7 +209,7 @@ test("cancelling before any token arrives never shows the empty-response fallbac
   assert.equal(streamCompleteCalls, 0, "a cancelled request must never persist a partial reply");
 });
 
-test("an unmount mid-stream persists the partial reply without delivering it", async (t: unknown) => {
+test("an unmount mid-stream persists the partial reply without delivering it", async (t: import("node:test").TestContext) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -242,7 +242,7 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
       { status: 200, headers: { "content-type": "text/event-stream" } }
     );
 
-  const persisted: unknown[] = [];
+  const persisted: any[] = [];
   const { captured, getMessages, unmount } = await renderChatStreaming(t, {
     live: true,
     onStreamComplete: (_id: any, content: string) => persisted.push(content),
@@ -278,7 +278,7 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
   assert.equal(assistantMessage.isStreaming, false);
 });
 
-test("cancelling a tool-ineligible raw stream after reading starts shows no error", async (t: unknown) => {
+test("cancelling a tool-ineligible raw stream after reading starts shows no error", async (t: import("node:test").TestContext) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;

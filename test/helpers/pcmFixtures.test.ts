@@ -16,7 +16,7 @@ test("makeSeededNoise is deterministic per seed and bounded by amplitude", () =>
   const c = fx.makeSeededNoise({ durationMs: 50, amplitude: 0.2, seed: 8 });
   assert.deepEqual(Array.from(a), Array.from(b));
   assert.notDeepEqual(Array.from(a), Array.from(c));
-  assert.ok(a.every((v: unknown) => v >= -0.2 && v <= 0.2));
+  assert.ok(a.every((v: any) => v >= -0.2 && v <= 0.2));
   assert.equal(a.length, 1200);
 });
 

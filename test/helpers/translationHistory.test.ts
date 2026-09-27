@@ -26,7 +26,7 @@ process.env.NODE_ENV = "test";
 const DatabaseManager = require("../../src/helpers/database.ts");
 const { skipOrFail } = require("./harness/db.ts");
 
-function createDb(t: unknown) {
+function createDb(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-translation-db-"));
   try {
     const BetterSqlite = require("better-sqlite3");
@@ -47,10 +47,10 @@ function createDb(t: unknown) {
 }
 
 function findById(rows: unknown, id: unknown) {
-  return rows.find((row: unknown) => row.id === id) || null;
+  return rows.find((row: any) => row.id === id) || null;
 }
 
-test("saveTranscription with routeKind translation round-trips route_kind", (t: unknown) => {
+test("saveTranscription with routeKind translation round-trips route_kind", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
 
@@ -61,7 +61,7 @@ test("saveTranscription with routeKind translation round-trips route_kind", (t: 
   assert.equal(row.route_kind, "translation");
 });
 
-test("saveTranscription without routeKind stores route_kind null", (t: unknown) => {
+test("saveTranscription without routeKind stores route_kind null", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
 
@@ -72,7 +72,7 @@ test("saveTranscription without routeKind stores route_kind null", (t: unknown) 
   assert.equal(row.route_kind, null);
 });
 
-test("discarded save keeps its routeKind", (t: unknown) => {
+test("discarded save keeps its routeKind", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
 
@@ -90,7 +90,7 @@ test("discarded save keeps its routeKind", (t: unknown) => {
   assert.equal(row.route_kind, "translation");
 });
 
-test("updateTranscriptionText does not clobber route_kind", (t: unknown) => {
+test("updateTranscriptionText does not clobber route_kind", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
 

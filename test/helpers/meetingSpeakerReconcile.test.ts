@@ -30,18 +30,18 @@ const electronStub = {
   MessageChannelMain: class {},
 };
 
-const broadcasts: unknown[] = [];
+const broadcasts: any[] = [];
 
 // The publication module pulls the coordinator graph; stub the process
 // boundaries and capture broadcasts so the exported functions and the
 // coordinator runtime can run against fakes.
-Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
+Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
   if (request === "electron") {
     return electronStub;
   }
   if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
     return {
-      broadcastToWindows: (channel: string, payload: unknown) => {
+      broadcastToWindows: (channel: string, payload: any) => {
         broadcasts.push({ channel, payload });
       },
     };
@@ -63,10 +63,10 @@ function createMappingRecorder(existingMappings: any) {
   const calls = { set: [], remove: [] };
   const databaseManager = {
     getSpeakerMappings: () => existingMappings,
-    setSpeakerMapping: (noteId: unknown, speakerId: string, profileId: string, displayName: any) => {
+    setSpeakerMapping: (noteId: any, speakerId: string, profileId: string, displayName: any) => {
       calls.set.push({ noteId, speakerId, profileId, displayName });
     },
-    removeSpeakerMapping: (noteId: unknown, speakerId: string) => {
+    removeSpeakerMapping: (noteId: any, speakerId: string) => {
       calls.remove.push({ noteId, speakerId });
     },
   };
@@ -85,7 +85,7 @@ function reconcile(databaseManager: any, liveSpeakerId: any) {
       embedding,
     },
   };
-  const segments: unknown[] = [];
+  const segments: any[] = [];
   return publication.reconcileLiveSpeakerState(deps, liveState, { speaker_0: embedding }, segments);
 }
 
@@ -162,7 +162,7 @@ function refreshConfig(explicit: any, { expectedCount = 2, attendees = THREE_ATT
   const handlers = new Map();
   const runtime = registerMeetingCoordinatorHandlers(
     {
-      handle: (channel: string, listener: unknown) => handlers.set(channel, listener),
+      handle: (channel: string, listener: any) => handlers.set(channel, listener),
       on: () => {},
     },
     {
@@ -223,7 +223,7 @@ test("a shrinking roster leaves the speaker cap untouched", () => {
 });
 
 function makeExpectationResolver() {
-  return (args: unknown) =>
+  return (args: any) =>
     publication.resolveSpeakerExpectation({
       deps: {
         databaseManager: { getNote: () => (args.note === undefined ? null : args.note) },

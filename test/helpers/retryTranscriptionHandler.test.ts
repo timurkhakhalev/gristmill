@@ -15,8 +15,8 @@ const originalHttpsRequest = https.request;
 // `execHandlers` holds the typed transcription execution module's channels.
 const handlers = new Map();
 const execHandlers = new Map();
-const fetches: unknown[] = [];
-const geminiFileCalls: unknown[] = [];
+const fetches: any[] = [];
+const geminiFileCalls: any[] = [];
 let fetchResponse = () => ({
   ok: true,
   status: 200,
@@ -34,12 +34,12 @@ const electronStub = {
     requestSingleInstanceLock: () => true,
   },
   ipcMain: {
-    handle: (channel: string, fn: unknown) => handlers.set(channel, fn),
+    handle: (channel: string, fn: any) => handlers.set(channel, fn),
     on: () => {},
     removeHandler: () => {},
   },
   net: {
-    fetch: async (url: string, init: unknown) => {
+    fetch: async (url: string, init: any) => {
       fetches.push({ url: String(url), init });
       return fetchResponse(String(url), init);
     },
@@ -64,13 +64,13 @@ const electronStub = {
   MessageChannelMain: class {},
 };
 
-const cortiCalls: unknown[] = [];
+const cortiCalls: any[] = [];
 const tinfoilCalls = [];
 let cortiBehavior = async () => ({ text: "corti text" });
 
 // Kept installed for the whole file: the corti client is require()d lazily at
 // handler invocation time, not at module load.
-Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
+Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
   if (request === "electron") return electronStub;
   if (parent?.filename === handlersModulePath) {
     if (request === "./cortiTranscription") {
@@ -131,11 +131,11 @@ function buildExecutionDeps() {
       getCortiClientId: () => "corti-id",
       getCortiClientSecret: () => "corti-secret",
     },
-    proxyFetch: async (url: string, init: unknown) => {
+    proxyFetch: async (url: string, init: any) => {
       fetches.push({ url: String(url), init });
       return fetchResponse(String(url), init);
     },
-    transcribeGeminiFile: async (args: unknown) => {
+    transcribeGeminiFile: async (args: any) => {
       geminiFileCalls.push({
         ...args,
         bytes: require("node:fs").readFileSync(args.filePath),
@@ -155,12 +155,12 @@ function buildExecutionDeps() {
     bedrockProfileCredentials: () => null,
     providerBaseUrls: () =>
       require("../../src/models/modelRegistryData.json").transcriptionProviders,
-    audioStorage: { getAudioBuffer: (id: unknown) => (id === 7 ? Buffer.from([1, 2, 3]) : null) },
+    audioStorage: { getAudioBuffer: (id: any) => (id === 7 ? Buffer.from([1, 2, 3]) : null) },
     database: {
       updateTranscriptionText: () => {},
       updateTranscriptionStatus: () => {},
       updateTranscriptionAudio: () => {},
-      getTranscriptionById: (id: unknown) => dbRows.get(id) ?? null,
+      getTranscriptionById: (id: any) => dbRows.get(id) ?? null,
     },
     broadcast: () => {},
     logger: { log: () => {}, debug: () => {}, warn: () => {}, error: () => {} },
@@ -193,7 +193,7 @@ let retryHandler: any;
 test.before(() => {
   const { registerTranscriptionExecutionHandlers } = require(execModuleSpecifier);
   registerTranscriptionExecutionHandlers(
-    { handle: (channel: string, fn: unknown) => execHandlers.set(channel, fn) },
+    { handle: (channel: string, fn: any) => execHandlers.set(channel, fn) },
     buildExecutionDeps()
   );
   retryHandler = execHandlers.get("retry-transcription");
@@ -204,7 +204,7 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-const invoke = (settings: unknown, id = 7) => retryHandler({ sender: {} }, id, settings);
+const invoke = (settings: any, id = 7) => retryHandler({ sender: {} }, id, settings);
 
 test("retry: corti routes to the corti client, never OpenAI", async () => {
   fetches.length = 0;
@@ -402,7 +402,7 @@ const pathNode = require("node:path");
 
 const uploadTempFile = pathNode.join(osNode.tmpdir(), "openwhispr-upload-handler-test.webm");
 
-const invokeUpload = (payload: unknown) => {
+const invokeUpload = (payload: any) => {
   const uploadHandler = handlers.get("transcribe-audio-file-byok");
   assert.ok(uploadHandler, "transcribe-audio-file-byok must be registered");
   fsNode.writeFileSync(uploadTempFile, Buffer.from([1, 2, 3, 4]));
@@ -415,15 +415,15 @@ const invokeUpload = (payload: unknown) => {
 // response must fully arrive before "close": the production code treats a
 // close without a settled response as a transport failure.
 function mockHttpsUpload({ onRequest }) {
-  https.request = (url: string, options: unknown, callback: unknown) => {
+  https.request = (url: string, options: any, callback: any) => {
     const { EventEmitter } = require("node:events");
     const request = new EventEmitter();
-    const uploaded: unknown[] = [];
-    request.write = (chunk: unknown, _encoding: any, cb: unknown) => {
+    const uploaded: any[] = [];
+    request.write = (chunk: any, _encoding: any, cb: any) => {
       uploaded.push(Buffer.from(chunk));
       cb?.();
     };
-    request.end = (tail: unknown, _cb: any) => {
+    request.end = (tail: any, _cb: any) => {
       // The multipart footer rides on end() in postRawAudioFile.
       if (tail) uploaded.push(Buffer.from(tail));
       queueMicrotask(() => {
@@ -453,9 +453,9 @@ function mockHttpsUpload({ onRequest }) {
 
 test("upload: Deepgram streams raw file bytes through Node https", async () => {
   fetches.length = 0;
-  const uploaded: unknown[] = [];
+  const uploaded: any[] = [];
   mockHttpsUpload({
-    onRequest: (url: string, options: unknown, body: unknown) => {
+    onRequest: (url: string, options: any, body: any) => {
       assert.equal(url.origin, "https://api.deepgram.com");
       assert.equal(options.headers.Authorization, "Token dg-key");
       assert.equal(options.headers["Content-Type"], "audio/webm");
@@ -483,9 +483,9 @@ test("upload: Deepgram streams raw file bytes through Node https", async () => {
 });
 
 test("upload: ElevenLabs streams a complete multipart file with Scribe fields", async () => {
-  const uploaded: unknown[] = [];
+  const uploaded: any[] = [];
   mockHttpsUpload({
-    onRequest: (url: string, options: unknown, body: unknown) => {
+    onRequest: (url: string, options: any, body: any) => {
       assert.equal(url.toString(), "https://api.elevenlabs.io/v1/speech-to-text");
       assert.equal(options.headers["xi-api-key"], "el-key");
       assert.match(options.headers["Content-Type"], /multipart\/form-data; boundary=/);

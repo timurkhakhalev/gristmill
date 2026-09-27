@@ -13,7 +13,7 @@ function getVite() {
   });
 }
 
-test("per-provider transcription model memory", async (t: unknown) => {
+test("per-provider transcription model memory", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _providerSettingsMigrated: "1",
@@ -135,7 +135,7 @@ test("per-provider transcription model memory", async (t: unknown) => {
 // The picker commits a cloud selection only on an explicit model click:
 // switchCloudTranscriptionProvider(ctx, browsedProvider) followed by
 // setCloudTranscriptionModel(clickedId). Pin that sequence at store level.
-test("explicit model click commits the clicked model, not the remembered one", async (t: unknown) => {
+test("explicit model click commits the clicked model, not the remembered one", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _providerSettingsMigrated: "1",
@@ -173,7 +173,7 @@ test("explicit model click commits the clicked model, not the remembered one", a
   );
 });
 
-test("corrupt persisted model memory hydrates as empty, not a crash", async (t: unknown) => {
+test("corrupt persisted model memory hydrates as empty, not a crash", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _providerSettingsMigrated: "1",

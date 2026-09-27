@@ -106,7 +106,7 @@ test("multi-file Granola preview keeps distinct local source keys across files",
   assert.equal(result.total, 3);
   assert.equal(target._granolaImportPending.notes.length, 3);
   assert.equal(
-    new Set(target._granolaImportPending.notes.map((note: unknown) => note.sourceFile)).size,
+    new Set(target._granolaImportPending.notes.map((note: any) => note.sourceFile)).size,
     3
   );
 });
@@ -116,7 +116,7 @@ test("multi-file Granola preview is stable when file picker order changes", asyn
   await handlers.get("granola-import-pick-and-preview")({ sender: {} });
   const firstIdsByContent = Object.fromEntries(
     target._granolaImportPending.notes
-      .map((note: unknown) => [note.content, note.sourceFile])
+      .map((note: any) => [note.content, note.sourceFile])
       .sort(([leftContent], [rightContent]) => leftContent.localeCompare(rightContent))
   );
 
@@ -124,7 +124,7 @@ test("multi-file Granola preview is stable when file picker order changes", asyn
   await handlers.get("granola-import-pick-and-preview")({ sender: {} });
   const reversedIdsByContent = Object.fromEntries(
     target._granolaImportPending.notes
-      .map((note: unknown) => [note.content, note.sourceFile])
+      .map((note: any) => [note.content, note.sourceFile])
       .sort(([leftContent], [rightContent]) => leftContent.localeCompare(rightContent))
   );
 

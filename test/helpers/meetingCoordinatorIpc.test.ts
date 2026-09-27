@@ -11,12 +11,12 @@ const fakeWindow = () => {
   win.isDestroyed = () => false;
   win.webContents = new EventEmitter();
   win.webContents.messages = [];
-  win.webContents.send = (channel: string, payload: unknown) => win.webContents.messages.push({ channel, payload });
+  win.webContents.send = (channel: string, payload: any) => win.webContents.messages.push({ channel, payload });
   win.messages = win.webContents.messages;
   return win;
 };
 
-let currentWindow: unknown = null;
+let currentWindow: any = null;
 const electronStub = {
   app: {
     getPath: () => "/tmp",
@@ -44,7 +44,7 @@ const electronStub = {
 };
 
 function loadCoordinator() {
-  Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
     if (request === "electron") return electronStub;
     if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
       return { broadcastToWindows: () => {} };
@@ -58,12 +58,12 @@ function loadCoordinator() {
   }
 }
 
-function createDatabaseFake(events: unknown) {
+function createDatabaseFake(events: any) {
   return {
     recordings: new Map(),
     epochs: [],
     finalized: [],
-    createMeetingRecording(noteId: unknown, input: string, startedAt: number, id: unknown) {
+    createMeetingRecording(noteId: any, input: string, startedAt: number, id: any) {
       events.push("recording-created");
       const recording = {
         id,
@@ -79,7 +79,7 @@ function createDatabaseFake(events: unknown) {
     createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, startFrame: number) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },
-    updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: unknown) {
+    updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: any) {
       Object.assign(this.epochs.find((item) => item.recordingId === recordingId && item.source === source && item.epochIndex === epochIndex), result);
     },
     markMeetingRecordingFinalizing(recordingId: string) {
@@ -93,7 +93,7 @@ function createDatabaseFake(events: unknown) {
       return { recording, initialRun: { id: RUN_ID } };
     },
     getGoogleAccounts: () => [],
-    getNote: (noteId: unknown) => ({ id: noteId, transcript: "Existing transcript" }),
+    getNote: (noteId: any) => ({ id: noteId, transcript: "Existing transcript" }),
     getSpeakerMappings: () => [],
     setSpeakerMapping: () => {},
     removeSpeakerMapping: () => {},
@@ -102,13 +102,13 @@ function createDatabaseFake(events: unknown) {
   };
 }
 
-function createStorageFake(events: unknown, { failWrite = false } = {}) {
+function createStorageFake(events: any, { failWrite = false } = {}) {
   return {
     files: new Map(),
     openEpochWriter(recordingId: string, source: string, epochIndex: number) {
       this.files.set(`${recordingId}:${source}:${epochIndex}`, []);
     },
-    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: unknown) {
+    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: any) {
       if (failWrite) throw new Error("disk full");
       events.push("pcm-written");
       this.files.get(`${recordingId}:${source}:${epochIndex}`).push(Buffer.from(samples));
@@ -117,7 +117,7 @@ function createStorageFake(events: unknown, { failWrite = false } = {}) {
     recoverEpoch(recordingId: string, source: string, epochIndex: number) {
       const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`) ?? [];
       return {
-        frameCount: buffers.reduce((total: number, buffer: unknown) => total + buffer.length / 2, 0),
+        frameCount: buffers.reduce((total: number, buffer: any) => total + buffer.length / 2, 0),
         ignoredTrailingBytes: 0,
         errorCode: null,
       };
@@ -149,7 +149,7 @@ function buildHarness({ failWrite = false } = {}) {
   currentWindow = fakeWindow();
   const handlers = new Map();
   const listeners = new Map();
-  const events: unknown[] = [];
+  const events: any[] = [];
   const databaseManager = createDatabaseFake(events);
   const meetingRecordingStorage = createStorageFake(events, { failWrite });
   const engine = createEngineFake();
@@ -158,8 +158,8 @@ function buildHarness({ failWrite = false } = {}) {
   const coordinator = loadCoordinator();
   const runtime = coordinator.registerMeetingCoordinatorHandlers(
     {
-      handle: (channel: string, listener: unknown) => handlers.set(channel, listener),
-      on: (channel: string, listener: unknown) => listeners.set(channel, listener),
+      handle: (channel: string, listener: any) => handlers.set(channel, listener),
+      on: (channel: string, listener: any) => listeners.set(channel, listener),
     },
     {
       databaseManager,
@@ -199,7 +199,7 @@ function buildHarness({ failWrite = false } = {}) {
   return { runtime, handlers, listeners, events, databaseManager, meetingRecordingStorage, tokenCalls: () => tokenCalls, asrCalls: () => asrCalls, engine };
 }
 
-const invoke = (harness: unknown, channel: string, ...args) => harness.handlers.get(channel)(...args);
+const invoke = (harness: any, channel: string, ...args) => harness.handlers.get(channel)(...args);
 const START = {
   noteId: 11,
   sessionId: "session-m2",

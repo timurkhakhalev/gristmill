@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createRendererServer } = require("../lib/rendererTestHarness.ts");
 
-test("saved transcription bypasses an unsupported current meeting route while snapshotting current summary settings", async (t: unknown) => {
+test("saved transcription bypasses an unsupported current meeting route while snapshotting current summary settings", async (t: import("node:test").TestContext) => {
   const previousRouteReads = globalThis.__meetingSnapshotRouteReads;
   globalThis.__meetingSnapshotRouteReads = 0;
   t.after(() => {
@@ -43,7 +43,7 @@ test("saved transcription bypasses an unsupported current meeting route while sn
   assert.equal(globalThis.__meetingSnapshotRouteReads, 1, "ordinary capture still validates current meeting settings");
 });
 
-test("meeting summary snapshots the selected bb harness, model and reasoning level", async (t: unknown) => {
+test("meeting summary snapshots the selected bb harness, model and reasoning level", async (t: import("node:test").TestContext) => {
   const vite = await createRendererServer(t, {
     cachePrefix: "meeting-bb-snapshot-",
     mockModules: {

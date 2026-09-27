@@ -40,7 +40,7 @@ test("keeps explicit system/default preference semantics", async () => {
   assert.equal(module.followsSystemDefaultMic({ preferBuiltInMic: true }), false);
 });
 
-test("remaps a rotated device ID only when its label is unique", async (t: unknown) => {
+test("remaps a rotated device ID only when its label is unique", async (t: import("node:test").TestContext) => {
   const { module, settings } = await loadRecovery();
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   t.after(() => {

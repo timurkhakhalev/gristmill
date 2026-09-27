@@ -35,7 +35,7 @@ function saveMeetingNote(db: any, title = "Meeting") {
   return db.saveNote(title, "Manual note text", "meeting").note;
 }
 
-function createFinishedRecording(db: any, storage: unknown, note: unknown, config = validConfig) {
+function createFinishedRecording(db: any, storage: any, note: any, config = validConfig) {
   const recording = db.createMeetingRecording(note.id, { config });
   db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
   storage.openEpochWriter(recording.id, "mic", 0);
@@ -51,7 +51,7 @@ function createFinishedRecording(db: any, storage: unknown, note: unknown, confi
   return { recording: finalized.recording, initialRun: finalized.initialRun };
 }
 
-test("recording snapshots and initial run survive SQLite reopen without secrets or duplicate Stop", (t: unknown) => {
+test("recording snapshots and initial run survive SQLite reopen without secrets or duplicate Stop", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -81,7 +81,7 @@ test("recording snapshots and initial run survive SQLite reopen without secrets 
   }
 });
 
-test("missing or invalid processing config records a blocked initial run but preserves capture", (t: unknown) => {
+test("missing or invalid processing config records a blocked initial run but preserves capture", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const note = saveMeetingNote(db);
@@ -118,7 +118,7 @@ test("missing or invalid processing config records a blocked initial run but pre
   db.close();
 });
 
-test("blocked config correction cannot change a route after its raw response is saved", (t: unknown) => {
+test("blocked config correction cannot change a route after its raw response is saved", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
@@ -139,7 +139,7 @@ test("blocked config correction cannot change a route after its raw response is 
   db.close();
 });
 
-test("audio deletion blocks ASR retry but keeps text and summary; note deletion preserves shared speakers", (t: unknown) => {
+test("audio deletion blocks ASR retry but keeps text and summary; note deletion preserves shared speakers", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -197,7 +197,7 @@ test("audio deletion blocks ASR retry but keeps text and summary; note deletion 
   db.close();
 });
 
-test("failed file deletion keeps a durable intent and retries successfully after restart", (t: unknown) => {
+test("failed file deletion keeps a durable intent and retries successfully after restart", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();

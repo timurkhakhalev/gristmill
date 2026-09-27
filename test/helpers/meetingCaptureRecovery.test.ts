@@ -18,7 +18,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
     epochs: [],
     recoveries: [],
     finalizations: [],
-    createMeetingRecording(noteId: unknown, config: unknown, startedAt: number, id: unknown) {
+    createMeetingRecording(noteId: any, config: any, startedAt: number, id: any) {
       const recording = { id, noteId, config, startedAt, captureState: "recording" };
       this.recordings.push(recording);
       return recording;
@@ -26,7 +26,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
     createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, startFrame: number) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },
-    updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: unknown) {
+    updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: any) {
       this.recoveries.push({ recordingId, source, epochIndex, ...result });
     },
     markMeetingRecordingFinalizing(recordingId: string) {
@@ -46,7 +46,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
     openEpochWriter(recordingId: string, source: string, epochIndex: number) {
       this.files.set(`${recordingId}:${source}:${epochIndex}`, []);
     },
-    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: unknown) {
+    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: any) {
       if (failWrite) throw new Error("disk full");
       this.files.get(`${recordingId}:${source}:${epochIndex}`).push(Buffer.from(samples));
     },
@@ -54,7 +54,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
     recoverEpoch(recordingId: string, source: string, epochIndex: number) {
       const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`) ?? [];
       return {
-        frameCount: buffers.reduce((total: number, buffer: unknown) => total + buffer.length / 2, 0),
+        frameCount: buffers.reduce((total: number, buffer: any) => total + buffer.length / 2, 0),
         ignoredTrailingBytes: 0,
         errorCode: null,
       };
@@ -70,7 +70,7 @@ const packet = (epochIndex: number, epochStartFrame: any, sequence: any, sampleO
   sampleOffset,
 });
 
-test("process kills recover only complete PCM frames at several write positions", async (t: unknown) => {
+test("process kills recover only complete PCM frames at several write positions", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -98,10 +98,10 @@ test("process kills recover only complete PCM frames at several write positions"
     });
     const exited = new Promise((resolve, reject) => {
       child.once("error", reject);
-      child.once("exit", (code: string, signal: unknown) => resolve({ code, signal }));
+      child.once("exit", (code: string, signal: any) => resolve({ code, signal }));
     });
     let output = "";
-    child.stdout.on("data", (chunk: unknown) => {
+    child.stdout.on("data", (chunk: any) => {
       output += chunk.toString();
       let newline = output.indexOf("\n");
       while (newline !== -1) {
@@ -182,8 +182,8 @@ test("main-owned native system audio drains without a renderer sequence", async 
   assert.equal(result.captureState, "ready");
   const nativeChunks = storage.files.get(`${RECORDING_ID}:system:0`);
   assert.equal(nativeChunks.length, 10);
-  assert.equal(nativeChunks.reduce((total: number, chunk: unknown) => total + chunk.length, 0), 48_000);
-  assert.equal(nativeChunks.every((chunk: unknown) => chunk.length <= 4_800), true);
+  assert.equal(nativeChunks.reduce((total: number, chunk: any) => total + chunk.length, 0), 48_000);
+  assert.equal(nativeChunks.every((chunk: any) => chunk.length <= 4_800), true);
   assert.equal(database.finalizations.length, 1);
 });
 
@@ -233,7 +233,7 @@ test("write queue waits for delayed disk acknowledgement and rejects late packet
   let writes = 0;
   const queue = new MeetingCaptureWriteQueue({
     write: () => { writes += 1; return writeGate.promise; },
-    onFailure: (error: unknown) => { throw error; },
+    onFailure: (error: any) => { throw error; },
     maxFrames: 2,
     maxAgeMs: 500,
   });
@@ -251,10 +251,10 @@ test("write queue waits for delayed disk acknowledgement and rejects late packet
 
 test("write queue stops at its PCM backlog limit and surfaces delayed writer failure", async () => {
   const writeGate = deferred();
-  const failures: unknown[] = [];
+  const failures: any[] = [];
   const queue = new MeetingCaptureWriteQueue({
     write: () => writeGate.promise,
-    onFailure: (error: unknown) => failures.push(error.message),
+    onFailure: (error: any) => failures.push(error.message),
     maxFrames: 2,
     maxAgeMs: 500,
   });

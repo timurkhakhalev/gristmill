@@ -33,7 +33,7 @@ const makeStorage = (initial = {}) => {
     getItem(key: string) {
       return map.has(key) ? map.get(key) : null;
     },
-    setItem(key: string, value: unknown) {
+    setItem(key: string, value: any) {
       map.set(key, String(value));
     },
     removeItem(key: string) {
@@ -182,7 +182,7 @@ test("sweep skips removal when the value changes while hashing", async () => {
       }
       return storage.getItem(key);
     },
-    setItem: (key: string, value: unknown) => storage.setItem(key, value),
+    setItem: (key: string, value: any) => storage.setItem(key, value),
     removeItem: (key: string) => storage.removeItem(key),
   };
   const swept = await sweepRetiredPromptOverrides(racy, ["cleanup"]);
@@ -199,7 +199,7 @@ test("a storage failure on one kind does not stop the sweep of the others", asyn
       if (key === "customPrompt.cleanup") throw new Error("storage unavailable");
       return storage.getItem(key);
     },
-    setItem: (key: string, value: unknown) => storage.setItem(key, value),
+    setItem: (key: string, value: any) => storage.setItem(key, value),
     removeItem: (key: string) => storage.removeItem(key),
   };
   const swept = await sweepRetiredPromptOverrides(failing, ["cleanup", "chatAgent"]);

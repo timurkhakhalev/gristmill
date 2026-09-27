@@ -12,7 +12,7 @@ const modelRegistryData = require("../../src/models/modelRegistryData.json");
 // list used to be hand-maintained and missed `liquidai` when LFM landed
 // (#1176), so a legacy LFM selection would have migrated to `providers`. Every
 // registry local provider must classify as local in both migrations.
-test("provider migrations classify every registry local provider as local", async (t: unknown) => {
+test("provider migrations classify every registry local provider as local", async (t: import("node:test").TestContext) => {
   const localProviderIds = modelRegistryData.localProviders.map((provider: string) => provider.id);
   assert.ok(localProviderIds.includes("liquidai"), "the regression case must be in the registry");
 

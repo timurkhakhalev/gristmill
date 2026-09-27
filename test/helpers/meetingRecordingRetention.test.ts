@@ -13,7 +13,7 @@ const { createMeetingAudioOperationRegistry } = require("../../src/helpers/meeti
 const DAY = 86_400_000;
 const config = { transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "en" } };
 
-function createFinishedRecording(db: any, storage: unknown, anchor: any, ageDays: any) {
+function createFinishedRecording(db: any, storage: any, anchor: any, ageDays: any) {
   const note = db.saveNote("Retention test", "Manual note stays", "meeting").note;
   const startedAt = new Date(anchor - (ageDays + 1) * DAY).toISOString();
   const recording = db.createMeetingRecording(note.id, { config }, startedAt);
@@ -31,14 +31,14 @@ function createFinishedRecording(db: any, storage: unknown, anchor: any, ageDays
   return { note, recording: finalized.recording, initialRun: finalized.initialRun };
 }
 
-function storeTranscript(db: any, storage: unknown, run: unknown, text: string) {
+function storeTranscript(db: any, storage: any, run: any, text: string) {
   storage.writeRunArtifact(run.id, "provider-response", { runId: run.id });
   assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
   storage.writeRunArtifact(run.id, "transcript", { text });
   assert.equal(db.setMeetingRunArtifact(run.id, "transcript").success, true);
 }
 
-function runCleanup(db: any, storage: unknown, settings: unknown, overrides = {}) {
+function runCleanup(db: any, storage: any, settings: any, overrides = {}) {
   const context = {
     databaseManager: db,
     audioStorageManager: {
@@ -60,7 +60,7 @@ function holdAudioOperation(registry: any, recordingId: string) {
   let start: any;
   const started = new Promise((resolve) => { start = resolve; });
   let closed = false;
-  const operation = registry.run(recordingId, (signal: unknown) => new Promise((resolve) => {
+  const operation = registry.run(recordingId, (signal: any) => new Promise((resolve) => {
     start();
     signal.addEventListener("abort", () => {
       closed = true;
@@ -70,13 +70,13 @@ function holdAudioOperation(registry: any, recordingId: string) {
   return { started, operation, isClosed: () => closed };
 }
 
-function withClock(t: unknown, timestamp: unknown) {
+function withClock(t: import("node:test").TestContext, timestamp: any) {
   const original = Date.now;
   Date.now = () => timestamp;
   t.after(() => { Date.now = original; });
 }
 
-test("default 7 days, saved 30 days, and 0-day retention behave independently", async (t: unknown) => {
+test("default 7 days, saved 30 days, and 0-day retention behave independently", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
@@ -103,7 +103,7 @@ test("default 7 days, saved 30 days, and 0-day retention behave independently", 
   assert.equal(db.getMeetingRecording(unlimitedRecording.id).audioState, "available");
 });
 
-test("delete-all safely stops active capture, waits for processing, and removes only audio", async (t: unknown) => {
+test("delete-all safely stops active capture, waits for processing, and removes only audio", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -131,7 +131,7 @@ test("delete-all safely stops active capture, waits for processing, and removes 
     databaseManager: db,
     _meetingAudioOperations: audioOperations,
     _meetingProcessing: {
-      cancelRecordingForDeletion: async (id: unknown) => {
+      cancelRecordingForDeletion: async (id: any) => {
         assert.equal(id, recording.id);
         assert.equal(audioRead.isClosed(), true, "active audio operations close before processing/deletion proceeds");
         waited = true;
@@ -151,7 +151,7 @@ test("delete-all safely stops active capture, waits for processing, and removes 
   assert.deepEqual(storage.readRunArtifact(initialRun.id, "transcript"), { text: "Saved words" });
 });
 
-test("note deletion waits for the active reader before removing its Note and run files", async (t: unknown) => {
+test("note deletion waits for the active reader before removing its Note and run files", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -172,7 +172,7 @@ test("note deletion waits for the active reader before removing its Note and run
     audioStorageManager: { meetingRecordings: storage },
     _meetingAudioOperations: audioOperations,
     _meetingProcessing: {
-      cancelRecordingForDeletion: async (id: unknown, includeNonAudio: any) => {
+      cancelRecordingForDeletion: async (id: any, includeNonAudio: any) => {
         assert.equal(id, recording.id);
         assert.equal(includeNonAudio, true);
         assert.equal(audioRead.isClosed(), true, "audio operations must settle before Note cleanup proceeds");
@@ -196,7 +196,7 @@ test("note deletion waits for the active reader before removing its Note and run
   assert.equal(storage.readRunArtifact(initialRun.id, "transcript"), null);
 });
 
-test("expiry uses recording end time and waits for readers before deleting source files", async (t: unknown) => {
+test("expiry uses recording end time and waits for readers before deleting source files", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -214,7 +214,7 @@ test("expiry uses recording end time and waits for readers before deleting sourc
   const release = new Promise((resolve) => { releaseReader = resolve; });
   const cleanup = runCleanup(db, storage, { audioRetentionDays: 7, transcriptRetentionDays: 0 }, {
     _meetingProcessing: {
-      cancelRecordingForDeletion: async (id: unknown) => {
+      cancelRecordingForDeletion: async (id: any) => {
         assert.equal(id, recording.id);
         readerStarted();
         await release;
@@ -232,7 +232,7 @@ test("expiry uses recording end time and waits for readers before deleting sourc
   assert.equal(db.getMeetingRecording(recording.id).audioState, "deleted");
 });
 
-test("a deletion failure holds processing readiness and remains retryable", async (t: unknown) => {
+test("a deletion failure holds processing readiness and remains retryable", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -254,7 +254,7 @@ test("a deletion failure holds processing readiness and remains retryable", asyn
   assert.deepEqual(db.listMeetingDeletionIntents(), []);
 });
 
-test("reopened SQLite preserves a failed deletion intent for the next startup sweep", async (t: unknown) => {
+test("reopened SQLite preserves a failed deletion intent for the next startup sweep", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();

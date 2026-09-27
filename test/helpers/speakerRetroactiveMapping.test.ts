@@ -36,7 +36,7 @@ function isNativeBindingUnavailable(error: unknown) {
   );
 }
 
-function createDb(t: unknown) {
+function createDb(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-retro-db-"));
   try {
     return new DatabaseManager();
@@ -69,7 +69,7 @@ function unmappedNote(db: any, transcriptSegments: any, embeddingValues: any, sp
   return db.getNote(note.id);
 }
 
-test("retroactive mapping saves a profile mapping for an unmapped matching speaker", async (t: unknown) => {
+test("retroactive mapping saves a profile mapping for an unmapped matching speaker", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const profile = db.upsertSpeakerProfile("Alice", null, embedding([1, 0.2, 0]));
@@ -87,7 +87,7 @@ test("retroactive mapping saves a profile mapping for an unmapped matching speak
   assert.equal(segments[0].speakerIsPlaceholder, false);
 });
 
-test("retroactive mapping covers several unmapped notes in one run", async (t: unknown) => {
+test("retroactive mapping covers several unmapped notes in one run", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const profile = db.upsertSpeakerProfile("Bob", null, embedding([0, 1, 0]));
@@ -100,7 +100,7 @@ test("retroactive mapping covers several unmapped notes in one run", async (t: u
   assert.equal(db.getSpeakerMappings(noteB.id)[0].profile_id, profile.id);
 });
 
-test("retroactive mapping leaves a note untouched when no embedding matches", async (t: unknown) => {
+test("retroactive mapping leaves a note untouched when no embedding matches", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const profile = db.upsertSpeakerProfile("Carol", null, embedding([1, 0, 0]));
@@ -114,7 +114,7 @@ test("retroactive mapping leaves a note untouched when no embedding matches", as
   assert.equal(mappings[0].profile_id, null);
 });
 
-test("retroactive mapping never rewrites already-assigned mappings", async (t: unknown) => {
+test("retroactive mapping never rewrites already-assigned mappings", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const profileA = db.upsertSpeakerProfile("Alice", null, embedding([1, 0, 0]));
@@ -129,7 +129,7 @@ test("retroactive mapping never rewrites already-assigned mappings", async (t: u
   await runRetroactive(db, profileA);
 
   const mappings = db.getSpeakerMappings(note.id);
-  const bySpeaker = new Map(mappings.map((m: unknown) => [m.speaker_id, m]));
+  const bySpeaker = new Map(mappings.map((m: any) => [m.speaker_id, m]));
   assert.equal(bySpeaker.get("SPEAKER_00").profile_id, profileA.id);
   assert.equal(bySpeaker.get("SPEAKER_01").profile_id, profileB.id);
   assert.equal(bySpeaker.get("SPEAKER_01").display_name, "Bob");

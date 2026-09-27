@@ -15,7 +15,7 @@ test("stores and retrieves values, returning undefined for missing keys", async 
   assert.equal(cache.get("nonexistent"), undefined);
 });
 
-test("entries expire after the TTL and survive until just before it", async (t: unknown) => {
+test("entries expire after the TTL and survive until just before it", async (t: import("node:test").TestContext) => {
   const { SecureCache } = await load();
   t.mock.timers.enable({ apis: ["Date"] });
 
@@ -29,7 +29,7 @@ test("entries expire after the TTL and survive until just before it", async (t: 
   assert.equal(cache.get("key1"), undefined);
 });
 
-test("has() reflects liveness, not mere presence", async (t: unknown) => {
+test("has() reflects liveness, not mere presence", async (t: import("node:test").TestContext) => {
   const { SecureCache } = await load();
   t.mock.timers.enable({ apis: ["Date"] });
 
@@ -62,7 +62,7 @@ test("clear() empties the cache", async () => {
   assert.equal(cache.get("a"), undefined);
 });
 
-test("size counts expired entries until cleanup() sweeps them", async (t: unknown) => {
+test("size counts expired entries until cleanup() sweeps them", async (t: import("node:test").TestContext) => {
   const { SecureCache } = await load();
   t.mock.timers.enable({ apis: ["Date"] });
 
@@ -80,7 +80,7 @@ test("size counts expired entries until cleanup() sweeps them", async (t: unknow
   assert.equal(cache.get("new"), "2");
 });
 
-test("startAutoCleanup sweeps on the interval and its stop function halts sweeping", async (t: unknown) => {
+test("startAutoCleanup sweeps on the interval and its stop function halts sweeping", async (t: import("node:test").TestContext) => {
   const { SecureCache } = await load();
   t.mock.timers.enable({ apis: ["Date", "setInterval"] });
 

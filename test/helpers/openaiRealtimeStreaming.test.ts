@@ -9,7 +9,7 @@ function makeFakeSocket(readyState: string) {
   const socket = new EventEmitter();
   socket.readyState = readyState;
   socket.sent = [];
-  socket.send = (data: unknown) => socket.sent.push(data);
+  socket.send = (data: any) => socket.sent.push(data);
   socket.ping = () => {};
   socket.terminate = () => {
     socket.readyState = WS.CLOSED;
@@ -21,7 +21,7 @@ function makeFakeSocket(readyState: string) {
   return socket;
 }
 
-async function connectDirect(streaming: unknown, socket: unknown) {
+async function connectDirect(streaming: any, socket: any) {
   const connected = streaming.connect({
     apiKey: "key",
     createSocket: async () => socket,
@@ -33,10 +33,10 @@ async function connectDirect(streaming: unknown, socket: unknown) {
   await connected;
 }
 
-const sentEvents = (socket: unknown, type: string) =>
-  socket.sent.map((raw: any) => JSON.parse(raw)).filter((e: unknown) => e.type === type);
+const sentEvents = (socket: any, type: string) =>
+  socket.sent.map((raw: any) => JSON.parse(raw)).filter((e: any) => e.type === type);
 
-async function connectByok(streaming: unknown, socket: unknown, options: unknown) {
+async function connectByok(streaming: any, socket: any, options: any) {
   const connected = streaming.connect({
     apiKey: "sk-test",
     createSocket: async () => socket,
@@ -50,12 +50,12 @@ async function connectByok(streaming: unknown, socket: unknown, options: unknown
   await connected;
 }
 
-function captureLogs(t: unknown) {
+function captureLogs(t: import("node:test").TestContext) {
   const debugLogger = require("../../src/helpers/debugLogger");
-  const entries: unknown[] = [];
+  const entries: any[] = [];
   for (const level of ["debug", "warn", "error"]) {
     const original = debugLogger[level];
-    debugLogger[level] = (message: unknown, meta: unknown) => entries.push({ level, message, meta });
+    debugLogger[level] = (message: any, meta: any) => entries.push({ level, message, meta });
     t.after(() => {
       debugLogger[level] = original;
     });
@@ -123,7 +123,7 @@ test("sendAudio flushes buffered audio in order once the socket opens, then send
 
   assert.equal(sent, true);
   assert.equal(streaming.ws.sent.length, 3);
-  const payloads = sentEvents(streaming.ws, "input_audio_buffer.append").map((event: unknown) => event.audio);
+  const payloads = sentEvents(streaming.ws, "input_audio_buffer.append").map((event: any) => event.audio);
   assert.deepEqual(payloads, [
     Buffer.from("first").toString("base64"),
     Buffer.from("second").toString("base64"),
@@ -154,7 +154,7 @@ test("connect() preserves audio buffered during beginConnecting() instead of wip
   await connected;
 
   streaming.sendAudio(Buffer.from("live"));
-  const payloads = sentEvents(streaming.ws, "input_audio_buffer.append").map((event: unknown) => event.audio);
+  const payloads = sentEvents(streaming.ws, "input_audio_buffer.append").map((event: any) => event.audio);
   assert.deepEqual(payloads, [
     Buffer.from("pre-token-fetch audio").toString("base64"),
     Buffer.from("live").toString("base64"),
@@ -202,7 +202,7 @@ test("cleanup() stops the keep-alive interval", async () => {
   assert.equal(streaming.keepAliveInterval, null);
 });
 
-test("keep-alive terminates a connection that misses a pong", (t: unknown) => {
+test("keep-alive terminates a connection that misses a pong", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   return (async () => {
     const OpenAIRealtimeStreaming = (await load()).default;
@@ -225,7 +225,7 @@ test("keep-alive terminates a connection that misses a pong", (t: unknown) => {
   })();
 });
 
-test("keep-alive stays alive when a pong is received between pings", (t: unknown) => {
+test("keep-alive stays alive when a pong is received between pings", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   return (async () => {
     const OpenAIRealtimeStreaming = (await load()).default;
@@ -277,7 +277,7 @@ test("session_expired without an onSessionExpired handler falls through to onErr
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   let errorMessage = null;
-  streaming.onError = (err: unknown) => {
+  streaming.onError = (err: any) => {
     errorMessage = err.message;
   };
 
@@ -296,7 +296,7 @@ test("non-session_expired error fires onError normally", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   let errorMsg = null;
-  streaming.onError = (err: unknown) => {
+  streaming.onError = (err: any) => {
     errorMsg = err.message;
   };
 
@@ -376,7 +376,7 @@ test("connect() resets _sessionExpired left over from a previous session", async
 
 // -- proactive session timer (fires before the 60-minute limit) --
 
-test("session timer fires onSessionExpired at the pre-empt deadline while connected", (t: unknown) => {
+test("session timer fires onSessionExpired at the pre-empt deadline while connected", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   return (async () => {
     const OpenAIRealtimeStreaming = (await load()).default;
@@ -396,7 +396,7 @@ test("session timer fires onSessionExpired at the pre-empt deadline while connec
   })();
 });
 
-test("cleanup() clears the session timer so a stopped session never requests a reconnect", (t: unknown) => {
+test("cleanup() clears the session timer so a stopped session never requests a reconnect", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   return (async () => {
     const OpenAIRealtimeStreaming = (await load()).default;
@@ -542,7 +542,7 @@ test("BYOK session.update is byte-for-byte today's payload when no VAD/language/
 
   const updates = socket.sent
     .map((raw: any) => JSON.parse(raw))
-    .filter((e: unknown) => e.type === "session.update");
+    .filter((e: any) => e.type === "session.update");
   assert.equal(updates.length, 1, "exactly one session.update after session.created");
   assert.deepEqual(updates[0], {
     type: "session.update",
@@ -587,7 +587,7 @@ test("BYOK session.update is byte-for-byte the overridden payload when vadThresh
 
   const updates = socket.sent
     .map((raw: any) => JSON.parse(raw))
-    .filter((e: unknown) => e.type === "session.update");
+    .filter((e: any) => e.type === "session.update");
   assert.equal(updates.length, 1, "exactly one session.update after session.created");
   assert.deepEqual(updates[0], {
     type: "session.update",
@@ -635,7 +635,7 @@ test("dictation-style connect (inputRate 16000, custom socket factory) declares 
 
   const [update] = socket.sent
     .map((raw: any) => JSON.parse(raw))
-    .filter((e: unknown) => e.type === "session.update");
+    .filter((e: any) => e.type === "session.update");
   assert.equal(factoryCalls.length, 1);
   assert.deepEqual(update.session.audio.input.format, { type: "audio/pcm", rate: 16000 });
   assert.equal(update.session.audio.input.transcription.model, "voxtral-mini-4b-realtime");
@@ -660,8 +660,8 @@ test("a final that lands during disconnect()'s commit window reaches onFinalTran
   const socket = makeFakeSocket(WS.CONNECTING);
   await connectDirect(streaming, socket);
 
-  const calls: unknown[] = [];
-  streaming.onFinalTranscript = (text: string, timestamp: unknown) => calls.push({ text, timestamp });
+  const calls: any[] = [];
+  streaming.onFinalTranscript = (text: string, timestamp: any) => calls.push({ text, timestamp });
   streaming.sendAudio(Buffer.alloc(1600, 1)); // audioBytesSent > 0 so disconnect() commits
 
   const disconnecting = streaming.disconnect();
@@ -670,7 +670,7 @@ test("a final that lands during disconnect()'s commit window reaches onFinalTran
   const commits = socket.sent
     .filter((raw: any) => typeof raw === "string")
     .map((raw: any) => JSON.parse(raw))
-    .filter((e: unknown) => e.type === "input_audio_buffer.commit");
+    .filter((e: any) => e.type === "input_audio_buffer.commit");
   assert.equal(commits.length, 1, "disconnect() commits the trailing buffer");
 
   socket.emit("message", JSON.stringify({ type: "input_audio_buffer.speech_started" }));
@@ -691,7 +691,7 @@ test("a final that lands during disconnect()'s commit window reaches onFinalTran
 
 // -- diagnostic logging: stream labels, VAD events, failed/empty turns --
 
-test("transcription.failed is logged with the stream label and stays log-only (no onError, no segment)", async (t: unknown) => {
+test("transcription.failed is logged with the stream label and stays log-only (no onError, no segment)", async (t: import("node:test").TestContext) => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.streamLabel = "system";
@@ -719,7 +719,7 @@ test("transcription.failed is logged with the stream label and stays log-only (n
   assert.equal(streaming.completedSegments.length, 0, "failed turns must not count as segments");
 });
 
-test("empty-transcript completed events are logged and add no segment", async (t: unknown) => {
+test("empty-transcript completed events are logged and add no segment", async (t: import("node:test").TestContext) => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.streamLabel = "system";
@@ -747,7 +747,7 @@ test("empty-transcript completed events are logged and add no segment", async (t
   assert.equal(streaming.completedSegments.length, 0);
 });
 
-test("VAD events log first-3-then-every-50th with streamLabel and audioBytesSent", async (t: unknown) => {
+test("VAD events log first-3-then-every-50th with streamLabel and audioBytesSent", async (t: import("node:test").TestContext) => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.streamLabel = "system";
@@ -775,7 +775,7 @@ test("VAD events log first-3-then-every-50th with streamLabel and audioBytesSent
   assert.equal(streaming.speechStartedCount, 2, "only speech_started increments the counter");
 });
 
-test("disconnect summary carries streamLabel and speechStartedCount", async (t: unknown) => {
+test("disconnect summary carries streamLabel and speechStartedCount", async (t: import("node:test").TestContext) => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
@@ -804,7 +804,7 @@ test("disconnect summary carries streamLabel and speechStartedCount", async (t: 
   assert.equal(line.meta.audioBytesSent, 0);
 });
 
-test("direct session.created sends the configured session update", async (t: unknown) => {
+test("direct session.created sends the configured session update", async (t: import("node:test").TestContext) => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
@@ -841,7 +841,7 @@ test("direct session.created sends the configured session update", async (t: unk
   streaming.cleanup();
 });
 
-test("without a streamLabel (dictation) log metadata carries no stream key", async (t: unknown) => {
+test("without a streamLabel (dictation) log metadata carries no stream key", async (t: import("node:test").TestContext) => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const logs = captureLogs(t);
@@ -912,10 +912,10 @@ test("gpt-live-transcribe stop: disconnect() commits once, then consumes the .co
   const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
   await connectByok(streaming, socket, { model: "gpt-live-transcribe" });
-  const partials: unknown[] = [];
-  const finals: unknown[] = [];
+  const partials: any[] = [];
+  const finals: any[] = [];
   streaming.onPartialTranscript = (text: string) => partials.push(text);
-  streaming.onFinalTranscript = (text: string, timestamp: unknown) => finals.push({ text, timestamp });
+  streaming.onFinalTranscript = (text: string, timestamp: any) => finals.push({ text, timestamp });
 
   // Partials stream during speech with no speech_started/speech_stopped around them.
   for (const delta of ["Hello", " world"]) {
@@ -967,7 +967,7 @@ test("gpt-live-transcribe stop with no audio sent never commits (an empty commit
   assert.equal(socket.readyState, WS.CLOSED);
 });
 
-test("gpt-live-transcribe stop outlives the legacy 3 s commit budget; legacy keeps it", (t: unknown) => {
+test("gpt-live-transcribe stop outlives the legacy 3 s commit budget; legacy keeps it", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   return (async () => {
     const OpenAIRealtimeStreaming = (await load()).default;
@@ -978,7 +978,7 @@ test("gpt-live-transcribe stop outlives the legacy 3 s commit budget; legacy kee
     await connectByok(live, liveSocket, { model: "gpt-live-transcribe" });
     live.sendAudio(Buffer.alloc(4800, 1));
     let liveSettled = false;
-    const liveDisconnect = live.disconnect().then((result: unknown) => {
+    const liveDisconnect = live.disconnect().then((result: any) => {
       liveSettled = true;
       return result;
     });
@@ -1058,7 +1058,7 @@ test("a socket that closes during the commit wait ends the stop at once with the
   assert.equal(streaming.ws, null);
 });
 
-test("direct sessions keep the requested model and send session.update", async (t: unknown) => {
+test("direct sessions keep the requested model and send session.update", async (t: import("node:test").TestContext) => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const logs = captureLogs(t);
   const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();

@@ -17,7 +17,7 @@ const MIGRATED = { _providerSettingsMigrated: "1" };
 // latch, so seed them done except where a case is about that copy.
 const COPIES_DONE = { meetingFollowsTranscription: "false", uploadTranscriptionMigrated: "true" };
 
-test("startup repairs transcription routing that disagrees with the selected mode", async (t: unknown) => {
+test("startup repairs transcription routing that disagrees with the selected mode", async (t: import("node:test").TestContext) => {
   const { storage } = installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
     cachePrefix: "openhercules-transcription-mode-reconcile-test-",

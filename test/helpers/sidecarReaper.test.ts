@@ -32,7 +32,7 @@ const GRACES = { sigtermGraceMs: 1000, sigkillGraceMs: 1000 };
 // reports as the bare image name — these process-identity tests are POSIX-only.
 const posixOnly = { skip: process.platform === "win32" };
 
-function createUserDataDir(t: unknown) {
+function createUserDataDir(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "oh-sidecar-reaper-"));
   const dir = userDataDir;
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -41,7 +41,7 @@ function createUserDataDir(t: unknown) {
 
 // The script filename must contain "whisper-server" so processCommand() matches
 // the expected binary fragment for the preserved whisper sidecar.
-function spawnFakeSidecar(t: unknown, { scriptName, ignoreSigterm }) {
+function spawnFakeSidecar(t: import("node:test").TestContext, { scriptName, ignoreSigterm }) {
   const handler = ignoreSigterm ? 'process.on("SIGTERM", () => {});' : "";
   const scriptPath = path.join(userDataDir, scriptName);
   fs.writeFileSync(scriptPath, `${handler}console.log("ready");setInterval(() => {}, 1000);`);
@@ -75,7 +75,7 @@ async function waitUntilDead(pid: number, timeoutMs = 2000) {
   return !isAlive(pid);
 }
 
-test("kills a responsive stale sidecar and clears its entry", posixOnly, async (t: unknown) => {
+test("kills a responsive stale sidecar and clears its entry", posixOnly, async (t: import("node:test").TestContext) => {
   createUserDataDir(t);
   const child = await spawnFakeSidecar(t, {
     scriptName: "whisper-server-fake.js",
@@ -89,7 +89,7 @@ test("kills a responsive stale sidecar and clears its entry", posixOnly, async (
   assert.deepEqual(sidecarPidFile.readAll(), []);
 });
 
-test("escalates to SIGKILL when a stale sidecar ignores SIGTERM", posixOnly, async (t: unknown) => {
+test("escalates to SIGKILL when a stale sidecar ignores SIGTERM", posixOnly, async (t: import("node:test").TestContext) => {
   createUserDataDir(t);
   const child = await spawnFakeSidecar(t, {
     scriptName: "whisper-server-stuck.js",
@@ -103,7 +103,7 @@ test("escalates to SIGKILL when a stale sidecar ignores SIGTERM", posixOnly, asy
   assert.deepEqual(sidecarPidFile.readAll(), []);
 });
 
-test("does not kill a reused PID that is no longer the sidecar binary", posixOnly, async (t: unknown) => {
+test("does not kill a reused PID that is no longer the sidecar binary", posixOnly, async (t: import("node:test").TestContext) => {
   createUserDataDir(t);
   const child = await spawnFakeSidecar(t, { scriptName: "other-app.js", ignoreSigterm: false });
   sidecarPidFile.write("whisper", child.pid);
@@ -116,7 +116,7 @@ test("does not kill a reused PID that is no longer the sidecar binary", posixOnl
 
 // Preserved sidecar restart paths use waitForExit to verify the old process is
 // gone before spawning a replacement.
-test("waitForExit distinguishes a live process from a dead one", async (t: unknown) => {
+test("waitForExit distinguishes a live process from a dead one", async (t: import("node:test").TestContext) => {
   createUserDataDir(t);
   const child = await spawnFakeSidecar(t, {
     scriptName: "whisper-server-wait.js",
@@ -129,7 +129,7 @@ test("waitForExit distinguishes a live process from a dead one", async (t: unkno
   assert.equal(await waitForExit(child.pid, 2000), true);
 });
 
-test("clears entries for processes that already exited", async (t: unknown) => {
+test("clears entries for processes that already exited", async (t: import("node:test").TestContext) => {
   createUserDataDir(t);
   const child = await spawnFakeSidecar(t, {
     scriptName: "whisper-server-gone.js",

@@ -16,7 +16,7 @@ const bundledPreload = path.join(root, "dist-main", "preload.js");
 let activeHandlers = new Map();
 
 const originalLoad = Module._load;
-Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
+Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
   if (request === "electron") {
     return {
       app: {
@@ -25,13 +25,13 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
         isReady: () => false,
       },
       ipcMain: {
-        handle: (channel: string, listener: unknown) => {
+        handle: (channel: string, listener: any) => {
           if (activeHandlers.has(channel)) {
             throw new Error(`Attempted to register a second handler for '${channel}'`);
           }
           activeHandlers.set(channel, listener);
         },
-        on: (channel: string, listener: unknown) => activeHandlers.set(channel, listener),
+        on: (channel: string, listener: any) => activeHandlers.set(channel, listener),
         removeHandler() {},
         emit() {},
       },
@@ -46,7 +46,7 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function loadBundledPreload(transport: unknown) {
+function loadBundledPreload(transport: any) {
   let api;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
@@ -57,15 +57,15 @@ function loadBundledPreload(transport: unknown) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name: string, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: any) => {
             api = value;
           },
         },
         ipcRenderer: {
           invoke: (channel: string, ...args) => transport.invoke(channel, ...args),
           send: (channel: string, ...args) => transport.send(channel, ...args),
-          on: (channel: string, listener: unknown) => transport.on(channel, listener),
-          removeListener: (channel: string, listener: unknown) => transport.removeListener(channel, listener),
+          on: (channel: string, listener: any) => transport.on(channel, listener),
+          removeListener: (channel: string, listener: any) => transport.removeListener(channel, listener),
         },
         webUtils: { getPathForFile: () => "" },
       };
@@ -77,14 +77,14 @@ function loadBundledPreload(transport: unknown) {
 }
 
 // Objects from vm.runInNewContext have a different prototype; compare by JSON.
-const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
+const plain = (value: any) => JSON.parse(JSON.stringify(value));
 
 async function createFixture() {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
   const ipcMain = {
-    handle: (channel: string, listener: unknown) => activeHandlers.set(channel, listener),
-    on: (channel: string, listener: unknown) => activeHandlers.set(channel, listener),
+    handle: (channel: string, listener: any) => activeHandlers.set(channel, listener),
+    on: (channel: string, listener: any) => activeHandlers.set(channel, listener),
   };
 
   const { AgentStreamRequestRegistry } = await import(
@@ -129,7 +129,7 @@ async function createFixture() {
     logError: () => {},
   });
 
-  const sends: unknown[] = [];
+  const sends: any[] = [];
   const listeners = new Map();
   const handlersSnapshot = new Map(activeHandlers);
   const transport = {
@@ -139,11 +139,11 @@ async function createFixture() {
       return handler({ sender: fixtureSender }, ...args);
     },
     send: (channel: string, ...args) => sends.push({ channel, args }),
-    on: (channel: string, listener: unknown) => {
+    on: (channel: string, listener: any) => {
       if (!listeners.has(channel)) listeners.set(channel, new Set());
       listeners.get(channel).add(listener);
     },
-    removeListener: (channel: string, listener: unknown) => {
+    removeListener: (channel: string, listener: any) => {
       listeners.get(channel)?.delete(listener);
     },
   };
@@ -151,7 +151,7 @@ async function createFixture() {
   const fixtureSender = {
     id: 77,
     isDestroyed: () => false,
-    send: (channel: string, payload: unknown) => {
+    send: (channel: string, payload: any) => {
       for (const listener of listeners.get(channel) ?? []) listener({}, payload);
     },
     on: () => {},
@@ -190,7 +190,7 @@ test("one-shot operations cross the bundled preload boundary", async () => {
 
 test("stream start/cancel cross the boundary and envelopes reach the callback", async () => {
   const { api, listeners, fixtureSender } = await createFixture();
-  const received: unknown[] = [];
+  const received: any[] = [];
   const unsubscribe = api.onEnterpriseStreamPart((envelope: any) => received.push(envelope));
 
   const started = api.enterpriseStreamStart({
@@ -225,7 +225,7 @@ test("stream start/cancel cross the boundary and envelopes reach the callback", 
 
 test("malformed envelopes are dropped before the callback", async () => {
   const { api, listeners } = await createFixture();
-  const received: unknown[] = [];
+  const received: any[] = [];
   api.onEnterpriseStreamPart((envelope: any) => received.push(envelope));
 
   const malformed = [

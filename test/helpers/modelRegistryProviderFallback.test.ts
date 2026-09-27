@@ -8,7 +8,7 @@ const modelRegistryData = require("../../src/models/modelRegistryData.json");
 // (a GGUF the user renamed, a catalog entry not yet synced). Every local model
 // family the catalog ships must resolve "local" there, or a non-registry id
 // fails closed to "" and the dictation is dropped instead of routed.
-test("non-registry ids of every local family fall back to the local provider", async (t: unknown) => {
+test("non-registry ids of every local family fall back to the local provider", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: { _providerSettingsMigrated: "1", cleanupMode: "local" },
   });
@@ -27,7 +27,7 @@ test("non-registry ids of every local family fall back to the local provider", a
   }
 });
 
-test("gemma fallback does not capture gemini ids or registry cloud gemma models", async (t: unknown) => {
+test("gemma fallback does not capture gemini ids or registry cloud gemma models", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: { _providerSettingsMigrated: "1", cleanupMode: "local" },
   });

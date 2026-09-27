@@ -10,7 +10,7 @@ function makeFakeSocket(readyState: string) {
   const socket = new EventEmitter();
   socket.readyState = readyState;
   socket.sent = [];
-  socket.send = (data: unknown) => socket.sent.push(data);
+  socket.send = (data: any) => socket.sent.push(data);
   socket.ping = () => socket.emit("pong");
   socket.terminate = () => {
     socket.readyState = WS.CLOSED;
@@ -22,19 +22,19 @@ function makeFakeSocket(readyState: string) {
   return socket;
 }
 
-function makeRecordingFactory(socket: unknown) {
-  const calls: unknown[] = [];
+function makeRecordingFactory(socket: any) {
+  const calls: any[] = [];
   return {
     calls,
-    factory: async (args: unknown) => {
+    factory: async (args: any) => {
       calls.push(args);
       return socket;
     },
   };
 }
 
-function sentEvents(socket: unknown, type: string) {
-  return socket.sent.map((raw: any) => JSON.parse(raw)).filter((event: unknown) => event.type === type);
+function sentEvents(socket: any, type: string) {
+  return socket.sent.map((raw: any) => JSON.parse(raw)).filter((event: any) => event.type === type);
 }
 
 function completed(transcript: any) {
@@ -64,7 +64,7 @@ async function makeConnected() {
   return streaming;
 }
 
-async function finishConnect(streaming: unknown, socket: unknown, preconfigured = false) {
+async function finishConnect(streaming: any, socket: any, preconfigured = false) {
   await new Promise((resolve) => setImmediate(resolve));
   socket.readyState = WS.OPEN;
   socket.emit("message", JSON.stringify({ type: "session.created" }));
@@ -118,11 +118,11 @@ test("connection lifecycle logs name Tinfoil, never OpenAI", async () => {
   const { factory } = makeRecordingFactory(socket);
   const streaming = new TinfoilRealtimeStreaming(factory);
 
-  const messages: unknown[] = [];
+  const messages: any[] = [];
   const levels = ["debug", "warn", "error"];
   const originals = Object.fromEntries(levels.map((level) => [level, debugLogger[level]]));
   for (const level of levels) {
-    debugLogger[level] = (message: unknown) => messages.push(message);
+    debugLogger[level] = (message: any) => messages.push(message);
   }
   try {
     const connected = streaming.connect({ apiKey: "tk-secret" });
@@ -164,7 +164,7 @@ test("attestation failure rejects without opening a fallback socket", async () =
 
 test("every fresh instance invokes the attested factory", async () => {
   const { TinfoilRealtimeStreaming } = await load();
-  const calls: unknown[] = [];
+  const calls: any[] = [];
 
   for (let index = 0; index < 2; index += 1) {
     const socket = makeFakeSocket(WS.CONNECTING);
@@ -243,11 +243,11 @@ test("labelled Tinfoil sessions carry the stream label in log metadata", async (
   const { factory } = makeRecordingFactory(socket);
   const streaming = new TinfoilRealtimeStreaming(factory);
 
-  const entries: unknown[] = [];
+  const entries: any[] = [];
   const levels = ["debug", "warn", "error"];
   const originals = Object.fromEntries(levels.map((level) => [level, debugLogger[level]]));
   for (const level of levels) {
-    debugLogger[level] = (message: unknown, meta: unknown) => entries.push({ message, meta });
+    debugLogger[level] = (message: any, meta: any) => entries.push({ message, meta });
   }
   try {
     const connected = streaming.connect({ apiKey: "tk-secret", streamLabel: "system" });
@@ -264,7 +264,7 @@ test("labelled Tinfoil sessions carry the stream label in log metadata", async (
   assert.equal(typeof summary.meta.speechStartedCount, "number");
 });
 
-test("speech followed by 600ms of PCM silence commits the turn", (t: unknown) => {
+test("speech followed by 600ms of PCM silence commits the turn", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
@@ -279,7 +279,7 @@ test("speech followed by 600ms of PCM silence commits the turn", (t: unknown) =>
   })();
 });
 
-test("continuous speech is bounded by a 30-second turn", (t: unknown) => {
+test("continuous speech is bounded by a 30-second turn", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
@@ -296,7 +296,7 @@ test("continuous speech is bounded by a 30-second turn", (t: unknown) => {
   })();
 });
 
-test("a silent backend turn is recycled before the provider zombie window", (t: unknown) => {
+test("a silent backend turn is recycled before the provider zombie window", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
@@ -309,7 +309,7 @@ test("a silent backend turn is recycled before the provider zombie window", (t: 
   })();
 });
 
-test("no audio produces no commits", (t: unknown) => {
+test("no audio produces no commits", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
@@ -318,11 +318,11 @@ test("no audio produces no commits", (t: unknown) => {
   })();
 });
 
-test("completed re-arms the next buffered turn", (t: unknown) => {
+test("completed re-arms the next buffered turn", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
-    const finals: unknown[] = [];
+    const finals: any[] = [];
     streaming.onFinalTranscript = (text: any) => finals.push(text);
 
     streaming.sendAudio(speechPcm());
@@ -340,12 +340,12 @@ test("completed re-arms the next buffered turn", (t: unknown) => {
   })();
 });
 
-test("commit timeout requests recovery without sending a duplicate commit", (t: unknown) => {
+test("commit timeout requests recovery without sending a duplicate commit", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
-    const errors: unknown[] = [];
-    streaming.onConnectionLost = (error: unknown) => errors.push(error.message);
+    const errors: any[] = [];
+    streaming.onConnectionLost = (error: any) => errors.push(error.message);
 
     streaming.sendAudio(speechPcm());
     t.mock.timers.tick(750);
@@ -356,7 +356,7 @@ test("commit timeout requests recovery without sending a duplicate commit", (t: 
   })();
 });
 
-test("speech timing comes from PCM activity rather than transcript timing", (t: unknown) => {
+test("speech timing comes from PCM activity rather than transcript timing", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
@@ -369,7 +369,7 @@ test("speech timing comes from PCM activity rather than transcript timing", (t: 
   })();
 });
 
-test("disconnect drains an in-flight commit before committing the tail", (t: unknown) => {
+test("disconnect drains an in-flight commit before committing the tail", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
@@ -392,7 +392,7 @@ test("disconnect drains an in-flight commit before committing the tail", (t: unk
   })();
 });
 
-test("disconnect remains bounded when the provider never completes", (t: unknown) => {
+test("disconnect remains bounded when the provider never completes", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
@@ -408,7 +408,7 @@ test("disconnect remains bounded when the provider never completes", (t: unknown
   })();
 });
 
-test("disconnect uses one drain deadline across the active turn and its tail", (t: unknown) => {
+test("disconnect uses one drain deadline across the active turn and its tail", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
@@ -437,7 +437,7 @@ test("disconnect uses one drain deadline across the active turn and its tail", (
   })();
 });
 
-test("empty commit replies are swallowed without a retry loop", (t: unknown) => {
+test("empty commit replies are swallowed without a retry loop", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
@@ -456,14 +456,14 @@ test("empty commit replies are swallowed without a retry loop", (t: unknown) => 
   })();
 });
 
-test("provider errors surface and request connection recovery", (t: unknown) => {
+test("provider errors surface and request connection recovery", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
-    const errors: unknown[] = [];
-    const recoveries: unknown[] = [];
-    streaming.onError = (error: unknown) => errors.push(error.message);
-    streaming.onConnectionLost = (error: unknown) => recoveries.push(error.message);
+    const errors: any[] = [];
+    const recoveries: any[] = [];
+    streaming.onError = (error: any) => errors.push(error.message);
+    streaming.onConnectionLost = (error: any) => recoveries.push(error.message);
 
     streaming.sendAudio(speechPcm());
     t.mock.timers.tick(750);
@@ -476,7 +476,7 @@ test("provider errors surface and request connection recovery", (t: unknown) => 
   })();
 });
 
-test("cleanup stops the turn timer", (t: unknown) => {
+test("cleanup stops the turn timer", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();

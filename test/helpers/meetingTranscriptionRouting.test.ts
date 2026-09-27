@@ -205,7 +205,7 @@ test("gpt-live-transcribe is never offered for Note Recording", async () => {
   const { resolveMeetingTranscriptionOptions } = await load();
   // Mirrors getStreamingTranscriptionProviders(): the meeting BYOK picker.
   const registryStreamingProviders = modelRegistryData.transcriptionProviders
-    .map((provider: string) => ({ ...provider, models: provider.models.filter((m: unknown) => m.streaming) }))
+    .map((provider: string) => ({ ...provider, models: provider.models.filter((m: any) => m.streaming) }))
     .filter((provider: string) => provider.models.length > 0);
   for (const provider of registryStreamingProviders) {
     for (const model of provider.models) {

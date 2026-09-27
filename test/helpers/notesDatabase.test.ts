@@ -20,7 +20,7 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function createDb(t: unknown) {
+function createDb(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-db-"));
   try {
     return new DatabaseManager();
@@ -34,7 +34,7 @@ function createDb(t: unknown) {
   }
 }
 
-test("save returns the inserted note with nullable fields intact", (t: unknown) => {
+test("save returns the inserted note with nullable fields intact", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const result = db.saveNote("Title", "Body", "personal", "/tmp/src.mp3", 12.5);
@@ -59,7 +59,7 @@ test("save returns the inserted note with nullable fields intact", (t: unknown) 
   db.close();
 });
 
-test("save keeps blank title and content", (t: unknown) => {
+test("save keeps blank title and content", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const result = db.saveNote("", "");
@@ -69,14 +69,14 @@ test("save keeps blank title and content", (t: unknown) => {
   db.close();
 });
 
-test("getNote returns null for a missing id", (t: unknown) => {
+test("getNote returns null for a missing id", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   assert.equal(db.getNote(424242), null);
   db.close();
 });
 
-test("update on a missing note reports failure without creating one", (t: unknown) => {
+test("update on a missing note reports failure without creating one", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const result = db.updateNote(424242, { title: "x" });
@@ -85,7 +85,7 @@ test("update on a missing note reports failure without creating one", (t: unknow
   db.close();
 });
 
-test("empty update and unknown-only update report failure without touching the note", (t: unknown) => {
+test("empty update and unknown-only update report failure without touching the note", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const note = db.saveNote("T", "C").note;
@@ -99,7 +99,7 @@ test("empty update and unknown-only update report failure without touching the n
   db.close();
 });
 
-test("update changes only whitelisted fields and accepts nullable columns", (t: unknown) => {
+test("update changes only whitelisted fields and accepts nullable columns", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const note = db.saveNote("T", "C", "personal", "/tmp/a.mp3", 5).note;
@@ -150,7 +150,7 @@ test("update changes only whitelisted fields and accepts nullable columns", (t: 
   db.close();
 });
 
-test("update can change note_type and keeps previously stored values", (t: unknown) => {
+test("update can change note_type and keeps previously stored values", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const note = db.saveNote("T", "C").note;
@@ -162,7 +162,7 @@ test("update can change note_type and keeps previously stored values", (t: unkno
   db.close();
 });
 
-test("getNotes with a space filters to root notes; getNotesForSpace includes foldered notes", (t: unknown) => {
+test("getNotes with a space filters to root notes; getNotesForSpace includes foldered notes", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
@@ -183,7 +183,7 @@ test("getNotes with a space filters to root notes; getNotesForSpace includes fol
   db.close();
 });
 
-test("save assigns the default folder by note type and the passed folder wins over space", (t: unknown) => {
+test("save assigns the default folder by note type and the passed folder wins over space", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
@@ -201,7 +201,7 @@ test("save assigns the default folder by note type and the passed folder wins ov
   db.close();
 });
 
-test("folder-only update derives the space; explicit space_id wins; missing folder fails cleanly", (t: unknown) => {
+test("folder-only update derives the space; explicit space_id wins; missing folder fails cleanly", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
@@ -224,7 +224,7 @@ test("folder-only update derives the space; explicit space_id wins; missing fold
   db.close();
 });
 
-test("delete reports success once and the note disappears", (t: unknown) => {
+test("delete reports success once and the note disappears", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const note = db.saveNote("D", "").note;
@@ -234,7 +234,7 @@ test("delete reports success once and the note disappears", (t: unknown) => {
   db.close();
 });
 
-test("searchNotes returns [] for an empty query and keeps space/folder filters", (t: unknown) => {
+test("searchNotes returns [] for an empty query and keeps space/folder filters", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   assert.deepEqual(db.searchNotes(""), []);

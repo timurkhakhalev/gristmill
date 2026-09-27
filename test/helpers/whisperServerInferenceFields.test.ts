@@ -7,10 +7,10 @@ const WhisperManager = require("../../src/helpers/whisper");
 const { INFERENCE_DECODER_FIELDS } = WhisperServerManager;
 
 function startCapturingServer() {
-  let captured: unknown = null;
-  const server = http.createServer((req: unknown, res: unknown) => {
-    const chunks: unknown[] = [];
-    req.on("data", (chunk: unknown) => chunks.push(chunk));
+  let captured: any = null;
+  const server = http.createServer((req: any, res: any) => {
+    const chunks: any[] = [];
+    req.on("data", (chunk: any) => chunks.push(chunk));
     req.on("end", () => {
       captured = Buffer.concat(chunks).toString("latin1");
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -36,7 +36,7 @@ function createManager(port: number) {
   return manager;
 }
 
-function fieldValue(body: unknown, name: string) {
+function fieldValue(body: any, name: string) {
   const match = body.match(
     new RegExp(`Content-Disposition: form-data; name="${name}"\\r\\n\\r\\n([^\\r]*)\\r\\n`)
   );
@@ -50,7 +50,7 @@ test("pins the measured anti-hallucination thresholds from #1458", () => {
   });
 });
 
-test("sends the decoder threshold fields alongside the existing inference fields", async (t: unknown) => {
+test("sends the decoder threshold fields alongside the existing inference fields", async (t: import("node:test").TestContext) => {
   const { server, port, getBody } = await startCapturingServer();
   t.after(() => server.close());
 
@@ -83,7 +83,7 @@ test("sends the decoder threshold fields alongside the existing inference fields
   assert.ok(body.endsWith(`${boundary}--\r\n`), "expected the closing boundary to end the body");
 });
 
-test("sends the decoder threshold fields even without an initial prompt", async (t: unknown) => {
+test("sends the decoder threshold fields even without an initial prompt", async (t: import("node:test").TestContext) => {
   const { server, port, getBody } = await startCapturingServer();
   t.after(() => server.close());
 
@@ -99,7 +99,7 @@ test("sends the decoder threshold fields even without an initial prompt", async 
   assert.equal(fieldValue(body, "response_format"), "json");
 });
 
-test("skipDecoderThresholds omits the raised fields so the server keeps its defaults", async (t: unknown) => {
+test("skipDecoderThresholds omits the raised fields so the server keeps its defaults", async (t: import("node:test").TestContext) => {
   const { server, port, getBody } = await startCapturingServer();
   t.after(() => server.close());
 
@@ -120,10 +120,10 @@ test("skipDecoderThresholds omits the raised fields so the server keeps its defa
 
 test("transcribeLocalWhisper plumbs skipDecoderThresholds to the server request (meeting chunks)", async () => {
   const manager = new WhisperManager();
-  const captured: unknown[] = [];
+  const captured: any[] = [];
   manager.serverManager.isAvailable = () => true;
   manager.serverManager.start = async () => {};
-  manager.serverManager.transcribe = async (_buffer: unknown, options: unknown) => {
+  manager.serverManager.transcribe = async (_buffer: any, options: any) => {
     captured.push(options);
     return { text: "ok" };
   };

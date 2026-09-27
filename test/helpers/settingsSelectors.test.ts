@@ -419,7 +419,7 @@ test("reasoningRouting keeps mirroring undefined routing fields and endpoint rul
 
 // --- Purity: selectors run with no window and a throwing localStorage. ---
 
-test("selectors import and run without window, with a throwing localStorage", async (t: unknown) => {
+test("selectors import and run without window, with a throwing localStorage", async (t: import("node:test").TestContext) => {
   const originalWindow = globalThis.window;
   const originalLocalStorage = globalThis.localStorage;
   delete globalThis.window;

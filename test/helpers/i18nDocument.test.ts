@@ -8,7 +8,7 @@ function createI18n(language: string) {
   return {
     language,
     resolvedLanguage: language,
-    dir: (value: unknown) => (value.toLowerCase().startsWith("ar") ? "rtl" : "ltr"),
+    dir: (value: any) => (value.toLowerCase().startsWith("ar") ? "rtl" : "ltr"),
     on(event: unknown, listener: unknown) {
       assert.equal(event, "languageChanged");
       listeners.add(listener);

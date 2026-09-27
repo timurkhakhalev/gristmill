@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
-test("secret settings expose values only after encrypted persistence succeeds", async (t: unknown) => {
+test("secret settings expose values only after encrypted persistence succeeds", async (t: import("node:test").TestContext) => {
   const { storage } = installBrowserGlobals(t, {
     window: {
       dispatchEvent() {},

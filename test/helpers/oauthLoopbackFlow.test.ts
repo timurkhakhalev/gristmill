@@ -9,7 +9,7 @@ const originalLoad = Module._load;
 
 function loadLoopback() {
   delete require.cache[loopbackModulePath];
-  Module._load = function loadWithElectronMock(request: string, parent: unknown, isMain: boolean) {
+  Module._load = function loadWithElectronMock(request: string, parent: any, isMain: boolean) {
     if (request === "electron") {
       return { shell: { openExternal() {} } };
     }
@@ -78,7 +78,7 @@ function startFlowWithControlledTimeout(handleCallback: any) {
   const originalSetTimeout = global.setTimeout;
   let runFlowTimeout: any;
 
-  global.setTimeout = (callback: unknown, delay: number, ...args) => {
+  global.setTimeout = (callback: any, delay: number, ...args) => {
     if (delay === 120000) {
       runFlowTimeout = () => callback(...args);
       return originalSetTimeout(() => {}, 0);
@@ -113,7 +113,7 @@ function requestPath(redirectUri: string, path: string) {
   return new Promise((resolve, reject) => {
     const request = http.get(
       { hostname, port, path, agent: false, headers: { Connection: "close" } },
-      (response: unknown) => {
+      (response: any) => {
         response.resume();
         response.on("end", () => resolve(response.statusCode));
       }
@@ -122,7 +122,7 @@ function requestPath(redirectUri: string, path: string) {
   });
 }
 
-async function parkPartialRequest(redirectUri: string, server: unknown) {
+async function parkPartialRequest(redirectUri: string, server: any) {
   const { hostname, port } = new URL(redirectUri);
   let response = "";
   let responseStatus: any;
@@ -140,7 +140,7 @@ async function parkPartialRequest(redirectUri: string, server: unknown) {
   });
   const socket = net.createConnection({ host: hostname, port });
   socket.setEncoding("utf8");
-  socket.on("data", (chunk: unknown) => {
+  socket.on("data", (chunk: any) => {
     response += chunk;
     const match = /^HTTP\/1\.1 (\d{3})/.exec(response);
     if (match) {
@@ -153,7 +153,7 @@ async function parkPartialRequest(redirectUri: string, server: unknown) {
       resolveStatus(responseStatus);
     }
   });
-  socket.on("error: unknown", (error: any) => {
+  socket.on("error: any", (error: any) => {
     if (!responseSettled) {
       responseSettled = true;
       rejectStatus(error);
@@ -171,7 +171,7 @@ async function parkPartialRequest(redirectUri: string, server: unknown) {
       socket.off("error", handleError);
       resolve();
     };
-    const handleError = (error: unknown) => {
+    const handleError = (error: any) => {
       socket.off("connect", handleConnect);
       reject(error);
     };
@@ -253,7 +253,7 @@ test("a late state mismatch cannot reject a valid callback already in progress",
   const redirectUri = await waitForListen(getRedirectUri);
   const flowOutcome = flow.then(
     () => "resolved",
-    (error: unknown) => `rejected: ${error.message}`
+    (error: any) => `rejected: ${error.message}`
   );
 
   const validResponsePromise = fetch(`${redirectUri}/?code=ok&state=${getState()}`, {
@@ -293,7 +293,7 @@ test("a late malformed request cannot reject a valid callback already in progres
   const redirectUri = await waitForListen(getRedirectUri);
   const flowOutcome = flow.then(
     () => "resolved",
-    (error: unknown) => `rejected: ${error.message}`
+    (error: any) => `rejected: ${error.message}`
   );
 
   const validResponsePromise = fetch(`${redirectUri}/?code=ok&state=${getState()}`, {
@@ -331,8 +331,8 @@ test("a second valid callback cannot start another token exchange", async () => 
   } = startBlockedFlow();
   const redirectUri = await waitForListen(getRedirectUri);
   const flowOutcome = flow.then(
-    (result: unknown) => ({ status: "resolved", result }),
-    (error: unknown) => ({ status: "rejected", error: error.message })
+    (result: any) => ({ status: "resolved", result }),
+    (error: any) => ({ status: "rejected", error: error.message })
   );
 
   const firstResponsePromise = fetch(`${redirectUri}/?code=first&state=${getState()}`, {

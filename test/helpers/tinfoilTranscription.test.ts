@@ -5,10 +5,10 @@ const Module = require("node:module");
 const transcriptionModulePath = require.resolve("../../src/helpers/tinfoilTranscription.ts");
 const originalLoad = Module._load;
 
-function loadTranscription(fetchImpl: unknown) {
+function loadTranscription(fetchImpl: any) {
   delete require.cache[transcriptionModulePath];
 
-  Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
     if (request === "./tinfoilSecureClient" || request === "./tinfoilSecureClient.js") {
       return { tinfoilSecureFetch: fetchImpl };
     }
@@ -37,8 +37,8 @@ const AUDIO = {
 };
 
 test("posts to the attested transcriptions path with the registry's batch model", async () => {
-  const calls: unknown[] = [];
-  const { transcribeWithTinfoil } = loadTranscription(async (path: string, init: unknown) => {
+  const calls: any[] = [];
+  const { transcribeWithTinfoil } = loadTranscription(async (path: string, init: any) => {
     calls.push({ path, init });
     return okResponse("hello world");
   });
@@ -59,7 +59,7 @@ test("posts to the attested transcriptions path with the registry's batch model"
 
 test("never sends the realtime model, which only serves /v1/realtime", async () => {
   let sentModel;
-  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: unknown) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: any) => {
     sentModel = init.body.get("model");
     return okResponse("x");
   });
@@ -71,7 +71,7 @@ test("never sends the realtime model, which only serves /v1/realtime", async () 
 
 test("omits language when auto-detecting", async () => {
   let form;
-  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: unknown) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: any) => {
     form = init.body;
     return okResponse("x");
   });
@@ -136,7 +136,7 @@ test("429 surfaces as PROVIDER_RATE_LIMITED, 5xx as SERVER_ERROR", async () => {
 
 test("forwards the dictionary prompt, and omits it when blank", async () => {
   let form;
-  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: unknown) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: any) => {
     form = init.body;
     return okResponse("x");
   });

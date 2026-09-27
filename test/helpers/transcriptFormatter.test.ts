@@ -213,7 +213,7 @@ test("a manually named segment does not absorb the adjacent un-named one", () =>
   assert.ok(txtOutput.includes("[00:00:01] You:\nAnd this is me talking."));
 });
 
-test("own-voice segments share one label whether or not diarization stamped them", (t: unknown) => {
+test("own-voice segments share one label whether or not diarization stamped them", (t: import("node:test").TestContext) => {
   changeLanguage("de");
   t.after(() => changeLanguage("en"));
 
@@ -230,7 +230,7 @@ test("own-voice segments share one label whether or not diarization stamped them
   assert.ok(!txtOutput.includes("You:"));
 });
 
-test("the JSON export counts both own-voice segment shapes as one speaker", (t: unknown) => {
+test("the JSON export counts both own-voice segment shapes as one speaker", (t: import("node:test").TestContext) => {
   changeLanguage("de");
   t.after(() => changeLanguage("en"));
 
@@ -250,7 +250,7 @@ test("the JSON export counts both own-voice segment shapes as one speaker", (t: 
   assert.equal(parsed.metadata.speaker_count, 2);
 });
 
-test("diarized speaker numbers render in the UI language", (t: unknown) => {
+test("diarized speaker numbers render in the UI language", (t: import("node:test").TestContext) => {
   changeLanguage("de");
   t.after(() => changeLanguage("en"));
 
@@ -264,7 +264,7 @@ test("diarized speaker numbers render in the UI language", (t: unknown) => {
   assert.ok(!txtOutput.includes("Speaker 1"));
 });
 
-test("segments with no speaker information get a localized unknown label", (t: unknown) => {
+test("segments with no speaker information get a localized unknown label", (t: import("node:test").TestContext) => {
   changeLanguage("de");
   t.after(() => changeLanguage("en"));
 

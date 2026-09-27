@@ -24,7 +24,7 @@ let electronHome = os.tmpdir();
 
 function loadModelManager() {
   for (const modulePath of CHAIN_MODULES) delete require.cache[modulePath];
-  Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
     if (request === "electron") {
       return {
         app: {
@@ -50,7 +50,7 @@ const SHORT_PROMPT = "Clean up this sentence.";
 // ~20k estimated tokens, the size that fails on main today.
 const LONG_PROMPT = "word ".repeat(12000);
 
-async function setup(t: unknown, { tokenCount = null, totalMemoryBytes = 48 * GIB } = {}) {
+async function setup(t: import("node:test").TestContext, { tokenCount = null, totalMemoryBytes = 48 * GIB } = {}) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-ctx-sizing-"));
   electronHome = home;
   t.after(() => fs.rm(home, { recursive: true, force: true }));
@@ -58,10 +58,10 @@ async function setup(t: unknown, { tokenCount = null, totalMemoryBytes = 48 * GI
   const calls = { tokenize: 0, props: 0, completions: 0, template: 0 };
   // The completion body is where the output allowance actually lands, so tests
   // about it have to read the wire rather than the config object.
-  let completionBody: unknown = null;
-  const server = http.createServer((req: unknown, res: unknown) => {
+  let completionBody: any = null;
+  const server = http.createServer((req: any, res: any) => {
     let raw = "";
-    req.on("data", (chunk: unknown) => (raw += chunk));
+    req.on("data", (chunk: any) => (raw += chunk));
     req.on("end", () => {
       let status = 200;
       let payload;
@@ -115,7 +115,7 @@ async function setup(t: unknown, { tokenCount = null, totalMemoryBytes = 48 * GI
 
   // Stand in for the spawn. The real _doStart leaves the manager ready on a
   // live port, so the stub must too, or the preflight would see a dead server.
-  const restarts: unknown[] = [];
+  const restarts: any[] = [];
   serverManager._doStart = async (modelPath: string, options = {}) => {
     restarts.push(options.contextSize);
     serverManager.ready = true;
@@ -140,7 +140,7 @@ async function setup(t: unknown, { tokenCount = null, totalMemoryBytes = 48 * GI
   };
 }
 
-test("a short request costs no measurement and no restart", async (t: unknown) => {
+test("a short request costs no measurement and no restart", async (t: import("node:test").TestContext) => {
   // The dictation-cleanup invariant. Every dictation goes through this path;
   // adding a round trip or a restart here would be a far worse regression than
   // the bug being fixed.
@@ -163,7 +163,7 @@ test("a short request costs no measurement and no restart", async (t: unknown) =
   assert.equal(completionBody().max_tokens, 900);
 });
 
-test("a long request grows the context once and then succeeds", async (t: unknown) => {
+test("a long request grows the context once and then succeeds", async (t: import("node:test").TestContext) => {
   const { modelManager, modelId, calls, restarts, serverManager } = await setup(t, {
     tokenCount: 20514, // the customer's measured prompt
   });
@@ -178,12 +178,12 @@ test("a long request grows the context once and then succeeds", async (t: unknow
   assert.equal(calls.completions, 1);
 });
 
-test("a request too large for the machine fails before it reaches the model", async (t: unknown) => {
+test("a request too large for the machine fails before it reaches the model", async (t: import("node:test").TestContext) => {
   const { modelManager, modelId, calls } = await setup(t, { tokenCount: 200000 });
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: unknown) => {
+    (error: any) => {
       assert.equal(error.code, "CONTEXT_TOO_LARGE");
       assert.ok(error.details.neededTokens >= 200000);
       assert.ok(error.details.maxContextTokens > 0);
@@ -196,7 +196,7 @@ test("a request too large for the machine fails before it reaches the model", as
   assert.equal(calls.completions, 0, "must not send a request that cannot fit");
 });
 
-test("a broken measurement falls back to the estimate instead of failing the request", async (t: unknown) => {
+test("a broken measurement falls back to the estimate instead of failing the request", async (t: import("node:test").TestContext) => {
   const { modelManager, modelId, calls } = await setup(t, { tokenCount: null }); // /tokenize 500s
 
   const result = await modelManager.runInference(modelId, LONG_PROMPT, {
@@ -208,7 +208,7 @@ test("a broken measurement falls back to the estimate instead of failing the req
   assert.equal(calls.completions, 1, "and still completed on the estimate");
 });
 
-test("a short request after a long one reuses the grown context", async (t: unknown) => {
+test("a short request after a long one reuses the grown context", async (t: import("node:test").TestContext) => {
   const { modelManager, modelId, restarts } = await setup(t, { tokenCount: 20514 });
 
   await modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." });
@@ -218,18 +218,18 @@ test("a short request after a long one reuses the grown context", async (t: unkn
   assert.deepEqual(restarts, [32768], "the short request must not shrink or restart the server");
 });
 
-test("a small machine refuses what a large one accepts, for the same request", async (t: unknown) => {
+test("a small machine refuses what a large one accepts, for the same request", async (t: import("node:test").TestContext) => {
   // The #1203 guarantee, expressed end to end: the ceiling is a property of
   // the machine, so the same transcript is allowed on 48 GB and refused on 8.
   const small = await setup(t, { tokenCount: 60000, totalMemoryBytes: 8 * GIB });
   await assert.rejects(
     () => small.modelManager.runInference(small.modelId, LONG_PROMPT, { systemPrompt: "Notes." }),
-    (error: unknown) => error.code === "CONTEXT_TOO_LARGE"
+    (error: any) => error.code === "CONTEXT_TOO_LARGE"
   );
   assert.equal(small.calls.completions, 0);
 });
 
-test("a running server whose context is unknown is not restarted for a short request", async (t: unknown) => {
+test("a running server whose context is unknown is not restarted for a short request", async (t: import("node:test").TestContext) => {
   // A ready server always has at least the starting context. Treating an
   // unknown value as zero restarted every warm server on its next request.
   const { modelManager, modelId, restarts, serverManager } = await setup(t, { tokenCount: 40 });
@@ -240,7 +240,7 @@ test("a running server whose context is unknown is not restarted for a short req
   assert.deepEqual(restarts, []);
 });
 
-test("a caller's context floor cannot breach the machine's ceiling", async (t: unknown) => {
+test("a caller's context floor cannot breach the machine's ceiling", async (t: import("node:test").TestContext) => {
   // ReasoningConfig.contextSize raises the floor a request starts at, but the
   // ceiling is the memory guarantee: honouring a floor the machine cannot
   // afford is exactly the unbounded KV cache that panicked #1203.
@@ -268,7 +268,7 @@ test("a caller's context floor cannot breach the machine's ceiling", async (t: u
   assert.equal(serverManager.contextSize, started);
 });
 
-test("a prompt that fits gets a smaller answer rather than a refusal", async (t: unknown) => {
+test("a prompt that fits gets a smaller answer rather than a refusal", async (t: import("node:test").TestContext) => {
   // llama-server only rejects a prompt that overflows the window on its own,
   // so charging the full output reservation up front refused notes that work
   // today. Shrink the answer to what is left instead (#2142).
@@ -290,7 +290,7 @@ test("a prompt that fits gets a smaller answer rather than a refusal", async (t:
   assert.equal(completionBody().max_tokens, 16384 - 13000);
 });
 
-test("a prompt leaving no room for a usable answer is still refused", async (t: unknown) => {
+test("a prompt leaving no room for a usable answer is still refused", async (t: import("node:test").TestContext) => {
   const { modelManager, modelId, calls } = await setup(t, {
     tokenCount: 16000,
     totalMemoryBytes: 8 * GIB,
@@ -298,12 +298,12 @@ test("a prompt leaving no room for a usable answer is still refused", async (t: 
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: unknown) => error.code === "CONTEXT_TOO_LARGE"
+    (error: any) => error.code === "CONTEXT_TOO_LARGE"
   );
   assert.equal(calls.completions, 0, "must not send a request that cannot answer");
 });
 
-test("a selection edit is refused rather than given a clipped answer", async (t: unknown) => {
+test("a selection edit is refused rather than given a clipped answer", async (t: import("node:test").TestContext) => {
   // requireCompleteOutput means a partial replacement corrupts the user's own
   // text, so trading output room for a smaller answer is not an option there.
   const { modelManager, modelId, calls } = await setup(t, {
@@ -318,18 +318,18 @@ test("a selection edit is refused rather than given a clipped answer", async (t:
         maxTokens: 8192,
         requireCompleteOutput: true,
       }),
-    (error: unknown) => error.code === "CONTEXT_TOO_LARGE"
+    (error: any) => error.code === "CONTEXT_TOO_LARGE"
   );
   assert.equal(calls.completions, 0);
 });
 
-test("a grow that fails comes back at the window that was working", async (t: unknown) => {
+test("a grow that fails comes back at the window that was working", async (t: import("node:test").TestContext) => {
   // start() stops the running server before it spawns the bigger one, so a
   // grow that dies takes a working window with it. Restoring it keeps local
   // inference alive for the next request instead of until the next launch.
   const { modelManager, modelId, serverManager } = await setup(t, { tokenCount: 20514 });
   const port = serverManager.port;
-  const attempts: unknown[] = [];
+  const attempts: any[] = [];
   serverManager._doStart = async (modelPath: string, options = {}) => {
     attempts.push(options.contextSize);
     if (options.contextSize > 16384) {
@@ -345,14 +345,14 @@ test("a grow that fails comes back at the window that was working", async (t: un
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: unknown) => error.code === "CONTEXT_TOO_LARGE"
+    (error: any) => error.code === "CONTEXT_TOO_LARGE"
   );
 
   assert.deepEqual(attempts, [32768, 16384], "one failed grow, then back to what worked");
   assert.equal(serverManager.ready, true, "the user must not be left without a server");
 });
 
-test("a server that cannot come back reports a typed failure, not llama.cpp stderr", async (t: unknown) => {
+test("a server that cannot come back reports a typed failure, not llama.cpp stderr", async (t: import("node:test").TestContext) => {
   const { modelManager, modelId, serverManager } = await setup(t, { tokenCount: 20514 });
   serverManager._doStart = async () => {
     throw new Error(
@@ -363,7 +363,7 @@ test("a server that cannot come back reports a typed failure, not llama.cpp stde
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: unknown) => {
+    (error: any) => {
       assert.equal(error.code, "LOCAL_SERVER_UNAVAILABLE");
       assert.ok(
         !error.message.includes("Process output"),
@@ -380,7 +380,7 @@ test("a server that cannot come back reports a typed failure, not llama.cpp stde
   );
 });
 
-test("an answer too small to be worth generating is refused rather than stubbed", async (t: unknown) => {
+test("an answer too small to be worth generating is refused rather than stubbed", async (t: import("node:test").TestContext) => {
   // 16100 of a 16384 window leaves 284 tokens, a few sentences for a whole
   // meeting. Below the floor the honest answer is that it does not fit, not a
   // stub saved as the note.
@@ -395,19 +395,19 @@ test("an answer too small to be worth generating is refused rather than stubbed"
         systemPrompt: "Write notes.",
         maxTokens: 4096,
       }),
-    (error: unknown) => error.code === "CONTEXT_TOO_LARGE"
+    (error: any) => error.code === "CONTEXT_TOO_LARGE"
   );
   assert.equal(calls.completions, 0);
 });
 
-test("a start that steps the context down is not retried at the size that stepped down", async (t: unknown) => {
+test("a start that steps the context down is not retried at the size that stepped down", async (t: import("node:test").TestContext) => {
   // The GPU ladder can load a smaller window than it was asked for without
   // ever throwing. Treating that as success left the preflight to ask for the
   // same window again, paying a second full model load to be stepped down
   // again — the wasted restart the memo exists to prevent.
   const { modelManager, modelId, serverManager } = await setup(t, { tokenCount: 20514 });
   const port = serverManager.port;
-  const attempts: unknown[] = [];
+  const attempts: any[] = [];
   serverManager._doStart = async (modelPath: string, options = {}) => {
     attempts.push(options.contextSize);
     serverManager.ready = true;
@@ -419,13 +419,13 @@ test("a start that steps the context down is not retried at the size that steppe
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: unknown) => error.code === "CONTEXT_TOO_LARGE"
+    (error: any) => error.code === "CONTEXT_TOO_LARGE"
   );
 
   assert.deepEqual(attempts, [32768], "the step-down must be remembered, not re-attempted");
 });
 
-test("a server that already died is not restored to a window it no longer has", async (t: unknown) => {
+test("a server that already died is not restored to a window it no longer has", async (t: import("node:test").TestContext) => {
   // llamaServer clears contextSize only in stop(); a crash or a failed health
   // check leaves it set while ready goes false. Reading it blind made a failed
   // start pay for a second one that was never going to help.
@@ -433,7 +433,7 @@ test("a server that already died is not restored to a window it no longer has", 
   serverManager.ready = false;
   serverManager.process = null;
 
-  const attempts: unknown[] = [];
+  const attempts: any[] = [];
   serverManager._doStart = async (modelPath: string, options = {}) => {
     attempts.push(options.contextSize);
     throw new Error("llama-server process died during startup (signal: SIGKILL)");
@@ -441,13 +441,13 @@ test("a server that already died is not restored to a window it no longer has", 
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: unknown) => error.code === "LOCAL_SERVER_UNAVAILABLE"
+    (error: any) => error.code === "LOCAL_SERVER_UNAVAILABLE"
   );
 
   assert.deepEqual(attempts, [32768], "no second attempt at a window that was already gone");
 });
 
-test("Apple Silicon uses unified memory for context sizing", async (t: unknown) => {
+test("Apple Silicon uses unified memory for context sizing", async (t: import("node:test").TestContext) => {
   const apple = await setup(t, { tokenCount: 40, totalMemoryBytes: 64 * GIB });
   const model = modelRegistryData.localProviders[0].models[0];
   const result = await apple.modelManager.contextCeiling({ model }, path.join(apple.modelManager.modelsDir, model.fileName));

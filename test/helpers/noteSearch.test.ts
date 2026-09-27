@@ -88,7 +88,7 @@ function createSearchDatabase() {
   return { manager, sqlite };
 }
 
-test("DatabaseManager.searchNotes matches Unicode and ASCII prefixes with SQLite FTS5", (t: unknown) => {
+test("DatabaseManager.searchNotes matches Unicode and ASCII prefixes with SQLite FTS5", (t: import("node:test").TestContext) => {
   const { manager, sqlite } = createSearchDatabase();
   t.after(() => sqlite.close());
 
@@ -104,7 +104,7 @@ test("DatabaseManager.searchNotes matches Unicode and ASCII prefixes with SQLite
   }
 });
 
-test("DatabaseManager.searchNotes returns no rows for empty normalized queries", (t: unknown) => {
+test("DatabaseManager.searchNotes returns no rows for empty normalized queries", (t: import("node:test").TestContext) => {
   const { manager, sqlite } = createSearchDatabase();
   t.after(() => sqlite.close());
 
@@ -112,11 +112,11 @@ test("DatabaseManager.searchNotes returns no rows for empty normalized queries",
   assert.deepEqual(manager.searchNotes("   ", 10), []);
 });
 
-test("DatabaseManager.searchNotes treats FTS5 operators and punctuation as text", (t: unknown) => {
+test("DatabaseManager.searchNotes treats FTS5 operators and punctuation as text", (t: import("node:test").TestContext) => {
   const { manager, sqlite } = createSearchDatabase();
   t.after(() => sqlite.close());
 
-  assert.ok(manager.searchNotes("OR", 10).some((note: unknown) => note.title === "OR operation"));
+  assert.ok(manager.searchNotes("OR", 10).some((note: any) => note.title === "OR operation"));
   assert.equal(manager.searchNotes("hello -world", 10)[0]?.title, "hello world");
   assert.deepEqual(manager.searchNotes("title:", 10), []);
   assert.deepEqual(manager.searchNotes('foo"bar', 10), []);

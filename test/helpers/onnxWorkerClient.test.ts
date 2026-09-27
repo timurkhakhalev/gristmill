@@ -17,7 +17,7 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
       this.peer = peer;
       this.closed = false;
     }
-    postMessage(message: unknown) {
+    postMessage(message: any) {
       if (!this.closed) this.peer.emit("message", { data: message });
     }
     start() {}
@@ -65,7 +65,7 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
 
 function loadClient(runtime: any) {
   delete require.cache[clientModulePath];
-  Module._load = function (request: string, parent: unknown, isMain: boolean) {
+  Module._load = function (request: string, parent: any, isMain: boolean) {
     if (request === "electron") {
       return {
         app: { getPath: () => "/tmp" },
@@ -95,7 +95,7 @@ function whenPortReady(client: any) {
         clearTimeout(timeout);
         // Replies travel the way a real worker sends them: port2.postMessage
         // delivers to the client's port1 listener.
-        resolve((message: unknown) => client.port.peer.postMessage(message));
+        resolve((message: any) => client.port.peer.postMessage(message));
       }
     }, 1);
     const timeout = setTimeout(() => {
@@ -213,7 +213,7 @@ test("the queue limit evicts the oldest pending request", async () => {
   for (let id = 1; id <= 1000; id += 1) {
     client.pending.set(id, {
       resolve: () => {},
-      reject: (err: unknown) => {
+      reject: (err: any) => {
         if (id === 1) evictedName = err.name;
       },
       timeout: setTimeout(() => {}, 10_000),
@@ -243,7 +243,7 @@ test("stop sends the shutdown rpc and waits for exit before killing", async () =
   client.port.peer.on("__inspect", () => {});
   // Capture the shutdown rpc on the worker side of the channel.
   const originalPost = client.port.peer.emit.bind(client.port.peer);
-  client.port.peer.emit = function (event: unknown, payload: unknown) {
+  client.port.peer.emit = function (event: any, payload: any) {
     if (event === "message" && payload?.data?.method === "shutdown") {
       shutdownSeen = payload.data;
     }
@@ -259,7 +259,7 @@ test("stop sends the shutdown rpc and waits for exit before killing", async () =
   await stopped;
 });
 
-test("stop kills a child that ignores shutdown after its grace period", async (t: unknown) => {
+test("stop kills a child that ignores shutdown after its grace period", async (t: import("node:test").TestContext) => {
   const runtime = createFakeRuntime({ exitOnShutdown: false });
   const client = loadClient(runtime);
   const warm = client.request("ping", {});

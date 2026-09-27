@@ -5,7 +5,7 @@ const Module = require("node:module");
 const identifierModulePath = require.resolve("../../src/helpers/liveSpeakerIdentifier");
 const originalLoad = Module._load;
 
-function cosineSimilarity(a: unknown, b: unknown) {
+function cosineSimilarity(a: any, b: any) {
   let dot = 0;
   let normA = 0;
   let normB = 0;
@@ -20,14 +20,14 @@ function cosineSimilarity(a: unknown, b: unknown) {
 
 function loadIdentifier(options = {}) {
   delete require.cache[identifierModulePath];
-  const warnings: unknown[] = [];
+  const warnings: any[] = [];
   const interceptsOrt = "ort" in options;
 
-  Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
     if (request === "./debugLogger" || request === "./debugLogger.js") {
       return {
         info() {},
-        warn(message: unknown, data: unknown) {
+        warn(message: any, data: any) {
           warnings.push({ message, data });
         },
         debug() {},
@@ -63,8 +63,8 @@ function loadIdentifier(options = {}) {
 }
 
 const unit = (values: any) => {
-  const norm = Math.sqrt(values.reduce((sum: number, v: unknown) => sum + v * v, 0));
-  return new Float32Array(values.map((v: unknown) => v / norm));
+  const norm = Math.sqrt(values.reduce((sum: number, v: any) => sum + v * v, 0));
+  return new Float32Array(values.map((v: any) => v / norm));
 };
 
 const voiceA = unit([1, 0, 0]);
@@ -273,7 +273,7 @@ function stubDownloadedModels(identifier: string) {
   });
 }
 
-test("isAvailable() is false when the onnxruntime binding cannot load", (t: unknown) => {
+test("isAvailable() is false when the onnxruntime binding cannot load", (t: import("node:test").TestContext) => {
   const { LiveSpeakerIdentifier, restore } = loadIdentifier({ ort: missingBindingRequire });
   t.after(restore);
   const identifier = new LiveSpeakerIdentifier();
@@ -282,7 +282,7 @@ test("isAvailable() is false when the onnxruntime binding cannot load", (t: unkn
   assert.equal(identifier.isAvailable(), false);
 });
 
-test("start() resolves false instead of rejecting when the binding is missing", async (t: unknown) => {
+test("start() resolves false instead of rejecting when the binding is missing", async (t: import("node:test").TestContext) => {
   const { LiveSpeakerIdentifier, restore } = loadIdentifier({ ort: missingBindingRequire });
   t.after(restore);
   const identifier = new LiveSpeakerIdentifier();
@@ -292,7 +292,7 @@ test("start() resolves false instead of rejecting when the binding is missing", 
   assert.equal(started, false, "a missing native binding must not fail meeting start");
 });
 
-test("the binding failure is logged once, not on every availability check", (t: unknown) => {
+test("the binding failure is logged once, not on every availability check", (t: import("node:test").TestContext) => {
   const { LiveSpeakerIdentifier, warnings, restore } = loadIdentifier({
     ort: missingBindingRequire,
   });
@@ -307,7 +307,7 @@ test("the binding failure is logged once, not on every availability check", (t: 
   assert.equal(bindingWarnings.length, 1, "repeated checks must not spam the logs");
 });
 
-test("isAvailable() stays true when the binding loads", (t: unknown) => {
+test("isAvailable() stays true when the binding loads", (t: import("node:test").TestContext) => {
   const { LiveSpeakerIdentifier, restore } = loadIdentifier({ ort: () => ({}) });
   t.after(restore);
   const identifier = new LiveSpeakerIdentifier();
@@ -319,7 +319,7 @@ test("isAvailable() stays true when the binding loads", (t: unknown) => {
 // onnxruntime-node defaults intra-op threads to every core with spinning
 // workers — absurd for the tiny VAD graph running ~31x/sec, and a CPU
 // regression during every meeting recording.
-test("the VAD session caps ORT to a single sequential thread", async (t: unknown) => {
+test("the VAD session caps ORT to a single sequential thread", async (t: import("node:test").TestContext) => {
   let createArgs = null;
   const { LiveSpeakerIdentifier, restore } = loadIdentifier({
     ort: () => ({
@@ -350,7 +350,7 @@ const LIVE_ID_INTERVAL_SAMPLES = 16000;
 const MAX_EMBEDDING_SAMPLES = 16000 * 8; // MAX_EMBEDDING_SECONDS stubbed to 8
 
 function loadIdentifierCapturingEmbeddings() {
-  const embeddingInputs: unknown[] = [];
+  const embeddingInputs: any[] = [];
   const { LiveSpeakerIdentifier } = loadIdentifier({
     extractEmbeddingFromSamples: async (samples: any) => {
       embeddingInputs.push(samples);

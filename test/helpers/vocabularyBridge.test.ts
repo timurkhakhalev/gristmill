@@ -14,17 +14,17 @@ const Module = require("node:module");
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
-let activeHandlers: unknown = null;
-let dispatchSend: unknown = null;
+let activeHandlers: any = null;
+let dispatchSend: any = null;
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-vocab-bridge-"));
 
 const originalLoad = Module._load;
-Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
+Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
   if (request === "electron") {
     return {
       app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
       ipcMain: {
-        handle: (channel: string, listener: unknown) => {
+        handle: (channel: string, listener: any) => {
           if (!activeHandlers) activeHandlers = new Map();
           activeHandlers.set(channel, listener);
         },
@@ -34,7 +34,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
           {
             isDestroyed: () => false,
             webContents: {
-              send: (channel: string, data: unknown) => {
+              send: (channel: string, data: any) => {
                 if (dispatchSend) dispatchSend(channel, data);
               },
             },
@@ -53,7 +53,7 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function isNativeBindingUnavailable(error: unknown) {
+function isNativeBindingUnavailable(error: any) {
   const message = String(error?.message || error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
@@ -61,7 +61,7 @@ function isNativeBindingUnavailable(error: unknown) {
   );
 }
 
-function loadBundledPreload(invoke: unknown) {
+function loadBundledPreload(invoke: any) {
   const listeners = new Map();
   let api;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
@@ -73,19 +73,19 @@ function loadBundledPreload(invoke: unknown) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name: string, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: any) => {
             api = value;
           },
         },
         ipcRenderer: {
           invoke,
           send() {},
-          on(channel: string, listener: unknown) {
+          on(channel: string, listener: any) {
             const list = listeners.get(channel) || [];
             list.push(listener);
             listeners.set(channel, list);
           },
-          removeListener(channel: string, listener: unknown) {
+          removeListener(channel: string, listener: any) {
             const list = listeners.get(channel) || [];
             const index = list.indexOf(listener);
             if (index !== -1) list.splice(index, 1);
@@ -100,7 +100,7 @@ function loadBundledPreload(invoke: unknown) {
   return { api, listeners };
 }
 
-async function createFixture(t: unknown) {
+async function createFixture(t: import("node:test").TestContext) {
   activeHandlers = new Map();
   dispatchSend = null;
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-vocab-bridge-"));
@@ -129,7 +129,7 @@ async function createFixture(t: unknown) {
     return handler(null, ...args);
   };
   const { api, listeners } = loadBundledPreload(invoke);
-  dispatchSend = (channel: string, data: unknown) => {
+  dispatchSend = (channel: string, data: any) => {
     for (const listener of listeners.get(channel) || []) {
       listener(null, data);
     }
@@ -137,13 +137,13 @@ async function createFixture(t: unknown) {
   return { db, api, listeners };
 }
 
-test("the bundled vocabulary chain round-trips words and snippets", async (t: unknown) => {
+test("the bundled vocabulary chain round-trips words and snippets", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { db, api } = ctx;
 
   // vm-crossing objects have a different prototype, so compare by value.
-  const byValue = (x: unknown) => JSON.parse(JSON.stringify(x));
+  const byValue = (x: any) => JSON.parse(JSON.stringify(x));
 
   assert.deepEqual(byValue(await api.getDictionary()), []);
   assert.deepEqual(byValue(await api.applyDictionaryChanges({ add: ["Alpha", "beta"], remove: [] })), {
@@ -168,12 +168,12 @@ test("the bundled vocabulary chain round-trips words and snippets", async (t: un
   assert.deepEqual(byValue(await api.getSnippets()), [{ trigger: ";trim", replacement: "ok" }]);
 });
 
-test("dictionary events reach the renderer through the bridge and unsubscribe cleanly", async (t: unknown) => {
+test("dictionary events reach the renderer through the bridge and unsubscribe cleanly", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { api } = ctx;
 
-  const received: unknown[] = [];
+  const received: any[] = [];
   const receivedRaw = [];
   const unsubscribe = api.onDictionaryUpdated((words: any) => {
     receivedRaw.push(words);
@@ -203,12 +203,12 @@ test("dictionary events reach the renderer through the bridge and unsubscribe cl
   assert.equal(received.length, fromEvents.length);
 });
 
-test("malformed events are dropped at the preload boundary", async (t: unknown) => {
+test("malformed events are dropped at the preload boundary", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { api } = ctx;
 
-  const received: unknown[] = [];
+  const received: any[] = [];
   api.onDictionaryUpdated((words: any) => received.push([...words]));
   // Inject junk straight at the preload input, like a broken main would.
   dispatchSend("dictionary-updated", { not: "an array" });
@@ -220,7 +220,7 @@ test("malformed events are dropped at the preload boundary", async (t: unknown) 
   assert.deepEqual(received, [["clean"]]);
 });
 
-test("wrong-shaped results from handlers surface as bridge errors, not silent corruption", async (t: unknown) => {
+test("wrong-shaped results from handlers surface as bridge errors, not silent corruption", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { api, db } = ctx;

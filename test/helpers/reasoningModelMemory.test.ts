@@ -13,7 +13,7 @@ function getVite() {
   });
 }
 
-test("per-provider reasoning model memory", async (t: unknown) => {
+test("per-provider reasoning model memory", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _llmScopeKeysMigrated: "1",
@@ -81,7 +81,7 @@ test("per-provider reasoning model memory", async (t: unknown) => {
 // The reasoning picker commits only on an explicit model click via the plain
 // scope setters (provider, then model). Pin that the pair lands atomically
 // and that per-provider memory never overrides an explicit click.
-test("explicit model click commits the (provider, model) pair atomically", async (t: unknown) => {
+test("explicit model click commits the (provider, model) pair atomically", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _llmScopeKeysMigrated: "1",
@@ -121,7 +121,7 @@ test("explicit model click commits the (provider, model) pair atomically", async
   );
 });
 
-test("corrupt persisted reasoning model memory hydrates as empty, not a crash", async (t: unknown) => {
+test("corrupt persisted reasoning model memory hydrates as empty, not a crash", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _llmScopeKeysMigrated: "1",
@@ -133,7 +133,7 @@ test("corrupt persisted reasoning model memory hydrates as empty, not a crash", 
   assert.deepEqual(useSettingsStore.getState().reasoningModelByProvider, {});
 });
 
-test("retired cloud model selections are repointed to the provider default", async (t: unknown) => {
+test("retired cloud model selections are repointed to the provider default", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t, {
     initialStorage: {
       _llmScopeKeysMigrated: "1",

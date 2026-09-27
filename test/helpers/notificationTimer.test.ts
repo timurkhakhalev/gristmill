@@ -12,7 +12,7 @@ test("every meeting prompt hides after one minute", () => {
   assert.equal(getNotificationTimeoutMs("process"), 60 * 1000);
 });
 
-test("fires exactly once after the configured duration", (t: unknown) => {
+test("fires exactly once after the configured duration", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
   let fired = 0;
   const timer = new NotificationDismissTimer(() => fired++);
@@ -26,7 +26,7 @@ test("fires exactly once after the configured duration", (t: unknown) => {
   assert.equal(fired, 1);
 });
 
-test("pause halts the countdown", (t: unknown) => {
+test("pause halts the countdown", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
   let fired = 0;
   const timer = new NotificationDismissTimer(() => fired++);
@@ -39,7 +39,7 @@ test("pause halts the countdown", (t: unknown) => {
   assert.equal(fired, 0, "a paused timer must never fire");
 });
 
-test("resume continues with the remaining time", (t: unknown) => {
+test("resume continues with the remaining time", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
   let fired = 0;
   const timer = new NotificationDismissTimer(() => fired++);
@@ -55,7 +55,7 @@ test("resume continues with the remaining time", (t: unknown) => {
   assert.equal(fired, 1);
 });
 
-test("resume keeps a minimum runway", (t: unknown) => {
+test("resume keeps a minimum runway", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
   let fired = 0;
   const timer = new NotificationDismissTimer(() => fired++);
@@ -70,7 +70,7 @@ test("resume keeps a minimum runway", (t: unknown) => {
   assert.equal(fired, 1);
 });
 
-test("cancel prevents firing and clears any paused state", (t: unknown) => {
+test("cancel prevents firing and clears any paused state", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
   let fired = 0;
   const timer = new NotificationDismissTimer(() => fired++);
@@ -84,7 +84,7 @@ test("cancel prevents firing and clears any paused state", (t: unknown) => {
   assert.equal(fired, 0, "cancel must also discard the paused remainder");
 });
 
-test("pause and resume without a started timer are no-ops", (t: unknown) => {
+test("pause and resume without a started timer are no-ops", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
   let fired = 0;
   const timer = new NotificationDismissTimer(() => fired++);
@@ -96,7 +96,7 @@ test("pause and resume without a started timer are no-ops", (t: unknown) => {
   assert.equal(fired, 0);
 });
 
-test("start replaces a running countdown", (t: unknown) => {
+test("start replaces a running countdown", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
   let fired = 0;
   const timer = new NotificationDismissTimer(() => fired++);

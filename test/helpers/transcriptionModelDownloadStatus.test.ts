@@ -30,7 +30,7 @@ function activeDownload(model: string, overrides = {}) {
   };
 }
 
-function stubMacosVersion(t: unknown, version: any) {
+function stubMacosVersion(t: import("node:test").TestContext, version: any) {
   const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
   const systemVersionDescriptor = Object.getOwnPropertyDescriptor(process, "getSystemVersion");
 
@@ -50,7 +50,7 @@ function stubMacosVersion(t: unknown, version: any) {
   });
 }
 
-test("Parakeet reports its packaged runtime as unsupported on macOS below 15.5", async (t: unknown) => {
+test("Parakeet reports its packaged runtime as unsupported on macOS below 15.5", async (t: import("node:test").TestContext) => {
   stubMacosVersion(t, "12.7.6");
   const manager = new ParakeetManager();
   manager.serverManager.getBinaryPath = () => "/Applications/OpenWhispr.app/parakeet";
@@ -68,7 +68,7 @@ test("Parakeet reports its packaged runtime as unsupported on macOS below 15.5",
   });
 });
 
-test("Parakeet refuses explicit server startup on unsupported macOS", async (t: unknown) => {
+test("Parakeet refuses explicit server startup on unsupported macOS", async (t: import("node:test").TestContext) => {
   stubMacosVersion(t, "12.7.6");
   const manager = new ParakeetManager();
   const model = Object.keys(modelRegistryData.parakeetModels)[0];
@@ -89,7 +89,7 @@ test("Parakeet refuses explicit server startup on unsupported macOS", async (t: 
   assert.equal(startCalls, 0);
 });
 
-test("Parakeet refuses a missing-model download before filesystem or download setup", async (t: unknown) => {
+test("Parakeet refuses a missing-model download before filesystem or download setup", async (t: import("node:test").TestContext) => {
   stubMacosVersion(t, "12.7.6");
   const manager = new ParakeetManager();
   const model = Object.keys(modelRegistryData.parakeetModels)[0];
@@ -106,7 +106,7 @@ test("Parakeet refuses a missing-model download before filesystem or download se
 
   await assert.rejects(
     manager.downloadParakeetModel(model),
-    (error: unknown) =>
+    (error: any) =>
       error.code === "PARAKEET_UNSUPPORTED_OS" &&
       error.message ===
         "Parakeet requires macOS 15.5 or later. Use cloud transcription (or Whisper where supported) on this Mac."
@@ -115,7 +115,7 @@ test("Parakeet refuses a missing-model download before filesystem or download se
   assert.equal(modelDirectoryChecks, 0);
 });
 
-test("Parakeet refuses streaming startup on unsupported macOS", async (t: unknown) => {
+test("Parakeet refuses streaming startup on unsupported macOS", async (t: import("node:test").TestContext) => {
   stubMacosVersion(t, "12.7.6");
   const manager = new ParakeetManager();
   const model = Object.keys(modelRegistryData.parakeetModels).find((candidate) =>
@@ -129,12 +129,12 @@ test("Parakeet refuses streaming startup on unsupported macOS", async (t: unknow
 
   await assert.rejects(
     manager.createOnlineStream(model),
-    (error: unknown) => error.code === "PARAKEET_UNSUPPORTED_OS"
+    (error: any) => error.code === "PARAKEET_UNSUPPORTED_OS"
   );
   assert.equal(startCalls, 0);
 });
 
-test("Parakeet refuses transcription before touching the sidecar on unsupported macOS", async (t: unknown) => {
+test("Parakeet refuses transcription before touching the sidecar on unsupported macOS", async (t: import("node:test").TestContext) => {
   stubMacosVersion(t, "12.7.6");
   const manager = new ParakeetManager();
   const model = Object.keys(modelRegistryData.parakeetModels)[0];
@@ -148,12 +148,12 @@ test("Parakeet refuses transcription before touching the sidecar on unsupported 
 
   await assert.rejects(
     manager.transcribeLocalParakeet(Buffer.from("audio"), { model }),
-    (error: unknown) => error.code === "PARAKEET_UNSUPPORTED_OS"
+    (error: any) => error.code === "PARAKEET_UNSUPPORTED_OS"
   );
   assert.equal(transcribeCalls, 0);
 });
 
-test("Parakeet skips startup prewarming on unsupported macOS", async (t: unknown) => {
+test("Parakeet skips startup prewarming on unsupported macOS", async (t: import("node:test").TestContext) => {
   stubMacosVersion(t, "12.7.6");
   const modelsDir = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-parakeet-capability-"));
   t.after(() => fs.rm(modelsDir, { recursive: true, force: true }));
@@ -206,12 +206,12 @@ test("Parakeet rejects a duplicate download without replacing the active request
 
   await assert.rejects(
     manager.downloadParakeetModel(model),
-    (error: unknown) => error.code === "DOWNLOAD_IN_PROGRESS" && error.details.activeModel === model
+    (error: any) => error.code === "DOWNLOAD_IN_PROGRESS" && error.details.activeModel === model
   );
   assert.equal(manager.currentDownloadProcess, active);
 });
 
-test("listWhisperModels surfaces active download state", async (t: unknown) => {
+test("listWhisperModels surfaces active download state", async (t: import("node:test").TestContext) => {
   const modelsDir = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-whisper-status-"));
   t.after(() => fs.rm(modelsDir, { recursive: true, force: true }));
 
@@ -230,7 +230,7 @@ test("listWhisperModels surfaces active download state", async (t: unknown) => {
   assert.equal(status.totalBytes, 1000);
 });
 
-test("Whisper rejects a duplicate download without replacing the active request", async (t: unknown) => {
+test("Whisper rejects a duplicate download without replacing the active request", async (t: import("node:test").TestContext) => {
   const modelsDir = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-whisper-guard-"));
   t.after(() => fs.rm(modelsDir, { recursive: true, force: true }));
 
@@ -242,18 +242,18 @@ test("Whisper rejects a duplicate download without replacing the active request"
 
   await assert.rejects(
     manager.downloadWhisperModel(model),
-    (error: unknown) => error.code === "DOWNLOAD_IN_PROGRESS" && error.details.activeModel === model
+    (error: any) => error.code === "DOWNLOAD_IN_PROGRESS" && error.details.activeModel === model
   );
   assert.equal(manager.currentDownloadProcess, active);
 });
 
-test("Whisper emits a complete event after validating the downloaded model", async (t: unknown) => {
+test("Whisper emits a complete event after validating the downloaded model", async (t: import("node:test").TestContext) => {
   const modelsDir = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-whisper-complete-"));
   t.after(() => fs.rm(modelsDir, { recursive: true, force: true }));
 
   const originalLoad = Module._load;
   delete require.cache[whisperModulePath];
-  Module._load = function loadWithDownloadMock(request: string, parent: unknown, isMain: boolean) {
+  Module._load = function loadWithDownloadMock(request: string, parent: any, isMain: boolean) {
     // The TS manager requires "./downloadUtils.js"; accept the pre-migration
     // extensionless specifier too so the hook survives the cutover.
     if (
@@ -263,7 +263,7 @@ test("Whisper emits a complete event after validating the downloaded model", asy
       return {
         ...downloadUtils,
         checkDiskSpace: async () => ({ ok: true, availableBytes: Infinity }),
-        downloadFile: async (_url: string, destination: string, options: unknown) => {
+        downloadFile: async (_url: string, destination: string, options: any) => {
           await fs.writeFile(destination, Buffer.alloc(16));
           options.onProgress?.(16, 16);
           return destination;
@@ -284,10 +284,10 @@ test("Whisper emits a complete event after validating the downloaded model", asy
 
   const manager = new TestWhisperManager();
   const model = Object.keys(modelRegistryData.whisperModels)[0];
-  const events: unknown[] = [];
+  const events: any[] = [];
   manager.getModelsDir = () => modelsDir;
 
-  await manager.downloadWhisperModel(model, (event: unknown) => events.push(event));
+  await manager.downloadWhisperModel(model, (event: any) => events.push(event));
 
   assert.equal(events.at(-1)?.type, "complete");
   assert.equal(events.at(-1)?.model, model);
@@ -332,7 +332,7 @@ test("Parakeet refuses cancellation after installation starts", async () => {
   assert.equal(manager.currentDownloadProcess, active);
 });
 
-test("an Orukeet directory without the sherpa ONNX files is not downloaded", async (t: unknown) => {
+test("an Orukeet directory without the sherpa ONNX files is not downloaded", async (t: import("node:test").TestContext) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-orukeet-layout-"));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const modelName = "orukeet-v0.1.0";
@@ -351,7 +351,7 @@ test("an Orukeet directory without the sherpa ONNX files is not downloaded", asy
   assert.equal((await manager.checkModelStatus(modelName)).downloaded, true);
 });
 
-test("Orukeet inherits the packaged sherpa macOS floor before download or startup", async (t: unknown) => {
+test("Orukeet inherits the packaged sherpa macOS floor before download or startup", async (t: import("node:test").TestContext) => {
   stubMacosVersion(t, "14.8");
   const manager = new ParakeetManager();
   const modelName = "orukeet-v0.1.0";

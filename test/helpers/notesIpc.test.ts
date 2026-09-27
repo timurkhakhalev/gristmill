@@ -10,23 +10,23 @@ const Module = require("node:module");
 // Broadcasts are captured per-fixture via the active fixture's array, so tests
 // never see each other's events even across setImmediate ticks.
 const handlers = new Map();
-let activeSent: unknown = null;
+let activeSent: any = null;
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-ipc-"));
 
 const originalLoad = Module._load;
-Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
+Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
   if (request === "electron") {
     return {
       app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
       ipcMain: {
-        handle: (channel: string, listener: unknown) => handlers.set(channel, listener),
+        handle: (channel: string, listener: any) => handlers.set(channel, listener),
       },
       BrowserWindow: {
         getAllWindows: () => [
           {
             isDestroyed: () => false,
             webContents: {
-              send: (ch: string, data: unknown) => {
+              send: (ch: string, data: any) => {
                 if (activeSent) activeSent.push({ channel: ch, data });
               },
             },
@@ -45,7 +45,7 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function isNativeBindingUnavailable(error: unknown) {
+function isNativeBindingUnavailable(error: any) {
   const message = String(error?.message || error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
@@ -62,7 +62,7 @@ async function loadModules() {
   return { registerNotesHandlers, events };
 }
 
-async function createFixture(t: unknown) {
+async function createFixture(t: import("node:test").TestContext) {
   const { registerNotesHandlers } = await loadModules();
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-ipc-"));
   let db;
@@ -77,30 +77,30 @@ async function createFixture(t: unknown) {
   }
   t.after(() => db.close());
 
-  const sent: unknown[] = [];
+  const sent: any[] = [];
   activeSent = sent;
   handlers.clear();
 
   const effects = { mirrorWrites: [], autoLabels: [], speakerRefreshes: [] };
   const deps = {
-    saveNote: (title: any, content: string, noteType: string, sourceFile: any, audioDuration: any, folderId: unknown, spaceId: unknown) =>
+    saveNote: (title: any, content: string, noteType: string, sourceFile: any, audioDuration: any, folderId: any, spaceId: any) =>
       db.saveNote(title, content, noteType, sourceFile, audioDuration, folderId, spaceId),
-    getNote: (id: unknown) => db.getNote(id),
-    getNotes: (noteType: string, limit: number, folderId: unknown, spaceId: unknown) =>
+    getNote: (id: any) => db.getNote(id),
+    getNotes: (noteType: string, limit: number, folderId: any, spaceId: any) =>
       db.getNotes(noteType, limit, folderId, spaceId),
-    getNotesForSpace: (spaceId: unknown, limit: number) => db.getNotesForSpace(spaceId, limit),
-    updateNote: (id: unknown, updates: unknown) => db.updateNote(id, updates),
+    getNotesForSpace: (spaceId: any, limit: number) => db.getNotesForSpace(spaceId, limit),
+    updateNote: (id: any, updates: any) => db.updateNote(id, updates),
     deleteNoteInternal: () => {
       throw new Error("replaced below");
     },
-    searchNotes: (query: string, limit: number, spaceId: unknown, folderId: unknown) =>
+    searchNotes: (query: string, limit: number, spaceId: any, folderId: any) =>
       db.searchNotes(query, limit, spaceId, folderId),
-    asyncMirrorWrite: (note: unknown) => effects.mirrorWrites.push(note.id),
-    tryAutoLabelOneOnOne: (id: unknown) => effects.autoLabels.push(id),
-    refreshMeetingSpeakerConfigFromNote: (id: unknown, note: unknown) => effects.speakerRefreshes.push([id, note.id]),
+    asyncMirrorWrite: (note: any) => effects.mirrorWrites.push(note.id),
+    tryAutoLabelOneOnOne: (id: any) => effects.autoLabels.push(id),
+    refreshMeetingSpeakerConfigFromNote: (id: any, note: any) => effects.speakerRefreshes.push([id, note.id]),
   };
-  const deleteCalls: unknown[] = [];
-  const realDelete = (id: unknown) => {
+  const deleteCalls: any[] = [];
+  const realDelete = (id: any) => {
     deleteCalls.push(id);
     const result = db.deleteNote(id);
     if (result?.success) {
@@ -120,7 +120,7 @@ async function createFixture(t: unknown) {
   return { db, call, sent, effects, deleteCalls, flush };
 }
 
-test("save → get → update → search/list → delete round-trips through real handlers", async (t: unknown) => {
+test("save → get → update → search/list → delete round-trips through real handlers", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { call, sent, db, effects, flush } = ctx;
@@ -161,7 +161,7 @@ test("save → get → update → search/list → delete round-trips through rea
   assert.equal((await call("db-get-note", saved.note.id)), null);
 });
 
-test("wrong-shaped arguments reject before touching the database", async (t: unknown) => {
+test("wrong-shaped arguments reject before touching the database", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { call, db, flush } = ctx;
@@ -183,7 +183,7 @@ test("wrong-shaped arguments reject before touching the database", async (t: unk
   await flush();
 });
 
-test("missing note and failed deletes resolve without events or mirror calls", async (t: unknown) => {
+test("missing note and failed deletes resolve without events or mirror calls", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { call, sent, effects, flush } = ctx;
@@ -199,13 +199,13 @@ test("missing note and failed deletes resolve without events or mirror calls", a
   assert.equal((effects.mirrorDeletes || []).length, 0);
 });
 
-test("participants update triggers auto-label then speaker refresh, after mirror", async (t: unknown) => {
+test("participants update triggers auto-label then speaker refresh, after mirror", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { db, flush: flushCtx } = ctx;
   const note = db.saveNote("P", "").note;
 
-  const order: unknown[] = [];
+  const order: any[] = [];
 
   // Rebuild handlers with tracing deps for exact ordering.
   const { registerNotesHandlers } = await loadModules();
@@ -247,7 +247,7 @@ test("participants update triggers auto-label then speaker refresh, after mirror
   await flushCtx();
 });
 
-test("folder-only update via IPC matches the DB baseline cases", async (t: unknown) => {
+test("folder-only update via IPC matches the DB baseline cases", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { call, db, flush } = ctx;
@@ -273,7 +273,7 @@ test("folder-only update via IPC matches the DB baseline cases", async (t: unkno
   await flush();
 });
 
-test("exactly one broadcast per success and none on failure", async (t: unknown) => {
+test("exactly one broadcast per success and none on failure", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { call, sent, flush, db } = ctx;

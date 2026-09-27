@@ -21,7 +21,7 @@ try {
   Module._load = originalLoad;
 }
 
-test("a note title ending in transcript keeps both mirrored files", (t: unknown) => {
+test("a note title ending in transcript keeps both mirrored files", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
@@ -48,7 +48,7 @@ test("a note title ending in transcript keeps both mirrored files", (t: unknown)
   assert.equal(markdownMirror.getNotePath(note.id), notePath);
 });
 
-test("folder names cannot escape the configured mirror directory", (t: unknown) => {
+test("folder names cannot escape the configured mirror directory", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
@@ -63,7 +63,7 @@ test("folder names cannot escape the configured mirror directory", (t: unknown) 
   assert.equal(readFrontmatter(fs.readFileSync(notePath, "utf8")).folder, "../outside");
 });
 
-test("unsafe folder names do not collide with portable folder names", (t: unknown) => {
+test("unsafe folder names do not collide with portable folder names", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
@@ -84,7 +84,7 @@ test("unsafe folder names do not collide with portable folder names", (t: unknow
   assert.equal(fs.existsSync(path.join(portableFolderPath, "15-flat.md")), true);
 });
 
-test("encoded folder keys cannot collide with logical folder names", (t: unknown) => {
+test("encoded folder keys cannot collide with logical folder names", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
@@ -99,7 +99,7 @@ test("encoded folder keys cannot collide with logical folder names", (t: unknown
   );
 });
 
-test("writes reject a symlinked folder that resolves outside the mirror", (t: unknown) => {
+test("writes reject a symlinked folder that resolves outside the mirror", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   const outsidePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-outside-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
@@ -113,7 +113,7 @@ test("writes reject a symlinked folder that resolves outside the mirror", (t: un
   assert.equal(markdownMirror.getFolderPath("linked"), null);
 });
 
-test("writes reject a symlinked note file without changing its target", (t: unknown) => {
+test("writes reject a symlinked note file without changing its target", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   const outsidePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-outside-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
@@ -130,7 +130,7 @@ test("writes reject a symlinked note file without changing its target", (t: unkn
   assert.equal(markdownMirror.getNotePath(17), null);
 });
 
-test("Windows-reserved and trailing-character folder names use distinct portable keys", (t: unknown) => {
+test("Windows-reserved and trailing-character folder names use distinct portable keys", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
   const folderNames = ["CON", "NUL.txt", "folder.", "folder "];
@@ -156,7 +156,7 @@ test("Windows-reserved and trailing-character folder names use distinct portable
   }
 });
 
-test("portable folders still support the normal ensure, rename, and delete journey", (t: unknown) => {
+test("portable folders still support the normal ensure, rename, and delete journey", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
@@ -173,7 +173,7 @@ test("portable folders still support the normal ensure, rename, and delete journ
   assert.equal(markdownMirror.getFolderPath("Archive"), null);
 });
 
-test("renaming a mirrored note cleans up both stale files and reveals the note", (t: unknown) => {
+test("renaming a mirrored note cleans up both stale files and reveals the note", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
@@ -228,7 +228,7 @@ function readFrontmatter(fileContent: any) {
   return map;
 }
 
-test("a title with control characters keeps the frontmatter a valid single-line mapping", (t: unknown) => {
+test("a title with control characters keeps the frontmatter a valid single-line mapping", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
@@ -253,7 +253,7 @@ test("a title with control characters keeps the frontmatter a valid single-line 
   assert.equal(frontmatter.title, note.title);
 });
 
-test("deleteNote removes the note's other files even when one unlink fails", (t: unknown) => {
+test("deleteNote removes the note's other files even when one unlink fails", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
@@ -294,7 +294,7 @@ test("deleteNote removes the note's other files even when one unlink fails", (t:
   assert.deepEqual(fs.readdirSync(folderPath), [path.basename(failedPath)]);
 });
 
-test("a note file re-saved with a BOM or CRLF is still recognised as its note", (t: unknown) => {
+test("a note file re-saved with a BOM or CRLF is still recognised as its note", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 

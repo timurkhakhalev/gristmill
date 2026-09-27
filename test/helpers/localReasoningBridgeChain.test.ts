@@ -29,7 +29,7 @@ let electronHome = os.tmpdir();
 function loadChain() {
   for (const modulePath of CHAIN_MODULES) delete require.cache[modulePath];
 
-  Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
     if (request === "electron") {
       return {
         app: {
@@ -61,15 +61,15 @@ const ROOMY_MACHINE_BYTES = 48 * 1024 * 1024 * 1024;
 
 // Stands up the stub server plus a bridge whose model manager already
 // believes llama-server is running that model on the stub's port.
-async function setupChain(t: unknown, respond: any) {
+async function setupChain(t: import("node:test").TestContext, respond: any) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-local-chain-"));
   electronHome = home;
   t.after(() => fs.rm(home, { recursive: true, force: true }));
 
-  const requests: unknown[] = [];
-  const server = http.createServer((req: unknown, res: unknown) => {
+  const requests: any[] = [];
+  const server = http.createServer((req: any, res: any) => {
     let raw = "";
-    req.on("data", (chunk: unknown) => (raw += chunk));
+    req.on("data", (chunk: any) => (raw += chunk));
     req.on("end", () => {
       requests.push(JSON.parse(raw));
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -101,7 +101,7 @@ const completion = (finishReason: any, content: string) => ({
   choices: [{ finish_reason: finishReason, message: { content } }],
 });
 
-test("requireCompleteOutput rejects a truncated reply through the whole local chain", async (t: unknown) => {
+test("requireCompleteOutput rejects a truncated reply through the whole local chain", async (t: import("node:test").TestContext) => {
   const { bridge, modelId } = await setupChain(t, () => completion("length", "partial edi"));
 
   await assert.rejects(
@@ -110,13 +110,13 @@ test("requireCompleteOutput rejects a truncated reply through the whole local ch
   );
 });
 
-test("a truncated reply still resolves when the caller did not require complete output", async (t: unknown) => {
+test("a truncated reply still resolves when the caller did not require complete output", async (t: import("node:test").TestContext) => {
   const { bridge, modelId } = await setupChain(t, () => completion("length", "partial"));
 
   assert.equal(await bridge.processText("clean this", modelId, {}), "partial");
 });
 
-test("an explicit temperature of 0 reaches llama-server instead of the 0.7 default", async (t: unknown) => {
+test("an explicit temperature of 0 reaches llama-server instead of the 0.7 default", async (t: import("node:test").TestContext) => {
   const { bridge, modelId, requests } = await setupChain(t, () => completion("stop", "ok"));
 
   await bridge.processText("clean this", modelId, { temperature: 0 });
@@ -125,7 +125,7 @@ test("an explicit temperature of 0 reaches llama-server instead of the 0.7 defau
   assert.equal(requests[0].temperature, 0);
 });
 
-test("a caller's contextSize reaches the server start (regression: it was dropped)", async (t: unknown) => {
+test("a caller's contextSize reaches the server start (regression: it was dropped)", async (t: import("node:test").TestContext) => {
   // ReasoningConfig.contextSize was declared, written by selection editing,
   // and then rebuilt away in this bridge, so it never reached anything. The
   // field only means something now that the server can grow, so the wiring
@@ -134,7 +134,7 @@ test("a caller's contextSize reaches the server start (regression: it was droppe
   // why this harness has to present a machine and a model that can afford it.
   const { bridge, modelId, serverManager } = await setupChain(t, () => completion("stop", "ok"));
 
-  const started: unknown[] = [];
+  const started: any[] = [];
   serverManager._doStart = async (modelPath: string, options = {}) => {
     started.push(options.contextSize);
     serverManager.ready = true;

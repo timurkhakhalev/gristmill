@@ -15,10 +15,10 @@ const TICK_MS = 1_000;
 
 const createHarness = () => {
   let now = START_TIME;
-  const stops: unknown[] = [];
+  const stops: any[] = [];
   const controller = createMeetingAutoEndController({
     now: () => now,
-    onStop: (sessionId: string, reason: unknown) => stops.push({ sessionId, reason }),
+    onStop: (sessionId: string, reason: any) => stops.push({ sessionId, reason }),
   });
 
   const runFor = (ms: number) => {
@@ -41,19 +41,19 @@ const createHarness = () => {
   };
 };
 
-const beginOwnership = (controller: unknown, sessionId = "s1") =>
+const beginOwnership = (controller: any, sessionId = "s1") =>
   controller.beginSession({ sessionId, eligible: true, reliable: true, externalMicActive: true });
 
-const beginFallback = (controller: unknown, sessionId = "s1", { reliable = true } = {}) =>
+const beginFallback = (controller: any, sessionId = "s1", { reliable = true } = {}) =>
   controller.beginSession({ sessionId, eligible: true, reliable, externalMicActive: false });
 
-const micReleased = (controller: unknown, sessionId = "s1") =>
+const micReleased = (controller: any, sessionId = "s1") =>
   controller.handleExternalMicState({ sessionId, reliable: true, externalMicActive: false });
 
-const micAcquired = (controller: unknown, sessionId = "s1") =>
+const micAcquired = (controller: any, sessionId = "s1") =>
   controller.handleExternalMicState({ sessionId, reliable: true, externalMicActive: true });
 
-const audio = (controller: unknown, micActive: any, systemActive: any, sessionId = "s1") =>
+const audio = (controller: any, micActive: any, systemActive: any, sessionId = "s1") =>
   controller.handleAudioActivity({ sessionId, micActive, systemActive });
 
 test("ownership: a qualifying mic release stops after the confirm window", () => {

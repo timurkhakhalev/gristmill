@@ -8,7 +8,7 @@ const handlers = new Map();
 
 // Fake downloader injected as a dependency; every call is recorded and can be
 // held open or failed from the test. No network, no real temp writes.
-const downloadCalls: unknown[] = [];
+const downloadCalls: any[] = [];
 let downloadBehavior = () => {
   throw new Error("fake download has no behavior set");
 };
@@ -41,10 +41,10 @@ function registration() {
   handlers.clear();
   register(
     {
-      handle: (channel: string, fn: unknown) => handlers.set(channel, fn),
+      handle: (channel: string, fn: any) => handlers.set(channel, fn),
     },
     {
-      download: (url: string, onProgress: unknown, signal: unknown) => {
+      download: (url: string, onProgress: any, signal: any) => {
         const call = { url, onProgress, signal, deferred: deferred() };
         downloadCalls.push(call);
         return downloadBehavior(call);
@@ -57,10 +57,10 @@ function registration() {
 }
 
 function sender() {
-  const sent: unknown[] = [];
+  const sent: any[] = [];
   return {
     sent,
-    send: (channel: string, payload: unknown) => sent.push([channel, payload]),
+    send: (channel: string, payload: any) => sent.push([channel, payload]),
     isDestroyed: () => false,
   };
 }
@@ -179,7 +179,7 @@ test("a url of exactly 2048 chars is accepted by the boundary", async () => {
 test("missing, empty or non-string downloadId gets a generated dl-N id", async () => {
   registration();
   resetDownloader();
-  const seen: unknown[] = [];
+  const seen: any[] = [];
   const pendings = ["https://example.com/1", "https://example.com/2", "https://example.com/3"].map(
     (url) => {
       const s = sender();
@@ -439,9 +439,9 @@ test("delete-temp-file removes ow-diarize- files too", async () => {
   assert.deepEqual(result, { success: true });
 });
 
-test("each registration owns its pending downloads", async (t: unknown) => {
-  const a = { handle: (c: unknown, fn: unknown) => handlers.set("a-" + c, fn) };
-  const b = { handle: (c: unknown, fn: unknown) => handlers.set("b-" + c, fn) };
+test("each registration owns its pending downloads", async (t: import("node:test").TestContext) => {
+  const a = { handle: (c: any, fn: any) => handlers.set("a-" + c, fn) };
+  const b = { handle: (c: any, fn: any) => handlers.set("b-" + c, fn) };
   handlers.clear();
   safeTempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ow-urltest-"));
   t.after(() => fs.rmSync(safeTempRoot, { recursive: true, force: true }));
@@ -450,13 +450,13 @@ test("each registration owns its pending downloads", async (t: unknown) => {
   let firstSignal;
   let secondSignal;
   register(a, {
-    download: (_url: string, _progress: any, signal: unknown) => { firstSignal = signal; return first.promise; },
+    download: (_url: string, _progress: any, signal: any) => { firstSignal = signal; return first.promise; },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },
   });
   register(b, {
-    download: (_url: string, _progress: any, signal: unknown) => { secondSignal = signal; return second.promise; },
+    download: (_url: string, _progress: any, signal: any) => { secondSignal = signal; return second.promise; },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },

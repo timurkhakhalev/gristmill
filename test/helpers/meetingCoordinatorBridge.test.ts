@@ -26,7 +26,7 @@ const electronStub = {
 const originalLoad = Module._load;
 
 function registerRealHandlers(deps: any) {
-  Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
+  Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
     if (request === "electron") return electronStub;
     if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
       return { broadcastToWindows: () => {} };
@@ -40,7 +40,7 @@ function registerRealHandlers(deps: any) {
     const handlers = new Map();
     registerMeetingCoordinatorHandlers(
       {
-        handle: (channel: string, listener: unknown) => handlers.set(channel, listener),
+        handle: (channel: string, listener: any) => handlers.set(channel, listener),
         on: () => {},
       },
       deps
@@ -51,7 +51,7 @@ function registerRealHandlers(deps: any) {
   }
 }
 
-function loadBundledPreload(transport: unknown) {
+function loadBundledPreload(transport: any) {
   let api;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
@@ -62,15 +62,15 @@ function loadBundledPreload(transport: unknown) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name: string, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: any) => {
             api = value;
           },
         },
         ipcRenderer: {
           invoke: (channel: string, ...args) => transport.invoke(channel, ...args),
           send: (channel: string, ...args) => transport.send(channel, ...args),
-          on: (channel: string, listener: unknown) => transport.on(channel, listener),
-          removeListener: (channel: string, listener: unknown) => transport.removeListener(channel, listener),
+          on: (channel: string, listener: any) => transport.on(channel, listener),
+          removeListener: (channel: string, listener: any) => transport.removeListener(channel, listener),
         },
         webUtils: { getPathForFile: () => "" },
       };
@@ -81,7 +81,7 @@ function loadBundledPreload(transport: unknown) {
   return api;
 }
 
-const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
+const plain = (value: any) => JSON.parse(JSON.stringify(value));
 
 async function createFixture({ responses = {}, engine } = {}) {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
@@ -137,8 +137,8 @@ async function createFixture({ responses = {}, engine } = {}) {
     showNotificationWindow() {},
   });
 
-  const sent: unknown[] = [];
-  const invoked: unknown[] = [];
+  const sent: any[] = [];
+  const invoked: any[] = [];
   const listeners = new Map();
   const invokeHandler = async (channel: string, ...args) => {
     invoked.push({ channel, args });
@@ -152,16 +152,16 @@ async function createFixture({ responses = {}, engine } = {}) {
   const transport = {
     invoke: invokeHandler,
     send: (channel: string, ...args) => sent.push({ channel, args }),
-    on: (channel: string, listener: unknown) => {
+    on: (channel: string, listener: any) => {
       if (!listeners.has(channel)) listeners.set(channel, new Set());
       listeners.get(channel).add(listener);
     },
-    removeListener: (channel: string, listener: unknown) => {
+    removeListener: (channel: string, listener: any) => {
       listeners.get(channel)?.delete(listener);
     },
   };
   const api = loadBundledPreload(transport);
-  const pushEvent = (channel: string, payload: unknown) => {
+  const pushEvent = (channel: string, payload: any) => {
     for (const listener of listeners.get(channel) ?? []) listener({}, payload);
   };
   return { api, pushEvent, sent, invoked, engineFake };
@@ -201,7 +201,7 @@ test("command shapes cross the bundled preload and results are passed through", 
 test("capture send crosses with source and sequencing metadata and returns its write acknowledgement", async () => {
   const { api, invoked } = await createFixture({
     responses: {
-      "meeting-transcription-send": (_buffer: unknown, _source: any, _sessionId: any, packet: any) => ({
+      "meeting-transcription-send": (_buffer: any, _source: any, _sessionId: any, packet: any) => ({
         success: true,
         sequence: packet.sequence,
       }),
@@ -224,8 +224,8 @@ test("capture send crosses with source and sequencing metadata and returns its w
 test("event payloads reach callbacks and malformed ones are dropped", async () => {
   const { api, pushEvent } = await createFixture();
 
-  const segments: unknown[] = [];
-  const unsubscribe = api.onMeetingTranscriptionSegment?.((data: unknown) => segments.push(data));
+  const segments: any[] = [];
+  const unsubscribe = api.onMeetingTranscriptionSegment?.((data: any) => segments.push(data));
   assert.equal(typeof unsubscribe, "function");
 
   pushEvent("meeting-transcription-segment", {
@@ -245,7 +245,7 @@ test("event payloads reach callbacks and malformed ones are dropped", async () =
     timestamp: 12,
   });
 
-  const autoEnd: unknown[] = [];
+  const autoEnd: any[] = [];
   const unsubscribeAutoEnd = api.onMeetingAutoEndRequested?.((request: string) => autoEnd.push(request));
   pushEvent("meeting-auto-end-requested", { sessionId: "s1", reason: "silence" });
   pushEvent("meeting-auto-end-requested", { sessionId: 7 });
@@ -263,8 +263,8 @@ test("event payloads reach callbacks and malformed ones are dropped", async () =
 
 test("payload-only listeners deliver transcript errors without the event", async () => {
   const { api, pushEvent } = await createFixture();
-  const errors: unknown[] = [];
-  api.onMeetingTranscriptionError?.((message: unknown) => errors.push(message));
+  const errors: any[] = [];
+  api.onMeetingTranscriptionError?.((message: any) => errors.push(message));
   pushEvent("meeting-transcription-error", "provider exploded");
   pushEvent("meeting-transcription-error", 42);
   assert.deepEqual(errors, ["provider exploded"]);

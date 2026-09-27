@@ -7,7 +7,7 @@ const Module = require("node:module");
 
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
-function installNavigatorLanguage(t: unknown, language: string) {
+function installNavigatorLanguage(t: import("node:test").TestContext, language: string) {
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
@@ -22,7 +22,7 @@ function installNavigatorLanguage(t: unknown, language: string) {
   });
 }
 
-function loadEnvironmentManager(t: unknown, userDataDirectory: any) {
+function loadEnvironmentManager(t: import("node:test").TestContext, userDataDirectory: any) {
   const originalLoad = Module._load;
   const environmentPath = require.resolve("../../src/helpers/environment");
   delete require.cache[environmentPath];
@@ -51,7 +51,7 @@ function loadEnvironmentManager(t: unknown, userDataDirectory: any) {
   }
 }
 
-test("fresh Chinese browser locale survives settings hydration", async (t: unknown) => {
+test("fresh Chinese browser locale survives settings hydration", async (t: import("node:test").TestContext) => {
   installNavigatorLanguage(t, "zh-Hans-CN");
   installBrowserGlobals(t, {
     initialStorage: {
@@ -96,7 +96,7 @@ test("fresh Chinese browser locale survives settings hydration", async (t: unkno
   );
 });
 
-test("main locale fallback remains implicit and yields to an explicit preference", (t: unknown) => {
+test("main locale fallback remains implicit and yields to an explicit preference", (t: import("node:test").TestContext) => {
   const userDataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-ui-language-"));
   const originalEnvironment = { ...process.env };
   const originalResourcesPath = process.resourcesPath;

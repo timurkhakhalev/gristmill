@@ -35,7 +35,7 @@ function isNativeBindingUnavailable(error: unknown) {
   );
 }
 
-function setup(t: unknown) {
+function setup(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-delete-all-audio-"));
   let db;
   let audioStorage;
@@ -96,7 +96,7 @@ function audioBackedTranscription(db: any, audioStorage: any, text: string) {
   return id;
 }
 
-test("delete-all-audio removes files, clears has_audio, keeps records, is repeatable", async (t: unknown) => {
+test("delete-all-audio removes files, clears has_audio, keeps records, is repeatable", async (t: import("node:test").TestContext) => {
   const setupResult = setup(t);
   if (!setupResult) return;
   const { db, audioStorage, handlers } = setupResult;
@@ -108,7 +108,7 @@ test("delete-all-audio removes files, clears has_audio, keeps records, is repeat
   const id2 = audioBackedTranscription(db, audioStorage, "second transcript");
   db.saveTranscription("transcript only");
   assert.deepEqual(
-    db.getAudioFlaggedIds().map((row: unknown) => row.id).sort(),
+    db.getAudioFlaggedIds().map((row: any) => row.id).sort(),
     [id1, id2]
   );
   assert.equal(fs.readdirSync(audioStorage.audioDir).length, 2);
@@ -132,7 +132,7 @@ test("delete-all-audio removes files, clears has_audio, keeps records, is repeat
   assert.deepEqual(second, { deleted: 0, failed: 0 });
 });
 
-test("delete-all-audio on an empty storage is a no-op", async (t: unknown) => {
+test("delete-all-audio on an empty storage is a no-op", async (t: import("node:test").TestContext) => {
   const setupResult = setup(t);
   if (!setupResult) return;
   const { db, audioStorage, handlers } = setupResult;

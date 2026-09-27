@@ -11,7 +11,7 @@ const modelRegistryData = require("../../src/models/modelRegistryData.json");
 // Groq retired qwen3-32b and both Llamas on 2026-08-16. The registry entries
 // are gone, so a persisted scope selection would 404 on every request until
 // the user re-picked — the migration remaps it to a model Groq still serves.
-test("retired groq model selections migrate to served replacements", async (t: unknown) => {
+test("retired groq model selections migrate to served replacements", async (t: import("node:test").TestContext) => {
   const groqIds = modelRegistryData.cloudProviders
     .find((provider: string) => provider.id === "groq")
     .models.map((model: string) => model.id);

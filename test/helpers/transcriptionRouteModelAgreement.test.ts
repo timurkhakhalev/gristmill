@@ -47,7 +47,7 @@ test("each provider's fallback default is a model that provider actually offers"
     const provider = registry.transcriptionProviders.find((p: string) => p.id === providerId);
     const fallback = resolveByokModel(providerId, "a-model-from-another-provider");
     assert.ok(
-      provider.models.some((m: unknown) => m.id === fallback),
+      provider.models.some((m: any) => m.id === fallback),
       `${providerId} falls back to ${fallback}, which it does not offer`
     );
   }

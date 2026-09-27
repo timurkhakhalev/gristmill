@@ -21,13 +21,15 @@ function createElectronMock(response: unknown) {
   };
 }
 
-function loadWithNetFetch(fetchImpl) {
+type FetchInit = Parameters<typeof fetch>[1];
+type FetchImpl = (url: string, init?: FetchInit & { headers?: Record<string, string> }) => Promise<Response>;
+function loadWithNetFetch(fetchImpl: FetchImpl) {
   const electronPath = require.resolve("electron");
   const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.ts");
   const originalElectronCache = require.cache[electronPath];
   require.cache[electronPath] = {
     exports: { app: { isReady: () => false }, net: { fetch: fetchImpl } },
-  };
+  } as unknown as import("node:module").Module;
   delete require.cache[downloadUtilsPath];
   return {
     downloadUtils: require(downloadUtilsPath),
@@ -40,7 +42,7 @@ function loadWithNetFetch(fetchImpl) {
 }
 
 test("fetchJson sends the app User-Agent and returns the parsed body", async (t: import("node:test").TestContext) => {
-  const calls: unknown[] = [];
+  const calls: Array<{ url: string; init?: FetchInit & { headers?: Record<string, string> } }> = [];
   const { downloadUtils, restore } = loadWithNetFetch(async (url: string, init) => {
     calls.push({ url, init });
     return Response.json({ tag_name: "v1" });
@@ -50,8 +52,8 @@ test("fetchJson sends the app User-Agent and returns the parsed body", async (t:
   assert.deepEqual(await downloadUtils.fetchJson("https://example.com/release.json"), {
     tag_name: "v1",
   });
-  assert.equal(calls[0].init.method, "GET");
-  assert.equal(calls[0].init.headers["User-Agent"], "OpenHercules/1.0");
+  assert.equal(calls[0]!.init!.method, "GET");
+  assert.equal(calls[0]!.init!.headers!["User-Agent"], "OpenHercules/1.0");
 });
 
 // The status is the only thing standing between an error page and a caller that
@@ -64,12 +66,12 @@ test("fetchJson rejects a non-2xx response even when its body is valid JSON", as
 
   await assert.rejects(
     () => downloadUtils.fetchJson("https://example.com/missing.json"),
-    (error: unknown) => error.isHttpError === true && error.statusCode === 404
+    (error: unknown) => (error as { isHttpError?: boolean }).isHttpError === true && (error as { statusCode?: number }).statusCode === 404
   );
 });
 
 test("fetchJson forwards caller init and keeps the User-Agent alongside caller headers", async (t: import("node:test").TestContext) => {
-  const calls: unknown[] = [];
+  const calls: Array<{ url: string; init?: FetchInit & { headers?: Record<string, string> } }> = [];
   const { downloadUtils, restore } = loadWithNetFetch(async (url: string, init) => {
     calls.push({ url, init });
     return Response.json({});
@@ -84,7 +86,7 @@ test("fetchJson forwards caller init and keeps the User-Agent alongside caller h
     signal,
   });
 
-  const { init } = calls[0];
+  const { init } = calls[0]! as { init: { credentials?: string; cache?: string; signal?: AbortSignal; headers?: Record<string, string> } };
   assert.equal(init.credentials, "omit");
   assert.equal(init.cache, "no-store");
   assert.equal(init.signal, signal);
@@ -105,23 +107,23 @@ test("downloadFile waits for a cancelled write stream to close before removing i
   const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.ts");
   const originalElectronCache = require.cache[electronPath];
   const originalCreateWriteStream = fs.createWriteStream;
-  let releaseOpen;
-  const openGate = new Promise((resolve) => (releaseOpen = resolve));
-  let onOpenStarted;
-  const openStarted = new Promise((resolve) => (onOpenStarted = resolve));
+  let releaseOpen!: () => void;
+  const openGate = new Promise<void>((resolve) => (releaseOpen = resolve));
+  let onOpenStarted!: () => void;
+  const openStarted = new Promise<void>((resolve) => (onOpenStarted = resolve));
   const order: unknown[] = [];
 
-  require.cache[electronPath] = { exports: createElectronMock(response) };
+  require.cache[electronPath] = { exports: createElectronMock(response) } as unknown as import("node:module").Module;
   delete require.cache[downloadUtilsPath];
 
-  fs.createWriteStream = (filePath, options: unknown) => {
+  fs.createWriteStream = ((filePath: Parameters<typeof fs.createWriteStream>[0], options?: object) => {
     const stream = originalCreateWriteStream(filePath, {
-      ...options,
+      ...(options ?? {}),
       fs: {
-        open: (...args) => {
+        open: (...args: unknown[]) => {
           const callback = args.at(-1);
           onOpenStarted();
-          openGate.then(() => fs.open(...args.slice(0, -1), callback));
+          openGate.then(() => (fs.open as (...a: unknown[]) => void)(...args.slice(0, -1), callback));
         },
         write: fs.write.bind(fs),
         writev: fs.writev.bind(fs),
@@ -130,12 +132,12 @@ test("downloadFile waits for a cancelled write stream to close before removing i
     });
     stream.once("close", () => order.push("close"));
     return stream;
-  };
+  }) as typeof fs.createWriteStream;
 
   try {
     const { createDownloadSignal, downloadFile } = require(downloadUtilsPath);
     const { signal, abort } = createDownloadSignal();
-    let settled = null;
+    let settled: "resolved" | { isAbort?: boolean } | null = null;
     const done = downloadFile("https://example.com/model.bin", destination, {
       signal,
       maxRetries: 0,
@@ -143,7 +145,7 @@ test("downloadFile waits for a cancelled write stream to close before removing i
       () => (settled = "resolved"),
       (error: unknown) => {
         order.push("rejected");
-        settled = error;
+        settled = error as { isAbort?: boolean };
       }
     );
 
@@ -156,7 +158,7 @@ test("downloadFile waits for a cancelled write stream to close before removing i
     releaseOpen();
     await done;
 
-    assert.equal(settled.isAbort, true);
+    assert.equal((settled as unknown as { isAbort?: boolean }).isAbort, true);
     assert.deepEqual(order, ["close", "rejected"]);
     assert.equal(
       fs.existsSync(`${destination}.tmp`),

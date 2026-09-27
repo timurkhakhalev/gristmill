@@ -102,7 +102,7 @@ async function runTests(args, {
 } = {}) {
   const plan = createPlan(args);
   if (plan.options.help) {
-    log(`Usage: pnpm test [--domain NAME ...] [--kind NAME ...] [--processes 1|2] [--list]\n       pnpm test -- test/path.test.js ...\nDomains: ${DOMAINS.join(", ")}\nKinds: ${KINDS.join(", ")}\nDomains are OR; kinds are OR; domain and kind filters intersect. No filters runs all tests.`);
+    log(`Usage: pnpm test [--domain NAME ...] [--kind NAME ...] [--processes 1|2] [--list]\n       pnpm test -- test/path.test.ts ...\nDomains: ${DOMAINS.join(", ")}\nKinds: ${KINDS.join(", ")}\nDomains are OR; kinds are OR; domain and kind filters intersect. No filters runs all tests.`);
     return 0;
   }
   log(`[test] ${plan.tests.length} files; build:main ${plan.buildMain ? "required" : "not needed"}`);
@@ -155,7 +155,7 @@ async function runTests(args, {
       if (!phase.tests.length) continue;
       if (interrupted) break;
       const phaseEnv = phase.sharedTypeProgram
-        ? { ...env, OPENHERCULES_TYPE_PROBE_GROUPS: JSON.stringify(phase.tests.map((test) => path.basename(test.file, ".test.js"))) }
+        ? { ...env, OPENHERCULES_TYPE_PROBE_GROUPS: JSON.stringify(phase.tests.map((test) => path.basename(test.file).replace(/\.test\.(js|ts)$/, ""))) }
         : env;
       const code = await run(binary, ["--import", "tsx", "--test", `--test-concurrency=${phase.concurrency}`,
         ...(phase.sharedTypeProgram ? ["--test-isolation=none"] : []), "--test-timeout=30000",

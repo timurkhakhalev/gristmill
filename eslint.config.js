@@ -11,6 +11,7 @@ module.exports = [
       "src/dist/**",
       "*.min.js",
       "build/**",
+      "test/scripts/type-probes/**", // Intentionally invalid probe fixtures; checked by the probe runner.
       "src/*", // Renderer files have their own config; main-process JS must not be skipped.
       "!src/helpers/",
       "!src/utils/",
@@ -61,6 +62,35 @@ module.exports = [
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+    },
+  },
+  {
+    files: ["test/**/*.{ts,tsx}"],
+    languageOptions: {
+      parser: tseslint.parser,
+      ecmaVersion: 2022,
+      sourceType: "commonjs",
+      globals: {
+        ...globals.node,
+        ...globals.commonjs,
+      },
+    },
+    plugins: { "@typescript-eslint": tseslint.plugin },
+    rules: {
+      ...js.configs.recommended.rules,
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { varsIgnorePattern: "^_", argsIgnorePattern: "^_|^event|^err|^error" },
+      ],
+      "no-console": "off",
+      "no-empty": ["error", { allowEmptyCatch: true }],
+      "no-constant-condition": ["error", { checkLoops: false }],
+      "no-control-regex": "off",
+      "no-useless-catch": "off",
+      "no-async-promise-executor": "off",
+      "prefer-const": "off",
+      "no-var": "off",
     },
   },
 ];

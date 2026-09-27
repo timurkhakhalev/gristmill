@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer } = require("../lib/rendererTestHarness");
+const { createRendererServer } = require("../lib/rendererTestHarness.ts");
 
 const repoRoot = path.join(__dirname, "../..");
 

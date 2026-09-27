@@ -1,29 +1,38 @@
 // Shared setup for tests that load renderer modules through Vite SSR:
 // Map-backed browser globals plus a dev server with per-test module mocks.
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { TestContext } from "node:test";
+import type { ViteDevServer } from "vite";
 
-function installBrowserGlobals(t, { initialStorage = {}, window: windowProps = {} } = {}) {
-  const originalWindow = globalThis.window;
-  const originalLocalStorage = globalThis.localStorage;
+type FakeWindow = typeof globalThis & {
+  electronAPI?: Record<string, unknown>;
+};
+
+export function installBrowserGlobals(
+  t: TestContext,
+  { initialStorage = {}, window: windowProps = {} }: { initialStorage?: Record<string, string>; window?: Record<string, unknown> } = {}
+) {
+  const originalWindow = (globalThis as { window?: unknown }).window;
+  const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
   const values = new Map(Object.entries(initialStorage));
   const storage = {
-    getItem: (key) => (values.has(key) ? values.get(key) : null),
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
+    getItem: (key: string) => (values.has(key) ? values.get(key)! : null),
+    setItem: (key: string, value: string) => values.set(key, String(value)),
+    removeItem: (key: string) => values.delete(key),
     clear: () => values.clear(),
   };
-  globalThis.localStorage = storage;
-  globalThis.window = {
+  (globalThis as Record<string, unknown>).localStorage = storage;
+  (globalThis as Record<string, unknown>).window = {
     innerWidth: 1200,
     localStorage: storage,
     addEventListener() {},
     removeEventListener() {},
-    setTimeout(...args) {
+    setTimeout(...args: Parameters<typeof setTimeout>) {
       return globalThis.setTimeout(...args);
     },
-    clearTimeout(timeoutId) {
+    clearTimeout(timeoutId: ReturnType<typeof setTimeout>) {
       globalThis.clearTimeout(timeoutId);
     },
     setInterval() {
@@ -33,30 +42,77 @@ function installBrowserGlobals(t, { initialStorage = {}, window: windowProps = {
     ...windowProps,
   };
   t.after(() => {
-    if (originalWindow === undefined) delete globalThis.window;
-    else globalThis.window = originalWindow;
-    if (originalLocalStorage === undefined) delete globalThis.localStorage;
-    else globalThis.localStorage = originalLocalStorage;
+    const globals = globalThis as Record<string, unknown>;
+    if (originalWindow === undefined) delete globals.window;
+    else globals.window = originalWindow;
+    if (originalLocalStorage === undefined) delete globals.localStorage;
+    else globals.localStorage = originalLocalStorage;
   });
-  return { window: globalThis.window, storage };
+  return { window: (globalThis as { window: FakeWindow }).window, storage };
+}
+
+interface FakeNode {
+  nodeType: number;
+  nodeName: string;
+  tagName?: string;
+  namespaceURI: string | null;
+  ownerDocument: FakeDocument | null;
+  parentNode: FakeNode | null;
+  childNodes: FakeNode[];
+  attributes: Map<string, string>;
+  style: Record<string, string>;
+  nodeValue?: string;
+  data?: string;
+  appendChild(child: FakeNode): FakeNode;
+  insertBefore(child: FakeNode, before: FakeNode | null): FakeNode;
+  removeChild(child: FakeNode): FakeNode;
+  setAttribute(name: string, value: unknown): void;
+  removeAttribute(name: string): void;
+  addEventListener(): void;
+  removeEventListener(): void;
+  contains(candidate: FakeNode | null): boolean;
+  readonly firstChild: FakeNode | null;
+  readonly lastChild: FakeNode | null;
+  readonly options: FakeNode[];
+  readonly nextSibling: FakeNode | null;
+  textContent: string;
+}
+
+interface FakeDocument {
+  nodeType: 9;
+  activeElement: FakeNode | null;
+  addEventListener(): void;
+  removeEventListener(): void;
+  createElement(name: string): FakeNode;
+  createElementNS(namespaceURI: string, name: string): FakeNode;
+  createTextNode(value: unknown): FakeNode;
+  createComment(value: unknown): FakeNode;
+  createDocumentFragment(): FakeNode;
+  querySelector(): null;
+  querySelectorAll(): never[];
+  createRange(): { setStart(): void; setEnd(): void; createContextualFragment(): FakeNode };
+  documentElement: FakeNode;
+  head: FakeNode;
+  body: FakeNode;
+  defaultView: unknown;
 }
 
 // Minimal fake DOM for mounting hook harnesses with react-dom's createRoot:
 // just enough node structure for React to attach a root — no layout, no real
 // events. Call installBrowserGlobals first; this assigns onto globalThis.window.
-function installHookDom(t) {
-  const originalDocument = globalThis.document;
-  const originalActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
-  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
-  const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
+export function installHookDom(t: TestContext): FakeNode {
+  const originalDocument = (globalThis as { document?: unknown }).document;
+  const originalActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: unknown }).IS_REACT_ACT_ENVIRONMENT;
+  const originalRequestAnimationFrame = (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
+  const originalCancelAnimationFrame = (globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame;
   const noop = () => {};
 
   class Element {}
   class HTMLElement extends Element {}
   class HTMLIFrameElement extends HTMLElement {}
 
-  function makeNode(nodeType, nodeName, namespaceURI = "http://www.w3.org/1999/xhtml") {
-    const node = {
+  function makeNode(nodeType: number, nodeName: string, namespaceURI = "http://www.w3.org/1999/xhtml"): FakeNode {
+    const node: FakeNode = {
       nodeType,
       nodeName,
       tagName: nodeType === 1 ? nodeName.toUpperCase() : undefined,
@@ -102,7 +158,7 @@ function installHookDom(t) {
         return siblings[siblings.indexOf(this) + 1] ?? null;
       },
       get textContent() {
-        return nodeType === 3 ? this.nodeValue : this.childNodes.map((child) => child.textContent ?? "").join("");
+        return nodeType === 3 ? this.nodeValue ?? "" : this.childNodes.map((child) => child.textContent ?? "").join("");
       },
       set textContent(value) {
         this.childNodes.forEach((child) => { child.parentNode = null; });
@@ -118,7 +174,7 @@ function installHookDom(t) {
     return node;
   }
 
-  const document = {
+  const document: FakeDocument = {
     nodeType: 9,
     activeElement: null,
     addEventListener: noop,
@@ -154,19 +210,23 @@ function installHookDom(t) {
     },
     querySelector: () => null,
     querySelectorAll: () => [],
+    createRange: () => ({
+      setStart() {},
+      setEnd() {},
+      createContextualFragment: () => document.createDocumentFragment(),
+    }),
+    documentElement: null as unknown as FakeNode,
+    head: null as unknown as FakeNode,
+    body: null as unknown as FakeNode,
+    defaultView: null,
   };
-  document.createRange = () => ({
-    setStart() {},
-    setEnd() {},
-    createContextualFragment: () => document.createDocumentFragment(),
-  });
   const container = document.createElement("div");
   document.documentElement = document.createElement("html");
   document.head = document.createElement("head");
   document.body = document.createElement("body");
   document.documentElement.appendChild(document.head);
   document.documentElement.appendChild(document.body);
-  Object.assign(globalThis.window, {
+  Object.assign(globalThis.window as object, {
     Element,
     HTMLElement,
     HTMLIFrameElement,
@@ -175,36 +235,36 @@ function installHookDom(t) {
   });
   document.defaultView = globalThis.window;
   document.documentElement = container;
-  globalThis.document = document;
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  globalThis.requestAnimationFrame = () => 1;
-  globalThis.cancelAnimationFrame = noop;
+  (globalThis as Record<string, unknown>).document = document;
+  (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  (globalThis as Record<string, unknown>).requestAnimationFrame = () => 1;
+  (globalThis as Record<string, unknown>).cancelAnimationFrame = noop;
 
   t.after(() => {
-    if (originalDocument === undefined) delete globalThis.document;
-    else globalThis.document = originalDocument;
-    if (originalActEnvironment === undefined) delete globalThis.IS_REACT_ACT_ENVIRONMENT;
-    else globalThis.IS_REACT_ACT_ENVIRONMENT = originalActEnvironment;
-    if (originalRequestAnimationFrame === undefined) delete globalThis.requestAnimationFrame;
-    else globalThis.requestAnimationFrame = originalRequestAnimationFrame;
-    if (originalCancelAnimationFrame === undefined) delete globalThis.cancelAnimationFrame;
-    else globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
+    const globals = globalThis as Record<string, unknown>;
+    if (originalDocument === undefined) delete globals.document;
+    else globals.document = originalDocument;
+    if (originalActEnvironment === undefined) delete globals.IS_REACT_ACT_ENVIRONMENT;
+    else globals.IS_REACT_ACT_ENVIRONMENT = originalActEnvironment;
+    if (originalRequestAnimationFrame === undefined) delete globals.requestAnimationFrame;
+    else globals.requestAnimationFrame = originalRequestAnimationFrame;
+    if (originalCancelAnimationFrame === undefined) delete globals.cancelAnimationFrame;
+    else globals.cancelAnimationFrame = originalCancelAnimationFrame;
   });
 
   return container;
 }
 
+export interface RendererServerOptions {
+  cachePrefix?: string;
+  mockModules?: Record<string, string>;
+  noExternal?: boolean | string[] | RegExp;
+  resolveAlias?: Record<string, string>;
+}
+
 // mockModules maps an import-path suffix (e.g. "/utils/logger") to the ESM
 // source served in its place.
-async function createRendererServer(
-  t,
-  {
-    cachePrefix = "openwhispr-renderer-test-",
-    mockModules = {},
-    noExternal = false,
-    resolveAlias = {},
-  } = {}
-) {
+export async function createRendererServer(t: TestContext, { cachePrefix = "openwhispr-renderer-test-", mockModules = {}, noExternal = false, resolveAlias = {} }: RendererServerOptions = {}): Promise<ViteDevServer> {
   const { createServer } = await import("vite");
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), cachePrefix));
   const suffixes = Object.keys(mockModules);
@@ -221,12 +281,12 @@ async function createRendererServer(
       {
         name: "renderer-test-module-mocks",
         enforce: "pre",
-        resolveId(source) {
+        resolveId(source: string) {
           const suffix = suffixes.find((candidate) => source.endsWith(candidate));
           if (suffix) return `\0mock:${suffix}`;
           return null;
         },
-        load(id) {
+        load(id: string) {
           if (!id.startsWith("\0mock:")) return null;
           return mockModules[id.slice("\0mock:".length)];
         },
@@ -241,7 +301,7 @@ async function createRendererServer(
   return vite;
 }
 
-async function reloadSettingsStore(vite) {
+export async function reloadSettingsStore(vite: ViteDevServer): Promise<unknown> {
   const url = "/stores/settingsStore.ts";
   const module = await vite.moduleGraph.getModuleByUrl(url);
   // Vite invalidates this module and its importers; shared dependencies stay cached.
@@ -250,21 +310,21 @@ async function reloadSettingsStore(vite) {
 }
 
 // Minimal Web Audio + capture stubs so the mic pipeline can run under Node.
-function installMicCaptureGlobals(t) {
+export function installMicCaptureGlobals(t: TestContext): void {
   const track = {
     readyState: "live",
     label: "Fake Mic",
     stop() {},
-    getSettings: () => ({}),
+    getSettings: () => ({}) as Record<string, unknown>,
   };
   const stream = {
     getTracks: () => [track],
     getAudioTracks: () => [track],
-    getVideoTracks: () => [],
+    getVideoTracks: () => [] as typeof track[],
   };
   const mediaDevices = {
     getUserMedia: async () => stream,
-    enumerateDevices: async () => [],
+    enumerateDevices: async () => [] as Array<Record<string, unknown>>,
     addEventListener() {},
     removeEventListener() {},
   };
@@ -276,11 +336,12 @@ function installMicCaptureGlobals(t) {
     smoothingTimeConstant: 0,
   });
   class FakeAudioContext {
-    constructor({ sampleRate = 48_000 } = {}) {
-      this.state = "running";
+    state = "running";
+    sampleRate: number;
+    audioWorklet = { addModule: async () => {} };
+    destination = {};
+    constructor({ sampleRate = 48_000 }: { sampleRate?: number } = {}) {
       this.sampleRate = sampleRate;
-      this.audioWorklet = { addModule: async () => {} };
-      this.destination = {};
     }
     createMediaStreamSource() {
       return node();
@@ -295,11 +356,12 @@ function installMicCaptureGlobals(t) {
     async close() {}
   }
   class FakeAudioWorkletNode {
+    port: { onmessage: ((event: { data: unknown }) => void) | null; postMessage: (message: unknown) => void };
     constructor() {
       this.port = {
         onmessage: null,
         postMessage: (message) => {
-          if (message?.type === "flush") {
+          if ((message as { type?: string })?.type === "flush") {
             queueMicrotask(() =>
               this.port.onmessage?.({ data: { type: "flush-complete", lastSequence: -1 } })
             );
@@ -317,20 +379,12 @@ function installMicCaptureGlobals(t) {
     configurable: true,
     writable: true,
   });
-  globalThis.AudioContext = FakeAudioContext;
-  globalThis.AudioWorkletNode = FakeAudioWorkletNode;
+  (globalThis as Record<string, unknown>).AudioContext = FakeAudioContext;
+  (globalThis as Record<string, unknown>).AudioWorkletNode = FakeAudioWorkletNode;
   t.after(() => {
     if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
-    else delete globalThis.navigator;
-    delete globalThis.AudioContext;
-    delete globalThis.AudioWorkletNode;
+    else delete (globalThis as Record<string, unknown>).navigator;
+    delete (globalThis as Record<string, unknown>).AudioContext;
+    delete (globalThis as Record<string, unknown>).AudioWorkletNode;
   });
 }
-
-module.exports = {
-  createRendererServer,
-  reloadSettingsStore,
-  installBrowserGlobals,
-  installHookDom,
-  installMicCaptureGlobals,
-};

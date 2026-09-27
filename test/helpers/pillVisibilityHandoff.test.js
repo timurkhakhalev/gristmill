@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { deferred } = require("./harness/deferred");
+const { deferred } = require("./harness/deferred.ts");
 
 test("the resting pill stays suppressed until bounds and compositor frames settle", async () => {
   const { createPillVisibilityHandoff } =

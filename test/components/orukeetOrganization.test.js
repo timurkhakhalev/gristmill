@@ -7,7 +7,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
-} = require("../lib/rendererTestHarness");
+} = require("../lib/rendererTestHarness.ts");
 
 let vitePromise;
 const cleanup = [];

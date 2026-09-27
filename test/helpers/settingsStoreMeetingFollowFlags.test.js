@@ -4,7 +4,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   reloadSettingsStore,
-} = require("../lib/rendererTestHarness");
+} = require("../lib/rendererTestHarness.ts");
 const {
   resolveMeetingTranscriptionOptions,
 } = require("../../src/helpers/meetingTranscriptionRouting.ts");

@@ -7,7 +7,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
-} = require("../lib/rendererTestHarness");
+} = require("../lib/rendererTestHarness.ts");
 
 test("cleanup toast localizes AWS recovery guidance and keeps fallback status quieter", async (t) => {
   let root = null;

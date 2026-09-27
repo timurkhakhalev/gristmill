@@ -6,7 +6,7 @@ const { renderToStaticMarkup } = require("react-dom/server");
 const { createInstance } = require("i18next");
 const { I18nextProvider } = require("react-i18next");
 const { useDirection } = require("@radix-ui/react-direction");
-const { installBrowserGlobals, installHookDom } = require("../lib/rendererTestHarness");
+const { installBrowserGlobals, installHookDom } = require("../lib/rendererTestHarness.ts");
 
 test("the app provider supplies the active i18n direction through real Radix context", async () => {
   const { I18nDirectionProvider } = await import(

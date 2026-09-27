@@ -6,7 +6,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
-} = require("../lib/rendererTestHarness");
+} = require("../lib/rendererTestHarness.ts");
 
 test("macOS accessibility checks follow the onboarding feature gate", async (t) => {
   let root = null;

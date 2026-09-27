@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const React = requireRepo("react");
 const { createRoot } = requireRepo("react-dom/client");
 const { createRendererServer, installBrowserGlobals, installHookDom, installMicCaptureGlobals } =
-  requireRepo("./test/lib/rendererTestHarness");
+  requireRepo("./test/lib/rendererTestHarness.ts");
 
 let vitePromise;
 const cleanup = [];

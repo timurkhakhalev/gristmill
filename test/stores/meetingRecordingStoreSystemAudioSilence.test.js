@@ -4,7 +4,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installMicCaptureGlobals,
-} = require("../lib/rendererTestHarness");
+} = require("../lib/rendererTestHarness.ts");
 
 // Drives the real startRecording/stopRecording flow through the renderer
 // harness and pins the meeting-system-audio-silent warning: latched once per

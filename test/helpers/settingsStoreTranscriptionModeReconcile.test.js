@@ -4,7 +4,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   reloadSettingsStore,
-} = require("../lib/rendererTestHarness");
+} = require("../lib/rendererTestHarness.ts");
 
 // Pins reconcileTranscriptionRouting() in settingsStore.ts, where the rationale
 // for each rule lives (#2086).

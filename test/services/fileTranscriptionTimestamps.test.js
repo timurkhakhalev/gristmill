@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 // The upload flows opt into segment timestamps (issue #1095): the flag must
 // reach the BYOK IPC call, and the segments the handler returns must survive

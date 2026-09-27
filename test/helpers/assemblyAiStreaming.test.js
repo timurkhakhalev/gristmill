@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { WebSocketServer } = require("ws");
 
 const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming.ts");
-const { deferred } = require("./harness/deferred");
+const { deferred } = require("./harness/deferred.ts");
 
 async function withPrematureCloseServer(run) {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });

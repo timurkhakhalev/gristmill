@@ -1,1 +1,1 @@
-require("../../lib/typeProbeBatch")(__filename);
+require("../../lib/typeProbeBatch").default(__filename);

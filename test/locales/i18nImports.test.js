@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 test("i18n still loads under a window stub that lacks localStorage", async (t) => {
   installBrowserGlobals(t, { window: { localStorage: undefined } });

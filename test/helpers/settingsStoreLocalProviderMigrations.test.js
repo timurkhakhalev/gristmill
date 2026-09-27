@@ -4,7 +4,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   reloadSettingsStore,
-} = require("../lib/rendererTestHarness");
+} = require("../lib/rendererTestHarness.ts");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 

@@ -4,7 +4,7 @@ const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const i18next = require("i18next");
 const { initReactI18next } = require("react-i18next");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 const PRIVATE_NOTE_TITLE = "خطة Private 2026";
 const TEAM_NOTE_TITLE = "Engineering ملاحظات";

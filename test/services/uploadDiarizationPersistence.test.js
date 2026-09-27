@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 // Regression for the upload/URL-ingest path dropping diarization metadata: the
 // batch queue ran the diarizer but persisted none of diarization_enabled,

@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createRendererServer } = require("../lib/rendererTestHarness");
+const { createRendererServer } = require("../lib/rendererTestHarness.ts");
 
 test("saved transcription bypasses an unsupported current meeting route while snapshotting current summary settings", async (t) => {
   const previousRouteReads = globalThis.__meetingSnapshotRouteReads;

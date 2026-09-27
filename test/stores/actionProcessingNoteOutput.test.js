@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 // Note formatting had no explicit output budget, so it inherited the generic
 // 2048-token default from calculateMaxTokens. Summaries of long meetings were

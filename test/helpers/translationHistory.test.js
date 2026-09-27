@@ -24,7 +24,7 @@ Module._load = function patchedLoad(request, parent, isMain) {
 process.env.NODE_ENV = "test";
 
 const DatabaseManager = require("../../src/helpers/database.ts");
-const { skipOrFail } = require("./harness/db.js");
+const { skipOrFail } = require("./harness/db.ts");
 
 function createDb(t) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-translation-db-"));

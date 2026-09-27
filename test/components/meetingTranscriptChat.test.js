@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const i18next = require("i18next");
 const { initReactI18next } = require("react-i18next");
-const { renderStatic } = require("../helpers/harness/reactSsr");
+const { renderStatic } = require("../helpers/harness/reactSsr.ts");
 
 const SEGMENTS = [
   { id: "s1", text: "hello from mic", source: "mic", timestamp: 1 },

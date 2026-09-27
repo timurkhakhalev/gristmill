@@ -73,6 +73,7 @@ module.exports = [
       globals: {
         ...globals.node,
         ...globals.commonjs,
+        ...globals.browser,
       },
     },
     plugins: { "@typescript-eslint": tseslint.plugin },

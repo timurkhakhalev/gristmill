@@ -4,7 +4,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installMicCaptureGlobals,
-} = require("../lib/rendererTestHarness");
+} = require("../lib/rendererTestHarness.ts");
 
 // Delayed diarization is always persisted to the note that owns its session.
 // Publishing it to the UI is separate, and must not happen while a recording is

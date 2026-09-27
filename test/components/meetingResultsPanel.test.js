@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const React = require("react");
 const { createRoot } = require("react-dom/client");
-const { createRendererServer, installBrowserGlobals, installHookDom } = require("../lib/rendererTestHarness");
+const { createRendererServer, installBrowserGlobals, installHookDom } = require("../lib/rendererTestHarness.ts");
 
 let vitePromise;
 const cleanup = [];

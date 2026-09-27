@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { renderStatic } = require("../helpers/harness/reactSsr");
+const { renderStatic } = require("../helpers/harness/reactSsr.ts");
 
 const loadMath = () => import("../../src/components/ui/liveWaveformMath.ts");
 const loadComponent = () => import("../../src/components/ui/LiveWaveform.tsx");

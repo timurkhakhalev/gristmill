@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { installBrowserGlobals } = require("../lib/rendererTestHarness");
+const { installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 

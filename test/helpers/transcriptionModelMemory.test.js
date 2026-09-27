@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals, reloadSettingsStore } = require("../lib/rendererTestHarness");
+const { createRendererServer, installBrowserGlobals, reloadSettingsStore } = require("../lib/rendererTestHarness.ts");
 
 let vitePromise;
 const cleanup = [];

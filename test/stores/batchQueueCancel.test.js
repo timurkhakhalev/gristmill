@@ -4,7 +4,7 @@
 // instead of only discarding its late result.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 const cfg = (overrides = {}) => ({
   useLocalWhisper: false,

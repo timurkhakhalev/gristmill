@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer } = require("../lib/rendererTestHarness");
+const { createRendererServer } = require("../lib/rendererTestHarness.ts");
 
 test("technical values are isolated without changing localized sentence order", async (t) => {
   const vite = await createRendererServer(t, {

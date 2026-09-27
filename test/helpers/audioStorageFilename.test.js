@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { installElectronStub } = require("./harness/electronStub.js");
+const { installElectronStub } = require("./harness/electronStub.ts");
 
 installElectronStub();
 const AudioStorageManager = require("../../src/helpers/audioStorage.ts");

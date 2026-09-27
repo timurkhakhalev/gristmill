@@ -49,9 +49,19 @@ function createOpenAiSseResponse(chunks, { finishReason = "stop", toolCall } = {
   });
 }
 
+let sharedVite;
+const sharedCleanup = [];
+test.after(async () => {
+  for (const cleanup of sharedCleanup) await cleanup();
+});
+
 async function loadReasoningService(t, cachePrefix, { window = {} } = {}) {
   installBrowserGlobals(t, { window });
-  const vite = await createRendererServer(t, { cachePrefix });
+  const vite = sharedVite ??= await createRendererServer({ after: (cleanup) => sharedCleanup.push(cleanup) }, { cachePrefix });
+  for (const url of ["/services/ReasoningService.ts", "/stores/settingsStore.ts"]) {
+    const module = await vite.moduleGraph.getModuleByUrl(url);
+    if (module) vite.moduleGraph.invalidateModule(module);
+  }
   const reasoningService = (await vite.ssrLoadModule("/services/ReasoningService.ts")).default;
   t.after(() => reasoningService.destroy());
   return { reasoningService, vite };

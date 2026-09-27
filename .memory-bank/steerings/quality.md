@@ -128,11 +128,16 @@ pnpm test --domain calendar --kind unit
 pnpm test --domain calendar --domain notes
 ```
 
-Maintain `test/test-groups.json` when adding, renaming or removing tests, or when
-their dependencies change. Missing, stale, duplicate and invalid registrations
-fail before runtime preparation. Mark consumers of compiled main/preload output
-with `buildMain: true`; the runner builds once if any selected test requires it.
-Use narrow patterns only for tests with the same domain and environment contract.
+Put new ordinary tests under `test/cases/<domain>/<kind>/`; the runner discovers
+their domain and kind without a path registration. A `main/` subdirectory marks
+compiled main/preload consumers; `serial/` marks a shared-resource test. Keep
+`test/test-groups.json` for tests needing several domains or a nonstandard
+location. Maintain those entries when renaming or removing tests
+or changing their dependencies. Unknown locations, stale, duplicate and invalid
+registrations fail before runtime preparation. Mark consumers of compiled
+main/preload output with `buildMain: true`; the runner builds once if any selected
+test requires it. Use narrow patterns only for tests with the same domain and
+environment contract.
 
 ## Resource and isolation rules
 

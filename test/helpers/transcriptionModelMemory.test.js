@@ -1,6 +1,17 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness");
+const { createRendererServer, installBrowserGlobals, reloadSettingsStore } = require("../lib/rendererTestHarness");
+
+let vitePromise;
+const cleanup = [];
+test.after(async () => {
+  for (const close of cleanup) await close();
+});
+function getVite() {
+  return vitePromise ??= createRendererServer({ after: (close) => cleanup.push(close) }, {
+    cachePrefix: "openwhispr-transcription-model-memory-test-",
+  });
+}
 
 test("per-provider transcription model memory", async (t) => {
   installBrowserGlobals(t, {
@@ -12,10 +23,8 @@ test("per-provider transcription model memory", async (t) => {
       cloudTranscriptionBaseUrl: "https://stt.parasail.example.com/v1",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-model-memory-test-",
-  });
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  const vite = await getVite();
+  const { useSettingsStore } = await reloadSettingsStore(vite);
   const state = () => useSettingsStore.getState();
 
   await t.test("switch-and-return restores the custom model (Parasail scenario)", () => {
@@ -139,10 +148,8 @@ test("explicit model click commits the clicked model, not the remembered one", a
       }),
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-model-click-commit-test-",
-  });
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  const vite = await getVite();
+  const { useSettingsStore } = await reloadSettingsStore(vite);
   const state = () => useSettingsStore.getState();
 
   state().switchCloudTranscriptionProvider("dictation", "groq");
@@ -174,9 +181,7 @@ test("corrupt persisted model memory hydrates as empty, not a crash", async (t) 
       transcriptionModelByProvider: "{not json",
     },
   });
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-model-memory-corrupt-test-",
-  });
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  const vite = await getVite();
+  const { useSettingsStore } = await reloadSettingsStore(vite);
   assert.deepEqual(useSettingsStore.getState().transcriptionModelByProvider, {});
 });

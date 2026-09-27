@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const CalendarReminderScheduler = require("../../src/helpers/calendarReminderScheduler.ts");
 
-function activeEvent(provider: string, id: unknown) {
+function activeEvent(provider: string, id: string, overrides: Record<string, unknown> = {}) {
   const now = Date.now();
   return {
     id,
@@ -25,6 +25,7 @@ for (const provider of Object.keys(MEETING_LINK_BY_PROVIDER)) {
   test(`does not remind for a ${provider} time block without attendees or a meeting link`, () => {
     const timeBlock = activeEvent(provider, "time-block");
     timeBlock.attendees_count = 0;
+    (timeBlock as any).hangout_link = (MEETING_LINK_BY_PROVIDER as Record<string, string>)[provider];
     const databaseManager = {
       getUpcomingEvents: () => [timeBlock],
       getActiveEvents: () => [timeBlock],
@@ -46,7 +47,7 @@ for (const provider of Object.keys(MEETING_LINK_BY_PROVIDER)) {
   test(`reminds for a ${provider} time block with a meeting link`, () => {
     const timeBlock = activeEvent(provider, "meet-block");
     timeBlock.attendees_count = 0;
-    timeBlock.hangout_link = MEETING_LINK_BY_PROVIDER[provider];
+    (timeBlock as any).hangout_link = (MEETING_LINK_BY_PROVIDER as Record<string, string>)[provider];
     const databaseManager = {
       getUpcomingEvents: () => [timeBlock],
       getActiveEvents: () => [timeBlock],
@@ -70,6 +71,7 @@ for (const provider of Object.keys(MEETING_LINK_BY_PROVIDER)) {
   test(`waking during a ${provider} time block does not remind`, () => {
     const timeBlock = activeEvent(provider, "time-block");
     timeBlock.attendees_count = 0;
+    (timeBlock as any).hangout_link = (MEETING_LINK_BY_PROVIDER as Record<string, string>)[provider];
     const databaseManager = {
       getUpcomingEvents: () => [timeBlock],
       getActiveEvents: () => [timeBlock],

@@ -125,7 +125,7 @@ test("Whisper prompt bias and merge", async () => {
   assert.match(getChineseScriptPromptBias("simplified"), /简体/);
   assert.match(getChineseScriptPromptBias("traditional"), /繁體/);
   assert.equal(getChineseScriptPromptBias(null), null);
-  assert.equal(mergeWhisperPrompt("foo, bar", "simplified").includes("foo, bar"), true);
+  assert.equal((mergeWhisperPrompt("foo, bar", "simplified") as string).includes("foo, bar"), true);
   assert.match(mergeWhisperPrompt(null, "simplified"), /简体/);
   assert.equal(mergeWhisperPrompt("foo", null), "foo");
   assert.equal(mergeWhisperPrompt("  ", null), null);
@@ -134,9 +134,9 @@ test("Whisper prompt bias and merge", async () => {
 test("mergeWhisperPrompt puts the bias first so prompt truncation keeps it", async () => {
   const { mergeWhisperPrompt, getChineseScriptPromptBias } = await load();
   const { GROQ_PROMPT_CHARS } = await import("../../src/utils/dictionaryPromptCap.ts");
-  const bias = getChineseScriptPromptBias("simplified");
+  const bias = getChineseScriptPromptBias("simplified") as string;
   const dictionary = Array.from({ length: 400 }, (_, i) => `term${i}`).join(", ");
-  const prompt = mergeWhisperPrompt(dictionary, "simplified");
+  const prompt = mergeWhisperPrompt(dictionary, "simplified") as string;
   assert.equal(prompt.startsWith(bias), true);
 
   // audioManager truncates to the provider's budget then back to the last

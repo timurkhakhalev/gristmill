@@ -13,7 +13,7 @@ test("message submission lock rejects a rapid second send until conversation cre
     "/components/chat/useChatMessageSender.ts"
   );
   const lock = createMessageSubmissionLock();
-  let resolveCreate;
+  let resolveCreate!: (value?: unknown) => void;
   let createCalls = 0;
   const createConversation = new Promise((resolve) => {
     resolveCreate = resolve;
@@ -43,7 +43,7 @@ test("message sender reports whether the submission lock accepted the send", asy
     "/components/chat/useChatMessageSender.ts"
   );
 
-  let resolveCreate;
+  let resolveCreate!: (value?: unknown) => void;
   const createConversation = new Promise((resolve) => {
     resolveCreate = resolve;
   });
@@ -53,7 +53,7 @@ test("message sender reports whether the submission lock accepted the send", asy
     async saveUserMessage() {},
   };
   const streaming = { async sendToAI() {} };
-  let sendMessage;
+  let sendMessage: any;
 
   function Harness() {
     sendMessage = useChatMessageSender({
@@ -66,8 +66,8 @@ test("message sender reports whether the submission lock accepted the send", asy
   }
   renderToStaticMarkup(React.createElement(Harness));
 
-  const first = (sendMessage as any)("first");
-  const second = (sendMessage as any)("second");
+  const first = sendMessage("first");
+  const second = sendMessage("second");
 
   assert.equal(await second, false);
   resolveCreate(1);

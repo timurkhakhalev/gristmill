@@ -5,7 +5,14 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 
-const modelRegistryData = require("../../src/models/modelRegistryData.json");
+type TestModel = {
+  id: string;
+  fileName: string;
+  draftFileName?: string;
+  sizeBytes?: number;
+  sizeMb: number;
+};
+const modelRegistryData: { localProviders: { models: TestModel[] }[] } = require("../../src/models/modelRegistryData.json");
 const downloadUtils = require("../../src/helpers/downloadUtils");
 const LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus.ts");
 const { registerLocalLlmModelHandlers } = require("../../src/helpers/localLlmModelIpcHandlers.ts");
@@ -15,7 +22,23 @@ const modelManagerModulePath = require.resolve("../../src/helpers/modelManagerBr
 const modelDirUtilsModulePath = require.resolve("../../src/helpers/modelDirUtils.ts");
 let electronHome = os.tmpdir();
 
-function loadModelManager({ downloadFile, checkDiskSpace } = {}) {
+function withResolvers<T = void>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+function loadModelManager({ downloadFile, checkDiskSpace }: {
+  downloadFile?: (url: string, destination: string, options: {
+    signal: { onAbort?: () => void };
+    onProgress: (downloaded: number, total: number) => void;
+  }) => Promise<void>;
+  checkDiskSpace?: (directory: string, requiredBytes: number) => Promise<{ ok: boolean; availableBytes: number }>;
+} = {}) {
   delete require.cache[modelManagerModulePath];
   delete require.cache[modelDirUtilsModulePath];
 
@@ -82,7 +105,7 @@ async function loadModelDownloadHandler(modelManager: any) {
           events.push({ channel, ...data });
         },
       },
-      joinPath: (...segments) => segments.join("/"),
+      joinPath: (...segments: string[]) => segments.join("/"),
       persistEnvAfterServerStart: () => {},
       logError: () => {},
     }
@@ -96,9 +119,9 @@ for (const outcome of ["cancel", "error", "complete"]) {
   test(`the owning IPC request settles after ${outcome} when a duplicate arrives during preflight`, async (t: import("node:test").TestContext) => {
     const tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-ipc-owner-"));
     electronHome = tmpHome;
-    const preflight = Promise.withResolvers();
-    const transferStarted = Promise.withResolvers();
-    const transferFinished = Promise.withResolvers();
+    const preflight = withResolvers();
+    const transferStarted = withResolvers();
+    const transferFinished = withResolvers();
     const modelManager = loadModelManager({
       checkDiskSpace: async () => ({ ok: true, availableBytes: Infinity }),
       downloadFile: async (_url: string, destination: string, { signal, onProgress }) => {
@@ -175,9 +198,9 @@ test("the IPC registry permits distinct LLM transfers and settles them independe
   const tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-ipc-concurrent-"));
   electronHome = tmpHome;
   const [firstModel, secondModel] = modelRegistryData.localProviders[0].models;
-  const firstTransfer = Promise.withResolvers();
-  const secondTransfer = Promise.withResolvers();
-  const bothStarted = Promise.withResolvers();
+  const firstTransfer = withResolvers();
+  const secondTransfer = withResolvers();
+  const bothStarted = withResolvers();
   let startedCount = 0;
   const modelManager = loadModelManager({
     checkDiskSpace: async () => ({ ok: true, availableBytes: Infinity }),
@@ -288,7 +311,7 @@ test("getAllModels retries when a download completes during filesystem checks", 
   const completedModel = models.find((candidate: any) => candidate.id === model.id);
 
   assert.ok(
-    checkCount > modelRegistryData.localProviders.flatMap((provider: string) => provider.models).length
+    checkCount > modelRegistryData.localProviders.flatMap((provider) => provider.models).length
   );
   assert.equal(completedModel.isDownloaded, true);
   assert.equal(completedModel.isDownloading, false);
@@ -303,15 +326,15 @@ test("downloadModel permits distinct local models to download concurrently", asy
   t.after(() => fs.rm(tmpHome, { recursive: true, force: true }));
 
   const [firstModel, secondModel] = modelRegistryData.localProviders.flatMap(
-    (provider: string) => provider.models
+    (provider) => provider.models
   );
   const started = [];
-  let releaseDownloads: any;
-  const downloadsStarted = new Promise((resolve) => {
+  let releaseDownloads!: () => void;
+  const downloadsStarted = new Promise<void>((resolve) => {
     releaseDownloads = resolve;
   });
-  let continueDownloads;
-  const allowDownloadsToFinish = new Promise((resolve) => {
+  let continueDownloads!: () => void;
+  const allowDownloadsToFinish = new Promise<void>((resolve) => {
     continueDownloads = resolve;
   });
   const modelManager = loadModelManager({
@@ -341,19 +364,19 @@ test("parallel downloads reserve their combined disk space", async (t: import("n
   t.after(() => fs.rm(tmpHome, { recursive: true, force: true }));
 
   const [firstModel, secondModel] = modelRegistryData.localProviders
-    .flatMap((provider: string) => provider.models)
-    .filter((model: string) => !model.draftFileName)
+    .flatMap((provider) => provider.models)
+    .filter((model) => !model.draftFileName)
     .slice(0, 2);
   const required = [firstModel, secondModel].map(
     (model) => (model.sizeBytes || model.sizeMb * 1_000_000) * 1.2
   );
   const availableBytes = Math.max(...required) + 1;
-  let releaseFirst;
-  const firstCanFinish = new Promise((resolve) => {
+  let releaseFirst!: () => void;
+  const firstCanFinish = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
-  let firstStarted: any;
-  const firstDidStart = new Promise((resolve) => {
+  let firstStarted!: () => void;
+  const firstDidStart = new Promise<void>((resolve) => {
     firstStarted = resolve;
   });
   const modelManager = loadModelManager({
@@ -394,14 +417,13 @@ test("cancelling an optional drafter does not complete the model download", asyn
         await fs.writeFile(destination, Buffer.alloc(1_000_001));
         return;
       }
-      const error = new Error("cancelled");
-      error.isAbort = true;
-      throw error;
+      throw Object.assign(new Error("cancelled"), { isAbort: true });
     },
   });
   const model = modelRegistryData.localProviders
-    .flatMap((provider: string) => provider.models)
+    .flatMap((provider) => provider.models)
     .find((candidate: any) => candidate.draftFileName);
+  assert.ok(model);
 
   await assert.rejects(
     modelManager.downloadModel(model.id),
@@ -440,7 +462,7 @@ test("cancelDownload keeps the local LLM guard until the request unwinds", async
 
   const modelManager = loadModelManager();
   const [model, otherModel] = modelRegistryData.localProviders.flatMap(
-    (provider: string) => provider.models
+    (provider) => provider.models
   );
   let aborted = false;
 

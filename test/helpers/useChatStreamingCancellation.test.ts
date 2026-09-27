@@ -10,6 +10,7 @@ const {
   installHookDom,
   reloadSettingsStore,
 } = require("../lib/rendererTestHarness.ts");
+type ChatStreamingHandle = ReturnType<typeof import("../../src/components/chat/useChatStreaming").useChatStreaming>;
 
 let vitePromise;
 const cleanup: any[] = [];
@@ -39,7 +40,7 @@ test.after(async () => {
 // hook for real (installHookDom + createRoot) to drive the actual unmount
 // cleanup, whose cancel must persist the partial reply rather than drop it
 // the way an explicit Esc/Stop cancel does.
-function createOpenAiChunk(delta: any, finishReason = null) {
+function createOpenAiChunk(delta: any, finishReason: string | null = null) {
   return {
     id: "chatcmpl-cancellation-test",
     object: "chat.completion.chunk",
@@ -55,7 +56,12 @@ const EMPTY_RESPONSE_TEXT = JSON.parse(
 
 async function renderChatStreaming(
   t: import("node:test").TestContext,
-  { electronAPI = {}, settings = {}, onStreamComplete, live = false } = {}
+  { electronAPI = {}, settings = {}, onStreamComplete, live = false }: {
+    electronAPI?: Record<string, unknown>;
+    settings?: Record<string, unknown>;
+    onStreamComplete?: (id: string, content: string) => void;
+    live?: boolean;
+  } = {}
 ) {
   installBrowserGlobals(t, { window: { electronAPI } });
   const container = live ? installHookDom(t) : null;
@@ -102,7 +108,7 @@ async function renderChatStreaming(
     messages = typeof updater === "function" ? updater(messages) : updater;
   };
 
-  let captured = null;
+  let captured: ChatStreamingHandle | null = null;
   function Harness() {
     captured = useChatStreaming({
       messages,
@@ -128,8 +134,9 @@ async function renderChatStreaming(
     renderToStaticMarkup(React.createElement(Harness));
   }
 
+  if (!captured) throw new Error("Chat streaming hook did not render");
   return {
-    captured,
+    captured: captured as ChatStreamingHandle,
     getMessages: () => messages,
     unmount,
   };
@@ -216,8 +223,8 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
   });
 
   const encoder = new TextEncoder();
-  let releaseTail;
-  const tailGate = new Promise((resolve) => {
+  let releaseTail!: () => void;
+  const tailGate = new Promise<void>((resolve) => {
     releaseTail = resolve;
   });
   globalThis.fetch = async () =>
@@ -265,6 +272,7 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
     "the partial token must arrive before the unmount"
   );
 
+  if (!unmount) throw new Error("Live hook was not mounted");
   await unmount();
   releaseTail();
   await sendPromise;

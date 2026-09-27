@@ -8,7 +8,17 @@ const Module = require("node:module");
 
 let registerVocabularyHandlers: any;
 const handlers = new Map();
-let sent: unknown = null;
+let sent: { channel: string; data: unknown }[] | null = null;
+
+interface FakeDb {
+  getDictionary: () => unknown;
+  setDictionary: (words: unknown) => unknown;
+  applyDictionaryChanges: (changes: unknown) => unknown;
+  hardDeleteDictionaryEntry: (id: unknown) => unknown;
+  getSnippets: () => unknown;
+  setSnippets: (snippets: unknown) => unknown;
+  hardDeleteSnippet: (id: unknown) => unknown;
+}
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -49,7 +59,7 @@ function setup(database: any) {
   return handlers;
 }
 
-function fakeDb() {
+function fakeDb(): FakeDb {
   // Test doubles must provide the same contract the real DatabaseManager has;
   // individual tests override the methods they drive.
   return {

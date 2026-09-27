@@ -25,7 +25,7 @@ for (const provider of Object.keys(MEETING_LINK_BY_PROVIDER)) {
   test(`does not remind for a ${provider} time block without attendees or a meeting link`, () => {
     const timeBlock = activeEvent(provider, "time-block");
     timeBlock.attendees_count = 0;
-    (timeBlock as any).hangout_link = (MEETING_LINK_BY_PROVIDER as Record<string, string>)[provider];
+    (timeBlock as any).hangout_link = undefined;
     const databaseManager = {
       getUpcomingEvents: () => [timeBlock],
       getActiveEvents: () => [timeBlock],
@@ -71,7 +71,7 @@ for (const provider of Object.keys(MEETING_LINK_BY_PROVIDER)) {
   test(`waking during a ${provider} time block does not remind`, () => {
     const timeBlock = activeEvent(provider, "time-block");
     timeBlock.attendees_count = 0;
-    (timeBlock as any).hangout_link = (MEETING_LINK_BY_PROVIDER as Record<string, string>)[provider];
+    (timeBlock as any).hangout_link = undefined;
     const databaseManager = {
       getUpcomingEvents: () => [timeBlock],
       getActiveEvents: () => [timeBlock],

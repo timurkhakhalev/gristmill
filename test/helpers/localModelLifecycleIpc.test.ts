@@ -26,7 +26,7 @@ function createVadSettingsStore() {
       };
     },
     set(update = {}) {
-      const filtered = {};
+      const filtered: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(update)) {
         if (allowedKeys.has(k)) filtered[k] = v;
       }
@@ -36,9 +36,14 @@ function createVadSettingsStore() {
   };
 }
 
-function createHarness(overrides = {}) {
-  const handlers = new Map();
-  const sent: unknown[] = [];
+function createHarness(overrides: {
+  vadStore?: ReturnType<typeof createVadSettingsStore>;
+  whisperManager?: Record<string, any>;
+  parakeetManager?: Record<string, any>;
+  deps?: Record<string, any>;
+} = {}) {
+  const handlers = new Map<string, (...args: any[]) => any>();
+  const sent: [string, any][] = [];
   const calls : any = { persist: [], clear: 0, started: [], finished: [] };
   const active = new Map();
 
@@ -61,7 +66,7 @@ function createHarness(overrides = {}) {
 
   const deps: any = {
     whisperManager: {
-      downloadWhisperModel: async (modelName: string, onProgress: unknown) => {
+      downloadWhisperModel: async (modelName: string, onProgress: (event: { type: string; model: string; percentage: number }) => void) => {
         onProgress({ type: "progress", model: modelName, percentage: 10 });
         return { success: true, model: modelName };
       },
@@ -87,8 +92,12 @@ function createHarness(overrides = {}) {
     ...overrides.deps,
   };
 
-  registerLocalModelLifecycleHandlers({ handle: (c: unknown, fn: unknown) => handlers.set(c, fn) }, deps);
-  const invoke = (channel: string, ...args) => handlers.get(channel)({}, ...args);
+  registerLocalModelLifecycleHandlers({ handle: (c: string, fn: (...args: any[]) => any) => handlers.set(c, fn) }, deps);
+  const invoke = (channel: string, ...args: any[]) => {
+    const handler = handlers.get(channel);
+    if (!handler) throw new Error(`No handler registered for ${channel}`);
+    return handler({}, ...args);
+  };
   return { handlers, invoke, sent, calls };
 }
 
@@ -111,8 +120,7 @@ test("download failure emits an error event with the manager error code", async 
   const h = createHarness({
     whisperManager: {
       downloadWhisperModel: async () => {
-        const err = new Error("disk full");
-        err.code = "DOWNLOAD_FAILED";
+        const err = Object.assign(new Error("disk full"), { code: "DOWNLOAD_FAILED" });
         throw err;
       },
     },
@@ -135,8 +143,7 @@ test("a concurrent download (DOWNLOAD_IN_PROGRESS) keeps the tracker and emits n
   const h = createHarness({
     whisperManager: {
       downloadWhisperModel: async () => {
-        const err = new Error("already running");
-        err.code = "DOWNLOAD_IN_PROGRESS";
+        const err = Object.assign(new Error("already running"), { code: "DOWNLOAD_IN_PROGRESS" });
         throw err;
       },
     },

@@ -1,6 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
+import type { LiveSpeakerIdentifier } from "../../src/helpers/liveSpeakerIdentifier";
 
 const identifierModulePath = require.resolve("../../src/helpers/liveSpeakerIdentifier");
 const originalLoad = Module._load;
@@ -18,10 +19,13 @@ function cosineSimilarity(a: any, b: any) {
   return denom === 0 ? 0 : dot / denom;
 }
 
-function loadIdentifier(options = {}) {
+function loadIdentifier(options: {
+  extractEmbeddingFromSamples?: (...args: any[]) => Promise<Float32Array | null>;
+  ort?: () => unknown;
+} = {}) {
   delete require.cache[identifierModulePath];
   const warnings: any[] = [];
-  const interceptsOrt = "ort" in options;
+  const interceptsOrt = typeof options.ort === "function";
 
   Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
     if (request === "./debugLogger" || request === "./debugLogger.js") {
@@ -42,7 +46,7 @@ function loadIdentifier(options = {}) {
         extractEmbeddingFromSamples: options.extractEmbeddingFromSamples || (async () => null),
       };
     }
-    if (interceptsOrt && request === "onnxruntime-node") {
+    if (request === "onnxruntime-node" && options.ort) {
       return options.ort();
     }
     return originalLoad.call(this, request, parent, isMain);
@@ -74,7 +78,7 @@ const voiceB = unit([0, 1, 0]);
 const ambiguousVoice = unit([0.7, 0.7, 0.14]);
 const voiceC = unit([0.05, 0.05, 0.99]);
 
-function seedMergedSession(identifier: string) {
+function seedMergedSession(identifier: LiveSpeakerIdentifier) {
   identifier.setMaxSpeakers(3);
   identifier._resolveSpeakerForEmbedding(voiceA, { updateCentroid: true });
   identifier._resolveSpeakerForEmbedding(voiceB, { updateCentroid: true });
@@ -163,7 +167,7 @@ test("mapSpeaker stays quiet when no session is running", () => {
 
 // Plants exactly two clusters ~0.70 similar (above the 0.65 recluster
 // threshold) — creating them via resolution would just match them together.
-function seedSimilarIdentifiedPair(identifier: string) {
+function seedSimilarIdentifiedPair(identifier: LiveSpeakerIdentifier) {
   identifier.setMaxSpeakers(3);
   identifier._assignSpeakerId(voiceA);
   identifier._assignSpeakerId(ambiguousVoice);
@@ -259,14 +263,13 @@ test("an at-cap fold never steals the cluster's identity for a profile-matched v
 // Macs the lazy require throws MODULE_NOT_FOUND (#1500). Speaker identification
 // must degrade to "unavailable" — never take the whole meeting start down.
 function missingBindingRequire() {
-  const error = new Error(
-    "Cannot find module '../bin/napi-v6/darwin/x64/onnxruntime_binding.node'"
+  throw Object.assign(
+    new Error("Cannot find module '../bin/napi-v6/darwin/x64/onnxruntime_binding.node'"),
+    { code: "MODULE_NOT_FOUND" }
   );
-  error.code = "MODULE_NOT_FOUND";
-  throw error;
 }
 
-function stubDownloadedModels(identifier: string) {
+function stubDownloadedModels(identifier: LiveSpeakerIdentifier) {
   identifier.setDiarizationManager({
     isVadModelDownloaded: () => true,
     getVadModelPath: () => __filename,
@@ -324,7 +327,7 @@ test("the VAD session caps ORT to a single sequential thread", async (t: import(
   const { LiveSpeakerIdentifier, restore } = loadIdentifier({
     ort: () => ({
       InferenceSession: {
-        create: async (...args) => {
+        create: async (...args: any[]) => {
           createArgs = args;
           return { inputNames: [], outputNames: [] };
         },

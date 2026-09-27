@@ -115,7 +115,7 @@ async function createFixture(t: import("node:test").TestContext) {
 
   registerNotesHandlers({ handle: (channel, listener) => handlers.set(channel, listener) }, deps);
 
-  const call = async (channel: string, ...args) => handlers.get(channel)(null, ...args);
+  const call = async (channel: string, ...args: unknown[]) => handlers.get(channel)(null, ...args);
   const flush = () => new Promise((resolve) => setImmediate(resolve));
   return { db, call, sent, effects, deleteCalls, flush };
 }
@@ -145,14 +145,14 @@ test("save → get → update → search/list → delete round-trips through rea
   assert.equal(sent.filter((s) => s.channel === "note-updated").length, 1);
 
   const listed = await call("db-get-notes", null, 100, null, null);
-  assert.ok(listed.some((n: string) => n.id === saved.note.id));
+  assert.ok(listed.some((n: import("../../src/contracts/notes.ts").NoteItem) => n.id === saved.note.id));
 
   const found = await call("db-search-notes", "T2", 50, null, null);
-  assert.ok(found.some((n: string) => n.id === saved.note.id));
+  assert.ok(found.some((n: import("../../src/contracts/notes.ts").NoteItem) => n.id === saved.note.id));
 
   const spaceId = db.getPrivateSpaceId();
   const spaceNotes = await call("db-get-space-notes", spaceId, 50);
-  assert.ok(spaceNotes.some((n: string) => n.id === saved.note.id));
+  assert.ok(spaceNotes.some((n: import("../../src/contracts/notes.ts").NoteItem) => n.id === saved.note.id));
 
   const deleted = await call("db-delete-note", saved.note.id);
   assert.deepEqual(deleted, { success: true });
@@ -226,7 +226,7 @@ test("participants update triggers auto-label then speaker refresh, after mirror
       refreshMeetingSpeakerConfigFromNote: (id, n) => order.push(["refresh", id, n.id]),
     }
   );
-  const traceCall = (channel: string, ...args) => newHandlers.get(channel)(null, ...args);
+  const traceCall = (channel: string, ...args: unknown[]) => newHandlers.get(channel)(null, ...args);
 
   const emptyString = await traceCall("db-update-note", note.id, { participants: "" });
   assert.equal(emptyString.success, true);

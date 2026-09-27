@@ -15,12 +15,12 @@ const SESSION_ENV_KEYS = [
   "HYPRLAND_INSTANCE_SIGNATURE",
 ];
 
-function setEnvironmentValue(key: string, value: unknown) {
+function setEnvironmentValue(key: string, value: string | undefined) {
   if (value === undefined) delete process.env[key];
   else process.env[key] = value;
 }
 
-function loadWindowConfig({ platform, environment }) {
+function loadWindowConfig({ platform, environment }: { platform: string; environment: Record<string, string | undefined> }) {
   const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
   const originalEnvironment = Object.fromEntries(
     SESSION_ENV_KEYS.map((key) => [key, process.env[key]])
@@ -33,7 +33,7 @@ function loadWindowConfig({ platform, environment }) {
   try {
     return require(WINDOW_CONFIG_PATH);
   } finally {
-    Object.defineProperty(process, "platform", originalPlatform);
+    if (originalPlatform) Object.defineProperty(process, "platform", originalPlatform);
     for (const key of SESSION_ENV_KEYS) setEnvironmentValue(key, originalEnvironment[key]);
     delete require.cache[WINDOW_CONFIG_PATH];
   }

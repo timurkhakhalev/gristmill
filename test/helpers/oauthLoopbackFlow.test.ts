@@ -22,13 +22,13 @@ function loadLoopback() {
   }
 }
 
-function startFlow(handleCallback = async () => ({ ok: true })) {
+function startFlow(handleCallback: (code: string) => Promise<{ ok?: boolean; code?: string }> = async () => ({ ok: true })) {
   const { runOAuthLoopbackFlow } = loadLoopback();
   let redirectUri: any;
   let state: any;
   let server;
   const originalCreateServer = http.createServer;
-  http.createServer = (...args) => {
+  http.createServer = (...args: unknown[]) => {
     server = originalCreateServer(...args);
     return server;
   };
@@ -52,14 +52,14 @@ function startBlockedFlow() {
   let callbackCount = 0;
   let releaseHandleCallback: any;
   let markCallbackStarted: any;
-  const callbackStarted = new Promise((resolve) => {
+  const callbackStarted = new Promise<void>((resolve) => {
     markCallbackStarted = resolve;
   });
   const startedFlow = startFlow(async (code: string) => {
     callbackCount += 1;
     if (callbackCount === 1) {
       markCallbackStarted();
-      await new Promise((resolve) => {
+      await new Promise<void>((resolve) => {
         releaseHandleCallback = resolve;
       });
     }
@@ -78,13 +78,13 @@ function startFlowWithControlledTimeout(handleCallback: any) {
   const originalSetTimeout = global.setTimeout;
   let runFlowTimeout: any;
 
-  global.setTimeout = (callback: any, delay: number, ...args) => {
+  global.setTimeout = ((callback: (...args: unknown[]) => void, delay: number, ...args: unknown[]) => {
     if (delay === 120000) {
       runFlowTimeout = () => callback(...args);
       return originalSetTimeout(() => {}, 0);
     }
     return originalSetTimeout(callback, delay, ...args);
-  };
+  }) as typeof setTimeout;
 
   try {
     const startedFlow = startFlow(handleCallback);
@@ -166,7 +166,7 @@ async function parkPartialRequest(redirectUri: string, server: any) {
     }
   });
 
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const handleConnect = () => {
       socket.off("error", handleError);
       resolve();

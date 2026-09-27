@@ -52,7 +52,7 @@ function fakeSender(id: any) {
   };
 }
 
-function makeDeps(overrides = {}) {
+function makeDeps(overrides: { deps?: Record<string, unknown> } = {}) {
   const generateCalls: any[] = [];
   const deps: any = {
     localService: {
@@ -90,7 +90,7 @@ function makeDeps(overrides = {}) {
   return { deps, generateCalls };
 }
 
-function setup(overrides = {}) {
+function setup(overrides: { deps?: Record<string, unknown> } = {}) {
   const { deps, generateCalls } = makeDeps(overrides);
   const handlers = new Map();
   const listeners = new Map();
@@ -140,7 +140,7 @@ test("local one-shot: malformed args are rejected before the service runs", asyn
     deps: {
       localService: {
         isAvailable: async () => true,
-        processText: async (...args) => {
+        processText: async (...args: unknown[]) => {
           calls.push(args);
           return "x";
         },
@@ -291,7 +291,7 @@ test("bedrock cleanup: cancel is scoped to the requesting sender", async () => {
 });
 
 test("bedrock cleanup: sender destroy aborts the request and removes the listener", async () => {
-  let signal;
+  let signal: AbortSignal | undefined;
   let releaseRequest: any;
   const started = new Promise((resolve) => (releaseRequest = resolve));
   const { deps, handlers } = setup({
@@ -319,7 +319,8 @@ test("bedrock cleanup: sender destroy aborts the request and removes the listene
   sender.destroy();
   await request;
 
-  assert.equal(signal.aborted, true);
+  const requestSignal = () => signal;
+  assert.equal(requestSignal()?.aborted, true);
   // complete() released the registration on the way out.
   assert.equal(deps.bedrockCleanupRequests.cancelSender(3), 0);
 });
@@ -363,7 +364,7 @@ test("bedrock cleanup keeps the retry policy with nested retries disabled", asyn
 
 // --- Enterprise streams ------------------------------------------------------
 
-function streamSetup(modelParts: any, overrides = {}) {
+function streamSetup(modelParts: any, overrides: { deps?: Record<string, unknown> } = {}) {
   const { deps, handlers, listeners } = setup({
     deps: {
       getEnterpriseAIModel: async () => ({
@@ -389,7 +390,7 @@ function streamSetup(modelParts: any, overrides = {}) {
   });
   return { deps, handlers, listeners };
 }
-streamSetup.lastDoStreamOptions = null;
+streamSetup.lastDoStreamOptions = null as { abortSignal?: AbortSignal; prompt?: unknown } | null;
 
 const PART = { type: "text-delta", id: "t", providerMetadata: null, text: "hello" };
 
@@ -418,6 +419,7 @@ test("stream: start relays parts verbatim and ends with done", async () => {
       { streamId: "s1", done: true },
     ]
   );
+  assert.ok(streamSetup.lastDoStreamOptions);
   assert.ok(streamSetup.lastDoStreamOptions.abortSignal instanceof AbortSignal);
   assert.equal(streamSetup.lastDoStreamOptions.prompt !== undefined, true);
 });

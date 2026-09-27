@@ -37,8 +37,8 @@ test("unsupported mode never identifies speakers", async () => {
 test("missing mode never identifies speakers", async () => {
   const { supportsLiveSpeakerIdentification } = await load();
 
-  assert.equal(supportsLiveSpeakerIdentification(undefined, "win32"), false);
-  assert.equal(supportsLiveSpeakerIdentification(null, "darwin"), false);
+  assert.equal(Reflect.apply(supportsLiveSpeakerIdentification, undefined, [undefined, "win32"]), false);
+  assert.equal(Reflect.apply(supportsLiveSpeakerIdentification, undefined, [null, "darwin"]), false);
 });
 
 // The sole production call site passes only the mode, so the defaulted platform
@@ -49,12 +49,12 @@ test("platform defaults to the current process platform", async () => {
   const { supportsLiveSpeakerIdentification } = await load();
   const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
 
-  const onPlatform = (platform: string, run: unknown) => {
+  const onPlatform = (platform: string, run: () => void) => {
     Object.defineProperty(process, "platform", { value: platform, configurable: true });
     try {
       run();
     } finally {
-      Object.defineProperty(process, "platform", originalPlatform);
+      if (originalPlatform) Object.defineProperty(process, "platform", originalPlatform);
     }
   };
 

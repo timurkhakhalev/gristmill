@@ -5,7 +5,7 @@ const {
   HOTKEY_REPEAT_WINDOW_MS,
 } = require("../../src/helpers/hotkeyRepeatGate");
 
-function gateAt(times: number) {
+function gateAt(times: number[]) {
   let index = 0;
   return createHotkeyRepeatGate(HOTKEY_REPEAT_WINDOW_MS, () => times[index++]);
 }

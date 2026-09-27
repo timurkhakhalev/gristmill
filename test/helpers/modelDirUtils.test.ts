@@ -51,7 +51,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     return filePath;
   }
 
-  function withFsOverrides(overrides: any, callback: unknown) {
+  function withFsOverrides(overrides: any, callback: () => unknown) {
     const originals = Object.fromEntries(
       Object.keys(overrides).map((method) => [method, fs[method]])
     );
@@ -289,8 +289,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
       {
         renameSync: (from: string, to: string) => {
           if (from === legacyModels && to === redirectedModels) {
-            const error = new Error("cross-volume move");
-            error.code = "EXDEV";
+            const error = Object.assign(new Error("cross-volume move"), { code: "EXDEV" });
             throw error;
           }
           return originalRenameSync(from, to);
@@ -318,8 +317,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
       {
         renameSync: (from: string, to: string) => {
           if (from === legacyModels && to === redirectedModels) {
-            const error = new Error("cross-volume move blocked");
-            error.code = "EXDEV";
+            const error = Object.assign(new Error("cross-volume move blocked"), { code: "EXDEV" });
             throw error;
           }
           return originalRenameSync(from, to);
@@ -358,8 +356,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
       {
         renameSync: (from: string, to: string) => {
           if (from === legacyParakeet && to === redirectedParakeet) {
-            const error = new Error("cross-volume move");
-            error.code = "EXDEV";
+            const error = Object.assign(new Error("cross-volume move"), { code: "EXDEV" });
             throw error;
           }
           return originalRenameSync(from, to);
@@ -393,8 +390,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
       {
         renameSync: (from: string, to: string) => {
           if (from === legacyModels && to === redirectedModels) {
-            const error = new Error("cross-volume move");
-            error.code = "EXDEV";
+            const error = Object.assign(new Error("cross-volume move"), { code: "EXDEV" });
             throw error;
           }
           return originalRenameSync(from, to);

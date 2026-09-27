@@ -38,7 +38,7 @@ test("ssrfSafeLookup rejects private entries in an all-address lookup", async ()
   dns.lookup = (_host: string, _options: any, callback: any) =>
     callback(null, [{ address: "93.184.216.34", family: 4 }, { address: "10.0.0.1", family: 4 }]);
   try {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       downloader.ssrfSafeLookup("example.com", { all: true }, (error: any) => {
         try {
           assert.equal(error.code, "SSRF_BLOCKED");
@@ -57,7 +57,7 @@ test("ssrfSafeLookup rejects a private address in the legacy single-address form
   const original = dns.lookup;
   dns.lookup = (_host: string, _options: any, callback: any) => callback(null, "127.0.0.1", 4);
   try {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       downloader.ssrfSafeLookup("example.com", {}, (error: any) => {
         try {
           assert.equal(error.code, "SSRF_BLOCKED");
@@ -80,7 +80,7 @@ test("ssrfSafeLookup forwards an all-public lookup unchanged", async () => {
   ];
   dns.lookup = (_host: string, _options: any, callback: any) => callback(null, addresses);
   try {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       downloader.ssrfSafeLookup("example.com", { all: true }, (error: any, value: any) => {
         try {
           assert.equal(error, null);
@@ -132,7 +132,7 @@ test("download streams a validated direct HTTPS response to a temp file", async 
   }
 });
 
-function makeDirectResponse({ statusCode = 200, headers = {}, body = null } = {}) {
+function makeDirectResponse({ statusCode = 200, headers = {}, body = null }: { statusCode?: number; headers?: Record<string, string>; body?: string | null } = {}) {
   const response = body == null ? new EventEmitter() : Readable.from([Buffer.from(body)]);
   response.statusCode = statusCode;
   response.headers = headers;

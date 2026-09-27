@@ -46,13 +46,13 @@ test("keeps PATH tar resolution on non-Windows platforms", () => {
 
 test("runs the explicit Windows tar with drive-colon-free arguments", async () => {
   const child = makeChild();
-  let invocation;
+  let invocation: { command: string; args: string[]; options: { cwd: string } } | undefined;
   const promise = runSystemTar("C:\\cache\\model.tar.gz", "C:\\cache\\extract", {
     platform: "win32",
     arch: "x64",
     env: { SystemRoot: "C:\\Windows" },
     timeoutMs: 100,
-    spawnImpl: (command: string, args: unknown, options: unknown) => {
+    spawnImpl: (command: string, args: string[], options: { cwd: string }) => {
       invocation = { command, args, options };
       setImmediate(() => child.emit("close", 0));
       return child;
@@ -60,9 +60,11 @@ test("runs the explicit Windows tar with drive-colon-free arguments", async () =
   });
 
   await promise;
-  assert.equal(invocation.command, "C:\\Windows\\System32\\tar.exe");
-  assert.deepEqual(invocation.args, ["-xzf", "model.tar.gz", "-C", "extract"]);
-  assert.equal(invocation.options.cwd, "C:\\cache");
+  const capturedInvocation = () => invocation;
+  assert.ok(capturedInvocation());
+  assert.equal(capturedInvocation()?.command, "C:\\Windows\\System32\\tar.exe");
+  assert.deepEqual(capturedInvocation()?.args, ["-xzf", "model.tar.gz", "-C", "extract"]);
+  assert.equal(capturedInvocation()?.options.cwd, "C:\\cache");
   assert.equal(child.killed, false);
 });
 
@@ -89,7 +91,7 @@ test("derives tar flags from the archive extension", async () => {
     ["binary.zip", "-xf"],
   ]) {
     const child = makeChild();
-    let args;
+    let args: string[] | undefined;
     await runSystemTar(`/cache/${archive}`, "/cache/extract", {
       platform: "linux",
       spawnImpl: (_command: any, spawnArgs: any) => {
@@ -98,7 +100,8 @@ test("derives tar flags from the archive extension", async () => {
         return child;
       },
     });
-    assert.equal(args[0], flags);
+    const capturedArgs = () => args;
+    assert.equal(capturedArgs()?.[0], flags);
   }
 });
 

@@ -2,9 +2,10 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+import type { MeetingTranscriptionProvider, ResolveMeetingTranscriptionOptions } from "../../src/helpers/meetingTranscriptionRouting";
 
 const load = () => import("../../src/helpers/meetingTranscriptionRouting.ts");
-const modelRegistryData = require("../../src/models/modelRegistryData.json");
+const modelRegistryData: { transcriptionProviders: { id: string; models: { id: string; streaming?: boolean }[] }[] } = require("../../src/models/modelRegistryData.json");
 
 // Sentinels this module throws, paired with the MEETING_ERROR_KEYS entry that
 // MeetingRecordingMount looks up. A healed legacy profile can reach any of them,
@@ -15,7 +16,7 @@ const SENTINEL_KEYS = {
   noProviderSelected: "noProviderSelected",
 };
 
-const byokProviders = [
+const byokProviders: MeetingTranscriptionProvider[] = [
   {
     id: "openai",
     models: [{ id: "gpt-4o-mini-transcribe" }, { id: "gpt-4o-transcribe" }],
@@ -29,7 +30,7 @@ const byokProviders = [
   },
 ];
 
-const baseOptions = {
+const baseOptions: ResolveMeetingTranscriptionOptions = {
   transcriptionMode: "providers",
   language: "en",
   localProvider: "whisper",
@@ -122,7 +123,7 @@ test("managed mode fails closed instead of routing through an OpenWhispr provide
   const { resolveMeetingTranscriptionOptions } = await load();
 
   assert.throws(
-    () => resolveMeetingTranscriptionOptions({ ...baseOptions, transcriptionMode: "openwhispr" }),
+    () => resolveMeetingTranscriptionOptions({ ...baseOptions, transcriptionMode: "openwhispr" as ResolveMeetingTranscriptionOptions["transcriptionMode"] }),
     /Unsupported Note Recording transcription mode/
   );
 });
@@ -202,31 +203,30 @@ test("every thrown sentinel is translated and rendered by the mount", () => {
 // does. Until that guard exists, the desktop must not be able to route a meeting
 // onto it: no registry entry, and a stale selection falls back to the default.
 test("gpt-live-transcribe is never offered for Note Recording", async () => {
-  const { resolveMeetingTranscriptionOptions } = await load();
+  const { resolveMeetingTranscriptionOptions, filterMeetingStreamingProviders } = await load();
   // Mirrors getStreamingTranscriptionProviders(): the meeting BYOK picker.
-  const registryStreamingProviders = modelRegistryData.transcriptionProviders
-    .map((provider: string) => ({ ...provider, models: provider.models.filter((m: any) => m.streaming) }))
-    .filter((provider: string) => provider.models.length > 0);
+  const registryStreamingProviders = filterMeetingStreamingProviders(modelRegistryData.transcriptionProviders
+    .map((provider) => ({ ...provider, models: provider.models.filter((model) => model.streaming) }))
+    .filter((provider) => provider.models.length > 0));
   for (const provider of registryStreamingProviders) {
     for (const model of provider.models) {
       assert.equal(model.id.startsWith("gpt-live-transcribe"), false, model.id);
     }
   }
 
-  assert.equal(
-    resolveMeetingTranscriptionOptions({
+  const route = resolveMeetingTranscriptionOptions({
       ...baseOptions,
       selectedProvider: "openai",
       selectedModel: "gpt-live-transcribe",
       byokProviders: registryStreamingProviders,
-    }).model,
-    "gpt-4o-mini-transcribe"
-  );
+    });
+  assert.equal(route.provider, "openai-realtime");
+  assert.equal(route.model, "gpt-4o-mini-transcribe");
   assert.throws(
     () =>
       resolveMeetingTranscriptionOptions({
         ...baseOptions,
-        transcriptionMode: "openwhispr",
+        transcriptionMode: "openwhispr" as ResolveMeetingTranscriptionOptions["transcriptionMode"],
         selectedModel: "gpt-live-transcribe",
       }),
     /Unsupported Note Recording transcription mode/

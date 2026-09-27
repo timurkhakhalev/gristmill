@@ -7,7 +7,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-let registerCalendarIntegrationHandlers;
+type CalModule = typeof import("../../src/helpers/calendarIpcHandlers.js");
+let registerCalendarIntegrationHandlers: CalModule["registerCalendarIntegrationHandlers"];
 
 test.before(async () => {
   ({ registerCalendarIntegrationHandlers } = await import(
@@ -15,7 +16,7 @@ test.before(async () => {
   ));
 });
 
-function fullEventRow(overrides = {}) {
+function fullEventRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "evt-1",
     calendar_id: "cal-1",
@@ -37,8 +38,10 @@ function fullEventRow(overrides = {}) {
   };
 }
 
-function setup({ google, microsoft, apple, upcoming, eventById, opener } = {}) {
-  const calls = { upcoming: [], eventById: [], opener: 0, errors: [] };
+type CalDeps = Parameters<CalModule["registerCalendarIntegrationHandlers"]>[1];
+interface SetupOverrides { google?: CalDeps["googleManager"]; microsoft?: CalDeps["microsoftManager"]; apple?: CalDeps["appleManager"]; upcoming?: unknown; eventById?: unknown; opener?: unknown }
+function setup({ google, microsoft, apple, upcoming, eventById, opener }: SetupOverrides = {}) {
+  const calls: { upcoming: unknown[]; eventById: unknown[]; opener: number; errors: Array<{ message: unknown; data: unknown; tag: unknown }> } = { upcoming: [], eventById: [], opener: 0, errors: [] };
   const managers = {
     google:
       google === undefined
@@ -79,18 +82,18 @@ function setup({ google, microsoft, apple, upcoming, eventById, opener } = {}) {
           }
         : apple,
   };
-  const handlers = new Map();
+  const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
   registerCalendarIntegrationHandlers(
-    { handle: (channel: string, fn) => handlers.set(channel, fn) },
+    { handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => handlers.set(channel, fn) },
     {
       googleManager: managers.google,
       microsoftManager: managers.microsoft,
       appleManager: managers.apple,
-      getUpcomingEvents: async (windowMinutes) => {
+      getUpcomingEvents: async (windowMinutes?: number) => {
         calls.upcoming.push(windowMinutes);
-        return upcoming === undefined ? [fullEventRow()] : upcoming;
+        return upcoming === undefined ? [fullEventRow()] : (upcoming as unknown[]);
       },
-      getCalendarEventById: (eventId) => {
+      getCalendarEventById: (eventId: string) => {
         calls.eventById.push(eventId);
         return eventById === undefined ? fullEventRow() : eventById;
       },
@@ -100,11 +103,11 @@ function setup({ google, microsoft, apple, upcoming, eventById, opener } = {}) {
               calls.opener += 1;
               return { success: true };
             }
-          : opener,
-      logError: (message: unknown, data: unknown, tag) => calls.errors.push({ message, data, tag }),
+          : (opener as CalDeps["openCalendarPrivacySettings"]),
+      logError: (message: unknown, data: unknown, tag: unknown) => { calls.errors.push({ message, data, tag }); },
     }
   );
-  const call = (channel: string, ...args) => handlers.get(channel)(null, ...args);
+  const call = (channel: string, ...args: unknown[]): any => handlers.get(channel)!(null, ...args);
   return { call, calls, handlers };
 }
 
@@ -178,7 +181,7 @@ test("a malformed successful status never passes as valid", async () => {
     google: {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
-      getConnectionStatus: () => ({ connected: "yes" }),
+      getConnectionStatus: () => ({ connected: "yes" as unknown as boolean }),
       getCalendars: () => [],
       setCalendarSelection: async () => {},
       setPrimaryOnly: async () => {},
@@ -282,9 +285,9 @@ test("selection and primary-only validate args before calling the manager", asyn
       disconnect: () => {},
       getConnectionStatus: () => ({ connected: false, email: null }),
       getCalendars: () => [],
-      setCalendarSelection: async (id: unknown, value: unknown) => calls.push(["selection", id, value]),
-      setPrimaryOnly: async (value: unknown) => calls.push(["primary", value]),
-      syncEvents: async () => calls.push(["sync"]),
+      setCalendarSelection: async (id: unknown, value: boolean) => { calls.push(["selection", id, value]); },
+      setPrimaryOnly: async (value: boolean) => { calls.push(["primary", value]); },
+      syncEvents: async () => { calls.push(["sync"]); },
     },
   });
   assert.deepEqual(await call("gcal-set-calendar-selection", "", true), {
@@ -340,7 +343,7 @@ test("upcoming events: invalid windows and malformed rows fail closed", async ()
   const result = await call("gcal-get-upcoming-events", 60);
   assert.equal(result.success, true);
   assert.deepEqual(
-    result.events.map((event: unknown) => event.id),
+    result.events.map((event: { id: string }) => event.id),
     ["evt-1"],
     "malformed row dropped, valid row kept"
   );

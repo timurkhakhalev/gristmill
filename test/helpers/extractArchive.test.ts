@@ -81,7 +81,7 @@ test("extractArchive falls back to unzipper when system unzip is unavailable", a
   cp.execFile = function (this: unknown, cmd: string, _args: unknown, cb: (err: Error | null) => void) {
     if (cmd === "unzip") {
       const err = new Error("spawn unzip ENOENT");
-      (err as NodeJS.ErrnoException).code = "ENOENT";
+      (err as { code?: string }).code = "ENOENT";
       return cb(err);
     }
     return (origExecFile as (...a: unknown[]) => unknown).apply(this, arguments as unknown as unknown[]);

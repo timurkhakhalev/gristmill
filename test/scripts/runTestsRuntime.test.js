@@ -64,8 +64,8 @@ test("two processes run ordinary files before serial compiler and native files",
 test("type probe files share one serial compiler process without changing selected domains", async () => {
   const { calls, options } = fakeRunner({ platform: "linux" });
   const files = [
-    "test/scripts/type-probes/actions.test.js",
-    "test/scripts/type-probes/calendar.test.js",
+    "test/scripts/type-probes/actions.test.ts",
+    "test/scripts/type-probes/calendar.test.ts",
     "test/scripts/mainBuild.test.js",
   ];
   assert.equal(await runTests(files, options), 0);

@@ -6,10 +6,10 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/bidiInterpolatedText.test.js",
-      "test/components/directionalContentPolicy.test.js",
-      "test/components/fieldDirectionPolicy.test.js",
-      "test/components/rtlMotion.test.js",
+      "test/components/bidiInterpolatedText.test.ts",
+      "test/components/directionalContentPolicy.test.ts",
+      "test/components/fieldDirectionPolicy.test.ts",
+      "test/components/rtlMotion.test.ts",
       "test/helpers/debugLogger.test.js",
       "test/helpers/debugLoggerConsolePolicy.test.js",
       "test/helpers/downloadUtils.test.js",
@@ -28,7 +28,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/byokResumeDraft.test.js",
+      "test/components/byokResumeDraft.test.ts",
       "test/helpers/reasoningModelMemory.test.js"
     ]
   },
@@ -39,10 +39,10 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/defaultFolderPresentation.test.js",
-      "test/components/noteBottomBar.test.js",
-      "test/components/spacesTreeDirection.test.js",
-      "test/components/spacesTreeNoteActionClearance.test.js",
+      "test/components/defaultFolderPresentation.test.ts",
+      "test/components/noteBottomBar.test.ts",
+      "test/components/spacesTreeDirection.test.ts",
+      "test/components/spacesTreeNoteActionClearance.test.ts",
       "test/helpers/cliBridgeDictionary.test.js",
       "test/helpers/cliBridgeSnippets.test.js",
       "test/helpers/containerIpc.test.js",
@@ -62,7 +62,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/floatingChatLayout.test.js",
+      "test/components/floatingChatLayout.test.ts",
       "test/helpers/actionsCatalogBehavior.test.js",
       "test/helpers/actionsIpc.test.js",
       "test/helpers/bbCli.test.js",
@@ -92,11 +92,11 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/hotkeyCapturePolicy.test.js",
-      "test/components/keyboardShortcutsDialog.test.js",
-      "test/components/onboardingCompatibility.test.js",
-      "test/components/onboardingFlow.test.js",
-      "test/components/onboardingLanguageSelection.test.js",
+      "test/components/hotkeyCapturePolicy.test.ts",
+      "test/components/keyboardShortcutsDialog.test.ts",
+      "test/components/onboardingCompatibility.test.ts",
+      "test/components/onboardingFlow.test.ts",
+      "test/components/onboardingLanguageSelection.test.ts",
       "test/hooks/usePermissionsAccessibilityGate.test.ts",
       "test/locales/i18nImports.test.ts"
     ]
@@ -109,7 +109,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/i18nDirectionProvider.test.js",
+      "test/components/i18nDirectionProvider.test.ts",
       "test/helpers/uiLanguageStartup.test.js"
     ]
   },
@@ -120,8 +120,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/liveWaveform.test.js",
-      "test/components/meetingInterruptionWarning.test.js",
+      "test/components/liveWaveform.test.ts",
+      "test/components/meetingInterruptionWarning.test.ts",
       "test/helpers/meetingAutoEndLifecycle.test.js",
       "test/helpers/meetingCaptureRecovery.test.js",
       "test/helpers/meetingCoordinatorIpc.test.js",
@@ -157,8 +157,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/meetingFileTranscriptionPicker.test.js",
-      "test/components/uploadAudioFeedback.test.js",
+      "test/components/meetingFileTranscriptionPicker.test.ts",
+      "test/components/uploadAudioFeedback.test.ts",
       "test/helpers/audioSegmentMerge.test.js",
       "test/helpers/fileDiarizationIpc.test.js",
       "test/helpers/meetingSpeakerReconcile.test.js",
@@ -178,7 +178,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/meetingResultsPanel.test.js",
+      "test/components/meetingResultsPanel.test.ts",
       "test/services/meetingResults.test.ts"
     ]
   },
@@ -192,7 +192,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/meetingTranscriptChat.test.js"
+      "test/components/meetingTranscriptChat.test.ts"
     ]
   },
   {
@@ -204,7 +204,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/noteParticipantsMeetingCard.test.js"
+      "test/components/noteParticipantsMeetingCard.test.ts"
     ]
   },
   {
@@ -215,7 +215,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/orukeetOrganization.test.js"
+      "test/components/orukeetOrganization.test.ts"
     ]
   },
   {
@@ -241,7 +241,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/uploadTempLifetime.test.js",
+      "test/components/uploadTempLifetime.test.ts",
       "test/helpers/cliBridgeTranscribe.test.js",
       "test/helpers/localFileTranscriptionIpc.test.js",
       "test/helpers/parakeetWavNormalization.test.js",
@@ -1106,12 +1106,12 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/actions.test.js",
-      "test/scripts/type-probes/chat-persistence.test.js",
-      "test/scripts/type-probes/local-llm-models.test.js",
-      "test/scripts/type-probes/local-model-lifecycle.test.js",
-      "test/scripts/type-probes/provider-adapters.test.js",
-      "test/scripts/type-probes/reasoning.test.js"
+      "test/scripts/type-probes/actions.test.ts",
+      "test/scripts/type-probes/chat-persistence.test.ts",
+      "test/scripts/type-probes/local-llm-models.test.ts",
+      "test/scripts/type-probes/local-model-lifecycle.test.ts",
+      "test/scripts/type-probes/provider-adapters.test.ts",
+      "test/scripts/type-probes/reasoning.test.ts"
     ]
   },
   {
@@ -1122,9 +1122,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/calendar-availability.test.js",
-      "test/scripts/type-probes/calendar-managers.test.js",
-      "test/scripts/type-probes/calendar.test.js"
+      "test/scripts/type-probes/calendar-availability.test.ts",
+      "test/scripts/type-probes/calendar-managers.test.ts",
+      "test/scripts/type-probes/calendar.test.ts"
     ]
   },
   {
@@ -1135,9 +1135,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/containers.test.js",
-      "test/scripts/type-probes/note-files.test.js",
-      "test/scripts/type-probes/vocabulary.test.js"
+      "test/scripts/type-probes/containers.test.ts",
+      "test/scripts/type-probes/note-files.test.ts",
+      "test/scripts/type-probes/vocabulary.test.ts"
     ]
   },
   {
@@ -1153,7 +1153,7 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/database.test.js",
+      "test/scripts/type-probes/database.test.ts",
       "test/scripts/sharedHelpersTypeProbe.test.js"
     ]
   },
@@ -1167,8 +1167,8 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/downloads.test.js",
-      "test/scripts/type-probes/realtime-streaming.test.js"
+      "test/scripts/type-probes/downloads.test.ts",
+      "test/scripts/type-probes/realtime-streaming.test.ts"
     ]
   },
   {
@@ -1181,7 +1181,7 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/env-secret.test.js"
+      "test/scripts/type-probes/env-secret.test.ts"
     ]
   },
   {
@@ -1192,9 +1192,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/local-file-transcription.test.js",
-      "test/scripts/type-probes/upload-transcription.test.js",
-      "test/scripts/type-probes/url-download.test.js"
+      "test/scripts/type-probes/local-file-transcription.test.ts",
+      "test/scripts/type-probes/upload-transcription.test.ts",
+      "test/scripts/type-probes/url-download.test.ts"
     ]
   },
   {
@@ -1221,9 +1221,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/meeting-coordinator.test.js",
+      "test/scripts/type-probes/meeting-coordinator.test.ts",
       "test/scripts/nativeAudioCaptureTypeProbe.test.js",
-      "test/scripts/type-probes/speaker-onnx.test.js"
+      "test/scripts/type-probes/speaker-onnx.test.ts"
     ]
   },
   {

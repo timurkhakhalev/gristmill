@@ -1,9 +1,9 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const http = require("node:http");
-const os = require("node:os");
-const path = require("node:path");
-const { app } = require("electron");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import http from "node:http";
+import os from "node:os";
+import path from "node:path";
+import { app } from "electron";
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-audio-upload-"));
 app.setPath("userData", tempDir);
@@ -11,15 +11,19 @@ app.setPath("userData", tempDir);
 app
   .whenReady()
   .then(async () => {
-    const { postRawAudioFile } = await import("../../src/helpers/audioFileUpload.ts");
+    const { postRawAudioFile } = await import("../../src/helpers/audioFileUpload.js");
     const filePath = path.join(tempDir, "sample.wav");
     const audio = Buffer.from("audio-file-payload");
     fs.writeFileSync(filePath, audio);
-    const uploads = [];
-    const server = http.createServer((request, response) => {
+    interface Upload {
+      headers: http.IncomingHttpHeaders;
+      body: Buffer;
+    }
+    const uploads: Upload[] = [];
+    const server = http.createServer((request: http.IncomingMessage, response: http.ServerResponse) => {
       if (request.url === "/slow") return;
-      const chunks = [];
-      request.on("data", (chunk) => chunks.push(chunk));
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
       request.on("end", () => {
         uploads.push({ headers: request.headers, body: Buffer.concat(chunks) });
         response.writeHead(200, { "Content-Type": "application/json" });
@@ -27,8 +31,9 @@ app
       });
     });
     try {
-      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-      const url = new URL(`http://127.0.0.1:${server.address().port}/upload`);
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const address = server.address() as { port: number };
+      const url = new URL(`http://127.0.0.1:${address.port}/upload`);
       assert.deepEqual(await postRawAudioFile(url, filePath, "audio/wav", "test-key"), {
         statusCode: 200,
         data: { ok: true },
@@ -44,7 +49,7 @@ app
         { statusCode: 200, data: { ok: true } }
       );
       assert.equal(uploads[1].headers["xi-api-key"], "test-key");
-      assert.match(uploads[1].headers["content-type"], /^multipart\/form-data; boundary=/);
+      assert.match(String(uploads[1].headers["content-type"]), /^multipart\/form-data; boundary=/);
       assert.match(uploads[1].body.toString(), /filename="sample.wav"/);
       assert.match(uploads[1].body.toString(), /name="model_id"\r\n\r\nscribe_v2/);
       assert.ok(uploads[1].body.includes(audio));
@@ -57,7 +62,7 @@ app
       await assert.rejects(cancelled, { name: "AbortError" });
       console.log("audio file upload smoke passed");
     } finally {
-      await new Promise((resolve) => server.close(resolve));
+      await new Promise<void>((resolve) => server.close(() => resolve()));
       fs.rmSync(tempDir, { recursive: true, force: true });
       app.quit();
     }

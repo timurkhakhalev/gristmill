@@ -9,7 +9,7 @@ const handlers = new Map();
 // Fake downloader injected as a dependency; every call is recorded and can be
 // held open or failed from the test. No network, no real temp writes.
 const downloadCalls: any[] = [];
-let downloadBehavior = () => {
+let downloadBehavior: (...args: any[]) => any = () => {
   throw new Error("fake download has no behavior set");
 };
 const sweepCalls = [];

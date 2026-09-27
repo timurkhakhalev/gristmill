@@ -1,5 +1,6 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+import type { MeetingAutoEndReason, MeetingNotificationData } from "../../src/contracts/meetingCoordinator";
 
 const load = () => import("../../src/components/meetingNotificationModel.ts");
 
@@ -27,7 +28,7 @@ test("auto-end presentation picks body copy by reason and defaults to mic-releas
   const { getMeetingNotificationPresentation } = await load();
   const bodyFor = (reason: unknown) =>
     getMeetingNotificationPresentation(
-      { kind: "auto-end", sessionId: "meeting-2", expiresAt: 40_001, reason },
+      { kind: "auto-end", sessionId: "meeting-2", expiresAt: 40_001, reason: reason as MeetingAutoEndReason },
       5
     ).bodyKey;
 
@@ -83,8 +84,8 @@ test("non-dismissible meeting notifications ignore horizontal swipes", async () 
 test("countdown rounds up and emits updated seconds until expiration", async () => {
   const { subscribeMeetingAutoEndCountdown } = await load();
   let now = 10_000;
-  let tick;
-  let clearedTimer;
+  let tick!: () => void;
+  let clearedTimer: ReturnType<typeof setInterval> | undefined;
   const seconds: unknown[] = [];
 
   const unsubscribe = subscribeMeetingAutoEndCountdown(
@@ -97,7 +98,7 @@ test("countdown rounds up and emits updated seconds until expiration", async () 
       setInterval: (callback, delay) => {
         assert.equal(delay, 250);
         tick = callback;
-        return 7;
+        return 7 as unknown as ReturnType<typeof setInterval>;
       },
       clearInterval: (timer) => {
         clearedTimer = timer;
@@ -119,11 +120,11 @@ test("countdown rounds up and emits updated seconds until expiration", async () 
 
 test("overlay initialization cleanup cancels reveal and invalidates a pending pull", async () => {
   const { initializeMeetingNotificationOverlay } = await load();
-  let subscribed;
-  let reveal;
-  let canceledTimer;
-  let resolvePendingData;
-  const pendingData = new Promise((resolve) => {
+  let subscribed!: (data: MeetingNotificationData) => void;
+  let reveal!: () => void;
+  let canceledTimer: ReturnType<typeof setTimeout> | undefined;
+  let resolvePendingData!: (data: MeetingNotificationData | null) => void;
+  const pendingData = new Promise<MeetingNotificationData | null>((resolve) => {
     resolvePendingData = resolve;
   });
   const received: unknown[] = [];
@@ -149,7 +150,7 @@ test("overlay initialization cleanup cancels reveal and invalidates a pending pu
     setTimeout: (callback, delay) => {
       assert.equal(delay, 50);
       reveal = callback;
-      return 11;
+      return 11 as unknown as ReturnType<typeof setTimeout>;
     },
     clearTimeout: (timer) => {
       canceledTimer = timer;
@@ -178,7 +179,8 @@ test("only an explicit success keeps the auto-end card hidden", async () => {
   const { shouldRestoreAutoEndCard } = await load();
 
   assert.equal(shouldRestoreAutoEndCard({ success: true }), false);
-  assert.equal(shouldRestoreAutoEndCard({ success: false, reason: "stale-session" }), true);
+  const failed = { success: false, reason: "stale-session" };
+  assert.equal(shouldRestoreAutoEndCard(failed), true);
   // The IPC method is optional on the preload surface: an older or partially
   // wired bridge resolves undefined, which is not a success.
   assert.equal(shouldRestoreAutoEndCard(undefined), true);

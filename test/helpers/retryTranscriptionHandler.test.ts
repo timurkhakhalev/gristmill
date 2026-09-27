@@ -17,7 +17,12 @@ const handlers = new Map();
 const execHandlers = new Map();
 const fetches: any[] = [];
 const geminiFileCalls: any[] = [];
-let fetchResponse = () => ({
+let fetchResponse: (url: string, init: unknown) => {
+  ok: boolean;
+  status: number;
+  json: () => Promise<unknown>;
+  text: () => Promise<string>;
+} = () => ({
   ok: true,
   status: 200,
   json: async () => ({ text: "transcribed" }),
@@ -66,7 +71,7 @@ const electronStub = {
 
 const cortiCalls: any[] = [];
 const tinfoilCalls = [];
-let cortiBehavior = async () => ({ text: "corti text" });
+let cortiBehavior: (options: unknown) => Promise<{ text: string }> = async () => ({ text: "corti text" });
 
 // Kept installed for the whole file: the corti client is require()d lazily at
 // handler invocation time, not at module load.
@@ -99,7 +104,7 @@ Module._load = function loadWithMocks(request: string, parent: any, isMain: bool
 
 // A permissive `this` for setupHandlers: registration only stores closures, so
 // any manager not exercised by the upload handler can be an inert stub.
-function anything() {
+function anything(): any {
   return new Proxy(function () {}, {
     get: (t, prop) => {
       if (prop === Symbol.toPrimitive || prop === "toString") return () => "";
@@ -170,7 +175,7 @@ function buildExecutionDeps() {
 // The upload path still registers through ipcHandlers.js; its harness is the
 // same fake-this the file always used.
 function buildUploadFakeThis() {
-  const target = {
+  const target: Record<PropertyKey, unknown> = {
     sessionId: "test-session",
     // The real registry: the extracted byok handler registers every upload
     // here, and a proxy stub would fake a permanently-aborted signal.
@@ -370,9 +375,7 @@ test("proxy transcription handlers resolve to structured errors instead of rejec
     json: async () => ({}),
   });
   cortiBehavior = async () => {
-    const err = new Error("Corti API Error: 401");
-    err.code = "INVALID_KEY";
-    throw err;
+    throw Object.assign(new Error("Corti API Error: 401"), { code: "INVALID_KEY" });
   };
   try {
     for (const channel of [
@@ -414,8 +417,10 @@ const invokeUpload = (payload: any) => {
 // headers and the streamed body, then answers like the real provider. The
 // response must fully arrive before "close": the production code treats a
 // close without a settled response as a transport failure.
-function mockHttpsUpload({ onRequest }) {
-  https.request = (url: string, options: any, callback: any) => {
+function mockHttpsUpload({ onRequest }: {
+  onRequest: (url: URL, options: any, body: Buffer) => { response: unknown };
+}) {
+  https.request = (url: URL | string, options: any, callback: any) => {
     const { EventEmitter } = require("node:events");
     const request = new EventEmitter();
     const uploaded: any[] = [];
@@ -429,7 +434,7 @@ function mockHttpsUpload({ onRequest }) {
       queueMicrotask(() => {
         try {
           const { response } = onRequest(
-            typeof url === "string" || url instanceof URL ? new URL(url) : url,
+            new URL(url),
             options,
             Buffer.concat(uploaded)
           );
@@ -455,7 +460,7 @@ test("upload: Deepgram streams raw file bytes through Node https", async () => {
   fetches.length = 0;
   const uploaded: any[] = [];
   mockHttpsUpload({
-    onRequest: (url: string, options: any, body: any) => {
+    onRequest: (url: URL, options: any, body: Buffer) => {
       assert.equal(url.origin, "https://api.deepgram.com");
       assert.equal(options.headers.Authorization, "Token dg-key");
       assert.equal(options.headers["Content-Type"], "audio/webm");
@@ -485,7 +490,7 @@ test("upload: Deepgram streams raw file bytes through Node https", async () => {
 test("upload: ElevenLabs streams a complete multipart file with Scribe fields", async () => {
   const uploaded: any[] = [];
   mockHttpsUpload({
-    onRequest: (url: string, options: any, body: any) => {
+    onRequest: (url: URL, options: any, body: Buffer) => {
       assert.equal(url.toString(), "https://api.elevenlabs.io/v1/speech-to-text");
       assert.equal(options.headers["xi-api-key"], "el-key");
       assert.match(options.headers["Content-Type"], /multipart\/form-data; boundary=/);

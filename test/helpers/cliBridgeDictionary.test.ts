@@ -35,7 +35,7 @@ const DatabaseManager = require("../../src/helpers/database.ts");
 const CliBridge = require("../../src/helpers/cliBridge.ts");
 
 function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error?.message || error);
+  const message = String((error as { message?: unknown })?.message || error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -46,13 +46,13 @@ function isNativeBindingUnavailable(error: unknown) {
 // constructor does not start a server, so routes can be invoked directly.
 function createBridge(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-cli-dict-"));
-  let db;
+  let db: import("../../src/helpers/database.js").DatabaseManager | null = null;
   try {
     const BetterSqlite = require("better-sqlite3");
     const probe = new BetterSqlite(path.join(userDataDir, "probe.db"));
     probe.close();
     fs.rmSync(path.join(userDataDir, "probe.db"), { force: true });
-    db = new DatabaseManager();
+    db = new DatabaseManager() as import("../../src/helpers/database.js").DatabaseManager;
   } catch (error) {
     if (isNativeBindingUnavailable(error)) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
@@ -66,7 +66,8 @@ function createBridge(t: import("node:test").TestContext) {
   return { bridge, db, broadcasts };
 }
 
-function call(bridge, method, pathname, body: unknown) {
+type RouteArgs = { params: Record<string, string>; query: URLSearchParams; body: unknown };
+function call(bridge: InstanceType<typeof CliBridge>, method: string, pathname: string, body: unknown = undefined): unknown {
   for (const route of bridge.routes) {
     if (route.method !== method) continue;
     const params = route.match(pathname);
@@ -81,7 +82,7 @@ test("GET /v1/dictionary/list returns the stored words", (t: import("node:test")
   if (!ctx) return;
 
   ctx.db.setDictionary(["OpenWhispr", "Alice"]);
-  const result = call(ctx.bridge, "GET", "/v1/dictionary/list");
+  const result = call(ctx.bridge, "GET", "/v1/dictionary/list") as { data: string[] };
   assert.deepEqual(result.data, ["OpenWhispr", "Alice"]);
 });
 
@@ -91,7 +92,7 @@ test("POST /v1/dictionary/update bulk-adds words that survive a reload", (t: imp
 
   ctx.db.setDictionary(["OpenWhispr"]);
   const contacts = ["Ada Lovelace", "Grace Hopper", "Katherine Johnson"];
-  const result = call(ctx.bridge, "POST", "/v1/dictionary/update", { add: contacts });
+  const result = call(ctx.bridge, "POST", "/v1/dictionary/update", { add: contacts }) as { data: { added: number } };
 
   assert.equal(result.data.added, 3);
   assert.deepEqual(ctx.db.getDictionary(), ["OpenWhispr", ...contacts]);
@@ -107,7 +108,7 @@ test("POST /v1/dictionary/update removes only the named words", (t: import("node
   if (!ctx) return;
 
   ctx.db.setDictionary(["OpenWhispr", "Alice", "Bob"]);
-  const result = call(ctx.bridge, "POST", "/v1/dictionary/update", { remove: ["Alice"] });
+  const result = call(ctx.bridge, "POST", "/v1/dictionary/update", { remove: ["Alice"] }) as { data: { removed: number } };
 
   assert.equal(result.data.removed, 1);
   assert.deepEqual(ctx.db.getDictionary(), ["OpenWhispr", "Bob"]);
@@ -129,8 +130,8 @@ test("POST /v1/dictionary/update broadcasts the new list to renderers", async (t
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(ctx.broadcasts.length, 1);
-  assert.equal(ctx.broadcasts[0].channel, "dictionary-updated");
-  assert.deepEqual(ctx.broadcasts[0].payload, ["OpenWhispr", "Alice"]);
+  assert.equal((ctx.broadcasts[0] as { channel: string }).channel, "dictionary-updated");
+  assert.deepEqual((ctx.broadcasts[0] as { payload: unknown }).payload, ["OpenWhispr", "Alice"]);
 });
 
 test("POST /v1/dictionary/update rejects a non-array field", (t: import("node:test").TestContext) => {
@@ -168,16 +169,19 @@ test("route validation errors respond with HTTP 400 validation_error", async (t:
   ctx.bridge.port = 8200;
 
   class MockResponse {
+    statusCode: string | number | null;
+    headers: Record<string, unknown>;
+    body: string;
     constructor() {
       this.statusCode = null;
       this.headers = {};
       this.body = "";
     }
-    writeHead(code: string, headers) {
+    writeHead(code: string, headers: Record<string, unknown>) {
       this.statusCode = code;
       this.headers = headers;
     }
-    end(chunk) {
+    end(chunk?: string) {
       if (chunk) this.body += chunk;
     }
   }
@@ -206,16 +210,19 @@ test("POST /v1/dictionary/update responds with HTTP 400 validation_error for inv
   ctx.bridge.port = 8200;
 
   class MockResponse {
+    statusCode: string | number | null;
+    headers: Record<string, unknown>;
+    body: string;
     constructor() {
       this.statusCode = null;
       this.headers = {};
       this.body = "";
     }
-    writeHead(code: string, headers) {
+    writeHead(code: string, headers: Record<string, unknown>) {
       this.statusCode = code;
       this.headers = headers;
     }
-    end(chunk) {
+    end(chunk?: string) {
       if (chunk) this.body += chunk;
     }
   }
@@ -225,7 +232,7 @@ test("POST /v1/dictionary/update responds with HTTP 400 validation_error for inv
     headers: { authorization: "Bearer test-token" },
     method: "POST",
     url: "/v1/dictionary/update",
-    on(event: unknown, handler) {
+    on(event: unknown, handler: (chunk?: string) => void) {
       if (event === "data") {
         handler(JSON.stringify({ add: "not-an-array" }));
       }

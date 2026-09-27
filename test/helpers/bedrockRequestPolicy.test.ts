@@ -16,7 +16,7 @@ const TIMEOUT_MESSAGE =
 const NETWORK_MESSAGE =
   "AWS Bedrock could not be reached. Check your internet connection and try again.";
 
-function awsError({ name, status, message = name, requestId = "request-123", code }) {
+function awsError({ name, status, message = name, requestId = "request-123", code }: { name: string; status?: number; message?: string; requestId?: string; code?: string }) {
   return Object.assign(new Error(message), {
     name,
     ...(code ? { code } : {}),
@@ -35,7 +35,7 @@ function deterministicRetryOptions() {
       initialDelayMs: 100,
       maxDelayMs: 10_000,
       random: () => 0.5,
-      sleep: async (delay) => delays.push(delay),
+      sleep: async (delay: number) => delays.push(delay),
     },
   };
 }
@@ -64,8 +64,8 @@ test("Bedrock cleanup succeeds after a retryable 503", async () => {
 test("Bedrock cleanup aborts during retry backoff without another attempt", async () => {
   const controller = new AbortController();
   let attempts = 0;
-  let releaseSleep;
-  const sleeping = new Promise((resolve) => (releaseSleep = resolve));
+  let releaseSleep!: () => void;
+  const sleeping = new Promise<void>((resolve) => (releaseSleep = resolve));
   const request = runBedrockRequest(
     async () => {
       attempts += 1;
@@ -74,7 +74,7 @@ test("Bedrock cleanup aborts during retry backoff without another attempt", asyn
     {
       signal: controller.signal,
       random: () => 0.5,
-      sleep: async (_delay, signal: unknown) => {
+      sleep: async (_delay: number, signal: AbortSignal) => {
         releaseSleep();
         await new Promise((resolve, reject) => {
           signal.addEventListener("abort", () => reject(signal.reason), { once: true });
@@ -85,7 +85,7 @@ test("Bedrock cleanup aborts during retry backoff without another attempt", asyn
 
   await sleeping;
   controller.abort();
-  await assert.rejects(request, (error: unknown) => error?.name === "AbortError");
+  await assert.rejects(request, (error: unknown) => (error as { name?: string })?.name === "AbortError");
   assert.equal(attempts, 1);
 });
 
@@ -103,7 +103,7 @@ test("Bedrock stops after six total attempts when 503 responses continue", async
         requestId: `request-${attempts}`,
       });
     }, options),
-    (error: unknown) => error.$metadata.requestId === "request-6"
+    (error: unknown) => (error as { $metadata: { requestId: string } }).$metadata.requestId === "request-6"
   );
 
   assert.equal(attempts, 6);

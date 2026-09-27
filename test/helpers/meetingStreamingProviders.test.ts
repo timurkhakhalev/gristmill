@@ -107,7 +107,7 @@ test("OpenAI-derived streaming clients carry their own provider log label", asyn
   const { STREAMING_CLIENT_BY_PROVIDER } = await load();
   const OpenAIRealtimeStreaming = (await import("../../src/helpers/openaiRealtimeStreaming.ts"))
     .default;
-  const baseLabel = new OpenAIRealtimeStreaming().providerLabel;
+  const baseLabel = new (OpenAIRealtimeStreaming as unknown as new () => any)().providerLabel;
 
   assert.equal(typeof baseLabel, "string");
   assert.ok(baseLabel.length > 0, "the base class must define a provider log label");

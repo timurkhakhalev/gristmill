@@ -65,7 +65,7 @@ function captureLogs(t: unknown) {
 
 test("sendAudio buffers frames arriving before the socket exists (token-fetch window)", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
 
   streaming.beginConnecting();
   assert.equal(streaming.ws, null, "socket not created yet, mirrors the token-fetch window");
@@ -79,7 +79,7 @@ test("sendAudio buffers frames arriving before the socket exists (token-fetch wi
 
 test("sendAudio drops frames when no connection attempt is in flight (idle/dead instance)", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
 
   const sent = streaming.sendAudio(Buffer.from([1, 2, 3, 4]));
 
@@ -93,7 +93,7 @@ test("sendAudio drops frames when no connection attempt is in flight (idle/dead 
 
 test("sendAudio stops buffering once COLD_START_BUFFER_MAX is reached", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.beginConnecting();
 
   const chunk = Buffer.alloc(50000, 1);
@@ -112,7 +112,7 @@ test("sendAudio stops buffering once COLD_START_BUFFER_MAX is reached", async ()
 
 test("sendAudio flushes buffered audio in order once the socket opens, then sends the live chunk", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.beginConnecting();
 
   streaming.sendAudio(Buffer.from("first"));
@@ -134,7 +134,7 @@ test("sendAudio flushes buffered audio in order once the socket opens, then send
 
 test("connect() preserves audio buffered during beginConnecting() instead of wiping it", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
 
   streaming.beginConnecting();
   streaming.sendAudio(Buffer.from("pre-token-fetch audio"));
@@ -164,7 +164,7 @@ test("connect() preserves audio buffered during beginConnecting() instead of wip
 
 test("sendAudio upsamples 16kHz capture to the 24kHz session rate", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.inputRate = 24000;
   streaming.captureRate = 16000;
   streaming.ws = makeFakeSocket(WS.OPEN);
@@ -180,7 +180,7 @@ test("sendAudio upsamples 16kHz capture to the 24kHz session rate", async () => 
 
 test("cleanup() resets bufferingAudio so a dead instance stops buffering", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.beginConnecting();
 
   streaming.cleanup();
@@ -193,7 +193,7 @@ test("cleanup() resets bufferingAudio so a dead instance stops buffering", async
 
 test("cleanup() stops the keep-alive interval", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.ws = makeFakeSocket(WS.OPEN);
   streaming.startKeepAlive();
 
@@ -206,7 +206,7 @@ test("keep-alive terminates a connection that misses a pong", (t: unknown) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   return (async () => {
     const OpenAIRealtimeStreaming = (await load()).default;
-    const streaming = new OpenAIRealtimeStreaming();
+    const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
     const socket = makeFakeSocket(WS.OPEN);
     let terminated = false;
     socket.terminate = () => {
@@ -229,7 +229,7 @@ test("keep-alive stays alive when a pong is received between pings", (t: unknown
   t.mock.timers.enable({ apis: ["setInterval"] });
   return (async () => {
     const OpenAIRealtimeStreaming = (await load()).default;
-    const streaming = new OpenAIRealtimeStreaming();
+    const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
     const socket = makeFakeSocket(WS.OPEN);
     let terminated = false;
     socket.terminate = () => {
@@ -251,7 +251,7 @@ test("keep-alive stays alive when a pong is received between pings", (t: unknown
 
 test("session_expired error fires onSessionExpired instead of onError and sets the flag", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   let expiredCalled = false;
   let errorCalled = false;
   streaming.onSessionExpired = () => {
@@ -275,7 +275,7 @@ test("session_expired error fires onSessionExpired instead of onError and sets t
 
 test("session_expired without an onSessionExpired handler falls through to onError (dictation path)", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   let errorMessage = null;
   streaming.onError = (err: unknown) => {
     errorMessage = err.message;
@@ -294,7 +294,7 @@ test("session_expired without an onSessionExpired handler falls through to onErr
 
 test("non-session_expired error fires onError normally", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   let errorMsg = null;
   streaming.onError = (err: unknown) => {
     errorMsg = err.message;
@@ -312,7 +312,7 @@ test("non-session_expired error fires onError normally", async () => {
 
 test("empty buffer error is not treated as session expiry", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   let expiredCalled = false;
   let errorCalled = false;
   streaming.onSessionExpired = () => {
@@ -335,7 +335,7 @@ test("empty buffer error is not treated as session expiry", async () => {
 
 test("close after session_expired does not fire onSessionEnd (reconnect owns the session)", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
   await connectDirect(streaming, socket);
 
@@ -356,7 +356,7 @@ test("close after session_expired does not fire onSessionEnd (reconnect owns the
 
 test("connect() resets _sessionExpired left over from a previous session", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming._sessionExpired = true;
 
   const socket = makeFakeSocket(WS.CONNECTING);
@@ -380,7 +380,7 @@ test("session timer fires onSessionExpired at the pre-empt deadline while connec
   t.mock.timers.enable({ apis: ["setTimeout"] });
   return (async () => {
     const OpenAIRealtimeStreaming = (await load()).default;
-    const streaming = new OpenAIRealtimeStreaming();
+    const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
     streaming.isConnected = true;
     let expiredCalls = 0;
     streaming.onSessionExpired = () => {
@@ -400,7 +400,7 @@ test("cleanup() clears the session timer so a stopped session never requests a r
   t.mock.timers.enable({ apis: ["setTimeout"] });
   return (async () => {
     const OpenAIRealtimeStreaming = (await load()).default;
-    const streaming = new OpenAIRealtimeStreaming();
+    const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
     streaming.isConnected = true;
     let expiredCalls = 0;
     streaming.onSessionExpired = () => {
@@ -423,7 +423,7 @@ test("zero audio loss during reactive reconnect (session_expired at 60min)", asy
   const CHUNK = Buffer.alloc(480);
 
   // Phase 1: old instance streaming normally.
-  const old = new OpenAIRealtimeStreaming();
+  const old = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   old.isConnected = true;
   old.ws = makeFakeSocket(WS.OPEN);
   for (let i = 0; i < 100; i++) old.sendAudio(CHUNK);
@@ -448,7 +448,7 @@ test("zero audio loss during reactive reconnect (session_expired at 60min)", asy
 
   // Phase 3: reconnect swaps in a fresh instance before the token fetch;
   // beginConnecting() arms the pre-connect buffer for the fetch window.
-  const fresh = new OpenAIRealtimeStreaming();
+  const fresh = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   fresh.beginConnecting();
   for (let i = 0; i < 50; i++) fresh.sendAudio(CHUNK);
   assert.equal(fresh.coldStartBuffer.length, 50, "pre-connect buffer caught all chunks");
@@ -473,7 +473,7 @@ test("zero audio loss during proactive reconnect (timer before the limit)", asyn
   const CHUNK = Buffer.alloc(480);
 
   // Old instance still alive while the reconnect fetches a token.
-  const old = new OpenAIRealtimeStreaming();
+  const old = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   old.isConnected = true;
   old.ws = makeFakeSocket(WS.OPEN);
   for (let i = 0; i < 100; i++) old.sendAudio(CHUNK);
@@ -484,7 +484,7 @@ test("zero audio loss during proactive reconnect (timer before the limit)", asyn
   assert.equal(old.ws.sent.length, 110, "audio still flows to old instance during token fetch");
 
   // References swapped; new instance buffers until its socket opens.
-  const fresh = new OpenAIRealtimeStreaming();
+  const fresh = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   fresh.beginConnecting();
   for (let i = 0; i < 30; i++) fresh.sendAudio(CHUNK);
   assert.equal(fresh.coldStartBuffer.length, 30);
@@ -499,7 +499,7 @@ test("zero audio loss during proactive reconnect (timer before the limit)", asyn
 
 test("completedSegments accumulate across turns", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   let lastFull = "";
   streaming.onFinalTranscript = (text: string) => {
     lastFull = text;
@@ -524,7 +524,7 @@ test("completedSegments accumulate across turns", async () => {
 
 test("BYOK session.update is byte-for-byte today's payload when no VAD/language/noise options are passed", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
 
   const connected = streaming.connect({
@@ -571,7 +571,7 @@ test("BYOK session.update is byte-for-byte today's payload when no VAD/language/
 
 test("BYOK session.update is byte-for-byte the overridden payload when vadThreshold is passed (system socket)", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
 
   const connected = streaming.connect({
@@ -616,7 +616,7 @@ test("BYOK session.update is byte-for-byte the overridden payload when vadThresh
 
 test("dictation-style connect (inputRate 16000, custom socket factory) declares the 16kHz format and the same VAD", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
   const factoryCalls = [];
 
@@ -656,7 +656,7 @@ test("dictation-style connect (inputRate 16000, custom socket factory) declares 
 
 test("a final that lands during disconnect()'s commit window reaches onFinalTranscript with its timestamp", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
   await connectDirect(streaming, socket);
 
@@ -693,7 +693,7 @@ test("a final that lands during disconnect()'s commit window reaches onFinalTran
 
 test("transcription.failed is logged with the stream label and stays log-only (no onError, no segment)", async (t: unknown) => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.streamLabel = "system";
   const logs = captureLogs(t);
   let errorCalled = false;
@@ -721,7 +721,7 @@ test("transcription.failed is logged with the stream label and stays log-only (n
 
 test("empty-transcript completed events are logged and add no segment", async (t: unknown) => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.streamLabel = "system";
   streaming.audioBytesSent = 4800;
   const logs = captureLogs(t);
@@ -749,7 +749,7 @@ test("empty-transcript completed events are logged and add no segment", async (t
 
 test("VAD events log first-3-then-every-50th with streamLabel and audioBytesSent", async (t: unknown) => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   streaming.streamLabel = "system";
   streaming.audioBytesSent = 1234;
   const logs = captureLogs(t);
@@ -777,7 +777,7 @@ test("VAD events log first-3-then-every-50th with streamLabel and audioBytesSent
 
 test("disconnect summary carries streamLabel and speechStartedCount", async (t: unknown) => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
   const connected = streaming.connect({
     apiKey: "key",
@@ -806,7 +806,7 @@ test("disconnect summary carries streamLabel and speechStartedCount", async (t: 
 
 test("direct session.created sends the configured session update", async (t: unknown) => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
   const logs = captureLogs(t);
 
@@ -843,7 +843,7 @@ test("direct session.created sends the configured session update", async (t: unk
 
 test("without a streamLabel (dictation) log metadata carries no stream key", async (t: unknown) => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const logs = captureLogs(t);
 
   await streaming.disconnect();
@@ -878,7 +878,7 @@ const completedEvent = (transcript: any) =>
 
 test("gpt-live-transcribe session.update sends turn_detection: null (any VAD config is rejected); the rest is the legacy payload", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
   await connectByok(streaming, socket, { model: "gpt-live-transcribe", vadThreshold: 0.3 });
 
@@ -892,7 +892,7 @@ test("gpt-live-transcribe session.update sends turn_detection: null (any VAD con
 test("legacy models keep the server_vad block byte-for-byte", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
   for (const model of ["gpt-4o-mini-transcribe", "gpt-4o-transcribe"]) {
-    const streaming = new OpenAIRealtimeStreaming();
+    const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
     const socket = makeFakeSocket(WS.CONNECTING);
     await connectByok(streaming, socket, { model });
 
@@ -909,7 +909,7 @@ test("legacy models keep the server_vad block byte-for-byte", async () => {
 
 test("gpt-live-transcribe stop: disconnect() commits once, then consumes the .completed final it triggered", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
   await connectByok(streaming, socket, { model: "gpt-live-transcribe" });
   const partials: unknown[] = [];
@@ -956,7 +956,7 @@ test("gpt-live-transcribe stop: disconnect() commits once, then consumes the .co
 
 test("gpt-live-transcribe stop with no audio sent never commits (an empty commit is a server error)", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
   await connectByok(streaming, socket, { model: "gpt-live-transcribe" });
 
@@ -1015,7 +1015,7 @@ test("an empty or failed committed turn ends the stop wait at once instead of st
     }),
   ];
   for (const terminal of terminalEvents) {
-    const streaming = new OpenAIRealtimeStreaming();
+    const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
     const socket = makeFakeSocket(WS.CONNECTING);
     await connectByok(streaming, socket, { model: "gpt-live-transcribe" });
     let finalCalled = false;
@@ -1040,7 +1040,7 @@ test("an empty or failed committed turn ends the stop wait at once instead of st
 
 test("a socket that closes during the commit wait ends the stop at once with the accumulated text", async () => {
   const OpenAIRealtimeStreaming = (await load()).default;
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
   await connectByok(streaming, socket, { model: "gpt-live-transcribe" });
   streaming.sendAudio(Buffer.alloc(4800, 1));
@@ -1061,7 +1061,7 @@ test("a socket that closes during the commit wait ends the stop at once with the
 test("direct sessions keep the requested model and send session.update", async (t: unknown) => {
   const OpenAIRealtimeStreaming = (await load()).default;
   const logs = captureLogs(t);
-  const streaming = new OpenAIRealtimeStreaming();
+  const streaming = new (OpenAIRealtimeStreaming as unknown as new () => any)();
   const socket = makeFakeSocket(WS.CONNECTING);
 
   const connected = streaming.connect({

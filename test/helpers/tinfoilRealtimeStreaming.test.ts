@@ -58,7 +58,7 @@ function speechPcm(sampleCount = 480, amplitude = 2000) {
 
 async function makeConnected() {
   const { TinfoilRealtimeStreaming } = await load();
-  const streaming = new TinfoilRealtimeStreaming();
+  const streaming = new (TinfoilRealtimeStreaming as unknown as new () => any)();
   streaming.ws = makeFakeSocket(WS.OPEN);
   streaming._markConnected();
   return streaming;

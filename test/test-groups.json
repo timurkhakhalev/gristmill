@@ -10,10 +10,10 @@
       "test/components/directionalContentPolicy.test.ts",
       "test/components/fieldDirectionPolicy.test.ts",
       "test/components/rtlMotion.test.ts",
-      "test/helpers/debugLogger.test.js",
-      "test/helpers/debugLoggerConsolePolicy.test.js",
-      "test/helpers/downloadUtils.test.js",
-      "test/helpers/extractArchive.test.js",
+      "test/helpers/debugLogger.test.ts",
+      "test/helpers/debugLoggerConsolePolicy.test.ts",
+      "test/helpers/downloadUtils.test.ts",
+      "test/helpers/extractArchive.test.ts",
       "test/helpers/sidecarPidFile.test.js",
       "test/helpers/translationHistory.test.js",
       "test/scripts/downloadSherpaMacos.test.js",
@@ -43,10 +43,10 @@
       "test/components/noteBottomBar.test.ts",
       "test/components/spacesTreeDirection.test.ts",
       "test/components/spacesTreeNoteActionClearance.test.ts",
-      "test/helpers/cliBridgeDictionary.test.js",
-      "test/helpers/cliBridgeSnippets.test.js",
-      "test/helpers/containerIpc.test.js",
-      "test/helpers/folderDeleteRelocationContract.test.js",
+      "test/helpers/cliBridgeDictionary.test.ts",
+      "test/helpers/cliBridgeSnippets.test.ts",
+      "test/helpers/containerIpc.test.ts",
+      "test/helpers/folderDeleteRelocationContract.test.ts",
       "test/helpers/granolaImportIpc.test.js",
       "test/helpers/markdownMirror.test.js",
       "test/helpers/noteSearch.test.js",
@@ -63,13 +63,13 @@
     "buildMain": false,
     "files": [
       "test/components/floatingChatLayout.test.ts",
-      "test/helpers/actionsCatalogBehavior.test.js",
-      "test/helpers/actionsIpc.test.js",
-      "test/helpers/bbCli.test.js",
-      "test/helpers/chatMessageSubmissionLock.test.js",
-      "test/helpers/chatPersistenceBehavior.test.js",
-      "test/helpers/chatPersistenceIpc.test.js",
-      "test/helpers/gemmaMtpDrafter.test.js",
+      "test/helpers/actionsCatalogBehavior.test.ts",
+      "test/helpers/actionsIpc.test.ts",
+      "test/helpers/bbCli.test.ts",
+      "test/helpers/chatMessageSubmissionLock.test.ts",
+      "test/helpers/chatPersistenceBehavior.test.ts",
+      "test/helpers/chatPersistenceIpc.test.ts",
+      "test/helpers/gemmaMtpDrafter.test.ts",
       "test/helpers/llamaServerContext.test.js",
       "test/helpers/localLlmModelIpc.test.js",
       "test/helpers/localModelLifecycleIpc.test.js",
@@ -159,8 +159,8 @@
     "files": [
       "test/components/meetingFileTranscriptionPicker.test.ts",
       "test/components/uploadAudioFeedback.test.ts",
-      "test/helpers/audioSegmentMerge.test.js",
-      "test/helpers/fileDiarizationIpc.test.js",
+      "test/helpers/audioSegmentMerge.test.ts",
+      "test/helpers/fileDiarizationIpc.test.ts",
       "test/helpers/meetingSpeakerReconcile.test.js",
       "test/helpers/transcriptionDataDeleteAllAudio.test.js",
       "test/services/fileTranscriptionDiarizationWarning.test.ts",
@@ -225,7 +225,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/granolaImport.test.js",
+      "test/helpers/granolaImport.test.ts",
       "test/helpers/noteCards.test.js",
       "test/helpers/noteListOps.test.js",
       "test/lib/noteEditorPendingSave.test.ts",
@@ -242,7 +242,7 @@
     "buildMain": false,
     "files": [
       "test/components/uploadTempLifetime.test.ts",
-      "test/helpers/cliBridgeTranscribe.test.js",
+      "test/helpers/cliBridgeTranscribe.test.ts",
       "test/helpers/localFileTranscriptionIpc.test.js",
       "test/helpers/parakeetWavNormalization.test.js",
       "test/helpers/remoteTranscriptionIpc.test.js",
@@ -273,17 +273,17 @@
     "files": [
       "test/config/rendererInferenceRemovalContract.test.ts",
       "test/config/colorSchemes.test.ts",
-      "test/helpers/appVersion.test.js",
-      "test/helpers/assetDownloadOffline.test.js",
-      "test/helpers/autoStartPolicy.test.js",
-      "test/helpers/chineseScript.test.js",
-      "test/helpers/cliBridgeRequestBody.test.js",
-      "test/helpers/dockPolicy.test.js",
+      "test/helpers/appVersion.test.ts",
+      "test/helpers/assetDownloadOffline.test.ts",
+      "test/helpers/autoStartPolicy.test.ts",
+      "test/helpers/chineseScript.test.ts",
+      "test/helpers/cliBridgeRequestBody.test.ts",
+      "test/helpers/dockPolicy.test.ts",
       "test/helpers/meetingCompanionPolicy.test.js",
-      "test/helpers/electronProcessIds.test.js",
-      "test/helpers/externalUrlOpener.test.js",
-      "test/helpers/formatBytes.test.js",
-      "test/helpers/globeKeyManager.test.js",
+      "test/helpers/electronProcessIds.test.ts",
+      "test/helpers/externalUrlOpener.test.ts",
+      "test/helpers/formatBytes.test.ts",
+      "test/helpers/globeKeyManager.test.ts",
       "test/helpers/m4DictationRemovalContract.test.js",
       "test/helpers/networkErrors.test.js",
       "test/helpers/notificationTimer.test.js",
@@ -317,8 +317,8 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/actionsBridge.test.js",
-      "test/helpers/chatBridge.test.js",
+      "test/helpers/actionsBridge.test.ts",
+      "test/helpers/chatBridge.test.ts",
       "test/helpers/reasoningBridge.test.js"
     ]
   },
@@ -348,9 +348,9 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/activeMicRecovery.test.js",
-      "test/helpers/audioStorageFilename.test.js",
-      "test/helpers/audioTapManagerWarnings.test.js",
+      "test/helpers/activeMicRecovery.test.ts",
+      "test/helpers/audioStorageFilename.test.ts",
+      "test/helpers/audioTapManagerWarnings.test.ts",
       "test/helpers/liveSpeakerIdPolicy.test.js",
       "test/helpers/liveSpeakerIdentifier.test.js",
       "test/helpers/meetingAudioActivityMonitor.test.js",
@@ -384,8 +384,8 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/agentNameDictionary.test.js",
-      "test/helpers/cleanupFailureStore.test.js",
+      "test/helpers/agentNameDictionary.test.ts",
+      "test/helpers/cleanupFailureStore.test.ts",
       "test/helpers/noteFormattingOverrides.test.js",
       "test/helpers/regenerableNoteTitle.test.js",
       "test/lib/conversationTitle.test.ts",
@@ -402,22 +402,22 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/agentStreamRequestRegistry.test.js",
-      "test/helpers/agentToolPresentation.test.js",
-      "test/helpers/anthropicResponse.test.js",
-      "test/helpers/anthropicSamplingFlags.test.js",
-      "test/helpers/apiBaseUrl.test.js",
-      "test/helpers/apiErrorMessage.test.js",
-      "test/helpers/bedrockCatalog.test.js",
-      "test/helpers/bedrockEnterpriseIpc.test.js",
-      "test/helpers/bedrockRequestPolicy.test.js",
-      "test/helpers/chatRouting.test.js",
-      "test/helpers/cortiAuth.test.js",
-      "test/helpers/enterpriseAiProviders.test.js",
-      "test/helpers/geminiModelRegistry.test.js",
-      "test/helpers/geminiResponse.test.js",
-      "test/helpers/gemmaMtpRegistry.test.js",
-      "test/helpers/ggufMetadata.test.js",
+      "test/helpers/agentStreamRequestRegistry.test.ts",
+      "test/helpers/agentToolPresentation.test.ts",
+      "test/helpers/anthropicResponse.test.ts",
+      "test/helpers/anthropicSamplingFlags.test.ts",
+      "test/helpers/apiBaseUrl.test.ts",
+      "test/helpers/apiErrorMessage.test.ts",
+      "test/helpers/bedrockCatalog.test.ts",
+      "test/helpers/bedrockEnterpriseIpc.test.ts",
+      "test/helpers/bedrockRequestPolicy.test.ts",
+      "test/helpers/chatRouting.test.ts",
+      "test/helpers/cortiAuth.test.ts",
+      "test/helpers/enterpriseAiProviders.test.ts",
+      "test/helpers/geminiModelRegistry.test.ts",
+      "test/helpers/geminiResponse.test.ts",
+      "test/helpers/gemmaMtpRegistry.test.ts",
+      "test/helpers/ggufMetadata.test.ts",
       "test/helpers/llamaContextPolicy.test.js",
       "test/helpers/llmRequestTimeout.test.js",
       "test/helpers/modelListBaseCandidates.test.js",
@@ -446,9 +446,9 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/apiRetryStrategy.test.js",
-      "test/helpers/azureTranscriptionUrl.test.js",
-      "test/helpers/geminiTranscription.test.js",
+      "test/helpers/apiRetryStrategy.test.ts",
+      "test/helpers/azureTranscriptionUrl.test.ts",
+      "test/helpers/geminiTranscription.test.ts",
       "test/helpers/parakeetModelRegistry.test.js",
       "test/helpers/tinfoilTranscription.test.js",
       "test/helpers/transcriptionRouteModelAgreement.test.js",
@@ -462,13 +462,13 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/appleCalendarManager.test.js",
-      "test/helpers/calendarAvailability.test.js",
-      "test/helpers/calendarAvailabilityService.test.js",
-      "test/helpers/calendarEvents.test.js",
-      "test/helpers/calendarReminderScheduler.test.js",
-      "test/helpers/calendarSyncInterval.test.js",
-      "test/helpers/googleCalendarManager.test.js",
+      "test/helpers/appleCalendarManager.test.ts",
+      "test/helpers/calendarAvailability.test.ts",
+      "test/helpers/calendarAvailabilityService.test.ts",
+      "test/helpers/calendarEvents.test.ts",
+      "test/helpers/calendarReminderScheduler.test.ts",
+      "test/helpers/calendarSyncInterval.test.ts",
+      "test/helpers/googleCalendarManager.test.ts",
       "test/helpers/microsoftCalendarManager.test.js",
       "test/utils/calendarAttendees.test.ts"
     ]
@@ -482,9 +482,9 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/assemblyAiStreaming.test.js",
-      "test/helpers/cortiStreaming.test.js",
-      "test/helpers/deepgramStreaming.test.js",
+      "test/helpers/assemblyAiStreaming.test.ts",
+      "test/helpers/cortiStreaming.test.ts",
+      "test/helpers/deepgramStreaming.test.ts",
       "test/helpers/meetingStreamingProviders.test.js",
       "test/helpers/openaiRealtimeStreaming.test.js",
       "test/helpers/realtimeTokenProviders.test.js",
@@ -500,7 +500,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/geminiLiveStreaming.test.js"
+      "test/helpers/geminiLiveStreaming.test.ts"
     ]
   },
   {
@@ -510,7 +510,7 @@
     "kind": "native",
     "buildMain": false,
     "files": [
-      "test/helpers/audioActivityDetector.test.js"
+      "test/helpers/audioActivityDetector.test.ts"
     ]
   },
   {
@@ -521,7 +521,7 @@
     "kind": "native",
     "buildMain": false,
     "files": [
-      "test/helpers/audioFileUploadElectron.test.js"
+      "test/helpers/audioFileUploadElectron.test.ts"
     ]
   },
   {
@@ -531,8 +531,8 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/calendarAvailabilityBridge.test.js",
-      "test/helpers/calendarBridge.test.js"
+      "test/helpers/calendarAvailabilityBridge.test.ts",
+      "test/helpers/calendarBridge.test.ts"
     ]
   },
   {
@@ -542,8 +542,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/calendarDatabase.test.js",
-      "test/helpers/calendarIpc.test.js",
+      "test/helpers/calendarDatabase.test.ts",
+      "test/helpers/calendarIpc.test.ts",
       "test/helpers/oauthLoopbackFlow.test.js"
     ]
   },
@@ -557,7 +557,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/canaryZeroSecrets.test.js"
+      "test/helpers/canaryZeroSecrets.test.ts"
     ]
   },
   {
@@ -568,7 +568,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/cleanupFailureToast.test.js"
+      "test/helpers/cleanupFailureToast.test.ts"
     ]
   },
   {
@@ -578,7 +578,7 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/containerBridge.test.js",
+      "test/helpers/containerBridge.test.ts",
       "test/helpers/notesBridge.test.js",
       "test/helpers/vocabularyBridge.test.js"
     ]
@@ -596,7 +596,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/databaseLocalBehavior.test.js",
+      "test/helpers/databaseLocalBehavior.test.ts",
       "test/helpers/devSnapshot.test.ts"
     ]
   },
@@ -613,8 +613,8 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/databaseLocalSchema.test.js",
-      "test/helpers/deviceCleanupContract.test.js"
+      "test/helpers/databaseLocalSchema.test.ts",
+      "test/helpers/deviceCleanupContract.test.ts"
     ]
   },
   {
@@ -625,9 +625,9 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/dateGroupFormatting.test.js",
-      "test/helpers/dictionaryImportFormat.test.js",
-      "test/helpers/dictionaryStartup.test.js"
+      "test/helpers/dateGroupFormatting.test.ts",
+      "test/helpers/dictionaryImportFormat.test.ts",
+      "test/helpers/dictionaryStartup.test.ts"
     ]
   },
   {
@@ -637,7 +637,7 @@
     "kind": "native",
     "buildMain": true,
     "files": [
-      "test/helpers/devRendererOrigin.test.js"
+      "test/helpers/devRendererOrigin.test.ts"
     ]
   },
   {
@@ -648,9 +648,9 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/diarizationPolicy.test.js",
-      "test/helpers/diarizationSpeakerMerge.test.js",
-      "test/helpers/ffmpegUtils.test.js",
+      "test/helpers/diarizationPolicy.test.ts",
+      "test/helpers/diarizationSpeakerMerge.test.ts",
+      "test/helpers/ffmpegUtils.test.ts",
       "test/helpers/meetingDiarizationInput.test.js",
       "test/helpers/meetingTranscriptionLifecycle.test.js",
       "test/helpers/meetingTranscriptionRouting.test.js",
@@ -668,7 +668,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/enterpriseEndpointGuard.test.js",
+      "test/helpers/enterpriseEndpointGuard.test.ts",
       "test/helpers/localModelDownloadStatus.test.js",
       "test/helpers/secureEndpoint.test.js",
       "test/services/openaiEndpointRetry.test.ts"
@@ -683,7 +683,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/envSecretStorage.test.js",
+      "test/helpers/envSecretStorage.test.ts",
       "test/helpers/secret*.test.js"
     ]
   },
@@ -694,7 +694,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/fileRetryStrategy.test.js",
+      "test/helpers/fileRetryStrategy.test.ts",
       "test/helpers/parakeetCapability.test.js",
       "test/helpers/parakeetServer.test.js",
       "test/helpers/parakeetWsResult.test.js",
@@ -730,7 +730,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/geminiFileTranscription.test.js",
+      "test/helpers/geminiFileTranscription.test.ts",
       "test/helpers/parakeetModelManifest.test.js"
     ]
   },

@@ -30,14 +30,14 @@ function loadHelper(name: string, mocks: any) {
   }
 }
 
-async function startupArgs(modelName: string, runtime = "offline", language = null, registry = modelData) {
-  const calls: unknown[] = [];
+async function startupArgs(modelName: string, runtime = "offline", language: string | null = null, registry = modelData) {
+  const calls: { binary: string; args: string[] }[] = [];
   const modelInfo = loadHelper("parakeetModelInfo", {
     "../models/modelRegistryData.json": registry,
   });
   const Server = loadHelper("parakeetWsServer", {
     child_process: {
-      spawn: (binary: any, args: unknown) => {
+      spawn: (binary: string, args: Iterable<string>) => {
         calls.push({ binary, args: Array.from(args) });
         const child = new EventEmitter();
         child.stdout = new EventEmitter();
@@ -59,6 +59,7 @@ async function startupArgs(modelName: string, runtime = "offline", language = nu
   server._warmUp = async () => {};
   await server.start(modelName, os.tmpdir(), runtime, language);
   assert.equal(calls.length, 1);
+  if (!calls[0]) throw new Error("Server did not spawn");
   return calls[0];
 }
 

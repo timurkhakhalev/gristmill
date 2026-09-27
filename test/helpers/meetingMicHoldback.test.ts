@@ -4,11 +4,20 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const {
   partitionPendingMicFinals,
   isWithinRetractWindow,
-} = require("../../src/helpers/meetingMicHoldback.ts");
+} = require("../../src/helpers/meetingMicHoldback.ts") as typeof import("../../src/helpers/meetingMicHoldback.ts");
 
 const NOW = 1_000_000;
+type PendingMicFinal = import("../../src/helpers/meetingMicHoldback.ts").PendingMicFinal;
+type CommittedMicSegment = import("../../src/helpers/meetingMicHoldback.ts").CommittedMicSegment;
+type MatchOptions = import("../../src/helpers/meetingMicHoldback.ts").NearbyTranscriptMatchOptions;
+type PendingFixture = Omit<PendingMicFinal, "micSuppression"> & {
+  micSuppression: (NonNullable<PendingMicFinal["micSuppression"]> & {
+    averageCorrelation?: number;
+    averageResidual?: number;
+  }) | null;
+};
 
-const entry = (overrides = {}) => ({
+const entry = (overrides: Partial<PendingFixture> = {}): PendingFixture => ({
   text: "hello there",
   timestamp: NOW - 5000,
   releaseAt: NOW - 1,
@@ -24,7 +33,7 @@ test("defers entries whose holdback has not elapsed without evaluating them", ()
   const { deferred, duplicates, releases } = partitionPendingMicFinals({
     pending: [waiting, due],
     now: NOW,
-    isDuplicate: (candidate: any) => {
+    isDuplicate: (candidate) => {
       evaluated.push(candidate);
       return false;
     },
@@ -77,7 +86,7 @@ test("force flush still drops confirmed duplicates (meeting-stop path)", () => {
     pending: [echoed, genuine],
     now: NOW,
     force: true,
-    isDuplicate: (candidate: any) => candidate === echoed,
+    isDuplicate: (candidate) => candidate === echoed,
   });
 
   assert.deepEqual(deferred, []);
@@ -92,7 +101,7 @@ test("drops entries only when the transcript matcher confirms a duplicate", () =
   const { duplicates, releases } = partitionPendingMicFinals({
     pending: [echoed, genuine],
     now: NOW,
-    isDuplicate: (candidate: any) => candidate === echoed,
+    isDuplicate: (candidate) => candidate === echoed,
   });
 
   assert.deepEqual(duplicates, [echoed]);
@@ -232,7 +241,7 @@ const {
   isDuplicateMicSegment,
   selectRacingMicEntryIndices,
   partitionOverlappingPendingMicFinals,
-} = require("../../src/helpers/meetingMicHoldback.ts");
+} = require("../../src/helpers/meetingMicHoldback.ts") as typeof import("../../src/helpers/meetingMicHoldback.ts");
 
 const DUPLICATE_WINDOW = 6000;
 const RETRACT_WINDOW = 4000;
@@ -260,8 +269,8 @@ test("isRiskyMicDuplicateProfile: bleed evidence, render bleed, or double_talk a
 });
 
 test("isDuplicateMicSegment: bleed evidence uses the strict matcher; double_talk uses the relaxed matcher", () => {
-  const calls: unknown[] = [];
-  const matcher = (source: string, text: string, timestamp: unknown, options: unknown) => {
+  const calls: { source: string; text: string; timestamp: number; options?: MatchOptions }[] = [];
+  const matcher = (source: "system", text: string, timestamp: number, options?: MatchOptions) => {
     calls.push({ source, text, timestamp, options });
     return true;
   };
@@ -289,7 +298,7 @@ test("isDuplicateMicSegment: bleed evidence uses the strict matcher; double_talk
 });
 
 test("isDuplicateMicSegment: bleed evidence without a strict match falls through to double_talk only if flagged", () => {
-  const strictFalseRelaxedTrue = (source: string, text: string, timestamp: unknown, options: unknown) => !!options?.relaxed;
+  const strictFalseRelaxedTrue = (_source: "system", _text: string, _timestamp: number, options?: MatchOptions) => !!options?.relaxed;
   assert.equal(
     isDuplicateMicSegment({
       text: "hi",
@@ -334,7 +343,7 @@ test("isDuplicateMicSegment: systemSpeaking-only or no suppression never calls t
   assert.equal(calls, 0);
 });
 
-const micSeg = (overrides: any) => ({
+const micSeg = (overrides: Partial<CommittedMicSegment> = {}): CommittedMicSegment => ({
   source: "mic",
   text: "we should ship on friday",
   timestamp: NOW - 1000,
@@ -357,8 +366,8 @@ test("selectRacingMicEntryIndices removes bleed-flagged mic entries that overlap
     }),
     micSeg({ suppressionReason: "double_talk", timestamp: NOW - 1000, committedAt: NOW - 900 }),
   ];
-  const seen: unknown[] = [];
-  const matcher = (source: string, text: string, timestamp: unknown, options: unknown) => {
+  const seen: { text: string; relaxed: boolean; extra?: MatchOptions["extraSegment"] }[] = [];
+  const matcher = (_source: "system", text: string, _timestamp: number, options?: MatchOptions) => {
     seen.push({ text, relaxed: !!options?.relaxed, extra: options?.extraSegment });
     return true;
   };
@@ -435,8 +444,8 @@ test("partitionOverlappingPendingMicFinals splits pending finals by system overl
     entry({ text: "b", micSuppression: null }),
     entry({ text: "c", micSuppression: { hasBleedEvidence: true } }),
   ];
-  const seen: unknown[] = [];
-  const matcher = (source: string, text: string, timestamp: unknown, options: unknown) => {
+  const seen: { text: string; relaxed: boolean }[] = [];
+  const matcher = (_source: "system", text: string, _timestamp: number, options?: MatchOptions) => {
     seen.push({ text, relaxed: !!options?.relaxed });
     return text !== "b";
   };
@@ -447,11 +456,11 @@ test("partitionOverlappingPendingMicFinals splits pending finals by system overl
     hasNearbyTranscriptMatch: matcher,
   });
   assert.deepEqual(
-    kept.map((p: string) => p.text),
+    kept.map((p) => p.text),
     ["b"]
   );
   assert.deepEqual(
-    removed.map((p: string) => p.text),
+    removed.map((p) => p.text),
     ["a", "c"]
   );
   assert.deepEqual(seen, [

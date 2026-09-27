@@ -2,6 +2,7 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
 const { EventEmitter } = require("node:events");
+import type { MeetingNotificationData } from "../../src/contracts/meetingCoordinator";
 
 const enginePath = require.resolve("../../src/helpers/meetingDetectionEngine");
 const originalLoad = Module._load;
@@ -22,7 +23,7 @@ function loadEngine() {
     // ESM module; the app loads it through a transpiling loader. The engine
     // imports it with the explicit .js extension TS emits, tests may too.
     if (request === "./meetingJoinUrl" || request === "./meetingJoinUrl.js") {
-      return { getMeetingJoinUrl: (event: unknown) => event?.hangout_link ?? null };
+      return { getMeetingJoinUrl: (event: { hangout_link?: string } | null) => event?.hangout_link ?? null };
     }
     return originalLoad.call(this, request, parent, isMain);
   };
@@ -37,7 +38,11 @@ function loadEngine() {
 function createEngine() {
   const MeetingDetectionEngine = loadEngine();
 
-  const reminderScheduler = {
+  const reminderScheduler: { getActiveMeetingState: () => {
+    activeMeeting: Record<string, unknown> | null;
+    upcomingEvents: unknown[];
+    activeEvents?: unknown[];
+  } } = {
     getActiveMeetingState: () => ({ activeMeeting: null, activeEvents: [], upcomingEvents: [] }),
   };
   const processDetector = new EventEmitter();
@@ -58,10 +63,10 @@ function createEngine() {
   callDetector.start = () => {};
   callDetector.stop = () => {};
 
-  const shown: unknown[] = [];
+  const shown: MeetingNotificationData[] = [];
   const windowManager = {
     notificationPrefs: {},
-    showMeetingNotification: (data: unknown) => shown.push(data),
+    showMeetingNotification: (data: MeetingNotificationData) => shown.push(data),
     dismissMeetingNotification: () => {},
     queueMeetingNoteNavigation: async () => {},
   };
@@ -78,6 +83,12 @@ function createEngine() {
   return { engine, audioDetector, callDetector, processDetector, shown, reminderScheduler };
 }
 
+function detectionAt(shown: MeetingNotificationData[], index: number) {
+  const data = shown[index];
+  if (data?.kind !== "detection") throw new Error(`Expected detection notification at ${index}`);
+  return data;
+}
+
 test("microphone activity alone cannot show a meeting prompt", () => {
   const { audioDetector, shown } = createEngine();
   audioDetector.emit("sustained-audio-detected", { durationMs: 2000, detectedAt: 0 });
@@ -87,7 +98,7 @@ test("microphone activity alone cannot show a meeting prompt", () => {
 test("a call retries when startup prevents its notification from being shown", async () => {
   const { engine, callDetector, shown } = createEngine();
   let ready = false;
-  engine.windowManager.showMeetingNotification = async (data: unknown) => {
+  engine.windowManager.showMeetingNotification = async (data: MeetingNotificationData) => {
     if (!ready) return false;
     shown.push(data);
     return true;
@@ -131,7 +142,7 @@ test("dismissal does not repeat until the call ends", async () => {
   const { engine, callDetector, shown } = createEngine();
 
   callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
-  await engine.handleNotificationResponse(shown[0].detectionId, "dismiss");
+  await engine.handleNotificationResponse(detectionAt(shown, 0).detectionId, "dismiss");
   callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
   assert.equal(shown.length, 1);
 });
@@ -140,7 +151,7 @@ test("a confirmed new call can prompt after the previous one ends", () => {
   const { engine, callDetector, shown } = createEngine();
 
   callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
-  engine.handleDetectionNotificationClosed(shown[0].detectionId);
+  engine.handleDetectionNotificationClosed(detectionAt(shown, 0).detectionId);
   callDetector.emit("call-ended", { key: "zoom:123" });
   callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
 
@@ -177,7 +188,7 @@ test("a later call can prompt after the call tied to a calendar offer ends", () 
   callDetector.emit("call-active", { key, service: "meet" });
 
   assert.equal(shown.length, 2);
-  assert.equal(shown[1].source, "audio");
+  assert.equal(detectionAt(shown, 1).source, "audio");
 });
 
 test("a calendar offer without a join link does not hide an unrelated call", () => {
@@ -192,7 +203,7 @@ test("a calendar offer without a join link does not hide an unrelated call", () 
   callDetector.emit("call-active", { key: "zoom:123", service: "zoom" });
 
   assert.equal(shown.length, 2);
-  assert.equal(shown[1].source, "audio");
+  assert.equal(detectionAt(shown, 1).source, "audio");
 });
 
 test("a confirmed Meet call suppresses its later calendar reminder", () => {
@@ -207,7 +218,7 @@ test("a confirmed Meet call suppresses its later calendar reminder", () => {
   callDetector.emit("call-active", { key, service: "meet" });
   engine.handleCalendarReminder(event);
   assert.equal(shown.length, 1);
-  assert.equal(shown[0].variant, "detected");
+  assert.equal(detectionAt(shown, 0).variant, "detected");
 });
 
 test("a meeting app appearing asks the mic detector to re-evaluate unattributed activity", () => {

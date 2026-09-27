@@ -5,11 +5,27 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 // --experimental-strip-types, on by default in Node 23.6+/24). CI runs Node 24.
 
 const load = () => import("../../src/stores/noteListOps.ts");
+type NoteItem = import("../../src/contracts/notes.ts").NoteItem;
 
-const note = (id: unknown, folderId = 1, spaceId = 1) => ({
+const note = (id: number, folderId: number | null = 1, spaceId = 1): NoteItem => ({
   id,
+  title: "",
+  content: "",
+  note_type: "text",
+  source_file: null,
+  audio_duration_seconds: null,
+  created_at: "",
+  updated_at: "",
+  enhanced_content: null,
+  enhancement_prompt: null,
+  enhanced_at_content_hash: null,
   folder_id: folderId,
   space_id: spaceId,
+  transcript: null,
+  calendar_event_id: null,
+  participants: null,
+  diarization_enabled: null,
+  expected_speaker_count: null,
 });
 
 test("removes the note from every container list that holds it", async () => {

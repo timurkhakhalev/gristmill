@@ -10,10 +10,10 @@ const LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadSt
 function createHarness(overrides = {}) {
   const handlers = new Map();
   const sent: unknown[] = [];
-  const calls = { persist: 0, stopServer: 0 };
+  const calls : any = { persist: 0, stopServer: 0 };
   const active = new Map();
 
-  const deps = {
+  deps: any = {
     modelManager: {
       getModelsWithStatus: async () => [],
       isModelDownloaded: async () => false,
@@ -56,7 +56,7 @@ function createHarness(overrides = {}) {
         active.set(`${type}:${id}`, true);
       },
       update: (type: string, id: unknown, updates: unknown) => {
-        const current = { progress: 0, downloadedBytes: 0, totalBytes: 0, ...active.get(`${type}:${id}`), ...updates };
+        const current : any = { progress: 0, downloadedBytes: 0, totalBytes: 0, ...active.get(`${type}:${id}`), ...updates };
         active.set(`${type}:${id}`, current);
         return { modelType: type, modelId: id, phase: "downloading", sequence: 3, ...current };
       },

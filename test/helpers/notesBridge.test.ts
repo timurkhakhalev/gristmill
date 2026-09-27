@@ -176,14 +176,14 @@ test("the full bundled preload chain round-trips a note", async (t: import("node
   assert.equal(updated.note.title, "Bridge2");
 
   const listed = await api.getNotes(null, 100, null, null);
-  assert.ok(listed.some((n: string) => n.id === saved.note.id));
+  assert.ok(listed.some((n: any) => n.id === saved.note.id));
 
   const spaceId = saved.note.space_id;
   const spaceNotes = await api.getSpaceNotes(spaceId, 50);
-  assert.ok(spaceNotes.some((n: string) => n.id === saved.note.id));
+  assert.ok(spaceNotes.some((n: any) => n.id === saved.note.id));
 
   const found = await api.searchNotes("Bridge2", 50, null, null);
-  assert.ok(found.some((n: string) => n.id === saved.note.id));
+  assert.ok(found.some((n: any) => n.id === saved.note.id));
   assert.equal((await api.searchNotes("", 50, null, null)).length, 0);
 
   const deleted = await api.deleteNote(saved.note.id);

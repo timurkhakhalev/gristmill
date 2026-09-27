@@ -23,8 +23,8 @@ const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercu
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, Buffer.alloc(2048));
 
-function makeTransport({ statusCode = 200, data = { text: "transcribed" } } = {}) {
-  const calls: unknown[] = [];
+function makeTransport({ statusCode = 200, data = { text: "transcribed" } }: { statusCode?: number; data?: any } = {}) {
+  const calls: any[] = [];
   return {
     calls,
     postMultipart: async (url: string, body: unknown, boundary: any, headers: unknown, options: unknown) => {
@@ -38,10 +38,10 @@ function makeTransport({ statusCode = 200, data = { text: "transcribed" } } = {}
   };
 }
 
-function baseDeps(overrides = {}) {
+function baseDeps(overrides: any = {}) {
   const transport = overrides.transport || makeTransport();
   const registry = overrides.uploadCancelRegistry || createUploadCancelRegistry();
-  const calls = {
+  const calls: any = {
     reads: [],
     corti: [],
     tinfoil: [],
@@ -66,15 +66,15 @@ function baseDeps(overrides = {}) {
     providerBaseUrls: () => [],
     postMultipart: transport.postMultipart,
     postRawAudioFile: transport.postRawAudioFile,
-    transcribeWithTinfoil: async (args: unknown) => {
+    transcribeWithTinfoil: async (args: any) => {
       calls.tinfoil.push(args);
       return { text: "tinfoil text" };
     },
-    transcribeGeminiFile: async (args: unknown) => {
+    transcribeGeminiFile: async (args: any) => {
       calls.gemini.push(args);
       return { success: true, text: "gemini text" };
     },
-    transcribeWithCorti: async (args: unknown) => {
+    transcribeWithCorti: async (args: any) => {
       calls.corti.push(args);
       return { text: "corti text" };
     },
@@ -116,7 +116,7 @@ test("Deepgram sends the complete file with its own auth and maps timed speakers
   assert.equal(result.success, true);
   assert.equal(result.diarized, true);
   assert.deepEqual(
-    result.segments.map((s: string) => s.speaker),
+    result.segments.map((s: any) => s.speaker),
     ["Speaker 1", "Speaker 2"]
   );
   assert.match(result.text, /Привет/);
@@ -198,7 +198,7 @@ test("ElevenLabs streams multipart Scribe audio and groups timed speaker words",
   assert.equal(result.success, true);
   assert.equal(result.diarized, true);
   assert.deepEqual(
-    result.segments.map((s: string) => s.speaker),
+    result.segments.map((s: any) => s.speaker),
     ["Speaker 1", "Speaker 2"]
   );
   assert.equal(result.segments[0].text, "Hello there. ");
@@ -274,7 +274,7 @@ function setup(overrides = {}) {
   const { deps, calls, transport, registry } = baseDeps(overrides);
   const handlers = new Map();
   registerRemoteTranscriptionHandler({ handle: (channel: string, fn: unknown) => handlers.set(channel, fn) }, deps);
-  const call = (payload: unknown) => handlers.get("transcribe-audio-file-byok")(null, payload);
+  const call = (payload: any) => handlers.get("transcribe-audio-file-byok")(null, payload);
   return { call, calls, transport, registry, handlers, deps };
 }
 
@@ -294,7 +294,7 @@ test("meeting raw-response sink is awaited before Deepgram parsing", async () =>
       requestId: "meeting-raw-before-parse",
     },
     {
-      onRawProviderResponse: async (response: unknown) => {
+      onRawProviderResponse: async (response: any) => {
         saved.push(response);
         throw Object.assign(new Error("durable save failed"), { code: "RAW_SAVE_FAILED" });
       },
@@ -325,7 +325,7 @@ test("meeting raw-response sink is awaited before ElevenLabs parsing", async () 
       requestId: "meeting-elevenlabs-raw-before-parse",
     },
     {
-      onRawProviderResponse: async (response: unknown) => {
+      onRawProviderResponse: async (response: any) => {
         saved = response;
         throw Object.assign(new Error("durable save failed"), { code: "RAW_SAVE_FAILED" });
       },
@@ -356,7 +356,7 @@ test("meeting raw-response sink is awaited before OpenAI parsing", async () => {
       requestId: "meeting-openai-raw-before-parse",
     },
     {
-      onRawProviderResponse: async (response: unknown) => {
+      onRawProviderResponse: async (response: any) => {
         saved = response;
         throw Object.assign(new Error("durable save failed"), { code: "RAW_SAVE_FAILED" });
       },
@@ -575,7 +575,7 @@ test("mistral speakers payload projects ids with a fallback label", async () => 
     transcriptionMode: "providers",
   });
   assert.deepEqual(
-    result.segments.map((s: string) => s.speaker),
+    result.segments.map((s: any) => s.speaker),
     ["S1", "Speaker 2"]
   );
 });

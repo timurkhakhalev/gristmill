@@ -37,7 +37,7 @@ const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercu
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, "RIFF....");
 
-const logs = { debug: [], error: [] };
+const logs : any = { debug: [], error: [] };
 
 function setup({ whisper, parakeet } = {}) {
   const handlers = new Map();

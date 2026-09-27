@@ -81,8 +81,8 @@ async function createFixture(t: import("node:test").TestContext) {
   activeSent = sent;
   handlers.clear();
 
-  const effects = { mirrorWrites: [], autoLabels: [], speakerRefreshes: [] };
-  const deps = {
+  const effects : any = { mirrorWrites: [], autoLabels: [], speakerRefreshes: [] };
+  deps: any = {
     saveNote: (title: any, content: string, noteType: string, sourceFile: any, audioDuration: any, folderId: any, spaceId: any) =>
       db.saveNote(title, content, noteType, sourceFile, audioDuration, folderId, spaceId),
     getNote: (id: any) => db.getNote(id),

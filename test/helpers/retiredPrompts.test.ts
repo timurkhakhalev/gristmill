@@ -97,7 +97,7 @@ test("registry entries are well-formed sha256 hex digests", async () => {
 test("current-hash snapshot matches the live locale bundles (ratchet)", async () => {
   const { CURRENT_DEFAULT_PROMPT_HASHES } = await load();
   const bundles = readLocaleBundles();
-  const expected = {};
+  const expected : any = {};
   for (const [locale, bundle] of Object.entries(bundles)) {
     for (const key of BUNDLE_KEYS) {
       if (typeof bundle[key] === "string") expected[`${locale}/${key}`] = sha256(bundle[key]);

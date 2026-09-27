@@ -82,7 +82,7 @@ const plain = (value: any) => JSON.parse(JSON.stringify(value));
 async function createFixture() {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
-  const ipcMain = {
+  ipcMain: any = {
     handle: (channel: string, listener: any) => activeHandlers.set(channel, listener),
     on: (channel: string, listener: any) => activeHandlers.set(channel, listener),
   };

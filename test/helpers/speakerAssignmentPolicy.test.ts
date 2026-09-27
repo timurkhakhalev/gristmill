@@ -40,7 +40,7 @@ test("isSpeakerLocked and canAutoRelabelSpeaker check lock state accurately", ()
 });
 
 test("applyProvisionalSpeaker, applyConfirmedSpeaker, and applySuggestedSpeaker update segment fields", () => {
-  const segment = { text: "hello", speaker: "A" };
+  const segment : any = { text: "hello", speaker: "A" };
   applyProvisionalSpeaker(segment, { speaker: "Speaker 1" });
   assert.equal(segment.speaker, "Speaker 1");
   assert.equal(segment.speakerStatus, "provisional");
@@ -55,7 +55,7 @@ test("applyProvisionalSpeaker, applyConfirmedSpeaker, and applySuggestedSpeaker 
 });
 
 test("locked segments preserve lock status on updates", () => {
-  const lockedSegment = { text: "hello", speaker: "Alice", speakerLocked: true };
+  const lockedSegment : any = { text: "hello", speaker: "Alice", speakerLocked: true };
   applyProvisionalSpeaker(lockedSegment, { speaker: "Speaker 2" });
   assert.equal(lockedSegment.speaker, "Alice");
   assert.equal(lockedSegment.speakerStatus, "locked");

@@ -25,7 +25,7 @@ test("a note title ending in transcript keeps both mirrored files", (t: import("
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
-  const note = {
+  note: any = {
     id: 7,
     title: "Meeting transcript",
     content: "Decisions and action items",
@@ -232,7 +232,7 @@ test("a title with control characters keeps the frontmatter a valid single-line 
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
-  const note = {
+  note: any = {
     id: 5,
     title: "Q3 Review\nconfidential\ttag",
     content: "Body text",
@@ -276,7 +276,7 @@ test("deleteNote removes the note's other files even when one unlink fails", (t:
   // Windows); the remaining file must still be deleted rather than orphaned.
   const realUnlink = fs.unlinkSync;
   let failedPath: unknown = null;
-  fs.unlinkSync = (target: unknown) => {
+  fs.unlinkSync = (target: any) => {
     if (failedPath === null) {
       failedPath = target;
       throw Object.assign(new Error("EPERM"), { code: "EPERM" });

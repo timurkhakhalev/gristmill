@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/transcriptionRoute.ts");
 
-const resolve = async (settings: unknown, extra = {}) => {
+const resolve = async (settings: unknown, extra: Record<string, unknown> = {}): Promise<any> => {
   const { resolveTranscriptionRoute } = await load();
   return resolveTranscriptionRoute({ settings, ...extra });
 };
@@ -153,7 +153,7 @@ test("custom requires a configured secure endpoint (empty, sentinel, garbage all
       settings: { cloudTranscriptionProvider: "custom", cloudTranscriptionBaseUrl },
     });
     assert.equal(route.transport, "error", cloudTranscriptionBaseUrl);
-    assert.equal(route.code, "CUSTOM_ENDPOINT_INVALID", cloudTranscriptionBaseUrl);
+    assert.equal((route as { code?: string }).code, "CUSTOM_ENDPOINT_INVALID", cloudTranscriptionBaseUrl);
   }
 
   const localhost = await resolve({

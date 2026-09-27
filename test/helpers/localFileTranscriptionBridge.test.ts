@@ -90,7 +90,7 @@ async function createFixture(t: import("node:test").TestContext, managers = {}) 
   activeHandlers = new Map();
   t.after(() => { activeHandlers = null; });
 
-  const calls = { whisper: [], parakeet: [], reads: [] };
+  const calls : any = { whisper: [], parakeet: [], reads: [] };
   const { registerLocalFileTranscriptionHandler } = await import(
     "../../src/helpers/localFileTranscriptionIpcHandler.ts"
   );

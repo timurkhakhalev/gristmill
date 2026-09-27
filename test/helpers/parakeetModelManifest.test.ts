@@ -20,7 +20,7 @@ const managerFile = path.resolve(__dirname, "../../src/helpers/parakeet.ts");
 function setup(t: import("node:test").TestContext, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "parakeet-manifest-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const calls = { downloads: [], manifests: [], events: [], errors: [], warms: 0, timeouts: [] };
+  const calls : any = { downloads: [], manifests: [], events: [], errors: [], warms: 0, timeouts: [] };
   const timeout = new AbortController();
   let downloadControl: any;
   const fakeFs = options.writeError
@@ -34,7 +34,7 @@ function setup(t: import("node:test").TestContext, options = {}) {
         },
       }
     : fs;
-  const stubs = {
+  stubs: any = {
     fs: fakeFs,
     "./debugLogger": {
       info() {},
@@ -79,7 +79,7 @@ function setup(t: import("node:test").TestContext, options = {}) {
         calls.events.push("downloaded");
       },
       createDownloadSignal() {
-        const signal = { aborted: false };
+        const signal : any = { aborted: false };
         downloadControl = {
           signal,
           abort: () => {

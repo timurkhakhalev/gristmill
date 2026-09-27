@@ -16,7 +16,7 @@ function createVadSettingsStore() {
     "meetingSileroEnabled",
     ...Object.keys(vadDefaults),
   ]);
-  let settings = {};
+  let settings : any = {};
   return {
     get() {
       return {
@@ -39,10 +39,10 @@ function createVadSettingsStore() {
 function createHarness(overrides = {}) {
   const handlers = new Map();
   const sent: unknown[] = [];
-  const calls = { persist: [], clear: 0, started: [], finished: [] };
+  const calls : any = { persist: [], clear: 0, started: [], finished: [] };
   const active = new Map();
 
-  const downloadStatus = {
+  downloadStatus: any = {
     has: (modelType: string, modelId: string) => active.has(`${modelType}:${modelId}`),
     start: (modelType: string, modelId: string) => {
       calls.started.push(`${modelType}:${modelId}`);
@@ -59,7 +59,7 @@ function createHarness(overrides = {}) {
 
   const vadStore = overrides.vadStore || createVadSettingsStore();
 
-  const deps = {
+  deps: any = {
     whisperManager: {
       downloadWhisperModel: async (modelName: string, onProgress: unknown) => {
         onProgress({ type: "progress", model: modelName, percentage: 10 });
@@ -77,7 +77,7 @@ function createHarness(overrides = {}) {
     progressSender: { sendToControlPanel: (channel: string, payload: unknown) => sent.push([channel, payload]) },
     updateDownloadStatus: () => ({ sequence: 3 }),
     getWhisperVadSettings: () => vadStore.get(),
-    setWhisperVadSettings: (payload: unknown) => vadStore.set(payload),
+    setWhisperVadSettings: (payload: any) => vadStore.set(payload),
     persistParakeetProviderSelection: async (modelName: any) => {
       calls.persist.push(modelName);
     },

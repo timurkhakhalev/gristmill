@@ -9,7 +9,7 @@ const originalLoad = Module._load;
 // A fake utility-process graph: MessageChannelMain ports are EventEmitters
 // wired both ways, and fork() returns a scripted child the test controls.
 function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
-  const state = { children: [], forkCalls: 0 };
+  state: any = { children: [], forkCalls: 0 };
 
   class FakePort extends EventEmitter {
     constructor(peer: any) {

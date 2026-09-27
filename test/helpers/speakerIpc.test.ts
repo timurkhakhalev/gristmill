@@ -10,9 +10,9 @@ function embeddingBuffer(samples = 4) {
   return Buffer.from(new Float32Array(new Array(samples).fill(0.5)).buffer);
 }
 
-function createHarness(overrides = {}) {
+function createHarness(overrides: Record<string, any> = {}) {
   const handlers = new Map();
-  const calls = { retroactive: [], autoLabel: [], upserts: [], savedEmbeddings: [], progress: [] };
+  const calls: any = { retroactive: [], autoLabel: [], upserts: [], savedEmbeddings: [], progress: [] };
 
   const database = {
     searchContacts: () => [{ email: "a@b.io", display_name: "A" }],
@@ -35,10 +35,10 @@ function createHarness(overrides = {}) {
     getNoteSpeakerEmbeddings: () => [
       { speaker_id: "speaker_0", embedding: embeddingBuffer() },
     ],
-    setSpeakerMapping: (...args) => {
+    setSpeakerMapping: (...args: unknown[]) => {
       calls.setMapping = args;
     },
-    removeSpeakerMapping: (...args) => {
+    removeSpeakerMapping: (...args: unknown[]) => {
       calls.removeMapping = args;
     },
     getSpeakerProfiles: () => [
@@ -53,15 +53,15 @@ function createHarness(overrides = {}) {
     saveNoteSpeakerEmbeddings: (noteId: unknown, buffers: any) => {
       calls.savedEmbeddings.push({ noteId, buffers });
     },
-    ...overrides.database,
+    ...(overrides.database as any),
   };
 
   const live = {
     getSpeakerEmbedding: () => null,
-    mapSpeaker: (...args) => {
+    mapSpeaker: (...args: unknown[]) => {
       calls.mapSpeaker = args;
     },
-    ...overrides.live,
+    ...(overrides.live as any),
   };
 
   const diarization = {
@@ -74,7 +74,7 @@ function createHarness(overrides = {}) {
     isVadModelDownloaded: () => true,
     deleteModels: async () => {},
     cancelDownload: () => ({ success: true, message: "Download cancelled" }),
-    ...overrides.diarization,
+    ...(overrides.diarization as any),
   };
 
   registerSpeakerHandlers(
@@ -90,7 +90,7 @@ function createHarness(overrides = {}) {
         calls.autoLabel.push(noteId);
       },
       logError: () => {},
-      ...overrides.deps,
+      ...(overrides.deps as any),
     }
   );
 
@@ -104,7 +104,7 @@ function createHarness(overrides = {}) {
     },
   };
 
-  const invoke = (channel: string, ...args) => handlers.get(channel)({ sender }, ...args);
+  const invoke = (channel: string, ...args: unknown[]) => handlers.get(channel)({ sender }, ...args);
   return { handlers, invoke, calls, sender };
 }
 
@@ -207,7 +207,7 @@ test("download failures forward the coded error to the sender", async () => {
   const h = createHarness({
     diarization: {
       downloadModels: async () => {
-        const err = new Error("interrupted");
+        const err = new Error("interrupted") as Error & { code: string };
         err.code = "DOWNLOAD_CANCELLED";
         throw err;
       },

@@ -54,7 +54,7 @@ function fakeSender(id: any) {
 
 function makeDeps(overrides = {}) {
   const generateCalls: any[] = [];
-  const deps = {
+  deps: any = {
     localService: {
       isAvailable: async () => true,
       processText: async () => "local result",

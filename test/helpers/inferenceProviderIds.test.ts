@@ -19,9 +19,9 @@ function inferenceProviderIds() {
   return ids;
 }
 
-const localIds = modelData.localProviders.map((p: string) => p.id);
-const cloudIds = modelData.cloudProviders.map((p: string) => p.id);
-const enterpriseIds = modelData.enterpriseProviders.map((p: string) => p.id);
+const localIds = modelData.localProviders.map((p: any) => p.id);
+const cloudIds = modelData.cloudProviders.map((p: any) => p.id);
+const enterpriseIds = modelData.enterpriseProviders.map((p: any) => p.id);
 
 test("every selectable cloud and enterprise provider has an inference handler", () => {
   const handlers = inferenceProviderIds();

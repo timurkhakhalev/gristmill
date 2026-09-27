@@ -6,6 +6,11 @@ const path = require("node:path");
 const root = path.join(__dirname, "..");
 
 const removedOwnedModules = [
+  "src/components/EnterpriseSection.tsx",
+  "src/components/EnterpriseProviderConfig.tsx",
+  "src/components/TestConnectionButton.tsx",
+  "src/components/ui/CustomModelInput.tsx",
+  "src/components/ui/ProviderTabs.tsx",
   "src/components/AcceptInvitationModal.tsx",
   "src/components/ApiKeysSection.tsx",
   "src/components/AuthenticationStep.tsx",
@@ -122,11 +127,4 @@ test("integrations keeps calendar OAuth and drops hosted integrations", () => {
   assert.match(source, /appleCalendar/);
   assert.doesNotMatch(source, /ApiKeysSection|McpIntegrationCard|CliIntegrationCard/);
   assert.doesNotMatch(source, /docs\.openwhispr\.com\/api|isPaid|onUpgrade/);
-});
-
-test("enterprise provider setup remains direct-credential based", () => {
-  const source = fs.readFileSync(path.join(root, "src/components/EnterpriseSection.tsx"), "utf8");
-  assert.match(source, /EnterpriseProviderConfig/);
-  assert.match(source, /AWS Bedrock|Azure OpenAI/);
-  assert.doesNotMatch(source, /policyRules|usePolicySnapshot|managed/);
 });

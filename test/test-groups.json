@@ -110,8 +110,7 @@
     "buildMain": false,
     "files": [
       "test/components/i18nDirectionProvider.test.js",
-      "test/helpers/uiLanguageStartup.test.js",
-      "test/hooks/useStartOnboarding.test.js"
+      "test/helpers/uiLanguageStartup.test.js"
     ]
   },
   {
@@ -226,7 +225,6 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/emojiInput.test.js",
       "test/helpers/granolaImport.test.js",
       "test/helpers/noteCards.test.js",
       "test/helpers/noteListOps.test.js",

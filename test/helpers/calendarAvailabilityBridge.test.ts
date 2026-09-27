@@ -12,7 +12,8 @@ const Module = require("node:module");
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
-let activeHandlers: unknown = null;
+type BridgeHandler = (event: unknown, ...args: unknown[]) => unknown;
+let activeHandlers: Map<string, BridgeHandler> | null = null;
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-calavail-"));
 const originalNodeEnv = process.env.NODE_ENV;
 
@@ -22,8 +23,8 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
     return {
       app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
       ipcMain: {
-        handle: (channel: string, listener) => {
-          if (!activeHandlers) activeHandlers = new Map();
+        handle: (channel: string, listener: BridgeHandler) => {
+          if (!activeHandlers) activeHandlers = new Map<string, BridgeHandler>();
           if (activeHandlers.has(channel)) {
             throw new Error(`Attempted to register a second handler for '${channel}'`);
           }
@@ -47,8 +48,9 @@ test.after(() => {
   fs.rmSync(userDataDir, { recursive: true, force: true });
 });
 
-function loadBundledPreload(invoke) {
-  let api;
+type AvailApi = { [k: string]: (...args: any[]) => Promise<any> };
+function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
+  let api: AvailApi | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -58,7 +60,7 @@ function loadBundledPreload(invoke) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name, value: unknown) => {
+          exposeInMainWorld: (_name: string, value: AvailApi) => {
             api = value;
           },
         },
@@ -74,7 +76,7 @@ function loadBundledPreload(invoke) {
     process: { platform: "darwin", versions: {} },
     console,
   });
-  return api;
+  return api!;
 }
 
 // Objects from vm.runInNewContext have a different prototype; compare by JSON.
@@ -85,20 +87,20 @@ const END = "2026-08-25T12:00:00.000Z";
 const NOW = new Date("2026-08-25T06:00:00.000Z");
 const REQUEST = { start: START, end: END, minimumSlotMinutes: 30, bufferMinutes: 15 };
 
-async function createFixture(t: import("node:test").TestContext, { events, dbSpy } = {}) {
-  activeHandlers = new Map();
+async function createFixture(t: import("node:test").TestContext, { events, dbSpy }: { events?: unknown[]; dbSpy?: (...args: unknown[]) => void } = {}) {
+  activeHandlers = new Map<string, BridgeHandler>();
   t.after(() => { activeHandlers = null; });
 
   const registered: unknown[] = [];
   const { registerCalendarAvailabilityHandler } = await import(
     "../../src/helpers/calendarAvailabilityIpcHandler.ts"
   );
-  const spy = dbSpy || ((...args) => registered.push(args));
+  const spy = dbSpy || ((...args: unknown[]) => { registered.push(args); });
   registerCalendarAvailabilityHandler(
-    { handle: (channel, listener) => activeHandlers.set(channel, listener) },
+    { handle: (channel: string, listener: BridgeHandler) => activeHandlers!.set(channel, listener) },
     {
       databaseManager: {
-        getCalendarEventsInRange: (start, end, providers) => {
+        getCalendarEventsInRange: (start: unknown, end: unknown, providers: unknown) => {
           spy(start, end, providers);
           return events || [];
         },
@@ -114,7 +116,7 @@ async function createFixture(t: import("node:test").TestContext, { events, dbSpy
   );
 
   const handlersSnapshot = new Map(activeHandlers);
-  const invoke = async (channel: string, ...args) => {
+  const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler(null, ...args);
@@ -175,8 +177,8 @@ test("extra private fields are stripped; a structurally wrong response rejects",
 
   // A misbehaving main mock smuggles busy intervals in: the schema strips
   // unknown keys, so they can never reach the renderer payload.
-  const smuggling = loadBundledPreload(async (channel: string, ...args) => {
-    const result = await handlersSnapshot.get(channel)(null, ...args);
+  const smuggling = loadBundledPreload(async (channel: string, ...args: unknown[]) => {
+    const result: any = await handlersSnapshot.get(channel)!(null, ...args);
     if (result?.success) {
       return { ...result, availability: { ...result.availability, busy: [{ start: "x", end: "y" }] } };
     }
@@ -189,9 +191,9 @@ test("extra private fields are stripped; a structurally wrong response rejects",
   }
 
   // A structurally wrong payload (missing required fields) rejects outright.
-  const broken = loadBundledPreload(async (channel: string, ...args) => {
+  const broken = loadBundledPreload(async (channel: string, ...args: unknown[]) => {
     if (channel === "calendar-get-availability") return { success: true, availability: { junk: true } };
-    return handlersSnapshot.get(channel)(null, ...args);
+    return handlersSnapshot.get(channel)!(null, ...args);
   });
   await assert.rejects(broken.calendarGetAvailability(REQUEST), /Unexpected response shape/);
 });

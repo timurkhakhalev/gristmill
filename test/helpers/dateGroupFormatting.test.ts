@@ -35,7 +35,7 @@ test("database timestamps with an explicit numeric offset keep that offset", asy
   );
 });
 
-test("history groups label today's and yesterday's dates by calendar day", async (t2) => {
+test("history groups label today's and yesterday's dates by calendar day", async (t2: import("node:test").TestContext) => {
   const { formatDateGroup } = await load();
   t2.mock.timers.enable({ apis: ["Date"], now: NOON_JUNE_15 });
 
@@ -43,7 +43,7 @@ test("history groups label today's and yesterday's dates by calendar day", async
   assert.equal(formatDateGroup(new Date(2024, 5, 14, 20), t), "Yesterday");
 });
 
-test("history groups fall back to a formatted date for older days", async (t2) => {
+test("history groups fall back to a formatted date for older days", async (t2: import("node:test").TestContext) => {
   const { formatDateGroup } = await load();
   t2.mock.timers.enable({ apis: ["Date"], now: NOON_JUNE_15 });
 
@@ -53,7 +53,7 @@ test("history groups fall back to a formatted date for older days", async (t2) =
   assert.notEqual(result, "Yesterday");
 });
 
-test("string dates are accepted", async (t2) => {
+test("string dates are accepted", async (t2: import("node:test").TestContext) => {
   const { formatDateGroup } = await load();
   t2.mock.timers.enable({ apis: ["Date"], now: NOON_JUNE_15 });
 
@@ -68,7 +68,7 @@ test("date-only event starts parse as the local calendar day, not UTC midnight",
 
   try {
     // A UTC-midnight parse would land on June 14 in Los Angeles.
-    const parsed = parseEventDate("2024-06-15");
+    const parsed = parseEventDate("2024-06-15") as Date;
     assert.equal(parsed.getFullYear(), 2024);
     assert.equal(parsed.getMonth(), 5);
     assert.equal(parsed.getDate(), 15);
@@ -82,15 +82,15 @@ test("timed event starts keep their instant and invalid values return null", asy
   const { parseEventDate } = await load();
 
   assert.equal(
-    parseEventDate("2024-06-15T10:00:00-07:00").getTime(),
+    parseEventDate("2024-06-15T10:00:00-07:00")!.getTime(),
     Date.parse("2024-06-15T10:00:00-07:00")
   );
   assert.equal(parseEventDate("not-a-date"), null);
   assert.equal(parseEventDate(""), null);
-  assert.equal(parseEventDate(null), null);
+  assert.equal(parseEventDate(null as unknown as string), null);
 });
 
-test("history groups zone-less SQLite timestamps as UTC near a local day boundary", async (t2) => {
+test("history groups zone-less SQLite timestamps as UTC near a local day boundary", async (t2: import("node:test").TestContext) => {
   const { formatDateGroup } = await load();
   const previousTimezone = process.env.TZ;
   process.env.TZ = "America/Los_Angeles";
@@ -108,17 +108,17 @@ test("history groups zone-less SQLite timestamps as UTC near a local day boundar
 
 test("normalizeDbDate returns Invalid Date for nullish, non-string, or empty input", async () => {
   const { normalizeDbDate } = await load();
-  assert.ok(Number.isNaN(normalizeDbDate(null).getTime()));
-  assert.ok(Number.isNaN(normalizeDbDate(undefined).getTime()));
-  assert.ok(Number.isNaN(normalizeDbDate("").getTime()));
-  assert.ok(Number.isNaN(normalizeDbDate("   ").getTime()));
-  assert.ok(Number.isNaN(normalizeDbDate(123).getTime()));
+  assert.ok(Number.isNaN(normalizeDbDate(null as unknown as string)!.getTime()));
+  assert.ok(Number.isNaN(normalizeDbDate(undefined as unknown as string)!.getTime()));
+  assert.ok(Number.isNaN(normalizeDbDate("")!.getTime()));
+  assert.ok(Number.isNaN(normalizeDbDate("   ")!.getTime()));
+  assert.ok(Number.isNaN(normalizeDbDate(123 as unknown as string)!.getTime()));
 });
 
 test("formatDateGroup returns empty string for nullish or invalid date input", async () => {
   const { formatDateGroup } = await load();
-  assert.equal(formatDateGroup(null, t), "");
-  assert.equal(formatDateGroup(undefined, t), "");
+  assert.equal(formatDateGroup(null as unknown as Date, t), "");
+  assert.equal(formatDateGroup(undefined as unknown as Date, t), "");
   assert.equal(formatDateGroup("", t), "");
   assert.equal(formatDateGroup("   ", t), "");
   assert.equal(formatDateGroup("not-a-date", t), "");
@@ -127,13 +127,13 @@ test("formatDateGroup returns empty string for nullish or invalid date input", a
 
 test("formatShortDate and formatRelativeTime return empty string for nullish or invalid input", async () => {
   const { formatShortDate, formatRelativeTime } = await load();
-  assert.equal(formatShortDate(null), "");
-  assert.equal(formatShortDate(undefined), "");
+  assert.equal(formatShortDate(null as unknown as string), "");
+  assert.equal(formatShortDate(undefined as unknown as string), "");
   assert.equal(formatShortDate(""), "");
   assert.equal(formatShortDate("invalid"), "");
 
-  assert.equal(formatRelativeTime(null, t), "");
-  assert.equal(formatRelativeTime(undefined, t), "");
+  assert.equal(formatRelativeTime(null as unknown as string, t), "");
+  assert.equal(formatRelativeTime(undefined as unknown as string, t), "");
   assert.equal(formatRelativeTime("", t), "");
   assert.equal(formatRelativeTime("invalid", t), "");
 });
@@ -168,14 +168,14 @@ test("note date formatters retain their English output with an explicit locale",
   }
 });
 
-test("history group fallback dates use the explicit Arabic locale", async (t2) => {
+test("history group fallback dates use the explicit Arabic locale", async (t2: import("node:test").TestContext) => {
   const { formatDateGroup } = await load();
   t2.mock.timers.enable({ apis: ["Date"], now: NOON_JUNE_15 });
 
   assert.equal(formatDateGroup(new Date(2024, 0, 10, 12), t, "ar"), "10 يناير 2024");
 });
 
-test("history group fallback dates retain their English output with an explicit locale", async (t2) => {
+test("history group fallback dates retain their English output with an explicit locale", async (t2: import("node:test").TestContext) => {
   const { formatDateGroup } = await load();
   t2.mock.timers.enable({ apis: ["Date"], now: NOON_JUNE_15 });
 

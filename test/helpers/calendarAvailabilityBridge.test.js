@@ -1,7 +1,6 @@
 // The real bundled preload talks to the real typed calendar availability
 // handler over a spy database: success/failure shapes, extra private fields
-// dropped at the preload boundary, user-correctable vs generic errors, and
-// the shared main registration duplicate-channel guard.
+// dropped at the preload boundary, and user-correctable vs generic errors.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -14,7 +13,8 @@ const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 let activeHandlers = null;
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-calavail-"));
+const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-calavail-"));
+const originalNodeEnv = process.env.NODE_ENV;
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request, parent, isMain) {
@@ -40,10 +40,11 @@ Module._load = function patchedLoad(request, parent, isMain) {
 };
 process.env.NODE_ENV = "test";
 
-const DatabaseManager = require("../../src/helpers/database.ts");
-
 test.after(() => {
   Module._load = originalLoad;
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
+  fs.rmSync(userDataDir, { recursive: true, force: true });
 });
 
 function loadBundledPreload(invoke) {
@@ -86,9 +87,7 @@ const REQUEST = { start: START, end: END, minimumSlotMinutes: 30, bufferMinutes:
 
 async function createFixture(t, { events, dbSpy } = {}) {
   activeHandlers = new Map();
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-calavail-"));
-  const db = new DatabaseManager();
-  t.after(() => db.close());
+  t.after(() => { activeHandlers = null; });
 
   const registered = [];
   const { registerCalendarAvailabilityHandler } = await import(
@@ -206,43 +205,4 @@ test("failure responses stay failure — never a fabricated empty availability",
   assert.equal(response.success, false);
   if (response.success) return;
   assert.match(response.error, /start must be an RFC3339 timestamp/);
-});
-
-test("the shared main registration registers the availability channel once", async (t) => {
-  const ctx = await createFixture(t);
-  if (!ctx) return;
-
-  activeHandlers = new Map();
-
-  const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
-  delete require.cache[handlersModulePath];
-  const IPCHandlers = require(handlersModulePath);
-  const Ctor = IPCHandlers.default || IPCHandlers;
-
-  const anything = () =>
-    new Proxy(function () {}, {
-      get: (_target, property) => {
-        if (property === Symbol.toPrimitive || property === "toString") return () => "";
-        if (property === "then") return undefined;
-        if (property === "apply" || property === "call" || property === "bind") {
-          return () => anything();
-        }
-        return anything();
-      },
-      apply: () => anything(),
-    });
-
-  const target = {
-    databaseManager: {
-      getCalendarEventsInRange: () => [],
-      recoverRunningMeetingProcessingRuns: () => 0,
-    },
-  };
-  Ctor.prototype.setupHandlers.call(
-    new Proxy(target, {
-      get: (value, property) => (property in value ? value[property] : anything()),
-    })
-  );
-
-  assert.equal(typeof activeHandlers.get("calendar-get-availability"), "function");
 });

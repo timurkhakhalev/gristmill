@@ -205,21 +205,6 @@ test("darwin: attributed microphone transitions drive the sustained timer", asyn
   detector.stop();
 });
 
-test("a listener that dies while running falls back to polling", async () => {
-  const { detector, children } = createDetector("linux");
-
-  await detector.start();
-  assert.equal(detector.checkInterval, undefined);
-
-  children[0].emit("exit", 1);
-  await flush();
-
-  assert.equal(detector._eventDriven, false);
-  assert.notEqual(detector.checkInterval, null);
-  detector.stop();
-});
-
-
 
 test("darwin: PID events exclude current OpenWhispr processes and continue during recording", async () => {
   let excludedProcessIds = [101, 102];

@@ -415,8 +415,7 @@ test("selectRacingMicEntryIndices without a system timestamp evaluates every ris
   assert.deepEqual(indices, [0]);
 });
 
-test("characterization: the backward-scan break stops before an older bleed-flagged entry whose commit time still races (Phase 1 flips break→continue)", () => {
-  // From the 2026-08-17 verification: array is committedAt-ordered, windows are per-candidate.
+test("a newer failed candidate cannot hide an older bleed-flagged commit race", () => {
   const E = micSeg({ hasBleedEvidence: true, timestamp: NOW - 8300, committedAt: NOW - 5300 }); // commit race passes the 6 s window
   const C = micSeg({ timestamp: NOW - 7500, committedAt: NOW - 4500 }); // non-bleed: fails 4 s on both races, ts < NOW-6000 → break
   const indices = selectRacingMicEntryIndices({
@@ -427,7 +426,7 @@ test("characterization: the backward-scan break stops before an older bleed-flag
     duplicateWindowMs: DUPLICATE_WINDOW,
     retractWindowMs: RETRACT_WINDOW,
   });
-  assert.deepEqual(indices, [], "TODAY: E is never scanned. Phase 1 expects [0].");
+  assert.deepEqual(indices, [0]);
 });
 
 test("partitionOverlappingPendingMicFinals splits pending finals by system overlap, preserving order and using relaxed matching for double_talk", () => {

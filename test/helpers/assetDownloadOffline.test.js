@@ -7,8 +7,17 @@ const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "../..");
 
-test("whisper-vad and diarization download scripts skip without network when assets exist", () => {
+test("whisper-vad and diarization scripts skip complete synthetic assets without network", (t) => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "oh-asset-skip-"));
+  t.after(() => fs.rmSync(outDir, { recursive: true, force: true }));
+  const networkGuard = path.join(outDir, "no-network.cjs");
+  fs.writeFileSync(networkGuard, `
+    global.fetch = () => { throw new Error("unexpected network request"); };
+    for (const protocol of ["node:http", "node:https"]) {
+      const client = require(protocol);
+      client.get = client.request = () => { throw new Error("unexpected network request"); };
+    }
+  `);
   fs.mkdirSync(path.join(outDir, "whisper-vad"), { recursive: true });
   fs.writeFileSync(path.join(outDir, "whisper-vad", "ggml-silero-v5.1.2.bin"), "x");
   fs.mkdirSync(path.join(outDir, "diarization-models", "sherpa-onnx-pyannote-segmentation-3-0"), {
@@ -35,7 +44,7 @@ test("whisper-vad and diarization download scripts skip without network when ass
 
   const vadOut = execFileSync(
     process.execPath,
-    [path.join(root, "scripts", "download-whisper-vad-model.js"), "--output-dir", path.join(outDir, "whisper-vad")],
+    ["--require", networkGuard, path.join(root, "scripts", "download-whisper-vad-model.js"), "--output-dir", path.join(outDir, "whisper-vad")],
     { encoding: "utf8", env }
   );
   assert.match(vadOut, /already exists/);
@@ -43,6 +52,8 @@ test("whisper-vad and diarization download scripts skip without network when ass
   const diarOut = execFileSync(
     process.execPath,
     [
+      "--require",
+      networkGuard,
       path.join(root, "scripts", "download-diarization-models.js"),
       "--output-dir",
       path.join(outDir, "diarization-models"),
@@ -50,29 +61,18 @@ test("whisper-vad and diarization download scripts skip without network when ass
     { encoding: "utf8", env }
   );
   assert.match(diarOut, /already exist/i);
-
-  fs.rmSync(outDir, { recursive: true, force: true });
 });
 
-test("whisper-cpp and llama-server install checks pass from local state only", () => {
-  const binDir = path.join(root, "resources", "bin");
-
-  const whisperMarker = path.join(binDir, ".whisper-cpp-darwin-arm64.json");
-  const whisperBinary = path.join(binDir, "whisper-server-darwin-arm64");
-  if (fs.existsSync(whisperMarker) && fs.existsSync(whisperBinary)) {
-    const { BINARIES, isCompleteInstall } = require(path.join(root, "scripts", "download-whisper-cpp.js"));
-    assert.equal(
-      isCompleteInstall(whisperMarker, whisperBinary, BINARIES["darwin-arm64"]),
-      true,
-      "existing whisper-cpp install must satisfy the completeness check"
-    );
-  }
-
-  const llamaBinary = path.join(binDir, "llama-server-darwin-arm64");
-  if (fs.existsSync(llamaBinary)) {
-    // llama-server skips on plain file existence; assert the file the skip
-    // check looks at is the one the download script would produce.
-    const { BINARIES } = require(path.join(root, "scripts", "download-llama-server.js"));
-    assert.equal(BINARIES["darwin-arm64"].outputName, path.basename(llamaBinary));
-  }
+test("whisper-cpp detects a complete synthetic install", (t) => {
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "oh-whisper-install-"));
+  t.after(() => fs.rmSync(binDir, { recursive: true, force: true }));
+  const { BINARIES, WHISPER_CPP_TAG, isCompleteInstall } = require(path.join(root, "scripts", "download-whisper-cpp.js"));
+  const config = BINARIES["darwin-arm64"];
+  const marker = path.join(binDir, ".whisper-cpp-darwin-arm64.json");
+  const binary = path.join(binDir, config.outputName);
+  fs.writeFileSync(binary, "synthetic-binary");
+  fs.writeFileSync(marker, JSON.stringify({ version: WHISPER_CPP_TAG, libraries: [] }));
+  assert.equal(isCompleteInstall(marker, binary, config), true);
+  fs.rmSync(binary);
+  assert.equal(isCompleteInstall(marker, binary, config), false);
 });

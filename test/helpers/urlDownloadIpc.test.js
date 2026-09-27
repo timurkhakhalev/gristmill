@@ -439,27 +439,36 @@ test("delete-temp-file removes ow-diarize- files too", async () => {
   assert.deepEqual(result, { success: true });
 });
 
-test("each registration owns its own download map and sequence", async () => {
+test("each registration owns its pending downloads", async (t) => {
   const a = { handle: (c, fn) => handlers.set("a-" + c, fn) };
   const b = { handle: (c, fn) => handlers.set("b-" + c, fn) };
   handlers.clear();
   safeTempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ow-urltest-"));
+  t.after(() => fs.rmSync(safeTempRoot, { recursive: true, force: true }));
+  const first = deferred();
+  const second = deferred();
+  let firstSignal;
+  let secondSignal;
   register(a, {
-    download: () => Promise.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 }),
+    download: (_url, _progress, signal) => { firstSignal = signal; return first.promise; },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },
   });
   register(b, {
-    download: () => Promise.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 }),
+    download: (_url, _progress, signal) => { secondSignal = signal; return second.promise; },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },
   });
-  fs.writeFileSync(path.join(safeTempRoot, "ow-url-a.tmp"), "a");
-  await handlers.get("a-download-url-audio")({ sender: sender() }, "https://example.com/1", "shared-id");
-  // b has its own map: the same id is unknown there.
-  assert.deepEqual(await handlers.get("b-cancel-url-download")({ sender: sender() }, "shared-id"), {
-    success: false,
-  });
+  const firstResult = handlers.get("a-download-url-audio")({ sender: sender() }, "https://example.com/1", "shared-id");
+  const secondResult = handlers.get("b-download-url-audio")({ sender: sender() }, "https://example.com/2", "shared-id");
+  assert.deepEqual(await handlers.get("b-cancel-url-download")({ sender: sender() }, "shared-id"), { success: true });
+  assert.equal(secondSignal.aborted, true);
+  assert.equal(firstSignal.aborted, false);
+  assert.deepEqual(await handlers.get("a-cancel-url-download")({ sender: sender() }, "shared-id"), { success: true });
+  assert.equal(firstSignal.aborted, true);
+  first.resolve({ tempPath: "/t/a", title: "a", durationSeconds: null, sizeBytes: 1 });
+  second.resolve({ tempPath: "/t/b", title: "b", durationSeconds: null, sizeBytes: 1 });
+  await Promise.all([firstResult, secondResult]);
 });

@@ -10,7 +10,7 @@ const { createRendererServer, installBrowserGlobals } = require("../lib/renderer
 const ACTION = { id: 1, name: "Generate Notes", prompt: "Summarize the meeting." };
 const LABELS = { noModel: "no model", noEndpoint: "no endpoint", actionFailed: "failed" };
 
-async function loadStore(t) {
+async function loadStore(t, modelOutput = "# Notes\n- decided things") {
   const updates = [];
   installBrowserGlobals(t, {
     window: {
@@ -31,7 +31,7 @@ async function loadStore(t) {
         export default {
           processText: async (text, model, agentName, config) => {
             globalThis.__processTextCalls.push({ text, model, config });
-            return "# Notes\\n- decided things";
+            return globalThis.__modelOutput;
           },
         };
       `,
@@ -39,8 +39,10 @@ async function loadStore(t) {
     },
   });
   globalThis.__processTextCalls = calls;
+  globalThis.__modelOutput = modelOutput;
   t.after(() => {
     delete globalThis.__processTextCalls;
+    delete globalThis.__modelOutput;
   });
 
   const store = await vite.ssrLoadModule("/stores/actionProcessingStore.ts");
@@ -78,11 +80,12 @@ test("note formatting asks for enough output tokens to hold a long meeting summa
   );
 });
 
-test("a truncated summary is still saved rather than discarded", async (t) => {
+test("a short model result is saved rather than discarded", async (t) => {
   // Deliberate: unlike a selection edit, where a partial replacement would
   // corrupt the user's own text, a clipped summary is still worth keeping.
   // So note formatting must NOT set requireCompleteOutput.
-  const { store, calls, updates } = await loadStore(t);
+  const partialOutput = "## Summary\n- Decision recorded\n## Action Items\n- [ ] Follow";
+  const { store, calls, updates } = await loadStore(t, partialOutput);
 
   store.runBackgroundAction(
     8,
@@ -95,4 +98,6 @@ test("a truncated summary is still saved rather than discarded", async (t) => {
 
   await waitFor(() => updates.length > 0, "the note to be written");
   assert.notEqual(calls[0].config.requireCompleteOutput, true);
+  assert.equal(updates[0].noteId, 8);
+  assert.equal(updates[0].payload.enhanced_content, partialOutput);
 });

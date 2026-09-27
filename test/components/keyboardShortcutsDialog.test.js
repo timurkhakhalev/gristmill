@@ -21,6 +21,7 @@ async function renderDialog(t) {
     noExternal: ["@heroui/react"],
     mockModules: {
       "@heroui/react": heroMock,
+      "/utils/platform": 'export const getCachedPlatform = () => "darwin";',
       "react-i18next": `export function useTranslation() { return { t: (key, options) => options?.defaultValue ?? key }; }`,
     },
   });
@@ -33,12 +34,20 @@ test("the shortcut cheat sheet lists every wired action and its chord", async (t
 
   assert.match(html, /Keyboard shortcuts/, "title");
   assert.match(html, /Navigation/, "navigation group");
-  assert.match(html, /Next \/ previous note/);
-  assert.match(html, /Switch notes \/ upload/);
-  assert.match(html, /New note/);
-  assert.match(html, /New folder/);
-  assert.match(html, /Find in note/);
-  assert.match(html, /Settings/);
+  for (const [label, chord] of [
+    ["Search", ["⌘", "K"]],
+    ["Next / previous note", ["⌘", "⇧", "[ / ]"]],
+    ["Switch notes / upload", ["⌘", "1 / 2"]],
+    ["Settings", ["⌘", ","]],
+    ["New note", ["⌘", "N"]],
+    ["New folder", ["⌘", "⇧", "N"]],
+    ["Find in note", ["⌘", "F"]],
+    ["Keyboard shortcuts", ["⌘", "/"]],
+  ]) {
+    const row = html.match(new RegExp(`<span[^>]*>${label.replaceAll("/", "\\/")}</span><span[^>]*>(.*?)</span>`));
+    assert.ok(row, `${label} row`);
+    assert.deepEqual([...row[1].matchAll(/<kbd[^>]*>(.*?)<\/kbd>/g)].map((match) => match[1]), chord, label);
+  }
 });
 
 test("a closed cheat sheet renders nothing", async (t) => {

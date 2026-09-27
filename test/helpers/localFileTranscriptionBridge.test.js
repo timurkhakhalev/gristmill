@@ -14,7 +14,8 @@ const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 let activeHandlers = null;
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-"));
+const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-"));
+const originalNodeEnv = process.env.NODE_ENV;
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request, parent, isMain) {
@@ -40,10 +41,12 @@ Module._load = function patchedLoad(request, parent, isMain) {
 };
 process.env.NODE_ENV = "test";
 
-const DatabaseManager = require("../../src/helpers/database.ts");
-
 test.after(() => {
   Module._load = originalLoad;
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
+  fs.rmSync(userDataDir, { recursive: true, force: true });
+  fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
 function loadBundledPreload(invoke) {
@@ -85,24 +88,13 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 
 async function createFixture(t, managers = {}) {
   activeHandlers = new Map();
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-"));
-  let db;
-  try {
-    db = new DatabaseManager();
-  } catch (error) {
-    const message = String(error?.message || error);
-    if (message.includes("NODE_MODULE_VERSION") || message.includes("Could not locate the bindings file")) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
-      return null;
-    }
-    throw error;
-  }
-  t.after(() => db.close());
+  t.after(() => { activeHandlers = null; });
 
   const calls = { whisper: [], parakeet: [], reads: [] };
   const { registerLocalFileTranscriptionHandler } = await import(
     "../../src/helpers/localFileTranscriptionIpcHandler.ts"
   );
+  const { createUploadCancelRegistry } = await import("../../src/helpers/uploadCancelRegistry.ts");
   registerLocalFileTranscriptionHandler(
     { handle: (channel, listener) => activeHandlers.set(channel, listener) },
     {
@@ -124,31 +116,11 @@ async function createFixture(t, managers = {}) {
       transcribeLocalParakeet: async (audioBuffer, options) =>
         managers.parakeet ? managers.parakeet(audioBuffer, options) : { success: true, text: "s" },
       resolveWhisperVadOptions: (context) => ({ vadEnabled: context === "noteRecording" }),
-      uploadCancelRegistry: db && createSharedRegistry(),
+      uploadCancelRegistry: createUploadCancelRegistry(),
       logDebug: () => {},
       logError: () => {},
     }
   );
-
-  function createSharedRegistry() {
-    const controllers = new Map();
-    return {
-      register(id) {
-        if (typeof id !== "string" || !id) return { signal: undefined, release: () => {} };
-        let set = controllers.get(id);
-        if (!set) {
-          set = new Set();
-          controllers.set(id, set);
-        }
-        const controller = new AbortController();
-        set.add(controller);
-        return {
-          signal: controller.signal,
-          release: () => set.delete(controller),
-        };
-      },
-    };
-  }
 
   const handlersSnapshot = new Map(activeHandlers);
   const invoke = async (channel, ...args) => {

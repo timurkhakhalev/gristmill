@@ -511,9 +511,8 @@ export function HotkeyInput({
   );
 
   // Deliberately does not clear the parent's error (handleKeyDown does that on the
-  // next real attempt). A rejected chord makes ShortcutSetupStep bump captureKey,
-  // which remounts this input with autoFocus, so clearing here fired one frame
-  // after the parent set the message and the rejection was never readable.
+  // next real attempt). Clearing on focus can erase a parent's rejection
+  // message when this input remounts with autoFocus.
   const handleFocus = useCallback(() => {
     if (!disabled) {
       setIsCapturing(true);

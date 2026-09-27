@@ -181,7 +181,7 @@ test("a malformed successful status never passes as valid", async () => {
     google: {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
-      getConnectionStatus: () => ({ connected: "yes" as unknown as boolean }),
+      getConnectionStatus: () => ({ connected: "yes", email: "g@x.io" } as unknown as { connected: boolean; email: string | null }),
       getCalendars: () => [],
       setCalendarSelection: async () => {},
       setPrimaryOnly: async () => {},

@@ -10,6 +10,7 @@ export const bbModelSchema = z.object({
   id: z.string(),
   displayName: z.string(),
   supportedReasoningEfforts: z.array(z.object({ reasoningEffort: z.string() })).optional(),
+  defaultReasoningEffort: z.string().optional(),
 });
 export const bbEventSchema = z.object({
   seq: z.number(),

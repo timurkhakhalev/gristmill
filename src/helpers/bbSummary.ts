@@ -1,5 +1,5 @@
 import type { BbSelection } from "../contracts/bb.js";
-import { BbCliError, getBbThreadHistory, getBbThreadOutput, spawnBbThread, tellBbThread, watchBbThread } from "./bbCli.js";
+import { assertBbVersion, BbCliError, getBbThreadHistory, getBbThreadOutput, spawnBbThread, stopBbThread, tellBbThread, watchBbThread } from "./bbCli.js";
 
 export async function generateBbSummary(input: {
   prompt: string;
@@ -12,6 +12,7 @@ export async function generateBbSummary(input: {
   let id = input.threadId;
   let afterSeq = 0;
   if (id) {
+    await assertBbVersion();
     const history = await getBbThreadHistory(id);
     if (history.completed) {
       const output = await getBbThreadOutput(id);
@@ -24,6 +25,7 @@ export async function generateBbSummary(input: {
   } else {
     id = await spawnBbThread(input.prompt, input.selection, input.environment, input.signal);
     if (!input.saveThreadId(id)) {
+      await stopBbThread(id).catch(() => {});
       throw new BbCliError("bb-thread-state-not-saved", "Could not save bb thread ID");
     }
   }

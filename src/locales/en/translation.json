@@ -2326,5 +2326,18 @@
       "participantsMore_other": "{{names}} & {{count}} others",
       "empty": "No notes yet"
     }
+  },
+  "bbAgent": {
+    "mode": "Agent (bb)",
+    "modeDescription": "Use your bb subscription",
+    "harness": "Harness",
+    "model": "Model",
+    "reasoning": "Reasoning",
+    "noHarness": "No bb harness is available",
+    "noModel": "No bb models are available",
+    "chooseModel": "Choose model",
+    "chatSettings": "Chat model settings",
+    "chatMode": "Chat mode",
+    "otherSettings": "Configure this route in Settings → Chat."
   }
 }

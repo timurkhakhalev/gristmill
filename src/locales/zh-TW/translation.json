@@ -2326,5 +2326,18 @@
       "participantsMore_other": "{{names}} 等 {{count}} 人",
       "empty": "還沒有筆記"
     }
+  },
+  "bbAgent": {
+    "mode": "代理程式 (bb)",
+    "modeDescription": "使用 bb 訂閱",
+    "harness": "執行環境",
+    "model": "模型",
+    "reasoning": "推理層級",
+    "noHarness": "沒有可用的 bb 執行環境",
+    "noModel": "沒有可用的 bb 模型",
+    "chooseModel": "選擇模型",
+    "chatSettings": "聊天模型設定",
+    "chatMode": "聊天模式",
+    "otherSettings": "請在設定 → 聊天中設定此模式。"
   }
 }

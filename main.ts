@@ -490,6 +490,7 @@ async function startApp(): Promise<void> {
   await initializedEnvironmentManager.init();
   registerSidecars();
 
+  removeBbConnection(app.getPath("userData"));
   const initializedCliBridge = new CliBridge({
     databaseManager: initializedHandlers.databaseManager,
     deleteNoteInternal: (id) => initializedHandlers.deleteNoteInternal(id),
@@ -502,13 +503,15 @@ async function startApp(): Promise<void> {
     audioStorageManager: initializedHandlers.audioStorageManager,
   });
   cliBridge = initializedCliBridge;
-  initializedCliBridge.start().then(() => {
+  try {
+    await initializedCliBridge.start();
     const connection = initializedCliBridge.getConnection();
     if (connection) writeBbConnection(app.getPath("userData"), connection.port, connection.token);
-  }).catch((err: Error) => {
-    debugLogger.error("CLI bridge failed to start", { error: err.message });
+  } catch (err) {
+    debugLogger.error("CLI bridge failed to start", { error: (err as Error).message });
+    await initializedCliBridge.stop().catch(() => {});
     cliBridge = null;
-  });
+  }
 
 
   ipcMain.on("start-minimized-changed", (_event, enabled: boolean) => {

@@ -124,9 +124,11 @@ export const selectResolvedNoteFormatting = (state: InferenceSettingsSnapshot): 
     cloudBaseUrl: cfg.cloudBaseUrl || "",
     remoteUrl: cfg.remoteUrl || "",
     customApiKey: cfg.customApiKey || (borrowsEndpoint ? cleanup.customApiKey || "" : ""),
-    agentProvider: cfg.agentProvider,
-    agentModel: cfg.agentModel,
-    agentReasoningLevel: cfg.agentReasoningLevel,
+    ...(cfg.mode === "agent" ? {
+      agentProvider: cfg.agentProvider,
+      agentModel: cfg.agentModel,
+      agentReasoningLevel: cfg.agentReasoningLevel,
+    } : {}),
   };
 };
 
@@ -177,9 +179,11 @@ export const selectResolvedLLMConfig = (
     // belongs on the request path — see selectResolvedNoteFormatting.
     customApiKey: readString("customApiKey"),
     disableThinking,
-    agentProvider: readString("agentProvider"),
-    agentModel: readString("agentModel"),
-    agentReasoningLevel: readString("agentReasoningLevel"),
+    ...(state[def.storeKeys.mode] === "agent" ? {
+      agentProvider: readString("agentProvider"),
+      agentModel: readString("agentModel"),
+      agentReasoningLevel: readString("agentReasoningLevel"),
+    } : {}),
   };
   return localConfig;
 };

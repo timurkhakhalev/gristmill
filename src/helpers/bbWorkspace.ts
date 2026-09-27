@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
-const { port, token } = JSON.parse(fs.readFileSync(path.join(directory, "connection.json"), "utf8"));
+const { port, token } = JSON.parse(fs.readFileSync(path.join(directory, "..", ".bb-connection.json"), "utf8"));
 const [method, route, body] = process.argv.slice(2);
 const allowed = new Set([
   "GET /v1/notes/list", "GET /v1/notes/search", "GET /v1/notes/",
@@ -38,7 +38,7 @@ Use \`node openhercules-tools.mjs METHOD ROUTE [JSON_BODY]\` to call them. Examp
 - \`node openhercules-tools.mjs GET /v1/notes/123\`
 - \`node openhercules-tools.mjs POST /v1/notes/create '{"title":"Title","content":"Text"}'\`
 Available routes: notes list/search/get/create/update, folders list/create, dictionary list/update, snippets list/update.
-The helper supplies authentication. Never read, print, or include connection.json in a response or log.
+The helper supplies authentication. Never read, print, or include its connection file in a response or log.
 Do not modify files in this workspace except through the listed notes tools.
 `;
 
@@ -59,11 +59,12 @@ export function ensureBbWorkspace(userData: string): string {
 }
 
 export function writeBbConnection(userData: string, port: number, token: string): void {
-  const filePath = path.join(ensureBbWorkspace(userData), "connection.json");
+  ensureBbWorkspace(userData);
+  const filePath = path.join(userData, ".bb-connection.json");
   fs.writeFileSync(filePath, JSON.stringify({ port, token }), { mode: 0o600 });
   fs.chmodSync(filePath, 0o600);
 }
 
 export function removeBbConnection(userData: string): void {
-  fs.rmSync(path.join(bbWorkspacePath(userData), "connection.json"), { force: true });
+  fs.rmSync(path.join(userData, ".bb-connection.json"), { force: true });
 }

@@ -2326,5 +2326,18 @@
       "participantsMore_other": "{{names}} ほか{{count}}人",
       "empty": "まだメモはありません"
     }
+  },
+  "bbAgent": {
+    "mode": "エージェント (bb)",
+    "modeDescription": "bb のサブスクリプションを使用",
+    "harness": "ハーネス",
+    "model": "モデル",
+    "reasoning": "推論レベル",
+    "noHarness": "利用可能な bb ハーネスがありません",
+    "noModel": "利用可能な bb モデルがありません",
+    "chooseModel": "モデルを選択",
+    "chatSettings": "チャットモデル設定",
+    "chatMode": "チャットモード",
+    "otherSettings": "設定 → チャットでこのモードを設定してください。"
   }
 }

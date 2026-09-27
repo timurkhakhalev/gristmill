@@ -2326,5 +2326,18 @@
       "participantsMore_other": "{{names}} 等 {{count}} 人",
       "empty": "还没有笔记"
     }
+  },
+  "bbAgent": {
+    "mode": "智能体 (bb)",
+    "modeDescription": "使用 bb 订阅",
+    "harness": "运行环境",
+    "model": "模型",
+    "reasoning": "推理级别",
+    "noHarness": "没有可用的 bb 运行环境",
+    "noModel": "没有可用的 bb 模型",
+    "chooseModel": "选择模型",
+    "chatSettings": "聊天模型设置",
+    "chatMode": "聊天模式",
+    "otherSettings": "请在设置 → 聊天中配置此模式。"
   }
 }

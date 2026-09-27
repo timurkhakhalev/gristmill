@@ -758,6 +758,55 @@ test("a persisted transcript recovered at summary runs only the saved summary st
   assert.equal(summaryCalls, 1);
 });
 
+test("a bb summary resumes its saved thread after process restart without repeating ASR", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const config = {
+    ...validConfig,
+    summary: {
+      actionId: validConfig.summary.actionId,
+      instruction: validConfig.summary.instruction,
+      reasoningMode: "agent",
+      agentProvider: "codex",
+      model: "gpt-6-luna",
+      agentReasoningLevel: "low",
+    },
+  };
+  const { run } = createFinishedRecording(db, storage, config);
+  storage.writeRunArtifact(run.id, "provider-response", elevenResponse);
+  assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
+  storage.writeRunArtifact(run.id, "transcript", {
+    text: "Saved transcript",
+    diarized: false,
+    segments: [{ speaker: "Speaker 1", text: "Saved transcript", start: 0, end: 0.5 }],
+  });
+  assert.equal(db.setMeetingRunArtifact(run.id, "transcript").success, true);
+  assert.equal(db.claimMeetingProcessingRun(run.id), true);
+  db.setMeetingProcessingRunState(run.id, { stage: "summary", status: "running" });
+  assert.equal(db.setMeetingRunBbThreadId(run.id, "thr_resumetest"), true);
+  assert.equal(db.setMeetingRunBbThreadId(run.id, "thr_duplicate"), false);
+  let asrCalls = 0;
+  let agentCalls = 0;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async () => { asrCalls++; throw new Error("ASR must not repeat"); },
+    summarizeAgent: async (input, summaryConfig, savedRun) => {
+      agentCalls++;
+      assert.match(input, /Saved transcript/);
+      assert.equal(summaryConfig.agentProvider, "codex");
+      assert.equal(savedRun.bbThreadId, "thr_resumetest");
+      return "Recovered bb summary";
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
+  assert.equal(db.getMeetingProcessingRun(run.id).bbThreadId, "thr_resumetest");
+  assert.equal(agentCalls, 1);
+  assert.equal(asrCalls, 0);
+});
+
 test("a missing provider key blocks the saved route and a later key repairs that run", async (t) => {
   const db = createDb(t);
   if (!db) return;

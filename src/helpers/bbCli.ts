@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { z } from "zod";
 import { bbProviderSchema, bbModelSchema, bbEventSchema, type BbProvider, type BbModel, type BbSelection } from "../contracts/bb.js";
 
@@ -14,27 +15,44 @@ export class BbCliError extends Error {
 }
 
 function binaryPath(): string {
-  return process.env.BB_CLI || join(homedir(), ".local", "bin", "bb");
+  if (process.env.BB_CLI) return process.env.BB_CLI;
+  const candidates = [
+    join(homedir(), ".local", "bin", "bb"),
+    "/Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/host-daemon/dist/bb",
+  ];
+  return candidates.find(existsSync) ?? candidates[0];
 }
 
 async function execute(args: string[], input?: string, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
-    const child = spawn(binaryPath(), args, { stdio: ["pipe", "pipe", "pipe"], signal });
+    const child = spawn(binaryPath(), args, { stdio: ["pipe", "pipe", "pipe"], signal, timeout: 30_000 });
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
       stdout += chunk;
-      if (stdout.length > 8_000_000) child.kill();
+      if (stdout.length > 8_000_000) {
+        child.kill();
+        reject(new BbCliError("bb-response-too-large", "bb response exceeded the size limit"));
+      }
     });
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
       stderr = (stderr + chunk).slice(-2000);
     });
+    child.stdin.on("error", (error) => reject(new BbCliError("bb-stdin-error", error.message)));
     child.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.name === "AbortError") return reject(error);
       reject(new BbCliError(error.code === "ENOENT" ? "bb-not-installed" : "bb-cli-error", error.message));
     });
     child.on("close", (code) => {
       if (code === 0) resolve(stdout.trim());
-      else reject(new BbCliError("bb-cli-error", stderr.trim() || "bb command failed"));
+      else {
+        try {
+          const failure = z.object({ ok: z.literal(false), error: z.object({ code: z.string(), message: z.string() }) }).parse(JSON.parse(stdout));
+          reject(new BbCliError(failure.error.code, failure.error.message));
+        } catch {
+          reject(new BbCliError("bb-cli-error", stderr.trim() || "bb command failed"));
+        }
+      }
     });
     child.stdin.end(input);
   });
@@ -70,6 +88,40 @@ export async function listBbModels(provider: string): Promise<BbModel[]> {
   return z.array(bbModelSchema).parse(await jsonCommand(["provider", "models", provider]));
 }
 
+const projectRequests = new Map<string, Promise<string>>();
+
+async function ensureBbProject(environment: string): Promise<string> {
+  const existing = projectRequests.get(environment);
+  if (existing) return existing;
+  const pending = (async () => {
+    const file = join(environment, "project.json");
+    const saved = existsSync(file)
+      ? z.object({ id: z.string().min(1) }).parse(JSON.parse(readFileSync(file, "utf8"))).id
+      : null;
+    if (saved) {
+      try {
+        const project = z.object({ id: z.string(), sources: z.array(z.object({ path: z.string() })) }).parse(
+          await jsonCommand(["project", "show", saved])
+        );
+        if (!project.sources.some((source) => source.path === environment)) {
+          throw new BbCliError("bb-project-mismatch", "Saved bb project points to a different workspace");
+        }
+        return project.id;
+      } catch (error) {
+        if (!(error instanceof BbCliError) || error.code !== "project_not_found") throw error;
+      }
+    }
+    const project = z.object({ id: z.string().min(1) }).parse(await jsonCommand([
+      "project", "create", "--name", "OpenHercules Agent", "--root", environment,
+    ]));
+    writeFileSync(file, JSON.stringify({ id: project.id }), { mode: 0o600 });
+    return project.id;
+  })();
+  projectRequests.set(environment, pending);
+  pending.catch(() => projectRequests.delete(environment));
+  return pending;
+}
+
 export async function spawnBbThread(
   prompt: string,
   config: BbSelection,
@@ -77,8 +129,9 @@ export async function spawnBbThread(
   signal?: AbortSignal
 ): Promise<string> {
   await assertBbVersion();
+  const projectId = await ensureBbProject(environment);
   const response = z.object({ id: z.string().min(1) }).parse(await jsonCommand([
-    "thread", "spawn", "--environment", environment,
+    "thread", "spawn", "--project", projectId, "--environment", environment,
     "--provider", config.provider, "--model", config.model,
     "--reasoning-level", config.reasoningLevel,
     "--permission-mode", "full", "--visibility", "hidden",
@@ -105,17 +158,22 @@ export async function getBbThreadHistory(threadId: string): Promise<{ sequence: 
   let completed = false;
   let failed = false;
   while (true) {
+    const previousSequence = sequence;
     const events = z.array(bbEventSchema).parse(await jsonCommand(
       ["thread", "log", threadId, "--after-seq", String(sequence)]
     ));
     for (const event of events) {
       sequence = Math.max(sequence, event.seq);
-      if (event.type === "turn/completed") {
+      if (event.type === "client/turn/requested" || event.type === "turn/started") {
+        completed = false;
+        failed = false;
+      } else if (event.type === "turn/completed") {
         completed = event.data?.status === "completed";
         failed = !completed;
       }
     }
     if (events.length < 100) return { sequence, completed, failed };
+    if (sequence === previousSequence) throw new BbCliError("bb-invalid-log", "bb log did not advance");
   }
 }
 
@@ -142,8 +200,9 @@ export async function* watchBbThread(
       }
     }
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(resolve, 400);
-      signal?.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+      const onAbort = () => { clearTimeout(timer); reject(signal?.reason); };
+      const timer = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, 400);
+      signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
 }

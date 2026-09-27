@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { bbChannels, bbSelectionSchema, bbStreamStartSchema } from "../contracts/bb.js";
 import { AgentStreamRequestRegistry } from "./agentStreamRequestRegistry.js";
 import { ensureBbWorkspace } from "./bbWorkspace.js";
@@ -18,6 +17,7 @@ interface IpcMain {
 export function registerBbHandlers(ipcMain: IpcMain, userData: string): void {
   const requests = new AgentStreamRequestRegistry();
   const threads = new Map<string, string>();
+  const observedSenders = new Set<number>();
   const workspace = () => ensureBbWorkspace(userData);
 
   ipcMain.handle(bbChannels.catalog, () => listBbProviders());
@@ -36,13 +36,30 @@ export function registerBbHandlers(ipcMain: IpcMain, userData: string): void {
     const request = bbStreamStartSchema.parse(raw);
     const sender = event.sender;
     const controller = requests.begin(sender.id, request.streamId);
-    sender.once("destroyed", () => requests.cancelSender(sender.id));
+    if (!observedSenders.has(sender.id)) {
+      observedSenders.add(sender.id);
+      sender.once("destroyed", () => {
+        requests.cancelSender(sender.id);
+        observedSenders.delete(sender.id);
+        for (const [key, id] of threads) {
+          if (key.startsWith(`${sender.id}:`)) {
+            threads.delete(key);
+            void stopBbThread(id).catch(() => {});
+          }
+        }
+      });
+    }
     let id: string;
     try {
       id = await spawnBbThread(request.prompt, request.selection, workspace(), controller.signal);
     } catch (error) {
       requests.complete(sender.id, request.streamId, controller);
       throw error;
+    }
+    if (controller.signal.aborted) {
+      requests.complete(sender.id, request.streamId, controller);
+      void stopBbThread(id).catch(() => {});
+      return;
     }
     threads.set(`${sender.id}:${request.streamId}`, id);
     void (async () => {
@@ -71,6 +88,6 @@ export function registerBbHandlers(ipcMain: IpcMain, userData: string): void {
     const key = `${event.sender.id}:${raw}`;
     const id = threads.get(key);
     threads.delete(key);
-    if (id) await stopBbThread(id);
+    if (id) await stopBbThread(id).catch(() => {});
   });
 }

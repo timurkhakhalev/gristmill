@@ -2366,5 +2366,18 @@
       "participantsMore_few": "{{names}} و{{count}} آخرين",
       "participantsMore_many": "{{names}} و{{count}} آخرًا"
     }
+  },
+  "bbAgent": {
+    "mode": "وكيل (bb)",
+    "modeDescription": "استخدم اشتراك bb",
+    "harness": "بيئة التشغيل",
+    "model": "النموذج",
+    "reasoning": "مستوى الاستدلال",
+    "noHarness": "لا توجد بيئات bb متاحة",
+    "noModel": "لا توجد نماذج bb متاحة",
+    "chooseModel": "اختر النموذج",
+    "chatSettings": "إعدادات نموذج المحادثة",
+    "chatMode": "وضع المحادثة",
+    "otherSettings": "اضبط هذا الوضع من الإعدادات ← المحادثة."
   }
 }

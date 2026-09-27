@@ -886,7 +886,7 @@ class ReasoningService extends BaseReasoningService {
       queue.push(part);
       wake?.();
     });
-    const onAbort = () => { wake?.(); void window.electronAPI.bbStreamCancel(streamId); };
+    const onAbort = () => { wake?.(); void window.electronAPI.bbStreamCancel(streamId).catch(() => {}); };
     controller.signal.addEventListener("abort", onAbort, { once: true });
     try {
       const prompt = messages.map((message) => {

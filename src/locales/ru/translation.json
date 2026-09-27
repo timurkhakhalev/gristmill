@@ -2334,5 +2334,18 @@
       "participantsMore_few": "{{names}} и ещё {{count}}",
       "participantsMore_many": "{{names}} и ещё {{count}}"
     }
+  },
+  "bbAgent": {
+    "mode": "Агент (bb)",
+    "modeDescription": "Использовать подписку через bb",
+    "harness": "Харнесс",
+    "model": "Модель",
+    "reasoning": "Уровень рассуждений",
+    "noHarness": "Нет доступных харнессов bb",
+    "noModel": "Нет доступных моделей bb",
+    "chooseModel": "Выберите модель",
+    "chatSettings": "Настройки модели чата",
+    "chatMode": "Режим чата",
+    "otherSettings": "Настройте этот режим в Настройках → Чат."
   }
 }

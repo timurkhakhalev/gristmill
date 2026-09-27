@@ -2326,5 +2326,18 @@
       "participantsMore_other": "{{names}} y {{count}} más",
       "empty": "Aún no hay notas"
     }
+  },
+  "bbAgent": {
+    "mode": "Agente (bb)",
+    "modeDescription": "Usar la suscripción de bb",
+    "harness": "Entorno",
+    "model": "Modelo",
+    "reasoning": "Razonamiento",
+    "noHarness": "No hay entornos de bb disponibles",
+    "noModel": "No hay modelos de bb disponibles",
+    "chooseModel": "Elegir modelo",
+    "chatSettings": "Ajustes del modelo de chat",
+    "chatMode": "Modo de chat",
+    "otherSettings": "Configura este modo en Ajustes → Chat."
   }
 }

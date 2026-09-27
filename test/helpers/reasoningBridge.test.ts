@@ -13,7 +13,7 @@ const Module = require("node:module");
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
-let activeHandlers = new Map();
+let activeHandlers = new Map<string, (...args: any[]) => any>();
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
@@ -47,7 +47,7 @@ test.after(() => {
 });
 
 function loadBundledPreload(transport: any) {
-  let api;
+  let api: Record<string, any> | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -62,8 +62,8 @@ function loadBundledPreload(transport: any) {
           },
         },
         ipcRenderer: {
-          invoke: (channel: string, ...args) => transport.invoke(channel, ...args),
-          send: (channel: string, ...args) => transport.send(channel, ...args),
+          invoke: (channel: string, ...args: any[]) => transport.invoke(channel, ...args),
+          send: (channel: string, ...args: any[]) => transport.send(channel, ...args),
           on: (channel: string, listener: any) => transport.on(channel, listener),
           removeListener: (channel: string, listener: any) => transport.removeListener(channel, listener),
         },
@@ -73,6 +73,7 @@ function loadBundledPreload(transport: any) {
     process: { platform: "darwin", versions: {} },
     console,
   });
+  if (!api) throw new Error("Bundled preload did not expose its API");
   return api;
 }
 
@@ -106,9 +107,9 @@ async function createFixture() {
       text: async () => "",
       json: async () => ({ content: [{ type: "text", text: "anthropic text" }] }),
     }),
-    extractAnthropicText: (data) => data?.content?.[0]?.text ?? null,
+    extractAnthropicText: (data) => (data as { content?: { text?: string }[] })?.content?.[0]?.text ?? null,
     describeMissingAnthropicText: () => "no text",
-    isEnterpriseProvider: (value) => ["bedrock", "azure", "vertex"].includes(value),
+    isEnterpriseProvider: (value) => typeof value === "string" && ["bedrock", "azure", "vertex"].includes(value),
     mapEnterpriseError: REAL_ERRORS.mapEnterpriseError,
     runAbortableOperation: REAL_ERRORS.runAbortableOperation,
     runBedrockRequest: REAL_ERRORS.runBedrockRequest,
@@ -133,12 +134,12 @@ async function createFixture() {
   const listeners = new Map();
   const handlersSnapshot = new Map(activeHandlers);
   const transport = {
-    invoke: async (channel: string, ...args) => {
+    invoke: async (channel: string, ...args: any[]) => {
       const handler = handlersSnapshot.get(channel);
       if (!handler) throw new Error(`No handler for ${channel}`);
       return handler({ sender: fixtureSender }, ...args);
     },
-    send: (channel: string, ...args) => sends.push({ channel, args }),
+    send: (channel: string, ...args: any[]) => sends.push({ channel, args }),
     on: (channel: string, listener: any) => {
       if (!listeners.has(channel)) listeners.set(channel, new Set());
       listeners.get(channel).add(listener);
@@ -247,12 +248,14 @@ test("junk main responses reject at the preload boundary", async () => {
   await createFixture();
   const realHandlers = new Map(activeHandlers);
   const api = loadBundledPreload({
-    invoke: async (channel: string, ...args) => {
+    invoke: async (channel: string, ...args: any[]) => {
       if (channel === "process-local-reasoning") return { silentlyWrong: true };
       if (channel === "process-enterprise-reasoning") return { nope: 1 };
       if (channel === "check-local-reasoning-available") return "yes";
       if (channel === "enterprise-stream-start") return { noStart: true };
-      return realHandlers.get(channel)(null, ...args);
+      const handler = realHandlers.get(channel);
+      if (!handler) throw new Error(`No handler for ${channel}`);
+      return handler(null, ...args);
     },
     send: () => {},
     on: () => {},
@@ -276,7 +279,7 @@ test("the shared main registration registers every reasoning channel once", asyn
   const IPCHandlers = require(handlersModulePath);
   const Ctor = IPCHandlers.default || IPCHandlers;
 
-  const anything = () =>
+  const anything = (): any =>
     new Proxy(function () {}, {
       get: (_target, property) => {
         if (property === Symbol.toPrimitive || property === "toString") return () => "";
@@ -289,7 +292,7 @@ test("the shared main registration registers every reasoning channel once", asyn
       apply: () => anything(),
     });
 
-  const target = {};
+  const target: Record<PropertyKey, unknown> = {};
   Ctor.prototype.setupHandlers.call(
     new Proxy(target, {
       get: (value, property) => (property in value ? value[property] : anything()),

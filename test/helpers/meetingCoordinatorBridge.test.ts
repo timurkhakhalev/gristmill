@@ -52,7 +52,7 @@ function registerRealHandlers(deps: any) {
 }
 
 function loadBundledPreload(transport: any) {
-  let api;
+  let api: Record<string, any> | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -67,8 +67,8 @@ function loadBundledPreload(transport: any) {
           },
         },
         ipcRenderer: {
-          invoke: (channel: string, ...args) => transport.invoke(channel, ...args),
-          send: (channel: string, ...args) => transport.send(channel, ...args),
+          invoke: (channel: string, ...args: any[]) => transport.invoke(channel, ...args),
+          send: (channel: string, ...args: any[]) => transport.send(channel, ...args),
           on: (channel: string, listener: any) => transport.on(channel, listener),
           removeListener: (channel: string, listener: any) => transport.removeListener(channel, listener),
         },
@@ -78,12 +78,16 @@ function loadBundledPreload(transport: any) {
     process: { platform: "darwin", versions: {} },
     console,
   });
+  if (!api) throw new Error("Bundled preload did not expose its API");
   return api;
 }
 
 const plain = (value: any) => JSON.parse(JSON.stringify(value));
 
-async function createFixture({ responses = {}, engine } = {}) {
+async function createFixture({ responses = {}, engine }: {
+  responses?: Record<string, (...args: any[]) => unknown>;
+  engine?: any;
+} = {}) {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
 
   const engineFake = engine ?? {
@@ -97,7 +101,7 @@ async function createFixture({ responses = {}, engine } = {}) {
     setMicWarmHold() {},
   };
 
-  const handlers = registerRealHandlers({
+  const handlers: Map<string, (...args: any[]) => any> = registerRealHandlers({
     databaseManager: {
       getGoogleAccounts: () => [],
       getNote: () => null,
@@ -140,7 +144,7 @@ async function createFixture({ responses = {}, engine } = {}) {
   const sent: any[] = [];
   const invoked: any[] = [];
   const listeners = new Map();
-  const invokeHandler = async (channel: string, ...args) => {
+  const invokeHandler = async (channel: string, ...args: any[]) => {
     invoked.push({ channel, args });
     const handler = handlers.get(channel);
     if (!handler) throw new Error(`No handler for ${channel}`);
@@ -151,7 +155,7 @@ async function createFixture({ responses = {}, engine } = {}) {
   };
   const transport = {
     invoke: invokeHandler,
-    send: (channel: string, ...args) => sent.push({ channel, args }),
+    send: (channel: string, ...args: any[]) => sent.push({ channel, args }),
     on: (channel: string, listener: any) => {
       if (!listeners.has(channel)) listeners.set(channel, new Set());
       listeners.get(channel).add(listener);

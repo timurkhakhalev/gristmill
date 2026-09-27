@@ -1,7 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-let getCalendarAvailability;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let getCalendarAvailability: any;
 
 test.before(async () => {
   ({ getCalendarAvailability } = await import("../../src/helpers/calendarAvailabilityService.ts"));
@@ -20,7 +21,7 @@ const connectedManager = { isConnected: () => true };
 
 test("calculates privacy-safe availability from connected provider caches", () => {
   const databaseManager = {
-    getCalendarEventsInRange(start, end, providers) {
+    getCalendarEventsInRange(start: unknown, end: unknown, providers: unknown) {
       assert.equal(start, "2026-08-25T06:45:00.000Z");
       assert.equal(end, "2026-08-25T12:15:00.000Z");
       assert.deepEqual(providers, ["google", "microsoft"]);
@@ -38,7 +39,7 @@ test("calculates privacy-safe availability from connected provider caches", () =
     },
   };
 
-  const result = getCalendarAvailability({
+  const result = getCalendarAvailability!({
     request: REQUEST,
     databaseManager,
     calendarProviders: [

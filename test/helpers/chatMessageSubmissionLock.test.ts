@@ -66,8 +66,8 @@ test("message sender reports whether the submission lock accepted the send", asy
   }
   renderToStaticMarkup(React.createElement(Harness));
 
-  const first = sendMessage("first");
-  const second = sendMessage("second");
+  const first = (sendMessage as any)("first");
+  const second = (sendMessage as any)("second");
 
   assert.equal(await second, false);
   resolveCreate(1);

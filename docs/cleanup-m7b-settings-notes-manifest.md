@@ -5,8 +5,6 @@ settings and notes surfaces were cut over. No shared files are changed by M7b.
 
 ## Shared imports and calls to remove or rewire
 
-- `src/components/ui/PromptStudio.tsx`: remove `usePolicySnapshot` and
-  `selectPolicyEffectiveSettings`; read the raw local settings store.
 - `src/components/notes/NoteRecordControl.tsx`: remove managed-policy tooltip
   and any policy-based disabled state. Meeting capture remains available.
 - `src/components/notes/UploadAudioView.tsx`: M6-owned; remove remaining team

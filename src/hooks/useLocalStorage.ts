@@ -16,7 +16,7 @@ export function useLocalStorage<T>(
       const item = localStorage.getItem(key);
       if (item === null) {
         // Persist the default so direct localStorage.getItem() reads
-        // (e.g. in audioManager, PromptStudio) see the intended value.
+        // (e.g. in audioManager) see the intended value.
         localStorage.setItem(key, serialize(defaultValue));
         return defaultValue;
       }

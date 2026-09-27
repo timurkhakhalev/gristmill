@@ -216,7 +216,9 @@ Then reinstall.
 
 ## Enable Debug Mode
 
-For detailed diagnostics, see [DEBUG.md](DEBUG.md).
+Set the `OPENHERCULES_LOG_LEVEL` environment variable (for example
+`OPENHERCULES_LOG_LEVEL=debug`) and reproduce the issue; diagnostic
+output goes to the log locations listed above.
 
 ## Getting Help
 

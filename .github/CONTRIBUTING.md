@@ -16,9 +16,10 @@ along the way.
 - Please use the existing issue templates (`bug_report`, `feature_request`)
   so we have the info needed to reproduce.
 - For transcription or audio problems, attaching debug logs is a huge
-  help — see [`DEBUG.md`](../DEBUG.md) for how to enable debug logging
-  and where the log files live, and [`TROUBLESHOOTING.md`](../TROUBLESHOOTING.md)
-  for common fixes to try first.
+  help — see the debug-logging section of
+  [`TROUBLESHOOTING.md`](../TROUBLESHOOTING.md)
+  for how to enable it, where the log files live, and common fixes to try
+  first.
 
 ## Reporting security issues
 
@@ -50,9 +51,8 @@ The short version:
 | Format      | `pnpm run format`                                                                 |
 | Build       | `pnpm run build:mac:arm64`                                                        |
 
-Platform-specific setup, local Whisper notes, and packaging details are
-in [`README.md`](../README.md) and
-[`LOCAL_WHISPER_SETUP.md`](../LOCAL_WHISPER_SETUP.md).
+Platform-specific setup and packaging details are
+in [`README.md`](../README.md).
 
 ## Thanks
 

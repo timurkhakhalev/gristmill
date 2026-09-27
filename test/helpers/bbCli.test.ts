@@ -16,7 +16,7 @@ test("bb tool wrapper authenticates allowlisted routes and rejects external URLs
   const script = path.join(workspace, "openhercules-tools.mjs");
   assert.equal(spawnSync(process.execPath, ["--check", script]).status, 0);
   let seenAuthorization = "";
-  const server = http.createServer((request: string, response: unknown) => {
+  const server = http.createServer((request: import("node:http").IncomingMessage, response: import("node:http").ServerResponse) => {
     seenAuthorization = request.headers.authorization ?? "";
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end('{"notes":[]}');
@@ -27,11 +27,11 @@ test("bb tool wrapper authenticates allowlisted routes and rejects external URLs
   const output = await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, "GET", "/v1/notes/list"]);
     let stdout = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stdout.on("data", (chunk: string | Buffer) => { stdout += String(chunk); });
     child.on("error", reject);
-    child.on("close", (code: string) => code === 0 ? resolve(stdout) : reject(new Error(`tool exited ${code}`)));
+    child.on("close", (code: number | null) => (code === 0 ? resolve(stdout) : reject(new Error(`tool exited ${code}`))));
   });
-  assert.deepEqual(JSON.parse(output), { notes: [] });
+  assert.deepEqual(JSON.parse(output as string), { notes: [] });
   assert.equal(seenAuthorization, "Bearer test-token");
   const result = spawnSync(process.execPath, [script, "GET", "//example.com/v1/notes/list"], { encoding: "utf8" });
   assert.notEqual(result.status, 0);
@@ -88,7 +88,7 @@ else throw new Error("Unexpected bb command: " + args.join(" "));
   await assertBbVersion();
   process.env.BB_FAKE_VERSION = "0.44.1";
   clearBbCaches();
-  await assert.rejects(assertBbVersion(), (error: unknown) => error.code === "bb-version-unsupported");
+  await assert.rejects(assertBbVersion(), (error: unknown) => (error as { code?: string }).code === "bb-version-unsupported");
   delete process.env.BB_FAKE_VERSION;
   const id = await spawnBbThread("Private prompt from stdin", {
     provider: "codex", model: "gpt-6-luna", reasoningLevel: "low",
@@ -118,7 +118,7 @@ test("bb harness logos are fetched only from bb's loopback logo route and must b
   assert.equal(toBbLogo("image/svg+xml", `<svg>${"x".repeat(70_000)}</svg>`), null);
 
   const requested: unknown[] = [];
-  const server = http.createServer((request: string, response: unknown) => {
+  const server = http.createServer((request: import("node:http").IncomingMessage, response: import("node:http").ServerResponse) => {
     requested.push(request.url);
     response.writeHead(200, { "Content-Type": "image/svg+xml" });
     response.end(svg);
@@ -152,8 +152,8 @@ else throw new Error("Unexpected bb command: " + args.join(" "));
   clearBbCaches();
 
   const harnesses = await listBbHarnesses();
-  assert.deepEqual(harnesses.map((item: unknown) => [item.id, item.logo?.monochrome ?? null]), [["codex", true], ["evil", null], ["pi", null]]);
-  assert.ok(harnesses[0].logo.dataUrl.startsWith("data:image/svg+xml;base64,"));
+  assert.deepEqual(harnesses.map((item: any) => [item.id, item.logo?.monochrome ?? null]), [["codex", true], ["evil", null], ["pi", null]]);
+  assert.ok(harnesses[0]!.logo.dataUrl.startsWith("data:image/svg+xml;base64,"));
   assert.deepEqual(requested, ["/api/v1/system/providers/codex/logo?h=1"], "a cross-origin logo URL is never fetched");
   await listBbHarnesses();
   assert.equal(requested.length, 1, "logos are cached by their hashed URL");

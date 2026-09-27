@@ -168,9 +168,8 @@ export const isDuplicateMicSegment = ({
 /**
  * Indices (descending) of committed mic segments that an arriving system final
  * proves to be echo. Scans newest→oldest and stops early once a candidate is
- * older than the largest window (today's `break`; the array is committedAt-
- * ordered, so this is an optimisation that is only unsound under mixed
- * per-candidate windows — see the characterization test).
+ * older than their own window. Capture and commit times can differ, so a
+ * newer failed candidate cannot end the scan early.
  */
 export const selectRacingMicEntryIndices = ({
   segments,
@@ -203,7 +202,6 @@ export const selectRacingMicEntryIndices = ({
           windowMs,
         })
       ) {
-        if (candidate.timestamp < systemTimestamp - duplicateWindowMs) break;
         continue;
       }
     }

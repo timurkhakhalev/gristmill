@@ -42,6 +42,26 @@ test("consecutive rows of one speaker collapse the repeat label behind hover", a
   assert.equal(html.split("grid-rows-[0fr]").length - 1, 1);
 });
 
+test("reassigning the middle of one cluster renders three speaker runs", async () => {
+  const segments = Array.from({ length: 6 }, (_, i) => ({
+    id: `reassigned-${i}`,
+    text: `line ${i}`,
+    source: "system",
+    timestamp: i,
+    speaker: "speaker_0",
+    ...(i === 2 || i === 3 ? {
+      speakerName: "Bob",
+      speakerLocked: true,
+      speakerLockSource: "user",
+      speakerStatus: "locked",
+    } : {}),
+  }));
+  const html = await renderChat({ segments, speakerMappings: { speaker_0: "Alice" } });
+  assert.equal(html.split("grid-rows-[0fr]").length - 1, 3, "one hidden repeat label per run");
+  assert.ok(html.includes("Alice"));
+  assert.ok(html.includes("Bob"));
+});
+
 test("selection ring follows selectedSegmentIds", async () => {
   const html = await renderChat({
     selectedSegmentIds: new Set(["s2"]),
@@ -66,7 +86,7 @@ test("a mapped profile without an email offers the add-contact affordance", asyn
   assert.ok(!withEmail.includes("Add contact"));
 });
 
-test("a long transcript renders only a window of rows, each animating at most once", async () => {
+test("a long transcript initially renders only a window of rows", async () => {
   const many = Array.from({ length: 500 }, (_, i) => ({
     id: `m${i}`,
     text: `line ${i}`,
@@ -79,8 +99,19 @@ test("a long transcript renders only a window of rows, each animating at most on
   const rendered = html.split("data-index=").length - 1;
   assert.ok(rendered > 0, "the first screenful renders before the scroller is measured");
   assert.ok(rendered < 60, `expected a window, got ${rendered} of 500 rows`);
-  // A remounting row must not replay its entrance while the list scrolls.
-  assert.ok(html.split("agent-message-in").length - 1 <= 1);
+  assert.equal(html.split("agent-message-in").length - 1, 0, "older rows in the initial window do not animate");
+});
+
+test("only the newest settled row receives the entrance animation", async () => {
+  const segments = Array.from({ length: 4 }, (_, i) => ({
+    id: `animation-${i}`,
+    text: `line ${i}`,
+    source: "system",
+    timestamp: i,
+    speaker: "speaker_0",
+  }));
+  const html = await renderChat({ segments });
+  assert.equal(html.split("agent-message-in 200ms").length - 1, 1);
 });
 
 test("live partials render alongside the settled rows", async () => {

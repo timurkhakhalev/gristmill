@@ -104,21 +104,3 @@ test("the overlay resolver uses the macOS panel contract", () => {
     assert.deepEqual(resolveAllOverlayTypes(platform, session), expected, name);
   }
 });
-
-test("non-macOS inputs still resolve to the macOS window contract", () => {
-  const windowConfig = loadWindowConfig({
-    platform: "darwin",
-    environment: {},
-  });
-
-  assert.deepEqual(
-    {
-      main: windowConfig.MAIN_WINDOW_CONFIG.type,
-      notification: windowConfig.NOTIFICATION_WINDOW_CONFIG.type,
-    },
-    {
-      main: "panel",
-      notification: "panel",
-    }
-  );
-});

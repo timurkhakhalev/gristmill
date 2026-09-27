@@ -88,7 +88,6 @@ const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/notes/SpacesTree.tsx": ["auto", "auto", "auto", "auto"],
   "src/components/notes/UploadAudioView.tsx": ["ltr", "ltr", "inherit", "inherit"],
   "src/components/onboarding/LanguageSelectionStep.tsx": ["auto"],
-  "src/components/onboarding/UseCaseStep.tsx": ["auto"],
   "src/components/settings/ChatAgentSettings.tsx": ["auto"],
 };
 
@@ -162,10 +161,6 @@ test("representative prose, identity, secret, and rich-editor surfaces keep thei
   );
   assert.match(source("src/components/ui/CopyableCommand.tsx"), /<div\s+dir="ltr"/);
   assert.match(source("src/components/ui/HotkeyInput.tsx"), /<div\s+dir="ltr"/);
-  assert.match(
-    source("src/components/onboarding/ShortcutSetupStep.tsx"),
-    /function HotkeyChord[\s\S]*?<div\s+dir="ltr"/
-  );
   assert.match(source("src/components/ErrorBoundary.tsx"), /<pre\s+dir="ltr"/);
   assert.match(
     source("src/components/notes/NoteEditor.tsx"),

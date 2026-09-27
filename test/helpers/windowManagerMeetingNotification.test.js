@@ -449,6 +449,32 @@ test("auto-end recovery subtracts load time from its expiry and hover cannot ext
   }
 });
 
+test("only the active detection card can pause and resume its countdown", async () => {
+  const timers = installFakeTimers();
+  const manager = createNormalWindowManager();
+  const showing = manager.showMeetingNotification({ kind: "detection", detectionId: "meeting-1", source: "audio" });
+  const window = createdWindows[0];
+  window.loadDeferred.resolve();
+  await showing;
+  try {
+    assert.equal(timers.pendingDelays().includes(60_000), true);
+    const before = window.ignoreMouseEvents.length;
+    manager.setNotificationInteractivity({ send() {} }, true);
+    assert.equal(timers.pendingDelays().includes(60_000), true, "another overlay cannot pause the card");
+    assert.equal(window.ignoreMouseEvents.length, before);
+    for (let i = 0; i < 3; i++) {
+      manager.setNotificationInteractivity(window.webContents, true);
+      assert.equal(timers.pendingDelays().includes(60_000), false);
+      manager.setNotificationInteractivity(window.webContents, false);
+      assert.equal(timers.pendingDelays().includes(60_000), true);
+    }
+    assert.equal(window.ignoreMouseEvents.length, before + 6);
+  } finally {
+    manager.dismissMeetingNotification();
+    timers.restore();
+  }
+});
+
 test("a replaced deferred notification cannot send its payload to the newer window", async () => {
   const timers = installFakeTimers();
   const manager = createNormalWindowManager();

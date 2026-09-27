@@ -7,7 +7,6 @@
     "buildMain": false,
     "files": [
       "test/components/bidiInterpolatedText.test.js",
-      "test/components/controlPanelWindowMode.test.js",
       "test/components/directionalContentPolicy.test.js",
       "test/components/fieldDirectionPolicy.test.js",
       "test/components/rtlMotion.test.js",
@@ -96,11 +95,7 @@
       "test/components/keyboardShortcutsDialog.test.js",
       "test/components/onboardingCompatibility.test.js",
       "test/components/onboardingFlow.test.js",
-      "test/components/onboardingHotkeyPresentation.test.js",
       "test/components/onboardingLanguageSelection.test.js",
-      "test/components/onboardingUseCases.test.js",
-      "test/components/setupEligibility.test.js",
-      "test/components/shortcutSetupStep.test.js",
       "test/hooks/usePermissionsAccessibilityGate.test.js",
       "test/locales/i18nImports.test.js"
     ]
@@ -136,22 +131,9 @@
       "test/helpers/speakerIpc.test.js",
       "test/helpers/speakerRetroactiveMapping.test.js",
       "test/stores/meetingRecordingStoreAutoEndStop.test.js",
-      "test/stores/meetingRecordingStoreImports.test.js",
       "test/stores/meetingRecordingStoreSystemAudioDegraded.test.js",
       "test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js",
       "test/stores/meetingRecordingStoreSystemAudioSilence.test.js"
-    ]
-  },
-  {
-    "domains": [
-      "ai",
-      "settings",
-      "transcription"
-    ],
-    "kind": "unit",
-    "buildMain": false,
-    "files": [
-      "test/components/localDownloadState.test.js"
     ]
   },
   {
@@ -162,7 +144,6 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/components/macAccessibilityReadiness.test.js",
       "test/helpers/hotkeyValidation.test.js",
       "test/helpers/onboardingWindowBounds.test.js",
       "test/locales/rendererLocaleRemovalContract.test.js"
@@ -244,13 +225,11 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/components/treeRowActionClearance.test.js",
       "test/helpers/emojiInput.test.js",
       "test/helpers/granolaImport.test.js",
       "test/helpers/noteCards.test.js",
       "test/helpers/noteListOps.test.js",
       "test/lib/noteEditorPendingSave.test.js",
-      "test/services/noteListQuery.test.js",
       "test/utils/findMatches.test.js",
       "test/utils/mentionMarkdown.test.js",
       "test/utils/snippets.test.js"
@@ -265,16 +244,25 @@
     "files": [
       "test/components/uploadTempLifetime.test.js",
       "test/helpers/cliBridgeTranscribe.test.js",
-      "test/helpers/localFileTranscriptionBehavior.test.js",
       "test/helpers/localFileTranscriptionIpc.test.js",
       "test/helpers/parakeetWavNormalization.test.js",
       "test/helpers/remoteTranscriptionIpc.test.js",
-      "test/helpers/retryTranscriptionHandler.test.js",
       "test/helpers/uploadCancelIpc.test.js",
       "test/helpers/whisperServerInferenceFields.test.js",
       "test/services/fileTranscriptionManaged.test.js",
       "test/services/fileTranscriptionTimestamps.test.js",
       "test/stores/batchQueueCancel.test.js"
+    ]
+  },
+  {
+    "domains": [
+      "transcription"
+    ],
+    "kind": "integration",
+    "buildMain": false,
+    "serial": true,
+    "files": [
+      "test/helpers/retryTranscriptionHandler.test.js"
     ]
   },
   {
@@ -299,7 +287,6 @@
       "test/helpers/globeKeyManager.test.js",
       "test/helpers/m4DictationRemovalContract.test.js",
       "test/helpers/networkErrors.test.js",
-      "test/helpers/notificationInteractivity.test.js",
       "test/helpers/notificationTimer.test.js",
       "test/helpers/pillVisibilityHandoff.test.js",
       "test/helpers/scrollFollowState.test.js",
@@ -309,9 +296,7 @@
       "test/helpers/windowContext.test.js",
       "test/helpers/windowManagerNavigation.test.js",
       "test/helpers/windowPositionClamp.test.js",
-      "test/lib/authAccountScope.test.js",
       "test/lib/localMutationError.test.js",
-      "test/lib/reactiveLocalFlag.test.js",
       "test/locales/translationCoverage.test.js",
       "test/m1IdentitySourceContract.test.js",
       "test/m2ServerLayerRemovalContract.test.js",
@@ -321,11 +306,8 @@
       "test/scripts/macosIdentitySourceContract.test.js",
       "test/scripts/sqliteRuntime.test.js",
       "test/scripts/testSelection.test.js",
-      "test/utils/formatAmount.test.js",
       "test/utils/formatDuration.test.js",
-      "test/utils/latestValueScheduler.test.js",
-      "test/utils/serialQueue.test.js",
-      "test/utils/validation.test.js"
+      "test/utils/serialQueue.test.js"
     ]
   },
   {
@@ -347,7 +329,6 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/activationModeSelector.test.js",
       "test/helpers/hotkeyFnGuard.test.js",
       "test/helpers/hotkeyLabels.test.js",
       "test/helpers/hotkeyList.test.js",
@@ -392,7 +373,6 @@
       "test/helpers/speakerMerge.test.js",
       "test/helpers/streamingConnectionLifecycle.test.js",
       "test/helpers/systemDefaultMicrophone.test.js",
-      "test/stores/meetingSegmentReducer.test.js",
       "test/utils/segmentSpeakerName.test.js"
     ]
   },
@@ -454,7 +434,6 @@
       "test/services/openaiOpenCodeSession.test.js",
       "test/services/streamingThinkFilter.test.js",
       "test/services/toolUtils.test.js",
-      "test/utils/agentSelectionContext.test.js",
       "test/utils/bedrockRegions.test.js",
       "test/utils/localInferenceError.test.js"
     ]
@@ -473,8 +452,7 @@
       "test/helpers/parakeetModelRegistry.test.js",
       "test/helpers/tinfoilTranscription.test.js",
       "test/helpers/transcriptionRouteModelAgreement.test.js",
-      "test/utils/llmTranscript.test.js",
-      "test/utils/managedAzureTranscriptionUrl.test.js"
+      "test/utils/llmTranscript.test.js"
     ]
   },
   {
@@ -721,8 +699,7 @@
       "test/helpers/whisperVadConfig.test.js",
       "test/helpers/whisperVadModel.test.js",
       "test/helpers/whisperWakeRewarm.test.js",
-      "test/services/transcriptionBaseUrl.test.js",
-      "test/utils/liveTranscriptPresentation.test.js"
+      "test/services/transcriptionBaseUrl.test.js"
     ]
   },
   {
@@ -933,7 +910,6 @@
       "test/helpers/participants.test.js",
       "test/helpers/personalEmailDomains.test.js",
       "test/utils/dateFormatting.test.js",
-      "test/utils/dateGrouping.test.js",
       "test/utils/participants.test.js"
     ]
   },
@@ -1029,8 +1005,7 @@
       "test/helpers/settingsStoreLocalProviderMigrations.test.js",
       "test/helpers/settingsStoreMeetingFollowFlags.test.js",
       "test/helpers/settingsStoreRetiredGroqModels.test.js",
-      "test/helpers/settingsStoreTranscriptionModeReconcile.test.js",
-      "test/helpers/settingsStoreUploadTranscription.test.js"
+      "test/helpers/settingsStoreTranscriptionModeReconcile.test.js"
     ]
   },
   {
@@ -1230,16 +1205,6 @@
       "test/scripts/meetingCoordinatorTypeProbe.test.js",
       "test/scripts/nativeAudioCaptureTypeProbe.test.js",
       "test/scripts/speakerOnnxTypeProbe.test.js"
-    ]
-  },
-  {
-    "domains": [
-      "platform"
-    ],
-    "kind": "types",
-    "buildMain": false,
-    "files": [
-      "test/scripts/rendererEntryTypeProbe.test.js"
     ]
   },
   {

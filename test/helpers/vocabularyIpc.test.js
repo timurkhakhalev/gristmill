@@ -224,15 +224,21 @@ test("undo-learned-corrections removes valid words, broadcasts fresh state and s
 });
 
 test("registrations are isolated per call and do not share broadcast state", async () => {
-  const db = fakeDb();
-  db.getDictionary = () => [];
-  const first = setup(db);
-  const sentCount = sent.length;
-  const second = setup(db);
+  sent = [];
+  const first = new Map();
+  const second = new Map();
+  const register = (map, words) => registerVocabularyHandlers(
+    { handle: (channel, handler) => map.set(channel, handler) },
+    { database: { ...fakeDb(), getDictionary: () => words }, debugLogger: { debug() {}, warn() {}, error() {} } }
+  );
+  register(first, ["first"]);
+  register(second, ["second"]);
   await first.get("db-broadcast-dictionary-updated")();
-  assert.deepEqual(sent, [{ channel: "dictionary-updated", data: [] }]);
-  void second;
-  void sentCount;
+  await second.get("db-broadcast-dictionary-updated")();
+  assert.deepEqual(sent, [
+    { channel: "dictionary-updated", data: ["first"] },
+    { channel: "dictionary-updated", data: ["second"] },
+  ]);
 });
 
 test.after(() => {

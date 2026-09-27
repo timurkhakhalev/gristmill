@@ -437,12 +437,9 @@ test("a misconfigured custom endpoint fails closed before any read or request", 
 });
 
 test("self-hosted is exempt from the third-party size cap; byok caps report the applied limit", async () => {
-  const bigFile = path.join(tmpRoot, "big.wav");
-  fs.writeFileSync(bigFile, Buffer.alloc(26 * 1024 * 1024, 1));
-
-  const selfHosted = setup();
+  const selfHosted = setup({ deps: { fileSize: () => 26 * 1024 * 1024 } });
   const ok = await selfHosted.call({
-    filePath: bigFile,
+    filePath: audioFile,
     provider: "custom",
     transcriptionMode: "self-hosted",
     remoteTranscriptionUrl: "https://myorg.example.com/v1",
@@ -452,9 +449,9 @@ test("self-hosted is exempt from the third-party size cap; byok caps report the 
   assert.equal(ok.success, true);
   assert.deepEqual(selfHosted.transport.calls[0].headers, {}, "auth scheme none");
 
-  const byok = setup();
+  const byok = setup({ deps: { fileSize: () => 26 * 1024 * 1024 } });
   const capped = await byok.call({
-    filePath: bigFile,
+    filePath: audioFile,
     apiKey: "sk",
     provider: "openai",
     language: "",
@@ -463,12 +460,13 @@ test("self-hosted is exempt from the third-party size cap; byok caps report the 
   assert.equal(capped.success, false);
   assert.match(capped.error, /25 MB/);
   assert.equal(byok.transport.calls.length, 0);
+  assert.equal(byok.calls.reads.length, 0);
 
   const geminiCapped = setup({
     deps: { fileSize: () => 2 * 1024 * 1024 * 1024 + 1 },
   });
   const gemini = await geminiCapped.call({
-    filePath: bigFile,
+    filePath: audioFile,
     apiKey: "gk",
     provider: "gemini",
     language: "",

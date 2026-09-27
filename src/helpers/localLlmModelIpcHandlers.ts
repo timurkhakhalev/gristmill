@@ -227,14 +227,7 @@ export function registerLocalLlmModelHandlers(
   ipcMain.handle(c.llamaCppCheck, async (): Promise<LlamaCppCheckResult> => {
     try {
       const isInstalled = await deps.llamaCppInstaller.isInstalled();
-      // Pre-existing behavior, preserved 1:1: LlamaCppInstaller has no
-      // getVersion method, so an installed binary makes this call throw and
-      // land in the catch — the check reports { isInstalled: false, error }
-      // exactly as it did before the cutover.
-      const version = isInstalled
-        ? await (deps.llamaCppInstaller as unknown as { getVersion(): Promise<string | null> }).getVersion()
-        : null;
-      return { isInstalled, version };
+      return { isInstalled, version: null };
     } catch (error) {
       return { isInstalled: false, error: (error as Error).message };
     }

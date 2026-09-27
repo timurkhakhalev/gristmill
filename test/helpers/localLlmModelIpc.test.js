@@ -162,13 +162,10 @@ test("a manager DOWNLOAD_IN_PROGRESS failure emits no error event", async () => 
   assert.equal(h.sent.length, 0);
 });
 
-test("llama-cpp-check preserves the pre-cutover getVersion gap 1:1", async () => {
-  // LlamaCppInstaller has no getVersion; an installed binary must keep
-  // failing through the catch exactly as before the cutover.
+test("llama-cpp-check reports an installed binary without requiring a version API", async () => {
   const h = createHarness({ llamaCppInstaller: { isInstalled: async () => true } });
   const result = await h.invoke(localLlmChannels.llamaCppCheck);
-  assert.equal(result.isInstalled, false);
-  assert.match(result.error, /getVersion is not a function/);
+  assert.deepEqual(result, { isInstalled: true, version: null });
 
   const absent = await createHarness().invoke(localLlmChannels.llamaCppCheck);
   assert.deepEqual(absent, { isInstalled: false, version: null });

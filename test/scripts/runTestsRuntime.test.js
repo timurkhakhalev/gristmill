@@ -1,6 +1,9 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { runTests, runCommand } = require("../../scripts/run-tests");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { runTests, runCommand, acquireFullRunLock } = require("../../scripts/run-tests");
 
 function fakeRunner(extra = {}) {
   const calls = [];
@@ -20,7 +23,7 @@ function fakeRunner(extra = {}) {
 
 test("macOS unit selection uses Electron as Node without a main build", async () => {
   const { calls, options } = fakeRunner();
-  assert.equal(await runTests(["test/utils/formatDuration.test.js"], options), 0);
+  assert.equal(await runTests(["--processes", "1", "test/utils/formatDuration.test.js"], options), 0);
   assert.deepEqual(calls[0], { prepare: "electron" });
   assert.equal(calls.length, 2);
   assert.equal(calls[1].binary, "/electron");
@@ -39,6 +42,86 @@ test("compiled bridge selection builds once and Linux uses Node", async () => {
   assert.equal(calls[1].env.ELECTRON_RUN_AS_NODE, undefined);
   assert.equal(calls[2].binary, "/node");
   assert.equal(calls[2].env.ELECTRON_RUN_AS_NODE, undefined);
+});
+
+test("two processes run ordinary files before serial compiler and native files", async () => {
+  const { calls, options } = fakeRunner({ platform: "linux" });
+  const files = ["test/utils/formatDuration.test.js", "test/scripts/mainBuild.test.js", "test/helpers/notesBridge.test.js"];
+  assert.equal(await runTests(["--processes", "2", ...files], options), 0);
+  assert.deepEqual(calls[0], { prepare: "node" });
+  assert.deepEqual(calls[1].args, ["run", "build:main"]);
+  assert.equal(calls[2].args.find((arg) => arg.startsWith("--test-concurrency")), "--test-concurrency=2");
+  assert.equal(calls[3].args.find((arg) => arg.startsWith("--test-concurrency")), "--test-concurrency=1");
+  assert.deepEqual(calls.slice(2).flatMap((call) => call.args.filter((arg) => arg.endsWith(".test.js"))).sort(), files.sort());
+});
+
+test("a failed parallel phase still runs serial tests and preserves failure", async () => {
+  const { options } = fakeRunner({ platform: "linux" });
+  let testsRun = 0;
+  options.run = async (binary) => binary === "pnpm" ? 0 : (++testsRun === 1 ? 3 : 0);
+  assert.equal(await runTests(["--processes", "2", "test/utils/formatDuration.test.js", "test/scripts/mainBuild.test.js"], options), 3);
+  assert.equal(testsRun, 2);
+});
+
+test("full-run lock rejects another owner and releases only its own lock", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "oh-runner-lock-"));
+  const file = path.join(directory, "full.lock");
+  const release = acquireFullRunLock(file);
+  try {
+    assert.throws(() => acquireFullRunLock(file), /Another full test run owns/);
+  } finally {
+    release();
+    acquireFullRunLock(file)();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("failed full run releases its lock", async () => {
+  let released = false;
+  const { options } = fakeRunner({ lock: () => () => { released = true; }, run: async () => 7 });
+  assert.equal(await runTests([], options), 7);
+  assert.equal(released, true);
+});
+
+test("interruption between phases releases the full-run lock", async () => {
+  let released = false;
+  let testPhases = 0;
+  const { options } = fakeRunner({
+    platform: "linux",
+    lock: () => () => { released = true; },
+    run: async (binary) => {
+      if (binary !== "pnpm") {
+        testPhases++;
+        process.emit("SIGTERM");
+      }
+      return 0;
+    },
+  });
+  assert.equal(await runTests(["--processes", "2"], options), 143);
+  assert.equal(testPhases, 1);
+  assert.equal(released, true);
+});
+
+test("termination stops an owned child and grandchild", { timeout: 5000 }, async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "oh-runner-lifecycle-"));
+  const heartbeat = path.join(directory, "heartbeat");
+  const ready = path.join(directory, "ready");
+  const grandchild = `const fs = require('node:fs'); setInterval(() => fs.writeFileSync(${JSON.stringify(heartbeat)}, String(Date.now())), 20);`;
+  const child = `const { spawn } = require('node:child_process'); const fs = require('node:fs'); spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' }); fs.writeFileSync(${JSON.stringify(ready)}, 'ready'); setInterval(() => {}, 1000);`;
+  try {
+    const running = runCommand(process.execPath, ["-e", child], process.env);
+    for (let i = 0; i < 200 && !fs.existsSync(heartbeat); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(fs.existsSync(heartbeat), true, "grandchild started");
+    process.emit("SIGTERM");
+    assert.equal(await running, 143);
+    const stoppedAt = fs.statSync(heartbeat).mtimeMs;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(fs.statSync(heartbeat).mtimeMs, stoppedAt, "grandchild stopped");
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("listing and invalid selection never prepare dependencies or launch processes", async () => {

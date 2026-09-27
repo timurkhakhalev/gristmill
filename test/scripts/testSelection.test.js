@@ -25,9 +25,11 @@ test("full selection and explicit files are complete and deterministic", () => {
 });
 
 test("invalid, ambiguous and empty selections fail closed", () => {
-  for (const args of [["--domain"], ["--domain", "calendr"], ["--kind", "fast"], ["--watch"], ["--domain", "notes", "test/a.test.js"], ["--", "--", "test/a.test.js"]]) {
+  for (const args of [["--domain"], ["--domain", "calendr"], ["--kind", "fast"], ["--watch"], ["--processes"], ["--processes", "3"], ["--domain", "notes", "test/a.test.js"], ["--", "--", "test/a.test.js"]]) {
     assert.throws(() => parseArgs(args));
   }
+  assert.equal(parseArgs(["--processes", "2"]).processes, 2);
+  assert.equal(parseArgs([]).processes, 2);
   assert.throws(() => selectTests(entries, parseArgs(["test/missing.test.js"])), /Unknown test file/);
   assert.throws(() => selectTests(entries, parseArgs(["--domain", "ai", "--kind", "native"])), /No tests/);
 });
@@ -38,6 +40,8 @@ test("registry catches missing, stale, duplicate and invalid registrations", () 
   assert.throws(() => validateRegistry([], [group]), /Stale/);
   assert.throws(() => validateRegistry(["test/a.test.js"], [group, group]), /Duplicate/);
   assert.throws(() => validateRegistry(["test/a.test.js"], [{ ...group, kind: "fast" }]), /Invalid/);
+  assert.throws(() => validateRegistry(["test/a.test.js"], [{ ...group, serial: "yes" }]), /Invalid/);
+  assert.equal(validateRegistry(["test/a.test.js"], [{ ...group, serial: true }])[0].serial, true);
 });
 
 test("repository registry covers every test and compiled-output consumers request a build", () => {

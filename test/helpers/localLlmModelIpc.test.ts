@@ -7,17 +7,21 @@ const {
 } = require("../../src/helpers/localLlmModelIpcHandlers.ts");
 const LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus.ts");
 
-function createHarness(overrides = {}) {
-  const handlers = new Map();
-  const sent: unknown[] = [];
+function createHarness(overrides: {
+  modelManager?: Record<string, any>;
+  llamaCppInstaller?: Record<string, any>;
+  deps?: Record<string, any>;
+} = {}) {
+  const handlers = new Map<string, (...args: any[]) => any>();
+  const sent: [string, any][] = [];
   const calls : any = { persist: 0, stopServer: 0 };
-  const active = new Map();
+  const active = new Map<string, any>();
 
   const deps: any = {
     modelManager: {
       getModelsWithStatus: async () => [],
       isModelDownloaded: async () => false,
-      downloadModel: async (modelId: string, onProgress: unknown) => {
+      downloadModel: async (modelId: string, onProgress: (progress: number, downloaded: number, total: number) => void) => {
         onProgress(50, 5, 10);
         return `/models/${modelId}.gguf`;
       },
@@ -55,7 +59,7 @@ function createHarness(overrides = {}) {
       start: (type: string, id: unknown) => {
         active.set(`${type}:${id}`, true);
       },
-      update: (type: string, id: unknown, updates: unknown) => {
+      update: (type: string, id: unknown, updates: Record<string, unknown>) => {
         const current : any = { progress: 0, downloadedBytes: 0, totalBytes: 0, ...active.get(`${type}:${id}`), ...updates };
         active.set(`${type}:${id}`, current);
         return { modelType: type, modelId: id, phase: "downloading", sequence: 3, ...current };
@@ -69,7 +73,7 @@ function createHarness(overrides = {}) {
       getActiveDownloads: () => [],
     },
     progressSender: { sendToControlPanel: (channel: string, payload: unknown) => sent.push([channel, payload]) },
-    joinPath: (...segments) => segments.join("/"),
+    joinPath: (...segments: string[]) => segments.join("/"),
     persistEnvAfterServerStart: () => {
       calls.persist += 1;
     },
@@ -77,8 +81,12 @@ function createHarness(overrides = {}) {
     ...overrides.deps,
   };
 
-  registerLocalLlmModelHandlers({ handle: (c: unknown, fn: unknown) => handlers.set(c, fn) }, deps);
-  const invoke = (channel: string, ...args) => handlers.get(channel)({}, ...args);
+  registerLocalLlmModelHandlers({ handle: (c: string, fn: (...args: any[]) => any) => handlers.set(c, fn) }, deps);
+  const invoke = (channel: string, ...args: any[]) => {
+    const handler = handlers.get(channel);
+    if (!handler) throw new Error(`No handler registered for ${channel}`);
+    return handler({}, ...args);
+  };
   return { handlers, invoke, sent, calls };
 }
 
@@ -108,8 +116,7 @@ test("download failure surfaces the manager error code and an error event", asyn
   const h = createHarness({
     modelManager: {
       downloadModel: async () => {
-        const err = new Error("connection lost");
-        err.code = "NETWORK_ERROR";
+        const err = Object.assign(new Error("connection lost"), { code: "NETWORK_ERROR" });
         throw err;
       },
     },
@@ -151,8 +158,7 @@ test("a manager DOWNLOAD_IN_PROGRESS failure emits no error event", async () => 
   const h = createHarness({
     modelManager: {
       downloadModel: async () => {
-        const err = new Error("already running");
-        err.code = "DOWNLOAD_IN_PROGRESS";
+        const err = Object.assign(new Error("already running"), { code: "DOWNLOAD_IN_PROGRESS" });
         throw err;
       },
     },
@@ -227,15 +233,15 @@ test("active downloads come straight from the tracker", async () => {
 // handed to the renderer must come from the tracker, not the handler.
 test("progress sequences come from the shared tracker", async () => {
   const status = new LocalModelDownloadStatus();
-  const sent: unknown[] = [];
-  const handlers = new Map();
+  const sent: { sequence: number }[] = [];
+  const handlers = new Map<string, (...args: any[]) => any>();
   registerLocalLlmModelHandlers(
-    { handle: (c: unknown, fn: unknown) => handlers.set(c, fn) },
+    { handle: (c: string, fn: (...args: any[]) => any) => handlers.set(c, fn) },
     {
       modelManager: {
         getModelsWithStatus: async () => [],
         isModelDownloaded: async () => false,
-        downloadModel: async (modelId: string, onProgress: unknown) => {
+        downloadModel: async (modelId: string, onProgress: (progress: number, downloaded: number, total: number) => void) => {
           onProgress(10, 1, 10);
           return "/models/x.gguf";
         },
@@ -254,13 +260,15 @@ test("progress sequences come from the shared tracker", async () => {
       },
       llamaCppInstaller: {},
       downloadStatus: status,
-      progressSender: { sendToControlPanel: (channel: string, payload: unknown) => sent.push(payload) },
-      joinPath: (...s) => s.join("/"),
+      progressSender: { sendToControlPanel: (channel: string, payload: any) => sent.push(payload) },
+      joinPath: (...s: string[]) => s.join("/"),
       persistEnvAfterServerStart: () => {},
       logError: () => {},
     }
   );
-  const result = await handlers.get(localLlmChannels.modelDownload)({}, "qwen");
+  const download = handlers.get(localLlmChannels.modelDownload);
+  if (!download) throw new Error("Download handler was not registered");
+  const result = await download({}, "qwen");
   assert.equal(result.success, true);
   assert.ok(sent[0].sequence < sent[1].sequence);
   assert.equal(status.getActiveDownloads().length, 0);

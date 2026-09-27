@@ -1,7 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-let MAX_AVAILABILITY_HORIZON_DAYS, PAST_START_TOLERANCE_MS, isExplicitOffsetRfc3339, validateCalendarAvailabilityRequest, calculateCalendarAvailability;
+type AvailModule = typeof import("../../src/helpers/calendarAvailability.js");
+let MAX_AVAILABILITY_HORIZON_DAYS: AvailModule["MAX_AVAILABILITY_HORIZON_DAYS"];
+let PAST_START_TOLERANCE_MS: AvailModule["PAST_START_TOLERANCE_MS"];
+let isExplicitOffsetRfc3339: AvailModule["isExplicitOffsetRfc3339"];
+let validateCalendarAvailabilityRequest: AvailModule["validateCalendarAvailabilityRequest"];
+let calculateCalendarAvailability: AvailModule["calculateCalendarAvailability"];
 
 test.before(async () => {
   ({
@@ -105,13 +110,13 @@ test("request validation rejects unknown fields, invalid bounds, stale starts, a
   );
 
   for (const [name, value] of [
-    ["minimumSlotMinutes", 4],
+    ["minimumSlotMinutes", 4] as [string, number],
     ["minimumSlotMinutes", 481],
     ["bufferMinutes", -1],
     ["bufferMinutes", 121],
     ["maxResults", 0],
     ["maxResults", 21],
-  ]) {
+  ] as Array<[string, number]>) {
     assert.throws(
       () => validateCalendarAvailabilityRequest({ ...base, [name]: value }, NOW),
       new RegExp(name)

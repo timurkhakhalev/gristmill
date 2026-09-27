@@ -5,8 +5,8 @@ const { transcribeWithGemini } = require("../../src/helpers/geminiTranscription"
 const AUDIO = Buffer.from("fake-audio-bytes");
 
 function makeFetch(response: unknown) {
-  const calls: unknown[] = [];
-  const fetchImpl = async (url: string, init) => {
+  const calls: Array<{ url: string; init: { method?: string; headers?: Record<string, string>; body?: string } }> = [];
+  const fetchImpl = async (url: string, init: { method?: string; headers?: Record<string, string>; body?: string }) => {
     calls.push({ url, init });
     return {
       ok: true,
@@ -18,8 +18,8 @@ function makeFetch(response: unknown) {
   return { fetchImpl, calls };
 }
 
-function requestBody(calls) {
-  return JSON.parse(calls[0].init.body);
+function requestBody(calls: Array<{ init: { body?: string } }>) {
+  return JSON.parse(calls[0]!.init.body!);
 }
 
 test("posts JSON with the key header to the Interactions endpoint", async () => {
@@ -98,13 +98,13 @@ test("a missing key fails before any request is made", async () => {
   const { fetchImpl, calls } = makeFetch({});
   await assert.rejects(
     transcribeWithGemini({ audioBuffer: AUDIO, apiKey: "  " }, fetchImpl),
-    (error: unknown) => error.code === "API_KEY_MISSING"
+    (error: unknown) => (error as { code?: string }).code === "API_KEY_MISSING"
   );
   assert.equal(calls.length, 0);
 });
 
 test("HTTP statuses map to coded errors without leaking the key", async () => {
-  const statusError = async (status, body = "denied") => {
+  const statusError = async (status: number, body = "denied") => {
     const fetchImpl = async () => ({
       ok: false,
       status,

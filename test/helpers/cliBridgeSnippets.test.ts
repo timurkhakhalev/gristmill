@@ -33,7 +33,7 @@ const DatabaseManager = require("../../src/helpers/database.ts");
 const CliBridge = require("../../src/helpers/cliBridge.ts");
 
 function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error?.message || error);
+  const message = String((error as { message?: unknown })?.message || error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -42,7 +42,7 @@ function isNativeBindingUnavailable(error: unknown) {
 
 function createBridge(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-cli-snip-"));
-  let db;
+  let db: any;
   try {
     const BetterSqlite = require("better-sqlite3");
     const probe = new BetterSqlite(path.join(userDataDir, "probe.db"));
@@ -62,7 +62,7 @@ function createBridge(t: import("node:test").TestContext) {
   return { bridge, db, broadcasts };
 }
 
-function call(bridge, method, pathname, body: unknown) {
+function call(bridge: any, method: string, pathname: string, body?: unknown): any {
   for (const route of bridge.routes) {
     if (route.method !== method) continue;
     const params = route.match(pathname);
@@ -118,8 +118,8 @@ test("POST /v1/snippets/update broadcasts the new list to renderers", async (t: 
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(ctx.broadcasts.length, 1);
-  assert.equal(ctx.broadcasts[0].channel, "snippets-updated");
-  assert.deepEqual(ctx.broadcasts[0].payload, [signOff]);
+  assert.equal((ctx.broadcasts[0] as { channel: string }).channel, "snippets-updated");
+  assert.deepEqual((ctx.broadcasts[0] as { payload: unknown }).payload, [signOff]);
 });
 
 test("POST /v1/snippets/update counts only snippets the database stored", (t: import("node:test").TestContext) => {

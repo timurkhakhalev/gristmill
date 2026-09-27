@@ -13,12 +13,12 @@ require.cache[require.resolve("electron")] = {
     },
     net: {},
   },
-};
+} as unknown as import("node:module").Module;
 
 const DiarizationManager = require("../../src/helpers/diarization.ts");
 
-const systemSegment = (timestamp, text: string) => ({ source: "system", timestamp, text });
-const micSegment = (timestamp, text: string) => ({ source: "mic", timestamp, text });
+const systemSegment = (timestamp: number, text: string) => ({ source: "system", timestamp, text });
+const micSegment = (timestamp: number, text: string) => ({ source: "mic", timestamp, text });
 
 test("a segment between clusters takes the nearest cluster, not the first", () => {
   const manager = new DiarizationManager();

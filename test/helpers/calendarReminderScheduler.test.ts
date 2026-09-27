@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const CalendarReminderScheduler = require("../../src/helpers/calendarReminderScheduler.ts");
 
-function activeEvent(provider: string, id: string, overrides: Record<string, unknown> = {}) {
+function activeEvent(provider: string, id: string) {
   const now = Date.now();
   return {
     id,

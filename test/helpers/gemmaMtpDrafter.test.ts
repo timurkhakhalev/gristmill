@@ -43,7 +43,7 @@ function loadModelManager() {
   }
 }
 
-async function withHome(prefix, fn) {
+async function withHome(prefix: string, fn: (home: string) => Promise<void>) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   electronHome = home;
   try {
@@ -130,8 +130,8 @@ test("llama-server start restarts only when model or drafter presence changes", 
   const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
   const manager = new LlamaServerManager();
 
-  const calls = [];
-  manager._doStart = async (modelPath, options: unknown) => {
+  const calls: unknown[] = [];
+  manager._doStart = async (modelPath: string, options: { draftModelPath?: string | null }) => {
     manager.ready = true;
     manager.modelPath = modelPath;
     manager.draftModelPath = options.draftModelPath || null;
@@ -165,7 +165,7 @@ test("degraded start does not churn on identical requests", async () => {
   const manager = new LlamaServerManager();
 
   let starts = 0;
-  manager._doStart = async (modelPath, options: unknown) => {
+  manager._doStart = async (modelPath: string, options: { draftModelPath?: string | null }) => {
     starts++;
     manager.ready = true;
     manager.modelPath = modelPath;
@@ -193,7 +193,7 @@ test("stop() clears both the requested and active draft paths", async () => {
   manager.process = {
     exitCode: undefined,
     kill() {},
-    once(event: unknown, cb) {
+    once(event: unknown, cb: () => void) {
       if (event === "close") cb();
     },
   };

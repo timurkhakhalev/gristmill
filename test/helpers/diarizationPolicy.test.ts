@@ -68,7 +68,7 @@ test("clusters below the minimum total speaking time are dropped", () => {
   ];
   const kept = dropNegligibleClusters(segments);
   assert.deepEqual(
-    kept.map((s: string) => s.speaker),
+    kept.map((s: any) => s.speaker),
     ["speaker_0", "speaker_1"]
   );
 });

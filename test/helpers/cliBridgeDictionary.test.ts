@@ -66,7 +66,6 @@ function createBridge(t: import("node:test").TestContext) {
   return { bridge, db, broadcasts };
 }
 
-type RouteArgs = { params: Record<string, string>; query: URLSearchParams; body: unknown };
 function call(bridge: InstanceType<typeof CliBridge>, method: string, pathname: string, body: unknown = undefined): unknown {
   for (const route of bridge.routes) {
     if (route.method !== method) continue;

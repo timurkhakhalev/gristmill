@@ -7,7 +7,7 @@ const test = require("node:test");
 
 // Compile the authored TS entrypoint to a CJS artifact for the GUI Electron
 // subprocess (it has no tsx loader). Same pattern as preload in build-main.
-async function compileElectronEntrypoint(source) {
+async function compileElectronEntrypoint(source: string) {
   const esbuild = require("esbuild");
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "oh-electron-entry-"));
   const outfile = path.join(outDir, path.basename(source, ".ts") + ".cjs");
@@ -31,10 +31,10 @@ async function compileElectronEntrypoint(source) {
 test("dev renderer imports missing file-origin settings before HTTP scripts", { skip: process.platform !== "darwin" }, async () => {
   const electron = require("electron");
   const script = await compileElectronEntrypoint(path.join(__dirname, "devRendererOriginElectron.ts"));
-  const { stdout } = await new Promise((resolve, reject) => {
+  const { stdout } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     const { ELECTRON_RUN_AS_NODE: _ignored, ...env } = process.env;
     execFile(electron, [script], { timeout: 20_000, env }, (error: unknown, stdout: string, stderr: string) => {
-      if (error) reject(new Error(`${error.message}\n${stdout}\n${stderr}`));
+      if (error) reject(new Error(`${(error as Error).message}\n${stdout}\n${stderr}`));
       else resolve({ stdout, stderr });
     });
   });

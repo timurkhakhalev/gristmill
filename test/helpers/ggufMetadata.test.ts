@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { readGgufMetadata } = require("../../src/helpers/ggufMetadata.ts");
 const { TYPE, buildGguf, bufferReader, LLAMA_3_2_3B_ENTRIES } = require("./harness/ggufFixtures");
 
-const read = (entries, options: unknown) => readGgufMetadata(bufferReader(buildGguf(entries, options)));
+const read = (entries: unknown, options?: Record<string, unknown>) => readGgufMetadata(bufferReader(buildGguf(entries as never, options as never)));
 
 test("reads the architecture fields that determine KV cost", async () => {
   const metadata = await read(LLAMA_3_2_3B_ENTRIES);

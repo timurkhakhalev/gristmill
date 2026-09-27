@@ -314,12 +314,12 @@ test("parseGranolaCsv maps a full export into insert-ready notes", async () => {
   assert.equal(first.createdAt, "2026-07-15 14:30:00");
   assert.equal(first.sourceFile, "granola:doc1");
   // "Bob" has no email, so he is dropped: participants consumers require one.
-  assert.deepEqual(JSON.parse(first.participants), [
+  assert.deepEqual(JSON.parse(first.participants as string), [
     { displayName: "Alice", email: "alice@x.com" },
   ]);
 
-  const segments = JSON.parse(first.transcript);
-  assert.equal(first.transcript.startsWith("["), true);
+  const segments = JSON.parse(first.transcript as string);
+  assert.equal((first.transcript as string).startsWith("["), true);
   assert.equal(segments.length, 3);
   assert.equal(segments[0].speakerName, "Alice");
   assert.equal(segments[0].source, "system");
@@ -509,21 +509,21 @@ test("parseGranolaCsv fails loud on empty files", async () => {
   const { parseGranolaCsv } = await load();
   const result = parseGranolaCsv("");
   assert.equal(result.ok, false);
-  assert.equal(result.error.code, "EMPTY_FILE");
+  assert.equal((result.error as { code: string }).code, "EMPTY_FILE");
 });
 
 test("parseGranolaCsv fails loud when neither title nor summary maps", async () => {
   const { parseGranolaCsv } = await load();
   const result = parseGranolaCsv("foo,bar\n1,2");
   assert.equal(result.ok, false);
-  assert.equal(result.error.code, "HEADERS_UNRECOGNIZED");
+  assert.equal((result.error as { code: string }).code, "HEADERS_UNRECOGNIZED");
 });
 
 test("parseGranolaCsv fails loud on a header-only file", async () => {
   const { parseGranolaCsv } = await load();
   const result = parseGranolaCsv("title,summary");
   assert.equal(result.ok, false);
-  assert.equal(result.error.code, "NO_DATA_ROWS");
+  assert.equal((result.error as { code: string }).code, "NO_DATA_ROWS");
 });
 
 // ---------------------------------------------------------------------------
@@ -575,11 +575,11 @@ test("parseGranolaCsv parses the sanitized real-export fixture end to end", asyn
   assert.equal(note.title, "Product Design Review");
   assert.equal(note.createdAt, "2026-08-20 17:46:57");
   assert.match(note.content, /^# UI Cleanup Priorities/);
-  const segments = JSON.parse(note.transcript);
+  const segments = JSON.parse(note.transcript as string);
   assert.ok(segments.length > 1);
-  assert.ok(segments.every((segment: unknown) => segment.speakerName === undefined));
+  assert.ok(segments.every((segment: { speakerName?: string }) => segment.speakerName === undefined));
   // Anchor derives from the stored created_at, which is second-granular.
-  assert.equal(segments[0].timestamp, Date.parse("2026-08-20T17:46:57Z"));
+  assert.equal((segments[0] as { timestamp: number }).timestamp, Date.parse("2026-08-20T17:46:57Z"));
   assert.deepEqual(result.headerInfo.unknown, ["user_email", "workspace_name"]);
   // The only warning a clean real export produces is the file-level unknown-columns one.
   assert.deepEqual(result.warnings, [

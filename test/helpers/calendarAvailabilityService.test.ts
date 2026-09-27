@@ -1,7 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let getCalendarAvailability: any;
 
 test.before(async () => {

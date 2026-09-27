@@ -23,12 +23,12 @@ const MODELS = [
 ];
 
 function createBridge(models = MODELS) {
-  const calls = { approved: [], transcribed: [] };
+  const calls: { approved: string[]; transcribed: Array<{ path: string; options: unknown }> } = { approved: [], transcribed: [] };
   const operations = {
     databaseManager: {},
     listLocalTranscriptionModels: () => models,
     approveAudioPath: (p: string) => calls.approved.push(p),
-    transcribeLocalFile: async (p: string, options: unknown) => {
+    transcribeLocalFile: async (p: string, options: unknown): Promise<{ success: boolean; text?: string; code?: string; message?: string }> => {
       calls.transcribed.push({ path: p, options });
       return { success: true, text: "hello from disk" };
     },
@@ -37,7 +37,7 @@ function createBridge(models = MODELS) {
   return { bridge, calls, operations };
 }
 
-function call(bridge, method, pathname, body: unknown) {
+function call(bridge: any, method: string, pathname: string, body?: unknown): any {
   for (const route of bridge.routes) {
     if (route.method !== method) continue;
     const params = route.match(pathname);
@@ -87,7 +87,7 @@ test("POST /v1/transcribe honors an explicit model and language", async () => {
     language: "de",
   });
 
-  assert.deepEqual(calls.transcribed[0].options, {
+  assert.deepEqual((calls.transcribed[0] as { options: unknown }).options, {
     provider: "nvidia",
     model: "parakeet-tdt-0.6b-v3",
     language: "de",
@@ -96,7 +96,7 @@ test("POST /v1/transcribe honors an explicit model and language", async () => {
 
 test("POST /v1/transcribe reports silence as empty text, not an error", async () => {
   const { bridge, operations } = createBridge();
-  operations.transcribeLocalFile = async () => ({
+  operations.transcribeLocalFile = async (): Promise<{ success: boolean; text?: string; code?: string; message?: string }> => ({
     success: false,
     code: "NO_SPEECH_DETECTED",
     message: "No audio detected",

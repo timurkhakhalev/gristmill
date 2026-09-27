@@ -13,7 +13,7 @@ const Module = require("node:module");
 process.env.NODE_ENV = "test";
 
 const originalLoad = Module._load;
-let sent: unknown = null;
+let sent: Array<{ channel: string; data: unknown }> | null = null;
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-folder-del-"));
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
@@ -24,8 +24,8 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
           {
             isDestroyed: () => false,
             webContents: {
-              send: (ch, data: unknown) => {
-                if (sent) sent.push({ channel: ch, data });
+              send: (ch: string, data: unknown) => {
+                if (sent) sent!.push({ channel: ch, data });
               },
             },
           },
@@ -41,7 +41,7 @@ test.after(() => {
 });
 
 function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error?.message || error);
+  const message = String((error as { message?: unknown })?.message || error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")

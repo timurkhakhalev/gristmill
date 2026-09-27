@@ -22,16 +22,16 @@ const EXPECTED = {
 };
 
 function geminiModels() {
-  const provider = modelData.cloudProviders.find((p: string) => p.id === "gemini");
+  const provider = modelData.cloudProviders.find((p: any) => p.id === "gemini");
   assert.ok(provider, "gemini provider missing from registry");
   return provider.models;
 }
 
 test("the Flash Lite entries carry the exact ids, names, and capability flags", () => {
-  const byId = new Map(geminiModels().map((m: unknown) => [m.id, m]));
+  const byId = new Map(geminiModels().map((m: any) => [m.id as string, m as any]));
 
   for (const [id, expected] of Object.entries(EXPECTED)) {
-    const model = byId.get(id);
+    const model = byId.get(id) as any;
     assert.ok(model, `missing Gemini entry ${id}`);
     assert.equal(model.name, expected.name, `${id} name`);
     assert.equal(model.descriptionKey, expected.descriptionKey, `${id} descriptionKey`);
@@ -41,6 +41,6 @@ test("the Flash Lite entries carry the exact ids, names, and capability flags", 
 });
 
 test("gemini-2.5-flash-lite stays in the registry for existing API keys", () => {
-  const model = geminiModels().find((m: unknown) => m.id === "gemini-2.5-flash-lite");
+  const model = geminiModels().find((m: any) => m.id === "gemini-2.5-flash-lite");
   assert.ok(model, "gemini-2.5-flash-lite was removed; existing keys still resolve it");
 });

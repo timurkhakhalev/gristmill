@@ -2,7 +2,7 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const WINDOW_CONFIG_PATH = require.resolve("../../src/helpers/windowConfig.ts");
-const { resolveOverlayWindowType } = require(WINDOW_CONFIG_PATH);
+const { resolveOverlayWindowType }: typeof import("../../src/helpers/windowConfig.ts") = require(WINDOW_CONFIG_PATH);
 
 const SESSION_ENV_KEYS = [
   "XDG_SESSION_TYPE",
@@ -31,7 +31,7 @@ function loadWindowConfig({ platform, environment }: { platform: string; environ
   delete require.cache[WINDOW_CONFIG_PATH];
 
   try {
-    return require(WINDOW_CONFIG_PATH);
+    return require(WINDOW_CONFIG_PATH) as typeof import("../../src/helpers/windowConfig.ts");
   } finally {
     if (originalPlatform) Object.defineProperty(process, "platform", originalPlatform);
     for (const key of SESSION_ENV_KEYS) setEnvironmentValue(key, originalEnvironment[key]);
@@ -45,7 +45,7 @@ function resolveAllOverlayTypes(platform: string, session: unknown) {
   return Object.fromEntries(
     OVERLAY_ROLES.map((role) => [
       role,
-      resolveOverlayWindowType({ role, platform, linuxSession: session }),
+      Reflect.apply(resolveOverlayWindowType, undefined, [{ role, platform, linuxSession: session }]),
     ])
   );
 }

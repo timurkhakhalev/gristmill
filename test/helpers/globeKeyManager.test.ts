@@ -106,7 +106,7 @@ function loadManager({ markerExists = true } = {}) {
   };
 
   try {
-    const GlobeKeyManager = require(managerModulePath);
+    const GlobeKeyManager: typeof import("../../src/helpers/globeKeyManager.ts").GlobeKeyManager = require(managerModulePath);
     return { GlobeKeyManager, spawnCalls };
   } finally {
     Module._load = originalLoad;

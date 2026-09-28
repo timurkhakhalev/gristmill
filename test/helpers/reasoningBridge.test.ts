@@ -292,8 +292,7 @@ test("the shared main registration registers every reasoning channel once", asyn
 
   const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
   delete require.cache[handlersModulePath];
-  const IPCHandlers = require(handlersModulePath);
-  const Ctor = IPCHandlers.default || IPCHandlers;
+  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
 
   const anything = (): unknown =>
     new Proxy(function () {}, {

@@ -66,7 +66,7 @@ function loadOpener({ spawnOutcome = "spawn" } = {}) {
   };
 
   try {
-    const { openExternalUrl } = require(openerModulePath);
+    const { openExternalUrl }: typeof import("../../src/helpers/externalUrlOpener.ts") = require(openerModulePath);
     return { openExternalUrl, spawnCalls, openExternalCalls };
   } finally {
     Module._load = originalLoad;

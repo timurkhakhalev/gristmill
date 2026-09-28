@@ -79,8 +79,7 @@ function anything(): (...args: unknown[]) => unknown {
 let target: any;
 test.before(() => {
   delete require.cache[handlersModulePath];
-  const IPCHandlers = require(handlersModulePath);
-  const Ctor = IPCHandlers.default || IPCHandlers;
+  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
   target = {};
   Ctor.prototype.setupHandlers.call(
     new Proxy(target, {

@@ -24,8 +24,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
 process.env.NODE_ENV = "test";
 
 const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
-const IPCHandlers = require(handlersModulePath);
-const Ctor = IPCHandlers.default || IPCHandlers;
+const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
 const DatabaseManager = require("../../src/helpers/database.ts");
 
 function isNativeBindingUnavailable(error: unknown) {
@@ -50,16 +49,16 @@ function createDb(t: import("node:test").TestContext) {
 }
 
 // Float32-LE buffers, the storage format the retroactive path reads back.
-function embedding(values: any) {
+function embedding(values: number[]) {
   return Buffer.from(new Float32Array(values).buffer);
 }
 
-async function runRetroactive(db: unknown, profile: unknown) {
+async function runRetroactive(db: unknown, profile: Parameters<typeof Ctor.prototype._retroactiveMapping>[0]) {
   Ctor.prototype._retroactiveMapping.call({ databaseManager: db }, profile);
   await new Promise((resolve) => setImmediate(() => setTimeout(resolve, 0)));
 }
 
-function unmappedNote(db: any, transcriptSegments: unknown, embeddingValues: unknown, speakerId = "SPEAKER_00") {
+function unmappedNote(db: any, transcriptSegments: unknown, embeddingValues: number[], speakerId = "SPEAKER_00") {
   const { note } = db.saveNote("Meeting", "content");
   db.setSpeakerMapping(note.id, speakerId, null, speakerId);
   if (transcriptSegments) {

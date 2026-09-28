@@ -66,7 +66,11 @@ test("whisper-vad and diarization scripts skip complete synthetic assets without
 test("whisper-cpp detects a complete synthetic install", (t: import("node:test").TestContext) => {
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "oh-whisper-install-"));
   t.after(() => fs.rmSync(binDir, { recursive: true, force: true }));
-  const { BINARIES, WHISPER_CPP_TAG, isCompleteInstall } = require(path.join(root, "scripts", "download-whisper-cpp.js"));
+  const { BINARIES, WHISPER_CPP_TAG, isCompleteInstall }: {
+    BINARIES: Record<"darwin-arm64", { outputName: string }>;
+    WHISPER_CPP_TAG: string;
+    isCompleteInstall(markerPath: string, binaryPath: string, config: { outputName: string }): boolean;
+  } = require(path.join(root, "scripts", "download-whisper-cpp.js"));
   const config = BINARIES["darwin-arm64"];
   const marker = path.join(binDir, ".whisper-cpp-darwin-arm64.json");
   const binary = path.join(binDir, config.outputName);

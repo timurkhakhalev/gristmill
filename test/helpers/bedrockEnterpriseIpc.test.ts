@@ -140,8 +140,7 @@ function retryable503() {
 
 test.before(() => {
   delete require.cache[handlersModulePath];
-  const IPCHandlers = require(handlersModulePath);
-  const Ctor = IPCHandlers.default || IPCHandlers;
+  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
   handlerContext = buildFakeThis();
   Ctor.prototype.setupHandlers.call(handlerContext);
   assert.ok(handlers.get("test-enterprise-connection"));

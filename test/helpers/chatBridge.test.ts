@@ -271,8 +271,7 @@ test("the shared main registration registers every channel exactly once", async 
     if (previousHandlersModule) require.cache[handlersModulePath] = previousHandlersModule;
     else delete require.cache[handlersModulePath];
   });
-  const IPCHandlers = require(handlersModulePath);
-  const Ctor = IPCHandlers.default || IPCHandlers;
+  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
 
   // Granola-test style `anything()`: each property access returns a fresh
   // proxy instead of the self-referential one that blows the stack.

@@ -32,7 +32,7 @@ function loadWithNetFetch(fetchImpl: FetchImpl) {
   } as unknown as import("node:module").Module;
   delete require.cache[downloadUtilsPath];
   return {
-    downloadUtils: require(downloadUtilsPath),
+    downloadUtils: require(downloadUtilsPath) as typeof import("../../src/helpers/downloadUtils.ts"),
     restore() {
       delete require.cache[downloadUtilsPath];
       if (originalElectronCache) require.cache[electronPath] = originalElectronCache;
@@ -135,7 +135,7 @@ test("downloadFile waits for a cancelled write stream to close before removing i
   }) as typeof fs.createWriteStream;
 
   try {
-    const { createDownloadSignal, downloadFile } = require(downloadUtilsPath);
+    const { createDownloadSignal, downloadFile }: typeof import("../../src/helpers/downloadUtils.ts") = require(downloadUtilsPath);
     const { signal, abort } = createDownloadSignal();
     let settled: "resolved" | { isAbort?: boolean } | null = null;
     const done = downloadFile("https://example.com/model.bin", destination, {

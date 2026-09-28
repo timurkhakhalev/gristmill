@@ -2432,7 +2432,7 @@ export class DatabaseManager {
       null
     );
   }
-  createAction(name: string, description: string, prompt: string, icon = "sparkles"): {
+  createAction(name: string, description: string, prompt: string, icon = "wand-sparkles"): {
     success: boolean;
     action: ActionRow | null;
   } {

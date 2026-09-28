@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Sparkles, Trash2, Loader2, Plus, Zap } from "../icons";
+import { Trash2, Loader2, Plus, Zap } from "../icons";
+import { AiActionIcon } from "../icons/AiActionIcon";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -167,7 +168,8 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                           : "hover:bg-default dark:hover:bg-white/3"
                       )}
                     >
-                      <Sparkles
+                      <AiActionIcon
+                        icon={action.icon}
                         size={12}
                         className={cn(
                           "shrink-0 transition-colors duration-150",
@@ -312,7 +314,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
               /* Empty state — no action selected */
               <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
                 <div className="w-10 h-10 rounded-xl bg-accent/5 dark:bg-accent/8 flex items-center justify-center mb-3">
-                  <Sparkles size={18} className="text-accent/30" />
+                  <AiActionIcon size={18} className="text-accent/30" />
                 </div>
                 <p className="text-sm font-medium text-muted mb-1">
                   {t("notes.actions.emptyEditorTitle", { defaultValue: "Select an action" })}

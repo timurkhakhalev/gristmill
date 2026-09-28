@@ -80,6 +80,8 @@ module.exports = [
     rules: {
       ...js.configs.recommended.rules,
       "no-unused-vars": "off",
+      "no-redeclare": "off",
+      "@typescript-eslint/no-redeclare": "error",
       "@typescript-eslint/no-unused-vars": [
         "warn",
         { varsIgnorePattern: "^_", argsIgnorePattern: "^_|^event|^err|^error" },

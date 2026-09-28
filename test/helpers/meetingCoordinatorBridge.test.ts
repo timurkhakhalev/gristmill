@@ -9,9 +9,21 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const Module = require("node:module");
+import type { MeetingCoordinatorDeps } from "../../src/helpers/meetingCoordinatorIpcHandlers.ts";
+import type { MeetingConnectionOptions } from "../../src/helpers/meetingStreamingProviders.ts";
+import type { WebContents } from "electron";
+import type { MeetingAutoEndRequest, MeetingCoordinatorApi, MeetingSegmentEvent } from "../../src/contracts/meetingCoordinator.ts";
 
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
+const requiredMethods = [
+  "acquireRecordingLock", "releaseRecordingLock", "meetingDetectionGetPreferences",
+  "setSpeakerDiarizationEnabled", "setMeetingSessionSpeakerConfig", "joinCalendarMeeting",
+  "meetingAutoEndCompleted", "meetingAutoEndRespond", "getMeetingNotificationData",
+  "getPendingMeetingNoteNavigation", "meetingTranscriptionSend", "onMeetingTranscriptionSegment",
+  "onMeetingAutoEndRequested", "onMeetingTranscriptionError",
+] as const satisfies readonly (keyof MeetingCoordinatorApi)[];
+type TestedApi = MeetingCoordinatorApi & Required<Pick<MeetingCoordinatorApi, typeof requiredMethods[number]>>;
 
 const electronStub = {
   app: {
@@ -25,7 +37,15 @@ const electronStub = {
 
 const originalLoad = Module._load;
 
-function registerRealHandlers(deps: any) {
+function unused(): never { throw new Error("Unexpected coordinator dependency call"); }
+
+function fetchRealtimeToken(_event: { sender: WebContents }, _options: MeetingConnectionOptions): Promise<string>;
+function fetchRealtimeToken(_event: { sender: WebContents }, _options: MeetingConnectionOptions, _extra: { streams: 2 }): Promise<[string, string]>;
+async function fetchRealtimeToken(_event: { sender: WebContents }, _options: MeetingConnectionOptions, extra?: { streams: 2 }): Promise<string | [string, string]> {
+  return extra ? ["token", "token"] : "token";
+}
+
+function registerRealHandlers(deps: MeetingCoordinatorDeps) {
   Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
     if (request === "electron") return electronStub;
     if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
@@ -51,8 +71,13 @@ function registerRealHandlers(deps: any) {
   }
 }
 
-function loadBundledPreload(transport: any) {
-  let api: Record<string, any> | undefined;
+function loadBundledPreload(transport: {
+  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+  send(channel: string, ...args: unknown[]): void;
+  on(channel: string, listener: (event: unknown, payload: unknown) => void): void;
+  removeListener(channel: string, listener: (event: unknown, payload: unknown) => void): void;
+}): TestedApi {
+  let api: unknown;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -62,7 +87,7 @@ function loadBundledPreload(transport: any) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name: string, value: any) => {
+          exposeInMainWorld: (_name: string, value: unknown) => {
             api = value;
           },
         },
@@ -78,15 +103,18 @@ function loadBundledPreload(transport: any) {
     process: { platform: "darwin", versions: {} },
     console,
   });
-  if (!api) throw new Error("Bundled preload did not expose its API");
-  return api;
+  assert.ok(api && typeof api === "object", "Bundled preload did not expose its API");
+  for (const method of requiredMethods) {
+    assert.equal(typeof (api as Record<string, unknown>)[method], "function", `${method} must be exposed`);
+  }
+  return api as TestedApi;
 }
 
-const plain = (value: any) => JSON.parse(JSON.stringify(value));
+const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 async function createFixture({ responses = {}, engine }: {
   responses?: Record<string, (...args: any[]) => unknown>;
-  engine?: any;
+  engine?: MeetingCoordinatorDeps["meetingDetectionEngine"];
 } = {}) {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
 
@@ -95,10 +123,15 @@ async function createFixture({ responses = {}, engine }: {
     setPreferences() {},
     async handleNotificationResponse() {},
     async joinCalendarMeeting() {},
-    completeAutoEndSession: async (sessionId: any) => sessionId === "meeting-1",
+    completeAutoEndSession: async (sessionId: string) => sessionId === "meeting-1",
     respondToAutoEndNotification: (sessionId: string, action: string) =>
       sessionId === "meeting-1" && action === "restart",
     setMicWarmHold() {},
+    setUserRecording: unused,
+    beginRecordingSession: unused,
+    endRecordingSession: unused,
+    recordMeetingAudioChunk: unused,
+    setRecordingSystemAudioAvailable: unused,
   };
 
   const handlers: Map<string, (...args: any[]) => any> = registerRealHandlers({
@@ -110,8 +143,25 @@ async function createFixture({ responses = {}, engine }: {
       removeSpeakerMapping: () => {},
       getSpeakerProfiles: () => [],
       upsertSpeakerProfile: () => ({ id: 1 }),
+      createMeetingRecording: unused,
+      createMeetingRecordingEpoch: unused,
+      updateMeetingRecordingEpochRecovery: unused,
+      markMeetingRecordingFinalizing: unused,
+      finalizeMeetingRecording: unused,
     },
-    diarizationManager: { isAvailable: () => false },
+    meetingRecordingStorage: {
+      openEpochWriter: unused,
+      appendEpochSamples: unused,
+      closeEpochWriter: unused,
+      recoverEpoch: unused,
+    },
+    diarizationManager: {
+      isAvailable: () => false,
+      convertRawPcmToWav: unused,
+      diarize: unused,
+      capSpeakerClusters: unused,
+      mergeWithTranscript: unused,
+    },
     meetingDetectionEngine: engineFake,
     audioTapManager: null,
     whisperManager: { transcribeLocalWhisper: async () => ({}) },
@@ -127,9 +177,14 @@ async function createFixture({ responses = {}, engine }: {
       getSpeakerEmbedding: () => null,
       mapSpeaker() {},
     },
-    fetchRealtimeToken: async () => "token",
+    fetchRealtimeToken,
     resolveWhisperVadOptions: () => ({}),
-    speakerEmbeddings: () => ({ cosineSimilarity: () => 0.9 }),
+    speakerEmbeddings: () => ({
+      isAvailable: () => false,
+      extractEmbedding: unused,
+      computeCentroid: unused,
+      cosineSimilarity: () => 0.9,
+    }),
     getControlPanelWindow: () => null,
     getMeetingNotificationData: () => ({ kind: "auto-end", sessionId: "meeting-1", expiresAt: 1 }),
     consumePendingMeetingNoteNavigation: () => ({
@@ -141,10 +196,10 @@ async function createFixture({ responses = {}, engine }: {
     showNotificationWindow() {},
   });
 
-  const sent: any[] = [];
-  const invoked: any[] = [];
-  const listeners = new Map();
-  const invokeHandler = async (channel: string, ...args: any[]) => {
+  const sent: { channel: string; args: unknown[] }[] = [];
+  const invoked: { channel: string; args: unknown[] }[] = [];
+  const listeners = new Map<string, Set<(event: unknown, payload: unknown) => void>>();
+  const invokeHandler = async (channel: string, ...args: unknown[]) => {
     invoked.push({ channel, args });
     const handler = handlers.get(channel);
     if (!handler) throw new Error(`No handler for ${channel}`);
@@ -155,17 +210,18 @@ async function createFixture({ responses = {}, engine }: {
   };
   const transport = {
     invoke: invokeHandler,
-    send: (channel: string, ...args: any[]) => sent.push({ channel, args }),
-    on: (channel: string, listener: any) => {
-      if (!listeners.has(channel)) listeners.set(channel, new Set());
-      listeners.get(channel).add(listener);
+    send: (channel: string, ...args: unknown[]) => { sent.push({ channel, args }); },
+    on: (channel: string, listener: (event: unknown, payload: unknown) => void) => {
+      const channelListeners = listeners.get(channel) ?? new Set<(event: unknown, payload: unknown) => void>();
+      channelListeners.add(listener);
+      listeners.set(channel, channelListeners);
     },
-    removeListener: (channel: string, listener: any) => {
+    removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) => {
       listeners.get(channel)?.delete(listener);
     },
   };
   const api = loadBundledPreload(transport);
-  const pushEvent = (channel: string, payload: any) => {
+  const pushEvent = (channel: string, payload: unknown) => {
     for (const listener of listeners.get(channel) ?? []) listener({}, payload);
   };
   return { api, pushEvent, sent, invoked, engineFake };
@@ -228,8 +284,8 @@ test("capture send crosses with source and sequencing metadata and returns its w
 test("event payloads reach callbacks and malformed ones are dropped", async () => {
   const { api, pushEvent } = await createFixture();
 
-  const segments: any[] = [];
-  const unsubscribe = api.onMeetingTranscriptionSegment?.((data: any) => segments.push(data));
+  const segments: MeetingSegmentEvent[] = [];
+  const unsubscribe = api.onMeetingTranscriptionSegment((data) => { segments.push(data); });
   assert.equal(typeof unsubscribe, "function");
 
   pushEvent("meeting-transcription-segment", {
@@ -249,8 +305,8 @@ test("event payloads reach callbacks and malformed ones are dropped", async () =
     timestamp: 12,
   });
 
-  const autoEnd: any[] = [];
-  const unsubscribeAutoEnd = api.onMeetingAutoEndRequested?.((request: string) => autoEnd.push(request));
+  const autoEnd: MeetingAutoEndRequest[] = [];
+  const unsubscribeAutoEnd = api.onMeetingAutoEndRequested((request) => { autoEnd.push(request); });
   pushEvent("meeting-auto-end-requested", { sessionId: "s1", reason: "silence" });
   pushEvent("meeting-auto-end-requested", { sessionId: 7 });
   assert.deepEqual(plain(autoEnd), [{ sessionId: "s1", reason: "silence" }]);
@@ -267,8 +323,8 @@ test("event payloads reach callbacks and malformed ones are dropped", async () =
 
 test("payload-only listeners deliver transcript errors without the event", async () => {
   const { api, pushEvent } = await createFixture();
-  const errors: any[] = [];
-  api.onMeetingTranscriptionError?.((message: any) => errors.push(message));
+  const errors: string[] = [];
+  api.onMeetingTranscriptionError((message) => { errors.push(message); });
   pushEvent("meeting-transcription-error", "provider exploded");
   pushEvent("meeting-transcription-error", 42);
   assert.deepEqual(errors, ["provider exploded"]);

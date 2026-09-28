@@ -152,7 +152,7 @@ else throw new Error("Unexpected bb command: " + args.join(" "));
   clearBbCaches();
 
   const harnesses = await listBbHarnesses();
-  assert.deepEqual(harnesses.map((item: any) => [item.id, item.logo?.monochrome ?? null]), [["codex", true], ["evil", null], ["pi", null]]);
+  assert.deepEqual(harnesses.map((item: { id: string; logo?: { monochrome?: boolean } }) => [item.id, item.logo?.monochrome ?? null]), [["codex", true], ["evil", null], ["pi", null]]);
   assert.ok(harnesses[0]!.logo.dataUrl.startsWith("data:image/svg+xml;base64,"));
   assert.deepEqual(requested, ["/api/v1/system/providers/codex/logo?h=1"], "a cross-origin logo URL is never fetched");
   await listBbHarnesses();

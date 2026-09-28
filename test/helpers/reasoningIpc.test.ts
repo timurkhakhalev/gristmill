@@ -7,9 +7,11 @@
 // replacement protection and the structured-clone part adapter.
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+import type { ReasoningHandlerDeps } from "../../src/helpers/reasoningIpcHandlers.ts";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 
-let registerReasoningHandlers: any;
-let AgentStreamRequestRegistry: any;
+let registerReasoningHandlers: typeof import("../../src/helpers/reasoningIpcHandlers.ts").registerReasoningHandlers;
+let AgentStreamRequestRegistry: typeof import("../../src/helpers/agentStreamRequestRegistry.ts").AgentStreamRequestRegistry;
 
 test.before(async () => {
   ({ registerReasoningHandlers } = await import("../../src/helpers/reasoningIpcHandlers.ts"));
@@ -20,24 +22,24 @@ const REAL_ERRORS = require("../../src/helpers/enterpriseProviderErrors");
 
 // The real enterprise error mapper keeps the user-facing mapping contract in
 // one place; these tests pin the wrapper fields, not the mapper's messages.
-function realMapper(provider: string, error: any, config: any) {
+function realMapper(provider: string, error: unknown, config: Record<string, unknown>) {
   return REAL_ERRORS.mapEnterpriseError(provider, error, config);
 }
 
-function fakeSender(id: any) {
-  const listeners = new Map();
-  const sent: any[] = [];
+function fakeSender(id: number) {
+  const listeners = new Map<string, (...args: unknown[]) => void>();
+  const sent: { channel: string; payload: unknown }[] = [];
   let destroyed = false;
   return {
     id,
     sent,
-    on: (event: any, listener: any) => {
+    on: (event: string, listener: (...args: unknown[]) => void) => {
       listeners.set(event, listener);
     },
-    once: (event: any, listener: any) => {
+    once: (event: string, listener: (...args: unknown[]) => void) => {
       listeners.set(event, listener);
     },
-    removeListener: (event: any, listener: any) => {
+    removeListener: (event: string, listener: (...args: unknown[]) => void) => {
       if (listeners.get(event) === listener) listeners.delete(event);
     },
     isDestroyed: () => destroyed,
@@ -48,13 +50,18 @@ function fakeSender(id: any) {
     navigate: (isInPlace = false) => {
       listeners.get("did-start-navigation")?.({}, "https://x", isInPlace, true);
     },
-    send: (channel: string, payload: any) => sent.push({ channel, payload }),
+    send: (channel: string, payload: unknown) => sent.push({ channel, payload }),
   };
 }
 
-function makeDeps(overrides: { deps?: Record<string, unknown> } = {}) {
-  const generateCalls: any[] = [];
-  const deps: any = {
+function record(value: unknown): Record<string, unknown> {
+  assert.ok(value && typeof value === "object" && !Array.isArray(value));
+  return value as Record<string, unknown>;
+}
+
+function makeDeps(overrides: { deps?: Partial<ReasoningHandlerDeps> } = {}) {
+  const generateCalls: Record<string, unknown>[] = [];
+  const deps: ReasoningHandlerDeps = {
     localService: {
       isAvailable: async () => true,
       processText: async () => "local result",
@@ -67,15 +74,17 @@ function makeDeps(overrides: { deps?: Record<string, unknown> } = {}) {
       text: async () => "",
       json: async () => ({ content: [{ type: "text", text: "anthropic text" }] }),
     }),
-    extractAnthropicText: (data: any) =>
-      Array.isArray(data?.content) && data.content[0]?.text ? data.content[0].text : null,
+    extractAnthropicText: (data) => {
+      const content = typeof data === "object" && data !== null && "content" in data ? data.content : null;
+      return Array.isArray(content) && typeof content[0]?.text === "string" ? content[0].text : null;
+    },
     describeMissingAnthropicText: () => "no text",
-    isEnterpriseProvider: (value: any) => ["bedrock", "azure", "vertex"].includes(value),
+    isEnterpriseProvider: (value) => typeof value === "string" && ["bedrock", "azure", "vertex"].includes(value),
     mapEnterpriseError: realMapper,
     runAbortableOperation: REAL_ERRORS.runAbortableOperation,
     runBedrockRequest: REAL_ERRORS.runBedrockRequest,
     validateEnterpriseEndpoint: () => {},
-    generateText: async (options: any) => {
+    generateText: async (options) => {
       generateCalls.push(options);
       return { text: "enterprise text", finishReason: "stop" };
     },
@@ -90,14 +99,14 @@ function makeDeps(overrides: { deps?: Record<string, unknown> } = {}) {
   return { deps, generateCalls };
 }
 
-function setup(overrides: { deps?: Record<string, unknown> } = {}) {
+function setup(overrides: { deps?: Partial<ReasoningHandlerDeps> } = {}) {
   const { deps, generateCalls } = makeDeps(overrides);
   const handlers = new Map();
   const listeners = new Map();
   registerReasoningHandlers(
     {
-      handle: (channel: string, fn: any) => handlers.set(channel, fn),
-      on: (channel: string, fn: any) => listeners.set(channel, fn),
+      handle: (channel, fn) => handlers.set(channel, fn),
+      on: (channel, fn) => listeners.set(channel, fn),
     },
     deps
   );
@@ -164,10 +173,10 @@ test("anthropic one-shot: key check, screenContext, complete-output and error di
     { success: false, error: "Anthropic API key not configured" }
   );
 
-  const fetches: any[] = [];
+  const fetches: { url: string; init?: Record<string, unknown> }[] = [];
   const ctx = setup({
     deps: {
-      proxyFetch: async (url: string, init: any) => {
+      proxyFetch: async (url, init) => {
         fetches.push({ url, init });
         return {
           ok: true,
@@ -192,7 +201,9 @@ test("anthropic one-shot: key check, screenContext, complete-output and error di
     }
   );
   assert.deepEqual(result, { success: true, text: "hi" });
-  const body = JSON.parse(fetches[0].init.body);
+  const bodySource = fetches[0].init?.body;
+  assert.ok(typeof bodySource === "string");
+  const body = JSON.parse(bodySource);
   assert.equal(body.system, "sys");
   assert.equal(body.temperature, 0.3, "supportsTemperature: true forwards temperature");
   assert.deepEqual(body.messages[0].content[1].source.data, "b64");
@@ -254,15 +265,17 @@ test("enterprise one-shot: unsupported provider and happy path", async () => {
 });
 
 test("bedrock cleanup: cancel is scoped to the requesting sender", async () => {
-  let releaseRequest: any;
-  const started = new Promise((resolve) => (releaseRequest = resolve));
+  let releaseRequest!: () => void;
+  const started = new Promise<void>((resolve) => { releaseRequest = resolve; });
   const { handlers, listeners } = setup({
     deps: {
-      getEnterpriseAIModel: async () => ({ __fixtureModel: true }),
-      generateText: async (options: any) => {
+      getEnterpriseAIModel: async () => ({ __fixtureModel: true, doStream: async () => { throw new Error("stream not used"); } }),
+      generateText: async (options) => {
         releaseRequest();
+        const abortSignal = options.abortSignal;
+        assert.ok(abortSignal instanceof AbortSignal);
         await new Promise((resolve, reject) => {
-          options.abortSignal.addEventListener("abort", () => reject(options.abortSignal.reason), {
+          abortSignal.addEventListener("abort", () => reject(abortSignal.reason), {
             once: true,
         });
         });
@@ -292,16 +305,18 @@ test("bedrock cleanup: cancel is scoped to the requesting sender", async () => {
 
 test("bedrock cleanup: sender destroy aborts the request and removes the listener", async () => {
   let signal: AbortSignal | undefined;
-  let releaseRequest: any;
-  const started = new Promise((resolve) => (releaseRequest = resolve));
+  let releaseRequest!: () => void;
+  const started = new Promise<void>((resolve) => { releaseRequest = resolve; });
   const { deps, handlers } = setup({
     deps: {
-      getEnterpriseAIModel: async () => ({ __fixtureModel: true }),
-      generateText: async (options: any) => {
-        signal = options.abortSignal;
+      getEnterpriseAIModel: async () => ({ __fixtureModel: true, doStream: async () => { throw new Error("stream not used"); } }),
+      generateText: async (options) => {
+        const abortSignal = options.abortSignal;
+        assert.ok(abortSignal instanceof AbortSignal);
+        signal = abortSignal;
         releaseRequest();
         await new Promise((resolve, reject) => {
-          options.abortSignal.addEventListener("abort", () => reject(options.abortSignal.reason), {
+          abortSignal.addEventListener("abort", () => reject(abortSignal.reason), {
             once: true,
           });
         });
@@ -329,8 +344,8 @@ test("bedrock cleanup keeps the retry policy with nested retries disabled", asyn
   const attempts = [];
   const { handlers, generateCalls } = setup({
     deps: {
-      getEnterpriseAIModel: async () => ({ __fixtureModel: true }),
-      generateText: async (options: any) => {
+      getEnterpriseAIModel: async () => ({ __fixtureModel: true, doStream: async () => { throw new Error("stream not used"); } }),
+      generateText: async (options) => {
         attempts.push(1);
         generateCalls.push(options);
         if (attempts.length === 1) {
@@ -364,11 +379,11 @@ test("bedrock cleanup keeps the retry policy with nested retries disabled", asyn
 
 // --- Enterprise streams ------------------------------------------------------
 
-function streamSetup(modelParts: any, overrides: { deps?: Record<string, unknown> } = {}) {
+function streamSetup(modelParts: unknown[], overrides: { deps?: Partial<ReasoningHandlerDeps> } = {}) {
   const { deps, handlers, listeners } = setup({
     deps: {
       getEnterpriseAIModel: async () => ({
-        doStream: async (options: any) => {
+        doStream: async (options) => {
           streamSetup.lastDoStreamOptions = options;
           return {
             stream: {
@@ -377,7 +392,7 @@ function streamSetup(modelParts: any, overrides: { deps?: Record<string, unknown
                   if (modelParts.length === 0) return { done: true };
                   const value = modelParts.shift();
                   if (value instanceof Error) throw value;
-                  return { done: false, value };
+                  return { done: false, value: value as LanguageModelV3StreamPart };
                 },
                 releaseLock: () => {},
               }),
@@ -437,7 +452,7 @@ test("stream: binary parts roundtrip through structured clone", async () => {
     config: { azureEndpoint: "https://acme.openai.azure.com" },
     options: {},
   });
-  const part = sender.sent[0].payload.part;
+  const part = record(record(sender.sent[0].payload).part);
   // The adapter clones, so the bytes are equal rather than identical.
   assert.deepEqual(part.data, binary);
   // And the actual Electron IPC clone algorithm must accept the envelope.
@@ -457,18 +472,24 @@ test("stream: non-cloneable raw and error payloads degrade narrowly", async () =
     modelId: "m",
     options: {},
   });
-  const parts = sender.sent.map((m) => m.payload.part);
+  const parts = sender.sent.flatMap((message) => {
+    const envelope = record(message.payload);
+    return "part" in envelope ? [record(envelope.part)] : [];
+  });
   // The raw payload degrades to a description instead of failing the send.
   assert.equal(parts[0].type, "raw");
   assert.equal(typeof parts[0].rawValue, "string");
   // The error part survives as an Error clone of the original message.
   assert.equal(parts[1].type, "error");
+  assert.ok(parts[1].error instanceof Error);
   assert.equal(parts[1].error.message, "boom");
   assert.equal(parts[1].error instanceof Error, true);
   // Everything sent is cloneable.
   for (const envelope of sender.sent) assert.doesNotThrow(() => structuredClone(envelope.payload));
   // done still terminated the stream.
-  assert.deepEqual(sender.sent.at(-1).payload, { streamId: "s-raw", done: true });
+  const last = sender.sent.at(-1);
+  assert.ok(last);
+  assert.deepEqual(last.payload, { streamId: "s-raw", done: true });
 });
 
 test("stream: a provider failure maps to an error envelope and failure result", async () => {
@@ -483,7 +504,9 @@ test("stream: a provider failure maps to an error envelope and failure result", 
   });
   assert.equal(result.success, false);
   assert.match(result.error, /model exploded/);
-  const terminal = sender.sent.at(-1).payload;
+  const last = sender.sent.at(-1);
+  assert.ok(last);
+  const terminal = record(last.payload);
   assert.equal(terminal.error, result.error);
   assert.equal(terminal.done, undefined);
 });
@@ -494,20 +517,23 @@ test("stream: explicit cancel aborts the provider read and skips its terminal ev
   const { deps, handlers } = setup({
     deps: {
       getEnterpriseAIModel: async () => ({
-        doStream: async (options: any) => ({
+        doStream: async (options) => ({
           stream: {
             getReader: () => ({
-              read: () =>
-                new Promise((_resolve, reject) => {
-                  options.abortSignal.addEventListener(
+              read: () => {
+                const abortSignal = options.abortSignal;
+                assert.ok(abortSignal instanceof AbortSignal);
+                return new Promise((_resolve, reject) => {
+                  abortSignal.addEventListener(
                     "abort",
                     () => {
                       sawAbort = true;
-                      reject(options.abortSignal.reason);
+                      reject(abortSignal.reason);
                     },
                     { once: true }
                   );
-                }),
+                });
+              },
               releaseLock: () => {},
             }),
           },
@@ -535,22 +561,25 @@ test("stream: explicit cancel aborts the provider read and skips its terminal ev
 test("stream: same streamId in two senders is independent; cancel touches only its sender", async () => {
   const senderA = fakeSender(4);
   const senderB = fakeSender(5);
-  const signals: any[] = [];
+  const signals: AbortSignal[] = [];
   const { handlers } = setup({
     deps: {
       getEnterpriseAIModel: async () => ({
-        doStream: async (options: any) => ({
+        doStream: async (options) => ({
           stream: {
             getReader: () => ({
-              read: () =>
-                new Promise((_resolve, reject) => {
-                  signals.push(options.abortSignal);
-                  options.abortSignal.addEventListener(
+              read: () => {
+                const abortSignal = options.abortSignal;
+                assert.ok(abortSignal instanceof AbortSignal);
+                return new Promise((_resolve, reject) => {
+                  signals.push(abortSignal);
+                  abortSignal.addEventListener(
                     "abort",
-                    () => reject(options.abortSignal.reason),
+                    () => reject(abortSignal.reason),
                     { once: true }
                   );
-                }),
+                });
+              },
               releaseLock: () => {},
             }),
           },
@@ -585,22 +614,25 @@ test("stream: same streamId in two senders is independent; cancel touches only i
 
 test("stream: a duplicate id of one sender aborts the old stream and shields the replacement", async () => {
   const sender = fakeSender(6);
-  const signals: any[] = [];
+  const signals: AbortSignal[] = [];
   const { deps, handlers } = setup({
     deps: {
       getEnterpriseAIModel: async () => ({
-        doStream: async (options: any) => ({
+        doStream: async (options) => ({
           stream: {
             getReader: () => ({
-              read: () =>
-                new Promise((_resolve, reject) => {
-                  signals.push(options.abortSignal);
-                  options.abortSignal.addEventListener(
+              read: () => {
+                const abortSignal = options.abortSignal;
+                assert.ok(abortSignal instanceof AbortSignal);
+                return new Promise((_resolve, reject) => {
+                  signals.push(abortSignal);
+                  abortSignal.addEventListener(
                     "abort",
-                    () => reject(options.abortSignal.reason),
+                    () => reject(abortSignal.reason),
                     { once: true }
                   );
-                }),
+                });
+              },
               releaseLock: () => {},
             }),
           },
@@ -645,20 +677,23 @@ test("stream: navigation and destroy abort the provider request", async () => {
     const { handlers } = setup({
       deps: {
         getEnterpriseAIModel: async () => ({
-          doStream: async (options: any) => ({
+          doStream: async (options) => ({
             stream: {
               getReader: () => ({
-                read: () =>
-                  new Promise((_resolve, reject) => {
-                    options.abortSignal.addEventListener(
+                read: () => {
+                  const abortSignal = options.abortSignal;
+                  assert.ok(abortSignal instanceof AbortSignal);
+                  return new Promise((_resolve, reject) => {
+                    abortSignal.addEventListener(
                       "abort",
                       () => {
                         aborted = true;
-                        reject(options.abortSignal.reason);
+                        reject(abortSignal.reason);
                       },
                       { once: true }
                     );
-                  }),
+                  });
+                },
                 releaseLock: () => {},
               }),
             },

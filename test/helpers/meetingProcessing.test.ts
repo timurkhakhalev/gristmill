@@ -12,6 +12,8 @@ const { prepareMeetingAudio } = require("../../src/helpers/meetingAudioMixer.ts"
 const { getFFmpegPath } = require("../../src/helpers/ffmpegUtils.ts");
 import type { MeetingProcessingConfig } from "../../src/contracts/meetingRecording";
 import type { MeetingProcessingWorkerDeps } from "../../src/helpers/meetingProcessing";
+import type { MeetingRecordingStorage as RecordingStorage } from "../../src/helpers/meetingRecordingStorage";
+import type { DatabaseManager } from "./harness/db";
 
 const validConfig = {
   transcription: {
@@ -39,8 +41,9 @@ const elevenResponse = {
   ],
 };
 
-function createFinishedRecording(db: any, storage: any, config: MeetingProcessingConfig | null = validConfig, noteText = "") {
+function createFinishedRecording(db: DatabaseManager, storage: RecordingStorage, config: MeetingProcessingConfig | null = validConfig, noteText = "") {
   const note = db.saveNote("Meeting", noteText, "meeting").note;
+  assert.ok(note);
   const recording = db.createMeetingRecording(note.id, { config });
   db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
   storage.openEpochWriter(recording.id, "mic", 0);
@@ -56,12 +59,12 @@ function createFinishedRecording(db: any, storage: any, config: MeetingProcessin
   return { note, recording: finalized.recording, run: finalized.initialRun };
 }
 
-function workerFor(db: any, storage: any, overrides: Partial<MeetingProcessingWorkerDeps> = {}) {
-  const deps = {
+function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Partial<MeetingProcessingWorkerDeps> = {}) {
+  const deps: MeetingProcessingWorkerDeps = {
     database: db,
     storage,
     isCaptureActive: () => false,
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request, saveRaw) => {
       await saveRaw(elevenResponse);
       return { success: true, text: "parsed by adapter" };
     },
@@ -69,7 +72,7 @@ function workerFor(db: any, storage: any, overrides: Partial<MeetingProcessingWo
     diarizeLocal: async () => [],
     summarize: async () => "## Summary\n- A useful result.",
     getCredential: () => "test-key",
-    mixAudio: async (recording: any, runId: string) => ({
+    mixAudio: async (recording, runId) => ({
       path: storage.getDerivedAudioPath(recording.id, runId),
       frameCount: 24_000,
       durationSeconds: 1,
@@ -86,6 +89,7 @@ test("paused audio parts produce one persisted whole-meeting run and one ASR req
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const first = createFinishedRecording(db, storage, validConfig, "Manual notes stay here.");
+  assert.ok(first.recording.endedAt);
   const second = db.createMeetingRecording(first.note.id, { config: validConfig },
     new Date(Date.parse(first.recording.endedAt) + 5 * 60_000).toISOString(), undefined, first.recording.id);
   db.createMeetingRecordingEpoch(second.id, "system", 0, 0);
@@ -172,7 +176,9 @@ test("waits for retention and capture to finish, then persists the response, tra
   assert.match(summaryInput, /## Manual Notes\n\x20{2}Manual note first\.\x20{2}\n/);
   assert.match(summaryInput, /## Transcript/);
   assert.deepEqual(storage.readRunArtifact(run.id, "summary"), { text: "## Summary\n- A useful result." });
-  assert.equal(db.getNote(note.id).content, "  Manual note first.  \n");
+  const savedNote = db.getNote(note.id);
+  assert.ok(savedNote);
+  assert.equal(savedNote.content, "  Manual note first.  \n");
   assert.equal(db.getMeetingRecording(recording.id).captureState, "ready");
   assert.equal(transcribeCalls, 1);
 });
@@ -455,6 +461,7 @@ test("viewing old transcript leaves a pending current run and Note projection in
   worker.onRetentionReady();
   await worker.waitForIdle();
   const oldProjection = db.getNote(note.id);
+  assert.ok(oldProjection);
   assert.match(oldProjection.transcript, /Hello\./);
   assert.match(oldProjection.enhanced_content, /Summary from old run/);
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, oldRun.id);
@@ -466,6 +473,7 @@ test("viewing old transcript leaves a pending current run and Note projection in
     sourceRunId: null,
   });
   const pendingProjection = db.getNote(note.id);
+  assert.ok(pendingProjection);
   assert.equal(pendingRun.status, "pending");
   assert.equal(pendingRun.hasTranscript, false);
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, pendingRun.id);
@@ -499,6 +507,7 @@ test("viewing old transcript leaves a pending current run and Note projection in
   await resumedWorker.waitForIdle();
 
   const newProjection = db.getNote(note.id);
+  assert.ok(newProjection);
   assert.equal(transcribeCalls, 2);
   assert.equal(db.getMeetingProcessingRun(pendingRun.id).status, "complete");
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, pendingRun.id);
@@ -508,6 +517,7 @@ test("viewing old transcript leaves a pending current run and Note projection in
 
   assert.equal((await resumedWorker.selectRun(recording.id, oldRun.id)).success, true);
   const selectedOldProjection = db.getNote(note.id);
+  assert.ok(selectedOldProjection);
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, oldRun.id);
   assert.equal(selectedOldProjection.transcript, oldProjection.transcript);
   assert.equal(selectedOldProjection.enhanced_content, oldProjection.enhanced_content);

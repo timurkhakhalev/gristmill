@@ -1,43 +1,65 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { EventEmitter } = require("node:events");
+const { EventEmitter }: typeof import("node:events") = require("node:events");
 const WS = require("ws");
+import type { TinfoilRealtimeStreaming as Streaming } from "../../src/helpers/tinfoilRealtimeStreaming.ts";
 
 const load = () => import("../../src/helpers/tinfoilRealtimeStreaming.ts");
 const COMPLETED_EVENT = "conversation.item.input_audio_transcription.completed";
 
-function makeFakeSocket(readyState: string) {
-  const socket = new EventEmitter();
-  socket.readyState = readyState;
-  socket.sent = [];
-  socket.send = (data: any) => socket.sent.push(data);
-  socket.ping = () => socket.emit("pong");
-  socket.terminate = () => {
-    socket.readyState = WS.CLOSED;
-    socket.emit("close", 1006, Buffer.from(""));
-  };
-  socket.close = () => {
-    socket.readyState = WS.CLOSED;
-  };
-  return socket;
+class FakeSocket extends EventEmitter {
+  sent: string[] = [];
+  readyState: number;
+
+  constructor(readyState: number) {
+    super();
+    this.readyState = readyState;
+  }
+
+  send(data: string | Buffer): void {
+    this.sent.push(data.toString());
+  }
+
+  ping(): void { this.emit("pong"); }
+
+  terminate(): void {
+    this.readyState = WS.CLOSED;
+    this.emit("close", 1006, Buffer.from(""));
+  }
+
+  close(): void { this.readyState = WS.CLOSED; }
 }
 
-function makeRecordingFactory(socket: any) {
-  const calls: any[] = [];
+function makeFakeSocket(readyState: number): FakeSocket {
+  return new FakeSocket(readyState);
+}
+
+function makeRecordingFactory(socket: FakeSocket) {
+  const calls: { model: string; apiKey: string }[] = [];
   return {
     calls,
-    factory: async (args: any) => {
+    factory: async (args: { model: string; apiKey: string }) => {
       calls.push(args);
       return socket;
     },
   };
 }
 
-function sentEvents(socket: any, type: string) {
-  return socket.sent.map((raw: any) => JSON.parse(raw)).filter((event: any) => event.type === type);
+type SocketEvent =
+  | { type: "input_audio_buffer.commit" }
+  | { type: "session.update"; session: { audio: { input: {
+    format: { type: string; rate: number };
+    transcription: { model: string };
+    turn_detection: Record<string, unknown> | null;
+  } } } };
+
+function sentEvents<T extends SocketEvent["type"]>(socket: FakeSocket | Streaming["ws"], type: T): Extract<SocketEvent, { type: T }>[] {
+  assert.ok(socket instanceof FakeSocket);
+  return socket.sent.map((raw) => JSON.parse(raw) as SocketEvent)
+    .filter((event): event is Extract<SocketEvent, { type: T }> => event.type === type);
 }
 
-function completed(transcript: any) {
+function completed(transcript: string) {
   return JSON.stringify({ type: COMPLETED_EVENT, transcript });
 }
 
@@ -58,13 +80,13 @@ function speechPcm(sampleCount = 480, amplitude = 2000) {
 
 async function makeConnected() {
   const { TinfoilRealtimeStreaming } = await load();
-  const streaming = new (TinfoilRealtimeStreaming as unknown as new () => any)();
+  const streaming = new TinfoilRealtimeStreaming();
   streaming.ws = makeFakeSocket(WS.OPEN);
   streaming._markConnected();
   return streaming;
 }
 
-async function finishConnect(streaming: any, socket: any, preconfigured = false) {
+async function finishConnect(_streaming: Streaming, socket: FakeSocket, preconfigured = false) {
   await new Promise((resolve) => setImmediate(resolve));
   socket.readyState = WS.OPEN;
   socket.emit("message", JSON.stringify({ type: "session.created" }));
@@ -118,11 +140,11 @@ test("connection lifecycle logs name Tinfoil, never OpenAI", async () => {
   const { factory } = makeRecordingFactory(socket);
   const streaming = new TinfoilRealtimeStreaming(factory);
 
-  const messages: any[] = [];
+  const messages: string[] = [];
   const levels = ["debug", "warn", "error"];
   const originals = Object.fromEntries(levels.map((level) => [level, debugLogger[level]]));
   for (const level of levels) {
-    debugLogger[level] = (message: any) => messages.push(message);
+    debugLogger[level] = (message: string) => messages.push(message);
   }
   try {
     const connected = streaming.connect({ apiKey: "tk-secret" });
@@ -164,7 +186,7 @@ test("attestation failure rejects without opening a fallback socket", async () =
 
 test("every fresh instance invokes the attested factory", async () => {
   const { TinfoilRealtimeStreaming } = await load();
-  const calls: any[] = [];
+  const calls: { model: string; apiKey: string }[] = [];
 
   for (let index = 0; index < 2; index += 1) {
     const socket = makeFakeSocket(WS.CONNECTING);
@@ -243,11 +265,11 @@ test("labelled Tinfoil sessions carry the stream label in log metadata", async (
   const { factory } = makeRecordingFactory(socket);
   const streaming = new TinfoilRealtimeStreaming(factory);
 
-  const entries: any[] = [];
+  const entries: { message: string; meta: Record<string, unknown> }[] = [];
   const levels = ["debug", "warn", "error"];
   const originals = Object.fromEntries(levels.map((level) => [level, debugLogger[level]]));
   for (const level of levels) {
-    debugLogger[level] = (message: any, meta: any) => entries.push({ message, meta });
+    debugLogger[level] = (message: string, meta: Record<string, unknown>) => entries.push({ message, meta });
   }
   try {
     const connected = streaming.connect({ apiKey: "tk-secret", streamLabel: "system" });
@@ -322,8 +344,8 @@ test("completed re-arms the next buffered turn", (t: import("node:test").TestCon
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
-    const finals: any[] = [];
-    streaming.onFinalTranscript = (text: any) => finals.push(text);
+    const finals: string[] = [];
+    streaming.onFinalTranscript = (text: string) => finals.push(text);
 
     streaming.sendAudio(speechPcm());
     t.mock.timers.tick(750);
@@ -344,8 +366,8 @@ test("commit timeout requests recovery without sending a duplicate commit", (t: 
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
-    const errors: any[] = [];
-    streaming.onConnectionLost = (error: any) => errors.push(error.message);
+    const errors: string[] = [];
+    streaming.onConnectionLost = (error: Error) => errors.push(error.message);
 
     streaming.sendAudio(speechPcm());
     t.mock.timers.tick(750);
@@ -418,7 +440,7 @@ test("disconnect uses one drain deadline across the active turn and its tail", (
     streaming.sendAudio(speechPcm());
 
     let finished = false;
-    const disconnected = streaming.disconnect().then((result: any) => {
+    const disconnected = streaming.disconnect().then((result) => {
       finished = true;
       return result;
     });
@@ -460,10 +482,10 @@ test("provider errors surface and request connection recovery", (t: import("node
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   return (async () => {
     const streaming = await makeConnected();
-    const errors: any[] = [];
-    const recoveries: any[] = [];
-    streaming.onError = (error: any) => errors.push(error.message);
-    streaming.onConnectionLost = (error: any) => recoveries.push(error.message);
+    const errors: string[] = [];
+    const recoveries: string[] = [];
+    streaming.onError = (error: Error) => errors.push(error.message);
+    streaming.onConnectionLost = (error: Error) => recoveries.push(error.message);
 
     streaming.sendAudio(speechPcm());
     t.mock.timers.tick(750);

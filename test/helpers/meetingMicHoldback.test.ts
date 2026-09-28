@@ -162,7 +162,7 @@ test("preserves queue order within each partition", () => {
   });
 
   assert.deepEqual(
-    releases.map((candidate: any) => candidate.text),
+    releases.map((candidate: { text: string }) => candidate.text),
     ["first", "second", "third"]
   );
 });

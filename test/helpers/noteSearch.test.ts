@@ -116,7 +116,7 @@ test("DatabaseManager.searchNotes treats FTS5 operators and punctuation as text"
   const { manager, sqlite } = createSearchDatabase();
   t.after(() => sqlite.close());
 
-  assert.ok(manager.searchNotes("OR", 10).some((note: any) => note.title === "OR operation"));
+  assert.ok(manager.searchNotes("OR", 10).some((note: { title: string }) => note.title === "OR operation"));
   assert.equal(manager.searchNotes("hello -world", 10)[0]?.title, "hello world");
   assert.deepEqual(manager.searchNotes("title:", 10), []);
   assert.deepEqual(manager.searchNotes('foo"bar', 10), []);

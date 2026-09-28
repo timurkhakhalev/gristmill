@@ -539,8 +539,17 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       return <NoteNotice status="accent" busy progressStartedAt={startedAt} title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
     })()}
 
-    <div key={viewMode} className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-bottom-1">
-    {viewMode === "raw" ? manualContent : <div>
+    <div key={viewMode} className="[&_.rich-text-editor-content]:pb-2! motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-bottom-1">
+    {viewMode === "raw" ? <div>
+      {manualContent}
+      {copyText.trim() && <div className="mt-3 flex justify-start">
+        <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
+          <Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7 text-muted hover:text-foreground" isDisabled={!copyText.trim()} aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")} onPress={() => void copyView()}>
+            {copied ? <Check size={15}/> : <Copy size={15}/>}
+          </Button>
+        </IconTooltip>
+      </div>}
+    </div> : <div>
       {selected && (viewMode !== "enhanced" || selected.summary?.text) && <div className="flex items-center">
         <Popover isOpen={modelOpen} onOpenChange={setModelOpen}>
           <Button size="sm" variant="ghost" className="-ms-2 h-7 min-h-7 max-w-full gap-1.5 px-2 text-xs text-muted hover:text-foreground" aria-label={tr("resultActions", "Result actions")}>
@@ -557,15 +566,15 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         </Popover>
       </div>}
       {selected?.summary?.text ? <article className="note-prose"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary}
-    </div>}
-    </div>
-    {copyText.trim() && <div className="mt-4 flex justify-start">
+      {copyText.trim() && <div className="mt-3 flex justify-start">
         <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
           <Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7 text-muted hover:text-foreground" isDisabled={!copyText.trim()} aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")} onPress={() => void copyView()}>
             {copied ? <Check size={15}/> : <Copy size={15}/>}
           </Button>
         </IconTooltip>
+      </div>}
     </div>}
+    </div>
     {message && <NoteNotice status="default" title={message} />}
     {playingRecording && (
       <AudioPlayer

@@ -82,6 +82,7 @@ The optional leading `--` also works with selectors.
 - `pnpm run build:mac:arm64:local`: build the production app with an ad-hoc
   signature using `com.openhercules.desktop` for local macOS permission prompts.
   Close the running app before packaging; this is not a Developer ID release.
+  macOS can require fresh privacy grants after each ad-hoc signed rebuild.
 
 ## Command maintenance
 

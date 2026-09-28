@@ -14,6 +14,7 @@ import { NoteNotice } from "./NoteNotices";
 import { ToastContext } from "../ui/useToast";
 import NoteViewSwitch from "./NoteViewSwitch";
 import { IconTooltip } from "../ui/IconTooltip";
+import { cn } from "../lib/utils";
 import { formatDate, formatTime, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 
@@ -44,10 +45,45 @@ function dateLabel(value: string, locale: string, options: Intl.DateTimeFormatOp
     : formatTime(date, locale, { timeStyle: options.timeStyle }, timeFormat);
 }
 
-function formatDuration(duration: number | null) {
-  if (duration === null) return "—";
-  const seconds = Math.max(0, Math.round(duration));
-  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+/** "42 s", "8 min 56 s", "1 h 5 min": readable at a glance, unlike mm:ss. */
+function formatDuration(duration: number, tr: (key: string, fallback: string, values?: Record<string, number>) => string) {
+  const total = Math.max(0, Math.round(duration));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return tr("durationHours", "{{hours}} h {{minutes}} min", { hours, minutes });
+  if (minutes > 0 && seconds === 0) return tr("durationWholeMinutes", "{{minutes}} min", { minutes });
+  if (minutes > 0) return tr("durationMinutes", "{{minutes}} min {{seconds}} s", { minutes, seconds });
+  return tr("durationSeconds", "{{seconds}} s", { seconds });
+}
+
+/** Time range plus what the part is: live, saving, its length, and where it sits in the session. */
+function AudioPartSummary({ part, index, count, timeLabel, tr }: {
+  part: MeetingProcessingRecordingResult["recording"];
+  index: number;
+  count: number;
+  timeLabel: (value: string) => string;
+  tr: (key: string, fallback: string, values?: Record<string, number>) => string;
+}) {
+  const live = part.captureState === "recording";
+  const ended = part.endedAt && part.endedAt >= part.startedAt ? part.endedAt : null;
+  const range = ended ? `${timeLabel(part.startedAt)} – ${timeLabel(ended)}` : timeLabel(part.startedAt);
+  const details = [
+    live
+      ? tr("recordingNow", "Recording now")
+      : part.captureState === "finalizing"
+        ? tr("savingAudio", "Saving…")
+        : part.durationSeconds !== null ? formatDuration(part.durationSeconds, tr) : null,
+    part.captureState === "incomplete" ? tr("endedEarly", "Ended early") : null,
+    count > 1 ? tr("partOf", "Part {{index}} of {{count}}", { index: index + 1, count }) : null,
+  ].filter(Boolean);
+  return <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+    <strong className="truncate text-sm font-medium tabular-nums">{range}</strong>
+    <span className={cn("flex min-w-0 items-center gap-1.5 text-xs", live ? "text-danger" : "text-muted")}>
+      {live && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-danger motion-safe:animate-pulse" />}
+      <span className="truncate">{details.join(" · ")}</span>
+    </span>
+  </div>;
 }
 
 export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, fallbackTranscript, fallbackSummary, fallbackText, actions, notice, capturePhase }: {
@@ -68,7 +104,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 }) {
   const { t } = useTranslation();
   const { dateFormat, timeFormat } = useDateTimePreferences();
-  const tr = (key: string, fallback: string) => t(`meetingResults.${key}`, { defaultValue: fallback });
+  const tr = (key: string, fallback: string, values?: Record<string, number>) => t(`meetingResults.${key}`, { defaultValue: fallback, ...values });
   const [recordings, setRecordings] = useState(previewRecordings ?? []);
   const [runId, setRunId] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
@@ -318,7 +354,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
             {date !== previousDate && <span className="text-xs font-medium text-muted">{date}</span>}
           {group.parts.map((part, index) => <div className="flex items-center gap-2 border-b border-border py-1.5 last:border-0" key={part.recording.id}>
             <Button isIconOnly size="sm" variant="ghost" isDisabled={part.recording.audioState !== "available"} aria-label={playingId === part.recording.id ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={() => void startAudio(part.recording.id)}>{playingId === part.recording.id ? <Pause size={16}/> : <Play size={16}/>}</Button>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5"><strong className="text-sm font-medium">{dateLabel(part.recording.startedAt, locale, { timeStyle: "short" }, dateFormat, timeFormat)}</strong><span className="text-xs text-muted">{formatDuration(part.recording.durationSeconds)}{group.parts.length > 1 && ` · ${tr("part", "Part")} ${index + 1}`}</span></div>
+            <AudioPartSummary part={part.recording} index={index} count={group.parts.length} timeLabel={(value) => dateLabel(value, locale, { timeStyle: "short" }, dateFormat, timeFormat)} tr={tr} />
             <Dropdown><Button isIconOnly size="sm" variant="ghost" aria-label={tr("partActions", "Audio part actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("partActions", "Audio part actions")} onAction={(key) => {
               if (key === "asr") openRun("reprocess", { partId: part.recording.id });
               if (key === "export") void exportPart(part.recording.id);
@@ -366,7 +402,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       if (status === "blocked") return <NoteNotice status="warning" title={t(`meetingResults.blocked.${stageKey}`)}
         description={t(errorCode === "missing-transcription-config" || errorCode === "missing-summary-config" ? `meetingResults.blockedReason.${errorCode}` : "meetingResults.blockedReason.other")} actions={actions} />;
       if (status === "failed") return <NoteNotice status="danger" title={t(`meetingResults.failed.${stageKey}`)} description={t("meetingResults.failedReason")} actions={actions} />;
-      return <NoteNotice status="accent" busy title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
+      const startedAt = latestRun.run.createdAt ? Date.parse(latestRun.run.createdAt) : undefined;
+      return <NoteNotice status="accent" busy progressStartedAt={startedAt} title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
     })()}
 
     <div key={viewMode} className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-bottom-1">

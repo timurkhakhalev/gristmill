@@ -65,6 +65,7 @@ function makePreview(scenario: NotesDebugScenario) {
     enhancement_prompt: null,
     enhanced_at_content_hash: null,
     folder_id: null,
+    folder_ids: [],
     space_id: 0,
     transcript: hasTranscript ? transcript : null,
     calendar_event_id: null,
@@ -76,13 +77,22 @@ function makePreview(scenario: NotesDebugScenario) {
   const runStatus: MeetingProcessingRunDto["status"] =
     scenario === "queued"
       ? "pending"
-      : scenario === "processing"
+      : scenario === "processing" ||
+          scenario === "processing-elapsed-short" ||
+          scenario === "processing-elapsed-long"
         ? "running"
         : scenario === "blocked" || scenario === "transcript"
           ? "blocked"
           : scenario === "failed" || scenario === "summary-failed"
             ? "failed"
             : "complete";
+  const isElapsedShort = scenario === "processing-elapsed-short";
+  const isElapsedLong = scenario === "processing-elapsed-long";
+  const runCreatedAt = isElapsedShort
+    ? new Date(Date.now() - 12_000).toISOString()
+    : isElapsedLong
+      ? new Date(Date.now() - 125_000).toISOString()
+      : NOW;
   const run: MeetingProcessingRunDto = {
     id: RUN_ID,
     recordingId: RECORDING_ID,
@@ -114,12 +124,14 @@ function makePreview(scenario: NotesDebugScenario) {
     hasRawProviderResponse: hasTranscript,
     hasTranscript,
     hasSummary,
-    createdAt: NOW,
-    updatedAt: NOW,
+    createdAt: runCreatedAt,
+    updatedAt: runCreatedAt,
   };
   const hasRecording = [
     "queued",
     "processing",
+    "processing-elapsed-short",
+    "processing-elapsed-long",
     "blocked",
     "failed",
     "summary-failed",

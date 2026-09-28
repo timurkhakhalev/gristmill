@@ -131,8 +131,9 @@ interface NoteEditorProps {
   folderName?: string | null;
   /** The linked calendar event, for the meeting card. Null when unlinked. */
   calendarEvent?: CalendarEvent | null;  folders?: FolderItem[];
-  onMoveToFolder?: (noteId: number, folderId: number) => void;
-  onCreateFolderAndMove?: (noteId: number, folderName: string) => void;
+  /** Replace the note's folder set; a note can sit in several folders at once. */
+  onSetFolders?: (noteId: number, folderIds: number[]) => void;
+  onCreateFolderAndAdd?: (noteId: number, folderName: string) => void;
   debugPreview?: {
     recordings: MeetingProcessingRecordingResult[];
     capturePhase?: "idle" | "preparing" | "recording" | "paused" | "saving" | "saved" | "incomplete" | "failed";
@@ -171,8 +172,8 @@ export default function NoteEditor({
   folderName,
   calendarEvent,
   folders,
-  onMoveToFolder,
-  onCreateFolderAndMove,
+  onSetFolders,
+  onCreateFolderAndAdd,
   debugPreview,
 }: NoteEditorProps) {
   const { t } = useTranslation();
@@ -199,6 +200,7 @@ export default function NoteEditor({
   );
   const [chatMode, setChatMode] = useState<ChatPanelMode>("hidden");
   const [folderSearch, setFolderSearch] = useState("");
+  const extraFolderCount = Math.max(0, note.folder_ids.length - 1);
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -708,13 +710,14 @@ export default function NoteEditor({
               dateTitle={noteDate}
               preview={Boolean(debugPreview)}
             />
-            {folders && onMoveToFolder && !canMoveToFolders && folderName && (
+            {folders && onSetFolders && !canMoveToFolders && folderName && (
               <span className={cn(NOTE_META_CHIP_CLASS, "cursor-default")}>
                 <FolderOpen size={14} className="shrink-0 text-muted" />
                 <span dir="auto">{folderName}</span>
+                {extraFolderCount > 0 && <span className="text-muted tabular-nums">+{extraFolderCount}</span>}
               </span>
             )}
-            {folders && onMoveToFolder && canMoveToFolders && (
+            {folders && onSetFolders && canMoveToFolders && (
               <Popover
                 open={folderMenuOpen}
                 onOpenChange={(open) => {
@@ -730,6 +733,7 @@ export default function NoteEditor({
                   <button className={NOTE_META_CHIP_CLASS}>
                     <FolderOpen size={14} className="shrink-0 text-muted" />
                     {folderName ? <span dir="auto">{folderName}</span> : t("notes.editor.noFolder")}
+                    {extraFolderCount > 0 && <span className="text-muted tabular-nums">+{extraFolderCount}</span>}
                   </button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-56 p-1">
@@ -751,23 +755,29 @@ export default function NoteEditor({
                   )}
                   <div className="max-h-48 overflow-y-auto">
                     {filteredFolders.map((folder) => {
-                      const isCurrent = folder.id === note.folder_id;
+                      const isMember = note.folder_ids.includes(folder.id);
                       return (
                         <button
                           key={folder.id}
                           type="button"
-                          disabled={isCurrent}
-                          onClick={() => {
-                            onMoveToFolder(note.id, folder.id);
-                            setFolderMenuOpen(false);
-                          }}
-                          className={cn(MENU_ITEM_CLASS, "w-full gap-2 text-xs disabled:opacity-100")}
+                          role="menuitemcheckbox"
+                          aria-checked={isMember}
+                          // Toggles membership and stays open, so several folders can be picked in a row.
+                          onClick={() =>
+                            onSetFolders(
+                              note.id,
+                              isMember
+                                ? note.folder_ids.filter((id) => id !== folder.id)
+                                : [...note.folder_ids, folder.id]
+                            )
+                          }
+                          className={cn(MENU_ITEM_CLASS, "w-full gap-2 text-xs")}
                         >
                           <FolderOpen size={14} className="shrink-0 text-muted" />
                           <span dir="auto" className="flex-1 truncate text-start">
                             {defaultFolderDisplayName(folder, t)}
                           </span>
-                          {isCurrent && <Check size={12} className="shrink-0 text-primary" />}
+                          {isMember && <Check size={12} className="shrink-0 text-primary" />}
                         </button>
                       );
                     })}
@@ -775,7 +785,7 @@ export default function NoteEditor({
                       <p className="py-1.5 text-center text-xs text-muted">{t("notes.context.noResults")}</p>
                     )}
                   </div>
-                  {onCreateFolderAndMove && (
+                  {onCreateFolderAndAdd && (
                     <div className="mt-1 border-t border-border pt-1">
                       {isCreatingFolder ? (
                         <input
@@ -785,10 +795,9 @@ export default function NoteEditor({
                           onChange={(e) => setNewFolderName(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && newFolderName.trim()) {
-                              onCreateFolderAndMove(note.id, newFolderName.trim());
+                              onCreateFolderAndAdd(note.id, newFolderName.trim());
                               setNewFolderName("");
                               setIsCreatingFolder(false);
-                              setFolderMenuOpen(false);
                             }
                             if (e.key === "Escape") {
                               e.stopPropagation();
@@ -844,6 +853,11 @@ export default function NoteEditor({
                 <NoteRecordControl
                   isRecording={isRecording}
                   isProcessing={isProcessing}
+                  isGeneratingSummary={
+                    actionProcessingState === "processing" &&
+                    actionName === t("notes.editor.generateSummary", { defaultValue: "Generate AI Summary" })
+                  }
+                  showSummaryAction={hasMeetingTranscript && !enhancement && !isRecording}
                   disabled={!recordingAllowed}
                   capturePhase={capturePhase}
                   captureStartedAt={captureStartedAt}
@@ -851,6 +865,7 @@ export default function NoteEditor({
                   onStop={onStopRecording}
                   onPause={onPauseRecording}
                   onResume={onResumeRecording}
+                  onGenerateSummary={onGenerateSummary}
                 />
               )}
             </div>}

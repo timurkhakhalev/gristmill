@@ -67,14 +67,13 @@ export interface Enhancement {
   onChange: (sourceNoteId: number, content: string) => void;
 }
 
-type MeetingViewMode = "raw" | "transcript" | "enhanced";
+type MeetingViewMode = "raw" | "enhanced";
 
 type SpeakerProfileOption = { id?: number; display_name: string; email: string | null };
 
 /** Opening priority: a ready Summary wins over the Notes body. */
 function initialMeetingViewMode(note: NoteItem): MeetingViewMode {
   if (note.enhanced_content) return "enhanced";
-  if (note.note_type === "upload" && note.transcript) return "transcript";
   return "raw";
 }
 
@@ -569,23 +568,6 @@ export default function NoteEditor({
 
   const contentScrollRef = useRef<HTMLDivElement>(null);
 
-  // A transcript opens at its newest row: the reader lands where the meeting
-  // ended. The list is virtualized, so pin across a few frames while rows
-  // measure and the real height settles.
-  useEffect(() => {
-    if (viewMode !== "transcript") return;
-    const scroller = contentScrollRef.current;
-    if (!scroller) return;
-    let frame = 0;
-    let remaining = 6;
-    const pin = () => {
-      scroller.scrollTop = scroller.scrollHeight;
-      if (remaining-- > 0) frame = window.requestAnimationFrame(pin);
-    };
-    frame = window.requestAnimationFrame(pin);
-    return () => window.cancelAnimationFrame(frame);
-  }, [viewMode]);
-
   const getActiveScroller = useCallback((root: HTMLDivElement): HTMLElement | null => {
     const candidates = [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))].filter(
       (el) => el.scrollHeight - el.clientHeight > 2
@@ -903,9 +885,9 @@ export default function NoteEditor({
                   {t("notes.editor.generateSummary")}
                 </Button>}
               </EmptyStateCard>}
-              fallbackTranscript={hasChatSegments && !isRecording ? <MeetingTranscriptChat
+              renderFallbackTranscript={(transcriptScrollRef) => hasChatSegments && !isRecording ? <MeetingTranscriptChat
                 segments={displaySegments}
-                scrollElementRef={contentScrollRef}
+                scrollElementRef={transcriptScrollRef}
                 speakerMappings={speakerMappings}
                 speakerProfiles={knownSpeakers}
                 participants={parsedParticipants}

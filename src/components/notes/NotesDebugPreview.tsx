@@ -358,9 +358,7 @@ export default function NotesDebugPreview({
               viewMode:
                 scenario === "ready" || scenario === "enhanced-stale"
                   ? "enhanced"
-                  : hasTranscriptScenario(scenario)
-                    ? "transcript"
-                    : "raw",
+                  : "raw",
             }}
           />
         </div>
@@ -369,11 +367,3 @@ export default function NotesDebugPreview({
   );
 }
 
-function hasTranscriptScenario(scenario: NotesDebugScenario): boolean {
-  return (
-    scenario === "transcript" ||
-    scenario === "ready" ||
-    scenario === "audio-deleted" ||
-    scenario === "summary-failed"
-  );
-}

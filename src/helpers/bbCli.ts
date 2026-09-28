@@ -30,7 +30,10 @@ async function execute(args: string[], input?: string, signal?: AbortSignal): Pr
   return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
-    const child = spawn(binaryPath(), args, { stdio: ["pipe", "pipe", "pipe"], signal, timeout: 30_000 });
+    const child = spawn(process.execPath, [binaryPath(), ...args], {
+      stdio: ["pipe", "pipe", "pipe"], signal, timeout: 30_000,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    });
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
       stdout += chunk;
       if (stdout.length > 8_000_000) {

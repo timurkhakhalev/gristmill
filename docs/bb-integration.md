@@ -11,7 +11,7 @@ OpenHercules uses the installed BB app and the user's provider subscription for 
 
 ## Runtime contract
 
-- Main invokes the BB CLI directly, with prompt text on stdin. It looks for `BB_CLI`, then `~/.local/bin/bb`, then the BB app bundle at `/Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/host-daemon/dist/bb`. It checks `bb --version` before starting a thread and reports a missing or mismatched version as an error.
+- Main invokes the BB CLI script with the app's Node runtime, with prompt text on stdin. It looks for `BB_CLI`, then `~/.local/bin/bb`, then the BB app bundle at `/Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/host-daemon/dist/bb`. This does not depend on a terminal's `PATH` when the app starts from macOS Finder. It checks `bb --version` before starting a thread and reports a missing or mismatched version as an error.
 - OpenHercules creates a separate BB project for each app profile under its `userData/bb-agent` directory and saves the project ID there. This keeps production, development and isolated test profiles separate. BB threads are hidden in BB but remain inspectable there.
 - Main reads `bb thread log --json --after-seq` for chat deltas and reads `bb thread output --json` for the final result. No provider credentials are copied into OpenHercules settings.
 - A profile-local `.bb-connection.json` outside the BB project directory contains the loopback CLI bridge port and token, with owner-only permissions. The agent workspace contains a small allowlisted notes/folders/dictionary/snippets tool wrapper. Main removes the connection file at shutdown and before creating a new bridge on startup. Do not place credentials in the agent prompt or log.

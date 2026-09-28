@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState, type Rea
 import ReactMarkdown from "react-markdown";
 import { Button, Dropdown, Label, ListBox, Modal, Popover, Select } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AlignLeft, ArrowLeft, ArrowRight, AudioLines, Check, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2, WandSparkles } from "../icons";
+import { AlignLeft, ArrowLeft, ArrowRight, AudioLines, Check, ChevronDown, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2, WandSparkles } from "../icons";
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
@@ -13,6 +13,7 @@ import { openSettings } from "../../utils/openSettings";
 import { NoteNotice } from "./NoteNotices";
 import { ToastContext } from "../ui/useToast";
 import NoteViewSwitch from "./NoteViewSwitch";
+import { ProviderIcon } from "../ui/ProviderIcon";
 import { IconTooltip } from "../ui/IconTooltip";
 import { cn } from "../lib/utils";
 import { formatDate, formatTime, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
@@ -108,6 +109,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const [recordings, setRecordings] = useState(previewRecordings ?? []);
   const [runId, setRunId] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
   const [popoverTab, setPopoverTab] = useState<"transcript" | "audio">("transcript");
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -351,16 +353,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     else { setPopoverTab("transcript"); setAudioOpen(true); }
   });
 
-  const selectRun = (id: string) => runTask(async () => {
-    const run = versions.find((item) => item.run.id === id);
-    if (!run) return;
-    if (!previewRecordings) {
-      const result = await window.electronAPI.meetingProcessingSelectRun(run.run.recordingId, id);
-      if (!result.success) throw new Error(result.error || t("meetingResults.selectError"));
-    }
-    setRunId(id);
-  });
-
   const deletePart = (id: string) => {
     setAudioOpen(false);
     showConfirmDialog({
@@ -459,16 +451,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           { id: "raw", label: t("notes.editor.notes"), icon: AlignLeft },
           { id: "enhanced", label: tr("summaryTab", "Summary"), icon: Sparkles },
         ]}
-        versionMenu={viewMode === "raw" ? undefined : {
-          label: t("meetingResults.version"),
-          selectedId,
-          onSelect: (id) => void selectRun(id),
-          items: versions.map((item, index) => ({
-            id: item.run.id,
-            label: `${index + 1} · ${item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / ${(item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model) || "—"}`,
-            detail: dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" }, dateFormat, timeFormat),
-          })),
-        }}
       />
       <div className="ms-auto flex flex-wrap items-center gap-1.5">
       <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
@@ -559,16 +541,20 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
     <div key={viewMode} className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-bottom-1">
     {viewMode === "raw" ? manualContent : <div>
-      {selected && (viewMode !== "enhanced" || selected.summary?.text) && <div className="flex items-center gap-1.5 text-xs text-muted"><span className="min-w-0 flex-1 truncate">{viewMode === "enhanced" ? selected.run.config?.summary?.provider : selected.run.provider} · {viewMode === "enhanced" ? selected.run.config?.summary?.model : selected.run.model}</span>
-        <Dropdown><IconTooltip label={tr("resultActions", "Result actions")}><Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7" aria-label={tr("resultActions", "Result actions")}><MoreHorizontal size={17}/></Button></IconTooltip><Dropdown.Popover><Dropdown.Menu aria-label={tr("resultActions", "Result actions")} onAction={(key) => {
-          if (key === "asr") openRun("reprocess");
-          if (key === "summary") openRun("summary");
-          if (key === "export") void runTask(async () => { if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; } const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: selected.run.recordingId, runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? undefined : selected.run.id, source: "mixed" }); if (!result.success) throw new Error(result.error || t("meetingResults.exportError")); });
-        }}>
-          <Dropdown.Item id="asr" isDisabled={!availableParts.length} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
-          <Dropdown.Item id="summary" textValue={t("meetingResults.newSummary")}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Dropdown.Item>
-          <Dropdown.Item id="export" isDisabled={!availableParts.length} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
-        </Dropdown.Menu></Dropdown.Popover></Dropdown>
+      {selected && (viewMode !== "enhanced" || selected.summary?.text) && <div className="flex items-center">
+        <Popover isOpen={modelOpen} onOpenChange={setModelOpen}>
+          <Button size="sm" variant="ghost" className="-ms-2 h-7 min-h-7 max-w-full gap-1.5 px-2 text-xs text-muted hover:text-foreground" aria-label={tr("resultActions", "Result actions")}>
+            <ProviderIcon provider={selected.run.config?.summary?.provider ?? ""} className="size-3.5 shrink-0" />
+            <span className="truncate">{selected.run.config?.summary?.provider} · {selected.run.config?.summary?.model}</span>
+            <ChevronDown size={13} className="shrink-0"/>
+          </Button>
+          <Popover.Content placement="bottom start" className="w-fit min-w-0 max-w-[calc(100vw-24px)]"><Popover.Dialog className="p-1">
+            <div className="flex flex-col gap-1">
+              <Button size="sm" variant="ghost" className="justify-start gap-2" onPress={() => { setModelOpen(false); openRun("summary"); }}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Button>
+              <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={!availableParts.length} onPress={() => { setModelOpen(false); openRun("reprocess"); }}><FileText size={14}/>{t("meetingResults.newAsr")}</Button>
+            </div>
+          </Popover.Dialog></Popover.Content>
+        </Popover>
       </div>}
       {selected?.summary?.text ? <article className="note-prose"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary}
     </div>}

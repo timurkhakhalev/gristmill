@@ -126,7 +126,6 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     meetingProcessingCreateRun: async (input: Record<string, unknown>) => { calls.create.push(input); return { success: true, result: { run: { id: "00000000-0000-4000-8000-000000000004" } } }; },
     meetingProcessingUpdateBlockedRunConfig: async (input: Record<string, unknown>) => { calls.update.push(input); return { success: true }; },
     meetingProcessingSetSpeakerCorrection: async (input: Record<string, unknown>) => { calls.speaker.push(input); return { success: true }; },
-    meetingProcessingSelectRun: async () => ({ success: true }),
     meetingProcessingRetryRun: async (id: string) => { calls.retry.push(id); return { success: true }; },
   };
   let root: ReturnType<typeof createRoot> | undefined;
@@ -151,6 +150,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
       "@heroui/react": heroMock,
       "react-i18next": `export function useTranslation() { return { t: (key, options) => options?.defaultValue ?? key }; }`,
       "/hooks/useDateTimePreferences": `export function useDateTimePreferences() { return { dateFormat: "locale", timeFormat: "locale" }; }`,
+      "/ui/ProviderIcon": `export const ProviderIcon = () => null;`,
       "/ui/dialog": `export const ConfirmDialog = (props) => { globalThis.__meetingResultsConfirmDialog = props; return null; };`,
       "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig(transcriptionOverride) { const config = ${JSON.stringify(CONFIG)}; return { config: transcriptionOverride ? { ...config, transcription: transcriptionOverride } : config, configError: null }; } export function builtinMeetingSummaryInstruction() { return "Built-in summary instruction"; }`,
     },
@@ -172,6 +172,8 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   root = createRoot(container);
   await React.act(async () => { root.render(React.createElement(Harness)); await Promise.resolve(); });
   const flush = async (action: () => void) => React.act(async () => { action(); await new Promise<void>((resolve) => setImmediate(resolve)); });
+  // The popover shows the transcript first; these tests exercise the audio tab.
+  await flush(() => (findNode(tree, (node) => node.props?.ariaLabel === "Transcript and audio")!.props as { onChange: (tab: string) => void }).onChange("audio"));
   return {
     calls, flush, dialog: () => mocks.__meetingResultsConfirmDialog!,
     text: () => container.textContent ?? "",
@@ -201,9 +203,9 @@ test("audio count and list include a newly saved recording without reload", asyn
   const first = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z");
   const second = recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z");
   const ui = await mountPanel(t, [first]);
-  assert.ok(ui.label("Audio 1"));
+  assert.ok(ui.label("Transcript and audio 1"));
   await ui.saveRecording([first, second]);
-  assert.ok(ui.label("Audio 2"));
+  assert.ok(ui.label("Transcript and audio 2"));
   assert.equal(ui.text().match(/\bmin\b/g)?.length, 2);
   assert.equal(ui.text().match(/Sep 25, 2026/g)?.length, 1);
 });
@@ -212,7 +214,7 @@ test("previously deleted audio is absent from the popover", async (t: TestContex
   const deleted = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z");
   deleted.recording.audioState = "deleted";
   const ui = await mountPanel(t, [deleted, recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z")]);
-  assert.ok(ui.label("Audio 1"));
+  assert.ok(ui.label("Transcript and audio 1"));
   assert.equal(ui.text().match(/\bmin\b/g)?.length, 1);
 });
 
@@ -226,7 +228,7 @@ test("audio part actions export a mixed MP3 and confirm deletion without a trans
   assert.equal(ui.dialog().open, true);
   await ui.flush(() => ui.dialog().onConfirm());
   assert.deepEqual(ui.calls.delete, [FIRST]);
-  assert.ok(ui.label("Audio 0"));
+  assert.ok(ui.label("Transcript and audio 0"));
   assert.equal(ui.iconButton("Play audio"), null);
 });
 
@@ -246,13 +248,13 @@ test("Transcribe includes every saved audio part in the note across groups", asy
   assert.equal(submittedSection(ui.calls.create[0], "summary").instruction, CONFIG.summary.instruction);
 });
 
-test("summary version reads the saved transcript without another ASR run", async (t: TestContext) => {
+test("a new summary reads the saved transcript without another ASR run", async (t: TestContext) => {
   const ui = await mountPanel(t, [
     recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", completeRun()),
     recording(SECOND, SECOND, "2026-09-25T10:05:00.000Z"),
   ], { viewMode: "enhanced" });
   assert.match(ui.text(), /Release on Friday/);
-  await ui.flush(() => (ui.menu("Result actions") as { props: { onAction: (key: string) => void } })!.props.onAction("summary"));
+  await ui.flush(() => (ui.button("meetingResults.newSummary")!.props as { onPress: () => void }).onPress());
   assert.equal(ui.calls.create.length, 1);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).kind, "summary");
   assert.equal((ui.calls.create[0] as Record<string, unknown>).sourceRunId, RUN);

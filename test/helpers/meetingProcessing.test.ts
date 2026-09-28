@@ -531,13 +531,8 @@ test("viewing old transcript leaves a pending current run and Note projection in
   assert.match(newProjection.enhanced_content, /Summary from new run/);
   assert.equal(newProjection.content, oldProjection.content);
 
-  assert.equal((await resumedWorker.selectRun(recording.id, oldRun.id)).success, true);
-  const selectedOldProjection = db.getNote(note.id);
-  assert.ok(selectedOldProjection);
-  assert.equal(db.getMeetingRecording(recording.id).currentRunId, oldRun.id);
-  assert.equal(selectedOldProjection.transcript, oldProjection.transcript);
-  assert.equal(selectedOldProjection.enhanced_content, oldProjection.enhanced_content);
-  assert.equal(selectedOldProjection.content, oldProjection.content);
+  assert.equal(db.getMeetingProcessingRun(oldRun.id), null, "a completed run replaces the run it supersedes");
+  assert.equal(storage.hasRunArtifact(oldRun.id, "transcript"), false);
 });
 
 test("blocked config correction refuses an unindexed raw response file", async (t: import("node:test").TestContext) => {

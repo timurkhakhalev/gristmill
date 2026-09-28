@@ -349,6 +349,15 @@ export class MeetingRecordingStorage {
     this.removeManagedTree(path.join(this.recordingsRoot, recordingId));
   }
 
+  removeRunFiles(recordingId: string, runId: string): void {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingRecordingIdSchema.parse(runId);
+    this.removeManagedTree(path.join(this.resultsRoot, runId));
+    const derived = path.join(this.recordingsRoot, recordingId, "derived", `${runId}.wav`);
+    this.assertSafeFile(derived);
+    fs.rmSync(derived, { force: true });
+  }
+
   removeNoteFiles(recordingIds: string[], runIds: string[]): void {
     for (const recordingId of recordingIds) {
       meetingRecordingIdSchema.parse(recordingId);

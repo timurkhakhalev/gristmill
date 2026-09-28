@@ -68,13 +68,13 @@ export default function NoteRecordControl({
         isDisabled={Boolean(isGeneratingSummary)}
         onPress={() => onGenerateSummary?.()}
         className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
-        aria-label={t("notes.editor.generateSummary", { defaultValue: "Generate AI Summary" })}
+        aria-label={t("notes.editor.generateSummary", { defaultValue: "✨ Summary" })}
       >
         {!isGeneratingSummary && <AlignLeft size={16} />}
         <span className="@max-[620px]:sr-only">
           {isGeneratingSummary
-            ? t("notes.editor.generatingSummary", { defaultValue: "Generating summary…" })
-            : t("notes.editor.generateSummary", { defaultValue: "Generate AI Summary" })}
+            ? t("notes.editor.generatingSummary", { defaultValue: "✨ Generating summary…" })
+            : t("notes.editor.generateSummary", { defaultValue: "✨ Summary" })}
         </span>
       </Button>
     )}

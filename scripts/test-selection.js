@@ -69,11 +69,12 @@ function validateRegistry(files, groups) {
 function parseArgs(input) {
   const args = [...input];
   if (args[0] === "--") args.shift();
-  const result = { domains: [], kinds: [], files: [], list: false, help: false, processes: 2 };
+  const result = { domains: [], kinds: [], files: [], list: false, help: false, verbose: false, processes: 2 };
   while (args.length) {
     const arg = args.shift();
     if (arg === "--list") result.list = true;
     else if (arg === "--help") result.help = true;
+    else if (arg === "--verbose") result.verbose = true;
     else if (arg === "--processes") {
       const value = args.shift();
       if (value !== "1" && value !== "2") throw new Error(`--processes expects 1 or 2; received ${value ?? "no value"}`);

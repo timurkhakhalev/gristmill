@@ -32,6 +32,8 @@ test("invalid, ambiguous and empty selections fail closed", () => {
     assert.throws(() => parseArgs(args));
   }
   assert.equal(parseArgs(["--processes", "2"]).processes, 2);
+  assert.equal(parseArgs(["--verbose"]).verbose, true);
+  assert.equal(parseArgs([]).verbose, false);
   assert.equal(parseArgs([]).processes, 2);
   assert.throws(() => selectTests(entries, parseArgs(["test/missing.test.js"])), /Unknown test file/);
   assert.throws(() => selectTests(entries, parseArgs(["--domain", "ai", "--kind", "native"])), /No tests/);

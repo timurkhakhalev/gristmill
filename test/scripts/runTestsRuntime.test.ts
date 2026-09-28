@@ -119,6 +119,20 @@ test("failed full run releases its lock", async () => {
   assert.equal(released, true);
 });
 
+test("quiet command hides success output and reveals failure output", async () => {
+  const output: string[] = [];
+  const write = process.stderr.write;
+  process.stderr.write = ((chunk: string) => { output.push(String(chunk)); return true; }) as typeof process.stderr.write;
+  try {
+    assert.equal(await runCommand(process.execPath, ["-e", "console.log('quiet success')"], process.env, false), 0);
+    assert.equal(output.join(""), "");
+    assert.equal(await runCommand(process.execPath, ["-e", "console.error('visible failure'); process.exit(3)"], process.env, false), 3);
+    assert.match(output.join(""), /visible failure/);
+  } finally {
+    process.stderr.write = write;
+  }
+});
+
 test("interruption between phases releases the full-run lock", async () => {
   let released = false;
   let testPhases = 0;

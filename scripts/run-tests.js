@@ -26,9 +26,26 @@ function acquireFullRunLock(file) {
 }
 
 // Each command owns a process group, including children spawned by a test file.
-function runCommand(binary, args, env) {
+function runCommand(binary, args, env, verbose = true) {
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, args, { cwd: root, env, stdio: "inherit", detached: process.platform !== "win32" });
+    const directory = verbose ? null : fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-test-"));
+    const outputFile = directory && path.join(directory, "output.log");
+    const outputFd = outputFile && fs.openSync(outputFile, "w");
+    const child = spawn(binary, args, { cwd: root, env, stdio: verbose ? "inherit" : ["inherit", outputFd, outputFd], detached: process.platform !== "win32" });
+    if (outputFd !== null) fs.closeSync(outputFd);
+    const finishOutput = async (failed) => {
+      if (!directory) return;
+      if (failed) {
+        process.stderr.write(`[test] Failed command: ${binary} ${args.join(" ")}\n`);
+        await new Promise((resolve, reject) => {
+          const stream = fs.createReadStream(outputFile);
+          stream.on("error", reject);
+          stream.on("end", resolve);
+          stream.pipe(process.stderr, { end: false });
+        });
+      }
+      fs.rmSync(directory, { recursive: true, force: true });
+    };
     let requestedSignal;
     let killTimer;
     const signalGroup = (signal) => {
@@ -64,7 +81,7 @@ function runCommand(binary, args, env) {
       process.off("SIGTERM", terminate);
       clearTimeout(killTimer);
     };
-    child.once("error", (error) => { cleanup(); reject(error); });
+    child.once("error", async (error) => { cleanup(); try { await finishOutput(true); } finally { reject(error); } });
     child.once("close", async (code, signal) => {
       cleanup();
       try {
@@ -81,9 +98,11 @@ function runCommand(binary, args, env) {
           }
           if (groupAlive()) throw new Error(`Owned process group ${child.pid} did not exit`);
         }
-        resolve(requestedSignal
+        const result = requestedSignal
           ? 128 + os.constants.signals[requestedSignal]
-          : signal ? 128 + os.constants.signals[signal] : (code ?? 1));
+          : signal ? 128 + os.constants.signals[signal] : (code ?? 1);
+        await finishOutput(result !== 0);
+        resolve(result);
       } catch (error) {
         reject(error);
       }
@@ -102,7 +121,7 @@ async function runTests(args, {
 } = {}) {
   const plan = createPlan(args);
   if (plan.options.help) {
-    log(`Usage: pnpm test [--domain NAME ...] [--kind NAME ...] [--processes 1|2] [--list]\n       pnpm test -- test/path.test.ts ...\nDomains: ${DOMAINS.join(", ")}\nKinds: ${KINDS.join(", ")}\nDomains are OR; kinds are OR; domain and kind filters intersect. No filters runs all tests.`);
+    log(`Usage: pnpm test [--domain NAME ...] [--kind NAME ...] [--processes 1|2] [--list] [--verbose]\n       pnpm test -- test/path.test.ts ...\nDomains: ${DOMAINS.join(", ")}\nKinds: ${KINDS.join(", ")}\nDomains are OR; kinds are OR; domain and kind filters intersect. No filters runs all tests.`);
     return 0;
   }
   log(`[test] ${plan.tests.length} files; build:main ${plan.buildMain ? "required" : "not needed"}`);
@@ -110,6 +129,7 @@ async function runTests(args, {
     for (const test of plan.tests) log(`${test.file}\t${test.domains.join(",")}\t${test.kind}${test.buildMain ? "\tbuild:main" : ""}${test.serial ? "\tserial" : ""}`);
     return 0;
   }
+  if (!plan.options.verbose) log("[test] Detailed output is hidden; use --verbose to show it. Output from a failed command will be shown.");
   const isFull = !plan.options.files.length && !plan.options.domains.length && !plan.options.kinds.length;
   const release = isFull ? lock() : null;
   let interrupted = 0;
@@ -132,7 +152,7 @@ async function runTests(args, {
     const env = { ...process.env, REQUIRE_DB_TESTS: "1" };
     delete env.ELECTRON_RUN_AS_NODE;
     if (plan.buildMain) {
-      const code = await run("pnpm", ["run", "build:main"], env);
+      const code = await run("pnpm", ["run", "build:main"], env, plan.options.verbose);
       reportPhase("build:main");
       if (code !== 0 || interrupted) return interrupted || code;
     }
@@ -159,7 +179,7 @@ async function runTests(args, {
         : env;
       const code = await run(binary, ["--import", "tsx", "--test", `--test-concurrency=${phase.concurrency}`,
         ...(phase.sharedTypeProgram ? ["--test-isolation=none"] : []), "--test-timeout=30000",
-        ...phase.tests.map((test) => test.file)], phaseEnv);
+        ...phase.tests.map((test) => test.file)], phaseEnv, plan.options.verbose);
       reportPhase(`tests:${index + 1}`);
       if (code !== 0) {
         status ||= code;

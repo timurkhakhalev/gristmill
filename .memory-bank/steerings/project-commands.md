@@ -8,6 +8,7 @@ Executable command semantics live here. Select checks using the
 | Command | Selection |
 | --- | --- |
 | `pnpm test` | Full suite, including compiler probes and native/GUI checks; at most two ordinary files at once |
+| `pnpm test --verbose` | Same selection with full live output |
 | `pnpm test -- --processes 1` | Explicit one-process diagnostic mode |
 | `pnpm test --domain calendar` | All kinds in one domain |
 | `pnpm test --domain calendar --domain notes` | Union of domains, without duplicates |
@@ -24,6 +25,10 @@ discovered automatically; exceptional classifications remain in
 `test/test-groups.json`. Put compiled main/preload consumers under a `main/`
 subdirectory and shared-resource tests under `serial/`. No selectors means the
 full suite.
+
+Test and build command output is hidden by default. The runner announces this
+and shows captured output for a failed command. Use `--verbose` to stream all
+output as it runs; selection, exit codes and timing stay the same.
 
 For a particular regression, `pnpm test -- <explicit test files>` accepts exact
 registered paths under `test/` ending in `.test.ts`. Do not combine

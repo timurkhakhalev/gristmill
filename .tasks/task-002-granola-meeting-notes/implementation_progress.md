@@ -21,4 +21,4 @@ Verification:
 - Required focused tests were not run here; root integrator owns test execution. Run: `pnpm test -- test/helpers/meetingProcessing.test.ts test/stores/meetingRecordingStoreAutoEndStop.test.ts test/components/meetingResultsPanel.test.ts`.
 - Isolated live-profile/hardware check was not run here.
 
-Commits: implementation commit hash is recorded in the follow-up progress update.
+Commits: `49d8e48c6` (M1 implementation). This progress-record update is a separate M1 log commit.

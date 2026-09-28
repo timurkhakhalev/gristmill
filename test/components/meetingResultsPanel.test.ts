@@ -135,7 +135,13 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   };
   let root: ReturnType<typeof createRoot> | undefined;
   t.after(async () => { if (root) await React.act(async () => root!.unmount()); });
-  installBrowserGlobals(t, { window: { electronAPI: api } });
+  installBrowserGlobals(t, {
+    window: {
+      electronAPI: api,
+      // The shared harness stubs setInterval; NoteNotices still calls its matching browser cleanup API.
+      clearInterval: (_id: number) => {},
+    },
+  });
   const container = installHookDom(t);
   // Fake-DOM document from installHookDom; structural typing at this seam.
   const document = globalThis.document as unknown as Record<string, unknown>;

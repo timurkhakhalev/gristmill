@@ -225,7 +225,69 @@ test("folder-only update derives the space; explicit space_id wins; missing fold
   db.close();
 });
 
-test("delete reports success once and the note disappears", (t: import("node:test").TestContext) => {
+test("a note can sit in several folders: listed, counted and searched in each", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const spaceId = db.getPrivateSpaceId();
+  const folders = Object.fromEntries(db.getFolders(spaceId).map((f: any) => [f.name, f.id]));
+  const extra = db.createFolder("Clients", spaceId).folder.id;
+  const note = db.saveNote("Kickoff call", "", "meeting").note;
+  assert.deepEqual(note.folder_ids, [folders.Meetings]);
+
+  const linked = db.updateNote(note.id, { folder_ids: [extra, folders.Meetings] }).note;
+  assert.equal(linked.folder_id, folders.Meetings, "the current primary stays primary");
+  assert.deepEqual(linked.folder_ids, [folders.Meetings, extra]);
+
+  assert.deepEqual(db.getNotes(null, 50, extra).map((n: NoteItem) => n.id), [note.id]);
+  assert.deepEqual(db.getNotes(null, 50, folders.Meetings).map((n: NoteItem) => n.id), [note.id]);
+  assert.deepEqual(db.getNoteIdsInFolder(extra), [note.id]);
+  assert.deepEqual(db.searchNotes("Kickoff", 50, null, extra).map((n: NoteItem) => n.id), [note.id]);
+  const counts = db.getFolderNoteCounts();
+  const countFor = (id: number) => counts.find((c: any) => c.folder_id === id)?.count;
+  assert.equal(countFor(extra), 1);
+  assert.equal(countFor(folders.Meetings), 1);
+
+  const unticked = db.updateNote(note.id, { folder_ids: [extra] }).note;
+  assert.equal(unticked.folder_id, extra, "dropping the primary promotes the next folder");
+  assert.deepEqual(unticked.folder_ids, [extra]);
+
+  const none = db.updateNote(note.id, { folder_ids: [] }).note;
+  assert.equal(none.folder_id, null);
+  assert.deepEqual(none.folder_ids, []);
+
+  assert.deepEqual(db.updateNote(note.id, { folder_ids: [987654] }), { success: false, error: "Folder not found" });
+  db.close();
+});
+
+test("deleting a note's primary folder promotes one of its other folders", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const spaceId = db.getPrivateSpaceId();
+  const first = db.createFolder("First", spaceId).folder.id;
+  const second = db.createFolder("Second", spaceId).folder.id;
+  const note = db.saveNote("N", "", "personal", null, null, first, null).note;
+  db.updateNote(note.id, { folder_ids: [first, second] });
+
+  db.deleteFolder(first);
+  const after = db.getNote(note.id);
+  assert.equal(after.folder_id, second);
+  assert.deepEqual(after.folder_ids, [second]);
+  db.close();
+});
+
+test("moving the primary folder onto an extra folder does not list the note twice", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const spaceId = db.getPrivateSpaceId();
+  const folders = Object.fromEntries(db.getFolders(spaceId).map((f: any) => [f.name, f.id]));
+  const note = db.saveNote("N", "", "personal").note;
+  db.updateNote(note.id, { folder_ids: [folders.Personal, folders.Meetings] });
+  const moved = db.updateNote(note.id, { folder_id: folders.Meetings }).note;
+  assert.deepEqual(moved.folder_ids, [folders.Meetings]);
+  db.close();
+});
+
+test("delete reports success once and the note disappears",(t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const note = db.saveNote("D", "").note;

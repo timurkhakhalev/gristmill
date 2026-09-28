@@ -1489,7 +1489,7 @@ export class IPCHandlers {
           active,
           active ? () => this.windowManager.stopMeetingCaptureFromMenu() : undefined
         ),
-      onCaptureStarted: () => this._meetingProcessing?.captureStarted(),
+      onCaptureStarted: (groupId) => this._meetingProcessing?.captureStarted(groupId),
       onCaptureStopped: () => this._meetingProcessing?.captureStopped(),
     });
     this.windowManager.setMeetingCaptureQuitGuard({

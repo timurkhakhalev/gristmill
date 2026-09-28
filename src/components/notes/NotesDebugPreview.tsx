@@ -12,7 +12,7 @@ import { Button } from "../ui/button";
 import NoteEditor from "./NoteEditor";
 import NotesOnboarding from "./NotesOnboarding";
 import type { NotesDebugScenario } from "./NotesDebugControls";
-import type { MockPipeline } from "./meetingMock";
+import { MOCK_GATE_SECONDS, type MockPipeline } from "./meetingMock";
 
 const NOW = "2026-09-25T12:00:00.000Z";
 const SECOND_RECORDING_ID = "00000000-0000-4000-8000-000000000101";
@@ -62,7 +62,7 @@ const TASK2_TRANSCRIPT_SCENARIOS: NotesDebugScenario[] = [
 
 function makeMockPipeline(scenario: NotesDebugScenario): MockPipeline | undefined {
   switch (scenario) {
-    case "gate-waiting": return { waitingSeconds: 15 };
+    case "gate-waiting": return { waitingSeconds: MOCK_GATE_SECONDS };
     case "naming": return { namingRunning: true };
     case "short-meeting": return { autoSummarySkipped: { seconds: 130, chars: 1340 } };
     case "speakers-auto": return { modelSpeakerIds: ["speaker-2"], tasks: "ok", recap: "none" };

@@ -9,6 +9,7 @@ import {
   type MeetingRecordingEpochDto,
   type MeetingSpeakerCorrection,
   type MeetingTranscriptArtifact,
+  MEETING_ASR_GATE_MS,
 } from "../contracts/meetingRecording.js";
 import {
   meetingProcessingChannels,
@@ -52,6 +53,7 @@ export interface MeetingProcessingDatabase {
     config: MeetingProcessingConfig | null;
     configError?: { code: string; messageKey?: string } | null;
     sourceRunId?: string | null;
+    retryAt?: string | null;
   }): MeetingProcessingRunDto;
   claimMeetingProcessingRun(id: string, now?: string): boolean;
   setMeetingProcessingRunState(id: string, update: {
@@ -156,8 +158,22 @@ export class MeetingProcessingWorker {
     this.processPending();
   }
 
-  captureStarted(): void {
+  captureStarted(groupId?: string): void {
     this.captureActive = true;
+    if (groupId) {
+      for (const run of this.deps.database.listAllMeetingProcessingRuns()) {
+        const recording = this.deps.database.getMeetingRecording(run.recordingId);
+        if (
+          recording?.groupId === groupId &&
+          run.kind !== "summary" &&
+          (run.status === "pending" || run.status === "running") &&
+          (run.stage === "prepare" || run.stage === "asr") &&
+          !run.hasRawProviderResponse
+        ) {
+          this.cancelRun(run.id, "meeting-resumed");
+        }
+      }
+    }
     if (
       this.active?.stage === "prepare" ||
       (this.active?.stage === "asr" && this.active.mode === "local") ||
@@ -180,14 +196,14 @@ export class MeetingProcessingWorker {
     this.active?.controller.abort();
   }
 
-  cancelRun(runId: string): boolean {
+  cancelRun(runId: string, errorCode = "processing-cancelled"): boolean {
     const run = this.deps.database.getMeetingProcessingRun(runId);
     if (!run || (run.status !== "pending" && run.status !== "running")) return false;
     if (this.active?.runId === runId) this.active.controller.abort();
     return this.deps.database.setMeetingProcessingRunState(runId, {
       stage: this.active?.runId === runId ? this.active.stage : "prepare",
       status: "cancelled",
-      errorCode: "processing-cancelled",
+      errorCode,
       retryAt: null,
     }).success;
   }
@@ -279,12 +295,45 @@ export class MeetingProcessingWorker {
 
   createRun(input: unknown): MeetingProcessingResultDto {
     const parsed = meetingProcessingCreateRunRequestSchema.parse(input);
+    if (parsed.gateAfterStop && parsed.kind !== "reprocess") {
+      throw new Error("Only end-of-meeting transcription can use the processing gate");
+    }
+    const sourceRecordingIds = parsed.sourceRecordingIds ?? [parsed.recordingId];
+    const sameSources = (run: MeetingProcessingRunDto) =>
+      run.sourceRecordingIds.length === sourceRecordingIds.length &&
+      run.sourceRecordingIds.every((id, index) => id === sourceRecordingIds[index]);
+    const activeGate = this.deps.database.listAllMeetingProcessingRuns().find((run) =>
+      this.isEndOfMeetingGate(run) &&
+      (run.status === "pending" || run.status === "running" || run.status === "blocked") &&
+      run.sourceRecordingIds.some((id) => sourceRecordingIds.includes(id))
+    );
+    if (activeGate && sameSources(activeGate) && (parsed.gateAfterStop || Date.parse(activeGate.retryAt as string) > this.now().getTime())) {
+      const result = this.getResult(activeGate);
+      this.notify(activeGate);
+      return result;
+    }
+    if (activeGate && Date.parse(activeGate.retryAt as string) > this.now().getTime() && !parsed.gateAfterStop) {
+      throw new Error("Transcription starts after the end-of-meeting wait");
+    }
+    if (parsed.gateAfterStop) {
+      const existing = this.deps.database.listMeetingProcessingRuns(parsed.recordingId).find((run) =>
+        run.kind === "reprocess" &&
+        run.status !== "cancelled" &&
+        sameSources(run)
+      );
+      if (existing) {
+        const result = this.getResult(existing);
+        this.notify(existing);
+        return result;
+      }
+    }
     const run = this.deps.database.createMeetingProcessingRun(parsed.recordingId, {
       kind: parsed.kind,
       sourceRecordingIds: parsed.sourceRecordingIds,
       config: parsed.config,
       configError: parsed.configError ?? null,
       sourceRunId: parsed.sourceRunId ?? null,
+      retryAt: parsed.gateAfterStop ? new Date(this.now().getTime() + MEETING_ASR_GATE_MS).toISOString() : null,
     });
     const result = this.getResult(run);
     this.notify(run);
@@ -342,17 +391,32 @@ export class MeetingProcessingWorker {
       const pending = this.deps.database.listAllMeetingProcessingRuns()
         .filter((run) => run.status === "pending" && (!run.retryAt || Date.parse(run.retryAt) <= Date.parse(now)))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-      const run = pending.find((candidate) => this.deps.database.claimMeetingProcessingRun(candidate.id, now));
-      if (!run) return;
-      await this.processClaimedRun(run.id);
+      let claimed: { id: string; endOfMeetingGate: boolean } | null = null;
+      for (const candidate of pending) {
+        const endOfMeetingGate = this.isEndOfMeetingGate(candidate);
+        if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(candidate)) {
+          this.cancelRun(candidate.id, "meeting-group-changed");
+          continue;
+        }
+        if (this.deps.database.claimMeetingProcessingRun(candidate.id, now)) {
+          claimed = { id: candidate.id, endOfMeetingGate };
+          break;
+        }
+      }
+      if (!claimed) return;
+      await this.processClaimedRun(claimed.id, claimed.endOfMeetingGate);
     }
   }
 
-  private async processClaimedRun(runId: string): Promise<void> {
+  private async processClaimedRun(runId: string, endOfMeetingGate: boolean): Promise<void> {
     const run = this.deps.database.getMeetingProcessingRun(runId);
     if (!run || run.status !== "running") return;
     const recording = this.deps.database.getMeetingRecording(run.recordingId);
     if (!recording) return;
+    if (endOfMeetingGate && (!this.isCurrentMeetingGroupVersion(run) || this.isCapturing())) {
+      this.cancelRun(runId, "meeting-group-changed");
+      return;
+    }
     const config = run.config;
     const mode = run.stage === "summary"
       ? config?.summary?.reasoningMode === "local" ? "summary-local" : "summary-remote"
@@ -361,9 +425,9 @@ export class MeetingProcessingWorker {
     this.active = active;
     try {
       if (run.stage === "prepare") {
-        await this.prepare(run, recording, active.controller.signal);
+        await this.prepare(run, recording, active.controller.signal, endOfMeetingGate);
       } else if (run.stage === "asr") {
-        await this.transcribe(run, recording, active.controller.signal);
+        await this.transcribe(run, recording, active.controller.signal, endOfMeetingGate);
       } else if (run.stage === "normalize") {
         await this.normalize(run, recording, active.controller.signal);
       } else {
@@ -378,7 +442,11 @@ export class MeetingProcessingWorker {
     }
   }
 
-  private async prepare(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal): Promise<void> {
+  private async prepare(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal, endOfMeetingGate: boolean): Promise<void> {
+    if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(run)) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
     if (this.isCapturing()) return this.pause(run, "prepare");
     const config = this.requireConfig(run);
     const provider = config.transcription.mode === "local" ? null : supportedMeetingFileProvider(config.transcription.provider, config.transcription.model);
@@ -394,6 +462,10 @@ export class MeetingProcessingWorker {
     );
     const audio = await mixer(timeline, run.id, epochs, signal);
     signal.throwIfAborted();
+    if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(run)) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
     if (this.isCapturing()) return this.pause(run, "asr");
     if (provider && audio.sizeBytes > byokFileSizeLimit(provider)) {
       throw new MeetingProcessingFailure("provider-limit", "blocked");
@@ -401,12 +473,16 @@ export class MeetingProcessingWorker {
     if (provider === "gemini" && audio.durationSeconds > GEMINI_MAX_SECONDS) {
       throw new MeetingProcessingFailure("gemini-duration-limit", "blocked");
     }
-    this.setState(run.id, "asr", "pending", null, null);
+    this.setState(run.id, "asr", "pending", null, endOfMeetingGate ? run.retryAt : null);
   }
 
-  private async transcribe(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal): Promise<void> {
+  private async transcribe(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal, endOfMeetingGate: boolean): Promise<void> {
     const current = this.requireCurrentRun(run.id);
     if (current.hasRawProviderResponse) return this.setState(run.id, "normalize", "pending", null, null);
+    if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(current)) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
     if (this.isCapturing()) return this.pause(run, "asr");
     if (current.retryCount > AUTO_RETRY_LIMIT) {
       this.setState(run.id, "asr", "failed", current.errorCode ?? "asr-outcome-unknown", null);
@@ -459,6 +535,10 @@ export class MeetingProcessingWorker {
       ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       requestId,
     };
+    if (endOfMeetingGate && (!this.isCurrentMeetingGroupVersion(current) || this.isCapturing())) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
     const result = await this.deps.transcribeRemote(request, async (response) => this.saveRawResponse(run.id, response), signal);
     const after = this.deps.database.getMeetingProcessingRun(run.id);
     if (!after || after.status !== "running") return;
@@ -723,6 +803,28 @@ export class MeetingProcessingWorker {
 
   private isCapturing(): boolean {
     return this.captureActive || this.deps.isCaptureActive();
+  }
+
+  private isEndOfMeetingGate(run: MeetingProcessingRunDto): boolean {
+    return run.kind !== "summary" &&
+      (run.stage === "prepare" || run.stage === "asr") &&
+      run.retryAt !== null &&
+      run.retryCount === 0 &&
+      !run.hasRawProviderResponse;
+  }
+
+  private isCurrentMeetingGroupVersion(run: MeetingProcessingRunDto): boolean {
+    const recording = this.deps.database.getMeetingRecording(run.recordingId);
+    if (!recording || run.kind === "summary") return false;
+    const group = this.deps.database.listMeetingRecordingsForNote(recording.noteId)
+      .filter((part) => part.groupId === recording.groupId)
+      .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
+    if (group.some((part) =>
+      (part.captureState !== "ready" && part.captureState !== "incomplete") || part.audioState !== "available"
+    )) return false;
+    const currentIds = group.map((part) => part.id).sort();
+    const sourceIds = [...run.sourceRecordingIds].sort();
+    return currentIds.length === sourceIds.length && currentIds.every((id, index) => id === sourceIds[index]);
   }
 
   private scheduleRetryTimer(): void {

@@ -3,6 +3,7 @@ import type {
   MeetingRecordingDto,
   MeetingSource,
 } from "../contracts/meetingRecording.js";
+import { MEETING_ASR_GATE_MS } from "../contracts/meetingRecording.js";
 
 const SAMPLE_RATE = 24_000;
 const MAX_PACKET_FRAMES = SAMPLE_RATE / 10;
@@ -33,6 +34,7 @@ export interface MeetingCaptureDatabase {
     input: {
       captureState: "ready" | "incomplete";
       endedAt: string;
+      processingNotBefore?: string;
       sourceMetadata?: Record<string, unknown>;
       errorCode?: string | null;
     }
@@ -87,6 +89,7 @@ export interface MeetingCaptureStopResult {
 /** Main-process owner for one recording's ordered raw PCM writes and finalization. */
 export class MeetingCaptureSession {
   readonly recordingId: string;
+  readonly groupId: string;
   readonly originAt: string;
   private readonly epochs = new Map<MeetingSource, CaptureEpoch>();
   private readonly sourceErrors = new Map<MeetingSource, string>();
@@ -104,6 +107,7 @@ export class MeetingCaptureSession {
     groupId: string = recordingId
   ) {
     this.recordingId = recordingId;
+    this.groupId = groupId;
     this.originAt = startedAt.toISOString();
     this.database.createMeetingRecording(
       noteId,
@@ -283,6 +287,7 @@ export class MeetingCaptureSession {
       endedAt: input.endedAt ?? (latestSavedFrame > 0
         ? new Date(Date.parse(this.originAt) + latestSavedFrame / SAMPLE_RATE * 1000).toISOString()
         : new Date().toISOString()),
+      processingNotBefore: new Date(Date.now() + MEETING_ASR_GATE_MS).toISOString(),
       sourceMetadata: {
         mic: { errorCode: this.sourceErrors.get("mic") ?? null },
         system: { errorCode: this.sourceErrors.get("system") ?? null },

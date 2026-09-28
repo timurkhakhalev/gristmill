@@ -210,6 +210,8 @@ export const meetingProcessingRunDtoSchema = z.object({
 });
 export type MeetingProcessingRunDto = z.infer<typeof meetingProcessingRunDtoSchema>;
 
+export const MEETING_ASR_GATE_MS = 15_000;
+
 export const meetingTranscriptArtifactSchema = z.object({
   text: z.string(),
   segments: z.array(z.object({

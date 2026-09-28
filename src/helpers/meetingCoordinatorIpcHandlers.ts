@@ -182,7 +182,7 @@ export interface MeetingCoordinatorDeps {
   consumePendingMeetingNoteNavigation?(): unknown;
   showNotificationWindow?(sender: WebContents): void;
   setMeetingCaptureState?(active: boolean): void;
-  onCaptureStarted?(): void;
+  onCaptureStarted?(groupId: string): void;
   onCaptureStopped?(): void;
 }
 
@@ -1751,7 +1751,7 @@ export function registerMeetingCoordinatorHandlers(
     meetingStartedAt = startedAt.getTime();
     meetingNoteId = noteId;
     linkRecordingSessionToNote(noteId);
-    deps.onCaptureStarted?.();
+    deps.onCaptureStarted?.(capture.groupId);
     meetingDetectionEngine?.setUserRecording(true);
 
     let systemAudioMode: "native" | "unsupported" = "unsupported";

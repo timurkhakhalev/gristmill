@@ -31,6 +31,7 @@ export const meetingProcessingCreateRunRequestSchema = z.object({
   recordingId: meetingRecordingIdSchema,
   sourceRecordingIds: z.array(meetingRecordingIdSchema).min(1).max(100).optional(),
   kind: z.enum(["reprocess", "summary"]),
+  gateAfterStop: z.boolean().optional(),
   config: meetingProcessingConfigSchema.nullable(),
   configError: meetingProcessingConfigErrorSchema.nullable().optional(),
   sourceRunId: meetingRecordingIdSchema.nullable().optional(),

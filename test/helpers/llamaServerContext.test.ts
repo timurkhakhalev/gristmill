@@ -1,0 +1,258 @@
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const http: typeof import("node:http") = require("node:http");
+
+const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
+import type { LlamaServerManager as LlamaManager, LlamaResponseError } from "../../src/helpers/llamaServer.ts";
+
+// A manager whose spawn is stubbed at the _doStart boundary, recording the
+// options each start was asked for.
+function makeManager() {
+  const manager = new LlamaServerManager();
+  const starts: unknown[] = [];
+  manager._doStart = async (modelPath: string, options: { draftModelPath?: string; contextSize?: number } = {}) => {
+    manager.ready = true;
+    manager.modelPath = modelPath;
+    manager.draftModelPath = options.draftModelPath || null;
+    starts.push({ modelPath, contextSize: options.contextSize });
+  };
+  return { manager, starts };
+}
+
+// --- grow-only restart ---------------------------------------------------
+//
+// Before #2142 the context was a single constant, so start() could ignore
+// options entirely once a server was ready. Now that the context varies per
+// request, it has to restart to grow — but only to grow, or a long note
+// followed by a short dictation would restart the server twice.
+
+test("a larger context restarts the server", async () => {
+  const { manager, starts } = makeManager();
+
+  await manager.start("/models/main.gguf", { contextSize: 16384 });
+  assert.equal(starts.length, 1);
+
+  await manager.start("/models/main.gguf", { contextSize: 32768 });
+  assert.equal(starts.length, 2);
+  assert.equal(manager.contextSize, 32768);
+});
+
+test("an equal or smaller context reuses the running server", async () => {
+  const { manager, starts } = makeManager();
+
+  await manager.start("/models/main.gguf", { contextSize: 32768 });
+  assert.equal(starts.length, 1);
+
+  // Exactly the same → no restart.
+  await manager.start("/models/main.gguf", { contextSize: 32768 });
+  assert.equal(starts.length, 1);
+
+  // Smaller → no restart, and the larger window is kept. This is what stops a
+  // short dictation right after a long note from costing a second restart.
+  await manager.start("/models/main.gguf", { contextSize: 16384 });
+  assert.equal(starts.length, 1);
+  assert.equal(manager.contextSize, 32768);
+});
+
+test("growing the context still restarts when the drafter is unchanged", async () => {
+  const { manager, starts } = makeManager();
+
+  await manager.start("/models/main.gguf", { contextSize: 16384, draftModelPath: "/d.gguf" });
+  await manager.start("/models/main.gguf", { contextSize: 65536, draftModelPath: "/d.gguf" });
+
+  assert.equal(starts.length, 2);
+  assert.equal(manager.contextSize, 65536);
+});
+
+test("a context grown for one model does not carry over to another", async () => {
+  const { manager, starts } = makeManager();
+
+  await manager.start("/models/big.gguf", { contextSize: 65536 });
+  await manager.start("/models/other.gguf", { contextSize: 16384 });
+
+  assert.equal(starts.length, 2);
+  assert.equal(manager.contextSize, 16384, "the new model starts at its own size");
+});
+
+test("stopping the server forgets the grown context", async () => {
+  const { manager } = makeManager();
+
+  await manager.start("/models/main.gguf", { contextSize: 65536 });
+  assert.equal(manager.contextSize, 65536);
+
+  await manager.stop();
+  assert.equal(manager.contextSize, null);
+});
+
+// --- context-overflow errors --------------------------------------------
+
+test("a context overflow is reported as a typed error, not as llama.cpp JSON", async () => {
+  const overflowBody = JSON.stringify({
+    error: {
+      code: 400,
+      message: "request (20514 tokens) exceeds the available context size (16384 tokens)",
+      type: "exceed_context_size_error",
+      n_prompt_tokens: 20514,
+      n_ctx: 16384,
+    },
+  });
+
+  const server = http.createServer((_req, res) => {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(overflowBody);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const manager = new LlamaServerManager();
+  manager.ready = true;
+  manager.process = {};
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  manager.port = address.port;
+
+  try {
+    await assert.rejects(
+      () => manager.inference([{ role: "user", content: "hi" }], {}),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        const failure = error as LlamaResponseError;
+        assert.equal(failure.code, "CONTEXT_TOO_LARGE");
+        assert.equal(failure.neededTokens, 20514);
+        assert.equal(failure.maxContextTokens, 16384);
+        // The whole point: a customer must never be shown a JSON blob.
+        assert.ok(!error.message.includes("{"), `raw JSON leaked: ${error.message}`);
+        return true;
+      }
+    );
+  } finally {
+    manager.clearIdleTimer();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("other llama-server failures keep their existing shape", async () => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(500, { "Content-Type": "text/plain" });
+    res.end("internal error");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const manager = new LlamaServerManager();
+  manager.ready = true;
+  manager.process = {};
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  manager.port = address.port;
+
+  try {
+    await assert.rejects(
+      () => manager.inference([{ role: "user", content: "hi" }], {}),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal("code" in error ? error.code : undefined, undefined);
+        assert.match(error.message, /llama-server returned status 500/);
+        return true;
+      }
+    );
+  } finally {
+    manager.clearIdleTimer();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+// --- measuring the running server ----------------------------------------
+//
+// The estimate only picks the size the server starts at. These two calls are
+// what make the decision exact: /props reports the window actually in force
+// (which can differ from what we asked for), and /apply-template + /tokenize
+// price the real prompt, chat template and all.
+
+function withStubServer(routes: Record<string, (body: string) => { status?: number; payload: unknown }>) {
+  // A Map rather than indexing the object: req.url is request-controlled, so a
+  // plain lookup answers /toString or /constructor with an inherited
+  // Object.prototype method and then calls it.
+  const routeTable = new Map(Object.entries(routes));
+  return async (run: (manager: LlamaManager) => Promise<void>) => {
+    const server = http.createServer((req, res) => {
+      const handler = routeTable.get(req.url ?? "");
+      if (typeof handler !== "function") {
+        res.writeHead(404).end();
+        return;
+      }
+      let body = "";
+      req.on("data", (chunk: unknown) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        const { status = 200, payload } = handler(body);
+        res.writeHead(status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(payload));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+    const manager = new LlamaServerManager();
+    manager.ready = true;
+    manager.process = {};
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    manager.port = address.port;
+    try {
+      await run(manager);
+    } finally {
+      manager.clearIdleTimer();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  };
+}
+
+test("usableContextSize reports the window the server actually has", async () => {
+  await withStubServer({
+    "/props": () => ({ payload: { default_generation_settings: { n_ctx: 32768 } } }),
+  })(async (manager) => {
+    assert.equal(await manager.usableContextSize(), 32768);
+  });
+});
+
+test("usableContextSize returns null rather than guessing when props is unreadable", async () => {
+  // A broken measurement must degrade to the estimate, never fail the request.
+  await withStubServer({ "/props": () => ({ status: 500, payload: {} }) })(async (manager) => {
+    assert.equal(await manager.usableContextSize(), null);
+  });
+  await withStubServer({})(async (manager) => {
+    assert.equal(await manager.usableContextSize(), null);
+  });
+});
+
+test("countPromptTokens prices the rendered template, not just the message text", async () => {
+  let templatedWith: any = null;
+  let tokenized: any = null;
+
+  await withStubServer({
+    "/apply-template": (body) => {
+      templatedWith = JSON.parse(body);
+      // The real server renders role tags and, with thinking disabled, an
+      // empty <think></think> block. All of it costs context.
+      return { payload: { prompt: "<|im_start|>system\nSYS<|im_end|>\nhello" } };
+    },
+    "/tokenize": (body) => {
+      tokenized = JSON.parse(body);
+      return { payload: { tokens: new Array(20514).fill(0) } };
+    },
+  })(async (manager) => {
+    const messages = [
+      { role: "system", content: "SYS" },
+      { role: "user", content: "hello" },
+    ];
+    assert.equal(await manager.countPromptTokens(messages, { disableThinking: true }), 20514);
+    assert.deepEqual(templatedWith.messages, messages);
+    assert.deepEqual(templatedWith.chat_template_kwargs, { enable_thinking: false });
+    assert.equal(tokenized.content, "<|im_start|>system\nSYS<|im_end|>\nhello");
+  });
+});
+
+test("countPromptTokens returns null when the server cannot measure", async () => {
+  await withStubServer({ "/apply-template": () => ({ status: 500, payload: {} }) })(
+    async (manager) => {
+      assert.equal(await manager.countPromptTokens([{ role: "user", content: "hi" }], {}), null);
+    }
+  );
+});

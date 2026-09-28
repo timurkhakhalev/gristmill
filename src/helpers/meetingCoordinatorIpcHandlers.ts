@@ -54,7 +54,7 @@ import {
   meetingOptionsSchema,
 } from "../contracts/meetingCoordinator.js";
 import { createMeetingTranscriptionLifecycle } from "./meetingTranscriptionLifecycle.js";
-import { registerMeetingAutoEndLifecycleHandlers } from "./meetingAutoEndLifecycle.js";
+import { registerMeetingAutoEndLifecycleHandlers, type MeetingAutoEndEngineLike } from "./meetingAutoEndLifecycle.js";
 import { downsample24kTo16k, pcm16ToWav } from "../utils/audioUtils.js";
 import { isSherpaLocalProvider } from "./parakeetModelInfo.js";
 import { resolveContextSileroEnabled } from "./whisperVadConfig.js";
@@ -142,7 +142,11 @@ export interface MeetingCoordinatorDeps {
   meetingRecordingStorage: MeetingCaptureEpochStorage;
   cancelInitialProcessingRun?: (runId: string) => boolean;
   diarizationManager: import("./meetingDiarizationPublication.js").DiarizationPublicationDiarizationManager;
-  meetingDetectionEngine: MeetingDetectionEngine | null;
+  meetingDetectionEngine: (Pick<MeetingDetectionEngine,
+    "setUserRecording" | "beginRecordingSession" | "endRecordingSession" |
+    "recordMeetingAudioChunk" | "setRecordingSystemAudioAvailable" | "setMicWarmHold" |
+    "getPreferences" | "setPreferences" | "handleNotificationResponse" |
+    "joinCalendarMeeting"> & MeetingAutoEndEngineLike) | null;
   audioTapManager: Pick<AudioTapManager, "isSupported" | "start" | "stop"> | null;
   whisperManager: {
     transcribeLocalWhisper(

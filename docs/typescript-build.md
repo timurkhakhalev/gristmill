@@ -72,7 +72,7 @@ Electron уже типобезопасен. TS-модули графа пров�
 Полный прогон и проверка mainBuild требуют сборки. Для отдельного прогона:
 
 ```sh
-pnpm test -- test/scripts/mainBuild.test.js
+pnpm test -- test/scripts/mainBuild.test.ts
 ```
 
 Эти тесты проверяют относительные зависимости всего выходного графа,
@@ -1801,14 +1801,14 @@ lint-предупреждения: 12+2 (ниже baseline 15+2 — main/preload
 ### Команды проверки
 
 ```sh
-pnpm run typecheck          # main + renderer + settings-selectors, все strict
+pnpm run typecheck          # main + renderer + settings-selectors + tests, все strict
 pnpm run lint               # 0 errors
 pnpm test -- \
-  test/scripts/mainBuild.test.js test/helpers/mainProcessEsmEntries.test.js \
-  test/helpers/retryTranscriptionHandler.test.js \
-  test/m1IdentitySourceContract.test.js test/helpers/macInferenceSourceContract.test.js \
-  test/helpers/deviceCleanupContract.test.js test/helpers/secretKeys.test.js \
-  test/helpers/rendererBridgeContract.test.js
+  test/scripts/mainBuild.test.ts test/helpers/mainProcessEsmEntries.test.ts \
+  test/helpers/retryTranscriptionHandler.test.ts \
+  test/m1IdentitySourceContract.test.ts test/helpers/macInferenceSourceContract.test.ts \
+  test/helpers/deviceCleanupContract.test.ts test/helpers/secretKeys.test.ts \
+  test/helpers/rendererBridgeContract.test.ts
 pnpm test                   # полный прогон
 pnpm run pack               # macOS arm64 .app; затем isolated Electron smoke
 ```

@@ -1192,10 +1192,13 @@ function invalidateApiKeyCaches(
     if (_ReasoningService) {
       _ReasoningService.clearApiKeyCache(provider);
     } else {
-      import("../services/ReasoningService")
+      import("../services/ReasoningService.js")
         .then((mod) => {
-          _ReasoningService = mod.default;
-          _ReasoningService.clearApiKeyCache(provider);
+          // NodeNext CJS interop: the ESM default (the singleton instance) is
+          // exposed on .default; type it through the declared field shape.
+          const service = (mod as unknown as { default: NonNullable<typeof _ReasoningService> }).default;
+          _ReasoningService = service;
+          service.clearApiKeyCache(provider);
         })
         .catch(() => {});
     }

@@ -16,7 +16,7 @@ const fakeWindow = () => {
   return win;
 };
 
-let currentWindow: any = null;
+let currentWindow: ReturnType<typeof fakeWindow> | null = null;
 const electronStub = {
   app: {
     getPath: () => "/tmp",
@@ -58,9 +58,9 @@ function loadCoordinator() {
   }
 }
 
-function createDatabaseFake(events: any) {
+function createDatabaseFake(events: string[]) {
   return {
-    recordings: new Map<string, any>(),
+    recordings: new Map<string, { id: string; noteId: number; config: unknown; startedAt: string; captureState: string; audioState: string; captureErrorCode?: string | null }>(),
     epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
     finalized: [] as { recordingId: string; input: { captureState: string; errorCode?: string } }[],
     createMeetingRecording(noteId: number, input: { config: unknown }, startedAt: string, id: string) {
@@ -85,11 +85,14 @@ function createDatabaseFake(events: any) {
       Object.assign(epoch, result);
     },
     markMeetingRecordingFinalizing(recordingId: string) {
-      this.recordings.get(recordingId).captureState = "finalizing";
+      const recording = this.recordings.get(recordingId);
+      assert.ok(recording);
+      recording.captureState = "finalizing";
     },
     finalizeMeetingRecording(recordingId: string, input: { captureState: string; errorCode?: string }) {
       this.finalized.push({ recordingId, input });
       const recording = this.recordings.get(recordingId);
+      assert.ok(recording);
       recording.captureState = input.captureState;
       recording.captureErrorCode = input.errorCode ?? null;
       return { recording, initialRun: { id: RUN_ID } };
@@ -104,22 +107,24 @@ function createDatabaseFake(events: any) {
   };
 }
 
-function createStorageFake(events: any, { failWrite = false } = {}) {
+function createStorageFake(events: string[], { failWrite = false } = {}) {
   return {
-    files: new Map(),
+    files: new Map<string, Buffer[]>(),
     openEpochWriter(recordingId: string, source: string, epochIndex: number) {
       this.files.set(`${recordingId}:${source}:${epochIndex}`, []);
     },
-    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: any) {
+    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: Buffer | Uint8Array) {
       if (failWrite) throw new Error("disk full");
       events.push("pcm-written");
-      this.files.get(`${recordingId}:${source}:${epochIndex}`).push(Buffer.from(samples));
+      const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`);
+      assert.ok(buffers);
+      buffers.push(Buffer.from(samples));
     },
     closeEpochWriter() {},
     recoverEpoch(recordingId: string, source: string, epochIndex: number) {
       const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`) ?? [];
       return {
-        frameCount: buffers.reduce((total: number, buffer: any) => total + buffer.length / 2, 0),
+        frameCount: buffers.reduce((total, buffer) => total + buffer.length / 2, 0),
         ignoredTrailingBytes: 0,
         errorCode: null,
       };
@@ -151,7 +156,7 @@ function buildHarness({ failWrite = false } = {}) {
   currentWindow = fakeWindow();
   const handlers = new Map();
   const listeners = new Map();
-  const events: unknown[] = [];
+  const events: string[] = [];
   const databaseManager = createDatabaseFake(events);
   const meetingRecordingStorage = createStorageFake(events, { failWrite });
   const engine = createEngineFake();
@@ -201,7 +206,7 @@ function buildHarness({ failWrite = false } = {}) {
   return { runtime, handlers, listeners, events, databaseManager, meetingRecordingStorage, tokenCalls: () => tokenCalls, asrCalls: () => asrCalls, engine };
 }
 
-const invoke = (harness: any, channel: string, ...args: unknown[]) => harness.handlers.get(channel)(...args);
+const invoke = (harness: ReturnType<typeof buildHarness>, channel: string, ...args: unknown[]) => harness.handlers.get(channel)(...args);
 const START = {
   noteId: 11,
   sessionId: "session-m2",
@@ -240,7 +245,9 @@ test("renderer audio is acknowledged only after its raw PCM bytes are written", 
 
   assert.deepEqual(response, { success: true, sequence: 0 });
   assert.deepEqual(harness.events, ["recording-created", "pcm-written"]);
-  assert.equal(harness.meetingRecordingStorage.files.get(`${started.recordingId}:mic:0`)[0].equals(raw), true);
+  const written = harness.meetingRecordingStorage.files.get(`${started.recordingId}:mic:0`);
+  assert.ok(written);
+  assert.equal(written[0]?.equals(raw), true);
 });
 
 test("disk errors reject acknowledgement and finalize incomplete", async () => {

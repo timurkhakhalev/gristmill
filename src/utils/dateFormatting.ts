@@ -55,6 +55,13 @@ export function formatShortDate(dateStr: string, locale?: string, format: DateFo
   return formatDate(date, locale, { month: "short", day: "numeric" }, format);
 }
 
+export function formatShortTime(dateStr: string, locale?: string, format: TimeFormat = "locale"): string {
+  if (!dateStr) return "";
+  const date = normalizeDbDate(dateStr);
+  if (Number.isNaN(date.getTime())) return "";
+  return formatTime(date, locale, { hour: "numeric", minute: "2-digit" }, format);
+}
+
 export function formatNoteDate(dateStr: string, locale?: string, dateFormat: DateFormat = "locale", timeFormat: TimeFormat = "locale"): string {
   const date = normalizeDbDate(dateStr);
   if (Number.isNaN(date.getTime())) return "";

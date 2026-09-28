@@ -43,7 +43,7 @@ import ChatPanel, { type ChatPanelMode } from "../chat/ChatPanel";
 import { setActiveFolderId, setActiveNoteId } from "../../stores/noteStore";
 import { useEmbeddedChat } from "../../hooks/useEmbeddedChat";
 import type { Message } from "../chat/types";
-import { formatNoteDate, formatShortDate } from "../../utils/dateFormatting";
+import { formatNoteDate, formatShortDate, formatShortTime } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { collectKnownPeople } from "../../utils/llmTranscript";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";
@@ -682,6 +682,7 @@ export default function NoteEditor({
   const { dateFormat, timeFormat } = useDateTimePreferences();
   const noteDate = formatNoteDate(note.created_at, locale, dateFormat, timeFormat);
   const shortDate = formatShortDate(note.created_at, locale, dateFormat);
+  const shortTime = formatShortTime(note.created_at, locale, timeFormat);
 
   return (
     <div className="relative flex h-full min-h-0">
@@ -707,6 +708,7 @@ export default function NoteEditor({
               participants={parsedParticipants}
               event={calendarEvent}
               dateLabel={shortDate || undefined}
+              dateTime={shortTime || undefined}
               dateTitle={noteDate}
               preview={Boolean(debugPreview)}
             />

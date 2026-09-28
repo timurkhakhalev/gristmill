@@ -162,6 +162,8 @@ interface NoteParticipantsProps {
   event?: CalendarEvent | null;
   /** When present the capsule leads with the note's date, so date and people read as one fact. */
   dateLabel?: string;
+  /** Optional short time rendered after the date inside the same chip. */
+  dateTime?: string;
   dateTitle?: string;
   preview?: boolean;
 }
@@ -171,6 +173,7 @@ export default function NoteParticipants({
   participants,
   event,
   dateLabel,
+  dateTime,
   dateTitle,
   preview = false,
 }: NoteParticipantsProps) {
@@ -287,6 +290,11 @@ export default function NoteParticipants({
             <>
               <Calendar size={14} className="shrink-0 text-muted" />
               <span>{dateLabel}</span>
+              {dateTime && (
+                <span className="text-muted tabular-nums" aria-label={dateTitle}>
+                  {dateTime}
+                </span>
+              )}
               <span aria-hidden="true" className="mx-0.5 h-3.5 w-px bg-border dark:bg-white/15" />
             </>
           )}

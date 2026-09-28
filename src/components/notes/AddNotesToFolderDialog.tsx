@@ -8,6 +8,7 @@ import { cn } from "../lib/utils";
 import { formatDateGroup, type DateFormat } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import type { NoteItem } from "../../contracts/notes";
+import { getFoldersValue } from "../../stores/noteStore";
 
 interface AddNotesToFolderDialogProps {
   open: boolean;
@@ -54,7 +55,7 @@ export default function AddNotesToFolderDialog({
   }, [open]);
 
   const availableNotes = useMemo(
-    () => allNotes.filter((n) => n.folder_id !== targetFolderId),
+    () => allNotes.filter((n) => !n.folder_ids.includes(targetFolderId)),
     [allNotes, targetFolderId]
   );
 
@@ -84,17 +85,24 @@ export default function AddNotesToFolderDialog({
     if (selected.size === 0) return;
     setIsAdding(true);
     try {
+      const targetSpaceId = getFoldersValue().find((f) => f.id === targetFolderId)?.space_id;
+      const notesById = new Map(allNotes.map((n) => [n.id, n]));
       await Promise.all(
-        Array.from(selected).map((id) =>
-          window.electronAPI.updateNote(id, { folder_id: targetFolderId })
-        )
+        Array.from(selected).map((id) => {
+          const note = notesById.get(id);
+          // Same space: the note joins this folder and keeps its others.
+          // Folders never span spaces, so a note from another space moves.
+          return note && note.space_id === targetSpaceId
+            ? window.electronAPI.updateNote(id, { folder_ids: [...note.folder_ids, targetFolderId] })
+            : window.electronAPI.updateNote(id, { folder_id: targetFolderId });
+        })
       );
       onNotesAdded();
       onOpenChange(false);
     } finally {
       setIsAdding(false);
     }
-  }, [selected, targetFolderId, onNotesAdded, onOpenChange]);
+  }, [selected, targetFolderId, allNotes, onNotesAdded, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -197,8 +197,8 @@ export default function PersonalNotesView({
     handleNewNote,
     handleNotesAdded,
     handleMoveNote,
-    handleMoveToFolder,
-    handleCreateFolderAndMove,
+    handleSetNoteFolders,
+    handleCreateFolderAndAdd,
   } = useNotesTreeActions();
 
   const isTranscribing = useMeetingRecordingStore((s) => s.isRecording);
@@ -569,8 +569,8 @@ export default function PersonalNotesView({
               folderName={activeFolderName}
               calendarEvent={calendarEvent}
               folders={editorFolders}
-              onMoveToFolder={handleMoveToFolder}
-              onCreateFolderAndMove={handleCreateFolderAndMove}
+              onSetFolders={handleSetNoteFolders}
+              onCreateFolderAndAdd={handleCreateFolderAndAdd}
               actionProcessingState={actionProcessingState}
               actionName={actionName}
               onGenerateSummary={generateSummary}

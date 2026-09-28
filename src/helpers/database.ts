@@ -115,12 +115,26 @@ export interface NoteRow {
   enhancement_prompt: string | null;
   enhanced_at_content_hash: string | null;
   folder_id: number | null;
+  /** Every folder holding the note: the primary folder_id first, then extra folders. */
+  folder_ids: number[];
   space_id: number;
   transcript: string | null;
   calendar_event_id: string | null;
   participants: string | null;
   diarization_enabled: number | null;
   expected_speaker_count: number | null;
+}
+
+type RawNoteRow = Omit<NoteRow, "folder_ids"> & { extra_folder_ids_json: string | null };
+
+// Extra folders live in note_folders; this column rides along with every note read.
+const noteColumns = (alias: string) =>
+  `${alias}.*, (SELECT json_group_array(nf.folder_id) FROM note_folders nf WHERE nf.note_id = ${alias}.id) AS extra_folder_ids_json`;
+
+function hydrateNote(raw: RawNoteRow): NoteRow {
+  const { extra_folder_ids_json, ...note } = raw;
+  const extra = extra_folder_ids_json ? (JSON.parse(extra_folder_ids_json) as number[]) : [];
+  return { ...note, folder_ids: note.folder_id != null ? [note.folder_id, ...extra] : extra };
 }
 
 export interface ActionRow {
@@ -690,6 +704,13 @@ export class DatabaseManager {
           expected_speaker_count INTEGER
         );
 
+        -- Extra folders a note also appears in; notes.folder_id stays the primary one.
+        CREATE TABLE IF NOT EXISTS note_folders (
+          note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+          folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+          PRIMARY KEY (note_id, folder_id)
+        );
+
         CREATE TABLE IF NOT EXISTS meeting_recordings (
           id TEXT PRIMARY KEY,
           group_id TEXT,
@@ -925,6 +946,7 @@ export class DatabaseManager {
 
         CREATE INDEX IF NOT EXISTS idx_notes_space ON notes(space_id, updated_at);
         CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(folder_id, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_note_folders_folder ON note_folders(folder_id);
         CREATE INDEX IF NOT EXISTS idx_messages_conversation ON agent_messages(conversation_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_conversations_note ON agent_conversations(note_id, updated_at);
 
@@ -1870,8 +1892,30 @@ export class DatabaseManager {
   }
 
   deleteFolder(id: number): { success: boolean } {
-    const result = this.sql.prepare("DELETE FROM folders WHERE id = ?").run(id);
+    const result = this.sql.transaction(() => {
+      // A note whose primary folder goes away keeps living in its next folder.
+      this.sql.prepare(`
+        UPDATE notes SET folder_id = (
+          SELECT MIN(nf.folder_id) FROM note_folders nf WHERE nf.note_id = notes.id AND nf.folder_id != ?
+        )
+        WHERE folder_id = ? AND EXISTS (
+          SELECT 1 FROM note_folders nf WHERE nf.note_id = notes.id AND nf.folder_id != ?
+        )
+      `).run(id, id, id);
+      this.pruneNoteFolderLinks();
+      return this.sql.prepare("DELETE FROM folders WHERE id = ?").run(id);
+    })();
     return { success: result.changes > 0 };
+  }
+
+  /** Extra folders must share the note's space and never repeat its primary folder. */
+  private pruneNoteFolderLinks(): void {
+    this.sql.prepare(`
+      DELETE FROM note_folders WHERE EXISTS (
+        SELECT 1 FROM notes n JOIN folders f ON f.id = note_folders.folder_id
+        WHERE n.id = note_folders.note_id AND (f.space_id != n.space_id OR n.folder_id = note_folders.folder_id)
+      )
+    `).run();
   }
 
   moveFolderToSpace(
@@ -1889,7 +1933,10 @@ export class DatabaseManager {
         this.sql
           .prepare("UPDATE notes SET space_id = ?, updated_at = CURRENT_TIMESTAMP WHERE folder_id = ?")
           .run(spaceId, id);
-        const notes = this.sql.prepare("SELECT * FROM notes WHERE folder_id = ?").all(id) as NoteRow[];
+        this.pruneNoteFolderLinks();
+        const notes = (this.sql
+          .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE folder_id = ?`)
+          .all(id) as RawNoteRow[]).map(hydrateNote);
         return { changes: updated.changes, notes };
       })();
       return {
@@ -1906,8 +1953,11 @@ export class DatabaseManager {
 
   getFolderNoteCounts(): FolderNoteCountRow[] {
     return this.sql.prepare(`
-      SELECT folder_id, space_id, COUNT(*) AS count
-      FROM notes GROUP BY folder_id, space_id
+      SELECT folder_id, space_id, COUNT(*) AS count FROM (
+        SELECT folder_id, space_id FROM notes
+        UNION ALL
+        SELECT nf.folder_id, n.space_id FROM note_folders nf JOIN notes n ON n.id = nf.note_id
+      ) GROUP BY folder_id, space_id
     `).all() as FolderNoteCountRow[];
   }
 
@@ -2193,9 +2243,10 @@ export class DatabaseManager {
   }
 
   getNote(id: number | bigint): NoteRow | null {
-    return (
-      (this.sql.prepare("SELECT * FROM notes WHERE id = ?").get(id) as NoteRow | undefined) || null
-    );
+    const raw = this.sql
+      .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE id = ?`)
+      .get(id) as RawNoteRow | undefined;
+    return raw ? hydrateNote(raw) : null;
   }
 
   getNotes(
@@ -2211,8 +2262,8 @@ export class DatabaseManager {
       params.push(noteType);
     }
     if (folderId != null) {
-      conditions.push("folder_id = ?");
-      params.push(folderId);
+      conditions.push("(folder_id = ? OR id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))");
+      params.push(folderId, folderId);
     }
     if (spaceId != null) {
       conditions.push("space_id = ?");
@@ -2220,21 +2271,21 @@ export class DatabaseManager {
       if (folderId == null) conditions.push("folder_id IS NULL");
     }
     const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
-    return this.sql
-      .prepare(`SELECT * FROM notes${where} ORDER BY updated_at DESC LIMIT ?`)
-      .all(...params, limit) as NoteRow[];
+    return (this.sql
+      .prepare(`SELECT ${noteColumns("notes")} FROM notes${where} ORDER BY updated_at DESC LIMIT ?`)
+      .all(...params, limit) as RawNoteRow[]).map(hydrateNote);
   }
 
   getNotesForSpace(spaceId: number, limit = 50): NoteRow[] {
-    return this.sql
-      .prepare("SELECT * FROM notes WHERE space_id = ? ORDER BY updated_at DESC LIMIT ?")
-      .all(spaceId, limit) as NoteRow[];
+    return (this.sql
+      .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE space_id = ? ORDER BY updated_at DESC LIMIT ?`)
+      .all(spaceId, limit) as RawNoteRow[]).map(hydrateNote);
   }
 
   getNoteIdsInFolder(folderId: number): number[] {
     return (this.sql
-      .prepare("SELECT id FROM notes WHERE folder_id = ?")
-      .all(folderId) as Array<{ id: number }>).map((row) => row.id);
+      .prepare("SELECT id FROM notes WHERE (folder_id = ? OR id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))")
+      .all(folderId, folderId) as Array<{ id: number }>).map((row) => row.id);
   }
 
   getNoteIdsInScope(
@@ -2249,8 +2300,8 @@ export class DatabaseManager {
       params.push(spaceId);
     }
     if (folderId != null) {
-      conditions.push("folder_id = ?");
-      params.push(folderId);
+      conditions.push("(folder_id = ? OR id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))");
+      params.push(folderId, folderId);
     }
     if (candidateIds) {
       if (!candidateIds.length) return [];
@@ -2272,6 +2323,8 @@ export class DatabaseManager {
       enhancement_prompt: string | null;
       enhanced_at_content_hash: string | null;
       folder_id: number | null;
+      /** Full folder membership; the current primary stays primary when kept. */
+      folder_ids: number[];
       space_id: number;
       transcript: string | null;
       calendar_event_id: string | null;
@@ -2283,7 +2336,25 @@ export class DatabaseManager {
       note_type: string;
     }>
   ): { success: boolean; error?: string; note?: NoteRow | null } {
-    if (!this.getNote(id)) return { success: false, error: "Note not found" };
+    const current = this.getNote(id);
+    if (!current) return { success: false, error: "Note not found" };
+    let extraFolderIds: number[] | null = null;
+    if (updates.folder_ids !== undefined) {
+      if (updates.folder_id !== undefined) {
+        return { success: false, error: "Pass folder_id or folder_ids, not both" };
+      }
+      const ids = [...new Set(updates.folder_ids)];
+      const known = ids.length
+        ? (this.sql
+            .prepare(`SELECT COUNT(*) AS count FROM folders WHERE id IN (${ids.map(() => "?").join(",")})`)
+            .get(...ids) as { count: number }).count
+        : 0;
+      if (known !== ids.length) return { success: false, error: "Folder not found" };
+      const primary =
+        ids.length === 0 ? null : current.folder_id != null && ids.includes(current.folder_id) ? current.folder_id : ids[0];
+      updates = { ...updates, folder_id: primary };
+      extraFolderIds = ids.filter((folderId) => folderId !== primary);
+    }
     const allowed = [
       "title",
       "content",
@@ -2320,9 +2391,20 @@ export class DatabaseManager {
     }
     if (!fields.length) return { success: false };
     values.push(id);
-    const result = this.sql
-      .prepare(`UPDATE notes SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-      .run(...values);
+    const result = this.sql.transaction(() => {
+      const updated = this.sql
+        .prepare(`UPDATE notes SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        .run(...values);
+      if (extraFolderIds) {
+        this.sql.prepare("DELETE FROM note_folders WHERE note_id = ?").run(id);
+        const link = this.sql.prepare("INSERT INTO note_folders (note_id, folder_id) VALUES (?, ?)");
+        for (const folderId of extraFolderIds) link.run(id, folderId);
+      }
+      if (extraFolderIds || updates.folder_id !== undefined || updates.space_id !== undefined) {
+        this.pruneNoteFolderLinks();
+      }
+      return updated;
+    })();
     return { success: result.changes > 0, note: this.getNote(id) };
   }
 
@@ -2845,13 +2927,14 @@ export class DatabaseManager {
     );
   }
   getNoteByCalendarEventId(eventId: string, excludeNoteId: number | null = null): NoteRow | null {
-    return excludeNoteId == null
-      ? (this.sql
-          .prepare("SELECT * FROM notes WHERE calendar_event_id = ? LIMIT 1")
-          .get(eventId) as NoteRow | undefined) || null
-      : (this.sql
-          .prepare("SELECT * FROM notes WHERE calendar_event_id = ? AND id != ? LIMIT 1")
-          .get(eventId, excludeNoteId) as NoteRow | undefined) || null;
+    const raw = (excludeNoteId == null
+      ? this.sql
+          .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE calendar_event_id = ? LIMIT 1`)
+          .get(eventId)
+      : this.sql
+          .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE calendar_event_id = ? AND id != ? LIMIT 1`)
+          .get(eventId, excludeNoteId)) as RawNoteRow | undefined;
+    return raw ? hydrateNote(raw) : null;
   }
   updateCalendarSyncToken(id: string, token: string, expiresAt: number): { success: boolean } {
     this.sql
@@ -2965,15 +3048,15 @@ export class DatabaseManager {
       params.push(spaceId);
     }
     if (folderId != null) {
-      conditions.push("n.folder_id = ?");
-      params.push(folderId);
+      conditions.push("(n.folder_id = ? OR n.id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))");
+      params.push(folderId, folderId);
     }
     params.push(limit);
-    return this.sql
+    return (this.sql
       .prepare(
-        `SELECT n.* FROM notes n JOIN notes_fts ON notes_fts.rowid = n.id WHERE ${conditions.join(" AND ")} ORDER BY notes_fts.rank LIMIT ?`
+        `SELECT ${noteColumns("n")} FROM notes n JOIN notes_fts ON notes_fts.rowid = n.id WHERE ${conditions.join(" AND ")} ORDER BY notes_fts.rank LIMIT ?`
       )
-      .all(...params) as NoteRow[];
+      .all(...params) as RawNoteRow[]).map(hydrateNote);
   }
 
   upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): {
@@ -3107,11 +3190,11 @@ export class DatabaseManager {
       .all(noteId) as NoteSpeakerEmbeddingRow[];
   }
   getNotesWithUnmappedSpeakers(): NoteRow[] {
-    return this.sql
+    return (this.sql
       .prepare(
-        "SELECT DISTINCT n.* FROM notes n JOIN speaker_mappings m ON m.note_id = n.id WHERE m.profile_id IS NULL ORDER BY n.updated_at DESC"
+        `SELECT ${noteColumns("n")} FROM notes n WHERE EXISTS (SELECT 1 FROM speaker_mappings m WHERE m.note_id = n.id AND m.profile_id IS NULL) ORDER BY n.updated_at DESC`
       )
-      .all() as NoteRow[];
+      .all() as RawNoteRow[]).map(hydrateNote);
   }
 
   cleanup(): void {

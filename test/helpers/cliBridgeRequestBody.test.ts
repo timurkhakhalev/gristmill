@@ -117,6 +117,7 @@ test("multibyte content split across request chunks is preserved", async () => {
             enhancement_prompt: null,
             enhanced_at_content_hash: null,
             folder_id: null,
+            folder_ids: [],
             space_id: 1,
             transcript: null,
             calendar_event_id: null,

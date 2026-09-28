@@ -84,11 +84,15 @@ export function contextContainerKey(context: ActiveContext): string {
     : spaceContainerKey(context.spaceId);
 }
 
-function noteContainerKey(note: NoteItem): string {
-  return note.folder_id != null
-    ? folderContainerKey(note.folder_id)
-    : spaceContainerKey(note.space_id);
+/** Every tree container listing the note: each of its folders, or its space root. */
+function noteContainerKeys(note: NoteItem): string[] {
+  return note.folder_ids.length
+    ? note.folder_ids.map(folderContainerKey)
+    : [spaceContainerKey(note.space_id)];
 }
+
+const sameContainers = (a: NoteItem, b: NoteItem) =>
+  noteContainerKeys(a).sort().join() === noteContainerKeys(b).sort().join();
 
 function findNoteInState(state: NoteState, id: number): NoteItem | null {
   for (const items of Object.values(state.notesByContainer)) {
@@ -137,7 +141,7 @@ function ensureIpcListeners() {
       if (note) {
         const previous = findNoteInState(useNoteStore.getState(), note.id);
         updateNoteInStore(note);
-        if (previous && noteContainerKey(previous) !== noteContainerKey(note)) {
+        if (previous && !sameContainers(previous, note)) {
           loadFolders();
         }
       }
@@ -405,40 +409,46 @@ export async function initializeNotes(
 export function addNote(note: NoteItem): void {
   if (!note) return;
   const state = useNoteStore.getState();
-  const key = noteContainerKey(note);
-  const items = state.notesByContainer[key];
-  // Not-yet-loaded containers pick the note up on their lazy load.
-  if (!items) return;
-  const next = [note, ...items.filter((existing) => existing.id !== note.id)].slice(
-    0,
-    currentLimit
-  );
-  applyContainers({ ...state.notesByContainer, [key]: next });
+  const notesByContainer = { ...state.notesByContainer };
+  let changed = false;
+  for (const key of noteContainerKeys(note)) {
+    const items = notesByContainer[key];
+    // Not-yet-loaded containers pick the note up on their lazy load.
+    if (!items) continue;
+    notesByContainer[key] = [note, ...items.filter((existing) => existing.id !== note.id)].slice(
+      0,
+      currentLimit
+    );
+    changed = true;
+  }
+  if (changed) applyContainers(notesByContainer);
 }
 
 export function updateNoteInStore(note: NoteItem): void {
   if (!note) return;
   const state = useNoteStore.getState();
-  const targetKey = noteContainerKey(note);
+  const targetKeys = noteContainerKeys(note);
   const notesByContainer = { ...state.notesByContainer };
   let changed = false;
   for (const [key, items] of Object.entries(state.notesByContainer)) {
     const idx = items.findIndex((existing) => existing.id === note.id);
     if (idx === -1) continue;
     changed = true;
-    if (key === targetKey) {
+    if (targetKeys.includes(key)) {
       const next = items.slice();
       next[idx] = note;
       notesByContainer[key] = next;
     } else {
-      // The note moved container (folder/space change) — relocate it.
+      // The note left this container (folder/space change) — drop it here.
       notesByContainer[key] = items.filter((existing) => existing.id !== note.id);
     }
   }
-  const target = notesByContainer[targetKey];
-  if (target && !target.some((existing) => existing.id === note.id)) {
-    notesByContainer[targetKey] = [note, ...target].slice(0, currentLimit);
-    changed = true;
+  for (const key of targetKeys) {
+    const target = notesByContainer[key];
+    if (target && !target.some((existing) => existing.id === note.id)) {
+      notesByContainer[key] = [note, ...target].slice(0, currentLimit);
+      changed = true;
+    }
   }
   if (changed) applyContainers(notesByContainer);
 }

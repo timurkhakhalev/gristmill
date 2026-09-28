@@ -59,6 +59,7 @@ import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import { observeFloatingChatLayout } from "./floatingChatLayout";
 import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } from "./shared";
 import MeetingResultsPanel from "./MeetingResultsPanel";
+import { MOCK_FOLLOW_UP_REPLY, type MockPipeline } from "./meetingMock";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 
 export interface Enhancement {
@@ -141,6 +142,8 @@ interface NoteEditorProps {
     micStatus?: "inactive" | "active" | "reconnecting" | "unavailable";
     systemStatus?: "inactive" | "active" | "reconnecting" | "unavailable";
     viewMode?: MeetingViewMode;
+    chatMode?: ChatPanelMode;
+    mockPipeline?: MockPipeline;
   };
 }
 
@@ -197,7 +200,7 @@ export default function NoteEditor({
   const [viewMode, setViewMode] = useState<MeetingViewMode>(
     debugPreview?.viewMode ?? initialMeetingViewMode(note)
   );
-  const [chatMode, setChatMode] = useState<ChatPanelMode>("hidden");
+  const [chatMode, setChatMode] = useState<ChatPanelMode>(debugPreview?.chatMode ?? "hidden");
   const [folderSearch, setFolderSearch] = useState("");
   const extraFolderCount = Math.max(0, note.folder_ids.length - 1);
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
@@ -230,6 +233,17 @@ export default function NoteEditor({
       { id: crypto.randomUUID(), role: "assistant", content: "Mock reply. No provider or database was used.", isStreaming: false },
     ]);
   }, []);
+  const runPreviewFollowUp = useCallback(() => {
+    const pendingId = crypto.randomUUID();
+    setPreviewChatMessages((messages) => [
+      ...messages,
+      { id: crypto.randomUUID(), role: "user", content: t("embeddedChat.followUp", { defaultValue: "Draft a follow-up" }), isStreaming: false },
+      { id: pendingId, role: "assistant", content: "", isStreaming: true },
+    ]);
+    window.setTimeout(() => setPreviewChatMessages((messages) =>
+      messages.map((message) => message.id === pendingId ? { ...message, content: MOCK_FOLLOW_UP_REPLY, isStreaming: false } : message)
+    ), 1500);
+  }, [t]);
   const chatMessages = debugPreview ? previewChatMessages : embeddedChat.messages;
   const sendChatMessage = debugPreview ? sendPreviewMessage : embeddedChat.sendMessage;
   const chatSuggestions = useMemo(
@@ -629,6 +643,14 @@ export default function NoteEditor({
     onSwitchConversation: debugPreview ? undefined : embeddedChat.switchConversation,
     onNewChat: debugPreview ? undefined : embeddedChat.startNewChat,
     suggestions: chatSuggestions,
+    followUp: debugPreview
+      ? {
+          label: t("embeddedChat.followUp", { defaultValue: "Draft a follow-up" }),
+          onPress: runPreviewFollowUp,
+          disabled: !hasMeetingTranscript,
+          title: hasMeetingTranscript ? undefined : t("embeddedChat.followUpUnavailable", { defaultValue: "Available once the transcript is ready" }),
+        }
+      : undefined,
     emptyStateText: t("embeddedChat.emptyState"),
     onOpenNote: debugPreview ? undefined : openChatNote,
     allowSidebar: true,
@@ -856,6 +878,7 @@ export default function NoteEditor({
               noteId={note.id}
               locale={locale}
               previewRecordings={debugPreview?.recordings}
+              mockPipeline={debugPreview?.mockPipeline}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
               fallbackText={{

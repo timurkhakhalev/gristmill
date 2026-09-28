@@ -27,7 +27,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
     createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, startFrame: number) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },
-    updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: any) {
+    updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: Record<string, unknown>) {
       this.recoveries.push({ recordingId, source, epochIndex, ...result });
     },
     markMeetingRecordingFinalizing(recordingId: string) {
@@ -45,19 +45,21 @@ function createCaptureFakes({ failWrite = false } = {}) {
     },
   };
   const storage = {
-    files: new Map(),
+    files: new Map<string, Buffer[]>(),
     openEpochWriter(recordingId: string, source: string, epochIndex: number) {
       this.files.set(`${recordingId}:${source}:${epochIndex}`, []);
     },
-    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: any) {
+    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: Uint8Array) {
       if (failWrite) throw new Error("disk full");
-      this.files.get(`${recordingId}:${source}:${epochIndex}`).push(Buffer.from(samples));
+      const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`);
+      assert.ok(buffers);
+      buffers.push(Buffer.from(samples));
     },
     closeEpochWriter() {},
     recoverEpoch(recordingId: string, source: string, epochIndex: number) {
       const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`) ?? [];
       return {
-        frameCount: buffers.reduce((total: number, buffer: any) => total + buffer.length / 2, 0),
+        frameCount: buffers.reduce((total, buffer) => total + buffer.length / 2, 0),
         ignoredTrailingBytes: 0,
         errorCode: null,
       };
@@ -161,8 +163,8 @@ test("capture writes source epochs separately and finalizes restart gaps as inco
     database.epochs.map(({ source, epochIndex, startFrame }) => [source, epochIndex, startFrame]),
     [["mic", 0, 0], ["mic", 1, 12_000], ["system", 0, 24_000]]
   );
-  assert.equal(storage.files.get(`${RECORDING_ID}:mic:0`)[0].equals(micA), true);
-  assert.equal(storage.files.get(`${RECORDING_ID}:system:0`)[0].equals(system), true);
+  assert.equal(storage.files.get(`${RECORDING_ID}:mic:0`)?.[0]?.equals(micA), true);
+  assert.equal(storage.files.get(`${RECORDING_ID}:system:0`)?.[0]?.equals(system), true);
 
   const request = { lastSequence: { mic: 0, system: 0 } };
   const [first, repeated] = await Promise.all([capture.stop(request), capture.stop(request)]);
@@ -184,9 +186,10 @@ test("main-owned native system audio drains without a renderer sequence", async 
 
   assert.equal(result.captureState, "ready");
   const nativeChunks = storage.files.get(`${RECORDING_ID}:system:0`);
+  assert.ok(nativeChunks);
   assert.equal(nativeChunks.length, 10);
-  assert.equal(nativeChunks.reduce((total: number, chunk: any) => total + chunk.length, 0), 48_000);
-  assert.equal(nativeChunks.every((chunk: any) => chunk.length <= 4_800), true);
+  assert.equal(nativeChunks.reduce((total, chunk) => total + chunk.length, 0), 48_000);
+  assert.equal(nativeChunks.every((chunk) => chunk.length <= 4_800), true);
   assert.equal(database.finalizations.length, 1);
 });
 

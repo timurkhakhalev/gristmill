@@ -76,7 +76,7 @@ let cortiBehavior: (options: unknown) => Promise<{ text: string }> = async () =>
 
 // Kept installed for the whole file: the corti client is require()d lazily at
 // handler invocation time, not at module load.
-Module._load = function loadWithMocks(request: string, parent: NodeModule | undefined, isMain: boolean) {
+Module._load = function loadWithMocks(request: string, parent: { filename?: string } | undefined, isMain: boolean) {
   if (request === "electron") return electronStub;
   if (parent?.filename === handlersModulePath) {
     if (request === "./cortiTranscription") {

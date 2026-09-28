@@ -10,12 +10,13 @@ const os: typeof import("node:os") = require("node:os");
 const path: typeof import("node:path") = require("node:path");
 const vm: typeof import("node:vm") = require("node:vm");
 const Module = require("node:module");
+import type { VocabularyApi } from "../../src/contracts/vocabulary.ts";
 
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 let activeHandlers: Map<string, (...args: unknown[]) => unknown> | null = null;
-let dispatchSend: any = null;
+let dispatchSend: ((channel: string, data: unknown) => void) | null = null;
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-vocab-bridge-"));
 
 const originalLoad = Module._load;
@@ -24,7 +25,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
     return {
       app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
       ipcMain: {
-        handle: (channel: string, listener: any) => {
+        handle: (channel: string, listener: (...args: unknown[]) => unknown) => {
           if (!activeHandlers) activeHandlers = new Map();
           activeHandlers.set(channel, listener);
         },
@@ -53,17 +54,17 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function isNativeBindingUnavailable(error: any) {
-  const message = String(error?.message || error);
+function isNativeBindingUnavailable(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
   );
 }
 
-function loadBundledPreload(invoke: unknown) {
-  const listeners = new Map();
-  let api: Record<string, any> | undefined;
+function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
+  const listeners = new Map<string, ((event: unknown, data: unknown) => void)[]>();
+  let api: VocabularyApi | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -73,19 +74,19 @@ function loadBundledPreload(invoke: unknown) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
       return {
         contextBridge: {
-          exposeInMainWorld: (_name: string, value: any) => {
-            api = value;
+          exposeInMainWorld: (_name: string, value: unknown) => {
+            api = value as VocabularyApi;
           },
         },
         ipcRenderer: {
           invoke,
           send() {},
-          on(channel: string, listener: unknown) {
+          on(channel: string, listener: (event: unknown, data: unknown) => void) {
             const list = listeners.get(channel) || [];
             list.push(listener);
             listeners.set(channel, list);
           },
-          removeListener(channel: string, listener: unknown) {
+          removeListener(channel: string, listener: (event: unknown, data: unknown) => void) {
             const list = listeners.get(channel) || [];
             const index = list.indexOf(listener);
             if (index !== -1) list.splice(index, 1);
@@ -174,7 +175,7 @@ test("dictionary events reach the renderer through the bridge and unsubscribe cl
   if (!ctx) return;
   const { api } = ctx;
 
-  const received: any[] = [];
+  const received: unknown[] = [];
   const receivedRaw = [];
   const unsubscribe = api.onDictionaryUpdated((words: unknown) => {
     receivedRaw.push(words);
@@ -198,7 +199,10 @@ test("dictionary events reach the renderer through the bridge and unsubscribe cl
   };
   await broadcast("db-broadcast-dictionary-updated");
   await broadcast("db-broadcast-snippets-updated");
-  const fromEvents = received.map((payload) => ({ ...payload }));
+  const fromEvents = received.map((payload) => {
+    assert.ok(payload && typeof payload === "object");
+    return { ...payload };
+  });
   assert.ok(fromEvents.length >= 2);
   unsubscribe();
   unsubscribeSnippets();
@@ -215,8 +219,9 @@ test("malformed events are dropped at the preload boundary", async (t: import("n
   const { api } = ctx;
 
   const received: unknown[] = [];
-  api.onDictionaryUpdated((words: any) => received.push([...words]));
+  api.onDictionaryUpdated((words) => received.push([...words]));
   // Inject junk straight at the preload input, like a broken main would.
+  assert.ok(dispatchSend);
   dispatchSend("dictionary-updated", { not: "an array" });
   dispatchSend("dictionary-updated", [7, null, { x: 1 }]);
   assert.deepEqual(received, []);

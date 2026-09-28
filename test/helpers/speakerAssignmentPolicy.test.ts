@@ -10,6 +10,7 @@ const {
   applyConfirmedSpeaker,
   applySuggestedSpeaker,
 }: typeof import("../../src/helpers/speakerAssignmentPolicy.ts") = require("../../src/helpers/speakerAssignmentPolicy.ts");
+import type { SpeakerSegment } from "../../src/helpers/speakerAssignmentPolicy.ts";
 
 test("canonicalizeSpeakerStatus maps legacy and current statuses correctly", () => {
   assert.equal(canonicalizeSpeakerStatus(SPEAKER_STATUS.PROVISIONAL), "provisional");
@@ -40,7 +41,7 @@ test("isSpeakerLocked and canAutoRelabelSpeaker check lock state accurately", ()
 });
 
 test("applyProvisionalSpeaker, applyConfirmedSpeaker, and applySuggestedSpeaker update segment fields", () => {
-  const segment : any = { text: "hello", speaker: "A" };
+  const segment: SpeakerSegment = { text: "hello", speaker: "A" };
   applyProvisionalSpeaker(segment, { speaker: "Speaker 1" });
   assert.equal(segment.speaker, "Speaker 1");
   assert.equal(segment.speakerStatus, "provisional");
@@ -55,7 +56,7 @@ test("applyProvisionalSpeaker, applyConfirmedSpeaker, and applySuggestedSpeaker 
 });
 
 test("locked segments preserve lock status on updates", () => {
-  const lockedSegment : any = { text: "hello", speaker: "Alice", speakerLocked: true };
+  const lockedSegment: SpeakerSegment = { text: "hello", speaker: "Alice", speakerLocked: true };
   applyProvisionalSpeaker(lockedSegment, { speaker: "Speaker 2" });
   assert.equal(lockedSegment.speaker, "Alice");
   assert.equal(lockedSegment.speakerStatus, "locked");

@@ -3,7 +3,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const fs = require("fs");
 const path = require("path");
 
-const modelData = require("../../src/models/modelRegistryData.json");
+const modelData: typeof import("../../src/models/modelRegistryData.json") = require("../../src/models/modelRegistryData.json");
 
 // PROVIDER_REGISTRY is TypeScript, so node --test can't require it. Parse its
 // keys from source the way secretKeys.test.js mirrors preload's inlined list.
@@ -19,9 +19,9 @@ function inferenceProviderIds() {
   return ids;
 }
 
-const localIds = modelData.localProviders.map((p: any) => p.id);
-const cloudIds = modelData.cloudProviders.map((p: any) => p.id);
-const enterpriseIds = modelData.enterpriseProviders.map((p: any) => p.id);
+const localIds = modelData.localProviders.map((p) => p.id);
+const cloudIds = modelData.cloudProviders.map((p) => p.id);
+const enterpriseIds = modelData.enterpriseProviders.map((p) => p.id);
 
 test("every selectable cloud and enterprise provider has an inference handler", () => {
   const handlers = inferenceProviderIds();

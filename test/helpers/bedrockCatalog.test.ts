@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { normalizeBedrockCatalog } = require("../../src/helpers/bedrockCatalog");
+const { normalizeBedrockCatalog }: typeof import("../../src/helpers/bedrockCatalog.ts") = require("../../src/helpers/bedrockCatalog");
 
 const arn = (modelId: string) => `arn:aws:bedrock:eu-west-2::foundation-model/${modelId}`;
 
@@ -65,20 +65,21 @@ const PROFILES = [
 
 test("resolves profile-only models to the region's inference profile ID", () => {
   const models = normalizeBedrockCatalog(MODELS, PROFILES);
-  const haiku = models.find((m: any) => m.label === "Claude Haiku 4.5");
+  const haiku = models.find((m) => m.label === "Claude Haiku 4.5");
+  assert.ok(haiku);
   assert.equal(haiku.value, "eu.anthropic.claude-haiku-4-5-20251001-v1:0");
   assert.equal(haiku.vendor, "Anthropic");
 });
 
 test("keeps bare IDs for on-demand models", () => {
   const models = normalizeBedrockCatalog(MODELS, PROFILES);
-  assert.ok(models.some((m: any) => m.value === "openai.gpt-oss-120b-1:0"));
-  assert.ok(models.some((m: any) => m.value === "amazon.nova-lite-v1:0"));
+  assert.ok(models.some((m) => m.value === "openai.gpt-oss-120b-1:0"));
+  assert.ok(models.some((m) => m.value === "amazon.nova-lite-v1:0"));
 });
 
 test("drops provisioned-only variants, non-text, non-active, and unresolvable models", () => {
   const models = normalizeBedrockCatalog(MODELS, PROFILES);
-  const values = models.map((m: any) => m.value);
+  const values = models.map((m) => m.value);
   assert.ok(!values.some((v: string) => v.includes(":24k")));
   assert.ok(!values.some((v: string) => v.includes("titan-image")));
   assert.ok(!values.some((v: string) => v.includes("claude-v2")));
@@ -92,7 +93,7 @@ test("drops provisioned-only variants, non-text, non-active, and unresolvable mo
 
 test("sorts by vendor then label and dedupes by value", () => {
   const models = normalizeBedrockCatalog([...MODELS, MODELS[1]], PROFILES);
-  assert.equal(models.filter((m: any) => m.value === "openai.gpt-oss-120b-1:0").length, 1);
-  const vendors = models.map((m: any) => m.vendor);
+  assert.equal(models.filter((m) => m.value === "openai.gpt-oss-120b-1:0").length, 1);
+  const vendors = models.map((m) => m.vendor);
   assert.deepEqual(vendors, [...vendors].sort((a, b) => a.localeCompare(b)));
 });

@@ -30,7 +30,7 @@ const electronStub = {
   MessageChannelMain: class {},
 };
 
-const broadcasts: any[] = [];
+const broadcasts: { channel: string; payload: unknown }[] = [];
 
 // The publication module pulls the coordinator graph; stub the process
 // boundaries and capture broadcasts so the exported functions and the
@@ -66,7 +66,7 @@ function createMappingRecorder(existingMappings: unknown) {
     setSpeakerMapping: (noteId: number, speakerId: string, profileId: number, displayName: string) => {
       calls.set.push({ noteId, speakerId, profileId, displayName });
     },
-    removeSpeakerMapping: (noteId: any, speakerId: string) => {
+    removeSpeakerMapping: (noteId: number, speakerId: string) => {
       calls.remove.push({ noteId, speakerId });
     },
   };
@@ -75,7 +75,7 @@ function createMappingRecorder(existingMappings: unknown) {
 
 const fakeEmbeddings = () => ({ cosineSimilarity: () => 0.9 });
 
-function reconcile(databaseManager: unknown, liveSpeakerId: any) {
+function reconcile(databaseManager: unknown, liveSpeakerId: string) {
   const deps = { databaseManager, speakerEmbeddings: fakeEmbeddings };
   const liveState = {
     [liveSpeakerId]: {

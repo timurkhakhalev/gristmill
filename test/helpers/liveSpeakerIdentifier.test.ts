@@ -6,7 +6,7 @@ import type { LiveSpeakerIdentifier } from "../../src/helpers/liveSpeakerIdentif
 const identifierModulePath = require.resolve("../../src/helpers/liveSpeakerIdentifier");
 const originalLoad = Module._load;
 
-function cosineSimilarity(a: any, b: any) {
+function cosineSimilarity(a: Float32Array, b: Float32Array) {
   let dot = 0;
   let normA = 0;
   let normB = 0;
@@ -24,7 +24,7 @@ function loadIdentifier(options: {
   ort?: () => unknown;
 } = {}) {
   delete require.cache[identifierModulePath];
-  const warnings: any[] = [];
+  const warnings: { message: unknown; data: unknown }[] = [];
   const interceptsOrt = typeof options.ort === "function";
 
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
@@ -57,7 +57,7 @@ function loadIdentifier(options: {
   };
 
   try {
-    const { LiveSpeakerIdentifier } = require(identifierModulePath);
+    const { LiveSpeakerIdentifier }: typeof import("../../src/helpers/liveSpeakerIdentifier.ts") = require(identifierModulePath);
     return { LiveSpeakerIdentifier, warnings, restore };
   } finally {
     // The ort hook must outlive module load: the identifier requires
@@ -66,9 +66,9 @@ function loadIdentifier(options: {
   }
 }
 
-const unit = (values: any) => {
-  const norm = Math.sqrt(values.reduce((sum: number, v: any) => sum + v * v, 0));
-  return new Float32Array(values.map((v: any) => v / norm));
+const unit = (values: number[]) => {
+  const norm = Math.sqrt(values.reduce((sum, v) => sum + v * v, 0));
+  return new Float32Array(values.map((v) => v / norm));
 };
 
 const voiceA = unit([1, 0, 0]);
@@ -108,6 +108,7 @@ test("manual identification sticks for a voice that appeared after a merge", () 
 
   seedMergedSession(identifier);
   const resolved = identifier._resolveSpeakerForEmbedding(voiceC, { updateCentroid: true });
+  assert.ok(resolved.speakerId);
 
   // With no remapper layer, the id the transcript shows IS the cluster id, so
   // naming it must reach the right cluster.
@@ -146,7 +147,7 @@ test("mapSpeaker on an unknown id fails loudly during a live session", () => {
 
   const mapped = identifier.mapSpeaker("speaker_9", 1, "Alice", null);
   assert.equal(mapped, false);
-  const warning = warnings.find((w) => /speaker/i.test(w.message));
+  const warning = warnings.find((w) => /speaker/i.test(String(w.message)));
   assert.ok(warning, "a dropped manual identification must leave a trace in the logs");
   assert.ok(
     !JSON.stringify(warning.data ?? {}).includes("Alice"),
@@ -306,7 +307,7 @@ test("the binding failure is logged once, not on every availability check", (t: 
   identifier.isAvailable();
   identifier.isAvailable();
 
-  const bindingWarnings = warnings.filter((w) => /onnxruntime/i.test(w.message));
+  const bindingWarnings = warnings.filter((w) => /onnxruntime/i.test(String(w.message)));
   assert.equal(bindingWarnings.length, 1, "repeated checks must not spam the logs");
 });
 

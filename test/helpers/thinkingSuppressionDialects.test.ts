@@ -29,11 +29,11 @@ test("groq gpt-oss models get reasoning_effort low, the lowest value that family
 test("groq model family matching is case insensitive", async () => {
   const { suppressThinking } = await load();
 
-  const qwen : any = {};
+  const qwen: Record<string, unknown> = {};
   suppressThinking(qwen, "groq", "Qwen/Qwen3-32B");
   assert.equal(qwen.reasoning_effort, "none");
 
-  const gptOss : any = {};
+  const gptOss: Record<string, unknown> = {};
   suppressThinking(gptOss, "groq", "OpenAI/GPT-OSS-20B");
   assert.equal(gptOss.reasoning_effort, "low");
 });
@@ -135,11 +135,11 @@ test("generic-dialect providers send gpt-oss the low floor, not the rejected non
 test("the gpt-oss floor covers the whole family case-insensitively", async () => {
   const { suppressThinking } = await load();
 
-  const safeguard : any = {};
+  const safeguard: Record<string, unknown> = {};
   suppressThinking(safeguard, "tinfoil", "gpt-oss-safeguard-120b");
   assert.equal(safeguard.reasoning_effort, "low");
 
-  const mixedCase : any = {};
+  const mixedCase: Record<string, unknown> = {};
   suppressThinking(mixedCase, "openai", "GPT-OSS-20B");
   assert.equal(mixedCase.reasoning_effort, "low");
 });

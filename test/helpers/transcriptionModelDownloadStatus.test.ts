@@ -272,11 +272,9 @@ test("Whisper emits a complete event after validating the downloaded model", asy
 
   const originalLoad = Module._load;
   delete require.cache[whisperModulePath];
-  Module._load = function loadWithDownloadMock(request: string, parent: NodeModule | undefined, isMain: boolean) {
-    // The TS manager requires "./downloadUtils.js"; accept the pre-migration
-    // extensionless specifier too so the hook survives the cutover.
+  Module._load = function loadWithDownloadMock(request: string, parent: { filename?: string } | undefined, isMain: boolean) {
     if (
-      (request === "./downloadUtils" || request === "./downloadUtils.js") &&
+      request === "./downloadUtils.js" &&
       parent?.filename === whisperModulePath
     ) {
       return {

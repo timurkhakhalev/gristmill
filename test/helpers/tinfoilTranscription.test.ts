@@ -4,6 +4,7 @@ const Module = require("node:module");
 
 const transcriptionModulePath = require.resolve("../../src/helpers/tinfoilTranscription.ts");
 const originalLoad = Module._load;
+type FetchInit = NonNullable<Parameters<typeof fetch>[1]>;
 
 function loadTranscription(fetchImpl: unknown) {
   delete require.cache[transcriptionModulePath];
@@ -37,8 +38,8 @@ const AUDIO = {
 };
 
 test("posts to the attested transcriptions path with the registry's batch model", async () => {
-  const calls: any[] = [];
-  const { transcribeWithTinfoil } = loadTranscription(async (path: string, init: unknown) => {
+  const calls: { path: string; init: FetchInit }[] = [];
+  const { transcribeWithTinfoil } = loadTranscription(async (path: string, init: FetchInit) => {
     calls.push({ path, init });
     return okResponse("hello world");
   });
@@ -50,16 +51,18 @@ test("posts to the attested transcriptions path with the registry's batch model"
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, "/v1/audio/transcriptions");
   assert.equal(calls[0].init.method, "POST");
-  assert.equal(calls[0].init.headers.Authorization, "Bearer tk_test");
+  assert.equal(new Headers(calls[0].init.headers).get("Authorization"), "Bearer tk_test");
 
   const form = calls[0].init.body;
+  assert.ok(form instanceof FormData);
   assert.equal(form.get("model"), "voxtral-small-24b");
   assert.equal(form.get("language"), "en");
 });
 
 test("never sends the realtime model, which only serves /v1/realtime", async () => {
   let sentModel;
-  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: any) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: FetchInit) => {
+    assert.ok(init.body instanceof FormData);
     sentModel = init.body.get("model");
     return okResponse("x");
   });
@@ -71,7 +74,8 @@ test("never sends the realtime model, which only serves /v1/realtime", async () 
 
 test("omits language when auto-detecting", async () => {
   let form: FormData | undefined;
-  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: any) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: FetchInit) => {
+    assert.ok(init.body instanceof FormData);
     form = init.body;
     return okResponse("x");
   });
@@ -137,7 +141,8 @@ test("429 surfaces as PROVIDER_RATE_LIMITED, 5xx as SERVER_ERROR", async () => {
 
 test("forwards the dictionary prompt, and omits it when blank", async () => {
   let form: FormData | undefined;
-  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: any) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: FetchInit) => {
+    assert.ok(init.body instanceof FormData);
     form = init.body;
     return okResponse("x");
   });

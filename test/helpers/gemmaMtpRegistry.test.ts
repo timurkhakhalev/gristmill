@@ -38,7 +38,7 @@ const EXPECTED = {
 };
 
 type LocalProvider = { models: Array<Record<string, unknown>> };
-type LocalModelEntry = { provider: LocalProvider; model: Record<string, any> };
+type LocalModelEntry = { provider: LocalProvider; model: Record<string, unknown> };
 function allLocalModels(): LocalModelEntry[] {
   return (modelData.localProviders as LocalProvider[]).flatMap((provider) =>
     provider.models.map((model) => ({ provider, model }))
@@ -76,6 +76,8 @@ test("combined size label equals (main + drafter) bytes rounded to one decimal",
   const byId = new Map(allLocalModels().map(({ model }) => [model.id as string, model]));
   for (const id of Object.keys(EXPECTED)) {
     const model = byId.get(id)!;
+    assert.ok(typeof model.sizeBytes === "number");
+    assert.ok(typeof model.draftSizeBytes === "number");
     const combined = (model.sizeBytes + model.draftSizeBytes) / 1e9;
     assert.equal(model.size, `${combined.toFixed(1)}GB`, `${id} combined size label`);
   }

@@ -2,23 +2,23 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { once }: typeof import("node:events") = require("node:events");
 
-const { WebSocketServer } = require("ws");
+const { WebSocketServer }: typeof import("ws") = require("ws");
 
 const ParakeetWsServer = require("../../src/helpers/parakeetWsServer");
 const { pcm16ToFloat32 }: typeof import("../../src/utils/audioUtils.ts") = require("../../src/utils/audioUtils.ts");
 
 // Mock sherpa online WS protocol: float32 binary frames in, JSON results out, "Done"/"Done!" handshake.
 async function startMockOnlineServer({ onBinary, finalSegment = 0 }: {
-  onBinary?: (socket: { send(data: string): void; close(): void }, data: Buffer, frameCount: number) => void;
+  onBinary?: (socket: { send(data: string): void; close(): void }, data: unknown, frameCount: number) => void;
   finalSegment?: number;
 } = {}) {
   const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
   await once(wss, "listening");
 
   let ignoringDone = false;
-  wss.on("connection", (socket: any) => {
+  wss.on("connection", (socket) => {
     let binaryFrames = 0;
-    socket.on("message", (data: any, isBinary: unknown) => {
+    socket.on("message", (data, isBinary) => {
       if (isBinary) {
         binaryFrames += 1;
         onBinary?.(socket, data, binaryFrames);
@@ -37,8 +37,10 @@ async function startMockOnlineServer({ onBinary, finalSegment = 0 }: {
     });
   });
 
+  const address = wss.address();
+  assert.ok(address && typeof address !== "string");
   return {
-    port: wss.address().port,
+    port: address.port,
     ignoreDone: () => {
       ignoringDone = true;
     },
@@ -167,9 +169,9 @@ test("unexpected close before Done! reports an error and truncation", async () =
   });
 
   try {
-    const errors: any[] = [];
+    const errors: Error[] = [];
     const stream = onlineWsServerAt(mock.port).createOnlineStream({
-      onError: (err: unknown) => errors.push(err),
+      onError: (err: unknown) => { assert.ok(err instanceof Error); errors.push(err); },
     });
     stream.sendPcm16(Buffer.alloc(3200));
     const { text, truncated } = await stream.finish({ idleTimeoutMs: 1000 });
@@ -253,11 +255,13 @@ test("offline transcription rejects with AbortError when cancelled mid-flight", 
   wss.on("connection", () => controller.abort());
 
   try {
-    const server = onlineWsServerAt(wss.address().port);
+    const address = wss.address();
+    assert.ok(address && typeof address !== "string");
+    const server = onlineWsServerAt(address.port);
     server.modelRuntime = "offline";
     await assert.rejects(
       () => server.transcribe(Buffer.alloc(3200), 16000, { signal: controller.signal }),
-      (err: any) => {
+      (err: Error) => {
         assert.equal(err.name, "AbortError");
         return true;
       }
@@ -275,7 +279,7 @@ test("offline transcription rejects immediately on a pre-aborted signal", async 
   server.modelRuntime = "offline";
   await assert.rejects(
     () => server.transcribe(Buffer.alloc(3200), 16000, { signal: controller.signal }),
-    (err: any) => {
+    (err: Error) => {
       assert.equal(err.name, "AbortError");
       return true;
     }
@@ -293,7 +297,7 @@ test("online transcription rejects with AbortError when cancelled mid-flight", a
     setTimeout(() => controller.abort(), 20);
     await assert.rejects(
       () => server.transcribe(Buffer.alloc(3200), 16000, { signal: controller.signal }),
-      (err: any) => {
+      (err: Error) => {
         assert.equal(err.name, "AbortError");
         return true;
       }
@@ -306,10 +310,12 @@ test("online transcription rejects with AbortError when cancelled mid-flight", a
 test("offline transcription rejects when the connection closes without a result", async () => {
   const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
   await once(wss, "listening");
-  wss.on("connection", (socket: any) => socket.close());
+  wss.on("connection", (socket) => socket.close());
 
   try {
-    const server = onlineWsServerAt(wss.address().port);
+    const address = wss.address();
+    assert.ok(address && typeof address !== "string");
+    const server = onlineWsServerAt(address.port);
     server.modelRuntime = "offline";
     await assert.rejects(
       () => server.transcribe(Buffer.alloc(3200), 16000),

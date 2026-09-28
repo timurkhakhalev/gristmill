@@ -1,7 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const createMeetingAutoEndController = require("../../src/helpers/meetingAutoEndController");
+const createMeetingAutoEndController: typeof import("../../src/helpers/meetingAutoEndController.ts").createMeetingAutoEndController & typeof import("../../src/helpers/meetingAutoEndController.ts") = require("../../src/helpers/meetingAutoEndController");
+import type { MeetingAutoEndController } from "../../src/helpers/meetingAutoEndController.ts";
 const {
   SILENCE_WINDOW_MS,
   FAST_SILENCE_MS,
@@ -41,19 +42,19 @@ const createHarness = () => {
   };
 };
 
-const beginOwnership = (controller: any, sessionId = "s1") =>
+const beginOwnership = (controller: MeetingAutoEndController, sessionId = "s1") =>
   controller.beginSession({ sessionId, eligible: true, reliable: true, externalMicActive: true });
 
-const beginFallback = (controller: any, sessionId = "s1", { reliable = true } = {}) =>
+const beginFallback = (controller: MeetingAutoEndController, sessionId = "s1", { reliable = true } = {}) =>
   controller.beginSession({ sessionId, eligible: true, reliable, externalMicActive: false });
 
-const micReleased = (controller: any, sessionId = "s1") =>
+const micReleased = (controller: MeetingAutoEndController, sessionId = "s1") =>
   controller.handleExternalMicState({ sessionId, reliable: true, externalMicActive: false });
 
-const micAcquired = (controller: any, sessionId = "s1") =>
+const micAcquired = (controller: MeetingAutoEndController, sessionId = "s1") =>
   controller.handleExternalMicState({ sessionId, reliable: true, externalMicActive: true });
 
-const audio = (controller: any, micActive: unknown, systemActive: unknown, sessionId = "s1") =>
+const audio = (controller: MeetingAutoEndController, micActive: boolean, systemActive: boolean, sessionId = "s1") =>
   controller.handleAudioActivity({ sessionId, micActive, systemActive });
 
 test("ownership: a qualifying mic release stops after the confirm window", () => {

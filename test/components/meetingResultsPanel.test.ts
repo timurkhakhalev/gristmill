@@ -17,6 +17,14 @@ interface MountedCalls {
   retry: string[];
 }
 
+function submittedSection(call: Record<string, unknown>, section: "transcription" | "summary"): Record<string, unknown> {
+  const config = call.config;
+  assert.ok(config && typeof config === "object" && section in config);
+  const value = (config as Record<string, unknown>)[section];
+  assert.ok(value && typeof value === "object");
+  return value as Record<string, unknown>;
+}
+
 type GlobalWithMocks = typeof globalThis & {
   __meetingResultsConfirmDialog?: { open: boolean; onConfirm(): void };
 };
@@ -190,9 +198,9 @@ test("whole-meeting reprocess uses both saved parts and leaves defaults untouche
   assert.equal(ui.calls.create.length, 1);
   assert.deepEqual((ui.calls.create[0] as Record<string, unknown>).sourceRecordingIds, [FIRST, SECOND]);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).recordingId, FIRST);
-  assert.equal(((ui.calls.create[0] as Record<string, any>).config.transcription.provider), CONFIG.transcription.provider);
-  assert.equal(((ui.calls.create[0] as Record<string, any>).config.transcription.model), CONFIG.transcription.model);
-  assert.equal(((ui.calls.create[0] as Record<string, any>).config.summary.instruction), CONFIG.summary.instruction);
+  assert.equal(submittedSection(ui.calls.create[0], "transcription").provider, CONFIG.transcription.provider);
+  assert.equal(submittedSection(ui.calls.create[0], "transcription").model, CONFIG.transcription.model);
+  assert.equal(submittedSection(ui.calls.create[0], "summary").instruction, CONFIG.summary.instruction);
 });
 
 test("summary version reads the saved transcript without another ASR run", async (t: TestContext) => {
@@ -207,7 +215,7 @@ test("summary version reads the saved transcript without another ASR run", async
   assert.equal((ui.calls.create[0] as Record<string, unknown>).kind, "summary");
   assert.equal((ui.calls.create[0] as Record<string, unknown>).sourceRunId, RUN);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).sourceRecordingIds, undefined);
-  assert.equal(((ui.calls.create[0] as Record<string, any>).config.summary.instruction), CONFIG.summary.instruction);
+  assert.equal(submittedSection(ui.calls.create[0], "summary").instruction, CONFIG.summary.instruction);
 });
 
 

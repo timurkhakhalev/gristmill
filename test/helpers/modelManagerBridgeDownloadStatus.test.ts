@@ -16,9 +16,9 @@ const modelRegistryData: { localProviders: { models: TestModel[] }[] } = require
 const downloadUtils: typeof import("../../src/helpers/downloadUtils") = require("../../src/helpers/downloadUtils");
 const LocalModelDownloadStatus: typeof import("../../src/helpers/localModelDownloadStatus.ts").LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus.ts");
 const { registerLocalLlmModelHandlers } = require("../../src/helpers/localLlmModelIpcHandlers.ts");
-import type { ModelManager } from "../../src/helpers/modelManagerBridge.ts";
+import type { ModelManager as ModelManagerClass } from "../../src/helpers/modelManagerBridge.ts";
 
-type ModelInfo = Awaited<ReturnType<ModelManager["getAllModels"]>>[number];
+type ModelInfo = Awaited<ReturnType<ModelManagerClass["getAllModels"]>>[number];
 
 function hasErrorCode(error: unknown, code: string): error is Error & { code: string } {
   return error instanceof Error && "code" in error && error.code === code;
@@ -55,7 +55,7 @@ function loadModelManager({ downloadFile, checkDiskSpace }: {
   delete require.cache[modelManagerModulePath];
   delete require.cache[modelDirUtilsModulePath];
 
-  Module._load = function loadWithMocks(request: string, parent: NodeModule | undefined, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: { filename?: string } | undefined, isMain: boolean) {
     if (request === "electron") {
       return {
         app: {
@@ -67,10 +67,8 @@ function loadModelManager({ downloadFile, checkDiskSpace }: {
       };
     }
 
-    // The TS manager requires "./downloadUtils.js"; accept the pre-migration
-    // extensionless specifier too so the hook survives the cutover.
     if (
-      (request === "./downloadUtils" || request === "./downloadUtils.js") &&
+      request === "./downloadUtils.js" &&
       parent?.filename === modelManagerModulePath
     ) {
       return {

@@ -37,4 +37,4 @@ Harness-fix commit: `16421a5bc` (`M1: stub interval cleanup in renderer test`).
 
 Two hook-order-only teardown attempts (`901a1a3c7`, `a0226e46d`) did not fix the renderer failure. The test cleanup now captures the mounted browser/DOM and React globals, temporarily restores them around `root.unmount()`, then restores the values present before cleanup in `finally`; it no longer depends on hook order. No product code changed. `pnpm run typecheck:tests`, scoped ESLint, and `git diff --check` pass. Tests remain root-only and were not run here.
 
-Final teardown-fix commit hash is recorded in the follow-up progress update.
+Final teardown-fix commit: `3c6b80954` (`M1: preserve renderer globals for unmount`).

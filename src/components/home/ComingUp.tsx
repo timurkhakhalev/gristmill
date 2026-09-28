@@ -1,11 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Calendar, ExternalLink, Loader2, Mic, Monitor, Video } from "../icons";
+import { Calendar, ExternalLink, Mic, Monitor, Video } from "../icons";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import PersonAvatar from "../ui/PersonAvatar";
 import PersonName from "../ui/PersonName";
 import EmptyStateCard from "../ui/EmptyStateCard";
+import { CONTENT_ENTER_CLASS } from "../ui/Skeleton";
+import { ComingUpSkeleton } from "./HomeSkeleton";
 import { cn } from "../lib/utils";
 import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import { parseAttendees } from "../../utils/calendarAttendees";
@@ -312,6 +314,8 @@ export default function ComingUp({
   const systemAudio = useSystemAudioPermission();
   const needsSystemAudioGrant = !systemAudio.granted && canManageSystemAudioInApp(systemAudio);
 
+  // Fade the list in only when it replaces the skeleton, not on cached remounts.
+  const [mountedLoading] = useState(isLoading);
   const now = useMemo(() => new Date(), []);
   const groupedEvents = useMemo(() => groupEventsByDay(events, now), [events, now]);
 
@@ -325,11 +329,7 @@ export default function ComingUp({
     <section>
       <h2 className="pb-4 text-2xl text-foreground">{t("upcoming.title")}</h2>
 
-      {isLoading && events.length === 0 && (
-        <div className="flex items-center justify-center gap-2 py-6">
-          <Loader2 size={14} className="animate-spin text-primary" />
-        </div>
-      )}
+      {isLoading && events.length === 0 && <ComingUpSkeleton />}
 
       {!isLoading && !isConnected && (
         <EmptyStateCard
@@ -349,7 +349,7 @@ export default function ComingUp({
       )}
 
       {isConnected && (!isLoading || events.length > 0) && (
-        <>
+        <div className={cn(mountedLoading && CONTENT_ENTER_CLASS)}>
           <div className="divide-y divide-dashed divide-border overflow-clip rounded-2xl border border-border bg-surface-2">
             {groupedEvents.map((group) => (
               <DayRow key={group.key} group={group} isNowFn={isNowFn} onOpenEvent={onOpenEvent} />
@@ -380,7 +380,7 @@ export default function ComingUp({
                 </button>
               </p>
             ))}
-        </>
+        </div>
       )}
     </section>
   );

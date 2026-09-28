@@ -4,6 +4,9 @@ import { cn } from "../lib/utils";
 import { SendIcon } from "../ui/SendIcon";
 import { GLASS_SURFACE } from "../ui/glass";
 import ChatModelPicker from "../chat/ChatModelPicker";
+import { prefetchBbCatalog } from "../bb/useBbCatalog";
+import { useSettingsStore } from "../../stores/settingsStore";
+import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
 
 // While recording, the bar sits over the live streaming transcript, and every
 // partial would force backdrop-blur to re-blur the strip; the capsule trades
@@ -36,6 +39,11 @@ export default function NoteBottomBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hasText = inputText.trim().length > 0;
+
+  // The model row mounts on focus; warm its data so it paints its final label.
+  useEffect(() => {
+    prefetchBbCatalog(selectResolvedLLMConfig(useSettingsStore.getState(), "chatIntelligence").agentProvider);
+  }, []);
 
   const handleSubmit = useCallback(() => {
     const text = inputText.trim();
@@ -100,16 +108,15 @@ export default function NoteBottomBar({
             "flex-1 min-w-0 flex flex-col justify-center gap-1",
             isRecording ? RECORDING_SURFACE : GLASS_SURFACE,
             "border",
-            // Named properties, not transition-all: the surface swap below must
-            // land instantly, or every recording start/stop tweens
-            // backdrop-filter — the exact cost being removed.
-            "transition-[max-width,opacity,padding,border-color,box-shadow,height,border-radius] duration-300 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]",
-            hideInput
-              ? "max-w-0 opacity-0 ps-0 pe-0 border-transparent shadow-none pointer-events-none"
-              : "max-w-[600px] opacity-100 ps-4 pe-1.5",
-            isExpanded
-              ? "h-[76px] rounded-2xl border-border ring-[3px] ring-primary/8"
-              : "h-11 rounded-full border-border"
+            // Only height and opacity tween. A fixed 22px radius is a pill at
+            // 44px and a card at 76px, so the outline never morphs; the surface
+            // swap must land instantly, or every recording start/stop tweens
+            // backdrop-filter. The chat panel replaces the bar with a fade
+            // rather than the bar collapsing sideways into it.
+            "rounded-[22px] border-border ps-4 pe-1.5",
+            "transition-[opacity,height] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]",
+            hideInput ? "opacity-0 pointer-events-none" : "opacity-100",
+            isExpanded ? "h-[76px] ring-[3px] ring-primary/8" : "h-11"
           )}
           onClick={(e) => {
             if (e.target === e.currentTarget) inputRef.current?.focus();
@@ -153,7 +160,7 @@ export default function NoteBottomBar({
             ) : null}
           </div>
           {isExpanded && !hideInput && (
-            <div className="flex min-w-0 justify-end">
+            <div className="flex min-w-0 justify-end motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150">
               <ChatModelPicker
                 disabled={askDisabled}
                 onOpenChange={(open) => {

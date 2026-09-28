@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import {
@@ -348,7 +348,8 @@ export default function NoteEditor({
     refreshSpeakerProfiles();
   }, [debugPreview, note.id, refreshSpeakerProfiles]);
 
-  useEffect(() => {
+  // Before paint, or a freshly opened note flashes the "Untitled" placeholder.
+  useLayoutEffect(() => {
     if (titleRef.current && titleRef.current.textContent !== note.title) {
       titleRef.current.textContent = note.title || "";
     }

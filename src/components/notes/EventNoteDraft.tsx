@@ -109,17 +109,18 @@ export default function EventNoteDraft({ event, onBack, onMaterialized }: EventN
             dateLabel={dateLabel}
             preview
           />
-        </div>
-        <div className="mt-4 flex items-center gap-1.5">
-          <NoteRecordControl
-            isRecording={false}
-            isProcessing={false}
-            disabled={creating}
-            capturePhase="idle"
-            captureStartedAt={null}
-            onStart={() => void materialize("record", {})}
-            onStop={() => {}}
-          />
+          {/* Record shares the date chip's row, pinned to the right edge. */}
+          <div className="ms-auto flex items-center gap-1.5">
+            <NoteRecordControl
+              isRecording={false}
+              isProcessing={false}
+              disabled={creating}
+              capturePhase="idle"
+              captureStartedAt={null}
+              onStart={() => void materialize("record", {})}
+              onStop={() => {}}
+            />
+          </div>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">

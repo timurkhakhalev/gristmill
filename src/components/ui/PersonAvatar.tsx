@@ -14,6 +14,11 @@ function getInitialColor(seed: string): string {
   return `hsl(${Math.abs(hash) % 360}, 45%, 65%)`;
 }
 
+// Shared across mounts so a remounted avatar paints its final state at once
+// instead of initial → hash lookup → Gravatar 404 → initial again.
+const hashByEmail = new Map<string, string>();
+const failedImageUrls = new Set<string>();
+
 interface PersonAvatarProps {
   email: string | null;
   displayName: string | null;
@@ -31,18 +36,15 @@ export default function PersonAvatar({
 }: PersonAvatarProps) {
   const profile = usePersonProfile(email);
   const photoUrl = profile?.photo_url ?? null;
-  const [photoFailed, setPhotoFailed] = useState(false);
-  const [hash, setHash] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => setPhotoFailed(false), [photoUrl]);
+  const [hash, setHash] = useState<string | null>(() => (email ? hashByEmail.get(email) ?? null : null));
 
   useEffect(() => {
-    setHash(null);
-    setFailed(false);
-    if (!email) return;
+    const cached = email ? hashByEmail.get(email) ?? null : null;
+    setHash(cached);
+    if (!email || cached) return;
     let cancelled = false;
     window.electronAPI?.getMD5Hash?.(email).then((result) => {
+      if (result) hashByEmail.set(email, result);
       if (!cancelled) setHash(result);
     });
     return () => {
@@ -50,7 +52,14 @@ export default function PersonAvatar({
     };
   }, [email]);
 
-  if (photoUrl && !photoFailed) {
+  const gravatarUrl = hash ? `https://www.gravatar.com/avatar/${hash}?d=404&s=${Math.min(512, size * 2)}` : null;
+  const [, rerender] = useState(0);
+  const markFailed = (url: string) => {
+    failedImageUrls.add(url);
+    rerender((n) => n + 1);
+  };
+
+  if (photoUrl && !failedImageUrls.has(photoUrl)) {
     return (
       <img
         src={photoUrl}
@@ -59,20 +68,20 @@ export default function PersonAvatar({
         referrerPolicy="no-referrer"
         style={{ width: size, height: size }}
         className={cn("shrink-0 rounded-full object-cover", className)}
-        onError={() => setPhotoFailed(true)}
+        onError={() => markFailed(photoUrl)}
       />
     );
   }
 
-  if (hash && !failed) {
+  if (gravatarUrl && !failedImageUrls.has(gravatarUrl)) {
     return (
       <img
-        src={`https://www.gravatar.com/avatar/${hash}?d=404&s=${Math.min(512, size * 2)}`}
+        src={gravatarUrl}
         alt=""
         loading="lazy"
         style={{ width: size, height: size }}
         className={cn("shrink-0 rounded-full object-cover", className)}
-        onError={() => setFailed(true)}
+        onError={() => markFailed(gravatarUrl)}
       />
     );
   }

@@ -182,7 +182,8 @@ export default function ChatPanel({
           "flex flex-col",
           "bg-overlay/95 text-overlay-foreground",
           "border border-border",
-          "rounded-3xl",
+          // Same radius as the ask bar it replaces, so opening reads as one surface.
+          "rounded-[22px]",
           "shadow-overlay",
           "backdrop-blur-2xl",
           "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200"

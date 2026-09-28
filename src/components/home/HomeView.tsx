@@ -7,12 +7,16 @@ import ChatPanel, { type ChatPanelMode } from "../chat/ChatPanel";
 import NoteBottomBar from "../notes/NoteBottomBar";
 import ComingUp from "./ComingUp";
 import RecentNotes from "./RecentNotes";
+import { RecentNotesSkeleton } from "./HomeSkeleton";
+import { CONTENT_ENTER_CLASS } from "../ui/Skeleton";
 import type { NoteItem } from "../../contracts/notes";
 import type { CalendarEvent } from "../../contracts/calendar";
 
 const RECENT_NOTES_LIMIT = 50;
 const EMPTY_NOTES: NoteItem[] = [];
 const SUGGESTION_KEYS = ["catchUp", "keyDecisions", "inFlight"] as const;
+// Last recent-notes list, so returning to Home paints it at once and refreshes after.
+let cachedRecentNotes: NoteItem[] | null = null;
 
 interface HomeViewProps {
   onOpenNote: (note: NoteItem) => void;
@@ -26,7 +30,9 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
   const { t } = useTranslation();
   const upcoming = useUpcomingEvents();
   const notesByContainer = useNotesByContainer();
-  const [notes, setNotes] = useState<NoteItem[] | null>(null);
+  const [notes, setNotes] = useState<NoteItem[] | null>(() => cachedRecentNotes);
+  // Fade the list in only when it replaces the skeleton, not on cached remounts.
+  const [notesWereLoading] = useState(() => cachedRecentNotes == null);
 
   // The store only holds loaded containers, so the cross-space list is fetched
   // here and refreshed whenever any container's notes change.
@@ -35,7 +41,8 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
     window.electronAPI
       .getNotes(null, RECENT_NOTES_LIMIT)
       .then((rows) => {
-        if (!stale) setNotes(rows ?? []);
+        cachedRecentNotes = rows ?? [];
+        if (!stale) setNotes(cachedRecentNotes);
       })
       .catch(() => {
         if (!stale) setNotes([]);
@@ -75,7 +82,13 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
           onConnectCalendar={onConnectCalendar}
           onOpenEvent={onOpenEvent}
         />
-        {notes && <RecentNotes notes={notes} onOpenNote={onOpenNote} />}
+        {notes ? (
+          <div className={notesWereLoading ? CONTENT_ENTER_CLASS : undefined}>
+            <RecentNotes notes={notes} onOpenNote={onOpenNote} />
+          </div>
+        ) : (
+          <RecentNotesSkeleton />
+        )}
       </div>
       <div className="pointer-events-none sticky bottom-0 bg-linear-to-t from-background from-60% to-transparent pt-6">
         <NoteBottomBar

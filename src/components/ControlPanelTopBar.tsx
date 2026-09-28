@@ -54,9 +54,10 @@ export default function ControlPanelTopBar({
   return (
     <header
       className={cn(
-        // Search is a max-width child of a flexible column. A 340px grid track
-        // ate the title and debug once the card dropped below ~560px.
-        "@container grid h-12 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border px-3 dark:border-white/10",
+        // Equal side tracks keep search centred while the title or Debug
+        // control changes width; search sizes from the header width instead
+        // of a fixed track, so narrow cards still leave room for the title.
+        "@container grid h-12 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-border px-3 dark:border-white/10",
         "transition-[padding] duration-300 ease-out",
         clearTrafficLights && "ltr:ps-[76px]"
       )}
@@ -106,7 +107,7 @@ export default function ControlPanelTopBar({
           data-no-window-drag=""
           style={noDragStyle}
           aria-label={t("commandSearch.placeholder")}
-          className="flex h-8 w-full max-w-[340px] items-center gap-2.5 justify-self-center rounded-full bg-default px-4 text-start outline-none transition-colors duration-150 hover:bg-default focus-visible:ring-1 focus-visible:ring-primary/30 dark:bg-white/5 dark:hover:bg-white/8 @max-[560px]:w-8 @max-[560px]:max-w-8 @max-[560px]:justify-self-end @max-[560px]:gap-0 @max-[560px]:px-0 @max-[560px]:justify-center"
+          className="flex h-8 w-[clamp(2rem,calc(100cqw-16rem),340px)] items-center gap-2.5 justify-self-center rounded-full bg-default px-4 text-start outline-none transition-colors duration-150 hover:bg-default focus-visible:ring-1 focus-visible:ring-primary/30 dark:bg-white/5 dark:hover:bg-white/8 @max-[560px]:w-8 @max-[560px]:max-w-8 @max-[560px]:justify-self-end @max-[560px]:gap-0 @max-[560px]:px-0 @max-[560px]:justify-center"
         >
           <Search size={14} className="shrink-0 text-muted" />
           <span className="flex-1 truncate text-ui text-muted @max-[560px]:hidden">

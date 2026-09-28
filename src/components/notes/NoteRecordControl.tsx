@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, ArrowRight, AudioLines, Loader2, Mic, Play, Square, WandSparkles } from "../icons";
+import { ArrowLeft, ArrowRight, AudioLines, Loader2, Mic, Play, Sparkles, Square } from "../icons";
 import { Pause } from "../icons/primitives";
 import { formatMmSs } from "../../utils/formatDuration";
 import { IconTooltip } from "../ui/IconTooltip";
@@ -68,13 +68,13 @@ export default function NoteRecordControl({
         isDisabled={Boolean(isGeneratingSummary)}
         onPress={() => onGenerateSummary?.()}
         className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
-        aria-label={t("notes.editor.generateSummary", { defaultValue: "✨ Summary" })}
+        aria-label={t("notes.editor.generateSummary", { defaultValue: "Summary" })}
       >
-        {!isGeneratingSummary && <WandSparkles size={16} className="text-accent" />}
+        {!isGeneratingSummary && <Sparkles size={16} className="text-accent" />}
         <span className="@max-[620px]:sr-only">
           {isGeneratingSummary
-            ? t("notes.editor.generatingSummary", { defaultValue: "✨ Generating summary…" })
-            : t("notes.editor.generateSummary", { defaultValue: "✨ Summary" })}
+            ? t("notes.editor.generatingSummary", { defaultValue: "Generating summary…" })
+            : t("notes.editor.generateSummary", { defaultValue: "Summary" })}
         </span>
       </Button>
     )}

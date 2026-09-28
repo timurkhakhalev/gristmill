@@ -667,7 +667,7 @@ export class MeetingProcessingWorker {
     epochs: MeetingRecordingEpochDto[];
   } {
     const sources = run.sourceRecordingIds.map((id) => this.deps.database.getMeetingRecording(id));
-    if (sources.some((source) => !source || (requireAudio && source.audioState !== "available") || source.noteId !== recording.noteId || source.groupId !== recording.groupId)) {
+    if (sources.some((source) => !source || (requireAudio && source.audioState !== "available") || source.noteId !== recording.noteId)) {
       throw new MeetingProcessingFailure("audio-part-unavailable", "blocked");
     }
     const combined = composeMeetingAudioParts(sources as MeetingRecordingDto[], (id) => this.deps.database.listMeetingRecordingEpochs(id));

@@ -228,7 +228,6 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
     this._sampleOffset = 0;
     this._pendingFrames = 0;
     this._unacked = new Map();
-    this._flushRequested = false;
     this._stopped = false;
     this.port.onmessage = (event) => {
       const message = event.data;
@@ -239,7 +238,14 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
           this._unacked.delete(message.sequence);
         }
       } else if (message?.type === "flush") {
-        this._flushRequested = true;
+        if (this._stopped) return;
+        if (this._offset > 0) {
+          const partial = this._buffer.slice(0, this._offset);
+          this._offset = 0;
+          if (!this._send(partial)) return;
+        }
+        this._stopped = true;
+        this.port.postMessage({ type: "flush-complete", lastSequence: this._sequence - 1 });
       }
     };
   }
@@ -264,16 +270,6 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
   }
   process(inputs) {
     if (this._stopped) return false;
-    if (this._flushRequested) {
-      if (this._offset > 0) {
-        const partial = this._buffer.slice(0, this._offset);
-        this._offset = 0;
-        if (!this._send(partial)) return false;
-      }
-      this._stopped = true;
-      this.port.postMessage({ type: "flush-complete", lastSequence: this._sequence - 1 });
-      return false;
-    }
     const firstPending = this._unacked.keys().next().value;
     if (firstPending !== undefined && currentFrame - this._unacked.get(firstPending).frame >= SAMPLE_RATE) {
       this._fail("capture-ack-timeout");
@@ -403,6 +399,7 @@ const createAudioPipeline = async ({
 
   let flushSequence: number | null = null;
   let drainPromise: Promise<number> | null = null;
+  let terminalError: Error | null = null;
   let flushReject: ((error: Error) => void) | null = null;
   let resolveDrain: ((sequence: number) => void) | null = null;
   const checkDrain = () => {
@@ -431,6 +428,7 @@ const createAudioPipeline = async ({
       checkDrain();
     } else if (message?.type === "error") {
       const error = new Error(message.code ?? "Meeting capture buffer limit was reached");
+      terminalError = error;
       onFailure(error);
       flushReject?.(error);
     }
@@ -442,6 +440,7 @@ const createAudioPipeline = async ({
 
   processorDrainers.set(processor, () => {
     if (drainPromise) return drainPromise;
+    if (terminalError) return Promise.reject(terminalError);
     let resolvePromise: (sequence: number) => void = () => {};
     let rejectPromise: (error: Error) => void = () => {};
     drainPromise = new Promise<number>((resolve, reject) => {
@@ -653,7 +652,7 @@ async function cleanup(): Promise<void> {
   captureLastSequences.mic = micResult.status === "fulfilled" ? micResult.value : -1;
   captureLastSequences.system = systemResult.status === "fulfilled" ? systemResult.value : -1;
   if (micResult.status === "rejected" || systemResult.status === "rejected") {
-    captureDrainErrorCode = "capture-drain-incomplete";
+    captureDrainErrorCode ??= "capture-drain-incomplete";
     reportMeetingError("Meeting audio could not finish saving its last samples.");
   }
   micProcessor = null;

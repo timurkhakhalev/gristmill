@@ -87,14 +87,15 @@ function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Pa
   return new MeetingProcessingWorker(deps);
 }
 
-test("paused audio parts produce one persisted whole-meeting run and one ASR request", async (t: import("node:test").TestContext) => {
+test("audio parts from separate sessions of one note produce one persisted run and one transcription request", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const first = createFinishedRecording(db, storage, validConfig, "Manual notes stay here.");
   assert.ok(first.recording.endedAt);
   const second = db.createMeetingRecording(first.note.id, { config: validConfig },
-    new Date(Date.parse(first.recording.endedAt) + 5 * 60_000).toISOString(), undefined, first.recording.id);
+    new Date(Date.parse(first.recording.endedAt) + 5 * 60_000).toISOString());
+  assert.notEqual(second.groupId, first.recording.groupId);
   db.createMeetingRecordingEpoch(second.id, "system", 0, 0);
   storage.openEpochWriter(second.id, "system", 0);
   storage.appendEpochSamples(second.id, "system", 0, Buffer.from([1, 2, 3, 4]));
@@ -132,6 +133,17 @@ test("paused audio parts produce one persisted whole-meeting run and one ASR req
   assert.deepEqual(mixed.epochs.map((epoch) => epoch.recordingId), [first.recording.id, second.id]);
   assert.equal(db.getNote(first.note.id).content, "Manual notes stay here.");
   assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
+});
+
+test("combined transcription cannot include audio from another note", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const first = createFinishedRecording(db, storage);
+  const other = createFinishedRecording(db, storage);
+  assert.throws(() => db.createMeetingProcessingRun(first.recording.id, {
+    kind: "reprocess", sourceRecordingIds: [first.recording.id, other.recording.id], config: validConfig,
+  }), /Meeting audio is unavailable for a selected part/);
 });
 
 test("waits for retention and capture to finish, then persists the response, transcript, and separate summary", async (t: import("node:test").TestContext) => {

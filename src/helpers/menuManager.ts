@@ -102,8 +102,8 @@ export class MenuManager {
         {
           label: "View",
           submenu: [
-            { role: "reload" },
-            { role: "forceReload" },
+            { role: "reload", enabled: !this.meetingCaptureActive },
+            { role: "forceReload", enabled: !this.meetingCaptureActive },
             { role: "toggleDevTools" },
             { type: "separator" },
             { role: "resetZoom" },

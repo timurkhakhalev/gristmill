@@ -37,6 +37,8 @@ test.after(async () => {
 
 const FIRST = "00000000-0000-4000-8000-000000000001";
 const SECOND = "00000000-0000-4000-8000-000000000002";
+const THIRD = "00000000-0000-4000-8000-000000000004";
+const FOURTH = "00000000-0000-4000-8000-000000000005";
 const RUN = "00000000-0000-4000-8000-000000000003";
 const CONFIG = {
   transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en", credentialRef: "ELEVENLABS_API_KEY" },
@@ -228,14 +230,16 @@ test("audio part actions export a mixed MP3 and confirm deletion without a trans
   assert.equal(ui.iconButton("Play audio"), null);
 });
 
-test("whole-meeting reprocess uses both saved parts and leaves defaults untouched", async (t: TestContext) => {
+test("Transcribe includes every saved audio part in the note across groups", async (t: TestContext) => {
   const ui = await mountPanel(t, [
+    recording(FOURTH, FOURTH, "2026-09-25T10:15:00.000Z"),
+    recording(SECOND, SECOND, "2026-09-25T10:05:00.000Z", null, "incomplete"),
     recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z"),
-    recording(SECOND, FIRST, "2026-09-25T10:05:00.000Z"),
+    recording(THIRD, THIRD, "2026-09-25T10:10:00.000Z"),
   ]);
   await ui.flush(() => (ui.button("Transcribe")!.props as { onPress: () => void }).onPress());
   assert.equal(ui.calls.create.length, 1);
-  assert.deepEqual((ui.calls.create[0] as Record<string, unknown>).sourceRecordingIds, [FIRST, SECOND]);
+  assert.deepEqual((ui.calls.create[0] as Record<string, unknown>).sourceRecordingIds, [FIRST, SECOND, THIRD, FOURTH]);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).recordingId, FIRST);
   assert.equal(submittedSection(ui.calls.create[0], "transcription").provider, CONFIG.transcription.provider);
   assert.equal(submittedSection(ui.calls.create[0], "transcription").model, CONFIG.transcription.model);
@@ -245,7 +249,7 @@ test("whole-meeting reprocess uses both saved parts and leaves defaults untouche
 test("summary version reads the saved transcript without another ASR run", async (t: TestContext) => {
   const ui = await mountPanel(t, [
     recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", completeRun()),
-    recording(SECOND, FIRST, "2026-09-25T10:05:00.000Z"),
+    recording(SECOND, SECOND, "2026-09-25T10:05:00.000Z"),
   ], { viewMode: "enhanced" });
   assert.match(ui.text(), /Release on Friday/);
   await ui.flush(() => (ui.menu("Result actions") as { props: { onAction: (key: string) => void } })!.props.onAction("summary"));

@@ -1691,6 +1691,7 @@
       "noProviderSelected": "Aucun fournisseur n'est sélectionné pour l'enregistrement de notes. Ouvrez les Réglages et choisissez Local ou un fournisseur en streaming.",
       "autoEnded": "L'enregistrement s'est arrêté automatiquement à la fin de votre réunion.",
       "restartFailed": "Impossible de redémarrer l'enregistrement de la réunion.",
+      "captureError": "L'enregistrement s'est arrêté à cause d'une erreur. Vérifiez l'audio enregistré dans la note.",
       "systemAudioSilent": {
         "title": "Aucun son de réunion détecté pour le moment",
         "description": "Seul votre microphone a capté du son jusqu'à présent. Vous êtes en visioconférence ? Vérifiez que le son de la réunion est diffusé sur cet ordinateur et qu'il n'est pas coupé. Vous enregistrez en présentiel ? Vous pouvez ignorer ce message : votre microphone capte la salle."

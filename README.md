@@ -51,6 +51,11 @@ On macOS, focused and full tests run under Electron's Node mode and share its
 SQLite ABI with `pnpm dev`; the test command probes that binding and repairs a
 mismatch before starting. Linux CI runs tests under Node with the Node ABI.
 A healthy binding is left untouched.
+Production saves meeting capture errors in `userData/logs/capture-errors.log`
+without Debug mode. It keeps that file and one rotated `capture-errors.1.log`,
+each at most 1 MiB. Settings → Developer opens the logs folder; Debug mode
+still creates its separate detailed log.
+
 The runner uses at most two ordinary test processes, with compiler/native and
 shared-resource tests in a sequential phase. Use `pnpm test -- --processes 1`
 for a one-process diagnostic run. Full runs share a lock across Git worktrees.

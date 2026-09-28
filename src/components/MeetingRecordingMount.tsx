@@ -196,9 +196,15 @@ export default function MeetingRecordingMount(): null {
     if (!error) return;
     const [sentinel, argument] = error.split(":");
     const errorKey = MEETING_ERROR_KEYS[sentinel];
+    const captureErrorCode = useMeetingRecordingStore.getState().captureErrorCode;
+    const captureWriteFailed = captureErrorCode === "capture-write-failed"
+      || error === "capture-queue-overflow"
+      || error === "capture-ack-timeout";
     toast({
       title: t("notes.meeting.title"),
-      description: errorKey ? t(errorKey, { provider: argument }) : error,
+      description: captureWriteFailed
+        ? t("notes.meeting.captureError")
+        : errorKey ? t(errorKey, { provider: argument }) : error,
       variant: "destructive",
     });
     // errorNonce re-fires this toast when the same error repeats back-to-back.

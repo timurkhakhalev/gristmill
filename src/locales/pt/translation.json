@@ -1615,6 +1615,7 @@
       "noProviderSelected": "Nenhum provedor está selecionado para a gravação de notas. Abra as Configurações e escolha Local ou um provedor de streaming.",
       "autoEnded": "A gravação parou automaticamente após o fim da reunião.",
       "restartFailed": "Não foi possível reiniciar a gravação da reunião.",
+      "captureError": "A gravação parou devido a um erro. Verifique o áudio salvo na nota.",
       "systemAudioSilent": {
         "title": "Nenhum áudio da reunião detectado até agora",
         "description": "Até agora, apenas o seu microfone captou som. Está em uma videochamada? Verifique se o áudio da reunião está sendo reproduzido neste computador e não está silenciado. Está gravando presencialmente? Você pode ignorar este aviso: seu microfone capta o ambiente."

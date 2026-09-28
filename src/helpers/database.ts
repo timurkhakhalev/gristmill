@@ -1653,6 +1653,15 @@ export class DatabaseManager {
     return transaction();
   }
 
+  /** Deletes a superseded run and its speaker corrections; the recording's current run is never deleted. */
+  deleteMeetingProcessingRun(runId: string): { success: boolean } {
+    meetingRecordingIdSchema.parse(runId);
+    const deleted = this.sql
+      .prepare("DELETE FROM meeting_processing_runs WHERE id = ? AND id NOT IN (SELECT current_run_id FROM meeting_recordings WHERE current_run_id IS NOT NULL)")
+      .run(runId);
+    return { success: deleted.changes === 1 };
+  }
+
   isMeetingNoteDeletionPending(noteId: number): boolean {
     return this.sql
       .prepare("SELECT 1 FROM meeting_deletion_intents WHERE note_id = ? AND kind = 'note'")

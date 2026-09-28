@@ -67,6 +67,7 @@
       "test/helpers/actionsCatalogBehavior.test.ts",
       "test/helpers/actionsIpc.test.ts",
       "test/helpers/bbCli.test.ts",
+      "test/cases/ai/integration/meetingJsonRepair.test.ts",
       "test/helpers/chatMessageSubmissionLock.test.ts",
       "test/helpers/chatPersistenceBehavior.test.ts",
       "test/helpers/chatPersistenceIpc.test.ts",

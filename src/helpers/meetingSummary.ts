@@ -3,7 +3,7 @@ import { resolveSelfHostedOpenAIBase } from "../services/ai/openaiBaseCore.js";
 
 export interface MeetingSummaryDeps {
   getAIModel: (provider: string, model: string, apiKey: string, baseUrl?: string, options?: { disableThinking?: boolean; omitAuthorization?: boolean }) => Promise<unknown>;
-  generateText: (options: Record<string, unknown>) => Promise<{ text: string }>;
+  generateText: (options: Record<string, unknown>) => Promise<{ text: string; finishReason?: string }>;
   processLocalText: (input: string, model: string, config: Record<string, unknown>, signal: AbortSignal) => Promise<string>;
   getCredential: (reference: string | undefined, provider: string) => string;
   getEnterpriseAIModel?: (
@@ -16,12 +16,20 @@ export interface MeetingSummaryDeps {
   runBedrockRequest?: <T>(operation: () => Promise<T>, options: { signal: AbortSignal }) => Promise<T>;
 }
 
-export async function generateMeetingSummary(
-  input: string,
+export interface MeetingTextTurn {
+  text: string;
+  refusal: boolean;
+}
+
+export interface MeetingTextConversation {
+  send(prompt: string): Promise<MeetingTextTurn>;
+}
+
+export async function createMeetingTextConversation(
   summary: NonNullable<MeetingProcessingConfig["summary"]>,
   deps: MeetingSummaryDeps,
   signal: AbortSignal
-): Promise<string> {
+): Promise<MeetingTextConversation> {
   const model = summary.model || "";
   if (!model) throw codedError("reasoning-model-missing");
   const shared = {
@@ -29,15 +37,26 @@ export async function generateMeetingSummary(
     maxTokens: 4096,
     temperature: 0.3,
     disableThinking: summary.options?.disableThinking,
+    requireCompleteOutput: true,
   };
   if (summary.reasoningMode === "local") {
-    return deps.processLocalText(input, model, shared, signal);
+    const history: Array<{ role: "user" | "assistant"; text: string }> = [];
+    return {
+      send: async (prompt) => {
+        history.push({ role: "user", text: prompt });
+        const conversation = history.map((turn) => `${turn.role.toUpperCase()}:\n${turn.text}`).join("\n\n");
+        const text = await deps.processLocalText(conversation, model, shared, signal);
+        history.push({ role: "assistant", text });
+        return { text, refusal: false };
+      },
+    };
   }
 
   if (summary.reasoningMode === "agent") throw codedError("bb-summary-route-unavailable");
 
+  let languageModel: unknown;
+  const provider = summary.provider;
   if (summary.reasoningMode === "enterprise") {
-    const provider = summary.provider;
     const saved = summary.enterprise;
     if (!provider || !saved || !["bedrock", "azure", "vertex"].includes(provider)) {
       throw codedError("unsupported-enterprise-reasoning-route");
@@ -72,59 +91,59 @@ export async function generateMeetingSummary(
       ? deps.getCredential(summary.credentialRef, provider)
       : "";
     if (provider === "azure" && !apiKey) throw codedError("api-key-missing");
-    const languageModel = await deps.getEnterpriseAIModel(provider, model, apiKey, enterprise);
-    const generate = () => deps.generateText({
-      model: languageModel,
-      system: summary.instruction,
-      prompt: input,
-      maxOutputTokens: 4096,
-      maxRetries: 0,
-      abortSignal: signal,
-    });
-    const result = provider === "bedrock" && deps.runBedrockRequest
-      ? await deps.runBedrockRequest(generate, { signal })
-      : await generate();
-    return result.text;
-  }
-
-  if (summary.reasoningMode === "self-hosted") {
+    languageModel = await deps.getEnterpriseAIModel(provider, model, apiKey, enterprise);
+  } else if (summary.reasoningMode === "self-hosted") {
     if (!summary.remoteUrl) throw codedError("reasoning-endpoint-missing");
-    const baseUrl = resolveSelfHostedOpenAIBase(summary.remoteUrl);
-    const languageModel = await deps.getAIModel("local", model, "", baseUrl, {
+    languageModel = await deps.getAIModel("local", model, "", resolveSelfHostedOpenAIBase(summary.remoteUrl), {
       disableThinking: summary.options?.disableThinking,
       omitAuthorization: true,
     });
-    return (await deps.generateText({
-      model: languageModel,
-      system: summary.instruction,
-      prompt: input,
-      maxOutputTokens: 4096,
-      temperature: 0.3,
-      maxRetries: 0,
-      abortSignal: signal,
-    })).text;
+  } else {
+    if (!provider) throw codedError("reasoning-provider-missing");
+    if (!["openai", "groq", "gemini", "anthropic", "tinfoil", "custom", "openrouter", "corti"].includes(provider)) {
+      throw codedError("unsupported-reasoning-provider");
+    }
+    if (provider === "custom" && !summary.cloudBaseUrl) throw codedError("reasoning-endpoint-missing");
+    const apiKey = deps.getCredential(summary.credentialRef, provider);
+    if (!apiKey) throw codedError("api-key-missing");
+    languageModel = await deps.getAIModel(provider, model, apiKey, summary.cloudBaseUrl, {
+      disableThinking: summary.options?.disableThinking,
+    });
   }
 
-  const provider = summary.provider;
-  if (!provider) throw codedError("reasoning-provider-missing");
-  if (!["openai", "groq", "gemini", "anthropic", "tinfoil", "custom", "openrouter", "corti"].includes(provider)) {
-    throw codedError("unsupported-reasoning-provider");
-  }
-  if (provider === "custom" && !summary.cloudBaseUrl) throw codedError("reasoning-endpoint-missing");
-  const apiKey = deps.getCredential(summary.credentialRef, provider);
-  if (!apiKey) throw codedError("api-key-missing");
-  const languageModel = await deps.getAIModel(provider, model, apiKey, summary.cloudBaseUrl, {
-    disableThinking: summary.options?.disableThinking,
-  });
-  return (await deps.generateText({
-    model: languageModel,
-    system: summary.instruction,
-    prompt: input,
-    maxOutputTokens: 4096,
-    temperature: 0.3,
-    maxRetries: 0,
-    abortSignal: signal,
-  })).text;
+  const history: Array<{ role: "user" | "assistant"; content: string }> = [];
+  return {
+    send: async (prompt) => {
+      history.push({ role: "user", content: prompt });
+      const generate = () => deps.generateText({
+        model: languageModel,
+        system: summary.instruction,
+        messages: history.map(({ role, content }) => ({ role, content })),
+        maxOutputTokens: 4096,
+        temperature: 0.3,
+        maxRetries: 0,
+        abortSignal: signal,
+      });
+      const result = summary.reasoningMode === "enterprise" && provider === "bedrock" && deps.runBedrockRequest
+        ? await deps.runBedrockRequest(generate, { signal })
+        : await generate();
+      const turn = { text: result.text, refusal: result.finishReason === "content-filter" };
+      if (!turn.refusal) history.push({ role: "assistant", content: turn.text });
+      return turn;
+    },
+  };
+}
+
+export async function generateMeetingSummary(
+  input: string,
+  summary: NonNullable<MeetingProcessingConfig["summary"]>,
+  deps: MeetingSummaryDeps,
+  signal: AbortSignal
+): Promise<string> {
+  const conversation = await createMeetingTextConversation(summary, deps, signal);
+  const result = await conversation.send(input);
+  if (result.refusal) throw codedError("meeting-model-refused");
+  return result.text;
 }
 
 function codedError(code: string): Error & { code: string } {

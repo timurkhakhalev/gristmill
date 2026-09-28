@@ -4,7 +4,7 @@
 // public IPC DTOs: tokens and embedding buffers stay main-only; shared
 // contracts own the renderer-facing projections.
 import path from "path";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { app } from "electron";
 import debugLogger from "./debugLogger.js";
 import { buildNoteSearchQuery } from "./noteSearch.js";
@@ -768,6 +768,8 @@ export class DatabaseManager {
           raw_response_path TEXT,
           transcript_path TEXT,
           summary_path TEXT,
+          llm_source_snapshot_json TEXT,
+          speaker_naming_error_code TEXT,
           retry_count INTEGER NOT NULL DEFAULT 0 CHECK(retry_count >= 0),
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -927,6 +929,8 @@ export class DatabaseManager {
           speaker_id TEXT NOT NULL,
           profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
           display_name TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice', 'model', 'user')),
+          revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
           PRIMARY KEY (run_id, speaker_id)
         );
 
@@ -983,6 +987,19 @@ export class DatabaseManager {
       if (!runColumns.some((column) => column.name === "source_recording_ids_json")) {
         this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN source_recording_ids_json TEXT");
       }
+      if (!runColumns.some((column) => column.name === "llm_source_snapshot_json")) {
+        this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN llm_source_snapshot_json TEXT");
+      }
+      if (!runColumns.some((column) => column.name === "speaker_naming_error_code")) {
+        this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN speaker_naming_error_code TEXT");
+      }
+      const speakerCorrectionColumns = this.sql.pragma("table_info(meeting_run_speaker_corrections)") as Array<{ name: string }>;
+      if (!speakerCorrectionColumns.some((column) => column.name === "source")) {
+        this.sql.exec("ALTER TABLE meeting_run_speaker_corrections ADD COLUMN source TEXT NOT NULL DEFAULT 'user'");
+      }
+      if (!speakerCorrectionColumns.some((column) => column.name === "revision")) {
+        this.sql.exec("ALTER TABLE meeting_run_speaker_corrections ADD COLUMN revision INTEGER NOT NULL DEFAULT 1");
+      }
       const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{ name: string }>;
       if (!calendarEventColumns.some((column) => column.name === "event_url")) {
         this.sql.exec("ALTER TABLE calendar_events ADD COLUMN event_url TEXT");
@@ -1034,6 +1051,19 @@ export class DatabaseManager {
             action.sortOrder,
             action.translationKey
           );
+        }
+      }
+      const reseedBuiltinPrompt = this.sql.prepare(
+        "UPDATE actions SET prompt = ? WHERE id = ? AND prompt = ? AND is_builtin = 1"
+      );
+      for (const action of BUILTIN_ACTIONS) {
+        const existing = this.sql.prepare(
+          "SELECT id, prompt FROM actions WHERE translation_key = ? AND is_builtin = 1"
+        ).get(action.translationKey) as { id: number; prompt: string } | undefined;
+        if (!existing) continue;
+        const previousHash = createHash("sha256").update(existing.prompt, "utf8").digest("hex");
+        if (action.previousPrompts.includes(existing.prompt) || action.previousPromptHashes?.includes(previousHash)) {
+          reseedBuiltinPrompt.run(action.prompt, existing.id, existing.prompt);
         }
       }
       this._discardPlaintextCalendarTokens();
@@ -1399,7 +1429,7 @@ export class DatabaseManager {
     meetingRecordingIdSchema.parse(id);
     if (!/^thr_[a-z0-9]+$/.test(bbThreadId)) throw new Error("Invalid bb thread id");
     const result = this.sql.prepare(
-      "UPDATE meeting_processing_runs SET bb_thread_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND stage = 'summary' AND status = 'running' AND bb_thread_id IS NULL"
+      "UPDATE meeting_processing_runs SET bb_thread_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND stage IN ('normalize', 'summary') AND status = 'running' AND bb_thread_id IS NULL"
     ).run(bbThreadId, id);
     return result.changes === 1;
   }
@@ -1574,7 +1604,8 @@ export class DatabaseManager {
     runId: string,
     speakerId: string,
     profileId: number | null,
-    displayName: string
+    displayName: string,
+    source: "voice" | "model" | "user" = "user"
   ): { success: boolean } {
     meetingRecordingIdSchema.parse(runId);
     const run = this.getMeetingProcessingRun(runId);
@@ -1586,8 +1617,8 @@ export class DatabaseManager {
         .get(run.recordingId) as { note_id: number; current_run_id: string | null } | undefined;
       if (!recording || this.isMeetingNoteDeletionPending(recording.note_id)) return false;
       this.sql.prepare(
-        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name) VALUES (?, ?, ?, ?) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name"
-      ).run(runId, speakerId, profileId, displayName.trim());
+        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, revision) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, source = excluded.source, revision = meeting_run_speaker_corrections.revision + 1"
+      ).run(runId, speakerId, profileId, displayName.trim(), source);
       if (recording.current_run_id === runId) {
         const note = this.sql
           .prepare("SELECT content, transcript FROM notes WHERE id = ?")
@@ -1602,7 +1633,7 @@ export class DatabaseManager {
               segment.speakerIsPlaceholder = false;
               segment.speakerStatus = "locked";
               segment.speakerLocked = true;
-              segment.speakerLockSource = "user";
+              segment.speakerLockSource = source;
               changed = true;
             }
             if (changed) {
@@ -1621,15 +1652,102 @@ export class DatabaseManager {
     return { success: transaction() };
   }
 
-  getMeetingRunSpeakerCorrections(runId: string): Array<{ speakerId: string; profileId: number | null; displayName: string }> {
+  getMeetingRunSpeakerCorrections(runId: string): Array<{
+    speakerId: string;
+    profileId: number | null;
+    displayName: string;
+    source: "voice" | "model" | "user";
+    revision: number;
+  }> {
     meetingRecordingIdSchema.parse(runId);
     return (this.sql.prepare(
-      "SELECT speaker_id, profile_id, display_name FROM meeting_run_speaker_corrections WHERE run_id = ? ORDER BY speaker_id"
-    ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string }>).map((row) => ({
+      "SELECT speaker_id, profile_id, display_name, source, revision FROM meeting_run_speaker_corrections WHERE run_id = ? ORDER BY speaker_id"
+    ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string; source: "voice" | "model" | "user"; revision: number }>).map((row) => ({
       speakerId: row.speaker_id,
       profileId: row.profile_id,
       displayName: row.display_name,
+      source: row.source,
+      revision: row.revision,
     }));
+  }
+
+  getMeetingRunSpeakerCorrectionRevision(runId: string): number {
+    meetingRecordingIdSchema.parse(runId);
+    const row = this.sql.prepare(
+      "SELECT COALESCE(SUM(revision), 0) AS revision FROM meeting_run_speaker_corrections WHERE run_id = ?"
+    ).get(runId) as { revision: number };
+    return row.revision;
+  }
+
+  applyAutomaticMeetingSpeakerCorrections(
+    runId: string,
+    expectedCurrentRunId: string,
+    expectedRevision: number,
+    corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>,
+    source: "voice" | "model"
+  ): boolean {
+    meetingRecordingIdSchema.parse(runId);
+    meetingRecordingIdSchema.parse(expectedCurrentRunId);
+    const run = this.getMeetingProcessingRun(runId);
+    const currentRun = this.getMeetingProcessingRun(expectedCurrentRunId);
+    if (!run || !currentRun || currentRun.recordingId !== run.recordingId || corrections.some((item) =>
+      !item.speakerId.trim() || !item.displayName.trim() ||
+      (item.profileId !== null && (!Number.isSafeInteger(item.profileId) || item.profileId < 1))
+    )) return false;
+    if (new Set(corrections.map((item) => item.speakerId)).size !== corrections.length) return false;
+    const transaction = this.sql.transaction(() => {
+      const recording = this.sql.prepare(
+        "SELECT note_id, current_run_id FROM meeting_recordings WHERE id = ?"
+      ).get(run.recordingId) as { note_id: number; current_run_id: string | null } | undefined;
+      if (
+        !recording || recording.current_run_id !== expectedCurrentRunId || this.isMeetingNoteDeletionPending(recording.note_id) ||
+        this.getMeetingRunSpeakerCorrectionRevision(runId) !== expectedRevision
+      ) return false;
+      const exists = this.sql.prepare(
+        "SELECT 1 FROM meeting_run_speaker_corrections WHERE run_id = ? AND speaker_id = ?"
+      );
+      if (corrections.some((correction) => exists.get(runId, correction.speakerId))) return false;
+      const insert = this.sql.prepare(
+        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, revision) VALUES (?, ?, ?, ?, ?, 1)"
+      );
+      for (const correction of corrections) {
+        insert.run(runId, correction.speakerId, correction.profileId, correction.displayName.trim(), source);
+      }
+      return true;
+    });
+    return transaction();
+  }
+
+  getMeetingRunLlmSourceSnapshot(runId: string): string | null {
+    meetingRecordingIdSchema.parse(runId);
+    const row = this.sql.prepare(
+      "SELECT llm_source_snapshot_json FROM meeting_processing_runs WHERE id = ?"
+    ).get(runId) as { llm_source_snapshot_json: string | null } | undefined;
+    return row?.llm_source_snapshot_json ?? null;
+  }
+
+  setMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string): boolean {
+    meetingRecordingIdSchema.parse(runId);
+    const result = this.sql.prepare(
+      "UPDATE meeting_processing_runs SET llm_source_snapshot_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running' AND stage IN ('normalize', 'summary')"
+    ).run(snapshotJson, runId);
+    return result.changes === 1;
+  }
+
+  updateMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string, expectedSnapshotJson: string): boolean {
+    meetingRecordingIdSchema.parse(runId);
+    const result = this.sql.prepare(
+      "UPDATE meeting_processing_runs SET llm_source_snapshot_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running' AND stage IN ('normalize', 'summary') AND llm_source_snapshot_json = ?"
+    ).run(snapshotJson, runId, expectedSnapshotJson);
+    return result.changes === 1;
+  }
+
+  setMeetingSpeakerNamingError(runId: string, errorCode: string | null): boolean {
+    meetingRecordingIdSchema.parse(runId);
+    const result = this.sql.prepare(
+      "UPDATE meeting_processing_runs SET speaker_naming_error_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running' AND stage IN ('normalize', 'summary')"
+    ).run(errorCode, runId);
+    return result.changes === 1;
   }
 
   selectMeetingProcessingRun(

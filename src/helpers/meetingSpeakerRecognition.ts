@@ -1,4 +1,4 @@
-import type { MeetingSpeakerCorrection, MeetingTranscriptArtifact } from "../contracts/meetingRecording.js";
+import type { MeetingTranscriptArtifact } from "../contracts/meetingRecording.js";
 import type { SpeakerProfileRow } from "./database.js";
 
 export interface MeetingSpeakerEmbeddings {
@@ -22,7 +22,7 @@ export async function recognizeMeetingSpeakers(
   audioPath: string,
   signal: AbortSignal,
   deps: MeetingSpeakerRecognitionDeps
-): Promise<MeetingSpeakerCorrection[]> {
+): Promise<Array<{ speakerId: string; profileId: number | null; displayName: string }>> {
   if (!transcript.segments?.length || !deps.speakerEmbeddings.isAvailable()) return [];
   const tempPath = deps.createTempPath();
   try {

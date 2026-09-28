@@ -75,6 +75,10 @@ export function useActions(): ActionItem[] {
   return useActionStore((state) => state.actions);
 }
 
+export function getActions(): ActionItem[] {
+  return useActionStore.getState().actions;
+}
+
 export function getActionName(
   action: { name: string; translation_key?: string | null },
   t: TFunction

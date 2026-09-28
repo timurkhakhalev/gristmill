@@ -25,4 +25,4 @@ Verification:
 
 Commits: `49d8e48c6` (M1 implementation). This progress-record update is a separate M1 log commit.
 
-M1 regression-fix commit hash is recorded in the follow-up progress update.
+M1 regression-fix commit: `5ec61f8d5` (`M1: fix gate regression test assumptions`).

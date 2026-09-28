@@ -5,6 +5,8 @@ import { folderContainerKey, spaceContainerKey } from "../stores/noteStore";
 export interface NoteMoveTarget {
   spaceId: number;
   folderId: number | null;
+  /** Full folder set to restore (undo); a plain move leaves only folderId. */
+  folderIds?: number[];
 }
 
 export interface DraggedNoteInfo {

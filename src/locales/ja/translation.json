@@ -1680,6 +1680,7 @@
       "noProviderSelected": "ノート録音のプロバイダーが選択されていません。設定を開き、ローカルまたはストリーミング対応プロバイダーを選択してください。",
       "autoEnded": "会議の終了後、録音は自動的に停止しました。",
       "restartFailed": "会議の録音を再開できませんでした。",
+      "captureError": "エラーにより録音が停止しました。ノートに保存された音声を確認してください。",
       "systemAudioSilent": {
         "title": "会議の音声がまだ検出されていません",
         "description": "これまでのところ、音声を拾っているのはマイクのみです。ビデオ会議中の場合は、会議の音声がこのコンピューターで再生されており、ミュートになっていないことを確認してください。対面で録音している場合は、この通知は無視してかまいません。マイクが室内の音を拾います。"
@@ -2211,6 +2212,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "会議の録音リマインダーに使用します。",
+    "accessibilityHelp": "macOSのアクセシビリティ設定でOpenHerculesを有効にしてください。一覧にない場合は「+」をクリックし、インストール済みのOpenHercules.appを選択してください。",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
@@ -2221,6 +2223,14 @@
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}}秒",
+    "durationMinutes": "{{minutes}}分{{seconds}}秒",
+    "durationWholeMinutes": "{{minutes}}分",
+    "durationHours": "{{hours}}時間{{minutes}}分",
+    "recordingNow": "録音中",
+    "savingAudio": "保存中…",
+    "endedEarly": "途中で終了",
+    "partOf": "パート {{index}}/{{count}}",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",

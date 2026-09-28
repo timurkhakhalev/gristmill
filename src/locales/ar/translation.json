@@ -905,6 +905,7 @@
       "back": "رجوع",
       "autoEnded": "توقف التسجيل تلقائيًا بعد انتهاء اجتماعك.",
       "restartFailed": "تعذرت إعادة تشغيل تسجيل الاجتماع.",
+      "captureError": "توقف التسجيل بسبب خطأ. تحقّق من الصوت المحفوظ في الملاحظة.",
       "systemAudioSilent": {
         "title": "لم يتم اكتشاف صوت الاجتماع بعد",
         "description": "لم يلتقط الصوت حتى الآن سوى ميكروفونك. هل أنت في مكالمة فيديو؟ تحقق من أن صوت الاجتماع يُشغَّل على هذا الكمبيوتر وأنه غير مكتوم. هل تسجّل اجتماعًا حضوريًا؟ يمكنك تجاهل هذا — فالميكروفون يلتقط صوت الغرفة."
@@ -2249,6 +2250,14 @@
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}} ث",
+    "durationMinutes": "{{minutes}} د {{seconds}} ث",
+    "durationWholeMinutes": "{{minutes}} د",
+    "durationHours": "{{hours}} س {{minutes}} د",
+    "recordingNow": "التسجيل جارٍ",
+    "savingAudio": "جارٍ الحفظ…",
+    "endedEarly": "انتهى مبكرًا",
+    "partOf": "الجزء {{index}} من {{count}}",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",
@@ -2349,6 +2358,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "للتذكير بتسجيل الاجتماعات.",
+    "accessibilityHelp": "فعّل OpenHercules في إعدادات تسهيلات الاستخدام في macOS. إذا لم يظهر في القائمة، اضغط + واختر تطبيق OpenHercules.app المثبّت.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },

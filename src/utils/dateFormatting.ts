@@ -52,7 +52,42 @@ export function formatShortDate(dateStr: string, locale?: string, format: DateFo
   if (!dateStr) return "";
   const date = normalizeDbDate(dateStr);
   if (Number.isNaN(date.getTime())) return "";
+  // Locale format keeps the user-facing month name (en → "Sep 28", ru → "28 сент.").
+  // The non-locale formats stay compact and dot- or slash-separated.
+  if (format === "locale") {
+    return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date);
+  }
   return formatDate(date, locale, { month: "short", day: "numeric" }, format);
+}
+
+export function formatShortTime(dateStr: string, locale?: string, format: TimeFormat = "locale"): string {
+  if (!dateStr) return "";
+  const date = normalizeDbDate(dateStr);
+  if (Number.isNaN(date.getTime())) return "";
+  return formatTime(date, locale, { hour: "numeric", minute: "2-digit" }, format);
+}
+
+/** Day and full month name, e.g. "28 September"; the numeric formats only choose the day/month order. */
+function formatDayMonthName(dateStr: string, locale: string | undefined, format: DateFormat): string {
+  if (!dateStr) return "";
+  const date = normalizeDbDate(dateStr);
+  if (Number.isNaN(date.getTime())) return "";
+  const formatter = new Intl.DateTimeFormat(locale, { day: "numeric", month: "long" });
+  if (format === "locale") return formatter.format(date);
+  const parts = formatter.formatToParts(date);
+  const day = parts.find((part) => part.type === "day")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  if (!day || !month) return formatter.format(date);
+  return format === "dmy" ? `${day} ${month}` : `${month} ${day}`;
+}
+
+/** Date+time stamp, e.g. "28 September · 11:05". Falls back to just the date if the time is missing. */
+export function formatShortDateTime(dateStr: string, locale?: string, dateFormat: DateFormat = "locale", timeFormat: TimeFormat = "locale"): string {
+  const date = formatDayMonthName(dateStr, locale, dateFormat);
+  const time = formatShortTime(dateStr, locale, timeFormat);
+  if (!date && !time) return "";
+  if (!time) return date;
+  return `${date} \u00b7 ${time}`;
 }
 
 export function formatNoteDate(dateStr: string, locale?: string, dateFormat: DateFormat = "locale", timeFormat: TimeFormat = "locale"): string {

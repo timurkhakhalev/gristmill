@@ -71,6 +71,7 @@
     "compile:mac-icon": "node scripts/compile-macos-icon.js",
     "prebuild:mac:arm64": "pnpm run compile:native && pnpm run compile:mac-icon && pnpm run download:whisper-cpp && pnpm run download:llama-server && pnpm run download:sherpa-onnx",
     "build:mac:arm64": "pnpm run build:main && pnpm run build:renderer && electron-builder --mac --arm64",
+    "build:mac:arm64:local": "pnpm run prebuild:mac:arm64 && pnpm run build:main && pnpm run build:renderer && electron-builder --mac --arm64 -c.mac.identity=-",
     "prepack": "pnpm run prebuild:mac:arm64",
     "pack": "pnpm run build:main && pnpm run build:renderer && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 --dir",
     "pack:dev": "node scripts/check-dev-app-build-target.js && pnpm run prebuild:mac:arm64 && pnpm run build:main && pnpm run build:renderer:dev && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --config electron-builder.dev.cjs --mac --arm64 --dir",

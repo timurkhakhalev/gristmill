@@ -14,7 +14,7 @@ async function renderBottomBar(t: TestContext, props: Record<string, unknown>) {
     mockModules: {
       "/stores/meetingRecordingStore": `
         export const getMicAnalyser = () => null;
-        export const useMeetingRecordingStore = { getState: () => ({ currentMicLevel: 0 }) };
+        export const useMeetingRecordingStore = { getState: () => ({ currentAudioLevel: 0 }) };
       `,
     },
   });

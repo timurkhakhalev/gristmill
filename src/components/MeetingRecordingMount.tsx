@@ -4,6 +4,7 @@ import { useToast } from "./ui/useToast";
 import {
   getActiveRecordingSessionId,
   getMicAnalyser,
+  getSystemAudioLevel,
   primeMeetingWorklet,
   queueMeetingGroupProcessing,
   startRecording,
@@ -196,9 +197,15 @@ export default function MeetingRecordingMount(): null {
     if (!error) return;
     const [sentinel, argument] = error.split(":");
     const errorKey = MEETING_ERROR_KEYS[sentinel];
+    const captureErrorCode = useMeetingRecordingStore.getState().captureErrorCode;
+    const captureWriteFailed = captureErrorCode === "capture-write-failed"
+      || error === "capture-queue-overflow"
+      || error === "capture-ack-timeout";
     toast({
       title: t("notes.meeting.title"),
-      description: errorKey ? t(errorKey, { provider: argument }) : error,
+      description: captureWriteFailed
+        ? t("notes.meeting.captureError")
+        : errorKey ? t(errorKey, { provider: argument }) : error,
       variant: "destructive",
     });
     // errorNonce re-fires this toast when the same error repeats back-to-back.
@@ -316,6 +323,7 @@ export default function MeetingRecordingMount(): null {
 
     const tick = () => {
       const analyser = getMicAnalyser();
+      let micRms = 0;
       if (analyser) {
         if (buf.length !== analyser.fftSize) {
           buf = new Float32Array(analyser.fftSize);
@@ -326,11 +334,12 @@ export default function MeetingRecordingMount(): null {
           const v = buf[i];
           sumSquares += v * v;
         }
-        const rms = Math.sqrt(sumSquares / buf.length);
-        smoothed = EMA_PREV * smoothed + EMA_NEXT * rms;
-        const clamped = smoothed < 0 ? 0 : smoothed > 1 ? 1 : smoothed;
-        useMeetingRecordingStore.setState({ currentMicLevel: clamped });
+        micRms = Math.sqrt(sumSquares / buf.length);
       }
+      const rms = Math.max(micRms, getSystemAudioLevel());
+      smoothed = EMA_PREV * smoothed + EMA_NEXT * rms;
+      const clamped = smoothed < 0 ? 0 : smoothed > 1 ? 1 : smoothed;
+      useMeetingRecordingStore.setState({ currentAudioLevel: clamped });
       rafId = requestAnimationFrame(tick);
     };
 
@@ -338,7 +347,7 @@ export default function MeetingRecordingMount(): null {
 
     return () => {
       cancelAnimationFrame(rafId);
-      useMeetingRecordingStore.setState({ currentMicLevel: 0 });
+      useMeetingRecordingStore.setState({ currentAudioLevel: 0 });
     };
   }, [isRecording]);
 

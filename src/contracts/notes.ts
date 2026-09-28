@@ -23,6 +23,8 @@ export const noteItemSchema = z.object({
   enhancement_prompt: z.string().nullable(),
   enhanced_at_content_hash: z.string().nullable(),
   folder_id: nonNegativeInt.nullable(),
+  /** Every folder holding the note: folder_id (the primary) first, then extra folders. */
+  folder_ids: z.array(nonNegativeInt),
   space_id: nonNegativeInt,
   transcript: z.string().nullable(),
   calendar_event_id: z.string().nullable(),
@@ -47,6 +49,8 @@ export const noteUpdateSchema = z
     enhancement_prompt: z.string().nullable().optional(),
     enhanced_at_content_hash: z.string().nullable().optional(),
     folder_id: nonNegativeInt.nullable().optional(),
+    /** Replaces folder membership; the current primary folder stays primary when kept. */
+    folder_ids: z.array(nonNegativeInt).optional(),
     space_id: nonNegativeInt.optional(),
     transcript: z.string().nullable().optional(),
     calendar_event_id: z.string().nullable().optional(),

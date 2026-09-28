@@ -240,6 +240,7 @@ export class MeetingCaptureSession {
 
   private async finish(input: MeetingCaptureStopInput): Promise<MeetingCaptureStopResult> {
     let errorCode = this.captureError ?? input.errorCode ?? null;
+    let latestSavedFrame = 0;
     for (const source of ["mic", "system"] as const) {
       const epoch = this.epochs.get(source);
       const receivedLastSequence = input.lastSequence[source];
@@ -262,6 +263,7 @@ export class MeetingCaptureSession {
         }
         try {
           const recovered = this.storage.recoverEpoch(this.recordingId, source, epoch.index);
+          latestSavedFrame = Math.max(latestSavedFrame, epoch.startFrame + recovered.frameCount);
           const epochError = this.sourceErrors.get(source) ?? recovered.errorCode;
           this.database.updateMeetingRecordingEpochRecovery(this.recordingId, source, epoch.index, {
             frameCount: recovered.frameCount,
@@ -278,7 +280,9 @@ export class MeetingCaptureSession {
     this.database.markMeetingRecordingFinalizing(this.recordingId);
     const result = this.database.finalizeMeetingRecording(this.recordingId, {
       captureState: errorCode || this.sourceErrors.size > 0 ? "incomplete" : "ready",
-      endedAt: input.endedAt ?? new Date().toISOString(),
+      endedAt: input.endedAt ?? (latestSavedFrame > 0
+        ? new Date(Date.parse(this.originAt) + latestSavedFrame / SAMPLE_RATE * 1000).toISOString()
+        : new Date().toISOString()),
       sourceMetadata: {
         mic: { errorCode: this.sourceErrors.get("mic") ?? null },
         system: { errorCode: this.sourceErrors.get("system") ?? null },

@@ -4,13 +4,13 @@ import { useUiLocale } from "../../hooks/useUiLocale";
 import {
   Loader2,
   Sparkles,
-  AlignLeft,
   Mic,
   FolderOpen,
   Search,
   Plus,
   Check,
   ArrowLeft,
+  WandSparkles,
 } from "../icons";
 import { RichTextEditor } from "../ui/RichTextEditor";
 import type { Editor } from "@tiptap/react";
@@ -43,7 +43,7 @@ import ChatPanel, { type ChatPanelMode } from "../chat/ChatPanel";
 import { setActiveFolderId, setActiveNoteId } from "../../stores/noteStore";
 import { useEmbeddedChat } from "../../hooks/useEmbeddedChat";
 import type { Message } from "../chat/types";
-import { formatNoteDate, formatShortDate } from "../../utils/dateFormatting";
+import { formatNoteDate, formatShortDateTime } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { collectKnownPeople } from "../../utils/llmTranscript";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";
@@ -67,14 +67,13 @@ export interface Enhancement {
   onChange: (sourceNoteId: number, content: string) => void;
 }
 
-type MeetingViewMode = "raw" | "transcript" | "enhanced";
+type MeetingViewMode = "raw" | "enhanced";
 
 type SpeakerProfileOption = { id?: number; display_name: string; email: string | null };
 
 /** Opening priority: a ready Summary wins over the Notes body. */
 function initialMeetingViewMode(note: NoteItem): MeetingViewMode {
   if (note.enhanced_content) return "enhanced";
-  if (note.note_type === "upload" && note.transcript) return "transcript";
   return "raw";
 }
 
@@ -131,8 +130,9 @@ interface NoteEditorProps {
   folderName?: string | null;
   /** The linked calendar event, for the meeting card. Null when unlinked. */
   calendarEvent?: CalendarEvent | null;  folders?: FolderItem[];
-  onMoveToFolder?: (noteId: number, folderId: number) => void;
-  onCreateFolderAndMove?: (noteId: number, folderName: string) => void;
+  /** Replace the note's folder set; a note can sit in several folders at once. */
+  onSetFolders?: (noteId: number, folderIds: number[]) => void;
+  onCreateFolderAndAdd?: (noteId: number, folderName: string) => void;
   debugPreview?: {
     recordings: MeetingProcessingRecordingResult[];
     capturePhase?: "idle" | "preparing" | "recording" | "paused" | "saving" | "saved" | "incomplete" | "failed";
@@ -171,8 +171,8 @@ export default function NoteEditor({
   folderName,
   calendarEvent,
   folders,
-  onMoveToFolder,
-  onCreateFolderAndMove,
+  onSetFolders,
+  onCreateFolderAndAdd,
   debugPreview,
 }: NoteEditorProps) {
   const { t } = useTranslation();
@@ -199,6 +199,7 @@ export default function NoteEditor({
   );
   const [chatMode, setChatMode] = useState<ChatPanelMode>("hidden");
   const [folderSearch, setFolderSearch] = useState("");
+  const extraFolderCount = Math.max(0, note.folder_ids.length - 1);
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -567,23 +568,6 @@ export default function NoteEditor({
 
   const contentScrollRef = useRef<HTMLDivElement>(null);
 
-  // A transcript opens at its newest row: the reader lands where the meeting
-  // ended. The list is virtualized, so pin across a few frames while rows
-  // measure and the real height settles.
-  useEffect(() => {
-    if (viewMode !== "transcript") return;
-    const scroller = contentScrollRef.current;
-    if (!scroller) return;
-    let frame = 0;
-    let remaining = 6;
-    const pin = () => {
-      scroller.scrollTop = scroller.scrollHeight;
-      if (remaining-- > 0) frame = window.requestAnimationFrame(pin);
-    };
-    frame = window.requestAnimationFrame(pin);
-    return () => window.cancelAnimationFrame(frame);
-  }, [viewMode]);
-
   const getActiveScroller = useCallback((root: HTMLDivElement): HTMLElement | null => {
     const candidates = [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))].filter(
       (el) => el.scrollHeight - el.clientHeight > 2
@@ -679,7 +663,9 @@ export default function NoteEditor({
 
   const { dateFormat, timeFormat } = useDateTimePreferences();
   const noteDate = formatNoteDate(note.created_at, locale, dateFormat, timeFormat);
-  const shortDate = formatShortDate(note.created_at, locale, dateFormat);
+  const calendarStart = calendarEvent?.start_time
+    ? formatShortDateTime(calendarEvent.start_time, locale, dateFormat, timeFormat)
+    : "";
 
   return (
     <div className="relative flex h-full min-h-0">
@@ -704,17 +690,18 @@ export default function NoteEditor({
               noteId={note.id}
               participants={parsedParticipants}
               event={calendarEvent}
-              dateLabel={shortDate || undefined}
+              dateLabel={calendarStart || undefined}
               dateTitle={noteDate}
               preview={Boolean(debugPreview)}
             />
-            {folders && onMoveToFolder && !canMoveToFolders && folderName && (
+            {folders && onSetFolders && !canMoveToFolders && folderName && (
               <span className={cn(NOTE_META_CHIP_CLASS, "cursor-default")}>
                 <FolderOpen size={14} className="shrink-0 text-muted" />
                 <span dir="auto">{folderName}</span>
+                {extraFolderCount > 0 && <span className="text-muted tabular-nums">+{extraFolderCount}</span>}
               </span>
             )}
-            {folders && onMoveToFolder && canMoveToFolders && (
+            {folders && onSetFolders && canMoveToFolders && (
               <Popover
                 open={folderMenuOpen}
                 onOpenChange={(open) => {
@@ -730,6 +717,7 @@ export default function NoteEditor({
                   <button className={NOTE_META_CHIP_CLASS}>
                     <FolderOpen size={14} className="shrink-0 text-muted" />
                     {folderName ? <span dir="auto">{folderName}</span> : t("notes.editor.noFolder")}
+                    {extraFolderCount > 0 && <span className="text-muted tabular-nums">+{extraFolderCount}</span>}
                   </button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-56 p-1">
@@ -751,23 +739,29 @@ export default function NoteEditor({
                   )}
                   <div className="max-h-48 overflow-y-auto">
                     {filteredFolders.map((folder) => {
-                      const isCurrent = folder.id === note.folder_id;
+                      const isMember = note.folder_ids.includes(folder.id);
                       return (
                         <button
                           key={folder.id}
                           type="button"
-                          disabled={isCurrent}
-                          onClick={() => {
-                            onMoveToFolder(note.id, folder.id);
-                            setFolderMenuOpen(false);
-                          }}
-                          className={cn(MENU_ITEM_CLASS, "w-full gap-2 text-xs disabled:opacity-100")}
+                          role="menuitemcheckbox"
+                          aria-checked={isMember}
+                          // Toggles membership and stays open, so several folders can be picked in a row.
+                          onClick={() =>
+                            onSetFolders(
+                              note.id,
+                              isMember
+                                ? note.folder_ids.filter((id) => id !== folder.id)
+                                : [...note.folder_ids, folder.id]
+                            )
+                          }
+                          className={cn(MENU_ITEM_CLASS, "w-full gap-2 text-xs")}
                         >
                           <FolderOpen size={14} className="shrink-0 text-muted" />
                           <span dir="auto" className="flex-1 truncate text-start">
                             {defaultFolderDisplayName(folder, t)}
                           </span>
-                          {isCurrent && <Check size={12} className="shrink-0 text-primary" />}
+                          {isMember && <Check size={12} className="shrink-0 text-primary" />}
                         </button>
                       );
                     })}
@@ -775,7 +769,7 @@ export default function NoteEditor({
                       <p className="py-1.5 text-center text-xs text-muted">{t("notes.context.noResults")}</p>
                     )}
                   </div>
-                  {onCreateFolderAndMove && (
+                  {onCreateFolderAndAdd && (
                     <div className="mt-1 border-t border-border pt-1">
                       {isCreatingFolder ? (
                         <input
@@ -785,10 +779,9 @@ export default function NoteEditor({
                           onChange={(e) => setNewFolderName(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && newFolderName.trim()) {
-                              onCreateFolderAndMove(note.id, newFolderName.trim());
+                              onCreateFolderAndAdd(note.id, newFolderName.trim());
                               setNewFolderName("");
                               setIsCreatingFolder(false);
-                              setFolderMenuOpen(false);
                             }
                             if (e.key === "Escape") {
                               e.stopPropagation();
@@ -844,6 +837,11 @@ export default function NoteEditor({
                 <NoteRecordControl
                   isRecording={isRecording}
                   isProcessing={isProcessing}
+                  isGeneratingSummary={
+                    actionProcessingState === "processing" &&
+                    actionName === t("notes.editor.generateSummary", { defaultValue: "Summary" })
+                  }
+                  showSummaryAction={hasMeetingTranscript && !enhancement && !isRecording}
                   disabled={!recordingAllowed}
                   capturePhase={capturePhase}
                   captureStartedAt={captureStartedAt}
@@ -851,6 +849,7 @@ export default function NoteEditor({
                   onStop={onStopRecording}
                   onPause={onPauseRecording}
                   onResume={onResumeRecording}
+                  onGenerateSummary={onGenerateSummary}
                 />
               )}
             </div>}
@@ -882,13 +881,13 @@ export default function NoteEditor({
                   onGenerateSummary?.();
                   if (debugPreview) setViewMode("enhanced");
                 }}>
-                  <AlignLeft size={16} />
+                  <WandSparkles size={16} className="text-accent" />
                   {t("notes.editor.generateSummary")}
                 </Button>}
               </EmptyStateCard>}
-              fallbackTranscript={hasChatSegments && !isRecording ? <MeetingTranscriptChat
+              renderFallbackTranscript={(transcriptScrollRef) => hasChatSegments && !isRecording ? <MeetingTranscriptChat
                 segments={displaySegments}
-                scrollElementRef={contentScrollRef}
+                scrollElementRef={transcriptScrollRef}
                 speakerMappings={speakerMappings}
                 speakerProfiles={knownSpeakers}
                 participants={parsedParticipants}

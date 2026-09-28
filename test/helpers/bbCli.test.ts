@@ -46,6 +46,7 @@ test("bb CLI creates a profile project and resumes an in-flight summary from its
   const previousBinary = process.env.BB_CLI;
   const previousCapture = process.env.BB_FAKE_CAPTURE;
   const previousVersion = process.env.BB_FAKE_VERSION;
+  const previousPath = process.env.PATH;
   process.env.BB_CLI = binary;
   process.env.BB_FAKE_CAPTURE = capture;
   t.after(() => {
@@ -55,6 +56,8 @@ test("bb CLI creates a profile project and resumes an in-flight summary from its
     else process.env.BB_FAKE_CAPTURE = previousCapture;
     if (previousVersion === undefined) delete process.env.BB_FAKE_VERSION;
     else process.env.BB_FAKE_VERSION = previousVersion;
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
     fs.rmSync(directory, { recursive: true, force: true });
   });
   fs.writeFileSync(binary, `#!/usr/bin/env node
@@ -85,6 +88,7 @@ else throw new Error("Unexpected bb command: " + args.join(" "));
   t.after(() => { delete process.env.BB_FAKE_WORKSPACE; });
 
   clearBbCaches();
+  process.env.PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
   await assertBbVersion();
   process.env.BB_FAKE_VERSION = "0.44.1";
   clearBbCaches();

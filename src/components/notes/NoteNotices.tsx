@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Spinner } from "@heroui/react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
+import { Clock } from "../icons";
 
 type NoticeStatus = "default" | "accent" | "success" | "warning" | "danger";
 
@@ -12,6 +14,7 @@ export function NoteNotice({
   description,
   actions,
   busy = false,
+  progressStartedAt,
   role,
 }: {
   status: NoticeStatus;
@@ -19,6 +22,8 @@ export function NoteNotice({
   description?: ReactNode;
   actions?: ReactNode;
   busy?: boolean;
+  /** When set with `busy`, show a live "elapsed" timer so the user knows the request is still moving. */
+  progressStartedAt?: number;
   role?: "status" | "alert";
 }) {
   return (
@@ -31,11 +36,42 @@ export function NoteNotice({
         <Alert.Indicator />
       )}
       <Alert.Content>
-        <Alert.Title className="text-sm">{title}</Alert.Title>
+        <Alert.Title className="flex items-center gap-2 text-sm">
+          <span>{title}</span>
+          {busy && progressStartedAt !== undefined && (
+            <ElapsedClock since={progressStartedAt} />
+          )}
+        </Alert.Title>
         {description && <Alert.Description className="text-xs">{description}</Alert.Description>}
         {actions && <div className="mt-2.5 flex flex-wrap items-center gap-2">{actions}</div>}
       </Alert.Content>
     </Alert>
+  );
+}
+
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function ElapsedClock({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <span
+      aria-label="Elapsed"
+      className="inline-flex items-center gap-1 text-2xs font-normal text-muted tabular-nums"
+    >
+      <Clock size={11} className="shrink-0" />
+      {formatElapsed(now - since)}
+    </span>
   );
 }
 

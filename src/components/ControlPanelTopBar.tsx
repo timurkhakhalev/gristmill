@@ -33,6 +33,8 @@ interface ControlPanelTopBarProps {
   notesDebugScenario: NotesDebugScenario | null;
   onNotesDebugScenarioChange: (scenario: NotesDebugScenario | null) => void;
   showNotesDebug: boolean;
+  /** Status controls pinned to the right edge, e.g. the live recording chip. */
+  trailing?: React.ReactNode;
 }
 
 export default function ControlPanelTopBar({
@@ -47,6 +49,7 @@ export default function ControlPanelTopBar({
   notesDebugScenario,
   onNotesDebugScenarioChange,
   showNotesDebug,
+  trailing,
 }: ControlPanelTopBarProps) {
   const { t } = useTranslation();
   const clearTrafficLights = platform === "darwin" && insetTrafficLights;
@@ -122,7 +125,8 @@ export default function ControlPanelTopBar({
         </button>
       )}
 
-      <div className="flex items-center justify-self-end">
+      <div className="flex min-w-0 items-center gap-2 justify-self-end">
+        {trailing}
         {showNotesDebug && NotesDebugControls && (
           <div data-no-window-drag="" style={noDragStyle}>
             <React.Suspense fallback={null}>

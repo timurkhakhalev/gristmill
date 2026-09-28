@@ -8,13 +8,18 @@ export function useSystemAudioPermission() {
   const [access, setAccess] = useState<SystemAudioAccessResult | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const checkingRef = useRef(false);
+  const settingsOpenedRef = useRef(false);
 
   const check = useCallback(async () => {
     if (checkingRef.current) return;
     checkingRef.current = true;
     setIsChecking(true);
     try {
-      const result = await window.electronAPI?.checkSystemAudioAccess?.();
+      const recheckAfterSettings = settingsOpenedRef.current;
+      settingsOpenedRef.current = false;
+      const result = recheckAfterSettings
+        ? await window.electronAPI?.requestSystemAudioAccess?.()
+        : await window.electronAPI?.checkSystemAudioAccess?.();
       setAccess(result ?? DEFAULT_SYSTEM_AUDIO_ACCESS);
     } finally {
       checkingRef.current = false;
@@ -34,7 +39,8 @@ export function useSystemAudioPermission() {
   }, [isMacOS, check]);
 
   const openSettings = useCallback(async () => {
-    await window.electronAPI?.openSystemAudioSettings?.();
+    const result = await window.electronAPI?.openSystemAudioSettings?.();
+    settingsOpenedRef.current = result?.success === true;
   }, []);
 
   const request = useCallback(async (): Promise<boolean> => {
@@ -63,13 +69,16 @@ export function useSystemAudioPermission() {
       const result = await window.electronAPI?.requestSystemAudioAccess?.();
       const nextAccess = result ?? currentAccess;
       setAccess(nextAccess);
+      if (!nextAccess.granted && currentAccess.status === "denied") {
+        await openSettings();
+      }
       return nextAccess.granted;
     } catch {
       return false;
     } finally {
       setIsChecking(false);
     }
-  }, [access]);
+  }, [access, openSettings]);
 
   const granted = access?.granted ?? false;
   const status = access?.status ?? "unknown";

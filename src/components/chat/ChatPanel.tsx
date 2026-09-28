@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@heroui/react";
-import { X, PanelRight, PanelRightClose, Sparkles, SquarePen } from "../icons";
+import { Mail, X, PanelRight, PanelRightClose, Sparkles, SquarePen } from "../icons";
 import { IconTooltip } from "../ui/IconTooltip";
 import { cn } from "../lib/utils";
 import { ChatMessages } from "./ChatMessages";
@@ -29,6 +29,8 @@ interface ChatPanelProps {
   suggestions?: string[];
   emptyStateText: string;
   onOpenNote?: (noteId: number) => void;
+  /** Runs the editable Follow-up action; its draft arrives as an ordinary assistant message. */
+  followUp?: { label: string; onPress: () => void; disabled?: boolean; title?: string };
   /** Hosts that have room for a docked column offer the sidebar mode. */
   allowSidebar?: boolean;
   voiceDraft?: boolean;
@@ -65,6 +67,7 @@ export default function ChatPanel({
   onSwitchConversation,
   onNewChat,
   suggestions = [],
+  followUp,
   emptyStateText,
   onOpenNote,
   allowSidebar = false,
@@ -143,8 +146,20 @@ export default function ChatPanel({
           }
         />
       </div>
-      {suggestions.length > 0 && (
+      {(suggestions.length > 0 || followUp) && (
         <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-5 pt-2 pb-1">
+          {followUp && (
+            <button
+              type="button"
+              onClick={followUp.onPress}
+              disabled={!isIdle || followUp.disabled}
+              title={followUp.title}
+              className="inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-primary outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus disabled:pointer-events-none disabled:opacity-50"
+            >
+              <Mail size={12} className="shrink-0" />
+              {followUp.label}
+            </button>
+          )}
           {suggestions.map((text) => (
             <button
               key={text}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { NoteItem } from "../../contracts/notes";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import type {
@@ -12,6 +12,7 @@ import { Button } from "../ui/button";
 import NoteEditor from "./NoteEditor";
 import NotesOnboarding from "./NotesOnboarding";
 import type { NotesDebugScenario } from "./NotesDebugControls";
+import type { MockPipeline } from "./meetingMock";
 
 const NOW = "2026-09-25T12:00:00.000Z";
 const SECOND_RECORDING_ID = "00000000-0000-4000-8000-000000000101";
@@ -40,7 +41,7 @@ const part2Segments = [
 const fullSegments = [...transcriptSegments, ...part2Segments];
 const transcript = serializeTranscriptSegments(fullSegments);
 const summary =
-  "## Решение\nПровести тестовый созвон и проверить сохранность обеих дорожек.\n\n## Следующий шаг\nПроверить результат транскрипции.";
+  "## TLDR\nКоманда обсудила готовность релиза: главный блокер — регрессия по Stripe, деплой перенесён на понедельник. Договорились проверить логи meeting processing и синхронизироваться завтра.\n\n## Готовность релиза\n**Speaker 2** сообщил, что фича для биллинга готова, но регрессию по Stripe нужно закрыть. Регрессию берёт Лера, срок согласуется.\n\n## Дашборд и утечка\n**Speaker 2** заметил падение метрик и заподозрил утечку в meeting processing; **Speaker 1** предложил посмотреть логи вечером. Позже утечку нашли: неиспользуемый MediaRecorder.";
 const config: MeetingProcessingConfig = {
   transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "ru" },
   summary: {
@@ -51,15 +52,44 @@ const config: MeetingProcessingConfig = {
   },
 };
 
+const TASK2_SUMMARY_SCENARIOS: NotesDebugScenario[] = [
+  "summary-tasks-loading", "summary-tasks-ok", "summary-tasks-zero", "summary-tasks-error",
+  "summary-tasks-format", "summary-tasks-conflict", "summary-recap-running", "summary-recap",
+];
+const TASK2_TRANSCRIPT_SCENARIOS: NotesDebugScenario[] = [
+  ...TASK2_SUMMARY_SCENARIOS, "naming", "short-meeting", "speakers-auto", "chat-follow-up",
+];
+
+function makeMockPipeline(scenario: NotesDebugScenario): MockPipeline | undefined {
+  switch (scenario) {
+    case "gate-waiting": return { waitingSeconds: 15 };
+    case "naming": return { namingRunning: true };
+    case "short-meeting": return { autoSummarySkipped: { seconds: 130, chars: 1340 } };
+    case "speakers-auto": return { modelSpeakerIds: ["speaker-2"], tasks: "ok", recap: "none" };
+    case "summary-tasks-loading": return { tasks: "loading", recap: "none" };
+    case "summary-tasks-ok": return { tasks: "ok", recap: "none" };
+    case "summary-tasks-zero": return { tasks: "zero", recap: "none" };
+    case "summary-tasks-error": return { tasks: "error", recap: "none" };
+    case "summary-tasks-format": return { tasks: "format", recap: "none" };
+    case "summary-tasks-conflict": return { tasks: "conflict", recap: "none" };
+    case "summary-recap-running": return { tasks: "ok", recap: "running" };
+    case "summary-recap": return { tasks: "ok", recap: "ok" };
+    case "chat-follow-up": return {};
+    default: return undefined;
+  }
+}
+
 function makePreview(scenario: NotesDebugScenario) {
-  const hasTranscript = [
+  const hasTranscript = TASK2_TRANSCRIPT_SCENARIOS.includes(scenario) || [
     "transcript",
     "ready",
     "audio-deleted",
     "enhanced-stale",
     "summary-failed",
   ].includes(scenario);
-  const hasSummary = ["ready", "audio-deleted", "enhanced-stale"].includes(scenario);
+  const hasSummary =
+    TASK2_SUMMARY_SCENARIOS.includes(scenario) || scenario === "speakers-auto" ||
+    ["ready", "audio-deleted", "enhanced-stale"].includes(scenario);
   const isRecording =
     scenario === "recording" || scenario === "reconnecting" || scenario === "system-unavailable";
   const note: NoteItem = {
@@ -139,7 +169,7 @@ function makePreview(scenario: NotesDebugScenario) {
     createdAt: runCreatedAt,
     updatedAt: runCreatedAt,
   };
-  const hasRecording = [
+  const hasRecording = scenario === "gate-waiting" || TASK2_TRANSCRIPT_SCENARIOS.includes(scenario) || [
     "queued",
     "processing",
     "processing-elapsed-short",
@@ -282,6 +312,7 @@ export default function NotesDebugPreview({
   };
 
   const { note, recordings } = preview;
+  const mockPipeline = useMemo(() => makeMockPipeline(scenario), [scenario]);
   return (
     <div className="flex h-full flex-col" data-notes-debug-scenario={scenario}>
       <div className="shrink-0 border-b border-orange-500/20 bg-orange-500/10 px-4 py-2 text-xs leading-snug text-orange-700 dark:text-orange-300">
@@ -356,9 +387,12 @@ export default function NotesDebugPreview({
               micStatus: isRecording ? "active" : "inactive",
               systemStatus,
               viewMode:
-                scenario === "ready" || scenario === "enhanced-stale"
+                scenario === "ready" || scenario === "enhanced-stale" || scenario === "short-meeting" ||
+                TASK2_SUMMARY_SCENARIOS.includes(scenario)
                   ? "enhanced"
                   : "raw",
+              mockPipeline,
+              chatMode: scenario === "chat-follow-up" ? "floating" : undefined,
             }}
           />
         </div>

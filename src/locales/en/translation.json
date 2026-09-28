@@ -1771,6 +1771,15 @@
         "detailedNotes": {
           "name": "Detailed Notes",
           "description": "Accurate, comprehensive meeting notes with decisions and action items"
+        },
+        "followUp": {
+          "name": "Follow-up",
+          "description": "Draft a follow-up message in the meeting chat",
+          "cta": "Draft a follow-up"
+        },
+        "recap": {
+          "name": "Recap",
+          "description": "Add a short recap of this meeting to its summary"
         }
       },
       "errors": {

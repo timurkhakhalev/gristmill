@@ -25,7 +25,20 @@ export type NotesDebugScenario =
   | "reconnecting"
   | "system-unavailable"
   | "capture-saving"
-  | "capture-failed";
+  | "capture-failed"
+  | "gate-waiting"
+  | "naming"
+  | "short-meeting"
+  | "speakers-auto"
+  | "summary-tasks-loading"
+  | "summary-tasks-ok"
+  | "summary-tasks-zero"
+  | "summary-tasks-error"
+  | "summary-tasks-format"
+  | "summary-tasks-conflict"
+  | "summary-recap-running"
+  | "summary-recap"
+  | "chat-follow-up";
 
 const scenarios: { id: NotesDebugScenario; label: string }[] = [
   { id: "onboarding", label: "Setup checklist" },
@@ -51,6 +64,19 @@ const scenarios: { id: NotesDebugScenario; label: string }[] = [
   { id: "system-unavailable", label: "System audio unavailable" },
   { id: "capture-saving", label: "Capture saving" },
   { id: "capture-failed", label: "Capture failed" },
+  { id: "gate-waiting", label: "Task 2 · 15 s wait before transcription" },
+  { id: "naming", label: "Task 2 · Identifying speakers" },
+  { id: "short-meeting", label: "Task 2 · Short meeting, no auto Summary" },
+  { id: "speakers-auto", label: "Task 2 · Auto speaker names" },
+  { id: "summary-tasks-loading", label: "Task 2 · Summary, tasks loading" },
+  { id: "summary-tasks-ok", label: "Task 2 · Summary with HIGH/MEDIUM/LOW" },
+  { id: "summary-tasks-zero", label: "Task 2 · Summary, no tasks" },
+  { id: "summary-tasks-error", label: "Task 2 · Tasks failed" },
+  { id: "summary-tasks-format", label: "Task 2 · Tasks: custom prompt format" },
+  { id: "summary-tasks-conflict", label: "Task 2 · Tasks: edit conflict" },
+  { id: "summary-recap-running", label: "Task 2 · Recap running" },
+  { id: "summary-recap", label: "Task 2 · Summary with Recap" },
+  { id: "chat-follow-up", label: "Task 2 · Follow-up in Chat" },
 ];
 
 export default function NotesDebugControls({

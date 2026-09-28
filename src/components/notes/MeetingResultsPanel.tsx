@@ -18,6 +18,7 @@ import { IconTooltip } from "../ui/IconTooltip";
 import { cn } from "../lib/utils";
 import { formatDate, formatTime, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
+import { composeMockSummary, MOCK_GATE_SECONDS, type MockPipeline } from "./meetingMock";
 
 type ViewMode = "raw" | "enhanced";
 type RunChoice = { kind: "reprocess" | "summary"; partId?: string };
@@ -87,7 +88,9 @@ function AudioPartSummary({ part, index, count, timeLabel, tr }: {
   </div>;
 }
 
-export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, renderFallbackTranscript, fallbackSummary, fallbackText, actions, notice, capturePhase }: {
+export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, renderFallbackTranscript, fallbackSummary, fallbackText, actions, notice, capturePhase, mockPipeline }: {
+  /** Debug preview only: in-memory stand-in for the delayed-ASR, naming, tasks and Recap pipeline. */
+  mockPipeline?: MockPipeline;
   actions?: ReactNode;
   /** Plain text of each view's fallback content, copied when no processing run provides it. */
   fallbackText: Record<ViewMode | "transcript", string>;
@@ -123,6 +126,25 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     else setMessage(text);
   }, [toastApi]);
   const [busy, setBusy] = useState(false);
+  const [mock, setMock] = useState(mockPipeline);
+  useEffect(() => setMock(mockPipeline), [mockPipeline]);
+  const patchMock = useCallback((patch: Partial<MockPipeline>) => setMock((current) => current && { ...current, ...patch }), []);
+  const mockTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(mockTimer.current), []);
+  const gateActive = mock?.waitingSeconds !== undefined && mock.waitingSeconds > 0;
+  useEffect(() => {
+    if (!gateActive) return;
+    const id = window.setInterval(() => setMock((current) => {
+      if (!current?.waitingSeconds) return current;
+      const left = current.waitingSeconds - 1;
+      return left > 0 ? { ...current, waitingSeconds: left } : { ...current, waitingSeconds: undefined, namingRunning: true };
+    }), 1000);
+    return () => window.clearInterval(id);
+  }, [gateActive]);
+  const mockAfter = (ms: number, patch: Partial<MockPipeline>) => {
+    window.clearTimeout(mockTimer.current);
+    mockTimer.current = window.setTimeout(() => patchMock(patch), ms);
+  };
   const [speakerId, setSpeakerId] = useState<string | null>(null);
   const [speakerName, setSpeakerName] = useState("");
   const [speakerProfileId, setSpeakerProfileId] = useState("none");
@@ -246,7 +268,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     : groups.find((group) => group.id === currentGroup)?.parts ?? [];
   const speakerLabel = (id: string) => t("meetingResults.speakerNumber", { defaultValue: "Speaker {{number}}", number: [...new Set(selected?.transcript?.segments?.map((segment) => segment.speaker).filter(Boolean))].indexOf(id) + 1 });
   const selectedId = selected?.run.id ?? "";
-  const copyText = viewMode === "enhanced" ? selected?.summary?.text || fallbackText.enhanced : fallbackText.raw;
+  const savedSummary = selected?.summary?.text;
+  const summaryText = savedSummary && mock ? composeMockSummary(savedSummary, mock.tasks, mock.recap) : savedSummary;
+  const copyText = viewMode === "enhanced" ? summaryText || fallbackText.enhanced : fallbackText.raw;
   const transcriptCopyText = selected?.transcript?.text || fallbackText.transcript;
   const [copied, setCopied] = useState(false);
   const [transcriptCopied, setTranscriptCopied] = useState(false);
@@ -371,7 +395,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     if (!speakerId || !selected || !speakerName.trim()) return;
     if (previewRecordings) {
       setRecordings((items) => items.map((item) => ({ ...item, runs: item.runs.map((run) => run.run.id === selected.run.id ? { ...run, speakerCorrections: [...run.speakerCorrections.filter((correction) => correction.speakerId !== speakerId), { speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId) }] } : run) })));
-      setSpeakerId(null); return;
+      setSpeakerId(null);
+      setMock((current) => current && { ...current, modelSpeakerIds: current.modelSpeakerIds?.filter((id) => id !== speakerId), summaryStale: Boolean(summaryText) });
+      return;
     }
     const result = await window.electronAPI.meetingProcessingSetSpeakerCorrection({
       runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? selected.run.id : selected.run.id,
@@ -434,7 +460,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
                 <div>{segment.speaker && <button className="rounded text-xs font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
                   const correction = selected.speakerCorrections.find((item) => item.speakerId === segment.speaker);
                   setSpeakerId(segment.speaker ?? null); setSpeakerName(correction?.displayName ?? (segment.speaker ? speakerLabel(segment.speaker) : "")); setSpeakerProfileId(String(correction?.profileId ?? "none"));
-                }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
+                }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}{segment.speaker && mock?.modelSpeakerIds?.includes(segment.speaker) && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("autoNameHint", "Suggested from the conversation. Click the name to change it.")}>{tr("autoName", "auto")}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
               </div>
             </div>;
           });
@@ -508,6 +534,17 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     </div>
 
     {notice}
+    {gateActive && <NoteNotice
+      status="accent"
+      busy
+      title={tr("gateWaiting", "Transcription starts in {{seconds}} s", { seconds: mock?.waitingSeconds ?? 0 })}
+      description={tr("gateWaitingReason", "The recording is saved. Resume it to keep going, or start now.")}
+      actions={<>
+        <Button size="sm" variant="secondary" onPress={() => { patchMock({ waitingSeconds: undefined }); notify("Mock: recording resumed, pending transcription cancelled"); }}>{tr("resumeRecording", "Resume recording")}</Button>
+        <Button size="sm" variant="tertiary" onPress={() => patchMock({ waitingSeconds: undefined, namingRunning: true })}>{tr("transcribeNow", "Transcribe now")}</Button>
+      </>}
+    />}
+    {mock?.namingRunning && !gateActive && <NoteNotice status="accent" busy title={`${tr("namingSpeakers", "Identifying speakers")}…`} description={tr("namingSpeakersReason", "Speaker names are proposed from the conversation. You can correct them afterwards.")} />}
     {parts.some((part) => part.recording.captureState === "incomplete" || part.recording.captureErrorCode) && <NoteNotice
       status="warning"
       title={t("notes.editor.capture.incomplete")}
@@ -550,7 +587,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         </IconTooltip>
       </div>}
     </div> : <div>
-      {selected && (viewMode !== "enhanced" || selected.summary?.text) && <div className="flex items-center">
+      {selected && (viewMode !== "enhanced" || summaryText) && <div className="flex items-center">
         <Popover isOpen={modelOpen} onOpenChange={setModelOpen}>
           <Button size="sm" variant="ghost" className="-ms-2 h-7 min-h-7 max-w-full gap-1.5 px-2 text-xs text-muted hover:text-foreground" aria-label={tr("resultActions", "Result actions")}>
             <ProviderIcon provider={selected.run.config?.summary?.provider ?? ""} className="size-3.5 shrink-0" />
@@ -561,11 +598,17 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
             <div className="flex flex-col gap-1">
               <Button size="sm" variant="ghost" className="justify-start gap-2" onPress={() => { setModelOpen(false); openRun("summary"); }}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Button>
               <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={!availableParts.length} onPress={() => { setModelOpen(false); openRun("reprocess"); }}><FileText size={14}/>{t("meetingResults.newAsr")}</Button>
+              {mock && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={mock.recap === "running" || !summaryText} onPress={() => { setModelOpen(false); patchMock({ recap: "running" }); mockAfter(1500, { recap: "ok" }); }}><AlignLeft size={14}/>{mock.recap === "ok" ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
             </div>
           </Popover.Dialog></Popover.Content>
         </Popover>
       </div>}
-      {selected?.summary?.text ? <article className="note-prose"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary}
+      {mock && summaryText && <MockSummaryNotices mock={mock} onRegenerate={() => { notify("Mock: Summary regenerated with the new names"); patchMock({ summaryStale: false }); }} />}
+      {summaryText ? <article className="note-prose"><ReactMarkdown>{summaryText}</ReactMarkdown></article> : <>
+        {mock?.autoSummarySkipped && <NoteNotice status="accent" title={tr("autoSummarySkipped", "Automatic Summary skipped")} description={tr("autoSummarySkippedReason", "This meeting is short ({{seconds}} s, {{chars}} characters). Automatic Summary starts after 180 s and 2500 characters. You can create one now.", mock.autoSummarySkipped)} />}
+        {fallbackSummary}
+      </>}
+      {mock && summaryText && <MockTaskNotices tasks={mock.tasks} notify={notify} onRetry={() => { patchMock({ tasks: "loading" }); mockAfter(1500, { tasks: "ok" }); }} />}
       {copyText.trim() && <div className="mt-3 flex justify-start">
         <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
           <Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7 text-muted hover:text-foreground" isDisabled={!copyText.trim()} aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")} onPress={() => void copyView()}>
@@ -603,6 +646,29 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     </Modal.Body><Modal.Footer><Button variant="tertiary" onPress={() => setSpeakerId(null)}>{tr("cancel", "Cancel")}</Button><Button isDisabled={!speakerName.trim() || busy} onPress={() => void correctSpeaker()}>{t("meetingResults.saveSpeaker")}</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
     <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => !open && hideConfirmDialog()} title={confirmDialog.title} description={confirmDialog.description} confirmText={confirmDialog.confirmText} cancelText={confirmDialog.cancelText} onConfirm={confirmDialog.onConfirm} variant={confirmDialog.variant} />
   </div>;
+}
+
+function MockSummaryNotices({ mock, onRegenerate }: { mock: MockPipeline; onRegenerate: () => void }) {
+  const { t } = useTranslation();
+  if (!mock.summaryStale) return null;
+  return <NoteNotice
+    status="warning"
+    title={t("meetingResults.summaryStale", { defaultValue: "Speaker names changed" })}
+    description={t("meetingResults.summaryStaleReason", { defaultValue: "This Summary was written with the earlier names and is unchanged." })}
+    actions={<Button size="sm" variant="secondary" onPress={onRegenerate}>{t("meetingResults.regenerateSummary", { defaultValue: "Regenerate Summary" })}</Button>}
+  />;
+}
+
+function MockTaskNotices({ tasks, notify, onRetry }: { tasks: MockPipeline["tasks"]; notify: (text: string) => void; onRetry: () => void }) {
+  const { t } = useTranslation();
+  const tr = (key: string, fallback: string) => t(`meetingResults.${key}`, { defaultValue: fallback });
+  const retry = <Button size="sm" variant="secondary" onPress={onRetry}>{tr("retryTasks", "Retry tasks")}</Button>;
+  if (tasks === "loading") return <NoteNotice status="accent" busy title={`${tr("tasksRunning", "Prioritizing action items")}…`} description={tr("tasksRunningReason", "The Summary above is ready. Tasks will be sorted by priority.")} />;
+  if (tasks === "error") return <NoteNotice status="danger" title={tr("tasksFailed", "Couldn't extract action items")} description={tr("tasksFailedReason", "The model reply didn't match the expected format. The Summary is unchanged.")} actions={retry} />;
+  if (tasks === "format") return <NoteNotice status="warning" title={tr("tasksFormat", "Action items were found but not added")} description={tr("tasksFormatReason", "This Summary has no single “## Action Items” section, likely because of a custom prompt. The text is unchanged.")} actions={<>
+    <Button size="sm" variant="secondary" onPress={() => notify("Mock: opens the Detailed Notes prompt")}>{tr("editPrompt", "Edit prompt")}</Button>{retry}</>} />;
+  if (tasks === "conflict") return <NoteNotice status="warning" title={tr("tasksConflict", "Action items weren't applied")} description={tr("tasksConflictReason", "You edited this section while tasks were being prepared, so your text was kept.")} actions={retry} />;
+  return null;
 }
 
 function AudioPlayer({

@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState, type Rea
 import ReactMarkdown from "react-markdown";
 import { Button, Dropdown, Label, ListBox, Modal, Popover, Select } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AlignLeft, AudioLines, Check, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2 } from "../icons";
+import { AlignLeft, ArrowLeft, ArrowRight, AudioLines, Check, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2 } from "../icons";
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
@@ -124,7 +124,75 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const [speakerProfileId, setSpeakerProfileId] = useState("none");
   const [profiles, setProfiles] = useState<Array<{ id: number; display_name: string }>>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [playbackTime, setPlaybackTime] = useState(0);
+  const [playbackDuration, setPlaybackDuration] = useState(0);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const seekBarRef = useRef<HTMLDivElement>(null);
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onTime = () => { if (!isSeeking) setPlaybackTime(audio.currentTime); };
+    const onMeta = () => setPlaybackDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+    const onEnd = () => { setPlaybackTime(0); setPlayingId(null); };
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("loadedmetadata", onMeta);
+    audio.addEventListener("durationchange", onMeta);
+    audio.addEventListener("ended", onEnd);
+    return () => {
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("loadedmetadata", onMeta);
+      audio.removeEventListener("durationchange", onMeta);
+      audio.removeEventListener("ended", onEnd);
+    };
+  }, [isSeeking]);
+
+  const playingRecording = useMemo(
+    () => recordings.find((item) => item.recording.id === playingId) ?? null,
+    [recordings, playingId]
+  );
+
+  const seekTo = (seconds: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const clamped = Math.max(0, Math.min(seconds, Number.isFinite(audio.duration) ? audio.duration : seconds));
+    audio.currentTime = clamped;
+    setPlaybackTime(clamped);
+  };
+  const skip = (delta: number) => seekTo(playbackTime + delta);
+
+  const onSeekBarPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const bar = seekBarRef.current;
+    const audio = audioRef.current;
+    if (!bar || !audio) return;
+    const rect = bar.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    setIsSeeking(true);
+    seekTo(ratio * (Number.isFinite(audio.duration) ? audio.duration : 0));
+    bar.setPointerCapture(event.pointerId);
+  };
+  const onSeekBarPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isSeeking) return;
+    const bar = seekBarRef.current;
+    const audio = audioRef.current;
+    if (!bar || !audio) return;
+    const rect = bar.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    seekTo(ratio * (Number.isFinite(audio.duration) ? audio.duration : 0));
+  };
+  const onSeekBarPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    setIsSeeking(false);
+    seekBarRef.current?.releasePointerCapture(event.pointerId);
+  };
+  const togglePlay = () => {
+    if (!audioRef.current || !playingId) return;
+    if (audioRef.current.paused) {
+      void audioRef.current.play().catch(() => notify(t("meetingResults.playbackError"), "destructive"));
+    } else {
+      audioRef.current.pause();
+    }
+  };
 
   const refresh = useCallback(async () => {
     if (previewRecordings) return;
@@ -311,8 +379,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     notify(t("meetingResults.exported"), "success");
   });
 
-  return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">
-    <div className="sticky top-0 z-10 -mt-4 mb-3 flex items-center justify-between gap-2 bg-background pt-4 pb-3 max-[720px]:flex-wrap">
+  return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">    <div className="sticky top-0 z-10 -mt-4 mb-3 flex items-center justify-between gap-2 bg-background pt-4 pb-3 max-[720px]:flex-wrap">
       <NoteViewSwitch
         value={viewMode}
         onChange={onViewModeChange}
@@ -475,7 +542,26 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     </div>}
     </div>
     {message && <NoteNotice status="default" title={message} />}
-    <audio ref={audioRef} preload="metadata" onEnded={() => setPlayingId(null)} />
+    {playingRecording && (
+      <AudioPlayer
+        audioRef={audioRef}
+        recording={playingRecording.recording}
+        currentTime={playbackTime}
+        duration={playbackDuration}
+        seekBarRef={seekBarRef}
+        onTogglePlay={togglePlay}
+        onSkip={skip}
+        onSeekBarPointerDown={onSeekBarPointerDown}
+        onSeekBarPointerMove={onSeekBarPointerMove}
+        onSeekBarPointerUp={onSeekBarPointerUp}
+        tr={tr}
+        t={t}
+        locale={locale}
+        dateFormat={dateFormat}
+        timeFormat={timeFormat}
+      />
+    )}
+    <audio ref={audioRef} preload="metadata" onEnded={() => { setPlayingId(null); setPlaybackTime(0); }} />
 
     <Modal isOpen={speakerId !== null} onOpenChange={(open) => { if (!open) setSpeakerId(null); }}><Modal.Backdrop><Modal.Container size="sm"><Modal.Dialog><Modal.CloseTrigger/><Modal.Header><Modal.Heading>{t("meetingResults.saveSpeaker")}</Modal.Heading></Modal.Header><Modal.Body className="flex flex-col gap-4">
       <label className="flex flex-col gap-2 text-xs">{tr("speakerName", "Speaker name")}<input dir="auto" className="h-9 rounded-lg px-3 text-sm" value={speakerName} onChange={(event) => setSpeakerName(event.target.value)} /></label>
@@ -483,4 +569,106 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     </Modal.Body><Modal.Footer><Button variant="tertiary" onPress={() => setSpeakerId(null)}>{tr("cancel", "Cancel")}</Button><Button isDisabled={!speakerName.trim() || busy} onPress={() => void correctSpeaker()}>{t("meetingResults.saveSpeaker")}</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
     <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => !open && hideConfirmDialog()} title={confirmDialog.title} description={confirmDialog.description} confirmText={confirmDialog.confirmText} cancelText={confirmDialog.cancelText} onConfirm={confirmDialog.onConfirm} variant={confirmDialog.variant} />
   </div>;
+}
+
+function AudioPlayer({
+  audioRef,
+  recording,
+  currentTime,
+  duration,
+  seekBarRef,
+  onTogglePlay,
+  onSkip,
+  onSeekBarPointerDown,
+  onSeekBarPointerMove,
+  onSeekBarPointerUp,
+  tr,
+  t,
+  locale,
+  dateFormat,
+  timeFormat,
+}: {
+  audioRef: React.RefObject<HTMLAudioElement | null>;
+  recording: { id: string; startedAt: string; endedAt: string | null; durationSeconds: number | null };
+  currentTime: number;
+  duration: number;
+  seekBarRef: React.RefObject<HTMLDivElement | null>;
+  onTogglePlay: () => void;
+  onSkip: (delta: number) => void;
+  onSeekBarPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onSeekBarPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onSeekBarPointerUp: (event: React.PointerEvent<HTMLDivElement>) => void;
+  tr: (key: string, fallback: string, values?: Record<string, number>) => string;
+  t: (key: string, options?: { defaultValue?: string }) => string;
+  locale: string;
+  dateFormat: DateFormat;
+  timeFormat: TimeFormat;
+}) {
+  const effectiveDuration = duration > 0 ? duration : recording.durationSeconds ?? 0;
+  const isPlaying = audioRef.current ? !audioRef.current.paused : false;
+  const ratio = effectiveDuration > 0 ? Math.min(1, currentTime / effectiveDuration) : 0;
+  const started = dateLabel(recording.startedAt, locale, { timeStyle: "short" }, dateFormat, timeFormat);
+  return (
+    <div className="sticky bottom-3 left-0 right-0 z-20 mx-auto mt-4 flex w-full max-w-[880px] flex-col gap-2 rounded-2xl border border-border bg-background/95 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="flex items-center gap-2">
+        <IconTooltip label={tr("skipBack", "Back 15 seconds")}>
+          <Button isIconOnly size="sm" variant="ghost" aria-label={tr("skipBack", "Back 15 seconds")} onPress={() => onSkip(-15)}>
+            <span className="relative inline-flex items-center justify-center">
+              <ArrowLeft size={14} />
+              <span className="absolute -bottom-2 text-2xs font-semibold tabular-nums">15</span>
+            </span>
+          </Button>
+        </IconTooltip>
+        <IconTooltip label={isPlaying ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")}>
+          <Button isIconOnly size="sm" variant="secondary" aria-label={isPlaying ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={onTogglePlay}>
+            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+          </Button>
+        </IconTooltip>
+        <IconTooltip label={tr("skipForward", "Forward 15 seconds")}>
+          <Button isIconOnly size="sm" variant="ghost" aria-label={tr("skipForward", "Forward 15 seconds")} onPress={() => onSkip(15)}>
+            <span className="relative inline-flex items-center justify-center">
+              <ArrowRight size={14} />
+              <span className="absolute -bottom-2 text-2xs font-semibold tabular-nums">15</span>
+            </span>
+          </Button>
+        </IconTooltip>
+        <span className="tabular-nums text-xs text-muted">{formatClock(currentTime)}</span>
+        <div
+          ref={seekBarRef}
+          role="slider"
+          aria-label={t("meetingResults.seekAudio", { defaultValue: "Seek audio" })}
+          aria-valuemin={0}
+          aria-valuemax={Math.round(effectiveDuration)}
+          aria-valuenow={Math.round(currentTime)}
+          tabIndex={0}
+          onPointerDown={onSeekBarPointerDown}
+          onPointerMove={onSeekBarPointerMove}
+          onPointerUp={onSeekBarPointerUp}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") { event.preventDefault(); onSkip(-5); }
+            if (event.key === "ArrowRight") { event.preventDefault(); onSkip(5); }
+          }}
+          className="relative h-2 flex-1 cursor-pointer touch-none rounded-full bg-default"
+        >
+          <div className="absolute inset-y-0 left-0 rounded-full bg-primary" style={{ width: `${ratio * 100}%` }} />
+          <div
+            aria-hidden="true"
+            className="absolute top-1/2 size-3 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-primary bg-background shadow"
+            style={{ left: `${ratio * 100}%` }}
+          />
+        </div>
+        <span className="tabular-nums text-xs text-muted">{formatClock(effectiveDuration)}</span>
+        <span className="hidden text-2xs text-muted @md:inline">· {started}</span>
+      </div>
+    </div>
+  );
+}
+
+function formatClock(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  return `${minutes}:${String(secs).padStart(2, "0")}`;
 }

@@ -60,4 +60,4 @@ Verification run by this agent:
 - Tests/builds/install/native rebuilds were not run by this agent; root owns those checks. Run the plan's focused suite: `pnpm test -- test/helpers/meetingProcessing.test.ts test/helpers/speakerIpc.test.ts test/helpers/speakerAssignmentPolicy.test.ts test/helpers/speakerRetroactiveMapping.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts`. Also run `pnpm test -- test/services/meetingResults.test.ts` for the voice-provenance assertion updated in that existing test.
 - The isolated-profile Russian prompt-quality check was not run here; root should record the controlled transcript outputs and compare live UI to committed previews.
 
-Commits: pending M2 implementation and progress-record commits.
+Implementation commit: `394f19c63` (`M2: add speaker names and meeting Summary`). This progress-record update is a separate M2 log commit.

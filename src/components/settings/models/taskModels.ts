@@ -21,7 +21,7 @@ export const isSpeechTask = (task: ModelTask): task is SpeechTask => task === "m
 /** Sources a task can pick from, in tab order. */
 export function taskSources(task: ModelTask): ModelSource[] {
   if (task === "meeting") return ["cloud", "local"];
-  if (task === "upload") return ["cloud", "local", "self-hosted"];
+  if (task === "upload") return ["cloud", "local"];
   return ["cloud", "local", "self-hosted", "bb"];
 }
 
@@ -157,14 +157,7 @@ export function selectLocalModel(task: ModelTask, entry: LocalModelEntry): void 
 }
 
 export function selectSelfHosted(task: ModelTask, modelId?: string): void {
-  if (task === "upload") {
-    const s = useSettingsStore.getState();
-    s.setUploadTranscriptionMode("self-hosted");
-    s.setUploadUseLocalWhisper(false);
-    if (modelId !== undefined) s.setRemoteTranscriptionModel(modelId);
-    return;
-  }
-  if (task === "meeting") return;
+  if (isSpeechTask(task)) return;
   stopLocalLlmIfLeaving(task);
   setResolvedLLMConfig(task, { mode: "self-hosted", ...(modelId !== undefined ? { model: modelId } : {}) });
 }

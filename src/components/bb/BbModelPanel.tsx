@@ -65,10 +65,14 @@ export function BbModelPanel({ harnesses, selection, onSelect, leadingTabs = [],
     overscan: 8,
   });
 
+  // Opening (or switching harness) lands on the committed model; searching restarts from the top.
+  const selectedIndex = selection?.provider === viewing ? filtered.findIndex((model) => model.id === selection.model) : -1;
   useEffect(() => {
-    setActiveIndex(0);
-    virtualizer.scrollToOffset(0);
-  }, [normalized, viewing, virtualizer]);
+    const index = normalized ? 0 : Math.max(selectedIndex, 0);
+    setActiveIndex(index);
+    if (index > 0) virtualizer.scrollToIndex(index, { align: "center" });
+    else virtualizer.scrollToOffset(0);
+  }, [normalized, viewing, selectedIndex, virtualizer]);
 
   useEffect(() => {
     if (!leadingActive) searchRef.current?.focus();
@@ -176,7 +180,7 @@ export function BbModelPanel({ harnesses, selection, onSelect, leadingTabs = [],
                       style={{ position: "absolute", top: 0, left: 0, width: "100%", height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
                       className={cn(
                         "flex items-center gap-2 rounded-md px-2 text-start text-sm outline-none",
-                        item.index === activeIndex ? "bg-default text-foreground" : "text-foreground/90"
+                        item.index === activeIndex ? "bg-default text-foreground" : selected ? "bg-default/60 text-foreground" : "text-foreground/90"
                       )}
                     >
                       <span className="min-w-0 flex-1 truncate">{model.displayName}</span>

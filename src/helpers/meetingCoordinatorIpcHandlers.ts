@@ -146,7 +146,7 @@ export interface MeetingCoordinatorDeps {
     "setUserRecording" | "beginRecordingSession" | "endRecordingSession" |
     "recordMeetingAudioChunk" | "setRecordingSystemAudioAvailable" | "setMicWarmHold" |
     "getPreferences" | "setPreferences" | "handleNotificationResponse" |
-    "joinCalendarMeeting"> & MeetingAutoEndEngineLike) | null;
+    "joinCalendarMeeting" | "findCalendarEventNote" | "createCalendarEventNote"> & MeetingAutoEndEngineLike) | null;
   audioTapManager: Pick<AudioTapManager, "isSupported" | "start" | "stop"> | null;
   whisperManager: {
     transcribeLocalWhisper(
@@ -2180,6 +2180,22 @@ export function registerMeetingCoordinatorHandlers(
       return { success: false, error: (error as Error).message };
     }
   });
+
+  ipcMain.handle("find-calendar-event-note", async (_event, eventId: string) => {
+    return meetingDetectionEngine?.findCalendarEventNote(eventId) ?? null;
+  });
+
+  ipcMain.handle(
+    "create-calendar-event-note",
+    async (_event, eventId: string, initial: { title?: unknown; content?: unknown } | null) => {
+      return (
+        meetingDetectionEngine?.createCalendarEventNote(eventId, {
+          title: typeof initial?.title === "string" ? initial.title : undefined,
+          content: typeof initial?.content === "string" ? initial.content : undefined,
+        }) ?? null
+      );
+    }
+  );
 
   ipcMain.handle("get-meeting-notification-data", async () => {
     return deps.getMeetingNotificationData?.() ?? null;

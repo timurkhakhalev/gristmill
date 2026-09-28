@@ -16,7 +16,6 @@ interface NoteBottomBarProps {
   onAskSubmit: (text: string) => void;
   onInputFocus?: () => void;
   askDisabled?: boolean;
-  actionPicker?: React.ReactNode;
   /** One centred call to action floated above the ask capsule. */
   callout?: React.ReactNode;
   hideInput?: boolean;
@@ -27,13 +26,13 @@ export default function NoteBottomBar({
   onAskSubmit,
   onInputFocus,
   askDisabled,
-  actionPicker,
   callout,
   hideInput,
 }: NoteBottomBarProps) {
   const { t } = useTranslation();
   const [inputText, setInputText] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hasText = inputText.trim().length > 0;
@@ -44,6 +43,7 @@ export default function NoteBottomBar({
     onAskSubmit(text);
     setInputText("");
     setIsExpanded(false);
+    setIsModelPickerOpen(false);
   }, [inputText, askDisabled, onAskSubmit]);
 
   const handleKeyDown = useCallback(
@@ -68,19 +68,22 @@ export default function NoteBottomBar({
   // Chat panel opening hides the input; drop the expanded state so the bar
   // comes back in its idle layout when the panel closes.
   useEffect(() => {
-    if (hideInput) setIsExpanded(false);
+    if (hideInput) {
+      setIsExpanded(false);
+      setIsModelPickerOpen(false);
+    }
   }, [hideInput]);
 
   useEffect(() => {
     if (!isExpanded) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (!hasText && containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (!hasText && !isModelPickerOpen && containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsExpanded(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isExpanded, hasText]);
+  }, [isExpanded, hasText, isModelPickerOpen]);
 
   return (
     <div
@@ -94,59 +97,72 @@ export default function NoteBottomBar({
         <div
           aria-hidden={hideInput}
           className={cn(
-            "flex-1 min-w-0 flex items-center h-11 gap-2 rounded-full",
+            "flex-1 min-w-0 flex flex-col justify-center gap-1",
             isRecording ? RECORDING_SURFACE : GLASS_SURFACE,
             "border",
             // Named properties, not transition-all: the surface swap below must
             // land instantly, or every recording start/stop tweens
-            // backdrop-filter for 500ms — the exact cost being removed.
-            "transition-[max-width,opacity,padding,border-color,box-shadow] duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]",
+            // backdrop-filter — the exact cost being removed.
+            "transition-[max-width,opacity,padding,border-color,box-shadow,height,border-radius] duration-300 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]",
             hideInput
               ? "max-w-0 opacity-0 ps-0 pe-0 border-transparent shadow-none pointer-events-none"
               : "max-w-[600px] opacity-100 ps-4 pe-1.5",
             isExpanded
-              ? "border-border ring-[3px] ring-primary/8"
-              : !hideInput && "border-border"
+              ? "h-[76px] rounded-2xl border-border ring-[3px] ring-primary/8"
+              : "h-11 rounded-full border-border"
           )}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) inputRef.current?.focus();
+          }}
         >
-          <input
-            dir="auto"
-            ref={inputRef}
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={handleInputFocus}
-            disabled={askDisabled}
-            tabIndex={hideInput ? -1 : undefined}
-            placeholder={t("embeddedChat.askPlaceholder")}
-            className={cn(
-              "input-inline flex-1 bg-transparent outline-none min-w-0 p-0 caret-primary",
-              "text-ui text-foreground",
-              "placeholder:text-muted dark:placeholder:text-muted"
-            )}
-          />
-
-          {!hideInput && <ChatModelPicker disabled={askDisabled} />}
-          {hasText ? (
-            <button
-              onClick={handleSubmit}
+          <div className="flex min-w-0 items-center gap-2">
+            <input
+              dir="auto"
+              ref={inputRef}
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={handleInputFocus}
               disabled={askDisabled}
+              tabIndex={hideInput ? -1 : undefined}
+              placeholder={t("embeddedChat.askPlaceholder")}
               className={cn(
-                "flex items-center justify-center w-7 h-7 rounded-full shrink-0",
-                "animate-[scale-in_0.15s_ease-out_backwards]",
-                "transition-all duration-150",
-                "hover:brightness-110",
-                "active:scale-90",
-                "disabled:opacity-30"
+                "input-inline flex-1 bg-transparent outline-none min-w-0 p-0 caret-primary",
+                "text-ui text-foreground",
+                "placeholder:text-muted dark:placeholder:text-muted"
               )}
-              aria-label={t("embeddedChat.send")}
-            >
-              <SendIcon size={28} className="block rtl:scale-x-[-1]" />
-            </button>
-          ) : !isExpanded ? (
-            <div className="shrink-0">{actionPicker}</div>
-          ) : null}
+            />
+
+            {hasText ? (
+              <button
+                onClick={handleSubmit}
+                disabled={askDisabled}
+                className={cn(
+                  "flex items-center justify-center w-7 h-7 rounded-full shrink-0",
+                  "animate-[scale-in_0.15s_ease-out_backwards]",
+                  "transition-all duration-150",
+                  "hover:brightness-110",
+                  "active:scale-90",
+                  "disabled:opacity-30"
+                )}
+                aria-label={t("embeddedChat.send")}
+              >
+                <SendIcon size={28} className="block rtl:scale-x-[-1]" />
+              </button>
+            ) : null}
+          </div>
+          {isExpanded && !hideInput && (
+            <div className="flex min-w-0 justify-end">
+              <ChatModelPicker
+                disabled={askDisabled}
+                onOpenChange={(open) => {
+                  setIsModelPickerOpen(open);
+                  if (!open && !hasText) setIsExpanded(false);
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

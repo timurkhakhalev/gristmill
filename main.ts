@@ -649,6 +649,7 @@ async function startApp(): Promise<void> {
   const initializedTrayManager = trayManager as TrayManager;
   initializedTrayManager.setWindows(initializedWindowManager.controlPanelWindow);
   initializedTrayManager.setWindowManager(initializedWindowManager);
+  if (databaseManager) initializedTrayManager.setCalendarSource(databaseManager);
   initializedTrayManager.setCreateControlPanelCallback(() =>
     initializedWindowManager.createControlPanelWindow()
   );

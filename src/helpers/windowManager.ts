@@ -891,6 +891,25 @@ export class WindowManager {
 
   }
 
+  async showControlPanelForTray(): Promise<void> {
+    await this.createControlPanelWindow();
+    const win = this.controlPanelWindow;
+    if (!win || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  }
+
+  async requestNewNote(): Promise<void> {
+    await this.showControlPanelForTray();
+    this.sendToControlPanel("tray-new-note");
+  }
+
+  async requestOpenCalendarEvent(event: unknown): Promise<void> {
+    await this.showControlPanelForTray();
+    this.sendToControlPanel("tray-open-event", event);
+  }
+
   async openSettings(): Promise<void> {
     await this.createControlPanelWindow();
     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {

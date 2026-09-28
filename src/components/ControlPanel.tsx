@@ -6,6 +6,9 @@ import ControlPanelTopBar from "./ControlPanelTopBar";
 import { useControlPanelNavItems, type ControlPanelView } from "./controlPanelNav";
 import MeetingRecordingMount from "./MeetingRecordingMount";
 import MeetingRecordingPill from "./notes/MeetingRecordingPill";
+import EventNoteDraft from "./notes/EventNoteDraft";
+import type { CalendarEvent } from "../contracts/calendar";
+import type { NoteItem } from "../contracts/notes";
 import { useCollapsibleSidebar } from "../hooks/useCollapsibleSidebar";
 import { useIsMeetingMode, useMeetingRecordingStore } from "../stores/meetingRecordingStore";
 import {
@@ -55,7 +58,9 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const { t } = useTranslation();
   const { toast } = useToast();
   const navItems = useControlPanelNavItems();
-  const { handleNewNote } = useNotesTreeActions();
+  const { handleNewNote, startRecordingForNote } = useNotesTreeActions();
+  // A calendar event opened before it has a note (see EventNoteDraft).
+  const [eventDraft, setEventDraft] = useState<CalendarEvent | null>(null);
   const spaces = useSpaces();
   const activeContext = useActiveContext();
   const containerNotes = useNotes();
@@ -145,6 +150,49 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     const dispose = window.electronAPI?.onShowSettings?.(() => setShowSettings(true));
     return () => dispose?.();
   }, []);
+
+  useEffect(() => {
+    const dispose = window.electronAPI?.onTrayNewNote?.(() => {
+      void handleNewNote();
+      setActiveView("personal-notes");
+    });
+    return () => dispose?.();
+  }, [handleNewNote]);
+
+  const openNote = useCallback((note: NoteItem) => {
+    if (note.folder_id != null) setActiveFolderId(note.folder_id);
+    else navigateToContainer(note.space_id, null);
+    setActiveNoteId(note.id);
+    setActiveView("personal-notes");
+  }, []);
+
+  // An event with a note opens it; one without opens a draft that creates
+  // the note only once the user writes, records or asks.
+  const openCalendarEvent = useCallback(
+    async (event: CalendarEvent) => {
+      const existing = await window.electronAPI.findCalendarEventNote?.(event.id);
+      const note = existing ? await window.electronAPI.getNote(existing.noteId) : null;
+      if (note) openNote(note);
+      else setEventDraft(event);
+    },
+    [openNote]
+  );
+
+  useEffect(() => {
+    const dispose = window.electronAPI?.onTrayOpenEvent?.((event) => {
+      setActiveView("home");
+      void openCalendarEvent(event);
+    });
+    return () => dispose?.();
+  }, [openCalendarEvent]);
+
+  // Leaving Home or opening any note drops the draft.
+  useEffect(() => {
+    if (activeView !== "home") setEventDraft(null);
+  }, [activeView]);
+  useEffect(() => {
+    setEventDraft(null);
+  }, [activeNoteId]);
 
   const openSettings = useCallback((section?: string) => {
     setSettingsSection(section);
@@ -273,7 +321,10 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
           {sidebarInline && (
             <ControlPanelSidebar
               activeView={activeView}
-              onViewChange={setActiveView}
+              onViewChange={(view) => {
+                setEventDraft(null);
+                setActiveView(view);
+              }}
               onOpenSettings={() => openSettings()}
             />
           )}
@@ -283,6 +334,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
             <ControlPanelSidebar
               activeView={activeView}
               onViewChange={(view) => {
+                setEventDraft(null);
                 setActiveView(view);
                 closeSidebarDrawer();
               }}
@@ -309,16 +361,26 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
               showNotesDebug={activeView === "personal-notes"}
             />
             <div className="scrollbar-hidden flex-1 overflow-y-auto">
-              {activeView === "home" && (
+              {activeView === "home" && eventDraft && (
+                <EventNoteDraft
+                  key={eventDraft.id}
+                  event={eventDraft}
+                  onBack={() => setEventDraft(null)}
+                  onMaterialized={(note, intent) => {
+                    setEventDraft(null);
+                    openNote(note);
+                    if (intent === "record" && !useMeetingRecordingStore.getState().isRecording) {
+                      void startRecordingForNote(note);
+                    }
+                  }}
+                />
+              )}
+              {activeView === "home" && !eventDraft && (
                 <Suspense fallback={null}>
                   <HomeView
-                    onOpenNote={(note) => {
-                      if (note.folder_id != null) setActiveFolderId(note.folder_id);
-                      else navigateToContainer(note.space_id, null);
-                      setActiveNoteId(note.id);
-                      setActiveView("personal-notes");
-                    }}
+                    onOpenNote={openNote}
                     onConnectCalendar={() => openSettings("calendar")}
+                    onOpenEvent={(event) => void openCalendarEvent(event)}
                   />
                 </Suspense>
               )}

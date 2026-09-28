@@ -148,6 +148,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     mockModules: {
       "@heroui/react": heroMock,
       "react-i18next": `export function useTranslation() { return { t: (key, options) => options?.defaultValue ?? key }; }`,
+      "/hooks/useDateTimePreferences": `export function useDateTimePreferences() { return { dateFormat: "locale", timeFormat: "locale" }; }`,
       "/ui/dialog": `export const ConfirmDialog = (props) => { globalThis.__meetingResultsConfirmDialog = props; return null; };`,
       "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig(transcriptionOverride) { const config = ${JSON.stringify(CONFIG)}; return { config: transcriptionOverride ? { ...config, transcription: transcriptionOverride } : config, configError: null }; } export function builtinMeetingSummaryInstruction() { return "Built-in summary instruction"; }`,
     },
@@ -213,12 +214,12 @@ test("previously deleted audio is absent from the popover", async (t: TestContex
   assert.equal(ui.text().match(/01:00/g)?.length, 1);
 });
 
-test("audio part actions export original tracks and confirm deletion without a transcript", async (t: TestContext) => {
+test("audio part actions export a mixed MP3 and confirm deletion without a transcript", async (t: TestContext) => {
   const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z")]);
   const menu = ui.menu("Audio part actions") as { props: { onAction: (key: string) => void } } | null;
   assert.ok(menu);
-  await ui.flush(() => menu!.props.onAction("mic"));
-  assert.deepEqual(ui.calls.export, [{ recordingId: FIRST, source: "mic" }]);
+  await ui.flush(() => menu!.props.onAction("export"));
+  assert.deepEqual(ui.calls.export, [{ recordingId: FIRST, source: "mixed" }]);
   await ui.flush(() => menu!.props.onAction("delete"));
   assert.equal(ui.dialog().open, true);
   await ui.flush(() => ui.dialog().onConfirm());
@@ -262,7 +263,7 @@ test("debug preview keeps retry, export and processing away from the real API", 
   const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)], { preview: true });
   await ui.flush(() => (ui.button("meetingResults.retry") as { props: { onPress: () => void } })!.props.onPress());
   assert.match(ui.text(), /Mock retry queued in memory/);
-  await ui.flush(() => (ui.menu("Audio part actions") as { props: { onAction: (key: string) => void } })!.props.onAction("mic"));
+  await ui.flush(() => (ui.menu("Audio part actions") as { props: { onAction: (key: string) => void } })!.props.onAction("export"));
   await ui.flush(() => (ui.button("Transcribe")!.props as { onPress: () => void }).onPress());
   assert.deepEqual(ui.calls.retry, []);
   assert.deepEqual(ui.calls.export, []);

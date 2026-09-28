@@ -30,6 +30,8 @@ export const meetingCoordinatorChannels = {
   meetingAutoEndCompleted: "meeting-auto-end-completed",
   meetingAutoEndRespond: "meeting-auto-end-respond",
   joinCalendarMeeting: "join-calendar-meeting",
+  findCalendarEventNote: "find-calendar-event-note",
+  createCalendarEventNote: "create-calendar-event-note",
   getMeetingNotificationData: "get-meeting-notification-data",
   getPendingMeetingNoteNavigation: "get-pending-meeting-note-navigation",
   meetingNotificationReady: "meeting-notification-ready",
@@ -280,6 +282,12 @@ export const simpleSuccessResultSchema = z
   .passthrough();
 export type SimpleSuccessResult = z.infer<typeof simpleSuccessResultSchema>;
 
+/** The note linked to a calendar event; null when there is none (or it could not be created). */
+export const calendarEventNoteResultSchema = z
+  .object({ noteId: z.number().int().positive(), folderId: z.number().int().positive().nullable() })
+  .nullable();
+export type CalendarEventNoteResult = z.infer<typeof calendarEventNoteResultSchema>;
+
 export const meetingAutoEndLifecycleResultSchema = z.object({
   success: z.boolean(),
   reason: z.enum(["invalid-session", "invalid-action", "stale-session"]).optional(),
@@ -474,6 +482,11 @@ export interface MeetingCoordinatorApi {
     action: MeetingAutoEndAction
   ): Promise<MeetingAutoEndLifecycleResult>;
   joinCalendarMeeting?(eventId: string): Promise<SimpleSuccessResult>;
+  findCalendarEventNote?(eventId: string): Promise<CalendarEventNoteResult>;
+  createCalendarEventNote?(
+    eventId: string,
+    initial: { title?: string; content?: string }
+  ): Promise<CalendarEventNoteResult>;
   getMeetingNotificationData?(): Promise<MeetingNotificationData | null>;
   getPendingMeetingNoteNavigation?(): Promise<PendingMeetingNoteNavigation | null>;
   meetingNotificationReady?(): Promise<unknown>;

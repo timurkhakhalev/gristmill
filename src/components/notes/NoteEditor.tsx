@@ -13,13 +13,13 @@ import {
   ArrowLeft,
 } from "../icons";
 import { RichTextEditor } from "../ui/RichTextEditor";
+import type { Editor } from "@tiptap/react";
 import { calendarDescriptionText } from "../../helpers/calendarDescription";
 
 /** Rich-text HTML → the plain text Copy puts on the clipboard. */
 function htmlToPlainText(html: string): string {
   return calendarDescriptionText(html) ?? "";
 }
-import type { Editor } from "@tiptap/react";
 import { MeetingTranscriptChat, SelectionBar } from "./MeetingTranscriptChat";
 import {
   useMeetingRecordingStore,
@@ -44,6 +44,7 @@ import { setActiveFolderId, setActiveNoteId } from "../../stores/noteStore";
 import { useEmbeddedChat } from "../../hooks/useEmbeddedChat";
 import type { Message } from "../chat/types";
 import { formatNoteDate, formatShortDate } from "../../utils/dateFormatting";
+import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { collectKnownPeople } from "../../utils/llmTranscript";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";
 import {
@@ -52,6 +53,7 @@ import {
   serializeTranscriptSegments,
 } from "../../utils/transcriptSpeakerState";
 import NoteParticipants from "./NoteParticipants";
+import { takeNoteHandoff } from "./noteHandoff";
 import NoteFindBar from "./NoteFindBar";
 import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import { observeFloatingChatLayout } from "./floatingChatLayout";
@@ -115,7 +117,6 @@ interface NoteEditorProps {
   onPauseRecording?: () => void;
   onResumeRecording?: () => void;
   enhancement?: Enhancement;
-  actionPicker?: React.ReactNode;
   /** Runs the built-in Generate Notes action; enables the post-recording summary pill. */
   onGenerateSummary?: () => void;
   actionProcessingState?: ActionProcessingState;
@@ -157,7 +158,6 @@ export default function NoteEditor({
   onPauseRecording,
   onResumeRecording,
   enhancement,
-  actionPicker,
   onGenerateSummary,
   actionProcessingState,
   actionName,
@@ -651,14 +651,34 @@ export default function NoteEditor({
   };
 
   // Focusing the ask bar reopens an ongoing conversation; a fresh one waits for the first question.
+  // A note born from a calendar-event draft picks up where the draft left off.
+  const handoffRef = useRef(debugPreview ? null : takeNoteHandoff(note.id));
+  useEffect(() => {
+    const handoff = handoffRef.current;
+    if (!handoff) return;
+    const frame = window.requestAnimationFrame(() => {
+      handoffRef.current = null;
+      if (handoff.focus === "title" && titleRef.current) {
+        titleRef.current.focus();
+        window.getSelection()?.selectAllChildren(titleRef.current);
+        window.getSelection()?.collapseToEnd();
+      } else if (handoff.focus === "content") {
+        editorRef.current?.commands.focus("end");
+      }
+      if (handoff.ask) handleAskSubmit(handoff.ask);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [handleAskSubmit]);
+
   const handleChatInputFocus = useCallback(() => {
     if (chatMode === "hidden" && chatMessages.length > 0) {
       setChatMode("floating");
     }
   }, [chatMode, chatMessages.length]);
 
-  const noteDate = formatNoteDate(note.created_at, locale);
-  const shortDate = formatShortDate(note.created_at, locale);
+  const { dateFormat, timeFormat } = useDateTimePreferences();
+  const noteDate = formatNoteDate(note.created_at, locale, dateFormat, timeFormat);
+  const shortDate = formatShortDate(note.created_at, locale, dateFormat);
 
   return (
     <div className="relative flex h-full min-h-0">
@@ -918,7 +938,6 @@ export default function NoteEditor({
             isRecording={isRecording}
             onAskSubmit={handleAskSubmit}
             onInputFocus={handleChatInputFocus}
-            actionPicker={isRecording || !canEditNote ? undefined : actionPicker}
             hideInput={chatMode !== "hidden"}
           />
           {chatMode === "floating" && (

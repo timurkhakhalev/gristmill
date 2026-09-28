@@ -321,6 +321,38 @@ test("upsertCalendarEvents round-trips event_url and defaults it to null", (t: i
   db.db.close();
 });
 
+test("Google People names and photos outrank calendar names and survive later calendar syncs", (t: import("node:test").TestContext) => {
+  const db = createDb(t) as DbUnderTest;
+  if (!db) return;
+
+  db.upsertContacts([{ email: "Eli.Rum@example.com", displayName: "eli" }]);
+  db.upsertGooglePeople([{ email: "eli.rum@example.com", displayName: "Eli Rum", photoUrl: "https://lh3/eli.jpg" }]);
+  // A calendar sync after the People sync must not undo it.
+  db.upsertContacts([{ email: "eli.rum@example.com", displayName: "eli (invite)" }]);
+  // A People profile without a photo keeps the stored one.
+  db.upsertGooglePeople([{ email: "eli.rum@example.com", displayName: "Eli Rum", photoUrl: null }]);
+
+  assert.deepEqual(db.getContactProfiles(["ELI.RUM@example.com", "nobody@x.com"]).map((row) => ({ ...row })), [
+    { email: "eli.rum@example.com", display_name: "Eli Rum", photo_url: "https://lh3/eli.jpg" },
+  ]);
+  assert.equal(db.searchContacts("Eli R")[0]?.display_name, "Eli Rum");
+  db.db.close();
+});
+
+test("upsertCalendarEvents round-trips the description and defaults it to null", (t: import("node:test").TestContext) => {
+  const db = createDb(t) as DbUnderTest;
+  if (!db) return;
+
+  db.upsertCalendarEvents([
+    restEvent("google", "google-calendar", "with-description", { description: "Agenda\n• Intro" }),
+    restEvent("google", "google-calendar", "without-description"),
+  ]);
+
+  assert.equal(db.getCalendarEventById("with-description")!.description, "Agenda\n• Intro");
+  assert.equal(db.getCalendarEventById("without-description")!.description, null);
+  db.db.close();
+});
+
 test("availability range query uses overlap boundaries and selected calendars", (t: import("node:test").TestContext) => {
   const db = createDb(t) as DbUnderTest;
   if (!db) return;

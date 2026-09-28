@@ -466,6 +466,8 @@
       "test/helpers/appleCalendarManager.test.ts",
       "test/helpers/calendarAvailability.test.ts",
       "test/helpers/calendarAvailabilityService.test.ts",
+      "test/helpers/calendarDescription.test.ts",
+      "test/helpers/googlePeople.test.ts",
       "test/helpers/calendarEvents.test.ts",
       "test/helpers/calendarReminderScheduler.test.ts",
       "test/helpers/calendarSyncInterval.test.ts",

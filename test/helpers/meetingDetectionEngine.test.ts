@@ -233,3 +233,113 @@ test("a meeting app appearing asks the mic detector to re-evaluate unattributed 
   assert.equal(audioDetector.meetingAppNotifications, 1);
   assert.equal(shown.length, 0, "a running meeting app alone stays context-only");
 });
+
+function createEngineWithNotes(existingNote: { id: number; folder_id: number | null } | null) {
+  const MeetingDetectionEngine = loadEngine();
+  const noop = Object.assign(new EventEmitter(), { start() {}, stop() {}, resetPrompt() {}, setUserRecording() {}, setMicWarmHold() {} });
+  const saved: Array<[string, string]> = [];
+  const updates: Array<[number, Record<string, unknown>]> = [];
+  const navigations: unknown[] = [];
+  const database = {
+    saveNote: (title: string, content: string) => {
+      saved.push([title, content]);
+      return { note: { id: 42 } };
+    },
+    getMeetingsFolder: () => ({ id: 7 }),
+    getNoteByCalendarEventId: () => existingNote,
+    getCalendarEventById: (id: string) =>
+      id === "evt-1" ? { id: "evt-1", summary: "Design review", attendees: "[]" } : null,
+    updateNote: (id: number, update: Record<string, unknown>) => {
+      updates.push([id, update]);
+      return { success: true, note: { id } };
+    },
+    getActiveEvents: () => [],
+  };
+  const engine = new MeetingDetectionEngine(
+    { getActiveMeetingState: () => ({ activeMeeting: null, upcomingEvents: [] }) },
+    noop,
+    noop,
+    { notificationPrefs: {}, queueMeetingNoteNavigation: async (payload: unknown) => navigations.push(payload) },
+    database,
+    { callDetector: noop }
+  );
+  return { engine, saved, updates, navigations };
+}
+
+test("an event's note is created only on request, with the user's first input", () => {
+  const { engine, saved, updates, navigations } = createEngineWithNotes(null);
+
+  // Looking an event up never creates its note.
+  assert.equal(engine.findCalendarEventNote("evt-1"), null);
+  assert.deepEqual(saved, []);
+
+  assert.deepEqual(engine.createCalendarEventNote("evt-1", { content: "First line" }), { noteId: 42, folderId: 7 });
+  assert.deepEqual(saved, [["Design review", "First line"]]);
+  assert.deepEqual(updates, [[42, { calendar_event_id: "evt-1", participants: "[]" }]]);
+  // Recording starts only through meeting navigation; creating must not queue it.
+  assert.deepEqual(navigations, []);
+  assert.equal(engine._meetingModeActive, false);
+});
+
+test("a typed title replaces the event name on the new note", () => {
+  const { engine, saved } = createEngineWithNotes(null);
+
+  engine.createCalendarEventNote("evt-1", { title: "Prep: design review" });
+  assert.deepEqual(saved, [["Prep: design review", ""]]);
+});
+
+test("an event with a note reuses it and leaves it untouched", () => {
+  const { engine, saved } = createEngineWithNotes({ id: 5, folder_id: 3 });
+
+  assert.deepEqual(engine.findCalendarEventNote("evt-1"), { noteId: 5, folderId: 3 });
+  assert.deepEqual(engine.createCalendarEventNote("evt-1", { content: "ignored" }), { noteId: 5, folderId: 3 });
+  assert.deepEqual(saved, []);
+});
+
+test("an unknown calendar event gets no note", () => {
+  const { engine, saved } = createEngineWithNotes(null);
+
+  assert.equal(engine.createCalendarEventNote("missing", {}), null);
+  assert.deepEqual(saved, []);
+});
+
+test("an event's note stores attendees under their best-known names", () => {
+  const MeetingDetectionEngine = loadEngine();
+  const noop = Object.assign(new EventEmitter(), { start() {}, stop() {}, resetPrompt() {}, setUserRecording() {}, setMicWarmHold() {} });
+  const updates: Array<Record<string, unknown>> = [];
+  const engine = new MeetingDetectionEngine(
+    { getActiveMeetingState: () => ({ activeMeeting: null, upcomingEvents: [] }) },
+    noop,
+    noop,
+    { notificationPrefs: {} },
+    {
+      saveNote: () => ({ note: { id: 1 } }),
+      getMeetingsFolder: () => ({ id: 2 }),
+      getNoteByCalendarEventId: () => null,
+      getCalendarEventById: () => ({
+        id: "evt-1",
+        summary: "Sync",
+        attendees: JSON.stringify([
+          { email: "Eli.Rum@example.com", displayName: null },
+          { email: "k@x.com", displayName: "Kostya" },
+          { email: "unknown@x.com", displayName: null },
+        ]),
+      }),
+      getContactProfiles: () => [{ email: "eli.rum@example.com", display_name: "Eli Rum" }],
+      updateNote: (_id: number, update: Record<string, unknown>) => {
+        updates.push(update);
+        return { success: true };
+      },
+      getActiveEvents: () => [],
+    },
+    { callDetector: noop }
+  );
+
+  engine.createCalendarEventNote("evt-1", {});
+
+  assert.deepEqual(JSON.parse(updates[0].participants as string), [
+    { email: "Eli.Rum@example.com", displayName: "Eli Rum" },
+    { email: "k@x.com", displayName: "Kostya" },
+    { email: "unknown@x.com", displayName: null },
+  ]);
+});

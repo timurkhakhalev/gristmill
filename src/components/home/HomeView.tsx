@@ -8,6 +8,7 @@ import NoteBottomBar from "../notes/NoteBottomBar";
 import ComingUp from "./ComingUp";
 import RecentNotes from "./RecentNotes";
 import type { NoteItem } from "../../contracts/notes";
+import type { CalendarEvent } from "../../contracts/calendar";
 
 const RECENT_NOTES_LIMIT = 50;
 const EMPTY_NOTES: NoteItem[] = [];
@@ -16,11 +17,12 @@ const SUGGESTION_KEYS = ["catchUp", "keyDecisions", "inFlight"] as const;
 interface HomeViewProps {
   onOpenNote: (note: NoteItem) => void;
   onConnectCalendar: () => void;
+  onOpenEvent: (event: CalendarEvent) => void;
 }
 
 /** Start screen: upcoming calendar meetings, recent notes across every space,
  * and a chat pinned to the bottom that searches all notes. */
-export default function HomeView({ onOpenNote, onConnectCalendar }: HomeViewProps) {
+export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }: HomeViewProps) {
   const { t } = useTranslation();
   const upcoming = useUpcomingEvents();
   const notesByContainer = useNotesByContainer();
@@ -71,6 +73,7 @@ export default function HomeView({ onOpenNote, onConnectCalendar }: HomeViewProp
           isLoading={upcoming.isLoading}
           isConnected={upcoming.isConnected}
           onConnectCalendar={onConnectCalendar}
+          onOpenEvent={onOpenEvent}
         />
         {notes && <RecentNotes notes={notes} onOpenNote={onOpenNote} />}
       </div>

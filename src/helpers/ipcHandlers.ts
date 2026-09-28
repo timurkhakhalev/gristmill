@@ -89,8 +89,8 @@ import {
 } from "../contracts/meetingProcessing.js";
 import {
   canPlayMeetingRun,
-  copyMeetingAudioExport,
   createMeetingAudioOperationRegistry,
+  exportMeetingMixedMp3,
   exportMeetingSourceTrack,
 } from "./meetingAudioExport.js";
 import { composeMeetingAudioParts, prepareMeetingAudio } from "./meetingAudioMixer.js";
@@ -690,9 +690,10 @@ export class IPCHandlers {
         if (!recording || recording.audioState !== "available") {
           return { success: false, error: "meeting-audio-unavailable" };
         }
+        const isMixed = parsed.source === "mixed";
         const result = await dialog.showSaveDialog({
-          defaultPath: `OpenHercules-meeting-${parsed.source}.wav`,
-          filters: [{ name: "WAV audio", extensions: ["wav"] }],
+          defaultPath: `OpenHercules-meeting-${parsed.source}.${isMixed ? "mp3" : "wav"}`,
+          filters: isMixed ? [{ name: "MP3 audio", extensions: ["mp3"] }] : [{ name: "WAV audio", extensions: ["wav"] }],
         });
         if (result.canceled || !result.filePath) return { success: false };
         const destination = path.resolve(result.filePath);
@@ -703,9 +704,9 @@ export class IPCHandlers {
         if (!currentRecording || currentRecording.audioState !== "available") {
           return { success: false, error: "meeting-audio-unavailable" };
         }
-        const runId = parsed.source === "mixed" ? parsed.runId ?? currentRecording.currentRunId : null;
+        const runId = isMixed ? parsed.runId : null;
         const run = runId ? database.getMeetingProcessingRun(runId) : null;
-        if (parsed.source === "mixed" && (!run || run.recordingId !== currentRecording.id || !run.hasTranscript)) {
+        if (runId && (!run || run.recordingId !== currentRecording.id || !run.hasTranscript)) {
           return { success: false, error: "meeting-result-not-selected" };
         }
         return await this._meetingAudioOperations.run(currentRecording.id, async (signal) => {
@@ -726,25 +727,25 @@ export class IPCHandlers {
             return { success: true };
           }
           const latestRun = runId ? database.getMeetingProcessingRun(runId) : null;
-          if (!latestRun || latestRun.recordingId !== latestRecording.id || !latestRun.hasTranscript) {
+          if (runId && (!latestRun || latestRun.recordingId !== latestRecording.id || !latestRun.hasTranscript)) {
             return { success: false, error: "meeting-result-not-selected" };
           }
-          let sourcePath = storage.getDerivedAudioPath(latestRecording.id, latestRun.id);
-          if (!fs.existsSync(sourcePath)) {
-            const sources = latestRun.sourceRecordingIds.map((id) => database.getMeetingRecording(id));
-            if (sources.some((source) => !source || source.audioState !== "available")) throw new Error("meeting-audio-part-unavailable");
-            const combined = composeMeetingAudioParts(sources as NonNullable<typeof latestRecording>[], (id) => database.listMeetingRecordingEpochs(id));
-            await prepareMeetingAudio(
-              storage,
-              combined.recording,
-              latestRun.id,
-              combined.epochs,
-              { signal }
-            );
-            sourcePath = storage.getDerivedAudioPath(latestRecording.id, latestRun.id);
+          const mixId = latestRun?.id ?? crypto.randomUUID();
+          const sourcePath = storage.getDerivedAudioPath(latestRecording.id, mixId);
+          try {
+            if (!fs.existsSync(sourcePath)) {
+              const sources = latestRun
+                ? latestRun.sourceRecordingIds.map((id) => database.getMeetingRecording(id))
+                : [latestRecording];
+              if (sources.some((source) => !source || source.audioState !== "available")) throw new Error("meeting-audio-part-unavailable");
+              const combined = composeMeetingAudioParts(sources as NonNullable<typeof latestRecording>[], (id) => database.listMeetingRecordingEpochs(id));
+              await prepareMeetingAudio(storage, combined.recording, mixId, combined.epochs, { signal });
+            }
+            await exportMeetingMixedMp3(sourcePath, destination, signal);
+            return { success: true };
+          } finally {
+            if (!latestRun) await fs.promises.rm(sourcePath, { force: true });
           }
-          await copyMeetingAudioExport(sourcePath, destination, signal);
-          return { success: true };
         });
       } catch (error) {
         debugLogger.error("Meeting audio export failed", {

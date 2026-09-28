@@ -63,7 +63,15 @@
     "quit": "Quitter OpenHercules",
     "tooltip": "OpenHercules",
     "recordingStatus": "Enregistrement en cours",
-    "stopRecording": "Arrêter l’enregistrement"
+    "stopRecording": "Arrêter l’enregistrement",
+    "startsIn": "Commence dans {{time}}",
+    "tomorrow": "Demain",
+    "newNote": "Nouvelle note",
+    "settings": "Réglages",
+    "inTime": "dans {{time}}",
+    "durationHoursMinutes": "{{h}} h {{m}} min",
+    "durationMinutes": "{{m}} min",
+    "now": "Maintenant"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -704,7 +712,8 @@
     "openSettings": "Ouvrir les Réglages Système",
     "connectCalendar": "Connectez votre calendrier",
     "connectCalendarDescription": "Consultez vos réunions et rejoignez-les sans quitter OpenHercules.",
-    "connectCalendarButton": "Connecter le calendrier"
+    "connectCalendarButton": "Connecter le calendrier",
+    "openEventNote": "Ouvrir les notes de {{title}}"
   },
   "cleanupPrompt": "Correction",
   "developerSection": {
@@ -1095,6 +1104,16 @@
       "language": {
         "label": "Interface language",
         "description": "Choose the language used by the app."
+      },
+      "dateFormat": {
+        "label": "Format de date",
+        "description": "Choisissez l’ordre du jour, du mois et de l’année.",
+        "locale": "Selon la langue de l’interface"
+      },
+      "timeFormat": {
+        "label": "Format de l’heure",
+        "description": "Choisissez le format 12 ou 24 heures.",
+        "locale": "Selon la langue de l’interface"
       },
       "theme": {
         "label": "Theme",
@@ -1587,10 +1606,12 @@
       "addPlaceholder": "Ajouter des participants...",
       "typeEmail": "Saisissez un e-mail pour ajouter...",
       "me": "(moi)",
-      "openInCalendar": "Ouvrir dans l’agenda",
       "copyEmail": "Copier l’e-mail",
       "emailCopied": "E-mail copié",
-      "removeAttendee": "Retirer le participant"
+      "removeAttendee": "Retirer le participant",
+      "join": "Rejoindre",
+      "calendar": "Calendrier",
+      "description": "Description"
     },
     "upload": {
       "title": "Téléverser un fichier audio",
@@ -1992,7 +2013,9 @@
       "systemAudioDescription": "Pour transcrire les réunions, OpenHercules a besoin de l'autorisation Audio Système pour capturer l'audio des autres participants. Nous n'enregistrons jamais votre écran. Vous serez dirigé vers les Réglages Système pour l'activer.",
       "openSettings": "Ouvrir les Réglages Système",
       "connectFailed": "Échec de la connexion",
-      "connectFailedDescription": "Une erreur s'est produite lors de la connexion à Google Calendar. Veuillez réessayer."
+      "connectFailedDescription": "Une erreur s'est produite lors de la connexion à Google Calendar. Veuillez réessayer.",
+      "peopleAccessMissing": "Reconnectez {{emails}} pour afficher les noms et photos des participants depuis Google Contacts.",
+      "reconnect": "Reconnecter"
     },
     "microsoftCalendar": {
       "title": "Microsoft Calendar",
@@ -2203,7 +2226,6 @@
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
     "processWholeMeeting": "Transcrire",
-    "originalsPreserved": "Original microphone and system tracks are saved separately.",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
     "copyError": "Impossible de copier dans le presse-papiers.",
@@ -2244,9 +2266,7 @@
     "deleteAudioDescription": "Les pistes du microphone et du système seront supprimées. Les transcriptions et résumés déjà enregistrés dans Notes restent disponibles.",
     "deleteAudioConfirm": "Supprimer l’audio",
     "audioUnavailable": "L’audio original a été supprimé ou est indisponible. Transcription, lecture et export audio désactivés.",
-    "exportMixed": "Exporter le WAV mixé",
-    "exportMic": "Exporter le WAV du microphone",
-    "exportSystem": "Exporter le WAV système",
+    "exportMixed": "Exporter le MP3 mixé",
     "saveSpeaker": "Enregistrer le locuteur",
     "speakerProfile": "Profil du locuteur",
     "noSpeakerProfile": "Aucun profil",

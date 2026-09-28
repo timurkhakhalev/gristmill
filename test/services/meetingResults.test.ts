@@ -11,8 +11,10 @@ const {
   canPlayMeetingRun,
   copyMeetingAudioExport,
   createMeetingAudioOperationRegistry,
+  exportMeetingMixedMp3,
   exportMeetingSourceTrack,
 } = require("../../src/helpers/meetingAudioExport.ts");
+const { prepareMeetingAudio }: typeof import("../../src/helpers/meetingAudioMixer.ts") = require("../../src/helpers/meetingAudioMixer.ts");
 const { recognizeMeetingSpeakers }: typeof import("../../src/helpers/meetingSpeakerRecognition.ts") = require("../../src/helpers/meetingSpeakerRecognition.ts");
 import type { DatabaseManager } from "../helpers/harness/db.ts";
 import type { MeetingRecordingStorage as MeetingRecordingStorageInstance } from "../../src/helpers/meetingRecordingStorage.js";
@@ -315,6 +317,23 @@ test("source WAV exports keep epoch gaps; failed export and unavailable audio do
   assert.equal(fs.existsSync(path.join(root, "unavailable.wav")), false);
   await assert.rejects(copyMeetingAudioExport(micPath, path.join(root, "missing-directory", "copy.wav")));
   assert.equal(fs.existsSync(path.join(root, "missing-directory")), false);
+});
+
+test("saved audio can be mixed and exported as MP3 before transcription", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const root = getUserDataDir();
+  const storage = new MeetingRecordingStorage({ userDataPath: root });
+  const { recording } = createFinishedRecording(db, storage);
+  const mixed = await prepareMeetingAudio(storage, recording, recording.id, db.listMeetingRecordingEpochs(recording.id));
+  const destination = path.join(root, "meeting.mp3");
+  await exportMeetingMixedMp3(mixed.path, destination);
+  const mp3 = fs.readFileSync(destination);
+  assert.equal(mp3.subarray(0, 3).toString(), "ID3");
+  assert.ok(mp3.length > 1000);
+  assert.ok(fs.existsSync(mixed.path), "export leaves the source mix intact");
+  await assert.rejects(exportMeetingMixedMp3(path.join(root, "missing.wav"), destination));
+  assert.deepEqual(fs.readFileSync(destination), mp3, "failed conversion keeps the previous export");
 });
 
 test("source WAV export reads large epochs in bounded chunks without whole-file sample reads", async (t: import("node:test").TestContext) => {

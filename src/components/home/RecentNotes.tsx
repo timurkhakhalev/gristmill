@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { FileText } from "../icons";
 import PersonAvatar from "../ui/PersonAvatar";
 import { useUiLocale } from "../../hooks/useUiLocale";
-import { normalizeDbDate } from "../../utils/dateFormatting";
+import { formatDate, formatTime, normalizeDbDate } from "../../utils/dateFormatting";
+import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import type { CalendarAttendee } from "../../contracts/calendar";
 import type { NoteItem } from "../../contracts/notes";
 
@@ -49,6 +50,7 @@ function groupNotesByDay(notes: NoteItem[]): DayGroup[] {
 function NoteRow({ note, onOpen }: { note: NoteItem; onOpen: () => void }) {
   const { t } = useTranslation();
   const locale = useUiLocale();
+  const { timeFormat } = useDateTimePreferences();
   const others = useMemo(
     () => parseParticipants(note.participants).filter((p) => !p.self && participantName(p)),
     [note.participants]
@@ -64,10 +66,10 @@ function NoteRow({ note, onOpen }: { note: NoteItem; onOpen: () => void }) {
       : rest > 0
         ? t("home.recent.participantsMore", { names: named.join(", "), count: rest })
         : named.join(", ");
-  const time = normalizeDbDate(note.created_at).toLocaleTimeString(locale, {
+  const time = formatTime(normalizeDbDate(note.created_at), locale, {
     hour: "numeric",
     minute: "2-digit",
-  });
+  }, timeFormat);
 
   return (
     <button
@@ -110,6 +112,7 @@ interface RecentNotesProps {
 export default function RecentNotes({ notes, onOpenNote }: RecentNotesProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
+  const { dateFormat } = useDateTimePreferences();
   const groups = useMemo(() => groupNotesByDay(notes), [notes]);
 
   const today = new Date();
@@ -118,12 +121,12 @@ export default function RecentNotes({ notes, onOpenNote }: RecentNotesProps) {
   const dayLabel = (date: Date) => {
     if (date.toDateString() === today.toDateString()) return t("home.today");
     if (date.toDateString() === yesterday.toDateString()) return t("home.yesterday");
-    return date.toLocaleDateString(locale, {
+    return formatDate(date, locale, {
       weekday: "short",
       month: "short",
       day: "numeric",
       ...(date.getFullYear() !== today.getFullYear() && { year: "numeric" }),
-    });
+    }, dateFormat);
   };
 
   if (groups.length === 0) {

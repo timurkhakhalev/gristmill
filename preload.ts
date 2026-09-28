@@ -180,6 +180,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Settings shortcut (Cmd+, / Ctrl+,)
   onShowSettings: registerListener<void>("show-settings", (callback) => () => callback()),
 
+  onTrayOpenEvent: registerListener<unknown>("tray-open-event", (callback) => (_event, data) => callback(data)),
+  onTrayNewNote: registerListener<void>("tray-new-note", (callback) => () => callback()),
+
   // Accessibility permission events (macOS)
   onAccessibilityMissing: (callback: (() => void) | undefined): Unsubscribe => {
     const listener = () => callback?.();

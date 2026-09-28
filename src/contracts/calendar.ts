@@ -67,6 +67,8 @@ export const calendarEventSchema = z.object({
   organizer_email: z.string().nullable(),
   attendees_count: z.number().int(),
   attendees: z.string().nullable(),
+  /** Plain-text description, flattened from the provider's HTML at sync time. */
+  description: z.string().nullable(),
 });
 export type CalendarEvent = z.infer<typeof calendarEventSchema>;
 
@@ -105,6 +107,8 @@ export const googleConnectionStatusSchema = z.object({
   email: z.string().nullable(),
   configured: z.boolean().optional(),
   accounts: z.array(z.object({ email: z.string() })).optional(),
+  /** Accounts connected before names and photos were requested; reconnecting grants them. */
+  peopleAccessMissing: z.array(z.string()).optional(),
 });
 export type GoogleConnectionStatus = z.infer<typeof googleConnectionStatusSchema>;
 
@@ -231,6 +235,7 @@ export function projectCalendarEvent(row: unknown): CalendarEvent | null {
     organizer_email: asStringOrNull(record.organizer_email),
     attendees_count: asInt(record.attendees_count),
     attendees: asStringOrNull(record.attendees),
+    description: asStringOrNull(record.description),
   });
   return parsed.success ? parsed.data : null;
 }

@@ -1,11 +1,20 @@
 import { net } from "electron";
 import { runOAuthLoopbackFlow, OAuthFlowError } from "./oauthLoopbackFlow.js";
 import type { GoogleTokenRow } from "./database.js";
+import { PEOPLE_SCOPES } from "./googlePeople.js";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const CALENDAR_SCOPE =
-  "openid email https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly";
+const CALENDAR_SCOPE = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/calendar.events.readonly",
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+  PEOPLE_SCOPES.contacts,
+  PEOPLE_SCOPES.otherContacts,
+  PEOPLE_SCOPES.directory,
+].join(" ");
 
 // Google token-endpoint payload: success fields or the error/description pair.
 interface GoogleTokenResponse {
@@ -69,6 +78,7 @@ export class GoogleCalendarOAuth {
           scope: CALENDAR_SCOPE,
           access_type: "offline",
           prompt: "consent",
+          include_granted_scopes: "true",
           state,
           code_challenge: codeChallenge,
           code_challenge_method: "S256",

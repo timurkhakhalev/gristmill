@@ -7,6 +7,7 @@ import {
   speakerChannels,
   type AttachSpeakerEmailResult,
   type CancelDiarizationResult,
+  type ContactProfile,
   type DiarizationDownloadProgressEvent,
   type DiarizationModelActionResult,
   type DiarizationModelStatus,
@@ -69,6 +70,8 @@ export function createSpeakerBridge(ipcRenderer: IpcRendererLike): SpeakerApi {
       ),
     upsertContact: (contact: { email: string; displayName?: string | null }) =>
       passthroughInvoke<{ success: boolean }>(ipcRenderer, c.upsertContact, contact),
+    getContactProfiles: (emails: string[]) =>
+      passthroughInvoke<ContactProfile[]>(ipcRenderer, c.getContactProfiles, emails),
     getSpeakerMappings: (noteId: number) =>
       passthroughInvoke<SpeakerMappingEntry[]>(ipcRenderer, c.getSpeakerMappings, noteId),
     setSpeakerMapping: (noteId, speakerId, displayName, email, profileId) =>

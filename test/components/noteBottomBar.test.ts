@@ -43,6 +43,7 @@ test("idle state keeps the liquid-glass capsule", async (t: TestContext) => {
 
   assert.ok(html.includes("backdrop-blur-xl"));
   assert.ok(html.includes("backdrop-saturate-150"));
+  assert.ok(!html.includes("<button"), "idle composer has no model picker");
 });
 
 test("the ask capsule never transitions its surface between the two states", async (t: TestContext) => {
@@ -51,7 +52,7 @@ test("the ask capsule never transitions its surface between the two states", asy
   for (const isRecording of [false, true]) {
     const html = await renderBottomBar(t, { isRecording });
     assert.ok(
-      html.includes("transition-[max-width,opacity,padding,border-color,box-shadow]"),
+      html.includes("transition-[max-width,opacity,padding,border-color,box-shadow,height,border-radius]"),
       `capsule transition is property-scoped (isRecording=${isRecording})`
     );
   }

@@ -3,8 +3,6 @@ import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
 import { Plus } from "../icons";
 import NoteEditor from "./NoteEditor";
-import ActionPicker from "./ActionPicker";
-import ActionManagerDialog from "./ActionManagerDialog";
 import AddNotesToFolderDialog from "./AddNotesToFolderDialog";
 import { useActionProcessing } from "../../hooks/useActionProcessing";
 import type { ActionItem } from "../../contracts/actions";
@@ -117,7 +115,6 @@ export default function PersonalNotesView({
   const [isSaving, setIsSaving] = useState(false);
   const [draft, setDraftState] = useState<NoteEditorDraft | null>(null);
   const draftRef = useRef<NoteEditorDraft | null>(null);
-  const [showActionManager, setShowActionManager] = useState(false);
   const [showAddNotesDialog, setShowAddNotesDialog] = useState(false);
   const pendingDocumentRef = useRef<PendingDocumentSave | null>(null);
   const pendingEnhancedRef = useRef<PendingEnhancedSave | null>(null);
@@ -564,20 +561,7 @@ export default function PersonalNotesView({
               actionProcessingState={actionProcessingState}
               actionName={actionName}
               onGenerateSummary={generateSummary}
-              actionPicker={
-                <ActionPicker
-                  onRunAction={runNoteAction}
-                  onManageActions={() => setShowActionManager(true)}
-                  disabled={
-                    (!editorNote?.content?.trim() &&
-                      !hasLiveTranscript &&
-                      !activeNoteRawTranscript) ||
-                    actionProcessingState === "processing"
-                  }
-                />
-              }
             />
-            <ActionManagerDialog open={showActionManager} onOpenChange={setShowActionManager} />
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center -mt-6">

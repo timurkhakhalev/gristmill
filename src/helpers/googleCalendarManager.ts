@@ -1,9 +1,11 @@
 import { net } from "electron";
 import debugLogger from "./debugLogger.js";
 import { GoogleCalendarOAuth } from "./googleCalendarOAuth.js";
+import { fetchGooglePeople, lacksPeopleAccess, type GooglePersonProfile } from "./googlePeople.js";
 import { CalendarSyncInterval } from "./calendarSyncInterval.js";
 import { MAX_BUFFER_MINUTES } from "./calendarAvailability.js";
 import { extractMeetingUrl } from "./meetingJoinUrl.js";
+import { calendarDescriptionText } from "./calendarDescription.js";
 import { sendGcalConnectionChanged, sendGcalEventsSynced } from "./calendarEvents.js";
 import type {
   CalendarAccountRow,
@@ -86,8 +88,13 @@ export interface GoogleManagerDb {
   removeStaleCalendarEvents(provider: string, calendarId: string, freshIds: string[]): unknown;
   updateCalendarSyncToken(id: string, token: string, expiresAt: number): unknown;
   upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
+  upsertGooglePeople(profiles: GooglePersonProfile[]): unknown;
+  getGoogleTokensByEmail(email: string): { scope: string } | null;
   getUpcomingEvents(windowMinutes?: number): unknown[];
 }
+
+// Contacts change slowly; names and photos refresh a few times a day.
+const PEOPLE_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 export interface ReminderSchedulerLike {
   scheduleNextMeeting(): void;
@@ -101,6 +108,7 @@ export class GoogleCalendarManager {
   private accounts = new Map<string, { email: string }>();
   private primaryOnly = true;
   private readonly syncRunner: CalendarSyncInterval;
+  private readonly peopleSyncedAt = new Map<string, number>();
 
   constructor(
     databaseManager: GoogleManagerDb & ConstructorParameters<typeof GoogleCalendarOAuth>[0],
@@ -161,6 +169,8 @@ export class GoogleCalendarManager {
   async startOAuth(): Promise<{ success: boolean; email?: string; error?: string }> {
     const result = await this.oauth.startOAuthFlow();
     this.addAccount(result.email);
+    // A reconnect may have just granted People access.
+    this.peopleSyncedAt.delete(result.email);
 
     await this.fetchCalendars(result.email);
     await this.syncEvents();
@@ -198,6 +208,7 @@ export class GoogleCalendarManager {
     connected: boolean;
     configured: boolean;
     accounts: CalendarAccountRow[];
+    peopleAccessMissing: string[];
     email: string | null;
   } {
     const accounts = this.databaseManager.getGoogleAccounts();
@@ -205,6 +216,9 @@ export class GoogleCalendarManager {
       connected: accounts.length > 0,
       configured: this.isConfigured(),
       accounts,
+      peopleAccessMissing: accounts
+        .map((account) => account.email)
+        .filter((email) => lacksPeopleAccess(this.databaseManager.getGoogleTokensByEmail(email)?.scope)),
       // Backwards compat
       email: accounts[0]?.email || null,
     };
@@ -260,6 +274,39 @@ export class GoogleCalendarManager {
 
     sendGcalEventsSynced();
     this.reminderScheduler.scheduleNextMeeting();
+    void this.syncPeople();
+  }
+
+  /**
+   * Refreshes attendee names and photos from each account's Google People
+   * data, at most every PEOPLE_SYNC_INTERVAL_MS per account. Renderers re-read
+   * profiles on the events-synced signal sent afterwards.
+   */
+  async syncPeople({ force = false }: { force?: boolean } = {}): Promise<void> {
+    let updated = false;
+    for (const email of this._getAccountEmails()) {
+      const scope = this.databaseManager.getGoogleTokensByEmail(email)?.scope ?? "";
+      if (lacksPeopleAccess(scope)) continue;
+      const last = this.peopleSyncedAt.get(email) ?? 0;
+      if (!force && Date.now() - last < PEOPLE_SYNC_INTERVAL_MS) continue;
+      this.peopleSyncedAt.set(email, Date.now());
+      try {
+        const profiles = await fetchGooglePeople(
+          (url) => this._apiGet(url, email),
+          scope,
+          (source, error) =>
+            debugLogger.warn("Google People source failed", { source, error: error.message }, "gcal")
+        );
+        if (profiles.length > 0) {
+          this.databaseManager.upsertGooglePeople(profiles);
+          updated = true;
+        }
+        debugLogger.info("Google People synced", { profiles: profiles.length }, "gcal");
+      } catch (err) {
+        debugLogger.error("Google People sync failed", { error: (err as Error).message }, "gcal");
+      }
+    }
+    if (updated) sendGcalEventsSynced();
   }
 
   private async _syncCalendar(calendar: GoogleCalendarRow): Promise<void> {
@@ -368,6 +415,7 @@ export class GoogleCalendarManager {
               }))
             )
           : null,
+        description: calendarDescriptionText(item.description),
       });
 
       if (item.attendees) {

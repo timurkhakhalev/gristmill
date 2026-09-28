@@ -528,6 +528,8 @@ declare global {
 
       // Settings shortcut (Cmd+, / Ctrl+,)
       onShowSettings?: (callback: () => void) => () => void;
+      onTrayOpenEvent?: (callback: (event: import("../contracts/calendar").CalendarEvent) => void) => () => void;
+      onTrayNewNote?: (callback: () => void) => () => void;
       onAccessibilityMissing?: (callback: () => void) => () => void;
 
       // FFmpeg availability

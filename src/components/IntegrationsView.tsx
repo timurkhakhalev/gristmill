@@ -179,6 +179,8 @@ export default function IntegrationsView() {
   // i18n prefix of the provider whose OAuth flow failed, e.g. "integrations.googleCalendar"
   const [oauthErrorKey, setOauthErrorKey] = useState<string | null>(null);
   const [googleConfigured, setGoogleConfigured] = useState(false);
+  // Accounts connected before names and photos were requested.
+  const [peopleAccessMissing, setPeopleAccessMissing] = useState<string[]>([]);
   const [microsoftConfigured, setMicrosoftConfigured] = useState(false);
   const systemAudio = useSystemAudioPermission();
   const { request: requestSystemAudioAccess } = systemAudio;
@@ -305,9 +307,12 @@ export default function IntegrationsView() {
   );
 
   useEffect(() => {
-    void window.electronAPI?.gcalGetConnectionStatus().then((status) => {
-      setGoogleConfigured(Boolean(status.configured));
-    });
+    const refreshGoogleStatus = () =>
+      void window.electronAPI?.gcalGetConnectionStatus().then((status) => {
+        setGoogleConfigured(Boolean(status.configured));
+        setPeopleAccessMissing(status.peopleAccessMissing ?? []);
+      });
+    refreshGoogleStatus();
     void window.electronAPI?.mcalGetConnectionStatus().then((status) => {
       setMicrosoftConfigured(Boolean(status.configured));
     });
@@ -315,6 +320,7 @@ export default function IntegrationsView() {
     // account list; the legacy no-accounts payload shape no longer exists.
     const unsub = window.electronAPI?.onGcalConnectionChanged((data) => {
       setGcalAccounts(data.accounts);
+      refreshGoogleStatus();
     });
     return () => unsub?.();
   }, [setGcalAccounts]);
@@ -366,6 +372,16 @@ export default function IntegrationsView() {
             isConnecting={isConnecting}
             onAddAnother={handleConnect}
           />
+          {peopleAccessMissing.length > 0 && (
+            <div className="flex items-center gap-3 px-4 py-2.5">
+              <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                {t("integrations.googleCalendar.peopleAccessMissing", { emails: peopleAccessMissing.join(", ") })}
+              </p>
+              <Button size="sm" variant="outline" disabled={isConnecting} onClick={handleConnect}>
+                {t("integrations.googleCalendar.reconnect")}
+              </Button>
+            </div>
+          )}
 
           <ProviderRow
             icon={microsoftCalendarIcon}

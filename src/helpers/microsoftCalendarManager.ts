@@ -4,6 +4,7 @@ import { MicrosoftCalendarOAuth } from "./microsoftCalendarOAuth.js";
 import { CalendarSyncInterval } from "./calendarSyncInterval.js";
 import { MAX_BUFFER_MINUTES } from "./calendarAvailability.js";
 import { extractMeetingUrl } from "./meetingJoinUrl.js";
+import { calendarDescriptionText } from "./calendarDescription.js";
 import { sendMcalConnectionChanged, sendMcalEventsSynced } from "./calendarEvents.js";
 import type {
   CalendarAccountRow,
@@ -15,7 +16,7 @@ import type {
 const GRAPH_API_BASE = "https://graph.microsoft.com/v1.0";
 
 const SERIES_MASTER_FIELDS =
-  "subject,isAllDay,isCancelled,showAs,responseStatus,onlineMeeting,onlineMeetingUrl,location,bodyPreview,organizer,attendees";
+  "subject,isAllDay,isCancelled,showAs,responseStatus,onlineMeeting,onlineMeetingUrl,location,bodyPreview,webLink,organizer,attendees";
 
 // Graph's deltaLink permanently encodes the calendarView window it was created
 // with — it never rolls forward. Sync a 38-day window and discard the token
@@ -67,6 +68,7 @@ interface GraphEventItem {
   onlineMeetingUrl?: string;
   location?: { displayName?: string };
   bodyPreview?: string;
+  webLink?: string;
   organizer?: { emailAddress?: { address?: string } };
   attendees?: GraphAttendee[];
   start: { dateTime: string };
@@ -419,6 +421,8 @@ export class MicrosoftCalendarManager {
         extractMeetingUrl([item.location?.displayName, item.bodyPreview]) ||
         null,
       conference_data: null,
+      event_url: item.webLink || null,
+      description: calendarDescriptionText(item.bodyPreview),
       organizer_email: item.organizer?.emailAddress?.address || null,
       attendees_count: attendees.length,
       attendees: attendees.length

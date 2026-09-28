@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import type { ConversationRow } from "../../contracts/chatPersistence";
 import { formatShortDate } from "../../utils/dateFormatting";
+import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { cn } from "../lib/utils";
 import { Dropdown, Label, Separator } from "@heroui/react";
 
@@ -28,6 +29,7 @@ export function ConversationPicker({
 }: ConversationPickerProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
+  const { dateFormat } = useDateTimePreferences();
   const activeConversation = conversations.find((item) => item.id === activeConversationId);
 
   return (
@@ -68,7 +70,7 @@ export function ConversationPicker({
             >
               <Label className="min-w-0 flex-1 truncate">{conversation.title || t("embeddedChat.newChat")}</Label>
               <span className="shrink-0 text-2xs text-muted">
-                {formatShortDate(conversation.updated_at, locale)}
+                {formatShortDate(conversation.updated_at, locale, dateFormat)}
               </span>
               <Dropdown.ItemIndicator />
             </Dropdown.Item>

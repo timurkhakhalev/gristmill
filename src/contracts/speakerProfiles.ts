@@ -7,6 +7,7 @@ import { z } from "zod";
 export const speakerChannels = {
   searchContacts: "search-contacts",
   upsertContact: "upsert-contact",
+  getContactProfiles: "get-contact-profiles",
   getSpeakerMappings: "get-speaker-mappings",
   setSpeakerMapping: "set-speaker-mapping",
   removeSpeakerMapping: "remove-speaker-mapping",
@@ -30,6 +31,13 @@ export const diarizationDownloadProgressEventSchema = z.object({
   code: z.string().optional(),
 });
 export type DiarizationDownloadProgressEvent = z.infer<typeof diarizationDownloadProgressEventSchema>;
+
+/** The best-known name and photo for an email (Google People first, then calendar or typed names). */
+export interface ContactProfile {
+  email: string;
+  display_name: string | null;
+  photo_url: string | null;
+}
 
 export interface SpeakerContact {
   email: string;
@@ -96,6 +104,7 @@ export interface CancelDiarizationResult {
 export interface SpeakerApi {
   searchContacts(query: string): Promise<{ success: boolean; contacts: SpeakerContact[] }>;
   upsertContact(contact: { email: string; displayName?: string | null }): Promise<{ success: boolean }>;
+  getContactProfiles(emails: string[]): Promise<ContactProfile[]>;
   getSpeakerMappings(noteId: number): Promise<SpeakerMappingEntry[]>;
   setSpeakerMapping(
     noteId: number,

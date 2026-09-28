@@ -1,16 +1,36 @@
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import type { MeetingRecordingEpochDto, MeetingSource } from "../contracts/meetingRecording.js";
 import { meetingTimelineFrameCount } from "./meetingAudioMixer.js";
 import type { MeetingRecordingDto, MeetingProcessingRunDto } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { createAbortError } from "./abortError.js";
+import { getFFmpegPath } from "./ffmpegUtils.js";
 
 const SAMPLE_RATE = 24_000;
 const BYTES_PER_FRAME = 2;
 const HEADER_BYTES = 44;
 const EXPORT_CHUNK_BYTES = 256 * 1024;
+const execFileAsync = promisify(execFile);
+
+export async function exportMeetingMixedMp3(sourcePath: string, destination: string, signal?: AbortSignal): Promise<void> {
+  const ffmpeg = getFFmpegPath();
+  if (!ffmpeg) throw new Error("FFmpeg is unavailable");
+  const tempPath = path.join(path.dirname(destination), `.${path.basename(destination)}.${randomUUID()}.tmp`);
+  try {
+    if (signal?.aborted) throw createAbortError();
+    await execFileAsync(ffmpeg, ["-nostdin", "-hide_banner", "-loglevel", "error", "-i", sourcePath,
+      "-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", "-y", tempPath], { signal });
+    if (signal?.aborted) throw createAbortError();
+    await fs.promises.rename(tempPath, destination);
+  } catch (error) {
+    await fs.promises.rm(tempPath, { force: true });
+    throw error;
+  }
+}
 
 interface MeetingAudioOperation {
   settled: Promise<void>;

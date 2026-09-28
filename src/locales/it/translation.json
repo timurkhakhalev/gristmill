@@ -63,7 +63,15 @@
     "quit": "Esci da OpenHercules",
     "tooltip": "OpenHercules",
     "recordingStatus": "Registrazione in corso",
-    "stopRecording": "Interrompi registrazione"
+    "stopRecording": "Interrompi registrazione",
+    "startsIn": "Inizia tra {{time}}",
+    "tomorrow": "Domani",
+    "newNote": "Nuova nota",
+    "settings": "Impostazioni",
+    "inTime": "tra {{time}}",
+    "durationHoursMinutes": "{{h}} h {{m}} min",
+    "durationMinutes": "{{m}} min",
+    "now": "Ora"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -1056,6 +1064,16 @@
         "label": "Interface language",
         "description": "Choose the language used by the app."
       },
+      "dateFormat": {
+        "label": "Formato data",
+        "description": "Scegli l’ordine di giorno, mese e anno.",
+        "locale": "In base alla lingua dell’interfaccia"
+      },
+      "timeFormat": {
+        "label": "Formato ora",
+        "description": "Scegli il formato a 12 o 24 ore.",
+        "locale": "In base alla lingua dell’interfaccia"
+      },
       "theme": {
         "label": "Theme",
         "description": "Match the system or choose a theme.",
@@ -1512,10 +1530,12 @@
       "addPlaceholder": "Aggiungi partecipanti...",
       "typeEmail": "Digita un'email per aggiungere...",
       "me": "(io)",
-      "openInCalendar": "Apri nel calendario",
       "copyEmail": "Copia email",
       "emailCopied": "Email copiata",
-      "removeAttendee": "Rimuovi partecipante"
+      "removeAttendee": "Rimuovi partecipante",
+      "join": "Partecipa",
+      "calendar": "Calendario",
+      "description": "Descrizione"
     },
     "upload": {
       "title": "Carica audio",
@@ -1952,7 +1972,9 @@
       "systemAudioDescription": "Per trascrivere le riunioni, OpenHercules necessita dell'autorizzazione Audio di Sistema per catturare l'audio degli altri partecipanti. Non registriamo mai il tuo schermo. Verrai reindirizzato alle Impostazioni di Sistema per attivarla.",
       "openSettings": "Apri Impostazioni di Sistema",
       "connectFailed": "Connessione non riuscita",
-      "connectFailedDescription": "Si è verificato un errore durante la connessione a Google Calendar. Riprova."
+      "connectFailedDescription": "Si è verificato un errore durante la connessione a Google Calendar. Riprova.",
+      "peopleAccessMissing": "Ricollega {{emails}} per vedere nomi e foto dei partecipanti da Google Contatti.",
+      "reconnect": "Ricollega"
     },
     "microsoftCalendar": {
       "title": "Microsoft Calendar",
@@ -2032,7 +2054,8 @@
     "openSettings": "Apri Impostazioni di Sistema",
     "connectCalendar": "Collega il tuo calendario",
     "connectCalendarDescription": "Vedi le tue riunioni e partecipa senza uscire da OpenHercules.",
-    "connectCalendarButton": "Collega calendario"
+    "connectCalendarButton": "Collega calendario",
+    "openEventNote": "Apri le note di {{title}}"
   },
   "notesView": {
     "searchPlaceholder": "Cerca note…",
@@ -2203,7 +2226,6 @@
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
     "processWholeMeeting": "Trascrivi",
-    "originalsPreserved": "Original microphone and system tracks are saved separately.",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
     "copyError": "Impossibile copiare negli appunti.",
@@ -2244,9 +2266,7 @@
     "deleteAudioDescription": "Verranno rimosse le tracce salvate di microfono e sistema. Trascrizioni e riepiloghi già salvati in Note restano disponibili.",
     "deleteAudioConfirm": "Elimina audio",
     "audioUnavailable": "L’audio originale è stato eliminato o non è disponibile. Trascrizione, riproduzione ed esportazione sono disattivate.",
-    "exportMixed": "Esporta WAV mixato",
-    "exportMic": "Esporta WAV del microfono",
-    "exportSystem": "Esporta WAV di sistema",
+    "exportMixed": "Esporta MP3 mixato",
     "saveSpeaker": "Salva parlante",
     "speakerProfile": "Profilo del parlante",
     "noSpeakerProfile": "Nessun profilo",

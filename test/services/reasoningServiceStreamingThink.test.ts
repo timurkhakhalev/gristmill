@@ -1,0 +1,656 @@
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
+const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+import type { TestContext } from "node:test";
+import type { ViteDevServer } from "vite";
+
+type ReasoningService = typeof import("../../src/services/ReasoningService.js").default;
+type AgentChunk = { type: string; text?: string; finishReason?: string };
+
+function createRawSseResponse(chunks: string[], { includeDone = true } = {}) {
+  const events = chunks
+    .map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
+    .join("");
+  const done = includeDone ? "data: [DONE]\n\n" : "";
+  return new Response(`${events}${done}`, {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
+function createOpenAiChunk(delta: Record<string, unknown>, finishReason: string | null = null) {
+  return {
+    id: "chatcmpl-streaming-think-test",
+    object: "chat.completion.chunk",
+    created: 1,
+    model: "qwen3-4b-q4_k_m",
+    choices: [{ index: 0, delta, finish_reason: finishReason }],
+  };
+}
+
+function createOpenAiSseResponse(
+  chunks: string[],
+  { finishReason = "stop", toolCall }: { finishReason?: string | null; toolCall?: { id: string; name: string; arguments: string } } = {}
+) {
+  const events = chunks
+    .map((content) => `data: ${JSON.stringify(createOpenAiChunk({ content }))}\n\n`)
+    .join("");
+  const toolEvent = toolCall
+    ? `data: ${JSON.stringify(
+        createOpenAiChunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: toolCall.id,
+              type: "function",
+              function: { name: toolCall.name, arguments: toolCall.arguments },
+            },
+          ],
+        })
+      )}\n\n`
+    : "";
+  const finishEvent = `data: ${JSON.stringify(createOpenAiChunk({}, finishReason))}\n\n`;
+  return new Response(`${events}${toolEvent}${finishEvent}data: [DONE]\n\n`, {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
+let sharedVite: ViteDevServer | undefined;
+const sharedCleanup: Array<() => Promise<void>> = [];
+test.after(async () => {
+  for (const cleanup of sharedCleanup) await cleanup();
+});
+
+async function loadReasoningService(t: TestContext, cachePrefix: string, { window = {} }: { window?: Record<string, unknown> } = {}): Promise<{ reasoningService: ReasoningService; vite: ViteDevServer }> {
+  installBrowserGlobals(t, { window });
+  const vite = sharedVite ??= await createRendererServer({ after: (cleanup: () => Promise<void>) => sharedCleanup.push(cleanup) }, { cachePrefix });
+  for (const url of ["/services/ReasoningService.ts", "/stores/settingsStore.ts"]) {
+    const module = await vite.moduleGraph.getModuleByUrl(url);
+    if (module) vite.moduleGraph.invalidateModule(module);
+  }
+  const reasoningService = ((await vite.ssrLoadModule("/services/ReasoningService.ts") as typeof import("../../src/services/ReasoningService.ts"))).default;
+  t.after(() => reasoningService.destroy());
+  return { reasoningService, vite };
+}
+
+async function collectRawText(stream: AsyncIterable<string>) {
+  let output = "";
+  for await (const chunk of stream) output += chunk;
+  return output;
+}
+
+async function collectAgentText(stream: AsyncIterable<AgentChunk>) {
+  let output = "";
+  for await (const chunk of stream) {
+    if (chunk.type === "content") output += chunk.text;
+  }
+  return output;
+}
+
+const waitForMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
+
+test("raw self-hosted streaming filters split tags and flushes visible trailing text", async (t: import("node:test").TestContext) => {
+  const { reasoningService } = await loadReasoningService(
+    t,
+    "openwhispr-raw-streaming-think-test-"
+  );
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async () => createRawSseResponse(["<thi", "nk>hidden</thi", "nk>Answer<"]);
+
+  const stream = reasoningService.processTextStreaming(
+    [{ role: "user", content: "hello" }],
+    "qwen3-4b-q4_k_m",
+    "lan",
+    {
+      systemPrompt: "Answer the user.",
+      lanUrl: "http://127.0.0.1:11434/v1",
+      disableThinking: true,
+    }
+  );
+
+  assert.equal(await collectRawText(stream), "Answer<");
+});
+
+test("raw self-hosted streaming flushes visible trailing text at body EOF", async (t: import("node:test").TestContext) => {
+  const { reasoningService } = await loadReasoningService(
+    t,
+    "openwhispr-raw-streaming-think-eof-test-"
+  );
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async () => createRawSseResponse(["Answer<"], { includeDone: false });
+
+  const stream = reasoningService.processTextStreaming(
+    [{ role: "user", content: "hello" }],
+    "qwen3-4b-q4_k_m",
+    "lan",
+    {
+      systemPrompt: "Answer the user.",
+      lanUrl: "http://127.0.0.1:11434/v1",
+      disableThinking: true,
+    }
+  );
+
+  assert.equal(await collectRawText(stream), "Answer<");
+});
+
+test("tool-enabled self-hosted streaming filters nested tags", async (t: import("node:test").TestContext) => {
+  const { reasoningService, vite } = await loadReasoningService(
+    t,
+    "openwhispr-tool-streaming-think-test-"
+  );
+  const { ToolRegistry } = (await vite.ssrLoadModule("/services/tools/ToolRegistry.ts") as typeof import("../../src/services/tools/ToolRegistry.ts"));
+  const registry = new ToolRegistry();
+  registry.register({
+    name: "noop",
+    description: "No-op test tool",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+    readOnly: true,
+    execute: async () => ({ success: true, data: "ok", displayText: "ok" }),
+  });
+
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async () =>
+    createOpenAiSseResponse(["<thi", "nk>a<think>b</think>c</thi", "nk>Answer"]);
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "qwen3-4b-q4_k_m",
+    "lan",
+    {
+      systemPrompt: "Answer the user.",
+      lanUrl: "http://127.0.0.1:11434/v1",
+      disableThinking: true,
+    },
+    registry.toAISDKFormat()
+  );
+
+  assert.equal(await collectAgentText(stream), "Answer");
+});
+
+test("tool-loop filtering resets after an unterminated reasoning block", async (t: import("node:test").TestContext) => {
+  const { reasoningService, vite } = await loadReasoningService(
+    t,
+    "openwhispr-tool-step-streaming-think-test-"
+  );
+  const { ToolRegistry } = (await vite.ssrLoadModule("/services/tools/ToolRegistry.ts") as typeof import("../../src/services/tools/ToolRegistry.ts"));
+  const registry = new ToolRegistry();
+  registry.register({
+    name: "noop",
+    description: "No-op test tool",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+    readOnly: true,
+    execute: async () => ({ success: true, data: "ok", displayText: "ok" }),
+  });
+
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    if (fetchCalls === 1) {
+      return createOpenAiSseResponse(["<think>secret"], {
+        finishReason: "tool_calls",
+        toolCall: { id: "call-noop", name: "noop", arguments: "{}" },
+      });
+    }
+    return createOpenAiSseResponse(["Answer"]);
+  };
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "qwen3-4b-q4_k_m",
+    "lan",
+    {
+      systemPrompt: "Answer the user.",
+      lanUrl: "http://127.0.0.1:11434/v1",
+      disableThinking: true,
+    },
+    registry.toAISDKFormat()
+  );
+
+  assert.equal(await collectAgentText(stream), "Answer");
+  assert.equal(fetchCalls, 2);
+});
+
+test("tool-enabled streaming does not flush buffered text after abort", async (t: import("node:test").TestContext) => {
+  const { reasoningService } = await loadReasoningService(
+    t,
+    "openwhispr-abort-streaming-think-test-"
+  );
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async (_input, init) => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify(createOpenAiChunk({ content: "Answer<thi" }))}\n\n`
+          )
+        );
+        init?.signal?.addEventListener(
+          "abort",
+          () => controller.error(new DOMException("aborted", "AbortError")),
+          { once: true }
+        );
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "qwen3-4b-q4_k_m",
+    "lan",
+    {
+      systemPrompt: "Answer the user.",
+      lanUrl: "http://127.0.0.1:11434/v1",
+      disableThinking: true,
+    },
+    {}
+  );
+
+  const first = await stream.next();
+  assert.deepEqual(first.value, { type: "content", text: "Answer" });
+  reasoningService.cancelActiveStream();
+  assert.equal(await collectAgentText(stream), "");
+});
+
+test("cancelling during local model setup stops before streaming begins", async (t: import("node:test").TestContext) => {
+  let resolveServer!: (value: { success: boolean; port: number }) => void;
+  let serverStarted = false;
+  const serverReady = new Promise<{ success: boolean; port: number }>((resolve) => {
+    resolveServer = resolve;
+  });
+  const { reasoningService } = await loadReasoningService(
+    t,
+    "openwhispr-model-setup-cancel-test-",
+    {
+      window: {
+        electronAPI: {
+          llamaServerStart: () => {
+            serverStarted = true;
+            return serverReady;
+          },
+        },
+      },
+    }
+  );
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async () => createOpenAiSseResponse(["late answer"]);
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "qwen3-4b-q4_k_m",
+    "local",
+    { systemPrompt: "Answer the user.", disableThinking: true },
+    {}
+  );
+  const first = stream.next();
+  for (let i = 0; i < 50 && !serverStarted; i++) await waitForMicrotasks();
+  assert.equal(serverStarted, true, "fixture setup: local model setup must be pending");
+
+  reasoningService.cancelActiveStream();
+  resolveServer({ success: true, port: 11434 });
+
+  assert.deepEqual(await first, {
+    value: { type: "done", finishReason: "stop" },
+    done: false,
+  });
+  assert.equal((await stream.next()).done, true);
+});
+
+test("cancelling tool-ineligible local setup prevents raw streaming", async (t: import("node:test").TestContext) => {
+  let resolveServer!: (value: { success: boolean; port: number }) => void;
+  let serverStarted = false;
+  const serverReady = new Promise<{ success: boolean; port: number }>((resolve) => {
+    resolveServer = resolve;
+  });
+  const { reasoningService } = await loadReasoningService(
+    t,
+    "openwhispr-tool-ineligible-model-setup-cancel-test-",
+    {
+      window: {
+        electronAPI: {
+          llamaServerStart: () => {
+            serverStarted = true;
+            return serverReady;
+          },
+        },
+      },
+    }
+  );
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    return createOpenAiSseResponse(["late answer"]);
+  };
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "qwen3-1.7b-q4_k_m",
+    "local",
+    { systemPrompt: "Answer the user.", disableThinking: true },
+    undefined
+  );
+  const first = stream.next();
+  for (let i = 0; i < 50 && !serverStarted; i++) await waitForMicrotasks();
+  assert.equal(serverStarted, true, "fixture setup: raw model setup must be pending");
+
+  reasoningService.cancelActiveStream();
+  resolveServer({ success: true, port: 11434 });
+
+  const firstResult = await first;
+  const chunks = firstResult.done ? [] : [firstResult.value];
+  for await (const chunk of stream) chunks.push(chunk);
+
+  assert.deepEqual(chunks, [{ type: "done", finishReason: "stop" }]);
+  assert.equal(fetchCalls, 0);
+});
+
+test("cancelling a raw stream after its reader starts ends normally", async (t: import("node:test").TestContext) => {
+  const { reasoningService } = await loadReasoningService(t, "openwhispr-raw-reader-cancel-test-");
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  let readerStarted = false;
+  globalThis.fetch = async (_input, init) => {
+    const body = new ReadableStream({
+      pull() {
+        readerStarted = true;
+      },
+      start(controller) {
+        init?.signal?.addEventListener(
+          "abort",
+          () => controller.error(new DOMException("aborted", "AbortError")),
+          { once: true }
+        );
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "qwen3-1.7b-q4_k_m",
+    "lan",
+    {
+      systemPrompt: "Answer the user.",
+      lanUrl: "http://127.0.0.1:11434/v1",
+      disableThinking: true,
+    },
+    undefined
+  );
+  const output = collectAgentText(stream);
+  for (let i = 0; i < 50 && !readerStarted; i++) await waitForMicrotasks();
+  assert.equal(readerStarted, true, "fixture setup: the response reader must be pending");
+
+  reasoningService.cancelActiveStream();
+
+  assert.equal(await output, "");
+});
+
+test("a timeout-owned abort during raw response reading remains a timeout error", async (t: import("node:test").TestContext) => {
+  const { reasoningService } = await loadReasoningService(t, "openwhispr-raw-reader-timeout-test-");
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+  });
+  globalThis.setTimeout = ((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) =>
+    // Narrow boundary: setTimeout's Node overload carries __promisify__; the plain callable shape is all we re-implement.
+    (originalSetTimeout as unknown as (cb: (...a: unknown[]) => void, d?: number, ...a: unknown[]) => unknown)(callback, delay === 60_000 ? 0 : delay, ...args)) as typeof globalThis.setTimeout;
+  globalThis.fetch = async (_input: unknown, init: { signal?: AbortSignal | null } = {}) => {
+    const body = new ReadableStream({
+      start(controller) {
+        init?.signal?.addEventListener(
+          "abort",
+          () => controller.error(new DOMException("aborted", "AbortError")),
+          { once: true }
+        );
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "qwen3-1.7b-q4_k_m",
+    "lan",
+    {
+      systemPrompt: "Answer the user.",
+      lanUrl: "http://127.0.0.1:11434/v1",
+      disableThinking: true,
+    },
+    undefined
+  );
+
+  await assert.rejects(collectAgentText(stream), /Streaming request timed out/);
+});
+
+// Was "does not flush buffered text after error" and asserted the stream
+// silently ended with "". A provider-reported error part must now reject the
+// generator instead; buffered text must still never leak into that rejection.
+test("tool-enabled streaming rejects instead of flushing buffered text after a stream error", async (t: import("node:test").TestContext) => {
+  const { reasoningService } = await loadReasoningService(
+    t,
+    "openwhispr-error-streaming-think-test-"
+  );
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  let failResponse!: () => void;
+  globalThis.fetch = async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify(createOpenAiChunk({ content: "Answer<thi" }))}\n\n`
+          )
+        );
+        failResponse = () => {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ error: { message: "stream failed" } })}\n\n`)
+          );
+          controller.close();
+        };
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "qwen3-4b-q4_k_m",
+    "lan",
+    {
+      systemPrompt: "Answer the user.",
+      lanUrl: "http://127.0.0.1:11434/v1",
+      disableThinking: true,
+    },
+    {}
+  );
+
+  const first = await stream.next();
+  assert.deepEqual(first.value, { type: "content", text: "Answer" });
+  failResponse();
+
+  let received = "";
+  await assert.rejects(
+    (async () => {
+      for await (const chunk of stream) {
+        if (chunk.type === "content") received += chunk.text;
+      }
+    })()
+  );
+  assert.equal(received, "");
+});
+
+test("self-hosted streaming preserves think tags when thinking is enabled", async (t: import("node:test").TestContext) => {
+  const { reasoningService } = await loadReasoningService(
+    t,
+    "openwhispr-enabled-streaming-think-test-"
+  );
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async () => createOpenAiSseResponse(["<think>visible</think>Answer"]);
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "qwen3-4b-q4_k_m",
+    "lan",
+    {
+      systemPrompt: "Answer the user.",
+      lanUrl: "http://127.0.0.1:11434/v1",
+      disableThinking: false,
+    },
+    {}
+  );
+
+  assert.equal(await collectAgentText(stream), "<think>visible</think>Answer");
+});
+
+test("non-local streaming remains unfiltered", async (t: import("node:test").TestContext) => {
+  const { reasoningService } = await loadReasoningService(
+    t,
+    "openwhispr-cloud-streaming-think-test-",
+    { window: { electronAPI: { getGroqKey: async () => "test-key" } } }
+  );
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async () => createOpenAiSseResponse(["<think>visible</think>Answer"]);
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "llama-3.3-70b-versatile",
+    "groq",
+    { systemPrompt: "Answer the user.", disableThinking: true },
+    {}
+  );
+
+  assert.equal(await collectAgentText(stream), "<think>visible</think>Answer");
+});
+
+test("chat cancellation leaves single-shot reasoning alive until all requests are cancelled", async (t: import("node:test").TestContext) => {
+  const { reasoningService } = await loadReasoningService(
+    t,
+    "openwhispr-non-streaming-reason-cancel-test-",
+    { window: { electronAPI: { getGroqKey: async () => "test-key" } } }
+  );
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  let requestStarted = false;
+  let requestSignal: AbortSignal | undefined;
+  let fetchCalls = 0;
+  globalThis.fetch = async (_input: unknown, init: { signal?: AbortSignal | null } = {}) => {
+    fetchCalls += 1;
+    requestStarted = true;
+    requestSignal = init?.signal ?? undefined;
+    return await new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener(
+        "abort",
+        () => reject(new DOMException("aborted", "AbortError")),
+        { once: true }
+      );
+    });
+  };
+
+  const reasoning = reasoningService.processText(
+    "clean this text",
+    "llama-3.3-70b-versatile",
+    null,
+    { provider: "groq" }
+  );
+  while (!requestStarted) await waitForMicrotasks();
+  const cancelled = assert.rejects(reasoning, /cancelled/i);
+
+  reasoningService.cancelActiveStream();
+  assert.equal(requestSignal?.aborted, false);
+
+  reasoningService.cancelAllRequests();
+
+  await cancelled;
+  assert.equal(fetchCalls, 1);
+});
+
+test("a provider error part rejects the agent stream instead of ending it silently", async (t: import("node:test").TestContext) => {
+  const { reasoningService, vite } = await loadReasoningService(
+    t,
+    "openwhispr-stream-error-part-test-"
+  );
+  const { ToolRegistry } = (await vite.ssrLoadModule("/services/tools/ToolRegistry.ts") as typeof import("../../src/services/tools/ToolRegistry.ts"));
+  const registry = new ToolRegistry();
+  registry.register({
+    name: "noop",
+    description: "No-op test tool",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+    readOnly: true,
+    execute: async () => ({ success: true, data: "ok", displayText: "ok" }),
+  });
+
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  // streamText never throws on an HTTP failure; it emits an `error` part and
+  // closes the stream. The generator must surface that as a rejection.
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({ error: { message: "Incorrect API key provided", type: "invalid_request_error" } }),
+      { status: 401, headers: { "content-type": "application/json" } }
+    );
+
+  const stream = reasoningService.processTextStreamingAI(
+    [{ role: "user", content: "hello" }],
+    "qwen3-4b-q4_k_m",
+    "lan",
+    { systemPrompt: "Answer the user.", lanUrl: "http://127.0.0.1:11434/v1", disableThinking: true },
+    registry.toAISDKFormat()
+  );
+
+  await assert.rejects(collectAgentText(stream), /Incorrect API key/);
+});

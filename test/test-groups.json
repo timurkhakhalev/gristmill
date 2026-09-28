@@ -6,18 +6,18 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/bidiInterpolatedText.test.js",
-      "test/components/directionalContentPolicy.test.js",
-      "test/components/fieldDirectionPolicy.test.js",
-      "test/components/rtlMotion.test.js",
-      "test/helpers/debugLogger.test.js",
-      "test/helpers/debugLoggerConsolePolicy.test.js",
-      "test/helpers/downloadUtils.test.js",
-      "test/helpers/extractArchive.test.js",
-      "test/helpers/sidecarPidFile.test.js",
-      "test/helpers/translationHistory.test.js",
-      "test/scripts/downloadSherpaMacos.test.js",
-      "test/scripts/runTestsRuntime.test.js"
+      "test/components/bidiInterpolatedText.test.ts",
+      "test/components/directionalContentPolicy.test.ts",
+      "test/components/fieldDirectionPolicy.test.ts",
+      "test/components/rtlMotion.test.ts",
+      "test/helpers/debugLogger.test.ts",
+      "test/helpers/debugLoggerConsolePolicy.test.ts",
+      "test/helpers/downloadUtils.test.ts",
+      "test/helpers/extractArchive.test.ts",
+      "test/helpers/sidecarPidFile.test.ts",
+      "test/helpers/translationHistory.test.ts",
+      "test/scripts/downloadSherpaMacos.test.ts",
+      "test/scripts/runTestsRuntime.test.ts"
     ]
   },
   {
@@ -28,8 +28,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/byokResumeDraft.test.js",
-      "test/helpers/reasoningModelMemory.test.js"
+      "test/components/byokResumeDraft.test.ts",
+      "test/helpers/reasoningModelMemory.test.ts"
     ]
   },
   {
@@ -39,20 +39,20 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/defaultFolderPresentation.test.js",
-      "test/components/noteBottomBar.test.js",
-      "test/components/spacesTreeDirection.test.js",
-      "test/components/spacesTreeNoteActionClearance.test.js",
-      "test/helpers/cliBridgeDictionary.test.js",
-      "test/helpers/cliBridgeSnippets.test.js",
-      "test/helpers/containerIpc.test.js",
-      "test/helpers/folderDeleteRelocationContract.test.js",
-      "test/helpers/granolaImportIpc.test.js",
-      "test/helpers/markdownMirror.test.js",
-      "test/helpers/noteSearch.test.js",
-      "test/helpers/notesDatabase.test.js",
-      "test/helpers/notesIpc.test.js",
-      "test/helpers/vocabularyIpc.test.js"
+      "test/components/defaultFolderPresentation.test.ts",
+      "test/components/noteBottomBar.test.ts",
+      "test/components/spacesTreeDirection.test.ts",
+      "test/components/spacesTreeNoteActionClearance.test.ts",
+      "test/helpers/cliBridgeDictionary.test.ts",
+      "test/helpers/cliBridgeSnippets.test.ts",
+      "test/helpers/containerIpc.test.ts",
+      "test/helpers/folderDeleteRelocationContract.test.ts",
+      "test/helpers/granolaImportIpc.test.ts",
+      "test/helpers/markdownMirror.test.ts",
+      "test/helpers/noteSearch.test.ts",
+      "test/helpers/notesDatabase.test.ts",
+      "test/helpers/notesIpc.test.ts",
+      "test/helpers/vocabularyIpc.test.ts"
     ]
   },
   {
@@ -62,28 +62,28 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/bbModelPanel.test.js",
-      "test/components/floatingChatLayout.test.js",
-      "test/helpers/actionsCatalogBehavior.test.js",
-      "test/helpers/actionsIpc.test.js",
-      "test/helpers/bbCli.test.js",
-      "test/helpers/chatMessageSubmissionLock.test.js",
-      "test/helpers/chatPersistenceBehavior.test.js",
-      "test/helpers/chatPersistenceIpc.test.js",
-      "test/helpers/gemmaMtpDrafter.test.js",
-      "test/helpers/llamaServerContext.test.js",
-      "test/helpers/localLlmModelIpc.test.js",
-      "test/helpers/localModelLifecycleIpc.test.js",
-      "test/helpers/localReasoningBridgeChain.test.js",
-      "test/helpers/modelDirUtils.test.js",
-      "test/helpers/modelManagerContextSizing.test.js",
-      "test/helpers/reasoningIpc.test.js",
-      "test/helpers/tinfoilDefaultModel.test.js",
-      "test/helpers/useChatStreamingCancellation.test.js",
-      "test/services/enterpriseChatModel.test.js",
-      "test/services/enterpriseInferenceErrors.test.js",
-      "test/services/reasoningServiceOpenCodeSession.test.js",
-      "test/services/reasoningServiceStreamingThink.test.js"
+      "test/components/bbModelPanel.test.ts",
+      "test/components/floatingChatLayout.test.ts",
+      "test/helpers/actionsCatalogBehavior.test.ts",
+      "test/helpers/actionsIpc.test.ts",
+      "test/helpers/bbCli.test.ts",
+      "test/helpers/chatMessageSubmissionLock.test.ts",
+      "test/helpers/chatPersistenceBehavior.test.ts",
+      "test/helpers/chatPersistenceIpc.test.ts",
+      "test/helpers/gemmaMtpDrafter.test.ts",
+      "test/helpers/llamaServerContext.test.ts",
+      "test/helpers/localLlmModelIpc.test.ts",
+      "test/helpers/localModelLifecycleIpc.test.ts",
+      "test/helpers/localReasoningBridgeChain.test.ts",
+      "test/helpers/modelDirUtils.test.ts",
+      "test/helpers/modelManagerContextSizing.test.ts",
+      "test/helpers/reasoningIpc.test.ts",
+      "test/helpers/tinfoilDefaultModel.test.ts",
+      "test/helpers/useChatStreamingCancellation.test.ts",
+      "test/services/enterpriseChatModel.test.ts",
+      "test/services/enterpriseInferenceErrors.test.ts",
+      "test/services/reasoningServiceOpenCodeSession.test.ts",
+      "test/services/reasoningServiceStreamingThink.test.ts"
     ]
   },
   {
@@ -93,13 +93,13 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/hotkeyCapturePolicy.test.js",
-      "test/components/keyboardShortcutsDialog.test.js",
-      "test/components/onboardingCompatibility.test.js",
-      "test/components/onboardingFlow.test.js",
-      "test/components/onboardingLanguageSelection.test.js",
-      "test/hooks/usePermissionsAccessibilityGate.test.js",
-      "test/locales/i18nImports.test.js"
+      "test/components/hotkeyCapturePolicy.test.ts",
+      "test/components/keyboardShortcutsDialog.test.ts",
+      "test/components/onboardingCompatibility.test.ts",
+      "test/components/onboardingFlow.test.ts",
+      "test/components/onboardingLanguageSelection.test.ts",
+      "test/hooks/usePermissionsAccessibilityGate.test.ts",
+      "test/locales/i18nImports.test.ts"
     ]
   },
   {
@@ -110,8 +110,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/i18nDirectionProvider.test.js",
-      "test/helpers/uiLanguageStartup.test.js"
+      "test/components/i18nDirectionProvider.test.ts",
+      "test/helpers/uiLanguageStartup.test.ts"
     ]
   },
   {
@@ -121,20 +121,20 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/liveWaveform.test.js",
-      "test/components/meetingInterruptionWarning.test.js",
-      "test/helpers/meetingAutoEndLifecycle.test.js",
-      "test/helpers/meetingCaptureRecovery.test.js",
-      "test/helpers/meetingCoordinatorIpc.test.js",
-      "test/helpers/meetingRecordingConfigSnapshot.test.js",
-      "test/helpers/meetingRecordingPersistence.test.js",
-      "test/helpers/meetingRecordingStorage.test.js",
-      "test/helpers/speakerIpc.test.js",
-      "test/helpers/speakerRetroactiveMapping.test.js",
-      "test/stores/meetingRecordingStoreAutoEndStop.test.js",
-      "test/stores/meetingRecordingStoreSystemAudioDegraded.test.js",
-      "test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js",
-      "test/stores/meetingRecordingStoreSystemAudioSilence.test.js"
+      "test/components/liveWaveform.test.ts",
+      "test/components/meetingInterruptionWarning.test.ts",
+      "test/helpers/meetingAutoEndLifecycle.test.ts",
+      "test/helpers/meetingCaptureRecovery.test.ts",
+      "test/helpers/meetingCoordinatorIpc.test.ts",
+      "test/helpers/meetingRecordingConfigSnapshot.test.ts",
+      "test/helpers/meetingRecordingPersistence.test.ts",
+      "test/helpers/meetingRecordingStorage.test.ts",
+      "test/helpers/speakerIpc.test.ts",
+      "test/helpers/speakerRetroactiveMapping.test.ts",
+      "test/stores/meetingRecordingStoreAutoEndStop.test.ts",
+      "test/stores/meetingRecordingStoreSystemAudioDegraded.test.ts",
+      "test/stores/meetingRecordingStoreSystemAudioInterrupted.test.ts",
+      "test/stores/meetingRecordingStoreSystemAudioSilence.test.ts"
     ]
   },
   {
@@ -145,9 +145,9 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/hotkeyValidation.test.js",
-      "test/helpers/onboardingWindowBounds.test.js",
-      "test/locales/rendererLocaleRemovalContract.test.js"
+      "test/helpers/hotkeyValidation.test.ts",
+      "test/helpers/onboardingWindowBounds.test.ts",
+      "test/locales/rendererLocaleRemovalContract.test.ts"
     ]
   },
   {
@@ -158,16 +158,16 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/meetingFileTranscriptionPicker.test.js",
-      "test/components/uploadAudioFeedback.test.js",
-      "test/helpers/audioSegmentMerge.test.js",
-      "test/helpers/fileDiarizationIpc.test.js",
-      "test/helpers/meetingSpeakerReconcile.test.js",
-      "test/helpers/transcriptionDataDeleteAllAudio.test.js",
-      "test/services/fileTranscriptionDiarizationWarning.test.js",
-      "test/services/uploadDiarizationPersistence.test.js",
-      "test/stores/batchQueueDiarizationWarning.test.js",
-      "test/stores/meetingRecordingStoreDiarizationPublish.test.js"
+      "test/components/meetingFileTranscriptionPicker.test.ts",
+      "test/components/uploadAudioFeedback.test.ts",
+      "test/helpers/audioSegmentMerge.test.ts",
+      "test/helpers/fileDiarizationIpc.test.ts",
+      "test/helpers/meetingSpeakerReconcile.test.ts",
+      "test/helpers/transcriptionDataDeleteAllAudio.test.ts",
+      "test/services/fileTranscriptionDiarizationWarning.test.ts",
+      "test/services/uploadDiarizationPersistence.test.ts",
+      "test/stores/batchQueueDiarizationWarning.test.ts",
+      "test/stores/meetingRecordingStoreDiarizationPublish.test.ts"
     ]
   },
   {
@@ -179,8 +179,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/meetingResultsPanel.test.js",
-      "test/services/meetingResults.test.js"
+      "test/components/meetingResultsPanel.test.ts",
+      "test/services/meetingResults.test.ts"
     ]
   },
   {
@@ -193,7 +193,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/meetingTranscriptChat.test.js"
+      "test/components/meetingTranscriptChat.test.ts"
     ]
   },
   {
@@ -205,7 +205,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/noteParticipantsMeetingCard.test.js"
+      "test/components/noteParticipantsMeetingCard.test.ts"
     ]
   },
   {
@@ -216,7 +216,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/orukeetOrganization.test.js"
+      "test/components/orukeetOrganization.test.ts"
     ]
   },
   {
@@ -226,13 +226,13 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/granolaImport.test.js",
-      "test/helpers/noteCards.test.js",
-      "test/helpers/noteListOps.test.js",
-      "test/lib/noteEditorPendingSave.test.js",
-      "test/utils/findMatches.test.js",
-      "test/utils/mentionMarkdown.test.js",
-      "test/utils/snippets.test.js"
+      "test/helpers/granolaImport.test.ts",
+      "test/helpers/noteCards.test.ts",
+      "test/helpers/noteListOps.test.ts",
+      "test/lib/noteEditorPendingSave.test.ts",
+      "test/utils/findMatches.test.ts",
+      "test/utils/mentionMarkdown.test.ts",
+      "test/utils/snippets.test.ts"
     ]
   },
   {
@@ -242,16 +242,16 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/uploadTempLifetime.test.js",
-      "test/helpers/cliBridgeTranscribe.test.js",
-      "test/helpers/localFileTranscriptionIpc.test.js",
-      "test/helpers/parakeetWavNormalization.test.js",
-      "test/helpers/remoteTranscriptionIpc.test.js",
-      "test/helpers/uploadCancelIpc.test.js",
-      "test/helpers/whisperServerInferenceFields.test.js",
-      "test/services/fileTranscriptionManaged.test.js",
-      "test/services/fileTranscriptionTimestamps.test.js",
-      "test/stores/batchQueueCancel.test.js"
+      "test/components/uploadTempLifetime.test.ts",
+      "test/helpers/cliBridgeTranscribe.test.ts",
+      "test/helpers/localFileTranscriptionIpc.test.ts",
+      "test/helpers/parakeetWavNormalization.test.ts",
+      "test/helpers/remoteTranscriptionIpc.test.ts",
+      "test/helpers/uploadCancelIpc.test.ts",
+      "test/helpers/whisperServerInferenceFields.test.ts",
+      "test/services/fileTranscriptionManaged.test.ts",
+      "test/services/fileTranscriptionTimestamps.test.ts",
+      "test/stores/batchQueueCancel.test.ts"
     ]
   },
   {
@@ -262,7 +262,7 @@
     "buildMain": false,
     "serial": true,
     "files": [
-      "test/helpers/retryTranscriptionHandler.test.js"
+      "test/helpers/retryTranscriptionHandler.test.ts"
     ]
   },
   {
@@ -272,43 +272,43 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/config/rendererInferenceRemovalContract.test.js",
-      "test/config/colorSchemes.test.js",
-      "test/helpers/appVersion.test.js",
-      "test/helpers/assetDownloadOffline.test.js",
-      "test/helpers/autoStartPolicy.test.js",
-      "test/helpers/chineseScript.test.js",
-      "test/helpers/cliBridgeRequestBody.test.js",
-      "test/helpers/dockPolicy.test.js",
-      "test/helpers/meetingCompanionPolicy.test.js",
-      "test/helpers/electronProcessIds.test.js",
-      "test/helpers/externalUrlOpener.test.js",
-      "test/helpers/formatBytes.test.js",
-      "test/helpers/globeKeyManager.test.js",
-      "test/helpers/m4DictationRemovalContract.test.js",
-      "test/helpers/networkErrors.test.js",
-      "test/helpers/notificationTimer.test.js",
-      "test/helpers/pillVisibilityHandoff.test.js",
-      "test/helpers/scrollFollowState.test.js",
-      "test/helpers/systemTar.test.js",
-      "test/helpers/versionedIntro.test.js",
-      "test/helpers/visualFrame.test.js",
-      "test/helpers/windowConfigTypes.test.js",
-      "test/helpers/windowContext.test.js",
-      "test/helpers/windowManagerNavigation.test.js",
-      "test/helpers/windowPositionClamp.test.js",
-      "test/lib/localMutationError.test.js",
-      "test/locales/translationCoverage.test.js",
-      "test/m1IdentitySourceContract.test.js",
-      "test/m2ServerLayerRemovalContract.test.js",
-      "test/m8PlatformSourceContract.test.js",
-      "test/scripts/beforeBuild.test.js",
-      "test/scripts/downloadLifecycle.test.js",
-      "test/scripts/macosIdentitySourceContract.test.js",
-      "test/scripts/sqliteRuntime.test.js",
-      "test/scripts/testSelection.test.js",
-      "test/utils/formatDuration.test.js",
-      "test/utils/serialQueue.test.js"
+      "test/config/rendererInferenceRemovalContract.test.ts",
+      "test/config/colorSchemes.test.ts",
+      "test/helpers/appVersion.test.ts",
+      "test/helpers/assetDownloadOffline.test.ts",
+      "test/helpers/autoStartPolicy.test.ts",
+      "test/helpers/chineseScript.test.ts",
+      "test/helpers/cliBridgeRequestBody.test.ts",
+      "test/helpers/dockPolicy.test.ts",
+      "test/helpers/meetingCompanionPolicy.test.ts",
+      "test/helpers/electronProcessIds.test.ts",
+      "test/helpers/externalUrlOpener.test.ts",
+      "test/helpers/formatBytes.test.ts",
+      "test/helpers/globeKeyManager.test.ts",
+      "test/helpers/m4DictationRemovalContract.test.ts",
+      "test/helpers/networkErrors.test.ts",
+      "test/helpers/notificationTimer.test.ts",
+      "test/helpers/pillVisibilityHandoff.test.ts",
+      "test/helpers/scrollFollowState.test.ts",
+      "test/helpers/systemTar.test.ts",
+      "test/helpers/versionedIntro.test.ts",
+      "test/helpers/visualFrame.test.ts",
+      "test/helpers/windowConfigTypes.test.ts",
+      "test/helpers/windowContext.test.ts",
+      "test/helpers/windowManagerNavigation.test.ts",
+      "test/helpers/windowPositionClamp.test.ts",
+      "test/lib/localMutationError.test.ts",
+      "test/locales/translationCoverage.test.ts",
+      "test/m1IdentitySourceContract.test.ts",
+      "test/m2ServerLayerRemovalContract.test.ts",
+      "test/m8PlatformSourceContract.test.ts",
+      "test/scripts/beforeBuild.test.ts",
+      "test/scripts/downloadLifecycle.test.ts",
+      "test/scripts/macosIdentitySourceContract.test.ts",
+      "test/scripts/sqliteRuntime.test.ts",
+      "test/scripts/testSelection.test.ts",
+      "test/utils/formatDuration.test.ts",
+      "test/utils/serialQueue.test.ts"
     ]
   },
   {
@@ -318,9 +318,9 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/actionsBridge.test.js",
-      "test/helpers/chatBridge.test.js",
-      "test/helpers/reasoningBridge.test.js"
+      "test/helpers/actionsBridge.test.ts",
+      "test/helpers/chatBridge.test.ts",
+      "test/helpers/reasoningBridge.test.ts"
     ]
   },
   {
@@ -330,16 +330,16 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/hotkeyFnGuard.test.js",
-      "test/helpers/hotkeyLabels.test.js",
-      "test/helpers/hotkeyList.test.js",
-      "test/helpers/hotkeyRepeatGate.test.js",
-      "test/helpers/hotkeySlotRollback.test.js",
-      "test/helpers/hotkeySlotUnregister.test.js",
-      "test/helpers/i18nDocument.test.js",
-      "test/helpers/i18nMain.test.js",
-      "test/helpers/retiredPrompts.test.js",
-      "test/utils/appShortcuts.test.js"
+      "test/helpers/hotkeyFnGuard.test.ts",
+      "test/helpers/hotkeyLabels.test.ts",
+      "test/helpers/hotkeyList.test.ts",
+      "test/helpers/hotkeyRepeatGate.test.ts",
+      "test/helpers/hotkeySlotRollback.test.ts",
+      "test/helpers/hotkeySlotUnregister.test.ts",
+      "test/helpers/i18nDocument.test.ts",
+      "test/helpers/i18nMain.test.ts",
+      "test/helpers/retiredPrompts.test.ts",
+      "test/utils/appShortcuts.test.ts"
     ]
   },
   {
@@ -349,32 +349,32 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/activeMicRecovery.test.js",
-      "test/helpers/audioStorageFilename.test.js",
-      "test/helpers/audioTapManagerWarnings.test.js",
-      "test/helpers/liveSpeakerIdPolicy.test.js",
-      "test/helpers/liveSpeakerIdentifier.test.js",
-      "test/helpers/meetingAudioActivityMonitor.test.js",
-      "test/helpers/meetingAudioParts.test.js",
-      "test/helpers/meetingAudioTimeline.test.js",
-      "test/helpers/meetingAutoEndController.test.js",
-      "test/helpers/meetingEchoLeakDetector.test.js",
-      "test/helpers/meetingMicGate.test.js",
-      "test/helpers/meetingMicHoldback.test.js",
-      "test/helpers/meetingRecordingSession.test.js",
-      "test/helpers/meetingStreamingSpeakerLabels.test.js",
-      "test/helpers/meetingStreamingWiring.test.js",
-      "test/helpers/meetingSystemAudioWatchdog.test.js",
-      "test/helpers/micDeviceSelection.test.js",
-      "test/helpers/micSelectionRecovery.test.js",
-      "test/helpers/microphoneSelection.test.js",
-      "test/helpers/pcmFixtures.test.js",
-      "test/helpers/speakerAssignmentPolicy.test.js",
-      "test/helpers/speakerCount.test.js",
-      "test/helpers/speakerMerge.test.js",
-      "test/helpers/streamingConnectionLifecycle.test.js",
-      "test/helpers/systemDefaultMicrophone.test.js",
-      "test/utils/segmentSpeakerName.test.js"
+      "test/helpers/activeMicRecovery.test.ts",
+      "test/helpers/audioStorageFilename.test.ts",
+      "test/helpers/audioTapManagerWarnings.test.ts",
+      "test/helpers/liveSpeakerIdPolicy.test.ts",
+      "test/helpers/liveSpeakerIdentifier.test.ts",
+      "test/helpers/meetingAudioActivityMonitor.test.ts",
+      "test/helpers/meetingAudioParts.test.ts",
+      "test/helpers/meetingAudioTimeline.test.ts",
+      "test/helpers/meetingAutoEndController.test.ts",
+      "test/helpers/meetingEchoLeakDetector.test.ts",
+      "test/helpers/meetingMicGate.test.ts",
+      "test/helpers/meetingMicHoldback.test.ts",
+      "test/helpers/meetingRecordingSession.test.ts",
+      "test/helpers/meetingStreamingSpeakerLabels.test.ts",
+      "test/helpers/meetingStreamingWiring.test.ts",
+      "test/helpers/meetingSystemAudioWatchdog.test.ts",
+      "test/helpers/micDeviceSelection.test.ts",
+      "test/helpers/micSelectionRecovery.test.ts",
+      "test/helpers/microphoneSelection.test.ts",
+      "test/helpers/pcmFixtures.test.ts",
+      "test/helpers/speakerAssignmentPolicy.test.ts",
+      "test/helpers/speakerCount.test.ts",
+      "test/helpers/speakerMerge.test.ts",
+      "test/helpers/streamingConnectionLifecycle.test.ts",
+      "test/helpers/systemDefaultMicrophone.test.ts",
+      "test/utils/segmentSpeakerName.test.ts"
     ]
   },
   {
@@ -385,15 +385,15 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/agentNameDictionary.test.js",
-      "test/helpers/cleanupFailureStore.test.js",
-      "test/helpers/noteFormattingOverrides.test.js",
-      "test/helpers/regenerableNoteTitle.test.js",
-      "test/lib/conversationTitle.test.js",
-      "test/services/dictionaryTool.test.js",
-      "test/services/searchNotesTool.test.js",
-      "test/services/snippetTool.test.js",
-      "test/utils/sanitizeGeneratedTitle.test.js"
+      "test/helpers/agentNameDictionary.test.ts",
+      "test/helpers/cleanupFailureStore.test.ts",
+      "test/helpers/noteFormattingOverrides.test.ts",
+      "test/helpers/regenerableNoteTitle.test.ts",
+      "test/lib/conversationTitle.test.ts",
+      "test/services/dictionaryTool.test.ts",
+      "test/services/searchNotesTool.test.ts",
+      "test/services/snippetTool.test.ts",
+      "test/utils/sanitizeGeneratedTitle.test.ts"
     ]
   },
   {
@@ -403,40 +403,40 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/agentStreamRequestRegistry.test.js",
-      "test/helpers/agentToolPresentation.test.js",
-      "test/helpers/anthropicResponse.test.js",
-      "test/helpers/anthropicSamplingFlags.test.js",
-      "test/helpers/apiBaseUrl.test.js",
-      "test/helpers/apiErrorMessage.test.js",
-      "test/helpers/bedrockCatalog.test.js",
-      "test/helpers/bedrockEnterpriseIpc.test.js",
-      "test/helpers/bedrockRequestPolicy.test.js",
-      "test/helpers/chatRouting.test.js",
-      "test/helpers/cortiAuth.test.js",
-      "test/helpers/enterpriseAiProviders.test.js",
-      "test/helpers/geminiModelRegistry.test.js",
-      "test/helpers/geminiResponse.test.js",
-      "test/helpers/gemmaMtpRegistry.test.js",
-      "test/helpers/ggufMetadata.test.js",
-      "test/helpers/llamaContextPolicy.test.js",
-      "test/helpers/llmRequestTimeout.test.js",
-      "test/helpers/modelListBaseCandidates.test.js",
-      "test/helpers/reasoningRouting.test.js",
-      "test/helpers/stripThinking.test.js",
-      "test/helpers/thinkingSuppressionDialects.test.js",
-      "test/helpers/tinfoilCatalog.test.js",
-      "test/locales/orukeetModelCard.test.js",
-      "test/services/fetchWithParamFallback.test.js",
-      "test/services/geminiProviderResponse.test.js",
-      "test/services/llmRequestShapeMatrix.test.js",
-      "test/services/modelFamilyConstraints.test.js",
-      "test/services/openCodeSession.test.js",
-      "test/services/openaiOpenCodeSession.test.js",
-      "test/services/streamingThinkFilter.test.js",
-      "test/services/toolUtils.test.js",
-      "test/utils/bedrockRegions.test.js",
-      "test/utils/localInferenceError.test.js"
+      "test/helpers/agentStreamRequestRegistry.test.ts",
+      "test/helpers/agentToolPresentation.test.ts",
+      "test/helpers/anthropicResponse.test.ts",
+      "test/helpers/anthropicSamplingFlags.test.ts",
+      "test/helpers/apiBaseUrl.test.ts",
+      "test/helpers/apiErrorMessage.test.ts",
+      "test/helpers/bedrockCatalog.test.ts",
+      "test/helpers/bedrockEnterpriseIpc.test.ts",
+      "test/helpers/bedrockRequestPolicy.test.ts",
+      "test/helpers/chatRouting.test.ts",
+      "test/helpers/cortiAuth.test.ts",
+      "test/helpers/enterpriseAiProviders.test.ts",
+      "test/helpers/geminiModelRegistry.test.ts",
+      "test/helpers/geminiResponse.test.ts",
+      "test/helpers/gemmaMtpRegistry.test.ts",
+      "test/helpers/ggufMetadata.test.ts",
+      "test/helpers/llamaContextPolicy.test.ts",
+      "test/helpers/llmRequestTimeout.test.ts",
+      "test/helpers/modelListBaseCandidates.test.ts",
+      "test/helpers/reasoningRouting.test.ts",
+      "test/helpers/stripThinking.test.ts",
+      "test/helpers/thinkingSuppressionDialects.test.ts",
+      "test/helpers/tinfoilCatalog.test.ts",
+      "test/locales/orukeetModelCard.test.ts",
+      "test/services/fetchWithParamFallback.test.ts",
+      "test/services/geminiProviderResponse.test.ts",
+      "test/services/llmRequestShapeMatrix.test.ts",
+      "test/services/modelFamilyConstraints.test.ts",
+      "test/services/openCodeSession.test.ts",
+      "test/services/openaiOpenCodeSession.test.ts",
+      "test/services/streamingThinkFilter.test.ts",
+      "test/services/toolUtils.test.ts",
+      "test/utils/bedrockRegions.test.ts",
+      "test/utils/localInferenceError.test.ts"
     ]
   },
   {
@@ -447,13 +447,13 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/apiRetryStrategy.test.js",
-      "test/helpers/azureTranscriptionUrl.test.js",
-      "test/helpers/geminiTranscription.test.js",
-      "test/helpers/parakeetModelRegistry.test.js",
-      "test/helpers/tinfoilTranscription.test.js",
-      "test/helpers/transcriptionRouteModelAgreement.test.js",
-      "test/utils/llmTranscript.test.js"
+      "test/helpers/apiRetryStrategy.test.ts",
+      "test/helpers/azureTranscriptionUrl.test.ts",
+      "test/helpers/geminiTranscription.test.ts",
+      "test/helpers/parakeetModelRegistry.test.ts",
+      "test/helpers/tinfoilTranscription.test.ts",
+      "test/helpers/transcriptionRouteModelAgreement.test.ts",
+      "test/utils/llmTranscript.test.ts"
     ]
   },
   {
@@ -463,15 +463,15 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/appleCalendarManager.test.js",
-      "test/helpers/calendarAvailability.test.js",
-      "test/helpers/calendarAvailabilityService.test.js",
-      "test/helpers/calendarEvents.test.js",
-      "test/helpers/calendarReminderScheduler.test.js",
-      "test/helpers/calendarSyncInterval.test.js",
-      "test/helpers/googleCalendarManager.test.js",
-      "test/helpers/microsoftCalendarManager.test.js",
-      "test/utils/calendarAttendees.test.js"
+      "test/helpers/appleCalendarManager.test.ts",
+      "test/helpers/calendarAvailability.test.ts",
+      "test/helpers/calendarAvailabilityService.test.ts",
+      "test/helpers/calendarEvents.test.ts",
+      "test/helpers/calendarReminderScheduler.test.ts",
+      "test/helpers/calendarSyncInterval.test.ts",
+      "test/helpers/googleCalendarManager.test.ts",
+      "test/helpers/microsoftCalendarManager.test.ts",
+      "test/utils/calendarAttendees.test.ts"
     ]
   },
   {
@@ -483,13 +483,13 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/assemblyAiStreaming.test.js",
-      "test/helpers/cortiStreaming.test.js",
-      "test/helpers/deepgramStreaming.test.js",
-      "test/helpers/meetingStreamingProviders.test.js",
-      "test/helpers/openaiRealtimeStreaming.test.js",
-      "test/helpers/realtimeTokenProviders.test.js",
-      "test/helpers/tinfoilRealtimeStreaming.test.js"
+      "test/helpers/assemblyAiStreaming.test.ts",
+      "test/helpers/cortiStreaming.test.ts",
+      "test/helpers/deepgramStreaming.test.ts",
+      "test/helpers/meetingStreamingProviders.test.ts",
+      "test/helpers/openaiRealtimeStreaming.test.ts",
+      "test/helpers/realtimeTokenProviders.test.ts",
+      "test/helpers/tinfoilRealtimeStreaming.test.ts"
     ]
   },
   {
@@ -501,7 +501,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/geminiLiveStreaming.test.js"
+      "test/helpers/geminiLiveStreaming.test.ts"
     ]
   },
   {
@@ -511,7 +511,7 @@
     "kind": "native",
     "buildMain": false,
     "files": [
-      "test/helpers/audioActivityDetector.test.js"
+      "test/helpers/audioActivityDetector.test.ts"
     ]
   },
   {
@@ -522,7 +522,7 @@
     "kind": "native",
     "buildMain": false,
     "files": [
-      "test/helpers/audioFileUploadElectron.test.js"
+      "test/helpers/audioFileUploadElectron.test.ts"
     ]
   },
   {
@@ -532,8 +532,8 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/calendarAvailabilityBridge.test.js",
-      "test/helpers/calendarBridge.test.js"
+      "test/helpers/calendarAvailabilityBridge.test.ts",
+      "test/helpers/calendarBridge.test.ts"
     ]
   },
   {
@@ -543,9 +543,9 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/calendarDatabase.test.js",
-      "test/helpers/calendarIpc.test.js",
-      "test/helpers/oauthLoopbackFlow.test.js"
+      "test/helpers/calendarDatabase.test.ts",
+      "test/helpers/calendarIpc.test.ts",
+      "test/helpers/oauthLoopbackFlow.test.ts"
     ]
   },
   {
@@ -558,7 +558,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/canaryZeroSecrets.test.js"
+      "test/helpers/canaryZeroSecrets.test.ts"
     ]
   },
   {
@@ -569,7 +569,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/cleanupFailureToast.test.js"
+      "test/helpers/cleanupFailureToast.test.ts"
     ]
   },
   {
@@ -579,9 +579,9 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/containerBridge.test.js",
-      "test/helpers/notesBridge.test.js",
-      "test/helpers/vocabularyBridge.test.js"
+      "test/helpers/containerBridge.test.ts",
+      "test/helpers/notesBridge.test.ts",
+      "test/helpers/vocabularyBridge.test.ts"
     ]
   },
   {
@@ -597,7 +597,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/databaseLocalBehavior.test.js",
+      "test/helpers/databaseLocalBehavior.test.ts",
       "test/helpers/devSnapshot.test.ts"
     ]
   },
@@ -614,8 +614,8 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/databaseLocalSchema.test.js",
-      "test/helpers/deviceCleanupContract.test.js"
+      "test/helpers/databaseLocalSchema.test.ts",
+      "test/helpers/deviceCleanupContract.test.ts"
     ]
   },
   {
@@ -626,9 +626,9 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/dateGroupFormatting.test.js",
-      "test/helpers/dictionaryImportFormat.test.js",
-      "test/helpers/dictionaryStartup.test.js"
+      "test/helpers/dateGroupFormatting.test.ts",
+      "test/helpers/dictionaryImportFormat.test.ts",
+      "test/helpers/dictionaryStartup.test.ts"
     ]
   },
   {
@@ -638,7 +638,7 @@
     "kind": "native",
     "buildMain": true,
     "files": [
-      "test/helpers/devRendererOrigin.test.js"
+      "test/helpers/devRendererOrigin.test.ts"
     ]
   },
   {
@@ -649,16 +649,16 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/diarizationPolicy.test.js",
-      "test/helpers/diarizationSpeakerMerge.test.js",
-      "test/helpers/ffmpegUtils.test.js",
-      "test/helpers/meetingDiarizationInput.test.js",
-      "test/helpers/meetingTranscriptionLifecycle.test.js",
-      "test/helpers/meetingTranscriptionRouting.test.js",
-      "test/helpers/transcriptFormatter.test.js",
-      "test/helpers/transcriptText.test.js",
-      "test/utils/audioDeviceUtils.test.js",
-      "test/utils/diarizationCompletion.test.js"
+      "test/helpers/diarizationPolicy.test.ts",
+      "test/helpers/diarizationSpeakerMerge.test.ts",
+      "test/helpers/ffmpegUtils.test.ts",
+      "test/helpers/meetingDiarizationInput.test.ts",
+      "test/helpers/meetingTranscriptionLifecycle.test.ts",
+      "test/helpers/meetingTranscriptionRouting.test.ts",
+      "test/helpers/transcriptFormatter.test.ts",
+      "test/helpers/transcriptText.test.ts",
+      "test/utils/audioDeviceUtils.test.ts",
+      "test/utils/diarizationCompletion.test.ts"
     ]
   },
   {
@@ -669,10 +669,10 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/enterpriseEndpointGuard.test.js",
-      "test/helpers/localModelDownloadStatus.test.js",
-      "test/helpers/secureEndpoint.test.js",
-      "test/services/openaiEndpointRetry.test.js"
+      "test/helpers/enterpriseEndpointGuard.test.ts",
+      "test/helpers/localModelDownloadStatus.test.ts",
+      "test/helpers/secureEndpoint.test.ts",
+      "test/services/openaiEndpointRetry.test.ts"
     ]
   },
   {
@@ -684,8 +684,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/envSecretStorage.test.js",
-      "test/helpers/secret*.test.js"
+      "test/helpers/envSecretStorage.test.ts",
+      "test/helpers/secret*.test.ts"
     ]
   },
   {
@@ -695,22 +695,22 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/fileRetryStrategy.test.js",
-      "test/helpers/parakeetCapability.test.js",
-      "test/helpers/parakeetServer.test.js",
-      "test/helpers/parakeetWsResult.test.js",
-      "test/helpers/selfHostedTranscription.test.js",
-      "test/helpers/transcriptionErrorKeys.test.js",
-      "test/helpers/transcriptionResultParsing.test.js",
-      "test/helpers/transcriptionRoute.test.js",
-      "test/helpers/transcriptionTimeout.test.js",
-      "test/helpers/uploadCancelRegistry.test.js",
-      "test/helpers/uploadTimestamps.test.js",
-      "test/helpers/whisperServerVadArgs.test.js",
-      "test/helpers/whisperVadConfig.test.js",
-      "test/helpers/whisperVadModel.test.js",
-      "test/helpers/whisperWakeRewarm.test.js",
-      "test/services/transcriptionBaseUrl.test.js"
+      "test/helpers/fileRetryStrategy.test.ts",
+      "test/helpers/parakeetCapability.test.ts",
+      "test/helpers/parakeetServer.test.ts",
+      "test/helpers/parakeetWsResult.test.ts",
+      "test/helpers/selfHostedTranscription.test.ts",
+      "test/helpers/transcriptionErrorKeys.test.ts",
+      "test/helpers/transcriptionResultParsing.test.ts",
+      "test/helpers/transcriptionRoute.test.ts",
+      "test/helpers/transcriptionTimeout.test.ts",
+      "test/helpers/uploadCancelRegistry.test.ts",
+      "test/helpers/uploadTimestamps.test.ts",
+      "test/helpers/whisperServerVadArgs.test.ts",
+      "test/helpers/whisperVadConfig.test.ts",
+      "test/helpers/whisperVadModel.test.ts",
+      "test/helpers/whisperWakeRewarm.test.ts",
+      "test/services/transcriptionBaseUrl.test.ts"
     ]
   },
   {
@@ -720,7 +720,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/parakeetOnlineStream.test.js"
+      "test/helpers/parakeetOnlineStream.test.ts"
     ]
   },
   {
@@ -731,8 +731,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/geminiFileTranscription.test.js",
-      "test/helpers/parakeetModelManifest.test.js"
+      "test/helpers/geminiFileTranscription.test.ts",
+      "test/helpers/parakeetModelManifest.test.ts"
     ]
   },
   {
@@ -745,11 +745,11 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/inferenceProviderIds.test.js",
-      "test/helpers/localModelSelections.test.js",
-      "test/helpers/localTranscriptionModels.test.js",
-      "test/helpers/providerConnectionTest.test.js",
-      "test/helpers/providerUrlPolicyParity.test.js"
+      "test/helpers/inferenceProviderIds.test.ts",
+      "test/helpers/localModelSelections.test.ts",
+      "test/helpers/localTranscriptionModels.test.ts",
+      "test/helpers/providerConnectionTest.test.ts",
+      "test/helpers/providerUrlPolicyParity.test.ts"
     ]
   },
   {
@@ -759,8 +759,8 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/localFileTranscriptionBridge.test.js",
-      "test/helpers/uploadTranscriptionBridge.test.js"
+      "test/helpers/localFileTranscriptionBridge.test.ts",
+      "test/helpers/uploadTranscriptionBridge.test.ts"
     ]
   },
   {
@@ -771,8 +771,8 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/localServerPolicy.test.js",
-      "test/helpers/retiredCloudModels.test.js"
+      "test/helpers/localServerPolicy.test.ts",
+      "test/helpers/retiredCloudModels.test.ts"
     ]
   },
   {
@@ -784,7 +784,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/macInferenceSourceContract.test.js"
+      "test/helpers/macInferenceSourceContract.test.ts"
     ]
   },
   {
@@ -795,8 +795,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/mainProcessEsmEntries.test.js",
-      "test/helpers/urlDownloadIpc.test.js"
+      "test/helpers/mainProcessEsmEntries.test.ts",
+      "test/helpers/urlDownloadIpc.test.ts"
     ]
   },
   {
@@ -806,7 +806,7 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/meetingCoordinatorBridge.test.js"
+      "test/helpers/meetingCoordinatorBridge.test.ts"
     ]
   },
   {
@@ -817,11 +817,11 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/meetingDetectionEngine.test.js",
-      "test/helpers/meetingDetectionEngineAutoEnd.test.js",
-      "test/helpers/meetingCallDetector.test.js",
-      "test/helpers/meetingJoinUrl.test.js",
-      "test/helpers/meetingNotificationModel.test.js"
+      "test/helpers/meetingDetectionEngine.test.ts",
+      "test/helpers/meetingDetectionEngineAutoEnd.test.ts",
+      "test/helpers/meetingCallDetector.test.ts",
+      "test/helpers/meetingJoinUrl.test.ts",
+      "test/helpers/meetingNotificationModel.test.ts"
     ]
   },
   {
@@ -833,7 +833,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/meetingProcessing.test.js"
+      "test/helpers/meetingProcessing.test.ts"
     ]
   },
   {
@@ -845,7 +845,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/meetingRecordingRetention.test.js"
+      "test/helpers/meetingRecordingRetention.test.ts"
     ]
   },
   {
@@ -857,7 +857,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/meetingTranscriptPersistence.test.js"
+      "test/helpers/meetingTranscriptPersistence.test.ts"
     ]
   },
   {
@@ -868,8 +868,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/modelManagerBridgeDownloadStatus.test.js",
-      "test/hooks/modelDownloadErrors.test.js"
+      "test/helpers/modelManagerBridgeDownloadStatus.test.ts",
+      "test/hooks/modelDownloadErrors.test.ts"
     ]
   },
   {
@@ -882,7 +882,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/modelRegistryProviderFallback.test.js"
+      "test/helpers/modelRegistryProviderFallback.test.ts"
     ]
   },
   {
@@ -892,7 +892,7 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/helpers/notesContract.test.js"
+      "test/helpers/notesContract.test.ts"
     ]
   },
   {
@@ -903,8 +903,8 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/onnxWorkerClient.test.js",
-      "test/helpers/onnxWorkerProtocol.test.js"
+      "test/helpers/onnxWorkerClient.test.ts",
+      "test/helpers/onnxWorkerProtocol.test.ts"
     ]
   },
   {
@@ -915,9 +915,9 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/parakeetDeploymentTarget.test.js",
-      "test/helpers/parakeetWsStartup.test.js",
-      "test/helpers/urlAudioDownloader.test.js"
+      "test/helpers/parakeetDeploymentTarget.test.ts",
+      "test/helpers/parakeetWsStartup.test.ts",
+      "test/helpers/urlAudioDownloader.test.ts"
     ]
   },
   {
@@ -928,10 +928,10 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/participants.test.js",
-      "test/helpers/personalEmailDomains.test.js",
-      "test/utils/dateFormatting.test.js",
-      "test/utils/participants.test.js"
+      "test/helpers/participants.test.ts",
+      "test/helpers/personalEmailDomains.test.ts",
+      "test/utils/dateFormatting.test.ts",
+      "test/utils/participants.test.ts"
     ]
   },
   {
@@ -941,7 +941,7 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/preloadOnboardingBridge.test.js"
+      "test/helpers/preloadOnboardingBridge.test.ts"
     ]
   },
   {
@@ -957,7 +957,7 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/rendererBridgeContract.test.js"
+      "test/helpers/rendererBridgeContract.test.ts"
     ]
   },
   {
@@ -968,7 +968,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/retentionSettings.test.js"
+      "test/helpers/retentionSettings.test.ts"
     ]
   },
   {
@@ -981,7 +981,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/secureCache.test.js"
+      "test/helpers/secureCache.test.ts"
     ]
   },
   {
@@ -995,7 +995,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/settingsSelectors.test.js"
+      "test/helpers/settingsSelectors.test.ts"
     ]
   },
   {
@@ -1009,7 +1009,7 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/helpers/settingsSelectorsTypes.test.js"
+      "test/helpers/settingsSelectorsTypes.test.ts"
     ]
   },
   {
@@ -1023,10 +1023,10 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/settingsStoreLocalProviderMigrations.test.js",
-      "test/helpers/settingsStoreMeetingFollowFlags.test.js",
-      "test/helpers/settingsStoreRetiredGroqModels.test.js",
-      "test/helpers/settingsStoreTranscriptionModeReconcile.test.js"
+      "test/helpers/settingsStoreLocalProviderMigrations.test.ts",
+      "test/helpers/settingsStoreMeetingFollowFlags.test.ts",
+      "test/helpers/settingsStoreRetiredGroqModels.test.ts",
+      "test/helpers/settingsStoreTranscriptionModeReconcile.test.ts"
     ]
   },
   {
@@ -1036,7 +1036,7 @@
     "kind": "native",
     "buildMain": false,
     "files": [
-      "test/helpers/sidecarReaper.test.js"
+      "test/helpers/sidecarReaper.test.ts"
     ]
   },
   {
@@ -1048,8 +1048,8 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/transcriptionModelDownloadStatus.test.js",
-      "test/services/fileTranscriptionCustomEndpoint.test.js"
+      "test/helpers/transcriptionModelDownloadStatus.test.ts",
+      "test/services/fileTranscriptionCustomEndpoint.test.ts"
     ]
   },
   {
@@ -1061,7 +1061,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/helpers/transcriptionModelMemory.test.js"
+      "test/helpers/transcriptionModelMemory.test.ts"
     ]
   },
   {
@@ -1072,7 +1072,7 @@
     "kind": "integration",
     "buildMain": true,
     "files": [
-      "test/helpers/urlDownloadBridge.test.js"
+      "test/helpers/urlDownloadBridge.test.ts"
     ]
   },
   {
@@ -1084,8 +1084,8 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/windowConfigMeetingNotification.test.js",
-      "test/helpers/windowManagerMeetingNotification.test.js"
+      "test/helpers/windowConfigMeetingNotification.test.ts",
+      "test/helpers/windowManagerMeetingNotification.test.ts"
     ]
   },
   {
@@ -1096,7 +1096,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/m7bSettingsNotesLocalContract.test.js"
+      "test/m7bSettingsNotesLocalContract.test.ts"
     ]
   },
   {
@@ -1107,12 +1107,12 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/actions.test.js",
-      "test/scripts/type-probes/chat-persistence.test.js",
-      "test/scripts/type-probes/local-llm-models.test.js",
-      "test/scripts/type-probes/local-model-lifecycle.test.js",
-      "test/scripts/type-probes/provider-adapters.test.js",
-      "test/scripts/type-probes/reasoning.test.js"
+      "test/scripts/type-probes/actions.test.ts",
+      "test/scripts/type-probes/chat-persistence.test.ts",
+      "test/scripts/type-probes/local-llm-models.test.ts",
+      "test/scripts/type-probes/local-model-lifecycle.test.ts",
+      "test/scripts/type-probes/provider-adapters.test.ts",
+      "test/scripts/type-probes/reasoning.test.ts"
     ]
   },
   {
@@ -1123,9 +1123,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/calendar-availability.test.js",
-      "test/scripts/type-probes/calendar-managers.test.js",
-      "test/scripts/type-probes/calendar.test.js"
+      "test/scripts/type-probes/calendar-availability.test.ts",
+      "test/scripts/type-probes/calendar-managers.test.ts",
+      "test/scripts/type-probes/calendar.test.ts"
     ]
   },
   {
@@ -1136,9 +1136,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/containers.test.js",
-      "test/scripts/type-probes/note-files.test.js",
-      "test/scripts/type-probes/vocabulary.test.js"
+      "test/scripts/type-probes/containers.test.ts",
+      "test/scripts/type-probes/note-files.test.ts",
+      "test/scripts/type-probes/vocabulary.test.ts"
     ]
   },
   {
@@ -1154,8 +1154,8 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/database.test.js",
-      "test/scripts/sharedHelpersTypeProbe.test.js"
+      "test/scripts/type-probes/database.test.ts",
+      "test/scripts/sharedHelpersTypeProbe.test.ts"
     ]
   },
   {
@@ -1168,8 +1168,8 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/downloads.test.js",
-      "test/scripts/type-probes/realtime-streaming.test.js"
+      "test/scripts/type-probes/downloads.test.ts",
+      "test/scripts/type-probes/realtime-streaming.test.ts"
     ]
   },
   {
@@ -1182,7 +1182,7 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/env-secret.test.js"
+      "test/scripts/type-probes/env-secret.test.ts"
     ]
   },
   {
@@ -1193,9 +1193,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/local-file-transcription.test.js",
-      "test/scripts/type-probes/upload-transcription.test.js",
-      "test/scripts/type-probes/url-download.test.js"
+      "test/scripts/type-probes/local-file-transcription.test.ts",
+      "test/scripts/type-probes/upload-transcription.test.ts",
+      "test/scripts/type-probes/url-download.test.ts"
     ]
   },
   {
@@ -1211,7 +1211,7 @@
     "kind": "types",
     "buildMain": true,
     "files": [
-      "test/scripts/mainBuild.test.js"
+      "test/scripts/mainBuild.test.ts"
     ]
   },
   {
@@ -1222,9 +1222,9 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/meeting-coordinator.test.js",
-      "test/scripts/nativeAudioCaptureTypeProbe.test.js",
-      "test/scripts/type-probes/speaker-onnx.test.js"
+      "test/scripts/type-probes/meeting-coordinator.test.ts",
+      "test/scripts/nativeAudioCaptureTypeProbe.test.ts",
+      "test/scripts/type-probes/speaker-onnx.test.ts"
     ]
   },
   {
@@ -1235,8 +1235,8 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/services/calendarAvailabilityTool.test.js",
-      "test/services/calendarTool.test.js"
+      "test/services/calendarAvailabilityTool.test.ts",
+      "test/services/calendarTool.test.ts"
     ]
   },
   {
@@ -1247,7 +1247,7 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/services/uploadNotes.test.js"
+      "test/services/uploadNotes.test.ts"
     ]
   },
   {
@@ -1259,7 +1259,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/stores/actionProcessingNoteOutput.test.js"
+      "test/stores/actionProcessingNoteOutput.test.ts"
     ]
   }
 ]

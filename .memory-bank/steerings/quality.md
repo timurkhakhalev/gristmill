@@ -128,8 +128,12 @@ pnpm test --domain calendar --kind unit
 pnpm test --domain calendar --domain notes
 ```
 
-Put new ordinary tests under `test/cases/<domain>/<kind>/`; the runner discovers
-their domain and kind without a path registration. A `main/` subdirectory marks
+Write new ordinary tests and shared test helpers in TypeScript. Keep deliberate
+compiler-error fixtures under `test/scripts/type-probes/`, where the probe runner
+checks their expected diagnostics; the regular strict test typecheck excludes
+those fixtures. Put new ordinary tests under `test/cases/<domain>/<kind>/`; the
+runner discovers their domain and kind without a path registration. A `main/`
+subdirectory marks
 compiled main/preload consumers; `serial/` marks a shared-resource test. Keep
 `test/test-groups.json` for tests needing several domains or a nonstandard
 location. Maintain those entries when renaming or removing tests

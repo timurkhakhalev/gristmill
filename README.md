@@ -39,7 +39,7 @@ Use `pnpm run build:renderer`, `pnpm run typecheck`, `pnpm run lint` and
 `pnpm test --domain calendar` selects a domain; repeat `--domain` to combine them.
 Add `--kind unit` for a fast loop or `--list` to inspect the plan without running
 tests or preparing the runtime. Other kinds are `integration`, `types` and `native`.
-`pnpm test -- test/helpers/ffmpegUtils.test.js` runs one file; `pnpm test` runs
+`pnpm test -- test/helpers/ffmpegUtils.test.ts` runs one file; `pnpm test` runs
 the full suite. The registry validates coverage of all test files. Main is built
 once only when selected tests require its output. See
 [project commands](.memory-bank/steerings/project-commands.md) for selector rules.

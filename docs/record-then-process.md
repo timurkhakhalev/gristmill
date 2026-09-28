@@ -13,7 +13,7 @@
 Команды root-owned проверки:
 
 ```sh
-node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingRetention.test.js test/services/meetingResults.test.js test/services/uploadNotes.test.js test/helpers/retentionSettings.test.js
+pnpm test -- test/helpers/meetingRecordingRetention.test.ts test/services/meetingResults.test.ts test/services/uploadNotes.test.ts test/helpers/retentionSettings.test.ts
 pnpm run typecheck
 pnpm run lint
 pnpm test

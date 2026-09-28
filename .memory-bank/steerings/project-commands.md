@@ -26,7 +26,7 @@ subdirectory and shared-resource tests under `serial/`. No selectors means the
 full suite.
 
 For a particular regression, `pnpm test -- <explicit test files>` accepts exact
-registered paths under `test/` ending in `.test.js` or `.test.ts`. Do not combine
+registered paths under `test/` ending in `.test.ts`. Do not combine
 explicit files with domain/kind selectors or pass directories, globs or Node flags.
 The optional leading `--` also works with selectors.
 
@@ -38,11 +38,13 @@ The optional leading `--` also works with selectors.
   in a later one-worker phase. Preparation and main build each run once. Full
   runs take a lock in the common Git directory across worktrees. Use the canonical command;
   direct `node --test` can bypass the required SQLite runtime setup.
-- `pnpm run typecheck:main`, `pnpm run typecheck:renderer` and
-  `pnpm run typecheck:settings-selectors` select compiler targets.
-  `pnpm run typecheck` runs all three sequentially. A test selection that builds
-  main already checks main compilation; other selections do not. Neither replaces
-  renderer/selector checks.
+- `pnpm run typecheck:main`, `pnpm run typecheck:renderer`,
+  `pnpm run typecheck:settings-selectors` and `pnpm run typecheck:tests` select
+  compiler targets. `pnpm run typecheck` runs all four sequentially. The test
+  target automatically includes ordinary TypeScript tests and helpers, excluding
+  intentionally invalid type-probe fixtures. A test selection that builds main
+  already checks main compilation; other selections do not. `pnpm test` runs
+  compiler probes, but does not replace the renderer or test typecheck.
 - `pnpm run lint` covers both root/main and renderer configurations. For focused
   lint, use the existing config that owns the changed file; root and `src/` have
   different configs. Do not use auto-fix across unrelated dirty files.

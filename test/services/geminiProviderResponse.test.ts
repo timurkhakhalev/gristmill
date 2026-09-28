@@ -1,0 +1,120 @@
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
+const load = () => import("../../src/services/ai/inferenceProviders/gemini.js");
+
+const providerContext = {
+  getApiKey: async () => "test-key",
+  getSystemPrompt: () => "Clean the transcript",
+  getCustomDictionary: () => [],
+  getPreferredLanguage: () => "en",
+  getUiLanguage: () => "en",
+  callChatCompletionsApi: async () => {
+    throw new Error("Unexpected chat completions delegation");
+  },
+  calculateMaxTokens: () => 4096,
+};
+
+function createGeminiResponse(parts: unknown[], finishReason = "STOP") {
+  return {
+    candidates: [
+      {
+        content: { role: "model", parts },
+        finishReason,
+        index: 0,
+      },
+    ],
+    usageMetadata: {
+      promptTokenCount: 12,
+      candidatesTokenCount: 4,
+      totalTokenCount: 16,
+    },
+  };
+}
+
+async function callGemini(t: import("node:test").TestContext, response: unknown, config: Record<string, unknown> = {}) {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify(response), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  const { geminiProvider } = await load();
+  return geminiProvider.call({
+    text: "raw transcript",
+    model: "gemini-2.5-flash",
+    agentName: null,
+    config: { systemPrompt: "Clean the transcript", ...config },
+    ctx: providerContext,
+  });
+}
+
+test("Gemini provider returns all visible text without leaking thought or non-text parts", async (t: import("node:test").TestContext) => {
+  const response = createGeminiResponse([
+    { thought: true, text: "Private reasoning" },
+    { functionCall: { name: "ignored", args: {} } },
+    { text: "First paragraph.\n\n" },
+    { inlineData: { mimeType: "image/png", data: "ignored" } },
+    { text: "Second paragraph." },
+  ]);
+
+  assert.equal(await callGemini(t, response), "First paragraph.\n\nSecond paragraph.");
+});
+
+test("Gemini provider accepts text after a leading non-text part", async (t: import("node:test").TestContext) => {
+  const response = createGeminiResponse([
+    { functionCall: { name: "ignored", args: {} } },
+    { text: "Visible answer" },
+  ]);
+
+  assert.equal(await callGemini(t, response), "Visible answer");
+});
+
+test("Gemini provider rejects whitespace-only text as an empty response", async (t: import("node:test").TestContext) => {
+  const response = createGeminiResponse([{ text: "  \n " }]);
+
+  await assert.rejects(callGemini(t, response), /Gemini returned empty response/);
+});
+
+test("Gemini provider preserves complete-output truncation errors before extraction", async (t: import("node:test").TestContext) => {
+  const response = createGeminiResponse([{ text: "Partial answer" }], "MAX_TOKENS");
+
+  await assert.rejects(
+    callGemini(t, response, { requireCompleteOutput: true }),
+    /Model output was truncated before the selection edit completed/
+  );
+});
+
+test("a caller's output budget cannot shrink the one Gemini would have computed", async (t: import("node:test").TestContext) => {
+  // Note formatting pins maxTokens so the local path can price it against the
+  // context window. On Gemini that short-circuited a computed allowance of up
+  // to 8192 and halved long summaries — on the provider with the most room.
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  let requestBody: { generationConfig: { maxOutputTokens: number } } | null = null;
+  globalThis.fetch = async (_url: unknown, init: { body?: unknown } = {}) => {
+    requestBody = JSON.parse(String(init.body));
+    return new Response(JSON.stringify(createGeminiResponse([{ text: "ok" }])), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  const { geminiProvider } = await load();
+  await geminiProvider.call({
+    text: "a long meeting transcript",
+    model: "gemini-2.5-flash",
+    agentName: null,
+    config: { systemPrompt: "Write meeting notes.", maxTokens: 4096 },
+    ctx: { ...providerContext, calculateMaxTokens: () => 8192 },
+  });
+
+  assert.equal(requestBody!.generationConfig.maxOutputTokens, 8192);
+});

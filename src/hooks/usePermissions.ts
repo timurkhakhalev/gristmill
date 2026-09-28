@@ -174,6 +174,7 @@ export const usePermissions = (
   }, [showAlertDialog, t, setMicPermissionGranted]);
 
   const requestAccessibilityPermission = useCallback(async () => {
+    setAccessibilityTroubleshooting(false);
     const alreadyGranted = await window.electronAPI?.checkAccessibilityPermission?.(true);
     if (alreadyGranted) {
       setAccessibilityPermissionGranted(true);
@@ -186,6 +187,7 @@ export const usePermissions = (
       setAccessibilityPermissionGranted(true);
       return;
     }
+    setAccessibilityTroubleshooting(true);
     await openSystemSettings("accessibility", window.electronAPI?.openAccessibilitySettings);
   }, [openSystemSettings, setAccessibilityPermissionGranted]);
 

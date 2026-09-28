@@ -7,10 +7,10 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const test: typeof import("node:test") = require("node:test");
 
-let registerUploadCancelHandler: any;
-let registerRemoteTranscriptionHandler: any;
-let registerFileDiarizationHandlers: any;
-let createUploadCancelRegistry: any;
+let registerUploadCancelHandler: typeof import("../../src/helpers/uploadCancelIpcHandler.ts").registerUploadCancelHandler;
+let registerRemoteTranscriptionHandler: typeof import("../../src/helpers/remoteTranscriptionIpcHandler.ts").registerRemoteTranscriptionHandler;
+let registerFileDiarizationHandlers: typeof import("../../src/helpers/fileDiarizationIpcHandlers.ts").registerFileDiarizationHandlers;
+let createUploadCancelRegistry: typeof import("../../src/helpers/uploadCancelRegistry.ts").createUploadCancelRegistry;
 
 test.before(async () => {
   ({ registerUploadCancelHandler } = await import("../../src/helpers/uploadCancelIpcHandler.ts"));
@@ -36,10 +36,12 @@ test("one cancel aborts the parallel transcription and diarization of the same i
   const { registry, cancel } = setup();
 
   // Two operations of one upload execution, resolved only by their signals.
-  const settle = (signal: any) =>
-    new Promise((resolve) => {
+  const settle = (signal: AbortSignal | undefined) => {
+    assert.ok(signal);
+    return new Promise<string>((resolve) => {
       signal.addEventListener("abort", () => resolve("aborted"), { once: true });
     });
+  };
 
   const transcriptionSignal = registry.register("upload-1").signal;
   const diarizationSignal = registry.register("upload-1").signal;
@@ -56,6 +58,7 @@ test("one cancel aborts the parallel transcription and diarization of the same i
   ]);
 
   assert.deepEqual(races, ["aborted", "aborted", "cancelled"]);
+  assert.ok(otherSignal);
   assert.equal(otherSignal.aborted, false, "another upload is untouched");
   // Everything registered under the id was aborted and removed.
   assert.equal(registry.cancel("upload-1"), 0);
@@ -95,11 +98,13 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
   const registry = createUploadCancelRegistry();
   registerUploadCancelHandler(ipcMain, { uploadCancelRegistry: registry });
 
-  const abortedSignals = [];
-  const hangOnSignal = (options: any) =>
-    new Promise((_resolve, reject) => {
-      abortedSignals.push(options.signal);
-      options.signal?.addEventListener("abort", () => {
+  const abortedSignals: AbortSignal[] = [];
+  const hangOnSignal = (options: { signal?: AbortSignal } | undefined) =>
+    new Promise<never>((_resolve, reject) => {
+      const signal = options?.signal;
+      assert.ok(signal);
+      abortedSignals.push(signal);
+      signal.addEventListener("abort", () => {
         const error = new Error("The operation was aborted");
         error.name = "AbortError";
         reject(error);
@@ -111,7 +116,8 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
     readFile: () => Buffer.alloc(64),
     fileSize: () => 64,
     providerBaseUrls: () => [],
-    postMultipart: (_url: string, _body: unknown, _boundary: unknown, _headers: unknown, options: unknown) => hangOnSignal(options),
+    postMultipart: (_url, _body, _boundary, _headers, options) => hangOnSignal(options),
+    postRawAudioFile: async () => { throw new Error("Raw transport is not used in this case"); },
     transcribeWithTinfoil: async () => ({ text: "t" }),
     transcribeGeminiFile: async () => ({ success: true, text: "t" }),
     transcribeWithCorti: async () => ({ text: "t" }),
@@ -128,16 +134,18 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
   registerFileDiarizationHandlers(ipcMain, {
     diarizationManager: {
       isModelDownloaded: () => true,
-      diarize: (_wavPath: unknown, options: any) =>
+      diarize: (_wavPath, options) =>
         new Promise((resolve) => {
-          options.signal?.addEventListener("abort", () => resolve([]), { once: true });
+          const signal = options?.signal;
+          assert.ok(signal);
+          signal.addEventListener("abort", () => resolve([]), { once: true });
         }),
-      capSpeakerClusters: (segments: unknown) => segments,
+      capSpeakerClusters: (segments) => segments,
     },
     resolveAllowedAudioPath: () => audioFile,
-    convertToWav: async (_i: unknown, _o: unknown, options: any) => {
+    convertToWav: async (_i, _o, options) => {
       await new Promise((resolve) => setImmediate(resolve));
-      if (options.signal?.aborted) {
+      if (options?.signal?.aborted) {
         const error = new Error("Aborted");
         error.name = "AbortError";
         throw error;
@@ -146,7 +154,7 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
     createTempWavPath: () => path.join(tmpRoot, "wav.wav"),
     fileSize: () => 32000,
     resolveClusterThreshold: () => 0.55,
-    dropNegligibleClusters: (segments: unknown) => segments,
+    dropNegligibleClusters: (segments) => segments,
     pcm16Mono16kBytesPerSecond: 32000,
     maxSpeakerCount: 16,
     removeFile: () => {},

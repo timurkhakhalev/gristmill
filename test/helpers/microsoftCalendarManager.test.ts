@@ -1,6 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
+import type { CalendarEventInput } from "../../src/helpers/database.ts";
 
 const managerModulePath = require.resolve("../../src/helpers/microsoftCalendarManager.ts");
 const originalLoad = Module._load;
@@ -155,14 +156,14 @@ test("_mapEvent falls back to a meeting link found in location or body text", ()
   assert.equal(mapped.attendees, null);
 });
 
-function createManager(MicrosoftCalendarManager: any, upserted: unknown[], contacts: unknown[] = [], overrides = {}) {
+function createManager(MicrosoftCalendarManager: any, upserted: CalendarEventInput[], contacts: { email?: string; displayName?: string | null }[] = [], overrides = {}) {
   return new MicrosoftCalendarManager(
     {
       removeStaleCalendarEvents: () => {},
-      upsertCalendarEvents: (events: any) => upserted.push(...events),
+      upsertCalendarEvents: (events: CalendarEventInput[]) => upserted.push(...events),
       removeCalendarEvents: () => {},
       updateMicrosoftCalendarSyncToken: () => {},
-      upsertContacts: (rows: any) => contacts.push(...rows),
+      upsertContacts: (rows: { email?: string; displayName?: string | null }[]) => contacts.push(...rows),
       getCalendarEventById: () => null,
       ...overrides,
     },
@@ -180,15 +181,15 @@ const STRIPPED_OCCURRENCE = {
 
 test("_syncCalendar backfills stripped recurring occurrences from their series master", async () => {
   const MicrosoftCalendarManager = loadManagerModule();
-  const upserted: any[] = [];
-  const contacts: any[] = [];
-  const tokenWrites: any[] = [];
+  const upserted: CalendarEventInput[] = [];
+  const contacts: { email?: string; displayName?: string | null }[] = [];
+  const tokenWrites: { id: unknown; token: string; expiresAt: number }[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted, contacts, {
     updateMicrosoftCalendarSyncToken: (id: unknown, token: string, expiresAt: number) =>
       tokenWrites.push({ id, token, expiresAt }),
   });
 
-  const masterFetches: any[] = [];
+  const masterFetches: string[] = [];
   manager._apiGet = async (url: string) => {
     if (url.includes("/calendarView/delta")) {
       return {
@@ -232,20 +233,25 @@ test("_syncCalendar backfills stripped recurring occurrences from their series m
   assert.match(masterFetches[0], /^\/me\/calendars\/cal-1\/events\/master-1\?\$select=/);
 
   const occurrence = upserted.find((event) => event.id === "occ-1");
+  assert.ok(occurrence);
   assert.equal(occurrence.summary, "Standup");
   assert.equal(occurrence.start_time, "2026-07-20T09:25:00Z");
   assert.equal(occurrence.hangout_link, "https://teams.microsoft.com/l/meetup-join/abc");
   assert.equal(occurrence.organizer_email, "organizer@example.com");
   assert.equal(occurrence.attendees_count, 1);
-  assert.equal(upserted.find((event) => event.id === "occ-2").summary, "Standup");
-  assert.equal(upserted.find((event) => event.id === "evt-1").summary, "One-off");
+  const secondOccurrence = upserted.find((event) => event.id === "occ-2");
+  const oneOff = upserted.find((event) => event.id === "evt-1");
+  assert.ok(secondOccurrence);
+  assert.ok(oneOff);
+  assert.equal(secondOccurrence.summary, "Standup");
+  assert.equal(oneOff.summary, "One-off");
   assert.ok(contacts.some((contact) => contact.email === "me@example.com"));
   assert.ok(tokenWrites[0].expiresAt > Date.now() + 6 * 24 * 60 * 60 * 1000);
 });
 
 test("_syncCalendar inserts a never-seen stripped occurrence bare when the series master fetch fails", async () => {
   const MicrosoftCalendarManager = loadManagerModule();
-  const upserted: any[] = [];
+  const upserted: CalendarEventInput[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted);
 
   manager._apiGet = async (url: string) => {
@@ -265,8 +271,8 @@ test("_syncCalendar inserts a never-seen stripped occurrence bare when the serie
 
 test("_syncCalendar shortens the delta token TTL when a master fetch fails", async () => {
   const MicrosoftCalendarManager = loadManagerModule();
-  const upserted: unknown[] = [];
-  const tokenWrites: any[] = [];
+  const upserted: CalendarEventInput[] = [];
+  const tokenWrites: { id: unknown; token: string; expiresAt: number }[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted, [], {
     updateMicrosoftCalendarSyncToken: (id: unknown, token: string, expiresAt: number) =>
       tokenWrites.push({ id, token, expiresAt }),
@@ -292,7 +298,7 @@ test("_syncCalendar shortens the delta token TTL when a master fetch fails", asy
 // scheduler treats as a time block — it must not overwrite a full row.
 test("_syncCalendar keeps the stored row when a stripped occurrence's master fetch fails", async () => {
   const MicrosoftCalendarManager = loadManagerModule();
-  const upserted: any[] = [];
+  const upserted: CalendarEventInput[] = [];
   const staleKeepLists: unknown[] = [];
   const manager = createManager(MicrosoftCalendarManager, upserted, [], {
     getCalendarEventById: (id: unknown) => (id === "occ-1" ? { id, summary: "Standup" } : null),

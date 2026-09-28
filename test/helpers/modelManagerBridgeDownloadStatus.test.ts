@@ -16,6 +16,19 @@ const modelRegistryData: { localProviders: { models: TestModel[] }[] } = require
 const downloadUtils: typeof import("../../src/helpers/downloadUtils") = require("../../src/helpers/downloadUtils");
 const LocalModelDownloadStatus: typeof import("../../src/helpers/localModelDownloadStatus.ts").LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus.ts");
 const { registerLocalLlmModelHandlers } = require("../../src/helpers/localLlmModelIpcHandlers.ts");
+import type { ModelManager } from "../../src/helpers/modelManagerBridge.ts";
+
+type ModelInfo = Awaited<ReturnType<ModelManager["getAllModels"]>>[number];
+
+function hasErrorCode(error: unknown, code: string): error is Error & { code: string } {
+  return error instanceof Error && "code" in error && error.code === code;
+}
+
+function hasModelId(error: unknown, code: string, modelId: string): boolean {
+  if (!hasErrorCode(error, code) || !("details" in error)) return false;
+  const details = error.details;
+  return !!details && typeof details === "object" && "modelId" in details && details.modelId === modelId;
+}
 
 const originalLoad = Module._load;
 const modelManagerModulePath = require.resolve("../../src/helpers/modelManagerBridge.ts");
@@ -42,7 +55,7 @@ function loadModelManager({ downloadFile, checkDiskSpace }: {
   delete require.cache[modelManagerModulePath];
   delete require.cache[modelDirUtilsModulePath];
 
-  Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: NodeModule | undefined, isMain: boolean) {
     if (request === "electron") {
       return {
         app: {
@@ -87,7 +100,7 @@ function loadModelManager({ downloadFile, checkDiskSpace }: {
 // The production registration moved behind the typed handler module; drive
 // it directly instead of slicing the handler source out of ipcHandlers.js.
 async function loadModelDownloadHandler(modelManager: unknown) {
-  const events: any[] = [];
+  const events: ({ channel: string } & Record<string, unknown>)[] = [];
   const status = new LocalModelDownloadStatus();
   const handlers = new Map();
   registerLocalLlmModelHandlers(
@@ -101,7 +114,8 @@ async function loadModelDownloadHandler(modelManager: unknown) {
       llamaCppInstaller: {},
       downloadStatus: status,
       progressSender: {
-        sendToControlPanel(channel: string, data: any) {
+        sendToControlPanel(channel: string, data: unknown) {
+          assert.ok(data && typeof data === "object");
           events.push({ channel, ...data });
         },
       },
@@ -190,6 +204,7 @@ for (const outcome of ["cancel", "error", "complete"]) {
     assert.equal(terminalEvents.length, 1);
     assert.equal(terminalEvents[0].modelId, model.id);
     assert.equal(terminalEvents[0].type, outcome === "complete" ? "complete" : "error");
+    assert.ok(typeof terminalEvents[0].sequence === "number");
     assert.ok(terminalEvents[0].sequence > progressSequence);
   });
 }
@@ -262,7 +277,8 @@ test("getAllModels surfaces in-flight local model download state", async (t: imp
   });
 
   const models = await modelManager.getAllModels();
-  const activeModel = models.find((candidate: any) => candidate.id === model.id);
+  const activeModel = models.find((candidate: ModelInfo) => candidate.id === model.id);
+  assert.ok(activeModel);
 
   assert.equal(activeModel.isDownloaded, false);
   assert.equal(activeModel.isDownloading, true);
@@ -291,7 +307,7 @@ test("getAllModels retries when a download completes during filesystem checks", 
     downloadedSize: 420,
     totalSize: 1000,
   });
-  modelManager.checkModelValid = async (modelPath: any) => {
+  modelManager.checkModelValid = async (modelPath: string) => {
     checkCount += 1;
     if (checkCount === 2) {
       modelManager.activeDownloads.delete(model.id);
@@ -308,7 +324,8 @@ test("getAllModels retries when a download completes during filesystem checks", 
   });
 
   const models = await modelManager.getAllModels();
-  const completedModel = models.find((candidate: any) => candidate.id === model.id);
+  const completedModel = models.find((candidate: ModelInfo) => candidate.id === model.id);
+  assert.ok(completedModel);
 
   assert.ok(
     checkCount > modelRegistryData.localProviders.flatMap((provider) => provider.models).length
@@ -395,7 +412,7 @@ test("parallel downloads reserve their combined disk space", async (t: import("n
   await firstDidStart;
   await assert.rejects(
     modelManager.downloadModel(secondModel.id),
-    (error: any) => error.code === "INSUFFICIENT_DISK_SPACE"
+    (error: unknown) => hasErrorCode(error, "INSUFFICIENT_DISK_SPACE")
   );
 
   releaseFirst();
@@ -427,7 +444,7 @@ test("cancelling an optional drafter does not complete the model download", asyn
 
   await assert.rejects(
     modelManager.downloadModel(model.id),
-    (error: any) => error.code === "DOWNLOAD_CANCELLED"
+    (error: unknown) => hasErrorCode(error, "DOWNLOAD_CANCELLED")
   );
   assert.equal(
     await modelManager.checkFileExists(path.join(modelManager.modelsDir, model.fileName)),
@@ -451,7 +468,7 @@ test("downloadModel rejects a duplicate local model download", async (t: import(
 
   await assert.rejects(
     modelManager.downloadModel(model.id),
-    (error: any) => error.code === "DOWNLOAD_IN_PROGRESS" && error.details.modelId === model.id
+    (error: unknown) => hasModelId(error, "DOWNLOAD_IN_PROGRESS", model.id)
   );
 });
 

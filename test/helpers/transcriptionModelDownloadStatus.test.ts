@@ -15,8 +15,27 @@ const ParakeetManager = require("../../src/helpers/parakeet");
 const WhisperManager = require("../../src/helpers/whisper");
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 const downloadUtils: typeof import("../../src/helpers/downloadUtils") = require("../../src/helpers/downloadUtils");
+import type { DownloadFileOptions } from "../../src/helpers/downloadUtils";
+import type { WhisperManager as TypedWhisperManager } from "../../src/helpers/whisper";
+type WhisperProgress = Parameters<NonNullable<Parameters<TypedWhisperManager["downloadWhisperModel"]>[1]>>[0];
 const whisperModulePath = require.resolve("../../src/helpers/whisper");
 Module._load = originalLoad;
+
+function hasErrorCode(error: unknown, code: string): error is Error & { code: string } {
+  return error instanceof Error && "code" in error && error.code === code;
+}
+
+function hasActiveModel(error: unknown, code: string, model: string): boolean {
+  if (!hasErrorCode(error, code) || !("details" in error)) return false;
+  const details = error.details;
+  return !!details && typeof details === "object" && "activeModel" in details && details.activeModel === model;
+}
+
+function findModelStatus(models: unknown[], model: string): Record<string, unknown> {
+  const status = models.find((candidate) => !!candidate && typeof candidate === "object" && "model" in candidate && candidate.model === model);
+  assert.ok(status && typeof status === "object");
+  return status as Record<string, unknown>;
+}
 
 function activeDownload(model: string, overrides = {}) {
   return {
@@ -106,8 +125,8 @@ test("Parakeet refuses a missing-model download before filesystem or download se
 
   await assert.rejects(
     manager.downloadParakeetModel(model),
-    (error: any) =>
-      error.code === "PARAKEET_UNSUPPORTED_OS" &&
+    (error: unknown) =>
+      hasErrorCode(error, "PARAKEET_UNSUPPORTED_OS") &&
       error.message ===
         "Parakeet requires macOS 15.5 or later. Use cloud transcription (or Whisper where supported) on this Mac."
   );
@@ -129,7 +148,7 @@ test("Parakeet refuses streaming startup on unsupported macOS", async (t: import
 
   await assert.rejects(
     manager.createOnlineStream(model),
-    (error: any) => error.code === "PARAKEET_UNSUPPORTED_OS"
+    (error: unknown) => hasErrorCode(error, "PARAKEET_UNSUPPORTED_OS")
   );
   assert.equal(startCalls, 0);
 });
@@ -148,7 +167,7 @@ test("Parakeet refuses transcription before touching the sidecar on unsupported 
 
   await assert.rejects(
     manager.transcribeLocalParakeet(Buffer.from("audio"), { model }),
-    (error: any) => error.code === "PARAKEET_UNSUPPORTED_OS"
+    (error: unknown) => hasErrorCode(error, "PARAKEET_UNSUPPORTED_OS")
   );
   assert.equal(transcribeCalls, 0);
 });
@@ -187,7 +206,7 @@ test("listParakeetModels surfaces active installation state", async () => {
   });
 
   const result = await manager.listParakeetModels();
-  const status = result.models.find((candidate: any) => candidate.model === model);
+  const status = findModelStatus(result.models, model);
 
   assert.equal(status.downloaded, false);
   assert.equal(status.isDownloading, true);
@@ -206,7 +225,7 @@ test("Parakeet rejects a duplicate download without replacing the active request
 
   await assert.rejects(
     manager.downloadParakeetModel(model),
-    (error: any) => error.code === "DOWNLOAD_IN_PROGRESS" && error.details.activeModel === model
+    (error: unknown) => hasActiveModel(error, "DOWNLOAD_IN_PROGRESS", model)
   );
   assert.equal(manager.currentDownloadProcess, active);
 });
@@ -221,7 +240,7 @@ test("listWhisperModels surfaces active download state", async (t: import("node:
   manager.currentDownloadProcess = activeDownload(model);
 
   const result = await manager.listWhisperModels();
-  const status = result.models.find((candidate: any) => candidate.model === model);
+  const status = findModelStatus(result.models, model);
 
   assert.equal(status.downloaded, false);
   assert.equal(status.isDownloading, true);
@@ -242,7 +261,7 @@ test("Whisper rejects a duplicate download without replacing the active request"
 
   await assert.rejects(
     manager.downloadWhisperModel(model),
-    (error: any) => error.code === "DOWNLOAD_IN_PROGRESS" && error.details.activeModel === model
+    (error: unknown) => hasActiveModel(error, "DOWNLOAD_IN_PROGRESS", model)
   );
   assert.equal(manager.currentDownloadProcess, active);
 });
@@ -253,7 +272,7 @@ test("Whisper emits a complete event after validating the downloaded model", asy
 
   const originalLoad = Module._load;
   delete require.cache[whisperModulePath];
-  Module._load = function loadWithDownloadMock(request: string, parent: any, isMain: boolean) {
+  Module._load = function loadWithDownloadMock(request: string, parent: NodeModule | undefined, isMain: boolean) {
     // The TS manager requires "./downloadUtils.js"; accept the pre-migration
     // extensionless specifier too so the hook survives the cutover.
     if (
@@ -263,7 +282,7 @@ test("Whisper emits a complete event after validating the downloaded model", asy
       return {
         ...downloadUtils,
         checkDiskSpace: async () => ({ ok: true, availableBytes: Infinity }),
-        downloadFile: async (_url: string, destination: string, options: any) => {
+        downloadFile: async (_url: string, destination: string, options: DownloadFileOptions) => {
           await fs.writeFile(destination, Buffer.alloc(16));
           options.onProgress?.(16, 16);
           return destination;
@@ -284,10 +303,10 @@ test("Whisper emits a complete event after validating the downloaded model", asy
 
   const manager = new TestWhisperManager();
   const model = Object.keys(modelRegistryData.whisperModels)[0];
-  const events: any[] = [];
+  const events: WhisperProgress[] = [];
   manager.getModelsDir = () => modelsDir;
 
-  await manager.downloadWhisperModel(model, (event: unknown) => events.push(event));
+  await manager.downloadWhisperModel(model, (event: WhisperProgress) => events.push(event));
 
   assert.equal(events.at(-1)?.type, "complete");
   assert.equal(events.at(-1)?.model, model);

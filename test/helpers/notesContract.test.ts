@@ -6,7 +6,7 @@ const path: typeof import("node:path") = require("node:path");
 // zod to resolve, so no electron stub is required. The probe helper reuses the
 // compiler-program approach of test/scripts/mainBuild.test.js.
 const root = path.resolve(__dirname, "../..");
-const ts = require("typescript");
+const ts: typeof import("typescript") = require("typescript");
 
 const rendererProbes = {
   cloudKey: `import type { NoteUpdate } from "./contracts/notes";
@@ -38,7 +38,7 @@ async function check(api: NotesApi): Promise<string | undefined> {
 export { check };
 `,
 };
-let rendererProbeResults: any;
+let rendererProbeResults: Record<string, number[]> | undefined;
 
 function compileRendererProbes() {
   if (rendererProbeResults) return rendererProbeResults;
@@ -50,17 +50,19 @@ function compileRendererProbes() {
   ]));
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
-  host.getSourceFile = (file: string, languageVersion: number, ...args: unknown[]) =>
-    sources.has(file)
-      ? ts.createSourceFile(file, sources.get(file), languageVersion, true)
-      : readSource(file, languageVersion, ...args);
+  host.getSourceFile = (file, languageVersion, onError, shouldCreateNewSourceFile) => {
+    const source = sources.get(file);
+    return source !== undefined
+      ? ts.createSourceFile(file, source, languageVersion, true)
+      : readSource(file, languageVersion, onError, shouldCreateNewSourceFile);
+  };
   const program = ts.createProgram([...sources.keys()], { ...parsed.options, noEmit: true }, host);
   const diagnostics = ts.getPreEmitDiagnostics(program);
-  assert.deepEqual(diagnostics.filter((d: any) => !d.file || !sources.has(d.file.fileName)), []);
+  assert.deepEqual(diagnostics.filter((d) => !d.file || !sources.has(d.file.fileName)), []);
   rendererProbeResults = Object.fromEntries(Object.keys(rendererProbes).map((name) => [
     name,
-    diagnostics.filter((d: any) => d.file?.fileName === path.join(root, "src", `notes-type-probe-${name}.ts`))
-      .map((d: any) => d.code),
+    diagnostics.filter((d) => d.file?.fileName === path.join(root, "src", `notes-type-probe-${name}.ts`))
+      .map((d) => d.code),
   ]));
   return rendererProbeResults;
 }
@@ -167,7 +169,7 @@ const deps: NotesHandlerDeps = {
 registerNotesHandlers({ handle() {} }, deps);
 `,
 };
-let mainProbeResults: any;
+let mainProbeResults: Record<string, number[]> | undefined;
 
 function compileMainProbes() {
   if (mainProbeResults) return mainProbeResults;
@@ -179,17 +181,19 @@ function compileMainProbes() {
   ]));
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
-  host.getSourceFile = (file: string, languageVersion: number, ...args: unknown[]) =>
-    sources.has(file)
-      ? ts.createSourceFile(file, sources.get(file), languageVersion, true)
-      : readSource(file, languageVersion, ...args);
+  host.getSourceFile = (file, languageVersion, onError, shouldCreateNewSourceFile) => {
+    const source = sources.get(file);
+    return source !== undefined
+      ? ts.createSourceFile(file, source, languageVersion, true)
+      : readSource(file, languageVersion, onError, shouldCreateNewSourceFile);
+  };
   const program = ts.createProgram([...sources.keys()], { ...parsed.options, noEmit: true }, host);
   const diagnostics = ts.getPreEmitDiagnostics(program);
-  assert.deepEqual(diagnostics.filter((d: any) => !d.file || !sources.has(d.file.fileName)), []);
+  assert.deepEqual(diagnostics.filter((d) => !d.file || !sources.has(d.file.fileName)), []);
   mainProbeResults = Object.fromEntries(Object.keys(mainProbes).map((name) => [
     name,
-    diagnostics.filter((d: any) => d.file?.fileName === path.join(root, `notes-main-probe-${name}.ts`))
-      .map((d: any) => d.code),
+    diagnostics.filter((d) => d.file?.fileName === path.join(root, `notes-main-probe-${name}.ts`))
+      .map((d) => d.code),
   ]));
   return mainProbeResults;
 }

@@ -8,10 +8,13 @@ const test: typeof import("node:test") = require("node:test");
 const fs: typeof import("node:fs") = require("node:fs");
 const os: typeof import("node:os") = require("node:os");
 const path: typeof import("node:path") = require("node:path");
+import type { RemoteTranscriptionDeps } from "../../src/helpers/remoteTranscriptionIpcHandler.ts";
+import type { RemoteTranscriptionResult } from "../../src/contracts/uploadTranscription.ts";
+type Segment = NonNullable<RemoteTranscriptionResult["segments"]>[number];
 
-let registerRemoteTranscriptionHandler: any;
-let transcribeAudioFileByok: any;
-let createUploadCancelRegistry: any;
+let registerRemoteTranscriptionHandler: typeof import("../../src/helpers/remoteTranscriptionIpcHandler.ts").registerRemoteTranscriptionHandler;
+let transcribeAudioFileByok: typeof import("../../src/helpers/remoteTranscriptionIpcHandler.ts").transcribeAudioFileByok;
+let createUploadCancelRegistry: typeof import("../../src/helpers/uploadCancelRegistry.ts").createUploadCancelRegistry;
 
 test.before(async () => {
   ({ registerRemoteTranscriptionHandler, transcribeAudioFileByok } =
@@ -27,21 +30,32 @@ function makeTransport({ statusCode = 200, data = { text: "transcribed" } }: { s
   const calls: any[] = [];
   return {
     calls,
-    postMultipart: async (url: string, body: unknown, boundary: unknown, headers: unknown, options: unknown) => {
+    postMultipart: async (url: URL, body: Buffer, boundary: string, headers?: Record<string, string>, options?: { signal?: AbortSignal }) => {
       calls.push({ url: String(url), body, boundary, headers, options });
       return { statusCode, data };
     },
-    postRawAudioFile: async (url: string, filePath: string, contentType: unknown, apiKey: unknown, options: unknown) => {
+    postRawAudioFile: async (url: URL, filePath: string, contentType: string, apiKey: string, options?: { signal?: AbortSignal; multipart?: { fileName: string; fields: Record<string, string> } }) => {
       calls.push({ url: String(url), filePath, contentType, apiKey, options });
       return { statusCode, data };
     },
   };
 }
 
-function baseDeps(overrides: any = {}) {
+function baseDeps(overrides: {
+  transport?: ReturnType<typeof makeTransport>;
+  uploadCancelRegistry?: ReturnType<typeof createUploadCancelRegistry>;
+  deps?: Partial<RemoteTranscriptionDeps>;
+} = {}) {
   const transport = overrides.transport || makeTransport();
   const registry = overrides.uploadCancelRegistry || createUploadCancelRegistry();
-  const calls: any = {
+  const calls: {
+    reads: string[];
+    corti: Parameters<RemoteTranscriptionDeps["transcribeWithCorti"]>[0][];
+    tinfoil: Parameters<RemoteTranscriptionDeps["transcribeWithTinfoil"]>[0][];
+    gemini: Parameters<RemoteTranscriptionDeps["transcribeGeminiFile"]>[0][];
+    warns: { message: string; data?: unknown }[];
+    errors: { message: string; data?: unknown }[];
+  } = {
     reads: [],
     corti: [],
     tinfoil: [],
@@ -66,15 +80,15 @@ function baseDeps(overrides: any = {}) {
     providerBaseUrls: () => [],
     postMultipart: transport.postMultipart,
     postRawAudioFile: transport.postRawAudioFile,
-    transcribeWithTinfoil: async (args: unknown) => {
+    transcribeWithTinfoil: async (args: Parameters<RemoteTranscriptionDeps["transcribeWithTinfoil"]>[0]) => {
       calls.tinfoil.push(args);
       return { text: "tinfoil text" };
     },
-    transcribeGeminiFile: async (args: unknown) => {
+    transcribeGeminiFile: async (args: Parameters<RemoteTranscriptionDeps["transcribeGeminiFile"]>[0]) => {
       calls.gemini.push(args);
       return { success: true, text: "gemini text" };
     },
-    transcribeWithCorti: async (args: unknown) => {
+    transcribeWithCorti: async (args: Parameters<RemoteTranscriptionDeps["transcribeWithCorti"]>[0]) => {
       calls.corti.push(args);
       return { text: "corti text" };
     },
@@ -84,8 +98,8 @@ function baseDeps(overrides: any = {}) {
     getGeminiKey: () => "gemini-key",
     uploadCancelRegistry: registry,
     logDebug: () => {},
-    logWarn: (message: unknown, data: unknown) => calls.warns.push({ message, data }),
-    logError: (message: unknown, data: unknown) => calls.errors.push({ message, data }),
+    logWarn: (message: string, data: unknown) => calls.warns.push({ message, data }),
+    logError: (message: string, data: unknown) => calls.errors.push({ message, data }),
     ...overrides.deps,
   };
   return { deps, calls, transport, registry };
@@ -116,7 +130,7 @@ test("Deepgram sends the complete file with its own auth and maps timed speakers
   assert.equal(result.success, true);
   assert.equal(result.diarized, true);
   assert.deepEqual(
-    result.segments.map((s: any) => s.speaker),
+    result.segments.map((s: Segment) => s.speaker),
     ["Speaker 1", "Speaker 2"]
   );
   assert.match(result.text, /Привет/);
@@ -198,7 +212,7 @@ test("ElevenLabs streams multipart Scribe audio and groups timed speaker words",
   assert.equal(result.success, true);
   assert.equal(result.diarized, true);
   assert.deepEqual(
-    result.segments.map((s: any) => s.speaker),
+    result.segments.map((s: Segment) => s.speaker),
     ["Speaker 1", "Speaker 2"]
   );
   assert.equal(result.segments[0].text, "Hello there. ");
@@ -575,7 +589,7 @@ test("mistral speakers payload projects ids with a fallback label", async () => 
     transcriptionMode: "providers",
   });
   assert.deepEqual(
-    result.segments.map((s: any) => s.speaker),
+    result.segments.map((s: Segment) => s.speaker),
     ["S1", "Speaker 2"]
   );
 });

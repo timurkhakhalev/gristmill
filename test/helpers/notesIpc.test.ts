@@ -4,13 +4,16 @@ const fs: typeof import("node:fs") = require("node:fs");
 const os: typeof import("node:os") = require("node:os");
 const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
+import type { NotesHandlerDeps } from "../../src/helpers/notesIpcHandlers.ts";
+import type { DatabaseManager as Database } from "../../src/helpers/database.ts";
 
 // Stub electron before any src module loads: database.js needs app.getPath,
 // notesEvents.ts needs BrowserWindow, notesIpcHandlers.ts needs ipcMain.
 // Broadcasts are captured per-fixture via the active fixture's array, so tests
 // never see each other's events even across setImmediate ticks.
 const handlers = new Map();
-let activeSent: any = null;
+type SentEvent = { channel: string; data: Record<string, unknown> & { id: number } };
+let activeSent: SentEvent[] | null = null;
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-ipc-"));
 
 const originalLoad = Module._load;
@@ -27,7 +30,8 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
             isDestroyed: () => false,
             webContents: {
               send: (ch: string, data: unknown) => {
-                if (activeSent) activeSent.push({ channel: ch, data });
+                assert.ok(data && typeof data === "object" && "id" in data && typeof data.id === "number");
+                if (activeSent) activeSent.push({ channel: ch, data: data as SentEvent["data"] });
               },
             },
           },
@@ -45,8 +49,8 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function isNativeBindingUnavailable(error: any) {
-  const message = String(error?.message || error);
+function isNativeBindingUnavailable(error: unknown) {
+  const message = String(error instanceof Error ? error.message : error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -77,35 +81,34 @@ async function createFixture(t: import("node:test").TestContext) {
   }
   t.after(() => db.close());
 
-  const sent: any[] = [];
+  const sent: SentEvent[] = [];
   activeSent = sent;
   handlers.clear();
 
-  const effects : any = { mirrorWrites: [], autoLabels: [], speakerRefreshes: [] };
-  const deps: any = {
-    saveNote: (title: unknown, content: string, noteType: string, sourceFile: unknown, audioDuration: unknown, folderId: unknown, spaceId: unknown) =>
+  const effects: { mirrorWrites: number[]; mirrorDeletes: number[]; autoLabels: number[]; speakerRefreshes: [number, number][] } = { mirrorWrites: [], mirrorDeletes: [], autoLabels: [], speakerRefreshes: [] };
+  const deps: NotesHandlerDeps = {
+    saveNote: (title, content, noteType, sourceFile, audioDuration, folderId, spaceId) =>
       db.saveNote(title, content, noteType, sourceFile, audioDuration, folderId, spaceId),
-    getNote: (id: unknown) => db.getNote(id),
-    getNotes: (noteType: string, limit: number, folderId: unknown, spaceId: unknown) =>
+    getNote: (id) => db.getNote(id),
+    getNotes: (noteType, limit, folderId, spaceId) =>
       db.getNotes(noteType, limit, folderId, spaceId),
-    getNotesForSpace: (spaceId: unknown, limit: number) => db.getNotesForSpace(spaceId, limit),
-    updateNote: (id: unknown, updates: unknown) => db.updateNote(id, updates),
+    getNotesForSpace: (spaceId, limit) => db.getNotesForSpace(spaceId, limit),
+    updateNote: (id, updates) => db.updateNote(id, updates),
     deleteNoteInternal: () => {
       throw new Error("replaced below");
     },
-    searchNotes: (query: string, limit: number, spaceId: unknown, folderId: unknown) =>
+    searchNotes: (query, limit, spaceId, folderId) =>
       db.searchNotes(query, limit, spaceId, folderId),
-    asyncMirrorWrite: (note: any) => effects.mirrorWrites.push(note.id),
-    tryAutoLabelOneOnOne: (id: unknown) => effects.autoLabels.push(id),
-    refreshMeetingSpeakerConfigFromNote: (id: unknown, note: any) => effects.speakerRefreshes.push([id, note.id]),
+    asyncMirrorWrite: (note) => { effects.mirrorWrites.push(note.id); },
+    tryAutoLabelOneOnOne: (id) => { effects.autoLabels.push(id); },
+    refreshMeetingSpeakerConfigFromNote: (id, note) => { effects.speakerRefreshes.push([id, note.id]); },
   };
   const deleteCalls: unknown[] = [];
-  const realDelete = (id: unknown) => {
+  const realDelete = (id: number) => {
     deleteCalls.push(id);
     const result = db.deleteNote(id);
     if (result?.success) {
       setImmediate(() => eventsModule.sendNoteDeleted({ id }));
-      effects.mirrorDeletes = effects.mirrorDeletes || [];
       effects.mirrorDeletes.push(id);
     }
     return result;
@@ -205,7 +208,7 @@ test("participants update triggers auto-label then speaker refresh, after mirror
   const { db, flush: flushCtx } = ctx;
   const note = db.saveNote("P", "").note;
 
-  const order: any[] = [];
+  const order: (string | number)[][] = [];
 
   // Rebuild handlers with tracing deps for exact ordering.
   const { registerNotesHandlers } = await loadModules();
@@ -252,7 +255,7 @@ test("folder-only update via IPC matches the DB baseline cases", async (t: impor
   if (!ctx) return;
   const { call, db, flush } = ctx;
   const spaceId = db.getPrivateSpaceId();
-  const folders = Object.fromEntries(db.getFolders(spaceId).map((f: any) => [f.name, f.id]));
+  const folders = Object.fromEntries(db.getFolders(spaceId).map((f: ReturnType<Database["getFolders"]>[number]) => [f.name, f.id]));
   const note = db.saveNote("N", "").note;
 
   const moved = await call("db-update-note", note.id, { folder_id: folders.Meetings });

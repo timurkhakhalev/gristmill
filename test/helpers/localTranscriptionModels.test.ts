@@ -1,12 +1,12 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { listLocalTranscriptionModels } = require("../../src/helpers/localTranscriptionModels.ts");
+const { listLocalTranscriptionModels }: typeof import("../../src/helpers/localTranscriptionModels.ts") = require("../../src/helpers/localTranscriptionModels.ts");
 const registry = require("../../src/models/modelRegistryData.json");
 
-const managers = (downloaded: any) => ({
-  whisperManager: { isModelDownloaded: (m: unknown) => downloaded.has(m) },
-  parakeetManager: { isModelDownloaded: (m: unknown) => downloaded.has(m) },
+const managers = (downloaded: ReadonlySet<string>) => ({
+  whisperManager: { isModelDownloaded: (m: string) => downloaded.has(m) },
+  parakeetManager: { isModelDownloaded: (m: string) => downloaded.has(m) },
 });
 
 test("lists every registry model with provider, download state, and the app's default", () => {
@@ -19,16 +19,17 @@ test("lists every registry model with provider, download state, and the app's de
   const sherpaCount = Object.keys(registry.parakeetModels).length;
   assert.equal(models.length, whisperCount + sherpaCount);
 
-  const base = models.find((m: any) => m.model === "base");
+  const base = models.find((m) => m.model === "base");
   assert.deepEqual(base, { provider: "whisper", model: "base", downloaded: true, default: true });
 
-  const cohere = models.find((m: any) => m.model === "cohere-transcribe-03-2026");
+  const cohere = models.find((m) => m.model === "cohere-transcribe-03-2026");
+  assert.ok(cohere);
   assert.equal(cohere.provider, "cohere");
   assert.equal(cohere.downloaded, true);
   assert.equal(cohere.default, false);
 
-  assert.equal(models.filter((m: any) => m.default).length, 1);
-  assert.ok(models.some((m: any) => m.provider === "nvidia"));
+  assert.equal(models.filter((m) => m.default).length, 1);
+  assert.ok(models.some((m) => m.provider === "nvidia"));
 });
 
 test("a sherpa default is read from PARAKEET_MODEL, and cloud mode yields no default", () => {
@@ -37,13 +38,13 @@ test("a sherpa default is read from PARAKEET_MODEL, and cloud mode yields no def
     env: { LOCAL_TRANSCRIPTION_PROVIDER: "nvidia", PARAKEET_MODEL: "parakeet-tdt-0.6b-v3" },
   });
   assert.deepEqual(
-    withParakeet.filter((m: any) => m.default).map((m: any) => m.model),
+    withParakeet.filter((m) => m.default).map((m) => m.model),
     ["parakeet-tdt-0.6b-v3"]
   );
 
   const cloudMode = listLocalTranscriptionModels({ ...managers(new Set()), env: {} });
   assert.equal(
-    cloudMode.some((m: any) => m.default),
+    cloudMode.some((m) => m.default),
     false
   );
 });

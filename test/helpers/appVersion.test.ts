@@ -24,7 +24,7 @@ test("an invalid installed version never satisfies a valid minimum", async () =>
 
 test("keeps renderer and main-process validation behavior aligned", async () => {
   const { isCanonicalAppVersion } = await load();
-  const mainVersion = require("../../src/helpers/appVersion.ts");
+  const mainVersion: typeof import("../../src/helpers/appVersion.ts") = require("../../src/helpers/appVersion.ts");
   const versions = [
     undefined,
     null,

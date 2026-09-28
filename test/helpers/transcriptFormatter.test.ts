@@ -6,8 +6,8 @@ const {
   formatSrt,
   formatJson,
   formatMd,
-} = require("../../src/helpers/transcriptFormatter");
-const { changeLanguage } = require("../../src/helpers/i18nMain");
+}: typeof import("../../src/helpers/transcriptFormatter") = require("../../src/helpers/transcriptFormatter");
+const { changeLanguage }: typeof import("../../src/helpers/i18nMain") = require("../../src/helpers/i18nMain");
 
 test("TXT and Markdown exports include participant display names", () => {
   const note = {
@@ -305,7 +305,7 @@ test("epoch-millisecond segment timestamps export relative to the recording star
 });
 
 test("SQLite UTC note timestamps are parsed as UTC before local formatting", () => {
-  const { parseNoteDate } = require("../../src/helpers/transcriptFormatter");
+  const { parseNoteDate }: typeof import("../../src/helpers/transcriptFormatter") = require("../../src/helpers/transcriptFormatter");
   const parsed = parseNoteDate("2026-08-04 13:02:00");
 
   assert.equal(parsed.toISOString(), "2026-08-04T13:02:00.000Z");

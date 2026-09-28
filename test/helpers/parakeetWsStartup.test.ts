@@ -2,8 +2,8 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const Module = require("node:module");
-const os = require("node:os");
-const path = require("node:path");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 const modelData = require("../../src/models/modelRegistryData.json");
 
 // tsx compiles the TS helper to CJS on require, so its internal module
@@ -53,7 +53,7 @@ async function startupArgs(modelName: string, runtime = "offline", language: str
     "../utils/serverUtils": { findAvailablePort: async () => 6006 },
   });
   const server = new Server();
-  server.getWsBinaryPath = (mode: any) => `sherpa-${mode}`;
+  server.getWsBinaryPath = (mode: unknown) => `sherpa-${mode}`;
   server._waitForReady = async () => {};
   server._startHealthCheck = () => {};
   server._warmUp = async () => {};
@@ -81,7 +81,7 @@ for (const modelName of ["parakeet-tdt-0.6b-v3", "orukeet-v0.1.0"]) {
 
 test("an unhinted offline model retains sherpa metadata detection", async () => {
   const { args } = await startupArgs("parakeet-unified-en-0.6b");
-  assert.ok(!args.some((arg: any) => arg.startsWith("--model-type=")));
+  assert.ok(!args.some((arg) => arg.startsWith("--model-type=")));
   assert.ok(args.includes(`--joiner=${path.join(os.tmpdir(), "joiner.int8.onnx")}`));
 });
 
@@ -101,7 +101,7 @@ test("online startup preserves its scheduling flags and omits offline decoder hi
   for (const modelName of ["nemotron-speech-streaming-en-0.6b", "orukeet-v0.1.0"]) {
     const { binary, args } = await startupArgs(modelName, "online");
     assert.equal(binary, "sherpa-online");
-    assert.ok(!args.some((arg: any) => arg.startsWith("--model-type=")));
+    assert.ok(!args.some((arg) => arg.startsWith("--model-type=")));
     assert.deepEqual(args.slice(-5), [
       "--num-threads=4",
       "--num-work-threads=2",
@@ -121,6 +121,6 @@ test("invalid or incompatible registry hints cannot select a different decoder",
     const { args } = await startupArgs("fixture", "offline", "en", {
       parakeetModels: { fixture: entry },
     });
-    assert.ok(!args.some((arg: any) => arg.startsWith("--model-type=")));
+    assert.ok(!args.some((arg) => arg.startsWith("--model-type=")));
   }
 });

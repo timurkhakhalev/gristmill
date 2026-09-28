@@ -3,10 +3,10 @@
 // dropped at the preload boundary, and user-correctable vs generic errors.
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const vm = require("node:vm");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
+const vm: typeof import("node:vm") = require("node:vm");
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
@@ -48,7 +48,7 @@ test.after(() => {
   fs.rmSync(userDataDir, { recursive: true, force: true });
 });
 
-type AvailApi = { [k: string]: (...args: any[]) => Promise<any> };
+type AvailApi = { [k: string]: (...args: unknown[]) => Promise<any> };
 function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
   let api: AvailApi | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {

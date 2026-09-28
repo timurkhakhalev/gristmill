@@ -4,7 +4,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const {
   isAllowedAppNavigation,
   isExternalBrowserUrl,
-} = require("../../src/helpers/navigationGuard.ts");
+}: typeof import("../../src/helpers/navigationGuard.ts") = require("../../src/helpers/navigationGuard.ts");
 
 const PACKAGED_APP_URL =
   "file:///Applications/OpenWhispr.app/Contents/Resources/app.asar/src/dist/index.html";

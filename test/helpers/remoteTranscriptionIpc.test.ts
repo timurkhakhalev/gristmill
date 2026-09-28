@@ -5,9 +5,9 @@
 // projection, malformed provider responses and the hard-cancel contract.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const test: typeof import("node:test") = require("node:test");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 
 let registerRemoteTranscriptionHandler: any;
 let transcribeAudioFileByok: any;
@@ -23,15 +23,15 @@ const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercu
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, Buffer.alloc(2048));
 
-function makeTransport({ statusCode = 200, data = { text: "transcribed" } }: { statusCode?: number; data?: any } = {}) {
+function makeTransport({ statusCode = 200, data = { text: "transcribed" } }: { statusCode?: number; data?: unknown } = {}) {
   const calls: any[] = [];
   return {
     calls,
-    postMultipart: async (url: string, body: unknown, boundary: any, headers: unknown, options: unknown) => {
+    postMultipart: async (url: string, body: unknown, boundary: unknown, headers: unknown, options: unknown) => {
       calls.push({ url: String(url), body, boundary, headers, options });
       return { statusCode, data };
     },
-    postRawAudioFile: async (url: string, filePath: string, contentType: any, apiKey: any, options: unknown) => {
+    postRawAudioFile: async (url: string, filePath: string, contentType: unknown, apiKey: unknown, options: unknown) => {
       calls.push({ url: String(url), filePath, contentType, apiKey, options });
       return { statusCode, data };
     },
@@ -66,15 +66,15 @@ function baseDeps(overrides: any = {}) {
     providerBaseUrls: () => [],
     postMultipart: transport.postMultipart,
     postRawAudioFile: transport.postRawAudioFile,
-    transcribeWithTinfoil: async (args: any) => {
+    transcribeWithTinfoil: async (args: unknown) => {
       calls.tinfoil.push(args);
       return { text: "tinfoil text" };
     },
-    transcribeGeminiFile: async (args: any) => {
+    transcribeGeminiFile: async (args: unknown) => {
       calls.gemini.push(args);
       return { success: true, text: "gemini text" };
     },
-    transcribeWithCorti: async (args: any) => {
+    transcribeWithCorti: async (args: unknown) => {
       calls.corti.push(args);
       return { text: "corti text" };
     },
@@ -274,7 +274,7 @@ function setup(overrides = {}) {
   const { deps, calls, transport, registry } = baseDeps(overrides);
   const handlers = new Map();
   registerRemoteTranscriptionHandler({ handle: (channel: string, fn: unknown) => handlers.set(channel, fn) }, deps);
-  const call = (payload: any) => handlers.get("transcribe-audio-file-byok")(null, payload);
+  const call = (payload: unknown) => handlers.get("transcribe-audio-file-byok")(null, payload);
   return { call, calls, transport, registry, handlers, deps };
 }
 
@@ -294,7 +294,7 @@ test("meeting raw-response sink is awaited before Deepgram parsing", async () =>
       requestId: "meeting-raw-before-parse",
     },
     {
-      onRawProviderResponse: async (response: any) => {
+      onRawProviderResponse: async (response: unknown) => {
         saved.push(response);
         throw Object.assign(new Error("durable save failed"), { code: "RAW_SAVE_FAILED" });
       },
@@ -325,7 +325,7 @@ test("meeting raw-response sink is awaited before ElevenLabs parsing", async () 
       requestId: "meeting-elevenlabs-raw-before-parse",
     },
     {
-      onRawProviderResponse: async (response: any) => {
+      onRawProviderResponse: async (response: unknown) => {
         saved = response;
         throw Object.assign(new Error("durable save failed"), { code: "RAW_SAVE_FAILED" });
       },
@@ -356,7 +356,7 @@ test("meeting raw-response sink is awaited before OpenAI parsing", async () => {
       requestId: "meeting-openai-raw-before-parse",
     },
     {
-      onRawProviderResponse: async (response: any) => {
+      onRawProviderResponse: async (response: unknown) => {
         saved = response;
         throw Object.assign(new Error("durable save failed"), { code: "RAW_SAVE_FAILED" });
       },
@@ -703,7 +703,7 @@ test("invalid payloads are rejected before path resolution, read or network", as
 test("hard cancel aborts the in-flight transport and reports UPLOAD_CANCELLED", async () => {
   const { call, registry } = setup({
     transport: {
-      postMultipart: (url: string, body: unknown, boundary: any, headers: unknown, options: { signal: AbortSignal }) =>
+      postMultipart: (url: string, body: unknown, boundary: unknown, headers: unknown, options: { signal: AbortSignal }) =>
         new Promise((_resolve, reject) => {
           options.signal.addEventListener("abort", () => {
             const error = new Error("The operation was aborted");

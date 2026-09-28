@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { getEnterpriseAIModel } = require("../../src/helpers/enterpriseAiProviders.ts");
-const { mapEnterpriseError } = require("../../src/helpers/enterpriseProviderErrors.ts");
+const { mapEnterpriseError }: typeof import("../../src/helpers/enterpriseProviderErrors.ts") = require("../../src/helpers/enterpriseProviderErrors.ts");
 
 const bedrockPrompt = [{ role: "user", content: [{ type: "text", text: "Hello" }] }];
 

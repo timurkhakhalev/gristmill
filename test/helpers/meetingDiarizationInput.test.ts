@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { resolveDiarizationInput } = require("../../src/helpers/meetingDiarizationInput.ts");
+const { resolveDiarizationInput }: typeof import("../../src/helpers/meetingDiarizationInput.ts") = require("../../src/helpers/meetingDiarizationInput.ts");
 
 test("audible system audio diarizes the system capture", () => {
   const input = resolveDiarizationInput({

@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const cp = require("node:child_process");
-const path = require("node:path");
+const path: typeof import("node:path") = require("node:path");
 
 // A canary that skips every provider (no secrets configured, or the secrets
 // silently dropped from the workflow) must fail loudly: an all-skip run probed

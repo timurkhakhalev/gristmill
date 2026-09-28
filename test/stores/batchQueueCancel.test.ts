@@ -4,7 +4,7 @@
 // instead of only discarding its late result.
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
@@ -38,7 +38,7 @@ test("transcribeFile passes the requestId to the BYOK handler", async (t: TestCo
   const vite = await createRendererServer(t, {
     cachePrefix: "openh-file-byok-request-id-",
   });
-  const { transcribeFile } = await vite.ssrLoadModule("/services/fileTranscription.ts");
+  const { transcribeFile } = (await vite.ssrLoadModule("/services/fileTranscription.ts") as typeof import("../../src/services/fileTranscription.ts"));
 
   let byokOptions: Record<string, unknown> | undefined;
   window.electronAPI.transcribeAudioFileByok = async (options: Record<string, unknown>) => {
@@ -106,9 +106,9 @@ test("cancelBatch hard-cancels the current item and discards its late result", a
       `,
     },
   });
-  const { addFiles, processBatchQueue, cancelBatch, useBatchQueueStore } = await vite.ssrLoadModule(
+  const { addFiles, processBatchQueue, cancelBatch, useBatchQueueStore } = (await vite.ssrLoadModule(
     "/stores/batchQueueStore.ts"
-  );
+  ) as typeof import("../../src/stores/batchQueueStore.ts"));
 
   addFiles([{ name: "interview.wav", path: "/tmp/interview.wav", sizeBytes: 1024 }]);
   processBatchQueue(
@@ -198,9 +198,9 @@ test("an old cancelled batch settling cannot steal the new batch's cancel slot",
       `,
     },
   });
-  const { addFiles, processBatchQueue, cancelBatch } = await vite.ssrLoadModule(
+  const { addFiles, processBatchQueue, cancelBatch } = (await vite.ssrLoadModule(
     "/stores/batchQueueStore.ts"
-  );
+  ) as typeof import("../../src/stores/batchQueueStore.ts"));
 
   const opts = {
     transcription: cfg(),

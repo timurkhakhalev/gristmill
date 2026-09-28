@@ -2,7 +2,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const test: typeof import("node:test") = require("node:test");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer } = require("../lib/rendererTestHarness.ts");
+const { createRendererServer }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 test("technical values are isolated without changing localized sentence order", async (t: import("node:test").TestContext) => {
   const vite = await createRendererServer(t, {

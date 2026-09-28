@@ -1,8 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
-const fs = require("node:fs/promises");
-const os = require("node:os");
+const fs: typeof import("node:fs/promises") = require("node:fs/promises");
+const os: typeof import("node:os") = require("node:os");
 const path = require("node:path");
 
 type TestModel = {
@@ -13,8 +13,8 @@ type TestModel = {
   sizeMb: number;
 };
 const modelRegistryData: { localProviders: { models: TestModel[] }[] } = require("../../src/models/modelRegistryData.json");
-const downloadUtils = require("../../src/helpers/downloadUtils");
-const LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus.ts");
+const downloadUtils: typeof import("../../src/helpers/downloadUtils") = require("../../src/helpers/downloadUtils");
+const LocalModelDownloadStatus: typeof import("../../src/helpers/localModelDownloadStatus.ts").LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus.ts");
 const { registerLocalLlmModelHandlers } = require("../../src/helpers/localLlmModelIpcHandlers.ts");
 
 const originalLoad = Module._load;
@@ -86,13 +86,13 @@ function loadModelManager({ downloadFile, checkDiskSpace }: {
 
 // The production registration moved behind the typed handler module; drive
 // it directly instead of slicing the handler source out of ipcHandlers.js.
-async function loadModelDownloadHandler(modelManager: any) {
+async function loadModelDownloadHandler(modelManager: unknown) {
   const events: any[] = [];
   const status = new LocalModelDownloadStatus();
   const handlers = new Map();
   registerLocalLlmModelHandlers(
     {
-      handle(channel: string, handler: any) {
+      handle(channel: string, handler: unknown) {
         handlers.set(channel, handler);
       },
     },
@@ -136,7 +136,7 @@ for (const outcome of ["cancel", "error", "complete"]) {
     const model = modelRegistryData.localProviders[0].models[0];
     const checkModelValid = modelManager.checkModelValid.bind(modelManager);
     let firstCheck = true;
-    modelManager.checkModelValid = async (modelPath: any) => {
+    modelManager.checkModelValid = async (modelPath: unknown) => {
       if (firstCheck) {
         firstCheck = false;
         await preflight.promise;
@@ -338,7 +338,7 @@ test("downloadModel permits distinct local models to download concurrently", asy
     continueDownloads = resolve;
   });
   const modelManager = loadModelManager({
-    downloadFile: async (_url: string, destination: string, options: any) => {
+    downloadFile: async (_url: string, destination: string, options) => {
       started.push(destination);
       options.onProgress?.(1, 2);
       if (started.length === 2) releaseDownloads();
@@ -380,7 +380,7 @@ test("parallel downloads reserve their combined disk space", async (t: import("n
     firstStarted = resolve;
   });
   const modelManager = loadModelManager({
-    checkDiskSpace: async (_directory: any, requiredBytes: any) => ({
+    checkDiskSpace: async (_directory: unknown, requiredBytes) => ({
       ok: requiredBytes <= availableBytes,
       availableBytes,
     }),
@@ -422,7 +422,7 @@ test("cancelling an optional drafter does not complete the model download", asyn
   });
   const model = modelRegistryData.localProviders
     .flatMap((provider) => provider.models)
-    .find((candidate: any) => candidate.draftFileName);
+    .find((candidate) => candidate.draftFileName);
   assert.ok(model);
 
   await assert.rejects(

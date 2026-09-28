@@ -4,7 +4,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installMicCaptureGlobals,
-} = require("../lib/rendererTestHarness.ts");
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
@@ -62,7 +62,7 @@ async function loadStore(t: TestContext, api: Record<string, unknown>) {
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-meeting-system-audio-silence-test-",
   });
-  return vite.ssrLoadModule("/stores/meetingRecordingStore.ts");
+  return (vite.ssrLoadModule("/stores/meetingRecordingStore.ts") as Promise<typeof import("../../src/stores/meetingRecordingStore.ts")>);
 }
 
 test("silence event latches the warning once during a system-audio session", async (t: TestContext) => {

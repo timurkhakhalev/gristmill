@@ -1,12 +1,12 @@
 const test: typeof import("node:test") = require("node:test");
-const { afterEach } = require("node:test");
+const { afterEach }: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
-const { EventEmitter } = require("node:events");
+const { EventEmitter }: typeof import("node:events") = require("node:events");
 const childProcess = require("node:child_process");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 
 const detectorModulePath = require.resolve("../../src/helpers/audioActivityDetector.ts");
 

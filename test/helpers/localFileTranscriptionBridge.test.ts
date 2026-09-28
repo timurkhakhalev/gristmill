@@ -4,21 +4,21 @@
 // duplicate-channel guard.
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const vm = require("node:vm");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
+const vm: typeof import("node:vm") = require("node:vm");
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
-let activeHandlers: Map<string, (...args: any[]) => any> | null = null;
+let activeHandlers: Map<string, (...args: unknown[]) => unknown> | null = null;
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-"));
 const originalNodeEnv = process.env.NODE_ENV;
 
 const originalLoad = Module._load;
-Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
+Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
       app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
@@ -49,7 +49,7 @@ test.after(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-function loadBundledPreload(invoke: any) {
+function loadBundledPreload(invoke: unknown) {
   let api: Record<string, any> | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
@@ -85,11 +85,11 @@ const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, "RIFF....");
 
 // Objects from vm.runInNewContext have a different prototype; compare by JSON.
-const plain = (value: any) => JSON.parse(JSON.stringify(value));
+const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 async function createFixture(t: import("node:test").TestContext, managers: {
-  whisper?: (...args: any[]) => any;
-  parakeet?: (...args: any[]) => any;
+  whisper?: (...args: unknown[]) => unknown;
+  parakeet?: (...args: unknown[]) => unknown;
 } = {}) {
   activeHandlers = new Map();
   t.after(() => { activeHandlers = null; });
@@ -127,7 +127,7 @@ async function createFixture(t: import("node:test").TestContext, managers: {
   );
 
   const handlersSnapshot = new Map(activeHandlers);
-  const invoke = async (channel: string, ...args: any[]) => {
+  const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler(null, ...args);
@@ -220,7 +220,7 @@ test("a junk main response rejects at the preload boundary", async (t: import("n
   if (!realHandler) {
     return t.skip("handler missing");
   }
-  const api = loadBundledPreload(async (channel: string, ...args: any[]) => {
+  const api = loadBundledPreload(async (channel: string, ...args: unknown[]) => {
     if (channel === "transcribe-audio-file") return { silentlyWrong: true };
     return realHandler(null, ...args);
   });
@@ -238,7 +238,7 @@ test("the shared main registration registers the transcription channel once", as
   const IPCHandlers = require(handlersModulePath);
   const Ctor = IPCHandlers.default || IPCHandlers;
 
-  const anything = (): any =>
+  const anything = (): unknown =>
     new Proxy(function () {}, {
       get: (_target, property) => {
         if (property === Symbol.toPrimitive || property === "toString") return () => "";

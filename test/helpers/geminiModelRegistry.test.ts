@@ -28,7 +28,7 @@ function geminiModels() {
 }
 
 test("the Flash Lite entries carry the exact ids, names, and capability flags", () => {
-  const byId = new Map(geminiModels().map((m: any) => [m.id as string, m as any]));
+  const byId = new Map(geminiModels().map((m: any) => [m.id as string, m as unknown]));
 
   for (const [id, expected] of Object.entries(EXPECTED)) {
     const model = byId.get(id) as any;

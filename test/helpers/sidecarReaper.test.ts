@@ -6,7 +6,7 @@ const os = require("os");
 const path = require("path");
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
-let userDataDir: any;
+let userDataDir: unknown;
 const electronPath = require.resolve("electron");
 const originalElectronCache = require.cache[electronPath];
 require.cache[electronPath] = {
@@ -22,8 +22,8 @@ test.after(() => {
   else delete require.cache[electronPath];
 });
 
-const sidecarPidFile = require("../../src/helpers/sidecarPidFile");
-const { reapStaleSidecars, waitForExit } = require("../../src/helpers/sidecarReaper");
+const sidecarPidFile: typeof import("../../src/helpers/sidecarPidFile") = require("../../src/helpers/sidecarPidFile");
+const { reapStaleSidecars, waitForExit }: typeof import("../../src/helpers/sidecarReaper") = require("../../src/helpers/sidecarReaper");
 
 // Short graces keep the escalation path fast; the poll interval is 200ms so
 // anything comfortably above that works.

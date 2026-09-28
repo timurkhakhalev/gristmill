@@ -70,7 +70,7 @@ async function loadReasoningService(t: TestContext, cachePrefix: string, { windo
     const module = await vite.moduleGraph.getModuleByUrl(url);
     if (module) vite.moduleGraph.invalidateModule(module);
   }
-  const reasoningService = (await vite.ssrLoadModule("/services/ReasoningService.ts")).default;
+  const reasoningService = ((await vite.ssrLoadModule("/services/ReasoningService.ts") as typeof import("../../src/services/ReasoningService.ts"))).default;
   t.after(() => reasoningService.destroy());
   return { reasoningService, vite };
 }
@@ -146,7 +146,7 @@ test("tool-enabled self-hosted streaming filters nested tags", async (t: import(
     t,
     "openwhispr-tool-streaming-think-test-"
   );
-  const { ToolRegistry } = await vite.ssrLoadModule("/services/tools/ToolRegistry.ts");
+  const { ToolRegistry } = (await vite.ssrLoadModule("/services/tools/ToolRegistry.ts") as typeof import("../../src/services/tools/ToolRegistry.ts"));
   const registry = new ToolRegistry();
   registry.register({
     name: "noop",
@@ -183,7 +183,7 @@ test("tool-loop filtering resets after an unterminated reasoning block", async (
     t,
     "openwhispr-tool-step-streaming-think-test-"
   );
-  const { ToolRegistry } = await vite.ssrLoadModule("/services/tools/ToolRegistry.ts");
+  const { ToolRegistry } = (await vite.ssrLoadModule("/services/tools/ToolRegistry.ts") as typeof import("../../src/services/tools/ToolRegistry.ts"));
   const registry = new ToolRegistry();
   registry.register({
     name: "noop",
@@ -622,7 +622,7 @@ test("a provider error part rejects the agent stream instead of ending it silent
     t,
     "openwhispr-stream-error-part-test-"
   );
-  const { ToolRegistry } = await vite.ssrLoadModule("/services/tools/ToolRegistry.ts");
+  const { ToolRegistry } = (await vite.ssrLoadModule("/services/tools/ToolRegistry.ts") as typeof import("../../src/services/tools/ToolRegistry.ts"));
   const registry = new ToolRegistry();
   registry.register({
     name: "noop",

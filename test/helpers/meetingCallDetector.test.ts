@@ -8,7 +8,7 @@ Module._load = function loadWithMocks(request: string, parent: unknown, isMain: 
   if (request === "./debugLogger.js") return { debug() {}, info() {}, warn() {} };
   return originalLoad.call(this, request, parent, isMain);
 };
-const { MeetingCallDetector } = require("../../src/helpers/meetingCallDetector.ts");
+const { MeetingCallDetector }: typeof import("../../src/helpers/meetingCallDetector.ts") = require("../../src/helpers/meetingCallDetector.ts");
 Module._load = originalLoad;
 
 test("Zoom needs two complete inactive snapshots before a new call can prompt", async () => {
@@ -16,8 +16,8 @@ test("Zoom needs two complete inactive snapshots before a new call can prompt", 
   const detector = new MeetingCallDetector(async () => snapshot);
   const active = [];
   const ended: unknown[] = [];
-  detector.on("call-active", (call: any) => active.push(call));
-  detector.on("call-ended", (call: any) => ended.push(call));
+  detector.on("call-active", (call: unknown) => active.push(call));
+  detector.on("call-ended", (call: unknown) => ended.push(call));
   await detector.poll();
   snapshot = "present\tzoom:123\ninactive\tzoom:123";
   await detector.poll();
@@ -38,7 +38,7 @@ test("a hidden Meet tab does not end a call; the same page without Leave does", 
   let snapshot = `active\t${key}`;
   const detector = new MeetingCallDetector(async () => snapshot);
   const ended: unknown[] = [];
-  detector.on("call-ended", (call: any) => ended.push(call));
+  detector.on("call-ended", (call: unknown) => ended.push(call));
   await detector.poll();
   snapshot = "";
   await detector.poll();

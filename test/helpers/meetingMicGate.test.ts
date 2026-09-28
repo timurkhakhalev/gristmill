@@ -2,7 +2,7 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const gate = require("../../src/helpers/meetingMicGate.ts");
-const fx = require("./harness/pcmFixtures");
+const fx: typeof import("./harness/pcmFixtures") = require("./harness/pcmFixtures");
 
 test("computeChunkStats matches the inline RMS/peak math (Int16 / 0x7fff)", () => {
   const buf = fx.toInt16Buffer(new Float32Array([0.5, -0.5, 0.25, -0.25]));

@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const helper = require("../../src/helpers/systemDefaultMicrophone.ts");
+const helper: typeof import("../../src/helpers/systemDefaultMicrophone.ts") = require("../../src/helpers/systemDefaultMicrophone.ts");
 
 test("parses a WirePlumber default source", () => {
   assert.deepEqual(

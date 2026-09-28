@@ -3,16 +3,16 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const Module = require("node:module");
-const { describe, it, beforeEach, afterEach } = require("node:test");
+const { describe, it, beforeEach, afterEach }: typeof import("node:test") = require("node:test");
 
 describe("modelDirUtils cache policy (#1279, #1399)", () => {
   const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
   const originalEnv = { ...process.env };
   const originalLoad = Module._load;
-  let tempRoot: any;
-  let mockedHome: any;
+  let tempRoot: unknown;
+  let mockedHome: unknown;
 
-  function loadFresh(homeDir: any) {
+  function loadFresh(homeDir: unknown) {
     mockedHome = homeDir;
     Module._load = function loadWithElectronStub(request: string, parent: unknown, isMain: boolean) {
       if (request === "electron") {
@@ -44,7 +44,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     return { home, legacyRoot, redirectedRoot };
   }
 
-  function writeModel(directory: string, name: string, contents: any) {
+  function writeModel(directory: string, name: string, contents: unknown) {
     fs.mkdirSync(directory, { recursive: true });
     const filePath = path.join(directory, name);
     fs.writeFileSync(filePath, contents);

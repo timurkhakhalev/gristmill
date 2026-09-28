@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const path: typeof import("node:path") = require("node:path");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const {
@@ -40,7 +40,7 @@ test.after(async () => {
 // hook for real (installHookDom + createRoot) to drive the actual unmount
 // cleanup, whose cancel must persist the partial reply rather than drop it
 // the way an explicit Esc/Stop cancel does.
-function createOpenAiChunk(delta: any, finishReason: string | null = null) {
+function createOpenAiChunk(delta: unknown, finishReason: string | null = null) {
   return {
     id: "chatcmpl-cancellation-test",
     object: "chat.completion.chunk",
@@ -65,7 +65,7 @@ async function renderChatStreaming(
 ) {
   installBrowserGlobals(t, { window: { electronAPI } });
   const container = live ? installHookDom(t) : null;
-  const vite = await (vitePromise ??= createRendererServer({ after: (close: any) => cleanup.push(close) }, {
+  const vite = await (vitePromise ??= createRendererServer({ after: (close: unknown) => cleanup.push(close) }, {
     cachePrefix: "openwhispr-chat-streaming-cancellation-test-",
   }));
   const [{ default: viteI18next }, { initReactI18next }] = await Promise.all([
@@ -96,15 +96,15 @@ async function renderChatStreaming(
     ...settings,
   });
 
-  const { useChatStreaming } = await vite.ssrLoadModule("/components/chat/useChatStreaming.ts");
-  const reasoningService = (await vite.ssrLoadModule("/services/ReasoningService.ts")).default;
+  const { useChatStreaming } = (await vite.ssrLoadModule("/components/chat/useChatStreaming.ts") as typeof import("../../src/components/chat/useChatStreaming.ts"));
+  const reasoningService = ((await vite.ssrLoadModule("/services/ReasoningService.ts") as typeof import("../../src/services/ReasoningService.ts"))).default;
   // useChatStreaming imports ReasoningService.ts, whose default export is a
   // singleton constructed at import time; its API-key cache starts a real
   // setInterval that otherwise keeps the process alive after the test ends.
   t.after(() => reasoningService.destroy());
 
   let messages: any[] = [];
-  const setMessages = (updater: any) => {
+  const setMessages = (updater: unknown) => {
     messages = typeof updater === "function" ? updater(messages) : updater;
   };
 
@@ -249,10 +249,10 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
       { status: 200, headers: { "content-type": "text/event-stream" } }
     );
 
-  const persisted: any[] = [];
+  const persisted: unknown[] = [];
   const { captured, getMessages, unmount } = await renderChatStreaming(t, {
     live: true,
-    onStreamComplete: (_id: any, content: string) => persisted.push(content),
+    onStreamComplete: (_id: unknown, content: string) => persisted.push(content),
   });
 
   let sendPromise;

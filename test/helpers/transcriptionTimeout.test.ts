@@ -8,7 +8,7 @@ const {
   TRANSCRIPTION_TIMEOUT_CEILING_MS,
   PCM16_MONO_16K_BYTES_PER_SECOND,
   computeTranscriptionTimeoutMs,
-} = require("../../src/helpers/transcriptionTimeout");
+}: typeof import("../../src/helpers/transcriptionTimeout") = require("../../src/helpers/transcriptionTimeout");
 
 test("long audio scales past the old 5-minute limit", () => {
   const timeoutMs = computeTranscriptionTimeoutMs(3600);

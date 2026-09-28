@@ -46,7 +46,7 @@ test.before(async () => {
   ({ registerVocabularyHandlers } = await import("../../src/helpers/vocabularyIpcHandlers.ts"));
 });
 
-function setup(database: any) {
+function setup(database: unknown) {
   handlers.clear();
   sent = [];
   registerVocabularyHandlers(
@@ -120,7 +120,7 @@ test("setSnippets rejects non-arrays with the historical throw", async () => {
 test("applyDictionaryChanges tolerates omitted/null changes as an empty delta", async () => {
   const calls: unknown[] = [];
   const db = fakeDb();
-  db.applyDictionaryChanges = (changes: any) => {
+  db.applyDictionaryChanges = (changes: unknown) => {
     calls.push(changes);
     return { success: true, added: 0, removed: 0 };
   };
@@ -144,7 +144,7 @@ test("applyDictionaryChanges rejects non-array add/remove with the historical th
   // Valid deltas pass through untouched.
   const db = fakeDb();
   let seen;
-  db.applyDictionaryChanges = (changes: any) => {
+  db.applyDictionaryChanges = (changes: unknown) => {
     seen = changes;
     return { success: true, added: 1, removed: 0 };
   };
@@ -218,7 +218,7 @@ test("undo-learned-corrections fails quietly on empty, junk and failing saves", 
 test("undo-learned-corrections removes valid words, broadcasts fresh state and succeeds", async () => {
   const db = fakeDb();
   const seen: unknown[] = [];
-  db.applyDictionaryChanges = (changes: any) => {
+  db.applyDictionaryChanges = (changes: unknown) => {
     seen.push(changes);
     return { success: true, added: 0, removed: 2 };
   };
@@ -237,7 +237,7 @@ test("registrations are isolated per call and do not share broadcast state", asy
   sent = [];
   const first = new Map();
   const second = new Map();
-  const register = (map: any, words: any) => registerVocabularyHandlers(
+  const register = (map: any, words: unknown) => registerVocabularyHandlers(
     { handle: (channel: string, handler: unknown) => map.set(channel, handler) },
     { database: { ...fakeDb(), getDictionary: () => words }, debugLogger: { debug() {}, warn() {}, error() {} } }
   );

@@ -1,13 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const { spawn } = require("node:child_process");
+const fs: typeof import("node:fs") = require("node:fs");
+const { spawn }: typeof import("node:child_process") = require("node:child_process");
 const { createDb } = require("./harness/db.ts");
-const { getUserDataDir } = require("./harness/electronStub.ts");
-const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
+const { getUserDataDir }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
+const MeetingRecordingStorage: typeof import("../../src/helpers/meetingRecordingStorage.ts").MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
 const DatabaseManager = require("../../src/helpers/database.ts");
 const { MeetingCaptureSession } = require("../../src/helpers/meetingCaptureSession.ts");
-const { MeetingCaptureWriteQueue } = require("../../src/helpers/meetingCaptureWriteQueue.ts");
+const { MeetingCaptureWriteQueue }: typeof import("../../src/helpers/meetingCaptureWriteQueue.ts") = require("../../src/helpers/meetingCaptureWriteQueue.ts");
 
 const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
 const RUN_ID = "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2";
@@ -66,7 +66,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
   return { database, storage };
 }
 
-const packet = (epochIndex: number, epochStartFrame: any, sequence: any, sampleOffset: number) => ({
+const packet = (epochIndex: number, epochStartFrame: unknown, sequence: unknown, sampleOffset: number) => ({
   epochIndex,
   epochStartFrame,
   sequence,
@@ -101,10 +101,10 @@ test("process kills recover only complete PCM frames at several write positions"
     });
     const exited = new Promise((resolve, reject) => {
       child.once("error", reject);
-      child.once("exit", (code: string, signal: any) => resolve({ code, signal }));
+      child.once("exit", (code: string, signal: unknown) => resolve({ code, signal }));
     });
     let output = "";
-    child.stdout.on("data", (chunk: any) => {
+    child.stdout.on("data", (chunk) => {
       output += chunk.toString();
       let newline = output.indexOf("\n");
       while (newline !== -1) {
@@ -236,7 +236,7 @@ test("write queue waits for delayed disk acknowledgement and rejects late packet
   let writes = 0;
   const queue = new MeetingCaptureWriteQueue({
     write: () => { writes += 1; return writeGate.promise; },
-    onFailure: (error: any) => { throw error; },
+    onFailure: (error: unknown) => { throw error; },
     maxFrames: 2,
     maxAgeMs: 500,
   });
@@ -254,10 +254,10 @@ test("write queue waits for delayed disk acknowledgement and rejects late packet
 
 test("write queue stops at its PCM backlog limit and surfaces delayed writer failure", async () => {
   const writeGate = deferred();
-  const failures: any[] = [];
+  const failures: unknown[] = [];
   const queue = new MeetingCaptureWriteQueue({
     write: () => writeGate.promise,
-    onFailure: (error: any) => failures.push(error.message),
+    onFailure: (error) => failures.push(error.message),
     maxFrames: 2,
     maxAgeMs: 500,
   });

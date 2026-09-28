@@ -5,21 +5,21 @@
 // at the preload boundary to prove they are dropped there.
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const vm = require("node:vm");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
+const vm: typeof import("node:vm") = require("node:vm");
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
-let activeHandlers: Map<string, (...args: any[]) => any> | null = null;
+let activeHandlers: Map<string, (...args: unknown[]) => unknown> | null = null;
 let dispatchSend: any = null;
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-vocab-bridge-"));
 
 const originalLoad = Module._load;
-Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
+Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
       app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
@@ -34,7 +34,7 @@ Module._load = function patchedLoad(request: string, parent: any, isMain: boolea
           {
             isDestroyed: () => false,
             webContents: {
-              send: (channel: string, data: any) => {
+              send: (channel: string, data: unknown) => {
                 if (dispatchSend) dispatchSend(channel, data);
               },
             },
@@ -61,7 +61,7 @@ function isNativeBindingUnavailable(error: any) {
   );
 }
 
-function loadBundledPreload(invoke: any) {
+function loadBundledPreload(invoke: unknown) {
   const listeners = new Map();
   let api: Record<string, any> | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
@@ -80,12 +80,12 @@ function loadBundledPreload(invoke: any) {
         ipcRenderer: {
           invoke,
           send() {},
-          on(channel: string, listener: any) {
+          on(channel: string, listener: unknown) {
             const list = listeners.get(channel) || [];
             list.push(listener);
             listeners.set(channel, list);
           },
-          removeListener(channel: string, listener: any) {
+          removeListener(channel: string, listener: unknown) {
             const list = listeners.get(channel) || [];
             const index = list.indexOf(listener);
             if (index !== -1) list.splice(index, 1);
@@ -124,13 +124,13 @@ async function createFixture(t: import("node:test").TestContext) {
   );
 
   const handlersSnapshot = new Map(activeHandlers);
-  const invoke = async (channel: string, ...args: any[]) => {
+  const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler(null, ...args);
   };
   const { api, listeners } = loadBundledPreload(invoke);
-  dispatchSend = (channel: string, data: any) => {
+  dispatchSend = (channel: string, data: unknown) => {
     for (const listener of listeners.get(channel) || []) {
       listener(null, data);
     }
@@ -144,7 +144,7 @@ test("the bundled vocabulary chain round-trips words and snippets", async (t: im
   const { db, api } = ctx;
 
   // vm-crossing objects have a different prototype, so compare by value.
-  const byValue = (x: any) => JSON.parse(JSON.stringify(x));
+  const byValue = (x: unknown) => JSON.parse(JSON.stringify(x));
 
   assert.deepEqual(byValue(await api.getDictionary()), []);
   assert.deepEqual(byValue(await api.applyDictionaryChanges({ add: ["Alpha", "beta"], remove: [] })), {
@@ -176,11 +176,11 @@ test("dictionary events reach the renderer through the bridge and unsubscribe cl
 
   const received: any[] = [];
   const receivedRaw = [];
-  const unsubscribe = api.onDictionaryUpdated((words: any) => {
+  const unsubscribe = api.onDictionaryUpdated((words: unknown) => {
     receivedRaw.push(words);
     received.push(JSON.parse(JSON.stringify(words)));
   });
-  const unsubscribeSnippets = api.onSnippetsUpdated((snippets: any) => {
+  const unsubscribeSnippets = api.onSnippetsUpdated((snippets: unknown) => {
     receivedRaw.push(snippets);
     received.push(JSON.parse(JSON.stringify(snippets)));
   });
@@ -214,7 +214,7 @@ test("malformed events are dropped at the preload boundary", async (t: import("n
   if (!ctx) return;
   const { api } = ctx;
 
-  const received: any[] = [];
+  const received: unknown[] = [];
   api.onDictionaryUpdated((words: any) => received.push([...words]));
   // Inject junk straight at the preload input, like a broken main would.
   dispatchSend("dictionary-updated", { not: "an array" });

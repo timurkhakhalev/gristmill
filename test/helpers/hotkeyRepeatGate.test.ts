@@ -3,7 +3,7 @@ const test: typeof import("node:test") = require("node:test");
 const {
   createHotkeyRepeatGate,
   HOTKEY_REPEAT_WINDOW_MS,
-} = require("../../src/helpers/hotkeyRepeatGate");
+}: typeof import("../../src/helpers/hotkeyRepeatGate") = require("../../src/helpers/hotkeyRepeatGate");
 
 function gateAt(times: number[]) {
   let index = 0;

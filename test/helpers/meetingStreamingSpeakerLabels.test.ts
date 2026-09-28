@@ -1,10 +1,10 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming.ts");
-const CortiStreaming = require("../../src/helpers/cortiStreaming.ts");
-const DeepgramStreaming = require("../../src/helpers/deepgramStreaming.ts");
-const OpenAIRealtimeStreaming = require("../../src/helpers/openaiRealtimeStreaming.ts");
+const AssemblyAiStreaming: typeof import("../../src/helpers/assemblyAiStreaming.ts").AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming.ts");
+const CortiStreaming: typeof import("../../src/helpers/cortiStreaming.ts").CortiStreaming = require("../../src/helpers/cortiStreaming.ts");
+const DeepgramStreaming: typeof import("../../src/helpers/deepgramStreaming.ts").DeepgramStreaming = require("../../src/helpers/deepgramStreaming.ts");
+const OpenAIRealtimeStreaming: typeof import("../../src/helpers/openaiRealtimeStreaming.ts").OpenAIRealtimeStreaming = require("../../src/helpers/openaiRealtimeStreaming.ts");
 
 const message = (value: unknown) => Buffer.from(JSON.stringify(value));
 

@@ -168,7 +168,7 @@ test("connection lifecycle logs name Tinfoil, never OpenAI", async () => {
 
 test("the default factory is the pinned Tinfoil transport", async () => {
   const { TinfoilRealtimeStreaming } = await load();
-  const { createTinfoilRealtimeSocket } = require("../../src/helpers/tinfoilSecureClient");
+  const { createTinfoilRealtimeSocket }: typeof import("../../src/helpers/tinfoilSecureClient") = require("../../src/helpers/tinfoilSecureClient");
 
   assert.equal(new TinfoilRealtimeStreaming()._createSocketImpl, createTinfoilRealtimeSocket);
 });

@@ -6,7 +6,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
-} = require("../lib/rendererTestHarness.ts");
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 test("macOS accessibility checks follow the onboarding feature gate", async (t: import("node:test").TestContext) => {
   let root: ReturnType<typeof createRoot> | null = null;
@@ -66,7 +66,7 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
       `,
     },
   });
-  const { usePermissions: usePermissionsApi } = await vite.ssrLoadModule("/hooks/usePermissions.ts");
+  const { usePermissions: usePermissionsApi } = (await vite.ssrLoadModule("/hooks/usePermissions.ts") as typeof import("../../src/hooks/usePermissions.ts"));
 
   let macAccessibilityChecksEnabled = false;
   let permissions: ReturnType<typeof usePermissionsApi> | undefined;

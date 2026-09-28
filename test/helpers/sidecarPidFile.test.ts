@@ -4,7 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-let userDataDir: any;
+let userDataDir: unknown;
 const electronPath = require.resolve("electron");
 require.cache[electronPath] = Object.assign(new (require("node:module").Module)(electronPath), {
   exports: {
@@ -14,7 +14,7 @@ require.cache[electronPath] = Object.assign(new (require("node:module").Module)(
   },
 });
 
-const { write, clear, readAll } = require("../../src/helpers/sidecarPidFile");
+const { write, clear, readAll }: typeof import("../../src/helpers/sidecarPidFile") = require("../../src/helpers/sidecarPidFile");
 
 function createUserDataDir(t: import("node:test").TestContext) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ow-sidecar-pids-"));

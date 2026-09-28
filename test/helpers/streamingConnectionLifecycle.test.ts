@@ -1,9 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming.ts");
-const CortiStreaming = require("../../src/helpers/cortiStreaming.ts");
-const DeepgramStreaming = require("../../src/helpers/deepgramStreaming.ts");
+const AssemblyAiStreaming: typeof import("../../src/helpers/assemblyAiStreaming.ts") = require("../../src/helpers/assemblyAiStreaming.ts");
+const CortiStreaming: typeof import("../../src/helpers/cortiStreaming.ts") = require("../../src/helpers/cortiStreaming.ts");
+const DeepgramStreaming: typeof import("../../src/helpers/deepgramStreaming.ts") = require("../../src/helpers/deepgramStreaming.ts");
 const OpenAIRealtimeStreaming = require("../../src/helpers/openaiRealtimeStreaming.ts");
 
 const clients = [

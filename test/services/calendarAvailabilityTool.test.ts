@@ -452,7 +452,7 @@ test("fails generically without exposing IPC or provider errors", async () => {
 
 test("relays only the time- and connection-dependent validation errors", async () => {
   const { calendarAvailabilityTool } = await loadTool();
-  const { USER_CORRECTABLE_ERRORS } = require("../../src/helpers/calendarAvailability");
+  const { USER_CORRECTABLE_ERRORS }: typeof import("../../src/helpers/calendarAvailability") = require("../../src/helpers/calendarAvailability");
 
   for (const message of Object.values(USER_CORRECTABLE_ERRORS)) {
     setWindow({

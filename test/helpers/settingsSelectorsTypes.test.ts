@@ -1,8 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const ts: typeof import("typescript") = require("typescript");
-const fs = require("node:fs");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const path: typeof import("node:path") = require("node:path");
 
 // Strict compiler probes for the pure settings-selectors graph, run against
 // tsconfig.settings-selectors.json. The whole program is type-checked: a

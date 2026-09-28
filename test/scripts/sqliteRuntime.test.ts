@@ -125,8 +125,8 @@ test("failed verification after repair stops instead of accepting a stale ABI", 
 });
 
 test("macOS launch uses LaunchServices with isolated logs and preserves application arguments", async () => {
-  const { EventEmitter } = require("node:events");
-  const fs = require("node:fs");
+  const { EventEmitter }: typeof import("node:events") = require("node:events");
+  const fs: typeof import("node:fs") = require("node:fs");
   const child = new EventEmitter();
   let launch: [binary: string, args: string[]] | undefined;
   const before = process.listenerCount("SIGINT");

@@ -3,7 +3,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const { WebSocketServer } = require("ws");
 
 const AssemblyAiStreaming = require("../../src/helpers/assemblyAiStreaming.ts");
-const { deferred } = require("./harness/deferred.ts");
+const { deferred }: typeof import("./harness/deferred.ts") = require("./harness/deferred.ts");
 
 type AaiStreaming = InstanceType<typeof AssemblyAiStreaming> & { buildWebSocketUrl: (options?: unknown) => string; onAudioFrame?: (cb: unknown) => void };
 async function withPrematureCloseServer(run: (url: string) => Promise<void>) {

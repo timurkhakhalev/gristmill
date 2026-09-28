@@ -1,5 +1,5 @@
-const { test, describe } = require("node:test");
-const assert = require("node:assert");
+const { test, describe }: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert") = require("node:assert");
 
 const load = () => import("../../src/helpers/geminiResponse.ts");
 

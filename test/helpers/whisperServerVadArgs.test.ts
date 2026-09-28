@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const WhisperServerManager = require("../../src/helpers/whisperServer");
+const WhisperServerManager: typeof import("../../src/helpers/whisperServer") = require("../../src/helpers/whisperServer");
 
 test("buildWhisperServerArgs includes VAD flags when enabled and model path provided", () => {
   const args = WhisperServerManager.buildWhisperServerArgs({

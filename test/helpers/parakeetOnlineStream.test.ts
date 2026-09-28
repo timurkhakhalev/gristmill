@@ -1,11 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { once } = require("node:events");
+const { once }: typeof import("node:events") = require("node:events");
 
 const { WebSocketServer } = require("ws");
 
 const ParakeetWsServer = require("../../src/helpers/parakeetWsServer");
-const { pcm16ToFloat32 } = require("../../src/utils/audioUtils.ts");
+const { pcm16ToFloat32 }: typeof import("../../src/utils/audioUtils.ts") = require("../../src/utils/audioUtils.ts");
 
 // Mock sherpa online WS protocol: float32 binary frames in, JSON results out, "Done"/"Done!" handshake.
 async function startMockOnlineServer({ onBinary, finalSegment = 0 }: {
@@ -18,7 +18,7 @@ async function startMockOnlineServer({ onBinary, finalSegment = 0 }: {
   let ignoringDone = false;
   wss.on("connection", (socket: any) => {
     let binaryFrames = 0;
-    socket.on("message", (data: any, isBinary: any) => {
+    socket.on("message", (data: any, isBinary: unknown) => {
       if (isBinary) {
         binaryFrames += 1;
         onBinary?.(socket, data, binaryFrames);
@@ -57,13 +57,13 @@ function onlineWsServerAt(port: number) {
 
 test("online stream emits live updates and finish resolves with the final text", async () => {
   const mock = await startMockOnlineServer({
-    onBinary: (socket: any, _data: any, frameCount: number) => {
+    onBinary: (socket, _data: unknown, frameCount: number) => {
       socket.send(JSON.stringify({ text: `partial ${frameCount}`, segment: 0, is_final: false }));
     },
   });
 
   try {
-    const updates: any[] = [];
+    const updates: unknown[] = [];
     const stream = onlineWsServerAt(mock.port).createOnlineStream({
       onUpdate: (text: string) => updates.push(text),
     });
@@ -86,7 +86,7 @@ test("finalized segments accumulate across endpoints in live updates", async () 
   let segment = 0;
   const mock = await startMockOnlineServer({
     finalSegment: 2,
-    onBinary: (socket: any, _data: any, frameCount: number) => {
+    onBinary: (socket, _data: unknown, frameCount: number) => {
       // Simulate endpointing: every frame finalizes a segment.
       socket.send(
         JSON.stringify({ text: `segment ${frameCount}`, segment: segment++, is_final: true })
@@ -141,7 +141,7 @@ test("abort closes the stream without waiting for the server", async () => {
 test("finish flags truncation when the server never acknowledges Done", async () => {
   // Server sends a partial but ignores "Done" entirely.
   const mock = await startMockOnlineServer({
-    onBinary: (socket: any) => {
+    onBinary: (socket) => {
       socket.send(JSON.stringify({ text: "partial", segment: 0, is_final: false }));
     },
   });
@@ -160,7 +160,7 @@ test("finish flags truncation when the server never acknowledges Done", async ()
 
 test("unexpected close before Done! reports an error and truncation", async () => {
   const mock = await startMockOnlineServer({
-    onBinary: (socket: any) => {
+    onBinary: (socket) => {
       socket.send(JSON.stringify({ text: "cut off", segment: 0, is_final: false }));
       socket.close();
     },
@@ -169,7 +169,7 @@ test("unexpected close before Done! reports an error and truncation", async () =
   try {
     const errors: any[] = [];
     const stream = onlineWsServerAt(mock.port).createOnlineStream({
-      onError: (err: any) => errors.push(err),
+      onError: (err: unknown) => errors.push(err),
     });
     stream.sendPcm16(Buffer.alloc(3200));
     const { text, truncated } = await stream.finish({ idleTimeoutMs: 1000 });
@@ -200,7 +200,7 @@ test("a send error during the queued flush flags truncation", async () => {
   const WebSocket = require("ws");
   const realSend = WebSocket.prototype.send;
   // Only client audio frames are binary; the mock server sends strings, so gate on type.
-  WebSocket.prototype.send = function (data: any, cb: any) {
+  WebSocket.prototype.send = function (data: unknown, cb: unknown) {
     if (typeof data !== "string") {
       if (typeof cb === "function") cb(new Error("forced send failure"));
       return;

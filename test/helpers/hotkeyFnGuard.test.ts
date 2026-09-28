@@ -26,7 +26,7 @@ require.cache[require.resolve("electron")] = Object.assign(new (require("node:mo
   },
 });
 
-const HotkeyManager = require("../../src/helpers/hotkeyManager.ts");
+const HotkeyManager: typeof import("../../src/helpers/hotkeyManager.ts").HotkeyManager = require("../../src/helpers/hotkeyManager.ts");
 
 test.beforeEach(() => {
   registered.clear();
@@ -46,10 +46,10 @@ test("rejecting an Fn combination preserves the slot's previous binding", async 
   const manager = new HotkeyManager();
   const fired: unknown[] = [];
 
-  await manager.registerSlot("dictation", "Control+Shift+A", (hotkey: any) => fired.push(hotkey), {
+  await manager.registerSlot("dictation", "Control+Shift+A", (hotkey: unknown) => fired.push(hotkey), {
     atomic: true,
   });
-  const result = await manager.registerSlot("dictation", "Fn+A", (hotkey: any) => fired.push(hotkey), {
+  const result = await manager.registerSlot("dictation", "Fn+A", (hotkey: unknown) => fired.push(hotkey), {
     atomic: true,
   });
 
@@ -63,7 +63,7 @@ test("ordinary hotkeys continue to register normally", async () => {
   const manager = new HotkeyManager();
   const fired: unknown[] = [];
 
-  await manager.registerSlot("dictation", "Control+Shift+A", (hotkey: any) => fired.push(hotkey), {
+  await manager.registerSlot("dictation", "Control+Shift+A", (hotkey: unknown) => fired.push(hotkey), {
     atomic: true,
   });
 

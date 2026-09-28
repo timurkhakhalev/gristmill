@@ -84,7 +84,7 @@ test("Note Recording modes survive the follow-flag migration", { timeout: 300_00
     writes.length = 0;
     const mod = {
       ...(await reloadSettingsStore(vite)),
-      ...(await vite.ssrLoadModule("/config/settingsSelectors.ts")),
+      ...((await vite.ssrLoadModule("/config/settingsSelectors.ts") as typeof import("../../src/config/settingsSelectors.ts"))),
     };
     return { mod, state: mod.useSettingsStore.getState() };
   };

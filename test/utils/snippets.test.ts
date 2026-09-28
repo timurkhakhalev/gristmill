@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { getDictionaryHintWords } = require("../../src/utils/snippets.ts");
+const { getDictionaryHintWords }: typeof import("../../src/utils/snippets.ts") = require("../../src/utils/snippets.ts");
 
 test("getDictionaryHintWords returns empty list on nullish, empty, or partial settings", () => {
   assert.deepEqual(getDictionaryHintWords(null), []);

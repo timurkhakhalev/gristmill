@@ -18,7 +18,7 @@ test.before(async () => {
   ({ AgentStreamRequestRegistry } = await import("../../src/helpers/agentStreamRequestRegistry.ts"));
 });
 
-const REAL_ERRORS = require("../../src/helpers/enterpriseProviderErrors");
+const REAL_ERRORS: typeof import("../../src/helpers/enterpriseProviderErrors") = require("../../src/helpers/enterpriseProviderErrors");
 
 // The real enterprise error mapper keeps the user-facing mapping contract in
 // one place; these tests pin the wrapper fields, not the mapper's messages.

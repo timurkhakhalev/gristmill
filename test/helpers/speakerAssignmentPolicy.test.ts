@@ -9,7 +9,7 @@ const {
   applyProvisionalSpeaker,
   applyConfirmedSpeaker,
   applySuggestedSpeaker,
-} = require("../../src/helpers/speakerAssignmentPolicy.ts");
+}: typeof import("../../src/helpers/speakerAssignmentPolicy.ts") = require("../../src/helpers/speakerAssignmentPolicy.ts");
 
 test("canonicalizeSpeakerStatus maps legacy and current statuses correctly", () => {
   assert.equal(canonicalizeSpeakerStatus(SPEAKER_STATUS.PROVISIONAL), "provisional");

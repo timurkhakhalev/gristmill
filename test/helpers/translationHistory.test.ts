@@ -1,8 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
 
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-translation-db-"));
@@ -23,8 +23,8 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
 
 process.env.NODE_ENV = "test";
 
-const DatabaseManager = require("../../src/helpers/database.ts");
-const { skipOrFail } = require("./harness/db.ts");
+const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
+const { skipOrFail }: typeof import("./harness/db.ts") = require("./harness/db.ts");
 
 function createDb(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-translation-db-"));

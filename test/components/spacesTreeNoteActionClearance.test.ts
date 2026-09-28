@@ -4,7 +4,7 @@ const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const i18next = require("i18next");
 const { initReactI18next } = require("react-i18next");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 

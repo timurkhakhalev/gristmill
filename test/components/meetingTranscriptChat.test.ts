@@ -1,10 +1,10 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const path: typeof import("node:path") = require("node:path");
 const i18next = require("i18next");
 const { initReactI18next } = require("react-i18next");
-const { renderStatic } = require("../helpers/harness/reactSsr.ts");
+const { renderStatic }: typeof import("../helpers/harness/reactSsr.ts") = require("../helpers/harness/reactSsr.ts");
 
 const SEGMENTS = [
   { id: "s1", text: "hello from mic", source: "mic", timestamp: 1 },

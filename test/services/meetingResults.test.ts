@@ -1,19 +1,19 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 const test: typeof import("node:test") = require("node:test");
 const { createDb } = require("../helpers/harness/db.ts");
-const { getUserDataDir, setUserDataDir } = require("../helpers/harness/electronStub.ts");
+const { getUserDataDir, setUserDataDir }: typeof import("../helpers/harness/electronStub.ts") = require("../helpers/harness/electronStub.ts");
 const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
-const { MeetingProcessingWorker } = require("../../src/helpers/meetingProcessing.ts");
+const { MeetingProcessingWorker }: typeof import("../../src/helpers/meetingProcessing.ts") = require("../../src/helpers/meetingProcessing.ts");
 const {
   canPlayMeetingRun,
   copyMeetingAudioExport,
   createMeetingAudioOperationRegistry,
   exportMeetingSourceTrack,
 } = require("../../src/helpers/meetingAudioExport.ts");
-const { recognizeMeetingSpeakers } = require("../../src/helpers/meetingSpeakerRecognition.ts");
+const { recognizeMeetingSpeakers }: typeof import("../../src/helpers/meetingSpeakerRecognition.ts") = require("../../src/helpers/meetingSpeakerRecognition.ts");
 import type { DatabaseManager } from "../helpers/harness/db.ts";
 import type { MeetingRecordingStorage as MeetingRecordingStorageInstance } from "../../src/helpers/meetingRecordingStorage.js";
 import type {

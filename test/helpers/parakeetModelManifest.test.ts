@@ -1,11 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
 const registry = require("../../src/models/modelRegistryData.json");
-const { getRequiredModelFiles } = require("../../src/helpers/parakeetModelInfo");
+const { getRequiredModelFiles }: typeof import("../../src/helpers/parakeetModelInfo") = require("../../src/helpers/parakeetModelInfo");
 
 const MODEL = "orukeet-v0.1.0";
 const info = registry.parakeetModels[MODEL];
@@ -91,7 +91,7 @@ function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
         calls.events.push("downloaded");
       },
       createDownloadSignal() {
-        const signal : any = { aborted: false };
+        const signal = { aborted: false };
         downloadControl = {
           signal,
           abort: () => {
@@ -154,7 +154,7 @@ function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
   }
   const manager = new ParakeetManager();
   let extracts = 0;
-  manager._runTarExtract = async (_archive: any, destination: string) => {
+  manager._runTarExtract = async (_archive: unknown, destination: string) => {
     extracts++;
     if (options.extractionError || (options.retryExtraction && extracts === 1))
       throw new Error("bad archive");
@@ -168,7 +168,7 @@ function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
   };
   let manifestTask: any;
   const save = manager._saveModelManifest.bind(manager);
-  manager._saveModelManifest = (...args: any[]) => {
+  manager._saveModelManifest = (...args: unknown[]) => {
     manifestTask = save(...args);
     return manifestTask;
   };

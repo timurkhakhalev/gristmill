@@ -6,9 +6,9 @@
 // merge handler's normalizing behavior and limits.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const test: typeof import("node:test") = require("node:test");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 
 type FileDiarizationModule = typeof import("../../src/helpers/fileDiarizationIpcHandlers.js");
 type UploadCancelModule = typeof import("../../src/helpers/uploadCancelRegistry.js");

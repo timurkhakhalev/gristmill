@@ -1,13 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
-const fs = require("node:fs/promises");
+const fs: typeof import("node:fs/promises") = require("node:fs/promises");
 const http = require("node:http");
-const os = require("node:os");
-const path = require("node:path");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
-const { buildGguf, LLAMA_3_2_3B_ENTRIES } = require("./harness/ggufFixtures");
+const { buildGguf, LLAMA_3_2_3B_ENTRIES }: typeof import("./harness/ggufFixtures") = require("./harness/ggufFixtures");
 
 // Drives modelManagerBridge.runInference against a stub llama-server, to pin
 // how the context window is chosen for a request (#2142). The model file on
@@ -24,7 +24,7 @@ let electronHome = os.tmpdir();
 
 function loadModelManager() {
   for (const modulePath of CHAIN_MODULES) delete require.cache[modulePath];
-  Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") {
       return {
         app: {
@@ -64,7 +64,7 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
   let completionBody: any = null;
   const server = http.createServer((req: any, res: any) => {
     let raw = "";
-    req.on("data", (chunk: any) => (raw += chunk));
+    req.on("data", (chunk: unknown) => (raw += chunk));
     req.on("end", () => {
       let status = 200;
       let payload;
@@ -332,7 +332,7 @@ test("a grow that fails comes back at the window that was working", async (t: im
   // inference alive for the next request instead of until the next launch.
   const { modelManager, modelId, serverManager } = await setup(t, { tokenCount: 20514 });
   const port = serverManager.port;
-  const attempts: any[] = [];
+  const attempts: unknown[] = [];
   serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     attempts.push(options.contextSize);
     if ((options.contextSize ?? 0) > 16384) {
@@ -410,7 +410,7 @@ test("a start that steps the context down is not retried at the size that steppe
   // again — the wasted restart the memo exists to prevent.
   const { modelManager, modelId, serverManager } = await setup(t, { tokenCount: 20514 });
   const port = serverManager.port;
-  const attempts: any[] = [];
+  const attempts: unknown[] = [];
   serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     attempts.push(options.contextSize);
     serverManager.ready = true;
@@ -436,7 +436,7 @@ test("a server that already died is not restored to a window it no longer has", 
   serverManager.ready = false;
   serverManager.process = null;
 
-  const attempts: any[] = [];
+  const attempts: unknown[] = [];
   serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     attempts.push(options.contextSize);
     throw new Error("llama-server process died during startup (signal: SIGKILL)");

@@ -24,7 +24,7 @@ test("models from Opus 4.7 onward do not receive temperature", () => {
     "claude-opus-4-8",
     "claude-opus-4-7",
   ]) {
-    const model = anthropicModels.find((m: any) => m.id === id)!;
+    const model = anthropicModels.find((m) => m.id === id)!;
     assert.equal(model.supportsTemperature, false, id);
   }
 });
@@ -37,7 +37,7 @@ test("legacy Anthropic families keep temperature", () => {
     "claude-sonnet-4-5",
     "claude-opus-4-5",
   ]) {
-    const model = anthropicModels.find((m: any) => m.id === id)!;
+    const model = anthropicModels.find((m) => m.id === id)!;
     assert.equal(model.supportsTemperature, true, id);
   }
 });

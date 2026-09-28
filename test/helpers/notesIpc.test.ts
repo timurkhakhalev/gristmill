@@ -1,8 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
 
 // Stub electron before any src module loads: database.js needs app.getPath,
@@ -14,19 +14,19 @@ let activeSent: any = null;
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-ipc-"));
 
 const originalLoad = Module._load;
-Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
+Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
       app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
       ipcMain: {
-        handle: (channel: string, listener: any) => handlers.set(channel, listener),
+        handle: (channel: string, listener: unknown) => handlers.set(channel, listener),
       },
       BrowserWindow: {
         getAllWindows: () => [
           {
             isDestroyed: () => false,
             webContents: {
-              send: (ch: string, data: any) => {
+              send: (ch: string, data: unknown) => {
                 if (activeSent) activeSent.push({ channel: ch, data });
               },
             },
@@ -83,24 +83,24 @@ async function createFixture(t: import("node:test").TestContext) {
 
   const effects : any = { mirrorWrites: [], autoLabels: [], speakerRefreshes: [] };
   const deps: any = {
-    saveNote: (title: any, content: string, noteType: string, sourceFile: any, audioDuration: any, folderId: any, spaceId: any) =>
+    saveNote: (title: unknown, content: string, noteType: string, sourceFile: unknown, audioDuration: unknown, folderId: unknown, spaceId: unknown) =>
       db.saveNote(title, content, noteType, sourceFile, audioDuration, folderId, spaceId),
-    getNote: (id: any) => db.getNote(id),
-    getNotes: (noteType: string, limit: number, folderId: any, spaceId: any) =>
+    getNote: (id: unknown) => db.getNote(id),
+    getNotes: (noteType: string, limit: number, folderId: unknown, spaceId: unknown) =>
       db.getNotes(noteType, limit, folderId, spaceId),
-    getNotesForSpace: (spaceId: any, limit: number) => db.getNotesForSpace(spaceId, limit),
-    updateNote: (id: any, updates: any) => db.updateNote(id, updates),
+    getNotesForSpace: (spaceId: unknown, limit: number) => db.getNotesForSpace(spaceId, limit),
+    updateNote: (id: unknown, updates: unknown) => db.updateNote(id, updates),
     deleteNoteInternal: () => {
       throw new Error("replaced below");
     },
-    searchNotes: (query: string, limit: number, spaceId: any, folderId: any) =>
+    searchNotes: (query: string, limit: number, spaceId: unknown, folderId: unknown) =>
       db.searchNotes(query, limit, spaceId, folderId),
     asyncMirrorWrite: (note: any) => effects.mirrorWrites.push(note.id),
-    tryAutoLabelOneOnOne: (id: any) => effects.autoLabels.push(id),
-    refreshMeetingSpeakerConfigFromNote: (id: any, note: any) => effects.speakerRefreshes.push([id, note.id]),
+    tryAutoLabelOneOnOne: (id: unknown) => effects.autoLabels.push(id),
+    refreshMeetingSpeakerConfigFromNote: (id: unknown, note: any) => effects.speakerRefreshes.push([id, note.id]),
   };
-  const deleteCalls: any[] = [];
-  const realDelete = (id: any) => {
+  const deleteCalls: unknown[] = [];
+  const realDelete = (id: unknown) => {
     deleteCalls.push(id);
     const result = db.deleteNote(id);
     if (result?.success) {

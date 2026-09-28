@@ -4,7 +4,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const {
   NotificationDismissTimer,
   getNotificationTimeoutMs,
-} = require("../../src/helpers/notificationTimer");
+}: typeof import("../../src/helpers/notificationTimer") = require("../../src/helpers/notificationTimer");
 
 test("every meeting prompt hides after one minute", () => {
   assert.equal(getNotificationTimeoutMs("calendar"), 60 * 1000);

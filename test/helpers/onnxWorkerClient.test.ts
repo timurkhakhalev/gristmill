@@ -12,12 +12,12 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
   const state: any = { children: [], forkCalls: 0 };
 
   class FakePort extends EventEmitter {
-    constructor(peer: any) {
+    constructor(peer: unknown) {
       super();
       this.peer = peer;
       this.closed = false;
     }
-    postMessage(message: any) {
+    postMessage(message: unknown) {
       if (!this.closed) this.peer.emit("message", { data: message });
     }
     start() {}
@@ -47,7 +47,7 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
     child.kill = () => {
       child.killCalls += 1;
     };
-    child.postMessage = (_message: any, [port]: any[]) => {
+    child.postMessage = (_message: unknown, [port]: any[]) => {
       port.on("message", ({ data }: { data: any }) => {
         if (exitOnShutdown && data?.method === "shutdown") {
           setImmediate(() => child.emit("exit", 0));
@@ -67,7 +67,7 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
 
 function loadClient(runtime: any) {
   delete require.cache[clientModulePath];
-  Module._load = function (request: string, parent: any, isMain: boolean) {
+  Module._load = function (request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") {
       return {
         app: { getPath: () => "/tmp" },
@@ -97,7 +97,7 @@ function whenPortReady(client: any) {
         clearTimeout(timeout);
         // Replies travel the way a real worker sends them: port2.postMessage
         // delivers to the client's port1 listener.
-        resolve((message: any) => client.port.peer.postMessage(message));
+        resolve((message: unknown) => client.port.peer.postMessage(message));
       }
     }, 1);
     const timeout = setTimeout(() => {
@@ -245,7 +245,7 @@ test("stop sends the shutdown rpc and waits for exit before killing", async () =
   client.port.peer.on("__inspect", () => {});
   // Capture the shutdown rpc on the worker side of the channel.
   const originalPost = client.port.peer.emit.bind(client.port.peer);
-  client.port.peer.emit = function (event: any, payload: any) {
+  client.port.peer.emit = function (event: unknown, payload: any) {
     if (event === "message" && payload?.data?.method === "shutdown") {
       shutdownSeen = payload.data;
     }

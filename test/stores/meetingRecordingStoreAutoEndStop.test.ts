@@ -4,7 +4,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installMicCaptureGlobals,
-} = require("../lib/rendererTestHarness.ts");
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 

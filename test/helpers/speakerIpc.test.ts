@@ -1,25 +1,25 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { speakerChannels } = require("../../src/contracts/speakerProfiles.ts");
+const { speakerChannels }: typeof import("../../src/contracts/speakerProfiles.ts") = require("../../src/contracts/speakerProfiles.ts");
 const {
   registerSpeakerHandlers,
-} = require("../../src/helpers/speakerIpcHandlers.ts");
+}: typeof import("../../src/helpers/speakerIpcHandlers.ts") = require("../../src/helpers/speakerIpcHandlers.ts");
 
 function embeddingBuffer(samples = 4) {
   return Buffer.from(new Float32Array(new Array(samples).fill(0.5)).buffer);
 }
 
-function createHarness(overrides: Record<string, any> = {}) {
+function createHarness(overrides: Record<string, unknown> = {}) {
   const handlers = new Map();
   const calls: any = { retroactive: [], autoLabel: [], upserts: [], savedEmbeddings: [], progress: [] };
 
   const database = {
     searchContacts: () => [{ email: "a@b.io", display_name: "A" }],
-    upsertContacts: (contacts: any) => {
+    upsertContacts: (contacts: unknown) => {
       calls.upserts.push(contacts);
     },
-    upsertSpeakerProfile: (displayName: any, email: any, embedding: any, profileId: string) => {
+    upsertSpeakerProfile: (displayName: unknown, email: unknown, embedding: unknown, profileId: string) => {
       const profile = {
         id: 11,
         display_name: displayName,
@@ -44,13 +44,13 @@ function createHarness(overrides: Record<string, any> = {}) {
     getSpeakerProfiles: () => [
       { id: 11, display_name: "A", email: null, sample_count: 1, created_at: "t", updated_at: "t" },
     ],
-    attachEmailToProfile: (profileId: string, email: any) => ({
+    attachEmailToProfile: (profileId: string, email: unknown) => ({
       id: profileId,
       display_name: "A",
       email,
       sample_count: 2,
     }),
-    saveNoteSpeakerEmbeddings: (noteId: unknown, buffers: any) => {
+    saveNoteSpeakerEmbeddings: (noteId: unknown, buffers: unknown) => {
       calls.savedEmbeddings.push({ noteId, buffers });
     },
     ...(overrides.database as any),
@@ -83,7 +83,7 @@ function createHarness(overrides: Record<string, any> = {}) {
       databaseManager: database,
       liveSpeakerIdentifier: live,
       diarizationManager: diarization,
-      retroactiveMapping: (profile: any) => {
+      retroactiveMapping: (profile: unknown) => {
         calls.retroactive.push(profile);
       },
       tryAutoLabelOneOnOne: (noteId: unknown) => {

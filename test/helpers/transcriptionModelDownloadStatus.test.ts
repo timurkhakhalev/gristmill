@@ -1,9 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs/promises");
+const fs: typeof import("node:fs/promises") = require("node:fs/promises");
 const Module = require("node:module");
-const os = require("node:os");
-const path = require("node:path");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 
 // Native resource lookup belongs to the app root, independently of module location.
 const originalLoad = Module._load;
@@ -14,7 +14,7 @@ Module._load = function (request: string, ...args: unknown[]) {
 const ParakeetManager = require("../../src/helpers/parakeet");
 const WhisperManager = require("../../src/helpers/whisper");
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
-const downloadUtils = require("../../src/helpers/downloadUtils");
+const downloadUtils: typeof import("../../src/helpers/downloadUtils") = require("../../src/helpers/downloadUtils");
 const whisperModulePath = require.resolve("../../src/helpers/whisper");
 Module._load = originalLoad;
 
@@ -30,7 +30,7 @@ function activeDownload(model: string, overrides = {}) {
   };
 }
 
-function stubMacosVersion(t: import("node:test").TestContext, version: any) {
+function stubMacosVersion(t: import("node:test").TestContext, version: unknown) {
   const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
   const systemVersionDescriptor = Object.getOwnPropertyDescriptor(process, "getSystemVersion");
 
@@ -287,7 +287,7 @@ test("Whisper emits a complete event after validating the downloaded model", asy
   const events: any[] = [];
   manager.getModelsDir = () => modelsDir;
 
-  await manager.downloadWhisperModel(model, (event: any) => events.push(event));
+  await manager.downloadWhisperModel(model, (event: unknown) => events.push(event));
 
   assert.equal(events.at(-1)?.type, "complete");
   assert.equal(events.at(-1)?.model, model);

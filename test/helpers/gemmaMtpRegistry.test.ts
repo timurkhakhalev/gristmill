@@ -37,7 +37,7 @@ const EXPECTED = {
   },
 };
 
-type LocalProvider = { models: Array<Record<string, any>> };
+type LocalProvider = { models: Array<Record<string, unknown>> };
 type LocalModelEntry = { provider: LocalProvider; model: Record<string, any> };
 function allLocalModels(): LocalModelEntry[] {
   return (modelData.localProviders as LocalProvider[]).flatMap((provider) =>
@@ -49,7 +49,7 @@ test("the four Gemma 4 QAT entries carry the exact drafter field triplets", () =
   const byId = new Map(allLocalModels().map(({ model }) => [model.id as string, model]));
 
   for (const [id, expected] of Object.entries(EXPECTED)) {
-    const model = byId.get(id) as Record<string, any>;
+    const model = byId.get(id) as Record<string, unknown>;
     assert.ok(model, `missing QAT entry ${id}`);
     assert.equal(model.size, expected.size, `${id} size label`);
     assert.equal(model.sizeBytes, expected.sizeBytes, `${id} main sizeBytes unchanged`);
@@ -64,7 +64,7 @@ test("no entry outside the four QAT ids gained any drafter field", () => {
     if ((EXPECTED as Record<string, unknown>)[model.id as string]) continue;
     for (const field of DRAFT_FIELDS) {
       assert.equal(
-        (model as Record<string, any>)[field as string],
+        (model as Record<string, unknown>)[field as string],
         undefined,
         `${model.id} unexpectedly has ${field}=${model[field]}`
       );

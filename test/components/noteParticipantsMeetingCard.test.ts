@@ -2,7 +2,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const test: typeof import("node:test") = require("node:test");
 const { createElement } = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 

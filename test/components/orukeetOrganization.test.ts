@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const React = require("react");
-const path = require("node:path");
+const path: typeof import("node:path") = require("node:path");
 const { createRoot } = require("react-dom/client");
 const {
   createRendererServer,

@@ -5,10 +5,10 @@
 // duplicate-channel guard.
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const vm = require("node:vm");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
+const vm: typeof import("node:vm") = require("node:vm");
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
@@ -18,7 +18,7 @@ const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercu
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, Buffer.alloc(64));
 
-let activeHandlers = new Map<string, (...args: any[]) => any>();
+let activeHandlers = new Map<string, (...args: unknown[]) => unknown>();
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -30,7 +30,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
         isReady: () => false,
       },
       ipcMain: {
-        handle: (channel: string, listener: (...args: any[]) => any) => {
+        handle: (channel: string, listener: (...args: unknown[]) => unknown) => {
           if (activeHandlers.has(channel)) {
             throw new Error(`Attempted to register a second handler for '${channel}'`);
           }
@@ -64,7 +64,7 @@ function loadBundledPreload(invoke: unknown) {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: unknown) => {
             if (typeof value !== "object" || value === null) throw new Error("Invalid preload API");
-            api = value as Record<string, any>;
+            api = value as Record<string, unknown>;
           },
         },
         ipcRenderer: {
@@ -89,7 +89,7 @@ const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 async function createFixture() {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
-  const ipcMain = { handle: (channel: string, listener: (...args: any[]) => any) => activeHandlers.set(channel, listener) };
+  const ipcMain = { handle: (channel: string, listener: (...args: unknown[]) => unknown) => activeHandlers.set(channel, listener) };
 
   const { createUploadCancelRegistry } = await import("../../src/helpers/uploadCancelRegistry.ts");
   const { registerUploadCancelHandler } = await import("../../src/helpers/uploadCancelIpcHandler.ts");
@@ -154,7 +154,7 @@ async function createFixture() {
   });
 
   const handlersSnapshot = new Map(activeHandlers);
-  const invoke = async (channel: string, ...args: any[]) => {
+  const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler(null, ...args);
@@ -233,7 +233,7 @@ test("failure shapes cross the boundary intact", async () => {
 test("a junk main response rejects at the preload boundary", async () => {
   await createFixture();
   const realHandlers = new Map(activeHandlers);
-  const api = loadBundledPreload(async (channel: string, ...args: any[]) => {
+  const api = loadBundledPreload(async (channel: string, ...args: unknown[]) => {
     if (channel === "transcribe-audio-file-byok") return { silentlyWrong: true };
     if (channel === "cancel-upload-transcription") return { nope: 1 };
     const handler = realHandlers.get(channel);
@@ -252,7 +252,7 @@ test("the shared main registration registers each upload channel exactly once", 
   const IPCHandlers = require(handlersModulePath);
   const Ctor = IPCHandlers.default || IPCHandlers;
 
-  const anything = (): any =>
+  const anything = (): unknown =>
     new Proxy(function () {}, {
       get: (_target, property) => {
         if (property === Symbol.toPrimitive || property === "toString") return () => "";

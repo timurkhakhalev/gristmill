@@ -1,11 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { localModelChannels } = require("../../src/contracts/localModelLifecycle.ts");
+const { localModelChannels }: typeof import("../../src/contracts/localModelLifecycle.ts") = require("../../src/contracts/localModelLifecycle.ts");
 const {
   registerLocalModelLifecycleHandlers,
 } = require("../../src/helpers/localModelLifecycleIpcHandlers.ts");
-const { sanitizeWhisperVadConfig } = require("../../src/helpers/whisperVadConfig.ts");
+const { sanitizeWhisperVadConfig }: typeof import("../../src/helpers/whisperVadConfig.ts") = require("../../src/helpers/whisperVadConfig.ts");
 const vadDefaults = require("../../src/constants/whisperVad.json").DEFAULTS;
 
 // Mirrors the production settings owner in ipcHandlers.js: allowed-key filter
@@ -38,16 +38,16 @@ function createVadSettingsStore() {
 
 function createHarness(overrides: {
   vadStore?: ReturnType<typeof createVadSettingsStore>;
-  whisperManager?: Record<string, any>;
-  parakeetManager?: Record<string, any>;
-  deps?: Record<string, any>;
+  whisperManager?: Record<string, unknown>;
+  parakeetManager?: Record<string, unknown>;
+  deps?: Record<string, unknown>;
 } = {}) {
-  const handlers = new Map<string, (...args: any[]) => any>();
+  const handlers = new Map<string, (...args: unknown[]) => any>();
   const sent: [string, any][] = [];
   const calls : any = { persist: [], clear: 0, started: [], finished: [] };
   const active = new Map();
 
-  const downloadStatus: any = {
+  const downloadStatus: unknown = {
     has: (modelType: string, modelId: string) => active.has(`${modelType}:${modelId}`),
     start: (modelType: string, modelId: string) => {
       calls.started.push(`${modelType}:${modelId}`);
@@ -64,7 +64,7 @@ function createHarness(overrides: {
 
   const vadStore = overrides.vadStore || createVadSettingsStore();
 
-  const deps: any = {
+  const deps: unknown = {
     whisperManager: {
       downloadWhisperModel: async (modelName: string, onProgress: (event: { type: string; model: string; percentage: number }) => void) => {
         onProgress({ type: "progress", model: modelName, percentage: 10 });
@@ -83,7 +83,7 @@ function createHarness(overrides: {
     updateDownloadStatus: () => ({ sequence: 3 }),
     getWhisperVadSettings: () => vadStore.get(),
     setWhisperVadSettings: (payload: any) => vadStore.set(payload),
-    persistParakeetProviderSelection: async (modelName: any) => {
+    persistParakeetProviderSelection: async (modelName: unknown) => {
       calls.persist.push(modelName);
     },
     clearParakeetProviderSelection: async () => {
@@ -92,8 +92,8 @@ function createHarness(overrides: {
     ...overrides.deps,
   };
 
-  registerLocalModelLifecycleHandlers({ handle: (c: string, fn: (...args: any[]) => any) => handlers.set(c, fn) }, deps);
-  const invoke = (channel: string, ...args: any[]) => {
+  registerLocalModelLifecycleHandlers({ handle: (c: string, fn: (...args: unknown[]) => unknown) => handlers.set(c, fn) }, deps);
+  const invoke = (channel: string, ...args: unknown[]) => {
     const handler = handlers.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler({}, ...args);

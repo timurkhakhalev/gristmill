@@ -14,7 +14,7 @@ Module._load = function loadWithElectronStub(request: string, parent: unknown, i
   return originalLoad.call(this, request, parent, isMain);
 };
 const MeetingDetectionEngine = require("../../src/helpers/meetingDetectionEngine");
-const createMeetingAutoEndController = require("../../src/helpers/meetingAutoEndController");
+const createMeetingAutoEndController: typeof import("../../src/helpers/meetingAutoEndController") = require("../../src/helpers/meetingAutoEndController");
 Module._load = originalLoad;
 
 const { SILENCE_WINDOW_MS, FAST_SILENCE_MS, OWNERSHIP_MIN_ACTIVE_MS, OWNERSHIP_CONFIRM_MS } =
@@ -127,11 +127,11 @@ function createEngine(windowManagerOverrides = {}) {
   const overlayWebContents = { kind: "meeting-notification" };
   const windowManager = {
     notificationPrefs: {},
-    showMeetingAutoEndNotification: async (notification: any) => {
+    showMeetingAutoEndNotification: async (notification: unknown) => {
       autoEndNotifications.push(notification);
       return true;
     },
-    dismissMeetingAutoEndNotification: (sessionId: any) =>
+    dismissMeetingAutoEndNotification: (sessionId: unknown) =>
       dismissedAutoEndNotifications.push(sessionId),
     isMeetingNotificationSender: (sender: unknown) => sender === overlayWebContents,
     showMeetingNotification: (notification: { detectionId: string }) => shownNotifications.push(notification),
@@ -150,7 +150,7 @@ function createEngine(windowManagerOverrides = {}) {
     }
   );
 
-  const micState = (reliable: any, externalMicActive: any) =>
+  const micState = (reliable: unknown, externalMicActive: unknown) =>
     audioActivityDetector.emit("external-mic-state-changed", { reliable, externalMicActive });
 
   const owner = (messages: SentMessage[] = []) => ({
@@ -172,7 +172,7 @@ function createEngine(windowManagerOverrides = {}) {
   };
 }
 
-async function triggerOwnershipStop(engineHarness: any, ownerWebContents: any) {
+async function triggerOwnershipStop(engineHarness: any, ownerWebContents: unknown) {
   await engineHarness.engine.beginRecordingSession({
     sessionId: "meeting-1",
     autoEndEligible: true,

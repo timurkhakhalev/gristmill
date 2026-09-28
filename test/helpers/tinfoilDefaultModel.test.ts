@@ -78,10 +78,10 @@ test("a cached catalog does not displace the named Tinfoil default", async (t: i
   });
   const vite = await getVite();
   // Loading the registry applies the cached list, exactly as app startup does.
-  await vite.ssrLoadModule("/models/ModelRegistry.ts");
-  const { useSettingsStore } = await vite.ssrLoadModule(
+  (await vite.ssrLoadModule("/models/ModelRegistry.ts") as typeof import("../../src/models/ModelRegistry.ts"));
+  const { useSettingsStore } = (await vite.ssrLoadModule(
     "/stores/settingsStore.ts"
-  );
+  ) as typeof import("../../src/stores/settingsStore.ts"));
 
   const effective = useSettingsStore.getState();
 
@@ -99,7 +99,7 @@ test("a persisted glm-5-2 selection is repointed before any request", async (t: 
     },
   });
   const vite = await getVite();
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  const { useSettingsStore } = (await vite.ssrLoadModule("/stores/settingsStore.ts") as typeof import("../../src/stores/settingsStore.ts"));
 
   // No catalog fetch and no network: the store repairs the selection on load,
   // so the first request of the session already carries a served model.
@@ -127,10 +127,10 @@ test("the retirement notice fires when the startup sweep is what moved the user"
     },
   });
   const vite = await getVite();
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
-  const { consumeTinfoilModelSwitches } = await vite.ssrLoadModule(
+  const { useSettingsStore } = (await vite.ssrLoadModule("/stores/settingsStore.ts") as typeof import("../../src/stores/settingsStore.ts"));
+  const { consumeTinfoilModelSwitches } = (await vite.ssrLoadModule(
     "/stores/tinfoilModelSwitchStore.ts"
-  );
+  ) as typeof import("../../src/stores/tinfoilModelSwitchStore.ts"));
 
   assert.equal(useSettingsStore.getState().cleanupModel, "glm-5-3");
   // Two scopes moved, but the user is told about the model once.
@@ -147,10 +147,10 @@ test("a Groq remap is not announced as a Tinfoil retirement", async (t: import("
     },
   });
   const vite = await getVite();
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
-  const { consumeTinfoilModelSwitches } = await vite.ssrLoadModule(
+  const { useSettingsStore } = (await vite.ssrLoadModule("/stores/settingsStore.ts") as typeof import("../../src/stores/settingsStore.ts"));
+  const { consumeTinfoilModelSwitches } = (await vite.ssrLoadModule(
     "/stores/tinfoilModelSwitchStore.ts"
-  );
+  ) as typeof import("../../src/stores/tinfoilModelSwitchStore.ts"));
 
   assert.equal(useSettingsStore.getState().cleanupModel, "openai/gpt-oss-120b");
   assert.deepEqual(consumeTinfoilModelSwitches(), []);
@@ -198,10 +198,10 @@ test("a replacement with no curated name is still announced, by id", async (t: i
     },
   });
   const vite = await getVite();
-  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
-  const { consumeTinfoilModelSwitches } = await vite.ssrLoadModule(
+  const { useSettingsStore } = (await vite.ssrLoadModule("/stores/settingsStore.ts") as typeof import("../../src/stores/settingsStore.ts"));
+  const { consumeTinfoilModelSwitches } = (await vite.ssrLoadModule(
     "/stores/tinfoilModelSwitchStore.ts"
-  );
+  ) as typeof import("../../src/stores/tinfoilModelSwitchStore.ts"));
 
   assert.equal(useSettingsStore.getState().cleanupModel, "kimi-k3");
   assert.deepEqual(consumeTinfoilModelSwitches(), [{ from: "Kimi K2.6", to: "kimi-k3" }]);

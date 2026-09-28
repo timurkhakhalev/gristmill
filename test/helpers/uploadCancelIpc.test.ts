@@ -25,10 +25,10 @@ test.before(async () => {
 
 function setup() {
   const handlers = new Map();
-  const ipcMain = { handle: (channel: string, fn: any) => handlers.set(channel, fn) };
+  const ipcMain = { handle: (channel: string, fn: unknown) => handlers.set(channel, fn) };
   const registry = createUploadCancelRegistry();
   registerUploadCancelHandler(ipcMain, { uploadCancelRegistry: registry });
-  const cancel = (requestId: any) => handlers.get("cancel-upload-transcription")(null, { requestId });
+  const cancel = (requestId: unknown) => handlers.get("cancel-upload-transcription")(null, { requestId });
   return { handlers, registry, cancel };
 }
 
@@ -82,16 +82,16 @@ test("invalid cancel payloads are rejected", async () => {
 });
 
 test("end to end: cancel aborts a hanging remote transcription and diarization", async (t: import("node:test").TestContext) => {
-  const fs = require("node:fs");
-  const os = require("node:os");
-  const path = require("node:path");
+  const fs: typeof import("node:fs") = require("node:fs");
+  const os: typeof import("node:os") = require("node:os");
+  const path: typeof import("node:path") = require("node:path");
   const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-cancel-e2e-")));
   const audioFile = path.join(tmpRoot, "audio.wav");
   fs.writeFileSync(audioFile, Buffer.alloc(64));
   t.after(() => fs.rmSync(tmpRoot, { recursive: true, force: true }));
 
   const handlers = new Map();
-  const ipcMain = { handle: (channel: string, fn: any) => handlers.set(channel, fn) };
+  const ipcMain = { handle: (channel: string, fn: unknown) => handlers.set(channel, fn) };
   const registry = createUploadCancelRegistry();
   registerUploadCancelHandler(ipcMain, { uploadCancelRegistry: registry });
 
@@ -111,7 +111,7 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
     readFile: () => Buffer.alloc(64),
     fileSize: () => 64,
     providerBaseUrls: () => [],
-    postMultipart: (_url: string, _body: any, _boundary: any, _headers: any, options: any) => hangOnSignal(options),
+    postMultipart: (_url: string, _body: unknown, _boundary: unknown, _headers: unknown, options: unknown) => hangOnSignal(options),
     transcribeWithTinfoil: async () => ({ text: "t" }),
     transcribeGeminiFile: async () => ({ success: true, text: "t" }),
     transcribeWithCorti: async () => ({ text: "t" }),
@@ -128,14 +128,14 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
   registerFileDiarizationHandlers(ipcMain, {
     diarizationManager: {
       isModelDownloaded: () => true,
-      diarize: (_wavPath: any, options: any) =>
+      diarize: (_wavPath: unknown, options: any) =>
         new Promise((resolve) => {
           options.signal?.addEventListener("abort", () => resolve([]), { once: true });
         }),
-      capSpeakerClusters: (segments: any) => segments,
+      capSpeakerClusters: (segments: unknown) => segments,
     },
     resolveAllowedAudioPath: () => audioFile,
-    convertToWav: async (_i: any, _o: any, options: any) => {
+    convertToWav: async (_i: unknown, _o: unknown, options: any) => {
       await new Promise((resolve) => setImmediate(resolve));
       if (options.signal?.aborted) {
         const error = new Error("Aborted");
@@ -146,7 +146,7 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
     createTempWavPath: () => path.join(tmpRoot, "wav.wav"),
     fileSize: () => 32000,
     resolveClusterThreshold: () => 0.55,
-    dropNegligibleClusters: (segments: any) => segments,
+    dropNegligibleClusters: (segments: unknown) => segments,
     pcm16Mono16kBytesPerSecond: 32000,
     maxSpeakerCount: 16,
     removeFile: () => {},
@@ -166,8 +166,8 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
       requestId: "e2e",
     })
     .then(
-      (r: any) => r,
-      (e: any) => ({ success: false, error: String(e) })
+      (r: unknown) => r,
+      (e: unknown) => ({ success: false, error: String(e) })
     );
   const diarize = handlers.get("diarize-audio-file")(null, audioFile, { requestId: "e2e" });
   await new Promise((resolve) => setImmediate(resolve));

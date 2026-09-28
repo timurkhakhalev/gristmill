@@ -1,6 +1,6 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+const { installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json") as typeof import("../../src/models/modelRegistryData.json");
 

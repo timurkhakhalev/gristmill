@@ -1,14 +1,14 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const path: typeof import("node:path") = require("node:path");
 const test: typeof import("node:test") = require("node:test");
 const { createDb } = require("./harness/db.ts");
-const { getUserDataDir } = require("./harness/electronStub.ts");
+const { getUserDataDir }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
 const DatabaseManager = require("../../src/helpers/database.ts");
-const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
-const IPCHandlers = require("../../src/helpers/ipcHandlers.ts");
-const { DEFAULT_RETENTION_SETTINGS } = require("../../src/helpers/retentionSettings.ts");
-const { createMeetingAudioOperationRegistry } = require("../../src/helpers/meetingAudioExport.ts");
+const MeetingRecordingStorage: typeof import("../../src/helpers/meetingRecordingStorage.ts").MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
+const IPCHandlers: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require("../../src/helpers/ipcHandlers.ts");
+const { DEFAULT_RETENTION_SETTINGS }: typeof import("../../src/helpers/retentionSettings.ts") = require("../../src/helpers/retentionSettings.ts");
+const { createMeetingAudioOperationRegistry }: typeof import("../../src/helpers/meetingAudioExport.ts") = require("../../src/helpers/meetingAudioExport.ts");
 
 const DAY = 86_400_000;
 const config = { transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "en" } };
@@ -38,7 +38,7 @@ function storeTranscript(db: any, storage: any, run: any, text: string) {
   assert.equal(db.setMeetingRunArtifact(run.id, "transcript").success, true);
 }
 
-function runCleanup(db: any, storage: any, settings: any, overrides = {}) {
+function runCleanup(db: unknown, storage: unknown, settings: any, overrides = {}) {
   const context = {
     databaseManager: db,
     audioStorageManager: {
@@ -118,7 +118,7 @@ test("delete-all safely stops active capture, waits for processing, and removes 
   const context = {
     _meetingCoordinator: {
       isRecording: () => true,
-      requestSafeStop: async (suppressProcessing: any) => {
+      requestSafeStop: async (suppressProcessing: unknown) => {
         assert.equal(suppressProcessing, true);
         safeStop = true;
         return { success: true };
@@ -131,7 +131,7 @@ test("delete-all safely stops active capture, waits for processing, and removes 
     databaseManager: db,
     _meetingAudioOperations: audioOperations,
     _meetingProcessing: {
-      cancelRecordingForDeletion: async (id: any) => {
+      cancelRecordingForDeletion: async (id: unknown) => {
         assert.equal(id, recording.id);
         assert.equal(audioRead.isClosed(), true, "active audio operations close before processing/deletion proceeds");
         waited = true;
@@ -172,7 +172,7 @@ test("note deletion waits for the active reader before removing its Note and run
     audioStorageManager: { meetingRecordings: storage },
     _meetingAudioOperations: audioOperations,
     _meetingProcessing: {
-      cancelRecordingForDeletion: async (id: any, includeNonAudio: any) => {
+      cancelRecordingForDeletion: async (id: unknown, includeNonAudio: unknown) => {
         assert.equal(id, recording.id);
         assert.equal(includeNonAudio, true);
         assert.equal(audioRead.isClosed(), true, "audio operations must settle before Note cleanup proceeds");
@@ -214,7 +214,7 @@ test("expiry uses recording end time and waits for readers before deleting sourc
   const release = new Promise<void>((resolve) => { releaseReader = resolve; });
   const cleanup = runCleanup(db, storage, { audioRetentionDays: 7, transcriptRetentionDays: 0 }, {
     _meetingProcessing: {
-      cancelRecordingForDeletion: async (id: any) => {
+      cancelRecordingForDeletion: async (id: unknown) => {
         assert.equal(id, recording.id);
         readerStarted();
         await release;

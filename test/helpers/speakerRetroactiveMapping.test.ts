@@ -1,8 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
 
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-retro-db-"));
@@ -54,12 +54,12 @@ function embedding(values: any) {
   return Buffer.from(new Float32Array(values).buffer);
 }
 
-async function runRetroactive(db: any, profile: any) {
+async function runRetroactive(db: unknown, profile: unknown) {
   Ctor.prototype._retroactiveMapping.call({ databaseManager: db }, profile);
   await new Promise((resolve) => setImmediate(() => setTimeout(resolve, 0)));
 }
 
-function unmappedNote(db: any, transcriptSegments: any, embeddingValues: any, speakerId = "SPEAKER_00") {
+function unmappedNote(db: any, transcriptSegments: unknown, embeddingValues: unknown, speakerId = "SPEAKER_00") {
   const { note } = db.saveNote("Meeting", "content");
   db.setSpeakerMapping(note.id, speakerId, null, speakerId);
   if (transcriptSegments) {

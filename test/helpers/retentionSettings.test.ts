@@ -85,7 +85,7 @@ test("only the main renderer can replace process-global retention settings", () 
     getCurrentSettings: () => current,
     getOwner: () => mainRenderer,
     hasSynced: () => synced,
-    onSettingsChanged: (settings: any) => {
+    onSettingsChanged: (settings: unknown) => {
       current = settings;
       synced = true;
       cleanupRuns += 1;
@@ -119,7 +119,7 @@ test("only the main renderer can replace process-global retention settings", () 
 });
 
 test("no sweep runs before the renderer has synced the persisted settings", () => {
-  const IPCHandlers = require("../../src/helpers/ipcHandlers");
+  const IPCHandlers: typeof import("../../src/helpers/ipcHandlers").IPCHandlers = require("../../src/helpers/ipcHandlers");
   const sweeps: unknown[] = [];
   const context = {
     _retentionCleanupInterval: null as ReturnType<typeof setInterval> | null,
@@ -148,7 +148,7 @@ test("the first sync sweeps even when the user's settings match the defaults", (
     getCurrentSettings: () => current,
     getOwner: () => owner,
     hasSynced: () => synced,
-    onSettingsChanged: (settings: any) => {
+    onSettingsChanged: (settings: unknown) => {
       current = settings;
       synced = true;
       cleanupRuns += 1;

@@ -1,8 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const path = require("node:path");
-const { pathToFileURL } = require("node:url");
-const { spawnSync } = require("node:child_process");
+const path: typeof import("node:path") = require("node:path");
+const { pathToFileURL }: typeof import("node:url") = require("node:url");
+const { spawnSync }: typeof import("node:child_process") = require("node:child_process");
 
 // ipcHandlers.js reaches raw .ts through Electron's bare Node ESM loader, which
 // rejects JSON imports without `with { type: "json" }`. The suite runs under

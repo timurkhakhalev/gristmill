@@ -1,10 +1,10 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
-const path = require("node:path");
+const path: typeof import("node:path") = require("node:path");
 const test: typeof import("node:test") = require("node:test");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer } = require("../lib/rendererTestHarness.ts");
+const { createRendererServer }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 const repoRoot = path.join(__dirname, "../..");
 

@@ -20,18 +20,18 @@ function cosineSimilarity(a: any, b: any) {
 }
 
 function loadIdentifier(options: {
-  extractEmbeddingFromSamples?: (...args: any[]) => Promise<Float32Array | null>;
+  extractEmbeddingFromSamples?: (...args: unknown[]) => Promise<Float32Array | null>;
   ort?: () => unknown;
 } = {}) {
   delete require.cache[identifierModulePath];
   const warnings: any[] = [];
   const interceptsOrt = typeof options.ort === "function";
 
-  Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
     if (request === "./debugLogger" || request === "./debugLogger.js") {
       return {
         info() {},
-        warn(message: any, data: any) {
+        warn(message: unknown, data: unknown) {
           warnings.push({ message, data });
         },
         debug() {},
@@ -327,7 +327,7 @@ test("the VAD session caps ORT to a single sequential thread", async (t: import(
   const { LiveSpeakerIdentifier, restore } = loadIdentifier({
     ort: () => ({
       InferenceSession: {
-        create: async (...args: any[]) => {
+        create: async (...args: unknown[]) => {
           createArgs = args;
           return { inputNames: [], outputNames: [] };
         },
@@ -353,9 +353,9 @@ const LIVE_ID_INTERVAL_SAMPLES = 16000;
 const MAX_EMBEDDING_SAMPLES = 16000 * 8; // MAX_EMBEDDING_SECONDS stubbed to 8
 
 function loadIdentifierCapturingEmbeddings() {
-  const embeddingInputs: any[] = [];
+  const embeddingInputs: unknown[] = [];
   const { LiveSpeakerIdentifier } = loadIdentifier({
-    extractEmbeddingFromSamples: async (samples: any) => {
+    extractEmbeddingFromSamples: async (samples: unknown) => {
       embeddingInputs.push(samples);
       return voiceA;
     },

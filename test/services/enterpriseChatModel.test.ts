@@ -29,7 +29,7 @@ async function loadModel() {
   }));
   const module = await vite.moduleGraph.getModuleByUrl("/services/ai/enterpriseChatModel.ts");
   if (module) vite.moduleGraph.invalidateModule(module);
-  return vite.ssrLoadModule("/services/ai/enterpriseChatModel.ts");
+  return (vite.ssrLoadModule("/services/ai/enterpriseChatModel.ts") as Promise<typeof import("../../src/services/ai/enterpriseChatModel.ts")>);
 }
 
 interface StubApi {

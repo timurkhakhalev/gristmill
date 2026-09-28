@@ -1,6 +1,6 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 const cfg = (overrides: Record<string, unknown> = {}) => ({
   useLocalWhisper: false,
@@ -22,7 +22,7 @@ test("file transcription never dispatches an OpenWhispr cloud route", async (t: 
   const vite = await createRendererServer(t, {
     cachePrefix: "openh-file-direct-routing-",
   });
-  const { transcribeFile } = await vite.ssrLoadModule("/services/fileTranscription.ts");
+  const { transcribeFile } = (await vite.ssrLoadModule("/services/fileTranscription.ts") as typeof import("../../src/services/fileTranscription.ts"));
 
   let cloudCalls = 0;
   let byokOptions: Record<string, unknown> | undefined;
@@ -52,7 +52,7 @@ test("enterprise transcription fails closed instead of using organization routin
   const vite = await createRendererServer(t, {
     cachePrefix: "openh-file-enterprise-routing-",
   });
-  const { transcribeFile } = await vite.ssrLoadModule("/services/fileTranscription.ts");
+  const { transcribeFile } = (await vite.ssrLoadModule("/services/fileTranscription.ts") as typeof import("../../src/services/fileTranscription.ts"));
   let calls = 0;
   window.electronAPI.transcribeAudioFileByok = async () => {
     calls += 1;

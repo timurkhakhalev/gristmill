@@ -160,7 +160,7 @@ test("a confirmed new call can prompt after the previous one ends", () => {
 
 test("calendar reminder and confirmed Meet call share one offer", () => {
   const { engine, callDetector, reminderScheduler, shown } = createEngine();
-  const { createHash } = require("node:crypto");
+  const { createHash }: typeof import("node:crypto") = require("node:crypto");
   const event = {
     id: "calendar-1", start_time: new Date(Date.now() + 60_000).toISOString(),
     hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-1",
@@ -174,7 +174,7 @@ test("calendar reminder and confirmed Meet call share one offer", () => {
 
 test("a later call can prompt after the call tied to a calendar offer ends", () => {
   const { engine, callDetector, reminderScheduler, shown } = createEngine();
-  const { createHash } = require("node:crypto");
+  const { createHash }: typeof import("node:crypto") = require("node:crypto");
   const event = {
     id: "calendar-rejoin", start_time: new Date(Date.now() + 60_000).toISOString(),
     hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-rejoin",
@@ -208,7 +208,7 @@ test("a calendar offer without a join link does not hide an unrelated call", () 
 
 test("a confirmed Meet call suppresses its later calendar reminder", () => {
   const { engine, callDetector, reminderScheduler, shown } = createEngine();
-  const { createHash } = require("node:crypto");
+  const { createHash }: typeof import("node:crypto") = require("node:crypto");
   const event = {
     id: "calendar-2", start_time: new Date(Date.now() + 60_000).toISOString(),
     hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-2",

@@ -4,7 +4,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const {
   resolveDiarizationTarget,
   selectBaseSegments,
-} = require("../../src/utils/diarizationCompletion.ts");
+}: typeof import("../../src/utils/diarizationCompletion.ts") = require("../../src/utils/diarizationCompletion.ts");
 
 // Issue #1495: a delayed diarization result must be saved to the note that
 // owns the recording session, never to whichever note happens to be rendered.

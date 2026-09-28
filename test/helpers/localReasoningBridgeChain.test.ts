@@ -1,13 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
-const fs = require("node:fs/promises");
+const fs: typeof import("node:fs/promises") = require("node:fs/promises");
 const http = require("node:http");
-const os = require("node:os");
-const path = require("node:path");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
-const { buildGguf, LLAMA_3_2_3B_ENTRIES } = require("./harness/ggufFixtures");
+const { buildGguf, LLAMA_3_2_3B_ENTRIES }: typeof import("./harness/ggufFixtures") = require("./harness/ggufFixtures");
 
 // Drives the primary local LLM path end to end — the IPC bridge
 // (localReasoningBridge) → modelManagerBridge.runInference →
@@ -29,7 +29,7 @@ let electronHome = os.tmpdir();
 function loadChain() {
   for (const modulePath of CHAIN_MODULES) delete require.cache[modulePath];
 
-  Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") {
       return {
         app: {
@@ -69,7 +69,7 @@ async function setupChain(t: import("node:test").TestContext, respond: any) {
   const requests: any[] = [];
   const server = http.createServer((req: any, res: any) => {
     let raw = "";
-    req.on("data", (chunk: any) => (raw += chunk));
+    req.on("data", (chunk: unknown) => (raw += chunk));
     req.on("end", () => {
       requests.push(JSON.parse(raw));
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -97,7 +97,7 @@ async function setupChain(t: import("node:test").TestContext, respond: any) {
   return { bridge, modelId: model.id, requests, serverManager };
 }
 
-const completion = (finishReason: any, content: string) => ({
+const completion = (finishReason: unknown, content: string) => ({
   choices: [{ finish_reason: finishReason, message: { content } }],
 });
 
@@ -134,7 +134,7 @@ test("a caller's contextSize reaches the server start (regression: it was droppe
   // why this harness has to present a machine and a model that can afford it.
   const { bridge, modelId, serverManager } = await setupChain(t, () => completion("stop", "ok"));
 
-  const started: any[] = [];
+  const started: unknown[] = [];
   serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     started.push(options.contextSize);
     serverManager.ready = true;

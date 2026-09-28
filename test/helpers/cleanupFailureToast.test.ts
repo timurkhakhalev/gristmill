@@ -7,7 +7,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
-} = require("../lib/rendererTestHarness.ts");
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type GlobalWithMocks = typeof globalThis & { __cleanupFailureToasts?: unknown[] };
 
@@ -33,14 +33,14 @@ test("cleanup toast localizes AWS recovery guidance and keeps fallback status qu
       `,
     },
   });
-  const { default: CleanupFailureToastListener } = await vite.ssrLoadModule(
+  const { default: CleanupFailureToastListener } = (await vite.ssrLoadModule(
     "/components/CleanupFailureToastListener.tsx"
-  );
-  const { default: i18n } = await vite.ssrLoadModule("/i18n.ts");
+  ) as typeof import("../../src/components/CleanupFailureToastListener.tsx"));
+  const { default: i18n } = (await vite.ssrLoadModule("/i18n.ts") as typeof import("../../src/i18n.ts"));
   await i18n.changeLanguage("es");
-  const { recordCleanupFailure, useCleanupFailureStore } = await vite.ssrLoadModule(
+  const { recordCleanupFailure, useCleanupFailureStore } = (await vite.ssrLoadModule(
     "/stores/cleanupFailureStore.ts"
-  );
+  ) as typeof import("../../src/stores/cleanupFailureStore.ts"));
   useCleanupFailureStore.setState({ pending: 0, lastMessage: "", lastFailure: null });
 
   root = createRoot(container);
@@ -80,10 +80,10 @@ test("technical AWS details use the selected UI language", async (t: import("nod
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-technical-error-details-",
   });
-  const { TechnicalErrorDetails } = await vite.ssrLoadModule(
+  const { TechnicalErrorDetails } = (await vite.ssrLoadModule(
     "/components/ui/TechnicalErrorDetails.tsx"
-  );
-  const { default: i18n } = await vite.ssrLoadModule("/i18n.ts");
+  ) as typeof import("../../src/components/ui/TechnicalErrorDetails.tsx"));
+  const { default: i18n } = (await vite.ssrLoadModule("/i18n.ts") as typeof import("../../src/i18n.ts"));
   await i18n.changeLanguage("es");
 
   const markup = renderToStaticMarkup(

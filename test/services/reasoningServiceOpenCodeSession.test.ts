@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 import type { TestContext } from "node:test";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -13,7 +13,7 @@ type SentRequest = { endpoint: string; headers: Record<string, string> };
 async function loadReasoningService(t: TestContext, cachePrefix: string): Promise<ReasoningService> {
   installBrowserGlobals(t, {});
   const vite = await createRendererServer(t, { cachePrefix });
-  const reasoningService = (await vite.ssrLoadModule("/services/ReasoningService.ts")).default;
+  const reasoningService = ((await vite.ssrLoadModule("/services/ReasoningService.ts") as typeof import("../../src/services/ReasoningService.ts"))).default;
   t.after(() => reasoningService.destroy());
   return reasoningService;
 }

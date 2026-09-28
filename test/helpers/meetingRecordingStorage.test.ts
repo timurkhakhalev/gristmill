@@ -1,9 +1,9 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
-const path = require("node:path");
+const path: typeof import("node:path") = require("node:path");
 const test: typeof import("node:test") = require("node:test");
 const { createDb } = require("./harness/db.ts");
-const { getUserDataDir } = require("./harness/electronStub.ts");
+const { getUserDataDir }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
 const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
 const DatabaseManager = require("../../src/helpers/database.ts");
 

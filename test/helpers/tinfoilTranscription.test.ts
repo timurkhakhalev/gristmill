@@ -5,10 +5,10 @@ const Module = require("node:module");
 const transcriptionModulePath = require.resolve("../../src/helpers/tinfoilTranscription.ts");
 const originalLoad = Module._load;
 
-function loadTranscription(fetchImpl: any) {
+function loadTranscription(fetchImpl: unknown) {
   delete require.cache[transcriptionModulePath];
 
-  Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
+  Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
     if (request === "./tinfoilSecureClient" || request === "./tinfoilSecureClient.js") {
       return { tinfoilSecureFetch: fetchImpl };
     }
@@ -38,7 +38,7 @@ const AUDIO = {
 
 test("posts to the attested transcriptions path with the registry's batch model", async () => {
   const calls: any[] = [];
-  const { transcribeWithTinfoil } = loadTranscription(async (path: string, init: any) => {
+  const { transcribeWithTinfoil } = loadTranscription(async (path: string, init: unknown) => {
     calls.push({ path, init });
     return okResponse("hello world");
   });

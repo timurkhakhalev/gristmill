@@ -10,7 +10,7 @@ Module._load = function loadWithElectronStub(request: string, parent: unknown, i
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const { validateEnterpriseEndpoint } = require("../../src/helpers/enterpriseProviderErrors");
+const { validateEnterpriseEndpoint }: typeof import("../../src/helpers/enterpriseProviderErrors") = require("../../src/helpers/enterpriseProviderErrors");
 
 const rejects = (endpoint: string) => {
   assert.throws(

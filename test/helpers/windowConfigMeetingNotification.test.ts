@@ -6,7 +6,7 @@ const {
   NOTIFICATION_WINDOW_CONFIG,
   WindowPositionUtil,
   getMeetingNotificationWindowSize,
-} = require("../../src/helpers/windowConfig");
+}: typeof import("../../src/helpers/windowConfig") = require("../../src/helpers/windowConfig");
 
 test("meeting notifications accept the first macOS click with Electron's documented option", () => {
   assert.equal(NOTIFICATION_WINDOW_CONFIG.acceptFirstMouse, true);

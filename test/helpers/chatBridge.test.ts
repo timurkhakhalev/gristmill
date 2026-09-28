@@ -6,10 +6,10 @@
 // same channel must fail loudly — the #23 duplicate-handler failure).
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const vm = require("node:vm");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
+const vm: typeof import("node:vm") = require("node:vm");
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
@@ -56,7 +56,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
 const originalNodeEnv = process.env.NODE_ENV;
 process.env.NODE_ENV = "test";
 
-const DatabaseManager = require("../../src/helpers/database.ts");
+const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
 const initialUserDataDir = userDataDir;
 
 test.after(() => {
@@ -137,7 +137,7 @@ async function createFixture(t: import("node:test").TestContext): Promise<{ db: 
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler(null, ...args);
   };
-  const api = loadBundledPreload(invoke) as Record<string, (...args: unknown[]) => Promise<any>>;
+  const api = loadBundledPreload(invoke) as Record<string, (...args: unknown[]) => Promise<unknown>>;
   return { db, api, invoke };
 }
 

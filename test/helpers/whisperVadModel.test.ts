@@ -1,8 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
 
 // Stub electron before any src module loads: whisperVadModel needs
@@ -39,7 +39,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const { ensureWhisperVadModel, resetWhisperVadModelForTests } = require("../../src/helpers/whisperVadModel.ts");
+const { ensureWhisperVadModel, resetWhisperVadModelForTests }: typeof import("../../src/helpers/whisperVadModel.ts") = require("../../src/helpers/whisperVadModel.ts");
 
 test("ensureWhisperVadModel downloads into the userData cache when absent", async () => {
   resetWhisperVadModelForTests();

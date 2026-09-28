@@ -15,10 +15,10 @@ const TICK_MS = 1_000;
 
 const createHarness = () => {
   let now = START_TIME;
-  const stops: any[] = [];
+  const stops: unknown[] = [];
   const controller = createMeetingAutoEndController({
     now: () => now,
-    onStop: (sessionId: string, reason: any) => stops.push({ sessionId, reason }),
+    onStop: (sessionId: string, reason: unknown) => stops.push({ sessionId, reason }),
   });
 
   const runFor = (ms: number) => {
@@ -53,7 +53,7 @@ const micReleased = (controller: any, sessionId = "s1") =>
 const micAcquired = (controller: any, sessionId = "s1") =>
   controller.handleExternalMicState({ sessionId, reliable: true, externalMicActive: true });
 
-const audio = (controller: any, micActive: any, systemActive: any, sessionId = "s1") =>
+const audio = (controller: any, micActive: unknown, systemActive: unknown, sessionId = "s1") =>
   controller.handleAudioActivity({ sessionId, micActive, systemActive });
 
 test("ownership: a qualifying mic release stops after the confirm window", () => {

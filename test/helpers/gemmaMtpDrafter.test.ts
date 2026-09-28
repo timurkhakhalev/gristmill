@@ -1,9 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
-const fs = require("node:fs/promises");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs/promises") = require("node:fs/promises");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 
 const modelManagerModulePath = require.resolve("../../src/helpers/modelManagerBridge.ts");
 const modelDirUtilsModulePath = require.resolve("../../src/helpers/modelDirUtils.ts");
@@ -127,7 +127,7 @@ test("deleteModel removes the drafter alongside the main file, ignoring a missin
 // test/helpers/llamaServerContext.test.js. Every start() here passes the same
 // (default) context, so this file isolates the model/drafter dimension.
 test("llama-server start restarts only when model or drafter presence changes", async () => {
-  const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
+  const LlamaServerManager: typeof import("../../src/helpers/llamaServer.ts").LlamaServerManager = require("../../src/helpers/llamaServer.ts");
   const manager = new LlamaServerManager();
 
   const calls: unknown[] = [];
@@ -161,7 +161,7 @@ test("llama-server start restarts only when model or drafter presence changes", 
 });
 
 test("degraded start does not churn on identical requests", async () => {
-  const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
+  const LlamaServerManager: typeof import("../../src/helpers/llamaServer.ts").LlamaServerManager = require("../../src/helpers/llamaServer.ts");
   const manager = new LlamaServerManager();
 
   let starts = 0;

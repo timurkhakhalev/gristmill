@@ -1,8 +1,8 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const path: typeof import("node:path") = require("node:path");
 const test: typeof import("node:test") = require("node:test");
-const vm = require("node:vm");
+const vm: typeof import("node:vm") = require("node:vm");
 
 function loadPreloadApi() {
   let exposedApi: { setOnboardingActive(active: boolean): Promise<unknown>; markMacAccessibilityFeaturesReady?: unknown } | undefined;
@@ -36,7 +36,7 @@ function loadPreloadApi() {
     // sandbox needs the same bindings Node's CJS loader provides.
     module: { exports: {} },
     exports: {},
-    require: (specifier: any) => {
+    require: (specifier: unknown) => {
       if (specifier === "electron") return electron;
       throw new Error(`Unexpected preload dependency: ${specifier}`);
     },

@@ -67,7 +67,7 @@ test("validates the versioned ONNX Runtime library from a packaged app", () => {
       assert.equal(directory, `${appPath}/Contents/Resources/bin`);
       return ["libonnxruntime.dylib", "libonnxruntime.1.27.0.dylib"];
     },
-    runVtool(libraryPath: any) {
+    runVtool(libraryPath: unknown) {
       assert.equal(libraryPath, `${appPath}/Contents/Resources/bin/libonnxruntime.1.27.0.dylib`);
       return UNIVERSAL_VTOOL_OUTPUT;
     },

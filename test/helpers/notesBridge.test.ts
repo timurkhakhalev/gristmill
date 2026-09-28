@@ -1,9 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const vm = require("node:vm");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
+const vm: typeof import("node:vm") = require("node:vm");
 const Module = require("node:module");
 import type { NotesApi, NoteItem, NoteDeletedPayload } from "../../src/contracts/notes.js";
 
@@ -49,7 +49,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
 };
 process.env.NODE_ENV = "test";
 
-const DatabaseManager = require("../../src/helpers/database.ts");
+const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
 
 test.after(() => {
   Module._load = originalLoad;

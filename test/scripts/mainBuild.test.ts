@@ -1,9 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
-const { execFileSync } = require("node:child_process");
+const path: typeof import("node:path") = require("node:path");
+const vm: typeof import("node:vm") = require("node:vm");
+const { execFileSync }: typeof import("node:child_process") = require("node:child_process");
 const ts: typeof import("typescript") = require("typescript");
 
 const root = path.resolve(__dirname, "../..");

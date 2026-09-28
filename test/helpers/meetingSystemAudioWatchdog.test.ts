@@ -14,13 +14,13 @@ const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 const createHarness = ({ startImpl, stopImpl }: { startImpl?: () => Promise<void> | void; stopImpl?: () => Promise<void> | void } = {}) => {
   let now = START_TIME;
-  const calls: any[] = [];
+  const calls: unknown[] = [];
   const interruptions: any[] = [];
-  const resumed: any[] = [];
+  const resumed: unknown[] = [];
 
   const watchdog = createMeetingSystemAudioWatchdog({
     now: () => now,
-    onInterrupted: (payload: any) => interruptions.push(payload),
+    onInterrupted: (payload: unknown) => interruptions.push(payload),
     onResumed: () => resumed.push(now),
   });
 

@@ -3,7 +3,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 
 const load = () => import("../../src/services/uploadNotes.js");
 const { MAX_SPEAKER_COUNT } = require("../../src/constants/speakerDetection.json");
-const { parseTranscriptSegments } = require("../../src/utils/parseTranscriptSegments.ts");
+const { parseTranscriptSegments }: typeof import("../../src/utils/parseTranscriptSegments.ts") = require("../../src/utils/parseTranscriptSegments.ts");
 
 test("maps the diarizer invocation onto the note columns", async () => {
   const { buildUploadNoteMetadata } = await load();
@@ -207,7 +207,7 @@ test("the default anchor is the current epoch so later meeting appends share one
 // epoch rebase, and render the appended segments as ~481,000,000-hour cues.
 test("upload transcripts mixed with later live meeting segments export sane SRT times", async () => {
   const { buildUploadTranscript } = await load();
-  const { formatSrt } = require("../../src/helpers/transcriptFormatter");
+  const { formatSrt }: typeof import("../../src/helpers/transcriptFormatter") = require("../../src/helpers/transcriptFormatter");
 
   const anchorMs = 1_700_000_000_000;
   const seeded = JSON.parse(

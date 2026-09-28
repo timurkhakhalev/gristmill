@@ -5,7 +5,7 @@ const https = require("node:https");
 
 const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
 const execModuleSpecifier = "../../src/helpers/transcriptionExecutionIpcHandlers";
-const { createUploadCancelRegistry } = require("../../src/helpers/uploadCancelRegistry");
+const { createUploadCancelRegistry }: typeof import("../../src/helpers/uploadCancelRegistry") = require("../../src/helpers/uploadCancelRegistry");
 const originalLoad = Module._load;
 const originalHttpsRequest = https.request;
 
@@ -39,12 +39,12 @@ const electronStub = {
     requestSingleInstanceLock: () => true,
   },
   ipcMain: {
-    handle: (channel: string, fn: any) => handlers.set(channel, fn),
+    handle: (channel: string, fn: unknown) => handlers.set(channel, fn),
     on: () => {},
     removeHandler: () => {},
   },
   net: {
-    fetch: async (url: string, init: any) => {
+    fetch: async (url: string, init: unknown) => {
       fetches.push({ url: String(url), init });
       return fetchResponse(String(url), init);
     },
@@ -80,7 +80,7 @@ Module._load = function loadWithMocks(request: string, parent: any, isMain: bool
   if (parent?.filename === handlersModulePath) {
     if (request === "./cortiTranscription") {
       return {
-        transcribeAudio: async (opts: any) => {
+        transcribeAudio: async (opts: unknown) => {
           cortiCalls.push(opts);
           return cortiBehavior(opts);
         },
@@ -88,7 +88,7 @@ Module._load = function loadWithMocks(request: string, parent: any, isMain: bool
     }
     if (request === "./tinfoilTranscription") {
       return {
-        transcribeWithTinfoil: async (opts: any) => {
+        transcribeWithTinfoil: async (opts: unknown) => {
           tinfoilCalls.push(opts);
           return { text: "tinfoil text", model: "tinfoil-model" };
         },
@@ -104,7 +104,7 @@ Module._load = function loadWithMocks(request: string, parent: any, isMain: bool
 
 // A permissive `this` for setupHandlers: registration only stores closures, so
 // any manager not exercised by the upload handler can be an inert stub.
-function anything(): any {
+function anything(): unknown {
   return new Proxy(function () {}, {
     get: (t, prop) => {
       if (prop === Symbol.toPrimitive || prop === "toString") return () => "";
@@ -136,7 +136,7 @@ function buildExecutionDeps() {
       getCortiClientId: () => "corti-id",
       getCortiClientSecret: () => "corti-secret",
     },
-    proxyFetch: async (url: string, init: any) => {
+    proxyFetch: async (url: string, init: unknown) => {
       fetches.push({ url: String(url), init });
       return fetchResponse(String(url), init);
     },
@@ -147,7 +147,7 @@ function buildExecutionDeps() {
       });
       return { success: true, text: "Gemini retry text" };
     },
-    transcribeWithCorti: async (opts: any) => {
+    transcribeWithCorti: async (opts: unknown) => {
       cortiCalls.push(opts);
       return cortiBehavior(opts);
     },
@@ -160,7 +160,7 @@ function buildExecutionDeps() {
     bedrockProfileCredentials: () => null,
     providerBaseUrls: () =>
       require("../../src/models/modelRegistryData.json").transcriptionProviders,
-    audioStorage: { getAudioBuffer: (id: any) => (id === 7 ? Buffer.from([1, 2, 3]) : null) },
+    audioStorage: { getAudioBuffer: (id: unknown) => (id === 7 ? Buffer.from([1, 2, 3]) : null) },
     database: {
       updateTranscriptionText: () => {},
       updateTranscriptionStatus: () => {},
@@ -198,7 +198,7 @@ let retryHandler: any;
 test.before(() => {
   const { registerTranscriptionExecutionHandlers } = require(execModuleSpecifier);
   registerTranscriptionExecutionHandlers(
-    { handle: (channel: string, fn: any) => execHandlers.set(channel, fn) },
+    { handle: (channel: string, fn: unknown) => execHandlers.set(channel, fn) },
     buildExecutionDeps()
   );
   retryHandler = execHandlers.get("retry-transcription");
@@ -209,7 +209,7 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-const invoke = (settings: any, id = 7) => retryHandler({ sender: {} }, id, settings);
+const invoke = (settings: unknown, id = 7) => retryHandler({ sender: {} }, id, settings);
 
 test("retry: corti routes to the corti client, never OpenAI", async () => {
   fetches.length = 0;
@@ -399,9 +399,9 @@ test("proxy transcription handlers resolve to structured errors instead of rejec
   }
 });
 
-const fsNode = require("node:fs");
-const osNode = require("node:os");
-const pathNode = require("node:path");
+const fsNode: typeof import("node:fs") = require("node:fs");
+const osNode: typeof import("node:os") = require("node:os");
+const pathNode: typeof import("node:path") = require("node:path");
 
 const uploadTempFile = pathNode.join(osNode.tmpdir(), "openwhispr-upload-handler-test.webm");
 
@@ -418,17 +418,17 @@ const invokeUpload = (payload: any) => {
 // response must fully arrive before "close": the production code treats a
 // close without a settled response as a transport failure.
 function mockHttpsUpload({ onRequest }: {
-  onRequest: (url: URL, options: any, body: Buffer) => { response: unknown };
+  onRequest: (url: URL, options: unknown, body: Buffer) => { response: unknown };
 }) {
-  https.request = (url: URL | string, options: any, callback: any) => {
+  https.request = (url: URL | string, options: unknown, callback: unknown) => {
     const { EventEmitter } = require("node:events");
     const request = new EventEmitter();
     const uploaded: any[] = [];
-    request.write = (chunk: any, _encoding: any, cb: any) => {
+    request.write = (chunk: any, _encoding: unknown, cb: any) => {
       uploaded.push(Buffer.from(chunk));
       cb?.();
     };
-    request.end = (tail: any, _cb: any) => {
+    request.end = (tail: any, _cb: unknown) => {
       // The multipart footer rides on end() in postRawAudioFile.
       if (tail) uploaded.push(Buffer.from(tail));
       queueMicrotask(() => {

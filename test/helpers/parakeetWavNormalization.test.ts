@@ -2,9 +2,9 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
 const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { getRequiredModelFiles } = require("../../src/helpers/parakeetModelInfo");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
+const { getRequiredModelFiles }: typeof import("../../src/helpers/parakeetModelInfo") = require("../../src/helpers/parakeetModelInfo");
 
 const MODEL_NAME = "parakeet-tdt-0.6b-v3";
 
@@ -75,7 +75,7 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
       return {
         ...ffmpegUtils,
         getFFmpegPath: () => "/mock/ffmpeg",
-        convertToWav: async (_inputPath: any, outputPath: any) => {
+        convertToWav: async (_inputPath: unknown, outputPath: unknown) => {
           fs.writeFileSync(outputPath, createPcm16Wav(0.5));
         },
       };

@@ -1,14 +1,15 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const http = require("node:http");
+const http: typeof import("node:http") = require("node:http");
 
 const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
+import type { LlamaServerManager as LlamaManager, LlamaResponseError } from "../../src/helpers/llamaServer.ts";
 
 // A manager whose spawn is stubbed at the _doStart boundary, recording the
 // options each start was asked for.
 function makeManager() {
   const manager = new LlamaServerManager();
-  const starts: any[] = [];
+  const starts: unknown[] = [];
   manager._doStart = async (modelPath: string, options: { draftModelPath?: string; contextSize?: number } = {}) => {
     manager.ready = true;
     manager.modelPath = modelPath;
@@ -96,23 +97,27 @@ test("a context overflow is reported as a typed error, not as llama.cpp JSON", a
     },
   });
 
-  const server = http.createServer((req: any, res: any) => {
+  const server = http.createServer((_req, res) => {
     res.writeHead(400, { "Content-Type": "application/json" });
     res.end(overflowBody);
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const manager = new LlamaServerManager();
   manager.ready = true;
   manager.process = {};
-  manager.port = server.address().port;
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  manager.port = address.port;
 
   try {
     await assert.rejects(
       () => manager.inference([{ role: "user", content: "hi" }], {}),
-      (error: any) => {
-        assert.equal(error.code, "CONTEXT_TOO_LARGE");
-        assert.equal(error.neededTokens, 20514);
-        assert.equal(error.maxContextTokens, 16384);
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        const failure = error as LlamaResponseError;
+        assert.equal(failure.code, "CONTEXT_TOO_LARGE");
+        assert.equal(failure.neededTokens, 20514);
+        assert.equal(failure.maxContextTokens, 16384);
         // The whole point: a customer must never be shown a JSON blob.
         assert.ok(!error.message.includes("{"), `raw JSON leaked: ${error.message}`);
         return true;
@@ -125,21 +130,24 @@ test("a context overflow is reported as a typed error, not as llama.cpp JSON", a
 });
 
 test("other llama-server failures keep their existing shape", async () => {
-  const server = http.createServer((req: any, res: any) => {
+  const server = http.createServer((_req, res) => {
     res.writeHead(500, { "Content-Type": "text/plain" });
     res.end("internal error");
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const manager = new LlamaServerManager();
   manager.ready = true;
   manager.process = {};
-  manager.port = server.address().port;
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  manager.port = address.port;
 
   try {
     await assert.rejects(
       () => manager.inference([{ role: "user", content: "hi" }], {}),
-      (error: any) => {
-        assert.equal(error.code, undefined);
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal("code" in error ? error.code : undefined, undefined);
         assert.match(error.message, /llama-server returned status 500/);
         return true;
       }
@@ -157,20 +165,20 @@ test("other llama-server failures keep their existing shape", async () => {
 // (which can differ from what we asked for), and /apply-template + /tokenize
 // price the real prompt, chat template and all.
 
-function withStubServer(routes: any) {
+function withStubServer(routes: Record<string, (body: string) => { status?: number; payload: unknown }>) {
   // A Map rather than indexing the object: req.url is request-controlled, so a
   // plain lookup answers /toString or /constructor with an inherited
   // Object.prototype method and then calls it.
   const routeTable = new Map(Object.entries(routes));
-  return async (run: any) => {
-    const server = http.createServer((req: any, res: any) => {
-      const handler = routeTable.get(req.url);
+  return async (run: (manager: LlamaManager) => Promise<void>) => {
+    const server = http.createServer((req, res) => {
+      const handler = routeTable.get(req.url ?? "");
       if (typeof handler !== "function") {
         res.writeHead(404).end();
         return;
       }
       let body = "";
-      req.on("data", (chunk: any) => {
+      req.on("data", (chunk: unknown) => {
         body += chunk;
       });
       req.on("end", () => {
@@ -179,12 +187,14 @@ function withStubServer(routes: any) {
         res.end(JSON.stringify(payload));
       });
     });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 
     const manager = new LlamaServerManager();
     manager.ready = true;
     manager.process = {};
-    manager.port = server.address().port;
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    manager.port = address.port;
     try {
       await run(manager);
     } finally {
@@ -197,17 +207,17 @@ function withStubServer(routes: any) {
 test("usableContextSize reports the window the server actually has", async () => {
   await withStubServer({
     "/props": () => ({ payload: { default_generation_settings: { n_ctx: 32768 } } }),
-  })(async (manager: any) => {
+  })(async (manager) => {
     assert.equal(await manager.usableContextSize(), 32768);
   });
 });
 
 test("usableContextSize returns null rather than guessing when props is unreadable", async () => {
   // A broken measurement must degrade to the estimate, never fail the request.
-  await withStubServer({ "/props": () => ({ status: 500, payload: {} }) })(async (manager: any) => {
+  await withStubServer({ "/props": () => ({ status: 500, payload: {} }) })(async (manager) => {
     assert.equal(await manager.usableContextSize(), null);
   });
-  await withStubServer({})(async (manager: any) => {
+  await withStubServer({})(async (manager) => {
     assert.equal(await manager.usableContextSize(), null);
   });
 });
@@ -217,17 +227,17 @@ test("countPromptTokens prices the rendered template, not just the message text"
   let tokenized: any = null;
 
   await withStubServer({
-    "/apply-template": (body: any) => {
+    "/apply-template": (body) => {
       templatedWith = JSON.parse(body);
       // The real server renders role tags and, with thinking disabled, an
       // empty <think></think> block. All of it costs context.
       return { payload: { prompt: "<|im_start|>system\nSYS<|im_end|>\nhello" } };
     },
-    "/tokenize": (body: any) => {
+    "/tokenize": (body) => {
       tokenized = JSON.parse(body);
       return { payload: { tokens: new Array(20514).fill(0) } };
     },
-  })(async (manager: any) => {
+  })(async (manager) => {
     const messages = [
       { role: "system", content: "SYS" },
       { role: "user", content: "hello" },
@@ -241,7 +251,7 @@ test("countPromptTokens prices the rendered template, not just the message text"
 
 test("countPromptTokens returns null when the server cannot measure", async () => {
   await withStubServer({ "/apply-template": () => ({ status: 500, payload: {} }) })(
-    async (manager: any) => {
+    async (manager) => {
       assert.equal(await manager.countPromptTokens([{ role: "user", content: "hi" }], {}), null);
     }
   );

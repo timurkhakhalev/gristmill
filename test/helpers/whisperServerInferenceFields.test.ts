@@ -3,7 +3,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const http: typeof import("node:http") = require("node:http");
 
 const WhisperServerManager = require("../../src/helpers/whisperServer");
-const WhisperManager = require("../../src/helpers/whisper");
+const WhisperManager: typeof import("../../src/helpers/whisper").WhisperManager = require("../../src/helpers/whisper");
 const { INFERENCE_DECODER_FIELDS } = WhisperServerManager;
 
 function startCapturingServer() {
@@ -37,7 +37,7 @@ function createManager(port: number) {
   manager.canConvert = true;
   manager.process = {};
   manager.modelPath = "/tmp/model.bin";
-  manager._convertToWav = async (buffer: any) => buffer;
+  manager._convertToWav = async (buffer: unknown) => buffer;
   return manager;
 }
 
@@ -128,7 +128,7 @@ test("transcribeLocalWhisper plumbs skipDecoderThresholds to the server request 
   const captured: any[] = [];
   manager.serverManager.isAvailable = () => true;
   manager.serverManager.start = async () => {};
-  manager.serverManager.transcribe = async (_buffer: any, options: any) => {
+  manager.serverManager.transcribe = async (_buffer: unknown, options: unknown) => {
     captured.push(options);
     return { text: "ok" };
   };

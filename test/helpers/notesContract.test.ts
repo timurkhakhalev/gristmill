@@ -1,6 +1,6 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const path = require("node:path");
+const path: typeof import("node:path") = require("node:path");
 
 // The contract is renderer/main-neutral; loading it under plain node only needs
 // zod to resolve, so no electron stub is required. The probe helper reuses the

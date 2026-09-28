@@ -1,19 +1,22 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
-const fs = require("node:fs");
+const fs: typeof import("node:fs") = require("node:fs");
 const test: typeof import("node:test") = require("node:test");
 const { createDb } = require("./harness/db.ts");
-const { getUserDataDir } = require("./harness/electronStub.ts");
+const { getUserDataDir }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
 const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
-const { MeetingProcessingWorker, registerMeetingProcessingHandlers } = require("../../src/helpers/meetingProcessing.ts");
-const { meetingProcessingChannels } = require("../../src/contracts/meetingProcessing.ts");
-const { createMeetingProcessingBridge } = require("../../src/preload/meetingProcessingBridge.ts");
-const { prepareMeetingAudio } = require("../../src/helpers/meetingAudioMixer.ts");
-const { getFFmpegPath } = require("../../src/helpers/ffmpegUtils.ts");
+const { MeetingProcessingWorker, registerMeetingProcessingHandlers }: typeof import("../../src/helpers/meetingProcessing.ts") = require("../../src/helpers/meetingProcessing.ts");
+const { meetingProcessingChannels }: typeof import("../../src/contracts/meetingProcessing.ts") = require("../../src/contracts/meetingProcessing.ts");
+const { meetingTranscriptArtifactSchema }: typeof import("../../src/contracts/meetingRecording.ts") = require("../../src/contracts/meetingRecording.ts");
+const { createMeetingProcessingBridge }: typeof import("../../src/preload/meetingProcessingBridge.ts") = require("../../src/preload/meetingProcessingBridge.ts");
+const { prepareMeetingAudio }: typeof import("../../src/helpers/meetingAudioMixer.ts") = require("../../src/helpers/meetingAudioMixer.ts");
+const { getFFmpegPath }: typeof import("../../src/helpers/ffmpegUtils.ts") = require("../../src/helpers/ffmpegUtils.ts");
 import type { MeetingProcessingConfig } from "../../src/contracts/meetingRecording";
 import type { MeetingProcessingWorkerDeps } from "../../src/helpers/meetingProcessing";
 import type { MeetingRecordingStorage as RecordingStorage } from "../../src/helpers/meetingRecordingStorage";
 import type { DatabaseManager } from "./harness/db";
+
+type MixArgs = Parameters<NonNullable<MeetingProcessingWorkerDeps["mixAudio"]>>;
 
 const validConfig = {
   transcription: {
@@ -102,13 +105,13 @@ test("paused audio parts produce one persisted whole-meeting run and one ASR req
     captureState: "ready", endedAt: new Date(Date.parse(second.startedAt) + 1000).toISOString(),
   });
   let asrCalls = 0;
-  let mixed: any;
+  let mixed: { recording: MixArgs[0]; epochs: MixArgs[2] } | undefined;
   const worker = workerFor(db, storage, {
-    mixAudio: async (recording: any, runId: string, epochs: any) => {
+    mixAudio: async (recording, runId, epochs) => {
       mixed = { recording, epochs };
       return { path: storage.getDerivedAudioPath(recording.id, runId), frameCount: 48_000, durationSeconds: 2, sizeBytes: 4096 };
     },
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       asrCalls++;
       await saveRaw(elevenResponse);
       return { success: true, text: "Hello." };
@@ -124,8 +127,9 @@ test("paused audio parts produce one persisted whole-meeting run and one ASR req
   worker.onRetentionReady();
   await worker.waitForIdle();
   assert.equal(asrCalls, 1);
+  assert.ok(mixed);
   assert.equal(mixed.recording.endedAt, new Date(Date.parse(first.recording.startedAt) + 2000).toISOString());
-  assert.deepEqual(mixed.epochs.map((epoch: any) => epoch.recordingId), [first.recording.id, second.id]);
+  assert.deepEqual(mixed.epochs.map((epoch) => epoch.recordingId), [first.recording.id, second.id]);
   assert.equal(db.getNote(first.note.id).content, "Manual notes stay here.");
   assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
 });
@@ -150,7 +154,7 @@ test("waits for retention and capture to finish, then persists the response, tra
       await saveRaw(elevenResponse);
       return { success: true, text: "ignored adapter projection" };
     },
-    summarize: async (input: any) => {
+    summarize: async (input) => {
       summaryInput = input;
       return "## Summary\n- A useful result.";
     },
@@ -235,7 +239,7 @@ test("OpenAI text without speaker segments remains visible as a failed run", asy
   });
   const raw = { text: "Speech was recognized.", segments: [] };
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       await saveRaw(raw);
       return { success: true, text: raw.text };
     },
@@ -258,7 +262,7 @@ test("a bad provider response stays saved and retry re-enters normalize without 
   const { run } = createFinishedRecording(db, storage);
   let transcribeCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       transcribeCalls += 1;
       await saveRaw({ malformed: true });
       return { success: true, text: "the parser result is ignored" };
@@ -286,7 +290,7 @@ test("a valid empty transcript completes without generating a summary", async (t
   const { run } = createFinishedRecording(db, storage);
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       await saveRaw({ text: "" });
       return { success: true, text: "" };
     },
@@ -347,7 +351,7 @@ test("IPC corrects only a blocked run snapshot after main validation; ordinary r
   assert.equal(db.getMeetingProcessingRun(run.id).config, null);
 
   const handlers = new Map();
-  registerMeetingProcessingHandlers({ handle: (channel: string, handler: any) => handlers.set(channel, handler) }, worker);
+  registerMeetingProcessingHandlers({ handle: (channel: string, handler: unknown) => handlers.set(channel, handler) }, worker);
   const update = handlers.get(meetingProcessingChannels.updateBlockedRunConfig);
   const invalid = await update(null, {
     runId: run.id,
@@ -385,7 +389,7 @@ test("main corrects summary-only configuration and resumes from saved artifacts 
   let transcribeCalls = 0;
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       transcribeCalls += 1;
       await saveRaw(elevenResponse);
       return { success: true, text: "adapter output is not the saved source" };
@@ -409,7 +413,7 @@ test("main corrects summary-only configuration and resumes from saved artifacts 
   assert.equal(summaryCalls, 0);
 
   const handlers = new Map();
-  registerMeetingProcessingHandlers({ handle: (channel: string, handler: any) => handlers.set(channel, handler) }, worker);
+  registerMeetingProcessingHandlers({ handle: (channel: string, handler: unknown) => handlers.set(channel, handler) }, worker);
   const update = handlers.get(meetingProcessingChannels.updateBlockedRunConfig);
   const changedTranscription = {
     ...savedConfig,
@@ -450,12 +454,12 @@ test("viewing old transcript leaves a pending current run and Note projection in
   let response = elevenResponse;
   let transcribeCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       transcribeCalls += 1;
       await saveRaw(response);
       return { success: true, text: "ignored adapter projection" };
     },
-    summarize: async (input: any) => input.includes("New saved transcript") ? "Summary from new run" : "Summary from old run",
+    summarize: async (input) => input.includes("New saved transcript") ? "Summary from new run" : "Summary from old run",
   });
   t.after(() => worker.stop());
   worker.onRetentionReady();
@@ -495,7 +499,7 @@ test("viewing old transcript leaves a pending current run and Note projection in
     words: [{ type: "word", text: "New saved transcript", start: 0, end: 0.8, speaker_id: "speaker_0" }],
   };
   const resumedWorker = workerFor(db, storage, {
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       transcribeCalls += 1;
       await saveRaw(response);
       return { success: true, text: "ignored adapter projection" };
@@ -533,7 +537,7 @@ test("blocked config correction refuses an unindexed raw response file", async (
   const worker = workerFor(db, storage);
   t.after(() => worker.stop());
   const handlers = new Map();
-  registerMeetingProcessingHandlers({ handle: (channel: string, handler: any) => handlers.set(channel, handler) }, worker);
+  registerMeetingProcessingHandlers({ handle: (channel: string, handler: unknown) => handlers.set(channel, handler) }, worker);
 
   const result = await handlers.get(meetingProcessingChannels.updateBlockedRunConfig)(null, {
     runId: run.id,
@@ -546,9 +550,9 @@ test("blocked config correction refuses an unindexed raw response file", async (
 });
 
 test("preload validates blocked-run config correction before invoking main", async () => {
-  const calls: any[] = [];
+  const calls: unknown[] = [];
   const bridge = createMeetingProcessingBridge({
-      invoke: async (...args: any[]) => {
+      invoke: async (...args: unknown[]) => {
       calls.push(args);
       return { success: false, error: "rejected" };
     },
@@ -586,7 +590,7 @@ test("summary retry preserves the transcript and does not repeat ASR", async (t:
   let transcribeCalls = 0;
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       transcribeCalls += 1;
       await saveRaw(elevenResponse);
       return { success: true, text: "ignored adapter projection" };
@@ -628,14 +632,14 @@ test("local meeting transcription uses post-Stop diarization and speaker-text me
   let localCalls = 0;
   let diarizationCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeLocal: async (_path: string, options: any) => {
+    transcribeLocal: async (_path: string, options) => {
       localCalls += 1;
       assert.equal(options.provider, "whisper");
       assert.equal(options.model, "base");
       assert.ok(options.signal instanceof AbortSignal);
       return { success: true, text: "We agreed. Next action." };
     },
-    diarizeLocal: async (_path: string, options: any) => {
+    diarizeLocal: async (_path: string, options) => {
       diarizationCalls += 1;
       assert.equal(options.durationSeconds, 1);
       return [
@@ -649,7 +653,7 @@ test("local meeting transcription uses post-Stop diarization and speaker-text me
   await worker.waitForIdle();
 
   const saved = db.getMeetingProcessingRun(run.id);
-  const transcript = storage.readRunArtifact(run.id, "transcript");
+  const transcript = meetingTranscriptArtifactSchema.parse(storage.readRunArtifact(run.id, "transcript"));
   assert.equal(saved.status, "blocked");
   assert.equal(saved.stage, "summary");
   assert.equal(saved.errorCode, "missing-summary-config");
@@ -660,7 +664,8 @@ test("local meeting transcription uses post-Stop diarization and speaker-text me
   assert.equal(diarizationCalls, 1);
   assert.match(transcript.text, /\[Speaker 1\]/);
   assert.match(transcript.text, /\[Speaker 2\]/);
-  assert.deepEqual(transcript.segments.map((segment: any) => segment.speaker), ["speaker_1", "speaker_2"]);
+  assert.ok(transcript.segments);
+  assert.deepEqual(transcript.segments.map((segment) => segment.speaker), ["speaker_1", "speaker_2"]);
 });
 
 test("new capture lets an issued remote request save raw but defers normalize and summary", async (t: import("node:test").TestContext) => {
@@ -668,13 +673,13 @@ test("new capture lets an issued remote request save raw but defers normalize an
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const { run } = createFinishedRecording(db, storage);
-  let started: any;
-  const requestStarted = new Promise((resolve) => { started = resolve; });
+  let started!: () => void;
+  const requestStarted = new Promise<void>((resolve) => { started = resolve; });
   let finishRequest!: () => void;
   const requestResult = new Promise<void>((resolve) => { finishRequest = resolve; });
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       started();
       await requestResult;
       await saveRaw(elevenResponse);
@@ -755,7 +760,7 @@ test("a persisted transcript recovered at summary runs only the saved summary st
       asrCalls += 1;
       return { success: false, error: "ASR must not repeat" };
     },
-    summarize: async (input: any) => {
+    summarize: async (input) => {
       summaryCalls += 1;
       assert.match(input, /Saved transcript/);
       return "Recovered summary";
@@ -802,7 +807,7 @@ test("a bb summary resumes its saved thread after process restart without repeat
   let agentCalls = 0;
   const worker = workerFor(db, storage, {
     transcribeRemote: async () => { asrCalls++; throw new Error("ASR must not repeat"); },
-    summarizeAgent: async (input: string, summaryConfig: any, savedRun: any) => {
+    summarizeAgent: async (input: string, summaryConfig, savedRun) => {
       agentCalls++;
       assert.match(input, /Saved transcript/);
       assert.equal(summaryConfig.agentProvider, "codex");
@@ -829,7 +834,7 @@ test("a missing provider key blocks the saved route and a later key repairs that
   let requests = 0;
   const worker = workerFor(db, storage, {
     getCredential: () => key,
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       requests += 1;
       await saveRaw(elevenResponse);
       return { success: true };
@@ -877,13 +882,13 @@ test("provider size limits block only that run and another provider keeps its ow
   const { recording, run: deepgramRun } = createFinishedRecording(db, storage, deepgramConfig);
   let requests = 0;
   const worker = workerFor(db, storage, {
-    mixAudio: async (recordingValue: any, runId: string) => ({
+    mixAudio: async (recordingValue, runId: string) => ({
       path: storage.getDerivedAudioPath(recordingValue.id, runId),
       frameCount: 24_000,
       durationSeconds: 1,
       sizeBytes: 2 * 1024 * 1024 * 1024 + 1,
     }),
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       requests += 1;
       await saveRaw(elevenResponse);
       return { success: true };
@@ -928,7 +933,7 @@ test("rate limits allow three persisted automatic retries then manual retry star
   let transcribeCalls = 0;
   const worker = workerFor(db, storage, {
     now: () => new Date(now),
-    setTimeout: ((_callback: any, milliseconds: any) => {
+    setTimeout: ((_callback: unknown, milliseconds: unknown) => {
       backoffs.push(milliseconds);
       return backoffs.length;
     }) as unknown as typeof setTimeout,
@@ -976,12 +981,12 @@ test("a late HTTP result cannot publish after durable audio deletion starts", as
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const { recording, run } = createFinishedRecording(db, storage);
-  let started: any;
-  const requestStarted = new Promise((resolve) => { started = resolve; });
+  let started!: () => void;
+  const requestStarted = new Promise<void>((resolve) => { started = resolve; });
   let finishRequest!: () => void;
   const requestResult = new Promise<void>((resolve) => { finishRequest = resolve; });
   const worker = workerFor(db, storage, {
-    transcribeRemote: async (_request: any, saveRaw: any) => {
+    transcribeRemote: async (_request: unknown, saveRaw) => {
       started();
       await requestResult;
       await saveRaw(elevenResponse);
@@ -1017,7 +1022,7 @@ test("recovery marks an in-flight ASR outcome unknown and counts its possible re
   assert.equal(recovered.retryCount, 1);
 });
 
-function writePcmWav(filePath: string, frames: any) {
+function writePcmWav(filePath: string, frames: number) {
   const dataBytes = frames * 2;
   const wav = Buffer.alloc(44 + dataBytes);
   wav.write("RIFF", 0);
@@ -1081,10 +1086,12 @@ test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration",
           assert.equal(fs.statSync(directory).isDirectory(), true);
           return 1_000_000;
         },
-        spawn: (_command: any, args: any) => {
+        spawn: (_command: unknown, args: string[]) => {
           argsSeen = args;
           queueMicrotask(() => {
-            writePcmWav(args.at(-1), 24);
+            const outputPath = args.at(-1);
+            assert.ok(outputPath);
+            writePcmWav(outputPath, 24);
             outputChild.emit("close", 0);
           });
           return outputChild;

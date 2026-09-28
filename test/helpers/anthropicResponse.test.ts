@@ -1,9 +1,9 @@
-const { test, describe } = require("node:test");
-const assert = require("node:assert");
+const { test, describe }: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert") = require("node:assert");
 const {
   extractAnthropicText,
   describeMissingAnthropicText,
-} = require("../../src/helpers/anthropicResponse.ts");
+}: typeof import("../../src/helpers/anthropicResponse.ts") = require("../../src/helpers/anthropicResponse.ts");
 
 describe("extractAnthropicText", () => {
   test("returns trimmed text for a normal single text block", () => {

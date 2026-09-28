@@ -29,7 +29,7 @@ require.cache[require.resolve("electron")] = Object.assign(new (require("node:mo
   },
 });
 
-const HotkeyManager = require("../../src/helpers/hotkeyManager.ts");
+const HotkeyManager: typeof import("../../src/helpers/hotkeyManager.ts").HotkeyManager = require("../../src/helpers/hotkeyManager.ts");
 
 const noop = () => {};
 

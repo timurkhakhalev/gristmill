@@ -1,6 +1,6 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { deferred } = require("./harness/deferred.ts");
+const { deferred }: typeof import("./harness/deferred.ts") = require("./harness/deferred.ts");
 
 test("the resting pill stays suppressed until bounds and compositor frames settle", async () => {
   const { createPillVisibilityHandoff } =

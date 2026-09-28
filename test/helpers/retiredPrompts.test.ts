@@ -1,8 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const { createHash } = require("node:crypto");
+const fs: typeof import("node:fs") = require("node:fs");
+const path: typeof import("node:path") = require("node:path");
+const { createHash }: typeof import("node:crypto") = require("node:crypto");
 
 const load = () => import("../../src/config/retiredPrompts.ts");
 const loadRegistry = () => import("../../src/config/prompts/registry.ts");
@@ -33,7 +33,7 @@ const makeStorage = (initial: Record<string, string> = {}) => {
     getItem(key: string) {
       return map.get(key) ?? null;
     },
-    setItem(key: string, value: any) {
+    setItem(key: string, value: unknown) {
       map.set(key, String(value));
     },
     removeItem(key: string) {
@@ -182,7 +182,7 @@ test("sweep skips removal when the value changes while hashing", async () => {
       }
       return storage.getItem(key);
     },
-    setItem: (key: string, value: any) => storage.setItem(key, value),
+    setItem: (key: string, value: unknown) => storage.setItem(key, value),
     removeItem: (key: string) => storage.removeItem(key),
   };
   const swept = await sweepRetiredPromptOverrides(racy, ["cleanup"]);
@@ -199,7 +199,7 @@ test("a storage failure on one kind does not stop the sweep of the others", asyn
       if (key === "customPrompt.cleanup") throw new Error("storage unavailable");
       return storage.getItem(key);
     },
-    setItem: (key: string, value: any) => storage.setItem(key, value),
+    setItem: (key: string, value: unknown) => storage.setItem(key, value),
     removeItem: (key: string) => storage.removeItem(key),
   };
   const swept = await sweepRetiredPromptOverrides(failing, ["cleanup", "chatAgent"]);

@@ -4,7 +4,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const {
   resolveHorizontalWindowDirection,
   WindowPositionUtil,
-} = require("../../src/helpers/windowConfig");
+}: typeof import("../../src/helpers/windowConfig") = require("../../src/helpers/windowConfig");
 
 // A 1512px laptop screen with a wider monitor mounted above it: x beyond 1512
 // is dead space at the laptop's y range, even though the desktop spans further.

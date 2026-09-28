@@ -1,6 +1,6 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { DatabaseSync } = require("node:sqlite");
+const { DatabaseSync }: typeof import("node:sqlite") = require("node:sqlite");
 const Module = require("node:module");
 
 const originalLoad = Module._load;
@@ -10,9 +10,9 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
   }
   return originalLoad.call(this, request, parent, isMain);
 };
-const DatabaseManager = require("../../src/helpers/database.ts");
+const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
 Module._load = originalLoad;
-const { buildNoteSearchQuery } = require("../../src/helpers/noteSearch.ts");
+const { buildNoteSearchQuery }: typeof import("../../src/helpers/noteSearch.ts") = require("../../src/helpers/noteSearch.ts");
 
 test("buildNoteSearchQuery builds quoted prefix queries", () => {
   for (const [input, expected] of [

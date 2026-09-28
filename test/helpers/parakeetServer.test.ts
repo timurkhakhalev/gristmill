@@ -56,7 +56,7 @@ function isAbortError(err: unknown) {
   return true;
 }
 
-function managerWith(fake: any) {
+function managerWith(fake: unknown) {
   const manager = new ParakeetServerManager();
   manager.isModelDownloaded = () => true;
   manager.wsServer = fake;

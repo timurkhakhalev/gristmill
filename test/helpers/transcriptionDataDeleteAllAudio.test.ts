@@ -1,8 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
 
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-delete-all-audio-"));
@@ -23,9 +23,9 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
 
 process.env.NODE_ENV = "test";
 
-const { registerTranscriptionDataHandlers } = require("../../src/helpers/transcriptionDataIpcHandlers.ts");
+const { registerTranscriptionDataHandlers }: typeof import("../../src/helpers/transcriptionDataIpcHandlers.ts") = require("../../src/helpers/transcriptionDataIpcHandlers.ts");
 const DatabaseManager = require("../../src/helpers/database.ts");
-const AudioStorageManager = require("../../src/helpers/audioStorage.ts");
+const AudioStorageManager: typeof import("../../src/helpers/audioStorage.ts").AudioStorageManager = require("../../src/helpers/audioStorage.ts");
 
 function isNativeBindingUnavailable(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);

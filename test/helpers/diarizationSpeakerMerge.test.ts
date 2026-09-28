@@ -15,7 +15,7 @@ require.cache[require.resolve("electron")] = {
   },
 } as unknown as import("node:module").Module;
 
-const DiarizationManager = require("../../src/helpers/diarization.ts");
+const DiarizationManager: typeof import("../../src/helpers/diarization.ts").DiarizationManager = require("../../src/helpers/diarization.ts");
 
 const systemSegment = (timestamp: number, text: string) => ({ source: "system", timestamp, text });
 const micSegment = (timestamp: number, text: string) => ({ source: "mic", timestamp, text });

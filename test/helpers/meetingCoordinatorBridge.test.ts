@@ -5,9 +5,9 @@
 // boundary. Run pnpm run build:main first so dist-main/preload.js exists.
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
+const fs: typeof import("node:fs") = require("node:fs");
+const path: typeof import("node:path") = require("node:path");
+const vm: typeof import("node:vm") = require("node:vm");
 const Module = require("node:module");
 import type { MeetingCoordinatorDeps } from "../../src/helpers/meetingCoordinatorIpcHandlers.ts";
 import type { MeetingConnectionOptions } from "../../src/helpers/meetingStreamingProviders.ts";
@@ -46,7 +46,7 @@ async function fetchRealtimeToken(_event: { sender: WebContents }, _options: Mee
 }
 
 function registerRealHandlers(deps: MeetingCoordinatorDeps) {
-  Module._load = function patchedLoad(request: string, parent: any, isMain: boolean) {
+  Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") return electronStub;
     if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
       return { broadcastToWindows: () => {} };
@@ -54,13 +54,13 @@ function registerRealHandlers(deps: MeetingCoordinatorDeps) {
     return originalLoad.call(this, request, parent, isMain);
   };
   try {
-    const { registerMeetingCoordinatorHandlers } = require(
+    const { registerMeetingCoordinatorHandlers }: typeof import("../../src/helpers/meetingCoordinatorIpcHandlers") = require(
       "../../src/helpers/meetingCoordinatorIpcHandlers"
     );
     const handlers = new Map();
     registerMeetingCoordinatorHandlers(
       {
-        handle: (channel: string, listener: any) => handlers.set(channel, listener),
+        handle: (channel: string, listener: unknown) => handlers.set(channel, listener),
         on: () => {},
       },
       deps
@@ -92,8 +92,8 @@ function loadBundledPreload(transport: {
           },
         },
         ipcRenderer: {
-          invoke: (channel: string, ...args: any[]) => transport.invoke(channel, ...args),
-          send: (channel: string, ...args: any[]) => transport.send(channel, ...args),
+          invoke: (channel: string, ...args: unknown[]) => transport.invoke(channel, ...args),
+          send: (channel: string, ...args: unknown[]) => transport.send(channel, ...args),
           on: (channel: string, listener: any) => transport.on(channel, listener),
           removeListener: (channel: string, listener: any) => transport.removeListener(channel, listener),
         },
@@ -113,7 +113,7 @@ function loadBundledPreload(transport: {
 const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 async function createFixture({ responses = {}, engine }: {
-  responses?: Record<string, (...args: any[]) => unknown>;
+  responses?: Record<string, (...args: unknown[]) => unknown>;
   engine?: MeetingCoordinatorDeps["meetingDetectionEngine"];
 } = {}) {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
@@ -134,7 +134,7 @@ async function createFixture({ responses = {}, engine }: {
     setRecordingSystemAudioAvailable: unused,
   };
 
-  const handlers: Map<string, (...args: any[]) => any> = registerRealHandlers({
+  const handlers: Map<string, (...args: unknown[]) => unknown> = registerRealHandlers({
     databaseManager: {
       getGoogleAccounts: () => [],
       getNote: () => null,
@@ -261,7 +261,7 @@ test("command shapes cross the bundled preload and results are passed through", 
 test("capture send crosses with source and sequencing metadata and returns its write acknowledgement", async () => {
   const { api, invoked } = await createFixture({
     responses: {
-      "meeting-transcription-send": (_buffer: any, _source: any, _sessionId: any, packet: any) => ({
+      "meeting-transcription-send": (_buffer: unknown, _source: unknown, _sessionId: unknown, packet: any) => ({
         success: true,
         sequence: packet.sequence,
       }),

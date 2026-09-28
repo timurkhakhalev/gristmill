@@ -1,6 +1,6 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const path: typeof import("node:path") = require("node:path");
 const test: typeof import("node:test") = require("node:test");
 
 const root = path.join(__dirname, "../..");
@@ -29,7 +29,7 @@ test("macOS inference has no CUDA or Vulkan control plane", () => {
 });
 
 test("whisper server argv keeps local Metal/CPU inference options", () => {
-  const WhisperServerManager = require("../../src/helpers/whisperServer");
+  const WhisperServerManager: typeof import("../../src/helpers/whisperServer") = require("../../src/helpers/whisperServer");
   const args = WhisperServerManager.buildWhisperServerArgs({
     modelPath: "/tmp/model.bin",
     port: 8178,

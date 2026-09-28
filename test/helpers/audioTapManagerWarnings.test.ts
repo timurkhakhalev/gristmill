@@ -2,7 +2,7 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const Module = require("node:module");
-const createMeetingSystemAudioWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog.ts");
+const createMeetingSystemAudioWatchdog: typeof import("../../src/helpers/meetingSystemAudioWatchdog.ts").createMeetingSystemAudioWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog.ts");
 
 // The tap helper reports a stranded device as a stderr warning rather than by
 // exiting, so the forwarding path is the only thing that can tell the main

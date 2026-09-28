@@ -2,16 +2,16 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 test("message submission lock rejects a rapid second send until conversation creation settles", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-chat-submission-lock-test-",
   });
-  const { createMessageSubmissionLock } = await vite.ssrLoadModule(
+  const { createMessageSubmissionLock } = (await vite.ssrLoadModule(
     "/components/chat/useChatMessageSender.ts"
-  );
+  ) as typeof import("../../src/components/chat/useChatMessageSender.ts"));
   const lock = createMessageSubmissionLock();
   let resolveCreate!: (value?: unknown) => void;
   let createCalls = 0;

@@ -3,7 +3,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const {
   createMeetingAudioTimeline,
   frameOffsetFromSessionOrigin,
-} = require("../../src/helpers/meetingAudioTimeline.ts");
+}: typeof import("../../src/helpers/meetingAudioTimeline.ts") = require("../../src/helpers/meetingAudioTimeline.ts");
 
 test("audio timeline records only received PCM and preserves delivery gaps as offsets", () => {
   const originAt = 10_000;

@@ -35,13 +35,13 @@ const broadcasts: any[] = [];
 // The publication module pulls the coordinator graph; stub the process
 // boundaries and capture broadcasts so the exported functions and the
 // coordinator runtime can run against fakes.
-Module._load = function loadWithMocks(request: string, parent: any, isMain: boolean) {
+Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return electronStub;
   }
   if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
     return {
-      broadcastToWindows: (channel: string, payload: any) => {
+      broadcastToWindows: (channel: string, payload: unknown) => {
         broadcasts.push({ channel, payload });
       },
     };
@@ -59,7 +59,7 @@ Module._load = originalLoad;
 const NOTE_ID = 42;
 const embedding = Array.from({ length: 8 }, (_, i) => (i === 0 ? 1 : 0));
 
-function createMappingRecorder(existingMappings: any) {
+function createMappingRecorder(existingMappings: unknown) {
   const calls = { set: [] as { noteId: number; speakerId: string; profileId: number; displayName: string }[], remove: [] as { noteId: number; speakerId: string }[] };
   const databaseManager = {
     getSpeakerMappings: () => existingMappings,
@@ -75,7 +75,7 @@ function createMappingRecorder(existingMappings: any) {
 
 const fakeEmbeddings = () => ({ cosineSimilarity: () => 0.9 });
 
-function reconcile(databaseManager: any, liveSpeakerId: any) {
+function reconcile(databaseManager: unknown, liveSpeakerId: any) {
   const deps = { databaseManager, speakerEmbeddings: fakeEmbeddings };
   const liveState = {
     [liveSpeakerId]: {
@@ -85,7 +85,7 @@ function reconcile(databaseManager: any, liveSpeakerId: any) {
       embedding,
     },
   };
-  const segments: any[] = [];
+  const segments: unknown[] = [];
   return publication.reconcileLiveSpeakerState(deps, liveState, { speaker_0: embedding }, segments);
 }
 
@@ -132,7 +132,7 @@ const THREE_ATTENDEES = [
 // note. Seed the session through the registered session-speaker-config
 // handler and the runtime link, then drive the refresh like the notes
 // vertical does.
-function refreshConfig(explicit: any, { expectedCount = 2, attendees = THREE_ATTENDEES } = {}) {
+function refreshConfig(explicit: unknown, { expectedCount = 2, attendees = THREE_ATTENDEES } = {}) {
   const databaseManager = {
     getGoogleAccounts: () => [],
     getNote: () => null,
@@ -162,7 +162,7 @@ function refreshConfig(explicit: any, { expectedCount = 2, attendees = THREE_ATT
   const handlers = new Map();
   const runtime = registerMeetingCoordinatorHandlers(
     {
-      handle: (channel: string, listener: any) => handlers.set(channel, listener),
+      handle: (channel: string, listener: unknown) => handlers.set(channel, listener),
       on: () => {},
     },
     {

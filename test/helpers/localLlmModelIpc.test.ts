@@ -1,23 +1,23 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { localLlmChannels } = require("../../src/contracts/localLlmModels.ts");
+const { localLlmChannels }: typeof import("../../src/contracts/localLlmModels.ts") = require("../../src/contracts/localLlmModels.ts");
 const {
   registerLocalLlmModelHandlers,
 } = require("../../src/helpers/localLlmModelIpcHandlers.ts");
-const LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus.ts");
+const LocalModelDownloadStatus: typeof import("../../src/helpers/localModelDownloadStatus.ts").LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus.ts");
 
 function createHarness(overrides: {
-  modelManager?: Record<string, any>;
-  llamaCppInstaller?: Record<string, any>;
-  deps?: Record<string, any>;
+  modelManager?: Record<string, unknown>;
+  llamaCppInstaller?: Record<string, unknown>;
+  deps?: Record<string, unknown>;
 } = {}) {
-  const handlers = new Map<string, (...args: any[]) => any>();
+  const handlers = new Map<string, (...args: unknown[]) => any>();
   const sent: [string, any][] = [];
-  const calls : any = { persist: 0, stopServer: 0 };
+  const calls = { persist: 0, stopServer: 0 };
   const active = new Map<string, any>();
 
-  const deps: any = {
+  const deps: unknown = {
     modelManager: {
       getModelsWithStatus: async () => [],
       isModelDownloaded: async () => false,
@@ -81,8 +81,8 @@ function createHarness(overrides: {
     ...overrides.deps,
   };
 
-  registerLocalLlmModelHandlers({ handle: (c: string, fn: (...args: any[]) => any) => handlers.set(c, fn) }, deps);
-  const invoke = (channel: string, ...args: any[]) => {
+  registerLocalLlmModelHandlers({ handle: (c: string, fn: (...args: unknown[]) => unknown) => handlers.set(c, fn) }, deps);
+  const invoke = (channel: string, ...args: unknown[]) => {
     const handler = handlers.get(channel);
     if (!handler) throw new Error(`No handler registered for ${channel}`);
     return handler({}, ...args);
@@ -199,7 +199,7 @@ test("llama-server stop delegates to the manager", async () => {
 
 test("model-check passes the raw id through to the manager", async () => {
   const h = createHarness({
-    modelManager: { isModelDownloaded: async (modelId: any) => modelId === "qwen" },
+    modelManager: { isModelDownloaded: async (modelId: unknown) => modelId === "qwen" },
   });
   assert.equal(await h.invoke(localLlmChannels.modelCheck, "qwen"), true);
   assert.equal(await h.invoke(localLlmChannels.modelCheck, "other"), false);
@@ -234,9 +234,9 @@ test("active downloads come straight from the tracker", async () => {
 test("progress sequences come from the shared tracker", async () => {
   const status = new LocalModelDownloadStatus();
   const sent: { sequence: number }[] = [];
-  const handlers = new Map<string, (...args: any[]) => any>();
+  const handlers = new Map<string, (...args: unknown[]) => any>();
   registerLocalLlmModelHandlers(
-    { handle: (c: string, fn: (...args: any[]) => any) => handlers.set(c, fn) },
+    { handle: (c: string, fn: (...args: unknown[]) => unknown) => handlers.set(c, fn) },
     {
       modelManager: {
         getModelsWithStatus: async () => [],

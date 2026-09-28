@@ -7,10 +7,10 @@
 // standalone hook boundary) against the real main-side cancel handler and
 // registry.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const path: typeof import("node:path") = require("node:path");
 const test: typeof import("node:test") = require("node:test");
-const vm = require("node:vm");
+const vm: typeof import("node:vm") = require("node:vm");
 
 const root = path.join(__dirname, "../..");
 const tick = () => new Promise((resolve) => setImmediate(resolve));

@@ -1,6 +1,6 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { renderStatic } = require("../helpers/harness/reactSsr.ts");
+const { renderStatic }: typeof import("../helpers/harness/reactSsr.ts") = require("../helpers/harness/reactSsr.ts");
 
 const loadMath = () => import("../../src/components/ui/liveWaveformMath.ts");
 const loadComponent = () => import("../../src/components/ui/LiveWaveform.tsx");

@@ -1,13 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { spawn, spawnSync } = require("node:child_process");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
+const { spawn, spawnSync }: typeof import("node:child_process") = require("node:child_process");
 const http = require("node:http");
 const { spawnBbThread, getBbThreadHistory, watchBbThread, assertBbVersion, clearBbCaches, listBbHarnesses, toBbLogo } = require("../../src/helpers/bbCli.ts");
-const { generateBbSummary } = require("../../src/helpers/bbSummary.ts");
-const { ensureBbWorkspace, writeBbConnection } = require("../../src/helpers/bbWorkspace.ts");
+const { generateBbSummary }: typeof import("../../src/helpers/bbSummary.ts") = require("../../src/helpers/bbSummary.ts");
+const { ensureBbWorkspace, writeBbConnection }: typeof import("../../src/helpers/bbWorkspace.ts") = require("../../src/helpers/bbWorkspace.ts");
 
 test("bb tool wrapper authenticates allowlisted routes and rejects external URLs", async (t: import("node:test").TestContext) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-bb-workspace-"));

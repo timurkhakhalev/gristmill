@@ -7,9 +7,9 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const providerTest = require("../../src/helpers/providerConnectionTest.ts");
-const { isSecureHttpEndpoint } = require("../../src/utils/urlUtils.ts");
-const { normalizeBaseUrl, getModelListBaseCandidates } = require("../../src/config/constants.mts");
+const providerTest: typeof import("../../src/helpers/providerConnectionTest.ts") = require("../../src/helpers/providerConnectionTest.ts");
+const { isSecureHttpEndpoint }: typeof import("../../src/utils/urlUtils.ts") = require("../../src/utils/urlUtils.ts");
+const { normalizeBaseUrl, getModelListBaseCandidates }: typeof import("../../src/config/constants.mts") = require("../../src/config/constants.mts");
 
 const BASE_URLS = [
   "https://api.example.com/v1",

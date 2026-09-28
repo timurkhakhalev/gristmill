@@ -2,7 +2,7 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 
-const createMeetingTranscriptionLifecycle = require("../../src/helpers/meetingTranscriptionLifecycle");
+const createMeetingTranscriptionLifecycle: typeof import("../../src/helpers/meetingTranscriptionLifecycle").createMeetingTranscriptionLifecycle = require("../../src/helpers/meetingTranscriptionLifecycle");
 
 function createDeferred() {
   let resolve!: () => void;
@@ -30,7 +30,7 @@ test("a stop requested during startup waits for startup and tears down that sess
       events.push(`start:${sessionId}:end`);
       return { success: true, sessionId };
     },
-    stop: async (sessionId: any) => {
+    stop: async (sessionId: unknown) => {
       events.push(`stop:${sessionId}`);
       captureActive = false;
       return { success: true };
@@ -165,7 +165,7 @@ test("a restart from the same owner retires its stale session instead of being r
   const stopped: unknown[] = [];
   const lifecycle = createMeetingTranscriptionLifecycle({
     start: async ({ sessionId }: { sessionId: string }) => ({ success: true, sessionId }),
-    stop: async (sessionId: any) => {
+    stop: async (sessionId: unknown) => {
       stopped.push(sessionId);
       return { success: true };
     },
@@ -201,7 +201,7 @@ test("a replacement start waits for a deferred accepted stop to finish", async (
       activeCaptureSessionId = sessionId;
       return { success: true, sessionId };
     },
-    stop: async (sessionId: any) => {
+    stop: async (sessionId: unknown) => {
       stops.push(sessionId);
       await stopDeferred.promise;
       activeCaptureSessionId = null;

@@ -101,7 +101,7 @@ function anything(): unknown {
 }
 
 function buildFakeThis() {
-  const { AgentStreamRequestRegistry } = require("../../src/helpers/agentStreamRequestRegistry");
+  const { AgentStreamRequestRegistry }: typeof import("../../src/helpers/agentStreamRequestRegistry") = require("../../src/helpers/agentStreamRequestRegistry");
   const target = {
     sessionId: "test-session",
     _enterpriseReasoningRequests: new AgentStreamRequestRegistry(),
@@ -165,7 +165,7 @@ test("Check connection asks for at least 16 output tokens, the Azure Responses A
     ["azure", { model: "gpt-4.1-mini", azureEndpoint: "https://acme.openai.azure.com" }],
   ];
   for (const [provider, config] of probes as Array<[string, unknown]>) {
-    const result: any = await handlers.get("test-enterprise-connection")!(
+    const result: unknown = await handlers.get("test-enterprise-connection")!(
       { sender: sender(3) },
       provider,
       config
@@ -191,7 +191,7 @@ test("Check connection uses the Bedrock retry policy and disables nested AI SDK 
   const originalRandom = Math.random;
   Math.random = () => 0;
   try {
-    const result: any = await handlers.get("test-enterprise-connection")!(
+    const result: unknown = await handlers.get("test-enterprise-connection")!(
       { sender: sender(2) },
       "bedrock",
       {
@@ -256,7 +256,7 @@ test("cleanup uses the Bedrock retry policy and returns the eventual text", asyn
   const originalRandom = Math.random;
   Math.random = () => 0;
   try {
-    const result: any = await handlers.get("process-enterprise-reasoning")!(
+    const result: unknown = await handlers.get("process-enterprise-reasoning")!(
       { sender: sender(3) },
       "raw dictation",
       "anthropic.claude-haiku",

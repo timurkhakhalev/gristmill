@@ -5,9 +5,9 @@
 // value in logs or plaintext .env files.
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
 
 function createFixture({
@@ -88,7 +88,7 @@ function createFixture({
   };
   void debugLoggerPath;
 
-  const secretCrypto = require("../../src/helpers/secretCrypto.ts");
+  const secretCrypto: typeof import("../../src/helpers/secretCrypto.ts") = require("../../src/helpers/secretCrypto.ts");
   const EnvironmentManager = require("../../src/helpers/environment.ts");
 
   return {
@@ -170,7 +170,7 @@ test("repeated initialization reuses the stored master key without rewriting it"
     const blob1 = fx.secretCrypto.encrypt("first");
     // A second module instance (fresh load) must decrypt with the same key.
     delete require.cache[require.resolve("../../src/helpers/secretCrypto.ts")];
-    const again = require("../../src/helpers/secretCrypto.ts");
+    const again: typeof import("../../src/helpers/secretCrypto.ts") = require("../../src/helpers/secretCrypto.ts");
     const { value } = again.decrypt(blob1);
     assert.equal(value, "first");
     assert.equal(fx.savedPassword, stored, "master key not regenerated");

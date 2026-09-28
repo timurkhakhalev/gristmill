@@ -7,7 +7,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
-} = require("../lib/rendererTestHarness.ts");
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -121,7 +121,7 @@ test("remount restores concurrent LLM downloads and cancellation settles only it
       return { success: true };
     },
   });
-  const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
+  const { useModelDownload } = (await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts") as typeof import("../../src/hooks/useModelDownload.ts"));
   let download: ReturnType<typeof useModelDownload> | undefined;
   function Harness() {
     download = useModelDownload({
@@ -192,7 +192,7 @@ for (const outcome of ["error", "complete", "cancel"]) {
         ++snapshotCalls === 1 ? Promise.resolve([]) : recoverySnapshot.promise as Promise<DownloadState[]>,
       modelDownload: () => duplicateResponse.promise,
     });
-    const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
+    const { useModelDownload } = (await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts") as typeof import("../../src/hooks/useModelDownload.ts"));
     let download: ReturnType<typeof useModelDownload> | undefined;
     function Harness() {
       download = useModelDownload({

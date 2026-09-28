@@ -1,4 +1,4 @@
-const { createRequire } = require("node:module");
+const { createRequire }: typeof import("node:module") = require("node:module");
 const requireRepo = createRequire(require("node:path").resolve(__dirname, "../../package.json"));
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");

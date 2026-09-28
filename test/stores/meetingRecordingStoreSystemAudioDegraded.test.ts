@@ -4,7 +4,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installMicCaptureGlobals,
-} = require("../lib/rendererTestHarness.ts");
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
@@ -64,7 +64,7 @@ test("an unsupported system source stays unavailable instead of falling back to 
   const vite = await createRendererServer(t, {
     cachePrefix: "openhercules-meeting-system-audio-no-fallback-",
   });
-  const store = await vite.ssrLoadModule("/stores/meetingRecordingStore.ts");
+  const store = (await vite.ssrLoadModule("/stores/meetingRecordingStore.ts") as typeof import("../../src/stores/meetingRecordingStore.ts"));
 
   assert.equal(await store.startRecording(START_ARGS), true);
   const state = store.useMeetingRecordingStore.getState();

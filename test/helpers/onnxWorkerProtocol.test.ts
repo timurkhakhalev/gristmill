@@ -6,7 +6,7 @@ const {
   parseOnnxWorkerReply,
   isOnnxWorkerMethod,
   ONNX_WORKER_METHODS,
-} = require("../../src/contracts/onnxWorker.ts");
+}: typeof import("../../src/contracts/onnxWorker.ts") = require("../../src/contracts/onnxWorker.ts");
 
 test("the method map stays finite: ping, speaker.load, speaker.extract, shutdown", () => {
   assert.deepEqual([...ONNX_WORKER_METHODS], [

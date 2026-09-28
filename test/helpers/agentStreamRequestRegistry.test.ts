@@ -7,7 +7,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { AgentStreamRequestRegistry } = require("../../src/helpers/agentStreamRequestRegistry");
+const { AgentStreamRequestRegistry }: typeof import("../../src/helpers/agentStreamRequestRegistry") = require("../../src/helpers/agentStreamRequestRegistry");
 
 test("a repeated id of the same sender aborts the previous controller", () => {
   const registry = new AgentStreamRequestRegistry();
@@ -80,7 +80,7 @@ test("cancelSender aborts every request of one sender only", () => {
 
 test("begin rejects invalid identities", () => {
   const registry = new AgentStreamRequestRegistry();
-  assert.throws(() => registry.begin("1", "s"), TypeError);
+  assert.throws(() => Reflect.apply(registry.begin, registry, ["1", "s"]), TypeError);
   assert.throws(() => registry.begin(1, ""), TypeError);
-  assert.throws(() => registry.begin(1, undefined), TypeError);
+  assert.throws(() => Reflect.apply(registry.begin, registry, [1, undefined]), TypeError);
 });

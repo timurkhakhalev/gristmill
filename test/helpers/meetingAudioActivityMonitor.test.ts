@@ -9,7 +9,7 @@ const {
 const {
   MEETING_MIC_ACTIVITY_RMS,
   MEETING_SYSTEM_ACTIVITY_RMS,
-} = require("../../src/utils/audioUtils.ts");
+}: typeof import("../../src/utils/audioUtils.ts") = require("../../src/utils/audioUtils.ts");
 
 const START = 1_000_000;
 

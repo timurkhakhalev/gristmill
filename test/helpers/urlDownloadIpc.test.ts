@@ -1,8 +1,8 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 import type { UrlDownloadProgress, UrlDownloadSuccess } from "../../src/contracts/urlDownload.js";
 
 const handlers = new Map();
@@ -10,7 +10,7 @@ const handlers = new Map();
 // Fake downloader injected as a dependency; every call is recorded and can be
 // held open or failed from the test. No network, no real temp writes.
 const downloadCalls: any[] = [];
-let downloadBehavior: (...args: any[]) => any = () => {
+let downloadBehavior: (...args: unknown[]) => unknown = () => {
   throw new Error("fake download has no behavior set");
 };
 const sweepCalls = [];
@@ -43,10 +43,10 @@ function registration() {
   handlers.clear();
   register(
     {
-      handle: (channel: string, fn: any) => handlers.set(channel, fn),
+      handle: (channel: string, fn: unknown) => handlers.set(channel, fn),
     },
     {
-      download: (url: string, onProgress: any, signal: any) => {
+      download: (url: string, onProgress: unknown, signal: unknown) => {
         const call = { url, onProgress, signal, deferred: deferred() };
         downloadCalls.push(call);
         return downloadBehavior(call);
@@ -445,8 +445,8 @@ test("delete-temp-file removes ow-diarize- files too", async () => {
 });
 
 test("each registration owns its pending downloads", async (t: import("node:test").TestContext) => {
-  const a = { handle: (c: any, fn: any) => handlers.set("a-" + c, fn) };
-  const b = { handle: (c: any, fn: any) => handlers.set("b-" + c, fn) };
+  const a = { handle: (c: unknown, fn: unknown) => handlers.set("a-" + c, fn) };
+  const b = { handle: (c: unknown, fn: unknown) => handlers.set("b-" + c, fn) };
   handlers.clear();
   safeTempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ow-urltest-"));
   t.after(() => fs.rmSync(safeTempRoot, { recursive: true, force: true }));
@@ -455,13 +455,13 @@ test("each registration owns its pending downloads", async (t: import("node:test
   let firstSignal: AbortSignal | undefined;
   let secondSignal: AbortSignal | undefined;
   register(a, {
-    download: (_url: string, _progress: any, signal: any) => { firstSignal = signal; return first.promise; },
+    download: (_url: string, _progress: unknown, signal: any) => { firstSignal = signal; return first.promise; },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },
   });
   register(b, {
-    download: (_url: string, _progress: any, signal: any) => { secondSignal = signal; return second.promise; },
+    download: (_url: string, _progress: unknown, signal: any) => { secondSignal = signal; return second.promise; },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },

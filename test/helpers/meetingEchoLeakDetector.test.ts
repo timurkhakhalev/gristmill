@@ -73,7 +73,7 @@ test("shouldSuppressMicSegment keeps bleed evidence even when share stays below 
   assert.equal(result.sampleCount, 4);
 });
 
-const fx = require("./harness/pcmFixtures");
+const fx: typeof import("./harness/pcmFixtures") = require("./harness/pcmFixtures");
 
 const CHUNK = 800; // renderer mic chunk = 800 samples @ 24 kHz ≈ 33 ms
 const REF_MS = 1200; // ≥ 800 + 12000 samples so the lag search has a full window
@@ -81,7 +81,7 @@ const REF_MS = 1200; // ≥ 800 + 12000 samples so the lag search has a full win
 // Feeds `reference` to the detector as system chunks and returns the sample index of the window end.
 function feedReference(detector: any, reference: Float32Array, startMs = 0) {
   const chunks = fx.chunkBuffer(fx.toInt16Buffer(reference), CHUNK);
-  chunks.forEach((chunk: unknown, i: any) =>
+  chunks.forEach((chunk: unknown, i) =>
     detector.recordSystemChunk(chunk, startMs + Math.round((i * CHUNK * 1000) / 24000))
   );
   return reference.length;

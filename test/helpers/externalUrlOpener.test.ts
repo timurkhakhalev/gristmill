@@ -1,9 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
-const { afterEach } = require("node:test");
+const { afterEach }: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
 const { EventEmitter } = require("node:events");
-const childProcess = require("node:child_process");
+const childProcess: typeof import("node:child_process") = require("node:child_process");
 
 const openerModulePath = require.resolve("../../src/helpers/externalUrlOpener");
 const originalLoad = Module._load;

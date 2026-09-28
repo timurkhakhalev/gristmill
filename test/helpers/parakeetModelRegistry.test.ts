@@ -10,7 +10,7 @@ const {
   getRequiredModelFiles,
   isSherpaLocalProvider,
   resolveModelLanguage,
-} = require("../../src/helpers/parakeetModelInfo");
+}: typeof import("../../src/helpers/parakeetModelInfo") = require("../../src/helpers/parakeetModelInfo");
 
 test("Nemotron sherpa model uses the streaming runtime and bundled online server", () => {
   const model = modelData.parakeetModels["nemotron-speech-streaming-en-0.6b"];

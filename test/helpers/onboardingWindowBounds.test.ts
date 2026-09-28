@@ -1,6 +1,6 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const test: typeof import("node:test") = require("node:test");
-const bounds = require("../../src/helpers/onboardingWindowBounds.ts");
+const bounds: typeof import("../../src/helpers/onboardingWindowBounds.ts") = require("../../src/helpers/onboardingWindowBounds.ts");
 
 const { centeredBounds, clampedBounds } = bounds;
 

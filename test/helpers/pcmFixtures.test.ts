@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const fx = require("./harness/pcmFixtures");
+const fx: typeof import("./harness/pcmFixtures") = require("./harness/pcmFixtures");
 
 test("makeSine has the expected length and RMS ≈ amplitude/√2", () => {
   const sine = fx.makeSine({ frequencyHz: 440, durationMs: 100, amplitude: 0.5 });
@@ -16,7 +16,7 @@ test("makeSeededNoise is deterministic per seed and bounded by amplitude", () =>
   const c = fx.makeSeededNoise({ durationMs: 50, amplitude: 0.2, seed: 8 });
   assert.deepEqual(Array.from(a), Array.from(b));
   assert.notDeepEqual(Array.from(a), Array.from(c));
-  assert.ok(a.every((v: any) => v >= -0.2 && v <= 0.2));
+  assert.ok(a.every((v) => v >= -0.2 && v <= 0.2));
   assert.equal(a.length, 1200);
 });
 
@@ -45,7 +45,7 @@ test("toInt16Buffer round-trips within 1 LSB and chunkBuffer splits by sample co
   assert.deepEqual(Array.from(view), [0, 16384, -16384, 32767, -32768, 32767, -32768]);
   const chunks = fx.chunkBuffer(buf, 3);
   assert.deepEqual(
-    chunks.map((c: any) => c.length),
+    chunks.map((c) => c.length),
     [6, 6, 2]
   );
 });

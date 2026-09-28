@@ -1,11 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+const fs: typeof import("node:fs") = require("node:fs");
+const os: typeof import("node:os") = require("node:os");
+const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
 
-const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 function installNavigatorLanguage(t: import("node:test").TestContext, language: string) {
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
@@ -22,7 +22,7 @@ function installNavigatorLanguage(t: import("node:test").TestContext, language: 
   });
 }
 
-function loadEnvironmentManager(t: import("node:test").TestContext, userDataDirectory: any) {
+function loadEnvironmentManager(t: import("node:test").TestContext, userDataDirectory: unknown) {
   const originalLoad = Module._load;
   const environmentPath = require.resolve("../../src/helpers/environment");
   delete require.cache[environmentPath];
@@ -69,10 +69,10 @@ test("fresh Chinese browser locale survives settings hydration", async (t: impor
     cachePrefix: "openwhispr-ui-language-startup-test-",
   });
 
-  const { default: i18n } = await vite.ssrLoadModule("/i18n.ts");
-  const { initializeSettings, useSettingsStore } = await vite.ssrLoadModule(
+  const { default: i18n } = (await vite.ssrLoadModule("/i18n.ts") as typeof import("../../src/i18n.ts"));
+  const { initializeSettings, useSettingsStore } = (await vite.ssrLoadModule(
     "/stores/settingsStore.ts"
-  );
+  ) as typeof import("../../src/stores/settingsStore.ts"));
   const initialLanguage = i18n.language;
   const initialStoreLanguage = useSettingsStore.getState().uiLanguage;
 

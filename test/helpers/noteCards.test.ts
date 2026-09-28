@@ -10,7 +10,7 @@ const completed = (name: string, metadata: unknown, result?: unknown) => ({
   result,
   metadata,
 });
-const extractCards = (toolCalls: any) => extractNoteCards(toolCalls, "Note");
+const extractCards = (toolCalls: unknown) => extractNoteCards(toolCalls, "Note");
 
 test("note tools with single-object metadata still produce one card each", () => {
   const cards = extractCards([

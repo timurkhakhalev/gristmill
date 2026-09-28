@@ -38,7 +38,7 @@ async function loadFileTranscription(t: import("node:test").TestContext) {
   const vite = await getVite();
   const module = await vite.moduleGraph.getModuleByUrl("/services/fileTranscription.ts");
   if (module) vite.moduleGraph.invalidateModule(module);
-  const mod = await vite.ssrLoadModule("/services/fileTranscription.ts");
+  const mod = (await vite.ssrLoadModule("/services/fileTranscription.ts") as typeof import("../../src/services/fileTranscription.ts"));
   window.electronAPI.transcribeAudioFile = async () => ({
     success: true,
     text: "Plain transcript",

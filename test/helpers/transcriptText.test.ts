@@ -4,7 +4,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const {
   transcriptsOverlap,
   transcriptsLooselyOverlap,
-} = require("../../src/helpers/transcriptText");
+}: typeof import("../../src/helpers/transcriptText") = require("../../src/helpers/transcriptText");
 
 test("transcriptsOverlap matches near-duplicate meeting transcripts", () => {
   assert.equal(

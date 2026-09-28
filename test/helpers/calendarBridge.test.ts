@@ -4,9 +4,9 @@
 // unsubscribe and junk command responses rejected at the preload boundary.
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
+const fs: typeof import("node:fs") = require("node:fs");
+const path: typeof import("node:path") = require("node:path");
+const vm: typeof import("node:vm") = require("node:vm");
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
@@ -49,8 +49,8 @@ test.after(() => {
   else process.env.NODE_ENV = originalNodeEnv;
 });
 
-type CalendarListener = { [k: `on${string}`]: (cb: (...args: any[]) => void) => () => void };
-type CalendarApi = { [k: string]: (...args: any[]) => Promise<any> } & CalendarListener;
+type CalendarListener = { [k: `on${string}`]: (cb: (...args: unknown[]) => void) => () => void };
+type CalendarApi = { [k: string]: (...args: unknown[]) => Promise<unknown> } & CalendarListener;
 function loadBundledPreload(transport: { invoke: (channel: string, ...args: unknown[]) => Promise<unknown>; on: (channel: string, listener: (event: unknown, payload: unknown) => void) => void; removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) => void }) {
   let api: CalendarApi | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {

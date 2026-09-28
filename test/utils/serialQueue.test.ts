@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { createSerialQueue } = require("../../src/utils/serialQueue.ts");
+const { createSerialQueue }: typeof import("../../src/utils/serialQueue.ts") = require("../../src/utils/serialQueue.ts");
 
 test("runs tasks one at a time in enqueue order", async () => {
   const run = createSerialQueue();

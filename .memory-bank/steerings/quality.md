@@ -143,6 +143,27 @@ main/preload output with `buildMain: true`; the runner builds once if any select
 test requires it. Use narrow patterns only for tests with the same domain and
 environment contract.
 
+## Compiler and renderer fixtures
+
+For compatible compiler checks, add fixtures to an existing group under
+`test/scripts/type-probes/` instead of starting another compiler program. A
+`<group>.test.ts` file calls `test/lib/typeProbeBatch.ts`; its `<group>-NN.ts`
+fixtures name each case and list its expected diagnostic codes. Keep those codes
+and the batch helper's clean implementation-graph check when changing probes.
+Register a new group test in `test/test-groups.json` with its domain and `types`
+kind. An ordinary `types` test discovered under `test/cases/<domain>/<kind>/`
+does not enter the batch: the runner selects batch groups by their
+`test/scripts/type-probes/` path. Keep separate compiler programs when compiler
+options are incompatible or fixtures change implementation sources; do not
+combine those environments without proving they can share one program.
+
+Import pure renderer modules directly when that preserves the behavior under
+test. Use the existing `test/lib/rendererTestHarness.ts` when Vite SSR, browser
+globals or module mocks are needed. Compatible cases within one file may reuse
+a Vite server, but restore stores, globals, mocks and singleton state between
+cases. Keep distinct module-mock environments separate unless their isolation
+is established. Do not disable test process isolation globally.
+
 ## Resource and isolation rules
 
 - Only the root orchestrator/integrator runs tests, builds, dependency installs
@@ -150,18 +171,23 @@ environment contract.
   they report exact test/build commands for the root. Repeat this limit in each
   delegated task and avoid several concurrent whole-project typechecks.
 - Wait for delegated implementation to finish. Run expensive checks sequentially.
-  The canonical runner permits at most two ordinary test files at once, then
-  runs compiler/native and shared-resource files with one worker. Use
-  `--processes 1` for diagnosis or a constrained host. No overlapping
-  test/build/install runs. The same
-  checkout and generated output are shared across Codex chats: check for an
-  existing run before starting another, and do not stop another task's processes.
+  Run the canonical command at normal priority; do not use `taskpolicy -b` or
+  `nice` as routine load controls. The runner permits at most two ordinary test
+  files at once, then runs compiler/native and shared-resource files with one
+  worker. Use `--processes 1` for diagnosis or a constrained host. No overlapping
+  test/build/install runs. The same checkout and generated output are shared
+  across Codex chats: check for an existing run before starting another, and do
+  not stop another task's processes.
 - Keep installs and packaging/native rebuilds separate from running tests and
   apps. The common Electron ABI prevents dev/tests from switching SQLite back
   and forth on macOS; it does not make concurrent dependency writes safe.
 - Preserve temporary-profile isolation. Never test against the original
   OpenWhispr profile or real production data/credentials. Use an explicit fresh
   `--user-data-dir` for app smoke tests; explicit profiles skip dev reseeding.
+- Register cleanup as soon as a test creates a resource. Restore globals and
+  module patches and close timers, servers and owned child processes even when
+  an assertion fails. Passing cases do not prove that owned processes exited.
+  Do not stop unrelated processes or use force-exit in place of cleanup.
 - Prefer fake clocks for timeout behavior and owned, promptly closed child
   processes. Reuse compiler caches through supported compiler behavior; keep
   test state and outputs isolated. Do not weaken assertions or skip checks to
@@ -176,3 +202,5 @@ Record the exact command, scope, pass/fail/skip counts, duration when comparing
 performance, and any checks not performed. Separate unit/integration evidence
 from GUI, hardware and real-provider verification. Capture failures and remaining
 risks; an unavailable required check is not a pass.
+Measure wall time or RSS against a baseline for an optimization task or a
+suspected slowdown, not for routine test, fixture or runner changes.

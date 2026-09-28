@@ -12,7 +12,7 @@ Executable command semantics live here. Select checks using the
 | `pnpm test --domain calendar` | All kinds in one domain |
 | `pnpm test --domain calendar --domain notes` | Union of domains, without duplicates |
 | `pnpm test --domain calendar --kind unit` | Unit tests in the domain |
-| `pnpm test --kind types` | Compiler probes across domains |
+| `pnpm test --kind types` | Batch and standalone compiler probes across domains |
 | `pnpm test --domain calendar --list` | Read-only plan with kind, domains and build requirement |
 | `pnpm test --help` | Available selectors and usage |
 
@@ -38,6 +38,11 @@ The optional leading `--` also works with selectors.
   in a later one-worker phase. Preparation and main build each run once. Full
   runs take a lock in the common Git directory across worktrees. Use the canonical command;
   direct `node --test` can bypass the required SQLite runtime setup.
+- Selected group tests under `test/scripts/type-probes/` run in their own
+  one-worker batch phase. Only this phase uses `--test-isolation=none` to share
+  one compiler program from `test/lib/typeProbeBatch.ts`. Other `types` tests
+  run serially outside this batch; discovery under
+  `test/cases/<domain>/types/` does not add a test to it.
 - `pnpm run typecheck:main`, `pnpm run typecheck:renderer`,
   `pnpm run typecheck:settings-selectors` and `pnpm run typecheck:tests` select
   compiler targets with the native TypeScript 7 `tsc`. `pnpm run typecheck`
@@ -49,7 +54,9 @@ The optional leading `--` also works with selectors.
   target automatically includes ordinary TypeScript tests and helpers, excluding
   intentionally invalid type-probe fixtures. A test selection that builds main
   already checks main compilation; other selections do not. `pnpm test` runs
-  compiler probes, but does not replace the renderer or test typecheck.
+  compiler probes, but does not replace the renderer or test typecheck. When a
+  full suite is required, run `pnpm run typecheck:renderer` separately from
+  `pnpm test`.
 - `pnpm run lint` covers both root/main and renderer configurations. For focused
   lint, use the existing config that owns the changed file; root and `src/` have
   different configs. Do not use auto-fix across unrelated dirty files.

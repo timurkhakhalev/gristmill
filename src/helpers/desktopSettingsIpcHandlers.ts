@@ -789,10 +789,9 @@ export function registerDesktopSettingsHandlers(
         });
       }
     } catch {
-      // Falls through to opening System Settings
+      // Report the permission state without opening Settings over the native prompt.
     }
 
-    await openSystemSettings("systemAudio");
     const status = deps.audioTap.getPermissionStatus();
     return buildSystemAudioAccess({
       granted: false,

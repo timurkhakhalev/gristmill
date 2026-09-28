@@ -11,6 +11,7 @@ export interface UsePermissionsReturn {
   accessibilityPermissionGranted: boolean;
   micPermissionError: string | null;
   accessibilityTroubleshooting: boolean;
+  accessibilityPromptRequested: boolean;
 
   requestMicPermission: () => Promise<void>;
   requestAccessibilityPermission: () => Promise<void>;
@@ -85,6 +86,7 @@ export const usePermissions = (
   );
   const [accessibilityTroubleshooting, setAccessibilityTroubleshooting] = useState(false);
   const accessibilityPollCount = useRef(0);
+  const [accessibilityPromptRequested, setAccessibilityPromptRequested] = useState(false);
 
   const openSystemSettings = useCallback(
     async (
@@ -136,8 +138,6 @@ export const usePermissions = (
           title: t("hooks.permissions.titles.microphoneUnavailable"),
           description: message,
         });
-      } else {
-        alert(message);
       }
       return;
     }
@@ -145,6 +145,15 @@ export const usePermissions = (
     setMicPermissionError(null);
 
     try {
+      const currentAccess = await window.electronAPI?.checkMicrophoneAccess?.();
+      if (currentAccess?.status === "denied" || currentAccess?.status === "restricted") {
+        setMicPermissionError(t("hooks.permissions.micErrors.permissionDenied", {
+          privacyPath: t("hooks.permissions.paths.defaultPrivacy"),
+        }));
+        await openMicPrivacySettings();
+        return;
+      }
+
       // macOS hardened runtime requires main-process mic prompt before getUserMedia works
       if (window.electronAPI?.requestMicrophoneAccess) {
         try {
@@ -167,37 +176,45 @@ export const usePermissions = (
           title: t("hooks.permissions.titles.microphonePermissionRequired"),
           description: message,
         });
-      } else {
-        alert(message);
       }
     }
-  }, [showAlertDialog, t, setMicPermissionGranted]);
+  }, [openMicPrivacySettings, showAlertDialog, t, setMicPermissionGranted]);
 
   const requestAccessibilityPermission = useCallback(async () => {
-    setAccessibilityTroubleshooting(false);
     const alreadyGranted = await window.electronAPI?.checkAccessibilityPermission?.(true);
     if (alreadyGranted) {
       setAccessibilityPermissionGranted(true);
+      setAccessibilityTroubleshooting(false);
       return;
     }
 
-    // Register this app with macOS before opening the list of allowed apps.
+    if (accessibilityPromptRequested) {
+      setAccessibilityTroubleshooting(true);
+      await openSystemSettings("accessibility", window.electronAPI?.openAccessibilitySettings);
+      return;
+    }
+
+    setAccessibilityTroubleshooting(false);
+    setAccessibilityPromptRequested(true);
+    // The native prompt offers its own System Settings button.
     const granted = await window.electronAPI?.promptAccessibilityPermission?.();
     if (granted) {
       setAccessibilityPermissionGranted(true);
       return;
     }
     setAccessibilityTroubleshooting(true);
-    await openSystemSettings("accessibility", window.electronAPI?.openAccessibilitySettings);
-  }, [openSystemSettings, setAccessibilityPermissionGranted]);
+  }, [accessibilityPromptRequested, openSystemSettings, setAccessibilityPermissionGranted]);
 
   // On macOS, re-validate microphone permission on mount to override stale
   // localStorage values (e.g. after TCC reset or app update).
   useEffect(() => {
-    window.electronAPI?.checkMicrophoneAccess?.().then((result) => {
+    const refresh = () => window.electronAPI?.checkMicrophoneAccess?.().then((result) => {
       const capture = useMeetingRecordingStore.getState();
       if (result && !(capture.isRecording && capture.micCaptureStatus === "active")) setMicPermissionGranted(result.granted);
     });
+    void refresh();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
   }, [setMicPermissionGranted]);
   useEffect(() => {
     if (micCaptureActive) setMicPermissionGranted(true);
@@ -249,6 +266,7 @@ export const usePermissions = (
     accessibilityPermissionGranted,
     micPermissionError,
     accessibilityTroubleshooting,
+    accessibilityPromptRequested,
     requestMicPermission,
     requestAccessibilityPermission,
     openMicPrivacySettings,

@@ -166,7 +166,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     tree = MeetingResultsPanel({ noteId: 1, locale: "en", previewRecordings: preview ? items : undefined, viewMode: mode, onViewModeChange: setMode,
       capturePhase,
       fallbackText: { raw: "Manual notes", enhanced: "No summary", transcript: "No transcript" },
-      manualContent: React.createElement("p", null, "Manual notes"), fallbackTranscript: React.createElement("p", null, "No transcript"), fallbackSummary: React.createElement("p", null, "No summary") });
+      manualContent: React.createElement("p", null, "Manual notes"), renderFallbackTranscript: () => React.createElement("p", null, "No transcript"), fallbackSummary: React.createElement("p", null, "No summary") });
     return tree;
   }
   root = createRoot(container);

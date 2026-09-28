@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import ReactMarkdown from "react-markdown";
 import { Button, Dropdown, Label, ListBox, Modal, Popover, Select } from "@heroui/react";
 import { useTranslation } from "react-i18next";
@@ -18,7 +18,7 @@ import { cn } from "../lib/utils";
 import { formatDate, formatTime, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 
-type ViewMode = "raw" | "enhanced" | "transcript";
+type ViewMode = "raw" | "enhanced";
 type RunChoice = { kind: "reprocess" | "summary"; partId?: string };
 
 function Choice({ label, value, options, onChange }: {
@@ -86,10 +86,10 @@ function AudioPartSummary({ part, index, count, timeLabel, tr }: {
   </div>;
 }
 
-export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, fallbackTranscript, fallbackSummary, fallbackText, actions, notice, capturePhase }: {
+export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, renderFallbackTranscript, fallbackSummary, fallbackText, actions, notice, capturePhase }: {
   actions?: ReactNode;
   /** Plain text of each view's fallback content, copied when no processing run provides it. */
-  fallbackText: Record<ViewMode, string>;
+  fallbackText: Record<ViewMode | "transcript", string>;
   /** Live capture notice rendered under the toolbar, above processing status. */
   notice?: ReactNode;
   noteId: number;
@@ -99,7 +99,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   manualContent: ReactNode;
-  fallbackTranscript: ReactNode;
+  renderFallbackTranscript: (scrollRef: RefObject<HTMLDivElement | null>) => ReactNode;
   fallbackSummary: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -108,6 +108,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const [recordings, setRecordings] = useState(previewRecordings ?? []);
   const [runId, setRunId] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
+  const [popoverTab, setPopoverTab] = useState<"transcript" | "audio">("transcript");
+  const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState("");
   const [message, setMessage] = useState("");
@@ -242,10 +244,19 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     : groups.find((group) => group.id === currentGroup)?.parts ?? [];
   const speakerLabel = (id: string) => t("meetingResults.speakerNumber", { defaultValue: "Speaker {{number}}", number: [...new Set(selected?.transcript?.segments?.map((segment) => segment.speaker).filter(Boolean))].indexOf(id) + 1 });
   const selectedId = selected?.run.id ?? "";
-  const copyText = viewMode === "enhanced" ? selected?.summary?.text || fallbackText.enhanced
-    : viewMode === "transcript" ? selected?.transcript?.text || fallbackText.transcript
-    : fallbackText.raw;
+  const copyText = viewMode === "enhanced" ? selected?.summary?.text || fallbackText.enhanced : fallbackText.raw;
+  const transcriptCopyText = selected?.transcript?.text || fallbackText.transcript;
   const [copied, setCopied] = useState(false);
+  const [transcriptCopied, setTranscriptCopied] = useState(false);
+  const copyTranscript = async () => {
+    try {
+      await navigator.clipboard.writeText(transcriptCopyText);
+      setTranscriptCopied(true);
+      window.setTimeout(() => setTranscriptCopied(false), 1500);
+    } catch {
+      notify(t("meetingResults.copyError", { defaultValue: "Couldn't copy to the clipboard." }), "destructive");
+    }
+  };
   useEffect(() => setCopied(false), [viewMode]);
   const copyView = async () => {
     try {
@@ -336,7 +347,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     });
     if (!result.success || !result.result) throw new Error(result.error || t("meetingResults.createError"));
     setRunId(result.result.run.id);
-    onViewModeChange(choice.kind === "summary" ? "enhanced" : "transcript");
+    if (choice.kind === "summary") onViewModeChange("enhanced");
+    else { setPopoverTab("transcript"); setAudioOpen(true); }
   });
 
   const selectRun = (id: string) => runTask(async () => {
@@ -384,114 +396,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     notify(t("meetingResults.exported"), "success");
   });
 
-  return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">    <div className="sticky top-0 z-10 -mt-4 mb-3 flex items-center justify-between gap-2 bg-background pt-4 pb-3 max-[720px]:flex-wrap">
-      <NoteViewSwitch
-        value={viewMode}
-        onChange={onViewModeChange}
-        ariaLabel={tr("contentTabs", "Meeting content")}
-        options={[
-          { id: "raw", label: t("notes.editor.notes"), icon: AlignLeft },
-          { id: "enhanced", label: tr("summaryTab", "Summary"), icon: Sparkles },
-          { id: "transcript", label: t("notes.editor.transcript"), icon: MessageSquareText },
-        ]}
-        versionMenu={viewMode === "raw" ? undefined : {
-          label: t("meetingResults.version"),
-          selectedId,
-          onSelect: (id) => void selectRun(id),
-          items: versions.map((item, index) => ({
-            id: item.run.id,
-            label: `${index + 1} · ${item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / ${(item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model) || "—"}`,
-            detail: dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" }, dateFormat, timeFormat),
-          })),
-        }}
-      />
-      <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
-        <Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7 text-muted hover:text-foreground" isDisabled={!copyText.trim()} aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")} onPress={() => void copyView()}>
-          {copied ? <Check size={15}/> : <Copy size={15}/>}
-        </Button>
-      </IconTooltip>
-      <div className="ms-auto flex flex-wrap items-center gap-1.5">
-      <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
-        <IconTooltip label={tr("audioParts", "Audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("audioParts", "Audio")} ${audioCount}`}><AudioLines size={16}/>{audioCount > 0 && <span key={audioCount} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{audioCount}</span>}</Button></IconTooltip>
-        <Popover.Content placement="bottom end" className="w-[320px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="flex max-h-[min(420px,70vh)] flex-col p-3">
-          <Popover.Heading className="text-sm font-semibold">{tr("audioParts", "Audio")}</Popover.Heading>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-          {!audioGroups.length && <p className="mt-2 text-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
-          {displayedGroups.map((group, groupIndex) => {
-            const date = dateLabel(group.parts[0].recording.startedAt, locale, { dateStyle: "medium" }, dateFormat, timeFormat);
-            const previousDate = groupIndex > 0
-              ? dateLabel(displayedGroups[groupIndex - 1].parts[0].recording.startedAt, locale, { dateStyle: "medium" }, dateFormat, timeFormat)
-              : null;
-            return <section key={group.id} className="mt-2">
-            {date !== previousDate && <span className="text-xs font-medium text-muted">{date}</span>}
-          {group.parts.map((part, index) => <div className="flex items-center gap-2 border-b border-border py-1.5 last:border-0" key={part.recording.id}>
-            <Button isIconOnly size="sm" variant="ghost" isDisabled={part.recording.audioState !== "available"} aria-label={playingId === part.recording.id ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={() => void startAudio(part.recording.id)}>{playingId === part.recording.id ? <Pause size={16}/> : <Play size={16}/>}</Button>
-            <AudioPartSummary part={part.recording} index={index} count={group.parts.length} timeLabel={(value) => dateLabel(value, locale, { timeStyle: "short" }, dateFormat, timeFormat)} tr={tr} />
-            <Dropdown><Button isIconOnly size="sm" variant="ghost" aria-label={tr("partActions", "Audio part actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("partActions", "Audio part actions")} onAction={(key) => {
-              if (key === "asr") openRun("reprocess", { partId: part.recording.id });
-              if (key === "export") void exportPart(part.recording.id);
-              if (key === "delete") deletePart(part.recording.id);
-            }}>
-              <Dropdown.Item id="asr" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
-              <Dropdown.Item id="export" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
-              <Dropdown.Item id="delete" isDisabled={busy || part.recording.audioState === "deleted"} variant="danger" textValue={t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}><Trash2 size={14}/>{t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}</Dropdown.Item>
-            </Dropdown.Menu></Dropdown.Popover></Dropdown>
-          </div>)}
-          </section>})}
-          </div>
-          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <Button size="sm" variant="secondary" className="mt-2 w-full gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess")}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
-        </Popover.Dialog></Popover.Content>
-      </Popover>
-      {actions}
-      </div>
-    </div>
-
-    {notice}
-    {parts.some((part) => part.recording.captureState === "incomplete" || part.recording.captureErrorCode) && <NoteNotice
-      status="warning"
-      title={t("notes.editor.capture.incomplete")}
-      description={t("meetingResults.captureIncomplete")}
-    />}
-    {latestRun && !["complete", "cancelled"].includes(latestRun.run.status) && (() => {
-      const { status, stage, errorCode } = latestRun.run;
-      const stageKey = stage === "asr" || stage === "summary" ? stage : "other";
-      const needsConfig = status === "blocked" && Boolean(latestRun.run.configError || !latestRun.run.config || errorCode === "missing-summary-config");
-      const settingsSection = stage === "summary" || errorCode === "missing-summary-config" ? "models#summary" : "models#meeting";
-      const actions = <>
-        {needsConfig && <Button size="sm" onPress={() => openSettings(settingsSection)}>{t("meetingResults.openSettings")}</Button>}
-        {needsConfig && <Button size="sm" variant="tertiary" isPending={busy} onPress={() => void runTask(async () => {
-          if (previewRecordings) { notify("Mock settings updated in memory"); return; }
-          const snapshot = snapshotMeetingRecordingConfig(latestRun.run.stage === "summary" && latestRun.transcript ? latestRun.run.config?.transcription : undefined);
-          const result = await window.electronAPI.meetingProcessingUpdateBlockedRunConfig({ runId: latestRun.run.id, config: snapshot.config, configError: snapshot.configError });
-          if (!result.success) throw new Error(result.error || t("meetingResults.updateConfigError"));
-        })}>{t("meetingResults.updateRunSettings")}</Button>}
-        {(status === "failed" || (status === "blocked" && !needsConfig)) && <Button size="sm" variant="secondary" isPending={busy} onPress={() => void runTask(async () => {
-          if (previewRecordings) { notify("Mock retry queued in memory"); return; }
-          const result = await window.electronAPI.meetingProcessingRetryRun(latestRun.run.id);
-          if (!result.success) throw new Error(result.error || t("meetingResults.retryError"));
-        })}>{t("meetingResults.retry")}</Button>}
-      </>;
-      if (status === "blocked") return <NoteNotice status="warning" title={t(`meetingResults.blocked.${stageKey}`)}
-        description={t(errorCode === "missing-transcription-config" || errorCode === "missing-summary-config" ? `meetingResults.blockedReason.${errorCode}` : "meetingResults.blockedReason.other")} actions={actions} />;
-      if (status === "failed") return <NoteNotice status="danger" title={t(`meetingResults.failed.${stageKey}`)} description={t("meetingResults.failedReason")} actions={actions} />;
-      const startedAt = latestRun.run.createdAt ? Date.parse(latestRun.run.createdAt) : undefined;
-      return <NoteNotice status="accent" busy progressStartedAt={startedAt} title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
-    })()}
-
-    <div key={viewMode} className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-bottom-1">
-    {viewMode === "raw" ? manualContent : <div>
-      {selected && (viewMode !== "enhanced" || selected.summary?.text) && <div className="flex items-center gap-1.5 text-xs text-muted"><span className="min-w-0 flex-1 truncate">{viewMode === "enhanced" ? selected.run.config?.summary?.provider : selected.run.provider} · {viewMode === "enhanced" ? selected.run.config?.summary?.model : selected.run.model}</span>
-        <Dropdown><IconTooltip label={tr("resultActions", "Result actions")}><Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7" aria-label={tr("resultActions", "Result actions")}><MoreHorizontal size={17}/></Button></IconTooltip><Dropdown.Popover><Dropdown.Menu aria-label={tr("resultActions", "Result actions")} onAction={(key) => {
-          if (key === "asr") openRun("reprocess");
-          if (key === "summary") openRun("summary");
-          if (key === "export") void runTask(async () => { if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; } const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: selected.run.recordingId, runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? undefined : selected.run.id, source: "mixed" }); if (!result.success) throw new Error(result.error || t("meetingResults.exportError")); });
-        }}>
-          <Dropdown.Item id="asr" isDisabled={!availableParts.length} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
-          <Dropdown.Item id="summary" textValue={t("meetingResults.newSummary")}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Dropdown.Item>
-          <Dropdown.Item id="export" isDisabled={!availableParts.length} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
-        </Dropdown.Menu></Dropdown.Popover></Dropdown>
-      </div>}
-      {viewMode === "enhanced" ? selected?.summary?.text ? <article className="note-prose"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary : selected?.transcript ? <div>
+  const transcriptContent = selected?.transcript ? <div>
         {selected.transcript.segments?.length ? (() => {
           // Cumulative offsets per recording part so we can drop a header in
           // front of the first segment of each part beyond the first one.
@@ -543,7 +448,134 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           });
         })() : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{selected.transcript.text}</p>}
 
-      </div> : fallbackTranscript}
+  </div> : renderFallbackTranscript(transcriptScrollRef);
+
+  return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">    <div className="sticky top-0 z-10 -mt-4 mb-3 flex items-center justify-between gap-2 bg-background pt-4 pb-3 max-[720px]:flex-wrap">
+      <NoteViewSwitch
+        value={viewMode}
+        onChange={onViewModeChange}
+        ariaLabel={tr("contentTabs", "Meeting content")}
+        options={[
+          { id: "raw", label: t("notes.editor.notes"), icon: AlignLeft },
+          { id: "enhanced", label: tr("summaryTab", "Summary"), icon: Sparkles },
+        ]}
+        versionMenu={viewMode === "raw" ? undefined : {
+          label: t("meetingResults.version"),
+          selectedId,
+          onSelect: (id) => void selectRun(id),
+          items: versions.map((item, index) => ({
+            id: item.run.id,
+            label: `${index + 1} · ${item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / ${(item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model) || "—"}`,
+            detail: dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" }, dateFormat, timeFormat),
+          })),
+        }}
+      />
+      <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
+        <Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7 text-muted hover:text-foreground" isDisabled={!copyText.trim()} aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")} onPress={() => void copyView()}>
+          {copied ? <Check size={15}/> : <Copy size={15}/>}
+        </Button>
+      </IconTooltip>
+      <div className="ms-auto flex flex-wrap items-center gap-1.5">
+      <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
+        <IconTooltip label={tr("transcriptAndAudio", "Transcript and audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("transcriptAndAudio", "Transcript and audio")} ${audioCount}`}><AudioLines size={16}/>{audioCount > 0 && <span key={audioCount} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{audioCount}</span>}</Button></IconTooltip>
+        <Popover.Content placement="bottom end" className="w-[480px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="flex h-[min(560px,75vh)] flex-col p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <Popover.Heading className="sr-only">{tr("transcriptAndAudio", "Transcript and audio")}</Popover.Heading>
+            <NoteViewSwitch
+              value={popoverTab}
+              onChange={setPopoverTab}
+              ariaLabel={tr("transcriptAndAudio", "Transcript and audio")}
+              options={[
+                { id: "transcript", label: t("notes.editor.transcript"), icon: MessageSquareText },
+                { id: "audio", label: tr("audioParts", "Audio"), icon: AudioLines },
+              ]}
+            />
+            {popoverTab === "transcript" && <IconTooltip label={transcriptCopied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
+              <Button size="sm" variant="ghost" isIconOnly className="ms-auto size-7 min-h-7 text-muted hover:text-foreground" isDisabled={!transcriptCopyText.trim()} aria-label={tr("copyView", "Copy")} onPress={() => void copyTranscript()}>
+                {transcriptCopied ? <Check size={15}/> : <Copy size={15}/>}
+              </Button>
+            </IconTooltip>}
+          </div>
+          {popoverTab === "transcript" && <div ref={transcriptScrollRef} className="min-h-0 flex-1 overflow-y-auto">{transcriptContent}</div>}
+          {popoverTab === "audio" && <>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+          {!audioGroups.length && <p className="mt-2 text-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
+          {displayedGroups.map((group, groupIndex) => {
+            const date = dateLabel(group.parts[0].recording.startedAt, locale, { dateStyle: "medium" }, dateFormat, timeFormat);
+            const previousDate = groupIndex > 0
+              ? dateLabel(displayedGroups[groupIndex - 1].parts[0].recording.startedAt, locale, { dateStyle: "medium" }, dateFormat, timeFormat)
+              : null;
+            return <section key={group.id} className="mt-2">
+            {date !== previousDate && <span className="text-xs font-medium text-muted">{date}</span>}
+          {group.parts.map((part, index) => <div className="flex items-center gap-2 border-b border-border py-1.5 last:border-0" key={part.recording.id}>
+            <Button isIconOnly size="sm" variant="ghost" isDisabled={part.recording.audioState !== "available"} aria-label={playingId === part.recording.id ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={() => void startAudio(part.recording.id)}>{playingId === part.recording.id ? <Pause size={16}/> : <Play size={16}/>}</Button>
+            <AudioPartSummary part={part.recording} index={index} count={group.parts.length} timeLabel={(value) => dateLabel(value, locale, { timeStyle: "short" }, dateFormat, timeFormat)} tr={tr} />
+            <Dropdown><Button isIconOnly size="sm" variant="ghost" aria-label={tr("partActions", "Audio part actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("partActions", "Audio part actions")} onAction={(key) => {
+              if (key === "asr") openRun("reprocess", { partId: part.recording.id });
+              if (key === "export") void exportPart(part.recording.id);
+              if (key === "delete") deletePart(part.recording.id);
+            }}>
+              <Dropdown.Item id="asr" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
+              <Dropdown.Item id="export" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
+              <Dropdown.Item id="delete" isDisabled={busy || part.recording.audioState === "deleted"} variant="danger" textValue={t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}><Trash2 size={14}/>{t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}</Dropdown.Item>
+            </Dropdown.Menu></Dropdown.Popover></Dropdown>
+          </div>)}
+          </section>})}
+          </div>
+          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <Button size="sm" variant="secondary" className="mt-2 w-full gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess")}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
+          </>}
+        </Popover.Dialog></Popover.Content>
+      </Popover>
+      {actions}
+      </div>
+    </div>
+
+    {notice}
+    {parts.some((part) => part.recording.captureState === "incomplete" || part.recording.captureErrorCode) && <NoteNotice
+      status="warning"
+      title={t("notes.editor.capture.incomplete")}
+      description={t("meetingResults.captureIncomplete")}
+    />}
+    {latestRun && !["complete", "cancelled"].includes(latestRun.run.status) && (() => {
+      const { status, stage, errorCode } = latestRun.run;
+      const stageKey = stage === "asr" || stage === "summary" ? stage : "other";
+      const needsConfig = status === "blocked" && Boolean(latestRun.run.configError || !latestRun.run.config || errorCode === "missing-summary-config");
+      const settingsSection = stage === "summary" || errorCode === "missing-summary-config" ? "models#summary" : "models#meeting";
+      const actions = <>
+        {needsConfig && <Button size="sm" onPress={() => openSettings(settingsSection)}>{t("meetingResults.openSettings")}</Button>}
+        {needsConfig && <Button size="sm" variant="tertiary" isPending={busy} onPress={() => void runTask(async () => {
+          if (previewRecordings) { notify("Mock settings updated in memory"); return; }
+          const snapshot = snapshotMeetingRecordingConfig(latestRun.run.stage === "summary" && latestRun.transcript ? latestRun.run.config?.transcription : undefined);
+          const result = await window.electronAPI.meetingProcessingUpdateBlockedRunConfig({ runId: latestRun.run.id, config: snapshot.config, configError: snapshot.configError });
+          if (!result.success) throw new Error(result.error || t("meetingResults.updateConfigError"));
+        })}>{t("meetingResults.updateRunSettings")}</Button>}
+        {(status === "failed" || (status === "blocked" && !needsConfig)) && <Button size="sm" variant="secondary" isPending={busy} onPress={() => void runTask(async () => {
+          if (previewRecordings) { notify("Mock retry queued in memory"); return; }
+          const result = await window.electronAPI.meetingProcessingRetryRun(latestRun.run.id);
+          if (!result.success) throw new Error(result.error || t("meetingResults.retryError"));
+        })}>{t("meetingResults.retry")}</Button>}
+      </>;
+      if (status === "blocked") return <NoteNotice status="warning" title={t(`meetingResults.blocked.${stageKey}`)}
+        description={t(errorCode === "missing-transcription-config" || errorCode === "missing-summary-config" ? `meetingResults.blockedReason.${errorCode}` : "meetingResults.blockedReason.other")} actions={actions} />;
+      if (status === "failed") return <NoteNotice status="danger" title={t(`meetingResults.failed.${stageKey}`)} description={t("meetingResults.failedReason")} actions={actions} />;
+      const startedAt = latestRun.run.createdAt ? Date.parse(latestRun.run.createdAt) : undefined;
+      return <NoteNotice status="accent" busy progressStartedAt={startedAt} title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
+    })()}
+
+    <div key={viewMode} className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-bottom-1">
+    {viewMode === "raw" ? manualContent : <div>
+      {selected && (viewMode !== "enhanced" || selected.summary?.text) && <div className="flex items-center gap-1.5 text-xs text-muted"><span className="min-w-0 flex-1 truncate">{viewMode === "enhanced" ? selected.run.config?.summary?.provider : selected.run.provider} · {viewMode === "enhanced" ? selected.run.config?.summary?.model : selected.run.model}</span>
+        <Dropdown><IconTooltip label={tr("resultActions", "Result actions")}><Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7" aria-label={tr("resultActions", "Result actions")}><MoreHorizontal size={17}/></Button></IconTooltip><Dropdown.Popover><Dropdown.Menu aria-label={tr("resultActions", "Result actions")} onAction={(key) => {
+          if (key === "asr") openRun("reprocess");
+          if (key === "summary") openRun("summary");
+          if (key === "export") void runTask(async () => { if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; } const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: selected.run.recordingId, runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? undefined : selected.run.id, source: "mixed" }); if (!result.success) throw new Error(result.error || t("meetingResults.exportError")); });
+        }}>
+          <Dropdown.Item id="asr" isDisabled={!availableParts.length} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
+          <Dropdown.Item id="summary" textValue={t("meetingResults.newSummary")}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Dropdown.Item>
+          <Dropdown.Item id="export" isDisabled={!availableParts.length} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
+        </Dropdown.Menu></Dropdown.Popover></Dropdown>
+      </div>}
+      {selected?.summary?.text ? <article className="note-prose"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary}
     </div>}
     </div>
     {message && <NoteNotice status="default" title={message} />}

@@ -8,8 +8,8 @@ const { execFileSync } = require("node:child_process");
 const root = path.resolve(__dirname, "..");
 fs.rmSync(path.join(root, "dist-main"), { recursive: true, force: true });
 execFileSync(
-  process.execPath,
-  [require.resolve("typescript/bin/tsc"), "-p", "tsconfig.main.json"],
+  path.join(root, "node_modules", ".bin", "tsc"),
+  ["-p", "tsconfig.main.json"],
   {
     cwd: root,
     stdio: "inherit",

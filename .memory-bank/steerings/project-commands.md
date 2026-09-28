@@ -40,7 +40,12 @@ The optional leading `--` also works with selectors.
   direct `node --test` can bypass the required SQLite runtime setup.
 - `pnpm run typecheck:main`, `pnpm run typecheck:renderer`,
   `pnpm run typecheck:settings-selectors` and `pnpm run typecheck:tests` select
-  compiler targets. `pnpm run typecheck` runs all four sequentially. The test
+  compiler targets with the native TypeScript 7 `tsc`. `pnpm run typecheck`
+  runs all four sequentially. `pnpm run build:main` uses the same native
+  compiler for emitted Electron code. The `typescript` dependency aliases
+  TypeScript 6 for compiler-API consumers (test probes and ESLint); its
+  executable is `tsc6`. Keep the CLI and API packages distinct until
+  TypeScript 7 provides a supported programmatic API. The test
   target automatically includes ordinary TypeScript tests and helpers, excluding
   intentionally invalid type-probe fixtures. A test selection that builds main
   already checks main compilation; other selections do not. `pnpm test` runs

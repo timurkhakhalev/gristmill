@@ -296,15 +296,6 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   return (
     <div className="h-screen bg-surface-window flex flex-col">
       <MeetingRecordingMount />
-      <MeetingRecordingPill
-        activeView={activeView}
-        activeNoteId={activeNoteId}
-        onReturnToNote={() => {
-          setActiveView("personal-notes");
-          setActiveFolderId(recordingFolderId);
-          setActiveNoteId(recordingNoteId);
-        }}
-      />
       {showSettings && (
         <Suspense fallback={null}>
           <SettingsModal
@@ -364,6 +355,17 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
               notesDebugScenario={notesDebugScenario}
               onNotesDebugScenarioChange={setNotesDebugScenario}
               showNotesDebug={activeView === "personal-notes"}
+              trailing={
+                <MeetingRecordingPill
+                  activeView={activeView}
+                  activeNoteId={activeNoteId}
+                  onReturnToNote={() => {
+                    setActiveView("personal-notes");
+                    setActiveFolderId(recordingFolderId);
+                    setActiveNoteId(recordingNoteId);
+                  }}
+                />
+              }
             />
             <div className="scrollbar-hidden flex-1 overflow-y-auto">
               {activeView === "home" && eventDraft && (

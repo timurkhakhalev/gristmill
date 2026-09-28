@@ -202,7 +202,7 @@ test("audio count and list include a newly saved recording without reload", asyn
   assert.ok(ui.label("Audio 1"));
   await ui.saveRecording([first, second]);
   assert.ok(ui.label("Audio 2"));
-  assert.equal(ui.text().match(/01:00/g)?.length, 2);
+  assert.equal(ui.text().match(/\bmin\b/g)?.length, 2);
   assert.equal(ui.text().match(/Sep 25, 2026/g)?.length, 1);
 });
 
@@ -211,7 +211,7 @@ test("previously deleted audio is absent from the popover", async (t: TestContex
   deleted.recording.audioState = "deleted";
   const ui = await mountPanel(t, [deleted, recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z")]);
   assert.ok(ui.label("Audio 1"));
-  assert.equal(ui.text().match(/01:00/g)?.length, 1);
+  assert.equal(ui.text().match(/\bmin\b/g)?.length, 1);
 });
 
 test("audio part actions export a mixed MP3 and confirm deletion without a transcript", async (t: TestContext) => {

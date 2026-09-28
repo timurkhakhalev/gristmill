@@ -420,22 +420,56 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         </Dropdown.Menu></Dropdown.Popover></Dropdown>
       </div>}
       {viewMode === "enhanced" ? selected?.summary?.text ? <article className="note-prose"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary : selected?.transcript ? <div>
-        {selected.transcript.segments?.length ? selected.transcript.segments.map((segment, index) => <div className="mt-6 grid grid-cols-[52px_minmax(0,1fr)] items-baseline gap-x-3.5" key={`${index}-${segment.start}`}>
-          <button className="rounded py-1.5 text-start font-mono text-xs tabular-nums text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
-            let remaining = segment.start;
-            for (const id of selected.run.sourceRecordingIds) {
-              const part = parts.find((item) => item.recording.id === id);
-              if (!part) continue;
-              const duration = part.recording.durationSeconds ?? 0;
-              if (remaining <= duration) { void startAudio(id, remaining); break; }
-              remaining -= duration;
-            }
-          }}>{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</button>
-          <div>{segment.speaker && <button className="rounded text-xs font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
-            const correction = selected.speakerCorrections.find((item) => item.speakerId === segment.speaker);
-            setSpeakerId(segment.speaker ?? null); setSpeakerName(correction?.displayName ?? (segment.speaker ? speakerLabel(segment.speaker) : "")); setSpeakerProfileId(String(correction?.profileId ?? "none"));
-          }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-[1.8] text-muted">{segment.text}</p></div>
-        </div>) : <p className="whitespace-pre-wrap text-sm leading-[1.8] text-muted">{selected.transcript.text}</p>}
+        {selected.transcript.segments?.length ? (() => {
+          // Cumulative offsets per recording part so we can drop a header in
+          // front of the first segment of each part beyond the first one.
+          const partBoundaries: number[] = [];
+          let cumulative = 0;
+          for (let i = 0; i < selected.run.sourceRecordingIds.length; i++) {
+            if (i > 0) partBoundaries.push(cumulative);
+            const id = selected.run.sourceRecordingIds[i];
+            const part = parts.find((item) => item.recording.id === id);
+            cumulative += part?.recording.durationSeconds ?? 0;
+          }
+          return selected.transcript.segments!.map((segment, index) => {
+            const isPartStart = partBoundaries.includes(segment.start);
+            const partIndex = isPartStart ? partBoundaries.indexOf(segment.start) : -1;
+            const partId = isPartStart ? selected.run.sourceRecordingIds[partIndex + 1] : null;
+            const partRecord = partId ? parts.find((item) => item.recording.id === partId)?.recording : null;
+            return <div key={`${index}-${segment.start}`}>
+              {isPartStart && partRecord && (
+                <div className="mt-6 flex items-center gap-3 border-t border-border pt-3 text-xs text-muted">
+                  <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />
+                  <span className="font-medium text-foreground">
+                    {tr("partHeader", "Part {{index}}", { index: partIndex + 2 })}
+                  </span>
+                  <span className="tabular-nums">
+                    {dateLabel(partRecord.startedAt, locale, { timeStyle: "short" }, dateFormat, timeFormat)}
+                  </span>
+                  {partRecord.durationSeconds != null && (
+                    <span className="text-2xs">· {formatDuration(partRecord.durationSeconds, tr)}</span>
+                  )}
+                </div>
+              )}
+              <div className={`${index === 0 || isPartStart ? "mt-2" : "mt-3"} grid grid-cols-[44px_minmax(0,1fr)] items-baseline gap-x-3`}>
+                <button className="rounded py-1 text-start font-mono text-xs tabular-nums text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
+                  let remaining = segment.start;
+                  for (const id of selected.run.sourceRecordingIds) {
+                    const part = parts.find((item) => item.recording.id === id);
+                    if (!part) continue;
+                    const duration = part.recording.durationSeconds ?? 0;
+                    if (remaining <= duration) { void startAudio(id, remaining); break; }
+                    remaining -= duration;
+                  }
+                }}>{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</button>
+                <div>{segment.speaker && <button className="rounded text-xs font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
+                  const correction = selected.speakerCorrections.find((item) => item.speakerId === segment.speaker);
+                  setSpeakerId(segment.speaker ?? null); setSpeakerName(correction?.displayName ?? (segment.speaker ? speakerLabel(segment.speaker) : "")); setSpeakerProfileId(String(correction?.profileId ?? "none"));
+                }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
+              </div>
+            </div>;
+          });
+        })() : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{selected.transcript.text}</p>}
 
       </div> : fallbackTranscript}
     </div>}

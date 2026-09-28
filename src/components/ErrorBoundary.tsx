@@ -1,5 +1,6 @@
 import React from "react";
 import i18n from "../i18n";
+import { getActiveRecordingSessionId, stopRecording } from "../stores/meetingRecordingStore";
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -24,7 +25,16 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
     console.error("[ErrorBoundary] Uncaught error:", error, errorInfo);
   }
 
-  handleReload = () => {
+  handleReload = async () => {
+    if (getActiveRecordingSessionId()) {
+      try {
+        await stopRecording();
+      } catch (error) {
+        console.error("[ErrorBoundary] Meeting capture could not stop before reload:", error);
+        return;
+      }
+      if (getActiveRecordingSessionId()) return;
+    }
     window.location.reload();
   };
 

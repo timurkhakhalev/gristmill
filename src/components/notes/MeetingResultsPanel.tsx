@@ -19,7 +19,7 @@ import { formatDate, formatTime, type DateFormat, type TimeFormat } from "../../
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 
 type ViewMode = "raw" | "enhanced" | "transcript";
-type RunChoice = { kind: "reprocess" | "summary"; partId?: string; groupId?: string };
+type RunChoice = { kind: "reprocess" | "summary"; partId?: string };
 
 function Choice({ label, value, options, onChange }: {
   label: string; value: string; options: Array<{ id: string; label: string }>; onChange: (value: string) => void;
@@ -228,15 +228,18 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   })).filter((group) => group.parts.length > 0);
   const displayedGroups = [...audioGroups].reverse();
   const audioCount = audioGroups.reduce((count, group) => count + group.parts.length, 0);
-  const latestAudioGroup = audioGroups[audioGroups.length - 1];
   const latestGroup = groups[groups.length - 1];
+  const recordedRuns = recordings.flatMap((part) => part.runs);
   const versions = useMemo(() => recordings.flatMap((part) => part.runs).filter((item) => item.transcript).sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt)), [recordings]);
   const selected = versions.find((item) => item.run.id === runId)
-    ?? versions.find((item) => latestGroup?.parts.some((part) => part.recording.currentRunId === item.run.id))
+    ?? versions.find((item) => recordings.some((part) => part.recording.currentRunId === item.run.id))
     ?? versions[0];
-  // The session shown is the one the selected version came from.
-  const currentGroup = recordings.find((item) => item.recording.id === selected?.run.recordingId)?.recording.groupId ?? latestGroup?.id;
-  const parts = groups.find((group) => group.id === currentGroup)?.parts ?? [];
+  const displayedRun = recordedRuns.find((item) => item.run.id === runId)?.run ?? selected?.run;
+  const currentGroup = recordings.find((item) => item.recording.id === displayedRun?.recordingId)?.recording.groupId ?? latestGroup?.id;
+  const selectedSourceIds = displayedRun?.sourceRecordingIds ?? [];
+  const parts = selectedSourceIds.length > 1
+    ? recordings.filter((item) => selectedSourceIds.includes(item.recording.id)).sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt))
+    : groups.find((group) => group.id === currentGroup)?.parts ?? [];
   const speakerLabel = (id: string) => t("meetingResults.speakerNumber", { defaultValue: "Speaker {{number}}", number: [...new Set(selected?.transcript?.segments?.map((segment) => segment.speaker).filter(Boolean))].indexOf(id) + 1 });
   const selectedId = selected?.run.id ?? "";
   const copyText = viewMode === "enhanced" ? selected?.summary?.text || fallbackText.enhanced
@@ -294,7 +297,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   };
 
   /** Starts a run with the settings-selected providers; no per-run picker. */
-  const openRun = (kind: "reprocess" | "summary", target: { partId?: string; groupId?: string } = {}) => {
+  const openRun = (kind: "reprocess" | "summary", target: { partId?: string } = {}) => {
     setAudioOpen(false);
     void createRun({ kind, ...target });
   };
@@ -309,8 +312,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     const baseConfig = snapshot.config ?? savedConfig;
     if (!baseConfig) throw new Error(snapshot.configError?.code || "processing-config-missing");
     const config: MeetingProcessingConfig = { ...baseConfig };
-    const groupParts = choice.groupId ? groups.find((group) => group.id === choice.groupId)?.parts ?? [] : parts;
-    const ids = choice.partId ? [choice.partId] : groupParts.filter((part) => part.recording.audioState === "available").map((part) => part.recording.id);
+    const ids = choice.partId ? [choice.partId] : recordings
+      .filter((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))
+      .sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt))
+      .map((part) => part.recording.id);
     if (choice.kind === "reprocess") {
       if (!ids.length) throw new Error("meeting-audio-unavailable");
     } else {
@@ -434,7 +439,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </div>)}
           </section>})}
           </div>
-          {latestAudioGroup?.parts.some((part) => part.recording.audioState === "available") && <Button size="sm" variant="secondary" className="mt-2 w-full gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess", { groupId: latestAudioGroup.id })}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
+          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <Button size="sm" variant="secondary" className="mt-2 w-full gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess")}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
         </Popover.Dialog></Popover.Content>
       </Popover>
       {actions}

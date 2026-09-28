@@ -18,7 +18,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
     recordings: [] as Recording[],
     epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
     recoveries: [] as unknown[],
-    finalizations: [] as { recordingId: string; input: { captureState: string; errorCode?: string | null } }[],
+    finalizations: [] as { recordingId: string; input: { captureState: string; endedAt: string; errorCode?: string | null } }[],
     createMeetingRecording(noteId: number, config: unknown, startedAt: string, id: string) {
       const recording = { id, noteId, config, startedAt, captureState: "recording" };
       this.recordings.push(recording);
@@ -35,7 +35,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
       if (!recording) throw new Error("Recording not found");
       recording.captureState = "finalizing";
     },
-    finalizeMeetingRecording(recordingId: string, input: { captureState: string; errorCode?: string | null }) {
+    finalizeMeetingRecording(recordingId: string, input: { captureState: string; endedAt: string; errorCode?: string | null }) {
       this.finalizations.push({ recordingId, input });
       const recording = this.recordings.find((item) => item.id === recordingId);
       if (!recording) throw new Error("Recording not found");
@@ -173,6 +173,19 @@ test("capture writes source epochs separately and finalizes restart gaps as inco
   assert.equal(first.initialRunId, RUN_ID);
   assert.equal(repeated.initialRunId, RUN_ID);
   assert.equal(database.finalizations.length, 1);
+});
+
+test("owner loss records the last saved audio time instead of a later finalization time", async () => {
+  const { database, storage } = createCaptureFakes();
+  const origin = new Date("2026-09-24T10:00:00.000Z");
+  const capture = MeetingCaptureSession.create(database, storage, 12, null, origin, RECORDING_ID);
+  capture.appendRendererSamples("mic", packet(0, 0, 0, 0), Buffer.alloc(4_800, 1));
+  capture.appendNativeSamples("system", Buffer.alloc(4_800, 2), new Date(origin.getTime() + 250));
+  capture.markCaptureFailure("renderer-lost");
+
+  const result = await capture.stop({ lastSequence: {} });
+  assert.equal(result.captureState, "incomplete");
+  assert.equal(database.finalizations[0].input.endedAt, "2026-09-24T10:00:00.350Z");
 });
 
 test("main-owned native system audio drains without a renderer sequence", async () => {

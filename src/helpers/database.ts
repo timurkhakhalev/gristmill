@@ -1310,7 +1310,7 @@ export class DatabaseManager {
         for (const sourceId of sourceRecordingIds) {
           meetingRecordingIdSchema.parse(sourceId);
           const source = this.getMeetingRecording(sourceId);
-          if (!source || source.noteId !== recording.noteId || source.groupId !== recording.groupId || source.audioState !== "available" || !["ready", "incomplete"].includes(source.captureState)) {
+          if (!source || source.noteId !== recording.noteId || source.audioState !== "available" || !["ready", "incomplete"].includes(source.captureState)) {
             throw new Error("Meeting audio is unavailable for a selected part");
           }
         }

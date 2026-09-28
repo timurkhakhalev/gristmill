@@ -240,7 +240,7 @@ test("worker stores post-stop recognition per run and does not infer names from 
   await worker.waitForIdle();
   assert.equal(recognizeCalls, 1);
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(initialRun.id), [
-    { speakerId: "Speaker 1", profileId: knownProfileId, displayName: "Known voice" },
+    { speakerId: "Speaker 1", profileId: knownProfileId, displayName: "Known voice", source: "voice", revision: 1 },
   ]);
   const recognizedProjection = JSON.parse(db.getNote(note.id).transcript!);
   assert.equal(recognizedProjection[0].speakerName, "Known voice");

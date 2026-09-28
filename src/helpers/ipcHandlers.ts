@@ -66,7 +66,7 @@ import { registerRemoteTranscriptionHandler, transcribeAudioFileByok, type Remot
 import { postRawAudioFile } from "./audioFileUpload.js";
 import { registerReasoningHandlers, type EnterpriseStreamModel } from "./reasoningIpcHandlers.js";
 import { registerBbHandlers } from "./bbIpcHandlers.js";
-import { generateBbSummary } from "./bbSummary.js";
+import { createBbTextConversation, generateBbSummary } from "./bbSummary.js";
 import { ensureBbWorkspace } from "./bbWorkspace.js";
 import { registerFileDiarizationHandlers } from "./fileDiarizationIpcHandlers.js";
 import { registerUploadCancelHandler } from "./uploadCancelIpcHandler.js";
@@ -95,7 +95,8 @@ import {
 } from "./meetingAudioExport.js";
 import { composeMeetingAudioParts, prepareMeetingAudio } from "./meetingAudioMixer.js";
 import { recognizeMeetingSpeakers } from "./meetingSpeakerRecognition.js";
-import { generateMeetingSummary } from "./meetingSummary.js";
+import { createMeetingTextConversation, generateMeetingSummary } from "./meetingSummary.js";
+import { MEETING_SPEAKER_NAMING_INSTRUCTION, suggestMeetingSpeakerNames } from "./meetingSpeakerNaming.js";
 import { BYOK_API_KEYS } from "../config/secretKeys.js";
 import { registerDesktopSettingsHandlers } from "./desktopSettingsIpcHandlers.js";
 import { listLocalTranscriptionModels } from "./localTranscriptionModels.js";
@@ -1190,6 +1191,37 @@ export class IPCHandlers {
           saveThreadId: (id) => this.databaseManager.setMeetingRunBbThreadId(run.id, id),
           signal,
         });
+      },
+      nameSpeakers: async (input, summaryConfig, run, signal) => {
+        const namingConfig = { ...summaryConfig, instruction: MEETING_SPEAKER_NAMING_INSTRUCTION };
+        if (summaryConfig.reasoningMode === "agent") {
+          if (!summaryConfig.agentProvider || !summaryConfig.model || !summaryConfig.agentReasoningLevel) {
+            throw new Error("bb speaker naming settings are incomplete");
+          }
+          const conversation = await createBbTextConversation({
+            selection: { provider: summaryConfig.agentProvider, model: summaryConfig.model, reasoningLevel: summaryConfig.agentReasoningLevel },
+            environment: ensureBbWorkspace(app.getPath("userData")),
+            threadId: run.bbThreadId,
+            promptPrefix: MEETING_SPEAKER_NAMING_INSTRUCTION,
+            saveThreadId: (id) => this.databaseManager.setMeetingRunBbThreadId(run.id, id),
+            signal,
+          });
+          return suggestMeetingSpeakerNames(input, conversation);
+        }
+        const providers = await import("./meetingAiProviders.js");
+        const conversation = await createMeetingTextConversation(namingConfig, {
+          getAIModel: (provider, model, apiKey, baseUrl, options) =>
+            providers.getMeetingAIModel(provider, model, apiKey, baseUrl, options),
+          generateText: (options) => require("ai").generateText(options),
+          processLocalText: (text, model, options, abortSignal) =>
+            localReasoningBridge.processText(text, model, options, abortSignal),
+          getCredential: getMeetingCredential,
+          getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
+            getEnterpriseAIModel(provider, model, apiKey, enterprise),
+          validateEnterpriseEndpoint,
+          runBedrockRequest: (operation, options) => runBedrockRequest(operation, options),
+        }, signal);
+        return suggestMeetingSpeakerNames(input, conversation);
       },
       recognizeSpeakers: async (recording, run, transcript, audioPath, signal) => {
         const approvedAudioPath = resolveAllowedAudioPath(audioPath);

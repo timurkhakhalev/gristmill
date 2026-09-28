@@ -68,8 +68,8 @@ function completeRun(): RunBundle {
       createdAt: "2026-09-25T10:02:00.000Z", updatedAt: "2026-09-25T10:03:00.000Z",
     },
     transcript: { text: "Discussion", segments: [{ start: 1, end: 2, speaker: "speaker-1", text: "Discussion" }] },
-    summary: { text: "## Decision\nRelease on Friday." },
-    speakerCorrections: [],
+    summary: { text: "## Decision\nRelease on Friday.", speakerCorrectionRevision: 1 },
+    speakerCorrections: [{ speakerId: "speaker-1", profileId: null, displayName: "Alice", source: "model", revision: 1 }],
   };
 }
 
@@ -130,7 +130,22 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     },
     meetingProcessingCreateRun: async (input: Record<string, unknown>) => { calls.create.push(input); return { success: true, result: { run: { id: "00000000-0000-4000-8000-000000000004" } } }; },
     meetingProcessingUpdateBlockedRunConfig: async (input: Record<string, unknown>) => { calls.update.push(input); return { success: true }; },
-    meetingProcessingSetSpeakerCorrection: async (input: Record<string, unknown>) => { calls.speaker.push(input); return { success: true }; },
+    meetingProcessingSetSpeakerCorrection: async (input: Record<string, unknown>) => {
+      calls.speaker.push(input);
+      listedItems = listedItems.map((item) => {
+        const part = item as ReturnType<typeof recording> & { runs: RunBundle[] };
+        return { ...part, runs: part.runs.map((bundle) => {
+          if (bundle.run.id !== input.runId) return bundle;
+          const corrections = (bundle.speakerCorrections ?? []) as Array<Record<string, unknown>>;
+          const existing = corrections.find((correction) => correction.speakerId === input.speakerId);
+          return { ...bundle, speakerCorrections: [
+            ...corrections.filter((correction) => correction.speakerId !== input.speakerId),
+            { speakerId: input.speakerId, profileId: input.profileId, displayName: input.displayName, source: "user", revision: Number(existing?.revision ?? 0) + 1 },
+          ] };
+        }) };
+      });
+      return { success: true };
+    },
     meetingProcessingRetryRun: async (id: string) => { calls.retry.push(id); return { success: true }; },
   };
   let root: ReturnType<typeof createRoot> | undefined;
@@ -221,6 +236,10 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     label(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label); },
     iconButton(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onPress === "function"); },
     menu(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onAction === "function"); },
+    showTranscriptTab() { return flush(() => (findNode(tree, (node) => node.props?.ariaLabel === "Transcript and audio" && typeof node.props?.onChange === "function")!.props as { onChange(value: string): void }).onChange("transcript")); },
+    clickSpeaker(label: string) { return flush(() => (findNode(tree, (node) => typeof node.props?.onClick === "function" && textOf(node.props.children) === label)!.props as { onClick(): void }).onClick()); },
+    changeSpeakerName(value: string) { return flush(() => (findNode(tree, (node) => typeof node.props?.onChange === "function" && node.props.className === "h-9 rounded-lg px-3 text-sm")!.props as { onChange(event: { target: { value: string } }): void }).onChange({ target: { value } })); },
+    saveSpeaker() { return flush(() => (findNode(tree, (node) => typeof node.props?.onPress === "function" && textOf(node.props.children) === "meetingResults.saveSpeaker")!.props as { onPress(): void }).onPress()); },
   };
 }
 
@@ -296,6 +315,24 @@ test("a new summary reads the saved transcript without another ASR run", async (
   assert.equal((ui.calls.create[0] as Record<string, unknown>).sourceRunId, RUN);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).sourceRecordingIds, undefined);
   assert.equal(submittedSection(ui.calls.create[0], "summary").instruction, CONFIG.summary.instruction);
+});
+
+test("persisted model provenance drives auto badge; user correction removes it and offers Summary regeneration", async (t: TestContext) => {
+  const ui = await mountPanel(t, [
+    recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", completeRun()),
+  ], { viewMode: "enhanced" });
+  await ui.showTranscriptTab();
+  assert.match(ui.text(), /auto/);
+  await ui.clickSpeaker("Alice");
+  await ui.changeSpeakerName("Speaker 1");
+  await ui.saveSpeaker();
+  assert.deepEqual(ui.calls.speaker, [{ runId: RUN, speakerId: "speaker-1", displayName: "Speaker 1", profileId: null }]);
+  assert.doesNotMatch(ui.text(), /auto/);
+  assert.match(ui.text(), /Speaker names changed/);
+  assert.match(ui.text(), /This Summary was written with the earlier names/);
+  await ui.flush(() => (ui.button("Regenerate Summary")!.props as { onPress: () => void }).onPress());
+  assert.equal(ui.calls.create.at(-1)?.kind, "summary");
+  assert.equal(ui.calls.create.at(-1)?.sourceRunId, RUN);
 });
 
 

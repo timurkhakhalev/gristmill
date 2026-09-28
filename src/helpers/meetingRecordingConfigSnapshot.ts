@@ -5,22 +5,16 @@ import {
 } from "../contracts/meetingRecording.js";
 import { BYOK_API_KEYS } from "../config/secretKeys.js";
 import { selectResolvedMeetingTranscription, selectResolvedNoteFormatting } from "../config/settingsSelectors.js";
-import { BUILTIN_ACTIONS, DETAILED_NOTES_KEY, MEETING_INPUT_PREAMBLE } from "./builtinActions.js";
+import { DETAILED_NOTES_KEY, MEETING_INPUT_PREAMBLE } from "./builtinActions.js";
 import { appendDictionarySuffix } from "../config/prompts.js";
 import { getSettings } from "../stores/settingsStore.js";
 import { getBaseLanguageCode } from "../utils/languageSupport.js";
+import { getActions } from "../stores/actionStore.js";
 
 const credentialRefForProvider = (provider: string): string | undefined => {
   if (provider === "custom") return "CUSTOM_TRANSCRIPTION_API_KEY";
   return BYOK_API_KEYS.find((entry) => entry.base === provider)?.env;
 };
-
-export function builtinMeetingSummaryInstruction(): string {
-  const action = BUILTIN_ACTIONS.find((item) => item.translationKey === DETAILED_NOTES_KEY);
-  if (!action) throw new Error("Built-in meeting summary prompt is unavailable");
-  const state = getSettings();
-  return appendDictionarySuffix(MEETING_INPUT_PREAMBLE + action.prompt, state.customDictionary ?? [], state.uiLanguage);
-}
 
 export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingProcessingConfig["transcription"]): {
   config: MeetingProcessingConfig | null;
@@ -68,7 +62,8 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
   }
 
   const formatting = selectResolvedNoteFormatting(state);
-  const detailedNotes = BUILTIN_ACTIONS.find((action) => action.translationKey === DETAILED_NOTES_KEY);
+  const detailedNotes = getActions().find((action) => action.translation_key === DETAILED_NOTES_KEY);
+  if (!detailedNotes) return { config: null, configError: { code: "detailed-notes-action-missing" } };
   let summary: Record<string, unknown> | null = null;
   if (
     detailedNotes &&

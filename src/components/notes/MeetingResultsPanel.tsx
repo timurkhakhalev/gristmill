@@ -6,7 +6,8 @@ import { AlignLeft, ArrowLeft, ArrowRight, AudioLines, Check, ChevronDown, Copy,
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
-import { builtinMeetingSummaryInstruction, snapshotMeetingRecordingConfig } from "../../helpers/meetingRecordingConfigSnapshot";
+import { snapshotMeetingRecordingConfig } from "../../helpers/meetingRecordingConfigSnapshot";
+import { initializeActions } from "../../stores/actionStore";
 import { ConfirmDialog } from "../ui/dialog";
 import { useDialogs } from "../../hooks/useDialogs";
 import { openSettings } from "../../utils/openSettings";
@@ -278,6 +279,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const selectedId = selected?.run.id ?? "";
   const savedSummary = selected?.summary?.text;
   const summaryText = savedSummary && mock ? composeMockSummary(savedSummary, mock.tasks, mock.recap) : savedSummary;
+  const speakerCorrectionRevision = selected?.speakerCorrections.reduce((sum, correction) => sum + correction.revision, 0) ?? 0;
+  const summaryIsStale = selected?.summary?.speakerCorrectionRevision !== undefined &&
+    selected.summary.speakerCorrectionRevision !== speakerCorrectionRevision;
   const copyText = viewMode === "enhanced" ? summaryText || fallbackText.enhanced : fallbackText.raw;
   const transcriptCopyText = selected?.transcript?.text || fallbackText.transcript;
   const [copied, setCopied] = useState(false);
@@ -364,12 +368,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
   const createRun = (choice: RunChoice) => runTask(async () => {
     if (previewRecordings) { notify("Mock processing queued in memory"); return; }
-    const snapshot = snapshotMeetingRecordingConfig();
     const sourceRunIdForKind = choice.kind === "summary"
       ? (selected?.run.kind === "summary" ? selected.run.sourceRunId ?? "" : selectedId)
       : "";
     const savedConfig = (choice.kind === "summary" ? versions.find((item) => item.run.id === sourceRunIdForKind) : selected)?.run.config;
-    const baseConfig = snapshot.config ?? savedConfig;
+    await initializeActions();
+    const snapshot = snapshotMeetingRecordingConfig(choice.kind === "summary" ? savedConfig?.transcription : undefined);
+    const baseConfig = snapshot.config;
     if (!baseConfig) throw new Error(snapshot.configError?.code || "processing-config-missing");
     const config: MeetingProcessingConfig = { ...baseConfig };
     const ids = choice.partId ? [choice.partId] : recordings
@@ -383,7 +388,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       const source = versions.find((item) => item.run.id === sourceRunIdForKind);
       if (!source) throw new Error("summary-transcript-missing");
       config.transcription = source.run.config?.transcription ?? config.transcription;
-      if (!config.summary) config.summary = { instruction: builtinMeetingSummaryInstruction(), reasoningMode: "providers" };
     }
     const source = choice.kind === "summary" ? versions.find((item) => item.run.id === sourceRunIdForKind) : null;
     const result = await window.electronAPI.meetingProcessingCreateRun({
@@ -417,7 +421,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const correctSpeaker = () => runTask(async () => {
     if (!speakerId || !selected || !speakerName.trim()) return;
     if (previewRecordings) {
-      setRecordings((items) => items.map((item) => ({ ...item, runs: item.runs.map((run) => run.run.id === selected.run.id ? { ...run, speakerCorrections: [...run.speakerCorrections.filter((correction) => correction.speakerId !== speakerId), { speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId) }] } : run) })));
+      setRecordings((items) => items.map((item) => ({ ...item, runs: item.runs.map((run) => run.run.id === selected.run.id ? { ...run, speakerCorrections: [...run.speakerCorrections.filter((correction) => correction.speakerId !== speakerId), { speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId), source: "user", revision: (run.speakerCorrections.find((correction) => correction.speakerId === speakerId)?.revision ?? 0) + 1 }] } : run) })));
       setSpeakerId(null);
       setMock((current) => current && { ...current, modelSpeakerIds: current.modelSpeakerIds?.filter((id) => id !== speakerId), summaryStale: Boolean(summaryText) });
       return;
@@ -483,7 +487,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
                 <div>{segment.speaker && <button className="rounded text-xs font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
                   const correction = selected.speakerCorrections.find((item) => item.speakerId === segment.speaker);
                   setSpeakerId(segment.speaker ?? null); setSpeakerName(correction?.displayName ?? (segment.speaker ? speakerLabel(segment.speaker) : "")); setSpeakerProfileId(String(correction?.profileId ?? "none"));
-                }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}{segment.speaker && mock?.modelSpeakerIds?.includes(segment.speaker) && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("autoNameHint", "Suggested from the conversation. Click the name to change it.")}>{tr("autoName", "auto")}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
+                }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}{segment.speaker && (selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.source === "model" || mock?.modelSpeakerIds?.includes(segment.speaker)) && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("autoNameHint", "Suggested from the conversation. Click the name to change it.")}>{tr("autoName", "auto")}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
               </div>
             </div>;
           });
@@ -625,7 +629,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </Popover.Dialog></Popover.Content>
         </Popover>
       </div>}
-      {mock && summaryText && <MockSummaryNotices mock={mock} onRegenerate={() => { notify("Mock: Summary regenerated with the new names"); patchMock({ summaryStale: false }); }} />}
+      {summaryText && summaryIsStale && <SummaryStaleNotice onRegenerate={() => openRun("summary")} />}
+      {mock && summaryText && !summaryIsStale && <MockSummaryNotices mock={mock} onRegenerate={() => { notify("Mock: Summary regenerated with the new names"); patchMock({ summaryStale: false }); }} />}
       {summaryText ? <article className="note-prose"><ReactMarkdown>{summaryText}</ReactMarkdown></article> : <>
         {mock?.autoSummarySkipped && <NoteNotice status="accent" title={tr("autoSummarySkipped", "Automatic Summary skipped")} description={tr("autoSummarySkippedReason", "This meeting is short ({{seconds}} s, {{chars}} characters). Automatic Summary starts after 180 s and 2500 characters. You can create one now.", mock.autoSummarySkipped)} />}
         {fallbackSummary}
@@ -673,6 +678,16 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 function MockSummaryNotices({ mock, onRegenerate }: { mock: MockPipeline; onRegenerate: () => void }) {
   const { t } = useTranslation();
   if (!mock.summaryStale) return null;
+  return <NoteNotice
+    status="warning"
+    title={t("meetingResults.summaryStale", { defaultValue: "Speaker names changed" })}
+    description={t("meetingResults.summaryStaleReason", { defaultValue: "This Summary was written with the earlier names and is unchanged." })}
+    actions={<Button size="sm" variant="secondary" onPress={onRegenerate}>{t("meetingResults.regenerateSummary", { defaultValue: "Regenerate Summary" })}</Button>}
+  />;
+}
+
+function SummaryStaleNotice({ onRegenerate }: { onRegenerate: () => void }) {
+  const { t } = useTranslation();
   return <NoteNotice
     status="warning"
     title={t("meetingResults.summaryStale", { defaultValue: "Speaker names changed" })}

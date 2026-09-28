@@ -10,7 +10,7 @@ import AddNotesToFolderDialog from "./AddNotesToFolderDialog";
 import { useActionProcessing } from "../../hooks/useActionProcessing";
 import type { ActionItem } from "../../contracts/actions";
 import type { NoteItem } from "../../contracts/notes";
-import { useActions } from "../../stores/actionStore";
+import { initializeActions, useActions } from "../../stores/actionStore";
 import { DETAILED_NOTES_KEY } from "../../helpers/builtinActions";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { selectResolvedNoteFormatting } from "../../config/settingsSelectors";
@@ -523,9 +523,10 @@ export default function PersonalNotesView({
       ),
     });
   };
-  const generateSummary = () => {
-    const action = actions.find((a) => a.translation_key === DETAILED_NOTES_KEY);
-    if (action) void runNoteAction(action);
+  const generateSummary = async () => {
+    const currentActions = await initializeActions();
+    const action = currentActions.find((a) => a.translation_key === DETAILED_NOTES_KEY);
+    if (action) await runNoteAction(action);
   };
 
   return (

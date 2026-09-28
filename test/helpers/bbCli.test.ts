@@ -71,6 +71,10 @@ else if (args[0] === "thread" && args[1] === "spawn") {
   let prompt = "";
   process.stdin.on("data", (chunk) => { prompt += chunk; });
   process.stdin.on("end", () => { fs.writeFileSync(process.env.BB_FAKE_CAPTURE, prompt); out({ id: "thr_test" }); });
+} else if (args[0] === "thread" && args[1] === "tell") {
+  let prompt = "";
+  process.stdin.on("data", (chunk) => { prompt += chunk; });
+  process.stdin.on("end", () => { fs.appendFileSync(process.env.BB_FAKE_CAPTURE, "\\n" + prompt); out({ ok: true }); });
 } else if (args[0] === "thread" && args[1] === "log") {
   const after = Number(args[args.indexOf("--after-seq") + 1]);
   out(after === 0 ? [

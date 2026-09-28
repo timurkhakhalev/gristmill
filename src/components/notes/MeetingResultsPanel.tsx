@@ -455,7 +455,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       <div className="ms-auto flex flex-wrap items-center gap-1.5">
       <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
         <IconTooltip label={tr("transcriptAndAudio", "Transcript and audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("transcriptAndAudio", "Transcript and audio")} ${audioCount}`}><AudioLines size={16}/>{audioCount > 0 && <span key={audioCount} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{audioCount}</span>}</Button></IconTooltip>
-        <Popover.Content placement="bottom end" className="w-[480px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="flex h-[min(560px,75vh)] flex-col p-3">
+        <Popover.Content placement="bottom end" className="w-[440px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="flex max-h-[min(520px,calc(100vh-160px))] flex-col p-3">
           <div className="mb-2 flex items-center gap-2">
             <Popover.Heading className="sr-only">{tr("transcriptAndAudio", "Transcript and audio")}</Popover.Heading>
             <NoteViewSwitch
@@ -499,7 +499,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </div>)}
           </section>})}
           </div>
-          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <Button size="sm" variant="secondary" className="mt-2 w-full gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess")}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
+          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <Button size="sm" variant="secondary" className="mt-2 w-full shrink-0 gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess")}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
           </>}
         </Popover.Dialog></Popover.Content>
       </Popover>

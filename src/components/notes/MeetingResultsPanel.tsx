@@ -470,11 +470,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           })),
         }}
       />
-      <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
-        <Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7 text-muted hover:text-foreground" isDisabled={!copyText.trim()} aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")} onPress={() => void copyView()}>
-          {copied ? <Check size={15}/> : <Copy size={15}/>}
-        </Button>
-      </IconTooltip>
       <div className="ms-auto flex flex-wrap items-center gap-1.5">
       <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
         <IconTooltip label={tr("transcriptAndAudio", "Transcript and audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("transcriptAndAudio", "Transcript and audio")} ${audioCount}`}><AudioLines size={16}/>{audioCount > 0 && <span key={audioCount} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{audioCount}</span>}</Button></IconTooltip>
@@ -578,6 +573,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       {selected?.summary?.text ? <article className="note-prose"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary}
     </div>}
     </div>
+    {copyText.trim() && <div className="mt-4 flex justify-start">
+        <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
+          <Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7 text-muted hover:text-foreground" isDisabled={!copyText.trim()} aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")} onPress={() => void copyView()}>
+            {copied ? <Check size={15}/> : <Copy size={15}/>}
+          </Button>
+        </IconTooltip>
+    </div>}
     {message && <NoteNotice status="default" title={message} />}
     {playingRecording && (
       <AudioPlayer

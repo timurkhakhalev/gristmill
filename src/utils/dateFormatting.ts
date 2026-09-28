@@ -52,6 +52,11 @@ export function formatShortDate(dateStr: string, locale?: string, format: DateFo
   if (!dateStr) return "";
   const date = normalizeDbDate(dateStr);
   if (Number.isNaN(date.getTime())) return "";
+  // Locale format keeps the user-facing month name (en → "Sep 28", ru → "28 сент.").
+  // The non-locale formats stay compact and dot- or slash-separated.
+  if (format === "locale") {
+    return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date);
+  }
   return formatDate(date, locale, { month: "short", day: "numeric" }, format);
 }
 

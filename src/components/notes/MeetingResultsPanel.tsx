@@ -131,16 +131,17 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const patchMock = useCallback((patch: Partial<MockPipeline>) => setMock((current) => current && { ...current, ...patch }), []);
   const mockTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(mockTimer.current), []);
+  const mockGateSeconds = mock?.waitingSeconds;
   const mockGateActive = mock?.waitingSeconds !== undefined && mock.waitingSeconds > 0;
   useEffect(() => {
-    if (!mockGateActive) return;
-    const id = window.setInterval(() => setMock((current) => {
+    if (mockGateSeconds === undefined || mockGateSeconds <= 0) return;
+    const id = window.setTimeout(() => setMock((current) => {
       if (!current?.waitingSeconds) return current;
       const left = current.waitingSeconds - 1;
       return left > 0 ? { ...current, waitingSeconds: left } : { ...current, waitingSeconds: undefined, asrRunning: true };
     }), 1000);
-    return () => window.clearInterval(id);
-  }, [mockGateActive]);
+    return () => window.clearTimeout(id);
+  }, [mockGateSeconds]);
   useEffect(() => {
     if (!mock?.asrRunning) return;
     const id = window.setTimeout(() => setMock((current) => current?.asrRunning
@@ -317,10 +318,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     : null;
   useEffect(() => {
     if (gateDeadline === null) return;
-    setCountdownNow(Date.now());
-    const id = window.setInterval(() => setCountdownNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [gateDeadline]);
+    const id = window.setTimeout(() => setCountdownNow(Date.now()), 1000);
+    return () => window.clearTimeout(id);
+  }, [countdownNow, gateDeadline]);
   const liveWaitingSeconds = gateDeadline === null ? 0 : Math.max(0, Math.ceil((gateDeadline - countdownNow) / 1000));
   const gateSeconds = mockGateActive ? mock?.waitingSeconds ?? 0 : liveWaitingSeconds;
   const gateActive = gateSeconds > 0;

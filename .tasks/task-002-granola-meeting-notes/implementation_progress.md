@@ -26,3 +26,7 @@ Verification:
 Commits: `49d8e48c6` (M1 implementation). This progress-record update is a separate M1 log commit.
 
 M1 regression-fix commit: `5ec61f8d5` (`M1: fix gate regression test assumptions`).
+
+Root's rerun then exposed a renderer unmount failure because the test browser supplies `setTimeout`/`clearTimeout` but not `clearInterval`. The live and mock countdowns now use one-second timeouts that reschedule from state changes, so the same timer APIs drive countdown and cleanup. Renderer typecheck, scoped ESLint, and `git diff --check` pass; root should rerun the focused tests.
+
+Timer-fix commit hash is recorded in the follow-up progress update.

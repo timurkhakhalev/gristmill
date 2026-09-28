@@ -839,7 +839,7 @@ export default function NoteEditor({
                   isProcessing={isProcessing}
                   isGeneratingSummary={
                     actionProcessingState === "processing" &&
-                    actionName === t("notes.editor.generateSummary", { defaultValue: "✨ Summary" })
+                    actionName === t("notes.editor.generateSummary", { defaultValue: "Summary" })
                   }
                   showSummaryAction={hasMeetingTranscript && !enhancement && !isRecording}
                   disabled={!recordingAllowed}

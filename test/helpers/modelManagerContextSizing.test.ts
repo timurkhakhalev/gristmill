@@ -2,7 +2,7 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const Module = require("node:module");
 const fs: typeof import("node:fs/promises") = require("node:fs/promises");
-const http = require("node:http");
+const http: typeof import("node:http") = require("node:http");
 const os: typeof import("node:os") = require("node:os");
 const path: typeof import("node:path") = require("node:path");
 
@@ -50,6 +50,10 @@ const SHORT_PROMPT = "Clean up this sentence.";
 // ~20k estimated tokens, the size that fails on main today.
 const LONG_PROMPT = "word ".repeat(12000);
 
+function hasErrorCode(error: unknown, code: string): error is Error & { code: string } {
+  return error instanceof Error && "code" in error && error.code === code;
+}
+
 async function setup(t: import("node:test").TestContext, { tokenCount = null, totalMemoryBytes = 48 * GIB }: {
   tokenCount?: number | null;
   totalMemoryBytes?: number;
@@ -61,8 +65,8 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
   const calls = { tokenize: 0, props: 0, completions: 0, template: 0 };
   // The completion body is where the output allowance actually lands, so tests
   // about it have to read the wire rather than the config object.
-  let completionBody: any = null;
-  const server = http.createServer((req: any, res: any) => {
+  let completionBody: { max_tokens: number } | null = null;
+  const server = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (chunk: unknown) => (raw += chunk));
     req.on("end", () => {
@@ -84,15 +88,17 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
         }
       } else {
         calls.completions += 1;
-        completionBody = JSON.parse(raw);
+        const parsed: unknown = JSON.parse(raw);
+        assert.ok(parsed && typeof parsed === "object" && "max_tokens" in parsed && typeof parsed.max_tokens === "number");
+        completionBody = { max_tokens: parsed.max_tokens };
         payload = { choices: [{ finish_reason: "stop", message: { content: "done" } }] };
       }
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(payload));
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
 
   const modelManager = loadModelManager();
   const model = modelRegistryData.localProviders[0].models[0];
@@ -110,7 +116,9 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
   serverManager.cachedServerBinaryPaths = { default: "/stub/llama-server" };
   serverManager.ready = true;
   serverManager.process = {};
-  serverManager.port = server.address().port;
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  serverManager.port = address.port;
   serverManager.contextSize = 16384;
   modelManager.currentServerModelId = model.id;
   modelManager._systemMemoryBytes = () => totalMemoryBytes;
@@ -118,12 +126,12 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
 
   // Stand in for the spawn. The real _doStart leaves the manager ready on a
   // live port, so the stub must too, or the preflight would see a dead server.
-  const restarts: any[] = [];
+  const restarts: (number | undefined)[] = [];
   serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     restarts.push(options.contextSize);
     serverManager.ready = true;
     serverManager.process = {};
-    serverManager.port = server.address().port;
+    serverManager.port = address.port;
   };
   // Avoid signalling a pid that does not belong to us; stop() itself is
   // covered in llamaServerContext.test.js.
@@ -139,7 +147,7 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
     calls,
     restarts,
     serverManager,
-    completionBody: () => completionBody,
+    completionBody: () => { assert.ok(completionBody); return completionBody; },
   };
 }
 
@@ -186,10 +194,14 @@ test("a request too large for the machine fails before it reaches the model", as
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: any) => {
-      assert.equal(error.code, "CONTEXT_TOO_LARGE");
-      assert.ok(error.details.neededTokens >= 200000);
-      assert.ok(error.details.maxContextTokens > 0);
+    (error: unknown) => {
+      assert.ok(hasErrorCode(error, "CONTEXT_TOO_LARGE"));
+      assert.ok("details" in error);
+      const details = error.details;
+      assert.ok(details && typeof details === "object" && "neededTokens" in details && typeof details.neededTokens === "number");
+      assert.ok("maxContextTokens" in details && typeof details.maxContextTokens === "number");
+      assert.ok(details.neededTokens >= 200000);
+      assert.ok(details.maxContextTokens > 0);
       assert.ok(!error.message.includes("{"), `raw JSON leaked: ${error.message}`);
       return true;
     }
@@ -227,7 +239,7 @@ test("a small machine refuses what a large one accepts, for the same request", a
   const small = await setup(t, { tokenCount: 60000, totalMemoryBytes: 8 * GIB });
   await assert.rejects(
     () => small.modelManager.runInference(small.modelId, LONG_PROMPT, { systemPrompt: "Notes." }),
-    (error: any) => error.code === "CONTEXT_TOO_LARGE"
+    (error: unknown) => hasErrorCode(error, "CONTEXT_TOO_LARGE")
   );
   assert.equal(small.calls.completions, 0);
 });
@@ -266,6 +278,7 @@ test("a caller's context floor cannot breach the machine's ceiling", async (t: i
 
   assert.equal(restarts.length, 1, "the raised floor should grow the window once");
   const [started] = restarts;
+  assert.ok(started);
   assert.ok(started > 16384, `should grow past the baseline, started at ${started}`);
   assert.ok(started < 131072, `must never reach the caller's floor, started at ${started}`);
   assert.equal(serverManager.contextSize, started);
@@ -301,7 +314,7 @@ test("a prompt leaving no room for a usable answer is still refused", async (t: 
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: any) => error.code === "CONTEXT_TOO_LARGE"
+    (error: unknown) => hasErrorCode(error, "CONTEXT_TOO_LARGE")
   );
   assert.equal(calls.completions, 0, "must not send a request that cannot answer");
 });
@@ -321,7 +334,7 @@ test("a selection edit is refused rather than given a clipped answer", async (t:
         maxTokens: 8192,
         requireCompleteOutput: true,
       }),
-    (error: any) => error.code === "CONTEXT_TOO_LARGE"
+    (error: unknown) => hasErrorCode(error, "CONTEXT_TOO_LARGE")
   );
   assert.equal(calls.completions, 0);
 });
@@ -348,7 +361,7 @@ test("a grow that fails comes back at the window that was working", async (t: im
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: any) => error.code === "CONTEXT_TOO_LARGE"
+    (error: unknown) => hasErrorCode(error, "CONTEXT_TOO_LARGE")
   );
 
   assert.deepEqual(attempts, [32768, 16384], "one failed grow, then back to what worked");
@@ -366,14 +379,15 @@ test("a server that cannot come back reports a typed failure, not llama.cpp stde
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: any) => {
-      assert.equal(error.code, "LOCAL_SERVER_UNAVAILABLE");
+    (error: unknown) => {
+      assert.ok(hasErrorCode(error, "LOCAL_SERVER_UNAVAILABLE"));
       assert.ok(
         !error.message.includes("Process output"),
         `server output leaked: ${error.message}`
       );
       // details crosses IPC to the renderer, so the startup dump must not ride
       // along in there either — it belongs in the main-process log.
+      assert.ok("details" in error);
       assert.ok(
         !JSON.stringify(error.details).includes("Process output"),
         `server output leaked through details: ${JSON.stringify(error.details)}`
@@ -398,7 +412,7 @@ test("an answer too small to be worth generating is refused rather than stubbed"
         systemPrompt: "Write notes.",
         maxTokens: 4096,
       }),
-    (error: any) => error.code === "CONTEXT_TOO_LARGE"
+    (error: unknown) => hasErrorCode(error, "CONTEXT_TOO_LARGE")
   );
   assert.equal(calls.completions, 0);
 });
@@ -422,7 +436,7 @@ test("a start that steps the context down is not retried at the size that steppe
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: any) => error.code === "CONTEXT_TOO_LARGE"
+    (error: unknown) => hasErrorCode(error, "CONTEXT_TOO_LARGE")
   );
 
   assert.deepEqual(attempts, [32768], "the step-down must be remembered, not re-attempted");
@@ -444,7 +458,7 @@ test("a server that already died is not restored to a window it no longer has", 
 
   await assert.rejects(
     () => modelManager.runInference(modelId, LONG_PROMPT, { systemPrompt: "Write notes." }),
-    (error: any) => error.code === "LOCAL_SERVER_UNAVAILABLE"
+    (error: unknown) => hasErrorCode(error, "LOCAL_SERVER_UNAVAILABLE")
   );
 
   assert.deepEqual(attempts, [32768], "no second attempt at a window that was already gone");

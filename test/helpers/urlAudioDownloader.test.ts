@@ -35,12 +35,13 @@ test("isPrivateIp covers private, mapped, NAT64 and public addresses", () => {
 
 test("ssrfSafeLookup rejects private entries in an all-address lookup", async () => {
   const original = dns.lookup;
-  dns.lookup = (_host: string, _options: unknown, callback: any) =>
+  dns.lookup = (_host: string, _options: unknown, callback: (...args: unknown[]) => void) =>
     callback(null, [{ address: "93.184.216.34", family: 4 }, { address: "10.0.0.1", family: 4 }]);
   try {
     await new Promise<void>((resolve, reject) => {
-      downloader.ssrfSafeLookup("example.com", { all: true }, (error: any) => {
+      downloader.ssrfSafeLookup("example.com", { all: true }, (error: unknown) => {
         try {
+          assert.ok(error && typeof error === "object" && "code" in error);
           assert.equal(error.code, "SSRF_BLOCKED");
           resolve();
         } catch (e) {
@@ -55,11 +56,12 @@ test("ssrfSafeLookup rejects private entries in an all-address lookup", async ()
 
 test("ssrfSafeLookup rejects a private address in the legacy single-address form", async () => {
   const original = dns.lookup;
-  dns.lookup = (_host: string, _options: unknown, callback: any) => callback(null, "127.0.0.1", 4);
+  dns.lookup = (_host: string, _options: unknown, callback: (...args: unknown[]) => void) => callback(null, "127.0.0.1", 4);
   try {
     await new Promise<void>((resolve, reject) => {
-      downloader.ssrfSafeLookup("example.com", {}, (error: any) => {
+      downloader.ssrfSafeLookup("example.com", {}, (error: unknown) => {
         try {
+          assert.ok(error && typeof error === "object" && "code" in error);
           assert.equal(error.code, "SSRF_BLOCKED");
           resolve();
         } catch (e) {
@@ -78,7 +80,7 @@ test("ssrfSafeLookup forwards an all-public lookup unchanged", async () => {
     { address: "93.184.216.34", family: 4 },
     { address: "2606:2800:220:1:248:1893:25c8:1946", family: 6 },
   ];
-  dns.lookup = (_host: string, _options: unknown, callback: any) => callback(null, addresses);
+  dns.lookup = (_host: string, _options: unknown, callback: (...args: unknown[]) => void) => callback(null, addresses);
   try {
     await new Promise<void>((resolve, reject) => {
       downloader.ssrfSafeLookup("example.com", { all: true }, (error: unknown, value: unknown) => {
@@ -102,7 +104,7 @@ test("isAcceptableAudioContentType accepts audio and video only", () => {
   assert.equal(downloader.isAcceptableAudioContentType("text/html"), false);
 });
 
-function makeResponse(body: any, headers = {}) {
+function makeResponse(body: string, headers = {}) {
   const response = Readable.from([Buffer.from(body)]);
   response.statusCode = 200;
   response.headers = { "content-type": "audio/mpeg", "content-length": String(body.length), ...headers };
@@ -112,7 +114,7 @@ function makeResponse(body: any, headers = {}) {
 test("download streams a validated direct HTTPS response to a temp file", async () => {
   const original = https.request;
   const calls: unknown[] = [];
-  https.request = (parsed: unknown, options: any, callback: any) => {
+  https.request = (_parsed: unknown, options: { method: string }, callback: (response: ReturnType<typeof makeResponse>) => void) => {
     calls.push(options.method);
     const request = new EventEmitter();
     request.end = () => setImmediate(() => callback(options.method === "HEAD" ? makeResponse("") : makeResponse("audio")));
@@ -141,10 +143,13 @@ function makeDirectResponse({ statusCode = 200, headers = {}, body = null }: { s
   return response;
 }
 
-async function withFakeHttps(handler: any, callback: any) {
+async function withFakeHttps(
+  handler: (parsed: URL, options: { method: string }) => ReturnType<typeof makeDirectResponse>,
+  callback: (calls: { method: string; url: string }[]) => Promise<unknown>
+) {
   const original = https.request;
-  const calls: unknown[] = [];
-  https.request = (parsed: any, options: any, responseCallback: any) => {
+  const calls: { method: string; url: string }[] = [];
+  https.request = (parsed: URL, options: { method: string }, responseCallback: (response: ReturnType<typeof makeDirectResponse>) => void) => {
     calls.push({ method: options.method, url: parsed.href });
     const request = new EventEmitter();
     request.destroy = () => {};
@@ -167,7 +172,7 @@ test("download rejects a HEAD redirect to a private IP", async () => {
 
 test("download rejects a GET redirect to a non-HTTPS URL", async () => {
   await withFakeHttps(
-    (_parsed: unknown, options: any) => options.method === "HEAD"
+    (_parsed, options) => options.method === "HEAD"
       ? makeDirectResponse({ statusCode: 405 })
       : makeDirectResponse({ statusCode: 302, headers: { location: "http://93.184.216.34/x.mp3" } }),
     async () => assert.rejects(downloader.download("https://93.184.216.34/file.mp3"), { code: "INVALID_URL" })
@@ -183,7 +188,7 @@ test("download rejects a redirect to YouTube", async () => {
 
 test("download validates GET content type when HEAD is unavailable", async () => {
   await withFakeHttps(
-    (_parsed: unknown, options: any) => options.method === "HEAD"
+    (_parsed, options) => options.method === "HEAD"
       ? makeDirectResponse({ statusCode: 405 })
       : makeDirectResponse({ headers: { "content-type": "text/html" }, body: "<html>" }),
     async () => assert.rejects(downloader.download("https://93.184.216.34/file.mp3"), { code: "CONTENT_TYPE_INVALID" })
@@ -191,9 +196,9 @@ test("download validates GET content type when HEAD is unavailable", async () =>
 });
 
 test("downloadViaProxy restarts HTTPS redirects and rejects private targets", async () => {
-  const requests: any[] = [];
+  const requests: { url: string; aborted?: boolean }[] = [];
   const fakeNet = {
-    request(options: any) {
+    request(options: { url: string }) {
       const request = new EventEmitter();
       request.url = options.url;
       request.setHeader = () => {};

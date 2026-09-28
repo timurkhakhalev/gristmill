@@ -4,17 +4,21 @@ const path: typeof import("node:path") = require("node:path");
 const test: typeof import("node:test") = require("node:test");
 const { createDb } = require("./harness/db.ts");
 const { getUserDataDir }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
-const DatabaseManager = require("../../src/helpers/database.ts");
+const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
 const MeetingRecordingStorage: typeof import("../../src/helpers/meetingRecordingStorage.ts").MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
 const IPCHandlers: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require("../../src/helpers/ipcHandlers.ts");
 const { DEFAULT_RETENTION_SETTINGS }: typeof import("../../src/helpers/retentionSettings.ts") = require("../../src/helpers/retentionSettings.ts");
 const { createMeetingAudioOperationRegistry }: typeof import("../../src/helpers/meetingAudioExport.ts") = require("../../src/helpers/meetingAudioExport.ts");
+import type { DatabaseManager as Database } from "../../src/helpers/database.ts";
+import type { MeetingRecordingStorage as RecordingStorage } from "../../src/helpers/meetingRecordingStorage.ts";
+import type { RetentionSettings } from "../../src/helpers/retentionSettings.ts";
 
 const DAY = 86_400_000;
 const config = { transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "en" } };
 
-function createFinishedRecording(db: any, storage: any, anchor: any, ageDays: any) {
+function createFinishedRecording(db: Database, storage: RecordingStorage, anchor: number, ageDays: number) {
   const note = db.saveNote("Retention test", "Manual note stays", "meeting").note;
+  assert.ok(note);
   const startedAt = new Date(anchor - (ageDays + 1) * DAY).toISOString();
   const recording = db.createMeetingRecording(note.id, { config }, startedAt);
   db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
@@ -31,14 +35,14 @@ function createFinishedRecording(db: any, storage: any, anchor: any, ageDays: an
   return { note, recording: finalized.recording, initialRun: finalized.initialRun };
 }
 
-function storeTranscript(db: any, storage: any, run: any, text: string) {
+function storeTranscript(db: Database, storage: RecordingStorage, run: { id: string }, text: string) {
   storage.writeRunArtifact(run.id, "provider-response", { runId: run.id });
   assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
   storage.writeRunArtifact(run.id, "transcript", { text });
   assert.equal(db.setMeetingRunArtifact(run.id, "transcript").success, true);
 }
 
-function runCleanup(db: unknown, storage: unknown, settings: any, overrides = {}) {
+function runCleanup(db: Database, storage: RecordingStorage, settings: Partial<RetentionSettings>, overrides = {}) {
   const context = {
     databaseManager: db,
     audioStorageManager: {
@@ -56,11 +60,11 @@ function runCleanup(db: unknown, storage: unknown, settings: any, overrides = {}
   return IPCHandlers.prototype._runRetentionCleanup.call(context);
 }
 
-function holdAudioOperation(registry: any, recordingId: string) {
-  let start: any;
-  const started = new Promise((resolve) => { start = resolve; });
+function holdAudioOperation(registry: ReturnType<typeof createMeetingAudioOperationRegistry>, recordingId: string) {
+  let start!: () => void;
+  const started = new Promise<void>((resolve) => { start = resolve; });
   let closed = false;
-  const operation = registry.run(recordingId, (signal: any) => new Promise<void>((resolve) => {
+  const operation = registry.run(recordingId, (signal) => new Promise<void>((resolve) => {
     start();
     signal.addEventListener("abort", () => {
       closed = true;
@@ -70,7 +74,7 @@ function holdAudioOperation(registry: any, recordingId: string) {
   return { started, operation, isClosed: () => closed };
 }
 
-function withClock(t: import("node:test").TestContext, timestamp: any) {
+function withClock(t: import("node:test").TestContext, timestamp: number) {
   const original = Date.now;
   Date.now = () => timestamp;
   t.after(() => { Date.now = original; });
@@ -164,8 +168,8 @@ test("note deletion waits for the active reader before removing its Note and run
   const intent = db.beginMeetingNoteDeletion(note.id);
   assert.ok(intent, "note deletion must persist an intent before removing files");
   let releaseReader!: () => void;
-  let readerStarted: any;
-  const readerWait = new Promise((resolve) => { readerStarted = resolve; });
+  let readerStarted!: () => void;
+  const readerWait = new Promise<void>((resolve) => { readerStarted = resolve; });
   const release = new Promise<void>((resolve) => { releaseReader = resolve; });
   const context = {
     databaseManager: db,
@@ -209,8 +213,8 @@ test("expiry uses recording end time and waits for readers before deleting sourc
   fs.utimesSync(filePath, new Date(anchor), new Date(anchor));
 
   let releaseReader!: () => void;
-  let readerStarted: any;
-  const readerWait = new Promise((resolve) => { readerStarted = resolve; });
+  let readerStarted!: () => void;
+  const readerWait = new Promise<void>((resolve) => { readerStarted = resolve; });
   const release = new Promise<void>((resolve) => { releaseReader = resolve; });
   const cleanup = runCleanup(db, storage, { audioRetentionDays: 7, transcriptRetentionDays: 0 }, {
     _meetingProcessing: {
@@ -274,8 +278,10 @@ test("reopened SQLite preserves a failed deletion intent for the next startup sw
   try {
     const reopenedStorage = new MeetingRecordingStorage({ userDataPath: root });
     assert.equal(await runCleanup(reopened, reopenedStorage, { audioRetentionDays: 7, transcriptRetentionDays: 0 }), true);
-    assert.equal(reopened.getMeetingRecording(recording.id).audioState, "deleted");
-    assert.equal(reopened.listMeetingDeletionIntents().some((intent: any) => intent.id === intentId), false);
+    const reopenedRecording = reopened.getMeetingRecording(recording.id);
+    assert.ok(reopenedRecording);
+    assert.equal(reopenedRecording.audioState, "deleted");
+    assert.equal(reopened.listMeetingDeletionIntents().some((intent) => intent.id === intentId), false);
   } finally {
     reopened.close();
   }

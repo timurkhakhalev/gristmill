@@ -7,7 +7,9 @@ const Module = require("node:module");
 const loopbackModulePath = require.resolve("../../src/helpers/oauthLoopbackFlow.ts");
 const originalLoad = Module._load;
 
-function loadLoopback() {
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+
+function loadLoopback(): typeof import("../../src/helpers/oauthLoopbackFlow.ts") {
   delete require.cache[loopbackModulePath];
   Module._load = function loadWithElectronMock(request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") {
@@ -16,7 +18,7 @@ function loadLoopback() {
     return originalLoad.call(this, request, parent, isMain);
   };
   try {
-    return require(loopbackModulePath);
+    return require(loopbackModulePath) as typeof import("../../src/helpers/oauthLoopbackFlow.ts");
   } finally {
     Module._load = originalLoad;
   }
@@ -26,7 +28,7 @@ function startFlow(handleCallback: (code: string) => Promise<{ ok?: boolean; cod
   const { runOAuthLoopbackFlow } = loadLoopback();
   let redirectUri: unknown;
   let state: unknown;
-  let server;
+  let server!: import("node:http").Server;
   const originalCreateServer = http.createServer;
   http.createServer = (...args: unknown[]) => {
     server = originalCreateServer(...args);
@@ -35,7 +37,7 @@ function startFlow(handleCallback: (code: string) => Promise<{ ok?: boolean; cod
 
   try {
     const flow = runOAuthLoopbackFlow({
-      buildAuthUrl: (uri: unknown, flowState: unknown) => {
+      buildAuthUrl: (uri, flowState) => {
         redirectUri = uri;
         state = flowState;
         return "https://example.test/auth";
@@ -50,8 +52,8 @@ function startFlow(handleCallback: (code: string) => Promise<{ ok?: boolean; cod
 
 function startBlockedFlow() {
   let callbackCount = 0;
-  let releaseHandleCallback: any;
-  let markCallbackStarted: any;
+  let releaseHandleCallback!: () => void;
+  let markCallbackStarted!: () => void;
   const callbackStarted = new Promise<void>((resolve) => {
     markCallbackStarted = resolve;
   });
@@ -74,9 +76,9 @@ function startBlockedFlow() {
   };
 }
 
-function startFlowWithControlledTimeout(handleCallback: any) {
+function startFlowWithControlledTimeout(handleCallback: NonNullable<Parameters<typeof startFlow>[0]>) {
   const originalSetTimeout = global.setTimeout;
-  let runFlowTimeout: any;
+  let runFlowTimeout: (() => void) | undefined;
 
   global.setTimeout = ((callback: (...args: unknown[]) => void, delay: number, ...args: unknown[]) => {
     if (delay === 120000) {
@@ -100,41 +102,42 @@ function startFlowWithControlledTimeout(handleCallback: any) {
   }
 }
 
-async function waitForListen(getRedirectUri: any) {
+async function waitForListen(getRedirectUri: () => unknown): Promise<string> {
   for (let i = 0; i < 50; i++) {
-    if (getRedirectUri()) return getRedirectUri();
+    const redirectUri = getRedirectUri();
+    if (typeof redirectUri === "string") return redirectUri;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error("loopback server did not start");
 }
 
-function requestPath(redirectUri: string, path: string) {
+function requestPath(redirectUri: string, path: string): Promise<number> {
   const { hostname, port } = new URL(redirectUri);
-  return new Promise((resolve, reject) => {
+  return new Promise<number>((resolve, reject) => {
     const request = http.get(
       { hostname, port, path, agent: false, headers: { Connection: "close" } },
-      (response: any) => {
+      (response: import("node:http").IncomingMessage) => {
         response.resume();
-        response.on("end", () => resolve(response.statusCode));
+        response.on("end", () => { assert.ok(response.statusCode); resolve(response.statusCode); });
       }
     );
     request.on("error", reject);
   });
 }
 
-async function parkPartialRequest(redirectUri: string, server: any) {
+async function parkPartialRequest(redirectUri: string, server: import("node:http").Server) {
   const { hostname, port } = new URL(redirectUri);
   let response = "";
-  let responseStatus: unknown;
+  let responseStatus: number | undefined;
   let responseSettled = false;
-  let resolveStatus: any;
-  let rejectStatus: any;
-  const status = new Promise((resolve, reject) => {
+  let resolveStatus!: (status: number) => void;
+  let rejectStatus!: (error: unknown) => void;
+  const status = new Promise<number>((resolve, reject) => {
     resolveStatus = resolve;
     rejectStatus = reject;
   });
-  const requestStarted = new Promise((resolve) => {
-    server.once("connection", (acceptedSocket: any) => {
+  const requestStarted = new Promise<unknown>((resolve) => {
+    server.once("connection", (acceptedSocket: import("node:net").Socket) => {
       acceptedSocket.once("data", resolve);
     });
   });
@@ -153,7 +156,7 @@ async function parkPartialRequest(redirectUri: string, server: any) {
       resolveStatus(responseStatus);
     }
   });
-  socket.on("error: any", (error: unknown) => {
+  socket.on("error", (error: unknown) => {
     if (!responseSettled) {
       responseSettled = true;
       rejectStatus(error);
@@ -253,7 +256,7 @@ test("a late state mismatch cannot reject a valid callback already in progress",
   const redirectUri = await waitForListen(getRedirectUri);
   const flowOutcome = flow.then(
     () => "resolved",
-    (error: any) => `rejected: ${error.message}`
+    (error: unknown) => `rejected: ${errorMessage(error)}`
   );
 
   const validResponsePromise = fetch(`${redirectUri}/?code=ok&state=${getState()}`, {
@@ -293,7 +296,7 @@ test("a late malformed request cannot reject a valid callback already in progres
   const redirectUri = await waitForListen(getRedirectUri);
   const flowOutcome = flow.then(
     () => "resolved",
-    (error: any) => `rejected: ${error.message}`
+    (error: unknown) => `rejected: ${errorMessage(error)}`
   );
 
   const validResponsePromise = fetch(`${redirectUri}/?code=ok&state=${getState()}`, {
@@ -332,7 +335,7 @@ test("a second valid callback cannot start another token exchange", async () => 
   const redirectUri = await waitForListen(getRedirectUri);
   const flowOutcome = flow.then(
     (result: unknown) => ({ status: "resolved", result }),
-    (error: any) => ({ status: "rejected", error: error.message })
+    (error: unknown) => ({ status: "rejected", error: errorMessage(error) })
   );
 
   const firstResponsePromise = fetch(`${redirectUri}/?code=first&state=${getState()}`, {

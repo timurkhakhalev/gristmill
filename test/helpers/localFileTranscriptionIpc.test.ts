@@ -8,9 +8,10 @@ const fs: typeof import("node:fs") = require("node:fs");
 const os: typeof import("node:os") = require("node:os");
 const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
+import { transcriptionResponseSchema } from "../../src/contracts/localFileTranscription.ts";
 
-let registerLocalFileTranscriptionHandler: any;
-let createUploadCancelRegistry: any;
+let registerLocalFileTranscriptionHandler: typeof import("../../src/helpers/localFileTranscriptionIpcHandler.ts").registerLocalFileTranscriptionHandler;
+let createUploadCancelRegistry: typeof import("../../src/helpers/uploadCancelRegistry.ts").createUploadCancelRegistry;
 
 test.before(async () => {
   ({ registerLocalFileTranscriptionHandler } = await import(
@@ -37,13 +38,18 @@ const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercu
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, "RIFF....");
 
-const logs : any = { debug: [], error: [] };
+const logs: { debug: { message: string; data?: unknown }[]; error: { message: string; data?: unknown }[] } = { debug: [], error: [] };
+
+function optionsRecord(value: unknown): Record<string, unknown> {
+  assert.ok(value && typeof value === "object" && !Array.isArray(value));
+  return value as Record<string, unknown>;
+}
 
 function setup({ whisper, parakeet }: {
-  whisper?: (...args: unknown[]) => unknown;
-  parakeet?: (...args: unknown[]) => unknown;
+  whisper?: (audioBuffer: Buffer, options: Record<string, unknown>) => unknown;
+  parakeet?: (audioBuffer: Buffer, options: Record<string, unknown>) => unknown;
 } = {}) {
-  const handlers = new Map<string, (...args: unknown[]) => any>();
+  const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
   const registry = createUploadCancelRegistry();
   const calls: {
     whisper: { audioBuffer: Buffer; options: Record<string, unknown> }[];
@@ -51,7 +57,7 @@ function setup({ whisper, parakeet }: {
     reads: string[];
   } = { whisper: [], parakeet: [], reads: [] };
   registerLocalFileTranscriptionHandler(
-    { handle: (channel: string, fn: any) => handlers.set(channel, fn) },
+    { handle: (channel, fn) => { handlers.set(channel, fn); } },
     {
       readFile: (filePath: string) => {
         calls.reads.push(filePath);
@@ -65,32 +71,34 @@ function setup({ whisper, parakeet }: {
           return null;
         }
       },
-      isSherpaLocalProvider: (provider: string) => provider === "nvidia" || provider === "cohere",
-      transcribeLocalWhisper: async (audioBuffer: any, options: any) => {
-        calls.whisper.push({ audioBuffer, options });
-        return whisper ? whisper(audioBuffer, options) : { success: true, text: "whisper text" };
+      isSherpaLocalProvider: (provider) => provider === "nvidia" || provider === "cohere",
+      transcribeLocalWhisper: async (audioBuffer, options) => {
+        const parsedOptions = optionsRecord(options);
+        calls.whisper.push({ audioBuffer, options: parsedOptions });
+        return whisper ? whisper(audioBuffer, parsedOptions) : { success: true, text: "whisper text" };
       },
-      transcribeLocalParakeet: async (audioBuffer: any, options: any) => {
-        calls.parakeet.push({ audioBuffer, options });
-        return parakeet ? parakeet(audioBuffer, options) : { success: true, text: "sherpa text" };
+      transcribeLocalParakeet: async (audioBuffer, options) => {
+        const parsedOptions = optionsRecord(options);
+        calls.parakeet.push({ audioBuffer, options: parsedOptions });
+        return parakeet ? parakeet(audioBuffer, parsedOptions) : { success: true, text: "sherpa text" };
       },
       resolveWhisperVadOptions: (context: unknown) => ({ vadEnabled: context === "noteRecording" }),
       uploadCancelRegistry: registry,
-      logDebug: (message: unknown, data: unknown) => logs.debug.push({ message, data }),
-      logError: (message: unknown, data: unknown) => logs.error.push({ message, data }),
+      logDebug: (message, data) => { logs.debug.push({ message, data }); },
+      logError: (message, data) => { logs.error.push({ message, data }); },
     }
   );
-  const call = (...args: unknown[]) => {
+  const call = async (...args: unknown[]) => {
     const handler = handlers.get("transcribe-audio-file");
     if (!handler) throw new Error("Transcription handler was not registered");
-    return handler(null, ...args);
+    return transcriptionResponseSchema.parse(await handler(null, ...args));
   };
   return { call, calls, registry };
 }
 
 test("happy path: whisper dispatch with VAD merge, result validated", async () => {
   const { call, calls } = setup({
-    whisper: (_buffer: unknown, options: any) => ({ success: true, text: "hello", model: options.model }),
+    whisper: (_buffer, options) => ({ success: true, text: "hello", model: options.model }),
   });
   const result = await call(audioFile, { model: "base", language: "en", requestId: "r1" });
   assert.equal(result.success, true);
@@ -106,7 +114,7 @@ test("happy path: whisper dispatch with VAD merge, result validated", async () =
 test("nvidia/cohere dispatch to sherpa, with a signal only when requestId is present", async () => {
   for (const provider of ["nvidia", "cohere"]) {
     const { call, calls } = setup({
-      parakeet: (_buffer: unknown, options: any) => ({ success: true, text: options.model }),
+      parakeet: (_buffer, options) => ({ success: true, text: options.model }),
     });
     const result = await call(audioFile, { provider, model: "parakeet-tdt-0.6b-v3" });
     assert.deepEqual(result, { success: true, text: "parakeet-tdt-0.6b-v3" });
@@ -210,12 +218,14 @@ test("abort maps to the cancelled shape and release always runs", async () => {
 });
 
 test("shared registry cancels a pending real handler and leaves no registration", async () => {
-  let signal: any;
+  let signal: AbortSignal | undefined;
   const { call, registry } = setup({
-    whisper: (_buffer: unknown, options: any) => {
-      signal = options.signal;
+    whisper: (_buffer, options) => {
+      const abortSignal = options.signal;
+      assert.ok(abortSignal instanceof AbortSignal);
+      signal = abortSignal;
       return new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(Object.assign(new Error("cancelled"), { name: "AbortError" })));
+        abortSignal.addEventListener("abort", () => reject(Object.assign(new Error("cancelled"), { name: "AbortError" })));
       });
     },
   });

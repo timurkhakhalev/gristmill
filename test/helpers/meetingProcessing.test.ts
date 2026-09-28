@@ -450,8 +450,10 @@ test("IPC corrects only a blocked run snapshot after main validation; ordinary r
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const { run } = createFinishedRecording(db, storage, null);
+  assert.ok(run.retryAt);
+  const deadlineNow = new Date(run.retryAt);
   let apiKey = "";
-  const worker = workerFor(db, storage, { getCredential: () => apiKey });
+  const worker = workerFor(db, storage, { getCredential: () => apiKey, now: () => new Date(deadlineNow) });
   t.after(() => worker.stop());
   worker.onRetentionReady();
   await worker.waitForIdle();

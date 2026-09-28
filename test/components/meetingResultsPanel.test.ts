@@ -295,11 +295,11 @@ test("the live waiting state and debug preview never offer a manual gate bypass"
   waiting.run.hasTranscript = false;
   waiting.run.hasSummary = false;
   const live = await mountPanel(t, [recording(FIRST, FIRST, new Date().toISOString(), waiting)]);
-  assert.match(live.text(), /Transcription starts in \d+ s/);
+  assert.match(live.text(), /transcription starts automatically when the wait ends/i);
   assert.doesNotMatch(live.text(), /Transcribe now/);
 
   const preview = await mountPanel(t, [], { preview: true, mockPipeline: { waitingSeconds: 15 } });
-  assert.match(preview.text(), /Transcription starts in 15 s/);
+  assert.match(preview.text(), /transcription starts automatically when the wait ends/i);
   assert.doesNotMatch(preview.text(), /Transcribe now/);
   await preview.flush(() => (preview.button("Resume recording")!.props as { onPress: () => void }).onPress());
   assert.match(preview.text(), /recording resumed, pending transcription cancelled/);

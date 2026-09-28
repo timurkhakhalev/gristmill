@@ -419,22 +419,6 @@ export default function PersonalNotesView({
     editorNote?.content,
   ]);
 
-  const handleExportNote = useCallback(
-    async (format: "md" | "txt") => {
-      if (!activeNoteId) return;
-      await window.electronAPI.exportNote(activeNoteId, format);
-    },
-    [activeNoteId]
-  );
-
-  const handleExportTranscript = useCallback(
-    async (format: "txt" | "srt" | "json" | "md") => {
-      if (!activeNoteId) return;
-      await window.electronAPI.exportTranscript(activeNoteId, format);
-    },
-    [activeNoteId]
-  );
-
   useEffect(() => {
     if (!meetingRecordingRequest || activeNoteId !== meetingRecordingRequest.noteId) return;
     const note = activeNote?.id === meetingRecordingRequest.noteId ? activeNote : null;
@@ -556,8 +540,6 @@ export default function PersonalNotesView({
               onStopRecording={stopRecording}
               onPauseRecording={() => { void pauseMeeting(); }}
               onResumeRecording={() => { void startRecordingForNote(activeNote ?? null, true); }}
-              onExportNote={handleExportNote}
-              onExportTranscript={handleExportTranscript}
               enhancement={
                 editorEnhancedContent
                   ? {

@@ -108,7 +108,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       .map(([id, items]) => ({ id, parts: items.sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt)) }))
       .sort((a, b) => a.parts[0].recording.startedAt.localeCompare(b.parts[0].recording.startedAt));
   }, [recordings]);
-  const displayedGroups = [...groups].reverse();
+  const audioGroups = groups.map((group) => ({
+    ...group,
+    parts: group.parts.filter((part) => part.recording.audioState !== "deleted"),
+  })).filter((group) => group.parts.length > 0);
+  const displayedGroups = [...audioGroups].reverse();
+  const audioCount = audioGroups.reduce((count, group) => count + group.parts.length, 0);
+  const latestAudioGroup = audioGroups[audioGroups.length - 1];
   const latestGroup = groups[groups.length - 1];
   const versions = useMemo(() => recordings.flatMap((part) => part.runs).filter((item) => item.transcript).sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt)), [recordings]);
   const selected = versions.find((item) => item.run.id === runId)
@@ -152,7 +158,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const startAudio = async (id: string, seek = 0) => {
     if (playingId === id && audioRef.current && seek === 0) { audioRef.current.pause(); setPlayingId(null); return; }
     if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; }
-    if (!recordings.some((item) => item.recording.id === id)) return;
+    if (!recordings.some((item) => item.recording.id === id && item.recording.audioState === "available")) return;
     const path = await window.electronAPI.meetingRecordingGetPlaybackPath(id);
     if (!path.success || !path.path) { notify(path.error || t("meetingResults.playbackError"), "destructive"); return; }
     const url = new URL(path.path, "file://").href;
@@ -288,11 +294,11 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       </IconTooltip>
       <div className="ms-auto flex flex-wrap items-center gap-1.5">
       <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
-        <IconTooltip label={tr("audioParts", "Audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("audioParts", "Audio")} ${recordings.length}`}><AudioLines size={16}/>{recordings.length > 0 && <span key={recordings.length} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{recordings.length}</span>}</Button></IconTooltip>
+        <IconTooltip label={tr("audioParts", "Audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("audioParts", "Audio")} ${audioCount}`}><AudioLines size={16}/>{audioCount > 0 && <span key={audioCount} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{audioCount}</span>}</Button></IconTooltip>
         <Popover.Content placement="bottom end" className="w-[355px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="flex h-[min(500px,70vh)] flex-col p-4">
           <Popover.Heading className="text-base font-semibold">{tr("audioParts", "Audio")}</Popover.Heading>
           <div className="min-h-0 flex-1 overflow-y-auto">
-          {!groups.length && <p className="mt-2 text-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
+          {!audioGroups.length && <p className="mt-2 text-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
           {displayedGroups.map((group, groupIndex) => {
             const date = dateLabel(group.parts[0].recording.startedAt, locale, { dateStyle: "medium" });
             const previousDate = groupIndex > 0
@@ -316,7 +322,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </div>)}
           </section>})}
           </div>
-          {latestGroup?.parts.some((part) => part.recording.audioState === "available") && <Button size="sm" variant="secondary" className="mt-3 w-full gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess", { groupId: latestGroup.id })}><RotateCcw size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
+          {latestAudioGroup?.parts.some((part) => part.recording.audioState === "available") && <Button size="sm" variant="secondary" className="mt-3 w-full gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess", { groupId: latestAudioGroup.id })}><RotateCcw size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
           <p className="mt-3 text-xs leading-normal text-muted">{tr("originalsPreserved", "Original microphone and system tracks are saved separately.")}</p>
         </Popover.Dialog></Popover.Content>
       </Popover>

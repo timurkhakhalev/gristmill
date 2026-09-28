@@ -502,14 +502,16 @@ function RecordingSettings() {
         >
           <PermissionStatus
             granted={permissions.micPermissionGranted}
-            onOpen={() => void permissions.openMicPrivacySettings()}
+            onOpen={() => void permissions.requestMicPermission()}
+            actionLabel={t("onboarding.rehaul.permissions.enable")}
           />
         </Row>
         <Row label={t("cleanupSettings.systemAudio")}>
           <PermissionStatus
             granted={systemAudio.granted}
-            checking={systemAudio.isChecking && systemAudio.status === "unknown"}
-            onOpen={() => void systemAudio.openSettings()}
+            checking={systemAudio.isChecking}
+            onOpen={() => void systemAudio.request()}
+            actionLabel={t("onboarding.rehaul.permissions.enable")}
           />
         </Row>
         <Row
@@ -521,7 +523,9 @@ function RecordingSettings() {
           <PermissionStatus
             granted={permissions.accessibilityPermissionGranted}
             onOpen={() => void permissions.requestAccessibilityPermission()}
-            actionLabel={t("onboarding.rehaul.permissions.enable")}
+            actionLabel={t(permissions.accessibilityPromptRequested
+              ? "cleanupSettings.openSettings"
+              : "onboarding.rehaul.permissions.enable")}
           />
         </Row>
       </Group>

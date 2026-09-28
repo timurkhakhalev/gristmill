@@ -40,5 +40,5 @@ export default function NoteRecordControl({ isRecording, isProcessing, capturePh
     <IconTooltip label={pauseLabel}><Button isIconOnly size="sm" variant="ghost" className="size-7 min-h-7" aria-label={pauseLabel} onPress={capturePhase === "paused" ? onResume : onPause}>{capturePhase === "paused" ? <Play size={16} /> : <Pause size={16} />}</Button></IconTooltip>
     <IconTooltip label={stopLabel}><Button isIconOnly size="sm" variant="secondary" className="size-7 min-h-7" aria-label={stopLabel} onPress={onStop}><Square size={13} /></Button></IconTooltip>
   </div>;
-  return <Button size="sm" className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200" isDisabled={disabled || isProcessing} onPress={onStart}><Mic size={16} /><span className="@max-[620px]:sr-only">{t("notes.editor.startRecording")}</span></Button>;
+  return <Button size="sm" className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200" isDisabled={disabled || isProcessing} onPress={onStart}><Mic size={16} /><span className="@max-[620px]:sr-only">{t("notes.editor.record", { defaultValue: "Record" })}</span></Button>;
 }

@@ -105,8 +105,10 @@ function textOf(value: unknown): string {
 
 async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false } = {}) {
   const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], retry: [] };
+  let listedItems = items;
+  let setCapturePhase: (phase: string) => void = () => {};
   const api = {
-    meetingProcessingListForNote: async () => ({ success: true, recordings: items }),
+    meetingProcessingListForNote: async () => ({ success: true, recordings: listedItems }),
     onMeetingProcessingUpdated: () => () => {},
     getSpeakerProfiles: async () => [],
     meetingRecordingGetPlaybackPath: async (...args: unknown[]) => { calls.playback.push(args); return playback; },
@@ -149,7 +151,11 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   let tree: unknown;
   function Harness() {
     const [mode, setMode] = React.useState(viewMode);
+    const [capturePhase, updateCapturePhase] = React.useState("idle");
+    setCapturePhase = updateCapturePhase;
     tree = MeetingResultsPanel({ noteId: 1, locale: "en", previewRecordings: preview ? items : undefined, viewMode: mode, onViewModeChange: setMode,
+      capturePhase,
+      fallbackText: { raw: "Manual notes", enhanced: "No summary", transcript: "No transcript" },
       manualContent: React.createElement("p", null, "Manual notes"), fallbackTranscript: React.createElement("p", null, "No transcript"), fallbackSummary: React.createElement("p", null, "No summary") });
     return tree;
   }
@@ -159,7 +165,12 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   return {
     calls, flush, dialog: () => mocks.__meetingResultsConfirmDialog!,
     text: () => container.textContent ?? "",
+    saveRecording: async (nextItems: unknown[]) => {
+      listedItems = nextItems;
+      await flush(() => setCapturePhase("saved"));
+    },
     button(label: string) { return findNode(tree, (node) => typeof node.props?.onPress === "function" && textOf((node.props as { children?: unknown }).children).includes(label)); },
+    label(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label); },
     iconButton(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onPress === "function"); },
     menu(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onAction === "function"); },
   };
@@ -169,11 +180,22 @@ test("manual notes stay primary while an incomplete saved audio part is visible"
   const items = [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", null, "incomplete")];
   const ui = await mountPanel(t, items);
   assert.match(ui.text(), /Manual notes/);
-  assert.match(ui.text(), /Capture ended early/);
+  assert.match(ui.text(), /notes.editor.capture.incomplete/);
   assert.match(ui.text(), /Audio/);
   await ui.flush(() => (ui.iconButton("Play audio")!.props as { onPress: () => void }).onPress());
   assert.deepEqual(ui.calls.playback, [[FIRST]]);
   assert.match(ui.text(), /mixer-failed/);
+});
+
+test("audio count and list include a newly saved recording without reload", async (t: TestContext) => {
+  const first = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z");
+  const second = recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z");
+  const ui = await mountPanel(t, [first]);
+  assert.ok(ui.label("Audio 1"));
+  await ui.saveRecording([first, second]);
+  assert.ok(ui.label("Audio 2"));
+  assert.equal(ui.text().match(/01:00/g)?.length, 2);
+  assert.equal(ui.text().match(/Sep 25, 2026/g)?.length, 1);
 });
 
 test("audio part actions export original tracks and confirm deletion without a transcript", async (t: TestContext) => {
@@ -193,8 +215,7 @@ test("whole-meeting reprocess uses both saved parts and leaves defaults untouche
     recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z"),
     recording(SECOND, FIRST, "2026-09-25T10:05:00.000Z"),
   ]);
-  await ui.flush(() => (ui.button("Transcribe whole meeting")!.props as { onPress: () => void }).onPress());
-  await ui.flush(() => (ui.button("Create version")!.props as { onPress: () => void }).onPress());
+  await ui.flush(() => (ui.button("Transcribe")!.props as { onPress: () => void }).onPress());
   assert.equal(ui.calls.create.length, 1);
   assert.deepEqual((ui.calls.create[0] as Record<string, unknown>).sourceRecordingIds, [FIRST, SECOND]);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).recordingId, FIRST);
@@ -210,7 +231,6 @@ test("summary version reads the saved transcript without another ASR run", async
   ], { viewMode: "enhanced" });
   assert.match(ui.text(), /Release on Friday/);
   await ui.flush(() => (ui.menu("Result actions") as { props: { onAction: (key: string) => void } })!.props.onAction("summary"));
-  await ui.flush(() => (ui.button("Create version")!.props as { onPress: () => void }).onPress());
   assert.equal(ui.calls.create.length, 1);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).kind, "summary");
   assert.equal((ui.calls.create[0] as Record<string, unknown>).sourceRunId, RUN);
@@ -223,11 +243,10 @@ test("debug preview keeps retry, export and processing away from the real API", 
   const run = completeRun();
   run.run.status = "failed";
   const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)], { preview: true });
-  await ui.flush(() => (ui.button("Retry") as { props: { onPress: () => void } })!.props.onPress());
+  await ui.flush(() => (ui.button("meetingResults.retry") as { props: { onPress: () => void } })!.props.onPress());
   assert.match(ui.text(), /Mock retry queued in memory/);
   await ui.flush(() => (ui.menu("Audio part actions") as { props: { onAction: (key: string) => void } })!.props.onAction("mic"));
-  await ui.flush(() => (ui.button("Transcribe whole meeting")!.props as { onPress: () => void }).onPress());
-  await ui.flush(() => (ui.button("Create version")!.props as { onPress: () => void }).onPress());
+  await ui.flush(() => (ui.button("Transcribe")!.props as { onPress: () => void }).onPress());
   assert.deepEqual(ui.calls.retry, []);
   assert.deepEqual(ui.calls.export, []);
   assert.deepEqual(ui.calls.create, []);

@@ -2,13 +2,11 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState, type Rea
 import ReactMarkdown from "react-markdown";
 import { Button, Dropdown, Label, ListBox, Modal, Popover, Select } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AlignLeft, AudioLines, MessageSquareText, MoreHorizontal, Play, RotateCcw, Sparkles, Trash2 } from "../icons";
+import { AlignLeft, AudioLines, Check, Copy, MessageSquareText, MoreHorizontal, Play, RotateCcw, Sparkles, Trash2 } from "../icons";
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
 import { builtinMeetingSummaryInstruction, snapshotMeetingRecordingConfig } from "../../helpers/meetingRecordingConfigSnapshot";
-import { getMeetingFileTranscriptionProviders, getAllReasoningModels, getProviderDisplayName, modelRegistry } from "../../models/ModelRegistry";
-import { BYOK_API_KEYS } from "../../config/secretKeys";
 import { ConfirmDialog } from "../ui/dialog";
 import { useDialogs } from "../../hooks/useDialogs";
 import { openSettings } from "../../utils/openSettings";
@@ -18,7 +16,7 @@ import NoteViewSwitch from "./NoteViewSwitch";
 import { IconTooltip } from "../ui/IconTooltip";
 
 type ViewMode = "raw" | "enhanced" | "transcript";
-type RunChoice = { kind: "reprocess" | "summary"; partId?: string };
+type RunChoice = { kind: "reprocess" | "summary"; partId?: string; groupId?: string };
 
 function Choice({ label, value, options, onChange }: {
   label: string; value: string; options: Array<{ id: string; label: string }>; onChange: (value: string) => void;
@@ -43,11 +41,14 @@ function formatDuration(duration: number | null) {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, fallbackTranscript, fallbackSummary, actions, notice }: {
+export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, fallbackTranscript, fallbackSummary, fallbackText, actions, notice, capturePhase }: {
   actions?: ReactNode;
+  /** Plain text of each view's fallback content, copied when no processing run provides it. */
+  fallbackText: Record<ViewMode, string>;
   /** Live capture notice rendered under the toolbar, above processing status. */
   notice?: ReactNode;
   noteId: number;
+  capturePhase?: "idle" | "preparing" | "recording" | "paused" | "saving" | "saved" | "incomplete" | "failed";
   locale: string;
   previewRecordings?: MeetingProcessingRecordingResult[];
   viewMode: ViewMode;
@@ -59,7 +60,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const { t } = useTranslation();
   const tr = (key: string, fallback: string) => t(`meetingResults.${key}`, { defaultValue: fallback });
   const [recordings, setRecordings] = useState(previewRecordings ?? []);
-  const [groupId, setGroupId] = useState("");
   const [runId, setRunId] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -73,10 +73,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     else setMessage(text);
   }, [toastApi]);
   const [busy, setBusy] = useState(false);
-  const [runChoice, setRunChoice] = useState<RunChoice | null>(null);
-  const [provider, setProvider] = useState("");
-  const [model, setModel] = useState("");
-  const [sourceRunId, setSourceRunId] = useState("");
   const [speakerId, setSpeakerId] = useState<string | null>(null);
   const [speakerName, setSpeakerName] = useState("");
   const [speakerProfileId, setSpeakerProfileId] = useState("none");
@@ -89,7 +85,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     const result = await window.electronAPI.meetingProcessingListForNote(noteId);
     if (result.success) setRecordings(result.recordings ?? []);
     else notify(result.error || t("meetingResults.loadError"), "destructive");
-  }, [noteId, previewRecordings, t]);
+  }, [noteId, previewRecordings, t, notify]);
   useEffect(() => {
     if (previewRecordings) { setRecordings(previewRecordings); return; }
     void refresh();
@@ -97,17 +93,46 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     return unsubscribe;
   }, [previewRecordings, refresh]);
   useEffect(() => {
+    if (capturePhase === "saved" || capturePhase === "incomplete") void refresh();
+  }, [capturePhase, refresh]);
+  useEffect(() => {
     if (previewRecordings) return;
     void window.electronAPI.getSpeakerProfiles?.().then((items) => setProfiles((items ?? []).map((item) => ({ id: item.id, display_name: item.display_name }))));
   }, [previewRecordings]);
 
-  const groups = useMemo(() => [...new Map([...recordings].reverse().map((item) => [item.recording.groupId, item])).values()].reverse(), [recordings]);
-  const currentGroup = groupId && groups.some((item) => item.recording.groupId === groupId) ? groupId : groups[groups.length - 1]?.recording.groupId;
-  const parts = useMemo(() => recordings.filter((item) => item.recording.groupId === currentGroup).sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt)), [recordings, currentGroup]);
-  const versions = useMemo(() => parts.flatMap((part) => part.runs).filter((item) => item.transcript).sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt)), [parts]);
-  const selected = versions.find((item) => item.run.id === runId) ?? versions.find((item) => parts.some((part) => part.recording.currentRunId === item.run.id)) ?? versions[0];
+  // One group per recording session (start/stop), each split into parts by pauses.
+  const groups = useMemo(() => {
+    const byGroup = new Map<string, MeetingProcessingRecordingResult[]>();
+    for (const item of recordings) byGroup.set(item.recording.groupId, [...(byGroup.get(item.recording.groupId) ?? []), item]);
+    return [...byGroup.entries()]
+      .map(([id, items]) => ({ id, parts: items.sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt)) }))
+      .sort((a, b) => a.parts[0].recording.startedAt.localeCompare(b.parts[0].recording.startedAt));
+  }, [recordings]);
+  const displayedGroups = [...groups].reverse();
+  const latestGroup = groups[groups.length - 1];
+  const versions = useMemo(() => recordings.flatMap((part) => part.runs).filter((item) => item.transcript).sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt)), [recordings]);
+  const selected = versions.find((item) => item.run.id === runId)
+    ?? versions.find((item) => latestGroup?.parts.some((part) => part.recording.currentRunId === item.run.id))
+    ?? versions[0];
+  // The session shown is the one the selected version came from.
+  const currentGroup = recordings.find((item) => item.recording.id === selected?.run.recordingId)?.recording.groupId ?? latestGroup?.id;
+  const parts = groups.find((group) => group.id === currentGroup)?.parts ?? [];
   const speakerLabel = (id: string) => t("meetingResults.speakerNumber", { defaultValue: "Speaker {{number}}", number: [...new Set(selected?.transcript?.segments?.map((segment) => segment.speaker).filter(Boolean))].indexOf(id) + 1 });
   const selectedId = selected?.run.id ?? "";
+  const copyText = viewMode === "enhanced" ? selected?.summary?.text || fallbackText.enhanced
+    : viewMode === "transcript" ? selected?.transcript?.text || fallbackText.transcript
+    : fallbackText.raw;
+  const [copied, setCopied] = useState(false);
+  useEffect(() => setCopied(false), [viewMode]);
+  const copyView = async () => {
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      notify(t("meetingResults.copyError", { defaultValue: "Couldn't copy to the clipboard." }), "destructive");
+    }
+  };
 
   const allRuns = parts.flatMap((part) => part.runs);
   const combinedCurrent = allRuns.find((item) => item.run.kind === "reprocess" && item.run.sourceRecordingIds.length > 1 &&
@@ -116,24 +141,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     ?? combinedCurrent
     ?? [...allRuns].reverse().find((item) => parts.some((part) => part.recording.currentRunId === item.run.id));
   const availableParts = parts.filter((part) => part.recording.audioState === "available");
-  const currentConfig = snapshotMeetingRecordingConfig().config;
-  const localTranscriptionConfig = currentConfig?.transcription ?? versions.find((item) => item.run.config?.transcription.mode === "local")?.run.config?.transcription;
-  const localTranscription = localTranscriptionConfig?.mode === "local" ? localTranscriptionConfig.local : null;
-  const asrProviders = [
-    ...getMeetingFileTranscriptionProviders().map((item) => ({ id: item.id, label: item.name, models: item.models.map((model) => ({ id: model.id, label: model.name })) })),
-    ...(localTranscription ? [{ id: "local", label: tr("localProvider", "Local"), models: [{ id: localTranscription.model, label: localTranscription.model }] }] : []),
-  ];
-  const llmModels = getAllReasoningModels();
-  const summaryConfig = currentConfig?.summary;
-  const llmProviders = [...new Set(llmModels.map((item) => item.provider))]
-    .filter((id) => !["bedrock", "azure", "vertex"].includes(id) || (summaryConfig?.reasoningMode === "enterprise" && summaryConfig.provider === id))
-    .map((id) => ({ id, label: getProviderDisplayName(id) }));
-  if (summaryConfig?.reasoningMode === "self-hosted") llmProviders.push({ id: "self-hosted", label: tr("selfHostedProvider", "Self-hosted") });
-  const isSummaryChoice = runChoice?.kind === "summary";
-  const modelOptions = isSummaryChoice
-    ? provider === "self-hosted" ? [{ id: summaryConfig?.model ?? "", label: summaryConfig?.model ?? "" }]
-      : llmModels.filter((item) => item.provider === provider).map((item) => ({ id: item.value, label: item.label }))
-    : asrProviders.find((item) => item.id === provider)?.models ?? [];
 
   const runTask = async (task: () => Promise<void>) => {
     setBusy(true);
@@ -145,7 +152,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const startAudio = async (id: string, seek = 0) => {
     if (playingId === id && audioRef.current && seek === 0) { audioRef.current.pause(); setPlayingId(null); return; }
     if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; }
-    if (!parts.some((item) => item.recording.id === id)) return;
+    if (!recordings.some((item) => item.recording.id === id)) return;
     const path = await window.electronAPI.meetingRecordingGetPlaybackPath(id);
     if (!path.success || !path.path) { notify(path.error || t("meetingResults.playbackError"), "destructive"); return; }
     const url = new URL(path.path, "file://").href;
@@ -166,72 +173,45 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     }
   };
 
-  const openRun = (kind: "reprocess" | "summary", partId?: string) => {
-    const snapshot = snapshotMeetingRecordingConfig();
-    const config = snapshot.config;
-    const initialProvider = kind === "summary"
-      ? config?.summary?.reasoningMode === "local" ? "local" : config?.summary?.reasoningMode === "self-hosted" ? "self-hosted" : config?.summary?.provider ?? ""
-      : config?.transcription.mode === "local" ? "local" : config?.transcription.provider ?? "";
-    const initialModel = kind === "summary" ? config?.summary?.model ?? "" : config?.transcription.mode === "local" ? config.transcription.local?.model ?? "" : config?.transcription.model ?? "";
-    setProvider(initialProvider || (kind === "summary" ? llmProviders[0]?.id : asrProviders[0]?.id) || "");
-    setModel(initialModel || (kind === "summary" ? llmModels[0]?.value : asrProviders[0]?.models[0]?.id) || "");
-    setSourceRunId(selected?.run.kind === "summary" ? selected.run.sourceRunId ?? "" : selectedId);
-    setRunChoice({ kind, partId }); setAudioOpen(false);
+  /** Starts a run with the settings-selected providers; no per-run picker. */
+  const openRun = (kind: "reprocess" | "summary", target: { partId?: string; groupId?: string } = {}) => {
+    setAudioOpen(false);
+    void createRun({ kind, ...target });
   };
 
-  const createRun = () => runTask(async () => {
-    if (!runChoice || !parts.length) return;
-    if (previewRecordings) { notify("Mock processing queued in memory"); setRunChoice(null); return; }
+  const createRun = (choice: RunChoice) => runTask(async () => {
+    if (previewRecordings) { notify("Mock processing queued in memory"); return; }
     const snapshot = snapshotMeetingRecordingConfig();
-    const savedConfig = (runChoice.kind === "summary" ? versions.find((item) => item.run.id === sourceRunId) : selected)?.run.config;
+    const sourceRunIdForKind = choice.kind === "summary"
+      ? (selected?.run.kind === "summary" ? selected.run.sourceRunId ?? "" : selectedId)
+      : "";
+    const savedConfig = (choice.kind === "summary" ? versions.find((item) => item.run.id === sourceRunIdForKind) : selected)?.run.config;
     const baseConfig = snapshot.config ?? savedConfig;
     if (!baseConfig) throw new Error(snapshot.configError?.code || "processing-config-missing");
     const config: MeetingProcessingConfig = { ...baseConfig };
-    const ids = runChoice.partId ? [runChoice.partId] : availableParts.map((part) => part.recording.id);
-    if (runChoice.kind === "reprocess") {
+    const groupParts = choice.groupId ? groups.find((group) => group.id === choice.groupId)?.parts ?? [] : parts;
+    const ids = choice.partId ? [choice.partId] : groupParts.filter((part) => part.recording.audioState === "available").map((part) => part.recording.id);
+    if (choice.kind === "reprocess") {
       if (!ids.length) throw new Error("meeting-audio-unavailable");
-      if (provider === "local") {
-        if (!localTranscription || localTranscription.model !== model) throw new Error("local-transcription-route-unavailable");
-        config.transcription = { ...config.transcription, mode: "local", provider: undefined, model: undefined, baseUrl: undefined, credentialRef: undefined, local: localTranscription };
-      } else {
-        config.transcription = { ...config.transcription, mode: "providers", provider, model,
-          baseUrl: provider === "custom" ? config.transcription.baseUrl : undefined,
-          local: undefined, credentialRef: provider === "custom" ? "CUSTOM_TRANSCRIPTION_API_KEY" : BYOK_API_KEYS.find((item) => item.base === provider)?.env };
-      }
     } else {
-      if (!sourceRunId) throw new Error("summary-transcript-missing");
-      const source = versions.find((item) => item.run.id === sourceRunId);
+      if (!sourceRunIdForKind) throw new Error("summary-transcript-missing");
+      const source = versions.find((item) => item.run.id === sourceRunIdForKind);
       if (!source) throw new Error("summary-transcript-missing");
       config.transcription = source.run.config?.transcription ?? config.transcription;
       if (!config.summary) config.summary = { instruction: builtinMeetingSummaryInstruction(), reasoningMode: "providers" };
-      if (provider === "local") {
-        const localProvider = modelRegistry.getModel(model)?.provider.id;
-        if (!localProvider) throw new Error("local-summary-model-unavailable");
-        config.summary = { ...config.summary, reasoningMode: "local", provider: localProvider, model, cloudBaseUrl: undefined, remoteUrl: undefined, credentialRef: undefined, enterprise: undefined };
-      } else if (provider === "self-hosted") {
-        if (summaryConfig?.reasoningMode !== "self-hosted" || !summaryConfig.remoteUrl) throw new Error("self-hosted-route-unavailable");
-        config.summary = { ...config.summary, ...summaryConfig, model };
-      } else if (["bedrock", "azure", "vertex"].includes(provider)) {
-        if (summaryConfig?.reasoningMode !== "enterprise" || summaryConfig.provider !== provider) throw new Error("enterprise-route-unavailable");
-        config.summary = { ...config.summary, ...summaryConfig, model };
-      } else {
-        config.summary = { ...config.summary, reasoningMode: "providers", provider, model,
-          cloudBaseUrl: provider === "custom" ? summaryConfig?.cloudBaseUrl : undefined, remoteUrl: undefined,
-          enterprise: undefined, credentialRef: provider === "custom" ? "CUSTOM_CLEANUP_API_KEY" : BYOK_API_KEYS.find((item) => item.base === provider)?.env };
-      }
     }
-    const source = runChoice.kind === "summary" ? versions.find((item) => item.run.id === sourceRunId) : null;
+    const source = choice.kind === "summary" ? versions.find((item) => item.run.id === sourceRunIdForKind) : null;
     const result = await window.electronAPI.meetingProcessingCreateRun({
       recordingId: source?.run.recordingId ?? ids[0],
-      sourceRecordingIds: runChoice.kind === "reprocess" ? ids : undefined,
-      kind: runChoice.kind,
+      sourceRecordingIds: choice.kind === "reprocess" ? ids : undefined,
+      kind: choice.kind,
       config,
       configError: null,
-      sourceRunId: runChoice.kind === "summary" ? sourceRunId : undefined,
+      sourceRunId: choice.kind === "summary" ? sourceRunIdForKind : undefined,
     });
     if (!result.success || !result.result) throw new Error(result.error || t("meetingResults.createError"));
-    setRunId(result.result.run.id); setRunChoice(null);
-    onViewModeChange(runChoice.kind === "summary" ? "enhanced" : "transcript");
+    setRunId(result.result.run.id);
+    onViewModeChange(choice.kind === "summary" ? "enhanced" : "transcript");
   });
 
   const selectRun = (id: string) => runTask(async () => {
@@ -301,18 +281,30 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           })),
         }}
       />
+      <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
+        <Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7 text-muted hover:text-foreground" isDisabled={!copyText.trim()} aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")} onPress={() => void copyView()}>
+          {copied ? <Check size={15}/> : <Copy size={15}/>}
+        </Button>
+      </IconTooltip>
       <div className="ms-auto flex flex-wrap items-center gap-1.5">
       <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
-        <IconTooltip label={tr("audioParts", "Audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("audioParts", "Audio")} ${parts.length}`}><AudioLines size={16}/>{parts.length > 0 && <span key={parts.length} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{parts.length}</span>}</Button></IconTooltip>
-        <Popover.Content placement="bottom end" className="w-[355px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="p-4">
+        <IconTooltip label={tr("audioParts", "Audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("audioParts", "Audio")} ${recordings.length}`}><AudioLines size={16}/>{recordings.length > 0 && <span key={recordings.length} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{recordings.length}</span>}</Button></IconTooltip>
+        <Popover.Content placement="bottom end" className="w-[355px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="flex h-[min(500px,70vh)] flex-col p-4">
           <Popover.Heading className="text-base font-semibold">{tr("audioParts", "Audio")}</Popover.Heading>
-          {groups.length > 1 && <Choice label={t("meetingResults.recording")} value={currentGroup ?? ""} options={groups.map((group) => ({ id: group.recording.groupId, label: dateLabel(group.recording.startedAt, locale, { dateStyle: "medium", timeStyle: "short" }) }))} onChange={setGroupId} />}
-          {!parts.length && <p className="text-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
-          {parts.map((part, index) => <div className="flex items-center gap-2.5 border-b border-border py-3.5" key={part.recording.id}>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+          {!groups.length && <p className="mt-2 text-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
+          {displayedGroups.map((group, groupIndex) => {
+            const date = dateLabel(group.parts[0].recording.startedAt, locale, { dateStyle: "medium" });
+            const previousDate = groupIndex > 0
+              ? dateLabel(displayedGroups[groupIndex - 1].parts[0].recording.startedAt, locale, { dateStyle: "medium" })
+              : null;
+            return <section key={group.id} className="mt-3">
+            {date !== previousDate && <span className="text-xs font-medium text-muted">{date}</span>}
+          {group.parts.map((part, index) => <div className="flex items-center gap-2.5 border-b border-border py-2 last:border-0" key={part.recording.id}>
             <Button isIconOnly size="sm" variant="ghost" isDisabled={part.recording.audioState !== "available"} aria-label={playingId === part.recording.id ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={() => void startAudio(part.recording.id)}>{playingId === part.recording.id ? <Pause size={16}/> : <Play size={16}/>}</Button>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5"><strong className="text-sm font-medium">{dateLabel(part.recording.startedAt, locale, { timeStyle: "short" })}</strong><span className="text-xs text-muted">{formatDuration(part.recording.durationSeconds)} · {tr("part", "Part")} {index + 1}</span></div>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5"><strong className="text-sm font-medium">{dateLabel(part.recording.startedAt, locale, { timeStyle: "short" })}</strong><span className="text-xs text-muted">{formatDuration(part.recording.durationSeconds)}{group.parts.length > 1 && ` · ${tr("part", "Part")} ${index + 1}`}</span></div>
             <Dropdown><Button isIconOnly size="sm" variant="ghost" aria-label={tr("partActions", "Audio part actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("partActions", "Audio part actions")} onAction={(key) => {
-              if (key === "asr") openRun("reprocess", part.recording.id);
+              if (key === "asr") openRun("reprocess", { partId: part.recording.id });
               if (key === "mic" || key === "system") void exportPart(part.recording.id, key);
               if (key === "delete") deletePart(part.recording.id);
             }}>
@@ -322,8 +314,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
               <Dropdown.Item id="delete" isDisabled={busy || part.recording.audioState === "deleted"} variant="danger" textValue={t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}><Trash2 size={14}/>{t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}</Dropdown.Item>
             </Dropdown.Menu></Dropdown.Popover></Dropdown>
           </div>)}
-          {availableParts.length > 0 && <Button size="sm" variant="ghost" onPress={() => openRun("reprocess")}>{tr("processWholeMeeting", "Transcribe whole meeting")}<RotateCcw size={14}/></Button>}
-          <p className="mt-3.5 text-xs leading-normal text-muted">{tr("originalsPreserved", "Original microphone and system tracks are saved separately.")}</p>
+          </section>})}
+          </div>
+          {latestGroup?.parts.some((part) => part.recording.audioState === "available") && <Button size="sm" variant="secondary" className="mt-3 w-full gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess", { groupId: latestGroup.id })}><RotateCcw size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
+          <p className="mt-3 text-xs leading-normal text-muted">{tr("originalsPreserved", "Original microphone and system tracks are saved separately.")}</p>
         </Popover.Dialog></Popover.Content>
       </Popover>
       {actions}
@@ -367,12 +361,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         <Dropdown><IconTooltip label={tr("resultActions", "Result actions")}><Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7" aria-label={tr("resultActions", "Result actions")}><MoreHorizontal size={17}/></Button></IconTooltip><Dropdown.Popover><Dropdown.Menu aria-label={tr("resultActions", "Result actions")} onAction={(key) => {
           if (key === "asr") openRun("reprocess");
           if (key === "summary") openRun("summary");
-          if (key === "copy") void navigator.clipboard.writeText(viewMode === "enhanced" ? selected.summary?.text ?? "" : selected.transcript?.text ?? "");
           if (key === "export") void runTask(async () => { if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; } const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: selected.run.recordingId, runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? undefined : selected.run.id, source: "mixed" }); if (!result.success) throw new Error(result.error || t("meetingResults.exportError")); });
         }}>
           <Dropdown.Item id="asr" isDisabled={!availableParts.length} textValue={t("meetingResults.newAsr")}>{t("meetingResults.newAsr")}</Dropdown.Item>
           <Dropdown.Item id="summary" textValue={t("meetingResults.newSummary")}>{t("meetingResults.newSummary")}</Dropdown.Item>
-          <Dropdown.Item id="copy" textValue={tr("copyResult", "Copy text")}>{tr("copyResult", "Copy text")}</Dropdown.Item>
           <Dropdown.Item id="export" isDisabled={!availableParts.length} textValue={t("meetingResults.exportMixed")}>{t("meetingResults.exportMixed")}</Dropdown.Item>
         </Dropdown.Menu></Dropdown.Popover></Dropdown>
       </div>}
@@ -399,13 +391,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     </div>
     {message && <NoteNotice status="default" title={message} />}
     <audio ref={audioRef} preload="metadata" onEnded={() => setPlayingId(null)} />
-
-    <Modal isOpen={runChoice !== null} onOpenChange={(open) => { if (!open) setRunChoice(null); }}><Modal.Backdrop><Modal.Container size="md"><Modal.Dialog><Modal.CloseTrigger/><Modal.Header><Modal.Heading>{isSummaryChoice ? t("meetingResults.newSummary") : t("meetingResults.newAsr")}</Modal.Heading></Modal.Header><Modal.Body>
-      <p className="text-muted">{isSummaryChoice ? tr("summaryFromSaved", "Create a summary from a saved transcript without another transcription request.") : runChoice?.partId ? tr("transcribePart", "Transcribe this audio part.") : tr("transcribeWhole", "Transcribe all saved parts as one meeting.")}</p>
-      <div className="my-5 flex gap-3.5 max-[720px]:flex-col"><Choice label={tr("provider", "Provider")} value={provider} options={isSummaryChoice ? llmProviders : asrProviders} onChange={(value) => { setProvider(value); setModel(isSummaryChoice ? llmModels.find((item) => item.provider === value)?.value ?? "" : asrProviders.find((item) => item.id === value)?.models[0]?.id ?? ""); }}/><Choice label={tr("model", "Model")} value={model} options={modelOptions} onChange={setModel}/></div>
-      {isSummaryChoice && <Choice label={tr("sourceTranscript", "Source transcript")} value={sourceRunId} options={versions.filter((item) => item.run.kind !== "summary").map((item) => ({ id: item.run.id, label: `${item.run.provider || "local"} / ${item.run.model || "—"} · ${dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" })}` }))} onChange={setSourceRunId} />}
-      <p className="text-xs text-muted">{tr("oneRunOnly", "This choice applies to this run. Global defaults stay the same.")}</p>
-    </Modal.Body><Modal.Footer><Button variant="tertiary" onPress={() => setRunChoice(null)}>{tr("cancel", "Cancel")}</Button><Button isDisabled={busy || !provider || !model} onPress={() => void createRun()}>{tr("createVersion", "Create version")}</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
 
     <Modal isOpen={speakerId !== null} onOpenChange={(open) => { if (!open) setSpeakerId(null); }}><Modal.Backdrop><Modal.Container size="sm"><Modal.Dialog><Modal.CloseTrigger/><Modal.Header><Modal.Heading>{t("meetingResults.saveSpeaker")}</Modal.Heading></Modal.Header><Modal.Body className="flex flex-col gap-4">
       <label className="flex flex-col gap-2 text-xs">{tr("speakerName", "Speaker name")}<input dir="auto" className="h-9 rounded-lg px-3 text-sm" value={speakerName} onChange={(event) => setSpeakerName(event.target.value)} /></label>

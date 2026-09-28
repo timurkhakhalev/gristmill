@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import {
   Loader2,
-  Download,
   Sparkles,
   AlignLeft,
   Mic,
@@ -14,6 +13,12 @@ import {
   ArrowLeft,
 } from "../icons";
 import { RichTextEditor } from "../ui/RichTextEditor";
+import { calendarDescriptionText } from "../../helpers/calendarDescription";
+
+/** Rich-text HTML → the plain text Copy puts on the clipboard. */
+function htmlToPlainText(html: string): string {
+  return calendarDescriptionText(html) ?? "";
+}
 import type { Editor } from "@tiptap/react";
 import { MeetingTranscriptChat, SelectionBar } from "./MeetingTranscriptChat";
 import {
@@ -30,8 +35,7 @@ import ActionProcessingOverlay from "./ActionProcessingOverlay";
 import NoteBottomBar from "./NoteBottomBar";
 import NoteRecordControl from "./NoteRecordControl";
 import { CaptureHealthLine, NoteNotice } from "./NoteNotices";
-import { Button as HeroButton, Dropdown as HeroDropdown } from "@heroui/react";
-import { IconTooltip } from "../ui/IconTooltip";
+import { Button as HeroButton } from "@heroui/react";
 import { openSettings } from "../../utils/openSettings";
 import EmptyStateCard from "../ui/EmptyStateCard";
 import { Button } from "../ui/button";
@@ -55,17 +59,6 @@ import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } fr
 import MeetingResultsPanel from "./MeetingResultsPanel";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 
-const TRANSCRIPT_EXPORT_LABEL_KEYS = {
-  txt: "notes.editor.asTranscriptText",
-  srt: "notes.editor.asSubtitles",
-  md: "notes.editor.asTranscriptMarkdown",
-  json: "notes.editor.asJson",
-} as const;
-const NOTE_EXPORT_LABEL_KEYS = {
-  md: "notes.editor.asMarkdown",
-  txt: "notes.editor.asPlainText",
-} as const;
-
 export interface Enhancement {
   content: string;
   isStale: boolean;
@@ -75,12 +68,6 @@ export interface Enhancement {
 type MeetingViewMode = "raw" | "transcript" | "enhanced";
 
 type SpeakerProfileOption = { id?: number; display_name: string; email: string | null };
-
-interface NoteExportOption {
-  id: string;
-  label: string;
-  onSelect: () => void;
-}
 
 /** Opening priority: a ready Summary wins over the Notes body. */
 function initialMeetingViewMode(note: NoteItem): MeetingViewMode {
@@ -127,8 +114,6 @@ interface NoteEditorProps {
   onStopRecording: () => void;
   onPauseRecording?: () => void;
   onResumeRecording?: () => void;
-  onExportNote?: (format: "md" | "txt") => void;
-  onExportTranscript?: (format: "txt" | "srt" | "json" | "md") => void;
   enhancement?: Enhancement;
   actionPicker?: React.ReactNode;
   /** Runs the built-in Generate Notes action; enables the post-recording summary pill. */
@@ -171,8 +156,6 @@ export default function NoteEditor({
   onStopRecording,
   onPauseRecording,
   onResumeRecording,
-  onExportNote,
-  onExportTranscript,
   enhancement,
   actionPicker,
   onGenerateSummary,
@@ -677,22 +660,6 @@ export default function NoteEditor({
   const noteDate = formatNoteDate(note.created_at, locale);
   const shortDate = formatShortDate(note.created_at, locale);
 
-  const exportOptions = useMemo<NoteExportOption[]>(() => {
-    if (viewMode === "transcript" && onExportTranscript) {
-      return (["txt", "srt", "md", "json"] as const).map((format) => ({
-        id: format,
-        label: t(TRANSCRIPT_EXPORT_LABEL_KEYS[format]),
-        onSelect: () => onExportTranscript(format),
-      }));
-    }
-    if (!onExportNote) return [];
-    return (["md", "txt"] as const).map((format) => ({
-      id: format,
-      label: t(NOTE_EXPORT_LABEL_KEYS[format]),
-      onSelect: () => onExportNote(format),
-    }));
-  }, [viewMode, onExportTranscript, onExportNote, t]);
-
   return (
     <div className="relative flex h-full min-h-0">
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
@@ -840,6 +807,7 @@ export default function NoteEditor({
         <div className="flex-1 relative min-h-0 flex flex-col">
           <div ref={contentScrollRef} className="flex-1 min-h-0 overflow-y-auto agent-chat-scroll">
             <MeetingResultsPanel
+              capturePhase={capturePhase}
               notice={captureLive ? (
                 <CaptureHealthLine micStatus={micCaptureStatus} systemStatus={systemCaptureStatus} />
               ) : capturePhase === "failed" ? (
@@ -864,33 +832,17 @@ export default function NoteEditor({
                   onResume={onResumeRecording}
                 />
               )}
-              {exportOptions.length > 0 && (
-                <HeroDropdown>
-                  <IconTooltip label={t("notes.editor.export")}>
-                    <HeroButton isIconOnly size="sm" variant="ghost" aria-label={t("notes.editor.export")}>
-                      <Download size={16} />
-                    </HeroButton>
-                  </IconTooltip>
-                  <HeroDropdown.Popover placement="bottom end">
-                    <HeroDropdown.Menu
-                      aria-label={t("notes.editor.export")}
-                      onAction={(key) => exportOptions.find((option) => option.id === key)?.onSelect()}
-                    >
-                      {exportOptions.map((option) => (
-                        <HeroDropdown.Item key={option.id} id={option.id} textValue={option.label}>
-                          {option.label}
-                        </HeroDropdown.Item>
-                      ))}
-                    </HeroDropdown.Menu>
-                  </HeroDropdown.Popover>
-                </HeroDropdown>
-              )}
             </div>}
               noteId={note.id}
               locale={locale}
               previewRecordings={debugPreview?.recordings}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
+              fallbackText={{
+                raw: htmlToPlainText(note.content),
+                enhanced: enhancement ? htmlToPlainText(enhancement.content) : "",
+                transcript: note.transcript ?? "",
+              }}
               manualContent={<RichTextEditor
                 value={note.content}
                 onChange={handleContentChange}

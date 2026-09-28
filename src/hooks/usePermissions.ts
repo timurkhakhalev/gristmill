@@ -3,6 +3,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { useLocalStorage } from "./useLocalStorage";
 import logger from "../utils/logger";
+import { useMeetingRecordingStore } from "../stores/meetingRecordingStore";
 
 export interface UsePermissionsReturn {
   // State
@@ -77,6 +78,7 @@ export const usePermissions = (
     false
   );
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
+  const micCaptureActive = useMeetingRecordingStore((state) => state.isRecording && state.micCaptureStatus === "active");
   const [accessibilityPermissionGranted, setAccessibilityPermissionGranted] = useLocalStorage(
     "accessibilityPermissionGranted",
     false
@@ -191,9 +193,13 @@ export const usePermissions = (
   // localStorage values (e.g. after TCC reset or app update).
   useEffect(() => {
     window.electronAPI?.checkMicrophoneAccess?.().then((result) => {
-      if (result) setMicPermissionGranted(result.granted);
+      const capture = useMeetingRecordingStore.getState();
+      if (result && !(capture.isRecording && capture.micCaptureStatus === "active")) setMicPermissionGranted(result.granted);
     });
   }, [setMicPermissionGranted]);
+  useEffect(() => {
+    if (micCaptureActive) setMicPermissionGranted(true);
+  }, [micCaptureActive, setMicPermissionGranted]);
 
   // On macOS, re-validate accessibility permission once this screen is allowed
   // to touch protected features, overriding stale localStorage values.

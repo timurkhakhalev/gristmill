@@ -3,6 +3,14 @@
 Первый шаг [issue #10](https://github.com/timurkhakhalev/openhercules/issues/10).
 Функции приложения, настройки провайдеров и realtime flow не меняются.
 
+Актуальный компилятор для `typecheck` и `build:main` — нативный TypeScript 7
+(`@typescript/native` содержит npm alias пакета `typescript`). Программный
+Compiler API пока берётся из `typescript`, который указывает на
+`@typescript/typescript6`: TS7.0 не поставляет этот API. Это нужно для
+type-probe тестов и `typescript-eslint`; `tsc` запускает TS7, `tsc6` — TS6.
+Все четыре текущие цели typecheck, включая тесты, описаны в
+[командах проекта](../.memory-bank/steerings/project-commands.md).
+
 ## Как запускается приложение
 
 `pnpm run build:main` очищает только `dist-main/` и компилирует код Electron
@@ -54,14 +62,15 @@ Renderer по-прежнему собирается в `src/dist`; native binari
   `helpers/meetingTranscriptionRouting.ts`.
   Граф не импортирует store/Zustand/localStorage/i18n/Electron — только
   contracts и статические capabilities; compiler probes в
-  `test/helpers/settingsSelectorsTypes.test.js` проверяют отказ на неверный
+  `test/helpers/settingsSelectorsTypes.test.ts` проверяют отказ на неверный
   scope, неверные типы полей и DOM-зависимость.
-- `pnpm run typecheck`: все три проверки последовательно.
+- `pnpm run typecheck`: все четыре проверки последовательно, включая
+  `typecheck:tests` для обычных тестов и helpers.
 - `pnpm run lint`: включает TS в helpers/utils и `.mts` в renderer/shared code.
 
-Оставшийся JS включён в сборку с `allowJs: true`, но пока не проверяется
-(`checkJs: false`). Это явная граница первого шага, а не утверждение, что весь
-Electron уже типобезопасен. TS-модули графа проверяются строго уже сейчас.
+Оставшиеся JS-модули не проверяются TS-программой (`allowJs: false`).
+Это не означает, что весь Electron уже типобезопасен; TS-модули графа
+проверяются строго.
 При переводе следующего файла JS → TS он попадает под strict по своему импорту;
 не добавлять any/assertions/ts-ignore, чтобы обходить ошибки.
 Типизация IPC и согласование NoteItem с SQLite относятся к следующему шагу.

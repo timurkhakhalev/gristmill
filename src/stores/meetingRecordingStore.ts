@@ -97,7 +97,7 @@ interface MeetingRecordingState {
   /** Bumped on every interruption report so a repeated one still re-notifies. */
   systemAudioInterruptedNonce: number;
   systemAudioInterruptedDeliveredNonce: number;
-  currentMicLevel: number;
+  currentAudioLevel: number;
   micCaptureStatus: "inactive" | "active" | "reconnecting" | "unavailable";
   systemCaptureStatus: "inactive" | "active" | "reconnecting" | "unavailable";
   windowWidth: number;
@@ -498,6 +498,10 @@ let micSource: MediaStreamAudioSourceNode | null = null;
 let micProcessor: AudioWorkletNode | null = null;
 let micStream: MediaStream | null = null;
 let micAnalyser: AnalyserNode | null = null;
+// Native system audio is captured in main, which streams its RMS here.
+let systemAudioLevel = 0;
+let systemAudioLevelAt = 0;
+const SYSTEM_AUDIO_LEVEL_STALE_MS = 250;
 let micRecovery: ActiveMicRecoveryController | null = null;
 let systemContext: AudioContext | null = null;
 let systemSource: MediaStreamAudioSourceNode | null = null;
@@ -555,7 +559,7 @@ export const useMeetingRecordingStore = create<MeetingRecordingState>()(() => ({
   systemAudioInterrupted: null,
   systemAudioInterruptedNonce: 0,
   systemAudioInterruptedDeliveredNonce: 0,
-  currentMicLevel: 0,
+  currentAudioLevel: 0,
   micCaptureStatus: "inactive",
   systemCaptureStatus: "inactive",
   windowWidth: typeof window !== "undefined" ? window.innerWidth : SIDE_PANEL_BREAKPOINT_PX,
@@ -570,6 +574,8 @@ function reportMeetingError(error: string, extra: Partial<MeetingRecordingState>
 }
 
 export const getMicAnalyser = (): AnalyserNode | null => micAnalyser;
+export const getSystemAudioLevel = (): number =>
+  Date.now() - systemAudioLevelAt > SYSTEM_AUDIO_LEVEL_STALE_MS ? 0 : systemAudioLevel;
 
 export const getActiveRecordingSessionId = (): string | null => activeRecordingSessionId;
 
@@ -1081,6 +1087,13 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       });
       if (systemAudioSilentCleanup) ipcCleanups.push(systemAudioSilentCleanup);
 
+      const systemAudioLevelCleanup = window.electronAPI?.onMeetingSystemAudioLevel?.((level) => {
+        if (activeRecordingSessionId !== sessionId) return;
+        systemAudioLevel = level;
+        systemAudioLevelAt = Date.now();
+      });
+      if (systemAudioLevelCleanup) ipcCleanups.push(systemAudioLevelCleanup);
+
       if (!startResult.recordingId || !startResult.originAt) {
         throw new Error("Meeting capture did not return its durable recording origin");
       }
@@ -1186,7 +1199,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             if (activeRecordingSessionId !== sessionId) return;
             useMeetingRecordingStore.setState({
               micCaptureStatus: status,
-              ...(status === "active" ? {} : { currentMicLevel: 0 }),
+              ...(status === "active" ? {} : { currentAudioLevel: 0 }),
             });
             if (status === "unavailable") {
               captureDrainErrorCode ??= "mic-source-unavailable";
@@ -1384,7 +1397,7 @@ export async function stopRecording(
       systemPartialSpeakerName: null,
       systemAudioSilentWarning: false,
       systemAudioInterrupted: null,
-      currentMicLevel: 0,
+      currentAudioLevel: 0,
     });
     return { diarizationSessionId: null, stopped: false };
   }
@@ -1458,7 +1471,7 @@ export async function stopRecording(
       systemPartialSpeakerName: null,
       systemAudioSilentWarning: false,
       systemAudioInterrupted: null,
-      currentMicLevel: 0,
+      currentAudioLevel: 0,
     });
     ipcCleanups.forEach((cleanupListener) => cleanupListener());
     ipcCleanups = [];

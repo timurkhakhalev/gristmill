@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { getMicAnalyser, useMeetingRecordingStore } from "../stores/meetingRecordingStore";
+import { getMicAnalyser, getSystemAudioLevel, useMeetingRecordingStore } from "../stores/meetingRecordingStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { INACTIVE_MEETING_COMPANION_STATE } from "../contracts/meetingCompanion";
 
@@ -41,12 +41,16 @@ export function useMeetingCompanionSync(): void {
     let buf = new Float32Array(256);
     const timer = setInterval(() => {
       const analyser = getMicAnalyser();
-      if (!analyser) return;
-      if (buf.length !== analyser.fftSize) buf = new Float32Array(analyser.fftSize);
-      analyser.getFloatTimeDomainData(buf);
-      let sumSquares = 0;
-      for (let i = 0; i < buf.length; i++) sumSquares += buf[i] * buf[i];
-      const rms = Math.sqrt(sumSquares / buf.length);
+      let micRms = 0;
+      if (analyser) {
+        if (buf.length !== analyser.fftSize) buf = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(buf);
+        let sumSquares = 0;
+        for (let i = 0; i < buf.length; i++) sumSquares += buf[i] * buf[i];
+        micRms = Math.sqrt(sumSquares / buf.length);
+      }
+      // Either side talking moves the bars: the mic is you, system audio is everyone else.
+      const rms = Math.max(micRms, getSystemAudioLevel());
       smoothed = LEVEL_SMOOTHING * smoothed + (1 - LEVEL_SMOOTHING) * rms;
       window.electronAPI?.sendMeetingCompanionLevel?.(Math.min(1, smoothed));
     }, LEVEL_INTERVAL_MS);

@@ -48,6 +48,7 @@ export const meetingCoordinatorEventChannels = {
   meetingSessionSpeakerConfigUpdated: "meeting-session-speaker-config-updated",
   meetingDiarizationComplete: "meeting-diarization-complete",
   meetingSystemAudioSilent: "meeting-system-audio-silent",
+  meetingSystemAudioLevel: "meeting-system-audio-level",
   // Legacy listener with no main-side producer; kept because the renderer
   // still subscribes and the bridge contract owns the full event surface.
   meetingSystemAudioDegraded: "meeting-system-audio-degraded",
@@ -510,6 +511,8 @@ export interface MeetingCoordinatorApi {
   onMeetingSystemAudioSilent?(
     callback: (data: { systemAudioStrategy: string }) => void
   ): () => void;
+  /** RMS (0..1) of natively captured system audio, throttled by main. */
+  onMeetingSystemAudioLevel?(callback: (level: number) => void): () => void;
   onMeetingSystemAudioDegraded?(callback: () => void): () => void;
   onMeetingSystemAudioInterrupted?(
     callback: (data: MeetingSystemAudioInterruption) => void

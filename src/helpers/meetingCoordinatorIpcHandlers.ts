@@ -98,6 +98,8 @@ const RACING_MIC_RETRACT_WINDOW_MS = 4000;
 const MEETING_STARTUP_WARMUP_MS = 1500;
 const MEETING_SYSTEM_AUDIO_SILENCE_WARNING_MS = 45000;
 const MEETING_SYSTEM_AUDIO_TICK_MS = 2000;
+// Level meters (in-app pill, companion) only need ~20 updates a second.
+const MEETING_SYSTEM_AUDIO_LEVEL_INTERVAL_MS = 50;
 const MAX_MEETING_RECONNECTS = 5;
 
 export type MeetingAudioSource = "mic" | "system";
@@ -1081,6 +1083,8 @@ export function registerMeetingCoordinatorHandlers(
 
   let meetingSystemAudioSilenceTimer: NodeJS.Timeout | null = null;
   let meetingSystemAudioTicker: NodeJS.Timeout | null = null;
+  let meetingSystemAudioLevelPeak = 0;
+  let meetingSystemAudioLevelSentAt = 0;
   let meetingSystemAudioWatchdogWin: CoordinatorWindowLike | null = null;
 
   const meetingSystemAudioWatchdog: MeetingSystemAudioWatchdog = createMeetingSystemAudioWatchdog({
@@ -1841,6 +1845,19 @@ export function registerMeetingCoordinatorHandlers(
   ): Promise<void> => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const timeline = createMeetingAudioTimeline({ originAt: Date.parse(capture.originAt) });
+    const reportLevel = (rms: number) => {
+      meetingSystemAudioLevelPeak = Math.max(meetingSystemAudioLevelPeak, rms);
+      const now = Date.now();
+      if (now - meetingSystemAudioLevelSentAt < MEETING_SYSTEM_AUDIO_LEVEL_INTERVAL_MS) return;
+      meetingSystemAudioLevelSentAt = now;
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(
+          "meeting-system-audio-level",
+          Math.min(1, meetingSystemAudioLevelPeak)
+        );
+      }
+      meetingSystemAudioLevelPeak = 0;
+    };
     const startCapture = () =>
       manager.start({
         onStart: () => {
@@ -1852,6 +1869,7 @@ export function registerMeetingCoordinatorHandlers(
               capture.appendNativeSamples("system", raw);
               meetingDetectionEngine?.recordMeetingAudioChunk("system", raw);
               const { rms, peak } = computeChunkStats(raw);
+              reportLevel(rms);
               meetingSystemAudioWatchdog.recordChunk(
                 rms >= MEETING_MIC_SILENCE_RMS || peak >= MEETING_MIC_SILENCE_PEAK
               );

@@ -1691,6 +1691,7 @@
       "noProviderSelected": "Für die Notizaufnahme ist kein Anbieter ausgewählt. Öffne die Einstellungen und wähle Lokal oder einen Streaming-Anbieter.",
       "autoEnded": "Die Aufnahme wurde nach dem Ende des Meetings automatisch beendet.",
       "restartFailed": "Die Meeting-Aufnahme konnte nicht neu gestartet werden.",
+      "captureError": "Die Aufnahme wurde wegen eines Fehlers gestoppt. Prüfen Sie das gespeicherte Audio in der Notiz.",
       "systemAudioSilent": {
         "title": "Noch kein Meeting-Ton erkannt",
         "description": "Bisher hat nur Ihr Mikrofon Ton aufgenommen. Sie sind in einem Videoanruf? Prüfen Sie, ob der Meeting-Ton auf diesem Computer wiedergegeben wird und nicht stummgeschaltet ist. Sie nehmen vor Ort auf? Dann können Sie diesen Hinweis ignorieren – Ihr Mikrofon nimmt den Raum auf."

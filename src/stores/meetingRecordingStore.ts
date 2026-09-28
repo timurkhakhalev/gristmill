@@ -1106,6 +1106,12 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           },
           onFailure: (error) => {
             captureDrainErrorCode ??= "capture-write-failed";
+            logger.error("Meeting capture failed", {
+              source,
+              reason: error.message,
+              lastAckSequence: captureLastSequences[source],
+              recordingId: useMeetingRecordingStore.getState().recordingId,
+            }, "meeting-capture");
             reportMeetingError(error.message, { captureErrorCode: captureDrainErrorCode });
             if (isRecordingFlag) void stopRecording(sessionId);
           },

@@ -703,6 +703,7 @@ export function registerDesktopSettingsHandlers(
   ipcMain.handle(desktopSettingsChannels.openLogsFolder, async () => {
     try {
       const logsDir = path.join(app.getPath("userData"), "logs");
+      fs.mkdirSync(logsDir, { recursive: true });
       const errMsg = await shellOpenPath(logsDir);
       if (errMsg) return { success: false, error: errMsg };
       return { success: true };

@@ -1691,6 +1691,7 @@
       "noProviderSelected": "No provider is selected for Note Recording. Open Settings and choose Local or a streaming provider.",
       "autoEnded": "Recording stopped automatically after your meeting ended.",
       "restartFailed": "Couldn't restart the meeting recording.",
+      "captureError": "Recording stopped because of an error. Check the saved audio in the note.",
       "systemAudioSilent": {
         "title": "No meeting audio detected yet",
         "description": "Only your microphone has picked up sound so far. On a video call? Check that the meeting audio is playing on this computer and isn't muted. Recording in person? You can ignore this — your microphone captures the room."

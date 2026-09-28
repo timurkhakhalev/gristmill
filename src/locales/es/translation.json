@@ -1615,6 +1615,7 @@
       "noProviderSelected": "No hay ningún proveedor seleccionado para la grabación de notas. Abre Ajustes y elige Local o un proveedor de streaming.",
       "autoEnded": "La grabación se detuvo automáticamente cuando terminó la reunión.",
       "restartFailed": "No se pudo reiniciar la grabación de la reunión.",
+      "captureError": "La grabación se detuvo por un error. Revisa el audio guardado en la nota.",
       "systemAudioSilent": {
         "title": "Aún no se detecta el audio de la reunión",
         "description": "Hasta ahora solo tu micrófono ha captado sonido. ¿Estás en una videollamada? Comprueba que el audio de la reunión se reproduce en este equipo y no está silenciado. ¿Estás grabando en persona? Puedes ignorar este aviso: tu micrófono capta la sala."

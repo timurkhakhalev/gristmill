@@ -134,6 +134,8 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     meetingProcessingRetryRun: async (id: string) => { calls.retry.push(id); return { success: true }; },
   };
   let root: ReturnType<typeof createRoot> | undefined;
+  // TestContext runs after hooks in registration order, so unmount before globals are restored.
+  t.after(async () => { if (root) await React.act(async () => root.unmount()); });
   installBrowserGlobals(t, {
     window: {
       electronAPI: api,
@@ -142,8 +144,6 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     },
   });
   const container = installHookDom(t);
-  // TestContext runs after hooks in reverse order, so unmount while window/document are still installed.
-  t.after(async () => { if (root) await React.act(async () => root!.unmount()); });
   // Fake-DOM document from installHookDom; structural typing at this seam.
   const document = globalThis.document as unknown as Record<string, unknown>;
   const createElement = document.createElement as (name: string) => HTMLElement;

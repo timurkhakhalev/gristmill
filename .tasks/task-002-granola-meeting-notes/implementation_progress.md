@@ -35,6 +35,10 @@ The next root renderer rerun reached `NoteNotices.ElapsedClock`, which uses the 
 
 Harness-fix commit: `16421a5bc` (`M1: stub interval cleanup in renderer test`).
 
-Root's next renderer rerun showed the React root was unmounted after test globals had been restored because `TestContext` executes `after` hooks in reverse registration order. The test now registers React unmount after the browser and DOM setup hooks, so unmount runs first while `window` and `document` still exist. No product timer behavior changed.
+Root's next rerun corrected the teardown-order diagnosis: this `TestContext` runs `after` hooks in registration order. The test now registers React unmount immediately after root creation, before browser/DOM cleanup hooks, so `window` and `document` remain installed during unmount. No product timer behavior changed.
 
 Teardown-fix commit: `901a1a3c7` (`M1: unmount renderer before restoring globals`).
+
+The latest root run showed that the prior teardown adjustment reversed the observed order; this corrected hook registration is ready for root verification. `pnpm run typecheck:tests`, scoped ESLint, and `git diff --check` pass. The agent did not run tests.
+
+Final teardown-fix commit hash is recorded in the follow-up progress update.

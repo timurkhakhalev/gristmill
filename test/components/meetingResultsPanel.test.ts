@@ -113,7 +113,14 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     getSpeakerProfiles: async () => [],
     meetingRecordingGetPlaybackPath: async (...args: unknown[]) => { calls.playback.push(args); return playback; },
     meetingRecordingExportAudio: async (input: Record<string, unknown>) => { calls.export.push(input); return { success: true }; },
-    meetingRecordingDeleteAudio: async (id: string) => { calls.delete.push(id); return { success: true }; },
+    meetingRecordingDeleteAudio: async (id: string) => {
+      calls.delete.push(id);
+      listedItems = listedItems.map((item) => {
+        const part = item as ReturnType<typeof recording>;
+        return part.recording.id === id ? { ...part, recording: { ...part.recording, audioState: "deleted" } } : part;
+      });
+      return { success: true };
+    },
     meetingProcessingCreateRun: async (input: Record<string, unknown>) => { calls.create.push(input); return { success: true, result: { run: { id: "00000000-0000-4000-8000-000000000004" } } }; },
     meetingProcessingUpdateBlockedRunConfig: async (input: Record<string, unknown>) => { calls.update.push(input); return { success: true }; },
     meetingProcessingSetSpeakerCorrection: async (input: Record<string, unknown>) => { calls.speaker.push(input); return { success: true }; },
@@ -198,6 +205,14 @@ test("audio count and list include a newly saved recording without reload", asyn
   assert.equal(ui.text().match(/Sep 25, 2026/g)?.length, 1);
 });
 
+test("previously deleted audio is absent from the popover", async (t: TestContext) => {
+  const deleted = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z");
+  deleted.recording.audioState = "deleted";
+  const ui = await mountPanel(t, [deleted, recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z")]);
+  assert.ok(ui.label("Audio 1"));
+  assert.equal(ui.text().match(/01:00/g)?.length, 1);
+});
+
 test("audio part actions export original tracks and confirm deletion without a transcript", async (t: TestContext) => {
   const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z")]);
   const menu = ui.menu("Audio part actions") as { props: { onAction: (key: string) => void } } | null;
@@ -208,6 +223,8 @@ test("audio part actions export original tracks and confirm deletion without a t
   assert.equal(ui.dialog().open, true);
   await ui.flush(() => ui.dialog().onConfirm());
   assert.deepEqual(ui.calls.delete, [FIRST]);
+  assert.ok(ui.label("Audio 0"));
+  assert.equal(ui.iconButton("Play audio"), null);
 });
 
 test("whole-meeting reprocess uses both saved parts and leaves defaults untouched", async (t: TestContext) => {

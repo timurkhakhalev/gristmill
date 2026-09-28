@@ -1,5 +1,19 @@
 # Test runner optimization: issue #93, TS6 stage
 
+## Final result and measurement conditions
+
+The final #93 TS6 run of `pnpm test -- --processes 2` passed 2753 cases across 388
+files in 60.43 s. The separately required `pnpm run typecheck:renderer` passed
+in 5.84 s, for 66.27 s combined against the 120 s target. This was a warm local
+checkout with installed dependencies and a healthy native SQLite runtime; a
+cold native rebuild was not forced or measured. Process-tree memory and swap
+were sampled about once per second, and `pmset -g therm` recorded no thermal or
+performance warning after the run. Those observations do not establish a
+continuous thermal or memory-pressure bound. The stages and measurements below
+record how this result was reached.
+
+## Starting point
+
 The starting point was merged `main` at
 `85e939894ac49f9e8663465130079b642981823b`: 388 test files, 2749 passing
 cases, and 452.60 s wall time including SQLite preparation and `build:main`.
@@ -40,16 +54,16 @@ unit-file group has not been proven safe.
 | Additional Vite changes | same | 2753 / 0 / 0 / 0 | 296.57 s | 1089 MiB | 224% | 0 MiB |
 | Final integrated run | same | 2753 / 0 / 0 / 0 | 303.30 s | 1216 MiB | 229% | 0 MiB |
 
-The final run is a warm local checkout, with the dependencies and compiled
+That intermediate run is a warm local checkout, with the dependencies and compiled
 native runtime already present. Its runner phases were 0.55 s preparation,
 20.01 s main build, 228.28 s ordinary files, 12.33 s grouped type probes,
 and 40.80 s other serial files. It sampled process-tree RSS and CPU about once
 per second; the monitor would stop the run above 3 GiB RSS or 512 MiB swap
 growth. Swap stayed at 5308.5 MiB. `pmset -g therm` reported no recorded thermal
 or performance warning after the run. These samples do not establish a thermal
-or continuous memory-pressure bound. The 120 s target is **not achieved** on
-TS6 by these changes; do not treat the focused renderer savings as a full-suite
-result.
+or continuous memory-pressure bound. At this intermediate TS6 stage, the
+120 s target was **not yet achieved**; focused renderer savings were not a
+full-suite result.
 
 The strict renderer typecheck separately passed in 5.52 s wall time; the
 required full test plus renderer check therefore took 308.82 s. The full

@@ -33,4 +33,4 @@ Timer-fix commit: `ef9649b92` (`M1: clean up countdown timers on unmount`).
 
 The next root renderer rerun reached `NoteNotices.ElapsedClock`, which uses the standard `clearInterval` API while the renderer harness stubs `setInterval` without its matching cleanup method. The MeetingResultsPanel test now supplies a no-op `clearInterval` for that stub only; NoteNotices and its production timer behavior are unchanged.
 
-Harness-fix commit hash is recorded in the follow-up progress update.
+Harness-fix commit: `16421a5bc` (`M1: stub interval cleanup in renderer test`).

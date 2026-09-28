@@ -85,9 +85,11 @@ function PopoverContent({
       isNonModal={isNonModal}
       shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
       triggerRef={anchorRef?.current ? (anchorRef as React.RefObject<HTMLElement>) : undefined}
-      className={cn("min-w-[220px] p-0", OVERLAY_CLASS)}
+      // A popover opening under the frameless titlebar would otherwise be swallowed by its native drag region.
+      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      className={cn("flex min-w-[220px] flex-col p-0", OVERLAY_CLASS)}
     >
-      <HeroPopover.Dialog className={cn("p-2 outline-none", className)}>{children}</HeroPopover.Dialog>
+      <HeroPopover.Dialog className={cn("min-h-0 overflow-y-auto p-2 outline-none", className)}>{children}</HeroPopover.Dialog>
     </HeroPopover.Content>
   );
 }

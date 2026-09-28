@@ -2,15 +2,9 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { moveBbHarness } from "../../config/bbAgentPreferences";
-import type { BbAgentPreferences } from "../../contracts/inferenceSettings";
-import type { BbHarness } from "../../contracts/bb";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Toggle } from "../ui/toggle";
-import { ChevronDown } from "../icons";
 import { cn } from "../lib/utils";
 import { HarnessIcon } from "../bb/HarnessIcon";
-import { BbModelPanel } from "../bb/BbModelPanel";
-import { BbSelectionLabel } from "../bb/BbSelectionLabel";
 import { useBbCatalog } from "../bb/useBbCatalog";
 
 function GripIcon() {
@@ -21,38 +15,7 @@ function GripIcon() {
   );
 }
 
-function HarnessDefaultModel({ harness, preferences }: { harness: BbHarness; preferences: BbAgentPreferences }) {
-  const { t } = useTranslation();
-  const setPreferences = useSettingsStore((state) => state.setBbAgentPreferences);
-  const saved = preferences.defaults[harness.id];
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={t("bbAgent.defaultModelFor", { harness: harness.displayName })}
-          className="flex h-7 max-w-56 min-w-0 items-center gap-1 rounded-md px-2 text-xs text-muted outline-none hover:bg-default hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus"
-        >
-          <BbSelectionLabel harness={harness} model={saved?.model ?? ""} reasoningLevel={saved?.reasoningLevel ?? ""} hideIcon />
-          <ChevronDown size={12} className="shrink-0" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="p-2">
-        <BbModelPanel
-          harnesses={[harness]}
-          hideTabs
-          selection={saved ? { provider: harness.id, ...saved } : null}
-          onSelect={({ model, reasoningLevel }) => {
-            const current = useSettingsStore.getState().bbAgentPreferences ?? preferences;
-            setPreferences({ ...current, defaults: { ...current.defaults, [harness.id]: { model, reasoningLevel } } });
-          }}
-        />
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/** App-wide bb harnesses: order, enablement, default harness and per-harness default model. */
+/** App-wide bb harnesses: order, enablement and default harness. */
 export default function BbAgentSettings() {
   const { t } = useTranslation();
   const { harnesses, error, loading } = useBbCatalog();
@@ -110,7 +73,6 @@ export default function BbAgentSettings() {
               </button>
               <HarnessIcon logo={harness.logo} className="size-5" />
               <span className="min-w-0 flex-1 truncate text-sm">{harness.displayName}</span>
-              {enabled && <HarnessDefaultModel harness={harness} preferences={preferences} />}
               {isDefault ? (
                 <span className="rounded border border-border px-1.5 py-0.5 text-2xs text-muted">{t("bbAgent.default")}</span>
               ) : (

@@ -12,7 +12,6 @@ import { Toggle } from "../../ui/toggle";
 import { Input } from "../../ui/input";
 import ApiKeyInput from "../../ui/ApiKeyInput";
 import OpenAICompatiblePanel from "../../OpenAICompatiblePanel";
-import SelfHostedPanel from "../../SelfHostedPanel";
 import { AlertCircle, ArrowLeft, Check, ChevronDown, ChevronRight, Download, Network, Search, X } from "../../icons";
 import { cn } from "../../lib/utils";
 import { HarnessIcon } from "../../bb/HarnessIcon";
@@ -470,27 +469,6 @@ function LocalTab({ task, selection }: { task: ModelTask; selection: TaskSelecti
   );
 }
 
-function SelfHostedTab({ task, selection }: { task: ModelTask; selection: TaskSelection }) {
-  const { t } = useTranslation();
-  const speech = useSettingsStore(useShallow((state) => ({
-    url: state.remoteTranscriptionUrl,
-    model: state.remoteTranscriptionModel,
-    setUrl: state.setRemoteTranscriptionUrl,
-    setModel: state.setRemoteTranscriptionModel,
-  })));
-  const isCurrent = selection.source === "self-hosted";
-  if (task === "upload") {
-    return (
-      <div className="space-y-3">
-        <p className="text-xs text-muted-foreground">{t("modelsSettings.picker.selfHostedSpeechHint")}</p>
-        <SelfHostedPanel service="transcription" url={speech.url} onUrlChange={speech.setUrl} model={speech.model} onModelChange={speech.setModel} />
-        <UseButton active={isCurrent} disabled={!speech.url.trim()} onUse={() => selectSelfHosted(task)} />
-      </div>
-    );
-  }
-  return <LanguageSelfHosted task={task as LanguageTask} selection={selection} />;
-}
-
 function LanguageSelfHosted({ task, selection }: { task: LanguageTask; selection: TaskSelection }) {
   const { t } = useTranslation();
   const config = useSettingsStore(useShallow((state) => selectResolvedLLMConfig(state, task)));
@@ -565,7 +543,7 @@ function TaskModelPanel({ task, selection }: { task: ModelTask; selection: TaskS
         <SourceTabs sources={sources} active={source} onChange={setSource} />
         {source === "cloud" && <CloudTab task={task} selection={selection} />}
         {source === "local" && <LocalTab task={task} selection={selection} />}
-        {source === "self-hosted" && <SelfHostedTab task={task} selection={selection} />}
+        {source === "self-hosted" && !isSpeechTask(task) && <LanguageSelfHosted task={task as LanguageTask} selection={selection} />}
         {source === "bb" && !isSpeechTask(task) && <BbTab task={task} selection={selection} />}
       </div>
       {!isSpeechTask(task) && source !== "bb" && <ThinkingToggle task={task} />}

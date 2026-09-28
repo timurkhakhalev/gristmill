@@ -62,6 +62,15 @@ export function formatShortTime(dateStr: string, locale?: string, format: TimeFo
   return formatTime(date, locale, { hour: "numeric", minute: "2-digit" }, format);
 }
 
+/** Short date+time stamp, e.g. "29.09 · 11:05". Falls back to just the date if the time is missing. */
+export function formatShortDateTime(dateStr: string, locale?: string, dateFormat: DateFormat = "locale", timeFormat: TimeFormat = "locale"): string {
+  const date = formatShortDate(dateStr, locale, dateFormat);
+  const time = formatShortTime(dateStr, locale, timeFormat);
+  if (!date && !time) return "";
+  if (!time) return date;
+  return `${date} \u00b7 ${time}`;
+}
+
 export function formatNoteDate(dateStr: string, locale?: string, dateFormat: DateFormat = "locale", timeFormat: TimeFormat = "locale"): string {
   const date = normalizeDbDate(dateStr);
   if (Number.isNaN(date.getTime())) return "";

@@ -6,7 +6,7 @@ const modelRegistryData = require("../../src/models/modelRegistryData.json");
 const english = require("../../src/locales/en/translation.json");
 
 let vitePromise;
-const cleanup: unknown[] = [];
+const cleanup: (() => Promise<unknown> | unknown)[] = [];
 test.after(async () => {
   for (const close of cleanup) await close();
 });
@@ -45,10 +45,10 @@ test("tinfoil default model follows the glm-5-3 replacement", async (t: import("
   });
 
   await t.test("registry names the default and no longer ships glm-5-2", () => {
-    const tinfoil = modelRegistryData.cloudProviders.find((provider: string) => provider.id === "tinfoil");
+    const tinfoil = modelRegistryData.cloudProviders.find((provider: { id: string; defaultModel?: string; models: { id: string }[] }) => provider.id === "tinfoil");
     assert.equal(tinfoil.defaultModel, "glm-5-3");
     assert.ok(
-      !tinfoil.models.some((model: string) => model.id === "glm-5-2"),
+      !tinfoil.models.some((model: { id: string }) => model.id === "glm-5-2"),
       "retired id must be out of the seed"
     );
   });
@@ -56,8 +56,8 @@ test("tinfoil default model follows the glm-5-3 replacement", async (t: import("
   await t.test("every curated description key resolves in English", () => {
     for (const key of Object.values(DESCRIPTION_KEYS)) {
       const path = key.split(".");
-      const value = path.reduce((node, segment) => node?.[segment], english);
-      assert.equal(typeof value, "string", `${key} is missing from en`);
+      const value = path.reduce<unknown>((node, segment) => node && typeof node === "object" ? Reflect.get(node, segment) : undefined, english);
+      assert.ok(typeof value === "string", `${key} is missing from en`);
       assert.ok(value.length > 0, `${key} is empty in en`);
     }
   });
@@ -162,7 +162,7 @@ test("a provider's named default beats its list position", async (t: import("nod
   const { pickDefaultModelId } = await import("../../src/models/providerDefaultModel.ts");
 
   const byId = Object.fromEntries(
-    modelRegistryData.cloudProviders.map((provider: string) => [provider.id, provider])
+    modelRegistryData.cloudProviders.map((provider: { id: string }) => [provider.id, provider])
   );
 
   await t.test("the shared helper prefers the named default over list position", () => {

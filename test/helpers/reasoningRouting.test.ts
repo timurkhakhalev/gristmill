@@ -64,7 +64,7 @@ test("fan-out mirrors the endpoint url and key alongside the routing", async () 
 
 test("fan-out with partial settings only mirrors the provided routing fields", async () => {
   const { buildReasoningScopePatches } = await load();
-  const patches = buildReasoningScopePatches({ useCleanupModel: true }, "providers");
+  const patches = Reflect.apply(buildReasoningScopePatches, undefined, [{ useCleanupModel: true }, "providers"]);
   const { cleanup, noteFormatting, chatIntelligence } = patches;
 
   assert.deepEqual(Object.keys(patches).sort(), [
@@ -72,7 +72,7 @@ test("fan-out with partial settings only mirrors the provided routing fields", a
     "cleanup",
     "noteFormatting",
   ]);
-  assert.equal(cleanup.useCleanupModel, true);
+  assert.equal(Reflect.get(cleanup, "useCleanupModel"), true);
   assert.equal(cleanup.cleanupMode, "providers");
   assert.equal("cleanupProvider" in cleanup, false);
 

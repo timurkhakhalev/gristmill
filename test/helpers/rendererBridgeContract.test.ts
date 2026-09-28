@@ -7,7 +7,7 @@ const vm = require("node:vm");
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 function loadBridge() {
-  let api;
+  let api: Record<string, unknown> | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
     // sandbox needs the same bindings Node's CJS loader provides.
@@ -18,7 +18,7 @@ function loadBridge() {
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: unknown) => {
-            api = value;
+            if (typeof value === "object" && value !== null) api = value as Record<string, unknown>;
           },
         },
         ipcRenderer: { on() {}, send() {}, invoke: async () => {}, removeListener() {} },
@@ -27,7 +27,10 @@ function loadBridge() {
     },
     process: { platform: "darwin", versions: {} },
   });
-  return api;
+  const exposedApi = () => api;
+  const result = exposedApi();
+  assert.ok(result, "preload must expose the renderer API");
+  return result;
 }
 
 test("the bundled preload is committed to the build output", () => {

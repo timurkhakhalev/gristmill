@@ -5,7 +5,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 // registration can run outside Electron. Accelerators containing "BAD"
 // simulate an OS-level conflict.
 const registered = new Map();
-require.cache[require.resolve("electron")] = {
+require.cache[require.resolve("electron")] = Object.assign(new (require("node:module").Module)(require.resolve("electron")), {
   exports: {
     globalShortcut: {
       register(accelerator: string, callback: unknown) {
@@ -25,7 +25,7 @@ require.cache[require.resolve("electron")] = {
     },
     BrowserWindow: class {},
   },
-};
+});
 
 const HotkeyManager = require("../../src/helpers/hotkeyManager.ts");
 

@@ -45,7 +45,7 @@ test("a 200 is the whole signal for providers with no OpenAI-shaped model list",
     ["deepgram", "nova-3", { stt: [{ name: "nova-3", canonical_name: "nova-3-general" }] }],
     ["elevenlabs", "scribe_v2", { user_id: "test-user" }],
     ["assemblyai", "universal-streaming-english", { transcripts: [], page_details: {} }],
-  ]) {
+  ] as [string, string, unknown][]) {
     assert.deepEqual(
       await testProviderConnection({ provider, apiKey: "k", model }, async () => ({
         ok: true,

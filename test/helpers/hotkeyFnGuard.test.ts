@@ -4,7 +4,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 // Same electron stub as the other hotkeyManager suites: `registered` holds the
 // callback globalShortcut would fire, so a test can invoke it directly.
 const registered = new Map();
-require.cache[require.resolve("electron")] = {
+require.cache[require.resolve("electron")] = Object.assign(new (require("node:module").Module)(require.resolve("electron")), {
   exports: {
     globalShortcut: {
       register(accelerator: string, callback: unknown) {
@@ -24,7 +24,7 @@ require.cache[require.resolve("electron")] = {
     },
     BrowserWindow: class {},
   },
-};
+});
 
 const HotkeyManager = require("../../src/helpers/hotkeyManager.ts");
 

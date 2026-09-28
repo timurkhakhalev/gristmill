@@ -39,7 +39,7 @@ const BASE_URLS = [
 ];
 
 test("secure-host policy agrees on private/public HTTP across the matrix", () => {
-  const expectations = [
+  const expectations: [string, boolean][] = [
     ["http://localhost:3000/v1", true],
     ["http://127.0.0.1:11434", true],
     ["http://10.0.0.5:8080/v1", true],

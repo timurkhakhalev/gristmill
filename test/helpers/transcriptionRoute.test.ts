@@ -3,7 +3,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 
 const load = () => import("../../src/helpers/transcriptionRoute.ts");
 
-const resolve = async (settings: unknown, extra: Record<string, unknown> = {}): Promise<any> => {
+const resolve = async (settings: import("../../src/helpers/transcriptionRoute.ts").TranscriptionRouteSettings & Record<string, unknown>, extra: Record<string, unknown> = {}): Promise<any> => {
   const { resolveTranscriptionRoute } = await load();
   return resolveTranscriptionRoute({ settings, ...extra });
 };

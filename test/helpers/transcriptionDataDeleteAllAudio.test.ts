@@ -28,7 +28,7 @@ const DatabaseManager = require("../../src/helpers/database.ts");
 const AudioStorageManager = require("../../src/helpers/audioStorage.ts");
 
 function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error?.message || error);
+  const message = error instanceof Error ? error.message : String(error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")

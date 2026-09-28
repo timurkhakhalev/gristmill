@@ -58,14 +58,14 @@ test("declares a strict read-only availability schema", async () => {
   assert.equal(properties.bufferMinutes.maximum, 120);
   assert.equal(properties.maxResults.minimum, 1);
   assert.equal(properties.maxResults.maximum, 20);
-  assert.match(properties.maxResults.description, /default 10/);
+  assert.match(properties.maxResults.description ?? "", /default 10/);
   assert.match(
     calendarAvailabilityTool.description,
     new RegExp(`${MAX_AVAILABILITY_HORIZON_DAYS} local calendar days`)
   );
-  assert.match(properties.end.description, /end plus buffer/);
+  assert.match(properties.end.description ?? "", /end plus buffer/);
   assert.doesNotMatch(
-    properties.end.description,
+    properties.end.description ?? "",
     /after start/
   );
 });

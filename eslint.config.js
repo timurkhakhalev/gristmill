@@ -11,7 +11,7 @@ module.exports = [
       "src/dist/**",
       "*.min.js",
       "build/**",
-      "test/scripts/type-probes/**", // Intentionally invalid probe fixtures; checked by the probe runner.
+      "test/scripts/type-probes/*-0?.ts", // Intentionally invalid probe fixtures; checked by the probe runner.
       "src/*", // Renderer files have their own config; main-process JS must not be skipped.
       "!src/helpers/",
       "!src/utils/",

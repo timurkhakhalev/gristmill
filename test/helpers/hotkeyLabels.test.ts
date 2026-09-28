@@ -123,7 +123,7 @@ test("parseHotkey splits modifiers from the base key", async () => {
   assert.deepEqual(parseHotkey("Alt+R"), { modifiers: ["Alt"], baseKey: "R" });
   assert.deepEqual(parseHotkey("F8"), { modifiers: [], baseKey: "F8" });
   assert.deepEqual(parseHotkey(""), { modifiers: [], baseKey: "" });
-  assert.deepEqual(parseHotkey(null), { modifiers: [], baseKey: "" });
+  assert.deepEqual(Reflect.apply(parseHotkey, undefined, [null]), { modifiers: [], baseKey: "" });
 });
 
 test("isCompoundHotkey is true only when modifiers are present", async () => {
@@ -134,7 +134,7 @@ test("isCompoundHotkey is true only when modifiers are present", async () => {
   assert.equal(isCompoundHotkey("F8"), false);
   assert.equal(isCompoundHotkey("GLOBE"), false);
   assert.equal(isCompoundHotkey(""), false);
-  assert.equal(isCompoundHotkey(null), false);
+  assert.equal(Reflect.apply(isCompoundHotkey, undefined, [null]), false);
 });
 
 test("isValidHotkeyFormat accepts single keys, globe, mouse buttons, and well-formed combos", async () => {

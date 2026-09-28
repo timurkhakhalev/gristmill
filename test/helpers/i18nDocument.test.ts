@@ -4,16 +4,16 @@ const test: typeof import("node:test") = require("node:test");
 const load = () => import("../../src/utils/i18nDocument.ts");
 
 function createI18n(language: string) {
-  const listeners = new Set();
+  const listeners = new Set<(language: string) => void>();
   return {
     language,
     resolvedLanguage: language,
     dir: (value: any) => (value.toLowerCase().startsWith("ar") ? "rtl" : "ltr"),
-    on(event: unknown, listener: unknown) {
+    on(event: unknown, listener: (language: string) => void) {
       assert.equal(event, "languageChanged");
       listeners.add(listener);
     },
-    off(event: unknown, listener: unknown) {
+    off(event: unknown, listener: (language: string) => void) {
       assert.equal(event, "languageChanged");
       listeners.delete(listener);
     },
@@ -45,9 +45,9 @@ test("HMR disposal removes the exact language listener and remains idempotent", 
   const { bindDocumentLanguage } = await load();
   const i18n = createI18n("en");
   const root = { lang: "", dir: "" };
-  let hotDispose;
+  let hotDispose: (() => void) | undefined;
   const hot = {
-    dispose(callback: unknown) {
+    dispose(callback: () => void) {
       hotDispose = callback;
     },
   };
@@ -56,7 +56,10 @@ test("HMR disposal removes the exact language listener and remains idempotent", 
   assert.equal(i18n.listenerCount(), 1);
   assert.equal(typeof hotDispose, "function");
 
-  hotDispose();
+  const registeredDispose = () => hotDispose;
+  const callback = registeredDispose();
+  assert.ok(callback);
+  callback();
   dispose();
   assert.equal(i18n.listenerCount(), 0);
   i18n.emit("ar");

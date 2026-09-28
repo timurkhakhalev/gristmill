@@ -703,7 +703,7 @@ test("invalid payloads are rejected before path resolution, read or network", as
 test("hard cancel aborts the in-flight transport and reports UPLOAD_CANCELLED", async () => {
   const { call, registry } = setup({
     transport: {
-      postMultipart: (url: string, body: unknown, boundary: any, headers: unknown, options: unknown) =>
+      postMultipart: (url: string, body: unknown, boundary: any, headers: unknown, options: { signal: AbortSignal }) =>
         new Promise((_resolve, reject) => {
           options.signal.addEventListener("abort", () => {
             const error = new Error("The operation was aborted");

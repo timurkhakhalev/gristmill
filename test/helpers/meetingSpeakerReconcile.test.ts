@@ -60,10 +60,10 @@ const NOTE_ID = 42;
 const embedding = Array.from({ length: 8 }, (_, i) => (i === 0 ? 1 : 0));
 
 function createMappingRecorder(existingMappings: any) {
-  const calls = { set: [], remove: [] };
+  const calls = { set: [] as { noteId: number; speakerId: string; profileId: number; displayName: string }[], remove: [] as { noteId: number; speakerId: string }[] };
   const databaseManager = {
     getSpeakerMappings: () => existingMappings,
-    setSpeakerMapping: (noteId: any, speakerId: string, profileId: string, displayName: any) => {
+    setSpeakerMapping: (noteId: number, speakerId: string, profileId: number, displayName: string) => {
       calls.set.push({ noteId, speakerId, profileId, displayName });
     },
     removeSpeakerMapping: (noteId: any, speakerId: string) => {
@@ -152,7 +152,7 @@ function refreshConfig(explicit: any, { expectedCount = 2, attendees = THREE_ATT
     recluster: async () => [],
     setEnabled: () => {},
     maxSpeakers: 0,
-    setMaxSpeakers(n: string) {
+    setMaxSpeakers(n: number) {
       this.maxSpeakers = n;
     },
     getSpeakerEmbedding: () => null,

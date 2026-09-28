@@ -12,7 +12,7 @@ async function loadRecovery() {
     setSelectedMicDevice(deviceId: string, label: string) {
       settings.saved = { deviceId, label };
     },
-    saved: null,
+    saved: null as { deviceId: string; label: string } | null,
   };
   currentSettings = settings;
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
@@ -45,7 +45,7 @@ test("remaps a rotated device ID only when its label is unique", async (t: impor
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   t.after(() => {
     if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
-    else delete globalThis.navigator;
+    else Reflect.deleteProperty(globalThis, "navigator");
   });
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,

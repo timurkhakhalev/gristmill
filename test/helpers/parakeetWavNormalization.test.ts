@@ -62,7 +62,7 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-parakeet-wav-test-"));
   const originalLoad = Module._load;
   let ffmpegUtils: any;
-  Module._load = function loadWithElectronStub(request: string, parent: unknown, isMain: boolean) {
+  Module._load = function loadWithElectronStub(request: string, parent: { filename?: string } | undefined, isMain: boolean) {
     if (request === "electron") {
       return {
         app: {
@@ -71,7 +71,7 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
         },
       };
     }
-    if (request === "./ffmpegUtils" && parent?.filename.endsWith("parakeetServer.js")) {
+    if (request === "./ffmpegUtils" && parent?.filename?.endsWith("parakeetServer.js")) {
       return {
         ...ffmpegUtils,
         getFFmpegPath: () => "/mock/ffmpeg",
@@ -98,7 +98,7 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
       fs.writeFileSync(path.join(modelDir, file), "");
     }
 
-    let receivedSamples;
+    let receivedSamples: Buffer | undefined;
     const manager = new ParakeetServerManager();
     manager.wsServer = {
       start: async () => {},
@@ -111,8 +111,9 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
     const result = await manager.transcribe(createFloat32Wav(0.5), { modelName: MODEL_NAME });
 
     assert.equal(result.text, "audible");
-    assert.ok(receivedSamples);
-    assert.ok(Math.abs(receivedSamples.readFloatLE(0) - 0.5) < 0.001);
+    const samples = () => receivedSamples;
+    assert.ok(samples());
+    assert.ok(Math.abs(samples()!.readFloatLE(0) - 0.5) < 0.001);
   } finally {
     fs.rmSync(tempHome, { recursive: true, force: true });
   }

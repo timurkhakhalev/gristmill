@@ -29,7 +29,7 @@ const Ctor = IPCHandlers.default || IPCHandlers;
 const DatabaseManager = require("../../src/helpers/database.ts");
 
 function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error?.message || error);
+  const message = error instanceof Error ? error.message : String(error);
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -129,10 +129,14 @@ test("retroactive mapping never rewrites already-assigned mappings", async (t: i
   await runRetroactive(db, profileA);
 
   const mappings = db.getSpeakerMappings(note.id);
-  const bySpeaker = new Map(mappings.map((m: any) => [m.speaker_id, m]));
-  assert.equal(bySpeaker.get("SPEAKER_00").profile_id, profileA.id);
-  assert.equal(bySpeaker.get("SPEAKER_01").profile_id, profileB.id);
-  assert.equal(bySpeaker.get("SPEAKER_01").display_name, "Bob");
+  const bySpeaker = new Map<string, { profile_id: number | null; display_name: string }>(mappings.map((m: any) => [m.speaker_id, m]));
+  const unmappedSpeaker = bySpeaker.get("SPEAKER_00");
+  const assignedSpeaker = bySpeaker.get("SPEAKER_01");
+  assert.ok(unmappedSpeaker);
+  assert.ok(assignedSpeaker);
+  assert.equal(unmappedSpeaker.profile_id, profileA.id);
+  assert.equal(assignedSpeaker.profile_id, profileB.id);
+  assert.equal(assignedSpeaker.display_name, "Bob");
 });
 
 test.after(() => {

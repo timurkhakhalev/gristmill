@@ -3,7 +3,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const { createRendererServer, installBrowserGlobals, reloadSettingsStore } = require("../lib/rendererTestHarness.ts");
 
 let vitePromise;
-const cleanup: unknown[] = [];
+const cleanup: (() => Promise<unknown> | unknown)[] = [];
 test.after(async () => {
   for (const close of cleanup) await close();
 });
@@ -72,7 +72,9 @@ test("per-provider reasoning model memory", async (t: import("node:test").TestCo
   });
 
   await t.test("memory persists to localStorage as JSON", () => {
-    const persisted = JSON.parse(localStorage.getItem("reasoningModelByProvider"));
+    const raw = localStorage.getItem("reasoningModelByProvider");
+    assert.ok(raw);
+    const persisted = JSON.parse(raw);
     assert.equal(typeof persisted, "object");
     assert.ok(Object.keys(persisted).some((key) => key.startsWith("cleanup:")));
   });

@@ -93,7 +93,8 @@ test("parakeet: execution failures and cancellation retain their original errors
     };
     await assert.rejects(manager.transcribeLocalParakeet(Buffer.from([1])), (error: unknown) => {
       assert.equal(error, failure);
-      assert.notEqual(error.code, "NO_SPEECH_DETECTED");
+      assert.ok(error instanceof Error);
+      assert.notEqual(Reflect.get(error, "code"), "NO_SPEECH_DETECTED");
       return true;
     });
   }

@@ -37,7 +37,7 @@ test("auto-end dimensions fit every supported localized title, body, and action"
   const translations = locales.map(
     (locale) => require(`../../src/locales/${locale}/translation.json`).meetingNotification.autoEnd
   );
-  const displayColumns = (value: unknown) =>
+  const displayColumns = (value: string) =>
     [...value].reduce(
       (columns, character) =>
         columns +
@@ -54,13 +54,16 @@ test("auto-end dimensions fit every supported localized title, body, and action"
   const columnsPerLine = Math.floor(textWidth / 6);
   // Every reason-specific body must fit, not just the longest per locale.
   const worstCase = translations.flatMap(({ title, body }, index) =>
-    Object.entries(body).map(([reason, text]) => ({
-      locale: locales[index],
-      reason,
-      lines:
-        Math.ceil(displayColumns(title) / columnsPerLine) +
-        Math.ceil(displayColumns(text) / columnsPerLine),
-    }))
+    Object.entries(body).map(([reason, text]) => {
+      assert.ok(typeof text === "string");
+      return {
+        locale: locales[index],
+        reason,
+        lines:
+          Math.ceil(displayColumns(title) / columnsPerLine) +
+          Math.ceil(displayColumns(text) / columnsPerLine),
+      };
+    })
   );
   const maximumTextLines = Math.max(...worstCase.map(({ lines }) => lines));
   const requiredHeight = 24 + 20 + maximumTextLines * 14;

@@ -7,7 +7,7 @@ const path = require("node:path");
 
 // Native resource lookup belongs to the app root, independently of module location.
 const originalLoad = Module._load;
-Module._load = function (request: string, ...args) {
+Module._load = function (request: string, ...args: unknown[]) {
   if (request === "electron") return { app: { getAppPath: () => path.resolve(__dirname, "../..") } };
   return originalLoad.call(this, request, ...args);
 };
@@ -41,11 +41,11 @@ function stubMacosVersion(t: import("node:test").TestContext, version: any) {
   });
 
   t.after(() => {
-    Object.defineProperty(process, "platform", platformDescriptor);
+    if (platformDescriptor) Object.defineProperty(process, "platform", platformDescriptor);
     if (systemVersionDescriptor) {
       Object.defineProperty(process, "getSystemVersion", systemVersionDescriptor);
     } else {
-      delete process.getSystemVersion;
+      Reflect.deleteProperty(process, "getSystemVersion");
     }
   });
 }

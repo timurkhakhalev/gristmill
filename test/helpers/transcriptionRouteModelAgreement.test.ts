@@ -27,7 +27,7 @@ test("every shipping registry model survives resolveByokModel", async () => {
   const { resolveByokModel } = await load();
 
   for (const providerId of PREFIX_VALIDATED_PROVIDERS) {
-    const provider = registry.transcriptionProviders.find((p: string) => p.id === providerId);
+    const provider = registry.transcriptionProviders.find((p: { id: string; models: { id: string }[] }) => p.id === providerId);
     assert.ok(provider, `registry is missing provider ${providerId}`);
 
     for (const model of provider.models) {
@@ -44,7 +44,7 @@ test("each provider's fallback default is a model that provider actually offers"
   const { resolveByokModel } = await load();
 
   for (const providerId of PREFIX_VALIDATED_PROVIDERS) {
-    const provider = registry.transcriptionProviders.find((p: string) => p.id === providerId);
+    const provider = registry.transcriptionProviders.find((p: { id: string; models: { id: string }[] }) => p.id === providerId);
     const fallback = resolveByokModel(providerId, "a-model-from-another-provider");
     assert.ok(
       provider.models.some((m: any) => m.id === fallback),

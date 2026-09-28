@@ -17,7 +17,7 @@ function installNavigatorLanguage(t: import("node:test").TestContext, language: 
     if (originalNavigator) {
       Object.defineProperty(globalThis, "navigator", originalNavigator);
     } else {
-      delete globalThis.navigator;
+      Reflect.deleteProperty(globalThis, "navigator");
     }
   });
 }
@@ -99,12 +99,13 @@ test("fresh Chinese browser locale survives settings hydration", async (t: impor
 test("main locale fallback remains implicit and yields to an explicit preference", (t: import("node:test").TestContext) => {
   const userDataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-ui-language-"));
   const originalEnvironment = { ...process.env };
-  const originalResourcesPath = process.resourcesPath;
-  process.resourcesPath = userDataDirectory;
+  const originalResourcesPath = Object.getOwnPropertyDescriptor(process, "resourcesPath");
+  Object.defineProperty(process, "resourcesPath", { configurable: true, value: userDataDirectory });
   delete process.env.UI_LANGUAGE;
   t.after(() => {
     process.env = originalEnvironment;
-    process.resourcesPath = originalResourcesPath;
+    if (originalResourcesPath) Object.defineProperty(process, "resourcesPath", originalResourcesPath);
+    else Reflect.deleteProperty(process, "resourcesPath");
     fs.rmSync(userDataDirectory, { recursive: true, force: true });
   });
 

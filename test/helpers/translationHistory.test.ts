@@ -46,8 +46,8 @@ function createDb(t: import("node:test").TestContext) {
   }
 }
 
-function findById(rows: unknown, id: unknown) {
-  return rows.find((row: any) => row.id === id) || null;
+function findById(rows: import("../../src/helpers/database.ts").TranscriptionRow[], id: number) {
+  return rows.find((row) => row.id === id) || null;
 }
 
 test("saveTranscription with routeKind translation round-trips route_kind", (t: import("node:test").TestContext) => {

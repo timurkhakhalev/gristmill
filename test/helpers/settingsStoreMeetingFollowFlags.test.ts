@@ -100,7 +100,7 @@ test("Note Recording modes survive the follow-flag migration", { timeout: 300_00
   // provider-settings and agent-mode migrations share (the local branch is
   // pinned per registry provider in settingsStoreLocalProviderMigrations.test.js).
   await t.test("legacy reasoning keys derive the same modes as before", async () => {
-    const cases = [
+    const cases: [Record<string, string>, string][] = [
       [{ cloudReasoningMode: "byok", reasoningProvider: "custom" }, "self-hosted"],
       [{ cloudReasoningMode: "byok", reasoningProvider: "bedrock" }, "enterprise"],
       [{ cloudReasoningMode: "byok", reasoningProvider: "azure" }, "enterprise"],

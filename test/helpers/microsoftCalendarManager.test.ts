@@ -155,7 +155,7 @@ test("_mapEvent falls back to a meeting link found in location or body text", ()
   assert.equal(mapped.attendees, null);
 });
 
-function createManager(MicrosoftCalendarManager: any, upserted: any, contacts = [], overrides = {}) {
+function createManager(MicrosoftCalendarManager: any, upserted: any[], contacts: any[] = [], overrides = {}) {
   return new MicrosoftCalendarManager(
     {
       removeStaleCalendarEvents: () => {},

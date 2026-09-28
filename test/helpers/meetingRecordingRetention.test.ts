@@ -60,7 +60,7 @@ function holdAudioOperation(registry: any, recordingId: string) {
   let start: any;
   const started = new Promise((resolve) => { start = resolve; });
   let closed = false;
-  const operation = registry.run(recordingId, (signal: any) => new Promise((resolve) => {
+  const operation = registry.run(recordingId, (signal: any) => new Promise<void>((resolve) => {
     start();
     signal.addEventListener("abort", () => {
       closed = true;
@@ -163,10 +163,10 @@ test("note deletion waits for the active reader before removing its Note and run
   await audioRead.started;
   const intent = db.beginMeetingNoteDeletion(note.id);
   assert.ok(intent, "note deletion must persist an intent before removing files");
-  let releaseReader;
+  let releaseReader!: () => void;
   let readerStarted: any;
   const readerWait = new Promise((resolve) => { readerStarted = resolve; });
-  const release = new Promise((resolve) => { releaseReader = resolve; });
+  const release = new Promise<void>((resolve) => { releaseReader = resolve; });
   const context = {
     databaseManager: db,
     audioStorageManager: { meetingRecordings: storage },
@@ -208,10 +208,10 @@ test("expiry uses recording end time and waits for readers before deleting sourc
   const stat = fs.statSync(filePath);
   fs.utimesSync(filePath, new Date(anchor), new Date(anchor));
 
-  let releaseReader;
+  let releaseReader!: () => void;
   let readerStarted: any;
   const readerWait = new Promise((resolve) => { readerStarted = resolve; });
-  const release = new Promise((resolve) => { releaseReader = resolve; });
+  const release = new Promise<void>((resolve) => { releaseReader = resolve; });
   const cleanup = runCleanup(db, storage, { audioRetentionDays: 7, transcriptRetentionDays: 0 }, {
     _meetingProcessing: {
       cancelRecordingForDeletion: async (id: any) => {

@@ -24,7 +24,7 @@ test("Parakeet rejects macOS below the packaged ONNX Runtime floor", () => {
 
 test("Parakeet treats a missing system-version API as supported (plain Node)", (t: import("node:test").TestContext) => {
   const descriptor = Object.getOwnPropertyDescriptor(process, "getSystemVersion");
-  delete process.getSystemVersion;
+  Reflect.deleteProperty(process, "getSystemVersion");
   t.after(() => {
     if (descriptor) Object.defineProperty(process, "getSystemVersion", descriptor);
   });

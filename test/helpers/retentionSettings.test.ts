@@ -122,7 +122,7 @@ test("no sweep runs before the renderer has synced the persisted settings", () =
   const IPCHandlers = require("../../src/helpers/ipcHandlers");
   const sweeps: unknown[] = [];
   const context = {
-    _retentionCleanupInterval: null,
+    _retentionCleanupInterval: null as ReturnType<typeof setInterval> | null,
     _retentionSettingsSynced: false,
     _retentionSettings: { ...DEFAULT_RETENTION_SETTINGS },
     _runRetentionCleanup() {
@@ -131,7 +131,9 @@ test("no sweep runs before the renderer has synced the persisted settings", () =
   };
 
   IPCHandlers.prototype._setupRetentionCleanup.call(context);
-  clearInterval(context._retentionCleanupInterval);
+  const interval = () => context._retentionCleanupInterval;
+  const activeInterval = interval();
+  if (activeInterval) clearInterval(activeInterval);
 
   // The 30-day default would have deleted audio a "Disabled" user asked to keep.
   assert.deepEqual(sweeps, []);

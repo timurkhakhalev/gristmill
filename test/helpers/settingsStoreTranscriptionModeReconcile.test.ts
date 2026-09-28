@@ -24,7 +24,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
   });
 
   // Migrations run once per module evaluation, so every case re-evaluates the store.
-  const writes: unknown[] = [];
+  const writes: string[] = [];
   const setItem = storage.setItem.bind(storage);
   storage.setItem = (key: string, value: unknown) => {
     writes.push(key);

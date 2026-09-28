@@ -78,8 +78,8 @@ test("main IPC resolves the current engine and scopes both actions to event.send
   const sender = { id: "renderer" };
   const calls: unknown[] = [];
   let engine = {
-    completeAutoEndSession: async () => false,
-    respondToAutoEndNotification: () => false,
+    completeAutoEndSession: async (_sessionId: string, _eventSender: unknown) => false,
+    respondToAutoEndNotification: (_sessionId: string, _action: string, _eventSender: unknown) => false,
   };
   registerMeetingAutoEndLifecycleHandlers(ipcMain, () => engine);
 

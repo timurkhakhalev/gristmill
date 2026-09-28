@@ -51,7 +51,7 @@ test("groq tolerates a missing model without throwing", async () => {
   const { suppressThinking } = await load();
 
   const body = {};
-  suppressThinking(body, "groq", undefined);
+  Reflect.apply(suppressThinking, undefined, [body, "groq", undefined]);
 
   assert.deepEqual(body, {});
 });
@@ -167,7 +167,7 @@ test("mistral tolerates a missing model without throwing", async () => {
   const { suppressThinking } = await load();
 
   const body = {};
-  suppressThinking(body, "mistral", undefined);
+  Reflect.apply(suppressThinking, undefined, [body, "mistral", undefined]);
 
   assert.deepEqual(body, { reasoning_effort: "none" });
 });

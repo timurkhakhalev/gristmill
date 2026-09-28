@@ -100,7 +100,7 @@ test("modifier-only chords are Windows/Linux only — macOS cannot register them
 test("Fn combinations are rejected because only standalone Globe has a native path", async () => {
   const { validateHotkey } = await load();
 
-  for (const platform of ["darwin", "win32", "linux"]) {
+  for (const platform of ["darwin", "win32", "linux"] as const) {
     const result = validateHotkey("Fn+A", platform);
     assert.equal(result.valid, false, platform);
     assert.equal(result.errorCode, "FN_COMBINATION_UNSUPPORTED", platform);
@@ -125,7 +125,7 @@ test("system-reserved shortcuts are rejected — registering them would break co
     ["Alt+Tab", "win32"],
     ["Alt+F4", "win32"],
     ["Control+Alt+Delete", "linux"],
-  ]) {
+  ] as const) {
     const result = validateHotkey(hotkey, platform);
     assert.equal(result.valid, false, `${hotkey} on ${platform} should be reserved`);
     assert.equal(result.errorCode, "RESERVED");

@@ -6,7 +6,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 // accelerator teardown attempts, including ones that were never registered.
 const registered = new Map();
 const unregisterCalls: unknown[] = [];
-require.cache[require.resolve("electron")] = {
+require.cache[require.resolve("electron")] = Object.assign(new (require("node:module").Module)(require.resolve("electron")), {
   exports: {
     globalShortcut: {
       register(accelerator: string, callback: unknown) {
@@ -27,7 +27,7 @@ require.cache[require.resolve("electron")] = {
     },
     BrowserWindow: class {},
   },
-};
+});
 
 const HotkeyManager = require("../../src/helpers/hotkeyManager.ts");
 

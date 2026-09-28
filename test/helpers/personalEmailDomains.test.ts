@@ -20,6 +20,6 @@ test("reads the mailbox inside display-name angle brackets", async () => {
 
 test("does not throw on non-string input", async () => {
   const { emailDomain, isPersonalEmailDomain } = await load();
-  assert.equal(emailDomain(null), "");
-  assert.equal(isPersonalEmailDomain(null), false);
+  assert.equal(Reflect.apply(emailDomain, undefined, [null]), "");
+  assert.equal(Reflect.apply(isPersonalEmailDomain, undefined, [null]), false);
 });

@@ -6,13 +6,13 @@ const path = require("path");
 
 let userDataDir: any;
 const electronPath = require.resolve("electron");
-require.cache[electronPath] = {
+require.cache[electronPath] = Object.assign(new (require("node:module").Module)(electronPath), {
   exports: {
     app: {
       getPath: () => userDataDir,
     },
   },
-};
+});
 
 const { write, clear, readAll } = require("../../src/helpers/sidecarPidFile");
 

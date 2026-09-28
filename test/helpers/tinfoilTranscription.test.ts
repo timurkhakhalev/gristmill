@@ -70,7 +70,7 @@ test("never sends the realtime model, which only serves /v1/realtime", async () 
 });
 
 test("omits language when auto-detecting", async () => {
-  let form;
+  let form: FormData | undefined;
   const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: any) => {
     form = init.body;
     return okResponse("x");
@@ -78,7 +78,8 @@ test("omits language when auto-detecting", async () => {
 
   await transcribeWithTinfoil({ ...AUDIO, language: "auto" });
 
-  assert.equal(form.get("language"), null);
+  const sentForm = () => form;
+  assert.equal(sentForm()?.get("language"), null);
 });
 
 test("a missing key fails before any request is made", async () => {
@@ -135,15 +136,16 @@ test("429 surfaces as PROVIDER_RATE_LIMITED, 5xx as SERVER_ERROR", async () => {
 });
 
 test("forwards the dictionary prompt, and omits it when blank", async () => {
-  let form;
+  let form: FormData | undefined;
   const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: any) => {
     form = init.body;
     return okResponse("x");
   });
 
   await transcribeWithTinfoil({ ...AUDIO, prompt: "Qdrant, Voxtral" });
-  assert.equal(form.get("prompt"), "Qdrant, Voxtral");
+  const sentForm = () => form;
+  assert.equal(sentForm()?.get("prompt"), "Qdrant, Voxtral");
 
   await transcribeWithTinfoil({ ...AUDIO, prompt: "   " });
-  assert.equal(form.get("prompt"), null);
+  assert.equal(sentForm()?.get("prompt"), null);
 });

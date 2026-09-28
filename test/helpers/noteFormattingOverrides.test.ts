@@ -23,7 +23,7 @@ test("self-hosted forwards remoteUrl as lanUrl and the api key (regression: was 
     {
       mode: "self-hosted",
       remoteUrl: "http://192.168.1.126:11434/v1",
-      model: "llama3",
+      ...{ model: "llama3" },
       customApiKey: "sk-local",
     },
     false
@@ -84,7 +84,7 @@ test("providers with a first-party cloud provider passes provider only, no key/b
 test("local mode pins the local provider and leaks no key", async () => {
   const { buildNoteFormattingOverrides } = await load();
   const overrides = buildNoteFormattingOverrides(
-    { mode: "local", model: "qwen2.5-3b", customApiKey: "irrelevant" },
+    { mode: "local", ...{ model: "qwen2.5-3b" }, customApiKey: "irrelevant" },
     false
   );
   assert.deepEqual(overrides, {
@@ -99,7 +99,7 @@ test("local mode pins the local provider and leaks no key", async () => {
 test("local mode with no model stays local (regression: inherited cloud id hit the cloud)", async () => {
   const { buildNoteFormattingOverrides } = await load();
   const overrides = buildNoteFormattingOverrides(
-    { mode: "local", model: "", customApiKey: "sk-cloud" },
+    { mode: "local", ...{ model: "" }, customApiKey: "sk-cloud" },
     false
   );
   assert.equal(overrides.provider, "local");

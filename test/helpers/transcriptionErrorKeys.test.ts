@@ -26,9 +26,11 @@ test("local sherpa silence resolves to the upload no-speech message, while decod
   const manager = new ParakeetManager();
   const silence = manager.parseParakeetResult({ text: "", elapsed: 0 });
 
-  assert.equal(transcriptionErrorKey(silence), "noSpeechDetected");
+  const silenceKey = transcriptionErrorKey(silence);
+  assert.equal(silenceKey, "noSpeechDetected");
+  assert.ok(silenceKey);
   assert.equal(
-    en.notes.upload[transcriptionErrorKey(silence)],
+    en.notes.upload[silenceKey],
     "No speech detected in this audio."
   );
   for (const output of [null, { error: "engine failed" }, { text: "", truncated: true }]) {

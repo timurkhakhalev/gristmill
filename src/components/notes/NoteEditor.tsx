@@ -4,13 +4,13 @@ import { useUiLocale } from "../../hooks/useUiLocale";
 import {
   Loader2,
   Sparkles,
-  AlignLeft,
   Mic,
   FolderOpen,
   Search,
   Plus,
   Check,
   ArrowLeft,
+  WandSparkles,
 } from "../icons";
 import { RichTextEditor } from "../ui/RichTextEditor";
 import type { Editor } from "@tiptap/react";
@@ -897,7 +897,7 @@ export default function NoteEditor({
                   onGenerateSummary?.();
                   if (debugPreview) setViewMode("enhanced");
                 }}>
-                  <AlignLeft size={16} />
+                  <WandSparkles size={16} className="text-accent" />
                   {t("notes.editor.generateSummary")}
                 </Button>}
               </EmptyStateCard>}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AlignLeft, AudioLines, Loader2, Mic, Play, Square } from "../icons";
+import { ArrowLeft, ArrowRight, AudioLines, Loader2, Mic, Play, Square, WandSparkles } from "../icons";
 import { Pause } from "../icons/primitives";
 import { formatMmSs } from "../../utils/formatDuration";
 import { IconTooltip } from "../ui/IconTooltip";
@@ -70,7 +70,7 @@ export default function NoteRecordControl({
         className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
         aria-label={t("notes.editor.generateSummary", { defaultValue: "✨ Summary" })}
       >
-        {!isGeneratingSummary && <AlignLeft size={16} />}
+        {!isGeneratingSummary && <WandSparkles size={16} className="text-accent" />}
         <span className="@max-[620px]:sr-only">
           {isGeneratingSummary
             ? t("notes.editor.generatingSummary", { defaultValue: "✨ Generating summary…" })

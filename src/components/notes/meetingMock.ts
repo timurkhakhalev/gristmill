@@ -7,6 +7,8 @@ export type MockRecapState = "none" | "running" | "ok";
 export interface MockPipeline {
   /** Seconds left in the 15 s end-of-meeting gate before ASR starts. */
   waitingSeconds?: number;
+  /** ASR is running after the end-of-meeting gate. */
+  asrRunning?: boolean;
   /** Extra pipeline stage shown while the run is otherwise running. */
   namingRunning?: boolean;
   tasks?: MockTasksState;

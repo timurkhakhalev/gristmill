@@ -18,7 +18,7 @@ import { IconTooltip } from "../ui/IconTooltip";
 import { cn } from "../lib/utils";
 import { formatDate, formatTime, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
-import { composeMockSummary, MOCK_GATE_SECONDS, type MockPipeline } from "./meetingMock";
+import { composeMockSummary, type MockPipeline } from "./meetingMock";
 
 type ViewMode = "raw" | "enhanced";
 type RunChoice = { kind: "reprocess" | "summary"; partId?: string };
@@ -131,16 +131,23 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const patchMock = useCallback((patch: Partial<MockPipeline>) => setMock((current) => current && { ...current, ...patch }), []);
   const mockTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(mockTimer.current), []);
-  const gateActive = mock?.waitingSeconds !== undefined && mock.waitingSeconds > 0;
+  const mockGateActive = mock?.waitingSeconds !== undefined && mock.waitingSeconds > 0;
   useEffect(() => {
-    if (!gateActive) return;
+    if (!mockGateActive) return;
     const id = window.setInterval(() => setMock((current) => {
       if (!current?.waitingSeconds) return current;
       const left = current.waitingSeconds - 1;
-      return left > 0 ? { ...current, waitingSeconds: left } : { ...current, waitingSeconds: undefined, namingRunning: true };
+      return left > 0 ? { ...current, waitingSeconds: left } : { ...current, waitingSeconds: undefined, asrRunning: true };
     }), 1000);
     return () => window.clearInterval(id);
-  }, [gateActive]);
+  }, [mockGateActive]);
+  useEffect(() => {
+    if (!mock?.asrRunning) return;
+    const id = window.setTimeout(() => setMock((current) => current?.asrRunning
+      ? { ...current, asrRunning: false, namingRunning: true }
+      : current), 1500);
+    return () => window.clearTimeout(id);
+  }, [mock?.asrRunning]);
   const mockAfter = (ms: number, patch: Partial<MockPipeline>) => {
     window.clearTimeout(mockTimer.current);
     mockTimer.current = window.setTimeout(() => patchMock(patch), ms);
@@ -301,6 +308,22 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     ?? combinedCurrent
     ?? [...allRuns].reverse().find((item) => parts.some((part) => part.recording.currentRunId === item.run.id));
   const availableParts = parts.filter((part) => part.recording.audioState === "available");
+  const [countdownNow, setCountdownNow] = useState(Date.now());
+  const gateDeadline = !previewRecordings && latestRun?.run.status === "pending" &&
+    (latestRun.run.kind === "initial" || latestRun.run.kind === "reprocess") &&
+    latestRun.run.stage === "prepare" && latestRun.run.retryCount === 0 &&
+    latestRun.run.errorCode === null && latestRun.run.retryAt
+    ? Date.parse(latestRun.run.retryAt)
+    : null;
+  useEffect(() => {
+    if (gateDeadline === null) return;
+    setCountdownNow(Date.now());
+    const id = window.setInterval(() => setCountdownNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [gateDeadline]);
+  const liveWaitingSeconds = gateDeadline === null ? 0 : Math.max(0, Math.ceil((gateDeadline - countdownNow) / 1000));
+  const gateSeconds = mockGateActive ? mock?.waitingSeconds ?? 0 : liveWaitingSeconds;
+  const gateActive = gateSeconds > 0;
 
   const runTask = async (task: () => Promise<void>) => {
     setBusy(true);
@@ -537,14 +560,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     {gateActive && <NoteNotice
       status="accent"
       busy
-      title={tr("gateWaiting", "Transcription starts in {{seconds}} s", { seconds: mock?.waitingSeconds ?? 0 })}
-      description={tr("gateWaitingReason", "The recording is saved. Resume it to keep going, or start now.")}
-      actions={<>
-        <Button size="sm" variant="secondary" onPress={() => { patchMock({ waitingSeconds: undefined }); notify("Mock: recording resumed, pending transcription cancelled"); }}>{tr("resumeRecording", "Resume recording")}</Button>
-        <Button size="sm" variant="tertiary" onPress={() => patchMock({ waitingSeconds: undefined, namingRunning: true })}>{tr("transcribeNow", "Transcribe now")}</Button>
-      </>}
+      title={tr("gateWaiting", "Transcription starts in {{seconds}} s", { seconds: gateSeconds })}
+      description={tr("gateWaitingReason", "The recording is saved. Resume it to continue the meeting; transcription starts automatically when the wait ends.")}
+      actions={mock ? <Button size="sm" variant="secondary" onPress={() => { patchMock({ waitingSeconds: undefined }); notify("Mock: recording resumed, pending transcription cancelled"); }}>{tr("resumeRecording", "Resume recording")}</Button> : undefined}
     />}
+    {mock?.asrRunning && !gateActive && <NoteNotice status="accent" busy title={`${tr("transcribing", "Transcribing audio")}…`} description={tr("transcribingReason", "The finalized recording is being transcribed.")} />}
     {mock?.namingRunning && !gateActive && <NoteNotice status="accent" busy title={`${tr("namingSpeakers", "Identifying speakers")}…`} description={tr("namingSpeakersReason", "Speaker names are proposed from the conversation. You can correct them afterwards.")} />}
+    {latestRun?.run.status === "cancelled" && latestRun.run.errorCode === "meeting-resumed" && <NoteNotice status="default" title={tr("gateCancelled", "Transcription delayed again")} description={tr("gateCancelledReason", "The meeting resumed. Transcription will start 15 seconds after its next successful Stop.")} />}
     {parts.some((part) => part.recording.captureState === "incomplete" || part.recording.captureErrorCode) && <NoteNotice
       status="warning"
       title={t("notes.editor.capture.incomplete")}

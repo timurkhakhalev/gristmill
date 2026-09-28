@@ -18,6 +18,7 @@ interface StopRequest {
 
 interface ProcessingRequest {
   sourceRecordingIds: string[];
+  gateAfterStop?: boolean;
 }
 
 interface RecordingEntry {
@@ -178,6 +179,7 @@ test("ending a paused call queues its saved parts once without another ASR reque
   assert.equal(await store.finishMeeting(), true);
   assert.equal(api.stopRequests.length, 1, "paused call has no active capture to stop again");
   assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID]);
+  assert.equal(api.processingRequests[0].gateAfterStop, true);
   await store.queueMeetingGroupProcessing(groupId, START_ARGS.noteId);
   assert.equal(api.processingRequests.length, 1, "a saved transcript does not trigger ASR again");
   assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "saved");
@@ -207,6 +209,7 @@ test("resume adds a second saved part to one whole-meeting processing run", asyn
   api.recordings.push({ recording: { id: SECOND_RECORDING_ID, groupId, audioState: "available", startedAt: "2026-09-25T10:01:00.000Z" }, runs: [{ run: { kind: "initial", errorCode: null, config: null } }] });
   assert.equal(await store.finishMeeting(), true);
   assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID, SECOND_RECORDING_ID]);
+  assert.equal(api.processingRequests[0].gateAfterStop, true);
   assert.deepEqual(api.stopRequests.map((request) => request.suppressProcessing), [true, true]);
   assert.equal(api.processingRequests.length, 1);
 });

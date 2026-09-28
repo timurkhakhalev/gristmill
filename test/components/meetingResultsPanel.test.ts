@@ -105,7 +105,12 @@ function textOf(value: unknown): string {
   return node?.props ? textOf((node.props as { children?: unknown }).children) : "";
 }
 
-async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false } = {}) {
+async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline }: {
+  viewMode?: "raw" | "enhanced";
+  playback?: { success: boolean; error?: string };
+  preview?: boolean;
+  mockPipeline?: { waitingSeconds?: number };
+} = {}) {
   const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], retry: [] };
   let listedItems = items;
   let setCapturePhase: (phase: string) => void = () => {};
@@ -165,6 +170,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     setCapturePhase = updateCapturePhase;
     tree = MeetingResultsPanel({ noteId: 1, locale: "en", previewRecordings: preview ? items : undefined, viewMode: mode, onViewModeChange: setMode,
       capturePhase,
+      mockPipeline,
       fallbackText: { raw: "Manual notes", enhanced: "No summary", transcript: "No transcript" },
       manualContent: React.createElement("p", null, "Manual notes"), renderFallbackTranscript: () => React.createElement("p", null, "No transcript"), fallbackSummary: React.createElement("p", null, "No summary") });
     return tree;
@@ -274,4 +280,28 @@ test("debug preview keeps retry, export and processing away from the real API", 
   assert.deepEqual(ui.calls.retry, []);
   assert.deepEqual(ui.calls.export, []);
   assert.deepEqual(ui.calls.create, []);
+});
+
+test("the live waiting state and debug preview never offer a manual gate bypass", async (t: TestContext) => {
+  const waiting = completeRun();
+  waiting.run.kind = "initial";
+  waiting.run.sourceRecordingIds = [FIRST];
+  waiting.run.stage = "prepare";
+  waiting.run.status = "pending";
+  waiting.run.retryAt = new Date(Date.now() + 15_000).toISOString();
+  waiting.run.retryCount = 0;
+  waiting.run.errorCode = null;
+  waiting.run.hasRawProviderResponse = false;
+  waiting.run.hasTranscript = false;
+  waiting.run.hasSummary = false;
+  const live = await mountPanel(t, [recording(FIRST, FIRST, new Date().toISOString(), waiting)]);
+  assert.match(live.text(), /Transcription starts in \d+ s/);
+  assert.doesNotMatch(live.text(), /Transcribe now/);
+
+  const preview = await mountPanel(t, [], { preview: true, mockPipeline: { waitingSeconds: 15 } });
+  assert.match(preview.text(), /Transcription starts in 15 s/);
+  assert.doesNotMatch(preview.text(), /Transcribe now/);
+  await preview.flush(() => (preview.button("Resume recording")!.props as { onPress: () => void }).onPress());
+  assert.match(preview.text(), /recording resumed, pending transcription cancelled/);
+  assert.deepEqual(preview.calls.create, []);
 });

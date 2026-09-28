@@ -17,6 +17,7 @@ import * as secretCrypto from "./secretCrypto.js";
 import {
   meetingProcessingConfigSchema,
   meetingProcessingConfigErrorSchema,
+  MEETING_ASR_GATE_MS,
   meetingRecordingIdSchema,
   meetingRecordingConfigInputSchema,
   meetingRunArtifactSchema,
@@ -1215,6 +1216,7 @@ export class DatabaseManager {
     input: {
       captureState: "ready" | "incomplete";
       endedAt: string;
+      processingNotBefore?: string;
       sourceMetadata?: Record<string, unknown>;
       errorCode?: string | null;
     }
@@ -1222,6 +1224,9 @@ export class DatabaseManager {
     meetingRecordingIdSchema.parse(id);
     if (input.errorCode != null) meetingProcessingConfigErrorSchema.parse({ code: input.errorCode });
     if (!Number.isFinite(new Date(input.endedAt).getTime())) throw new RangeError("Invalid meeting end time");
+    if (input.processingNotBefore !== undefined && !Number.isFinite(Date.parse(input.processingNotBefore))) {
+      throw new RangeError("Invalid meeting processing deadline");
+    }
     const sourceMetadata = JSON.stringify(input.sourceMetadata ?? {});
     const transaction = this.sql.transaction(() => {
       const current = this.sql.prepare("SELECT * FROM meeting_recordings WHERE id = ?").get(id) as
@@ -1266,14 +1271,17 @@ export class DatabaseManager {
       const runId = randomUUID();
       const status = config === null || noAudioError || input.errorCode ? "blocked" : "pending";
       const errorCode = noAudioError ?? input.errorCode ?? configError?.code ?? null;
+      const retryAt = !noAudioError && !input.errorCode
+        ? input.processingNotBefore ?? new Date(Date.now() + MEETING_ASR_GATE_MS).toISOString()
+        : null;
       const transcription = config?.transcription;
       const provider = transcription?.mode === "local" ? transcription.local?.provider ?? null : transcription?.provider ?? null;
       const model = transcription?.mode === "local" ? transcription.local?.model ?? null : transcription?.model ?? null;
       this.sql
         .prepare(
-          "INSERT INTO meeting_processing_runs (id, recording_id, kind, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code) VALUES (?, ?, 'initial', ?, ?, ?, ?, ?, 'prepare', ?, ?)"
+          "INSERT INTO meeting_processing_runs (id, recording_id, kind, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code, retry_at) VALUES (?, ?, 'initial', ?, ?, ?, ?, ?, 'prepare', ?, ?, ?)"
         )
-        .run(runId, id, provider, model, current.config_json, current.config_error_code, current.config_error_message_key, status, errorCode);
+        .run(runId, id, provider, model, current.config_json, current.config_error_code, current.config_error_message_key, status, errorCode, retryAt);
       this.sql
         .prepare(
           "UPDATE meeting_recordings SET current_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
@@ -1294,11 +1302,15 @@ export class DatabaseManager {
       configError?: MeetingProcessingConfigError | null;
       sourceRunId?: string | null;
       sourceRecordingIds?: string[];
+      retryAt?: string | null;
     }
   ): MeetingProcessingRunDto {
     meetingRecordingIdSchema.parse(recordingId);
     if (input.config !== null) meetingProcessingConfigSchema.parse(input.config);
     if (input.configError != null) meetingProcessingConfigErrorSchema.parse(input.configError);
+    if (input.retryAt != null && !Number.isFinite(Date.parse(input.retryAt))) {
+      throw new RangeError("Invalid meeting processing deadline");
+    }
     const transaction = this.sql.transaction(() => {
       const recording = this.getMeetingRecording(recordingId);
       if (!recording) throw new Error("Meeting recording not found");
@@ -1347,7 +1359,7 @@ export class DatabaseManager {
       const model = transcription?.mode === "local" ? transcription.local?.model ?? null : transcription?.model ?? null;
       this.sql
         .prepare(
-          "INSERT INTO meeting_processing_runs (id, recording_id, source_recording_ids_json, kind, source_run_id, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          "INSERT INTO meeting_processing_runs (id, recording_id, source_recording_ids_json, kind, source_run_id, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code, retry_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .run(
           runId,
@@ -1362,7 +1374,8 @@ export class DatabaseManager {
           snapshot.error?.messageKey ?? null,
           stage,
           status,
-          snapshot.error?.code ?? (summaryMissing ? "missing-summary-config" : null)
+          snapshot.error?.code ?? (summaryMissing ? "missing-summary-config" : null),
+          input.retryAt ?? null
         );
       this.sql
         .prepare("UPDATE meeting_recordings SET current_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
@@ -1406,7 +1419,7 @@ export class DatabaseManager {
 
   recoverRunningMeetingProcessingRuns(): number {
     const result = this.sql.prepare(
-      "UPDATE meeting_processing_runs SET status = 'pending', retry_count = CASE WHEN stage = 'asr' AND raw_response_path IS NULL THEN retry_count + 1 ELSE retry_count END, error_code = CASE WHEN stage = 'asr' AND raw_response_path IS NULL THEN 'asr-outcome-unknown' ELSE NULL END, retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'running' AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL)"
+      "UPDATE meeting_processing_runs SET status = 'pending', retry_count = CASE WHEN stage = 'asr' AND raw_response_path IS NULL THEN retry_count + 1 ELSE retry_count END, error_code = CASE WHEN stage = 'asr' AND raw_response_path IS NULL THEN 'asr-outcome-unknown' ELSE NULL END, updated_at = CURRENT_TIMESTAMP WHERE status = 'running' AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL)"
     ).run();
     return result.changes;
   }
@@ -1415,7 +1428,7 @@ export class DatabaseManager {
     meetingRecordingIdSchema.parse(id);
     if (!Number.isFinite(Date.parse(now))) throw new RangeError("Invalid meeting processing claim time");
     const result = this.sql.prepare(
-      "UPDATE meeting_processing_runs SET status = 'running', error_code = NULL, retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending' AND (retry_at IS NULL OR retry_at <= ?) AND NOT EXISTS (SELECT 1 FROM meeting_processing_runs active WHERE active.status = 'running' AND active.id != meeting_processing_runs.id) AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL AND (r.audio_state = 'available' OR meeting_processing_runs.stage IN ('normalize', 'summary')))"
+      "UPDATE meeting_processing_runs SET status = 'running', error_code = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending' AND (retry_at IS NULL OR retry_at <= ?) AND NOT EXISTS (SELECT 1 FROM meeting_processing_runs active WHERE active.status = 'running' AND active.id != meeting_processing_runs.id) AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL AND (r.audio_state = 'available' OR meeting_processing_runs.stage IN ('normalize', 'summary')))"
     ).run(id, now);
     return result.changes > 0;
   }
@@ -1430,9 +1443,12 @@ export class DatabaseManager {
       return null;
     }
     const stage = run.kind === "summary" ? "summary" : run.hasTranscript ? "summary" : run.hasRawProviderResponse ? "normalize" : "prepare";
+    const retryAt = stage === "prepare" && run.retryAt && Date.parse(run.retryAt) > Date.now()
+      ? run.retryAt
+      : null;
     this.sql.prepare(
-      "UPDATE meeting_processing_runs SET stage = ?, status = 'pending', error_code = NULL, retry_at = NULL, retry_count = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('blocked', 'failed', 'cancelled')"
-    ).run(stage, id);
+      "UPDATE meeting_processing_runs SET stage = ?, status = 'pending', error_code = NULL, retry_at = ?, retry_count = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('blocked', 'failed', 'cancelled')"
+    ).run(stage, retryAt, id);
     return this.getMeetingProcessingRun(id);
   }
 

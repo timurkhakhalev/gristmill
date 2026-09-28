@@ -4,6 +4,7 @@ const fs: typeof import("node:fs") = require("node:fs");
 const test: typeof import("node:test") = require("node:test");
 const { createDb } = require("./harness/db.ts");
 const { getUserDataDir }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
+const DatabaseManagerClass = (require("./harness/db.ts") as { DatabaseManager: new () => DatabaseManager }).DatabaseManager;
 const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
 const { MeetingProcessingWorker, registerMeetingProcessingHandlers }: typeof import("../../src/helpers/meetingProcessing.ts") = require("../../src/helpers/meetingProcessing.ts");
 const { meetingProcessingChannels }: typeof import("../../src/contracts/meetingProcessing.ts") = require("../../src/contracts/meetingProcessing.ts");
@@ -44,7 +45,7 @@ const elevenResponse = {
   ],
 };
 
-function createFinishedRecording(db: DatabaseManager, storage: RecordingStorage, config: MeetingProcessingConfig | null = validConfig, noteText = "") {
+function createFinishedRecording(db: DatabaseManager, storage: RecordingStorage, config: MeetingProcessingConfig | null = validConfig, noteText = "", keepGate = false) {
   const note = db.saveNote("Meeting", noteText, "meeting").note;
   assert.ok(note);
   const recording = db.createMeetingRecording(note.id, { config });
@@ -59,7 +60,14 @@ function createFinishedRecording(db: DatabaseManager, storage: RecordingStorage,
     captureState: "ready",
     endedAt: new Date(Date.parse(recording.startedAt) + 1000).toISOString(),
   });
-  return { note, recording: finalized.recording, run: finalized.initialRun };
+  if (!keepGate && finalized.initialRun.status === "pending") {
+    db.setMeetingProcessingRunState(finalized.initialRun.id, { stage: "prepare", status: "pending", retryAt: null });
+  }
+  return {
+    note,
+    recording: finalized.recording,
+    run: db.getMeetingProcessingRun(finalized.initialRun.id) as NonNullable<ReturnType<DatabaseManager["getMeetingProcessingRun"]>>,
+  };
 }
 
 function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Partial<MeetingProcessingWorkerDeps> = {}) {
@@ -197,6 +205,94 @@ test("waits for retention and capture to finish, then persists the response, tra
   assert.equal(savedNote.content, "  Manual note first.  \n");
   assert.equal(db.getMeetingRecording(recording.id).captureState, "ready");
   assert.equal(transcribeCalls, 1);
+});
+
+test("finalized initial run waits until the persisted 15-second deadline across restart and manual reprocess requests", async (t: import("node:test").TestContext) => {
+  let db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run } = createFinishedRecording(db, storage, validConfig, "", true);
+  assert.ok(run.retryAt);
+  const deadline = Date.parse(run.retryAt);
+  const now = new Date(deadline - 15_000);
+  db.db.close();
+  db = new DatabaseManagerClass();
+  t.after(() => db.db.close());
+  const timerDelays: number[] = [];
+  let transcribeCalls = 0;
+  const worker = workerFor(db, storage, {
+    now: () => new Date(now),
+    setTimeout: ((_callback: unknown, milliseconds: unknown) => {
+      timerDelays.push(Number(milliseconds));
+      return timerDelays.length;
+    }) as unknown as typeof setTimeout,
+    clearTimeout: () => {},
+    transcribeRemote: async (_request, saveRaw) => {
+      transcribeCalls += 1;
+      await saveRaw(elevenResponse);
+      return { success: true, text: "Hello." };
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(transcribeCalls, 0);
+  assert.equal(timerDelays.at(-1), 15_000);
+
+  const manual = worker.createRun({ recordingId: recording.id, kind: "reprocess", config: validConfig });
+  assert.equal(manual.run.id, run.id, "manual ASR reuses the pending gated run");
+  now.setTime(deadline - 1);
+  worker.processPending();
+  await worker.waitForIdle();
+  assert.equal(transcribeCalls, 0, "14.999 seconds is still inside the gate");
+
+  now.setTime(deadline);
+  worker.processPending();
+  await worker.waitForIdle();
+  assert.equal(transcribeCalls, 1, "ASR can start at 15 seconds");
+});
+
+test("resume cancels the pending group version and the next end starts a fresh gate", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run } = createFinishedRecording(db, storage, validConfig, "", true);
+  assert.ok(run.retryAt);
+  const now = new Date(Date.parse(run.retryAt) - 5000);
+  const worker = workerFor(db, storage, {
+    now: () => new Date(now),
+    setTimeout: (() => 1) as unknown as typeof setTimeout,
+    clearTimeout: () => {},
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "pending");
+  worker.captureStarted(recording.groupId);
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "cancelled");
+  assert.equal(db.getMeetingProcessingRun(run.id).errorCode, "meeting-resumed");
+
+  worker.captureStopped();
+  now.setTime(Date.parse(run.retryAt) + 5000);
+  const nextEnd = worker.createRun({
+    recordingId: recording.id,
+    sourceRecordingIds: [recording.id],
+    kind: "reprocess",
+    gateAfterStop: true,
+    config: validConfig,
+  });
+  assert.ok(nextEnd.run.retryAt);
+  const freshDeadline = Date.parse(nextEnd.run.retryAt);
+  assert.equal(freshDeadline, now.getTime() + 15_000);
+  assert.notEqual(nextEnd.run.id, run.id);
+  const duplicate = worker.createRun({
+    recordingId: recording.id,
+    sourceRecordingIds: [recording.id],
+    kind: "reprocess",
+    gateAfterStop: true,
+    config: validConfig,
+  });
+  assert.equal(duplicate.run.id, nextEnd.run.id);
 });
 
 test("OpenAI meeting route persists diarized raw response and finishes transcription", async (t: import("node:test").TestContext) => {

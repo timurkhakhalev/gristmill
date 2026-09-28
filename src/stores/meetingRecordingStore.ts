@@ -1528,6 +1528,7 @@ export async function queueMeetingGroupProcessing(groupId: string, noteId: numbe
   const sourceIds = usable.map((part) => part.recording.id);
   const existing = usable.flatMap((part) => part.runs).find((result) =>
     result.run.kind === "reprocess" && result.run.sourceRecordingIds.length === sourceIds.length &&
+    result.run.status !== "cancelled" &&
     result.run.sourceRecordingIds.every((id, index) => id === sourceIds[index])
   );
   if (existing) return;
@@ -1537,6 +1538,7 @@ export async function queueMeetingGroupProcessing(groupId: string, noteId: numbe
     recordingId: first.recording.id,
     sourceRecordingIds: sourceIds,
     kind: "reprocess",
+    gateAfterStop: true,
     config: initial?.run.config ?? null,
     configError: initial?.run.configError ?? null,
   });

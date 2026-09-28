@@ -19,31 +19,37 @@ function getLookaheadMinutes(): number {
   return Math.max(1, Math.ceil((end.getTime() - now.getTime()) / 60000));
 }
 
+// Last fetched list, kept across Home remounts so returning to Home paints the
+// previous events at once and refreshes them in the background.
+let cachedEvents: CalendarEvent[] | null = null;
+
 export function useUpcomingEvents(): UseUpcomingEventsReturn {
   const gcalAccounts = useSettingsStore((s) => s.gcalAccounts);
   const mcalAccounts = useSettingsStore((s) => s.mcalAccounts);
   const appleCalendarConnected = useSettingsStore((s) => s.appleCalendarConnected);
   const isConnected = gcalAccounts.length > 0 || mcalAccounts.length > 0 || appleCalendarConnected;
 
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [events, setEvents] = useState<CalendarEvent[]>(() => cachedEvents ?? []);
+  // Loading until the first fetch lands; starting false painted "No events" first.
+  const [isLoading, setIsLoading] = useState(() => isConnected && cachedEvents == null);
 
   const fetchEvents = useCallback(async () => {
+    const apply = (next: CalendarEvent[]) => {
+      cachedEvents = next;
+      setEvents(next);
+    };
     if (!isConnected) {
-      setEvents([]);
+      apply([]);
+      setIsLoading(false);
       return;
     }
-    setIsLoading(true);
+    if (cachedEvents == null) setIsLoading(true);
     try {
       const windowMinutes = getLookaheadMinutes();
       const result = await window.electronAPI?.gcalGetUpcomingEvents(windowMinutes);
-      if (result?.success) {
-        setEvents(result.events.filter(hasOtherAttendees));
-      } else {
-        setEvents([]);
-      }
+      apply(result?.success ? result.events.filter(hasOtherAttendees) : []);
     } catch {
-      setEvents([]);
+      apply([]);
     } finally {
       setIsLoading(false);
     }

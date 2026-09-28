@@ -3,6 +3,9 @@ import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
 import { Plus } from "../icons";
 import NoteEditor from "./NoteEditor";
+import NoteSkeleton from "./NoteSkeleton";
+import { CONTENT_ENTER_CLASS } from "../ui/Skeleton";
+import { cn } from "../lib/utils";
 import AddNotesToFolderDialog from "./AddNotesToFolderDialog";
 import { useActionProcessing } from "../../hooks/useActionProcessing";
 import type { ActionItem } from "../../contracts/actions";
@@ -393,6 +396,13 @@ export default function PersonalNotesView({
   );
   const activeNoteRawTranscript = activeNote?.transcript || "";
   const activeDraft = draft?.noteId === activeNote?.id ? draft : null;
+  // A note that arrives after its skeleton fades in; an instantly available one does not.
+  const [skeletonNoteId, setSkeletonNoteId] = useState<number | null>(null);
+  const showNoteSkeleton = activeNoteId != null && !activeNote;
+  useEffect(() => {
+    if (showNoteSkeleton) setSkeletonNoteId(activeNoteId);
+  }, [showNoteSkeleton, activeNoteId]);
+  const enterFromSkeleton = activeNote != null && activeNote.id === skeletonNoteId;
   const editorNote = activeNote
     ? {
         ...activeNote,
@@ -522,7 +532,10 @@ export default function PersonalNotesView({
     <div className="flex h-full">
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {editorNote ? (
-          <>
+          <div
+            key={editorNote.id}
+            className={cn("flex min-h-0 flex-1 flex-col", enterFromSkeleton && CONTENT_ENTER_CLASS)}
+          >
             <NoteEditor
               key={editorNote.id}
               note={editorNote}
@@ -562,7 +575,10 @@ export default function PersonalNotesView({
               actionName={actionName}
               onGenerateSummary={generateSummary}
             />
-          </>
+          </div>
+        ) : showNoteSkeleton ? (
+          // The note's container is still loading into the store.
+          <NoteSkeleton />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center -mt-6">
             <svg

@@ -48,11 +48,12 @@ test("idle state keeps the liquid-glass capsule", async (t: TestContext) => {
 
 test("the ask capsule never transitions its surface between the two states", async (t: TestContext) => {
   // transition-all would tween backdrop-filter and background-color for 500ms
-  // on every recording start and stop, re-paying the cost this change removes.
+  // on every recording start and stop, re-paying the cost this change removes;
+  // the outline (radius, shadow) must not morph either.
   for (const isRecording of [false, true]) {
     const html = await renderBottomBar(t, { isRecording });
     assert.ok(
-      html.includes("transition-[max-width,opacity,padding,border-color,box-shadow,height,border-radius]"),
+      html.includes("transition-[opacity,height]"),
       `capsule transition is property-scoped (isRecording=${isRecording})`
     );
   }

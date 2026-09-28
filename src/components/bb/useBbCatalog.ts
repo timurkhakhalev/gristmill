@@ -10,25 +10,47 @@ import type { BbHarness, BbModel } from "../../contracts/bb";
 // Shared across every picker on screen; failures are not cached so the next open retries.
 let catalogRequest: Promise<BbHarness[]> | null = null;
 const modelRequests = new Map<string, Promise<BbModel[]>>();
+// Settled results, read during the first render so a remounted picker shows its
+// final label instead of "Choose model" → raw id → display name.
+let resolvedHarnesses: BbHarness[] | null = null;
+const resolvedModels = new Map<string, BbModel[]>();
 
 function loadCatalog(): Promise<BbHarness[]> {
-  catalogRequest ??= window.electronAPI.bbCatalog().catch((error: unknown) => {
-    catalogRequest = null;
-    throw error;
-  });
+  catalogRequest ??= window.electronAPI.bbCatalog().then(
+    (items) => {
+      resolvedHarnesses = items.filter((item) => item.available);
+      return items;
+    },
+    (error: unknown) => {
+      catalogRequest = null;
+      throw error;
+    }
+  );
   return catalogRequest;
 }
 
 function loadModels(provider: string): Promise<BbModel[]> {
   let request = modelRequests.get(provider);
   if (!request) {
-    request = window.electronAPI.bbModels(provider).catch((error: unknown) => {
-      modelRequests.delete(provider);
-      throw error;
-    });
+    request = window.electronAPI.bbModels(provider).then(
+      (models) => {
+        resolvedModels.set(provider, models);
+        return models;
+      },
+      (error: unknown) => {
+        modelRequests.delete(provider);
+        throw error;
+      }
+    );
     modelRequests.set(provider, request);
   }
   return request;
+}
+
+/** Warms the catalog and one harness's models before any picker mounts. */
+export function prefetchBbCatalog(provider: string | null | undefined): void {
+  loadCatalog().catch(() => {});
+  if (provider) loadModels(provider).catch(() => {});
 }
 
 export function defaultReasoningFor(model: BbModel | undefined): string {
@@ -49,9 +71,9 @@ async function seedPreferences(available: BbHarness[]): Promise<void> {
 /** Available harnesses in the user's order; `enabled` is what pickers offer. */
 export function useBbCatalog() {
   const preferences = useSettingsStore((state) => state.bbAgentPreferences);
-  const [harnesses, setHarnesses] = useState<BbHarness[]>([]);
+  const [harnesses, setHarnesses] = useState<BbHarness[]>(() => resolvedHarnesses ?? []);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => resolvedHarnesses == null);
 
   useEffect(() => {
     let active = true;
@@ -79,7 +101,10 @@ export function useBbCatalog() {
  * gets its first model as default, so "use default" always resolves to a model.
  */
 export function useBbModels(provider: string) {
-  const [state, setState] = useState<{ provider: string; models: BbModel[]; error: string }>({ provider: "", models: [], error: "" });
+  const [state, setState] = useState<{ provider: string; models: BbModel[]; error: string }>(() => {
+    const models = resolvedModels.get(provider);
+    return models ? { provider, models, error: "" } : { provider: "", models: [], error: "" };
+  });
 
   useEffect(() => {
     if (!provider) return;

@@ -33,6 +33,8 @@ import { resolveAppShortcut } from "../utils/appShortcuts";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import { HomeSkeleton } from "./home/HomeSkeleton";
+import NoteSkeleton from "./notes/NoteSkeleton";
 import { localMutationErrorKey } from "../lib/localMutationError";
 
 const SIDEBAR_WIDTH_PX = 192;
@@ -64,7 +66,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const spaces = useSpaces();
   const activeContext = useActiveContext();
   const containerNotes = useNotes();
-  const [activeView, setActiveView] = useState<ControlPanelView>("home");
+  const [requestedView, setActiveView] = useState<ControlPanelView>("home");
   const [showSettings, setShowSettings] = useState(Boolean(initialSettingsSection));
   const [settingsSection, setSettingsSection] = useState(initialSettingsSection);
   const [showSearch, setShowSearch] = useState(false);
@@ -79,6 +81,12 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   } | null>(null);
   const isMeetingMode = useIsMeetingMode();
   const activeNoteId = useActiveNoteId();
+  // Notes has no list page of its own: with no note open, Home is the list.
+  // Derived during render so closing a note never paints an empty Notes frame.
+  const activeView: ControlPanelView =
+    requestedView === "personal-notes" && activeNoteId == null && notesDebugScenario == null
+      ? "home"
+      : requestedView;
   const recordingNoteId = useMeetingRecordingStore((state) => state.recordingNoteId);
   const recordingFolderId = useMeetingRecordingStore((state) => state.recordingFolderId);
   const {
@@ -96,12 +104,9 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const isSidePanelLayout = isMeetingMode || (narrow && noteSurfaceOpen);
   const sidebarInline = !narrow && !isSidePanelLayout;
 
-  // Notes has no list page of its own: with no note open, Home is the list.
   useEffect(() => {
-    if (activeView === "personal-notes" && activeNoteId == null && notesDebugScenario == null) {
-      setActiveView("home");
-    }
-  }, [activeView, activeNoteId, notesDebugScenario]);
+    if (requestedView !== activeView) setActiveView(activeView);
+  }, [requestedView, activeView]);
 
   // The sidebar tree renders on every view, not only inside the notes view.
   useEffect(() => {
@@ -376,7 +381,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                 />
               )}
               {activeView === "home" && !eventDraft && (
-                <Suspense fallback={null}>
+                <Suspense fallback={<HomeSkeleton />}>
                   <HomeView
                     onOpenNote={openNote}
                     onConnectCalendar={() => openSettings("calendar")}
@@ -385,7 +390,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                 </Suspense>
               )}
               {activeView === "personal-notes" && (
-                <Suspense fallback={null}>
+                <Suspense fallback={<NoteSkeleton />}>
                   {notesDebugScenario && NotesDebugPreview ? (
                     <NotesDebugPreview
                       key={notesDebugScenario}

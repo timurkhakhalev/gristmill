@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState, type Rea
 import ReactMarkdown from "react-markdown";
 import { Button, Dropdown, Label, ListBox, Modal, Popover, Select } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AlignLeft, ArrowLeft, ArrowRight, AudioLines, Check, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2 } from "../icons";
+import { AlignLeft, ArrowLeft, ArrowRight, AudioLines, Check, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2, WandSparkles } from "../icons";
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
@@ -481,9 +481,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           if (key === "summary") openRun("summary");
           if (key === "export") void runTask(async () => { if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; } const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: selected.run.recordingId, runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? undefined : selected.run.id, source: "mixed" }); if (!result.success) throw new Error(result.error || t("meetingResults.exportError")); });
         }}>
-          <Dropdown.Item id="asr" isDisabled={!availableParts.length} textValue={t("meetingResults.newAsr")}>{t("meetingResults.newAsr")}</Dropdown.Item>
-          <Dropdown.Item id="summary" textValue={t("meetingResults.newSummary")}>{t("meetingResults.newSummary")}</Dropdown.Item>
-          <Dropdown.Item id="export" isDisabled={!availableParts.length} textValue={t("meetingResults.exportMixed")}>{t("meetingResults.exportMixed")}</Dropdown.Item>
+          <Dropdown.Item id="asr" isDisabled={!availableParts.length} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
+          <Dropdown.Item id="summary" textValue={t("meetingResults.newSummary")}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Dropdown.Item>
+          <Dropdown.Item id="export" isDisabled={!availableParts.length} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
         </Dropdown.Menu></Dropdown.Popover></Dropdown>
       </div>}
       {viewMode === "enhanced" ? selected?.summary?.text ? <article className="note-prose"><ReactMarkdown>{selected.summary.text}</ReactMarkdown></article> : fallbackSummary : selected?.transcript ? <div>

@@ -401,7 +401,7 @@ function OnDeviceSection() {
   );
 }
 
-/** A macOS permission's current state, with a shortcut to System Settings while it is missing. */
+/** A macOS permission's current state and action to request it while missing. */
 function PermissionStatus({ granted, checking = false, onOpen, actionLabel }: { granted: boolean; checking?: boolean; onOpen: () => void; actionLabel?: string }) {
   const { t } = useTranslation();
   const state = checking ? "checking" : granted ? "granted" : "missing";

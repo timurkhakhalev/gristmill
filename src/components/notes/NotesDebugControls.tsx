@@ -11,6 +11,8 @@ export type NotesDebugScenario =
   | "ready"
   | "queued"
   | "processing"
+  | "processing-elapsed-short"
+  | "processing-elapsed-long"
   | "blocked"
   | "failed"
   | "summary-failed"
@@ -35,6 +37,8 @@ const scenarios: { id: NotesDebugScenario; label: string }[] = [
   { id: "enhanced-stale", label: "Enhanced note stale" },
   { id: "queued", label: "Processing queued" },
   { id: "processing", label: "Processing running" },
+  { id: "processing-elapsed-short", label: "Processing · just started" },
+  { id: "processing-elapsed-long", label: "Processing · 2 min in" },
   { id: "blocked", label: "Processing blocked" },
   { id: "failed", label: "Transcription failed" },
   { id: "summary-failed", label: "Summary failed" },

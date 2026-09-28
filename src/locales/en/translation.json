@@ -914,18 +914,39 @@
   },
   "settingsModal": {
     "groups": {
-      "app": "App",
-      "aiModels": "AI Models",
+      "general": "General",
+      "meetings": "Meetings",
+      "ai": "AI",
       "system": "System"
     },
     "sections": {
       "general": {
-        "description": "Language, theme and notes",
+        "description": "Language, appearance, startup and notifications",
         "label": "Preferences"
       },
-      "hotkeys": {
-        "description": "Keyboard shortcuts for meeting mode",
-        "label": "Hotkeys"
+      "notes": {
+        "label": "Notes",
+        "description": "How notes are titled and stored"
+      },
+      "recording": {
+        "label": "Recording",
+        "description": "Meeting hotkey, companion, microphone and permissions"
+      },
+      "calendar": {
+        "label": "Calendar",
+        "description": "Connect calendars to see upcoming meetings"
+      },
+      "models": {
+        "label": "Models",
+        "description": "Transcription, summaries and chat"
+      },
+      "providers": {
+        "label": "Providers",
+        "description": "API keys and coding agents shared by every task"
+      },
+      "onDevice": {
+        "label": "On-device",
+        "description": "Models that run on this Mac"
       },
       "dictionary": {
         "label": "Dictionary",
@@ -935,13 +956,9 @@
         "description": "Notes, audio and chats stay on this device. Providers only receive what you send with your API key.",
         "label": "Privacy & Data"
       },
-      "system": {
-        "description": "Startup, recording devices and diagnostics",
-        "label": "System"
-      },
-      "models": {
-        "label": "Models",
-        "description": "Transcription, summaries and chat"
+      "advanced": {
+        "label": "Advanced",
+        "description": "Diagnostics and debug logging"
       }
     },
     "title": "Settings"
@@ -1052,7 +1069,7 @@
       },
       "notifications": {
         "title": "Notifications",
-        "description": "Control which notifications OpenHercules can show",
+        "description": "Prompts to start recording when a meeting is detected or a calendar event begins.",
         "disableAll": "Disable all notifications",
         "disableAllDescription": "Silence everything except error messages",
         "meetingDetection": "Meeting detection",
@@ -1095,7 +1112,17 @@
           "amethyst": "Amethyst",
           "magenta": "Magenta",
           "lime": "Lime",
-          "graphite": "Graphite"
+          "graphite": "Graphite",
+          "terracotta": "Terracotta",
+          "mauve": "Mauve",
+          "emerald": "Emerald",
+          "ocean": "Ocean",
+          "solar-dusk": "Solar dusk",
+          "mocha": "Mocha",
+          "aurora": "Aurora",
+          "cosmic": "Cosmic",
+          "sage": "Sage",
+          "tangerine": "Tangerine"
         }
       },
       "autoGenerateTitle": "Generate note titles",
@@ -1259,6 +1286,11 @@
       "endpointUrl": "Endpoint URL",
       "serverUrl": "Server URL",
       "apiKeyOptional": "API Key (optional)"
+    },
+    "permissionStatus": {
+      "granted": "Allowed",
+      "missing": "Not allowed",
+      "checking": "Checking…"
     }
   },
   "models": {
@@ -2374,7 +2406,6 @@
       "installing": "Installing…",
       "remove": "Remove {{model}}"
     },
-    "chatPrompt": "Chat instructions",
-    "description": "Choose the model for each task, connect providers and manage on-device models."
+    "chatPrompt": "Chat instructions"
   }
 }

@@ -847,7 +847,7 @@ export default function NoteEditor({
                   status="danger"
                   title={t("notes.editor.capture.failed")}
                   description={t("notes.editor.capture.failedReason")}
-                  actions={<HeroButton size="sm" variant="secondary" onPress={() => openSettings("system")}>{t("meetingResults.openSettings")}</HeroButton>}
+                  actions={<HeroButton size="sm" variant="secondary" onPress={() => openSettings("recording")}>{t("meetingResults.openSettings")}</HeroButton>}
                 />
               ) : null}
               actions={<div className="flex flex-wrap items-center gap-1.5">

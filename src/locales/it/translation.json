@@ -874,18 +874,39 @@
   },
   "settingsModal": {
     "groups": {
-      "app": "App",
-      "aiModels": "Modelli IA",
+      "general": "Generale",
+      "meetings": "Riunioni",
+      "ai": "IA",
       "system": "Sistema"
     },
     "sections": {
       "general": {
-        "description": "Lingua, tema e note",
+        "description": "Lingua, aspetto, avvio e notifiche",
         "label": "Preferenze"
       },
-      "hotkeys": {
-        "description": "Scorciatoie da tastiera per la modalità riunione",
-        "label": "Scorciatoie"
+      "notes": {
+        "label": "Note",
+        "description": "Come vengono intitolate e salvate le note"
+      },
+      "recording": {
+        "label": "Registrazione",
+        "description": "Scorciatoia riunione, companion, microfono e permessi"
+      },
+      "calendar": {
+        "label": "Calendario",
+        "description": "Collega i calendari per vedere le prossime riunioni"
+      },
+      "models": {
+        "label": "Modelli",
+        "description": "Trascrizione, riepiloghi e chat"
+      },
+      "providers": {
+        "label": "Provider",
+        "description": "Chiavi API e agenti di coding condivisi da tutte le attività"
+      },
+      "onDevice": {
+        "label": "Sul dispositivo",
+        "description": "Modelli eseguiti su questo Mac"
       },
       "dictionary": {
         "label": "Dizionario",
@@ -895,13 +916,9 @@
         "description": "Note, audio e chat restano su questo dispositivo. I provider ricevono solo ciò che invii con la tua chiave API.",
         "label": "Privacy e dati"
       },
-      "system": {
-        "description": "Avvio, dispositivi di registrazione e diagnostica",
-        "label": "Sistema"
-      },
-      "models": {
-        "label": "Modelli",
-        "description": "Trascrizione, riepiloghi e chat"
+      "advanced": {
+        "label": "Avanzate",
+        "description": "Diagnostica e log di debug"
       }
     },
     "title": "Impostazioni"
@@ -1012,7 +1029,7 @@
       },
       "notifications": {
         "title": "Notifiche",
-        "description": "Scegli quali notifiche OpenHercules può mostrare",
+        "description": "Propone di avviare la registrazione quando viene rilevata una riunione o inizia un evento del calendario.",
         "disableAll": "Disattiva tutte le notifiche",
         "disableAllDescription": "Silenzia tutto tranne i messaggi di errore",
         "meetingDetection": "Rilevamento riunioni",
@@ -1055,7 +1072,17 @@
           "amethyst": "Ametista",
           "magenta": "Magenta",
           "lime": "Lime",
-          "graphite": "Grafite"
+          "graphite": "Grafite",
+          "terracotta": "Terracotta",
+          "mauve": "Malva",
+          "emerald": "Smeraldo",
+          "ocean": "Oceano",
+          "solar-dusk": "Tramonto",
+          "mocha": "Moka",
+          "aurora": "Aurora",
+          "cosmic": "Cosmo",
+          "sage": "Salvia",
+          "tangerine": "Mandarino"
         }
       },
       "autoGenerateTitle": "Generate note titles",
@@ -1219,6 +1246,11 @@
       "endpointUrl": "URL endpoint",
       "serverUrl": "URL server",
       "apiKeyOptional": "API Key (opzionale)"
+    },
+    "permissionStatus": {
+      "granted": "Consentito",
+      "missing": "Non consentito",
+      "checking": "Verifica…"
     }
   },
   "models": {
@@ -2374,7 +2406,6 @@
       "installing": "Installazione…",
       "remove": "Rimuovi {{model}}"
     },
-    "chatPrompt": "Istruzioni della chat",
-    "description": "Scegli il modello per ogni attività, collega i provider e gestisci i modelli sul dispositivo."
+    "chatPrompt": "Istruzioni della chat"
   }
 }

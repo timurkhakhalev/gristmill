@@ -4,7 +4,7 @@ OpenHercules uses the installed BB app and the user's provider subscription for 
 
 ## Harness selection
 
-- Settings → Models → **Coding agents (bb)** lists the available harnesses with their bb logos. It sets the order in pickers, enables or disables each harness, marks the default harness and stores a default model and reasoning level per harness. These preferences are seeded once from bb's own `providerOrder` and `defaultProviderId`. After that they belong to OpenHercules and are never written back to bb.
+- Settings → Providers → **Coding agents (bb)** lists the available harnesses with their bb logos. It sets the order in pickers, enables or disables each harness and marks the default harness. Each harness's default model and reasoning level is stored too; it starts as the harness's first model and is not edited there. These preferences are seeded once from bb's own `providerOrder` and `defaultProviderId`. After that they belong to OpenHercules and are never written back to bb.
 - The chat composer (including the empty-chat bar) has a bb-style picker: harness tabs, model search over a virtual list and a reasoning row. Its **API** tab returns chat to the configured Cloud/Local/Self-Hosted route.
 - Chat and meeting summaries follow the default harness and its default model unless they pin their own selection in their task picker (Settings → Models → Tasks, **bb** tab). A disabled harness resolves to no selection and is reported. It is never replaced by another harness.
 - Logos are fetched by main only from bb's loopback `/api/v1/system/providers/*/logo` route. Only bounded SVG is accepted, and it is passed to the renderer as an image data URL.

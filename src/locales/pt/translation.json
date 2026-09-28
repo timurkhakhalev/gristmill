@@ -1615,6 +1615,7 @@
       "noProviderSelected": "Nenhum provedor está selecionado para a gravação de notas. Abra as Configurações e escolha Local ou um provedor de streaming.",
       "autoEnded": "A gravação parou automaticamente após o fim da reunião.",
       "restartFailed": "Não foi possível reiniciar a gravação da reunião.",
+      "captureError": "A gravação parou devido a um erro. Verifique o áudio salvo na nota.",
       "systemAudioSilent": {
         "title": "Nenhum áudio da reunião detectado até agora",
         "description": "Até agora, apenas o seu microfone captou som. Está em uma videochamada? Verifique se o áudio da reunião está sendo reproduzido neste computador e não está silenciado. Está gravando presencialmente? Você pode ignorar este aviso: seu microfone capta o ambiente."
@@ -2211,6 +2212,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "Para lembretes de gravação de reuniões.",
+    "accessibilityHelp": "Ative o OpenHercules em Acessibilidade no macOS. Se não aparecer na lista, clique em + e selecione o OpenHercules.app instalado.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
@@ -2221,6 +2223,14 @@
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}} s",
+    "durationMinutes": "{{minutes}} min {{seconds}} s",
+    "durationWholeMinutes": "{{minutes}} min",
+    "durationHours": "{{hours}} h {{minutes}} min",
+    "recordingNow": "Gravando agora",
+    "savingAudio": "Salvando…",
+    "endedEarly": "Encerrada antes",
+    "partOf": "Parte {{index}} de {{count}}",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",

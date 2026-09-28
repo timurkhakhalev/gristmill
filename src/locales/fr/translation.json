@@ -1691,6 +1691,7 @@
       "noProviderSelected": "Aucun fournisseur n'est sélectionné pour l'enregistrement de notes. Ouvrez les Réglages et choisissez Local ou un fournisseur en streaming.",
       "autoEnded": "L'enregistrement s'est arrêté automatiquement à la fin de votre réunion.",
       "restartFailed": "Impossible de redémarrer l'enregistrement de la réunion.",
+      "captureError": "L'enregistrement s'est arrêté à cause d'une erreur. Vérifiez l'audio enregistré dans la note.",
       "systemAudioSilent": {
         "title": "Aucun son de réunion détecté pour le moment",
         "description": "Seul votre microphone a capté du son jusqu'à présent. Vous êtes en visioconférence ? Vérifiez que le son de la réunion est diffusé sur cet ordinateur et qu'il n'est pas coupé. Vous enregistrez en présentiel ? Vous pouvez ignorer ce message : votre microphone capte la salle."
@@ -2211,6 +2212,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "Pour les rappels d’enregistrement des réunions.",
+    "accessibilityHelp": "Activez OpenHercules dans les réglages Accessibilité de macOS. S’il n’apparaît pas, cliquez sur + et sélectionnez l’application OpenHercules.app installée.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
@@ -2221,6 +2223,14 @@
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}} s",
+    "durationMinutes": "{{minutes}} min {{seconds}} s",
+    "durationWholeMinutes": "{{minutes}} min",
+    "durationHours": "{{hours}} h {{minutes}} min",
+    "recordingNow": "Enregistrement en cours",
+    "savingAudio": "Enregistrement…",
+    "endedEarly": "Interrompu",
+    "partOf": "Partie {{index}} sur {{count}}",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",

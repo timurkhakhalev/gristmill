@@ -13,7 +13,6 @@ export const meetingProcessingChannels = {
   createRun: "meeting-processing-create-run",
   retryRun: "meeting-processing-retry-run",
   updateBlockedRunConfig: "meeting-processing-update-blocked-run-config",
-  selectRun: "meeting-processing-select-run",
   setSpeakerCorrection: "meeting-processing-set-speaker-correction",
   getPlaybackPath: "meeting-recording-get-playback-path",
   exportAudio: "meeting-recording-export-audio",
@@ -41,10 +40,6 @@ export const meetingProcessingUpdateBlockedRunConfigRequestSchema = z.object({
   runId: meetingRecordingIdSchema,
   config: meetingProcessingConfigSchema.nullable(),
   configError: meetingProcessingConfigErrorSchema.nullable(),
-});
-export const meetingProcessingSelectRunRequestSchema = z.object({
-  recordingId: meetingRecordingIdSchema,
-  runId: meetingRecordingIdSchema,
 });
 export const meetingProcessingSpeakerCorrectionRequestSchema = z.object({
   runId: meetingRecordingIdSchema,
@@ -88,7 +83,6 @@ export const meetingProcessingRunResponseSchema = z.object({
   result: meetingProcessingResultDtoSchema.optional(),
   error: z.string().optional(),
 });
-export const meetingProcessingSelectRunResponseSchema = z.object({ success: z.boolean(), error: z.string().optional() });
 export const meetingProcessingCorrectionResponseSchema = z.object({ success: z.boolean(), error: z.string().optional() });
 export const meetingRecordingPlaybackResponseSchema = z.object({
   success: z.boolean(),
@@ -113,7 +107,6 @@ export interface MeetingProcessingApi {
   meetingProcessingCreateRun(input: z.infer<typeof meetingProcessingCreateRunRequestSchema>): Promise<MeetingProcessingRunResponse>;
   meetingProcessingRetryRun(runId: string): Promise<MeetingProcessingRunResponse>;
   meetingProcessingUpdateBlockedRunConfig(input: z.infer<typeof meetingProcessingUpdateBlockedRunConfigRequestSchema>): Promise<MeetingProcessingRunResponse>;
-  meetingProcessingSelectRun(recordingId: string, runId: string): Promise<z.infer<typeof meetingProcessingSelectRunResponseSchema>>;
   meetingProcessingSetSpeakerCorrection(input: z.infer<typeof meetingProcessingSpeakerCorrectionRequestSchema>): Promise<z.infer<typeof meetingProcessingCorrectionResponseSchema>>;
   meetingRecordingGetPlaybackPath(recordingId: string, runId?: string): Promise<z.infer<typeof meetingRecordingPlaybackResponseSchema>>;
   meetingRecordingExportAudio(input: z.infer<typeof meetingRecordingExportRequestSchema>): Promise<z.infer<typeof meetingRecordingExportResponseSchema>>;

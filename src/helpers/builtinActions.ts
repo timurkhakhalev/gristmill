@@ -131,7 +131,7 @@ export const BUILTIN_ACTIONS: BuiltInAction[] = [
     prompt: GENERATE_NOTES_PROMPT,
     // A pre-release build briefly shipped the detailed prompt under this key.
     previousPrompts: [DETAILED_NOTES_PROMPT],
-    icon: "sparkles",
+    icon: "wand-sparkles",
     sortOrder: 0,
   },
   {
@@ -140,7 +140,7 @@ export const BUILTIN_ACTIONS: BuiltInAction[] = [
     description: "Accurate, comprehensive meeting notes with decisions and action items",
     prompt: DETAILED_NOTES_PROMPT,
     previousPrompts: [],
-    icon: "sparkles",
+    icon: "wand-sparkles",
     sortOrder: 1,
   },
   {
@@ -149,7 +149,7 @@ export const BUILTIN_ACTIONS: BuiltInAction[] = [
     description: "Draft a follow-up email from your notes and transcript",
     prompt: FOLLOW_UP_EMAIL_PROMPT,
     previousPrompts: [],
-    icon: "mail",
+    icon: "wand-sparkles",
     sortOrder: 2,
   },
 ];

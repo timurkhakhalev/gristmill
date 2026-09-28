@@ -1615,6 +1615,7 @@
       "noProviderSelected": "Nessun provider selezionato per la registrazione delle note. Apri le Impostazioni e scegli Locale o un provider in streaming.",
       "autoEnded": "La registrazione si è interrotta automaticamente al termine della riunione.",
       "restartFailed": "Impossibile riavviare la registrazione della riunione.",
+      "captureError": "La registrazione si è interrotta a causa di un errore. Controlla l'audio salvato nella nota.",
       "systemAudioSilent": {
         "title": "Nessun audio della riunione rilevato finora",
         "description": "Finora solo il tuo microfono ha captato suoni. Sei in una videochiamata? Verifica che l'audio della riunione venga riprodotto su questo computer e non sia disattivato. Stai registrando di persona? Puoi ignorare questo avviso: il tuo microfono cattura la stanza."
@@ -2211,6 +2212,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "Per i promemoria di registrazione delle riunioni.",
+    "accessibilityHelp": "Abilita OpenHercules nelle impostazioni Accessibilità di macOS. Se non compare, fai clic su + e seleziona l’app OpenHercules.app installata.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
@@ -2221,6 +2223,14 @@
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}} s",
+    "durationMinutes": "{{minutes}} min {{seconds}} s",
+    "durationWholeMinutes": "{{minutes}} min",
+    "durationHours": "{{hours}} h {{minutes}} min",
+    "recordingNow": "Registrazione in corso",
+    "savingAudio": "Salvataggio…",
+    "endedEarly": "Terminata in anticipo",
+    "partOf": "Parte {{index}} di {{count}}",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",

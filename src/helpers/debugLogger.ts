@@ -13,6 +13,9 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   fatal: 60,
 };
 
+const MAX_CAPTURE_ERROR_LOG_BYTES = 1024 * 1024;
+const MAX_CAPTURE_ERROR_ENTRY_BYTES = 16 * 1024;
+
 const normalizeLevel = (value: unknown): LogLevel | null => {
   if (!value) return null;
   const lower = String(value).toLowerCase();
@@ -203,7 +206,8 @@ class DebugLogger {
     source?: string
   ): void {
     const normalized = normalizeLevel(level) || "info";
-    if (!this.shouldLog(normalized)) return;
+    const captureFailure = scope === "meeting-capture" && (normalized === "error" || normalized === "fatal");
+    if (!this.shouldLog(normalized) && !captureFailure) return;
 
     // Try to initialize file logging if pending and app is ready
     if (this.fileLoggingPending && !this.fileLoggingEnabled) {
@@ -236,6 +240,33 @@ class DebugLogger {
 
     if (this.logStream) {
       this.logStream.write(logLine);
+    }
+    if (captureFailure) {
+      this.writeCaptureErrorFile(logLine);
+    }
+  }
+
+  private writeCaptureErrorFile(line: string): void {
+    if (!app.isReady()) return;
+    try {
+      const logsDir = path.join(app.getPath("userData"), "logs");
+      fs.mkdirSync(logsDir, { recursive: true });
+      const active = path.join(logsDir, "capture-errors.log");
+      const previous = path.join(logsDir, "capture-errors.1.log");
+      const bytes = Buffer.from(`[${app.getVersion()}] ${line}`);
+      const entry = bytes.length <= MAX_CAPTURE_ERROR_ENTRY_BYTES
+        ? bytes
+        : Buffer.concat([
+            bytes.subarray(0, MAX_CAPTURE_ERROR_ENTRY_BYTES - 14),
+            Buffer.from(" [truncated]\n"),
+          ]);
+      if (fs.existsSync(active) && fs.statSync(active).size + entry.length > MAX_CAPTURE_ERROR_LOG_BYTES) {
+        fs.rmSync(previous, { force: true });
+        fs.renameSync(active, previous);
+      }
+      fs.appendFileSync(active, entry, { mode: 0o600 });
+    } catch (error) {
+      console.error("Failed to write capture error log:", error);
     }
   }
 

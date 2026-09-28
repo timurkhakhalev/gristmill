@@ -14,19 +14,31 @@ import NotesOnboarding from "./NotesOnboarding";
 import type { NotesDebugScenario } from "./NotesDebugControls";
 
 const NOW = "2026-09-25T12:00:00.000Z";
+const SECOND_RECORDING_ID = "00000000-0000-4000-8000-000000000101";
 const RECORDING_ID = "00000000-0000-4000-8000-000000000001";
 const RUN_ID = "00000000-0000-4000-8000-000000000002";
 const transcriptSegments = [
-  { id: "one", speaker: "speaker-1", text: "Обсудили план релиза.", timestamp: 1, endTimestamp: 4 },
-  {
-    id: "two",
-    speaker: "speaker-2",
-    text: "Проверим запись на тестовом созвоне.",
-    timestamp: 5,
-    endTimestamp: 9,
-  },
+  { id: "s1", speaker: "speaker-1", text: "Привет, давай начнём с плана релиза на следующую неделю.", timestamp: 0, endTimestamp: 6 },
+  { id: "s2", speaker: "speaker-2", text: "Да, у нас готова фича для биллинга, осталось закрыть регрессию.", timestamp: 6, endTimestamp: 13 },
+  { id: "s3", speaker: "speaker-1", text: "Кто возьмёт регрессию по Stripe?", timestamp: 14, endTimestamp: 17 },
+  { id: "s4", speaker: "speaker-2", text: "Я могу, но нужно согласовать сроки с Лерой.", timestamp: 17, endTimestamp: 22 },
+  { id: "s5", speaker: "speaker-1", text: "Хорошо, договорись до завтра. Что ещё блокирует релиз?", timestamp: 23, endTimestamp: 28 },
+  { id: "s6", speaker: "speaker-2", text: "Метрики на дашборде всё ещё падают — есть подозрение на утечку в meeting processing.", timestamp: 29, endTimestamp: 38 },
+  { id: "s7", speaker: "speaker-1", text: "Окей, посмотрим логи сегодня вечером.", timestamp: 39, endTimestamp: 43 },
+  { id: "s8", speaker: "speaker-2", text: "И ещё: деплой в пятницу или понедельник?", timestamp: 44, endTimestamp: 48 },
+  { id: "s9", speaker: "speaker-1", text: "Перенесём на понедельник, чтобы не рисковать перед выходными.", timestamp: 49, endTimestamp: 56 },
+  { id: "s10", speaker: "speaker-2", text: "Принято, тогда фикс дашборда дебажим в субботу.", timestamp: 57, endTimestamp: 63 },
+  { id: "s11", speaker: "speaker-1", text: "Хорошо, спасибо. Давай синхронизируемся завтра в 11.", timestamp: 64, endTimestamp: 70 },
 ];
-const transcript = serializeTranscriptSegments(transcriptSegments);
+const part2Segments = [
+  { id: "p1", speaker: "speaker-2", text: "Привет, Лера подтвердила — берёт регрессию по Stripe до среды.", timestamp: 1820, endTimestamp: 1827 },
+  { id: "p2", speaker: "speaker-1", text: "Отлично, тогда оставляем пятницу для смок-тестов.", timestamp: 1828, endTimestamp: 1834 },
+  { id: "p3", speaker: "speaker-2", text: "По дашборду я нашёл утечку — это был неиспользуемый MediaRecorder.", timestamp: 1835, endTimestamp: 1843 },
+  { id: "p4", speaker: "speaker-1", text: "Фикс уже в репо?", timestamp: 1844, endTimestamp: 1846 },
+  { id: "p5", speaker: "speaker-2", text: "Да, PR готов, ревью нужно от тебя.", timestamp: 1847, endTimestamp: 1851 },
+];
+const fullSegments = [...transcriptSegments, ...part2Segments];
+const transcript = serializeTranscriptSegments(fullSegments);
 const summary =
   "## Решение\nПровести тестовый созвон и проверить сохранность обеих дорожек.\n\n## Следующий шаг\nПроверить результат транскрипции.";
 const config: MeetingProcessingConfig = {
@@ -65,6 +77,7 @@ function makePreview(scenario: NotesDebugScenario) {
     enhancement_prompt: null,
     enhanced_at_content_hash: null,
     folder_id: null,
+    folder_ids: [],
     space_id: 0,
     transcript: hasTranscript ? transcript : null,
     calendar_event_id: null,
@@ -76,17 +89,26 @@ function makePreview(scenario: NotesDebugScenario) {
   const runStatus: MeetingProcessingRunDto["status"] =
     scenario === "queued"
       ? "pending"
-      : scenario === "processing"
+      : scenario === "processing" ||
+          scenario === "processing-elapsed-short" ||
+          scenario === "processing-elapsed-long"
         ? "running"
         : scenario === "blocked" || scenario === "transcript"
           ? "blocked"
           : scenario === "failed" || scenario === "summary-failed"
             ? "failed"
             : "complete";
+  const isElapsedShort = scenario === "processing-elapsed-short";
+  const isElapsedLong = scenario === "processing-elapsed-long";
+  const runCreatedAt = isElapsedShort
+    ? new Date(Date.now() - 12_000).toISOString()
+    : isElapsedLong
+      ? new Date(Date.now() - 125_000).toISOString()
+      : NOW;
   const run: MeetingProcessingRunDto = {
     id: RUN_ID,
     recordingId: RECORDING_ID,
-    sourceRecordingIds: [RECORDING_ID],
+    sourceRecordingIds: [RECORDING_ID, SECOND_RECORDING_ID],
     kind: "initial",
     sourceRunId: null,
     bbThreadId: null,
@@ -114,12 +136,14 @@ function makePreview(scenario: NotesDebugScenario) {
     hasRawProviderResponse: hasTranscript,
     hasTranscript,
     hasSummary,
-    createdAt: NOW,
-    updatedAt: NOW,
+    createdAt: runCreatedAt,
+    updatedAt: runCreatedAt,
   };
   const hasRecording = [
     "queued",
     "processing",
+    "processing-elapsed-short",
+    "processing-elapsed-long",
     "blocked",
     "failed",
     "summary-failed",
@@ -129,6 +153,8 @@ function makePreview(scenario: NotesDebugScenario) {
     "audio-deleted",
     "enhanced-stale",
   ].includes(scenario);
+  const isMultiPartTranscript =
+    scenario === "transcript" || scenario === "ready" || scenario === "audio-deleted" || scenario === "enhanced-stale" || scenario === "summary-failed";
   const recordings: MeetingProcessingRecordingResult[] = hasRecording
     ? [
         {
@@ -142,7 +168,7 @@ function makePreview(scenario: NotesDebugScenario) {
             currentRunId: scenario === "incomplete" ? null : RUN_ID,
             startedAt: NOW,
             endedAt: NOW,
-            durationSeconds: 0,
+            durationSeconds: 1820,
           },
           runs:
             scenario === "incomplete"
@@ -152,8 +178,8 @@ function makePreview(scenario: NotesDebugScenario) {
                     run,
                     transcript: hasTranscript
                       ? {
-                          text: transcriptSegments.map((segment) => segment.text).join(" "),
-                          segments: transcriptSegments.map((segment) => ({
+                          text: fullSegments.map((segment) => segment.text).join(" "),
+                          segments: fullSegments.map((segment) => ({
                             speaker: segment.speaker,
                             text: segment.text,
                             start: segment.timestamp,
@@ -167,6 +193,25 @@ function makePreview(scenario: NotesDebugScenario) {
                   },
                 ],
         },
+        ...(isMultiPartTranscript
+          ? [
+              {
+                recording: {
+                  id: SECOND_RECORDING_ID,
+                  groupId: RECORDING_ID,
+                  captureState: "ready" as const,
+                  captureErrorCode: null,
+                  audioState: "available" as const,
+                  audioErrorCode: null,
+                  currentRunId: RUN_ID,
+                  startedAt: "2026-09-25T12:32:40.000Z",
+                  endedAt: "2026-09-25T12:36:55.000Z",
+                  durationSeconds: 255,
+                },
+                runs: [],
+              },
+            ]
+          : []),
       ]
     : [];
 
@@ -313,9 +358,7 @@ export default function NotesDebugPreview({
               viewMode:
                 scenario === "ready" || scenario === "enhanced-stale"
                   ? "enhanced"
-                  : hasTranscriptScenario(scenario)
-                    ? "transcript"
-                    : "raw",
+                  : "raw",
             }}
           />
         </div>
@@ -324,11 +367,3 @@ export default function NotesDebugPreview({
   );
 }
 
-function hasTranscriptScenario(scenario: NotesDebugScenario): boolean {
-  return (
-    scenario === "transcript" ||
-    scenario === "ready" ||
-    scenario === "audio-deleted" ||
-    scenario === "summary-failed"
-  );
-}

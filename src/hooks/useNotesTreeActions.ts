@@ -104,8 +104,9 @@ export function useNotesTreeActions() {
 
   const handleMoveNote = useCallback(
     async (noteId: number, target: NoteMoveTarget) => {
+      // A move takes the note out of all its folders, like moving a file.
       await window.electronAPI.updateNote(noteId, {
-        folder_id: target.folderId,
+        folder_ids: target.folderIds ?? (target.folderId != null ? [target.folderId] : []),
         space_id: target.spaceId,
       });
       if (noteId === activeNoteId) {
@@ -123,6 +124,43 @@ export function useNotesTreeActions() {
       await handleMoveNote(noteId, { spaceId: folder.space_id, folderId });
     },
     [folders, handleMoveNote]
+  );
+
+  const handleSetNoteFolders = useCallback(
+    async (noteId: number, folderIds: number[]) => {
+      const result = await window.electronAPI.updateNote(noteId, { folder_ids: folderIds });
+      if (!result.success || noteId !== activeNoteId) return;
+      // Unticking the folder being browsed would orphan the open note; follow it.
+      const note = result.note;
+      const stillListed =
+        activeContext?.folderId != null
+          ? note.folder_ids.includes(activeContext.folderId)
+          : activeContext?.spaceId === note.space_id && note.folder_id == null;
+      if (!stillListed) {
+        setActiveContext(note.space_id, note.folder_id);
+        revealContainer(note.space_id, note.folder_id);
+      }
+    },
+    [activeNoteId, activeContext]
+  );
+
+  const handleCreateFolderAndAdd = useCallback(
+    async (noteId: number, folderName: string) => {
+      const note = getNoteFromStore(noteId);
+      const spaceId = note?.space_id ?? privateSpaceId;
+      if (spaceId == null) return;
+      const result = await createFolder(folderName, spaceId);
+      if (result.success && result.folder) {
+        await handleSetNoteFolders(noteId, [...(note?.folder_ids ?? []), result.folder.id]);
+      } else if (result.error) {
+        toast({
+          title: t("notes.folders.couldNotCreate"),
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    },
+    [privateSpaceId, handleSetNoteFolders, toast, t]
   );
 
   const handleCreateFolderAndMove = useCallback(
@@ -151,6 +189,8 @@ export function useNotesTreeActions() {
     handleDelete,
     handleMoveNote,
     handleMoveToFolder,
+    handleSetNoteFolders,
     handleCreateFolderAndMove,
+    handleCreateFolderAndAdd,
   };
 }

@@ -1691,6 +1691,7 @@
       "noProviderSelected": "Für die Notizaufnahme ist kein Anbieter ausgewählt. Öffne die Einstellungen und wähle Lokal oder einen Streaming-Anbieter.",
       "autoEnded": "Die Aufnahme wurde nach dem Ende des Meetings automatisch beendet.",
       "restartFailed": "Die Meeting-Aufnahme konnte nicht neu gestartet werden.",
+      "captureError": "Die Aufnahme wurde wegen eines Fehlers gestoppt. Prüfen Sie das gespeicherte Audio in der Notiz.",
       "systemAudioSilent": {
         "title": "Noch kein Meeting-Ton erkannt",
         "description": "Bisher hat nur Ihr Mikrofon Ton aufgenommen. Sie sind in einem Videoanruf? Prüfen Sie, ob der Meeting-Ton auf diesem Computer wiedergegeben wird und nicht stummgeschaltet ist. Sie nehmen vor Ort auf? Dann können Sie diesen Hinweis ignorieren – Ihr Mikrofon nimmt den Raum auf."
@@ -2211,6 +2212,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "Für Erinnerungen zur Aufzeichnung von Meetings.",
+    "accessibilityHelp": "Aktiviere OpenHercules in den macOS-Bedienungshilfen. Fehlt es in der Liste, klicke auf + und wähle die installierte OpenHercules.app.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
@@ -2221,6 +2223,14 @@
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}} s",
+    "durationMinutes": "{{minutes}} min {{seconds}} s",
+    "durationWholeMinutes": "{{minutes}} min",
+    "durationHours": "{{hours}} h {{minutes}} min",
+    "recordingNow": "Aufnahme läuft",
+    "savingAudio": "Wird gespeichert…",
+    "endedEarly": "Vorzeitig beendet",
+    "partOf": "Teil {{index}} von {{count}}",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",

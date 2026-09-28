@@ -139,5 +139,6 @@ test("deleting a folder keeps its notes and rewrites the released mirrors", asyn
   assert.deepEqual(db.getNote(saved2.note.id), {
     ...saved2.note,
     folder_id: null,
+    folder_ids: [],
   });
 });

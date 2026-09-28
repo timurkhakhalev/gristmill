@@ -6,8 +6,6 @@ import {
   meetingProcessingRetryRequestSchema,
   meetingProcessingUpdateBlockedRunConfigRequestSchema,
   meetingProcessingRunResponseSchema,
-  meetingProcessingSelectRunRequestSchema,
-  meetingProcessingSelectRunResponseSchema,
   meetingProcessingSpeakerCorrectionRequestSchema,
   meetingProcessingCorrectionResponseSchema,
   meetingProcessingUpdatedEvent,
@@ -58,12 +56,6 @@ export function createMeetingProcessingBridge(ipcRenderer: IpcRendererLike): Mee
       const parsed = meetingProcessingUpdateBlockedRunConfigRequestSchema.parse(input);
       return ipcRenderer.invoke(meetingProcessingChannels.updateBlockedRunConfig, parsed).then((raw) =>
         parse(meetingProcessingRunResponseSchema, raw, meetingProcessingChannels.updateBlockedRunConfig)
-      );
-    },
-    meetingProcessingSelectRun(recordingId, runId) {
-      const input = meetingProcessingSelectRunRequestSchema.parse({ recordingId, runId });
-      return ipcRenderer.invoke(meetingProcessingChannels.selectRun, input).then((raw) =>
-        parse(meetingProcessingSelectRunResponseSchema, raw, meetingProcessingChannels.selectRun)
       );
     },
     meetingProcessingSetSpeakerCorrection(input) {

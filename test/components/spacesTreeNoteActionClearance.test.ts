@@ -34,8 +34,8 @@ async function renderTree(t: TestContext, direction: string) {
           { id: 22, space_id: 2, name: "Team folder", is_default: 0 },
         ];
         const notes = [
-          { id: 101, space_id: 1, folder_id: 11, title: ${JSON.stringify(PRIVATE_NOTE_TITLE)} },
-          { id: 202, space_id: 2, folder_id: 22, title: ${JSON.stringify(TEAM_NOTE_TITLE)} },
+          { id: 101, space_id: 1, folder_id: 11, folder_ids: [11], title: ${JSON.stringify(PRIVATE_NOTE_TITLE)} },
+          { id: 202, space_id: 2, folder_id: 22, folder_ids: [22], title: ${JSON.stringify(TEAM_NOTE_TITLE)} },
         ];
         export const folderContainerKey = (id) => "folder:" + id;
         export const spaceContainerKey = (id) => "space:" + id;

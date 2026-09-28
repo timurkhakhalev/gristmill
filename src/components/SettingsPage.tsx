@@ -401,8 +401,8 @@ function OnDeviceSection() {
   );
 }
 
-/** A macOS permission's current state, with a shortcut to System Settings while it is missing. */
-function PermissionStatus({ granted, checking = false, onOpen }: { granted: boolean; checking?: boolean; onOpen: () => void }) {
+/** A macOS permission's current state and action to request it while missing. */
+function PermissionStatus({ granted, checking = false, onOpen, actionLabel }: { granted: boolean; checking?: boolean; onOpen: () => void; actionLabel?: string }) {
   const { t } = useTranslation();
   const state = checking ? "checking" : granted ? "granted" : "missing";
   return (
@@ -419,7 +419,7 @@ function PermissionStatus({ granted, checking = false, onOpen }: { granted: bool
       </span>
       {state === "missing" && (
         <Button variant="outline" size="sm" onClick={onOpen}>
-          {t("cleanupSettings.openSettings")}
+          {actionLabel ?? t("cleanupSettings.openSettings")}
         </Button>
       )}
     </div>
@@ -502,23 +502,30 @@ function RecordingSettings() {
         >
           <PermissionStatus
             granted={permissions.micPermissionGranted}
-            onOpen={() => void permissions.openMicPrivacySettings()}
+            onOpen={() => void permissions.requestMicPermission()}
+            actionLabel={t("onboarding.rehaul.permissions.enable")}
           />
         </Row>
         <Row label={t("cleanupSettings.systemAudio")}>
           <PermissionStatus
             granted={systemAudio.granted}
-            checking={systemAudio.isChecking && systemAudio.status === "unknown"}
-            onOpen={() => void systemAudio.openSettings()}
+            checking={systemAudio.isChecking}
+            onOpen={() => void systemAudio.request()}
+            actionLabel={t("onboarding.rehaul.permissions.enable")}
           />
         </Row>
         <Row
           label={t("hooks.permissions.settingsTitles.accessibility")}
-          description={t("cleanupSettings.accessibilityDetection")}
+          description={permissions.accessibilityTroubleshooting
+            ? t("cleanupSettings.accessibilityHelp")
+            : t("cleanupSettings.accessibilityDetection")}
         >
           <PermissionStatus
             granted={permissions.accessibilityPermissionGranted}
             onOpen={() => void permissions.requestAccessibilityPermission()}
+            actionLabel={t(permissions.accessibilityPromptRequested
+              ? "cleanupSettings.openSettings"
+              : "onboarding.rehaul.permissions.enable")}
           />
         </Row>
       </Group>

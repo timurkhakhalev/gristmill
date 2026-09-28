@@ -134,8 +134,6 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     meetingProcessingRetryRun: async (id: string) => { calls.retry.push(id); return { success: true }; },
   };
   let root: ReturnType<typeof createRoot> | undefined;
-  // TestContext runs after hooks in registration order, so unmount before globals are restored.
-  t.after(async () => { if (root) await React.act(async () => root.unmount()); });
   installBrowserGlobals(t, {
     window: {
       electronAPI: api,
@@ -144,6 +142,31 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     },
   });
   const container = installHookDom(t);
+  const mountedGlobalKeys = [
+    "window",
+    "document",
+    "localStorage",
+    "IS_REACT_ACT_ENVIRONMENT",
+    "requestAnimationFrame",
+    "cancelAnimationFrame",
+  ] as const;
+  const globalValues = globalThis as Record<string, unknown>;
+  const mountedGlobals = new Map(mountedGlobalKeys.map((key) => [key, globalValues[key]] as const));
+  t.after(async () => {
+    const valuesBeforeUnmount = new Map(mountedGlobalKeys.map((key) => [key, globalValues[key]] as const));
+    const restore = (values: Map<(typeof mountedGlobalKeys)[number], unknown>) => {
+      for (const [key, value] of values) {
+        if (value === undefined) delete globalValues[key];
+        else globalValues[key] = value;
+      }
+    };
+    restore(mountedGlobals);
+    try {
+      if (root) await React.act(async () => root.unmount());
+    } finally {
+      restore(valuesBeforeUnmount);
+    }
+  });
   // Fake-DOM document from installHookDom; structural typing at this seam.
   const document = globalThis.document as unknown as Record<string, unknown>;
   const createElement = document.createElement as (name: string) => HTMLElement;

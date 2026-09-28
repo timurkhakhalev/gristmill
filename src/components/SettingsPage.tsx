@@ -14,10 +14,15 @@ import { SelectField } from "./ui/SelectField";
 import { Toggle } from "./ui/toggle";
 import { ColorSchemePicker } from "./settings/ColorSchemePicker";
 import ModelsSettings from "./settings/models/ModelsSettings";
+import { ProvidersSettings } from "./settings/models/ProvidersSettings";
+import BbAgentSettings from "./settings/BbAgentSettings";
+import { LocalModelInventoryProvider } from "./settings/models/LocalModelInventory";
+import { LocalModelsSettings } from "./settings/models/LocalModelsSettings";
 import DictionaryView from "./DictionaryView";
 import IntegrationsView from "./IntegrationsView";
 import { ConfirmDialog } from "./ui/dialog";
 import { useDialogs } from "../hooks/useDialogs";
+import { cn } from "./lib/utils";
 import { SUPPORTED_UI_LANGUAGES, type UiLanguage } from "../i18n";
 
 // Each language is named in itself, so users can find theirs from any UI language.
@@ -37,12 +42,15 @@ const UI_LANGUAGE_NAMES: Record<UiLanguage, string> = {
 
 export type SettingsSectionType =
   | "general"
-  | "hotkeys"
+  | "notes"
+  | "recording"
+  | "calendar"
   | "models"
+  | "providers"
+  | "onDevice"
   | "dictionary"
-  | "integrations"
   | "privacyData"
-  | "system";
+  | "advanced";
 
 interface SettingsPageProps {
   activeSection?: SettingsSectionType;
@@ -52,12 +60,15 @@ interface SettingsPageProps {
 
 const sections: SettingsSectionType[] = [
   "general",
-  "hotkeys",
+  "notes",
+  "recording",
+  "calendar",
   "models",
+  "providers",
+  "onDevice",
   "dictionary",
-  "integrations",
   "privacyData",
-  "system",
+  "advanced",
 ];
 
 /** Every settings section: page title, then content in a readable column. */
@@ -91,12 +102,22 @@ function GeneralSettings() {
   const setColorScheme = useSettingsStore((s) => s.setColorScheme);
   const language = useSettingsStore((s) => s.uiLanguage);
   const setLanguage = useSettingsStore((s) => s.setUiLanguage);
-  const noteFilesEnabled = useSettingsStore((s) => s.noteFilesEnabled);
-  const setNoteFilesEnabled = useSettingsStore((s) => s.setNoteFilesEnabled);
-  const autoTitle = useSettingsStore((s) => s.autoGenerateNoteTitle);
-  const setAutoTitle = useSettingsStore((s) => s.setAutoGenerateNoteTitle);
-  const companionEnabled = useSettingsStore((s) => s.meetingCompanionEnabled);
-  const setCompanionEnabled = useSettingsStore((s) => s.setMeetingCompanionEnabled);
+  const startMinimized = useSettingsStore((s) => s.startMinimized);
+  const setStartMinimized = useSettingsStore((s) => s.setStartMinimized);
+  const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
+  const setNotificationsEnabled = useSettingsStore((s) => s.setNotificationsEnabled);
+  const [autoStart, setAutoStart] = React.useState(false);
+  const [error, setError] = React.useState("");
+  React.useEffect(() => {
+    void window.electronAPI.getAutoStartEnabled?.().then((result) => setAutoStart(result.enabled));
+  }, []);
+  const updateAutoStart = async (enabled: boolean) => {
+    const result = await window.electronAPI.setAutoStartEnabled?.(enabled);
+    if (result?.success) {
+      setAutoStart(enabled);
+      setError("");
+    } else setError(result?.error || t("common.error"));
+  };
   return (
     <Section
       title={t("settingsModal.sections.general.label")}
@@ -140,7 +161,54 @@ function GeneralSettings() {
           />
         </Row>
       </Group>
-      <Group title={t("settingsPage.general.notesGroup")}>
+      <Group title={t("settingsPage.general.startup.title")}>
+        <Row
+          label={t("settingsPage.general.startup.launchAtLogin")}
+          description={t("settingsPage.general.startup.launchAtLoginDescription")}
+        >
+          <Toggle
+            checked={autoStart}
+            onChange={(value) => {
+              void updateAutoStart(value);
+            }}
+          />
+        </Row>
+        <Row
+          label={t("settingsPage.general.startup.startMinimized")}
+          description={t("settingsPage.general.startup.startMinimizedDescription")}
+        >
+          <Toggle checked={startMinimized} onChange={setStartMinimized} />
+        </Row>
+        {error && (
+          <SettingsPanelRow>
+            <p role="alert" className="text-xs text-danger">
+              {error}
+            </p>
+          </SettingsPanelRow>
+        )}
+        <Row
+          label={t("settingsPage.general.notifications.title")}
+          description={t("settingsPage.general.notifications.description")}
+        >
+          <Toggle checked={notificationsEnabled} onChange={setNotificationsEnabled} />
+        </Row>
+      </Group>
+    </Section>
+  );
+}
+
+function NotesSettings() {
+  const { t } = useTranslation();
+  const noteFilesEnabled = useSettingsStore((s) => s.noteFilesEnabled);
+  const setNoteFilesEnabled = useSettingsStore((s) => s.setNoteFilesEnabled);
+  const autoTitle = useSettingsStore((s) => s.autoGenerateNoteTitle);
+  const setAutoTitle = useSettingsStore((s) => s.setAutoGenerateNoteTitle);
+  return (
+    <Section
+      title={t("settingsModal.sections.notes.label")}
+      description={t("settingsModal.sections.notes.description")}
+    >
+      <Group>
         <Row
           label={t("settingsPage.general.autoGenerateTitle")}
           description={t("settingsPage.general.autoGenerateTitleDescription")}
@@ -154,12 +222,6 @@ function GeneralSettings() {
           })}
         >
           <Toggle checked={noteFilesEnabled} onChange={setNoteFilesEnabled} />
-        </Row>
-        <Row
-          label={t("settingsPage.general.meetingCompanion.label")}
-          description={t("settingsPage.general.meetingCompanion.description")}
-        >
-          <Toggle checked={companionEnabled} onChange={setCompanionEnabled} />
         </Row>
       </Group>
     </Section>
@@ -289,16 +351,67 @@ function PrivacySettings() {
 function ModelsSection({ focus }: { focus?: string }) {
   const { t } = useTranslation();
   return (
-    <Section title={t("settingsModal.sections.models.label")} description={t("modelsSettings.description")}>
+    <Section title={t("settingsModal.sections.models.label")} description={t("settingsModal.sections.models.description")}>
       <ModelsSettings focus={focus} />
     </Section>
   );
 }
 
-function HotkeysSettings() {
+function ProvidersSection() {
   const { t } = useTranslation();
-  const { meetingKey, setMeetingKey, meetingHotkeyLayoutMode, setMeetingHotkeyLayoutMode } =
-    useSettingsStore();
+  return (
+    <Section title={t("settingsModal.sections.providers.label")} description={t("settingsModal.sections.providers.description")}>
+      <ProvidersSettings />
+      <section className="space-y-2">
+        <h3 className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("modelsSettings.bb.title")}</h3>
+        <BbAgentSettings />
+      </section>
+    </Section>
+  );
+}
+
+function OnDeviceSection() {
+  const { t } = useTranslation();
+  return (
+    <Section title={t("settingsModal.sections.onDevice.label")} description={t("settingsModal.sections.onDevice.description")}>
+      <LocalModelInventoryProvider>
+        <LocalModelsSettings />
+      </LocalModelInventoryProvider>
+    </Section>
+  );
+}
+
+/** A macOS permission's current state, with a shortcut to System Settings while it is missing. */
+function PermissionStatus({ granted, checking = false, onOpen }: { granted: boolean; checking?: boolean; onOpen: () => void }) {
+  const { t } = useTranslation();
+  const state = checking ? "checking" : granted ? "granted" : "missing";
+  return (
+    <div className="flex items-center gap-3">
+      <span role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <span
+          aria-hidden
+          className={cn(
+            "size-2 rounded-full",
+            state === "granted" ? "bg-success" : state === "missing" ? "bg-warning" : "bg-muted"
+          )}
+        />
+        {t(`settingsPage.permissionStatus.${state}`)}
+      </span>
+      {state === "missing" && (
+        <Button variant="outline" size="sm" onClick={onOpen}>
+          {t("cleanupSettings.openSettings")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function RecordingSettings() {
+  const { t } = useTranslation();
+  const settings = useSettingsStore();
+  const { meetingKey, setMeetingKey, meetingHotkeyLayoutMode, setMeetingHotkeyLayoutMode } = settings;
+  const permissions = usePermissions();
+  const systemAudio = useSystemAudioPermission();
   const { registerHotkey, isRegistering, lastError } = useHotkeyRegistration({
     registerFn: async (key) =>
       (await window.electronAPI.registerMeetingHotkey?.(key)) ?? { success: false },
@@ -306,9 +419,17 @@ function HotkeysSettings() {
   });
   return (
     <Section
-      title={t("settingsModal.sections.hotkeys.label")}
-      description={t("settingsModal.sections.hotkeys.description")}
+      title={t("settingsModal.sections.recording.label")}
+      description={t("settingsModal.sections.recording.description")}
     >
+      <Group>
+        <Row
+          label={t("settingsPage.general.meetingCompanion.label")}
+          description={t("settingsPage.general.meetingCompanion.description")}
+        >
+          <Toggle checked={settings.meetingCompanionEnabled} onChange={settings.setMeetingCompanionEnabled} />
+        </Row>
+      </Group>
       <Group title={t("settingsPage.general.meetingHotkey.title")}>
         <SettingsPanelRow>
           <div className="space-y-2">
@@ -345,58 +466,6 @@ function HotkeysSettings() {
           />
         </Row>
       </Group>
-    </Section>
-  );
-}
-
-function SystemSettings() {
-  const { t } = useTranslation();
-  const settings = useSettingsStore();
-  const permissions = usePermissions();
-  const systemAudio = useSystemAudioPermission();
-  const [autoStart, setAutoStart] = React.useState(false);
-  const [error, setError] = React.useState("");
-  React.useEffect(() => {
-    void window.electronAPI.getAutoStartEnabled?.().then((result) => setAutoStart(result.enabled));
-  }, []);
-  const updateAutoStart = async (enabled: boolean) => {
-    const result = await window.electronAPI.setAutoStartEnabled?.(enabled);
-    if (result?.success) {
-      setAutoStart(enabled);
-      setError("");
-    } else setError(result?.error || t("common.error"));
-  };
-  return (
-    <Section
-      title={t("settingsModal.sections.system.label")}
-      description={t("settingsModal.sections.system.description")}
-    >
-      <Group title={t("settingsPage.general.startup.title")}>
-        <Row
-          label={t("settingsPage.general.startup.launchAtLogin")}
-          description={t("settingsPage.general.startup.launchAtLoginDescription")}
-        >
-          <Toggle
-            checked={autoStart}
-            onChange={(value) => {
-              void updateAutoStart(value);
-            }}
-          />
-        </Row>
-        <Row
-          label={t("settingsPage.general.startup.startMinimized")}
-          description={t("settingsPage.general.startup.startMinimizedDescription")}
-        >
-          <Toggle checked={settings.startMinimized} onChange={settings.setStartMinimized} />
-        </Row>
-        {error && (
-          <SettingsPanelRow>
-            <p role="alert" className="text-xs text-danger">
-              {error}
-            </p>
-          </SettingsPanelRow>
-        )}
-      </Group>
       <Group title={t("cleanupSettings.permissions")}>
         <SettingsPanelRow>
           <MicrophoneSettings
@@ -411,40 +480,39 @@ function SystemSettings() {
           label={t("settingsPage.general.microphone.title")}
           description={permissions.micPermissionError || undefined}
         >
-          <Button variant="outline" size="sm" onClick={() => void permissions.openMicPrivacySettings()}>
-            {t("cleanupSettings.openSettings")}
-          </Button>
+          <PermissionStatus
+            granted={permissions.micPermissionGranted}
+            onOpen={() => void permissions.openMicPrivacySettings()}
+          />
         </Row>
         <Row label={t("cleanupSettings.systemAudio")}>
-          <Button variant="outline" size="sm" onClick={() => void systemAudio.openSettings()}>
-            {t("cleanupSettings.openSettings")}
-          </Button>
+          <PermissionStatus
+            granted={systemAudio.granted}
+            checking={systemAudio.isChecking && systemAudio.status === "unknown"}
+            onOpen={() => void systemAudio.openSettings()}
+          />
         </Row>
         <Row
           label={t("hooks.permissions.settingsTitles.accessibility")}
           description={t("cleanupSettings.accessibilityDetection")}
         >
-          {permissions.accessibilityPermissionGranted ? (
-            <span className="text-sm text-muted-foreground">
-              {t("onboarding.rehaul.permissions.enabled")}
-            </span>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void permissions.requestAccessibilityPermission()}
-            >
-              {t("cleanupSettings.openSettings")}
-            </Button>
-          )}
-        </Row>
-        <Row label={t("settingsPage.general.notifications.title")}>
-          <Toggle
-            checked={settings.notificationsEnabled}
-            onChange={settings.setNotificationsEnabled}
+          <PermissionStatus
+            granted={permissions.accessibilityPermissionGranted}
+            onOpen={() => void permissions.requestAccessibilityPermission()}
           />
         </Row>
       </Group>
+    </Section>
+  );
+}
+
+function AdvancedSettings() {
+  const { t } = useTranslation();
+  return (
+    <Section
+      title={t("settingsModal.sections.advanced.label")}
+      description={t("settingsModal.sections.advanced.description")}
+    >
       <DeveloperSection />
     </Section>
   );
@@ -458,18 +526,24 @@ export default function SettingsPage({
   switch (section) {
     case "general":
       return <GeneralSettings />;
-    case "hotkeys":
-      return <HotkeysSettings />;
+    case "notes":
+      return <NotesSettings />;
+    case "recording":
+      return <RecordingSettings />;
+    case "calendar":
+      return <IntegrationsView />;
     case "models":
       return <ModelsSection focus={initialSubTab} />;
+    case "providers":
+      return <ProvidersSection />;
+    case "onDevice":
+      return <OnDeviceSection />;
     case "dictionary":
       return <DictionaryView />;
-    case "integrations":
-      return <IntegrationsView />;
     case "privacyData":
       return <PrivacySettings />;
-    case "system":
-      return <SystemSettings />;
+    case "advanced":
+      return <AdvancedSettings />;
     default:
       return null;
   }

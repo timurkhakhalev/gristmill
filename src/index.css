@@ -162,6 +162,144 @@
   --a-l: 0.56;
   --brand-l: 0.76;
 }
+/* Schemes below are loose takes on 21st.dev community themes (Claude,
+   Catppuccin, Supabase, Ocean Breeze, Solar Dusk, Mocha Mousse, Northern
+   Lights, Cosmic Night, Sage Garden, Tangerine), mapped onto the knobs. */
+[data-color-scheme="terracotta"] {
+  --n-h: 70;
+  --n-c: 0.01;
+  --a-h: 40;
+  --a-c: 0.14;
+  --a-l: 0.58;
+  --brand-l: 0.54;
+}
+.dark[data-color-scheme="terracotta"] {
+  --n-c: 0.008;
+  --a-l: 0.64;
+  --brand-l: 0.76;
+}
+[data-color-scheme="mauve"] {
+  --n-h: 285;
+  --n-c: 0.018;
+  --a-h: 300;
+  --a-c: 0.2;
+  --a-l: 0.55;
+  --brand-l: 0.52;
+}
+.dark[data-color-scheme="mauve"] {
+  --n-c: 0.03;
+  --a-c: 0.12;
+  --a-l: 0.8;
+  --a-fg: oklch(0.2 0.03 285);
+  --brand-l: 0.82;
+}
+[data-color-scheme="emerald"] {
+  --n-h: 160;
+  --n-c: 0.004;
+  --a-h: 160;
+  --a-c: 0.15;
+  --a-l: 0.72;
+  --a-fg: oklch(0.2 0.02 160);
+  --brand-l: 0.5;
+}
+.dark[data-color-scheme="emerald"] {
+  --a-l: 0.77;
+  --brand-l: 0.8;
+}
+[data-color-scheme="ocean"] {
+  --n-h: 230;
+  --n-c: 0.015;
+  --a-h: 230;
+  --a-c: 0.14;
+  --a-l: 0.56;
+  --brand-l: 0.52;
+}
+.dark[data-color-scheme="ocean"] {
+  --n-c: 0.022;
+  --a-l: 0.74;
+  --a-fg: oklch(0.2 0.02 230);
+  --brand-l: 0.8;
+}
+[data-color-scheme="solar-dusk"] {
+  --n-h: 55;
+  --n-c: 0.014;
+  --a-h: 50;
+  --a-c: 0.16;
+  --a-l: 0.58;
+  --brand-l: 0.54;
+}
+.dark[data-color-scheme="solar-dusk"] {
+  --n-c: 0.012;
+  --a-l: 0.72;
+  --a-fg: oklch(0.2 0.02 55);
+  --brand-l: 0.8;
+}
+[data-color-scheme="mocha"] {
+  --n-h: 60;
+  --n-c: 0.012;
+  --a-h: 50;
+  --a-c: 0.07;
+  --a-l: 0.5;
+  --brand-l: 0.48;
+}
+.dark[data-color-scheme="mocha"] {
+  --a-l: 0.7;
+  --a-fg: oklch(0.2 0.015 60);
+  --brand-l: 0.78;
+}
+[data-color-scheme="aurora"] {
+  --n-h: 250;
+  --n-c: 0.012;
+  --a-h: 175;
+  --a-c: 0.12;
+  --a-l: 0.55;
+  --brand-l: 0.5;
+}
+.dark[data-color-scheme="aurora"] {
+  --n-c: 0.022;
+  --a-l: 0.78;
+  --a-fg: oklch(0.2 0.02 250);
+  --brand-l: 0.82;
+}
+[data-color-scheme="cosmic"] {
+  --n-h: 280;
+  --n-c: 0.02;
+  --a-h: 285;
+  --a-c: 0.17;
+  --a-l: 0.5;
+  --brand-l: 0.5;
+}
+.dark[data-color-scheme="cosmic"] {
+  --n-c: 0.03;
+  --a-l: 0.62;
+  --brand-l: 0.78;
+}
+[data-color-scheme="sage"] {
+  --n-h: 130;
+  --n-c: 0.01;
+  --a-h: 145;
+  --a-c: 0.06;
+  --a-l: 0.52;
+  --brand-l: 0.48;
+}
+.dark[data-color-scheme="sage"] {
+  --a-l: 0.72;
+  --a-fg: oklch(0.2 0.015 130);
+  --brand-l: 0.8;
+}
+[data-color-scheme="tangerine"] {
+  --n-h: 260;
+  --n-c: 0.01;
+  --a-h: 45;
+  --a-c: 0.19;
+  --a-l: 0.64;
+  --brand-l: 0.56;
+}
+.dark[data-color-scheme="tangerine"] {
+  --a-l: 0.7;
+  --a-fg: oklch(0.2 0.02 45);
+  --brand-l: 0.78;
+}
 
 /* HeroUI adjustments shared by every screen. */
 .select__value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

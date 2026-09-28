@@ -2,12 +2,15 @@ import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Sliders,
+  NotebookPen,
+  Mic,
+  Calendar,
   Brain,
-  Wrench,
-  Keyboard,
-  Shield,
+  KeyRound,
+  HardDrive,
   BookOpen,
-  Blocks,
+  Shield,
+  Terminal,
 } from "./icons";
 import SidebarModal, { type SidebarItem } from "./ui/SidebarModal";
 import SettingsPage, { SettingsSectionType } from "./SettingsPage";
@@ -25,10 +28,10 @@ const SECTION_ALIASES: Record<string, SettingsSectionType> = {
   prompts: "models",
   transcription: "models",
   uploadTranscription: "models",
-  softwareUpdates: "system",
+  softwareUpdates: "advanced",
   privacy: "privacyData",
-  permissions: "privacyData",
-  developer: "system",
+  permissions: "recording",
+  developer: "advanced",
 };
 
 const LEGACY_FOCUS: Record<string, string> = {
@@ -58,56 +61,28 @@ interface SettingsModalProps {
 export default function SettingsModal({ open, onOpenChange, initialSection }: SettingsModalProps) {
   const { t } = useTranslation();
   const sidebarItems: SidebarItem<SettingsSectionType>[] = useMemo(() => {
-    const items: SidebarItem<SettingsSectionType>[] = [
-      {
-        id: "general",
-        label: t("settingsModal.sections.general.label"),
-        icon: Sliders,
-        description: t("settingsModal.sections.general.description"),
-        group: t("settingsModal.groups.app"),
-      },
-      {
-        id: "hotkeys",
-        label: t("settingsModal.sections.hotkeys.label"),
-        icon: Keyboard,
-        description: t("settingsModal.sections.hotkeys.description"),
-        group: t("settingsModal.groups.app"),
-      },
-      {
-        id: "models",
-        label: t("settingsModal.sections.models.label"),
-        icon: Brain,
-        description: t("settingsModal.sections.models.description"),
-        group: t("settingsModal.groups.aiModels"),
-      },
-      {
-        id: "dictionary",
-        label: t("sidebar.dictionary"),
-        icon: BookOpen,
-        description: t("settingsModal.sections.dictionary.description"),
-        group: t("settingsModal.groups.aiModels"),
-      },
-      {
-        id: "integrations",
-        label: t("sidebar.integrations"),
-        icon: Blocks,
-        description: t("integrations.description"),
-        group: t("settingsModal.groups.system"),
-      },
-      {
-        id: "privacyData",
-        label: t("settingsModal.sections.privacyData.label"),
-        icon: Shield,
-        description: t("settingsModal.sections.privacyData.description"),
-        group: t("settingsModal.groups.system"),
-      },
-      {
-        id: "system",
-        label: t("settingsModal.sections.system.label"),
-        icon: Wrench,
-        description: t("settingsModal.sections.system.description"),
-        group: t("settingsModal.groups.system"),
-      },
+    const item = (
+      id: SettingsSectionType,
+      icon: SidebarItem<SettingsSectionType>["icon"],
+      group: string
+    ): SidebarItem<SettingsSectionType> => ({
+      id,
+      icon,
+      label: t(`settingsModal.sections.${id}.label`),
+      description: t(`settingsModal.sections.${id}.description`),
+      group: t(`settingsModal.groups.${group}`),
+    });
+    const items = [
+      item("general", Sliders, "general"),
+      item("notes", NotebookPen, "general"),
+      item("recording", Mic, "meetings"),
+      item("calendar", Calendar, "meetings"),
+      item("models", Brain, "ai"),
+      item("providers", KeyRound, "ai"),
+      item("onDevice", HardDrive, "ai"),
+      item("dictionary", BookOpen, "ai"),
+      item("privacyData", Shield, "system"),
+      item("advanced", Terminal, "system"),
     ];
     return items;
   }, [t]);

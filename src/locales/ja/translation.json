@@ -874,18 +874,39 @@
   },
   "settingsModal": {
     "groups": {
-      "app": "アプリ",
-      "aiModels": "AIモデル",
+      "general": "一般",
+      "meetings": "ミーティング",
+      "ai": "AI",
       "system": "システム"
     },
     "sections": {
       "general": {
-        "description": "言語、テーマ、ノート",
+        "description": "言語、外観、起動、通知",
         "label": "環境設定"
       },
-      "hotkeys": {
-        "description": "ミーティングモードのキーボードショートカット",
-        "label": "ホットキー"
+      "notes": {
+        "label": "ノート",
+        "description": "ノートのタイトルと保存方法"
+      },
+      "recording": {
+        "label": "録音",
+        "description": "ミーティングのホットキー、コンパニオン、マイク、権限"
+      },
+      "calendar": {
+        "label": "カレンダー",
+        "description": "カレンダーを接続して今後のミーティングを表示"
+      },
+      "models": {
+        "label": "モデル",
+        "description": "文字起こし、要約、チャット"
+      },
+      "providers": {
+        "label": "プロバイダー",
+        "description": "すべてのタスクで共有するAPIキーとコーディングエージェント"
+      },
+      "onDevice": {
+        "label": "デバイス上",
+        "description": "このMacで動作するモデル"
       },
       "dictionary": {
         "label": "辞書",
@@ -895,13 +916,9 @@
         "description": "ノート、音声、チャットはこのデバイスに保存されます。プロバイダーには API キーで送信した内容だけが届きます。",
         "label": "プライバシーとデータ"
       },
-      "system": {
-        "description": "起動、録音デバイス、診断",
-        "label": "システム"
-      },
-      "models": {
-        "label": "モデル",
-        "description": "文字起こし、要約、チャット"
+      "advanced": {
+        "label": "詳細",
+        "description": "診断とデバッグログ"
       }
     },
     "title": "設定"
@@ -1012,7 +1029,7 @@
       },
       "notifications": {
         "title": "通知",
-        "description": "OpenHercules が表示できる通知を設定します",
+        "description": "ミーティングを検出したときやカレンダーの予定が始まったときに、録音の開始を提案します。",
         "disableAll": "すべての通知を無効にする",
         "disableAllDescription": "エラーメッセージ以外をすべて消音にする",
         "meetingDetection": "会議の検出",
@@ -1055,7 +1072,17 @@
           "amethyst": "アメジスト",
           "magenta": "マゼンタ",
           "lime": "ライム",
-          "graphite": "グラファイト"
+          "graphite": "グラファイト",
+          "terracotta": "テラコッタ",
+          "mauve": "モーブ",
+          "emerald": "エメラルド",
+          "ocean": "オーシャン",
+          "solar-dusk": "夕焼け",
+          "mocha": "モカ",
+          "aurora": "オーロラ",
+          "cosmic": "コズミック",
+          "sage": "セージ",
+          "tangerine": "タンジェリン"
         }
       },
       "autoGenerateTitle": "Generate note titles",
@@ -1219,6 +1246,11 @@
       "endpointUrl": "エンドポイント URL",
       "serverUrl": "サーバー URL",
       "apiKeyOptional": "API キー（任意）"
+    },
+    "permissionStatus": {
+      "granted": "許可済み",
+      "missing": "未許可",
+      "checking": "確認中…"
     }
   },
   "models": {
@@ -2374,7 +2406,6 @@
       "installing": "インストール中…",
       "remove": "{{model}} を削除"
     },
-    "chatPrompt": "チャットの指示",
-    "description": "タスクごとにモデルを選び、プロバイダーを接続し、デバイス上のモデルを管理します。"
+    "chatPrompt": "チャットの指示"
   }
 }

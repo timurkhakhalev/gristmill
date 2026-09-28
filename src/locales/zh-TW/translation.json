@@ -874,18 +874,39 @@
   },
   "settingsModal": {
     "groups": {
-      "app": "應用程式",
-      "aiModels": "AI 模型",
+      "general": "一般",
+      "meetings": "會議",
+      "ai": "AI",
       "system": "系統"
     },
     "sections": {
       "general": {
-        "description": "語言、主題和筆記",
+        "description": "語言、外觀、啟動和通知",
         "label": "偏好設定"
       },
-      "hotkeys": {
-        "description": "會議模式的鍵盤快速鍵",
-        "label": "快捷鍵"
+      "notes": {
+        "label": "筆記",
+        "description": "筆記的標題和儲存方式"
+      },
+      "recording": {
+        "label": "錄製",
+        "description": "會議快速鍵、會議助手、麥克風和權限"
+      },
+      "calendar": {
+        "label": "行事曆",
+        "description": "連結行事曆以查看即將舉行的會議"
+      },
+      "models": {
+        "label": "模型",
+        "description": "轉寫、摘要與聊天"
+      },
+      "providers": {
+        "label": "供應商",
+        "description": "所有任務共用的 API 金鑰和程式設計代理"
+      },
+      "onDevice": {
+        "label": "本機",
+        "description": "在這台 Mac 上執行的模型"
       },
       "dictionary": {
         "label": "字典",
@@ -895,13 +916,9 @@
         "description": "筆記、音訊和聊天都保存在此裝置上。服務商只會收到你用 API 金鑰傳送的內容。",
         "label": "隱私與資料"
       },
-      "system": {
-        "description": "啟動、錄音裝置和診斷",
-        "label": "系統"
-      },
-      "models": {
-        "label": "模型",
-        "description": "轉寫、摘要與聊天"
+      "advanced": {
+        "label": "進階",
+        "description": "診斷和除錯記錄"
       }
     },
     "title": "設定"
@@ -1012,7 +1029,7 @@
       },
       "notifications": {
         "title": "通知",
-        "description": "設定 OpenHercules 可以顯示哪些通知",
+        "description": "偵測到會議或行事曆活動開始時，提示開始錄製。",
         "disableAll": "停用所有通知",
         "disableAllDescription": "靜音除錯誤訊息外的所有內容",
         "meetingDetection": "會議偵測",
@@ -1055,7 +1072,17 @@
           "amethyst": "紫水晶",
           "magenta": "洋紅",
           "lime": "萊姆",
-          "graphite": "石墨"
+          "graphite": "石墨",
+          "terracotta": "陶土",
+          "mauve": "藕紫",
+          "emerald": "翡翠",
+          "ocean": "海洋",
+          "solar-dusk": "暮光",
+          "mocha": "摩卡",
+          "aurora": "極光",
+          "cosmic": "星空",
+          "sage": "鼠尾草",
+          "tangerine": "橘色"
         }
       },
       "autoGenerateTitle": "Generate note titles",
@@ -1219,6 +1246,11 @@
       "endpointUrl": "端點 URL",
       "serverUrl": "伺服器 URL",
       "apiKeyOptional": "API Key（選填）"
+    },
+    "permissionStatus": {
+      "granted": "已允許",
+      "missing": "未允許",
+      "checking": "正在檢查…"
     }
   },
   "models": {
@@ -2374,7 +2406,6 @@
       "installing": "正在安裝…",
       "remove": "移除 {{model}}"
     },
-    "chatPrompt": "聊天指示",
-    "description": "為每個任務選擇模型、連接服務商並管理本機模型。"
+    "chatPrompt": "聊天指示"
   }
 }

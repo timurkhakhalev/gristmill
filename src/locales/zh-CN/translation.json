@@ -874,18 +874,39 @@
   },
   "settingsModal": {
     "groups": {
-      "app": "应用",
-      "aiModels": "AI 模型",
+      "general": "通用",
+      "meetings": "会议",
+      "ai": "AI",
       "system": "系统"
     },
     "sections": {
       "general": {
-        "description": "语言、主题和笔记",
+        "description": "语言、外观、启动和通知",
         "label": "偏好设置"
       },
-      "hotkeys": {
-        "description": "会议模式的键盘快捷键",
-        "label": "快捷键"
+      "notes": {
+        "label": "笔记",
+        "description": "笔记的标题和存储方式"
+      },
+      "recording": {
+        "label": "录制",
+        "description": "会议快捷键、会议助手、麦克风和权限"
+      },
+      "calendar": {
+        "label": "日历",
+        "description": "连接日历以查看即将召开的会议"
+      },
+      "models": {
+        "label": "模型",
+        "description": "转写、摘要和聊天"
+      },
+      "providers": {
+        "label": "提供商",
+        "description": "所有任务共享的 API 密钥和编程代理"
+      },
+      "onDevice": {
+        "label": "本机",
+        "description": "在此 Mac 上运行的模型"
       },
       "dictionary": {
         "label": "词典",
@@ -895,13 +916,9 @@
         "description": "笔记、音频和聊天都保存在此设备上。服务商只会收到你用 API 密钥发送的内容。",
         "label": "隐私与数据"
       },
-      "system": {
-        "description": "启动、录音设备和诊断",
-        "label": "系统"
-      },
-      "models": {
-        "label": "模型",
-        "description": "转写、摘要和聊天"
+      "advanced": {
+        "label": "高级",
+        "description": "诊断和调试日志"
       }
     },
     "title": "设置"
@@ -1012,7 +1029,7 @@
       },
       "notifications": {
         "title": "通知",
-        "description": "设置 OpenHercules 可以显示哪些通知",
+        "description": "检测到会议或日历事件开始时，提示开始录制。",
         "disableAll": "禁用所有通知",
         "disableAllDescription": "静音除错误消息外的所有内容",
         "meetingDetection": "会议检测",
@@ -1055,7 +1072,17 @@
           "amethyst": "紫水晶",
           "magenta": "洋红",
           "lime": "青柠",
-          "graphite": "石墨"
+          "graphite": "石墨",
+          "terracotta": "陶土",
+          "mauve": "藕紫",
+          "emerald": "翡翠",
+          "ocean": "海洋",
+          "solar-dusk": "暮光",
+          "mocha": "摩卡",
+          "aurora": "极光",
+          "cosmic": "星空",
+          "sage": "鼠尾草",
+          "tangerine": "橘色"
         }
       },
       "autoGenerateTitle": "Generate note titles",
@@ -1219,6 +1246,11 @@
       "endpointUrl": "端点 URL",
       "serverUrl": "服务器 URL",
       "apiKeyOptional": "API Key（可选）"
+    },
+    "permissionStatus": {
+      "granted": "已允许",
+      "missing": "未允许",
+      "checking": "正在检查…"
     }
   },
   "models": {
@@ -2374,7 +2406,6 @@
       "installing": "正在安装…",
       "remove": "删除 {{model}}"
     },
-    "chatPrompt": "聊天指令",
-    "description": "为每个任务选择模型、连接服务商并管理本机模型。"
+    "chatPrompt": "聊天指令"
   }
 }

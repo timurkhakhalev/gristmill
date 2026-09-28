@@ -914,18 +914,39 @@
   },
   "settingsModal": {
     "groups": {
-      "app": "App",
-      "aiModels": "KI-Modelle",
+      "general": "Allgemein",
+      "meetings": "Meetings",
+      "ai": "KI",
       "system": "System"
     },
     "sections": {
       "general": {
-        "description": "Sprache, Design und Notizen",
+        "description": "Sprache, Darstellung, Start und Mitteilungen",
         "label": "Einstellungen"
       },
-      "hotkeys": {
-        "description": "Tastenkürzel für den Meeting-Modus",
-        "label": "Hotkeys"
+      "notes": {
+        "label": "Notizen",
+        "description": "Wie Notizen benannt und gespeichert werden"
+      },
+      "recording": {
+        "label": "Aufnahme",
+        "description": "Meeting-Tastenkürzel, Begleiter, Mikrofon und Berechtigungen"
+      },
+      "calendar": {
+        "label": "Kalender",
+        "description": "Kalender verbinden, um anstehende Meetings zu sehen"
+      },
+      "models": {
+        "label": "Modelle",
+        "description": "Transkription, Zusammenfassungen und Chat"
+      },
+      "providers": {
+        "label": "Anbieter",
+        "description": "API-Schlüssel und Coding-Agenten für alle Aufgaben"
+      },
+      "onDevice": {
+        "label": "Auf dem Gerät",
+        "description": "Modelle, die auf diesem Mac laufen"
       },
       "dictionary": {
         "label": "Wörterbuch",
@@ -935,13 +956,9 @@
         "description": "Notizen, Audio und Chats bleiben auf diesem Gerät. Anbieter erhalten nur, was du mit deinem API-Schlüssel sendest.",
         "label": "Datenschutz & Daten"
       },
-      "system": {
-        "description": "Start, Aufnahmegeräte und Diagnose",
-        "label": "System"
-      },
-      "models": {
-        "label": "Modelle",
-        "description": "Transkription, Zusammenfassungen und Chat"
+      "advanced": {
+        "label": "Erweitert",
+        "description": "Diagnose und Debug-Protokollierung"
       }
     },
     "title": "Einstellungen"
@@ -1052,7 +1069,7 @@
       },
       "notifications": {
         "title": "Benachrichtigungen",
-        "description": "Legen Sie fest, welche Benachrichtigungen OpenHercules anzeigen darf",
+        "description": "Fragt, ob die Aufnahme starten soll, wenn ein Meeting erkannt wird oder ein Kalendertermin beginnt.",
         "disableAll": "Alle Benachrichtigungen deaktivieren",
         "disableAllDescription": "Alles stummschalten außer Fehlermeldungen",
         "meetingDetection": "Meeting-Erkennung",
@@ -1095,7 +1112,17 @@
           "amethyst": "Amethyst",
           "magenta": "Magenta",
           "lime": "Limette",
-          "graphite": "Graphit"
+          "graphite": "Graphit",
+          "terracotta": "Terrakotta",
+          "mauve": "Malve",
+          "emerald": "Smaragd",
+          "ocean": "Ozean",
+          "solar-dusk": "Abendsonne",
+          "mocha": "Mokka",
+          "aurora": "Polarlicht",
+          "cosmic": "Kosmos",
+          "sage": "Salbei",
+          "tangerine": "Mandarine"
         }
       },
       "autoGenerateTitle": "Generate note titles",
@@ -1259,6 +1286,11 @@
       "endpointUrl": "Endpunkt-URL",
       "serverUrl": "Server-URL",
       "apiKeyOptional": "API-Schlüssel (optional)"
+    },
+    "permissionStatus": {
+      "granted": "Erlaubt",
+      "missing": "Nicht erlaubt",
+      "checking": "Wird geprüft…"
     }
   },
   "models": {
@@ -2374,7 +2406,6 @@
       "installing": "Wird installiert…",
       "remove": "{{model}} entfernen"
     },
-    "chatPrompt": "Chat-Anweisungen",
-    "description": "Wählen Sie das Modell je Aufgabe, verbinden Sie Anbieter und verwalten Sie Modelle auf dem Gerät."
+    "chatPrompt": "Chat-Anweisungen"
   }
 }

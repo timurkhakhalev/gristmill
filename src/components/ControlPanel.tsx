@@ -318,7 +318,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                       setActiveNoteId(note.id);
                       setActiveView("personal-notes");
                     }}
-                    onConnectCalendar={() => openSettings("integrations")}
+                    onConnectCalendar={() => openSettings("calendar")}
                   />
                 </Suspense>
               )}

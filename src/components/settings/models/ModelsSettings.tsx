@@ -3,11 +3,8 @@ import { useTranslation } from "react-i18next";
 import { useSettingsStore } from "../../../stores/settingsStore";
 import { SettingsCard, SettingsCardRow } from "../../ui/SettingsSection";
 import { Toggle } from "../../ui/toggle";
-import BbAgentSettings from "../BbAgentSettings";
 import { LocalModelInventoryProvider } from "./LocalModelInventory";
 import { useLocalModelInventory } from "./inventoryContext";
-import { LocalModelsSettings } from "./LocalModelsSettings";
-import { ProvidersSettings } from "./ProvidersSettings";
 import { TaskModelControl } from "./TaskModelPicker";
 import { type ModelTask } from "./taskModels";
 import { useTranscriptionPolicies } from "./transcriptionPolicies";
@@ -65,34 +62,11 @@ function ModelsContent({ focus }: { focus?: string }) {
           />
         </div>
       </SettingsCard>
-
-      <section className="space-y-2">
-        <div className="px-1">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("modelsSettings.providers.title")}</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">{t("modelsSettings.providers.description")}</p>
-        </div>
-        <ProvidersSettings />
-      </section>
-
-      <section className="space-y-2">
-        <div className="px-1">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("modelsSettings.bb.title")}</h3>
-        </div>
-        <BbAgentSettings />
-      </section>
-
-      <section className="space-y-2">
-        <div className="px-1">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("modelsSettings.local.title")}</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">{t("modelsSettings.local.description")}</p>
-        </div>
-        <LocalModelsSettings />
-      </section>
     </div>
   );
 }
 
-/** Settings → Models: which model each task uses, the providers behind them and on-device models. */
+/** Settings → Models: which model each task uses. Providers and on-device models have their own pages. */
 export default function ModelsSettings({ focus }: { focus?: string }) {
   return (
     <LocalModelInventoryProvider>

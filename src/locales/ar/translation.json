@@ -1396,7 +1396,7 @@
       },
       "notifications": {
         "title": "الإشعارات",
-        "description": "تحكم في الإشعارات التي يمكن لـ OpenHercules إظهارها",
+        "description": "يقترح بدء التسجيل عند اكتشاف اجتماع أو بدء حدث في التقويم.",
         "disableAll": "تعطيل جميع الإشعارات",
         "disableAllDescription": "كتم كل شيء باستثناء رسائل الخطأ",
         "meetingDetection": "اكتشاف الاجتماع",
@@ -1439,7 +1439,17 @@
           "amethyst": "جمشت",
           "magenta": "أرجواني",
           "lime": "ليموني",
-          "graphite": "جرافيت"
+          "graphite": "جرافيت",
+          "terracotta": "تيراكوتا",
+          "mauve": "بنفسجي فاتح",
+          "emerald": "زمردي",
+          "ocean": "محيط",
+          "solar-dusk": "غروب",
+          "mocha": "موكا",
+          "aurora": "شفق قطبي",
+          "cosmic": "كوني",
+          "sage": "مريمية",
+          "tangerine": "يوسفي"
         }
       },
       "autoGenerateTitle": "Generate note titles",
@@ -1625,6 +1635,11 @@
       "endpointUrl": "عنوان URL لنقطة النهاية",
       "serverUrl": "عنوان URL للخادم",
       "apiKeyOptional": "مفتاح API (اختياري)"
+    },
+    "permissionStatus": {
+      "granted": "مسموح",
+      "missing": "غير مسموح",
+      "checking": "جارٍ التحقق…"
     }
   },
   "settings": {
@@ -1939,18 +1954,39 @@
   },
   "settingsModal": {
     "groups": {
-      "app": "التطبيق",
-      "aiModels": "نماذج الذكاء الاصطناعي",
+      "general": "عام",
+      "meetings": "الاجتماعات",
+      "ai": "الذكاء الاصطناعي",
       "system": "النظام"
     },
     "sections": {
       "general": {
-        "description": "اللغة والمظهر والملاحظات",
+        "description": "اللغة والمظهر وبدء التشغيل والإشعارات",
         "label": "التفضيلات"
       },
-      "hotkeys": {
-        "description": "اختصارات لوحة المفاتيح لوضع الاجتماع",
-        "label": "اختصارات لوحة المفاتيح"
+      "notes": {
+        "label": "الملاحظات",
+        "description": "كيفية تسمية الملاحظات وتخزينها"
+      },
+      "recording": {
+        "label": "التسجيل",
+        "description": "اختصار الاجتماع والمرافق والميكروفون والأذونات"
+      },
+      "calendar": {
+        "label": "التقويم",
+        "description": "اربط التقويمات لرؤية الاجتماعات القادمة"
+      },
+      "models": {
+        "label": "النماذج",
+        "description": "النسخ والملخصات والدردشة"
+      },
+      "providers": {
+        "label": "المزودون",
+        "description": "مفاتيح API ووكلاء البرمجة المشتركة بين جميع المهام"
+      },
+      "onDevice": {
+        "label": "على الجهاز",
+        "description": "نماذج تعمل على جهاز Mac هذا"
       },
       "dictionary": {
         "label": "القاموس",
@@ -1960,13 +1996,9 @@
         "description": "تبقى الملاحظات والصوت والمحادثات على هذا الجهاز. لا يتلقى المزودون إلا ما ترسله باستخدام مفتاح API الخاص بك.",
         "label": "الخصوصية والبيانات"
       },
-      "system": {
-        "description": "بدء التشغيل وأجهزة التسجيل والتشخيص",
-        "label": "النظام"
-      },
-      "models": {
-        "label": "النماذج",
-        "description": "النسخ والملخصات والدردشة"
+      "advanced": {
+        "label": "متقدم",
+        "description": "التشخيص وسجلات التصحيح"
       }
     },
     "title": "الإعدادات"
@@ -2414,7 +2446,6 @@
       "installing": "جارٍ التثبيت…",
       "remove": "إزالة {{model}}"
     },
-    "chatPrompt": "تعليمات الدردشة",
-    "description": "اختر نموذج كل مهمة، واربط المزوّدين، وأدِر النماذج على الجهاز."
+    "chatPrompt": "تعليمات الدردشة"
   }
 }

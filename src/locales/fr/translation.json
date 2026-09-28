@@ -914,18 +914,39 @@
   },
   "settingsModal": {
     "groups": {
-      "app": "Application",
-      "aiModels": "Modèles IA",
+      "general": "Général",
+      "meetings": "Réunions",
+      "ai": "IA",
       "system": "Système"
     },
     "sections": {
       "general": {
-        "description": "Langue, thème et notes",
+        "description": "Langue, apparence, démarrage et notifications",
         "label": "Préférences"
       },
-      "hotkeys": {
-        "description": "Raccourcis clavier du mode réunion",
-        "label": "Raccourcis"
+      "notes": {
+        "label": "Notes",
+        "description": "Titre et stockage des notes"
+      },
+      "recording": {
+        "label": "Enregistrement",
+        "description": "Raccourci de réunion, compagnon, micro et autorisations"
+      },
+      "calendar": {
+        "label": "Calendrier",
+        "description": "Connectez vos calendriers pour voir les réunions à venir"
+      },
+      "models": {
+        "label": "Modèles",
+        "description": "Transcription, résumés et chat"
+      },
+      "providers": {
+        "label": "Fournisseurs",
+        "description": "Clés API et agents de code partagés par toutes les tâches"
+      },
+      "onDevice": {
+        "label": "Sur l’appareil",
+        "description": "Modèles exécutés sur ce Mac"
       },
       "dictionary": {
         "label": "Dictionnaire",
@@ -935,13 +956,9 @@
         "description": "Les notes, l'audio et les discussions restent sur cet appareil. Les fournisseurs ne reçoivent que ce que vous envoyez avec votre clé API.",
         "label": "Confidentialité & données"
       },
-      "system": {
-        "description": "Démarrage, périphériques d'enregistrement et diagnostic",
-        "label": "Système"
-      },
-      "models": {
-        "label": "Modèles",
-        "description": "Transcription, résumés et chat"
+      "advanced": {
+        "label": "Avancé",
+        "description": "Diagnostic et journalisation de débogage"
       }
     },
     "title": "Paramètres"
@@ -1052,7 +1069,7 @@
       },
       "notifications": {
         "title": "Notifications",
-        "description": "Choisissez les notifications qu'OpenHercules peut afficher",
+        "description": "Propose de lancer l’enregistrement quand une réunion est détectée ou qu’un événement du calendrier commence.",
         "disableAll": "Désactiver toutes les notifications",
         "disableAllDescription": "Tout couper sauf les messages d'erreur",
         "meetingDetection": "Détection de réunion",
@@ -1095,7 +1112,17 @@
           "amethyst": "Améthyste",
           "magenta": "Magenta",
           "lime": "Citron vert",
-          "graphite": "Graphite"
+          "graphite": "Graphite",
+          "terracotta": "Terre cuite",
+          "mauve": "Mauve",
+          "emerald": "Émeraude",
+          "ocean": "Océan",
+          "solar-dusk": "Crépuscule",
+          "mocha": "Moka",
+          "aurora": "Aurore",
+          "cosmic": "Cosmos",
+          "sage": "Sauge",
+          "tangerine": "Mandarine"
         }
       },
       "autoGenerateTitle": "Generate note titles",
@@ -1259,6 +1286,11 @@
       "endpointUrl": "URL du point d'accès",
       "serverUrl": "URL du serveur",
       "apiKeyOptional": "Clé API (facultative)"
+    },
+    "permissionStatus": {
+      "granted": "Autorisé",
+      "missing": "Non autorisé",
+      "checking": "Vérification…"
     }
   },
   "models": {
@@ -2374,7 +2406,6 @@
       "installing": "Installation…",
       "remove": "Supprimer {{model}}"
     },
-    "chatPrompt": "Instructions du chat",
-    "description": "Choisissez le modèle de chaque tâche, connectez des fournisseurs et gérez les modèles sur l’appareil."
+    "chatPrompt": "Instructions du chat"
   }
 }

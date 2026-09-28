@@ -34,3 +34,7 @@ Timer-fix commit: `ef9649b92` (`M1: clean up countdown timers on unmount`).
 The next root renderer rerun reached `NoteNotices.ElapsedClock`, which uses the standard `clearInterval` API while the renderer harness stubs `setInterval` without its matching cleanup method. The MeetingResultsPanel test now supplies a no-op `clearInterval` for that stub only; NoteNotices and its production timer behavior are unchanged.
 
 Harness-fix commit: `16421a5bc` (`M1: stub interval cleanup in renderer test`).
+
+Root's next renderer rerun showed the React root was unmounted after test globals had been restored because `TestContext` executes `after` hooks in reverse registration order. The test now registers React unmount after the browser and DOM setup hooks, so unmount runs first while `window` and `document` still exist. No product timer behavior changed.
+
+Teardown-fix commit hash is recorded in the follow-up progress update.

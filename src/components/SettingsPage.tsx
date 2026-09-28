@@ -402,7 +402,7 @@ function OnDeviceSection() {
 }
 
 /** A macOS permission's current state, with a shortcut to System Settings while it is missing. */
-function PermissionStatus({ granted, checking = false, onOpen }: { granted: boolean; checking?: boolean; onOpen: () => void }) {
+function PermissionStatus({ granted, checking = false, onOpen, actionLabel }: { granted: boolean; checking?: boolean; onOpen: () => void; actionLabel?: string }) {
   const { t } = useTranslation();
   const state = checking ? "checking" : granted ? "granted" : "missing";
   return (
@@ -419,7 +419,7 @@ function PermissionStatus({ granted, checking = false, onOpen }: { granted: bool
       </span>
       {state === "missing" && (
         <Button variant="outline" size="sm" onClick={onOpen}>
-          {t("cleanupSettings.openSettings")}
+          {actionLabel ?? t("cleanupSettings.openSettings")}
         </Button>
       )}
     </div>
@@ -514,11 +514,14 @@ function RecordingSettings() {
         </Row>
         <Row
           label={t("hooks.permissions.settingsTitles.accessibility")}
-          description={t("cleanupSettings.accessibilityDetection")}
+          description={permissions.accessibilityTroubleshooting
+            ? t("cleanupSettings.accessibilityHelp")
+            : t("cleanupSettings.accessibilityDetection")}
         >
           <PermissionStatus
             granted={permissions.accessibilityPermissionGranted}
             onOpen={() => void permissions.requestAccessibilityPermission()}
+            actionLabel={t("onboarding.rehaul.permissions.enable")}
           />
         </Row>
       </Group>

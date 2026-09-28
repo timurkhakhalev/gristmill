@@ -87,8 +87,10 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
   await render();
   assert.equal(accessibilityChecks, 0);
   assert.equal(activeIntervals.size, 0);
+  assert.equal(permissions!.accessibilityTroubleshooting, false);
   await React.act(async () => { await permissions!.requestAccessibilityPermission(); });
   assert.deepEqual(requests, ["prompt", "settings"], "register the app before opening Settings");
+  assert.equal(permissions!.accessibilityTroubleshooting, true);
 
   macAccessibilityChecksEnabled = true;
   await render();

@@ -2211,6 +2211,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "用于会议录音提醒。",
+    "accessibilityHelp": "在 macOS 辅助功能设置中启用 OpenHercules。如果列表中没有它，请点按 + 并选择已安装的 OpenHercules.app。",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },

@@ -54,7 +54,7 @@ A healthy binding is left untouched.
 The runner uses at most two ordinary test processes, with compiler/native and
 shared-resource tests in a sequential phase. Use `pnpm test -- --processes 1`
 for a one-process diagnostic run. Full runs share a lock across Git worktrees.
-Build the macOS arm64 app with `pnpm run build:mac:arm64` (Xcode command-line tools required). For an unsigned local build, set `CSC_IDENTITY_AUTO_DISCOVERY=false`.
+Build the macOS arm64 app with `pnpm run build:mac:arm64` (Xcode command-line tools required). For a local install without a Developer ID certificate, use `pnpm run build:mac:arm64:local` to ad-hoc sign the app with its bundle identifier so macOS can register it for Accessibility access.
 Build a separate unsigned development app with `pnpm run pack:dev`. It appears at `dist-dev/mac-arm64/OpenHercules Dev.app`, uses its own `OpenHercules-development` profile, and includes the Notes Debug menu and orange icons. Debug states are interactive and kept in memory; they do not save notes, record audio, or call providers.
 On its first launch, the development profile takes an additive, one-way snapshot of the production profile. `pnpm dev` and the packaged Dev app share the development database. Existing dev data is kept; `OPENHERCULES_REFRESH_SNAPSHOT=1` copies only missing production files. Reset All App Data in Dev prevents automatic reseeding on later launches. Explicit `--user-data-dir` test profiles never import production data.
 Only the integrator runs tests/build/install, sequentially. `pnpm dev` and

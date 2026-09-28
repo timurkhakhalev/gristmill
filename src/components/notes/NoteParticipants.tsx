@@ -1,40 +1,95 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Calendar, Check, ChevronDown, Copy, ExternalLink, Trash2, Users } from "../icons";
+import { AlignLeft, Calendar, Check, ChevronDown, Copy, Trash2, Users } from "../icons";
 import { cn } from "../lib/utils";
 import { NOTE_META_CHIP_CLASS } from "./shared";
+import { CalendarProviderIcon, MeetingPlatformIcon } from "./meetingPlatform";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
 import PersonAvatar from "../ui/PersonAvatar";
+import PersonName from "../ui/PersonName";
 import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import { syncSessionExpectedCountFromParticipants } from "../../stores/meetingRecordingStore";
 import { getMeetingJoinUrl } from "../../helpers/meetingJoinUrl";
 import { openExternalLink } from "../../utils/externalLinks";
-import { parseEventDate } from "../../utils/dateFormatting";
+import { formatDate, formatTime, parseEventDate, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
+import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { useUiLocale } from "../../hooks/useUiLocale";
 
 const MAX_STACKED_AVATARS = 2;
 
 /** Local date + time range for the event; all-day events show the date only. */
-function formatEventWhen(event: CalendarEvent, locale: string): string {
+function formatEventWhen(event: CalendarEvent, locale: string, dateFormat: DateFormat, timeFormat: TimeFormat): string {
   const start = parseEventDate(event.start_time);
   if (!start) return "";
-  const datePart = start.toLocaleDateString(locale, {
+  const datePart = formatDate(start, locale, {
     weekday: "short",
     month: "short",
     day: "numeric",
-  });
+  }, dateFormat);
   const end = parseEventDate(event.end_time);
   if (event.is_all_day === 1 || !end) return datePart;
-  const time = (d: Date) => d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+  const time = (d: Date) => formatTime(d, locale, { hour: "numeric", minute: "2-digit" }, timeFormat);
   const endPart =
     start.toDateString() === end.toDateString()
       ? time(end)
-      : `${end.toLocaleDateString(locale, { month: "short", day: "numeric" })} ${time(end)}`;
+      : `${formatDate(end, locale, { month: "short", day: "numeric" }, dateFormat)} ${time(end)}`;
   return `${datePart} · ${time(start)} – ${endPart}`;
 }
 
-function participantLabel(p: CalendarAttendee): string {
-  return p.displayName || p.email.split("@")[0];
+const EVENT_ACTION_CLASS =
+  "flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-default focus-visible:ring-1 focus-visible:ring-ring/40";
+
+const URL_PATTERN = /(https?:\/\/[^\s)]+)/g;
+
+/** Description text with its links made clickable. */
+function LinkifiedText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(URL_PATTERN).map((part, index) =>
+        index % 2 === 1 ? (
+          <button
+            key={index}
+            type="button"
+            onClick={() => openExternalLink(part)}
+            className="break-all text-start text-link underline-offset-2 hover:underline"
+          >
+            {part}
+          </button>
+        ) : (
+          <span key={index}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
+/** Two-line preview of the event description; the full text opens beside the card. */
+function EventDescription({ text }: { text: string }) {
+  const { t } = useTranslation();
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={t("notes.participants.description")}
+          className="mt-2 flex w-full items-start gap-2 rounded-lg bg-default/60 px-2.5 py-2 text-start transition-colors hover:bg-default focus-visible:ring-1 focus-visible:ring-ring/40"
+        >
+          <AlignLeft size={14} className="mt-0.5 shrink-0 text-muted" />
+          <span dir="auto" className="line-clamp-2 min-w-0 flex-1 text-xs text-muted-foreground">
+            {text}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="right" align="start" className="w-80 p-0">
+        <div className="max-h-96 overflow-y-auto p-3">
+          <p className="pb-2 text-2xs font-medium text-muted-foreground">{t("notes.participants.description")}</p>
+          <p dir="auto" className="whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground">
+            <LinkifiedText text={text} />
+          </p>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 /** Full name, email and copy action for one attendee, opened on click or focus. */
@@ -68,7 +123,7 @@ function AttendeeCard({
         />
         <div className="min-w-0 flex-1">
           <p dir="auto" className="truncate text-sm font-medium text-foreground">
-            {participantLabel(attendee)}
+            <PersonName email={attendee.email} inviteName={attendee.displayName} />
             {attendee.self && (
               <span className="ms-1 font-normal text-muted">{t("notes.participants.me", "(me)")}</span>
             )}
@@ -205,7 +260,8 @@ export default function NoteParticipants({
 
   const joinUrl = useMemo(() => (event ? getMeetingJoinUrl(event) : null), [event]);
   const eventUrl = event?.event_url ?? null;
-  const when = useMemo(() => (event ? formatEventWhen(event, locale) : ""), [event, locale]);
+  const { dateFormat, timeFormat } = useDateTimePreferences();
+  const when = useMemo(() => (event ? formatEventWhen(event, locale, dateFormat, timeFormat) : ""), [event, locale, dateFormat, timeFormat]);
 
   const chipLabel =
     localParticipants.length > 0
@@ -267,27 +323,27 @@ export default function NoteParticipants({
               {event.summary || t("upcoming.untitledEvent", "Untitled Event")}
             </p>
             {when && <p className="mt-0.5 text-xs tabular-nums text-muted">{when}</p>}
-            {joinUrl && (
-              <button
-                type="button"
-                onClick={() => openExternalLink(joinUrl)}
-                className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground/80 transition-colors hover:bg-default focus-visible:ring-1 focus-visible:ring-ring/40"
-              >
-                <ExternalLink size={12} className="shrink-0 text-muted" />
-                <span dir="ltr" className="truncate text-start">
-                  {joinUrl.replace(/^https?:\/\//, "")}
-                </span>
-              </button>
-            )}
-            {eventUrl && (
-              <button
-                type="button"
-                onClick={() => openExternalLink(eventUrl)}
-                className="mt-2 flex w-full items-center justify-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-default focus-visible:ring-1 focus-visible:ring-ring/40"
-              >
-                <Calendar size={14} className="shrink-0" />
-                {t("notes.participants.openInCalendar", "Open in calendar")}
-              </button>
+            {event.description && <EventDescription text={event.description} />}
+            {(joinUrl || eventUrl) && (
+              <div className="mt-2 flex gap-2">
+                {joinUrl && (
+                  <button
+                    type="button"
+                    onClick={() => openExternalLink(joinUrl)}
+                    title={joinUrl}
+                    className={EVENT_ACTION_CLASS}
+                  >
+                    <MeetingPlatformIcon url={joinUrl} />
+                    {t("notes.participants.join")}
+                  </button>
+                )}
+                {eventUrl && (
+                  <button type="button" onClick={() => openExternalLink(eventUrl)} className={EVENT_ACTION_CLASS}>
+                    <CalendarProviderIcon provider={event.provider} />
+                    {t("notes.participants.calendar")}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -342,7 +398,7 @@ export default function NoteParticipants({
                     >
                       <PersonAvatar email={p.email} displayName={p.displayName} />
                       <span dir="auto" className="min-w-0 flex-1 truncate text-xs text-foreground/70">
-                        {participantLabel(p)}
+                        <PersonName email={p.email} inviteName={p.displayName} />
                         {p.self && (
                           <span className="ms-1 text-muted">{t("notes.participants.me", "(me)")}</span>
                         )}

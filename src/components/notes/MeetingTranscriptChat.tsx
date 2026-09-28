@@ -7,6 +7,7 @@ import { Toggle } from "../ui/toggle";
 import { cn } from "../lib/utils";
 import { MAX_SPEAKER_COUNT } from "../../constants/speakerDetection.json";
 import type { TranscriptSegment } from "../../stores/meetingRecordingStore";
+import { nameFromEmail, usePersonName } from "../../hooks/usePersonProfile";
 import {
   isTranscriptSpeakerLocked,
   resolveSegmentSpeakerName,
@@ -139,7 +140,29 @@ function PartialBubble({
 
 const isLikelyEmail = (value: string) => /.+@.+\..+/.test(value.trim());
 
-const nameFromEmail = (email: string) => email.split("@")[0] || email;
+/** One meeting attendee in the speaker picker, under their best-known name. */
+function AttendeeOption({
+  attendee,
+  onSelectName,
+}: {
+  attendee: { email: string; displayName: string | null };
+  onSelectName: (name: string, email: string) => void;
+}) {
+  const name = usePersonName(attendee.email, attendee.displayName);
+  return (
+    <button
+      onClick={() => onSelectName(name, attendee.email)}
+      className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-foreground/70 hover:bg-default transition-colors cursor-pointer"
+    >
+      <span dir="auto" className="truncate flex-1 text-start">
+        {name}
+      </span>
+      <span dir="ltr" className="text-muted truncate text-2xs">
+        {attendee.email}
+      </span>
+    </button>
+  );
+}
 
 interface SpeakerProfileLite {
   id?: number;
@@ -316,20 +339,7 @@ function SpeakerPicker({ speakerProfiles, participants, onSelectName, t }: Speak
               {t("notes.speaker.meetingAttendees")}
             </div>
             {filteredParticipants.slice(0, 5).map((p) => (
-              <button
-                key={p.email}
-                onClick={() => onSelectName(p.displayName || p.email.split("@")[0], p.email)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-foreground/70 hover:bg-default transition-colors cursor-pointer"
-              >
-                <span dir="auto" className="truncate flex-1 text-start">
-                  {p.displayName || p.email}
-                </span>
-                {p.displayName && (
-                  <span dir="ltr" className="text-muted truncate text-2xs">
-                    {p.email}
-                  </span>
-                )}
-              </button>
+              <AttendeeOption key={p.email} attendee={p} onSelectName={onSelectName} />
             ))}
           </div>
         )}

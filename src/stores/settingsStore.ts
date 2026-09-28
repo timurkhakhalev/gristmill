@@ -40,6 +40,7 @@ import {
   type InferenceScopeStoreKeys,
 } from "../config/inferenceScopes";
 import { normalizeChineseScriptPreference } from "../utils/chineseScript";
+import type { DateFormat, TimeFormat } from "../utils/dateFormatting";
 import modelRegistryData from "../models/modelRegistryData.json";
 import { pickDefaultModelId } from "../models/providerDefaultModel";
 // Both are leaves: tinfoilModelCache imports only a type from ModelRegistry and
@@ -748,6 +749,10 @@ export interface SettingsState
     ThemeSettings,
     ChatAgentSettings {
   isSignedIn: boolean;
+  dateFormat: DateFormat;
+  timeFormat: TimeFormat;
+  setDateFormat: (format: DateFormat) => void;
+  setTimeFormat: (format: TimeFormat) => void;
   audioCuesEnabled: boolean;
   floatingIconAutoHide: boolean;
   startMinimized: boolean;
@@ -1227,6 +1232,22 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   uiLanguage: normalizeUiLanguage(
     isBrowser ? localStorage.getItem("uiLanguage") || i18n.language : null
   ),
+  dateFormat: (() => {
+    const value = readString("dateFormat", "locale");
+    return value === "dmy" || value === "mdy" || value === "ymd" ? value : "locale";
+  })(),
+  timeFormat: (() => {
+    const value = readString("timeFormat", "locale");
+    return value === "12h" || value === "24h" ? value : "locale";
+  })(),
+  setDateFormat: (format) => {
+    if (isBrowser) localStorage.setItem("dateFormat", format);
+    set({ dateFormat: format });
+  },
+  setTimeFormat: (format) => {
+    if (isBrowser) localStorage.setItem("timeFormat", format);
+    set({ timeFormat: format });
+  },
   useLocalWhisper: readBoolean("useLocalWhisper", false),
   whisperModel: readString("whisperModel", "base"),
   localTranscriptionProvider: readLocalProvider("localTranscriptionProvider"),

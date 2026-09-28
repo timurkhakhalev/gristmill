@@ -16,6 +16,7 @@ import {
   recordingLockResultSchema,
   meetingDetectionGetPreferencesResultSchema,
   simpleSuccessResultSchema,
+  calendarEventNoteResultSchema,
   meetingAutoEndLifecycleResultSchema,
   meetingNotificationDataSchema,
   meetingNotificationRespondResultSchema,
@@ -177,6 +178,15 @@ export function createMeetingCoordinatorBridge(
       ),
     joinCalendarMeeting: (eventId) =>
       invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.joinCalendarMeeting, eventId),
+    findCalendarEventNote: (eventId) =>
+      invokeParse(calendarEventNoteResultSchema, meetingCoordinatorChannels.findCalendarEventNote, eventId),
+    createCalendarEventNote: (eventId, initial) =>
+      invokeParse(
+        calendarEventNoteResultSchema,
+        meetingCoordinatorChannels.createCalendarEventNote,
+        eventId,
+        initial
+      ),
     getMeetingNotificationData: () =>
       // Validated shape boundary-cast to the shared discriminated DTO: the
       // renderer compiles this file with strictNullChecks off, where the

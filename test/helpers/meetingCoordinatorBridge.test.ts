@@ -18,7 +18,7 @@ const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 const requiredMethods = [
   "acquireRecordingLock", "releaseRecordingLock", "meetingDetectionGetPreferences",
-  "setSpeakerDiarizationEnabled", "setMeetingSessionSpeakerConfig", "joinCalendarMeeting",
+  "setSpeakerDiarizationEnabled", "setMeetingSessionSpeakerConfig", "joinCalendarMeeting", "findCalendarEventNote", "createCalendarEventNote",
   "meetingAutoEndCompleted", "meetingAutoEndRespond", "getMeetingNotificationData",
   "getPendingMeetingNoteNavigation", "meetingTranscriptionSend", "onMeetingTranscriptionSegment",
   "onMeetingAutoEndRequested", "onMeetingTranscriptionError",
@@ -123,6 +123,9 @@ async function createFixture({ responses = {}, engine }: {
     setPreferences() {},
     async handleNotificationResponse() {},
     async joinCalendarMeeting() {},
+    findCalendarEventNote: (eventId: string) => (eventId === "evt-1" ? { noteId: 42, folderId: 7 } : null),
+    createCalendarEventNote: (eventId: string, initial: { content?: string }) =>
+      eventId === "evt-2" && initial.content === "Hi" ? { noteId: 43, folderId: 7 } : null,
     completeAutoEndSession: async (sessionId: string) => sessionId === "meeting-1",
     respondToAutoEndNotification: (sessionId: string, action: string) =>
       sessionId === "meeting-1" && action === "restart",
@@ -242,6 +245,9 @@ test("command shapes cross the bundled preload and results are passed through", 
     { success: true }
   );
   assert.deepEqual(plain(await api.joinCalendarMeeting("evt-1")), { success: true });
+  assert.deepEqual(plain(await api.findCalendarEventNote("evt-1")), { noteId: 42, folderId: 7 });
+  assert.equal(await api.findCalendarEventNote("missing"), null);
+  assert.deepEqual(plain(await api.createCalendarEventNote("evt-2", { content: "Hi" })), { noteId: 43, folderId: 7 });
   assert.deepEqual(plain(await api.meetingAutoEndCompleted("meeting-1")), { success: true });
   assert.deepEqual(plain(await api.meetingAutoEndRespond("meeting-1", "restart")), {
     success: true,

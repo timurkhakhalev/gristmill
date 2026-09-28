@@ -149,6 +149,9 @@ function createEngineFake() {
     setPreferences() {},
     async handleNotificationResponse() {},
     async joinCalendarMeeting() {},
+    findCalendarEventNote: (eventId: string) => (eventId === "evt-1" ? { noteId: 42, folderId: 7 } : null),
+    createCalendarEventNote: (eventId: string, initial: { content?: string }) =>
+      eventId === "evt-2" && initial.content === "Hi" ? { noteId: 43, folderId: 7 } : null,
   };
 }
 

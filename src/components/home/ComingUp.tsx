@@ -4,6 +4,7 @@ import { Calendar, ExternalLink, Loader2, Mic, Monitor, Video } from "../icons";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import PersonAvatar from "../ui/PersonAvatar";
+import PersonName from "../ui/PersonName";
 import EmptyStateCard from "../ui/EmptyStateCard";
 import { cn } from "../lib/utils";
 import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
@@ -12,13 +13,16 @@ import { useSystemAudioPermission } from "../../hooks/useSystemAudioPermission";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import { canManageSystemAudioInApp } from "../../utils/systemAudioAccess";
 import { getMeetingJoinUrl } from "../../helpers/meetingJoinUrl";
-import { parseEventDate } from "../../utils/dateFormatting";
+import { formatTime, parseEventDate, type TimeFormat } from "../../utils/dateFormatting";
+import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 
 interface ComingUpProps {
   events: CalendarEvent[];
   isLoading: boolean;
   isConnected: boolean;
   onConnectCalendar: () => void;
+  /** Opens the event's note (existing or new and empty) without starting a recording. */
+  onOpenEvent: (event: CalendarEvent) => void;
 }
 
 const openJoinUrl = (url: string) => {
@@ -29,9 +33,9 @@ const openJoinUrl = (url: string) => {
   }
 };
 
-function formatTimeRange(locale: string, startTime: string, endTime: string): string {
+function formatTimeRange(locale: string, startTime: string, endTime: string, timeFormat: TimeFormat): string {
   const format = (value: string) =>
-    new Date(value).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+    formatTime(new Date(value), locale, { hour: "numeric", minute: "2-digit" }, timeFormat);
   return `${format(startTime)} – ${format(endTime)}`;
 }
 
@@ -128,7 +132,7 @@ function AttendeePopover({
               <PersonAvatar email={a.email} displayName={a.displayName} />
               <div className="min-w-0 flex-1">
                 <p dir="auto" className="truncate text-xs text-foreground/80">
-                  {a.displayName || a.email.split("@")[0]}
+                  <PersonName email={a.email} inviteName={a.displayName} />
                   {a.self && (
                     <span className="ms-1 text-muted">{t("notes.participants.me")}</span>
                   )}
@@ -162,12 +166,13 @@ function AttendeePopover({
   );
 }
 
-function EventRow({ event, isNow }: { event: CalendarEvent; isNow: boolean }) {
+function EventRow({ event, isNow, onOpen }: { event: CalendarEvent; isNow: boolean; onOpen: () => void }) {
   const { t } = useTranslation();
   const locale = useUiLocale();
+  const { timeFormat } = useDateTimePreferences();
   const joinUrl = getMeetingJoinUrl(event);
   const attendees = useMemo(() => parseAttendees(event), [event]);
-  const timeRange = formatTimeRange(locale, event.start_time, event.end_time);
+  const timeRange = formatTimeRange(locale, event.start_time, event.end_time, timeFormat);
 
   const startNotes = () => {
     if (joinUrl) openJoinUrl(joinUrl);
@@ -179,20 +184,35 @@ function EventRow({ event, isNow }: { event: CalendarEvent; isNow: boolean }) {
       size="sm"
       variant="ghost"
       onClick={startNotes}
-      className="pointer-events-auto h-7 shrink-0 gap-1.5 rounded-full bg-surface-3 px-3 text-xs text-foreground hover:bg-surface-raised"
+      className="h-7 shrink-0 gap-1.5 rounded-full bg-surface-3 px-3 text-xs text-foreground hover:bg-surface-raised"
     >
       {joinUrl ? <Video size={12} /> : <Mic size={12} />}
       {joinUrl ? t("upcoming.joinAndTranscribe") : t("upcoming.takeNotes")}
     </Button>
   );
 
+  const attendeeStack =
+    attendees.length > 1 ? (
+      <AttendeePopover event={event} attendees={attendees} timeRange={timeRange} joinUrl={joinUrl} />
+    ) : event.attendees_count > 1 ? (
+      <span className={ATTENDEE_COUNT_PILL_CLASS}>+{event.attendees_count - 1}</span>
+    ) : null;
+
   return (
-    <div className="group/event relative flex items-stretch gap-3">
+    // The row is a plate that lights up on hover, like a list item; the whole plate opens
+    // the event's note, and the avatars and join button sit above that click target.
+    <div className="group/event relative -mx-2 flex items-stretch gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-default/70 has-[>button:focus-visible]:bg-default/70">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={t("upcoming.openEventNote", { title: event.summary || t("upcoming.untitledEvent") })}
+        className="absolute inset-0 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-focus"
+      />
       <span
         aria-hidden="true"
-        className={cn("w-0.5 shrink-0 rounded-full", isNow ? "bg-success" : "bg-primary/70")}
+        className={cn("pointer-events-none relative w-0.5 shrink-0 rounded-full", isNow ? "bg-success" : "bg-primary/70")}
       />
-      <div className="min-w-0 flex-1 py-0.5">
+      <div className="pointer-events-none relative min-w-0 flex-1 py-0.5">
         <p dir="auto" className="truncate text-sm font-medium leading-snug text-foreground">
           {event.summary || t("upcoming.untitledEvent")}
         </p>
@@ -208,35 +228,36 @@ function EventRow({ event, isNow }: { event: CalendarEvent; isNow: boolean }) {
           <p className="mt-0.5 truncate text-xs tabular-nums text-muted-foreground">{timeRange}</p>
         )}
       </div>
-      <div className="flex shrink-0 items-center">
-        {attendees.length > 1 ? (
-          <AttendeePopover
-            event={event}
-            attendees={attendees}
-            timeRange={timeRange}
-            joinUrl={joinUrl}
-          />
-        ) : event.attendees_count > 1 ? (
-          <span className={ATTENDEE_COUNT_PILL_CLASS}>+{event.attendees_count - 1}</span>
-        ) : null}
-      </div>
-      {/* Always shown once the meeting is live; otherwise revealed on hover so you can join early. */}
       {isNow ? (
-        <div className="flex shrink-0 items-center">{joinButton}</div>
-      ) : (
-        <span
-          // Overlaid so the row keeps its full width until hovered; the scrim fades the
-          // covered end of a long title out instead of slicing it.
-          className="pointer-events-none absolute inset-y-0 end-0 flex items-center bg-linear-to-r from-transparent to-surface-2 to-[2rem] ps-8 opacity-0 transition-opacity duration-150 group-hover/event:opacity-100 has-[:focus-visible]:opacity-100"
-        >
+        // A live meeting keeps both: who is in it and a way in.
+        <div className="relative flex shrink-0 items-center gap-3">
+          {attendeeStack}
           {joinButton}
-        </span>
+        </div>
+      ) : (
+        // Hovering swaps the avatars for the join button in the same slot.
+        <div className="relative grid shrink-0 items-center justify-items-end">
+          <div className="col-start-1 row-start-1 transition-opacity duration-150 group-hover/event:pointer-events-none group-hover/event:opacity-0 group-has-[:focus-visible]/event:opacity-0">
+            {attendeeStack}
+          </div>
+          <div className="pointer-events-none col-start-1 row-start-1 opacity-0 transition-opacity duration-150 group-hover/event:pointer-events-auto group-hover/event:opacity-100 group-has-[:focus-visible]/event:pointer-events-auto group-has-[:focus-visible]/event:opacity-100">
+            {joinButton}
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-function DayRow({ group, isNowFn }: { group: DayGroup; isNowFn: (e: CalendarEvent) => boolean }) {
+function DayRow({
+  group,
+  isNowFn,
+  onOpenEvent,
+}: {
+  group: DayGroup;
+  isNowFn: (e: CalendarEvent) => boolean;
+  onOpenEvent: (event: CalendarEvent) => void;
+}) {
   const { t } = useTranslation();
   const locale = useUiLocale();
 
@@ -269,9 +290,9 @@ function DayRow({ group, isNowFn }: { group: DayGroup; isNowFn: (e: CalendarEven
           <p className="py-2 text-sm text-muted-foreground">{t("upcoming.noEventsToday")}</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-1">
           {group.items.map((event) => (
-            <EventRow key={event.id} event={event} isNow={isNowFn(event)} />
+            <EventRow key={event.id} event={event} isNow={isNowFn(event)} onOpen={() => onOpenEvent(event)} />
           ))}
         </div>
       )}
@@ -285,6 +306,7 @@ export default function ComingUp({
   isLoading,
   isConnected,
   onConnectCalendar,
+  onOpenEvent,
 }: ComingUpProps) {
   const { t } = useTranslation();
   const systemAudio = useSystemAudioPermission();
@@ -330,7 +352,7 @@ export default function ComingUp({
         <>
           <div className="divide-y divide-dashed divide-border overflow-clip rounded-2xl border border-border bg-surface-2">
             {groupedEvents.map((group) => (
-              <DayRow key={group.key} group={group} isNowFn={isNowFn} />
+              <DayRow key={group.key} group={group} isNowFn={isNowFn} onOpenEvent={onOpenEvent} />
             ))}
           </div>
           {events.length === 0 &&

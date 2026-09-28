@@ -24,6 +24,7 @@ interface RequestEvent {
 export interface SpeakerDatabase {
   searchContacts(query: string): Array<{ email: string; display_name: string | null }>;
   upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
+  getContactProfiles(emails: string[]): Array<{ email: string; display_name: string | null; photo_url: string | null }>;
   upsertSpeakerProfile(
     displayName: string,
     email: string | null,
@@ -112,6 +113,15 @@ export function registerSpeakerHandlers(
       return { success: true, contacts };
     } catch {
       return { success: false, contacts: [] };
+    }
+  });
+
+  ipcMain.handle(c.getContactProfiles, async (_event, ...args: unknown[]) => {
+    const emails = Array.isArray(args[0]) ? args[0].filter((email): email is string => typeof email === "string") : [];
+    try {
+      return deps.databaseManager.getContactProfiles(emails.slice(0, 500));
+    } catch {
+      return [];
     }
   });
 

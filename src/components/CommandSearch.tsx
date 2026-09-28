@@ -17,6 +17,7 @@ import type { FolderItem, SpaceItem } from "../contracts/containers";
 import type { TranscriptionItem } from "../contracts/transcriptionData.js";
 import type { NoteItem } from "../contracts/notes";
 import { formatRelativeTime } from "../utils/dateFormatting";
+import { useDateTimePreferences } from "../hooks/useDateTimePreferences";
 import { defaultFolderDisplayName, folderMatchesQuery } from "./notes/shared";
 
 const ALL_SPACES_KEY = "__all__";
@@ -522,6 +523,7 @@ function NoteRow({
   t: (key: string, opts?: Record<string, unknown>) => string;
   locale?: string;
 }) {
+  const { dateFormat } = useDateTimePreferences();
   const preview = stripMarkdownPreview(note.content).slice(0, 90);
   const NoteIcon =
     note.note_type === "meeting" ? Users : note.note_type === "upload" ? Upload : FileText;
@@ -572,7 +574,7 @@ function NoteRow({
         )}
       </div>
       <span className="text-2xs text-muted tabular-nums shrink-0">
-        {formatRelativeTime(note.updated_at, t, locale)}
+        {formatRelativeTime(note.updated_at, t, locale, dateFormat)}
       </span>
     </button>
   );
@@ -595,6 +597,7 @@ function TranscriptRow({
   t: (key: string, opts?: Record<string, unknown>) => string;
   locale?: string;
 }) {
+  const { dateFormat } = useDateTimePreferences();
   return (
     <button
       type="button"
@@ -619,7 +622,7 @@ function TranscriptRow({
         {transcript.text}
       </p>
       <span className="text-2xs text-muted tabular-nums shrink-0">
-        {formatRelativeTime(transcript.created_at, t, locale)}
+        {formatRelativeTime(transcript.created_at, t, locale, dateFormat)}
       </span>
     </button>
   );

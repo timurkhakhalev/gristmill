@@ -63,7 +63,15 @@
     "quit": "結束 OpenHercules",
     "tooltip": "OpenHercules",
     "recordingStatus": "正在錄音",
-    "stopRecording": "停止錄音"
+    "stopRecording": "停止錄音",
+    "startsIn": "{{time}}後開始",
+    "tomorrow": "明天",
+    "newNote": "新增筆記",
+    "settings": "設定",
+    "inTime": "{{time}}後",
+    "durationHoursMinutes": "{{h}}小時{{m}}分鐘",
+    "durationMinutes": "{{m}}分鐘",
+    "now": "現在"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -1056,6 +1064,16 @@
         "label": "Interface language",
         "description": "Choose the language used by the app."
       },
+      "dateFormat": {
+        "label": "日期格式",
+        "description": "選擇日、月、年的顯示順序。",
+        "locale": "依照介面語言"
+      },
+      "timeFormat": {
+        "label": "時間格式",
+        "description": "選擇 12 小時制或 24 小時制。",
+        "locale": "依照介面語言"
+      },
       "theme": {
         "label": "Theme",
         "description": "Match the system or choose a theme.",
@@ -1512,10 +1530,12 @@
       "addPlaceholder": "新增與會者...",
       "typeEmail": "輸入電子郵件以新增...",
       "me": "（我）",
-      "openInCalendar": "在行事曆中開啟",
       "copyEmail": "複製電子郵件",
       "emailCopied": "已複製電子郵件",
-      "removeAttendee": "移除與會者"
+      "removeAttendee": "移除與會者",
+      "join": "加入",
+      "calendar": "行事曆",
+      "description": "描述"
     },
     "upload": {
       "title": "上傳音訊",
@@ -1952,7 +1972,9 @@
       "systemAudioDescription": "要轉錄會議，OpenHercules 需要系統音訊權限來錄製其他參與者的音訊。我們絕不會錄製您的螢幕。您將被引導至系統設定以啟用此權限。",
       "openSettings": "打開系統設定",
       "connectFailed": "連線失敗",
-      "connectFailedDescription": "連線 Google Calendar 時發生錯誤。請再試一次。"
+      "connectFailedDescription": "連線 Google Calendar 時發生錯誤。請再試一次。",
+      "peopleAccessMissing": "重新連結 {{emails}} 以顯示來自 Google 聯絡人的與會者姓名和相片。",
+      "reconnect": "重新連結"
     },
     "microsoftCalendar": {
       "title": "Microsoft 日曆",
@@ -2032,7 +2054,8 @@
     "openSettings": "打開系統設定",
     "connectCalendar": "連接您的日曆",
     "connectCalendarDescription": "無需離開 OpenHercules 即可查看並加入您的會議。",
-    "connectCalendarButton": "連接日曆"
+    "connectCalendarButton": "連接日曆",
+    "openEventNote": "開啟 {{title}} 的筆記"
   },
   "notesView": {
     "searchPlaceholder": "搜尋筆記…",
@@ -2203,7 +2226,6 @@
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
     "processWholeMeeting": "轉錄",
-    "originalsPreserved": "Original microphone and system tracks are saved separately.",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
     "copyError": "無法複製到剪貼簿。",
@@ -2244,9 +2266,7 @@
     "deleteAudioDescription": "這會移除已儲存的麥克風和系統音訊。筆記中已儲存的轉錄和摘要仍可使用。",
     "deleteAudioConfirm": "刪除音訊",
     "audioUnavailable": "原始音訊已刪除或無法使用。轉錄重試、播放和匯出已停用。",
-    "exportMixed": "匯出混合 WAV",
-    "exportMic": "匯出麥克風 WAV",
-    "exportSystem": "匯出系統音訊 WAV",
+    "exportMixed": "匯出混合 MP3",
     "saveSpeaker": "儲存說話者",
     "speakerProfile": "說話者設定檔",
     "noSpeakerProfile": "沒有設定檔",

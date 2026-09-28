@@ -63,7 +63,15 @@
     "quit": "OpenHercules beenden",
     "tooltip": "OpenHercules",
     "recordingStatus": "Aufnahme läuft",
-    "stopRecording": "Aufnahme beenden"
+    "stopRecording": "Aufnahme beenden",
+    "startsIn": "Beginnt in {{time}}",
+    "tomorrow": "Morgen",
+    "newNote": "Neue Notiz",
+    "settings": "Einstellungen",
+    "inTime": "in {{time}}",
+    "durationHoursMinutes": "{{h}} Std. {{m}} Min.",
+    "durationMinutes": "{{m}} Min.",
+    "now": "Jetzt"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -704,7 +712,8 @@
     "openSettings": "Systemeinstellungen öffnen",
     "connectCalendar": "Kalender verbinden",
     "connectCalendarDescription": "Sieh deine Meetings und tritt ihnen bei, ohne OpenHercules zu verlassen.",
-    "connectCalendarButton": "Kalender verbinden"
+    "connectCalendarButton": "Kalender verbinden",
+    "openEventNote": "Notizen für {{title}} öffnen"
   },
   "cleanupPrompt": "Textbereinigung",
   "developerSection": {
@@ -1095,6 +1104,16 @@
       "language": {
         "label": "Interface language",
         "description": "Choose the language used by the app."
+      },
+      "dateFormat": {
+        "label": "Datumsformat",
+        "description": "Wählen Sie die Reihenfolge von Tag, Monat und Jahr.",
+        "locale": "Nach Sprache der Oberfläche"
+      },
+      "timeFormat": {
+        "label": "Uhrzeitformat",
+        "description": "Wählen Sie das 12- oder 24-Stunden-Format.",
+        "locale": "Nach Sprache der Oberfläche"
       },
       "theme": {
         "label": "Theme",
@@ -1587,10 +1606,12 @@
       "addPlaceholder": "Teilnehmer hinzufügen...",
       "typeEmail": "E-Mail eingeben zum Hinzufügen...",
       "me": "(ich)",
-      "openInCalendar": "Im Kalender öffnen",
       "copyEmail": "E-Mail kopieren",
       "emailCopied": "E-Mail kopiert",
-      "removeAttendee": "Teilnehmer entfernen"
+      "removeAttendee": "Teilnehmer entfernen",
+      "join": "Beitreten",
+      "calendar": "Kalender",
+      "description": "Beschreibung"
     },
     "upload": {
       "title": "Audio hochladen",
@@ -1992,7 +2013,9 @@
       "systemAudioDescription": "Zum Transkribieren von Meetings benötigt OpenHercules die Systemaudio-Berechtigung, um den Ton anderer Teilnehmer aufzunehmen. Wir nehmen Ihren Bildschirm nie auf. Sie werden zu den Systemeinstellungen weitergeleitet, um diese zu aktivieren.",
       "openSettings": "Systemeinstellungen öffnen",
       "connectFailed": "Verbindung fehlgeschlagen",
-      "connectFailedDescription": "Beim Verbinden mit Google Calendar ist ein Fehler aufgetreten. Bitte versuche es erneut."
+      "connectFailedDescription": "Beim Verbinden mit Google Calendar ist ein Fehler aufgetreten. Bitte versuche es erneut.",
+      "peopleAccessMissing": "Verbinde {{emails}} erneut, um Namen und Fotos der Teilnehmer aus Google Kontakte zu sehen.",
+      "reconnect": "Erneut verbinden"
     },
     "microsoftCalendar": {
       "title": "Microsoft Calendar",
@@ -2203,7 +2226,6 @@
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
     "processWholeMeeting": "Transkribieren",
-    "originalsPreserved": "Original microphone and system tracks are saved separately.",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
     "copyError": "Konnte nicht in die Zwischenablage kopieren.",
@@ -2244,9 +2266,7 @@
     "deleteAudioDescription": "Gespeichertes Mikrofon- und Systemaudio wird entfernt. Transkripte und Zusammenfassungen in Notizen bleiben verfügbar.",
     "deleteAudioConfirm": "Audio löschen",
     "audioUnavailable": "Originalaudio wurde gelöscht oder ist nicht verfügbar. Transkription, Wiedergabe und Audioexport sind deaktiviert.",
-    "exportMixed": "Gemischtes WAV exportieren",
-    "exportMic": "Mikrofon-WAV exportieren",
-    "exportSystem": "Systemaudio-WAV exportieren",
+    "exportMixed": "Gemischtes MP3 exportieren",
     "saveSpeaker": "Sprecher speichern",
     "speakerProfile": "Sprecherprofil",
     "noSpeakerProfile": "Kein Profil",

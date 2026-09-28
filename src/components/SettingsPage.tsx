@@ -24,6 +24,7 @@ import { ConfirmDialog } from "./ui/dialog";
 import { useDialogs } from "../hooks/useDialogs";
 import { cn } from "./lib/utils";
 import { SUPPORTED_UI_LANGUAGES, type UiLanguage } from "../i18n";
+import type { DateFormat, TimeFormat } from "../utils/dateFormatting";
 
 // Each language is named in itself, so users can find theirs from any UI language.
 const UI_LANGUAGE_NAMES: Record<UiLanguage, string> = {
@@ -102,6 +103,10 @@ function GeneralSettings() {
   const setColorScheme = useSettingsStore((s) => s.setColorScheme);
   const language = useSettingsStore((s) => s.uiLanguage);
   const setLanguage = useSettingsStore((s) => s.setUiLanguage);
+  const dateFormat = useSettingsStore((s) => s.dateFormat);
+  const setDateFormat = useSettingsStore((s) => s.setDateFormat);
+  const timeFormat = useSettingsStore((s) => s.timeFormat);
+  const setTimeFormat = useSettingsStore((s) => s.setTimeFormat);
   const startMinimized = useSettingsStore((s) => s.startMinimized);
   const setStartMinimized = useSettingsStore((s) => s.setStartMinimized);
   const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
@@ -132,7 +137,7 @@ function GeneralSettings() {
             value={language}
             onChange={setLanguage}
             options={SUPPORTED_UI_LANGUAGES.map((id) => ({ id, label: UI_LANGUAGE_NAMES[id] }))}
-            className="w-36"
+            className="w-44"
           />
         </Row>
         <Row
@@ -147,8 +152,23 @@ function GeneralSettings() {
               { id: "light", label: t("settingsPage.general.theme.light") },
               { id: "dark", label: t("settingsPage.general.theme.dark") },
             ]}
-            className="w-36"
+            className="w-44"
           />
+        </Row>
+        <Row label={t("settingsPage.general.dateFormat.label")} description={t("settingsPage.general.dateFormat.description")}>
+          <SelectField value={dateFormat} onChange={(value) => setDateFormat(value as DateFormat)} options={[
+            { id: "locale", label: t("settingsPage.general.dateFormat.locale") },
+            { id: "dmy", label: "28.09.2026" },
+            { id: "mdy", label: "09/28/2026" },
+            { id: "ymd", label: "2026-09-28" },
+          ]} className="w-44" />
+        </Row>
+        <Row label={t("settingsPage.general.timeFormat.label")} description={t("settingsPage.general.timeFormat.description")}>
+          <SelectField value={timeFormat} onChange={(value) => setTimeFormat(value as TimeFormat)} options={[
+            { id: "locale", label: t("settingsPage.general.timeFormat.locale") },
+            { id: "12h", label: "3:35 PM" },
+            { id: "24h", label: "15:35" },
+          ]} className="w-44" />
         </Row>
         <Row
           label={t("settingsPage.general.colorScheme.label")}

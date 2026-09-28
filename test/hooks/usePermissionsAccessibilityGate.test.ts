@@ -62,6 +62,7 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
     mockModules: {
       "react-i18next": `
         const t = (key) => key;
+        export const initReactI18next = { type: "3rdParty", init() {} };
         export function useTranslation() { return { t }; }
       `,
     },

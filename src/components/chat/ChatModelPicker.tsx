@@ -19,7 +19,7 @@ function lastApiMode(): InferenceMode {
 }
 
 /** Composer model picker: bb harness tabs plus an "API" tab for the configured non-bb route. */
-export default function ChatModelPicker({ disabled, className }: { disabled?: boolean; className?: string }) {
+export default function ChatModelPicker({ disabled, className, onOpenChange }: { disabled?: boolean; className?: string; onOpenChange?: (open: boolean) => void }) {
   const { t } = useTranslation();
   const config = useSettingsStore(useShallow((state) => selectResolvedLLMConfig(state, "chatIntelligence")));
   const { enabled, error } = useBbCatalog();
@@ -34,7 +34,7 @@ export default function ChatModelPicker({ disabled, className }: { disabled?: bo
   const apiLabel = modeLabels[apiMode] ?? apiMode;
 
   return (
-    <Popover>
+    <Popover onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <button
           type="button"

@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState, type Rea
 import ReactMarkdown from "react-markdown";
 import { Button, Dropdown, Label, ListBox, Modal, Popover, Select } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AlignLeft, AudioLines, Check, Copy, MessageSquareText, MoreHorizontal, Play, RotateCcw, Sparkles, Trash2 } from "../icons";
+import { AlignLeft, AudioLines, Check, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2 } from "../icons";
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
@@ -14,6 +14,8 @@ import { NoteNotice } from "./NoteNotices";
 import { ToastContext } from "../ui/useToast";
 import NoteViewSwitch from "./NoteViewSwitch";
 import { IconTooltip } from "../ui/IconTooltip";
+import { formatDate, formatTime, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
+import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 
 type ViewMode = "raw" | "enhanced" | "transcript";
 type RunChoice = { kind: "reprocess" | "summary"; partId?: string; groupId?: string };
@@ -30,9 +32,16 @@ function Choice({ label, value, options, onChange }: {
   </Select>;
 }
 
-function dateLabel(value: string, locale: string, options: Intl.DateTimeFormatOptions) {
+function dateLabel(value: string, locale: string, options: Intl.DateTimeFormatOptions, dateFormat: DateFormat, timeFormat: TimeFormat) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, options).format(date);
+  if (Number.isNaN(date.getTime())) return value;
+  if (dateFormat === "locale" && timeFormat === "locale") return new Intl.DateTimeFormat(locale, options).format(date);
+  if (options.dateStyle && options.timeStyle) {
+    return `${formatDate(date, locale, { dateStyle: options.dateStyle }, dateFormat)} · ${formatTime(date, locale, { timeStyle: options.timeStyle }, timeFormat)}`;
+  }
+  return options.dateStyle
+    ? formatDate(date, locale, { dateStyle: options.dateStyle }, dateFormat)
+    : formatTime(date, locale, { timeStyle: options.timeStyle }, timeFormat);
 }
 
 function formatDuration(duration: number | null) {
@@ -58,6 +67,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   fallbackSummary: ReactNode;
 }) {
   const { t } = useTranslation();
+  const { dateFormat, timeFormat } = useDateTimePreferences();
   const tr = (key: string, fallback: string) => t(`meetingResults.${key}`, { defaultValue: fallback });
   const [recordings, setRecordings] = useState(previewRecordings ?? []);
   const [runId, setRunId] = useState("");
@@ -258,9 +268,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     setSpeakerId(null);
   });
 
-  const exportPart = (id: string, source: "mic" | "system") => runTask(async () => {
+  const exportPart = (id: string) => runTask(async () => {
     if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; }
-    const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: id, source });
+    const result = await window.electronAPI.meetingRecordingExportAudio({ recordingId: id, source: "mixed" });
     if (!result.success) throw new Error(result.error || t("meetingResults.exportError"));
     notify(t("meetingResults.exported"), "success");
   });
@@ -283,7 +293,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           items: versions.map((item, index) => ({
             id: item.run.id,
             label: `${index + 1} · ${item.run.kind === "summary" ? item.run.config?.summary?.provider || item.run.config?.summary?.reasoningMode : item.run.provider || "local"} / ${(item.run.kind === "summary" ? item.run.config?.summary?.model : item.run.model) || "—"}`,
-            detail: dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" }),
+            detail: dateLabel(item.run.createdAt, locale, { dateStyle: "short", timeStyle: "short" }, dateFormat, timeFormat),
           })),
         }}
       />
@@ -295,35 +305,33 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       <div className="ms-auto flex flex-wrap items-center gap-1.5">
       <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
         <IconTooltip label={tr("audioParts", "Audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("audioParts", "Audio")} ${audioCount}`}><AudioLines size={16}/>{audioCount > 0 && <span key={audioCount} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{audioCount}</span>}</Button></IconTooltip>
-        <Popover.Content placement="bottom end" className="w-[355px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="flex h-[min(500px,70vh)] flex-col p-4">
-          <Popover.Heading className="text-base font-semibold">{tr("audioParts", "Audio")}</Popover.Heading>
+        <Popover.Content placement="bottom end" className="w-[320px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="flex max-h-[min(420px,70vh)] flex-col p-3">
+          <Popover.Heading className="text-sm font-semibold">{tr("audioParts", "Audio")}</Popover.Heading>
           <div className="min-h-0 flex-1 overflow-y-auto">
           {!audioGroups.length && <p className="mt-2 text-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
           {displayedGroups.map((group, groupIndex) => {
-            const date = dateLabel(group.parts[0].recording.startedAt, locale, { dateStyle: "medium" });
+            const date = dateLabel(group.parts[0].recording.startedAt, locale, { dateStyle: "medium" }, dateFormat, timeFormat);
             const previousDate = groupIndex > 0
-              ? dateLabel(displayedGroups[groupIndex - 1].parts[0].recording.startedAt, locale, { dateStyle: "medium" })
+              ? dateLabel(displayedGroups[groupIndex - 1].parts[0].recording.startedAt, locale, { dateStyle: "medium" }, dateFormat, timeFormat)
               : null;
-            return <section key={group.id} className="mt-3">
+            return <section key={group.id} className="mt-2">
             {date !== previousDate && <span className="text-xs font-medium text-muted">{date}</span>}
-          {group.parts.map((part, index) => <div className="flex items-center gap-2.5 border-b border-border py-2 last:border-0" key={part.recording.id}>
+          {group.parts.map((part, index) => <div className="flex items-center gap-2 border-b border-border py-1.5 last:border-0" key={part.recording.id}>
             <Button isIconOnly size="sm" variant="ghost" isDisabled={part.recording.audioState !== "available"} aria-label={playingId === part.recording.id ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={() => void startAudio(part.recording.id)}>{playingId === part.recording.id ? <Pause size={16}/> : <Play size={16}/>}</Button>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5"><strong className="text-sm font-medium">{dateLabel(part.recording.startedAt, locale, { timeStyle: "short" })}</strong><span className="text-xs text-muted">{formatDuration(part.recording.durationSeconds)}{group.parts.length > 1 && ` · ${tr("part", "Part")} ${index + 1}`}</span></div>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5"><strong className="text-sm font-medium">{dateLabel(part.recording.startedAt, locale, { timeStyle: "short" }, dateFormat, timeFormat)}</strong><span className="text-xs text-muted">{formatDuration(part.recording.durationSeconds)}{group.parts.length > 1 && ` · ${tr("part", "Part")} ${index + 1}`}</span></div>
             <Dropdown><Button isIconOnly size="sm" variant="ghost" aria-label={tr("partActions", "Audio part actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("partActions", "Audio part actions")} onAction={(key) => {
               if (key === "asr") openRun("reprocess", { partId: part.recording.id });
-              if (key === "mic" || key === "system") void exportPart(part.recording.id, key);
+              if (key === "export") void exportPart(part.recording.id);
               if (key === "delete") deletePart(part.recording.id);
             }}>
-              <Dropdown.Item id="asr" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}>{t("meetingResults.newAsr")}</Dropdown.Item>
-              <Dropdown.Item id="mic" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.exportMic")}>{t("meetingResults.exportMic")}</Dropdown.Item>
-              <Dropdown.Item id="system" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.exportSystem")}>{t("meetingResults.exportSystem")}</Dropdown.Item>
+              <Dropdown.Item id="asr" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
+              <Dropdown.Item id="export" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
               <Dropdown.Item id="delete" isDisabled={busy || part.recording.audioState === "deleted"} variant="danger" textValue={t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}><Trash2 size={14}/>{t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}</Dropdown.Item>
             </Dropdown.Menu></Dropdown.Popover></Dropdown>
           </div>)}
           </section>})}
           </div>
-          {latestAudioGroup?.parts.some((part) => part.recording.audioState === "available") && <Button size="sm" variant="secondary" className="mt-3 w-full gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess", { groupId: latestAudioGroup.id })}><RotateCcw size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
-          <p className="mt-3 text-xs leading-normal text-muted">{tr("originalsPreserved", "Original microphone and system tracks are saved separately.")}</p>
+          {latestAudioGroup?.parts.some((part) => part.recording.audioState === "available") && <Button size="sm" variant="secondary" className="mt-2 w-full gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess", { groupId: latestAudioGroup.id })}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
         </Popover.Dialog></Popover.Content>
       </Popover>
       {actions}

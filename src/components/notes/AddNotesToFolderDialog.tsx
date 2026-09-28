@@ -5,7 +5,8 @@ import { Search, FileText, Check } from "../icons";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { cn } from "../lib/utils";
-import { formatDateGroup } from "../../utils/dateFormatting";
+import { formatDateGroup, type DateFormat } from "../../utils/dateFormatting";
+import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import type { NoteItem } from "../../contracts/notes";
 
 interface AddNotesToFolderDialogProps {
@@ -18,11 +19,12 @@ interface AddNotesToFolderDialogProps {
 function groupNotesByDate(
   notes: NoteItem[],
   t: (key: string) => string,
-  locale: string
+  locale: string,
+  dateFormat: DateFormat
 ): [string, NoteItem[]][] {
   const groups = new Map<string, NoteItem[]>();
   for (const note of notes) {
-    const key = formatDateGroup(note.updated_at, t, locale);
+    const key = formatDateGroup(note.updated_at, t, locale, dateFormat);
     const arr = groups.get(key) || [];
     arr.push(note);
     groups.set(key, arr);
@@ -38,6 +40,7 @@ export default function AddNotesToFolderDialog({
 }: AddNotesToFolderDialogProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
+  const { dateFormat } = useDateTimePreferences();
   const [allNotes, setAllNotes] = useState<NoteItem[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -64,8 +67,8 @@ export default function AddNotesToFolderDialog({
   }, [availableNotes, search]);
 
   const grouped = useMemo(
-    () => groupNotesByDate(filteredNotes, t, locale),
-    [filteredNotes, t, locale]
+    () => groupNotesByDate(filteredNotes, t, locale, dateFormat),
+    [filteredNotes, t, locale, dateFormat]
   );
 
   const toggleNote = useCallback((id: number) => {

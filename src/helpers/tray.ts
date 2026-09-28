@@ -6,6 +6,16 @@ import dockManager from "./dockManager.js";
 import { i18nMain } from "./i18nMain.js";
 import { MenuManager } from "./menuManager.js";
 import type { WindowManager } from "./windowManager.js";
+import type { CalendarEventRow } from "./database.js";
+import { projectCalendarEvent } from "../contracts/calendar.js";
+
+const MENU_REFRESH_MS = 30 * 1000;
+const TITLE_MAX_CHARS = 16;
+const UPCOMING_WINDOW_MINUTES = 48 * 60;
+
+export interface TrayCalendarSource {
+  getUpcomingEvents(windowMinutes?: number): CalendarEventRow[];
+}
 
 // Minimal structural slice of the lazy "canvas" fallback dependency.
 interface CanvasLike {
@@ -26,6 +36,111 @@ export class TrayManager {
   createControlPanelCallback: (() => Promise<void> | void) | undefined;
   meetingCaptureActive = false;
   stopMeetingCapture: (() => void) | null = null;
+  calendarSource: TrayCalendarSource | null = null;
+  refreshTimer: NodeJS.Timeout | null = null;
+  // Replacing the menu while it is open dismisses it, so refreshes wait.
+  menuOpen = false;
+
+  setCalendarSource(source: TrayCalendarSource): void {
+    this.calendarSource = source;
+    this.updateTrayMenu();
+  }
+
+  formatDuration(ms: number): string {
+    const totalMinutes = Math.max(1, Math.ceil(ms / 60000));
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return h > 0
+      ? i18nMain.t("tray.durationHoursMinutes", { h, m })
+      : i18nMain.t("tray.durationMinutes", { m });
+  }
+
+  formatTimeRange(event: CalendarEventRow): string {
+    const fmt = new Intl.DateTimeFormat(i18nMain.language ?? undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `${fmt.format(new Date(event.start_time))} - ${fmt.format(new Date(event.end_time))}`;
+  }
+
+  // Events that have not started yet, soonest first (in-progress ones are skipped).
+  getFutureEvents(now = Date.now()): CalendarEventRow[] {
+    if (!this.calendarSource) return [];
+    try {
+      return this.calendarSource
+        .getUpcomingEvents(UPCOMING_WINDOW_MINUTES)
+        .filter((event) => new Date(event.start_time).getTime() > now)
+        .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+    } catch (error) {
+      debugLogger.error("Failed to read upcoming events", { error: (error as Error).message }, "tray");
+      return [];
+    }
+  }
+
+  buildMeetingMenuItems(now = Date.now()): MenuItemConstructorOptions[] {
+    const events = this.getFutureEvents(now);
+    if (!events.length) return [];
+
+    const [next, ...rest] = events;
+    const items: MenuItemConstructorOptions[] = [
+      {
+        label: i18nMain.t("tray.startsIn", {
+          time: this.formatDuration(new Date(next.start_time).getTime() - now),
+        }),
+        enabled: false,
+      },
+      this.meetingItem(next),
+    ];
+
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowKey = tomorrow.toDateString();
+    const tomorrowEvent = [next, ...rest].find(
+      (event) => new Date(event.start_time).toDateString() === tomorrowKey && event !== next
+    );
+    if (tomorrowEvent) {
+      items.push(
+        { type: "separator" },
+        { label: i18nMain.t("tray.tomorrow"), enabled: false },
+        this.meetingItem(tomorrowEvent)
+      );
+    }
+    items.push({ type: "separator" });
+    return items;
+  }
+
+  meetingItem(event: CalendarEventRow): MenuItemConstructorOptions {
+    return {
+      label: event.summary || "—",
+      sublabel: this.formatTimeRange(event),
+      click: () => {
+        const projected = projectCalendarEvent(event);
+        if (projected) void this.windowManager?.requestOpenCalendarEvent(projected);
+        else void this.showControlPanelFromTray();
+      },
+    };
+  }
+
+  updateTrayTitle(now = Date.now()): void {
+    if (!this.tray || process.platform !== "darwin") return;
+    const next = this.getFutureEvents(now)[0];
+    if (!next) {
+      this.tray.setTitle("");
+      return;
+    }
+    const name = next.summary ?? "";
+    const short = name.length > TITLE_MAX_CHARS ? `${name.slice(0, TITLE_MAX_CHARS - 1).trimEnd()}…` : name;
+    const time = i18nMain.t("tray.inTime", {
+      time: this.formatDuration(new Date(next.start_time).getTime() - now),
+    });
+    this.tray.setTitle(short ? `${short} • ${time}` : time);
+  }
+
+  startRefreshTimer(): void {
+    if (this.refreshTimer) return;
+    this.refreshTimer = setInterval(() => this.updateTrayMenu(), MENU_REFRESH_MS);
+    this.refreshTimer.unref?.();
+  }
 
   setMeetingCaptureStatus(active: boolean, stop?: () => void): void {
     this.meetingCaptureActive = active;
@@ -159,6 +274,7 @@ export class TrayManager {
 
       this.updateTrayMenu();
       this.setupTrayEventHandlers();
+      this.startRefreshTimer();
     } catch (error) {
       debugLogger.error("Error creating tray icon", { error: (error as Error).message }, "tray");
     }
@@ -270,12 +386,25 @@ export class TrayManager {
   buildContextMenuTemplate(): MenuItemConstructorOptions[] {
 
     return [
+      ...this.buildMeetingMenuItems(),
       {
         label: this.isControlPanelVisible()
           ? i18nMain.t("tray.hideControlPanel")
           : i18nMain.t("tray.openControlPanel"),
         click: () => {
           void this.toggleControlPanelFromTray();
+        },
+      },
+      {
+        label: i18nMain.t("tray.newNote"),
+        click: () => {
+          void this.windowManager?.requestNewNote();
+        },
+      },
+      {
+        label: i18nMain.t("tray.settings"),
+        click: () => {
+          void this.windowManager?.openSettings();
         },
       },
       ...(this.meetingCaptureActive
@@ -300,11 +429,18 @@ export class TrayManager {
   }
 
   updateTrayMenu(): void {
-    if (!this.tray) return;
+    if (!this.tray || this.menuOpen) return;
 
     const contextMenu = Menu.buildFromTemplate(this.buildContextMenuTemplate());
+    contextMenu.on("menu-will-show", () => {
+      this.menuOpen = true;
+    });
+    contextMenu.on("menu-will-close", () => {
+      this.menuOpen = false;
+    });
     this.tray.setToolTip(i18nMain.t("tray.tooltip"));
     this.tray.setContextMenu(contextMenu);
+    this.updateTrayTitle();
   }
 
   setupTrayEventHandlers(): void {
@@ -322,6 +458,8 @@ export class TrayManager {
     (this.tray as unknown as NodeJS.EventEmitter).on("destroyed", () => {
       debugLogger.debug("Tray icon destroyed", undefined, "tray");
       this.tray = null;
+      if (this.refreshTimer) clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
     });
   }
 }

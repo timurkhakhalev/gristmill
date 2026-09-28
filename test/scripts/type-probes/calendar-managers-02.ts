@@ -31,6 +31,7 @@ const db = {
   removeStaleCalendarEvents: () => undefined,
   updateCalendarSyncToken: () => undefined,
   upsertContacts: () => undefined,
+  upsertGooglePeople: () => undefined,
   getUpcomingEvents: (_windowMinutes?: number): CalendarEventRow[] => emptyEvents,
   getActiveEvents: (): CalendarEventRow[] => emptyEvents,
   getMicrosoftAccounts: (): CalendarAccountRow[] => [],

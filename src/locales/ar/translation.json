@@ -410,7 +410,9 @@
       "systemAudioDescription": "لتفريغ الاجتماعات، يحتاج OpenHercules إلى إذن صوت النظام لالتقاط صوت المشاركين الآخرين. نحن لا نسجل شاشتك أبدًا. سيتم توجيهك إلى إعدادات النظام لتمكين ذلك.",
       "openSettings": "فتح إعدادات النظام",
       "connectFailed": "فشل الاتصال",
-      "connectFailedDescription": "حدث خطأ ما أثناء الاتصال بتقويم Google. يرجى المحاولة مرة أخرى."
+      "connectFailedDescription": "حدث خطأ ما أثناء الاتصال بتقويم Google. يرجى المحاولة مرة أخرى.",
+      "peopleAccessMissing": "أعد ربط {{emails}} لعرض أسماء الحضور وصورهم من جهات اتصال Google.",
+      "reconnect": "إعادة الربط"
     },
     "microsoftCalendar": {
       "title": "تقويم Microsoft",
@@ -702,7 +704,8 @@
     "openSettings": "فتح إعدادات النظام",
     "connectCalendar": "اربط تقويمك",
     "connectCalendarDescription": "شاهد اجتماعاتك وانضم إليها دون مغادرة OpenHercules.",
-    "connectCalendarButton": "ربط التقويم"
+    "connectCalendarButton": "ربط التقويم",
+    "openEventNote": "فتح ملاحظات {{title}}"
   },
   "notes": {
     "mutationErrors": {
@@ -820,10 +823,12 @@
       "addPlaceholder": "إضافة حاضرين...",
       "typeEmail": "اكتب بريدًا إلكترونيًا لإضافته...",
       "me": "(أنا)",
-      "openInCalendar": "افتح في التقويم",
       "copyEmail": "انسخ البريد",
       "emailCopied": "تم نسخ البريد",
-      "removeAttendee": "إزالة الحاضر"
+      "removeAttendee": "إزالة الحاضر",
+      "join": "انضمام",
+      "calendar": "التقويم",
+      "description": "الوصف"
     },
     "upload": {
       "title": "رفع ملف صوتي",
@@ -1424,6 +1429,16 @@
         "label": "Interface language",
         "description": "Choose the language used by the app."
       },
+      "dateFormat": {
+        "label": "تنسيق التاريخ",
+        "description": "اختر ترتيب اليوم والشهر والسنة.",
+        "locale": "حسب لغة الواجهة"
+      },
+      "timeFormat": {
+        "label": "تنسيق الوقت",
+        "description": "اختر نظام 12 أو 24 ساعة.",
+        "locale": "حسب لغة الواجهة"
+      },
       "theme": {
         "label": "Theme",
         "description": "Match the system or choose a theme.",
@@ -1707,7 +1722,15 @@
     "recordingStatus": "التسجيل جارٍ",
     "stopRecording": "إيقاف التسجيل",
     "quit": "إنهاء OpenHercules",
-    "tooltip": "OpenHercules"
+    "tooltip": "OpenHercules",
+    "startsIn": "يبدأ خلال {{time}}",
+    "tomorrow": "غدًا",
+    "newNote": "ملاحظة جديدة",
+    "settings": "الإعدادات",
+    "inTime": "خلال {{time}}",
+    "durationHoursMinutes": "{{h}} س {{m}} د",
+    "durationMinutes": "{{m}} د",
+    "now": "الآن"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -2231,7 +2254,6 @@
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
     "processWholeMeeting": "نسخ",
-    "originalsPreserved": "Original microphone and system tracks are saved separately.",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
     "copyError": "تعذّر النسخ إلى الحافظة.",
@@ -2272,9 +2294,7 @@
     "deleteAudioDescription": "سيؤدي ذلك إلى حذف صوت الميكروفون والنظام المحفوظ. ستظل النصوص والملخصات المحفوظة في الملاحظات متاحة.",
     "deleteAudioConfirm": "حذف الصوت",
     "audioUnavailable": "تم حذف الصوت الأصلي أو أنه غير متاح. تعطلت إعادة التفريغ والتشغيل وتصدير الصوت.",
-    "exportMixed": "تصدير الصوت الممزوج WAV",
-    "exportMic": "تصدير صوت الميكروفون WAV",
-    "exportSystem": "تصدير صوت النظام WAV",
+    "exportMixed": "تصدير الصوت الممزوج MP3",
     "saveSpeaker": "حفظ المتحدث",
     "speakerProfile": "ملف المتحدث",
     "noSpeakerProfile": "لا يوجد ملف",

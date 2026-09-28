@@ -173,6 +173,7 @@ export interface MeetingDetectionDatabase {
     updates: Record<string, unknown>
   ): { success?: boolean; note?: unknown } | null | undefined;
   getActiveEvents(): DetectionCalendarEvent[];
+  getContactProfiles?(emails: string[]): Array<{ email: string; display_name: string | null }>;
 }
 
 interface ActiveMeetingState {
@@ -912,7 +913,7 @@ export class MeetingDetectionEngine {
           const calEvent = this.databaseManager.getCalendarEventById?.(detectionEvent.id);
           const updates: Record<string, unknown> = { calendar_event_id: detectionEvent.id };
           if (calEvent?.attendees) {
-            updates.participants = calEvent.attendees;
+            updates.participants = this._participantsWithNames(calEvent.attendees);
           }
           const updateResult = this.databaseManager.updateNote?.(noteResult.note.id, updates);
           if (updateResult?.success && updateResult?.note) {
@@ -1023,33 +1024,103 @@ export class MeetingDetectionEngine {
       return;
     }
 
-    const noteResult = this.databaseManager.saveNote(calEvent.summary || "New note", "", "meeting");
-    const meetingsFolder = this.databaseManager.getMeetingsFolder?.();
-
-    if (!noteResult?.note?.id || !meetingsFolder?.id) {
-      debugLogger.error(
-        "Join calendar meeting failed — missing note or folder",
-        { noteId: noteResult?.note?.id, folderId: meetingsFolder?.id },
-        "meeting"
-      );
+    const created = this._createEventNote(calEvent);
+    if (!created) {
       this._meetingModeActive = false;
       return;
     }
 
+    await this.windowManager.queueMeetingNoteNavigation?.({
+      noteId: created.noteId,
+      folderId: created.folderId,
+      event: calEvent,
+      trigger,
+    });
+  }
+
+  /** The note already linked to a calendar event, if any. Creates nothing. */
+  findCalendarEventNote(eventId: string): { noteId: number; folderId: number | null } | null {
+    const existing = this.databaseManager.getNoteByCalendarEventId?.(eventId);
+    return existing?.id ? { noteId: existing.id, folderId: existing.folder_id ?? null } : null;
+  }
+
+  /**
+   * Materializes an event's note once the user writes in it, starts recording
+   * or asks the chat: the linked note when one exists (left untouched),
+   * otherwise a new note linked to the event with its attendees and the
+   * user's first input. Starts no recording and enters no meeting mode.
+   */
+  createCalendarEventNote(
+    eventId: string,
+    initial: { title?: string; content?: string } = {}
+  ): { noteId: number; folderId: number | null } | null {
+    const existing = this.findCalendarEventNote(eventId);
+    if (existing) return existing;
+    const calEvent = this.databaseManager.getCalendarEventById?.(eventId);
+    if (!calEvent) {
+      debugLogger.error("Calendar event not found", { eventId }, "meeting");
+      return null;
+    }
+    return this._createEventNote(calEvent, initial);
+  }
+
+  /**
+   * The event's attendee list with each person's best-known name filled in,
+   * so the note, its summaries and speaker naming see "Eli Rum", not "eli.rum".
+   */
+  _participantsWithNames(attendees: unknown): unknown {
+    if (typeof attendees !== "string") return attendees;
+    let list: Array<{ email?: string; displayName?: string | null }>;
+    try {
+      list = JSON.parse(attendees);
+    } catch {
+      return attendees;
+    }
+    if (!Array.isArray(list)) return attendees;
+    const emails = list.map((attendee) => attendee.email).filter((email): email is string => Boolean(email));
+    const names = new Map(
+      (this.databaseManager.getContactProfiles?.(emails) ?? [])
+        .filter((profile) => profile.display_name)
+        .map((profile) => [profile.email.toLowerCase(), profile.display_name as string])
+    );
+    if (names.size === 0) return attendees;
+    return JSON.stringify(
+      list.map((attendee) => ({
+        ...attendee,
+        displayName: names.get(attendee.email?.toLowerCase() ?? "") ?? attendee.displayName ?? null,
+      }))
+    );
+  }
+
+  /** A new meeting note linked to the event and carrying its attendees. */
+  _createEventNote(
+    calEvent: DetectionCalendarEvent & { attendees?: unknown },
+    initial: { title?: string; content?: string } = {}
+  ): { noteId: number; folderId: number } | null {
+    const noteResult = this.databaseManager.saveNote(
+      initial.title?.trim() || calEvent.summary || "New note",
+      initial.content ?? "",
+      "meeting"
+    );
+    const meetingsFolder = this.databaseManager.getMeetingsFolder?.();
+
+    if (!noteResult?.note?.id || !meetingsFolder?.id) {
+      debugLogger.error(
+        "Calendar event note creation failed — missing note or folder",
+        { noteId: noteResult?.note?.id, folderId: meetingsFolder?.id },
+        "meeting"
+      );
+      return null;
+    }
+
     const updates: Record<string, unknown> = { calendar_event_id: calEvent.id };
     if (calEvent.attendees) {
-      updates.participants = calEvent.attendees;
+      updates.participants = this._participantsWithNames(calEvent.attendees);
     }
     const updateResult = this.databaseManager.updateNote?.(noteResult.note.id, updates);
 
     sendNoteAdded(updateResult?.note || noteResult.note);
-
-    await this.windowManager.queueMeetingNoteNavigation?.({
-      noteId: noteResult.note.id,
-      folderId: meetingsFolder.id,
-      event: calEvent,
-      trigger,
-    });
+    return { noteId: noteResult.note.id, folderId: meetingsFolder.id };
   }
 
   // A card can vanish without a response — a compositor kill, a load failure,

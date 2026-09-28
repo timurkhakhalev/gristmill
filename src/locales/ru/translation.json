@@ -63,7 +63,15 @@
     "recordingStatus": "Идёт запись",
     "stopRecording": "Остановить запись",
     "quit": "Закрыть OpenHercules",
-    "tooltip": "OpenHercules"
+    "tooltip": "OpenHercules",
+    "startsIn": "Начнётся через {{time}}",
+    "tomorrow": "Завтра",
+    "newNote": "Новая заметка",
+    "settings": "Настройки",
+    "inTime": "через {{time}}",
+    "durationHoursMinutes": "{{h}} ч {{m}} мин",
+    "durationMinutes": "{{m}} мин",
+    "now": "Сейчас"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -1056,6 +1064,16 @@
         "label": "Язык интерфейса",
         "description": "Выберите язык приложения."
       },
+      "dateFormat": {
+        "label": "Формат даты",
+        "description": "Выберите порядок дня, месяца и года.",
+        "locale": "По языку интерфейса"
+      },
+      "timeFormat": {
+        "label": "Формат времени",
+        "description": "Выберите 12- или 24-часовой формат.",
+        "locale": "По языку интерфейса"
+      },
       "theme": {
         "label": "Тема",
         "description": "Системная, светлая или тёмная тема.",
@@ -1514,10 +1532,12 @@
       "addPlaceholder": "Добавить участников...",
       "typeEmail": "Введите email для добавления...",
       "me": "(я)",
-      "openInCalendar": "Открыть в календаре",
       "copyEmail": "Скопировать email",
       "emailCopied": "Email скопирован",
-      "removeAttendee": "Удалить участника"
+      "removeAttendee": "Удалить участника",
+      "join": "Подключиться",
+      "calendar": "Календарь",
+      "description": "Описание"
     },
     "upload": {
       "title": "Загрузить аудио",
@@ -1958,7 +1978,9 @@
       "systemAudioDescription": "Для транскрипции встреч OpenHercules нужно разрешение «Системное аудио» для записи звука других участников. Мы никогда не записываем ваш экран. Вы будете перенаправлены в Системные настройки для включения.",
       "openSettings": "Открыть Системные настройки",
       "connectFailed": "Ошибка подключения",
-      "connectFailedDescription": "При подключении к Google Calendar произошла ошибка. Попробуйте снова."
+      "connectFailedDescription": "При подключении к Google Calendar произошла ошибка. Попробуйте снова.",
+      "peopleAccessMissing": "Переподключите {{emails}}, чтобы видеть имена и фото участников из Google Контактов.",
+      "reconnect": "Переподключить"
     },
     "microsoftCalendar": {
       "title": "Microsoft Calendar",
@@ -2038,7 +2060,8 @@
     "openSettings": "Открыть Системные настройки",
     "connectCalendar": "Подключите календарь",
     "connectCalendarDescription": "Просматривайте встречи и присоединяйтесь к ним, не выходя из OpenHercules.",
-    "connectCalendarButton": "Подключить календарь"
+    "connectCalendarButton": "Подключить календарь",
+    "openEventNote": "Открыть заметку для {{title}}"
   },
   "notesView": {
     "searchPlaceholder": "Поиск заметок…",
@@ -2201,7 +2224,6 @@
     "playAudio": "Воспроизвести аудио",
     "pauseAudio": "Приостановить аудио",
     "processWholeMeeting": "Расшифровать",
-    "originalsPreserved": "Исходные дорожки микрофона и системы сохраняются отдельно.",
     "resultActions": "Действия с результатом",
     "copyResult": "Скопировать текст",
     "copyError": "Не удалось скопировать в буфер обмена.",
@@ -2242,9 +2264,7 @@
     "deleteAudioDescription": "Будут удалены исходные дорожки микрофона и системного звука. Сохранённые в заметке транскрипт и резюме останутся.",
     "deleteAudioConfirm": "Удалить аудио",
     "audioUnavailable": "Исходное аудио удалено или недоступно. Повторная транскрибация, воспроизведение и экспорт аудио отключены.",
-    "exportMixed": "Экспортировать смешанный WAV",
-    "exportMic": "Экспортировать WAV микрофона",
-    "exportSystem": "Экспортировать WAV системы",
+    "exportMixed": "Экспортировать смешанный MP3",
     "saveSpeaker": "Сохранить имя",
     "speakerProfile": "Профиль говорящего",
     "noSpeakerProfile": "Без профиля",

@@ -63,7 +63,15 @@
     "recordingStatus": "Recording in progress",
     "stopRecording": "Stop recording",
     "quit": "Quit OpenHercules",
-    "tooltip": "OpenHercules"
+    "tooltip": "OpenHercules",
+    "startsIn": "Starts in {{time}}",
+    "tomorrow": "Tomorrow",
+    "newNote": "New Note",
+    "settings": "Settings",
+    "inTime": "in {{time}}",
+    "durationHoursMinutes": "{{h}}h {{m}}m",
+    "durationMinutes": "{{m}}m",
+    "now": "Now"
   },
   "menu": {
     "appLabel": "OpenHercules",
@@ -704,7 +712,8 @@
     "openSettings": "Open System Settings",
     "connectCalendar": "Connect your calendar",
     "connectCalendarDescription": "See your meetings and join them without leaving OpenHercules.",
-    "connectCalendarButton": "Connect Calendar"
+    "connectCalendarButton": "Connect Calendar",
+    "openEventNote": "Open notes for {{title}}"
   },
   "cleanupPrompt": "Cleanup",
   "developerSection": {
@@ -1095,6 +1104,16 @@
       "language": {
         "label": "Interface language",
         "description": "Choose the language used by the app."
+      },
+      "dateFormat": {
+        "label": "Date format",
+        "description": "Choose how dates appear.",
+        "locale": "Based on interface language"
+      },
+      "timeFormat": {
+        "label": "Time format",
+        "description": "Choose 12-hour or 24-hour time.",
+        "locale": "Based on interface language"
       },
       "theme": {
         "label": "Theme",
@@ -1587,10 +1606,12 @@
       "addPlaceholder": "Add attendees...",
       "typeEmail": "Type an email to add...",
       "me": "(me)",
-      "openInCalendar": "Open in calendar",
       "copyEmail": "Copy email",
       "emailCopied": "Email copied",
-      "removeAttendee": "Remove attendee"
+      "removeAttendee": "Remove attendee",
+      "join": "Join",
+      "calendar": "Calendar",
+      "description": "Description"
     },
     "upload": {
       "title": "Upload Audio",
@@ -1992,7 +2013,9 @@
       "systemAudioDescription": "To transcribe meetings, OpenHercules needs the System Audio permission to capture other participants' audio. We never record your screen. You'll be taken to System Settings to enable it.",
       "openSettings": "Open System Settings",
       "connectFailed": "Connection Failed",
-      "connectFailedDescription": "Something went wrong while connecting Google Calendar. Please try again."
+      "connectFailedDescription": "Something went wrong while connecting Google Calendar. Please try again.",
+      "peopleAccessMissing": "Reconnect {{emails}} to show attendees' names and photos from Google Contacts.",
+      "reconnect": "Reconnect"
     },
     "microsoftCalendar": {
       "title": "Microsoft Calendar",
@@ -2195,7 +2218,6 @@
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
     "processWholeMeeting": "Transcribe",
-    "originalsPreserved": "Original microphone and system tracks are saved separately.",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
     "copyError": "Couldn't copy to the clipboard.",
@@ -2236,9 +2258,7 @@
     "deleteAudioDescription": "This removes the saved microphone and system audio. Transcripts and summaries already saved in Notes remain available.",
     "deleteAudioConfirm": "Delete audio",
     "audioUnavailable": "Original audio was deleted or is unavailable. Transcription retry, playback, and audio export are disabled.",
-    "exportMixed": "Export mixed WAV",
-    "exportMic": "Export microphone WAV",
-    "exportSystem": "Export system WAV",
+    "exportMixed": "Export mixed MP3",
     "saveSpeaker": "Save speaker",
     "speakerProfile": "Speaker profile",
     "noSpeakerProfile": "No profile",

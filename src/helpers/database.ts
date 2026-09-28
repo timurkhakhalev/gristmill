@@ -326,6 +326,7 @@ export type CalendarEventRow = {
   organizer_email: string | null;
   attendees_count: number;
   attendees: string | null;
+  description: string | null;
   synced_at: string;
 };
 
@@ -338,6 +339,13 @@ export interface ContactRow {
   display_name: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** An email's best-known name and photo; the Google People name wins over calendar or typed names. */
+export interface ContactProfileRow {
+  email: string;
+  display_name: string | null;
+  photo_url: string | null;
 }
 
 export interface SpeakerProfileRow {
@@ -408,6 +416,7 @@ export interface CalendarEventInput {
   organizer_email?: string | null;
   attendees_count?: number;
   attendees?: string | null;
+  description?: string | null;
 }
 
 // --- Helpers -------------------------------------------------------------------
@@ -868,12 +877,15 @@ export class DatabaseManager {
           organizer_email TEXT,
           attendees_count INTEGER NOT NULL DEFAULT 0,
           attendees TEXT,
+          description TEXT,
           synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS contacts (
           email TEXT PRIMARY KEY,
           display_name TEXT,
+          people_name TEXT,
+          photo_url TEXT,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
@@ -951,6 +963,20 @@ export class DatabaseManager {
       const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{ name: string }>;
       if (!calendarEventColumns.some((column) => column.name === "event_url")) {
         this.sql.exec("ALTER TABLE calendar_events ADD COLUMN event_url TEXT");
+      }
+      const contactColumns = this.sql.pragma("table_info(contacts)") as Array<{ name: string }>;
+      if (!contactColumns.some((column) => column.name === "people_name")) {
+        this.sql.exec("ALTER TABLE contacts ADD COLUMN people_name TEXT");
+      }
+      if (!contactColumns.some((column) => column.name === "photo_url")) {
+        this.sql.exec("ALTER TABLE contacts ADD COLUMN photo_url TEXT");
+      }
+      if (!calendarEventColumns.some((column) => column.name === "description")) {
+        this.sql.exec("ALTER TABLE calendar_events ADD COLUMN description TEXT");
+        // Incremental sync only returns changed events; drop the tokens so the
+        // next sync is a full one and fills in the new column.
+        this.sql.exec("UPDATE google_calendars SET sync_token = NULL, sync_token_expires_at = NULL");
+        this.sql.exec("UPDATE microsoft_calendars SET sync_token = NULL, sync_token_expires_at = NULL");
       }
 
       const existingSpace = this.sql.prepare("SELECT id FROM spaces LIMIT 1").get() as
@@ -2737,7 +2763,7 @@ export class DatabaseManager {
   }
   upsertCalendarEvents(events: CalendarEventInput[]): { success: boolean } {
     const stmt = this.sql.prepare(
-      "INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, event_url, organizer_email, attendees_count, attendees, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+      "INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, event_url, organizer_email, attendees_count, attendees, description, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
     );
     this.sql.transaction((list: CalendarEventInput[]) =>
       list.forEach((e) =>
@@ -2757,7 +2783,8 @@ export class DatabaseManager {
           e.event_url || null,
           e.organizer_email || null,
           e.attendees_count || 0,
-          e.attendees || null
+          e.attendees || null,
+          e.description || null
         )
       )
     )(events);
@@ -2878,7 +2905,7 @@ export class DatabaseManager {
         )
         .run();
       const stmt = this.sql.prepare(
-        "INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, event_url, organizer_email, attendees_count, attendees, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+        "INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, event_url, organizer_email, attendees_count, attendees, description, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
       );
       list.forEach((e) =>
         stmt.run(
@@ -2897,7 +2924,8 @@ export class DatabaseManager {
           e.event_url || null,
           e.organizer_email || null,
           e.attendees_count || 0,
-          e.attendees || null
+          e.attendees || null,
+          e.description || null
         )
       );
     });
@@ -2961,13 +2989,37 @@ export class DatabaseManager {
     )(contacts);
     return { success: true };
   }
+  /** Names and photos from Google People; a profile without either leaves the row as it was. */
+  upsertGooglePeople(
+    profiles: Array<{ email: string; displayName: string | null; photoUrl: string | null }>
+  ): { success: boolean } {
+    const stmt = this.sql.prepare(
+      "INSERT INTO contacts (email, people_name, photo_url) VALUES (?, ?, ?) ON CONFLICT(email) DO UPDATE SET people_name = COALESCE(excluded.people_name, contacts.people_name), photo_url = COALESCE(excluded.photo_url, contacts.photo_url), updated_at = CURRENT_TIMESTAMP"
+    );
+    this.sql.transaction((list: typeof profiles) =>
+      list.forEach((profile) => {
+        const email = profile.email.toLowerCase().trim();
+        if (email) stmt.run(email, profile.displayName || null, profile.photoUrl || null);
+      })
+    )(profiles);
+    return { success: true };
+  }
+  getContactProfiles(emails: string[]): ContactProfileRow[] {
+    const normalized = [...new Set(emails.map((email) => email.toLowerCase().trim()).filter(Boolean))];
+    if (normalized.length === 0) return [];
+    return this.sql
+      .prepare(
+        `SELECT email, COALESCE(people_name, display_name) AS display_name, photo_url FROM contacts WHERE email IN (${normalized.map(() => "?").join(", ")})`
+      )
+      .all(...normalized) as ContactProfileRow[];
+  }
   searchContacts(query: string): ContactRow[] {
     const pattern = `%${query || ""}%`;
     return this.sql
       .prepare(
-        "SELECT * FROM contacts WHERE email LIKE ? OR display_name LIKE ? ORDER BY display_name, email LIMIT 20"
+        "SELECT email, COALESCE(people_name, display_name) AS display_name, photo_url, created_at, updated_at FROM contacts WHERE email LIKE ? OR display_name LIKE ? OR people_name LIKE ? ORDER BY COALESCE(people_name, display_name), email LIMIT 20"
       )
-      .all(pattern, pattern) as ContactRow[];
+      .all(pattern, pattern, pattern) as ContactRow[];
   }
   upsertSpeakerProfile(
     name: string,

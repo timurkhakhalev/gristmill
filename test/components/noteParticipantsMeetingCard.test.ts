@@ -31,6 +31,7 @@ function makeEvent(overrides = {}) {
     organizer_email: null,
     attendees_count: 1,
     attendees: null,
+    description: null,
     ...overrides,
   };
 }
@@ -47,6 +48,7 @@ async function renderCard(t: TestContext, props: Record<string, unknown>) {
       "react-i18next": `export function useTranslation() { return { t: (key, options) => options?.defaultValue ?? key }; }`,
       "/stores/meetingRecordingStore": `export const syncSessionExpectedCountFromParticipants = () => {};`,
       "/hooks/useUiLocale": `export function useUiLocale() { return "en"; }`,
+      "/hooks/useDateTimePreferences": `export function useDateTimePreferences() { return { dateFormat: "locale", timeFormat: "locale" }; }`,
     },
   });
   const mod = await vite.ssrLoadModule("/components/notes/NoteParticipants.tsx");
@@ -55,19 +57,19 @@ async function renderCard(t: TestContext, props: Record<string, unknown>) {
   );
 }
 
-test("a linked event shows its title, join link and calendar button", async (t: TestContext) => {
+test("a linked event shows its title, join button and calendar button", async (t: TestContext) => {
   const html = await renderCard(t, { event: makeEvent() });
 
   assert.match(html, /Vol\.44 call LLM Neighbors/, "real event title");
   assert.match(html, /meet\.google\.com\/xng-tmak-ich/, "join link");
-  assert.match(html, /Open in calendar/, "calendar button");
+  assert.match(html, /notes\.participants\.calendar/, "calendar button");
 });
 
 test("an unlinked note keeps participant editing with no empty link or calendar blocks", async (t: TestContext) => {
   const html = await renderCard(t, { event: null });
 
   assert.match(html, /Add attendees/, "attendee search stays available");
-  assert.doesNotMatch(html, /Open in calendar/, "no calendar button");
+  assert.doesNotMatch(html, /notes\.participants\.calendar/, "no calendar button");
   assert.doesNotMatch(html, /meet\.google\.com/, "no join link");
 });
 
@@ -75,5 +77,13 @@ test("a missing event_url hides the calendar button but keeps the join link", as
   const html = await renderCard(t, { event: makeEvent({ event_url: null }) });
 
   assert.match(html, /meet\.google\.com\/xng-tmak-ich/, "join link survives");
-  assert.doesNotMatch(html, /Open in calendar/, "calendar button hidden without event_url");
+  assert.doesNotMatch(html, /notes\.participants\.calendar/, "calendar button hidden without event_url");
+});
+
+test("an event description shows as a preview and stays hidden when absent", async (t: TestContext) => {
+  const withDescription = await renderCard(t, { event: makeEvent({ description: "Agenda: roadmap review" }) });
+  assert.match(withDescription, /Agenda: roadmap review/, "description preview");
+
+  const without = await renderCard(t, { event: makeEvent() });
+  assert.doesNotMatch(without, /notes\.participants\.description/, "no empty description block");
 });

@@ -1102,6 +1102,45 @@ test("task application preserves a concurrent Action Items edit and exposes a re
   assert.doesNotMatch(summary.text, /New task/);
 });
 
+test("task application conflicts when a concurrent heading changes the Action Items boundary", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, run } = createFinishedRecording(db, storage, validConfig, "Manual notes stay here.", false, 180);
+  let resolveTaskStarted!: () => void;
+  const taskStarted = new Promise<void>((resolve) => { resolveTaskStarted = resolve; });
+  let releaseTasks!: () => void;
+  const taskGate = new Promise<void>((resolve) => { releaseTasks = resolve; });
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => {
+      await saveRaw(longTranscriptResponse());
+      return { success: true };
+    },
+    summarize: async () => "## TLDR\nSaved Summary.\n\n## Action Items\n\n- Existing task",
+    createActionConversation: async () => ({
+      send: async () => {
+        resolveTaskStarted();
+        await taskGate;
+        return { text: JSON.stringify({ HIGH: ["New task"], MEDIUM: [], LOW: [] }), refusal: false };
+      },
+    }),
+  });
+  t.after(() => { releaseTasks(); worker.stop(); });
+  worker.onRetentionReady();
+  await taskStarted;
+
+  const humanEdit = "## TLDR\nSaved Summary.\n\n## Action Items\n\n- Existing task\n\n## Notes\n\nKeep this section.";
+  db.db.prepare("UPDATE notes SET enhanced_content = ? WHERE id = ?").run(humanEdit, note.id);
+  releaseTasks();
+  await worker.waitForIdle();
+
+  const summary = storage.readRunArtifact(run.id, "summary");
+  assert.equal(summary.taskStatus, "conflict");
+  assert.equal(summary.taskErrorCode, "meeting-summary-edit-conflict");
+  assert.equal(db.getNote(note.id).enhanced_content, humanEdit);
+  assert.doesNotMatch(summary.text, /New task/);
+});
+
 test("summary retry preserves the transcript and does not repeat ASR", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;

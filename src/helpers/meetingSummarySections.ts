@@ -82,7 +82,9 @@ export function validateMeetingRecap(text: string): MeetingJsonValidation<Meetin
 
 export function readMeetingSummarySection(markdown: string, heading: "Action Items" | "Recap"): string | null {
   const matches = getHeadings(markdown).filter((item) => item.name === heading);
-  return matches.length === 1 ? markdown.slice(matches[0].start, matches[0].end) : null;
+  return matches.length === 1
+    ? markdown.slice(matches[0].start, matches[0].end).replace(/(?:\r?\n)+$/, "")
+    : null;
 }
 
 export function replaceMeetingTasks(markdown: string, tasks: MeetingTasks): SummarySectionResult {

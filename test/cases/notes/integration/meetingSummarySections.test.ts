@@ -3,6 +3,7 @@ const test: typeof import("node:test") = require("node:test");
 const {
   replaceMeetingRecap,
   replaceMeetingTasks,
+  readMeetingSummarySection,
   validateMeetingRecap,
   validateMeetingTasks,
 }: typeof import("../../../../src/helpers/meetingSummarySections.ts") = require("../../../../src/helpers/meetingSummarySections.ts");
@@ -38,6 +39,10 @@ test("task mutation replaces only the final Action Items section and zero tasks 
   if (!recap.success) return;
   assert.match(recap.markdown, /## Action Items[\s\S]*## Recap/);
   assert.match(recap.markdown, /\*\*Release\*\*/);
+  assert.equal(
+    readMeetingSummarySection(replacement.markdown, "Action Items"),
+    readMeetingSummarySection(recap.markdown, "Action Items")
+  );
 
   const zero = replaceMeetingTasks(recap.markdown, { HIGH: [], MEDIUM: [], LOW: [] });
   assert.equal(zero.success, true);

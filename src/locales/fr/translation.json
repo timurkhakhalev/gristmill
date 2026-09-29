@@ -2341,7 +2341,10 @@
     "progress": {
       "pending": "En attente de démarrage.",
       "running": "Cela peut prendre quelques minutes. Vous pouvez continuer à écrire vos notes."
-    }
+    },
+    "autoSummarySkipped": "Résumé automatique ignoré",
+    "autoSummarySkippedReason": "Le résumé automatique nécessite au moins 180 secondes d’audio enregistré et 2 500 caractères de transcription. Cette réunion dure {{seconds}} secondes et contient {{chars}} caractères. Vous pouvez créer un résumé manuellement maintenant.",
+    "calendarParticipantsInvalid": "Les données enregistrées des participants du calendrier sont invalides. Corrigez-les avant de réessayer."
   },
   "shortcutsDialog": {
     "title": "Raccourcis clavier",

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { AlignLeft, ArrowLeft, ArrowRight, AudioLines, Check, ChevronDown, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2, WandSparkles } from "../icons";
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
+import { MEETING_ASR_GATE_MS } from "../../contracts/meetingRecording";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
 import { snapshotMeetingRecordingConfig } from "../../helpers/meetingRecordingConfigSnapshot";
 import { initializeActions } from "../../stores/actionStore";
@@ -332,14 +333,33 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     latestRun.run.errorCode === null && latestRun.run.retryAt
     ? Date.parse(latestRun.run.retryAt)
     : null;
+  const latestStopDeadline = recordings.reduce((deadline, item) => {
+    const endedAt = item.recording.endedAt ? Date.parse(item.recording.endedAt) : Number.NaN;
+    return Number.isFinite(endedAt) ? Math.max(deadline, endedAt + MEETING_ASR_GATE_MS) : deadline;
+  }, 0);
   useEffect(() => {
-    if (gateDeadline === null) return;
+    if (gateDeadline === null && latestStopDeadline <= countdownNow) return;
     const id = window.setTimeout(() => setCountdownNow(Date.now()), 1000);
     return () => window.clearTimeout(id);
-  }, [countdownNow, gateDeadline]);
+  }, [countdownNow, gateDeadline, latestStopDeadline]);
   const liveWaitingSeconds = gateDeadline === null ? 0 : Math.max(0, Math.ceil((gateDeadline - countdownNow) / 1000));
   const gateSeconds = mockGateActive ? mock?.waitingSeconds ?? 0 : liveWaitingSeconds;
   const gateActive = gateSeconds > 0;
+  const manualAsrBlocked = gateActive || latestStopDeadline > countdownNow ||
+    ["preparing", "recording", "paused", "saving"].includes(capturePhase ?? "");
+  const selectedTranscriptCharacters = selected?.transcript
+    ? selected.transcript.segments?.length
+      ? selected.transcript.segments.reduce((length, segment) => length + segment.text.length, 0)
+      : selected.transcript.text.length
+    : 0;
+  const selectedTranscriptDuration = selected
+    ? recordings
+      .filter((item) => selected.run.sourceRecordingIds.includes(item.recording.id))
+      .reduce((duration, item) => duration + (item.recording.durationSeconds ?? 0), 0)
+    : 0;
+  const showShortTranscriptNotice = !previewRecordings && selected?.run.kind !== "summary" &&
+    selected?.run.status === "complete" && selected.run.stage === "summary" && !selected.summary &&
+    !selected.run.hasSummary && (selectedTranscriptDuration < 180 || selectedTranscriptCharacters < 2500);
 
   const runTask = async (task: () => Promise<void>) => {
     setBusy(true);
@@ -395,6 +415,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
   /** Starts a run with the settings-selected providers; no per-run picker. */
   const openRun = (kind: "reprocess" | "summary", target: { partId?: string } = {}) => {
+    if (kind === "reprocess" && manualAsrBlocked) return;
     setAudioOpen(false);
     void createRun({ kind, ...target });
   };
@@ -578,14 +599,14 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
               if (key === "export") void exportPart(part.recording.id);
               if (key === "delete") deletePart(part.recording.id);
             }}>
-              <Dropdown.Item id="asr" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
+              <Dropdown.Item id="asr" isDisabled={busy || manualAsrBlocked || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
               <Dropdown.Item id="export" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
               <Dropdown.Item id="delete" isDisabled={busy || part.recording.audioState === "deleted"} variant="danger" textValue={t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}><Trash2 size={14}/>{t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}</Dropdown.Item>
             </Dropdown.Menu></Dropdown.Popover></Dropdown>
           </div>)}
           </section>})}
           </div>
-          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <Button size="sm" variant="secondary" className="mt-2 w-full shrink-0 gap-1.5" isDisabled={busy} onPress={() => openRun("reprocess")}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
+          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <Button size="sm" variant="secondary" className="mt-2 w-full shrink-0 gap-1.5" isDisabled={busy || manualAsrBlocked} onPress={() => openRun("reprocess")}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
           </>}
         </Popover.Dialog></Popover.Content>
       </Popover>
@@ -630,7 +651,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       </>;
       if (status === "blocked") return <NoteNotice status="warning" title={t(`meetingResults.blocked.${stageKey}`)}
         description={t(errorCode === "missing-transcription-config" || errorCode === "missing-summary-config" ? `meetingResults.blockedReason.${errorCode}` : "meetingResults.blockedReason.other")} actions={actions} />;
-      if (status === "failed") return <NoteNotice status="danger" title={t(`meetingResults.failed.${stageKey}`)} description={t("meetingResults.failedReason")} actions={actions} />;
+      if (status === "failed") return <NoteNotice status="danger" title={t(`meetingResults.failed.${stageKey}`)} description={errorCode === "calendar-participants-invalid"
+        ? tr("calendarParticipantsInvalid", "Stored calendar participant data is invalid. Correct it before retrying.")
+        : t("meetingResults.failedReason")} actions={actions} />;
       const startedAt = latestRun.run.createdAt ? Date.parse(latestRun.run.createdAt) : undefined;
       return <NoteNotice status="accent" busy progressStartedAt={startedAt} title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
     })()}
@@ -656,7 +679,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           <Popover.Content placement="bottom start" className="w-fit min-w-0 max-w-[calc(100vw-24px)]"><Popover.Dialog className="p-1">
             <div className="flex flex-col gap-1">
               <Button size="sm" variant="ghost" className="justify-start gap-2" onPress={() => { setModelOpen(false); openRun("summary"); }}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Button>
-              <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={!availableParts.length} onPress={() => { setModelOpen(false); openRun("reprocess"); }}><FileText size={14}/>{t("meetingResults.newAsr")}</Button>
+              <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={manualAsrBlocked || !availableParts.length} onPress={() => { setModelOpen(false); openRun("reprocess"); }}><FileText size={14}/>{t("meetingResults.newAsr")}</Button>
               {mock && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={mock.recap === "running" || !summaryText} onPress={() => { setModelOpen(false); patchMock({ recap: "running" }); mockAfter(1500, { recap: "ok" }); }}><AlignLeft size={14}/>{mock.recap === "ok" ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
               {!mock && selected?.summary && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={busy || recapStatus === "running" || !selected.run.hasSummary} onPress={() => { setModelOpen(false); void runSummaryAction("recap"); }}><AlignLeft size={14}/>{/^## Recap\s*$/m.test(summaryText ?? "") ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
             </div>
@@ -667,6 +690,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       {mock && summaryText && !summaryIsStale && <MockSummaryNotices mock={mock} onRegenerate={() => { notify("Mock: Summary regenerated with the new names"); patchMock({ summaryStale: false }); }} />}
       {summaryText ? <article className="note-prose"><ReactMarkdown>{summaryText}</ReactMarkdown></article> : <>
         {mock?.autoSummarySkipped && <NoteNotice status="accent" title={tr("autoSummarySkipped", "Automatic Summary skipped")} description={tr("autoSummarySkippedReason", "This meeting is short ({{seconds}} s, {{chars}} characters). Automatic Summary starts after 180 s and 2500 characters. You can create one now.", mock.autoSummarySkipped)} />}
+        {showShortTranscriptNotice && !mock && <NoteNotice status="accent"
+          title={tr("autoSummarySkipped", "Automatic Summary skipped")}
+          description={tr("autoSummarySkippedReason", "Automatic Summary requires at least 180 seconds of recorded audio and 2,500 transcript characters. This meeting has {{seconds}} seconds and {{chars}} characters. You can create a Summary manually now.", {
+            seconds: Math.round(selectedTranscriptDuration),
+            chars: selectedTranscriptCharacters,
+          })}
+        />}
         {fallbackSummary}
       </>}
       {mock && summaryText && <MockTaskNotices tasks={mock.tasks} notify={notify} onRetry={() => { patchMock({ tasks: "loading" }); mockAfter(1500, { tasks: "ok" }); }} />}

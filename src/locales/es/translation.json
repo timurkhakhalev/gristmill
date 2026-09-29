@@ -2341,7 +2341,10 @@
     "progress": {
       "pending": "Esperando para empezar.",
       "running": "Puede tardar unos minutos. Puedes seguir escribiendo notas."
-    }
+    },
+    "autoSummarySkipped": "Resumen automático omitido",
+    "autoSummarySkippedReason": "El resumen automático requiere al menos 180 segundos de audio grabado y 2.500 caracteres de transcripción. Esta reunión tiene {{seconds}} segundos y {{chars}} caracteres. Ahora puedes crear un resumen manualmente.",
+    "calendarParticipantsInvalid": "Los datos guardados de participantes del calendario no son válidos. Corrígelos antes de volver a intentarlo."
   },
   "shortcutsDialog": {
     "title": "Atajos de teclado",

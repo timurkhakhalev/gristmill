@@ -2341,7 +2341,10 @@
     "progress": {
       "pending": "等待開始。",
       "running": "這可能需要幾分鐘。你可以繼續寫筆記。"
-    }
+    },
+    "autoSummarySkipped": "已略過自動摘要",
+    "autoSummarySkippedReason": "自動摘要需要至少 180 秒錄音和 2,500 個轉錄字元。本次會議為 {{seconds}} 秒、{{chars}} 個字元。你現在可以手動建立摘要。",
+    "calendarParticipantsInvalid": "已儲存的日曆參與者資料無效。請先更正後再重試。"
   },
   "shortcutsDialog": {
     "title": "鍵盤快速鍵",

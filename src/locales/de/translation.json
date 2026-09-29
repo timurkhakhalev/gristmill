@@ -2341,7 +2341,10 @@
     "progress": {
       "pending": "Wartet auf den Start.",
       "running": "Das kann einige Minuten dauern. Du kannst weiter Notizen schreiben."
-    }
+    },
+    "autoSummarySkipped": "Automatische Zusammenfassung übersprungen",
+    "autoSummarySkippedReason": "Eine automatische Zusammenfassung erfordert mindestens 180 Sekunden Audio und 2.500 Transkriptzeichen. Dieses Meeting hat {{seconds}} Sekunden und {{chars}} Zeichen. Du kannst jetzt manuell eine Zusammenfassung erstellen.",
+    "calendarParticipantsInvalid": "Die gespeicherten Kalenderteilnehmerdaten sind ungültig. Korrigiere sie vor dem erneuten Versuch."
   },
   "shortcutsDialog": {
     "title": "Tastenkürzel",

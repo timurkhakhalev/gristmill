@@ -2341,7 +2341,10 @@
     "progress": {
       "pending": "開始を待っています。",
       "running": "数分かかることがあります。その間もノートを書き続けられます。"
-    }
+    },
+    "autoSummarySkipped": "自動要約をスキップしました",
+    "autoSummarySkippedReason": "自動要約には録音時間180秒以上、文字起こし2,500文字以上が必要です。この会議は{{seconds}}秒、{{chars}}文字です。今すぐ手動で要約を作成できます。",
+    "calendarParticipantsInvalid": "保存されたカレンダー参加者データが無効です。再試行する前に修正してください。"
   },
   "shortcutsDialog": {
     "title": "キーボードショートカット",

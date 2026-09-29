@@ -12,7 +12,8 @@ const { meetingTranscriptArtifactSchema }: typeof import("../../src/contracts/me
 const { createMeetingProcessingBridge }: typeof import("../../src/preload/meetingProcessingBridge.ts") = require("../../src/preload/meetingProcessingBridge.ts");
 const { prepareMeetingAudio }: typeof import("../../src/helpers/meetingAudioMixer.ts") = require("../../src/helpers/meetingAudioMixer.ts");
 const { getFFmpegPath }: typeof import("../../src/helpers/ffmpegUtils.ts") = require("../../src/helpers/ffmpegUtils.ts");
-const { RECAP_KEY }: typeof import("../../src/helpers/builtinActions.ts") = require("../../src/helpers/builtinActions.ts");
+const { BUILTIN_ACTIONS, RECAP_KEY }: typeof import("../../src/helpers/builtinActions.ts") = require("../../src/helpers/builtinActions.ts");
+const { MEETING_SPEAKER_NAMING_INSTRUCTION }: typeof import("../../src/helpers/meetingSpeakerNaming.ts") = require("../../src/helpers/meetingSpeakerNaming.ts");
 const { MEETING_TASKS_INSTRUCTION }: typeof import("../../src/helpers/meetingSummarySections.ts") = require("../../src/helpers/meetingSummarySections.ts");
 import type { MeetingProcessingConfig } from "../../src/contracts/meetingRecording";
 import type { MeetingProcessingWorkerDeps } from "../../src/helpers/meetingProcessing";
@@ -138,6 +139,21 @@ function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Pa
   };
   return new MeetingProcessingWorker(deps);
 }
+
+test("meeting prompts keep naming evidence, absent owner fields, and task priorities narrow", () => {
+  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /introduces themself by that name/);
+  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /addresses that speaker by name and the speaker unambiguously answers/);
+  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /An incidental name mention is not evidence/);
+  const detailedNotes = BUILTIN_ACTIONS.find((action) => action.translationKey === "notes.actions.builtin.detailedNotes")?.prompt;
+  assert.ok(detailedNotes);
+  assert.match(detailedNotes, /omit each when the source does not state it/);
+  assert.doesNotMatch(detailedNotes, /Owner not specified|Due date not specified/);
+  assert.match(MEETING_TASKS_INSTRUCTION, /HIGH only when the source explicitly says the agreed work is urgent, time-critical, or blocks an agreed next step/);
+  assert.match(MEETING_TASKS_INSTRUCTION, /MEDIUM for a concrete next step without exceptional urgency or low priority/);
+  assert.match(MEETING_TASKS_INSTRUCTION, /LOW only when the source explicitly says the agreed or requested work is deferred or low-priority/);
+  assert.match(MEETING_TASKS_INSTRUCTION, /Never infer priority from impact, general importance, deadline proximity, or today's date/);
+  assert.match(MEETING_TASKS_INSTRUCTION, /Preserve relative deadlines as spoken/);
+});
 
 test("audio parts from separate sessions of one note produce one persisted run and one transcription request", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
@@ -307,6 +323,29 @@ test("finalized initial run waits until the persisted 15-second deadline across 
   worker.processPending();
   await worker.waitForIdle();
   assert.equal(transcribeCalls, 1, "ASR can start at 15 seconds");
+});
+
+test("manual reprocess rejects active capture and a successful Stop before its 15-second deadline", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording } = createFinishedRecording(db, storage);
+  assert.ok(recording.endedAt);
+  const deadline = Date.parse(recording.endedAt) + 15_000;
+  const now = new Date(deadline - 1);
+  const worker = workerFor(db, storage, { now: () => new Date(now) });
+  t.after(() => worker.stop());
+
+  assert.throws(() => worker.createRun({ recordingId: recording.id, kind: "reprocess", config: validConfig }), /end-of-meeting wait/);
+  now.setTime(deadline);
+  assert.equal(worker.createRun({ recordingId: recording.id, kind: "reprocess", config: validConfig }).run.kind, "reprocess");
+
+  const activeWorker = workerFor(db, storage, {
+    now: () => new Date(deadline + 60_000),
+    isCaptureActive: () => true,
+  });
+  t.after(() => activeWorker.stop());
+  assert.throws(() => activeWorker.createRun({ recordingId: recording.id, kind: "reprocess", config: validConfig }), /end-of-meeting wait/);
 });
 
 test("resume cancels the pending group version and the next end starts a fresh gate", async (t: import("node:test").TestContext) => {
@@ -893,6 +932,61 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
   assert.equal(summary.speakerCorrectionRevision, 1);
   assert.doesNotMatch(JSON.stringify(parseSummaryInput(summaryInput)), /@/);
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, manual.run.id);
+});
+
+test("malformed stored calendar participants fail visibly instead of becoming an empty candidate list", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, recording, run: sourceRun } = createFinishedRecording(db, storage, validConfig);
+  saveTranscriptArtifact(db, storage, sourceRun.id, "A short transcript with an unknown speaker.");
+  db.setMeetingProcessingRunState(sourceRun.id, { stage: "summary", status: "cancelled" });
+  db.db.prepare("UPDATE notes SET participants = ? WHERE id = ?").run("{", note.id);
+  let namingCalls = 0;
+  let summaryCalls = 0;
+  const worker = workerFor(db, storage, {
+    nameSpeakers: async () => { namingCalls += 1; return []; },
+    summarize: async () => { summaryCalls += 1; return "## TLDR\nSummary."; },
+  });
+  t.after(() => worker.stop());
+  const summary = worker.createRun({ recordingId: recording.id, kind: "summary", sourceRunId: sourceRun.id, config: validConfig });
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+
+  const failed = db.getMeetingProcessingRun(summary.run.id);
+  assert.ok(failed);
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.errorCode, "calendar-participants-invalid");
+  assert.equal(db.getMeetingRunLlmSourceSnapshot(summary.run.id), null);
+  assert.equal(namingCalls, 0);
+  assert.equal(summaryCalls, 0);
+});
+
+test("participant data corrupted during naming fails the run instead of keeping stale candidates", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, recording, run: sourceRun } = createFinishedRecording(db, storage, validConfig);
+  saveTranscriptArtifact(db, storage, sourceRun.id, "A short transcript with an unknown speaker.");
+  db.setMeetingProcessingRunState(sourceRun.id, { stage: "summary", status: "cancelled" });
+  let summaryCalls = 0;
+  const worker = workerFor(db, storage, {
+    nameSpeakers: async () => {
+      db.db.prepare("UPDATE notes SET participants = ? WHERE id = ?").run("{", note.id);
+      return [];
+    },
+    summarize: async () => { summaryCalls += 1; return "## TLDR\nSummary."; },
+  });
+  t.after(() => worker.stop());
+  const summary = worker.createRun({ recordingId: recording.id, kind: "summary", sourceRunId: sourceRun.id, config: validConfig });
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+
+  const failed = db.getMeetingProcessingRun(summary.run.id);
+  assert.ok(failed);
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.errorCode, "calendar-participants-invalid");
+  assert.equal(summaryCalls, 0);
 });
 
 test("validated speaker names persist model provenance and both Summary stages use corrected labels", async (t: import("node:test").TestContext) => {
@@ -1498,8 +1592,10 @@ test("provider size limits block only that run and another provider keeps its ow
     summary: null,
   };
   const { recording, run: deepgramRun } = createFinishedRecording(db, storage, deepgramConfig);
+  assert.ok(recording.endedAt);
   let requests = 0;
   const worker = workerFor(db, storage, {
+    now: () => new Date(Date.parse(recording.endedAt!) + 15_000),
     mixAudio: async (recordingValue, runId: string) => ({
       path: storage.getDerivedAudioPath(recordingValue.id, runId),
       frameCount: 24_000,

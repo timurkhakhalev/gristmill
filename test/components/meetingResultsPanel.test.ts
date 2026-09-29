@@ -117,12 +117,13 @@ function textOf(value: unknown): string {
   return node?.props ? textOf((node.props as { children?: unknown }).children) : "";
 }
 
-async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction }: {
+async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction, initialCapturePhase = "idle" }: {
   viewMode?: "raw" | "enhanced";
   playback?: { success: boolean; error?: string };
   preview?: boolean;
   mockPipeline?: { waitingSeconds?: number };
   summaryAction?: (input: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+  initialCapturePhase?: string;
 } = {}) {
   const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], summaryActions: [], retry: [] };
   let listedItems = items;
@@ -245,7 +246,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   let tree: unknown;
   function Harness() {
     const [mode, setMode] = React.useState(viewMode);
-    const [capturePhase, updateCapturePhase] = React.useState("idle");
+    const [capturePhase, updateCapturePhase] = React.useState(initialCapturePhase);
     setCapturePhase = updateCapturePhase;
     tree = MeetingResultsPanel({ noteId: 1, locale: "en", previewRecordings: preview ? items : undefined, viewMode: mode, onViewModeChange: setMode,
       capturePhase,
@@ -260,7 +261,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   // The popover shows the transcript first; these tests exercise the audio tab.
   await flush(() => (findNode(tree, (node) => node.props?.ariaLabel === "Transcript and audio")!.props as { onChange: (tab: string) => void }).onChange("audio"));
   return {
-    calls, flush, dialog: () => mocks.__meetingResultsConfirmDialog!,
+    calls, flush, tree: () => tree, dialog: () => mocks.__meetingResultsConfirmDialog!,
     text: () => container.textContent ?? "",
     saveRecording: async (nextItems: unknown[]) => {
       listedItems = nextItems;
@@ -437,6 +438,10 @@ test("the live waiting state and debug preview never offer a manual gate bypass"
   const live = await mountPanel(t, [recording(FIRST, FIRST, new Date().toISOString(), waiting)]);
   assert.match(live.text(), /transcription starts automatically when the wait ends/i);
   assert.doesNotMatch(live.text(), /Transcribe now/);
+  const waitingTranscribe = live.button("Transcribe")!;
+  assert.equal(waitingTranscribe.props?.isDisabled, true);
+  await live.flush(() => (waitingTranscribe.props as { onPress: () => void }).onPress());
+  assert.deepEqual(live.calls.create, []);
 
   const preview = await mountPanel(t, [], { preview: true, mockPipeline: { waitingSeconds: 15 } });
   assert.match(preview.text(), /transcription starts automatically when the wait ends/i);
@@ -444,4 +449,48 @@ test("the live waiting state and debug preview never offer a manual gate bypass"
   await preview.flush(() => (preview.button("Resume recording")!.props as { onPress: () => void }).onPress());
   assert.match(preview.text(), /recording resumed, pending transcription cancelled/);
   assert.deepEqual(preview.calls.create, []);
+});
+
+test("live manual transcription controls stay disabled while recording or paused", async (t: TestContext) => {
+  for (const capturePhase of ["recording", "paused"]) {
+    const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z")], { initialCapturePhase: capturePhase });
+    const wholeMeeting = ui.button("Transcribe");
+    assert.ok(wholeMeeting, `${capturePhase} keeps the whole-meeting control visible`);
+    assert.equal(wholeMeeting.props?.isDisabled, true);
+    await ui.flush(() => (wholeMeeting.props as { onPress: () => void }).onPress());
+
+    const menu = ui.menu("Audio part actions");
+    assert.ok(menu);
+    const perPartAsr = findNode(ui.tree(), (node) => node.props?.id === "asr");
+    assert.ok(perPartAsr);
+    assert.equal(perPartAsr.props?.isDisabled, true);
+    await ui.flush(() => (menu!.props as { onAction(key: string): void }).onAction("asr"));
+    assert.deepEqual(ui.calls.create, [], `${capturePhase} cannot enqueue ASR through either control`);
+  }
+});
+
+test("short live transcript explains automatic Summary ineligibility and keeps manual Summary available", async (t: TestContext) => {
+  const short = completeRun();
+  short.run.status = "complete";
+  short.run.stage = "summary";
+  short.run.hasSummary = false;
+  short.summary = undefined;
+  short.transcript = { text: "Short transcript", segments: [{ start: 1, end: 2, speaker: "speaker-1", text: "Short transcript" }] };
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", short)], { viewMode: "raw" });
+  assert.match(ui.text(), /Automatic Summary skipped/);
+  assert.match(ui.text(), /180 seconds of recorded audio and 2,500 transcript characters/);
+  assert.ok(ui.button("meetingResults.newSummary"), "manual Summary remains available");
+  await ui.flush(() => (ui.button("meetingResults.newSummary")!.props as { onPress: () => void }).onPress());
+  assert.equal(ui.calls.create.at(-1)?.kind, "summary");
+  assert.equal(ui.calls.create.at(-1)?.sourceRunId, RUN);
+});
+
+test("invalid saved calendar participants show a specific live processing error", async (t: TestContext) => {
+  const failed = completeRun();
+  failed.run.status = "failed";
+  failed.run.errorCode = "calendar-participants-invalid";
+  failed.run.hasSummary = false;
+  failed.summary = undefined;
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed)]);
+  assert.match(ui.text(), /Stored calendar participant data is invalid/);
 });

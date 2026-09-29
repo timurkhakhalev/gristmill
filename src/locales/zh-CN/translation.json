@@ -2341,7 +2341,10 @@
     "progress": {
       "pending": "等待开始。",
       "running": "这可能需要几分钟。你可以继续写笔记。"
-    }
+    },
+    "autoSummarySkipped": "已跳过自动摘要",
+    "autoSummarySkippedReason": "自动摘要需要至少 180 秒录音和 2,500 个转录字符。本次会议为 {{seconds}} 秒、{{chars}} 个字符。你现在可以手动创建摘要。",
+    "calendarParticipantsInvalid": "保存的日历参与者数据无效。请先更正后再重试。"
   },
   "shortcutsDialog": {
     "title": "键盘快捷键",

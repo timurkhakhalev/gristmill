@@ -283,3 +283,23 @@ Verification run by this agent:
 - Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts` and then the M6 focused set.
 
 Implementation commit: `a38587ca5` (`M6: assert gate and Summary in owning views`).
+
+## M7 — Reviewer fixes from review-3
+
+Status: done
+
+Connected the existing NoteEditor toolbar Summary control to the same selected-run `summary` run path used by the Results control. The live action uses the selected transcript artifact and frozen route/prompt snapshot; the worker's saved Summary artifact and note projection remain the source for Results, tasks, Recap and run reselection. Removed the former generic Action-based live Summary route, which independently assembled attendee and raw note transcript context.
+
+The toolbar and Results Summary action now require nonempty selected-run transcript text and no active capture. A short ready transcript still offers manual Summary. Debug preview keeps its isolated in-memory Summary callback. Existing worker coverage now also asserts the selected source run, prompt/model snapshot, saved Summary projection and corrected transcript projection.
+
+Preserved raw tracks, manual notes, previous artifacts, selected speaker corrections, capture/gate rules, one Summary Markdown, task/Recap consumers and Chat Follow-up. Calendar participants/emails and raw/live transcript data do not enter the selected-run Summary request. No unresolved implementation issue; live hardware/provider checks remain root-owned and M4-1 remains unverified.
+
+Verification run by this agent:
+
+- `pnpm run typecheck` — passed (main, renderer, settings selectors and tests).
+- Scoped ESLint for `test/components/meetingResultsPanel.test.ts` and `test/helpers/meetingProcessing.test.ts` — passed.
+- Scoped renderer ESLint for `MeetingResultsPanel.tsx`, `NoteEditor.tsx` and `PersonalNotesView.tsx` — passed with the existing Node `MODULE_TYPELESS_PACKAGE_JSON` warning.
+- `git diff --check` — passed.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent; root owns them. Root should run `pnpm test -- test/components/meetingResultsPanel.test.ts test/helpers/meetingProcessing.test.ts`, then required integrated checks sequentially.
+
+Implementation commit: `f4b8dfc46` (`M7: route toolbar Summary through selected run`).

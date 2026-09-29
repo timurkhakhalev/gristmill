@@ -75,3 +75,15 @@ Verification for this fix:
 - Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Rerun the focused command from the plan and `pnpm test -- test/services/meetingResults.test.ts`.
 
 Fix commit: `1d2563337` (`M2: fix selected run and fixture regressions`).
+
+The next root rerun left three findings. The speaker-name fixture now registers its raw provider artifact before the transcript. The reprocess scenario now expects no second automatic Summary when one already exists for the meeting, while verifying that the prior run and both saved artifacts remain available; automatic superseded-run pruning and its database deletion method were removed to preserve run history. The renderer harness now captures composed-button callbacks so the stale-Summary regeneration action can be exercised through the rendered notice.
+
+Verification for this fix:
+
+- `pnpm run typecheck:main` — passed.
+- `pnpm run typecheck:tests` — passed.
+- Scoped main/test ESLint — passed with 0 errors.
+- `git diff --check` — passed.
+- Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Rerun the seven-file focused M2 suite and `pnpm test -- test/services/meetingResults.test.ts`.
+
+Fix commit: `2ba71bd87` (`M2: preserve meeting run history`).

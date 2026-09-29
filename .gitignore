@@ -190,6 +190,7 @@ build/
 
 # Generated Globe listener binary
 resources/bin/
+resources/local-engine-installers/
 native/meeting-aec-helper/build/
 native/meeting-aec-helper/third_party/
 

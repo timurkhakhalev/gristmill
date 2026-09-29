@@ -1,7 +1,7 @@
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 
 const REQUEST_TIMEOUT = 30000;
 const MAX_RETRIES = 3;
@@ -243,11 +243,11 @@ function downloadFile(url, dest, retryCount = 0) {
 }
 
 async function extractZip(zipPath, destDir) {
-  execSync(`unzip -o "${zipPath}" -d "${destDir}"`, { stdio: "inherit" });
+  execFileSync("unzip", ["-o", zipPath, "-d", destDir], { stdio: "inherit" });
 }
 
 function extractTarGz(tarPath, destDir) {
-  execSync(`tar -xzf "${tarPath}" -C "${destDir}"`, { stdio: "inherit" });
+  execFileSync("tar", ["-xzf", tarPath, "-C", destDir], { stdio: "inherit" });
 }
 
 async function extractArchive(archivePath, destDir) {

@@ -63,6 +63,16 @@ function managerWith(fake: unknown) {
   return manager;
 }
 
+test("starts a downloaded model before its local engine is installed", async () => {
+  const fake = { isAvailable: () => false, async start() {} };
+  const manager = managerWith(fake);
+  let started = false;
+  fake.start = async () => { started = true; };
+
+  assert.deepEqual(await manager.startServer("parakeet-tdt-0.6b-v3"), { success: true, port: undefined });
+  assert.equal(started, true);
+});
+
 test("audio at or under the 15s cap decodes in one request", async () => {
   const fake = fakeWsServer([{ text: "hello" }]);
   const manager = managerWith(fake);

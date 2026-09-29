@@ -906,16 +906,15 @@ class ReasoningService extends BaseReasoningService {
     const onAbort = () => { wake?.(); void window.electronAPI.bbStreamCancel(streamId).catch(() => {}); };
     controller.signal.addEventListener("abort", onAbort, { once: true });
     try {
-      const formatMessage = (message: typeof messages[number]) => {
-        const content = typeof message.content === "string"
+      const messageText = (message: typeof messages[number]) =>
+        typeof message.content === "string"
           ? message.content
           : message.content.filter((part) => part.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
-        return `${message.role.toUpperCase()}:\n${content}`;
-      };
+      const formatMessage = (message: typeof messages[number]) => `${message.role.toUpperCase()}:\n${messageText(message)}`;
       const initialPrompt = messages.map(formatMessage).join("\n\n");
       const latestUser = messages.filter((message) => message.role === "user").at(-1);
       if (!latestUser) throw new Error("A Chat user message is required for bb");
-      const prompt = [...messages.filter((message) => message.role === "system"), latestUser].map(formatMessage).join("\n\n");
+      const prompt = messageText(latestUser);
       await window.electronAPI.bbStreamStart({ streamId, conversationId, prompt, initialPrompt, selection });
       while (!controller.signal.aborted) {
         if (queue.length === 0) await new Promise<void>((resolve) => { wake = resolve; });

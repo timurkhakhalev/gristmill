@@ -1089,6 +1089,7 @@
         "label": "Esquema de color",
         "description": "Color de acento y tono de las superficies.",
         "names": {
+          "gristmill": "Gristmill",
           "lavender": "Lavanda",
           "indigo": "Índigo",
           "amethyst": "Amatista",

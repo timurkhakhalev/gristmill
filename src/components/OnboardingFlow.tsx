@@ -44,8 +44,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   }
 
   return (
-    <CompactOnboardingFrame>
-      <div className="onboarding-shell-scroll flex h-full flex-col overflow-y-auto px-6 pb-6 pt-45">
+    <CompactOnboardingFrame showBrandMark={step === "profile"}>
+      <div className={`onboarding-shell-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 ${step === "profile" ? "pt-45" : "pt-33"}`}>
         {step === "profile" && (
           <>
             <OnboardingStepHeader title={t("profile.onboardingTitle")} />
@@ -60,14 +60,14 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               title={t("onboarding.rehaul.provider.title")}
               description={t("onboarding.rehaul.provider.description")}
             />
-            <div className="mt-6 flex min-h-0 flex-1 flex-col">
+            <div className="mt-6 flex shrink-0 flex-col">
               <ByokProviderStep
                 onSelfHostedChange={() => {}}
                 onConnectionChange={setProviderConnected}
                 onProceed={() => setStep("languages")}
               />
             </div>
-            <Button variant="ghost" onClick={() => setStep("languages")}>{t("cleanupSettings.configureLater")}</Button>
+            <Button variant="ghost" className="shrink-0" onClick={() => setStep("languages")}>{t("cleanupSettings.configureLater")}</Button>
             <Footer
               back={() => setStep("profile")}
               continueDisabled={!providerConnected}
@@ -100,7 +100,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               title={t("onboarding.rehaul.notes.title")}
               description={t("onboarding.rehaul.notes.description")}
             />
-            <div className="mt-6 flex min-h-0 flex-1 flex-col">
+            <div className="mt-6 flex shrink-0 flex-col">
               <CalendarConnectionsStep />
             </div>
             <Footer back={() => setStep("languages")} onContinue={finish} continueLabel={t("common.finish")} />
@@ -124,7 +124,7 @@ function Footer({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="mt-auto flex w-full shrink-0 gap-3 pt-6">
+    <div className="sticky -bottom-6 z-10 -mb-6 mt-auto flex w-full shrink-0 gap-3 bg-background pb-6 pt-4">
       <Button type="button" variant="outline-flat" onClick={back} className="h-10 flex-1">
         {t("common.back")}
       </Button>

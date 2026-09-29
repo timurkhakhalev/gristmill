@@ -1089,6 +1089,7 @@
         "label": "カラースキーム",
         "description": "アクセントカラーと背景の色合い。",
         "names": {
+          "gristmill": "Gristmill",
           "lavender": "ラベンダー",
           "indigo": "インディゴ",
           "amethyst": "アメジスト",

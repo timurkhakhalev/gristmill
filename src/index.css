@@ -11,19 +11,19 @@
    --n-h/--n-c: hue and chroma of the neutral surfaces. --a-h/--a-c: accent hue and
    chroma. --a-l: lightness of the solid accent fill, --a-fg: text on that fill,
    --brand-l: lightness of accent-coloured text and tints. The default scheme
-   (lavender) lives in :root/.dark; the others override below. */
+   (gristmill, the logo's sage green) lives in :root/.dark; the others override below. */
 :root {
-  --n-h: 260;
-  --n-c: 0.007;
-  --a-h: 288;
-  --a-c: 0.17;
-  --a-l: 0.53;
+  --n-h: 90;
+  --n-c: 0.008;
+  --a-h: 122;
+  --a-c: 0.085;
+  --a-l: 0.5;
   --a-fg: oklch(0.99 0 0);
-  --brand-l: 0.53;
+  --brand-l: 0.46;
 }
 .dark {
-  --a-l: 0.56;
-  --brand-l: 0.76;
+  --a-l: 0.54;
+  --brand-l: 0.82;
 }
 
 /* Design tokens — single source of truth.
@@ -98,6 +98,20 @@
 
 /* Alternative schemes. useTheme puts data-color-scheme on <html> and <body>
    (both carry .dark too), so .dark[data-color-scheme] outranks the .dark knobs. */
+[data-color-scheme="lavender"] {
+  --n-h: 260;
+  --n-c: 0.007;
+  --a-h: 288;
+  --a-c: 0.17;
+  --a-l: 0.53;
+  --a-fg: oklch(0.99 0 0);
+  --brand-l: 0.53;
+}
+.dark[data-color-scheme="lavender"] {
+  --a-l: 0.56;
+  --a-fg: oklch(0.99 0 0);
+  --brand-l: 0.76;
+}
 [data-color-scheme="indigo"] {
   --n-h: 270;
   --n-c: 0.012;
@@ -996,17 +1010,23 @@ body.dark:has(.onboarding-canvas) {
   background-image: none;
 }
 
-/* Compact-frame hero: a Gristmill sage band that dithers into
-   the page surface; the dot layer fades in as the solid fades out. */
+/* Compact-frame hero: a brand band that dithers into the page surface.
+   Drawn from --color-primary so it follows the theme; the dot layer fades in
+   as the solid fades out. */
 .onboarding-compact-hero {
-  background: linear-gradient(#7d8b5c, #65704c 70%, transparent);
+  background: linear-gradient(
+    color-mix(in srgb, var(--color-primary) 88%, white),
+    var(--color-primary) 70%,
+    transparent
+  );
 }
 
 .onboarding-compact-hero::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 2px 2px, #65704c 1.3px, transparent 1.5px) 0 0 / 4px 4px;
+  background: radial-gradient(circle at 2px 2px, var(--color-primary) 1.3px, transparent 1.5px) 0
+    0 / 4px 4px;
   mask-image: linear-gradient(transparent 55%, #000 72%, #000 84%, transparent);
 }
 

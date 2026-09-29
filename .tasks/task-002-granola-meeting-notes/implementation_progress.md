@@ -265,4 +265,4 @@ Verification run by this agent:
 - `git diff --check` — passed.
 - Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should first run `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts`, then the M6/M5 affected journey set and, as required by quality steering, the integrated full `pnpm test` run sequentially. Root should record M4-1 live evidence separately.
 
-Implementation commit: pending.
+Implementation commit: `9873d1650` (`M6: preserve summary and group gate behavior`).

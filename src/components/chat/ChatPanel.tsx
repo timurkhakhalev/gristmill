@@ -236,14 +236,17 @@ export default function ChatPanel({
         ref={setPanelRef}
         style={{ height: `min(36rem, ${floatingMaxHeight})` }}
         className={cn(
-          "absolute bottom-4 left-5 right-5 z-20 mx-auto max-w-[680px]",
+          // Geometry keeps the input where the ask bar was: the bar is 600px wide, 20px from the
+          // sides and 16px from the bottom; the input sits 12px inside the card.
+          "absolute bottom-1 left-2 right-2 z-20 mx-auto max-w-[624px]",
           "flex flex-col",
-          "bg-overlay/95 text-overlay-foreground",
+          // Translucent enough for the note to show through the blur, like the ask bar.
+          "bg-overlay/60 text-overlay-foreground",
           "border border-border",
           // Same radius as the ask bar it replaces, so opening reads as one surface.
           "rounded-[22px]",
           "shadow-overlay",
-          "backdrop-blur-2xl",
+          "backdrop-blur-xl backdrop-saturate-150 transform-gpu",
           closing
             ? "pointer-events-none motion-safe:animate-out motion-safe:fade-out-0 motion-safe:slide-out-to-bottom-2 motion-safe:duration-150 motion-safe:fill-mode-forwards"
             : "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200"

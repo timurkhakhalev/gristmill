@@ -25,6 +25,8 @@ export interface ReasoningConfig {
   requiresAgent?: boolean;
   inferenceScope?: InferenceScope;
   agentSelection?: BbSelection;
+  /** Called when bb reports a title for the thread that answered this turn. */
+  onThreadTitle?: (title: string) => void;
 }
 
 export abstract class BaseReasoningService {

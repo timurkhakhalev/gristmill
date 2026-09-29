@@ -1,7 +1,7 @@
 import { bbChannels, bbSelectionSchema, bbStreamStartSchema } from "../contracts/bb.js";
 import { AgentStreamRequestRegistry } from "./agentStreamRequestRegistry.js";
 import { ensureBbWorkspace } from "./bbWorkspace.js";
-import { getBbHostPreferences, getBbThreadOutput, listBbHarnesses, listBbModels, spawnBbThread, stopBbThread, watchBbThread } from "./bbCli.js";
+import { getBbHostPreferences, getBbThreadOutput, getBbThreadTitle, listBbHarnesses, listBbModels, spawnBbThread, stopBbThread, watchBbThread } from "./bbCli.js";
 
 interface Sender {
   id: number;
@@ -12,6 +12,19 @@ interface Sender {
 interface IpcEvent { sender: Sender }
 interface IpcMain {
   handle(channel: string, handler: (event: IpcEvent, ...args: unknown[]) => unknown): void;
+}
+
+// bb names a thread asynchronously after its first turn, so poll briefly.
+async function sendThreadTitle(sender: Sender, streamId: string, threadId: string): Promise<void> {
+  for (let attempt = 0; attempt < 5 && !sender.isDestroyed(); attempt++) {
+    const title = await getBbThreadTitle(threadId).catch(() => null);
+    if (sender.isDestroyed()) return;
+    if (title) {
+      sender.send(bbChannels.streamPart, { streamId, title });
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
 }
 
 export function registerBbHandlers(ipcMain: IpcMain, userData: string): void {
@@ -72,6 +85,7 @@ export function registerBbHandlers(ipcMain: IpcMain, userData: string): void {
         }
         if (requests.isActive(sender.id, request.streamId, controller) && !sender.isDestroyed()) {
           sender.send(bbChannels.streamPart, { streamId: request.streamId, done: true });
+          void sendThreadTitle(sender, request.streamId, id);
         }
       } catch (error) {
         if (!controller.signal.aborted && !sender.isDestroyed()) {

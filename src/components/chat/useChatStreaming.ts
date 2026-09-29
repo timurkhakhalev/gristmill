@@ -41,6 +41,8 @@ interface UseChatStreamingOptions {
   /** Optional container scope applied to the search_notes tool (container overview chat). */
   searchScope?: ContainerScope;
   onStreamComplete?: (assistantId: string, content: string, toolCalls?: ToolCallInfo[]) => void;
+  /** bb's generated title for the thread that answered the latest turn. */
+  onThreadTitle?: (title: string) => void;
 }
 
 export interface ChatStreaming {
@@ -61,6 +63,7 @@ export function useChatStreaming({
   noteId,
   searchScope,
   onStreamComplete,
+  onThreadTitle,
 }: UseChatStreamingOptions): ChatStreaming {
   const { t } = useTranslation();
   const [agentState, setAgentState] = useState<AgentState>("idle");
@@ -267,6 +270,7 @@ export function useChatStreaming({
                 model: llmConfig.agentModel || "",
                 reasoningLevel: llmConfig.agentReasoningLevel || "",
               },
+              onThreadTitle,
             } : {}),
             lanUrl: isLanAgent ? llmConfig.remoteUrl : undefined,
             baseUrl: isCustomAgent ? llmConfig.cloudBaseUrl || undefined : undefined,
@@ -405,6 +409,7 @@ export function useChatStreaming({
       t,
       setMessages,
       onStreamComplete,
+      onThreadTitle,
       noteId,
       clearToolActivity,
       beginToolActivity,

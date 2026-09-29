@@ -26,6 +26,13 @@ interface UseEmbeddedChatReturn {
   startNewChat: () => void;
 }
 
+const CONVERSATION_TITLE_MAX = 40;
+
+function conversationTitleFromMessage(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > CONVERSATION_TITLE_MAX ? `${flat.slice(0, CONVERSATION_TITLE_MAX).trimEnd()}…` : flat || "Untitled";
+}
+
 export function useEmbeddedChat({
   noteId,
   disabled = false,
@@ -60,6 +67,10 @@ export function useEmbeddedChat({
     [folderId, noteContent, noteId, noteTitle, noteTranscript]
   );
 
+  // A conversation keeps the first message's opening as its title until bb names the thread.
+  const untitledConversationRef = useRef<number | null>(null);
+  const fetchConversationsRef = useRef<() => Promise<unknown>>(async () => {});
+
   const streaming = useChatStreaming({
     disabled,
     messages: persistence.messages,
@@ -68,6 +79,12 @@ export function useEmbeddedChat({
     noteId: noteId ?? undefined,
     onStreamComplete: (_id, content, toolCalls) => {
       persistence.saveAssistantMessage(content, toolCalls);
+    },
+    onThreadTitle: (title) => {
+      const id = untitledConversationRef.current;
+      if (id == null) return;
+      untitledConversationRef.current = null;
+      void window.electronAPI?.updateAgentConversationTitle?.(id, title).then(() => fetchConversationsRef.current());
     },
   });
 
@@ -78,6 +95,8 @@ export function useEmbeddedChat({
     setNoteConversations(conversations ?? []);
     return conversations ?? [];
   }, [noteId]);
+
+  fetchConversationsRef.current = fetchNoteConversations;
 
   if (noteId !== prevNoteId) {
     setPrevNoteId(noteId);
@@ -128,11 +147,12 @@ export function useEmbeddedChat({
 
   const createConversation = useCallback(
     async (text: string) => {
-      const id = await persistence.createConversation(`Note: ${noteTitle || "Untitled"}`, noteId);
+      const id = await persistence.createConversation(conversationTitleFromMessage(text), noteId);
+      untitledConversationRef.current = id;
       void fetchNoteConversations();
       return id;
     },
-    [fetchNoteConversations, noteId, noteTitle, persistence]
+    [fetchNoteConversations, noteId, persistence]
   );
   const sendMessageWithResult = useChatMessageSender({
     conversationId,

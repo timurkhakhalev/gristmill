@@ -678,7 +678,7 @@ class ReasoningService extends BaseReasoningService {
     tools?: Record<string, import("ai").Tool>
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
     if (config.agentSelection) {
-      yield* this.processBbStreaming(messages, config.agentSelection);
+      yield* this.processBbStreaming(messages, config.agentSelection, config.onThreadTitle);
       return;
     }
     const route = resolveChatRoute({
@@ -875,15 +875,29 @@ class ReasoningService extends BaseReasoningService {
 
   private async *processBbStreaming(
     messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>,
-    selection: BbSelection
+    selection: BbSelection,
+    onThreadTitle?: (title: string) => void
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
     const streamId = crypto.randomUUID();
     const controller = new AbortController();
     this.streamAbortController = controller;
     const queue: Array<{ text?: string; done?: boolean; error?: string }> = [];
     let wake: (() => void) | null = null;
-    const unsubscribe = window.electronAPI.onBbStreamPart((part) => {
+    // The title arrives after the answer is done, so the listener can outlive the stream.
+    let keepListeningForTitle = false;
+    let titleTimer: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribe = () => {};
+    const stopListening = () => {
+      clearTimeout(titleTimer);
+      unsubscribe();
+    };
+    unsubscribe = window.electronAPI.onBbStreamPart((part) => {
       if (part.streamId !== streamId) return;
+      if (part.title) {
+        onThreadTitle?.(part.title);
+        stopListening();
+        return;
+      }
       queue.push(part);
       wake?.();
     });
@@ -905,13 +919,15 @@ class ReasoningService extends BaseReasoningService {
         if (part.error) throw new Error(part.error);
         if (part.text) yield { type: "content", text: part.text };
         if (part.done) {
+          keepListeningForTitle = !!onThreadTitle;
           yield { type: "done", finishReason: "stop" };
           return;
         }
       }
     } finally {
       controller.signal.removeEventListener("abort", onAbort);
-      unsubscribe();
+      if (keepListeningForTitle) titleTimer = setTimeout(stopListening, 15_000);
+      else stopListening();
       if (this.streamAbortController === controller) this.streamAbortController = null;
     }
   }

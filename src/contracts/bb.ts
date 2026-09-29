@@ -62,6 +62,7 @@ export const bbStreamEnvelopeSchema = z.object({
   streamId: z.string().uuid(),
   text: z.string().optional(),
   done: z.boolean().optional(),
+  title: z.string().optional(),
   error: z.string().optional(),
 });
 export type BbStreamEnvelope = z.infer<typeof bbStreamEnvelopeSchema>;

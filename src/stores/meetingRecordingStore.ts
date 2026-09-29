@@ -760,7 +760,13 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
   }
 
   const sessionId = createMeetingRecordingSessionId();
-  const groupId = args.groupId ?? crypto.randomUUID();
+  const previous = useMeetingRecordingStore.getState();
+  const groupId = args.groupId ?? (
+    previous.recordingNoteId === args.noteId &&
+    (previous.capturePhase === "saved" || previous.capturePhase === "incomplete")
+      ? previous.meetingGroupId
+      : null
+  ) ?? crypto.randomUUID();
   let started = false;
   await meetingRecordingStartCoordinator.runStart(sessionId, async (startOperation) => {
     if (isRecordingFlag || isStartingFlag) {

@@ -98,3 +98,25 @@ Verification for this adjustment:
 - Root must rerun the focused tests; tests/builds/install/native rebuilds were not run by this agent.
 
 Fix commit: `6c7ec570c` (`M2: assert independent Summary input ordering`).
+
+## M3 — Tasks, Recap, Follow-up and formatter
+
+Status: done
+
+Prioritized tasks now use strict JSON validation and a single repair in the selected provider conversation, then update only the Summary's existing Action Items section under current-run, source, manual-note, transcript-projection and speaker-revision checks. Recap uses the editable built-in Action and the same serialized, revision-checked Summary mutation. Follow-up is an ordinary user request and assistant reply in the existing Chat, with one-turn meeting-only context, no tools or send behavior; existing-profile seeding adds missing Actions without replacing custom prompts. The default cleanup formatter now preserves the spoken language mix, escapes transcript data once, decodes once, and appends dictionary terms as a JSON list.
+
+Preserved raw tracks, prior artifacts, manual Notes, the selected provider and frozen M2 prompt/model snapshot. Recap and tasks share one Summary artifact; writes serialize and reject conflicting target-section edits. Follow-up preview remains in-memory, and its live path does not include attendee data, stale Summary text, older Chat turns, or tools.
+
+Issues: a scoped test typecheck found an incorrect test import for the task instruction; the test now imports the constant from its defining module. No unresolved implementation issues.
+
+Verification run by this agent:
+
+- `pnpm run typecheck:main` — passed.
+- `pnpm run typecheck:renderer` — passed after the final renderer changes.
+- `pnpm run typecheck:tests` — passed.
+- Scoped ESLint for renderer and test files — passed; existing Node `MODULE_TYPELESS_PACKAGE_JSON` config warning only.
+- Scoped ESLint for main helpers/contracts with `--no-ignore` — passed; same config warning only.
+- `git diff --check` — passed before commit.
+- Tests/builds/dependency installation/native rebuilds were not run; root owns them. Run the M3 plan suite plus the added stateful/action coverage: `pnpm test -- test/helpers/actionsCatalogBehavior.test.ts test/helpers/actionsIpc.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/helpers/retiredPrompts.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/cases/notes/integration/meetingActions.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/helpers/meetingProcessing.test.ts test/helpers/chatMessageSubmissionLock.test.ts test/helpers/useChatStreamingCancellation.test.ts test/helpers/promptsCleanupFormatter.test.ts`. Then run `pnpm run typecheck:main` and `pnpm run typecheck:renderer`. The isolated-profile and controlled Russian model-quality checks were not run here.
+
+Implementation commit: `2e0cdb78a` (`M3: add tasks, Recap, Follow-up and cleanup formatter`).

@@ -33,6 +33,7 @@ Milestones run sequentially. Each delivers its contracts and verifies its own be
 | M2 | Speaker names and main Summary | M1 | Corrected transcript, thresholds, prompt, selected-run Summary |
 | M3 | Tasks, Recap, Follow-up and formatter | M2 | One Markdown, Chat button, editable Actions, JSON repair |
 | M4 | Integrated journeys and documentation | M3 | Cross-route verification, live capture evidence, current docs |
+| M5 | Reviewer fixes from review-1 | M4 | Close the scoped findings and recheck affected journeys |
 
 ## 5. Milestone details
 
@@ -167,9 +168,30 @@ Whole meeting journey, Notes, Summary, transcript speaker correction, Actions, C
 
 Confirm M1–M3 states stay coherent across restart, run selection, retry, provider failure, short/empty meeting and optional Actions. No empty state implies a fabricated success; preserved data remains accessible after failures.
 
+### 5.5 M5 — Reviewer fixes from review-1
+
+#### 5.5.1 Depends on
+
+Depends on: M4.
+
+#### 5.5.2 Scope
+
+- Resolve the exact findings M1-1, M2-1, M2-2, M2-3, M2-4 and M3-1 in the committed [review-1.md](review-1.md), without expanding the task or changing the original milestone intent. The corresponding contract violations must stop reproducing.
+- Root records the outcome of M4-1's isolated live journey where the required macOS hardware and configured routes are available; an unavailable boundary remains explicitly unverified rather than described as passed.
+- Preserve the finalized-track 15-second gate, selected run and prior artifacts, optional correction precedence, strict JSON repair, edited Action prompts, one Summary Markdown with revision-safe task/Recap sections, existing Chat, and Debug preview isolation.
+
+#### 5.5.3 Acceptance criteria
+
+- A paused or active meeting cannot start ASR via a manual control before final End plus 15 seconds. Naming and priority instructions enforce the exact evidence and category policies in section 2. Corrupt stored participant data is visible as an error, not an empty candidate list. A short ready transcript shows the ineligibility reason and keeps manual Summary available. The default Summary omits owner/deadline when absent.
+- Previously passing M1–M4 behavior and data preservation remain true. M4-1's evidence boundary is recorded accurately.
+
+#### 5.5.4 Verification
+
+- Add focused regressions for each review finding at its affected route and UI consumer; root runs those plus the affected M1–M4 tests sequentially. Root reruns lint, typecheck and the full suite once after the fix is integrated, then requests another milestone review. A live isolated-profile check is recorded separately from automated evidence.
+
 ## 6. Execution order (derived from dependencies)
 
-M1 → verify M1 → M2 contract sync/implementation/verification → M3 contract sync/implementation/verification → M4 contract sync, integrated checks and current docs. During Act, root runs expensive checks sequentially and records evidence per milestone. Approval of this plan is required before M1.
+M1 → verify M1 → M2 contract sync/implementation/verification → M3 contract sync/implementation/verification → M4 contract sync, integrated checks and current docs → M5 reviewer fixes and affected verification. During Act, root runs expensive checks sequentially and records evidence per milestone. Approval of this plan is required before M1.
 
 ## Orchestration (managed by orchestrator)
 
@@ -179,5 +201,6 @@ M1 → verify M1 → M2 contract sync/implementation/verification → M3 contrac
 | M2 — Speaker names and main Summary | done | `394f19c63`, `54dcc96fe`, `1d2563337`, `e8ae4e6ea`, `2ba71bd87`, `abeba8f7a`, `6c7ec570c`, `2e1b17d85` |
 | M3 — Tasks, Recap, Follow-up and formatter | done | `2e0cdb78a`, `6413c6434`, `353598a08`, `0967952a6`, `e0487ce3c`, `8333a93a6` |
 | M4 — Integrated journeys and documentation | done | `9a14da5c5`, `52a9d2ba1`, `2f9a8c2f0`, `b113ef8bf`, `16df60571` |
-| Reviewer | done | `review-1.md` |
+| M5 — Reviewer fixes from review-1 | in progress | |
+| Reviewer | not started | `review-1.md` |
 | Code Reviewer | not started | |

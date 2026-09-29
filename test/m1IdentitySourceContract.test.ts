@@ -39,7 +39,7 @@ test("M1 main process selects an Gristmill-only profile and protocol", () => {
 test("M1 secrets, local storage, and renderer sessions use Gristmill namespaces", () => {
   assert.match(read("src/helpers/secretCrypto.ts"), /const SERVICE = "Gristmill"/);
   assert.match(read("src/helpers/modelDirUtils.ts"), /\.cache", "gristmill/);
-  assert.match(read("src/helpers/cliBridge.ts"), /"\.gristmill"/);
+  assert.match(read("src/helpers/cliBridge.ts"), /"\.cli-read-connection\.json"/);
   assert.match(read("src/helpers/windowConfig.ts"), /persist:gristmill/);
   assert.match(read("src/helpers/windowConfig.ts"), /partition: GRISTMILL_SESSION_PARTITION/);
 });

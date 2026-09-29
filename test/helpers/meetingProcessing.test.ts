@@ -939,7 +939,7 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
     ],
   });
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(sourceRun.id), [{
-    speakerId: "speaker_a", profileId: null, displayName: "User correction", source: "user", revision: 1,
+    speakerId: "speaker_a", profileId: null, displayName: "User correction", participantEmail: null, source: "user", revision: 1,
   }]);
   const summary = storage.readRunArtifact(manual.run.id, "summary");
   assert.equal(manual.run.sourceRunId, sourceRun.id);
@@ -1039,7 +1039,7 @@ test("validated speaker names persist model provenance and both Summary stages u
     speakerId: "Speaker 1", speakerName: "Alice", text: "Alice introduces herself.",
   }]);
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(sourceRun.id), [{
-    speakerId: "speaker_0", profileId: null, displayName: "Alice", source: "model", revision: 1,
+    speakerId: "speaker_0", profileId: null, displayName: "Alice", participantEmail: null, source: "model", revision: 1,
   }]);
   assert.equal(db.getMeetingRunSpeakerCorrectionRevision(sourceRun.id), 1);
   const result = worker.listForNote(note.id)[0].runs.find((item) => item.run.id === manual.run.id);
@@ -1052,7 +1052,7 @@ test("validated speaker names persist model provenance and both Summary stages u
   const reopened = new DatabaseManagerClass();
   try {
     assert.deepEqual(reopened.getMeetingRunSpeakerCorrections(sourceRun.id), [{
-      speakerId: "speaker_0", profileId: null, displayName: "Alice", source: "model", revision: 1,
+      speakerId: "speaker_0", profileId: null, displayName: "Alice", participantEmail: null, source: "model", revision: 1,
     }]);
     const savedSnapshot = reopened.getMeetingRunLlmSourceSnapshot(manual.run.id);
     assert.ok(savedSnapshot);

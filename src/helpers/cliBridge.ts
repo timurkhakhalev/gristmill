@@ -1,6 +1,5 @@
 import http from "http";
 import fs from "fs";
-import os from "os";
 import path from "path";
 import crypto from "crypto";
 import debugLogger from "./debugLogger.js";
@@ -10,6 +9,8 @@ import { sendDictionaryUpdated, sendSnippetsUpdated } from "./vocabularyEvents.j
 import { sendFolderCreated } from "./containerEvents.js";
 import type { NoteRow, FolderRow } from "./database.js";
 import type { TranscriptionResponse } from "../contracts/localFileTranscription.js";
+import { NoteReadService } from "./noteReadService.js";
+import { NoteReadError } from "../contracts/noteRead.js";
 
 const PORT_RANGE_START = 8200;
 const PORT_RANGE_END = 8219;
@@ -18,8 +19,8 @@ const BRIDGE_FILE_VERSION = 1;
 const MAX_REQUEST_BODY_BYTES = 1 * 1024 * 1024;
 const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
-export function getBridgeFilePath(): string {
-  return path.join(os.homedir(), ".gristmill", "cli-bridge.json");
+export function getBridgeFilePath(userData: string): string {
+  return path.join(userData, ".cli-read-connection.json");
 }
 
 async function findPortInRange(): Promise<number> {
@@ -70,6 +71,7 @@ export interface CliBridgeOperations {
     provider?: string;
   }>;
   audioStorageManager: { deleteAudio(id: number): { success: boolean } };
+  noteReadService?: NoteReadService;
 }
 
 interface CodedRouteError extends Error {
@@ -176,12 +178,13 @@ export class CliBridge {
   private server: http.Server | null = null;
   private port: number | null = null;
   private token: string | null = null;
+  private readToken: string | null = null;
   private readonly bridgeFilePath: string;
   private readonly routes: RouteEntry[];
 
-  constructor(operations: CliBridgeOperations) {
+  constructor(operations: CliBridgeOperations, userData: string) {
     this.ops = operations;
-    this.bridgeFilePath = getBridgeFilePath();
+    this.bridgeFilePath = getBridgeFilePath(userData);
     this.routes = this._buildRouteTable();
   }
 
@@ -189,6 +192,7 @@ export class CliBridge {
     if (this.server) return;
 
     this.token = crypto.randomBytes(32).toString("hex");
+    this.readToken = crypto.randomBytes(32).toString("hex");
     this.port = await findPortInRange();
     const server = this.server = http.createServer((req, res) => {
       this._handleRequest(req, res).catch((err) => {
@@ -228,6 +232,7 @@ export class CliBridge {
     this.server = null;
     this.port = null;
     this.token = null;
+    this.readToken = null;
     this._removeBridgeFile();
     debugLogger.info("CLI bridge stopped", {}, "cli-bridge");
   }
@@ -238,7 +243,7 @@ export class CliBridge {
     const payload = JSON.stringify({
       version: BRIDGE_FILE_VERSION,
       port: this.port,
-      token: this.token,
+      token: this.readToken,
     });
     fs.writeFileSync(this.bridgeFilePath, payload, { mode: 0o600 });
     // Re-apply mode in case the filesystem ignored the mode arg on create.
@@ -268,11 +273,13 @@ export class CliBridge {
     }
 
     const auth = req.headers["authorization"] || "";
-    const expected = `Bearer ${this.token}`;
-    if (
-      auth.length !== expected.length ||
-      !crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(expected))
-    ) {
+    const authenticated = (token: string | null) => {
+      const expected = `Bearer ${token}`;
+      return token !== null && auth.length === expected.length &&
+        crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(expected));
+    };
+    const writeAccess = authenticated(this.token);
+    if (!writeAccess && !authenticated(this.readToken)) {
       sendV1Error(res, 401, "unauthorized", "Unauthorized");
       return;
     }
@@ -281,6 +288,14 @@ export class CliBridge {
     const route = this._matchRoute(req.method, url.pathname);
     if (!route) {
       sendV1Error(res, 404, "not_found", "Not found");
+      return;
+    }
+    const readRoute = req.method === "GET" && (
+      url.pathname === "/v1/health" || url.pathname === "/v1/notes" || url.pathname === "/v1/notes/search" ||
+      /^\/v1\/notes\/\d+(?:\/(?:content|summary|transcript))?$/.test(url.pathname)
+    );
+    if (!writeAccess && !readRoute) {
+      sendV1Error(res, 403, "read_only", "Read-only token cannot access this route");
       return;
     }
 
@@ -308,6 +323,14 @@ export class CliBridge {
   }
 
   _sendError(res: http.ServerResponse, err: CodedRouteError): void {
+    if (err.code === "NOTE_NOT_FOUND") {
+      sendV1Error(res, 404, "note_not_found", err.message);
+      return;
+    }
+    if (err instanceof NoteReadError) {
+      sendV1Error(res, 400, err.code, err.message);
+      return;
+    }
     if (err.code === "NOT_FOUND") {
       sendV1Error(res, 404, "not_found", err.message);
       return;
@@ -368,6 +391,30 @@ export class CliBridge {
 
     const db = this.ops.databaseManager;
     const ipc = this.ops;
+    const reader = this.ops.noteReadService;
+    const requireReader = () => {
+      if (!reader) throw routeError("Note reader unavailable", "UNAVAILABLE");
+      return reader;
+    };
+    const scope = (query: URLSearchParams) => {
+      const from = query.get("from") ?? undefined;
+      const to = query.get("to") ?? undefined;
+      if ([from, to].some((date) => date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        Number.isNaN(Date.parse(`${date}T00:00:00Z`)) ||
+        new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date))) {
+        throw routeError("Dates must use YYYY-MM-DD", "VALIDATION");
+      }
+      if (from && to && from > to) throw routeError("'from' must be before 'to'", "VALIDATION");
+      const rawNote = query.get("note");
+      const note = rawNote === null ? undefined : Number(rawNote);
+      if (note !== undefined && (!Number.isSafeInteger(note) || note < 1)) throw routeError("Invalid note id", "VALIDATION");
+      return { from, to, note };
+    };
+    const requireNote = (id: number): NoteRow => {
+      const note = db.getNote(id);
+      if (!note) throw routeError(`Note ${id} not found`, "NOTE_NOT_FOUND");
+      return note;
+    };
 
     const requireId = (params: Record<string, string>, label: string): number => {
       const id = parseIdParam(params.id);
@@ -457,29 +504,34 @@ export class CliBridge {
 
     return [
       exact("GET", "/v1/health", () => ({ data: { ok: true, version: 1 } })),
-      exact("GET", "/v1/notes/list", ({ query }) => {
-        const noteType = query.get("note_type") || null;
-        const limit = query.get("limit") ? Number(query.get("limit")) : 100;
-        const folderId = query.get("folder_id") ? Number(query.get("folder_id")) : null;
-        const notes = db.getNotes(noteType, limit, folderId);
-        return { data: notes, has_more: false, next_cursor: null };
-      }),
+      exact("GET", "/v1/notes", ({ query }) => requireReader().list({ ...scope(query), withTranscript: query.get("with_transcript") === "true" })),
       exact("GET", "/v1/notes/search", ({ query }) => {
         const q = query.get("q") || "";
-        if (!q.trim()) {
-          throw routeError("Search query is required", "VALIDATION");
+        if (!q.trim()) throw routeError("Search query is required", "VALIDATION");
+        return requireReader().search(q, scope(query));
+      }),
+      param("GET", "/v1/notes/", "/content", "id", ({ params }) => {
+        const id = requireId(params, "note");
+        return requireReader().content(requireNote(id));
+      }),
+      param("GET", "/v1/notes/", "/summary", "id", ({ params }) => {
+        const id = requireId(params, "note");
+        return requireReader().summary(requireNote(id));
+      }),
+      param("GET", "/v1/notes/", "/transcript", "id", ({ params, query }) => {
+        const id = requireId(params, "note");
+        requireNote(id);
+        const fromMs = query.has("from_ms") ? Number(query.get("from_ms")) : undefined;
+        const toMs = query.has("to_ms") ? Number(query.get("to_ms")) : undefined;
+        if ([fromMs, toMs].some((n) => n !== undefined && (!Number.isSafeInteger(n) || n < 0)) ||
+            (fromMs !== undefined && toMs !== undefined && fromMs >= toMs)) {
+          throw routeError("Invalid transcript interval", "VALIDATION");
         }
-        const limit = query.get("limit") ? Number(query.get("limit")) : 20;
-        const notes = db.searchNotes(q, limit);
-        return { data: notes, has_more: false, next_cursor: null };
+        return requireReader().transcript(id, { fromMs, toMs, speaker: query.get("speaker") ?? undefined });
       }),
       param("GET", "/v1/notes/", "", "id", ({ params }) => {
         const id = requireId(params, "note");
-        const note = db.getNote(id);
-        if (!note) {
-          throw routeError(`Note ${id} not found`, "NOT_FOUND");
-        }
-        return { data: note };
+        return requireReader().show(requireNote(id));
       }),
       exact(
         "POST",

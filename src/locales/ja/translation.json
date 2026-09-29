@@ -676,6 +676,9 @@
   },
   "cleanupPrompt": "クリーンアップ",
   "developerSection": {
+    "installCli": "ノート用CLIをインストール",
+    "cliInstalled": "CLIをインストールしました",
+    "cliInstallFailed": "CLIのインストールに失敗しました",
     "currentLogFile": "現在のログファイル",
     "debugMode": {
       "disabledDescription": "有効にすると詳細な診断情報を記録します",
@@ -2098,6 +2101,8 @@
     "deleteConfirm": "削除"
   },
   "commandSearch": {
+    "searchError": "検索に失敗しました",
+    "searchingTranscripts": "文字起こしを検索中…",
     "allSpaces": "すべてのスペース",
     "title": "検索",
     "description": "ノートと文字起こしを検索",
@@ -2235,6 +2240,8 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "partialTranscript": "このノートの文字起こしは不完全です。",
+    "selectedResultTranscript": "選択した結果の文字起こし",
     "participantsLoadError": "カレンダーの参加者を読み込めませんでした。",
     "linkParticipantsHint": "今後の会議で使用するため、これらの名前をカレンダーの参加者に関連付けてください。",
     "linkParticipant": "参加者に関連付ける",

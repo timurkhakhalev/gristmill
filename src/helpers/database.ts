@@ -932,6 +932,7 @@ export class DatabaseManager {
           speaker_id TEXT NOT NULL,
           profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
           display_name TEXT NOT NULL,
+          participant_email TEXT,
           source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice', 'model', 'user')),
           revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
           PRIMARY KEY (run_id, speaker_id)
@@ -1002,6 +1003,9 @@ export class DatabaseManager {
       }
       if (!speakerCorrectionColumns.some((column) => column.name === "revision")) {
         this.sql.exec("ALTER TABLE meeting_run_speaker_corrections ADD COLUMN revision INTEGER NOT NULL DEFAULT 1");
+      }
+      if (!speakerCorrectionColumns.some((column) => column.name === "participant_email")) {
+        this.sql.exec("ALTER TABLE meeting_run_speaker_corrections ADD COLUMN participant_email TEXT");
       }
       const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{ name: string }>;
       if (!calendarEventColumns.some((column) => column.name === "event_url")) {
@@ -1622,8 +1626,8 @@ export class DatabaseManager {
         .get(run.recordingId) as { note_id: number; current_run_id: string | null } | undefined;
       if (!recording || this.isMeetingNoteDeletionPending(recording.note_id)) return false;
       this.sql.prepare(
-        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, revision) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, source = excluded.source, revision = meeting_run_speaker_corrections.revision + 1"
-      ).run(runId, speakerId, profileId, displayName.trim(), source);
+        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, participant_email, source, revision) VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = excluded.participant_email, source = excluded.source, revision = meeting_run_speaker_corrections.revision + 1"
+      ).run(runId, speakerId, profileId, displayName.trim(), participantEmail?.toLowerCase() ?? null, source);
       if (participantEmail) this.rememberContactName(participantEmail, displayName);
       if (recording.current_run_id === runId) {
         const note = this.sql
@@ -1662,16 +1666,18 @@ export class DatabaseManager {
     speakerId: string;
     profileId: number | null;
     displayName: string;
+    participantEmail: string | null;
     source: "voice" | "model" | "user";
     revision: number;
   }> {
     meetingRecordingIdSchema.parse(runId);
     return (this.sql.prepare(
-      "SELECT speaker_id, profile_id, display_name, source, revision FROM meeting_run_speaker_corrections WHERE run_id = ? ORDER BY speaker_id"
-    ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string; source: "voice" | "model" | "user"; revision: number }>).map((row) => ({
+      "SELECT speaker_id, profile_id, display_name, participant_email, source, revision FROM meeting_run_speaker_corrections WHERE run_id = ? ORDER BY speaker_id"
+    ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string; participant_email: string | null; source: "voice" | "model" | "user"; revision: number }>).map((row) => ({
       speakerId: row.speaker_id,
       profileId: row.profile_id,
       displayName: row.display_name,
+      participantEmail: row.participant_email,
       source: row.source,
       revision: row.revision,
     }));
@@ -2471,6 +2477,17 @@ export class DatabaseManager {
     return (this.sql
       .prepare(`SELECT ${noteColumns("notes")} FROM notes${where} ORDER BY updated_at DESC LIMIT ?`)
       .all(...params, limit) as RawNoteRow[]).map(hydrateNote);
+  }
+
+  listAllNotes(): NoteRow[] {
+    return (this.sql
+      .prepare(`SELECT ${noteColumns("notes")} FROM notes ORDER BY created_at DESC, id DESC`)
+      .all() as RawNoteRow[]).map(hydrateNote);
+  }
+
+  getContactNames(email: string): { display_name: string | null; people_name: string | null; learned_name: string | null } | null {
+    return (this.sql.prepare("SELECT display_name, people_name, learned_name FROM contacts WHERE email = ?")
+      .get(email.toLowerCase()) as { display_name: string | null; people_name: string | null; learned_name: string | null } | undefined) ?? null;
   }
 
   getNotesForSpace(spaceId: number, limit = 50): NoteRow[] {

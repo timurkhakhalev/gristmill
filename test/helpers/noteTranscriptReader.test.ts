@@ -107,7 +107,7 @@ test("overlapping segments are kept in deterministic order and email comes only 
       { speaker: "s1", text: "first", start: 1, end: 3 },
       { speaker: "s3", text: "third", start: 2, end: 4 },
     ] },
-  }, { corrections: { ra: [{ speakerId: "s1", profileId: 7, displayName: "Anna", source: "user", revision: 1 }, { speakerId: "s2", profileId: null, displayName: "Bob", source: "user", revision: 1 }] } }), 42);
+  }, { corrections: { ra: [{ speakerId: "s1", profileId: 7, participantEmail: null, displayName: "Anna", source: "user", revision: 1 }, { speakerId: "s2", profileId: null, participantEmail: null, displayName: "Bob", source: "user", revision: 1 }] } }), 42);
   assert.deepEqual(result.segments.map((s: { text: string }) => s.text), ["first", "second", "third"]);
   const byName = Object.fromEntries(result.speakers.map((s: { name: string | null; email: string | null }) => [s.name, s.email]));
   assert.equal(byName.Anna, "anna@example.org");

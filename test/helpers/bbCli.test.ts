@@ -25,7 +25,7 @@ test("bb tool wrapper authenticates allowlisted routes and rejects external URLs
   t.after(() => new Promise((resolve) => server.close(resolve)));
   writeBbConnection(directory, server.address().port, "test-token");
   const output = await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [script, "GET", "/v1/notes/list"]);
+    const child = spawn(process.execPath, [script, "GET", "/v1/notes"]);
     let stdout = "";
     child.stdout.on("data", (chunk: string | Buffer) => { stdout += String(chunk); });
     child.on("error", reject);
@@ -33,7 +33,7 @@ test("bb tool wrapper authenticates allowlisted routes and rejects external URLs
   });
   assert.deepEqual(JSON.parse(output as string), { notes: [] });
   assert.equal(seenAuthorization, "Bearer test-token");
-  const result = spawnSync(process.execPath, [script, "GET", "//example.com/v1/notes/list"], { encoding: "utf8" });
+  const result = spawnSync(process.execPath, [script, "GET", "//example.com/v1/notes"], { encoding: "utf8" });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Invalid Gristmill tool route/);
   assert.doesNotMatch(result.stderr, /test-token/);

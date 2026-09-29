@@ -17,6 +17,7 @@ import { wasLaunchedAtLoginHidden } from "./src/helpers/autoStart.js";
 import { IPCHandlers } from "./src/helpers/ipcHandlers.js";
 import { CliBridge } from "./src/helpers/cliBridge.js";
 import { writeBbConnection, removeBbConnection } from "./src/helpers/bbWorkspace.js";
+import { NoteReadService } from "./src/helpers/noteReadService.js";
 import { GlobeKeyManager } from "./src/helpers/globeKeyManager.js";
 import { GoogleCalendarManager } from "./src/helpers/googleCalendarManager.js";
 import { MicrosoftCalendarManager } from "./src/helpers/microsoftCalendarManager.js";
@@ -493,6 +494,7 @@ async function startApp(): Promise<void> {
   removeBbConnection(app.getPath("userData"));
   const initializedCliBridge = new CliBridge({
     databaseManager: initializedHandlers.databaseManager,
+    noteReadService: new NoteReadService(initializedHandlers.databaseManager, initializedHandlers.audioStorageManager.meetingRecordings),
     deleteNoteInternal: (id) => initializedHandlers.deleteNoteInternal(id),
     deleteTranscriptionInternal: (id) => initializedHandlers.deleteTranscriptionInternal(id),
     mirrorWriteNote: (note) => initializedHandlers._asyncMirrorWrite(note),
@@ -501,7 +503,7 @@ async function startApp(): Promise<void> {
       initializedHandlers.transcribeLocalFile(filePath, options),
     listLocalTranscriptionModels: () => initializedHandlers.listLocalTranscriptionModels(),
     audioStorageManager: initializedHandlers.audioStorageManager,
-  });
+  }, app.getPath("userData"));
   cliBridge = initializedCliBridge;
   try {
     await initializedCliBridge.start();

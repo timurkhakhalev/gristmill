@@ -72,9 +72,7 @@ export default function NoteRecordControl({
       >
         {!isGeneratingSummary && <Sparkles size={16} className="text-accent" />}
         <span className="@max-[620px]:sr-only">
-          {isGeneratingSummary
-            ? t("notes.editor.generatingSummary", { defaultValue: "Generating summary…" })
-            : t("notes.editor.generateSummary", { defaultValue: "Summary" })}
+          {t("notes.editor.generateSummary", { defaultValue: "Summary" })}
         </span>
       </Button>
     )}

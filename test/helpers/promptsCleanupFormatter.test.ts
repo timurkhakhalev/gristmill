@@ -20,7 +20,7 @@ test("cleanup appends one transcription-language instruction independent of UI l
   assert.doesNotMatch(automatic, /write your entire output in Arabic|entire output in English/i);
 
   const explicit = resolvePrompt("cleanup", { agentName: null, uiLanguage: "ru", language: "en" });
-  assert.match(explicit, /selected transcription language is English \(en\)/);
+  assert.match(explicit, /selected transcription language is en \(en\)/);
   assert.match(explicit, /preserving any other spoken languages/);
   assert.doesNotMatch(explicit, /Russian \(ru\)/);
 });

@@ -109,3 +109,5 @@ packaged runtime before creating installers.
 ## Working name
 
 The project is named **Gristmill**. Its core promise remains preserving original meeting audio and producing reproducible transcripts and notes.
+
+Meeting audio is recorded directly into separate mono Ogg/Opus tracks at 32 kbit/s VBR, complexity 0. Derived WAV inputs are temporary; saved transcripts and provider results remain durable. See [recording storage and migration](docs/opus-recording.md).

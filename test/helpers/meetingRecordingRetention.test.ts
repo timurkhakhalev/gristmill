@@ -1,3 +1,4 @@
+const { savePcmEpoch }: typeof import("../lib/meetingAudioFixture.ts") = require("../lib/meetingAudioFixture.ts");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs: typeof import("node:fs") = require("node:fs");
 const path: typeof import("node:path") = require("node:path");
@@ -22,9 +23,7 @@ function createFinishedRecording(db: Database, storage: RecordingStorage, anchor
   const startedAt = new Date(anchor - (ageDays + 1) * DAY).toISOString();
   const recording = db.createMeetingRecording(note.id, { config }, startedAt);
   db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
-  storage.openEpochWriter(recording.id, "mic", 0);
-  storage.appendEpochSamples(recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
-  storage.closeEpochWriter(recording.id, "mic", 0);
+  savePcmEpoch(storage, recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, storage.recoverEpoch(recording.id, "mic", 0));
   db.markMeetingRecordingFinalizing(recording.id);
   const finalized = db.finalizeMeetingRecording(recording.id, {
@@ -229,7 +228,7 @@ test("expiry uses recording end time and waits for readers before deleting sourc
   assert.equal(db.getMeetingRecording(recording.id).audioState, "deleting");
   assert.equal(fs.existsSync(filePath), true, "the open reader must settle before source removal");
   assert.ok(fs.statSync(filePath).mtimeMs >= anchor - 1);
-  assert.equal(stat.size, 4);
+  assert.ok(stat.size > 4);
   releaseReader();
   assert.equal(await cleanup, true);
   assert.equal(fs.existsSync(filePath), false);

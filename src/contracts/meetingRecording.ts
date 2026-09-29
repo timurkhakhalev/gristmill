@@ -179,10 +179,10 @@ export const meetingRecordingEpochDtoSchema = z.object({
   startFrame: z.number().int().nonnegative(),
   sampleRate: z.literal(24_000),
   channels: z.literal(1),
-  encoding: z.literal("pcm_s16le"),
+  encoding: z.literal("opus"),
   state: z.enum(["open", "finalized", "incomplete"]),
   frameCount: z.number().int().nonnegative(),
-  ignoredTrailingBytes: z.number().int().min(0).max(1),
+  ignoredTrailingBytes: z.number().int().min(0),
   errorCode: z.string().nullable(),
 });
 export type MeetingRecordingEpochDto = z.infer<typeof meetingRecordingEpochDtoSchema>;

@@ -2,9 +2,11 @@
 
 Решение Тимура от 2026-09-23. Заменяет предложения о транскрипции фрагментов во время встречи и локальном черновике. M1–M4 код этой схемы реализован; focused и интеграционная проверка остаются за root. Live mic/system hardware smoke отложен и остаётся непроверенным.
 
+Доработка хранения: [Opus capture и миграция](opus-recording.md).
+
 ## Текущая реализация и проверка
 
-- SQLite хранит `meeting_recordings`, `meeting_recording_epochs`, `meeting_processing_runs`, `meeting_deletion_intents` и `meeting_run_speaker_corrections`; managed files содержат source PCM epochs, derived WAV и per-run JSON results. Пути описаны в [architecture.md](architecture.md).
+- SQLite хранит `meeting_recordings`, `meeting_recording_epochs`, `meeting_processing_runs`, `meeting_deletion_intents` и `meeting_run_speaker_corrections`; managed files содержат source Ogg/Opus epochs (32 kbit/s VBR, complexity 0), temporary derived WAV и per-run JSON results. Пути описаны в [architecture.md](architecture.md).
 - Config snapshot сохраняется до первого audio frame. Во время capture нет ASR/provider calls. Только успешный Stop закрывает tracks, создаёт initial run и сохраняет not-before deadline на 15 секунд. Worker учитывает этот deadline после restart; Pause не ставит задание в очередь, а Resume отменяет pending run прежней group version.
 - После gate формат зависит от сохранённого провайдера: Deepgram получает stereo WAV (mic=0, system=1) с multichannel и диаризацией; ElevenLabs, Gemini и OpenAI — два параллельных запроса (mic без диаризации, system с диаризацией). OpenAI использует `whisper-1` для временных меток mic и `gpt-4o-transcribe-diarize` для system. Local сохраняет mono route. Все входы следуют общей timeline и сохраняют gaps. Raw JSON каждой дорожки сохраняется до normalization; retry не отправляет успешную дорожку повторно. Run/selection проверяются перед claim и ASR.
 - Transcript и Summary — per-run artifacts; `notes.transcript` и `notes.enhanced_content` показывают выбранный run, а ручной `note.content` остаётся отдельным. Source tracks и прошлые артефакты сохраняются при retry и выборе другой версии.
@@ -33,7 +35,7 @@ Root runs these checks sequentially after any focused rerun. Hardware smoke — 
 
 - `pnpm test`: полный набор из 397 файлов прошёл. Проверены параллельные запросы, сохранение успешного источника при ошибке второго, восстановление после restart, запрет смены provider при частично сохранённом ответе и назначение имени из Profile.
 - `pnpm run typecheck`, `pnpm run lint`, `pnpm run build:renderer`: успешно; lint содержит существующие предупреждения, без ошибок.
-- Реальный FFmpeg проверен на сигналах с известными отсчётами: stereo сохраняет mic слева и system справа, отдельные WAV сохраняют offsets, gaps и длительность. Исходные PCM не изменяются.
+- Реальный FFmpeg проверен на сигналах с известными отсчётами: stereo сохраняет mic слева и system справа, отдельные WAV сохраняют offsets, gaps и длительность. Это проверка предыдущей PCM реализации; текущий Opus проверяется по длительности, каналам и наличию сигнала, без побайтового сравнения декодированного звука.
 - Profile и шаг онбординга проверены в изолированном браузере: сохранение имени, восстановление между экранами и пропуск пустого имени.
 - Один и тот же 45-секундный фрагмент сохранённой встречи отправлен в Deepgram Nova-3 в mono и stereo. Новый ответ успешно разобран: 25 слов mic, 88 слов system, два системных спикера, длительность обоих вариантов 44.99994 секунды. Запрос stereo использовал `multichannel=true` и `diarize_model=latest`. Это проверка реального API и разделения источников, не измерение WER или сравнительный benchmark.
 - Живые запросы ElevenLabs/OpenAI/Gemini и новый захват с устройств в этой проверке не выполнялись; их маршруты покрыты тестами с сохранением и разбором provider responses.

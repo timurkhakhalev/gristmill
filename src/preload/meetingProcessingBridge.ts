@@ -13,6 +13,7 @@ import {
   meetingProcessingUpdatedEvent,
   meetingProcessingUpdatedEventSchema,
   meetingRecordingPlaybackRequestSchema,
+  meetingRecordingPlaybackReleaseSchema,
   meetingRecordingPlaybackResponseSchema,
   meetingRecordingExportRequestSchema,
   meetingRecordingExportResponseSchema,
@@ -76,6 +77,12 @@ export function createMeetingProcessingBridge(ipcRenderer: IpcRendererLike): Mee
       const input = meetingRecordingPlaybackRequestSchema.parse({ recordingId, runId });
       return ipcRenderer.invoke(meetingProcessingChannels.getPlaybackPath, input).then((raw) =>
         parse(meetingRecordingPlaybackResponseSchema, raw, meetingProcessingChannels.getPlaybackPath)
+      );
+    },
+    meetingRecordingReleasePlayback(leaseId) {
+      const input = meetingRecordingPlaybackReleaseSchema.parse({ leaseId });
+      return ipcRenderer.invoke(meetingProcessingChannels.releasePlayback, input).then((raw) =>
+        parse(meetingRecordingAudioOperationResponseSchema, raw, meetingProcessingChannels.releasePlayback)
       );
     },
     meetingRecordingExportAudio(input) {

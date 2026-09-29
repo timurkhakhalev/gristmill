@@ -1,6 +1,5 @@
 import type { MeetingAudioLayout } from "./meetingAudioMixer.js";
 import fs from "fs";
-import type { FileHandle } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 import { app } from "electron";
@@ -16,6 +15,8 @@ import {
   type MeetingRunArtifact,
   type MeetingSource,
 } from "../contracts/meetingRecording.js";
+
+import { MeetingOpusWriter, inspectMeetingOpus } from "./meetingOpus.js";
 
 const BYTES_PER_FRAME = 2;
 
@@ -46,7 +47,7 @@ export interface MeetingRecordingPersistence {
     recordingId: string,
     source: MeetingSource,
     epochIndex: number,
-    result: { frameCount: number; ignoredTrailingBytes: 0 | 1; errorCode?: string | null }
+    result: { frameCount: number; ignoredTrailingBytes: number; errorCode?: string | null }
   ): MeetingRecordingEpochDto;
   finalizeMeetingRecording(
     id: string,
@@ -70,7 +71,7 @@ export interface RecoveredEpoch {
   epochIndex: number;
   startFrame: number;
   frameCount: number;
-  ignoredTrailingBytes: 0 | 1;
+  ignoredTrailingBytes: number;
   errorCode: string | null;
 }
 
@@ -81,7 +82,7 @@ export class MeetingRecordingStorage {
   readonly recordingsRoot: string;
   readonly resultsRoot: string;
   private readonly writeSync: WriteSync;
-  private readonly openWriters = new Map<string, { fd: number; recordingId: string }>();
+  private readonly openWriters = new Map<string, { encoder: MeetingOpusWriter; recordingId: string }>();
 
   constructor(options: MeetingRecordingStorageOptions = {}) {
     this.userDataPath = path.resolve(options.userDataPath ?? app.getPath("userData"));
@@ -135,7 +136,13 @@ export class MeetingRecordingStorage {
       const flags = fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | fs.constants.O_APPEND | this.noFollowFlag();
       fd = fs.openSync(filePath, flags, 0o600);
     }
-    this.openWriters.set(key, { fd, recordingId });
+    try {
+      const encoder = new MeetingOpusWriter(fd, (descriptor, page) => writeAllSync(descriptor, page, this.writeSync));
+      this.openWriters.set(key, { encoder, recordingId });
+    } catch (error) {
+      fs.closeSync(fd);
+      throw error;
+    }
   }
 
   appendEpochSamples(
@@ -151,34 +158,29 @@ export class MeetingRecordingStorage {
     const key = `${recordingId}/${source}/${epochIndex}`;
     const writer = this.openWriters.get(key);
     if (!writer) throw new Error("Meeting recording epoch writer is not open");
-    writeAllSync(writer.fd, samples, this.writeSync);
+    writer.encoder.append(Buffer.from(samples));
   }
 
-  closeEpochWriter(recordingId: string, source: MeetingSource, epochIndex: number): void {
+  async closeEpochWriter(recordingId: string, source: MeetingSource, epochIndex: number): Promise<void> {
     const key = `${recordingId}/${source}/${epochIndex}`;
     const writer = this.openWriters.get(key);
     if (!writer) return;
-    this.openWriters.delete(key);
-    let failure: unknown;
-    try {
-      fs.fsyncSync(writer.fd);
-    } catch (error) {
-      failure = error;
-    }
-    try {
-      fs.closeSync(writer.fd);
-    } catch (error) {
-      failure ??= error;
-    }
-    if (failure) throw failure;
+    try { await writer.encoder.close(); } finally { this.openWriters.delete(key); }
   }
 
-  closeRecordingWriters(recordingId: string): void {
+  async closeRecordingWriters(recordingId: string): Promise<void> {
     meetingRecordingIdSchema.parse(recordingId);
-    for (const [key, writer] of this.openWriters) {
-      if (writer.recordingId !== recordingId) continue;
+    const outcomes = await Promise.allSettled([...this.openWriters].filter(([, writer]) => writer.recordingId === recordingId).map(([key]) => {
       const [, source, epochIndex] = key.split("/");
-      this.closeEpochWriter(recordingId, meetingSourceSchema.parse(source), Number(epochIndex));
+      return this.closeEpochWriter(recordingId, meetingSourceSchema.parse(source), Number(epochIndex));
+    }));
+    const failed = outcomes.find((result) => result.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
+  }
+
+  private assertNoWriters(recordingId: string): void {
+    if ([...this.openWriters.values()].some((writer) => writer.recordingId === recordingId)) {
+      throw new Error("Meeting recording still has active audio writers");
     }
   }
 
@@ -193,49 +195,12 @@ export class MeetingRecordingStorage {
     const filePath = this.epochFilePath(recordingId, source, epochIndex);
     try {
       this.assertSafeFile(filePath);
-      const fd = fs.openSync(filePath, fs.constants.O_RDONLY | this.noFollowFlag());
-      try {
-        const stats = fs.fstatSync(fd);
-        if (!stats.isFile()) return { frameCount: 0, ignoredTrailingBytes: 0, errorCode: "invalid-epoch-file" };
-        const validBytes = Math.floor(stats.size / BYTES_PER_FRAME) * BYTES_PER_FRAME;
-        const ignoredTrailingBytes = (stats.size - validBytes) as 0 | 1;
-        if (validBytes === 0) return { frameCount: 0, ignoredTrailingBytes, errorCode: "empty-epoch" };
-        return { frameCount: validBytes / BYTES_PER_FRAME, ignoredTrailingBytes, errorCode: null };
-      } finally {
-        fs.closeSync(fd);
-      }
+      return inspectMeetingOpus(filePath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return { frameCount: 0, ignoredTrailingBytes: 0, errorCode: "missing-epoch" };
       }
       return { frameCount: 0, ignoredTrailingBytes: 0, errorCode: safeErrorCode(error) };
-    }
-  }
-
-  readEpochSamples(recordingId: string, source: MeetingSource, epochIndex: number): Buffer {
-    meetingRecordingIdSchema.parse(recordingId);
-    meetingSourceSchema.parse(source);
-    this.validateEpochIndex(epochIndex);
-    const filePath = this.epochFilePath(recordingId, source, epochIndex);
-    this.assertSafeFile(filePath);
-    const raw = fs.readFileSync(filePath);
-    return raw.subarray(0, Math.floor(raw.length / BYTES_PER_FRAME) * BYTES_PER_FRAME);
-  }
-
-  async openEpochReader(recordingId: string, source: MeetingSource, epochIndex: number): Promise<FileHandle> {
-    meetingRecordingIdSchema.parse(recordingId);
-    meetingSourceSchema.parse(source);
-    this.validateEpochIndex(epochIndex);
-    const filePath = this.epochFilePath(recordingId, source, epochIndex);
-    this.assertSafeFile(filePath);
-    const handle = await fs.promises.open(filePath, fs.constants.O_RDONLY | this.noFollowFlag());
-    try {
-      const stats = await handle.stat();
-      if (!stats.isFile()) throw new Error("Meeting recording audio epoch is not a file");
-      return handle;
-    } catch (error) {
-      await handle.close();
-      throw error;
     }
   }
 
@@ -348,8 +313,29 @@ export class MeetingRecordingStorage {
 
   removeRecordingAudio(recordingId: string): void {
     meetingRecordingIdSchema.parse(recordingId);
-    this.closeRecordingWriters(recordingId);
+    this.assertNoWriters(recordingId);
     this.removeManagedTree(path.join(this.recordingsRoot, recordingId));
+  }
+
+  removeDerivedAudio(recordingId: string, runId: string): void {
+    for (const layout of ["mono", "stereo", "mic", "system"] as const) {
+      meetingRecordingIdSchema.parse(recordingId);
+      meetingRecordingIdSchema.parse(runId);
+      const filePath = path.join(this.recordingsRoot, recordingId, "derived", `${runId}${layout === "mono" ? "" : `-${layout}`}.wav`);
+      this.assertSafeFile(filePath);
+      fs.rmSync(filePath, { force: true });
+    }
+  }
+
+  clearDerivedAudio(): Array<{ id: string; code: string }> {
+    const errors: Array<{ id: string; code: string }> = [];
+    if (!fs.existsSync(this.recordingsRoot)) return errors;
+    for (const id of fs.readdirSync(this.recordingsRoot)) {
+      if (!meetingRecordingIdSchema.safeParse(id).success || !fs.lstatSync(path.join(this.recordingsRoot, id)).isDirectory() || fs.lstatSync(path.join(this.recordingsRoot, id)).isSymbolicLink()) continue;
+      try { this.removeManagedTree(path.join(this.recordingsRoot, id, "derived")); }
+      catch { errors.push({ id, code: "derived-cleanup-failed" }); }
+    }
+    return errors;
   }
 
   removeRunFiles(recordingId: string, runId: string): void {
@@ -366,7 +352,7 @@ export class MeetingRecordingStorage {
   removeNoteFiles(recordingIds: string[], runIds: string[]): void {
     for (const recordingId of recordingIds) {
       meetingRecordingIdSchema.parse(recordingId);
-      this.closeRecordingWriters(recordingId);
+      this.assertNoWriters(recordingId);
       this.removeManagedTree(path.join(this.recordingsRoot, recordingId));
     }
     for (const runId of runIds) {
@@ -382,12 +368,13 @@ export class MeetingRecordingStorage {
     errors: Array<{ id: string; code: string }>;
   } {
     const result = { recovered: [] as RecoveredEpoch[], finalized: [] as string[], deleted: [] as string[], errors: [] as Array<{ id: string; code: string }> };
+    result.errors.push(...this.clearDerivedAudio());
     this.processDeletionIntents(database, result.deleted, result.errors);
     this.reconcileRunArtifacts(database, result.errors);
 
     for (const recording of database.listOpenMeetingRecordings()) {
       if (recording.audioState !== "available") continue;
-      this.closeRecordingWriters(recording.id);
+      this.assertNoWriters(recording.id);
       const epochs = database.listMeetingRecordingEpochs(recording.id);
       const recovered: RecoveredEpoch[] = [];
       for (const epoch of epochs) {
@@ -489,7 +476,7 @@ export class MeetingRecordingStorage {
       this.recordingsRoot,
       recordingId,
       source,
-      `epoch-${String(epochIndex).padStart(6, "0")}.pcm`
+      `epoch-${String(epochIndex).padStart(6, "0")}.opus`
     );
     this.assertWithinUserData(filePath);
     return filePath;

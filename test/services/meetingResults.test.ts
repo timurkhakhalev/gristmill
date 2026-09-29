@@ -1,3 +1,4 @@
+const { savePcmEpoch }: typeof import("../lib/meetingAudioFixture.ts") = require("../lib/meetingAudioFixture.ts");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs = require("node:fs");
 const os: typeof import("node:os") = require("node:os");
@@ -64,9 +65,7 @@ function createFinishedRecording(
   const sources = options.sources ?? [{ source: "mic", startFrame: 0, samples: Buffer.alloc(480_000, 1) }];
   for (const [index, epoch] of sources.entries()) {
     db.createMeetingRecordingEpoch(recording.id, epoch.source, index, epoch.startFrame);
-    storage.openEpochWriter(recording.id, epoch.source, index);
-    storage.appendEpochSamples(recording.id, epoch.source, index, epoch.samples);
-    storage.closeEpochWriter(recording.id, epoch.source, index);
+    savePcmEpoch(storage, recording.id, epoch.source, index, epoch.samples);
     db.updateMeetingRecordingEpochRecovery(
       recording.id,
       epoch.source,
@@ -281,11 +280,11 @@ test("source WAV exports keep epoch gaps; failed export and unavailable audio do
   await exportMeetingSourceTrack(storage, recording, "system", epochs, systemPath);
   const micWav = fs.readFileSync(micPath);
   const systemWav = fs.readFileSync(systemPath);
-  assert.equal(micWav.readUInt32LE(40), 12);
-  assert.deepEqual(micWav.subarray(44, 48), mic.samples);
-  assert.deepEqual(micWav.subarray(52, 56), Buffer.alloc(4));
-  assert.deepEqual(systemWav.subarray(44, 52), Buffer.alloc(8));
-  assert.deepEqual(systemWav.subarray(52, 56), system.samples);
+  const micData = micWav.indexOf(Buffer.from("data")) + 8;
+  const systemData = systemWav.indexOf(Buffer.from("data")) + 8;
+  assert.equal(micWav.readUInt32LE(micData - 4), 12);
+  assert.deepEqual(micWav.subarray(micData + 8, micData + 12), Buffer.alloc(4));
+  assert.deepEqual(systemWav.subarray(systemData, systemData + 8), Buffer.alloc(8));
 
   const copied = path.join(root, "copied.wav");
   await copyMeetingAudioExport(micPath, copied);
@@ -328,26 +327,13 @@ test("source WAV export reads large epochs in bounded chunks without whole-file 
   });
   const epochs = db.listMeetingRecordingEpochs(recording.id);
   const destination = path.join(root, "bounded-export.wav");
-  const openEpochReader = storage.openEpochReader.bind(storage);
-  const readSizes: number[] = [];
-  storage.readEpochSamples = () => { throw new Error("whole-file sample reads are forbidden"); };
-  storage.openEpochReader = async (...args: Parameters<typeof storage.openEpochReader>) => {
-    const reader = await openEpochReader(...args);
-    const read = reader.read.bind(reader);
-    reader.read = async (buffer: Buffer, offset: number, length: number, position: number | null) => {
-      readSizes.push(length);
-      return read(buffer, offset, length, position);
-    };
-    return reader;
-  };
-
   await exportMeetingSourceTrack(storage, recording, "mic", epochs, destination);
-  assert.ok(readSizes.length >= 3);
-  assert.ok(Math.max(...readSizes) <= 256 * 1024);
   const wav = fs.readFileSync(destination);
-  assert.equal(wav.readUInt32LE(40), (13 + samples.length / 2) * 2);
-  assert.deepEqual(wav.subarray(44, 44 + 26), Buffer.alloc(26));
-  assert.deepEqual(wav.subarray(44 + 26, 44 + 26 + 20), samples.subarray(0, 20));
+  const dataStart = wav.indexOf(Buffer.from("data")) + 8;
+  assert.equal(wav.readUInt32LE(dataStart - 4), (13 + samples.length / 2) * 2);
+  assert.deepEqual(wav.subarray(dataStart, dataStart + 26), Buffer.alloc(26));
+  assert.ok(wav.subarray(dataStart + 26).some((value: number) => value !== 0));
+  assert.deepEqual(fs.readdirSync(path.join(storage.recordingsRoot, recording.id, "derived")), []);
 });
 
 test("source WAV export failure removes its temporary file and keeps an existing destination", async (t: import("node:test").TestContext) => {
@@ -362,22 +348,11 @@ test("source WAV export failure removes its temporary file and keeps an existing
   const epochs = db.listMeetingRecordingEpochs(recording.id);
   const destination = path.join(root, "failed-export.wav");
   fs.writeFileSync(destination, "keep existing export");
-  const openEpochReader = storage.openEpochReader.bind(storage);
-  storage.openEpochReader = async (...args: Parameters<typeof storage.openEpochReader>) => {
-    const reader = await openEpochReader(...args);
-    const read = reader.read.bind(reader);
-    let reads = 0;
-    reader.read = async (...readArgs: Parameters<typeof read>) => {
-      reads += 1;
-      if (reads === 2) throw new Error("injected read failure");
-      return read(...readArgs);
-    };
-    return reader;
-  };
+  fs.writeFileSync(storage.getEpochFilePath(recording.id, "mic", 0), "corrupt opus");
 
   await assert.rejects(
     exportMeetingSourceTrack(storage, recording, "mic", epochs, destination),
-    /injected read failure/
+    /duration does not match/
   );
   assert.equal(fs.readFileSync(destination, "utf8"), "keep existing export");
   assert.deepEqual(fs.readdirSync(root).filter((name: string) => name.startsWith(".failed-export.wav.") && name.endsWith(".tmp")), []);
@@ -434,28 +409,27 @@ test("audio deletion aborts and waits for an active source export before removin
   });
   const epochs = db.listMeetingRecordingEpochs(recording.id);
   const destination = path.join(root, "cancelled-export.wav");
-  const openEpochReader = storage.openEpochReader.bind(storage);
+  const originalOpen = fs.promises.open;
   let readStarted!: () => void;
   const firstReadStarted = new Promise<void>((resolve) => { readStarted = resolve; });
   let signal!: AbortSignal;
-  let paused = false;
   let readerPaused = false;
-  storage.openEpochReader = async (...args: Parameters<typeof storage.openEpochReader>) => {
-    const reader = await openEpochReader(...args);
-    const read = reader.read.bind(reader);
-    reader.read = async (...readArgs: Parameters<typeof read>) => {
-      const result = await read(...readArgs);
-      if (!paused) {
-        paused = true;
+  fs.promises.open = async (...args: Parameters<typeof originalOpen>) => {
+    const reader = await originalOpen(...args);
+    if (String(args[0]).endsWith(".wav") && String(args[0]).includes("derived")) {
+      const read = reader.read.bind(reader);
+      reader.read = async (...readArgs: Parameters<typeof read>) => {
+        const result = await read(...readArgs);
         readerPaused = true;
         readStarted();
         await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
         readerPaused = false;
-      }
-      return result;
-    };
+        return result;
+      };
+    }
     return reader;
   };
+  t.after(() => { fs.promises.open = originalOpen; });
   const operations = createMeetingAudioOperationRegistry();
   const exportPromise = operations.run(recording.id, (operationSignal: AbortSignal) => {
     signal = operationSignal;

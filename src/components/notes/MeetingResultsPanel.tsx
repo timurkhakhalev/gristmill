@@ -212,6 +212,18 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   }, [noteId, previewRecordings, speakerId, notify, t]);
   const [profiles, setProfiles] = useState<Array<{ id: number; display_name: string }>>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const playbackLease = useRef<string | null>(null);
+  const playbackRequest = useRef(0);
+  const releasePlayback = useCallback(() => {
+    const lease = playbackLease.current;
+    playbackLease.current = null;
+    if (lease) void window.electronAPI.meetingRecordingReleasePlayback(lease).catch(() => {});
+  }, []);
+  useEffect(() => () => {
+    playbackRequest.current++;
+    audioRef.current?.pause();
+    releasePlayback();
+  }, [noteId, releasePlayback]);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
@@ -223,13 +235,15 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     if (!audio) return;
     const onTime = () => { if (!isSeeking) setPlaybackTime(audio.currentTime); };
     const onMeta = () => setPlaybackDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
-    const onEnd = () => { setPlaybackTime(0); setPlayingId(null); setIsPlaying(false); };
+    const onEnd = () => { releasePlayback(); setPlaybackTime(0); setPlayingId(null); setIsPlaying(false); };
+    const onError = () => { releasePlayback(); setPlayingId(null); setIsPlaying(false); };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onMeta);
     audio.addEventListener("durationchange", onMeta);
     audio.addEventListener("ended", onEnd);
+    audio.addEventListener("error", onError);
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
     return () => {
@@ -237,10 +251,11 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       audio.removeEventListener("loadedmetadata", onMeta);
       audio.removeEventListener("durationchange", onMeta);
       audio.removeEventListener("ended", onEnd);
+      audio.removeEventListener("error", onError);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
     };
-  }, [isSeeking]);
+  }, [isSeeking, releasePlayback]);
 
   // timeupdate fires only ~4 times a second; drive the thumb per frame while playing.
   useEffect(() => {
@@ -511,8 +526,16 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     if (playingId === id && audioRef.current && seek === 0) { togglePlay(); return; }
     if (previewRecordings) { setPlaybackTime(seek); setPlayingId(id); setIsPlaying(true); return; }
     if (!recordings.some((item) => item.recording.id === id && item.recording.audioState === "available")) return;
+    const request = ++playbackRequest.current;
     const path = await window.electronAPI.meetingRecordingGetPlaybackPath(id);
+    if (request !== playbackRequest.current) {
+      if (path.leaseId) void window.electronAPI.meetingRecordingReleasePlayback(path.leaseId);
+      return;
+    }
     if (!path.success || !path.path) { notify(path.error || t("meetingResults.playbackError"), "destructive"); return; }
+    audioRef.current?.pause();
+    releasePlayback();
+    playbackLease.current = path.leaseId ?? null;
     const url = new URL(path.path, "file://").href;
     if (audioRef.current) {
       if (audioUrl !== url) {
@@ -525,9 +548,17 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           audioRef.current?.addEventListener("error", () => resolve(), { once: true });
         });
       }
+      if (request !== playbackRequest.current) return;
       audioRef.current.currentTime = seek;
-      await audioRef.current.play().catch(() => notify(t("meetingResults.playbackError"), "destructive"));
-      setPlayingId(id); setAudioUrl(url);
+      try { await audioRef.current.play(); }
+      catch {
+        if (request === playbackRequest.current) {
+          releasePlayback();
+          notify(t("meetingResults.playbackError"), "destructive");
+        }
+        return;
+      }
+      if (request === playbackRequest.current) { setPlayingId(id); setAudioUrl(url); }
     }
   };
 
@@ -588,7 +619,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       title: t("meetingResults.deleteAudioTitle"), description: t("meetingResults.deleteAudioDescription"),
       confirmText: t("meetingResults.deleteAudioConfirm"), variant: "destructive",
       onConfirm: () => void runTask(async () => {
-        audioRef.current?.pause(); setPlayingId(null); setIsPlaying(false);
+        audioRef.current?.pause(); releasePlayback(); setPlayingId(null); setIsPlaying(false);
         if (previewRecordings) { setRecordings((items) => items.map((item) => item.recording.id === id ? { ...item, recording: { ...item.recording, audioState: "deleted" } } : item)); return; }
         const result = await window.electronAPI.meetingRecordingDeleteAudio(id);
         if (!result.success) throw new Error(result.error || t("meetingResults.deleteError"));

@@ -41,7 +41,7 @@ full-suite triggers, runtime isolation and required verification evidence.
 Preserve these invariants when changing capture or processing. Automated tests
 do not replace live hardware verification; see `docs/record-then-process.md`.
 
-- The original microphone and system tracks are the source of truth.
+- Original microphone and system Ogg/Opus tracks (32 kbit/s VBR, complexity 0) are the source of truth; capture PCM stays in memory.
 - Capture must not depend on network access or a model provider.
 - Never silently fall back from dual-track capture to an apparently complete mic-only meeting.
 - Do not delete or overwrite raw audio or previous processing artifacts during retry.

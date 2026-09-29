@@ -175,9 +175,9 @@ M1 → verify M1 → M2 contract sync/implementation/verification → M3 contrac
 
 | Milestone | Status | Commits |
 | --- | --- | --- |
-| M1 — Durable end-of-meeting gate | not started | |
-| M2 — Speaker names and main Summary | not started | |
-| M3 — Tasks, Recap, Follow-up and formatter | not started | |
-| M4 — Integrated journeys and documentation | not started | |
-| Reviewer | not started | |
+| M1 — Durable end-of-meeting gate | done | `49d8e48c6`, `a51f0d71d`, `5ec61f8d5`, `256e62d90`, `ef9649b92`, `c329e9330`, `16421a5bc`, `73818b264`, `901a1a3c7`, `153133af7`, `a0226e46d`, `a2828a925`, `3c6b80954`, `576c7202b` |
+| M2 — Speaker names and main Summary | done | `394f19c63`, `54dcc96fe`, `1d2563337`, `e8ae4e6ea`, `2ba71bd87`, `abeba8f7a`, `6c7ec570c`, `2e1b17d85` |
+| M3 — Tasks, Recap, Follow-up and formatter | done | `2e0cdb78a`, `6413c6434`, `353598a08`, `0967952a6`, `e0487ce3c`, `8333a93a6` |
+| M4 — Integrated journeys and documentation | done | `9a14da5c5`, `52a9d2ba1`, `2f9a8c2f0`, `b113ef8bf`, `16df60571` |
+| Reviewer | in progress | |
 | Code Reviewer | not started | |

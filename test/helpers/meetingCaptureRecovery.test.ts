@@ -268,6 +268,22 @@ test("write queue waits for delayed disk acknowledgement and rejects late packet
   assert.equal(queue.unacknowledgedFrames, 0);
 });
 
+test("default capture queue preserves audio through a one-second write backlog", async () => {
+  const writeGate = deferred();
+  const failures: string[] = [];
+  const queue = new MeetingCaptureWriteQueue({
+    write: () => writeGate.promise,
+    onFailure: (error: Error) => failures.push(error.message),
+  });
+  const first = queue.write(Buffer.from([1]), 24_000);
+  const second = queue.write(Buffer.from([2]), 24_000);
+  assert.equal(queue.unacknowledgedFrames, 48_000);
+  writeGate.resolve();
+  await Promise.all([first, second, queue.drain()]);
+  assert.equal(queue.unacknowledgedFrames, 0);
+  assert.deepEqual(failures, []);
+});
+
 test("write queue stops at its PCM backlog limit and surfaces delayed writer failure", async () => {
   const writeGate = deferred();
   const failures: unknown[] = [];
@@ -279,8 +295,8 @@ test("write queue stops at its PCM backlog limit and surfaces delayed writer fai
   });
   const first = queue.write(Buffer.from([1]), 2);
   await new Promise(setImmediate);
-  await assert.rejects(queue.write(Buffer.from([2]), 1), /500 ms/);
-  await assert.rejects(first, /500 ms/);
-  await assert.rejects(queue.drain(), /500 ms/);
-  assert.deepEqual(failures, ["Meeting capture exceeded the 500 ms write backlog"]);
+  await assert.rejects(queue.write(Buffer.from([2]), 1), /5000 ms/);
+  await assert.rejects(first, /5000 ms/);
+  await assert.rejects(queue.drain(), /5000 ms/);
+  assert.deepEqual(failures, ["Meeting capture exceeded the 5000 ms write backlog"]);
 });

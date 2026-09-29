@@ -140,6 +140,8 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     meetingProcessingListForNote: async () => ({ success: true, recordings: listedItems }),
     onMeetingProcessingUpdated: () => () => {},
     getSpeakerProfiles: async () => [],
+    getNote: async () => ({ participants: JSON.stringify([{ email: "person@example.com" }]) }),
+    getContactProfiles: async () => [],
     getActions: async () => [{
       id: 1,
       name: "Detailed Notes",
@@ -675,4 +677,19 @@ test("calendar participant naming error stays visible with the completed Summary
   assert.match(ui.text(), /Stored calendar participant data is invalid/);
   assert.match(ui.text(), /Automatic speaker naming was skipped/);
   assert.match(ui.text(), /Release on Friday/);
+});
+
+
+test("a recognized speaker can be linked to an email-only calendar participant from the transcript", async (t: TestContext) => {
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", completeRun())]);
+  await ui.showTranscriptTab();
+  assert.match(ui.text(), /Remember these names for future meetings/);
+  await ui.clickRenderedButton(["Alice · Link participant"]);
+  const choice = findNode(ui.tree(), (node) => node.props?.label === "Remember name for calendar participant");
+  assert.ok(choice);
+  const options = choice.props?.options as Array<{ id: string; label: string }>;
+  assert.ok(options.some((option) => option.id === "person@example.com"));
+  await ui.flush(() => (choice.props as { onChange(value: string): void }).onChange("person@example.com"));
+  await ui.saveSpeaker();
+  assert.deepEqual(ui.calls.speaker, [{ runId: RUN, speakerId: "speaker-1", displayName: "Alice", profileId: null, participantEmail: "person@example.com" }]);
 });

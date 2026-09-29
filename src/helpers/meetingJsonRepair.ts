@@ -26,7 +26,7 @@ export async function requestMeetingJson<T>(input: {
   throw codedError(input.invalidCode);
 }
 
-function looksLikeRefusal(text: string): boolean {
+export function looksLikeRefusal(text: string): boolean {
   return /^\s*(?:i\s+(?:cannot|can't|won't|am unable to)|sorry,?\s+i\s+(?:cannot|can't|am unable to)|as an ai\b)/i.test(text);
 }
 

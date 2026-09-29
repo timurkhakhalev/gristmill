@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import { getSettings } from "./settingsStore";
 import { snapshotMeetingRecordingConfig } from "../helpers/meetingRecordingConfigSnapshot";
-import { MeetingCaptureWriteQueue } from "../helpers/meetingCaptureWriteQueue";
+import {
+  MeetingCaptureWriteQueue,
+  MAX_UNACKNOWLEDGED_CAPTURE_FRAMES,
+  MAX_CAPTURE_ACK_AGE_MS,
+} from "../helpers/meetingCaptureWriteQueue";
 import { frameOffsetFromSessionOrigin } from "../utils/meetingAudioFrameOffset";
 import { followsSystemDefaultMic } from "../helpers/micSelectionRecovery";
 import { resolvePreferredMicrophone } from "../helpers/microphoneSelection";
@@ -104,8 +108,7 @@ interface MeetingRecordingState {
 }
 
 const MEETING_AUDIO_BUFFER_SIZE = 2400;
-const MEETING_CAPTURE_DRAIN_TIMEOUT_MS = 5000;
-const MEETING_CAPTURE_MAX_UNACKNOWLEDGED_FRAMES = 24_000 / 2;
+const MEETING_CAPTURE_DRAIN_TIMEOUT_MS = 15000;
 const MEETING_MIC_PRIMARY_AUDIO_CONSTRAINTS = {
   echoCancellation: false,
   noiseSuppression: false,
@@ -218,7 +221,8 @@ const getMeetingWorkletBlobUrl = (() => {
     const code = `
 const BUFFER_SIZE = ${MEETING_AUDIO_BUFFER_SIZE};
 const SAMPLE_RATE = 24000;
-const MAX_PENDING_FRAMES = ${MEETING_CAPTURE_MAX_UNACKNOWLEDGED_FRAMES};
+const MAX_PENDING_FRAMES = ${MAX_UNACKNOWLEDGED_CAPTURE_FRAMES};
+const MAX_ACK_AGE_FRAMES = SAMPLE_RATE * ${MAX_CAPTURE_ACK_AGE_MS} / 1000;
 class MeetingPCMProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -271,7 +275,7 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
   process(inputs) {
     if (this._stopped) return false;
     const firstPending = this._unacked.keys().next().value;
-    if (firstPending !== undefined && currentFrame - this._unacked.get(firstPending).frame >= SAMPLE_RATE) {
+    if (firstPending !== undefined && currentFrame - this._unacked.get(firstPending).frame >= MAX_ACK_AGE_FRAMES) {
       this._fail("capture-ack-timeout");
       return false;
     }

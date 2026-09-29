@@ -91,11 +91,12 @@ function longTranscriptResponse(length = 2500, prefix = "") {
 function parseSummaryInput(value: string) {
   assert.doesNotMatch(value, /"speakerId":|"speakerName":|"id":/);
   const title = value.split("Meeting title (topic hint):\n")[1].split("\n\nManual notes:")[0];
-  const manualNotes = value.split("Manual notes:\n")[1].split("\n\nTranscript:")[0];
-  const transcriptSegments = value.split("Transcript:\n")[1].split("\n\n---\n\n").map((turn) => {
+  const manualNotes = value.split("Manual notes:\n")[1].split("\n\nAccepted speaker identities")[0];
+  const names = new Map([...value.matchAll(/^(Speaker \d+) = (.*?) \(/gm)].map((match) => [match[1], match[2] === "Unknown name" ? null : match[2]]));
+  const transcriptSegments = value.split("<transcript>\n")[1].split("\n</transcript>")[0].split("\n\n---\n\n").map((turn) => {
     const colon = turn.indexOf(': "');
-    const labels = turn.slice(0, colon).split(" || ");
-    return { speakerId: labels.at(-1), speakerName: labels.length > 1 ? labels[0] : null, text: turn.slice(colon + 3, -1) };
+    const speakerId = turn.slice(0, colon).replace(/ \[.*\]$/, "");
+    return { speakerId, speakerName: names.get(speakerId) ?? null, text: turn.slice(colon + 3, -1) };
   });
   return { meetingTitle: title, manualNotes, transcriptSegments };
 }
@@ -273,7 +274,7 @@ test("waits for retention and capture to finish, then persists the response, tra
     meetingTitle: note.title,
     manualNotes: "  Manual note first.  \n",
     transcriptSegments: [{
-      speakerId: "system:Speaker 1", speakerName: null, text: "x".repeat(2500),
+      speakerId: "Speaker 1", speakerName: null, text: "x".repeat(2500),
     }],
   });
   const summaryArtifact = storage.readRunArtifact(run.id, "summary");
@@ -735,7 +736,7 @@ test("viewing old transcript leaves a pending current run and Note projection in
   assert.equal(db.getMeetingProcessingRun(pendingRun.id).status, "complete");
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, pendingRun.id);
   assert.match(newProjection.transcript, /New saved transcript/);
-  assert.equal(newProjection.enhanced_content, null, "an existing meeting Summary prevents a second automatic Summary");
+  assert.equal(newProjection.enhanced_content, "Summary from new run", "reprocessing creates a new Summary even when the same audio already has one");
   assert.equal(newProjection.content, oldProjection.content);
   assert.equal(summaryCalls, 1);
 
@@ -925,16 +926,16 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
       { name: null, email: "bob@example.com" },
     ],
     segments: [
-      { id: `${sourceRun.id}:0`, speakerId: "speaker_a", speakerName: null, text: "I am Alice and I will check the release." },
-      { id: `${sourceRun.id}:1`, speakerId: "speaker_b", speakerName: null, text: "I agree with Alice." },
+      { id: `${sourceRun.id}:0`, speakerId: "speaker_a", speakerName: null, start: 0, text: "I am Alice and I will check the release." },
+      { id: `${sourceRun.id}:1`, speakerId: "speaker_b", speakerName: null, start: 1, text: "I agree with Alice." },
     ],
   });
   assert.deepEqual(parseSummaryInput(summaryInput), {
     meetingTitle: "Meeting",
     manualNotes: "Manual note evidence.",
     transcriptSegments: [
-      { speakerId: "speaker_a", speakerName: "User correction", text: "I am Alice and I will check the release." },
-      { speakerId: "speaker_b", speakerName: null, text: "I agree with Alice." },
+      { speakerId: "Speaker 1", speakerName: "User correction", text: "I am Alice and I will check the release." },
+      { speakerId: "Speaker 2", speakerName: null, text: "I agree with Alice." },
     ],
   });
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(sourceRun.id), [{
@@ -1035,7 +1036,7 @@ test("validated speaker names persist model provenance and both Summary stages u
 
   assert.equal(namingInputs.length, 1);
   assert.deepEqual(parseSummaryInput(summaryInput).transcriptSegments, [{
-    speakerId: "speaker_0", speakerName: "Alice", text: "Alice introduces herself.",
+    speakerId: "Speaker 1", speakerName: "Alice", text: "Alice introduces herself.",
   }]);
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(sourceRun.id), [{
     speakerId: "speaker_0", profileId: null, displayName: "Alice", source: "model", revision: 1,
@@ -1133,7 +1134,7 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
           taskInput = input;
           resolveTaskStarted();
           await taskGate;
-          return { text: JSON.stringify({ HIGH: ["Ship the release"], MEDIUM: [], LOW: [] }), refusal: false };
+          return { text: "### HIGH\n- Ship the release", refusal: false };
         }
         assert.equal(instruction, "Editable recap prompt");
         recapInput = input;
@@ -1156,7 +1157,7 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
   const recapResult = await worker.runSummaryAction({ runId: run.id, action: "recap" });
   assert.deepEqual(recapResult, { success: true });
   assert.match(recapInput, /Saved summary \(verify against source\):/);
-  assert.match(recapInput, /Transcript:/);
+  assert.match(recapInput, /<transcript>/);
   assert.doesNotMatch(recapInput, /alice@example\.com|generationDate/i);
   const withRecap = storage.readRunArtifact(run.id, "summary");
   assert.match(withRecap.text, /## Recap/);
@@ -1209,7 +1210,7 @@ test("BB task and Recap turns on one saved run stay sequential", async (t: impor
           actionOrder.push("tasks");
           resolveTaskStarted();
           await taskGate;
-          return { text: JSON.stringify({ HIGH: ["Ship the release"], MEDIUM: [], LOW: [] }), refusal: false };
+          return { text: "### HIGH\n- Ship the release", refusal: false };
         }
         assert.equal(instruction, "Editable recap prompt");
         actionOrder.push("recap");
@@ -1254,7 +1255,7 @@ test("task application preserves a concurrent Action Items edit and exposes a re
       send: async () => {
         resolveTaskStarted();
         await taskGate;
-        return { text: JSON.stringify({ HIGH: ["New task"], MEDIUM: [], LOW: [] }), refusal: false };
+        return { text: "### HIGH\n- New task", refusal: false };
       },
     }),
   });
@@ -1293,7 +1294,7 @@ test("task application conflicts when a concurrent heading changes the Action It
       send: async () => {
         resolveTaskStarted();
         await taskGate;
-        return { text: JSON.stringify({ HIGH: ["New task"], MEDIUM: [], LOW: [] }), refusal: false };
+        return { text: "### HIGH\n- New task", refusal: false };
       },
     }),
   });
@@ -2081,3 +2082,109 @@ test("retry normalizes a saved Deepgram response whose last word ends after the 
   assert.equal(storage.readRunArtifact(run.id, "transcript").segments[1].end, 1);
   assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), raw);
 });
+
+
+test("speaker-to-calendar linking crosses IPC, survives restart and enriches only later candidate names", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, recording, run } = createFinishedRecording(db, storage);
+  db.updateNote(note.id, { participants: JSON.stringify([{ email: " PERSON@example.com " }]) });
+  db.upsertGooglePeople([{ email: "person@example.com", displayName: "Google name", photoUrl: "https://example.com/photo.jpg" }]);
+  saveTranscriptArtifact(db, storage, run.id, "I am Maya.", "system:A");
+  const worker = workerFor(db, storage);
+  t.after(() => worker.stop());
+  const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+  registerMeetingProcessingHandlers({ handle: (channel, handler) => handlers.set(channel, handler) }, worker);
+  const bridge = createMeetingProcessingBridge({ invoke: async (channel, ...args) => handlers.get(channel)!(null, ...args), on: () => {}, removeListener: () => {} });
+  const correction = { runId: run.id, speakerId: "system:A", displayName: "Maya Solano", profileId: null };
+  assert.equal((await bridge.meetingProcessingSetSpeakerCorrection({ ...correction, participantEmail: "stranger@example.com" })).success, false);
+  assert.equal((await bridge.meetingProcessingSetSpeakerCorrection({ ...correction, speakerId: "missing", participantEmail: "person@example.com" })).success, false);
+  assert.equal((await bridge.meetingProcessingSetSpeakerCorrection({ ...correction, participantEmail: "PERSON@example.com" })).success, true);
+  db.upsertGooglePeople([{ email: "person@example.com", displayName: "Refreshed Google name", photoUrl: null }]);
+  db.upsertContacts([{ email: "person@example.com", displayName: "Calendar name" }]);
+  const reopened = new DatabaseManagerClass();
+  t.after(() => reopened.db.close());
+  assert.deepEqual(reopened.getContactProfiles(["person@example.com"]), [{ email: "person@example.com", display_name: "Maya Solano", photo_url: "https://example.com/photo.jpg" }]);
+  assert.equal(reopened.searchContacts("Maya Solano")[0].email, "person@example.com");
+  worker.stop();
+  // A new transcript has new speaker IDs: the stored name is a candidate, never an automatic voice match.
+  let input: unknown;
+  const nextWorker = workerFor(db, storage, { now: () => new Date(Date.now() + 300_000), nameSpeakers: async (value) => { input = value; return []; } });
+  t.after(() => nextWorker.stop());
+  const next = nextWorker.createRun({ recordingId: recording.id, kind: "reprocess", config: validConfig });
+  nextWorker.onRetentionReady();
+  await nextWorker.waitForIdle();
+  assert.deepEqual((input as { participants: unknown[] }).participants, [{ name: "Maya Solano", email: "PERSON@example.com" }]);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(next.run.id), []);
+  assert.equal(db.getMeetingProcessingRun(next.run.id).hasSummary, true);
+});
+
+test("a failed naming repair does not stop a new Summary after retranscription", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run } = createFinishedRecording(db, storage, validConfig, "", false, 180);
+  let summaries = 0;
+  const worker = workerFor(db, storage, {
+    now: () => new Date(Date.now() + 300_000),
+    transcribeRemote: async (_request, saveRaw) => { await saveRaw(longTranscriptResponse()); return { success: true }; },
+    nameSpeakers: async () => { throw Object.assign(new Error("invalid names"), { code: "speaker-name-json-invalid" }); },
+    summarize: async () => `## TLDR\nSummary ${++summaries}`,
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  const next = worker.createRun({ recordingId: recording.id, kind: "reprocess", config: validConfig });
+  await worker.waitForIdle();
+  assert.equal(summaries, 2);
+  assert.equal(db.getMeetingProcessingRun(next.run.id).speakerNamingErrorCode, "speaker-name-json-invalid");
+  assert.equal(db.getMeetingProcessingRun(next.run.id).status, "complete");
+  assert.equal(storage.readRunArtifact(run.id, "summary").text, "## TLDR\nSummary 1");
+  assert.equal(storage.readRunArtifact(next.run.id, "summary").text, "## TLDR\nSummary 2");
+});
+
+
+test("the first grouped transcription keeps the automatic Summary duration threshold", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run } = createFinishedRecording(db, storage);
+  db.setMeetingProcessingRunState(run.id, { stage: "prepare", status: "cancelled" });
+  const grouped = db.createMeetingProcessingRun(recording.id, { kind: "reprocess", config: validConfig });
+  let summaries = 0;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => { await saveRaw(longTranscriptResponse()); return { success: true }; },
+    summarize: async () => { summaries++; return "Summary"; },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(grouped.id).status, "complete");
+  assert.equal(db.getMeetingProcessingRun(grouped.id).hasTranscript, true);
+  assert.equal(summaries, 0);
+});
+
+for (const [reply, status] of [["", "zero"], ['{"HIGH":["Task"]}', "format-error"]] as const) {
+  test(`task output ${status} makes one request and never asks for JSON repair`, async (t) => {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const { run } = createFinishedRecording(db, storage, validConfig, "", false, 180);
+    let requests = 0;
+    const worker = workerFor(db, storage, {
+      transcribeRemote: async (_request, saveRaw) => { await saveRaw(longTranscriptResponse()); return { success: true }; },
+      summarize: async () => "## TLDR\nSummary.\n\n## Action Items\n- Initial task",
+      createActionConversation: async () => ({ send: async () => { requests++; return { text: reply, refusal: false }; } }),
+    });
+    t.after(() => worker.stop());
+    worker.onRetentionReady();
+    await worker.waitForIdle();
+    const artifact = storage.readRunArtifact(run.id, "summary");
+    assert.equal(requests, 1);
+    assert.equal(artifact.taskStatus, status);
+    assert.match(artifact.text, /## TLDR\nSummary/);
+    if (status === "zero") assert.doesNotMatch(artifact.text, /## Action Items/);
+    else assert.match(artifact.text, /Initial task/);
+  });
+}

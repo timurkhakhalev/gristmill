@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>task-002 UI mockup</title>
+<style>
+  :root{--bg:#f6f6f7;--panel:#fff;--line:#e4e4e7;--text:#18181b;--mute:#71717a;--acc:#4f46e5;--accbg:#eef2ff;--ok:#16a34a;--okbg:#dcfce7;--warn:#b45309;--warnbg:#fef3c7;--err:#b91c1c;--errbg:#fee2e2;--hi:#dc2626;--med:#d97706;--lo:#2563eb}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Inter",sans-serif;background:var(--bg);color:var(--text)}
+  .shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+  aside{background:#fff;border-right:1px solid var(--line);padding:16px;position:sticky;top:0;height:100vh;overflow:auto}
+  aside h1{font-size:13px;margin:0 0 4px}
+  aside .sub{color:var(--mute);font-size:12px;margin-bottom:14px}
+  aside h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:16px 0 6px}
+  .nav button{display:block;width:100%;text-align:left;border:0;background:none;padding:6px 8px;border-radius:6px;cursor:pointer;font:inherit;color:var(--text)}
+  .nav button:hover{background:#f4f4f5}.nav button.on{background:var(--accbg);color:var(--acc);font-weight:600}
+  .nav .m{font-size:10px;color:var(--mute);margin-left:4px}
+  main{padding:28px;display:flex;flex-direction:column;align-items:center;gap:14px}
+  .note{max-width:820px;width:100%;font-size:12px;color:var(--mute);background:#fff;border:1px dashed var(--line);border-radius:8px;padding:8px 12px}
+  .note b{color:var(--text)}
+  .win{width:100%;max-width:820px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.06);overflow:hidden;position:relative}
+  .head{padding:16px 20px 0}
+  .title{font-size:20px;font-weight:700;margin:0 0 8px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .chip{border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;background:#fff;color:var(--text);cursor:default;display:inline-flex;gap:5px;align-items:center}
+  .chip.btn{cursor:pointer}.chip.btn:hover{background:#f4f4f5}
+  .tabs{display:flex;gap:2px;padding:0 20px;border-bottom:1px solid var(--line);align-items:center}
+  .tab{padding:8px 12px;border-bottom:2px solid transparent;color:var(--mute);cursor:pointer}
+  .tab.on{color:var(--text);border-color:var(--acc);font-weight:600}
+  .tabs .sp{flex:1}
+  .body{padding:20px;min-height:280px}
+  .body h2{font-size:16px;margin:18px 0 6px}.body h2:first-child{margin-top:0}
+  .body h3{font-size:12px;letter-spacing:.06em;margin:12px 0 4px}
+  .body p{margin:6px 0}.body ul{margin:4px 0 4px 18px;padding:0}
+  .hi{color:var(--hi)}.med{color:var(--med)}.lo{color:var(--lo)}
+  .btn2{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 12px;font:inherit;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+  .btn2:hover{background:#f4f4f5}.btn2.pri{background:var(--acc);color:#fff;border-color:var(--acc)}.btn2.pri:hover{opacity:.92}
+  .btn2[disabled]{opacity:.45;cursor:not-allowed}
+  .banner{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px}
+  .banner .sp{flex:1}
+  .b-info{background:var(--accbg);color:#3730a3}.b-ok{background:var(--okbg);color:#166534}.b-warn{background:var(--warnbg);color:var(--warn)}.b-err{background:var(--errbg);color:var(--err)}
+  .spin{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:s 1s linear infinite;display:inline-block}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .steps{display:flex;gap:0;margin:0 0 16px;font-size:12px}
+  .step{flex:1;padding:6px 8px;border-top:3px solid var(--line);color:var(--mute)}
+  .step.done{border-color:var(--ok);color:var(--text)}.step.now{border-color:var(--acc);color:var(--acc);font-weight:600}.step.err{border-color:var(--err);color:var(--err)}
+  .pop{position:absolute;right:20px;top:112px;width:440px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.16);padding:12px;z-index:5}
+  .seg{display:grid;grid-template-columns:120px 1fr;gap:8px;padding:6px 0;border-top:1px solid #f4f4f5;font-size:13px}
+  .spk{font-weight:600;cursor:pointer;display:flex;flex-direction:column}
+  .badge{font-size:10px;font-weight:500;color:var(--acc);background:var(--accbg);border-radius:4px;padding:0 5px;width:fit-content}
+  .badge.user{color:#166534;background:var(--okbg)}.badge.voice{color:#6b21a8;background:#f3e8ff}
+  .chat{display:flex;flex-direction:column;gap:10px}
+  .msg{padding:10px 12px;border-radius:10px;max-width:88%}
+  .msg.u{background:var(--accbg);align-self:flex-end}.msg.a{background:#f4f4f5}
+  .composer{border-top:1px solid var(--line);padding:10px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .composer .in{flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--mute);min-width:200px}
+  .row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+  .row small{color:var(--mute)}
+  textarea{width:100%;height:150px;border:1px solid var(--line);border-radius:8px;padding:8px;font:12px/1.4 ui-monospace,monospace;resize:vertical}
+  .diff{background:#fffbeb;border-left:3px solid var(--med);padding:6px 10px;margin:6px 0}
+  .kbd{font:11px ui-monospace,monospace;background:#f4f4f5;border-radius:4px;padding:0 5px}
+  .hide{display:none!important}
+  .sw{display:flex;gap:6px;flex-wrap:wrap;max-width:820px;width:100%}
+  .sw button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer}
+  .sw button.on{background:var(--text);color:#fff;border-color:var(--text)}
+  .sw .lbl{font-size:12px;color:var(--mute);align-self:center;margin-right:4px}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside>
+  <h1>task-002 · Granola-style Summary</h1>
+  <div class="sub">UI mockup, статичный. Данные синтетические.</div>
+  <div class="nav" id="nav"></div>
+</aside>
+<main>
+  <div class="note" id="note"></div>
+  <div class="sw" id="sw"></div>
+  <div class="win" id="win"></div>
+</main>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const S = {screen:'timeline', st:{}};
+
+/* ---- state switchers per screen ---- */
+const SCREENS = {
+ timeline:{m:'M1',t:'1. После End call: ожидание 15 с и этапы',
+  note:'<b>M1 + M2.</b> Pause не запускает ASR. Resume отменяет ожидание. Ожидание 15 с живёт в БД (переживает рестарт). Дальше этапы: ASR → имена → Summary → задачи. Каждый этап независимо падает и повторяется.',
+  states:{stage:['waiting','asr','naming','summary','tasks','done','asrError','offline'],
+          _l:{waiting:'15с ожидание',asr:'ASR',naming:'Определение имён',summary:'Summary',tasks:'Задачи',done:'Готово',asrError:'Ошибка ASR',offline:'Нет сети'}}},
+ summary:{m:'M2/M3',t:'2. Summary: TLDR, темы, задачи, Recap',
+  note:'<b>M2 + M3.</b> Один Markdown на существующей вкладке Summary. Готовый Summary виден сразу; блок задач догружается отдельно. Recap добавляет раздел <span class="kbd">## Recap</span> в тот же текст.',
+  states:{tasks:['loading','ok','zero','error','format','conflict'],recap:['none','running','ok'],
+          _l:{loading:'Задачи грузятся',ok:'Задачи готовы',zero:'0 задач',error:'Ошибка задач',format:'Ошибка формата prompt',conflict:'Конфликт правки',none:'Recap нет',running:'Recap идёт'}}},
+ short:{m:'M2',t:'3. Короткая встреча: автоSummary пропущен',
+  note:'<b>M2.</b> ASR идёт всегда. Автоsummary только при ≥180 с и ≥2500 символов. Ручной Summary обходит пороги. Пропуск — нормальное состояние, не ошибка.',
+  states:{}},
+ speakers:{m:'M2',t:'4. Имена спикеров: авто-назначение и правка',
+  note:'<b>M2.</b> Порядок: голосовой профиль → LLM для неизвестных. Модельное имя помечено, пользователь меняет или сбрасывает в Speaker N. Ручная правка побеждает поздний ответ модели. Готовый Summary молча не переписывается; предлагается «Regenerate».',
+  states:{edit:['view','editing','staleSummary'],_l:{view:'Просмотр',editing:'Правка имени',staleSummary:'После правки: Summary устарел'}}},
+ chat:{m:'M3',t:'5. Follow-up кнопкой в Chat',
+  note:'<b>M3.</b> Кнопка активна, когда транскрипт готов; Summary не требуется. Ответ — обычное сообщение ассистента в существующем Chat, без отправки наружу. Следующие сообщения уточняют черновик.',
+  states:{chat:['idle','loading','reply','error','disabled'],_l:{idle:'Готов',loading:'Идёт',reply:'Ответ',error:'Ошибка',disabled:'Транскрипта ещё нет'}}},
+ actions:{m:'M3',t:'6. Каталог Actions: Follow-up и Recap',
+  note:'<b>M3.</b> Два новых редактируемых Action, добавляются существующим профилям без сброса. Recap недоступен, пока у встречи нет Summary. Следует существующему редактору prompt.',
+  states:{act:['list','editFollow','recapBlocked'],_l:{list:'Каталог',editFollow:'Редактор Follow-up',recapBlocked:'Recap без Summary'}}},
+};
+
+/* ---- common pieces ---- */
+const header = (extra='') => `
+ <div class="head"><h3 class="title" style="font-size:20px;letter-spacing:0">Weekly sync: релиз 2.4</h3>
+ <div class="chips"><span class="chip">📅 28 September</span><span class="chip">👥 Anna, Timur</span><span class="chip">⏱ 31 мин</span>${extra}</div></div>`;
+const tabs = (on, right='') => `<div class="tabs"><span class="tab ${on==='notes'?'on':''}">Notes</span><span class="tab ${on==='summary'?'on':''}">Summary</span><span class="sp"></span>${right}</div>`;
+const modelChip = `<span class="chip btn">✨ openai · gpt-5-mini ⌄</span>`;
+const tAudio = `<span class="chip btn">🎙 Transcript and audio 1</span>`;
+
+const steps = (cur) => {
+  const list=[['waiting','Ожидание 15 с'],['asr','Транскрипция'],['naming','Имена'],['summary','Summary'],['tasks','Задачи']];
+  const order=list.map(x=>x[0]); const i=order.indexOf(cur);
+  return `<div class="steps">${list.map((x,k)=>{let c=''; if(cur==='done')c='done'; else if(cur==='asrError'||cur==='offline'){c=k<1?'done':k===1?'err':'';} else c=k<i?'done':k===i?'now':''; return `<div class="step ${c}">${x[1]}</div>`}).join('')}</div>`;
+};
+
+const summaryMd = (tasks, recap) => {
+  const taskBlock = {
+   loading:`<h2>Action Items</h2><div class="banner b-info" style="margin:0"><span class="spin"></span>Приоритизируем задачи…</div>
+            <ul><li>Обновить changelog до релиза (черновик, без приоритета)</li><li>Проверить миграцию БД на staging</li></ul>`,
+   ok:`<h2>Action Items</h2><h3 class="hi">HIGH</h3><ul><li>Anna: проверить миграцию БД на staging до пятницы</li></ul>
+       <h3 class="med">MEDIUM</h3><ul><li>Timur: обновить changelog</li><li>Согласовать текст релизной заметки</li></ul>
+       <h3 class="lo">LOW</h3><ul><li>Позже вернуться к вопросу с тёмной темой</li></ul>`,
+   zero:'',
+   error:`<h2>Action Items</h2><ul><li>Обновить changelog до релиза</li></ul>
+          <div class="banner b-err"><span>Не удалось извлечь задачи: ответ модели не прошёл проверку (поле «HIGH» не массив).</span><span class="sp"></span><button class="btn2">Повторить задачи</button></div>`,
+   format:`<div class="banner b-warn"><span>Задачи найдены, но в Summary нет однозначного раздела <span class="kbd">## Action Items</span> (ваш prompt изменил формат). Текст не тронут.</span><span class="sp"></span><button class="btn2">Открыть prompt</button><button class="btn2">Повторить</button></div>`,
+   conflict:`<h2>Action Items</h2><ul><li>Обновить changelog</li></ul><div class="banner b-warn"><span>Вы изменили этот раздел, пока считались задачи. Автозамена отменена.</span><span class="sp"></span><button class="btn2">Показать новый список</button><button class="btn2">Повторить</button></div>`
+  }[tasks];
+  const recapBlock = {none:'',running:`<h2>Recap</h2><div class="banner b-info" style="margin:0"><span class="spin"></span>Готовим recap…</div>`,
+   ok:`<h2>Recap</h2><p><b>Релиз 2.4 сдвинут на пятницу</b></p><ul><li>Миграция БД блокирует релиз, проверяет Anna</li><li>Changelog за Timur, тёмная тема отложена</li></ul>`}[recap];
+  return `<h2>TLDR</h2><p>Команда обсудила готовность релиза 2.4: главный блокер — миграция БД, релиз перенесён на пятницу. Договорились закрыть changelog и отложить тёмную тему.</p>
+  <h2>Готовность релиза</h2><p><b>Anna</b> сообщила, что регрессионные тесты проходят, но миграция на staging ещё не проверена. <b>Timur</b> предложил сдвинуть релиз на пятницу; Anna согласилась.</p>
+  <h2>Тёмная тема</h2><p><b>Timur</b> предложил включить в релиз. <b>Anna</b> возразила из-за нехватки времени на тесты. Решение не принято, вопрос отложен.</p>${taskBlock}${recapBlock}`;
+};
+
+/* ---- screens ---- */
+const R = {
+ timeline(){
+  const st=S.st.stage||'waiting';
+  const banner={
+   waiting:`<div class="banner b-info"><span class="spin"></span><span>Запись сохранена. Транскрипция начнётся через <b>0:11</b>, если вы не продолжите запись.</span><span class="sp"></span><button class="btn2">Resume</button><button class="btn2 pri">Transcribe now</button></div>`,
+   asr:`<div class="banner b-info"><span class="spin"></span>Транскрипция и диаризация…</div>`,
+   naming:`<div class="banner b-info"><span class="spin"></span>Определяем имена спикеров…</div>`,
+   summary:`<div class="banner b-info"><span class="spin"></span>Пишем Summary…</div>`,
+   tasks:`<div class="banner b-info"><span class="spin"></span>Готовим приоритетные задачи…</div>`,
+   done:`<div class="banner b-ok">✓ Всё готово: транскрипт, имена, Summary, задачи.</div>`,
+   asrError:`<div class="banner b-err"><span>Транскрипция не удалась: провайдер недоступен. Запись сохранена.</span><span class="sp"></span><button class="btn2">Retry</button></div>`,
+   offline:`<div class="banner b-warn"><span>Нет сети. Запись в очереди и обработается при подключении.</span><span class="sp"></span><button class="btn2">Retry now</button></div>`
+  }[st];
+  return header()+tabs('summary',tAudio+modelChip)+`<div class="body">${steps(st)}${banner}
+   <p style="color:var(--mute)">Во время записи и паузы ASR/LLM не запускаются. Pause → Resume отменяет ожидание; следующий End начинает новое окно 15 с.</p>
+   ${st==='summary'||st==='tasks'||st==='done'?'<p style="color:var(--mute)">(Summary виден ниже сразу после сохранения.)</p>':''}</div>`;
+ },
+ summary(){
+  const t=S.st.tasks||'ok', r=S.st.recap||'none';
+  const tail=`<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn2">⧉ Copy</button><button class="btn2" ${r==='running'?'disabled':''}>↺ Recap</button></div>`;
+  return header()+tabs('summary',tAudio+modelChip)+`<div class="body">${summaryMd(t,r)}${tail}</div>`;
+ },
+ short(){
+  return header()+tabs('summary',tAudio+modelChip)+`<div class="body">
+   <div class="banner b-info"><span>Встреча короткая (2 мин 10 с, 1 340 символов). Автоматический Summary не создан: порог 3 мин / 2 500 символов.</span><span class="sp"></span><button class="btn2 pri">✨ Summary</button></div>
+   <p style="color:var(--mute)">Транскрипт готов и доступен в поповере «Transcript and audio». Follow-up в Chat тоже доступен.</p></div>`;
+ },
+ speakers(){
+  const e=S.st.edit||'view';
+  const name1= e==='editing'?`<input value="Anna Petrova" style="width:110px;padding:2px 6px;border:1px solid var(--acc);border-radius:6px">`:'Anna Petrova';
+  const pop=`<div class="pop"><div class="chips"><span class="chip on" style="background:var(--text);color:#fff">Transcript</span><span class="chip">Audio</span></div>
+   <div class="seg"><div class="spk">Timur<span class="badge voice">voice profile</span></div><div>Давайте представимся, сегодня обсуждаем релиз 2.4.</div></div>
+   <div class="seg"><div class="spk">${name1}${e==='editing'?'':'<span class="badge">auto · model</span>'}</div><div>Я Анна Петрова, отвечаю за тестирование. Регрессия проходит.</div></div>
+   <div class="seg"><div class="spk">Speaker 3<span class="badge" style="background:#f4f4f5;color:var(--mute)">не определён</span></div><div>Иван прислал отчёт, сейчас покажу.</div></div>
+   ${e==='editing'?`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn2 pri">Save (user)</button><button class="btn2">Вернуть Speaker 2</button></div>`:`<p style="font-size:12px;color:var(--mute);margin:8px 0 0">Клик по имени — изменить. «Иван» упомянут, но не представился, поэтому Speaker 3 не назван.</p>`}</div>`;
+  const stale = e==='staleSummary'?`<div class="banner b-warn"><span>Имена изменились после создания Summary. Текст не переписан.</span><span class="sp"></span><button class="btn2">Regenerate Summary</button></div>`:'';
+  return header()+tabs('summary',tAudio+modelChip)+`<div class="body">${stale}<p>Summary без изменений…</p></div>${pop}`;
+ },
+ chat(){
+  const c=S.st.chat||'idle';
+  const dis=c==='disabled'||c==='loading';
+  const msgs=`<div class="msg u">Что важного я должен сообщить команде?</div><div class="msg a">Коротко: релиз сдвинут, блокер — миграция.</div>`+
+   (c==='loading'?`<div class="msg a"><span class="spin"></span> Готовим follow-up…</div>`:'')+
+   (c==='reply'?`<div class="msg u" style="opacity:.8">✉ Follow-up</div><div class="msg a"><p style="margin:0 0 8px;color:var(--mute)">Anna и Timur договорились о переносе, полезно закрепить это письменно [12:40].</p><p style="margin:0">Привет, команда! Итоги синка: релиз 2.4 переносим на пятницу. Anna проверит миграцию на staging. Предложение (не решено): включить тёмную тему. Дайте знать, если что-то не так.</p><div style="margin-top:8px;display:flex;gap:6px"><button class="btn2">⧉ Copy</button></div></div>`:'')+
+   (c==='error'?`<div class="banner b-err" style="margin:0"><span>Не удалось получить ответ модели.</span><span class="sp"></span><button class="btn2">Повторить</button></div>`:'');
+  return header()+`<div class="tabs"><span class="tab">Notes</span><span class="tab">Summary</span><span class="tab on">Chat</span></div>
+  <div class="body"><div class="chat">${msgs}</div></div>
+  <div class="composer"><button class="btn2" ${dis?'disabled':''} title="${c==='disabled'?'Транскрипт ещё не готов':''}">✉ Follow-up</button><span class="in">Ask about this meeting…</span></div>`;
+ },
+ actions(){
+  const a=S.st.act||'list';
+  if(a==='editFollow') return `<div class="body"><h2>Edit action · Follow-up</h2><p style="color:var(--mute)">Запускается кнопкой в Chat. Ответ остаётся сообщением Chat.</p>
+   <textarea>Prepare a useful follow-up draft from the supplied OpenHercules meeting material.\n...\nWrite in the main language of the meeting unless...</textarea>
+   <div class="diff">Формат черновика (письмо, Slack, SMS) задаётся здесь. По умолчанию простое сообщение.</div>
+   <div style="display:flex;gap:6px"><button class="btn2 pri">Save</button><button class="btn2">Reset to default</button></div></div>`;
+  const rec = a==='recapBlocked'
+   ? `<div class="row" style="opacity:.6"><div><b>Recap</b> <small>· Action</small><br><small>Недоступно: у этой встречи ещё нет Summary.</small></div><button class="btn2" disabled>Run</button></div>`
+   : `<div class="row"><div><b>Recap</b> <small>· Action</small><br><small>Короткий recap выбранной встречи → раздел «Recap» в Summary.</small></div><button class="btn2">Run</button></div>`;
+  return `<div class="body"><h2>Actions</h2>
+   <div class="row"><div><b>Detailed Notes</b> <small>· Summary</small><br><small>TLDR, темы, Action Items. Используется авто и ручным Summary.</small></div><button class="btn2">Edit</button></div>
+   <div class="row"><div><b>Follow-up</b> <span class="badge">new</span><br><small>Черновик сообщения. Запуск: кнопка в Chat.</small></div><button class="btn2">Edit</button></div>
+   ${rec}
+   <div class="row"><div><b>Follow-up email</b><br><small>Существующий Action, без изменений.</small></div><button class="btn2">Edit</button></div>
+   <p style="color:var(--mute);font-size:12px">Новые Actions добавляются существующим профилям без сброса ваших правок.</p></div>`;
+ }
+};
+
+/* ---- render ---- */
+function render(){
+  const sc=SCREENS[S.screen];
+  $('#nav').innerHTML=Object.entries(SCREENS).map(([k,v])=>`<button class="${k===S.screen?'on':''}" data-k="${k}">${v.t}<span class="m">${v.m}</span></button>`).join('');
+  $('#note').innerHTML=sc.note;
+  const st=sc.states, L=st._l||{};
+  $('#sw').innerHTML=Object.entries(st).filter(([k])=>k!=='_l').map(([g,opts])=>
+    `<span class="lbl">${g}:</span>`+opts.map(o=>`<button class="${(S.st[g]||opts[0])===o?'on':''}" data-g="${g}" data-o="${o}">${L[o]||o}</button>`).join('')).join('');
+  $('#win').innerHTML=R[S.screen]();
+  document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{S.screen=b.dataset.k;S.st={};render()});
+  document.querySelectorAll('#sw button').forEach(b=>b.onclick=()=>{S.st[b.dataset.g]=b.dataset.o;render()});
+}
+render();
+</script>
+</body>
+</html>

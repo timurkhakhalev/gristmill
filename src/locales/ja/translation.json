@@ -2234,6 +2234,13 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "participantsLoadError": "カレンダーの参加者を読み込めませんでした。",
+    "linkParticipantsHint": "今後の会議で使用するため、これらの名前をカレンダーの参加者に関連付けてください。",
+    "linkParticipant": "参加者に関連付ける",
+    "rememberParticipant": "カレンダー参加者の名前を記憶する",
+    "onlyThisMeeting": "この会議のみ",
+    "rememberParticipantHint": "発言した人を選択してください。今後の会議では、このメールアドレスに保存した名前が使用されます。Googleの連絡先は変更されません。",
+    "voiceProfile": "音声プロフィール",
     "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",

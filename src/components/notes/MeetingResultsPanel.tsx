@@ -384,6 +384,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const speakerCorrectionRevision = selected?.speakerCorrections.reduce((sum, correction) => sum + correction.revision, 0) ?? 0;
   const summaryIsStale = selected?.summary?.speakerCorrectionRevision !== undefined &&
     selected.summary.speakerCorrectionRevision !== speakerCorrectionRevision;
+  // Dismissal is remembered per run and correction state; a newer correction shows the notice again.
+  const staleDismissKey = `staleSummaryDismissed:${selected?.run.id}:${speakerCorrectionRevision}`;
+  const [, rerenderAfterDismiss] = useState(0);
+  const staleNoticeHidden = localStorage.getItem(staleDismissKey) !== null;
   const copyText = viewMode === "enhanced" ? summaryText || fallbackText.enhanced : fallbackText.raw;
   const transcriptCopyText = groups.length > 1 ? sharedTranscript?.text ?? fallbackText.transcript : selected?.transcript?.text || fallbackText.transcript;
   const [copied, setCopied] = useState(false);
@@ -865,7 +869,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </Popover.Dialog></Popover.Content>
         </Popover>
       </div>}
-      {summaryText && summaryIsStale && <SummaryStaleNotice onRegenerate={() => openRun("summary")} />}
+      {summaryText && summaryIsStale && !staleNoticeHidden && <SummaryStaleNotice
+        onRegenerate={() => openRun("summary")}
+        onDismiss={() => { localStorage.setItem(staleDismissKey, "1"); rerenderAfterDismiss((n) => n + 1); }}
+      />}
       {mock && summaryText && !summaryIsStale && <MockSummaryNotices mock={mock} onRegenerate={() => { notify("Mock: Summary regenerated with the new names"); patchMock({ summaryStale: false }); }} />}
       {summaryText ? <article className="note-prose"><ReactMarkdown>{summaryText}</ReactMarkdown></article> : <>
         {mock?.autoSummarySkipped && <NoteNotice status="accent" title={tr("autoSummarySkipped", "Automatic Summary skipped")} description={tr("autoSummarySkippedReason", "This meeting is short ({{seconds}} s, {{chars}} characters). Automatic Summary starts after 180 s and 2500 characters. You can create one now.", mock.autoSummarySkipped)} />}
@@ -914,13 +921,14 @@ function MockSummaryNotices({ mock, onRegenerate }: { mock: MockPipeline; onRege
   />;
 }
 
-function SummaryStaleNotice({ onRegenerate }: { onRegenerate: () => void }) {
+function SummaryStaleNotice({ onRegenerate, onDismiss }: { onRegenerate: () => void; onDismiss: () => void }) {
   const { t } = useTranslation();
   return <NoteNotice
     status="warning"
     title={t("meetingResults.summaryStale", { defaultValue: "Speaker names changed" })}
     description={t("meetingResults.summaryStaleReason", { defaultValue: "This Summary was written with the earlier names and is unchanged." })}
     actions={<Button size="sm" variant="secondary" onPress={onRegenerate}>{t("meetingResults.regenerateSummary", { defaultValue: "Regenerate Summary" })}</Button>}
+    onDismiss={onDismiss}
   />;
 }
 

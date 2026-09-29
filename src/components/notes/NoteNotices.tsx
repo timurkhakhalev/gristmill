@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Alert, Spinner } from "@heroui/react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
-import { Clock } from "../icons";
+import { Clock, X } from "../icons";
 
 type NoticeStatus = "default" | "accent" | "success" | "warning" | "danger";
 
@@ -16,6 +16,7 @@ export function NoteNotice({
   busy = false,
   progressStartedAt,
   role,
+  onDismiss,
 }: {
   status: NoticeStatus;
   title: ReactNode;
@@ -25,7 +26,14 @@ export function NoteNotice({
   /** When set with `busy`, show a live "elapsed" timer so the user knows the request is still moving. */
   progressStartedAt?: number;
   role?: "status" | "alert";
+  /** Runs when the user closes the notice, e.g. to remember that beyond this mount. */
+  onDismiss?: () => void;
 }) {
+  const { t } = useTranslation();
+  // Busy notices track live work and notices with actions (retry, regenerate) stay unless the
+  // caller opts in with onDismiss. Others can be closed; a changed title shows again.
+  const [dismissedTitle, setDismissedTitle] = useState<ReactNode | null>(null);
+  if (dismissedTitle !== null && dismissedTitle === title) return null;
   return (
     <Alert status={status} className="mb-4 rounded-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-top-1" role={role ?? (status === "danger" ? "alert" : "status")}>
       {busy ? (
@@ -45,6 +53,17 @@ export function NoteNotice({
         {description && <Alert.Description className="text-xs">{description}</Alert.Description>}
         {actions && <div className="mt-2.5 flex flex-wrap items-center gap-2">{actions}</div>}
       </Alert.Content>
+      {!busy && (!actions || onDismiss) && (
+        <button
+          type="button"
+          onClick={() => { setDismissedTitle(title); onDismiss?.(); }}
+          aria-label={t("common.dismiss")}
+          title={t("common.dismiss")}
+          className="-me-1 -mt-1 flex size-6 shrink-0 items-center justify-center self-start rounded-md text-muted outline-none transition-colors hover:bg-default hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus"
+        >
+          <X size={14} />
+        </button>
+      )}
     </Alert>
   );
 }

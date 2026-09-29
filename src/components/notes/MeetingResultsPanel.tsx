@@ -615,6 +615,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     </div>
 
     {notice}
+    {showShortTranscriptNotice && !mock && <NoteNotice status="accent"
+      title={tr("autoSummarySkipped", "Automatic Summary skipped")}
+      description={tr("autoSummarySkippedReason", "Automatic Summary requires at least 180 seconds of recorded audio and 2,500 transcript characters. This meeting has {{seconds}} seconds and {{chars}} characters. You can create a Summary manually now.", {
+        seconds: Math.round(selectedTranscriptDuration),
+        chars: selectedTranscriptCharacters,
+      })}
+    />}
     {gateActive && <NoteNotice
       status="accent"
       busy
@@ -690,13 +697,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       {mock && summaryText && !summaryIsStale && <MockSummaryNotices mock={mock} onRegenerate={() => { notify("Mock: Summary regenerated with the new names"); patchMock({ summaryStale: false }); }} />}
       {summaryText ? <article className="note-prose"><ReactMarkdown>{summaryText}</ReactMarkdown></article> : <>
         {mock?.autoSummarySkipped && <NoteNotice status="accent" title={tr("autoSummarySkipped", "Automatic Summary skipped")} description={tr("autoSummarySkippedReason", "This meeting is short ({{seconds}} s, {{chars}} characters). Automatic Summary starts after 180 s and 2500 characters. You can create one now.", mock.autoSummarySkipped)} />}
-        {showShortTranscriptNotice && !mock && <NoteNotice status="accent"
-          title={tr("autoSummarySkipped", "Automatic Summary skipped")}
-          description={tr("autoSummarySkippedReason", "Automatic Summary requires at least 180 seconds of recorded audio and 2,500 transcript characters. This meeting has {{seconds}} seconds and {{chars}} characters. You can create a Summary manually now.", {
-            seconds: Math.round(selectedTranscriptDuration),
-            chars: selectedTranscriptCharacters,
-          })}
-        />}
         {fallbackSummary}
       </>}
       {mock && summaryText && <MockTaskNotices tasks={mock.tasks} notify={notify} onRetry={() => { patchMock({ tasks: "loading" }); mockAfter(1500, { tasks: "ok" }); }} />}

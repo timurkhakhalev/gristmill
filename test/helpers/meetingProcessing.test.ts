@@ -1063,6 +1063,65 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, run.id);
 });
 
+test("BB task and Recap turns on one saved run stay sequential", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const config: MeetingProcessingConfig = {
+    ...validConfig,
+    summary: {
+      actionId: validConfig.summary.actionId,
+      instruction: validConfig.summary.instruction,
+      reasoningMode: "agent",
+      agentProvider: "codex",
+      model: "gpt-6-luna",
+      agentReasoningLevel: "low",
+    },
+  };
+  const { run } = createFinishedRecording(db, storage, config, "Manual notes stay here.", false, 180);
+  let resolveTaskStarted!: () => void;
+  const taskStarted = new Promise<void>((resolve) => { resolveTaskStarted = resolve; });
+  let releaseTasks!: () => void;
+  const taskGate = new Promise<void>((resolve) => { releaseTasks = resolve; });
+  const actionOrder: string[] = [];
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => {
+      await saveRaw(longTranscriptResponse());
+      return { success: true };
+    },
+    summarizeAgent: async () => "## TLDR\nRelease discussion.\n\n## Action Items\n\n- Initial action item.",
+    createActionConversation: async (_config, instruction) => ({
+      send: async () => {
+        if (instruction === MEETING_TASKS_INSTRUCTION) {
+          actionOrder.push("tasks");
+          resolveTaskStarted();
+          await taskGate;
+          return { text: JSON.stringify({ HIGH: ["Ship the release"], MEDIUM: [], LOW: [] }), refusal: false };
+        }
+        assert.equal(instruction, "Editable recap prompt");
+        actionOrder.push("recap");
+        return { text: JSON.stringify({ title: "Release review", bullets: ["Ship Friday"] }), refusal: false };
+      },
+    }),
+    getActionPrompt: (translationKey) => translationKey === RECAP_KEY ? "Editable recap prompt" : null,
+  });
+  t.after(() => { releaseTasks(); worker.stop(); });
+  worker.onRetentionReady();
+  await taskStarted;
+
+  const recapPromise = worker.runSummaryAction({ runId: run.id, action: "recap" });
+  assert.deepEqual(actionOrder, ["tasks"]);
+  releaseTasks();
+  assert.deepEqual(await recapPromise, { success: true });
+  await worker.waitForIdle();
+
+  assert.deepEqual(actionOrder, ["tasks", "recap"]);
+  const summary = storage.readRunArtifact(run.id, "summary");
+  assert.equal(summary.taskStatus, "complete");
+  assert.match(summary.text, /Ship the release/);
+  assert.match(summary.text, /## Recap/);
+});
+
 test("task application preserves a concurrent Action Items edit and exposes a retryable conflict", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;

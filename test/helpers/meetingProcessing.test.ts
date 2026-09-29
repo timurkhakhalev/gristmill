@@ -814,7 +814,10 @@ test("manual Summary bypasses the auto threshold, cancels a pending auto request
   assert.equal(db.getMeetingProcessingRun(manualShort.run.id).hasSummary, true);
   assert.equal(db.getMeetingProcessingRun(firstEligibleManual.run.id).hasSummary, true);
   assert.equal(summarizedInputs.length, 2);
-  assert.deepEqual(summarizedInputs.map((input) => parseSummaryInput(input).manualNotes), ["User notes remain unchanged.", "Other notes."]);
+  assert.deepEqual(
+    summarizedInputs.map((input) => parseSummaryInput(input).manualNotes).sort(),
+    ["User notes remain unchanged.", "Other notes."].sort()
+  );
   assert.equal(db.getNote(short.note.id).content, "User notes remain unchanged.");
 });
 

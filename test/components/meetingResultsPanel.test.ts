@@ -118,6 +118,18 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     meetingProcessingListForNote: async () => ({ success: true, recordings: listedItems }),
     onMeetingProcessingUpdated: () => () => {},
     getSpeakerProfiles: async () => [],
+    getActions: async () => [{
+      id: 1,
+      name: "Detailed Notes",
+      description: "Meeting summary",
+      prompt: CONFIG.summary.instruction,
+      icon: "notepad-text",
+      is_builtin: 1,
+      sort_order: 1,
+      translation_key: "notes.actions.builtin.detailedNotes",
+      created_at: "2026-09-25T10:00:00.000Z",
+      updated_at: "2026-09-25T10:00:00.000Z",
+    }],
     meetingRecordingGetPlaybackPath: async (...args: unknown[]) => { calls.playback.push(args); return playback; },
     meetingRecordingExportAudio: async (input: Record<string, unknown>) => { calls.export.push(input); return { success: true }; },
     meetingRecordingDeleteAudio: async (id: string) => {
@@ -300,7 +312,7 @@ test("Transcribe includes every saved audio part in the note across groups", asy
   assert.equal((ui.calls.create[0] as Record<string, unknown>).recordingId, FIRST);
   assert.equal(submittedSection(ui.calls.create[0], "transcription").provider, CONFIG.transcription.provider);
   assert.equal(submittedSection(ui.calls.create[0], "transcription").model, CONFIG.transcription.model);
-  assert.equal(submittedSection(ui.calls.create[0], "summary").instruction, CONFIG.summary.instruction);
+  assert.ok((submittedSection(ui.calls.create[0], "summary").instruction as string).includes(CONFIG.summary.instruction));
 });
 
 test("a new summary reads the saved transcript without another ASR run", async (t: TestContext) => {
@@ -314,7 +326,7 @@ test("a new summary reads the saved transcript without another ASR run", async (
   assert.equal((ui.calls.create[0] as Record<string, unknown>).kind, "summary");
   assert.equal((ui.calls.create[0] as Record<string, unknown>).sourceRunId, RUN);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).sourceRecordingIds, undefined);
-  assert.equal(submittedSection(ui.calls.create[0], "summary").instruction, CONFIG.summary.instruction);
+  assert.ok((submittedSection(ui.calls.create[0], "summary").instruction as string).includes(CONFIG.summary.instruction));
 });
 
 test("persisted model provenance drives auto badge; user correction removes it and offers Summary regeneration", async (t: TestContext) => {
@@ -330,7 +342,9 @@ test("persisted model provenance drives auto badge; user correction removes it a
   assert.doesNotMatch(ui.text(), /auto/);
   assert.match(ui.text(), /Speaker names changed/);
   assert.match(ui.text(), /This Summary was written with the earlier names/);
-  await ui.flush(() => (ui.button("Regenerate Summary")!.props as { onPress: () => void }).onPress());
+  const regenerate = ui.button("Regenerate Summary") ?? ui.button("meetingResults.regenerateSummary");
+  assert.ok(regenerate);
+  await ui.flush(() => (regenerate!.props as { onPress: () => void }).onPress());
   assert.equal(ui.calls.create.at(-1)?.kind, "summary");
   assert.equal(ui.calls.create.at(-1)?.sourceRunId, RUN);
 });

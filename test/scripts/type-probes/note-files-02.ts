@@ -58,9 +58,9 @@ const ops: CliBridgeOperations = {
   listLocalTranscriptionModels: () => [{ model: "base", provider: "whisper", downloaded: true, default: true }],
   audioStorageManager: { deleteAudio: () => ({ success: true }) },
 };
-const cli = new CliBridge(ops);
+const cli = new CliBridge(ops, "/tmp");
 void cli.start().then(() => cli.stop());
-void getBridgeFilePath();
+void getBridgeFilePath("/tmp");
 void noteFilesChannels.noteFilesRebuild;
 
 const bridge: NoteFilesApi = createNoteFilesBridge(ipcRendererLike);

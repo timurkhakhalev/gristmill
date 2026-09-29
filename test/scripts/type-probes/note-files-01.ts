@@ -19,7 +19,7 @@ bridge.showNoteFile("12");
 
 // The CLI bridge takes the narrow operations object, not the whole
 // IPCHandlers instance.
-new CliBridge({ arbitrary: true });
+new CliBridge({ arbitrary: true }, "/tmp");
 
 // Import preview result is a discriminated union: error text is absent on
 // the canceled arm.

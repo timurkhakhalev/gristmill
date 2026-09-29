@@ -717,6 +717,9 @@
   },
   "cleanupPrompt": "Textbereinigung",
   "developerSection": {
+    "installCli": "Notizen-CLI installieren",
+    "cliInstalled": "CLI installiert",
+    "cliInstallFailed": "CLI-Installation fehlgeschlagen",
     "currentLogFile": "Aktuelle Protokolldatei",
     "debugMode": {
       "disabledDescription": "Aktivieren, um detaillierte Diagnoseinformationen zu erfassen",
@@ -2098,6 +2101,8 @@
     "deleteConfirm": "Löschen"
   },
   "commandSearch": {
+    "searchError": "Suche fehlgeschlagen",
+    "searchingTranscripts": "Transkripte werden durchsucht…",
     "allSpaces": "Alle Bereiche",
     "title": "Suche",
     "description": "In Notizen und Transkripten suchen",
@@ -2235,6 +2240,8 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "partialTranscript": "Das Transkript dieser Notiz ist unvollständig.",
+    "selectedResultTranscript": "Transkript des ausgewählten Ergebnisses",
     "participantsLoadError": "Kalenderteilnehmer konnten nicht geladen werden.",
     "linkParticipantsHint": "Verknüpfe diese Namen mit Kalenderteilnehmern, um sie in künftigen Besprechungen zu verwenden.",
     "linkParticipant": "Teilnehmer zuordnen",

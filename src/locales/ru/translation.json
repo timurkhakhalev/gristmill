@@ -676,6 +676,9 @@
   },
   "cleanupPrompt": "Очистка",
   "developerSection": {
+    "installCli": "Установить CLI для заметок",
+    "cliInstalled": "CLI установлен",
+    "cliInstallFailed": "Не удалось установить CLI",
     "currentLogFile": "Текущий файл логов",
     "debugMode": {
       "disabledDescription": "Включите для сбора подробной диагностической информации",
@@ -2104,6 +2107,8 @@
     "deleteConfirm": "Удалить"
   },
   "commandSearch": {
+    "searchError": "Ошибка поиска",
+    "searchingTranscripts": "Поиск по транскриптам…",
     "allSpaces": "Все пространства",
     "title": "Поиск",
     "description": "Поиск по заметкам и транскрипциям",
@@ -2232,6 +2237,8 @@
     }
   },
   "meetingResults": {
+    "partialTranscript": "Транскрипт заметки неполный.",
+    "selectedResultTranscript": "Транскрипт выбранного результата",
     "speakerNumber": "Спикер {{number}}",
     "contentTabs": "Содержимое встречи",
     "summaryTab": "Итоги",

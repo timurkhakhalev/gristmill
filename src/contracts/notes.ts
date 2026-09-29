@@ -7,6 +7,7 @@
 // src/types/electron.ts. Note: sqlite rows come back as `unknown` across the
 // JS boundary; validate there instead of asserting.
 import { z } from "zod";
+import type { NoteTranscript } from "./noteRead.js";
 
 const nonNegativeInt = z.number().int();
 
@@ -113,6 +114,18 @@ export const noteDeleteResultSchema = z.object({ success: z.boolean() });
 
 export const noteListResultSchema = z.array(noteItemSchema);
 export const noteOrNullResultSchema = noteItemSchema.nullable();
+export const noteSearchHitSchema = z.object({
+  note: noteItemSchema,
+  matches: z.array(z.object({ source: z.enum(["title", "user_notes", "summary"]), snippet: z.string() })),
+});
+export const transcriptSearchHitSchema = z.object({
+  note: noteItemSchema,
+  matches: z.array(z.object({
+    start_ms: z.number().nullable(), end_ms: z.number().nullable(),
+    speaker_id: z.string().nullable(), speaker_name: z.string().nullable(), snippet: z.string(),
+  })),
+});
+export type TranscriptSearchHit = z.infer<typeof transcriptSearchHitSchema>;
 export type NoteMutationResult = z.infer<typeof noteMutationResultSchema>;
 export type NoteDeleteResult = z.infer<typeof noteDeleteResultSchema>;
 
@@ -151,6 +164,9 @@ export interface NotesApi {
     spaceId?: number | null,
     folderId?: number | null
   ): Promise<NoteItem[]>;
+  searchNoteContent(query: string, spaceId?: number | null): Promise<Array<z.infer<typeof noteSearchHitSchema>>>;
+  searchNoteTranscripts(query: string, spaceId?: number | null): Promise<TranscriptSearchHit[]>;
+  getNoteTranscript(noteId: number): Promise<NoteTranscript>;
   onNoteAdded(callback: (note: NoteItem) => void): () => void;
   onNoteUpdated(callback: (note: NoteItem) => void): () => void;
   onNoteDeleted(callback: (payload: NoteDeletedPayload) => void): () => void;
@@ -164,6 +180,9 @@ export const noteChannels = {
   updateNote: "db-update-note",
   deleteNote: "db-delete-note",
   searchNotes: "db-search-notes",
+  searchNoteContent: "notes-search-content",
+  searchNoteTranscripts: "notes-search-transcripts",
+  getNoteTranscript: "notes-get-transcript",
 } as const;
 
 export const noteEventChannels = {

@@ -7,6 +7,7 @@ import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import { MEETING_ASR_GATE_MS } from "../../contracts/meetingRecording";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
+import type { NoteTranscript } from "../../contracts/noteRead";
 import { snapshotMeetingRecordingConfig } from "../../helpers/meetingRecordingConfigSnapshot";
 import { initializeActions } from "../../stores/actionStore";
 import { ConfirmDialog } from "../ui/dialog";
@@ -127,6 +128,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const tr = (key: string, fallback: string, values?: Record<string, number>) => t(`meetingResults.${key}`, { defaultValue: fallback, ...values });
   const captureWarning = `${t("notes.editor.capture.incomplete")}. ${t("meetingResults.captureIncomplete")}`;
   const [recordings, setRecordings] = useState(previewRecordings ?? []);
+  const [sharedTranscript, setSharedTranscript] = useState<NoteTranscript | null>(null);
   const [runId, setRunId] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
@@ -309,6 +311,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     const result = await window.electronAPI.meetingProcessingListForNote(noteId);
     if (result.success) setRecordings(result.recordings ?? []);
     else notify(result.error || t("meetingResults.loadError"), "destructive");
+    try { setSharedTranscript(await window.electronAPI.getNoteTranscript(noteId)); }
+    catch (error) { notify(error instanceof Error ? error.message : String(error), "destructive"); }
   }, [noteId, previewRecordings, t, notify]);
   useEffect(() => {
     if (previewRecordings) { setRecordings(previewRecordings); return; }
@@ -381,7 +385,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const summaryIsStale = selected?.summary?.speakerCorrectionRevision !== undefined &&
     selected.summary.speakerCorrectionRevision !== speakerCorrectionRevision;
   const copyText = viewMode === "enhanced" ? summaryText || fallbackText.enhanced : fallbackText.raw;
-  const transcriptCopyText = selected?.transcript?.text || fallbackText.transcript;
+  const transcriptCopyText = groups.length > 1 ? sharedTranscript?.text ?? fallbackText.transcript : selected?.transcript?.text || fallbackText.transcript;
   const [copied, setCopied] = useState(false);
   const [transcriptCopied, setTranscriptCopied] = useState(false);
   const copyTranscript = async () => {
@@ -591,7 +595,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const correctSpeaker = () => runTask(async () => {
     if (!speakerId || !selected || !speakerName.trim()) return;
     if (previewRecordings) {
-      setRecordings((items) => items.map((item) => ({ ...item, runs: item.runs.map((run) => run.run.id === selected.run.id ? { ...run, speakerCorrections: [...run.speakerCorrections.filter((correction) => correction.speakerId !== speakerId), { speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId), source: "user", revision: (run.speakerCorrections.find((correction) => correction.speakerId === speakerId)?.revision ?? 0) + 1 }] } : run) })));
+      setRecordings((items) => items.map((item) => ({ ...item, runs: item.runs.map((run) => run.run.id === selected.run.id ? { ...run, speakerCorrections: [...run.speakerCorrections.filter((correction) => correction.speakerId !== speakerId), { speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId), participantEmail: participantEmail === "none" ? null : participantEmail, source: "user", revision: (run.speakerCorrections.find((correction) => correction.speakerId === speakerId)?.revision ?? 0) + 1 }] } : run) })));
       setSpeakerId(null);
       setMock((current) => current && { ...current, modelSpeakerIds: current.modelSpeakerIds?.filter((id) => id !== speakerId), summaryStale: Boolean(summaryText) });
       return;
@@ -625,7 +629,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       selected.speakerCorrections.filter((item) => item.displayName.trim().toLowerCase() === speaker.displayName.trim().toLowerCase()).length > 1)
   ) ?? [] : [];
 
-  const transcriptContent = selected?.transcript ? <div>
+  const selectedTranscriptContent = selected?.transcript ? <div>
         {unlinkedSpeakers.length > 0 && <div className="mb-3 rounded-lg border border-border p-3">
           <p className="text-xs text-muted">{tr("linkParticipantsHint", "Remember these names for future meetings by linking them to calendar participants.")}</p>
           <div className="mt-2 flex flex-wrap gap-2">{unlinkedSpeakers.map((speaker) => <Button key={speaker.speakerId} size="sm" variant="secondary" onPress={() => editSpeaker(speaker.speakerId)}>{speaker.displayName} · {tr("linkParticipant", "Link participant")}</Button>)}</div>
@@ -681,6 +685,27 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         })() : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{selected.transcript.text}</p>}
 
   </div> : renderFallbackTranscript(transcriptScrollRef);
+
+  const transcriptContent = groups.length > 1 && sharedTranscript ? <div>
+    {sharedTranscript.status !== "ready" && <p className="mb-2 text-xs text-warning">{tr("partialTranscript", "This Note transcript is incomplete.")} {sharedTranscript.diagnostics.join(", ")}</p>}
+    {sharedTranscript.segments?.length ? sharedTranscript.segments.map((segment, index) => {
+      const speaker = sharedTranscript.speakers.find((item) => item.id === segment.speaker_id);
+      const ms = segment.start_ms;
+      return <div key={`${index}-${ms}`} className="mt-3 grid grid-cols-[44px_minmax(0,1fr)] gap-x-3">
+        <button className="text-start font-mono text-xs text-primary" disabled={ms === null} onClick={() => {
+          if (ms === null) return;
+          let remaining = ms / 1000;
+          for (const part of recordings) {
+            const duration = part.recording.durationSeconds ?? 0;
+            if (remaining < duration) { void startAudio(part.recording.id, remaining); return; }
+            remaining -= duration;
+          }
+        }}>{ms === null ? "--:--" : `${Math.floor(ms / 60_000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`}</button>
+        <div><span className="text-xs font-semibold">{speaker?.name ?? speaker?.id ?? ""}</span><p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
+      </div>;
+    }) : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{sharedTranscript.text}</p>}
+    <details className="mt-4"><summary className="cursor-pointer text-xs text-muted">{tr("selectedResultTranscript", "Selected result transcript")}</summary>{selectedTranscriptContent}</details>
+  </div> : selectedTranscriptContent;
 
   return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">    <div className="sticky top-0 z-10 -mt-4 mb-3 flex items-center justify-between gap-2 bg-background pt-4 pb-3 max-[720px]:flex-wrap">
       <NoteViewSwitch

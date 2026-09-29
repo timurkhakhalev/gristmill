@@ -9,6 +9,8 @@ import {
   noteEventChannels,
   noteItemSchema,
   noteListResultSchema,
+  noteSearchHitSchema,
+  transcriptSearchHitSchema,
   noteMutationResultSchema,
   noteOrNullResultSchema,
   type NotesApi,
@@ -16,7 +18,8 @@ import {
   type NoteItem,
   type NoteUpdate,
 } from "../contracts/notes.js";
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
+import { noteTranscriptSchema } from "../contracts/noteRead.js";
 
 interface IpcRendererLike {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
@@ -33,6 +36,10 @@ function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
   return result.data;
+}
+
+function invokeParseArray<T>(schema: ZodType<T>, ipcRenderer: IpcRendererLike, channel: string, ...args: unknown[]): Promise<T[]> {
+  return ipcRenderer.invoke(channel, ...args).then((raw) => parseResult(z.array(schema), raw, channel));
 }
 
 // The return type is the shared NotesApi, so any drift between this
@@ -98,6 +105,12 @@ export function createNotesBridge(ipcRenderer: IpcRendererLike): NotesApi {
         .then((raw) =>
           parseResult(noteListResultSchema, raw, noteChannels.searchNotes)
         ),
+    searchNoteContent: (query, spaceId) =>
+      invokeParseArray(noteSearchHitSchema, ipcRenderer, noteChannels.searchNoteContent, query, spaceId),
+    searchNoteTranscripts: (query, spaceId) =>
+      invokeParseArray(transcriptSearchHitSchema, ipcRenderer, noteChannels.searchNoteTranscripts, query, spaceId),
+    getNoteTranscript: (noteId) =>
+      ipcRenderer.invoke(noteChannels.getNoteTranscript, noteId).then((raw) => parseResult(noteTranscriptSchema, raw, noteChannels.getNoteTranscript)),
 
     onNoteAdded: (callback: (note: NoteItem) => void) =>
       subscribeValidated(

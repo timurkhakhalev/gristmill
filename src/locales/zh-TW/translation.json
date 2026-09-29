@@ -676,6 +676,9 @@
   },
   "cleanupPrompt": "文字整理",
   "developerSection": {
+    "installCli": "安裝筆記命令列工具",
+    "cliInstalled": "命令列工具已安裝",
+    "cliInstallFailed": "命令列工具安裝失敗",
     "currentLogFile": "目前的記錄檔",
     "debugMode": {
       "disabledDescription": "啟用以擷取詳細的診斷資訊",
@@ -2098,6 +2101,8 @@
     "deleteConfirm": "刪除"
   },
   "commandSearch": {
+    "searchError": "搜尋失敗",
+    "searchingTranscripts": "正在搜尋逐字稿…",
     "allSpaces": "所有空間",
     "title": "搜尋",
     "description": "搜尋筆記與轉錄",
@@ -2235,6 +2240,8 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "partialTranscript": "這則筆記的逐字稿不完整。",
+    "selectedResultTranscript": "所選結果的逐字稿",
     "participantsLoadError": "無法載入日曆參與者。",
     "linkParticipantsHint": "將這些姓名連結至日曆參與者，以便在之後的會議中使用。",
     "linkParticipant": "連結參與者",

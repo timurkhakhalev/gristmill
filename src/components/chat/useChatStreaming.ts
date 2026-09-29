@@ -37,6 +37,7 @@ interface UseChatStreamingOptions {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   /** Optional note context to prepend to the system prompt (used by embedded note chat). */
   noteContext?: string;
+  noteId?: number;
   /** Optional container scope applied to the search_notes tool (container overview chat). */
   searchScope?: ContainerScope;
   onStreamComplete?: (assistantId: string, content: string, toolCalls?: ToolCallInfo[]) => void;
@@ -57,6 +58,7 @@ export function useChatStreaming({
   messages,
   setMessages,
   noteContext: externalNoteContext,
+  noteId,
   searchScope,
   onStreamComplete,
 }: UseChatStreamingOptions): ChatStreaming {
@@ -214,7 +216,9 @@ export function useChatStreaming({
       }
 
       if (cancelled() || !mountedRef.current) return;
-      const combinedContext = noteContextRef.current;
+      const combinedContext = isBbAgent && noteId
+        ? `Current Note ID: ${noteId}. Use the Gristmill read-only CLI when exact Note content or transcript evidence is needed.`
+        : noteContextRef.current;
       // The user's dictionary rides on every conversation so replies use their jargon.
       let systemPrompt = sendOptions?.systemPrompt ?? appendDictionarySuffix(
         getAgentSystemPrompt(
@@ -401,6 +405,7 @@ export function useChatStreaming({
       t,
       setMessages,
       onStreamComplete,
+      noteId,
       clearToolActivity,
       beginToolActivity,
       completeToolActivity,

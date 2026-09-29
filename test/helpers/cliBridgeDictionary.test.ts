@@ -62,7 +62,7 @@ function createBridge(t: import("node:test").TestContext) {
   }
 
   broadcasts.length = 0;
-  const bridge = new CliBridge({ databaseManager: db });
+  const bridge = new CliBridge({ databaseManager: db }, userDataDir);
   return { bridge, db, broadcasts };
 }
 

@@ -112,6 +112,15 @@ export default function DeveloperSection() {
     }
   };
 
+  const handleInstallCli = async () => {
+    const result = await window.electronAPI.installAgentCli();
+    toast({
+      title: result.success ? t("developerSection.cliInstalled", { defaultValue: "CLI installed" }) : t("developerSection.cliInstallFailed", { defaultValue: "CLI installation failed" }),
+      description: result.success ? "~/.local/bin/gristmill" : result.error,
+      variant: result.success ? "success" : "destructive",
+    });
+  };
+
   const loggedItems = [
     t("developerSection.whatGetsLogged.items.audioProcessing"),
     t("developerSection.whatGetsLogged.items.apiRequests"),
@@ -182,6 +191,11 @@ export default function DeveloperSection() {
         <Button onClick={handleOpenLogsFolder} variant="outline" size="sm">
           <FolderOpen className="size-3.5" />
           {t("developerSection.openLogsFolder")}
+        </Button>
+      </SettingsPanelRow>
+      <SettingsPanelRow>
+        <Button onClick={() => void handleInstallCli()} variant="outline" size="sm">
+          {t("developerSection.installCli", { defaultValue: "Install Notes CLI" })}
         </Button>
       </SettingsPanelRow>
     </SettingsCard>

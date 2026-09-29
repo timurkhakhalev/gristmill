@@ -979,6 +979,7 @@ export default function NoteEditor({
             onAskSubmit={handleAskSubmit}
             onInputFocus={handleChatInputFocus}
             hideInput={chatMode !== "hidden"}
+            floating
           />
           <ChatPanel
             mode={chatMode === "floating" ? "floating" : "hidden"}

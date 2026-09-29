@@ -22,6 +22,8 @@ interface NoteBottomBarProps {
   /** One centred call to action floated above the ask capsule. */
   callout?: React.ReactNode;
   hideInput?: boolean;
+  /** Overlay the bar on the content behind it instead of reserving its own row. */
+  floating?: boolean;
 }
 
 export default function NoteBottomBar({
@@ -31,6 +33,7 @@ export default function NoteBottomBar({
   askDisabled,
   callout,
   hideInput,
+  floating = false,
 }: NoteBottomBarProps) {
   const { t } = useTranslation();
   const [inputText, setInputText] = useState("");
@@ -96,7 +99,7 @@ export default function NoteBottomBar({
   return (
     <div
       ref={containerRef}
-      className="absolute inset-x-0 bottom-0 z-10 px-5 pb-4 pt-3 pointer-events-none"
+      className={cn("px-5 pb-4 pt-3 pointer-events-none", floating ? "absolute inset-x-0 bottom-0 z-10" : "shrink-0")}
     >
       {callout && !hideInput && (
         <div className="pointer-events-auto mb-3 flex justify-center">{callout}</div>

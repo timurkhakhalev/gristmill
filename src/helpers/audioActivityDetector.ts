@@ -56,7 +56,7 @@ export class AudioActivityDetector extends EventEmitter {
   private _promptedCapturePids: Set<number>;
   private _captureIdleSincePrompt: boolean;
 
-  // `getExcludedProcessIds` lists every pid whose mic use is OpenHercules' own:
+  // `getExcludedProcessIds` lists every pid whose mic use is Gristmill' own:
   // the Electron process tree by default, plus any live capture helpers when
   // main.js composes them in (see electronProcessIds.js). `isMeetingAppRunning`
   // corroborates macOS device activity that cannot be attributed to a process;

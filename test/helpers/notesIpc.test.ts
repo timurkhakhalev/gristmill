@@ -14,7 +14,7 @@ import type { DatabaseManager as Database } from "../../src/helpers/database.ts"
 const handlers = new Map();
 type SentEvent = { channel: string; data: Record<string, unknown> & { id: number } };
 let activeSent: SentEvent[] | null = null;
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-ipc-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-ipc-"));
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -68,7 +68,7 @@ async function loadModules() {
 
 async function createFixture(t: import("node:test").TestContext) {
   const { registerNotesHandlers } = await loadModules();
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-ipc-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-ipc-"));
   let db;
   try {
     db = new DatabaseManager();

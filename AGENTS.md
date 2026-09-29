@@ -1,4 +1,4 @@
-# OpenHercules working rules
+# Gristmill working rules
 
 Start with [.memory-bank/index.md](.memory-bank/index.md). Read the
 [quality steering](.memory-bank/steerings/quality.md) before selecting or running

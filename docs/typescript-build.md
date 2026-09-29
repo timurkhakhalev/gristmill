@@ -1,6 +1,6 @@
 # Сборка Electron перед миграцией на TypeScript
 
-Первый шаг [issue #10](https://github.com/timurkhakhalev/openhercules/issues/10).
+Первый шаг [issue #10](https://github.com/timurkhakhalev/gristmill/issues/10).
 Функции приложения, настройки провайдеров и realtime flow не меняются.
 
 Актуальный компилятор для `typecheck` и `build:main` — нативный TypeScript 7
@@ -799,7 +799,7 @@ Inventory графа Electron: 130 JS, 52 TS, 1 MTS, 25 JSON.
 ```sh
 # main compiler graph (entry points: main.js, preload.js, ONNX worker)
 ./node_modules/.bin/tsc -p tsconfig.main.json --listFilesOnly \
-  | grep -v node_modules | grep -v dist/ | sed 's|.*/openhercules/||' | sort
+  | grep -v node_modules | grep -v dist/ | sed 's|.*/gristmill/||' | sort
 
 # tracked runtime-кандидаты (без tests/scripts/tooling)
 git ls-files '*.js' '*.mjs' '*.jsx' | grep -v '^test/' | grep -v '^scripts/' \

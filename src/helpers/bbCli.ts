@@ -127,7 +127,7 @@ async function readBbSettings(): Promise<z.infer<typeof bbSettingsSchema>> {
   return bbSettingsSchema.parse(await jsonCommand(["settings", "show"]));
 }
 
-/** bb's own provider order and default, used once to seed OpenHercules preferences. */
+/** bb's own provider order and default, used once to seed Gristmill preferences. */
 export async function getBbHostPreferences(): Promise<BbHostPreferences> {
   const settings = await readBbSettings();
   return {
@@ -203,7 +203,7 @@ async function ensureBbProject(environment: string): Promise<string> {
       }
     }
     const project = z.object({ id: z.string().min(1) }).parse(await jsonCommand([
-      "project", "create", "--name", "OpenHercules Agent", "--root", environment,
+      "project", "create", "--name", "Gristmill Agent", "--root", environment,
     ]));
     writeFileSync(file, JSON.stringify({ id: project.id }), { mode: 0o600 });
     return project.id;

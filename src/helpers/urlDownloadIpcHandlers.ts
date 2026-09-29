@@ -152,7 +152,7 @@ export function registerUrlDownloadHandlers(
       const resolved = path.resolve(filePath);
       const basename = path.basename(resolved);
       if (!basename.startsWith("ow-url-") && !basename.startsWith("ow-diarize-")) {
-        return { success: false, error: "Not an OpenHercules temp file" };
+        return { success: false, error: "Not an Gristmill temp file" };
       }
       const real = fs.realpathSync(resolved);
       let tempDir = deps.getSafeTempDir();
@@ -161,7 +161,7 @@ export function registerUrlDownloadHandlers(
       } catch {}
       const rel = path.relative(tempDir, real);
       if (rel.startsWith("..") || path.isAbsolute(rel)) {
-        return { success: false, error: "Not an OpenHercules temp file" };
+        return { success: false, error: "Not an Gristmill temp file" };
       }
       fs.unlinkSync(real);
       return { success: true };

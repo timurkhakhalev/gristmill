@@ -34,7 +34,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-typed-")));
+const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-transcribe-typed-")));
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, "RIFF....");
 

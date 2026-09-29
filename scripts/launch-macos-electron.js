@@ -8,13 +8,13 @@ const { execFileSync, spawn } = require("node:child_process");
 function launchMacElectron(binary, args, env, spawnProcess = spawn) {
   const bundle = path.resolve(binary, "../../..");
   if (!bundle.endsWith(".app")) throw new Error("Expected an Electron.app executable");
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-launch-"));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-launch-"));
   const outputs = [process.stdout, process.stderr].map((stream, index) => {
     const file = path.join(directory, `${index}.log`);
     fs.writeFileSync(file, "", { mode: 0o600 });
     return { stream, file, offset: 0 };
   });
-  const marker = `--openhercules-launch=${path.basename(directory)}`;
+  const marker = `--gristmill-launch=${path.basename(directory)}`;
   // open passes its environment to a new app instance without exposing it in argv.
   const launchArgs = ["-n", "-W", "-a", bundle, "--stdout", outputs[0].file, "--stderr", outputs[1].file];
   launchArgs.push("--args", ...args, marker);

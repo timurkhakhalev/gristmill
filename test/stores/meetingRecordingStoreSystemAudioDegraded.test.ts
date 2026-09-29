@@ -62,7 +62,7 @@ test("an unsupported system source stays unavailable instead of falling back to 
     },
   });
   const vite = await createRendererServer(t, {
-    cachePrefix: "openhercules-meeting-system-audio-no-fallback-",
+    cachePrefix: "gristmill-meeting-system-audio-no-fallback-",
   });
   const store = (await vite.ssrLoadModule("/stores/meetingRecordingStore.ts") as typeof import("../../src/stores/meetingRecordingStore.ts"));
 

@@ -21,18 +21,18 @@ app.whenReady().then(async () => {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   process.env.VITE_DEV_SERVER_PORT = String((server.address() as { port: number }).port);
   process.env.NODE_ENV = "development";
-  process.env.OPENHERCULES_CHANNEL = "development";
+  process.env.GRISTMILL_CHANNEL = "development";
   // Compiled main output; loaded at runtime after app ready.
   const { WindowManager } = require(path.join(repo, "dist-main/src/helpers/windowManager.js")) as typeof import("../../src/helpers/windowManager.js");
   const bridge = path.join(repo, "src/dev-storage-bridge.html");
-  const win = new BrowserWindow({ show: false, webPreferences: { partition: "persist:openhercules" } });
+  const win = new BrowserWindow({ show: false, webPreferences: { partition: "persist:gristmill" } });
 
   await win.loadFile(bridge);
   await win.webContents.executeJavaScript(`
     localStorage.setItem("onboardingCompleted", "true");
     localStorage.setItem("uiLanguage", "en");
     localStorage.setItem("meetingCloudTranscriptionProvider", "deepgram");
-    localStorage.setItem("openhercules.paused-meeting", "stale-paused-meeting");
+    localStorage.setItem("gristmill.paused-meeting", "stale-paused-meeting");
   `);
   await win.loadURL(`http://localhost:${(server.address() as { port: number }).port}/`);
   await win.webContents.executeJavaScript("localStorage.setItem('uiLanguage', 'fr')");
@@ -43,12 +43,12 @@ app.whenReady().then(async () => {
   assert.equal(imported.onboardingCompleted, "true", "seeded before the page script");
   assert.equal(imported.uiLanguage, "fr", "existing HTTP setting wins");
   assert.equal(imported.meetingCloudTranscriptionProvider, "deepgram");
-  assert.equal(imported["openhercules.paused-meeting"], "stale-paused-meeting");
+  assert.equal(imported["gristmill.paused-meeting"], "stale-paused-meeting");
 
-  await win.webContents.executeJavaScript("localStorage.removeItem('openhercules.paused-meeting')");
+  await win.webContents.executeJavaScript("localStorage.removeItem('gristmill.paused-meeting')");
   await (Object.create(WindowManager.prototype) as InstanceType<typeof WindowManager>).loadWindowContent(win, true);
   const nextLaunch = (await win.webContents.executeJavaScript("window.firstSettings")) as Record<string, string | undefined>;
-  assert.equal(nextLaunch["openhercules.paused-meeting"], undefined, "removed state stays removed");
+  assert.equal(nextLaunch["gristmill.paused-meeting"], undefined, "removed state stays removed");
   assert.equal(nextLaunch.uiLanguage, "fr", "existing dev value survives restart");
 
   await win.webContents.session.clearStorageData();

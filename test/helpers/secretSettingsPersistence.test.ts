@@ -13,7 +13,7 @@ test("secret settings expose values only after encrypted persistence succeeds", 
     },
   });
   const vite = await createRendererServer(t, {
-    cachePrefix: "openhercules-secret-settings-persistence-",
+    cachePrefix: "gristmill-secret-settings-persistence-",
     mockModules: {
       "/services/ReasoningService": "export default class ReasoningService { static clearApiKeyCache() {} }",
     },

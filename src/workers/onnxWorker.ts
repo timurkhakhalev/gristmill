@@ -17,7 +17,7 @@ interface LogExtra {
 let logStream: import("fs").WriteStream | null = null;
 
 function openLog(): void {
-  const logPath = process.env.OPENHERCULES_ONNX_WORKER_LOG;
+  const logPath = process.env.GRISTMILL_ONNX_WORKER_LOG;
   if (!logPath) return;
   try {
     fs.mkdirSync(path.dirname(logPath), { recursive: true });

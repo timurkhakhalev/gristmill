@@ -68,7 +68,7 @@ const meetingRoute = (mod: any, state: unknown) => {
 test("Note Recording modes survive the follow-flag migration", { timeout: 300_000 }, async (t: import("node:test").TestContext) => {
   const { storage } = installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
-    cachePrefix: "openhercules-meeting-follow-flags-test-",
+    cachePrefix: "gristmill-meeting-follow-flags-test-",
   });
 
   // Migrations run once per module evaluation, so every case re-evaluates the

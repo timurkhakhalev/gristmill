@@ -6,7 +6,7 @@ const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
 type NoteItem = import("../../src/contracts/notes.ts").NoteItem;
 
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-db-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-db-"));
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
@@ -22,7 +22,7 @@ test.after(() => {
 });
 
 function createDb(t: import("node:test").TestContext) {
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-db-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-db-"));
   try {
     return new DatabaseManager();
   } catch (error) {

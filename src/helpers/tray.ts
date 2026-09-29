@@ -282,7 +282,7 @@ export class TrayManager {
 
   async loadTrayIcon(): Promise<Electron.NativeImage | null> {
     const platform = process.platform;
-    const isDevelopment = process.env.OPENHERCULES_CHANNEL === "development";
+    const isDevelopment = process.env.GRISTMILL_CHANNEL === "development";
 
     const candidatePaths: string[] = [];
 

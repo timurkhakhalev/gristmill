@@ -8,7 +8,7 @@ const {
 } = require("../../src/helpers/enterpriseProviderErrors");
 
 const SERVICE_UNAVAILABLE_MESSAGE =
-  "AWS Bedrock is temporarily unavailable due to high demand. This is an AWS service issue, not an OpenHercules outage. Please try again in a few minutes.";
+  "AWS Bedrock is temporarily unavailable due to high demand. This is an AWS service issue, not an Gristmill outage. Please try again in a few minutes.";
 const THROTTLED_MESSAGE =
   "AWS Bedrock is temporarily limiting requests because it is receiving too many. Please wait a moment and try again. If this continues, ask your AWS administrator to check your Bedrock usage and quotas.";
 const TIMEOUT_MESSAGE =

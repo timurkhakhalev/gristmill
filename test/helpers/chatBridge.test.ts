@@ -17,7 +17,7 @@ const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 type BridgeHandler = (event: unknown, ...args: unknown[]) => unknown;
 let activeHandlers: Map<string, BridgeHandler> | null = null;
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-chat-bridge-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-chat-bridge-"));
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -107,7 +107,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
 type DbUnderTest = import("../../src/helpers/chatPersistenceIpcHandlers.js").ChatPersistenceHandlerDeps["database"] & { close: () => void; getPrivateSpaceId: () => unknown };
 async function createFixture(t: import("node:test").TestContext): Promise<{ db: DbUnderTest; api: Record<string, (...args: unknown[]) => Promise<any>>; invoke: (channel: string, ...args: unknown[]) => Promise<unknown> } | null> {
   activeHandlers = new Map();
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-chat-bridge-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-chat-bridge-"));
   const fixtureDir = userDataDir;
   let db: DbUnderTest | null = null;
   t.after(() => {

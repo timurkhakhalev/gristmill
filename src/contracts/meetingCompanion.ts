@@ -1,5 +1,5 @@
 // The recording companion: a small draggable always-on-top bubble shown while
-// a meeting records and OpenHercules is in the background. The control panel
+// a meeting records and Gristmill is in the background. The control panel
 // renderer (which owns the recording) pushes state and mic level to main; main
 // owns the bubble window and relays both to it. No Electron/React imports here.
 import { z } from "zod";

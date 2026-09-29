@@ -120,7 +120,7 @@ class DebugLogger {
       return argLevel;
     }
 
-    const envLevel = normalizeLevel(process.env.OPENHERCULES_LOG_LEVEL || process.env.LOG_LEVEL);
+    const envLevel = normalizeLevel(process.env.GRISTMILL_LOG_LEVEL || process.env.LOG_LEVEL);
     if (envLevel) {
       return envLevel;
     }

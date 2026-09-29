@@ -766,7 +766,7 @@ export interface SettingsState
   notificationsEnabled: boolean;
   notifyMeetingDetection: boolean;
   notifyCalendarReminders: boolean;
-  /** Floating recording bubble while OpenHercules is in the background. */
+  /** Floating recording bubble while Gristmill is in the background. */
   meetingCompanionEnabled: boolean;
   gcalPrimaryOnly: boolean;
   mcalPrimaryOnly: boolean;

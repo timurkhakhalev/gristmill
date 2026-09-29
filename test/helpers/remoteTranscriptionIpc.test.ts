@@ -22,7 +22,7 @@ test.before(async () => {
   ({ createUploadCancelRegistry } = await import("../../src/helpers/uploadCancelRegistry.ts"));
 });
 
-const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-byok-typed-")));
+const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-byok-typed-")));
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, Buffer.alloc(2048));
 

@@ -14,7 +14,7 @@ process.env.NODE_ENV = "test";
 
 const originalLoad = Module._load;
 let sent: Array<{ channel: string; data: unknown }> | null = null;
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-folder-del-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-folder-del-"));
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {

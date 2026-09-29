@@ -1,4 +1,4 @@
-const OPEN_SETTINGS_EVENT = "openhercules:open-settings";
+const OPEN_SETTINGS_EVENT = "gristmill:open-settings";
 
 /** Opens the Settings modal (optionally on a section) from anywhere in the control panel. */
 export function openSettings(section?: string) {

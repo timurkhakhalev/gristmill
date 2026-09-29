@@ -74,7 +74,7 @@ function getVite() {
   // Reuse one dev server across tests; its TestContext only needs after().
   const fakeContext = { after: (close: () => void | Promise<void>) => cleanup.push(close) } as unknown as TestContext;
   return (vitePromise ??= createRendererServer(fakeContext, {
-    cachePrefix: "openhercules-meeting-capture-stop-test-",
+    cachePrefix: "gristmill-meeting-capture-stop-test-",
   }));
 }
 

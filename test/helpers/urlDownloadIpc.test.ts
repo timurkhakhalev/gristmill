@@ -386,7 +386,7 @@ test("delete-temp-file refuses basenames outside the ow-url-/ow-diarize- familie
   fs.writeFileSync(foreign, "keep me");
   const result = await handlers.get("delete-temp-file")({ sender: sender() }, foreign);
   assert.equal(result.success, false);
-  assert.equal(result.error, "Not an OpenHercules temp file");
+  assert.equal(result.error, "Not an Gristmill temp file");
   assert.equal(fs.existsSync(foreign), true);
 });
 

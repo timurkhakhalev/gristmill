@@ -1,5 +1,5 @@
 {
-  "name": "openhercules",
+  "name": "gristmill",
   "version": "1.10.0",
   "description": "A macOS meeting and notes application for local-first transcription",
   "main": "dist-main/main.js",
@@ -66,8 +66,8 @@
     "dev:renderer": "cd src && vite",
     "build": "pnpm run build:mac:arm64",
     "postinstall": "electron-builder install-app-deps",
-    "build:renderer": "cd src && cross-env VITE_OPENHERCULES_DEV_BUILD=false vite build",
-    "build:renderer:dev": "cd src && cross-env VITE_OPENHERCULES_DEV_BUILD=true vite build",
+    "build:renderer": "cd src && cross-env VITE_GRISTMILL_DEV_BUILD=false vite build",
+    "build:renderer:dev": "cd src && cross-env VITE_GRISTMILL_DEV_BUILD=true vite build",
     "compile:mac-icon": "node scripts/compile-macos-icon.js",
     "prebuild:mac:arm64": "pnpm run compile:native && pnpm run compile:mac-icon && pnpm run download:whisper-cpp && pnpm run download:llama-server && pnpm run download:sherpa-onnx",
     "build:mac:arm64": "pnpm run build:main && pnpm run build:renderer && electron-builder --mac --arm64",
@@ -101,8 +101,8 @@
     "desktop-app"
   ],
   "author": {
-    "name": "OpenHercules",
-    "email": "[contact via GitHub issues]"
+    "name": "Gristmill",
+    "url": "https://github.com/timurkhakhalev"
   },
   "license": "MIT",
   "devDependencies": {

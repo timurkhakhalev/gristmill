@@ -10,7 +10,7 @@ const Module = require("node:module");
 // temporary SQLite file IS the behavior being pinned before the typed
 // cutover: defaults, filters, null results, metadata serialization and
 // cascades must survive the move unchanged.
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-chat-persist-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-chat-persist-"));
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
@@ -35,7 +35,7 @@ function isNativeBindingUnavailable(error: unknown) {
 }
 
 function createDb(t: import("node:test").TestContext) {
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-chat-persist-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-chat-persist-"));
   try {
     return new DatabaseManager();
   } catch (error) {
@@ -275,7 +275,7 @@ test("deleting the note cascades the chat; deleting the folder clears folder_id"
 });
 
 test("reopening the database restores conversations, messages and metadata", (t: import("node:test").TestContext) => {
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-chat-persist-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-chat-persist-"));
   let db;
   try {
     db = new DatabaseManager();

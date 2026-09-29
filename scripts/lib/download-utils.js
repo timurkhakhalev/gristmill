@@ -22,7 +22,7 @@ function fetchJson(url, redirectCount = 0) {
     }
 
     const headers = {
-      "User-Agent": "OpenHercules-Downloader",
+      "User-Agent": "Gristmill-Downloader",
       Accept: "application/vnd.github+json",
     };
 

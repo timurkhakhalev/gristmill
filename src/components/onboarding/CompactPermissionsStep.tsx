@@ -131,7 +131,7 @@ export default function CompactPermissionsStep({
   return (
     <CompactOnboardingFrame>
       <div className="onboarding-shell-scroll relative flex h-full flex-col overflow-y-auto px-5 pb-6 pt-45 text-center">
-        {/* text-balance evens the two lines out ("Set up OpenHercules" / "in 3
+        {/* text-balance evens the two lines out ("Set up Gristmill" / "in 3
             minutes") instead of leaving one word stranded. Preferred over a
             hardcoded <br> because the break point stays correct in all 9
             locales, where the string length differs. */}

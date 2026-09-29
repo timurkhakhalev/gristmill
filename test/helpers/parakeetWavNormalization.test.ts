@@ -92,7 +92,7 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
   }
 
   try {
-    const modelDir = path.join(tempHome, ".cache", "openhercules", "parakeet-models", MODEL_NAME);
+    const modelDir = path.join(tempHome, ".cache", "gristmill", "parakeet-models", MODEL_NAME);
     fs.mkdirSync(modelDir, { recursive: true });
     for (const file of getRequiredModelFiles(MODEL_NAME)) {
       fs.writeFileSync(path.join(modelDir, file), "");

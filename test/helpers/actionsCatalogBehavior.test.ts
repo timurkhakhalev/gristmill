@@ -10,7 +10,7 @@ const Module = require("node:module");
 // over a temporary SQLite file IS the behavior being pinned: list order,
 // whitelist updates, builtin delete protection, icon defaults and the
 // startup seeding rule that never overwrites an edited prompt.
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-actions-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-actions-"));
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
@@ -35,7 +35,7 @@ function isNativeBindingUnavailable(error: unknown) {
 
 type ActionRow = import("../../src/helpers/database.js").ActionRow;
 function createDb(t: import("node:test").TestContext, dir?: string): import("../../src/helpers/database.js").DatabaseManager | null {
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), dir || "openhercules-actions-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), dir || "gristmill-actions-"));
   try {
     return new DatabaseManager();
   } catch (error) {
@@ -162,7 +162,7 @@ test("editing a builtin succeeds and delete rejects it", (t: import("node:test")
 
 test("reopening the database keeps custom actions and edited builtin prompts", (t: import("node:test").TestContext) => {
   {
-    const db = createDb(t, "openhercules-actions-restart-") as import("../../src/helpers/database.js").DatabaseManager;
+    const db = createDb(t, "gristmill-actions-restart-") as import("../../src/helpers/database.js").DatabaseManager;
     const builtin = db.getActions().find((a: ActionRow) => a.translation_key === "notes.actions.builtin.generateNotes");
     db.updateAction(builtin!.id, { prompt: "my custom generate prompt" });
     db.createAction("Keeper", "d", "keep me");
@@ -178,7 +178,7 @@ test("reopening the database keeps custom actions and edited builtin prompts", (
 
 test("reopening a populated legacy catalog adds missing meeting actions without replacing edits", (t: import("node:test").TestContext) => {
   {
-    const db = createDb(t, "openhercules-actions-missing-meeting-rows-") as import("../../src/helpers/database.js").DatabaseManager;
+    const db = createDb(t, "gristmill-actions-missing-meeting-rows-") as import("../../src/helpers/database.js").DatabaseManager;
     const detailed = db.getActions().find((a: ActionRow) => a.translation_key === "notes.actions.builtin.detailedNotes");
     assert.ok(detailed);
     db.updateAction(detailed.id, { prompt: "my edited Detailed Notes prompt" });

@@ -643,7 +643,7 @@ export function registerTranscriptionExecutionHandlers(
           if (route.sizeCapBytes && buffer.byteLength > route.sizeCapBytes) {
             throw new Error(byokSizeCapError(route.sizeCapBytes));
           }
-          const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-gemini-retry-"));
+          const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-gemini-retry-"));
           try {
             const filePath = path.join(tempDir, "recording.webm");
             fs.writeFileSync(filePath, buffer);

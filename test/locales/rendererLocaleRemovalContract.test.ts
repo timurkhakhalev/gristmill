@@ -80,7 +80,7 @@ test("prompt locale bundles expose cleanup and dictionary only", () => {
   }
 });
 
-test("supported locale values use the OpenHercules brand", () => {
+test("supported locale values use the Gristmill brand", () => {
   const visit = (value: unknown, path: string): void => {
     if (typeof value === "string") {
       assert.doesNotMatch(value, /OpenWhispr|OpenWispr|Whispr/i, path);

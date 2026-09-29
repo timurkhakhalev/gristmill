@@ -4,6 +4,7 @@
 // public IPC DTOs: tokens and embedding buffers stay main-only; shared
 // contracts own the renderer-facing projections.
 import path from "path";
+import { migrateMeetingAudio } from "./meetingAudioMigration.js";
 import { createHash, randomUUID } from "crypto";
 import { app } from "electron";
 import debugLogger from "./debugLogger.js";
@@ -177,7 +178,7 @@ interface MeetingRecordingEpochDbRow {
   start_frame: number;
   sample_rate: 24_000;
   channels: 1;
-  encoding: "pcm_s16le";
+  encoding: "opus";
   relative_path: string;
   state: "open" | "finalized" | "incomplete";
   frame_count: number;
@@ -592,7 +593,7 @@ function configJson(config: MeetingProcessingConfig | null): string | null {
 }
 
 function relativeEpochPath(source: MeetingSource, index: number): string {
-  return `${source}/epoch-${String(index).padStart(6, "0")}.pcm`;
+  return `${source}/epoch-${String(index).padStart(6, "0")}.opus`;
 }
 
 function meetingRunArtifactFileName(artifact: MeetingRunArtifact): string {
@@ -740,11 +741,11 @@ export class DatabaseManager {
           start_frame INTEGER NOT NULL CHECK(start_frame >= 0),
           sample_rate INTEGER NOT NULL CHECK(sample_rate = 24000),
           channels INTEGER NOT NULL CHECK(channels = 1),
-          encoding TEXT NOT NULL CHECK(encoding = 'pcm_s16le'),
+          encoding TEXT NOT NULL CHECK(encoding = 'opus'),
           relative_path TEXT NOT NULL,
           state TEXT NOT NULL DEFAULT 'open' CHECK(state IN ('open', 'finalized', 'incomplete')),
           frame_count INTEGER NOT NULL DEFAULT 0 CHECK(frame_count >= 0),
-          ignored_trailing_bytes INTEGER NOT NULL DEFAULT 0 CHECK(ignored_trailing_bytes BETWEEN 0 AND 1),
+          ignored_trailing_bytes INTEGER NOT NULL DEFAULT 0 CHECK(ignored_trailing_bytes >= 0),
           error_code TEXT,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -986,6 +987,8 @@ export class DatabaseManager {
         END;
       `);
 
+      migrateMeetingAudio(this.sql, app.getPath("userData"));
+
       const recordingColumns = this.sql.pragma("table_info(meeting_recordings)") as Array<{ name: string }>;
       if (!recordingColumns.some((column) => column.name === "group_id")) {
         this.sql.exec("ALTER TABLE meeting_recordings ADD COLUMN group_id TEXT");
@@ -1084,6 +1087,8 @@ export class DatabaseManager {
       return true;
     } catch (error) {
       debugLogger.error("Database initialization failed", { error: (error as Error).message }, "database");
+      try { this._db?.close(); } catch {}
+      this._db = null;
       throw error;
     }
   }
@@ -1174,7 +1179,7 @@ export class DatabaseManager {
     const relativePath = relativeEpochPath(source, epochIndex);
     this.sql
       .prepare(
-        "INSERT INTO meeting_recording_epochs (recording_id, source, epoch_index, start_frame, sample_rate, channels, encoding, relative_path) VALUES (?, ?, ?, ?, 24000, 1, 'pcm_s16le', ?)"
+        "INSERT INTO meeting_recording_epochs (recording_id, source, epoch_index, start_frame, sample_rate, channels, encoding, relative_path) VALUES (?, ?, ?, ?, 24000, 1, 'opus', ?)"
       )
       .run(recordingId, source, epochIndex, startFrame, relativePath);
     return this.getMeetingRecordingEpoch(recordingId, source, epochIndex) as MeetingRecordingEpochDto;
@@ -1217,7 +1222,7 @@ export class DatabaseManager {
     recordingId: string,
     source: MeetingSource,
     epochIndex: number,
-    result: { frameCount: number; ignoredTrailingBytes: 0 | 1; errorCode?: string | null }
+    result: { frameCount: number; ignoredTrailingBytes: number; errorCode?: string | null }
   ): MeetingRecordingEpochDto {
     meetingRecordingIdSchema.parse(recordingId);
     meetingSourceSchema.parse(source);
@@ -1227,7 +1232,7 @@ export class DatabaseManager {
     if (!Number.isSafeInteger(result.frameCount) || result.frameCount < 0) {
       throw new RangeError("Invalid recovered frame count");
     }
-    if (result.ignoredTrailingBytes !== 0 && result.ignoredTrailingBytes !== 1) {
+    if (!Number.isSafeInteger(result.ignoredTrailingBytes) || result.ignoredTrailingBytes < 0) {
       throw new RangeError("Invalid recovered frame remainder");
     }
     if (result.errorCode != null) meetingProcessingConfigErrorSchema.parse({ code: result.errorCode });

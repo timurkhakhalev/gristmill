@@ -75,72 +75,55 @@ const packet = (epochIndex: number, epochStartFrame: unknown, sequence: unknown,
   sampleOffset,
 });
 
-test("process kills recover only complete PCM frames at several write positions", async (t: import("node:test").TestContext) => {
+test("killed encoders recover complete Ogg pages at several write positions", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
-  const root = getUserDataDir();
-  const storage = new MeetingRecordingStorage({ userDataPath: root });
-  const childScript = `
-    const fs = require("node:fs");
-    const fd = fs.openSync(process.argv.at(-1), "a");
-    let count = 0;
-    process.stdin.on("data", () => {
-      fs.writeSync(fd, Buffer.alloc(4800, count & 255));
-      count += 1;
-      process.stdout.write(count + "\\n");
-    });
-  `;
-
-  const recordings = [];
-  for (const targetWrites of [1, 3, 7]) {
-    const note = db.saveNote(`Crash ${targetWrites}`, "", "meeting").note;
+  const { getFFmpegPath } = require("../../src/helpers/ffmpegUtils.ts") as typeof import("../../src/helpers/ffmpegUtils.js");
+  const { OpusPages, MEETING_OPUS_ARGS } = require("../../src/helpers/meetingOpus.ts") as typeof import("../../src/helpers/meetingOpus.js");
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const recordings: Array<{ id: string; frames: number }> = [];
+  for (const targetPages of [3, 5, 8]) {
+    const note = db.saveNote(`Crash ${targetPages}`, "", "meeting").note!;
     const recording = db.createMeetingRecording(note.id, { config: null });
     db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
-    const rawPath = storage.createEpochFile(recording.id, "mic", 0);
-    recordings.push({ recording, targetWrites });
-    const child = spawn(process.execPath, ["-e", childScript, rawPath], {
-      stdio: ["pipe", "pipe", "ignore"],
-    });
-    const exited = new Promise((resolve, reject) => {
+    const file = storage.createEpochFile(recording.id, "mic", 0);
+    const child = spawn(getFFmpegPath()!, ["-hide_banner", "-loglevel", "error", "-re", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", "pipe:0", ...MEETING_OPUS_ARGS, "-flush_packets", "1", "-f", "ogg", "pipe:1"], { stdio: ["pipe", "pipe", "ignore"] });
+    const pages = new OpusPages();
+    let count = 0;
+    let frames = 0;
+    child.stdout.on("data", (chunk: Buffer) => pages.push(chunk, (page) => {
+      if (count >= targetPages) return;
+      fs.appendFileSync(file, page);
+      count++;
+      frames = pages.frameCount;
+      if (count === targetPages) child.kill("SIGKILL");
+    }));
+    child.stdin.on("error", () => {});
+    const closed = new Promise<void>((resolve, reject) => {
       child.once("error", reject);
-      child.once("exit", (code: string, signal: unknown) => resolve({ code, signal }));
+      child.once("close", () => resolve());
     });
-    let output = "";
-    child.stdout.on("data", (chunk) => {
-      output += chunk.toString();
-      let newline = output.indexOf("\n");
-      while (newline !== -1) {
-        const count = Number(output.slice(0, newline));
-        output = output.slice(newline + 1);
-        if (count === targetWrites) child.kill("SIGKILL");
-        else child.stdin.write("write\n");
-        newline = output.indexOf("\n");
-      }
-    });
-    child.once("spawn", () => child.stdin.write("write\n"));
-    assert.deepEqual(await exited, { code: null, signal: "SIGKILL" });
-
-    const bytes = fs.readFileSync(rawPath);
-    const expected = Buffer.concat(
-      Array.from({ length: targetWrites }, (_, index) => Buffer.alloc(4_800, index))
-    );
-    assert.deepEqual(bytes, expected);
+    t.after(() => child.kill("SIGKILL"));
+    child.stdin.end(Buffer.alloc(24_000 * 2 * 4, 3));
+    await closed;
+    assert.equal(count, targetPages);
+    assert.ok(frames > 0);
+    const bytes = fs.readFileSync(file);
+    const recovered = storage.recoverEpoch(recording.id, "mic", 0);
+    assert.equal(recovered.frameCount, frames);
+    assert.equal(recovered.errorCode, "opus-interrupted");
+    assert.deepEqual(fs.readFileSync(file), bytes, "recovery preserves original pages");
+    recordings.push({ id: recording.id, frames });
   }
-
   db.close();
   const reopened = new DatabaseManager();
   try {
-    const recovered = storage.recover(reopened);
-    for (const { recording, targetWrites } of recordings) {
-      const epoch = reopened.listMeetingRecordingEpochs(recording.id)[0];
-      assert.equal(recovered.finalized.includes(recording.id), true);
-      assert.equal(epoch.frameCount, targetWrites * 2_400);
-      assert.equal(epoch.ignoredTrailingBytes, 0);
-      assert.equal(reopened.getMeetingRecording(recording.id).captureState, "incomplete");
+    storage.recover(reopened);
+    for (const { id, frames } of recordings) {
+      assert.equal(reopened.listMeetingRecordingEpochs(id)[0].frameCount, frames);
+      assert.equal(reopened.getMeetingRecording(id).captureState, "incomplete");
     }
-  } finally {
-    reopened.close();
-  }
+  } finally { reopened.close(); }
 });
 
 test("capture writes source epochs separately and finalizes restart gaps as incomplete once", async () => {

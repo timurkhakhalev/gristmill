@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, shell, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
@@ -85,6 +85,7 @@ import { MeetingProcessingWorker, registerMeetingProcessingHandlers } from "./me
 import {
   meetingProcessingChannels,
   meetingRecordingPlaybackRequestSchema,
+  meetingRecordingPlaybackReleaseSchema,
   meetingRecordingExportRequestSchema,
   meetingRecordingAudioRequestSchema,
 } from "../contracts/meetingProcessing.js";
@@ -634,7 +635,27 @@ export class IPCHandlers {
     const storage = this.audioStorageManager.meetingRecordings;
     const database = this.databaseManager;
 
-    ipcMain.handle(meetingProcessingChannels.getPlaybackPath, async (_event, payload: unknown) => {
+    const leases = new Map<string, { recordingId: string; sender: WebContents; cleanup: () => void }>();
+    const release = (id: string): boolean => {
+      const lease = leases.get(id);
+      if (!lease) return true;
+      let success = true;
+      try { storage.removeDerivedAudio(lease.recordingId, id); }
+      catch {
+        success = false;
+        debugLogger.warn("Temporary meeting playback cleanup failed", { code: "meeting-playback-cleanup-failed" });
+      }
+      lease.sender.removeListener("destroyed", lease.cleanup);
+      lease.sender.removeListener("render-process-gone", lease.cleanup);
+      leases.delete(id);
+      return success;
+    };
+    ipcMain.handle(meetingProcessingChannels.releasePlayback, (event, payload: unknown) => {
+      const { leaseId } = meetingRecordingPlaybackReleaseSchema.parse(payload);
+      const success = leases.get(leaseId)?.sender.id !== event.sender.id || release(leaseId);
+      return { success, ...(success ? {} : { error: "meeting-playback-cleanup-failed" }) };
+    });
+    ipcMain.handle(meetingProcessingChannels.getPlaybackPath, async (event, payload: unknown) => {
       try {
         const parsed = meetingRecordingPlaybackRequestSchema.parse(payload);
         const recording = database.getMeetingRecording(parsed.recordingId);
@@ -658,27 +679,25 @@ export class IPCHandlers {
           if (currentRun && !canPlayMeetingRun(currentRecording, currentRun)) {
             return { success: false, error: "meeting-result-not-selected" };
           }
-          const playbackId = currentRun?.id ?? recording.id;
-          let audioPath = storage.getDerivedAudioPath(recording.id, playbackId);
-          if (!fs.existsSync(audioPath)) {
+          const playbackId = crypto.randomUUID();
+          let leased = false;
+          try {
             const sources = currentRun?.sourceRecordingIds.map((id) => database.getMeetingRecording(id)) ?? [currentRecording];
             if (sources.some((source) => !source || source.audioState !== "available")) throw new Error("meeting-audio-part-unavailable");
             const combined = composeMeetingAudioParts(sources as NonNullable<typeof currentRecording>[], (id) => database.listMeetingRecordingEpochs(id));
-            await prepareMeetingAudio(
-              storage,
-              combined.recording,
-              playbackId,
-              combined.epochs,
-              { signal }
-            );
-            audioPath = storage.getDerivedAudioPath(recording.id, playbackId);
+            const { path: audioPath } = await prepareMeetingAudio(storage, combined.recording, playbackId, combined.epochs, { signal });
+            signal.throwIfAborted();
+            if (event.sender.isDestroyed()) throw new Error("Meeting player was closed");
+            approveAudioPath(audioPath);
+            const cleanup = () => release(playbackId);
+            leases.set(playbackId, { recordingId: recording.id, sender: event.sender, cleanup });
+            event.sender.once("destroyed", cleanup);
+            event.sender.once("render-process-gone", cleanup);
+            leased = true;
+            return { success: true, path: audioPath, leaseId: playbackId };
+          } finally {
+            if (!leased) storage.removeDerivedAudio(recording.id, playbackId);
           }
-          if (signal.aborted) throw new Error("Meeting audio operation cancelled");
-          const stats = await fs.promises.stat(audioPath);
-          if (!stats.isFile()) throw new Error("Meeting playback audio is unavailable");
-          if (signal.aborted) throw new Error("Meeting audio operation cancelled");
-          approveAudioPath(audioPath);
-          return { success: true, path: audioPath };
         });
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -732,7 +751,7 @@ export class IPCHandlers {
           if (runId && (!latestRun || latestRun.recordingId !== latestRecording.id || !latestRun.hasTranscript)) {
             return { success: false, error: "meeting-result-not-selected" };
           }
-          const mixId = latestRun?.id ?? crypto.randomUUID();
+          const mixId = crypto.randomUUID();
           const sourcePath = storage.getDerivedAudioPath(latestRecording.id, mixId);
           try {
             if (!fs.existsSync(sourcePath)) {
@@ -746,7 +765,7 @@ export class IPCHandlers {
             await exportMeetingMixedMp3(sourcePath, destination, signal);
             return { success: true };
           } finally {
-            if (!latestRun) await fs.promises.rm(sourcePath, { force: true });
+            storage.removeDerivedAudio(latestRecording.id, mixId);
           }
         });
       } catch (error) {

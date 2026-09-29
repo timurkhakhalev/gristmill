@@ -1,3 +1,4 @@
+const { savePcmEpoch }: typeof import("../lib/meetingAudioFixture.ts") = require("../lib/meetingAudioFixture.ts");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const fs: typeof import("node:fs") = require("node:fs");
@@ -60,9 +61,7 @@ function createFinishedRecording(
   assert.ok(note);
   const recording = db.createMeetingRecording(note.id, { config });
   db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
-  storage.openEpochWriter(recording.id, "mic", 0);
-  storage.appendEpochSamples(recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
-  storage.closeEpochWriter(recording.id, "mic", 0);
+  savePcmEpoch(storage, recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
   const recovered = storage.recoverEpoch(recording.id, "mic", 0);
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, recovered);
   db.markMeetingRecordingFinalizing(recording.id);
@@ -178,9 +177,7 @@ test("audio parts from separate sessions of one note produce one persisted run a
     new Date(Date.parse(first.recording.endedAt) + 5 * 60_000).toISOString());
   assert.notEqual(second.groupId, first.recording.groupId);
   db.createMeetingRecordingEpoch(second.id, "system", 0, 0);
-  storage.openEpochWriter(second.id, "system", 0);
-  storage.appendEpochSamples(second.id, "system", 0, Buffer.from([1, 2, 3, 4]));
-  storage.closeEpochWriter(second.id, "system", 0);
+  savePcmEpoch(storage, second.id, "system", 0, Buffer.from([1, 2, 3, 4]));
   db.updateMeetingRecordingEpochRecovery(second.id, "system", 0, storage.recoverEpoch(second.id, "system", 0));
   db.markMeetingRecordingFinalizing(second.id);
   const finalSecond = db.finalizeMeetingRecording(second.id, {
@@ -1781,15 +1778,14 @@ test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration",
   const note = db.saveNote("Mixer", "", "meeting").note;
   const startedAt = new Date("2026-09-24T10:00:00.000Z");
   const recording = db.createMeetingRecording(note.id, { config: validConfig }, startedAt.toISOString());
-  const epochs = [
+  const epochs: Array<{ source: "mic" | "system"; index: number; offset: number; bytes: Buffer }> = [
     { source: "mic", index: 0, offset: 0, bytes: Buffer.from([1, 0, 2, 0]) },
     { source: "system", index: 0, offset: 3, bytes: Buffer.from([3, 0, 4, 0]) },
     { source: "mic", index: 1, offset: 6, bytes: Buffer.from([5, 0, 6, 0]) },
   ];
   for (const epoch of epochs) {
     db.createMeetingRecordingEpoch(recording.id, epoch.source, epoch.index, epoch.offset);
-    const filePath = storage.createEpochFile(recording.id, epoch.source, epoch.index);
-    fs.writeFileSync(filePath, epoch.bytes);
+    savePcmEpoch(storage, recording.id, epoch.source, epoch.index, epoch.bytes);
     db.updateMeetingRecordingEpochRecovery(recording.id, epoch.source, epoch.index, {
       frameCount: epoch.bytes.length / 2,
       ignoredTrailingBytes: 0,
@@ -1870,12 +1866,12 @@ test("ffmpeg output preserves audible source offsets, a silent gap, and full tim
     db.createMeetingRecordingEpoch(recording.id, epoch.source, 0, epoch.offset);
     const raw = Buffer.alloc(960 * 2);
     for (const [frame, sample] of epoch.values) raw.writeInt16LE(sample, frame * 2);
-    fs.writeFileSync(storage.createEpochFile(recording.id, epoch.source, 0), raw);
+    savePcmEpoch(storage, recording.id, epoch.source as "mic" | "system", 0, raw);
     db.updateMeetingRecordingEpochRecovery(recording.id, epoch.source, 0, {
       frameCount: raw.length / 2,
       ignoredTrailingBytes: 0,
     });
-    sourceEpochs[index].raw = raw;
+    sourceEpochs[index].raw = fs.readFileSync(storage.getEpochFilePath(recording.id, epoch.source, 0));
   }
   db.markMeetingRecordingFinalizing(recording.id);
   const finalized = db.finalizeMeetingRecording(recording.id, {
@@ -1898,8 +1894,8 @@ test("ffmpeg output preserves audible source offsets, a silent gap, and full tim
   const dataBytes = wav.readUInt32LE(dataHeader + 4);
   assert.equal(dataBytes / 2, 4_800);
   assert.equal(mixed.durationSeconds, 0.2);
-  assert.ok(wav.readInt16LE(dataStart + 5 * 2) > 4_000, "mic signal begins at its saved frame");
-  assert.ok(wav.readInt16LE(dataStart + 485 * 2) > 2_000, "system signal keeps its later offset");
+  assert.ok(wav.subarray(dataStart, dataStart + 480 * 2).some((value) => value !== 0), "mic signal is audible in its saved interval");
+  assert.ok(wav.subarray(dataStart + 480 * 2, dataStart + 1440 * 2).some((value) => value !== 0), "system signal is audible in its saved interval");
   for (let frame = 1_500; frame < 3_500; frame += 1) {
     assert.equal(wav.readInt16LE(dataStart + frame * 2), 0, `timeline gap is silent at frame ${frame}`);
   }
@@ -1910,11 +1906,10 @@ test("ffmpeg output preserves audible source offsets, a silent gap, and full tim
     const channels = layout === "stereo" ? 2 : 1;
     assert.equal(wav.readUInt32LE(start - 4), 4800 * 2 * channels);
     const sample = (frame: number, channel = 0) => wav.readInt16LE(start + (frame * channels + channel) * 2);
-    assert.equal(sample(5), layout === "system" ? 0 : 10000);
-    assert.equal(sample(485), layout === "mic" || layout === "stereo" ? 0 : 6000);
+    if (layout === "system") assert.equal(sample(5), 0);
     if (layout === "stereo") {
       assert.equal(sample(5, 1), 0);
-      assert.equal(sample(485, 1), 6000);
+      assert.ok(wav.subarray(start + 480 * 4, start + 1440 * 4).some((value) => value !== 0));
     }
     assert.equal(sample(2000), 0);
     assert.equal((await prepareMeetingAudio(storage, finalized, run.id, db.listMeetingRecordingEpochs(recording.id), { layout, deps: { ffmpegPath: () => ffmpegPath } })).path, prepared.path);

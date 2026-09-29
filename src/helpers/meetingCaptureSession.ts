@@ -26,7 +26,7 @@ export interface MeetingCaptureDatabase {
     recordingId: string,
     source: MeetingSource,
     epochIndex: number,
-    result: { frameCount: number; ignoredTrailingBytes: 0 | 1; errorCode?: string | null }
+    result: { frameCount: number; ignoredTrailingBytes: number; errorCode?: string | null }
   ): unknown;
   markMeetingRecordingFinalizing(recordingId: string): unknown;
   finalizeMeetingRecording(
@@ -49,12 +49,12 @@ export interface MeetingCaptureEpochStorage {
     epochIndex: number,
     samples: Buffer
   ): void;
-  closeEpochWriter(recordingId: string, source: MeetingSource, epochIndex: number): void;
+  closeEpochWriter(recordingId: string, source: MeetingSource, epochIndex: number): void | Promise<void>;
   recoverEpoch(
     recordingId: string,
     source: MeetingSource,
     epochIndex: number
-  ): { frameCount: number; ignoredTrailingBytes: 0 | 1; errorCode: string | null };
+  ): { frameCount: number; ignoredTrailingBytes: number; errorCode: string | null };
 }
 
 export interface MeetingCapturePacket {
@@ -86,7 +86,7 @@ export interface MeetingCaptureStopResult {
   errorCode: string | null;
 }
 
-/** Main-process owner for one recording's ordered raw PCM writes and finalization. */
+/** Main-process owner for one recording's ordered audio writes and finalization. */
 export class MeetingCaptureSession {
   readonly recordingId: string;
   readonly groupId: string;
@@ -96,6 +96,7 @@ export class MeetingCaptureSession {
   private readonly mainOwnedSources = new Set<MeetingSource>();
   private stopPromise: Promise<MeetingCaptureStopResult> | null = null;
   private captureError: string | null = null;
+  private readonly closingEpochs: Promise<void>[] = [];
 
   private constructor(
     private readonly database: MeetingCaptureDatabase,
@@ -261,7 +262,7 @@ export class MeetingCaptureSession {
       }
       if (epoch) {
         try {
-          this.closeEpoch(source, epoch);
+          await this.closeEpoch(source, epoch);
         } catch {
           this.sourceErrors.set(source, "audio-flush-failed");
         }
@@ -280,6 +281,8 @@ export class MeetingCaptureSession {
       }
     }
 
+    await Promise.all(this.closingEpochs);
+    errorCode ??= this.captureError;
     if (this.sourceErrors.size > 0) errorCode ??= this.sourceErrors.values().next().value ?? null;
     this.database.markMeetingRecordingFinalizing(this.recordingId);
     const result = this.database.finalizeMeetingRecording(this.recordingId, {
@@ -311,10 +314,27 @@ export class MeetingCaptureSession {
     return epoch;
   }
 
-  private closeEpoch(source: MeetingSource, epoch: CaptureEpoch): void {
-    if (!epoch.opened) return;
-    this.storage.closeEpochWriter(this.recordingId, source, epoch.index);
+  private closeEpoch(source: MeetingSource, epoch: CaptureEpoch): Promise<void> {
+    if (!epoch.opened) return Promise.resolve();
     epoch.opened = false;
+    const closing = (async () => {
+      try {
+        await this.storage.closeEpochWriter(this.recordingId, source, epoch.index);
+      } catch {
+        this.captureError ??= "audio-flush-failed";
+        this.sourceErrors.set(source, "audio-flush-failed");
+      }
+      try {
+        const recovered = this.storage.recoverEpoch(this.recordingId, source, epoch.index);
+        this.database.updateMeetingRecordingEpochRecovery(this.recordingId, source, epoch.index, recovered);
+        if (recovered.errorCode) this.sourceErrors.set(source, recovered.errorCode);
+      } catch {
+        this.captureError ??= "audio-recovery-failed";
+        this.sourceErrors.set(source, "audio-recovery-failed");
+      }
+    })();
+    this.closingEpochs.push(closing);
+    return closing;
   }
 
   private toFrame(at: Date): number {

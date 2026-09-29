@@ -1,3 +1,4 @@
+const { savePcmEpoch }: typeof import("../lib/meetingAudioFixture.ts") = require("../lib/meetingAudioFixture.ts");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs: typeof import("node:fs") = require("node:fs");
 const path: typeof import("node:path") = require("node:path");
@@ -38,9 +39,7 @@ function saveMeetingNote(db: any, title = "Meeting") {
 function createFinishedRecording(db: any, storage: any, note: any, config: typeof validConfig | null = validConfig) {
   const recording = db.createMeetingRecording(note.id, { config });
   db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
-  storage.openEpochWriter(recording.id, "mic", 0);
-  storage.appendEpochSamples(recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
-  storage.closeEpochWriter(recording.id, "mic", 0);
+  savePcmEpoch(storage, recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
   const epoch = storage.recoverEpoch(recording.id, "mic", 0);
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, epoch);
   db.markMeetingRecordingFinalizing(recording.id);

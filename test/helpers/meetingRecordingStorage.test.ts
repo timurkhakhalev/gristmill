@@ -22,7 +22,7 @@ function createRecording(db: any) {
   return db.createMeetingRecording(note.id, { config });
 }
 
-test("recording epochs append complete PCM frames through short writes", (t: import("node:test").TestContext) => {
+test("recording epochs append complete Opus pages through short writes", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -39,15 +39,15 @@ test("recording epochs append complete PCM frames through short writes", (t: imp
 
   storage.openEpochWriter(recording.id, "mic", 0);
   storage.appendEpochSamples(recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
-  storage.closeEpochWriter(recording.id, "mic", 0);
+  await storage.closeEpochWriter(recording.id, "mic", 0);
 
-  assert.equal(writes, 4);
-  assert.deepEqual(storage.readEpochSamples(recording.id, "mic", 0), Buffer.from([1, 2, 3, 4]));
+  assert.ok(writes > 4);
+  assert.deepEqual(storage.recoverEpoch(recording.id, "mic", 0), { frameCount: 2, ignoredTrailingBytes: 0, errorCode: null });
   assert.throws(() => storage.appendEpochSamples(recording.id, "mic", 0, Buffer.from([5])));
   db.close();
 });
 
-test("write failure leaves a partial frame that recovery ignores without rewriting raw audio", (t: import("node:test").TestContext) => {
+test("write failure leaves a partial Ogg page that recovery ignores without rewriting original audio", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -63,9 +63,9 @@ test("write failure leaves a partial frame that recovery ignores without rewriti
     },
   });
   storage.openEpochWriter(recording.id, "mic", 0);
-  assert.throws(() => storage.appendEpochSamples(recording.id, "mic", 0, Buffer.from([9, 8, 7, 6])));
-  storage.closeEpochWriter(recording.id, "mic", 0);
-  const filePath = path.join(root, "audio", "meetings", recording.id, "mic", "epoch-000000.pcm");
+  storage.appendEpochSamples(recording.id, "mic", 0, Buffer.from([9, 8, 7, 6]));
+  await assert.rejects(storage.closeEpochWriter(recording.id, "mic", 0), /encoder failed/);
+  const filePath = path.join(root, "audio", "meetings", recording.id, "mic", "epoch-000000.opus");
   const originalBytes = fs.readFileSync(filePath);
 
   const recovered = storage.recoverEpoch(recording.id, "mic", 0);
@@ -74,7 +74,7 @@ test("write failure leaves a partial frame that recovery ignores without rewriti
   db.close();
 });
 
-test("recovery finalizes both source epochs, keeps timeline gaps, and creates one initial run", (t: import("node:test").TestContext) => {
+test("recovery finalizes both source epochs, keeps timeline gaps, and creates one initial run", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const root = getUserDataDir();
@@ -90,6 +90,7 @@ test("recovery finalizes both source epochs, keeps timeline gaps, and creates on
   storage.openEpochWriter(recording.id, "system", 0);
   storage.appendEpochSamples(recording.id, "system", 0, Buffer.from([8, 9, 10, 11]));
 
+  await storage.closeRecordingWriters(recording.id);
   const recovered = storage.recover(db);
   const saved = db.getMeetingRecording(recording.id);
   const runs = db.listMeetingProcessingRuns(recording.id);
@@ -115,7 +116,7 @@ test("recovery finalizes both source epochs, keeps timeline gaps, and creates on
     ]
   );
   const bytesBeforeSecondRecovery = fs.statSync(
-    path.join(root, "audio", "meetings", recording.id, "mic", "epoch-000000.pcm")
+    path.join(root, "audio", "meetings", recording.id, "mic", "epoch-000000.opus")
   ).size;
   storage.recover(db);
   const repeated = db.finalizeMeetingRecording(recording.id, {
@@ -125,7 +126,7 @@ test("recovery finalizes both source epochs, keeps timeline gaps, and creates on
   assert.equal(db.listMeetingProcessingRuns(recording.id).length, 1);
   assert.equal(repeated.initialRun.id, runs[0].id);
   assert.equal(
-    fs.statSync(path.join(root, "audio", "meetings", recording.id, "mic", "epoch-000000.pcm")).size,
+    fs.statSync(path.join(root, "audio", "meetings", recording.id, "mic", "epoch-000000.opus")).size,
     bytesBeforeSecondRecovery
   );
   db.close();

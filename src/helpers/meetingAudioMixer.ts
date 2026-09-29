@@ -1,5 +1,6 @@
 import { spawn as spawnChild, type ChildProcess } from "child_process";
 import fs from "fs";
+import { inspectMeetingOpus } from "./meetingOpus.js";
 import path from "path";
 import type { MeetingRecordingDto, MeetingRecordingEpochDto } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
@@ -16,6 +17,7 @@ export interface MeetingAudioMixerDeps {
   spawn?: (command: string, args: string[], options: { stdio: ["ignore", "ignore", "pipe"] }) => ChildProcess;
   availableBytes?: (path: string) => number;
   stat?: (path: string) => fs.Stats;
+  inspectEpoch?: typeof inspectMeetingOpus;
   readHeader?: (path: string) => Buffer;
   exists?: (path: string) => boolean;
   remove?: (path: string, options?: { force: boolean }) => void;
@@ -101,8 +103,8 @@ export async function prepareMeetingAudio(
     if (epoch.state === "open") throw new Error("Meeting recording has an unfinalized audio epoch");
   }
   for (const input of inputs) {
-    if ((deps.stat ?? fs.statSync)(input.path).size !== input.frameCount * BYTES_PER_FRAME) {
-      throw new Error("Meeting recording audio epoch size does not match its saved timeline");
+    if ((deps.inspectEpoch ?? inspectMeetingOpus)(input.path).frameCount !== input.frameCount) {
+      throw new Error("Meeting recording audio epoch duration does not match its saved timeline");
     }
   }
 
@@ -143,7 +145,7 @@ function runMixer(
 ): Promise<void> {
   if (signal?.aborted) return Promise.reject(createAbortError());
   const filters = inputs.map((input, index) =>
-    `[${index}:a]adelay=${input.startFrame}S:all=1${layout === "mono" ? ",volume=0.5" : ""}[a${index}]`
+    `[${index}:a]aresample=${SAMPLE_RATE},atrim=end_sample=${input.frameCount},adelay=${input.startFrame}S:all=1${layout === "mono" ? ",volume=0.5" : ""}[a${index}]`
   );
   const mix = (indexes: number[], label: string) => {
     if (!indexes.length) throw new Error("Meeting recording is missing an audio source");
@@ -158,7 +160,7 @@ function runMixer(
   }
   const args: string[] = ["-hide_banner", "-loglevel", "error"];
   for (const input of inputs) {
-    args.push("-f", "s16le", "-ar", String(SAMPLE_RATE), "-ac", "1", "-i", input.path);
+    args.push("-i", input.path);
   }
   args.push(
     "-filter_complex", filters.join(";"),

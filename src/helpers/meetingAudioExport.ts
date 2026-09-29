@@ -4,15 +4,12 @@ import { randomUUID } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import type { MeetingRecordingEpochDto, MeetingSource } from "../contracts/meetingRecording.js";
-import { meetingTimelineFrameCount } from "./meetingAudioMixer.js";
+import { prepareMeetingAudio } from "./meetingAudioMixer.js";
 import type { MeetingRecordingDto, MeetingProcessingRunDto } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { createAbortError } from "./abortError.js";
 import { getFFmpegPath } from "./ffmpegUtils.js";
 
-const SAMPLE_RATE = 24_000;
-const BYTES_PER_FRAME = 2;
-const HEADER_BYTES = 44;
 const EXPORT_CHUNK_BYTES = 256 * 1024;
 const execFileAsync = promisify(execFile);
 
@@ -81,60 +78,12 @@ export async function exportMeetingSourceTrack(
   destination: string,
   signal?: AbortSignal
 ): Promise<void> {
-  const frameCount = meetingTimelineFrameCount(recording, epochs);
-  const dataBytes = frameCount * BYTES_PER_FRAME;
-  if (frameCount < 1 || dataBytes + 36 > 0xffff_ffff) {
-    throw new Error("Meeting recording timeline cannot be exported as WAV");
-  }
-  const sourceEpochs = epochs.filter((epoch) => epoch.source === source && epoch.frameCount > 0);
-  if (!sourceEpochs.length) throw new Error("Selected meeting audio track is unavailable");
-
-  const tempPath = path.join(path.dirname(destination), `.${path.basename(destination)}.${randomUUID()}.tmp`);
-  let output: fs.promises.FileHandle | null = null;
+  const id = randomUUID();
   try {
-    throwIfAborted(signal);
-    output = await fs.promises.open(tempPath, "wx", 0o600);
-    await writeAll(output, makeWavHeader(dataBytes), 0, signal);
-    await output.truncate(HEADER_BYTES + dataBytes);
-    for (const epoch of sourceEpochs) {
-      throwIfAborted(signal);
-      if (epoch.state === "open") throw new Error("Meeting recording has an unfinalized audio epoch");
-      const expectedBytes = epoch.frameCount * BYTES_PER_FRAME;
-      const reader = await storage.openEpochReader(recording.id, source, epoch.epochIndex);
-      try {
-        const stats = await reader.stat();
-        if (stats.size !== expectedBytes && stats.size !== expectedBytes + 1) {
-          throw new Error("Meeting recording audio epoch size does not match its saved timeline");
-        }
-        for (let epochOffset = 0; epochOffset < expectedBytes;) {
-          throwIfAborted(signal);
-          const length = Math.min(EXPORT_CHUNK_BYTES, expectedBytes - epochOffset);
-          const chunk = Buffer.allocUnsafe(length);
-          await readAll(reader, chunk, epochOffset, signal);
-          await writeAll(
-            output,
-            chunk,
-            HEADER_BYTES + epoch.startFrame * BYTES_PER_FRAME + epochOffset,
-            signal
-          );
-          epochOffset += length;
-        }
-      } finally {
-        await reader.close();
-      }
-    }
-    throwIfAborted(signal);
-    await output.sync();
-    await output.close();
-    output = null;
-    throwIfAborted(signal);
-    fs.renameSync(tempPath, destination);
-  } catch (error) {
-    if (output) {
-      try { await output.close(); } catch {}
-    }
-    await fs.promises.rm(tempPath, { force: true }).catch(() => {});
-    throw error;
+    const audio = await prepareMeetingAudio(storage, recording, id, epochs, { signal, layout: source });
+    await copyMeetingAudioExport(audio.path, destination, signal);
+  } finally {
+    storage.removeDerivedAudio(recording.id, id);
   }
 }
 
@@ -178,24 +127,6 @@ export async function copyMeetingAudioExport(
     await fs.promises.rm(tempPath, { force: true }).catch(() => {});
     throw error;
   }
-}
-
-function makeWavHeader(dataBytes: number): Buffer {
-  const header = Buffer.alloc(HEADER_BYTES);
-  header.write("RIFF", 0, "ascii");
-  header.writeUInt32LE(dataBytes + 36, 4);
-  header.write("WAVE", 8, "ascii");
-  header.write("fmt ", 12, "ascii");
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(SAMPLE_RATE, 24);
-  header.writeUInt32LE(SAMPLE_RATE * BYTES_PER_FRAME, 28);
-  header.writeUInt16LE(BYTES_PER_FRAME, 32);
-  header.writeUInt16LE(16, 34);
-  header.write("data", 36, "ascii");
-  header.writeUInt32LE(dataBytes, 40);
-  return header;
 }
 
 async function readAll(

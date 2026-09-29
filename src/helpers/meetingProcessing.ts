@@ -607,6 +607,10 @@ export class MeetingProcessingWorker {
     } finally {
       if (this.active === active) this.active = null;
       const current = this.deps.database.getMeetingProcessingRun(runId);
+      if (current && (run.stage === "normalize" || run.stage === "summary" || current.status !== "pending" || this.isCapturing())) {
+        try { this.deps.storage.removeDerivedAudio(recording.id, run.id); }
+        catch (error) { this.handleFailure(runId, run.stage, error); }
+      }
       if (current) this.notify(current);
     }
   }
@@ -646,6 +650,19 @@ export class MeetingProcessingWorker {
     this.setState(run.id, "asr", "pending", null, endOfMeetingGate ? run.retryAt : null);
   }
 
+  private async ensureAudio(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, layout: MeetingAudioLayout, signal: AbortSignal): Promise<void> {
+    const filePath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, layout);
+    try {
+      if ((this.deps.fileSize ?? ((p) => fs.statSync(p).size))(filePath) > 0) return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const { timeline, epochs } = this.sourceTimeline(run, recording);
+    await (this.deps.mixAudio
+      ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout)
+      : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout }));
+  }
+
   private async transcribe(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal, endOfMeetingGate: boolean): Promise<void> {
     const current = this.requireCurrentRun(run.id);
     if (current.hasRawProviderResponse) return this.setState(run.id, "normalize", "pending", null, null);
@@ -660,7 +677,9 @@ export class MeetingProcessingWorker {
     }
     if (recording.audioState !== "available") throw new MeetingProcessingFailure("audio-unavailable", "blocked");
     const config = this.requireConfig(run).transcription;
-    const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, config.mode === "local" ? "mono" : config.provider === "deepgram" ? "stereo" : "system");
+    const layouts: MeetingAudioLayout[] = config.mode === "local" ? ["mono"] : config.provider === "deepgram" ? ["stereo"] : ["mic", "system"];
+    for (const layout of layouts) await this.ensureAudio(run, recording, layout, signal);
+    const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, layouts[layouts.length - 1]);
     const fileSize = (this.deps.fileSize ?? ((filePath) => fs.statSync(filePath).size))(audioPath);
     const requestId = `meeting-${run.id}`;
     if (config.mode === "local") {
@@ -775,15 +794,7 @@ export class MeetingProcessingWorker {
       if (result.success && result.text?.trim() && config.local?.options?.diarize !== false) {
         if (this.isCapturing()) return this.pause(run, "normalize");
         const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id);
-        if (!(this.deps.fileSize ?? ((filePath) => fs.statSync(filePath).size))(audioPath)) {
-          const mixer = this.deps.mixAudio ?? ((recordingValue, runId, epochValues, abortSignal) =>
-            prepareMeetingAudio(this.deps.storage, recordingValue, runId, epochValues, {
-              signal: abortSignal,
-              deps: this.deps.mixerDeps,
-            })
-          );
-          await mixer(timeline, run.id, epochs, signal);
-        }
+        await this.ensureAudio(run, recording, "mono", signal);
         const note = this.deps.database.getNote(recording.noteId);
         const diarization = await this.deps.diarizeLocal(audioPath, {
           durationSeconds: recordingDuration,
@@ -833,11 +844,7 @@ export class MeetingProcessingWorker {
     if (this.deps.recognizeSpeakers && recording.audioState === "available" && transcript.segments?.length) {
       const layout = config.mode === "local" ? "mono" : "system";
       const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, layout);
-      if (config.provider === "deepgram") {
-        await (this.deps.mixAudio
-          ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout)
-          : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout }));
-      }
+      await this.ensureAudio(run, recording, layout, signal);
       const recognitionTranscript = { ...transcript, segments: transcript.segments.filter((segment) => segment.speaker !== "mic") };
       const recognized = await this.deps.recognizeSpeakers(recording, run, recognitionTranscript, audioPath, signal);
       signal.throwIfAborted();

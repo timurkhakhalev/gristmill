@@ -155,6 +155,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
       updated_at: "2026-09-25T10:00:00.000Z",
     }],
     meetingRecordingGetPlaybackPath: async (...args: unknown[]) => { calls.playback.push(args); return playback; },
+    meetingRecordingReleasePlayback: async () => ({ success: true }),
     meetingRecordingExportAudio: async (input: Record<string, unknown>) => { calls.export.push(input); return { success: true }; },
     meetingRecordingDeleteAudio: async (id: string) => {
       calls.delete.push(id);

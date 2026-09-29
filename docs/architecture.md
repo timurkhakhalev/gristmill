@@ -22,13 +22,18 @@ the managed relative path. Each processing run stores its source/provider/model,
 configuration, stage, status, error, and artifact paths. Speaker corrections
 are scoped by `(run_id, speaker_id)`; profile rows remain shared.
 
-Under Electron `userData`, immutable PCM is stored at
-`audio/meetings/{recordingId}/{mic|system}/epoch-000000.pcm`. Derived full
+Under Electron `userData`, original mono Ogg/Opus is stored at
+`audio/meetings/{recordingId}/{mic|system}/epoch-000000.opus` (32 kbit/s VBR,
+complexity 0, voice mode). PCM16LE at 24 kHz exists only in capture memory. Derived full
 timeline WAVs live at `audio/meetings/{recordingId}/derived/{runId}.wav` and
-are rebuilt from the original epochs. Per-run artifacts live at
+are rebuilt from the original epochs and removed after ASR/normalization consumers finish.
+Playback/export use separate temporary IDs; playback releases its file when the player
+ends or unmounts. Startup removes abandoned derived files. Per-run artifacts live at
 `meeting-results/{runId}/raw-provider-response.json`, `transcript.json`, and
 `summary.json`. SQLite and the storage manager derive and validate these paths
 in main; renderer IPC takes recording/run IDs, not arbitrary filesystem paths.
+
+See [Opus capture and migration](opus-recording.md) for recovery limits and the one-time PCM cutover.
 
 Before the first captured frame, main persists the selected configuration.
 Capture performs no ASR or provider request. Stop closes both source epochs,
@@ -40,7 +45,8 @@ deadline, including after restart. Pause does not queue work; Resume invalidates
 pending work for the earlier group version, and the worker rechecks eligibility
 at claim and before ASR.
 
-After the gate, the worker creates one mono, full-timeline WAV for the run,
+After the gate, the worker creates the selected route’s full-timeline WAV input
+(stereo for Deepgram, separate mono mic/system for other cloud routes, mono for Local),
 sends it through the selected supported route, and persists the raw provider
 response before normalization. Supported file routes are ElevenLabs,
 Deepgram, Gemini, and OpenAI; the existing Local meeting path remains. There is

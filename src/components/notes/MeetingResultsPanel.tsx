@@ -16,7 +16,7 @@ import NoteViewSwitch from "./NoteViewSwitch";
 import { ProviderIcon } from "../ui/ProviderIcon";
 import { IconTooltip } from "../ui/IconTooltip";
 import { cn } from "../lib/utils";
-import { formatDate, formatTime, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
+import { formatDate, formatTime, normalizeDbDate, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 
 type ViewMode = "raw" | "enhanced";
@@ -535,7 +535,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       if (status === "blocked") return <NoteNotice status="warning" title={t(`meetingResults.blocked.${stageKey}`)}
         description={t(errorCode === "missing-transcription-config" || errorCode === "missing-summary-config" ? `meetingResults.blockedReason.${errorCode}` : "meetingResults.blockedReason.other")} actions={actions} />;
       if (status === "failed") return <NoteNotice status="danger" title={t(`meetingResults.failed.${stageKey}`)} description={t("meetingResults.failedReason")} actions={actions} />;
-      const startedAt = latestRun.run.createdAt ? Date.parse(latestRun.run.createdAt) : undefined;
+      const startedAt = latestRun.run.createdAt ? normalizeDbDate(latestRun.run.createdAt).getTime() : undefined;
       return <NoteNotice status="accent" busy progressStartedAt={startedAt} title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
     })()}
 

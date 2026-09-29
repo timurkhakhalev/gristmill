@@ -130,7 +130,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   };
   let root: ReturnType<typeof createRoot> | undefined;
   t.after(async () => { if (root) await React.act(async () => root!.unmount()); });
-  installBrowserGlobals(t, { window: { electronAPI: api } });
+  installBrowserGlobals(t, { window: { electronAPI: api, setInterval, clearInterval } });
   const container = installHookDom(t);
   // Fake-DOM document from installHookDom; structural typing at this seam.
   const document = globalThis.document as unknown as Record<string, unknown>;
@@ -185,8 +185,21 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     label(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label); },
     iconButton(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onPress === "function"); },
     menu(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onAction === "function"); },
+    progressStart() { return findNode(tree, (node) => typeof node.props?.progressStartedAt === "number")?.props?.progressStartedAt; },
   };
 }
+
+test("processing clock treats SQLite timestamps as UTC", async (t: TestContext) => {
+  const previousTz = process.env.TZ;
+  process.env.TZ = "Europe/Moscow";
+  t.after(() => { if (previousTz === undefined) delete process.env.TZ; else process.env.TZ = previousTz; });
+  const run = completeRun();
+  run.run.stage = "asr";
+  run.run.status = "running";
+  run.run.createdAt = "2026-09-29 08:24:54";
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)]);
+  assert.equal(ui.progressStart(), Date.parse("2026-09-29T08:24:54Z"));
+});
 
 test("manual notes stay primary while an incomplete saved audio part is visible", async (t: TestContext) => {
   const items = [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", null, "incomplete")];

@@ -186,6 +186,12 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     iconButton(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onPress === "function"); },
     menu(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onAction === "function"); },
     progressStart() { return findNode(tree, (node) => typeof node.props?.progressStartedAt === "number")?.props?.progressStartedAt; },
+    warningIcons() {
+      const count = (node: typeof container): number =>
+        Number(Boolean(node.attributes.get("aria-label")?.startsWith("notes.editor.capture.incomplete"))) +
+        node.childNodes.reduce((total, child) => total + count(child), 0);
+      return count(container);
+    },
   };
 }
 
@@ -203,14 +209,19 @@ for (const timeZone of ["Asia/Tokyo", "America/New_York"]) {
   });
 }
 
-test("manual notes stay primary while an incomplete saved audio part is visible", async (t: TestContext) => {
-  const items = [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", null, "incomplete")];
+test("interrupted audio parts get individual warning icons without a note-wide banner", async (t: TestContext) => {
+  const items = [
+    recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", null, "incomplete"),
+    recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z"),
+    recording(THIRD, THIRD, "2026-09-25T12:00:00.000Z", null, "incomplete"),
+  ];
   const ui = await mountPanel(t, items);
   assert.match(ui.text(), /Manual notes/);
-  assert.match(ui.text(), /notes.editor.capture.incomplete/);
+  assert.equal(ui.warningIcons(), 2);
+  assert.doesNotMatch(ui.text(), /notes.editor.capture.incomplete/);
   assert.match(ui.text(), /Audio/);
   await ui.flush(() => (ui.iconButton("Play audio")!.props as { onPress: () => void }).onPress());
-  assert.deepEqual(ui.calls.playback, [[FIRST]]);
+  assert.deepEqual(ui.calls.playback, [[THIRD]]);
   assert.match(ui.text(), /mixer-failed/);
 });
 
@@ -218,6 +229,7 @@ test("audio count and list include a newly saved recording without reload", asyn
   const first = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z");
   const second = recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z");
   const ui = await mountPanel(t, [first]);
+  assert.equal(ui.warningIcons(), 0);
   assert.ok(ui.label("Transcript and audio 1"));
   await ui.saveRecording([first, second]);
   assert.ok(ui.label("Transcript and audio 2"));

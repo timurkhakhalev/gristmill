@@ -34,6 +34,7 @@ Milestones run sequentially. Each delivers its contracts and verifies its own be
 | M3 | Tasks, Recap, Follow-up and formatter | M2 | One Markdown, Chat button, editable Actions, JSON repair |
 | M4 | Integrated journeys and documentation | M3 | Cross-route verification, live capture evidence, current docs |
 | M5 | Reviewer fixes from review-1 | M4 | Close the scoped findings and recheck affected journeys |
+| M6 | Reviewer fixes from review-2 | M5 | Preserve Summary independence and group-specific controls |
 
 ## 5. Milestone details
 
@@ -189,9 +190,29 @@ Depends on: M4.
 
 - Add focused regressions for each review finding at its affected route and UI consumer; root runs those plus the affected M1–M4 tests sequentially. Root reruns lint, typecheck and the full suite once after the fix is integrated, then requests another milestone review. A live isolated-profile check is recorded separately from automated evidence.
 
+### 5.6 M6 — Reviewer fixes from review-2
+
+#### 5.6.1 Depends on
+
+Depends on: M5.
+
+#### 5.6.2 Scope
+
+- Resolve the exact new findings M5-1, M5-2 and M5-3 in the committed [review-2.md](review-2.md), without broadening the original meeting workflow. Preserve the resolved `review-1.md` findings and M1–M4 invariants.
+- Root continues the isolated live journey for recurring M4-1 with a separate test profile and records which hardware/UI/provider boundaries were actually observed; startup alone is insufficient.
+
+#### 5.6.3 Acceptance criteria
+
+- Corrupt optional calendar candidates produce a visible naming error but do not prevent a ready transcript from reaching manual or eligible automatic Summary. An empty transcript does not promise a manual Summary. A pending gate on a newer recording group does not disable manual work on an older completed group whose gate elapsed, while current-group ASR remains gated.
+- Raw tracks, prior run artifacts, manual notes, speaker correction precedence, one Summary Markdown and safe task/Recap writes remain intact.
+
+#### 5.6.4 Verification
+
+- Add focused regression coverage for each finding. Root runs affected tests, lint, typecheck and the full suite sequentially, then requests another milestone review. Record isolated live evidence separately from automated results.
+
 ## 6. Execution order (derived from dependencies)
 
-M1 → verify M1 → M2 contract sync/implementation/verification → M3 contract sync/implementation/verification → M4 contract sync, integrated checks and current docs → M5 reviewer fixes and affected verification. During Act, root runs expensive checks sequentially and records evidence per milestone. Approval of this plan is required before M1.
+M1 → verify M1 → M2 contract sync/implementation/verification → M3 contract sync/implementation/verification → M4 contract sync, integrated checks and current docs → M5 reviewer fixes and affected verification → M6 reviewer fixes and affected verification. During Act, root runs expensive checks sequentially and records evidence per milestone. Approval of this plan is required before M1.
 
 ## Orchestration (managed by orchestrator)
 
@@ -202,5 +223,6 @@ M1 → verify M1 → M2 contract sync/implementation/verification → M3 contrac
 | M3 — Tasks, Recap, Follow-up and formatter | done | `2e0cdb78a`, `6413c6434`, `353598a08`, `0967952a6`, `e0487ce3c`, `8333a93a6` |
 | M4 — Integrated journeys and documentation | done | `9a14da5c5`, `52a9d2ba1`, `2f9a8c2f0`, `b113ef8bf`, `16df60571` |
 | M5 — Reviewer fixes from review-1 | done | `51f587d23`, `0d3cca9c2`, `d733f5f39`, `c4b5f9865`, `8e790528e`, `bea026706` |
-| Reviewer | done | `review-1.md`, `review-2.md` |
+| M6 — Reviewer fixes from review-2 | in progress | |
+| Reviewer | not started | `review-1.md`, `review-2.md` |
 | Code Reviewer | not started | |

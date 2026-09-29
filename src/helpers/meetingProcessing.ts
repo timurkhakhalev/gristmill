@@ -243,6 +243,7 @@ export class MeetingProcessingWorker {
   private readonly activeSummaryActions = new Map<string, Set<AbortController>>();
   private readonly activeTaskRuns = new Set<string>();
   private readonly backgroundSummaryActions = new Set<Promise<unknown>>();
+  private readonly agentThreadActionTails = new Map<string, Promise<void>>();
   private readonly summaryMutationTails = new Map<number, Promise<void>>();
   private readonly now: () => Date;
   private readonly setTimer: typeof setTimeout;
@@ -356,9 +357,12 @@ export class MeetingProcessingWorker {
   }
 
   async runSummaryAction(input: { runId: string; action: "tasks" | "recap" }): Promise<{ success: boolean; error?: string }> {
-    return input.action === "tasks"
+    const operation = () => input.action === "tasks"
       ? this.runPrioritizedTasks(input.runId)
       : this.runRecap(input.runId);
+    const run = this.deps.database.getMeetingProcessingRun(input.runId);
+    const threadKey = run?.config?.summary?.reasoningMode === "agent" ? run.id : null;
+    return threadKey ? this.withAgentThreadAction(threadKey, operation) : operation();
   }
 
   retry(runId: string): MeetingProcessingResultDto | null {
@@ -883,7 +887,7 @@ export class MeetingProcessingWorker {
     this.publishCurrentSelection(run.id);
     this.setState(run.id, "summary", "complete", null, null);
     if (this.deps.createActionConversation) {
-      const work = this.runPrioritizedTasks(run.id);
+      const work = this.runSummaryAction({ runId: run.id, action: "tasks" });
       this.backgroundSummaryActions.add(work);
       void work.finally(() => this.backgroundSummaryActions.delete(work));
     }
@@ -1401,6 +1405,17 @@ export class MeetingProcessingWorker {
     return previous.catch(() => {}).then(operation).finally(() => {
       release();
       if (this.summaryMutationTails.get(noteId) === current) this.summaryMutationTails.delete(noteId);
+    });
+  }
+
+  private withAgentThreadAction<T>(threadKey: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.agentThreadActionTails.get(threadKey) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.agentThreadActionTails.set(threadKey, current);
+    return previous.catch(() => {}).then(operation).finally(() => {
+      release();
+      if (this.agentThreadActionTails.get(threadKey) === current) this.agentThreadActionTails.delete(threadKey);
     });
   }
 

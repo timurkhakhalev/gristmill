@@ -17,6 +17,12 @@ OpenHercules uses the installed BB app and the user's provider subscription for 
 - A profile-local `.bb-connection.json` outside the BB project directory contains the loopback CLI bridge port and token, with owner-only permissions. The agent workspace contains a small allowlisted notes/folders/dictionary/snippets tool wrapper. Main removes the connection file at shutdown and before creating a new bridge on startup. Do not place credentials in the agent prompt or log.
 - The meeting run stores `bb_thread_id` before waiting for a summary. After restart, a run at the summary stage checks that thread's log and output. A completed result is reused; a running turn is watched; a failed or empty turn receives the saved summary prompt again. The transcript and original tracks remain unchanged. A crash between BB accepting a new thread and saving its ID can leave an orphan hidden thread; the meeting run retries visibly.
 
+## Meeting JSON repair
+
+Speaker naming, prioritized tasks, and Recap validate strict JSON. A schema-invalid reply gets one correction request in the same conversation; another invalid reply becomes a visible format error. Refusal and transport errors do not start a repair. The BB adapter returns final text and currently has no native refusal metadata, so it reports `refusal: false`; meeting JSON handling can only identify a refusal from recognizable refusal text.
+
+Meeting JSON repair on BB uses `tell` on the run's saved `bb_thread_id`, including repair turns. Task and Recap actions may be requested independently, but their turns on one saved run are serialized: the CLI's default `tell` mode steers an active turn, so overlapping action prompts could replace one another. This serialization does not change other provider routes or Summary Markdown's revision checks.
+
 ## Updating BB
 
 1. Install the new BB app, then check `bb --version`, `bb thread spawn --help`, `bb thread tell --help`, `bb thread log --help`, `bb thread output --help`, and the provider/model JSON output.

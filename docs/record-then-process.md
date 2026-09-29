@@ -5,22 +5,24 @@
 ## Текущая реализация и проверка
 
 - SQLite хранит `meeting_recordings`, `meeting_recording_epochs`, `meeting_processing_runs`, `meeting_deletion_intents` и `meeting_run_speaker_corrections`; managed files содержат source PCM epochs, derived WAV и per-run JSON results. Пути описаны в [architecture.md](architecture.md).
-- Config snapshot сохраняется до первого audio frame. Во время capture нет ASR/provider calls. Stop закрывает tracks и создаёт initial run; worker ждёт retention sync, уступает capture и запускает обработку после Stop.
-- Один mono WAV следует общей timeline и сохраняет gaps; raw provider JSON сохраняется до normalization. Transcript и summary разделены по runs. Выбор версии обновляет Notes projection, не меняя ручной `note.content`.
+- Config snapshot сохраняется до первого audio frame. Во время capture нет ASR/provider calls. Только успешный Stop закрывает tracks, создаёт initial run и сохраняет not-before deadline на 15 секунд. Worker учитывает этот deadline после restart; Pause не ставит задание в очередь, а Resume отменяет pending run прежней group version.
+- После gate один mono WAV следует общей timeline и сохраняет gaps; выбранный совместимый file route сохраняет raw provider JSON до normalization. Run/selection проверяются перед claim и ASR. Нет provider fallback или скрытого split.
+- Transcript и Summary — per-run artifacts; `notes.transcript` и `notes.enhanced_content` показывают выбранный run, а ручной `note.content` остаётся отдельным. Source tracks и прошлые артефакты сохраняются при retry и выборе другой версии.
+- Speaker naming может использовать сохранённый Summary route; user correction wins by revision. Автоматический Summary создаётся при длительности не менее 180 секунд и не менее 2 500 символов transcript; для любого готового transcript доступен ручной Summary.
+- Summary хранится как один Markdown artifact. После сохранения Tasks заполняют существующий `## Action Items` или удаляют его для zero tasks; Recap вручную добавляет/обновляет `## Recap` в этом же artifact. Follow-up — обычный assistant message в существующем Chat, без отправки наружу.
+- Naming, Tasks и Recap проверяют строгий JSON и допускают один repair turn только в той же selected-provider conversation. Отказ и transport error не вызывают repair. BB repair использует сохранённый thread; его adapter получает только final text, без native refusal metadata.
 - Историческое [chunking research](transcription-chunking-research.md) сохранено как superseded proposal preview/обработки во время встречи; это не текущий pipeline.
-- M1, M2 и M3 focused root test gates пройдены. M4 focused tests и итоговая интеграция ожидают root. Live mic/system tail-loss/recovery остаётся непроверенным.
+- M1–M3 focused root test gates пройдены. M4 focused/full checks ожидают root; live mic/system tail-loss/recovery остаётся непроверенным.
 
 Команды root-owned проверки:
 
 ```sh
-pnpm test -- test/helpers/meetingRecordingRetention.test.ts test/services/meetingResults.test.ts test/services/uploadNotes.test.ts test/helpers/retentionSettings.test.ts
-pnpm run typecheck
 pnpm run lint
+pnpm run typecheck
 pnpm test
-pnpm run pack
 ```
 
-После pack для повторных Node SQLite тестов нужен `pnpm --dir node_modules/better-sqlite3 exec prebuild-install`. Hardware smoke — отдельная изолированная macOS arm64 проверка; её нельзя считать выполненной по этому документу.
+Root runs these checks sequentially after any focused rerun. Hardware smoke — отдельная изолированная macOS arm64 проверка; её нельзя считать выполненной по этому документу.
 
 ## Согласованная схема
 
@@ -29,30 +31,39 @@ flowchart TD
     A[Начать запись] --> B[Сохраняем mic и system отдельно]
     B --> C[Показываем длительность и состояние дорожек]
     C --> D[Stop]
-    D --> E[Закрываем файлы и сохраняем метаданные]
-    E --> F[Задание обработки в SQLite]
-    F --> G[Готовим полную запись для выбранного провайдера]
-    G --> H[Обычная транскрипция с диаризацией]
-    H --> I[Сохраняем финальный текст и спикеров]
-    I --> J[Генерируем заметки]
+    D -->|успешно| E[Закрываем оба трека, сохраняем run и deadline]
+    E --> F[Ждём 15 секунд; срок сохраняется при restart]
+    F --> G[Готовим полную запись для выбранного маршрута]
+    G --> H[ASR; сохраняем raw response]
+    H --> I[Нормализуем transcript и speakers]
+    I --> J{180 секунд и 2500 символов?}
+    J -->|да| K[Автоматический Summary]
+    J -->|нет| L[Transcript готов; Summary доступен вручную]
+    L --> M[Ручной Summary]
+    K --> N[Один Summary Markdown]
+    M --> N
+    N --> O[Tasks обновляют Action Items]
+    O --> P[Recap вручную; Follow-up в существующем Chat]
 ```
 
 - Во время встречи выполняются захват, сохранение и контроль состояния. ASR, диаризации, черновика и автоматических заметок нет. Ручные заметки остаются доступны.
 - Исходные mic/system записываются один раз. Чанки файлов нужны для сохранности и восстановления, а не для отправки отдельных минут в ASR.
-- После Stop закрываем весь хвост и фиксируем завершённую запись. Затем начинается обработка. Без сети запись остаётся в очереди.
-- После Stop один derived mono WAV покрывает полную timeline с сохранением gaps и поступает в выбранный существующий ASR route. Внутренние source tracks остаются раздельными; независимые track transcripts не склеиваются.
+- Только успешный Stop фиксирует завершённый хвост и создаёт run с durable 15-секундным not-before сроком. Pause не ставит обработку в очередь; Resume инвалидирует pending work прежней group version. Run повторно проверяется при claim и перед ASR, включая после restart.
+- После gate один derived mono WAV покрывает полную timeline с сохранением gaps и поступает в совместимый выбранный маршрут. Источники остаются раздельными; независимые track transcripts не склеиваются. Raw provider JSON сохраняется до normalization.
 - Подготовка входа (контейнер, ресемплинг, при необходимости AEC) создаёт производные файлы. Исходники не меняются.
-- Ответ провайдера сохраняется до построения заметок. Ошибка заметок не требует повторять ASR. Интегрированную диаризацию нельзя обещать повторять отдельно, если API этого не умеет.
-- Спикер A/B — различение голосов. Имена требуют узнавания известного голоса или подтверждения пользователя; календарь не доказывает личность.
-- В UI после Stop: «Запись сохранена» → «В очереди / Обработка» → «Готово». При проблеме видно, что сохранено и какой этап требует повтора. Повреждённая или неполная запись не становится незаметно полной после ASR.
+- Ошибка Summary не требует повторять ASR. Интегрированную диаризацию нельзя обещать повторять отдельно, если API этого не умеет.
+- Имена speakers предлагаются из transcript evidence; calendar people только кандидаты, а user correction wins по revision.
+- Автоматический Summary требует одновременно не менее 180 секунд и 2500 символов transcript. Для любого ready transcript доступен ручной Summary. Tasks и Recap изменяют отдельные разделы того же Summary Markdown; Follow-up создаёт обычное assistant-сообщение в существующем Chat и ничего не отправляет.
+- В live UI статус ожидания выводится из persisted run, а statuses Tasks/Recap — из сохранённого artifact и текущего UI request. Превью таймеры, fake transcript и placeholder Recap живут только в Debug mode; они не пишутся в Notes или processing artifacts. Нет кнопки `Transcribe now`.
+- При проблеме видно, что сохранено и какой этап требует повтора. Повреждённая или неполная запись не становится незаметно полной после ASR.
 
 ## Провайдеры первой реализации
 
-Решение Тимура: сразу включить **ElevenLabs, Deepgram и Gemini** в post-Stop обработку. Это согласованный объём реализации, не список кандидатов для предварительного отбора. Пользователь выбирает провайдера и свои credentials; одна обработка использует выбранного провайдера, без автоматического запуска всех трёх.
+Для текущей реализации пользователь выбирает существующий совместимый маршрут и свои credentials; одна обработка использует только выбранный маршрут, без автоматического запуска других провайдеров. Поддерживаемые file routes: ElevenLabs, Deepgram, Gemini и OpenAI; сохранённый Local meeting route остаётся доступен.
 
-Все три адаптера возвращают текст, временные метки и доступную диаризацию в общий формат. Сохраняются исходный ответ, провайдер, модель, настройки и состояние обработки. Из той же сохранённой записи пользователь может запустить новую обработку другим провайдером, сохранив предыдущий результат для сравнения.
+Маршруты сохраняют исходный ответ, выбранные провайдера и модель, настройки и состояние обработки. Новая обработка может использовать другой доступный маршрут; предыдущие runs и артефакты сохраняются.
 
-Лимиты и поддерживаемые возможности проверяются по контракту API при реализации и явно показываются до отправки неподдерживаемой записи. Ограничение одного провайдера не блокирует остальные; нет молчаливой смены провайдера, обрезания аудио или отключения диаризации.
+Ограничения и доступные функции задаются выбранным маршрутом. Они не приводят к молчаливой смене провайдера, обрезанию аудио или скрытому split. Нового Self-Hosted meeting route нет.
 
 Гипотезы ниже Тимур проверяет самостоятельно после появления работающей версии. Сравнительный benchmark не является предварительным условием реализации всех трёх адаптеров. Обычные проверки корректности реализации, сохранности аудио и восстановления заданий остаются частью разработки.
 

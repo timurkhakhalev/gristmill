@@ -382,12 +382,36 @@ test("a new summary reads the saved transcript without another ASR run", async (
     recording(SECOND, SECOND, "2026-09-25T10:05:00.000Z"),
   ], { viewMode: "enhanced" });
   assert.match(ui.text(), /Release on Friday/);
+  assert.match(ui.text(), /openai · gpt-4o-mini/);
   await ui.flush(() => (ui.button("meetingResults.newSummary")!.props as { onPress: () => void }).onPress());
   assert.equal(ui.calls.create.length, 1);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).kind, "summary");
   assert.equal((ui.calls.create[0] as Record<string, unknown>).sourceRunId, RUN);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).sourceRecordingIds, undefined);
   assert.ok((submittedSection(ui.calls.create[0], "summary").instruction as string).includes(CONFIG.summary.instruction));
+});
+
+test("Summary labels show the saved provider, including BB runs", async (t: TestContext) => {
+  const bbRun = completeRun();
+  bbRun.run.config = {
+    ...CONFIG,
+    summary: { instruction: "Built-in summary instruction", reasoningMode: "agent", agentProvider: "acp-opencode", model: "cpa/glm-5.3-flash", agentReasoningLevel: "high" },
+  };
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", bbRun)], { viewMode: "enhanced" });
+  assert.match(ui.text(), /bb · cpa\/glm-5\.3-flash/);
+});
+
+test("running Summary elapsed time reads SQLite timestamps as UTC", async (t: TestContext) => {
+  const running = completeRun();
+  const startedAt = Date.now() - 120_000;
+  running.run.createdAt = new Date(startedAt).toISOString().slice(0, 19).replace("T", " ");
+  running.run.status = "running";
+  running.run.hasSummary = false;
+  running.summary = undefined;
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", running)]);
+  const notice = findNode(ui.tree(), (node) => typeof node.props?.progressStartedAt === "number");
+  assert.ok(notice);
+  assert.ok(Math.abs(Number(notice.props?.progressStartedAt) - startedAt) < 1000);
 });
 
 test("persisted model provenance drives auto badge; user correction removes it and offers Summary regeneration", async (t: TestContext) => {

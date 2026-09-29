@@ -18,7 +18,7 @@ import NoteViewSwitch from "./NoteViewSwitch";
 import { ProviderIcon } from "../ui/ProviderIcon";
 import { IconTooltip } from "../ui/IconTooltip";
 import { cn } from "../lib/utils";
-import { formatDate, formatTime, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
+import { formatDate, formatTime, normalizeDbDate, type DateFormat, type TimeFormat } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { composeMockSummary, type MockPipeline } from "./meetingMock";
 
@@ -304,6 +304,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     : groups.find((group) => group.id === currentGroup)?.parts ?? [];
   const speakerLabel = (id: string) => t("meetingResults.speakerNumber", { defaultValue: "Speaker {{number}}", number: [...new Set(selected?.transcript?.segments?.map((segment) => segment.speaker).filter(Boolean))].indexOf(id) + 1 });
   const selectedId = selected?.run.id ?? "";
+  const summaryProvider = selected?.run.config?.summary?.reasoningMode === "agent"
+    ? "bb"
+    : selected?.run.config?.summary?.provider ?? "";
   const savedSummary = selected?.summary?.text;
   const summaryText = savedSummary && mock ? composeMockSummary(savedSummary, mock.tasks, mock.recap) : savedSummary;
   const speakerCorrectionRevision = selected?.speakerCorrections.reduce((sum, correction) => sum + correction.revision, 0) ?? 0;
@@ -710,7 +713,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       if (status === "failed") return <NoteNotice status="danger" title={t(`meetingResults.failed.${stageKey}`)} description={errorCode === "calendar-participants-invalid"
         ? tr("calendarParticipantsInvalid", "Stored calendar participant data is invalid. Correct it before retrying.")
         : t("meetingResults.failedReason")} actions={actions} />;
-      const startedAt = latestRun.run.createdAt ? Date.parse(latestRun.run.createdAt) : undefined;
+      const startedAt = latestRun.run.createdAt ? normalizeDbDate(latestRun.run.createdAt).getTime() : undefined;
       return <NoteNotice status="accent" busy progressStartedAt={startedAt} title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
     })()}
 
@@ -728,8 +731,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       {selected && (viewMode !== "enhanced" || summaryText) && <div className="flex items-center">
         <Popover isOpen={modelOpen} onOpenChange={setModelOpen}>
           <Button size="sm" variant="ghost" className="-ms-2 h-7 min-h-7 max-w-full gap-1.5 px-2 text-xs text-muted hover:text-foreground" aria-label={tr("resultActions", "Result actions")}>
-            <ProviderIcon provider={selected.run.config?.summary?.provider ?? ""} className="size-3.5 shrink-0" />
-            <span className="truncate">{selected.run.config?.summary?.provider} · {selected.run.config?.summary?.model}</span>
+            <ProviderIcon provider={summaryProvider} className="size-3.5 shrink-0" />
+            <span className="truncate">{summaryProvider} · {selected.run.config?.summary?.model}</span>
             <ChevronDown size={13} className="shrink-0"/>
           </Button>
           <Popover.Content placement="bottom start" className="w-fit min-w-0 max-w-[calc(100vw-24px)]"><Popover.Dialog className="p-1">

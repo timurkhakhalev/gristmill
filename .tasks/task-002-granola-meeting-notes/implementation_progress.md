@@ -61,3 +61,17 @@ Verification run by this agent:
 - The isolated-profile Russian prompt-quality check was not run here; root should record the controlled transcript outputs and compare live UI to committed previews.
 
 Implementation commit: `394f19c63` (`M2: add speaker names and meeting Summary`). This progress-record update is a separate M2 log commit.
+
+Root's focused rerun exposed two integration regressions and fixture mismatches. Group-version invalidation now applies to automatic `initial` runs; explicit manual reprocess runs can summarize their selected audio parts even when those parts span session groups. Renderer fixtures now supply the persisted Detailed Notes action before snapshotting, and processing fixtures satisfy the transcript/raw-response dependency, Summary thresholds, and canonical speaker projection. The service fixture marks the M1 delay elapsed so it exercises downstream processing rather than gate timing.
+
+Verification for this fix:
+
+- `pnpm run typecheck:main` — passed.
+- `pnpm run typecheck:renderer` — passed.
+- `pnpm run typecheck:tests` — passed.
+- Scoped main/test ESLint — 0 errors; one pre-existing unused `recording` warning in `test/services/meetingResults.test.ts`.
+- Scoped renderer ESLint — passed; Node emitted the existing `MODULE_TYPELESS_PACKAGE_JSON` config warning.
+- `git diff --check` — passed.
+- Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Rerun the focused command from the plan and `pnpm test -- test/services/meetingResults.test.ts`.
+
+Fix commit: `1d2563337` (`M2: fix selected run and fixture regressions`).

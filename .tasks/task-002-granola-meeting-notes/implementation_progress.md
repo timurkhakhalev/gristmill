@@ -87,3 +87,14 @@ Verification for this fix:
 - Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Rerun the seven-file focused M2 suite and `pnpm test -- test/services/meetingResults.test.ts`.
 
 Fix commit: `2ba71bd87` (`M2: preserve meeting run history`).
+
+The latest focused rerun found that two independent manual Summary requests were observed in the opposite order from fixture creation. Database timestamps have second-level precision and the worker uses run ID as a tie-breaker; ordering across separate meetings is not a product contract. The test now checks both manual-note values without imposing cross-meeting request order.
+
+Verification for this adjustment:
+
+- `pnpm run typecheck:tests` — passed.
+- Scoped ESLint for `test/helpers/meetingProcessing.test.ts` — passed.
+- `git diff --check` — passed.
+- Root must rerun the focused tests; tests/builds/install/native rebuilds were not run by this agent.
+
+Fix commit: `6c7ec570c` (`M2: assert independent Summary input ordering`).

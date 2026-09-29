@@ -201,6 +201,6 @@ M1 → verify M1 → M2 contract sync/implementation/verification → M3 contrac
 | M2 — Speaker names and main Summary | done | `394f19c63`, `54dcc96fe`, `1d2563337`, `e8ae4e6ea`, `2ba71bd87`, `abeba8f7a`, `6c7ec570c`, `2e1b17d85` |
 | M3 — Tasks, Recap, Follow-up and formatter | done | `2e0cdb78a`, `6413c6434`, `353598a08`, `0967952a6`, `e0487ce3c`, `8333a93a6` |
 | M4 — Integrated journeys and documentation | done | `9a14da5c5`, `52a9d2ba1`, `2f9a8c2f0`, `b113ef8bf`, `16df60571` |
-| M5 — Reviewer fixes from review-1 | in progress | |
-| Reviewer | not started | `review-1.md` |
+| M5 — Reviewer fixes from review-1 | done | `51f587d23`, `0d3cca9c2`, `d733f5f39`, `c4b5f9865`, `8e790528e`, `bea026706` |
+| Reviewer | done | `review-1.md`, `review-2.md` |
 | Code Reviewer | not started | |

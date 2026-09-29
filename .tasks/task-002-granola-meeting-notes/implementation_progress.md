@@ -143,3 +143,27 @@ Verification for this fix:
 - Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Root should rerun `pnpm test -- test/helpers/meetingProcessing.test.ts test/cases/notes/integration/meetingSummarySections.test.ts` and the failed-files M3 command as needed.
 
 M3 concurrent section-merge fix commit: `e0487ce3c` (`M3: serialize independent Summary section edits`).
+
+## M4 — Integrated journeys and documentation
+
+Status: done
+
+Reviewed the live Stop-to-Notes journey and M1–M3 consumer contracts against the persisted processing shapes, renderer, BB adapter, and existing input fixtures. The live gate/countdown reads the saved run deadline; the selected-run transcript/Summary and saved task status feed Notes. Debug states, countdowns, placeholder Recap Markdown, and mock Follow-up responses remain behind the in-memory preview path; the live panel has no `Transcribe now` control. Existing fixtures cover the live/debug gate, Summary and task/Recap input boundaries, Follow-up evidence, and Recap loading without changing saved Markdown. Collapsible debug scenario groups remain in place.
+
+Fixed one BB integration gap: prioritized Tasks and manual Recap can send `tell` to the same run thread, where an overlapping CLI turn can steer the active turn. BB actions for a run are now serialized by stable run ID; non-BB provider actions keep their existing concurrency. Added a regression case proving the task response completes before Recap starts and both updates remain in one Summary.
+
+Updated README, product, architecture, record-then-process, and BB integration docs for the persisted 15-second gate, Pause/Resume and restart behavior, selected-run projection, inclusive auto-Summary thresholds/manual Summary, one Markdown Summary, tasks/Recap/Follow-up states, selected provider and single repair contracts, BB's text-only refusal limitation, and unverified live mic/system behavior.
+
+Preserved raw tracks, manual Notes, selected provider, correction-wins revisions, prior run artifacts, Summary target-section edit conflicts, no new tab, no hidden provider fallback/splitting, and isolated Debug previews. No unresolved implementation issue; integrated root tests and live smoke remain pending.
+
+Verification run by this agent:
+
+- `pnpm run typecheck:main` — passed.
+- `pnpm run typecheck:renderer` — passed.
+- `pnpm run typecheck:tests` — passed.
+- Scoped ESLint for `src/helpers/meetingProcessing.ts` and `test/helpers/meetingProcessing.test.ts` — passed; source ESLint emitted the existing Node `MODULE_TYPELESS_PACKAGE_JSON` warning.
+- `git diff --check` — passed.
+- Tests, builds, dependency installation, and native rebuilds were not run by this agent; root owns them. Run focused integration coverage first: `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/cases/notes/integration/meetingActions.test.ts`, then sequentially `pnpm run lint`, `pnpm run typecheck`, and `pnpm test`.
+- Isolated macOS mic/system capture, Pause/Resume/End, 15-second wait, short and threshold meetings, speaker edit, Chat Follow-up, Recap, and configured provider/BB smokes remain unverified; record only checks actually performed.
+
+Implementation commit: `9a14da5c5` (`M4: serialize BB actions and document journeys`).

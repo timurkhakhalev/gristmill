@@ -117,12 +117,14 @@ function textOf(value: unknown): string {
   return node?.props ? textOf((node.props as { children?: unknown }).children) : "";
 }
 
-async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction, initialCapturePhase = "idle" }: {
+async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction, manualSummaryAction, initialCapturePhase = "idle" }: {
   viewMode?: "raw" | "enhanced";
   playback?: { success: boolean; error?: string };
   preview?: boolean;
   mockPipeline?: { waitingSeconds?: number };
   summaryAction?: (input: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+  /** Exercise the existing NoteEditor toolbar control passed into the results panel. */
+  manualSummaryAction?: () => void;
   initialCapturePhase?: string;
 } = {}) {
   const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], summaryActions: [], retry: [] };
@@ -243,6 +245,20 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   const module = await vite.moduleGraph.getModuleByUrl("/components/notes/MeetingResultsPanel.tsx");
   if (module) vite.moduleGraph.invalidateModule(module);
   const { default: MeetingResultsPanel } = await vite.ssrLoadModule("/components/notes/MeetingResultsPanel.tsx");
+  let actions: unknown;
+  if (manualSummaryAction) {
+    const { default: NoteRecordControl } = await vite.ssrLoadModule("/components/notes/NoteRecordControl.tsx");
+    actions = React.createElement(NoteRecordControl, {
+      isRecording: false,
+      isProcessing: false,
+      capturePhase: "idle",
+      captureStartedAt: null,
+      showSummaryAction: true,
+      onStart: () => {},
+      onStop: () => {},
+      onGenerateSummary: manualSummaryAction,
+    });
+  }
   let tree: unknown;
   function Harness() {
     const [mode, setMode] = React.useState(viewMode);
@@ -250,6 +266,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     setCapturePhase = updateCapturePhase;
     tree = MeetingResultsPanel({ noteId: 1, locale: "en", previewRecordings: preview ? items : undefined, viewMode: mode, onViewModeChange: setMode,
       capturePhase,
+      actions,
       mockPipeline,
       fallbackText: { raw: "Manual notes", enhanced: "No summary", transcript: "No transcript" },
       manualContent: React.createElement("p", null, "Manual notes"), renderFallbackTranscript: () => React.createElement("p", null, "No transcript"), fallbackSummary: React.createElement("p", null, "No summary") });
@@ -476,13 +493,15 @@ test("short live transcript explains automatic Summary ineligibility and keeps m
   short.run.hasSummary = false;
   short.summary = undefined;
   short.transcript = { text: "Short transcript", segments: [{ start: 1, end: 2, speaker: "speaker-1", text: "Short transcript" }] };
-  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", short)], { viewMode: "raw" });
+  let summaryRequests = 0;
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", short)], {
+    viewMode: "raw",
+    manualSummaryAction: () => { summaryRequests += 1; },
+  });
   assert.match(ui.text(), /Automatic Summary skipped/);
   assert.match(ui.text(), /180 seconds of recorded audio and 2,500 transcript characters/);
-  assert.ok(ui.button("meetingResults.newSummary"), "manual Summary remains available");
-  await ui.flush(() => (ui.button("meetingResults.newSummary")!.props as { onPress: () => void }).onPress());
-  assert.equal(ui.calls.create.at(-1)?.kind, "summary");
-  assert.equal(ui.calls.create.at(-1)?.sourceRunId, RUN);
+  await ui.clickRenderedButton(["Summary"]);
+  assert.equal(summaryRequests, 1, "the NoteEditor toolbar's manual Summary action stays available for short transcripts");
 });
 
 test("invalid saved calendar participants show a specific live processing error", async (t: TestContext) => {

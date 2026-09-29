@@ -27,6 +27,7 @@ function submittedSection(call: Record<string, unknown>, section: "transcription
 
 type GlobalWithMocks = typeof globalThis & {
   __meetingResultsConfirmDialog?: { open: boolean; onConfirm(): void };
+  __meetingResultsButtonHandlers?: Array<{ label: string; onPress?: () => void }>;
 };
 
 let vitePromise: Promise<import("vite").ViteDevServer> | undefined;
@@ -76,7 +77,17 @@ function completeRun(): RunBundle {
 const heroMock = `
 import React from "react";
 const passthrough = ({children}) => React.createElement(React.Fragment, null, children);
-export const Button = ({children,onPress,"aria-label":label}) => React.createElement("button", {onClick:onPress,"aria-label":label}, children);
+const textOf = (value) => Array.isArray(value) ? value.map(textOf).join("") : typeof value === "string" || typeof value === "number" ? String(value) : value?.props ? textOf(value.props.children) : "";
+export const Button = ({children,onPress,"aria-label":label}) => {
+  const buttons = globalThis.__meetingResultsButtonHandlers;
+  const text = textOf(children);
+  if (buttons && text) {
+    const existing = buttons.find((item) => item.label === text);
+    if (existing) existing.onPress = onPress;
+    else buttons.push({label:text,onPress});
+  }
+  return React.createElement("button", {onClick:onPress,"aria-label":label}, children);
+};
 export const Label = passthrough;
 export const ListBox = Object.assign(passthrough,{Item:passthrough,ItemIndicator:passthrough});
 export const Dropdown = Object.assign(passthrough,{Popover:passthrough,Menu:passthrough,Item:passthrough});
@@ -203,6 +214,11 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     return element;
   };
   const mocks = globalThis as GlobalWithMocks;
+  const previousButtonHandlers = mocks.__meetingResultsButtonHandlers;
+  mocks.__meetingResultsButtonHandlers = [];
+  t.after(() => previousButtonHandlers === undefined
+    ? delete mocks.__meetingResultsButtonHandlers
+    : mocks.__meetingResultsButtonHandlers = previousButtonHandlers);
   const previousDialog = mocks.__meetingResultsConfirmDialog;
   t.after(() => previousDialog === undefined ? delete (mocks as { __meetingResultsConfirmDialog?: unknown }).__meetingResultsConfirmDialog : mocks.__meetingResultsConfirmDialog = previousDialog);
   const vite = await (vitePromise ??= createRendererServer({ after: (close: () => Promise<void>) => cleanup.push(close) } as unknown as TestContext, {
@@ -246,6 +262,15 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     },
     button(label: string) { return findNode(tree, (node) => typeof node.props?.onPress === "function" && textOf((node.props as { children?: unknown }).children).includes(label)); },
     label(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label); },
+    async clickRenderedButton(labels: string[]) {
+      const button = [...(mocks.__meetingResultsButtonHandlers ?? [])].reverse().find((item) =>
+        labels.some((label) => item.label.includes(label))
+      );
+      assert.ok(button?.onPress, `Expected rendered button matching ${labels.join(" or ")}`);
+      await flush(() => {
+        button.onPress!();
+      });
+    },
     iconButton(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onPress === "function"); },
     menu(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onAction === "function"); },
     showTranscriptTab() { return flush(() => (findNode(tree, (node) => node.props?.ariaLabel === "Transcript and audio" && typeof node.props?.onChange === "function")!.props as { onChange(value: string): void }).onChange("transcript")); },
@@ -342,9 +367,7 @@ test("persisted model provenance drives auto badge; user correction removes it a
   assert.doesNotMatch(ui.text(), /auto/);
   assert.match(ui.text(), /Speaker names changed/);
   assert.match(ui.text(), /This Summary was written with the earlier names/);
-  const regenerate = ui.button("Regenerate Summary") ?? ui.button("meetingResults.regenerateSummary");
-  assert.ok(regenerate);
-  await ui.flush(() => (regenerate!.props as { onPress: () => void }).onPress());
+  await ui.clickRenderedButton(["Regenerate Summary", "meetingResults.regenerateSummary"]);
   assert.equal(ui.calls.create.at(-1)?.kind, "summary");
   assert.equal(ui.calls.create.at(-1)?.sourceRunId, RUN);
 });

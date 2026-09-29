@@ -716,7 +716,7 @@ export class MeetingProcessingWorker {
       this.cancelRun(run.id, "processing-run-stale");
       return;
     }
-    if (run.kind !== "summary" && !this.isCurrentMeetingGroupVersion(run)) {
+    if (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run)) {
       this.cancelRun(run.id, "meeting-group-changed");
       return;
     }
@@ -740,7 +740,7 @@ export class MeetingProcessingWorker {
       this.cancelRun(run.id, "processing-run-stale");
       return;
     }
-    if (run.kind !== "summary" && !this.isCurrentMeetingGroupVersion(run)) {
+    if (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run)) {
       this.cancelRun(run.id, "meeting-group-changed");
       return;
     }
@@ -758,7 +758,7 @@ export class MeetingProcessingWorker {
       this.cancelRun(run.id, "processing-run-stale");
       return;
     }
-    if (run.kind !== "summary" && !this.isCurrentMeetingGroupVersion(run)) {
+    if (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run)) {
       this.cancelRun(run.id, "meeting-group-changed");
       return;
     }
@@ -793,7 +793,7 @@ export class MeetingProcessingWorker {
     signal.throwIfAborted();
     if (!generated.trim()) throw new MeetingProcessingFailure("summary-empty-output", "failed");
     if (this.isCapturing()) return this.pause(run, "summary");
-    if (!this.isSelectedRun(run) || (run.kind !== "summary" && !this.isCurrentMeetingGroupVersion(run))) {
+    if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) {
       this.cancelRun(run.id, run.kind === "summary" ? "processing-run-stale" : "meeting-group-changed");
       return;
     }
@@ -896,7 +896,7 @@ export class MeetingProcessingWorker {
       this.deps.database.setMeetingSpeakerNamingError(run.id, null);
       return;
     }
-    if (!this.isSelectedRun(run) || (run.kind !== "summary" && !this.isCurrentMeetingGroupVersion(run))) return;
+    if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) return;
     try {
       const suggestions = await this.deps.nameSpeakers({
         meetingTitle: snapshot.meetingTitle,
@@ -905,7 +905,7 @@ export class MeetingProcessingWorker {
       }, snapshot.promptModel, run, signal);
       signal.throwIfAborted();
       if (this.isCapturing()) return;
-      if (!this.isSelectedRun(run) || (run.kind !== "summary" && !this.isCurrentMeetingGroupVersion(run))) return;
+      if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) return;
       const note = this.deps.database.getNote(recording.noteId);
       const nowParticipants = note ? availableParticipantCandidates(note.participants) : [];
       if (

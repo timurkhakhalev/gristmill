@@ -79,6 +79,8 @@ function createFinishedRecording(
   const finalized = db.finalizeMeetingRecording(recording.id, {
     captureState: "ready",
     endedAt,
+    // This suite exercises downstream results after the M1 gate; its timing cases live with the worker tests.
+    processingNotBefore: new Date(0).toISOString(),
     sourceMetadata: options.sourceMetadata ?? {},
   });
   return { note, recording: finalized.recording, initialRun: finalized.initialRun };

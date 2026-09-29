@@ -100,6 +100,10 @@ function saveTranscriptArtifact(
   text: string,
   speaker = "speaker_0",
 ) {
+  if (!db.getMeetingProcessingRun(runId)?.hasRawProviderResponse) {
+    storage.writeRunArtifact(runId, "provider-response", { text });
+    assert.equal(db.setMeetingRunArtifact(runId, "provider-response").success, true);
+  }
   storage.writeRunArtifact(runId, "transcript", {
     text,
     diarized: true,
@@ -239,7 +243,7 @@ test("waits for retention and capture to finish, then persists the response, tra
     meetingTitle: note.title,
     manualNotes: "  Manual note first.  \n",
     transcriptSegments: [{
-      id: `${run.id}:0`, speakerId: "speaker_0", speakerName: null, text: "x".repeat(2500),
+      id: `${run.id}:0`, speakerId: "Speaker 1", speakerName: null, text: "x".repeat(2500),
     }],
   });
   const summaryArtifact = storage.readRunArtifact(run.id, "summary");
@@ -627,7 +631,7 @@ test("viewing old transcript leaves a pending current run and Note projection in
   await worker.waitForIdle();
   const oldProjection = db.getNote(note.id);
   assert.ok(oldProjection);
-  assert.match(oldProjection.transcript, /Hello\./);
+  assert.match(oldProjection.transcript, /Old saved transcript/);
   assert.match(oldProjection.enhanced_content, /Summary from old run/);
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, oldRun.id);
 
@@ -1136,7 +1140,7 @@ test("a persisted transcript recovered at summary runs only the saved summary st
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
-  const { run } = createFinishedRecording(db, storage);
+  const { run } = createFinishedRecording(db, storage, validConfig, "", false, 180);
   storage.writeRunArtifact(run.id, "provider-response", elevenResponse);
   assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
   storage.writeRunArtifact(run.id, "transcript", {
@@ -1321,7 +1325,7 @@ test("rate limits allow three persisted automatic retries then manual retry star
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
-  const { run } = createFinishedRecording(db, storage);
+  const { run } = createFinishedRecording(db, storage, validConfig, "", false, 180);
   const now = new Date("2026-09-24T10:00:00.000Z");
   const backoffs = [];
   let transcribeCalls = 0;

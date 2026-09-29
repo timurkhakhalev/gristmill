@@ -36,6 +36,7 @@ Milestones run sequentially. Each delivers its contracts and verifies its own be
 | M5 | Reviewer fixes from review-1 | M4 | Close the scoped findings and recheck affected journeys |
 | M6 | Reviewer fixes from review-2 | M5 | Preserve Summary independence and group-specific controls |
 | M7 | Reviewer fixes from review-3 | M6 | Unify the main manual Summary route and empty-transcript control |
+| M8 | Reviewer fix from review-4 | M7 | Align Results Summary availability with capture eligibility |
 
 ## 5. Milestone details
 
@@ -231,9 +232,28 @@ Depends on: M6.
 
 - Add focused renderer and processing regressions that exercise the owning toolbar, selected-run request/persistence, and empty versus short nonempty transcript states. Root runs affected tests, lint, typecheck and the full suite sequentially, then requests another milestone review. Record isolated live evidence separately from automated results.
 
+### 5.8 M8 — Reviewer fix from review-4
+
+#### 5.8.1 Depends on
+
+Depends on: M7.
+
+#### 5.8.2 Scope
+
+- Resolve M7-1 in the committed [review-4.md](review-4.md). The Results `New Summary` affordance must reflect the same selected-run and capture eligibility as the toolbar, with no enabled control that silently returns without a request. Keep the common selected-run Summary path established in M7.
+- Preserve M1–M7's capture gate, older run history, empty-transcript exclusion, short nonempty manual eligibility outside capture, saved Summary artifact and Markdown projection, speaker correction precedence, tasks/Recap and Chat Follow-up. M4-1 live verification remains a separate root-owned evidence boundary.
+
+#### 5.8.3 Acceptance criteria
+
+- During preparing, recording, paused or saving capture, an older selected transcript does not show an actionable `New Summary` item. When capture no longer blocks Summary, the eligible action starts the selected-run request and exposes its normal loading/error states. Empty transcript still offers no manual Summary.
+
+#### 5.8.4 Verification
+
+- Add a focused renderer regression at the Results menu consumer for active-capture versus eligible selected-run states. Root runs the affected renderer and processing tests, lint, typecheck and the integrated suite as required, then requests milestone review. Root records any live evidence separately.
+
 ## 6. Execution order (derived from dependencies)
 
-M1 → verify M1 → M2 contract sync/implementation/verification → M3 contract sync/implementation/verification → M4 contract sync, integrated checks and current docs → M5 reviewer fixes and affected verification → M6 reviewer fixes and affected verification → M7 reviewer fixes and affected verification. During Act, root runs expensive checks sequentially and records evidence per milestone. Approval of this plan is required before M1.
+M1 → verify M1 → M2 contract sync/implementation/verification → M3 contract sync/implementation/verification → M4 contract sync, integrated checks and current docs → M5 reviewer fixes and affected verification → M6 reviewer fixes and affected verification → M7 reviewer fixes and affected verification → M8 reviewer fix and affected verification. During Act, root runs expensive checks sequentially and records evidence per milestone. Approval of this plan is required before M1.
 
 ## Orchestration (managed by orchestrator)
 
@@ -246,7 +266,8 @@ M1 → verify M1 → M2 contract sync/implementation/verification → M3 contrac
 | M5 — Reviewer fixes from review-1 | done | `51f587d23`, `0d3cca9c2`, `d733f5f39`, `c4b5f9865`, `8e790528e`, `bea026706` |
 | M6 — Reviewer fixes from review-2 | done | `9873d1650`, `71389b117`, `a38587ca5`, `34bbf64dd` |
 | M7 — Reviewer fixes from review-3 | done | `f4b8dfc46`, `1c5f72b44` |
-| Reviewer | done | `review-1.md`, `review-2.md`, `review-3.md`, `review-4.md` |
+| M8 — Reviewer fix from review-4 | in progress | |
+| Reviewer | not started | `review-1.md`, `review-2.md`, `review-3.md`, `review-4.md` |
 | Code Reviewer | not started | |
 
-Review outcome: `review-4.md` confirms the two code findings from `review-3.md` are closed, but records M7-1 (enabled Results Summary action silently no-ops during capture) and the recurring unverified M4-1 live journey. Code review has not started.
+Review outcome: `review-4.md` confirms the two code findings from `review-3.md` are closed. M8 targets its M7-1 Results-menu state. M4-1 remains an unverified live journey; code review has not started.

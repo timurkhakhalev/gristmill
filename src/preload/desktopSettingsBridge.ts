@@ -179,6 +179,8 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
       invokeParse(setDebugLoggingResultSchema, desktopSettingsChannels.setDebugLogging, enabled),
     openLogsFolder: () =>
       invokeParse(systemSettingsResultSchema, desktopSettingsChannels.openLogsFolder),
+    installAgentCli: () =>
+      invokeParse(systemSettingsResultSchema, desktopSettingsChannels.installAgentCli),
     openMicrophoneSettings: () =>
       invokeParse(systemSettingsResultSchema, desktopSettingsChannels.openMicrophoneSettings),
     openSoundInputSettings: () =>

@@ -98,6 +98,10 @@
       "from": "resources/local-engine-installers/",
       "to": "local-engine-installers/",
       "filter": ["*.cjs"]
+    },
+    {
+      "from": "scripts/gristmill-cli.cjs",
+      "to": "cli/gristmill-cli.cjs"
     }
   ],
   "mac": {

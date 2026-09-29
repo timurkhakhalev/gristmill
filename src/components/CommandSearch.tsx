@@ -15,7 +15,7 @@ import { cn } from "./lib/utils";
 import { Dropdown, Label, Modal, Separator } from "@heroui/react";
 import type { FolderItem, SpaceItem } from "../contracts/containers";
 import type { TranscriptionItem } from "../contracts/transcriptionData.js";
-import type { NoteItem } from "../contracts/notes";
+import type { NoteItem, TranscriptSearchHit } from "../contracts/notes";
 import { formatRelativeTime } from "../utils/dateFormatting";
 import { useDateTimePreferences } from "../hooks/useDateTimePreferences";
 import { defaultFolderDisplayName, folderMatchesQuery } from "./notes/shared";
@@ -42,6 +42,7 @@ export interface CommandSearchProps {
 type FlatItem =
   | { kind: "container"; target: JumpTarget }
   | { kind: "note"; note: NoteItem }
+  | { kind: "noteTranscript"; hit: TranscriptSearchHit }
   | { kind: "transcript"; transcript: TranscriptionItem };
 
 function stripMarkdownPreview(text: string): string {
@@ -65,6 +66,9 @@ export default function CommandSearch({
   const locale = useUiLocale();
   const [query, setQuery] = useState("");
   const [notes, setNotes] = useState<NoteItem[]>([]);
+  const [noteTranscriptHits, setNoteTranscriptHits] = useState<TranscriptSearchHit[]>([]);
+  const [searchError, setSearchError] = useState(false);
+  const [transcriptSearchPending, setTranscriptSearchPending] = useState(false);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [spaces, setSpaces] = useState<SpaceItem[]>([]);
   const [scopeSpaceId, setScopeSpaceId] = useState<number | null>(null);
@@ -98,32 +102,41 @@ export default function CommandSearch({
   }
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || query.trim()) return;
+    const version = searchVersionRef.current;
     window.electronAPI
       .getNotes()
-      .then(setNotes)
+      .then((items) => { if (searchVersionRef.current === version && !query.trim()) setNotes(items); })
       .catch(() => {});
-  }, [open]);
+  }, [open, query]);
 
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     const version = ++searchVersionRef.current;
 
     if (!query.trim()) {
+      setNoteTranscriptHits([]);
+      setSearchError(false);
+      setTranscriptSearchPending(false);
       window.electronAPI
         .getNotes()
-        .then(setNotes)
+        .then((items) => { if (searchVersionRef.current === version) setNotes(items); })
         .catch(() => {});
       return;
     }
 
-    searchTimerRef.current = setTimeout(async () => {
-      try {
-        const results = await window.electronAPI.searchNotes(query, undefined, scopeSpaceId);
-        if (searchVersionRef.current === version) setNotes(results);
-      } catch {
-        /* keep current */
-      }
+    setNotes([]);
+    setNoteTranscriptHits([]);
+    setSearchError(false);
+    setTranscriptSearchPending(true);
+    searchTimerRef.current = setTimeout(() => {
+      void window.electronAPI.searchNoteContent(query, scopeSpaceId)
+        .then((hits) => { if (searchVersionRef.current === version) setNotes(hits.map((hit) => hit.note)); })
+        .catch(() => { if (searchVersionRef.current === version) setSearchError(true); });
+      void window.electronAPI.searchNoteTranscripts(query, scopeSpaceId)
+        .then((hits) => { if (searchVersionRef.current === version) setNoteTranscriptHits(hits); })
+        .catch(() => { if (searchVersionRef.current === version) setSearchError(true); })
+        .finally(() => { if (searchVersionRef.current === version) setTranscriptSearchPending(false); });
     }, 200);
 
     return () => {
@@ -209,15 +222,18 @@ export default function CommandSearch({
     const items: FlatItem[] = [];
     for (const target of jumpTargets) items.push({ kind: "container", target });
     for (const note of scopedNotes) items.push({ kind: "note", note });
+    for (const hit of noteTranscriptHits) items.push({ kind: "noteTranscript", hit });
     for (const transcript of filteredTranscripts) items.push({ kind: "transcript", transcript });
     return items;
-  }, [jumpTargets, scopedNotes, filteredTranscripts]);
+  }, [jumpTargets, scopedNotes, noteTranscriptHits, filteredTranscripts]);
 
   const selectItem = useCallback(
     (item: FlatItem) => {
       if (item.kind === "container") onContainerSelect?.(item.target.spaceId, item.target.folderId);
       else if (item.kind === "note")
         onNoteSelect?.(item.note.id, item.note.folder_id ?? null, item.note.space_id);
+      else if (item.kind === "noteTranscript")
+        onNoteSelect?.(item.hit.note.id, item.hit.note.folder_id ?? null, item.hit.note.space_id);
       else if (item.kind === "transcript") onTranscriptSelect?.(item.transcript.id);
       onOpenChange(false);
     },
@@ -330,7 +346,7 @@ export default function CommandSearch({
             {!hasResults ? (
               <div className="flex items-center justify-center py-10">
                 <p className="text-xs text-muted">
-                  {query.trim()
+                  {searchError ? t("commandSearch.searchError", { defaultValue: "Search failed" }) : transcriptSearchPending ? t("commandSearch.searchingTranscripts", { defaultValue: "Searching transcripts…" }) : query.trim()
                     ? t("commandSearch.noResults")
                     : t("commandSearch.emptyState")}
                 </p>
@@ -389,6 +405,26 @@ export default function CommandSearch({
                     })}
                   </div>
                 )}
+
+                {noteTranscriptHits.length > 0 && (
+                  <div className="mt-0.5">
+                    <SectionHeader icon={<Mic size={11} />} label={t("commandSearch.sections.transcripts")} />
+                    {noteTranscriptHits.map((hit) => {
+                      const idx = flatItems.findIndex((item) => item.kind === "noteTranscript" && item.hit.note.id === hit.note.id);
+                      return (
+                        <button key={hit.note.id} type="button" data-idx={idx}
+                          onClick={() => selectItem({ kind: "noteTranscript", hit })}
+                          onMouseEnter={() => setSelectedIndex(idx)}
+                          className={cn("w-full rounded-lg px-2.5 py-2 text-start", selectedIndex === idx ? "bg-primary/8" : "hover:bg-default")}>
+                          <span className="block truncate text-sm">{hit.note.title}</span>
+                          <span className="block truncate text-xs text-muted">{hit.matches[0]?.snippet}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {searchError && <p className="px-2.5 py-2 text-xs text-destructive">{t("commandSearch.searchError", { defaultValue: "Search failed" })}</p>}
+                {transcriptSearchPending && <p className="px-2.5 py-2 text-xs text-muted">{t("commandSearch.searchingTranscripts", { defaultValue: "Searching transcripts…" })}</p>}
 
                 {filteredTranscripts.length > 0 && (
                   <div className={jumpTargets.length > 0 || scopedNotes.length > 0 ? "mt-0.5" : ""}>

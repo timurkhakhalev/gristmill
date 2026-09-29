@@ -676,6 +676,9 @@
   },
   "cleanupPrompt": "Corrección",
   "developerSection": {
+    "installCli": "Instalar CLI de notas",
+    "cliInstalled": "CLI instalada",
+    "cliInstallFailed": "Error al instalar la CLI",
     "currentLogFile": "Archivo de registro actual",
     "debugMode": {
       "disabledDescription": "Activa para capturar información de diagnóstico detallada",
@@ -2098,6 +2101,8 @@
     "deleteConfirm": "Eliminar"
   },
   "commandSearch": {
+    "searchError": "La búsqueda falló",
+    "searchingTranscripts": "Buscando en las transcripciones…",
     "allSpaces": "Todos los espacios",
     "title": "Buscar",
     "description": "Buscar en notas y transcripciones",
@@ -2235,6 +2240,8 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "partialTranscript": "La transcripción de esta nota está incompleta.",
+    "selectedResultTranscript": "Transcripción del resultado seleccionado",
     "participantsLoadError": "No se pudieron cargar los participantes del calendario.",
     "linkParticipantsHint": "Vincula estos nombres con participantes del calendario para usarlos en futuras reuniones.",
     "linkParticipant": "Vincular participante",

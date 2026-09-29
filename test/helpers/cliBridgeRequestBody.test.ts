@@ -75,7 +75,7 @@ test("CLI request body limit counts UTF-8 bytes, not JavaScript characters", asy
       },
     },
     mirrorWriteNote() {},
-  });
+  }, process.cwd());
   bridge.token = "test-token";
   bridge.port = 8200;
 
@@ -93,6 +93,21 @@ test("CLI request body limit counts UTF-8 bytes, not JavaScript characters", asy
   });
   assert.equal(request.destroyed, true);
   assert.equal(saveCalls, 0);
+});
+
+test("read token is rejected by the bridge before a write route runs", async () => {
+  let writes = 0;
+  const bridge = new CliBridge({ databaseManager: { saveNote: () => { writes++; return { success: true, note: {} }; } } }, process.cwd());
+  bridge.token = "write-token";
+  bridge.readToken = "read-token";
+  bridge.port = 8200;
+  const request = makeRequest("{}");
+  request.headers.authorization = "Bearer read-token";
+  const response = makeResponse();
+  await bridge._handleRequest(request, response);
+  assert.equal(response.statusCode, 403);
+  assert.equal(JSON.parse(response.payload).error.code, "read_only");
+  assert.equal(writes, 0);
 });
 
 test("multibyte content split across request chunks is preserved", async () => {
@@ -129,7 +144,7 @@ test("multibyte content split across request chunks is preserved", async () => {
       },
     },
     mirrorWriteNote() {},
-  });
+  }, process.cwd());
   bridge.token = "test-token";
   bridge.port = 8200;
 
@@ -156,7 +171,7 @@ test("a JSON body exactly at the byte limit is accepted", async () => {
       },
     },
     mirrorWriteNote() {},
-  });
+  }, process.cwd());
   bridge.token = "test-token";
   bridge.port = 8200;
 

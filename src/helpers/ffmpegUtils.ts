@@ -133,7 +133,7 @@ export function convertToWav(
     if (!ffmpegPath) {
       reject(
         new Error(
-          "FFmpeg not found - the bundled FFmpeg is missing from this install and no system FFmpeg was found on PATH; reinstalling OpenHercules should fix this"
+          "FFmpeg not found - the bundled FFmpeg is missing from this install and no system FFmpeg was found on PATH; reinstalling Gristmill should fix this"
         )
       );
       return;
@@ -460,7 +460,7 @@ export async function mergeAudioSegments(segments: AudioSegmentBuffer[]): Promis
   const ffmpegPath = getFFmpegPath();
   if (!ffmpegPath) throw new Error("FFmpeg not found - required for audio segment recovery");
 
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-audio-merge-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-audio-merge-"));
   const outputPath = path.join(tempDir, "merged.webm");
   try {
     const inputPaths: string[] = segments.map((segment, index) => {

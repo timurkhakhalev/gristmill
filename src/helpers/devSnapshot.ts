@@ -7,7 +7,7 @@ import { SECRET_ENV_KEYS } from "../config/secretKeys.js";
 // Issue #86: the dev channel (pnpm dev and the packaged Dev app) starts from a
 // one-way snapshot of the production profile so it opens existing notes,
 // recordings and settings without onboarding, while production data is never
-// touched by a dev build. The snapshot runs once; OPENHERCULES_REFRESH_SNAPSHOT=1
+// touched by a dev build. The snapshot runs once; GRISTMILL_REFRESH_SNAPSHOT=1
 // re-runs it additively (missing files are copied, existing dev files are never
 // overwritten — a dev database with dev-made notes stays intact).
 
@@ -22,8 +22,8 @@ const COPY_FILES = ["globe-preference-state.json", ".system-audio-permission"];
 // channel, while encrypted secrets are copied separately in secure-keys.
 const ENV_STRIP_KEYS = new Set([
   ...SECRET_ENV_KEYS,
-  "OPENHERCULES_PROTOCOL",
-  "VITE_OPENHERCULES_PROTOCOL",
+  "GRISTMILL_PROTOCOL",
+  "VITE_GRISTMILL_PROTOCOL",
 ].map((key) => key.toUpperCase()));
 
 function cloneEnvFile(source: string, target: string): void {
@@ -49,7 +49,7 @@ const MARKER = ".dev-snapshot-complete";
 const SUPPRESSED = ".dev-snapshot-suppressed";
 
 function sourceProfileDir(): string {
-  return path.join(app.getPath("appData"), "OpenHercules");
+  return path.join(app.getPath("appData"), "Gristmill");
 }
 
 function targetProfileDir(): string {
@@ -398,7 +398,7 @@ export function snapshotProductionProfileForDev(): boolean {
     return false;
   }
 
-  const refresh = process.env.OPENHERCULES_REFRESH_SNAPSHOT === "1";
+  const refresh = process.env.GRISTMILL_REFRESH_SNAPSHOT === "1";
   if (fs.existsSync(path.join(target, SUPPRESSED)) && !refresh) return true;
 
   // Adoption is independent of the production snapshot: a dev-only profile

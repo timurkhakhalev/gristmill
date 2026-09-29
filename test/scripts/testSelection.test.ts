@@ -50,7 +50,7 @@ test("registry catches missing, stale, duplicate and invalid registrations", () 
 });
 
 test("a new ordinary test is discovered by domain and kind without path registration", (t: import("node:test").TestContext) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-test-selection-"));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-test-selection-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const file = "test/cases/notes/unit/newBehavior.test.ts";
   fs.mkdirSync(path.join(directory, "test/cases/notes/unit"), { recursive: true });

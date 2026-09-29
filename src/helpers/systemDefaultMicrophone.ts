@@ -13,7 +13,7 @@ $source = @'
 using System;
 using System.Runtime.InteropServices;
 
-public static class OpenHerculesDefaultInput {
+public static class GristmillDefaultInput {
   enum EDataFlow { eRender, eCapture, eAll }
   enum ERole { eConsole, eMultimedia, eCommunications }
 
@@ -90,7 +90,7 @@ public static class OpenHerculesDefaultInput {
 }
 '@
 Add-Type -TypeDefinition $source
-[OpenHerculesDefaultInput]::GetJson()
+[GristmillDefaultInput]::GetJson()
 `;
 
 type RunFileOptions = Omit<ExecFileOptionsWithStringEncoding, "encoding"> & {

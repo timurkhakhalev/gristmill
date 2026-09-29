@@ -18,7 +18,7 @@ class DockManager {
   // until the control panel opens, so tray-only launches never show one.
   init(): void {
     this._controlPanelVisible = false;
-    if (process.platform === "darwin" && process.env.OPENHERCULES_CHANNEL === "development") {
+    if (process.platform === "darwin" && process.env.GRISTMILL_CHANNEL === "development") {
       const assetsPath = app.isPackaged ? process.resourcesPath : app.getAppPath();
       app.dock?.setIcon(path.join(assetsPath, "src", "assets", "iconDev.png"));
     }

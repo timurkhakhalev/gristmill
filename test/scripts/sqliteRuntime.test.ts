@@ -89,9 +89,9 @@ test("failed repair prevents Electron launch", async () => {
 
 test("Electron launch preserves app and CDP flags with a clean environment", async () => {
   const oldRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
-  const oldCdp = process.env.OPENHERCULES_DEBUG_CDP;
+  const oldCdp = process.env.GRISTMILL_DEBUG_CDP;
   process.env.ELECTRON_RUN_AS_NODE = "1";
-  process.env.OPENHERCULES_DEBUG_CDP = "9222";
+  process.env.GRISTMILL_DEBUG_CDP = "9222";
   let launch: LaunchCall | undefined;
   try {
     await runElectron({
@@ -104,8 +104,8 @@ test("Electron launch preserves app and CDP flags with a clean environment", asy
   } finally {
     if (oldRunAsNode === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
     else process.env.ELECTRON_RUN_AS_NODE = oldRunAsNode;
-    if (oldCdp === undefined) delete process.env.OPENHERCULES_DEBUG_CDP;
-    else process.env.OPENHERCULES_DEBUG_CDP = oldCdp;
+    if (oldCdp === undefined) delete process.env.GRISTMILL_DEBUG_CDP;
+    else process.env.GRISTMILL_DEBUG_CDP = oldCdp;
   }
   assert.ok(launch);
   assert.equal(launch[0], "/electron");
@@ -144,7 +144,7 @@ test("macOS launch uses LaunchServices with isolated logs and preserves applicat
     assert.deepEqual(launch[1].slice(0, 4), ["-n", "-W", "-a", "/tmp/Electron.app"]);
     const appArgs = launch[1].slice(launch[1].indexOf("--args") + 1);
     assert.deepEqual(appArgs.slice(0, 3), [require("node:path").resolve(__dirname, "../.."), "--dev", "--user-data-dir=/tmp/isolated"]);
-    assert.match(appArgs[3], /^--openhercules-launch=openhercules-launch-/);
+    assert.match(appArgs[3], /^--gristmill-launch=gristmill-launch-/);
     assert.equal(fs.existsSync(logPath), true);
     assert.equal(process.listenerCount("SIGINT"), before + 1);
   } finally { child.emit("close", 0); }

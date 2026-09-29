@@ -524,7 +524,7 @@ let captureEpochIndices: Record<"mic" | "system", number> = { mic: 0, system: 0 
 let captureLastSequences: Record<"mic" | "system", number> = { mic: -1, system: -1 };
 let captureDrainErrorCode: string | null = null;
 let suppressInitialProcessingForStop = false;
-const PAUSED_MEETING_KEY = "openhercules.paused-meeting";
+const PAUSED_MEETING_KEY = "gristmill.paused-meeting";
 function readPausedMeeting(): { groupId: string; noteId: number } | null {
   try {
     const value = JSON.parse(localStorage.getItem(PAUSED_MEETING_KEY) ?? "null");

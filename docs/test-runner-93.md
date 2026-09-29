@@ -110,7 +110,7 @@ is met without extra state or fixture isolation risk.
 
 | Full-run snapshot | Command | Pass / fail / skip / cancel | Test wall | Peak descendant RSS | Peak CPU | Swap growth |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| First normal-priority experiment | `OPENHERCULES_TEST_BACKGROUND=1 pnpm test -- --processes 2` | 2753 / 0 / 0 / 0 | 62.52 s | 1011 MiB | 261% | 0 MiB |
+| First normal-priority experiment | `GRISTMILL_TEST_BACKGROUND=1 pnpm test -- --processes 2` | 2753 / 0 / 0 / 0 | 62.52 s | 1011 MiB | 261% | 0 MiB |
 | Final default command | `pnpm test -- --processes 2` | 2753 / 0 / 0 / 0 | **60.43 s** | 1249 MiB | 276% | 0 MiB |
 
 The first row used the former wrapper's bypass variable only as an experiment;

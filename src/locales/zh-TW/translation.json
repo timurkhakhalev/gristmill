@@ -4,7 +4,7 @@
       "sectionTitle": "語言",
       "sectionDescription": "分別設定介面語言和轉錄語言",
       "uiLabel": "介面語言",
-      "uiDescription": "選擇 OpenHercules 介面使用的語言",
+      "uiDescription": "選擇 Gristmill 介面使用的語言",
       "transcriptionLabel": "轉錄語言",
       "transcriptionDescription": "選擇你說話的語言，以提高轉錄準確度",
       "chineseScriptLabel": "中文書寫（語音輸入）",
@@ -60,8 +60,8 @@
   "tray": {
     "openControlPanel": "開啟控制面板",
     "hideControlPanel": "隱藏控制面板",
-    "quit": "結束 OpenHercules",
-    "tooltip": "OpenHercules",
+    "quit": "結束 Gristmill",
+    "tooltip": "Gristmill",
     "recordingStatus": "正在錄音",
     "stopRecording": "停止錄音",
     "startsIn": "{{time}}後開始",
@@ -74,8 +74,8 @@
     "now": "現在"
   },
   "menu": {
-    "appLabel": "OpenHercules",
-    "quit": "結束 OpenHercules",
+    "appLabel": "Gristmill",
+    "quit": "結束 Gristmill",
     "speech": "語音",
     "settings": "設定...",
     "help": "說明",
@@ -93,8 +93,8 @@
       "message": "無法在瀏覽器中開啟連結：\n{{url}}\n\n錯誤：{{error}}"
     },
     "loadFailure": {
-      "title": "OpenHercules 載入失敗",
-      "message": "OpenHercules 無法載入介面。",
+      "title": "Gristmill 載入失敗",
+      "message": "Gristmill 無法載入介面。",
       "detail": {
         "window": "視窗：{{windowName}}",
         "error": "錯誤 {{errorCode}}：{{errorDescription}}",
@@ -107,22 +107,22 @@
       "message": "離開前要停止並儲存這段錄音嗎？",
       "stopAndQuit": "停止並離開",
       "cancel": "取消",
-      "stopFailed": "目前無法儲存錄音。OpenHercules 會保持開啟。"
+      "stopFailed": "目前無法儲存錄音。Gristmill 會保持開啟。"
     }
   },
   "startup": {
     "error": {
-      "title": "OpenHercules 啟動錯誤",
+      "title": "Gristmill 啟動錯誤",
       "message": "應用程式啟動失敗：\n\n{{error}}\n\n請回報此問題。"
     },
     "globeHotkey": {
       "title": "Globe 快捷鍵無法使用",
-      "message": "OpenHercules 無法啟用 Globe 鍵快捷鍵。",
+      "message": "Gristmill 無法啟用 Globe 鍵快捷鍵。",
       "details": {
         "unknown": "啟動 Globe 監聽程式時發生未知錯誤。",
         "fallback": "Globe 鍵快捷鍵將維持停用狀態；現有的鍵盤快捷鍵仍可正常使用。",
         "devHint": "執行 `npm run compile:globe` 並重新建置應用程式以重新產生監聽程式。",
-        "reinstallHint": "請嘗試重新安裝 OpenHercules，或聯絡客服。"
+        "reinstallHint": "請嘗試重新安裝 Gristmill，或聯絡客服。"
       }
     }
   },
@@ -199,7 +199,7 @@
   "onboarding": {
     "rehaul": {
       "permissions": {
-        "title": "3 分鐘完成 OpenHercules 設定",
+        "title": "3 分鐘完成 Gristmill 設定",
         "microphoneDescription": "把你說的話變成文字。僅在錄音時開啟。",
         "systemAudioTitle": "系統音訊",
         "systemAudioDescription": "為會議筆記錄下通話中的其他人。僅在錄音時開啟。",
@@ -210,7 +210,7 @@
         "title": "你會說哪些語言？",
         "titleLineOne": "你會說",
         "titleLineTwo": "哪些語言？",
-        "description": "選擇所有適用的語言。這有助於 OpenHercules 更準確地辨識語言切換。",
+        "description": "選擇所有適用的語言。這有助於 Gristmill 更準確地辨識語言切換。",
         "selected": "Selected languages"
       },
       "hotkey": {
@@ -220,13 +220,13 @@
         "holding": "繼續按住，或按下另一個鍵"
       },
       "notes": {
-        "title": "用 OpenHercules Notes 錄製會議，無需機器人加入",
+        "title": "用 Gristmill Notes 錄製會議，無需機器人加入",
         "titleLineOne": "不需機器人也能錄製會議",
-        "titleLineTwoPrefix": "使用 OpenHercules",
+        "titleLineTwoPrefix": "使用 Gristmill",
         "titleLineTwoBrand": "Notes",
-        "description": "OpenHercules 把你的對話變成清楚的筆記。不會有會議機器人加入你的通話。",
+        "description": "Gristmill 把你的對話變成清楚的筆記。不會有會議機器人加入你的通話。",
         "hero": {
-          "description": "錄製你的會議，讓 OpenHercules 把對話整理成清楚有條理的筆記。",
+          "description": "錄製你的會議，讓 Gristmill 把對話整理成清楚有條理的筆記。",
           "chat": "與會議筆記對話",
           "transcript": "檢視完整逐字稿",
           "speakers": "看看誰說了什麼"
@@ -242,9 +242,9 @@
         }
       },
       "setupChoice": {
-        "title": "選擇你的 OpenHercules 設定",
+        "title": "選擇你的 Gristmill 設定",
         "titleLineOne": "選擇你的",
-        "titleLineTwo": "OpenHercules 設定",
+        "titleLineTwo": "Gristmill 設定",
         "description": "選擇最符合你工作方式的方案。",
         "byok": {
           "title": "API 服務商",
@@ -346,12 +346,12 @@
       "recommended": "建議"
     },
     "useCase": {
-      "title": "你會如何使用 OpenHercules？",
+      "title": "你會如何使用 Gristmill？",
       "titleLineOne": "你會如何使用",
-      "titleLineTwo": "OpenHercules？",
+      "titleLineTwo": "Gristmill？",
       "description": "選擇所有適用項目，我們會據此為你量身設定。",
       "noteLabel": "還有什麼想告訴我們的嗎？",
-      "notePlaceholder": "告訴我們你打算如何使用 OpenHercules（選填）",
+      "notePlaceholder": "告訴我們你打算如何使用 Gristmill（選填）",
       "proceedToSetup": "繼續設定",
       "options": {
         "meetings": {
@@ -376,7 +376,7 @@
     "meeting": {
       "title": "會議筆記",
       "description": "擷取並總結你的會議",
-      "autoDetect": "OpenHercules 會自動偵測你是否正在開會，並提議開始記錄 — 未經你確認不會錄製任何內容。",
+      "autoDetect": "Gristmill 會自動偵測你是否正在開會，並提議開始記錄 — 未經你確認不會錄製任何內容。",
       "hotkeyLabel": "會議快捷鍵",
       "hotkeyHint": "選填 — 在任何會議中按下即可立即開始記錄。"
     },
@@ -492,7 +492,7 @@
           "modelNotFound": "AWS Bedrock 在區域 {{region}} 中找不到所選模型。請檢查模型 ID，以及該模型是否在此區域提供。",
           "configurationRejected": "AWS Bedrock 拒絕了區域 {{region}} 的模型設定。請檢查模型 ID、推論設定檔和區域。",
           "notConfigured": "AWS Bedrock 設定不正確。請檢查區域和 AWS 憑證。",
-          "serviceUnavailable": "由於需求過高，AWS Bedrock 暫時無法使用。這是 AWS 服務問題，並非 OpenHercules 中斷。請幾分鐘後再試。",
+          "serviceUnavailable": "由於需求過高，AWS Bedrock 暫時無法使用。這是 AWS 服務問題，並非 Gristmill 中斷。請幾分鐘後再試。",
           "throttled": "由於收到太多請求，AWS Bedrock 正在暫時限制請求。請稍候再試。如果問題持續，請讓 AWS 管理員檢查 Bedrock 使用量和配額。",
           "timeout": "AWS Bedrock 未及時回應。請重試。如果問題持續，請檢查網際網路連線和 AWS Bedrock 服務狀態。",
           "network": "無法連線到 AWS Bedrock。請檢查網際網路連線並重試。",
@@ -640,7 +640,7 @@
       "micErrors": {
         "accessFailed": "麥克風存取失敗。請再試一次。",
         "noMicrophones": "未偵測到麥克風。請在 {{settingsPath}} 中連接或選擇麥克風。",
-        "permissionDenied": "權限被拒絕。請開啟 {{privacyPath}} 並允許 OpenHercules。",
+        "permissionDenied": "權限被拒絕。請開啟 {{privacyPath}} 並允許 Gristmill。",
         "couldNotStart": "無法啟動所選的麥克風。請在 {{settingsPath}} 中選擇輸入裝置後重新測試。",
         "noActiveInput": "找不到有效的音訊輸入。請在 {{settingsPath}} 中選擇麥克風。",
         "unknown": "麥克風存取失敗：{{error}}。請選擇其他輸入裝置後再試。",
@@ -832,7 +832,7 @@
       "reset": "重設",
       "save": "儲存"
     },
-    "defaultTestInput": "嘿 Hercules，今天天氣怎麼樣？",
+    "defaultTestInput": "嘿 Gristmill，今天天氣怎麼樣？",
     "dialogs": {
       "reset": {
         "description": "提示詞已重設為預設值。",
@@ -1020,7 +1020,7 @@
       "appearance": {
         "auto": "自動",
         "dark": "深色",
-        "description": "控制 OpenHercules 的外觀",
+        "description": "控制 Gristmill 的外觀",
         "light": "淺色",
         "theme": "主題",
         "themeDescription": "選擇淺色、深色或跟隨系統",
@@ -1051,14 +1051,14 @@
       },
       "startup": {
         "launchAtLogin": "登入時啟動",
-        "launchAtLoginDescription": "登入時在背景啟動 OpenHercules",
+        "launchAtLoginDescription": "登入時在背景啟動 Gristmill",
         "title": "啟動",
-        "description": "控制 OpenHercules 啟動時的行為",
+        "description": "控制 Gristmill 啟動時的行為",
         "startMinimized": "啟動時最小化",
         "startMinimizedDescription": "啟動時不顯示控制面板視窗",
         "needsApproval": {
           "title": "需要在系統設定中允許",
-          "description": "macOS 已將 OpenHercules 註冊為登入項目，但仍在等待你在「登入項目」中允許它。",
+          "description": "macOS 已將 Gristmill 註冊為登入項目，但仍在等待你在「登入項目」中允許它。",
           "action": "開啟登入項目"
         }
       },
@@ -1116,11 +1116,11 @@
       "notesGroup": "筆記",
       "meetingCompanion": {
         "label": "錄音夥伴",
-        "description": "會議錄音期間且 OpenHercules 在背景時，顯示一個可拖曳、會隨聲音變化的小泡泡。點擊即可開啟筆記。"
+        "description": "會議錄音期間且 Gristmill 在背景時，顯示一個可拖曳、會隨聲音變化的小泡泡。點擊即可開啟筆記。"
       }
     },
     "permissions": {
-      "description": "測試和管理 OpenHercules 正常運作所需的系統權限",
+      "description": "測試和管理 Gristmill 正常運作所需的系統權限",
       "microphoneDescription": "錄製您的聲音用於聽寫和轉錄",
       "microphoneTitle": "麥克風",
       "optional": "可選",
@@ -1436,7 +1436,7 @@
     },
     "structureIntro": {
       "title": "筆記存放在哪裡",
-      "description": "OpenHercules 將個人想法與協作內容分開，讓合適的人看到合適的筆記。",
+      "description": "Gristmill 將個人想法與協作內容分開，讓合適的人看到合適的筆記。",
       "personal": {
         "title": "個人空間",
         "description": "只有你能看到這裡的資料夾和筆記。"
@@ -1631,7 +1631,7 @@
       },
       "systemAudioStopped": {
         "title": "會議音訊已停止",
-        "description": "OpenHercules 已無法擷取其他與會者的聲音。請停止錄製後重新開始，或檢查您的音訊輸出裝置。"
+        "description": "Gristmill 已無法擷取其他與會者的聲音。請停止錄製後重新開始，或檢查您的音訊輸出裝置。"
       },
       "systemAudioQuiet": {
         "title": "會議音訊已靜默",
@@ -1810,7 +1810,7 @@
     "clearAll": "全部清除",
     "clearTitle": "清空字典？",
     "clearDescription": "這將移除自訂字典中的所有詞彙。此操作無法復原。",
-    "addPlaceholder": "用逗號分隔新增多個詞——OpenHercules、Supabase、ARR",
+    "addPlaceholder": "用逗號分隔新增多個詞——Gristmill、Supabase、ARR",
     "add": "新增",
     "importWords": "匯入詞語",
     "importPlaceholder": "貼上以逗號或換行分隔的詞語...",
@@ -1840,7 +1840,7 @@
       "duplicate": "已存在使用此觸發詞的片段",
       "emptyTitle": "同樣的話，只說",
       "emptyTitleAccent": "一遍",
-      "emptyDescription": "說出觸發詞，OpenHercules 會把它替換為你儲存的內容：連結、開場白、簽名、提示詞。",
+      "emptyDescription": "說出觸發詞，Gristmill 會把它替換為你儲存的內容：連結、開場白、簽名、提示詞。",
       "new": "建立片段",
       "examples": {
         "linkedinTrigger": "我的 LinkedIn",
@@ -1902,7 +1902,7 @@
     "submitBug": "提交 Bug"
   },
   "postMigration": {
-    "title": "歡迎回到 OpenHercules",
+    "title": "歡迎回到 Gristmill",
     "description": "您的筆記與設定已從先前版本保留下來。不過 macOS 會將此視為一款全新的應用程式，因此需要您重新授予部分權限。",
     "done": "完成",
     "remindLater": "稍後提醒我"
@@ -1926,8 +1926,8 @@
     "ready": "GPU 加速已就緒",
     "activating": "正在啟動 GPU...",
     "activationFailed": "GPU 加速無法使用",
-    "activationFailedDescription": "OpenHercules 已切換為 CPU 轉錄。",
-    "reasoningActivationFailedDescription": "OpenHercules 已切換為 CPU 處理。",
+    "activationFailedDescription": "Gristmill 已切換為 CPU 轉錄。",
+    "reasoningActivationFailedDescription": "Gristmill 已切換為 CPU 處理。",
     "retryActivation": "重試 GPU 加速",
     "remove": "移除",
     "dismiss": "暫時不要",
@@ -1947,11 +1947,11 @@
       "undo": "復原",
       "accessibilityMissing": {
         "title": "需要輔助使用權限",
-        "description": "OpenHercules 需要輔助使用權限來偵測快捷鍵和貼上文字。請在控制面板中啟用。"
+        "description": "Gristmill 需要輔助使用權限來偵測快捷鍵和貼上文字。請在控制面板中啟用。"
       },
       "gpuFallback": {
         "title": "GPU 加速無法使用",
-        "description": "OpenHercules 已切換為 CPU 轉錄。",
+        "description": "Gristmill 已切換為 CPU 轉錄。",
         "retry": "重試 GPU"
       },
       "gpuPackMigration": {
@@ -1984,7 +1984,7 @@
       "disconnectConfirm": "中斷 {{email}} 的連接？",
       "disconnectDescription": "將不再從此日曆記錄會議筆記。",
       "systemAudioRequired": "需要系統音訊權限",
-      "systemAudioDescription": "要轉錄會議，OpenHercules 需要系統音訊權限來錄製其他參與者的音訊。我們絕不會錄製您的螢幕。您將被引導至系統設定以啟用此權限。",
+      "systemAudioDescription": "要轉錄會議，Gristmill 需要系統音訊權限來錄製其他參與者的音訊。我們絕不會錄製您的螢幕。您將被引導至系統設定以啟用此權限。",
       "openSettings": "打開系統設定",
       "connectFailed": "連線失敗",
       "connectFailedDescription": "連線 Google Calendar 時發生錯誤。請再試一次。",
@@ -2015,17 +2015,17 @@
       "disconnectConfirm": "中斷 Apple 日曆的連接？",
       "disconnectDescription": "將不再從 Apple 日曆記錄會議筆記。",
       "permissionDenied": "需要日曆存取權限",
-      "permissionDeniedDescription": "OpenHercules 需要日曆存取權限來偵測會議。請在系統設定的「隱私權與安全性」→「日曆」中啟用 OpenHercules。",
+      "permissionDeniedDescription": "Gristmill 需要日曆存取權限來偵測會議。請在系統設定的「隱私權與安全性」→「日曆」中啟用 Gristmill。",
       "openSettings": "打開系統設定",
       "connectFailed": "連線失敗",
-      "connectFailedDescription": "連線 Calendar.app 時發生錯誤。請重新啟動 OpenHercules 後再試一次。"
+      "connectFailedDescription": "連線 Calendar.app 時發生錯誤。請重新啟動 Gristmill 後再試一次。"
     },
     "sections": {
       "calendar": "行事曆"
     },
     "notABot": {
-      "title": "OpenHercules 是會議錄製工具，不是機器人",
-      "description": "OpenHercules 直接從您的系統擷取音訊 — 它不會以參與者身分加入您的會議。只需連接日曆，正常記錄筆記即可。"
+      "title": "Gristmill 是會議錄製工具，不是機器人",
+      "description": "Gristmill 直接從您的系統擷取音訊 — 它不會以參與者身分加入您的會議。只需連接日曆，正常記錄筆記即可。"
     },
     "status": {
       "notConfigured": "尚未設定"
@@ -2068,7 +2068,7 @@
     "systemAudioRequired": "需要系統音訊權限來錄製其他參與者的音訊。",
     "openSettings": "打開系統設定",
     "connectCalendar": "連接您的日曆",
-    "connectCalendarDescription": "無需離開 OpenHercules 即可查看並加入您的會議。",
+    "connectCalendarDescription": "無需離開 Gristmill 即可查看並加入您的會議。",
     "connectCalendarButton": "連接日曆",
     "openEventNote": "開啟 {{title}} 的筆記"
   },
@@ -2116,7 +2116,7 @@
   },
   "permissionsGate": {
     "title": "需要權限",
-    "description": "OpenHercules 需要一些權限才能在此電腦上正常運作。",
+    "description": "Gristmill 需要一些權限才能在此電腦上正常運作。",
     "continue": "繼續"
   },
   "embeddedChat": {
@@ -2229,7 +2229,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "用於會議錄音提醒。",
-    "accessibilityHelp": "在 macOS 輔助使用設定中啟用 OpenHercules。如果清單中沒有它，請按一下 + 並選擇已安裝的 OpenHercules.app。",
+    "accessibilityHelp": "在 macOS 輔助使用設定中啟用 Gristmill。如果清單中沒有它，請按一下 + 並選擇已安裝的 Gristmill.app。",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },

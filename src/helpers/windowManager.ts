@@ -233,7 +233,7 @@ export class WindowManager {
     if (entries.length === 0) return () => {};
 
     const origin = new URL(appUrl).origin;
-    const marker = "openhercules.dev-renderer-settings-imported";
+    const marker = "gristmill.dev-renderer-settings-imported";
     const script = `if (location.origin === ${JSON.stringify(origin)}) {
       if (localStorage.getItem(${JSON.stringify(marker)}) !== "1") {
         for (const [key, value] of ${JSON.stringify(entries)}) {

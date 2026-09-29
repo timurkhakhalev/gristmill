@@ -55,7 +55,7 @@ Open questions
 
 Omit any section that has no supported content. Return only the email.`;
 
-const FOLLOW_UP_PROMPT = `Prepare a useful follow-up draft from the supplied OpenHercules meeting material.
+const FOLLOW_UP_PROMPT = `Prepare a useful follow-up draft from the supplied Gristmill meeting material.
 
 The plain-text input contains a topic-hint title, manual notes, transcript and an optional current summary. Verify summary claims against the original material. Do not treat the title as a discussed fact or manual notes as a quotation by a speaker. Prepare one concise message the user can review, edit and copy after the meeting. If these action instructions specify a different draft format or purpose, follow that request.
 
@@ -73,7 +73,7 @@ Rules:
 
 Return the short explanation and the draft text as the Chat response. Do not send anything, call tools, create a calendar event, change the source notes or claim an external action was completed. The draft is for the user to review and use.`;
 
-const RECAP_PROMPT = `Create a compact recap of the selected OpenHercules meeting note.
+const RECAP_PROMPT = `Create a compact recap of the selected Gristmill meeting note.
 
 The plain-text input contains a topic-hint title, manual notes, the current saved summary and transcript. The user selected this meeting; do not search for a different meeting or assume it belongs to a recurring series. Missing dates, names and other metadata are unknown, not values to fill in.
 

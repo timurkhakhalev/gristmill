@@ -17,7 +17,7 @@ const bundledPreload = path.join(root, "dist-main", "preload.js");
 let activeHandlers: Map<string, (event: unknown, ...args: unknown[]) => unknown> | null = null;
 let dispatchSend: ((channel: string, ...args: unknown[]) => void) | null = null;
 let listenersByChannel: Map<string, Array<(event: unknown, ...args: unknown[]) => void>> = new Map();
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-actions-bridge-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-actions-bridge-"));
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -118,7 +118,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
 async function createFixture(t: import("node:test").TestContext) {
   activeHandlers = new Map();
   dispatchSend = null;
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-actions-bridge-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-actions-bridge-"));
   const fixtureDir = userDataDir;
   let db: import("../../src/helpers/actionsIpcHandlers.js").ActionsHandlerDeps["database"] & { close: () => void } | null = null;
   t.after(() => {

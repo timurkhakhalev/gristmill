@@ -76,7 +76,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
 async function createFixture(t: import("node:test").TestContext) {
   activeHandlers.clear();
   dispatchSend = null;
-  const safeTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-url-bridge-"));
+  const safeTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-url-bridge-"));
   t.after(() => fs.rmSync(safeTempDir, { recursive: true, force: true }));
 
   const { registerUrlDownloadHandlers } = await import(

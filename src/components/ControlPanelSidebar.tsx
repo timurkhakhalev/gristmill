@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Home, Settings, Sparkles, Upload } from "./icons";
 import { useTranslation } from "react-i18next";
 import { cn } from "./lib/utils";
+import { GristmillLogo } from "./ui/GristmillLogo";
 import ActionManagerDialog from "./notes/ActionManagerDialog";
 import SpacesTree from "./notes/SpacesTree";
 import { useNotesTreeActions } from "../hooks/useNotesTreeActions";
@@ -39,9 +40,13 @@ export default function ControlPanelSidebar({
   return (
     <div className="flex h-full w-48 shrink-0 flex-col bg-surface-window">
       <div
-        className="h-10 w-full shrink-0"
+        className="h-11 w-full shrink-0"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       />
+
+      <div className="px-4.5 pb-1 shrink-0">
+        <GristmillLogo />
+      </div>
 
       <div className="space-y-0.5 px-2 pt-2 pb-1 shrink-0">
         <button

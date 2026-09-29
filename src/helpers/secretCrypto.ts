@@ -4,7 +4,7 @@ import path from "path";
 import { app, safeStorage } from "electron";
 import debugLogger from "./debugLogger.js";
 
-const SERVICE = "OpenHercules";
+const SERVICE = "Gristmill";
 const ACCOUNT = "secrets-master-key";
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;

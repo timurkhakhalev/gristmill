@@ -12,7 +12,7 @@ const STALL_TIMEOUT_MS = 30_000;
 const CONNECT_TIMEOUT_MS = 30_000;
 const MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
-const USER_AGENT = "OpenHercules/1.0";
+const USER_AGENT = "Gristmill/1.0";
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",

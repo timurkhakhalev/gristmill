@@ -14,8 +14,8 @@ final class AudioTapCapture {
     private let config: Config
     private let targetFormat: AVAudioFormat
     private let chunkBytes: Int
-    private let ioQueue = DispatchQueue(label: "com.openhercules.audio-tap")
-    private let listenerQueue = DispatchQueue(label: "com.openhercules.audio-tap.listeners")
+    private let ioQueue = DispatchQueue(label: "com.khakhalev.gristmill.audio-tap")
+    private let listenerQueue = DispatchQueue(label: "com.khakhalev.gristmill.audio-tap.listeners")
 
     private var tapID: AudioObjectID = 0
     private var aggregateDeviceID: AudioObjectID = 0
@@ -47,7 +47,7 @@ final class AudioTapCapture {
 
     func start() throws {
         let tapDescription = CATapDescription()
-        tapDescription.name = "openhercules-audio-tap"
+        tapDescription.name = "gristmill-audio-tap"
         tapDescription.uuid = UUID()
         tapDescription.processes = []
         tapDescription.isMono = true
@@ -113,8 +113,8 @@ final class AudioTapCapture {
 
     private func createAggregateDevice(tapUID: String) throws {
         let description: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "OpenHercules Audio Tap",
-            kAudioAggregateDeviceUIDKey: "com.openhercules.audio-tap.\(UUID().uuidString)",
+            kAudioAggregateDeviceNameKey: "Gristmill Audio Tap",
+            kAudioAggregateDeviceUIDKey: "com.khakhalev.gristmill.audio-tap.\(UUID().uuidString)",
             kAudioAggregateDeviceSubDeviceListKey: [],
             kAudioAggregateDeviceTapListKey: [[kAudioSubTapUIDKey: tapUID]],
             kAudioAggregateDeviceTapAutoStartKey: false,
@@ -448,7 +448,7 @@ func parseConfig() -> Config {
 // listeners landed, from the listener queue too. The host parses stderr a line
 // at a time, so two writers interleaving would produce a line it drops as
 // malformed; serialising here keeps every event whole.
-let emitQueue = DispatchQueue(label: "com.openhercules.audio-tap.emit")
+let emitQueue = DispatchQueue(label: "com.khakhalev.gristmill.audio-tap.emit")
 
 func emit(event: [String: Any]) {
     guard JSONSerialization.isValidJSONObject(event) else {
@@ -490,7 +490,7 @@ func makeError(
         userInfo["AudioTapStatus"] = Int(status)
         userInfo["NSLocalizedFailureReasonErrorKey"] = "\(message): \(Int(status))"
     }
-    return NSError(domain: "OpenHerculesAudioTap", code: Int(status ?? -1), userInfo: userInfo)
+    return NSError(domain: "GristmillAudioTap", code: Int(status ?? -1), userInfo: userInfo)
 }
 
 func inferErrorCode(status: OSStatus?, operation: String) -> String {

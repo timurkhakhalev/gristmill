@@ -42,10 +42,10 @@ export class AudioStorageManager {
         const pad = (n: number) => String(n).padStart(2, "0");
         const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
         const time = `${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-        return `OpenHercules-${date}-${time}-${transcriptionId}.webm`;
+        return `Gristmill-${date}-${time}-${transcriptionId}.webm`;
       }
     }
-    return `OpenHercules-${transcriptionId}.webm`;
+    return `Gristmill-${transcriptionId}.webm`;
   }
 
   saveAudio(

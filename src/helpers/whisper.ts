@@ -257,7 +257,7 @@ export class WhisperManager {
       }
     }
 
-    debugLogger.info("OpenHercules dependency check", status);
+    debugLogger.info("Gristmill dependency check", status);
 
     // Log a summary for easy scanning
     const serverStatus = status.whisperServer.available

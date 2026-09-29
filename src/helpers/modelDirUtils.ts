@@ -16,8 +16,8 @@ function ensureDir(dir: string): string {
 
 function getAsciiSafeFallbackRoot(): string | null {
   const candidates: string[] = [
-    path.join(process.env.ProgramData || "C:\\ProgramData", "OpenHercules", "cache"),
-    path.join(process.env.SystemDrive || "C:", "OpenHercules", "cache"),
+    path.join(process.env.ProgramData || "C:\\ProgramData", "Gristmill", "cache"),
+    path.join(process.env.SystemDrive || "C:", "Gristmill", "cache"),
   ];
 
   for (const candidate of candidates) {
@@ -31,7 +31,7 @@ function getAsciiSafeFallbackRoot(): string | null {
 }
 
 function getPreferredCacheRoot(homeCache: string): string {
-  const cacheRootEnv = process.env.OPENHERCULES_CACHE_ROOT;
+  const cacheRootEnv = process.env.GRISTMILL_CACHE_ROOT;
   if (cacheRootEnv) {
     return cacheRootEnv;
   }
@@ -39,14 +39,14 @@ function getPreferredCacheRoot(homeCache: string): string {
   if (process.platform === "win32") {
     const redirectedProfile = process.env.USERPROFILE;
     if (redirectedProfile && path.isAbsolute(redirectedProfile)) {
-      return path.join(redirectedProfile, ".cache", "openhercules");
+      return path.join(redirectedProfile, ".cache", "gristmill");
     }
   }
 
   if (process.platform === "linux") {
     const xdgCacheHome = process.env.XDG_CACHE_HOME;
     if (xdgCacheHome && path.isAbsolute(xdgCacheHome)) {
-      return path.join(xdgCacheHome, "openhercules");
+      return path.join(xdgCacheHome, "gristmill");
     }
   }
 
@@ -134,7 +134,7 @@ function migrateLegacyModelDirs(legacyRoot: string, targetRoot: string): boolean
 
 export function getCacheRoot(): string {
   const homeDir: string = app?.getPath?.("home") || os.homedir();
-  const homeCache = path.join(homeDir, ".cache", "openhercules");
+  const homeCache = path.join(homeDir, ".cache", "gristmill");
   let targetRoot: string = getPreferredCacheRoot(homeCache);
 
   if (process.platform === "win32" && pathHasProblematicChars(targetRoot)) {

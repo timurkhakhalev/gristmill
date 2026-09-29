@@ -374,7 +374,7 @@ export class ModelManager {
         (typeof metadata?.contextLength === "number" ? metadata.contextLength : 0) ||
         modelInfo.model.contextLength ||
         0,
-      // OpenHercules ships the Metal llama-server for Apple Silicon only.
+      // Gristmill ships the Metal llama-server for Apple Silicon only.
       // Keep the context budget tied to unified system memory.
       discreteGpuUnverified: false,
     });

@@ -2,11 +2,11 @@ const base = require("./electron-builder.json");
 
 module.exports = {
   ...base,
-  appId: "com.openhercules.desktop.dev",
-  productName: "OpenHercules Dev",
+  appId: "com.khakhalev.gristmill.dev",
+  productName: "Gristmill Dev",
   directories: { ...base.directories, output: "dist-dev" },
-  protocols: { name: "OpenHercules Dev Protocol", schemes: ["openhercules-dev"] },
-  extraMetadata: { openherculesChannel: "development" },
+  protocols: { name: "Gristmill Dev Protocol", schemes: ["gristmill-dev"] },
+  extraMetadata: { gristmillChannel: "development" },
   extraResources: [
     { ...base.extraResources[0], filter: ["**/*"] },
     ...base.extraResources.slice(1),
@@ -17,5 +17,5 @@ module.exports = {
     extraResources: [],
     extendInfo: { ...base.mac.extendInfo, CFBundleIconName: "icon" },
   },
-  dmg: { ...base.dmg, title: "OpenHercules Dev", icon: "src/assets/iconDev.icns" },
+  dmg: { ...base.dmg, title: "Gristmill Dev", icon: "src/assets/iconDev.icns" },
 };

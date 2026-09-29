@@ -307,7 +307,7 @@ export class HotkeyManager extends EventEmitter {
   }
 
   // Which mouse buttons the macOS listener must swallow for these slots, and
-  // whether OpenHercules owns Globe — if it does, macOS's own standalone Globe
+  // whether Gristmill owns Globe — if it does, macOS's own standalone Globe
   // action has to stand down.
   getMacNativeListenerConfig(slotNames: string[]): {
     mouseButtons: string[];

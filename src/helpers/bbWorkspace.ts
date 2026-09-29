@@ -15,28 +15,28 @@ const allowed = new Set([
   "GET /v1/dictionary/list", "POST /v1/dictionary/update",
   "GET /v1/snippets/list", "POST /v1/snippets/update",
 ]);
-if (!route?.startsWith("/") || route.startsWith("//")) throw new Error("Invalid OpenHercules tool route");
+if (!route?.startsWith("/") || route.startsWith("//")) throw new Error("Invalid Gristmill tool route");
 const url = new URL(route, "http://127.0.0.1");
 const pathname = url.pathname;
 const key = method + " " + (/^\\/v1\\/notes\\/\\d+$/.test(pathname) ? "/v1/notes/" : pathname);
-if (!allowed.has(key)) throw new Error("Unsupported OpenHercules tool route");
+if (!allowed.has(key)) throw new Error("Unsupported Gristmill tool route");
 const response = await fetch("http://127.0.0.1:" + port + pathname + url.search, {
   method,
   headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
   ...(body ? { body } : {}),
 });
 const result = await response.text();
-if (!response.ok) throw new Error(result || "OpenHercules tool failed: " + response.status);
+if (!response.ok) throw new Error(result || "Gristmill tool failed: " + response.status);
 process.stdout.write(result || "{}");
 `;
 
-const AGENT_INSTRUCTIONS = `# OpenHercules agent
+const AGENT_INSTRUCTIONS = `# Gristmill agent
 
-Answer the user's Chat request. You may use the local OpenHercules notes tools in this directory.
-Use \`node openhercules-tools.mjs METHOD ROUTE [JSON_BODY]\` to call them. Examples:
-- \`node openhercules-tools.mjs GET '/v1/notes/search?q=project'\`
-- \`node openhercules-tools.mjs GET /v1/notes/123\`
-- \`node openhercules-tools.mjs POST /v1/notes/create '{"title":"Title","content":"Text"}'\`
+Answer the user's Chat request. You may use the local Gristmill notes tools in this directory.
+Use \`node gristmill-tools.mjs METHOD ROUTE [JSON_BODY]\` to call them. Examples:
+- \`node gristmill-tools.mjs GET '/v1/notes/search?q=project'\`
+- \`node gristmill-tools.mjs GET /v1/notes/123\`
+- \`node gristmill-tools.mjs POST /v1/notes/create '{"title":"Title","content":"Text"}'\`
 Available routes: notes list/search/get/create/update, folders list/create, dictionary list/update, snippets list/update.
 The helper supplies authentication. Never read, print, or include its connection file in a response or log.
 Do not modify files in this workspace except through the listed notes tools.
@@ -49,7 +49,7 @@ export function bbWorkspacePath(userData: string): string {
 export function ensureBbWorkspace(userData: string): string {
   const directory = bbWorkspacePath(userData);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  for (const [name, content] of [["AGENTS.md", AGENT_INSTRUCTIONS], ["openhercules-tools.mjs", TOOL_SCRIPT]]) {
+  for (const [name, content] of [["AGENTS.md", AGENT_INSTRUCTIONS], ["gristmill-tools.mjs", TOOL_SCRIPT]]) {
     const target = path.join(directory, name);
     if (!fs.existsSync(target) || fs.readFileSync(target, "utf8") !== content) {
       fs.writeFileSync(target, content, { mode: 0o600 });

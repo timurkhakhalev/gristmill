@@ -21,14 +21,14 @@ export function getSafeTempDir(): string {
   }
 
   const fallbackBase: string = process.env.ProgramData || "C:\\ProgramData";
-  const fallback: string = path.join(fallbackBase, "OpenHercules", "temp");
+  const fallback: string = path.join(fallbackBase, "Gristmill", "temp");
 
   try {
     fs.mkdirSync(fallback, { recursive: true });
     cachedSafeTempDir = fallback;
     return fallback;
   } catch {
-    const rootFallback: string = path.join(process.env.SystemDrive || "C:", "OpenHercules", "temp");
+    const rootFallback: string = path.join(process.env.SystemDrive || "C:", "Gristmill", "temp");
     try {
       fs.mkdirSync(rootFallback, { recursive: true });
       cachedSafeTempDir = rootFallback;

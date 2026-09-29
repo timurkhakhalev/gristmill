@@ -4,7 +4,7 @@
       "sectionTitle": "Langue",
       "sectionDescription": "Configurez séparément la langue de l'interface et de la transcription",
       "uiLabel": "Langue de l'interface",
-      "uiDescription": "Choisissez la langue utilisée dans l'interface OpenHercules",
+      "uiDescription": "Choisissez la langue utilisée dans l'interface Gristmill",
       "transcriptionLabel": "Langue de transcription",
       "transcriptionDescription": "Choisissez la langue que vous parlez pour une transcription plus précise",
       "chineseScriptLabel": "Écriture chinoise (dictée)",
@@ -60,8 +60,8 @@
   "tray": {
     "openControlPanel": "Ouvrir le panneau de contrôle",
     "hideControlPanel": "Masquer le panneau de contrôle",
-    "quit": "Quitter OpenHercules",
-    "tooltip": "OpenHercules",
+    "quit": "Quitter Gristmill",
+    "tooltip": "Gristmill",
     "recordingStatus": "Enregistrement en cours",
     "stopRecording": "Arrêter l’enregistrement",
     "startsIn": "Commence dans {{time}}",
@@ -74,8 +74,8 @@
     "now": "Maintenant"
   },
   "menu": {
-    "appLabel": "OpenHercules",
-    "quit": "Quitter OpenHercules",
+    "appLabel": "Gristmill",
+    "quit": "Quitter Gristmill",
     "speech": "Parole",
     "settings": "Réglages…",
     "help": "Aide",
@@ -93,8 +93,8 @@
       "message": "Impossible d'ouvrir le lien dans votre navigateur :\n{{url}}\n\nErreur : {{error}}"
     },
     "loadFailure": {
-      "title": "Échec du chargement d'OpenHercules",
-      "message": "OpenHercules n'a pas pu charger son interface.",
+      "title": "Échec du chargement d'Gristmill",
+      "message": "Gristmill n'a pas pu charger son interface.",
       "detail": {
         "window": "Fenêtre : {{windowName}}",
         "error": "Erreur {{errorCode}} : {{errorDescription}}",
@@ -107,22 +107,22 @@
       "message": "Arrêter et enregistrer cet enregistrement avant de quitter ?",
       "stopAndQuit": "Arrêter et quitter",
       "cancel": "Annuler",
-      "stopFailed": "L’enregistrement n’a pas encore pu être sauvegardé. OpenHercules reste ouvert."
+      "stopFailed": "L’enregistrement n’a pas encore pu être sauvegardé. Gristmill reste ouvert."
     }
   },
   "startup": {
     "error": {
-      "title": "Erreur de démarrage OpenHercules",
+      "title": "Erreur de démarrage Gristmill",
       "message": "Échec du démarrage de l'application :\n\n{{error}}\n\nVeuillez signaler ce problème."
     },
     "globeHotkey": {
       "title": "Raccourci Globe indisponible",
-      "message": "OpenHercules n'a pas pu activer la touche Globe.",
+      "message": "Gristmill n'a pas pu activer la touche Globe.",
       "details": {
         "unknown": "Erreur inconnue lors du démarrage de l'écouteur Globe.",
         "fallback": "Le raccourci Globe restera désactivé ; les raccourcis actuels continueront de fonctionner.",
         "devHint": "Exécutez `npm run compile:globe` puis reconstruisez l'application pour régénérer le binaire.",
-        "reinstallHint": "Réinstallez OpenHercules ou contactez le support si le problème persiste."
+        "reinstallHint": "Réinstallez Gristmill ou contactez le support si le problème persiste."
       }
     }
   },
@@ -199,7 +199,7 @@
   "onboarding": {
     "rehaul": {
       "permissions": {
-        "title": "Configurez OpenHercules en 3 minutes",
+        "title": "Configurez Gristmill en 3 minutes",
         "microphoneDescription": "Transforme ce que vous dites en texte. Actif seulement pendant l’enregistrement.",
         "systemAudioTitle": "Audio Système",
         "systemAudioDescription": "Enregistre vos interlocuteurs pour les notes de réunion. Actif seulement pendant l’enregistrement.",
@@ -210,7 +210,7 @@
         "title": "Quelles langues parlez-vous ?",
         "titleLineOne": "Quelles langues",
         "titleLineTwo": "parlez-vous ?",
-        "description": "Sélectionnez toutes les langues concernées. Cela aide OpenHercules à reconnaître plus précisément les changements de langue.",
+        "description": "Sélectionnez toutes les langues concernées. Cela aide Gristmill à reconnaître plus précisément les changements de langue.",
         "selected": "Selected languages"
       },
       "hotkey": {
@@ -220,13 +220,13 @@
         "holding": "Maintenez la touche ou appuyez sur une autre"
       },
       "notes": {
-        "title": "Enregistrez vos réunions sans bot avec OpenHercules Notes",
+        "title": "Enregistrez vos réunions sans bot avec Gristmill Notes",
         "titleLineOne": "Enregistrez vos réunions sans bot",
-        "titleLineTwoPrefix": "avec OpenHercules",
+        "titleLineTwoPrefix": "avec Gristmill",
         "titleLineTwoBrand": "Notes",
-        "description": "OpenHercules transforme votre conversation en notes claires. Aucun bot de réunion ne rejoint votre appel.",
+        "description": "Gristmill transforme votre conversation en notes claires. Aucun bot de réunion ne rejoint votre appel.",
         "hero": {
-          "description": "Enregistrez votre réunion et laissez OpenHercules transformer la conversation en notes claires et organisées.",
+          "description": "Enregistrez votre réunion et laissez Gristmill transformer la conversation en notes claires et organisées.",
           "chat": "Discutez avec vos notes de réunion",
           "transcript": "Consultez la transcription complète",
           "speakers": "Voyez qui a dit quoi"
@@ -242,9 +242,9 @@
         }
       },
       "setupChoice": {
-        "title": "Choisissez votre configuration OpenHercules",
+        "title": "Choisissez votre configuration Gristmill",
         "titleLineOne": "Choisissez votre",
-        "titleLineTwo": "configuration OpenHercules",
+        "titleLineTwo": "configuration Gristmill",
         "description": "Choisissez l’option qui correspond à votre façon de travailler.",
         "byok": {
           "title": "Fournisseur d’API",
@@ -346,12 +346,12 @@
       "recommended": "Recommandé"
     },
     "useCase": {
-      "title": "Comment utiliserez-vous OpenHercules ?",
+      "title": "Comment utiliserez-vous Gristmill ?",
       "titleLineOne": "Comment utiliserez-vous",
-      "titleLineTwo": "OpenHercules ?",
+      "titleLineTwo": "Gristmill ?",
       "description": "Choisissez tout ce qui s'applique. Nous adapterons votre configuration.",
       "noteLabel": "Autre chose à nous dire ?",
-      "notePlaceholder": "Dites-nous comment vous comptez utiliser OpenHercules (facultatif)",
+      "notePlaceholder": "Dites-nous comment vous comptez utiliser Gristmill (facultatif)",
       "proceedToSetup": "Continuer la configuration",
       "options": {
         "meetings": {
@@ -376,7 +376,7 @@
     "meeting": {
       "title": "Notes de réunion",
       "description": "Capturez et résumez vos réunions",
-      "autoDetect": "OpenHercules détecte automatiquement quand vous êtes en réunion et vous propose de démarrer des notes — rien n'est enregistré sans vous.",
+      "autoDetect": "Gristmill détecte automatiquement quand vous êtes en réunion et vous propose de démarrer des notes — rien n'est enregistré sans vous.",
       "hotkeyLabel": "Raccourci réunion",
       "hotkeyHint": "Facultatif — appuyez dessus pendant une réunion pour démarrer une note instantanément."
     },
@@ -492,7 +492,7 @@
           "modelNotFound": "AWS Bedrock n’a pas trouvé le modèle sélectionné dans la région {{region}}. Vérifiez l’ID du modèle et sa disponibilité dans cette région.",
           "configurationRejected": "AWS Bedrock a refusé la configuration du modèle pour la région {{region}}. Vérifiez l’ID du modèle, le profil d’inférence et la région.",
           "notConfigured": "AWS Bedrock n’est pas configuré correctement. Vérifiez la région et les identifiants AWS.",
-          "serviceUnavailable": "AWS Bedrock est temporairement indisponible en raison d’une forte demande. Il s’agit d’un problème du service AWS, et non d’une panne d’OpenHercules. Réessayez dans quelques minutes.",
+          "serviceUnavailable": "AWS Bedrock est temporairement indisponible en raison d’une forte demande. Il s’agit d’un problème du service AWS, et non d’une panne d’Gristmill. Réessayez dans quelques minutes.",
           "throttled": "AWS Bedrock limite temporairement les requêtes car il en reçoit trop. Patientez un instant et réessayez. Si le problème persiste, demandez à votre administrateur AWS de vérifier l’utilisation et les quotas Bedrock.",
           "timeout": "AWS Bedrock n’a pas répondu à temps. Réessayez. Si le problème persiste, vérifiez votre connexion Internet et l’état du service AWS Bedrock.",
           "network": "AWS Bedrock est inaccessible. Vérifiez votre connexion Internet et réessayez.",
@@ -640,7 +640,7 @@
       "micErrors": {
         "accessFailed": "L'accès au microphone a échoué. Veuillez réessayer.",
         "noMicrophones": "Aucun micro détecté. Connectez ou sélectionnez un micro dans {{settingsPath}}.",
-        "permissionDenied": "Autorisation refusée. Ouvrez {{privacyPath}} et autorisez OpenHercules.",
+        "permissionDenied": "Autorisation refusée. Ouvrez {{privacyPath}} et autorisez Gristmill.",
         "couldNotStart": "Impossible de démarrer le micro sélectionné. Choisissez une entrée dans {{settingsPath}} puis relancez le test.",
         "noActiveInput": "Aucune entrée audio active trouvée. Choisissez un micro dans {{settingsPath}}.",
         "unknown": "Accès au micro échoué : {{error}}. Choisissez un autre appareil et réessayez.",
@@ -711,7 +711,7 @@
     "systemAudioRequired": "L'autorisation Audio Système est nécessaire pour capturer l'audio des autres participants.",
     "openSettings": "Ouvrir les Réglages Système",
     "connectCalendar": "Connectez votre calendrier",
-    "connectCalendarDescription": "Consultez vos réunions et rejoignez-les sans quitter OpenHercules.",
+    "connectCalendarDescription": "Consultez vos réunions et rejoignez-les sans quitter Gristmill.",
     "connectCalendarButton": "Connecter le calendrier",
     "openEventNote": "Ouvrir les notes de {{title}}"
   },
@@ -873,7 +873,7 @@
       "reset": "Réinitialiser",
       "save": "Enregistrer"
     },
-    "defaultTestInput": "Hey Hercules, quel temps fait-il aujourd'hui ?",
+    "defaultTestInput": "Hey Gristmill, quel temps fait-il aujourd'hui ?",
     "dialogs": {
       "reset": {
         "description": "Le prompt a été réinitialisé à la valeur par défaut.",
@@ -1061,7 +1061,7 @@
       "appearance": {
         "auto": "Auto",
         "dark": "Sombre",
-        "description": "Contrôlez l'apparence d'OpenHercules",
+        "description": "Contrôlez l'apparence d'Gristmill",
         "light": "Clair",
         "theme": "Thème",
         "themeDescription": "Choisissez clair, sombre ou suivre le système",
@@ -1092,14 +1092,14 @@
       },
       "startup": {
         "launchAtLogin": "Lancer au démarrage",
-        "launchAtLoginDescription": "Lancer OpenHercules en arrière-plan à l'ouverture de session",
+        "launchAtLoginDescription": "Lancer Gristmill en arrière-plan à l'ouverture de session",
         "title": "Démarrage",
-        "description": "Contrôlez le comportement d'OpenHercules au lancement",
+        "description": "Contrôlez le comportement d'Gristmill au lancement",
         "startMinimized": "Démarrer réduit",
         "startMinimizedDescription": "Lancer sans afficher la fenêtre du panneau de contrôle",
         "needsApproval": {
           "title": "Autorisation requise dans Réglages Système",
-          "description": "macOS a enregistré OpenHercules comme élément d'ouverture, mais attend que vous l'autorisiez dans Éléments d'ouverture.",
+          "description": "macOS a enregistré Gristmill comme élément d'ouverture, mais attend que vous l'autorisiez dans Éléments d'ouverture.",
           "action": "Ouvrir Éléments d'ouverture"
         }
       },
@@ -1157,11 +1157,11 @@
       "notesGroup": "Notes",
       "meetingCompanion": {
         "label": "Compagnon d'enregistrement",
-        "description": "Pendant l'enregistrement d'une réunion avec OpenHercules en arrière-plan, affiche une petite bulle déplaçable qui réagit à votre voix. Cliquez dessus pour ouvrir la note."
+        "description": "Pendant l'enregistrement d'une réunion avec Gristmill en arrière-plan, affiche une petite bulle déplaçable qui réagit à votre voix. Cliquez dessus pour ouvrir la note."
       }
     },
     "permissions": {
-      "description": "Testez et gérez les permissions système requises pour le bon fonctionnement d'OpenHercules",
+      "description": "Testez et gérez les permissions système requises pour le bon fonctionnement d'Gristmill",
       "microphoneDescription": "Capture votre voix pour la dictée et la transcription",
       "microphoneTitle": "Microphone",
       "optional": "Facultatif",
@@ -1512,7 +1512,7 @@
     },
     "structureIntro": {
       "title": "Où se trouvent vos notes",
-      "description": "OpenHercules sépare les idées privées du travail partagé afin que les bonnes personnes voient les bonnes notes.",
+      "description": "Gristmill sépare les idées privées du travail partagé afin que les bonnes personnes voient les bonnes notes.",
       "personal": {
         "title": "Espace personnel",
         "description": "Vous seul pouvez voir les dossiers et les notes qui s'y trouvent."
@@ -1707,7 +1707,7 @@
       },
       "systemAudioStopped": {
         "title": "Son de la réunion arrêté",
-        "description": "OpenHercules ne capte plus les autres participants. Arrêtez l'enregistrement puis relancez-le, ou vérifiez votre périphérique de sortie audio."
+        "description": "Gristmill ne capte plus les autres participants. Arrêtez l'enregistrement puis relancez-le, ou vérifiez votre périphérique de sortie audio."
       },
       "systemAudioQuiet": {
         "title": "L'audio de la réunion est devenu silencieux",
@@ -1884,7 +1884,7 @@
     "clearTitle": "Vider le dictionnaire ?",
     "clearDescription": "Cela supprimera tous les mots de votre dictionnaire personnalisé. Cette action est irréversible.",
     "addWord": "Ajouter un mot",
-    "addPlaceholder": "Ajoutez des mots séparés par des virgules — OpenHercules, Supabase, John Snow, ARR",
+    "addPlaceholder": "Ajoutez des mots séparés par des virgules — Gristmill, Supabase, John Snow, ARR",
     "removeWord": "Supprimer {{word}}",
     "clearAll": "Tout effacer",
     "add": "Ajouter",
@@ -1916,7 +1916,7 @@
       "duplicate": "Un snippet avec ce déclencheur existe déjà",
       "emptyTitle": "Ce que vous ne devriez pas avoir à dire",
       "emptyTitleAccent": "deux fois",
-      "emptyDescription": "Prononcez un mot déclencheur et OpenHercules le remplace par ce que vous avez enregistré : URL, intros, signatures, prompts.",
+      "emptyDescription": "Prononcez un mot déclencheur et Gristmill le remplace par ce que vous avez enregistré : URL, intros, signatures, prompts.",
       "new": "Nouveau snippet",
       "examples": {
         "linkedinTrigger": "Mon LinkedIn",
@@ -1943,7 +1943,7 @@
     "submitBug": "Signaler un bug"
   },
   "postMigration": {
-    "title": "Bon retour sur OpenHercules",
+    "title": "Bon retour sur Gristmill",
     "description": "Vos notes et vos paramètres ont été conservés depuis la version précédente. macOS considère toutefois cette installation comme une nouvelle app, il faudra donc accorder à nouveau quelques permissions.",
     "done": "Terminé",
     "remindLater": "Me le rappeler plus tard"
@@ -1967,8 +1967,8 @@
     "ready": "Accélération GPU prête",
     "activating": "Activation du GPU...",
     "activationFailed": "Accélération GPU indisponible",
-    "activationFailedDescription": "OpenHercules est passé à la transcription par CPU.",
-    "reasoningActivationFailedDescription": "OpenHercules est passé au traitement par CPU.",
+    "activationFailedDescription": "Gristmill est passé à la transcription par CPU.",
+    "reasoningActivationFailedDescription": "Gristmill est passé au traitement par CPU.",
     "retryActivation": "Réessayer l'accélération GPU",
     "remove": "Supprimer",
     "dismiss": "Pas maintenant",
@@ -1988,11 +1988,11 @@
       "undo": "Annuler",
       "accessibilityMissing": {
         "title": "Autorisations d'accessibilité requises",
-        "description": "OpenHercules a besoin des autorisations d'accessibilité pour détecter votre raccourci et coller du texte. Veuillez les activer dans le Panneau de configuration."
+        "description": "Gristmill a besoin des autorisations d'accessibilité pour détecter votre raccourci et coller du texte. Veuillez les activer dans le Panneau de configuration."
       },
       "gpuFallback": {
         "title": "Accélération GPU indisponible",
-        "description": "OpenHercules est passé à la transcription par CPU.",
+        "description": "Gristmill est passé à la transcription par CPU.",
         "retry": "Réessayer le GPU"
       },
       "gpuPackMigration": {
@@ -2025,7 +2025,7 @@
       "disconnectConfirm": "Déconnecter {{email}} ?",
       "disconnectDescription": "Les notes de réunion ne seront plus enregistrées depuis ce calendrier.",
       "systemAudioRequired": "Autorisation Audio Système requise",
-      "systemAudioDescription": "Pour transcrire les réunions, OpenHercules a besoin de l'autorisation Audio Système pour capturer l'audio des autres participants. Nous n'enregistrons jamais votre écran. Vous serez dirigé vers les Réglages Système pour l'activer.",
+      "systemAudioDescription": "Pour transcrire les réunions, Gristmill a besoin de l'autorisation Audio Système pour capturer l'audio des autres participants. Nous n'enregistrons jamais votre écran. Vous serez dirigé vers les Réglages Système pour l'activer.",
       "openSettings": "Ouvrir les Réglages Système",
       "connectFailed": "Échec de la connexion",
       "connectFailedDescription": "Une erreur s'est produite lors de la connexion à Google Calendar. Veuillez réessayer.",
@@ -2056,17 +2056,17 @@
       "disconnectConfirm": "Déconnecter le Calendrier Apple ?",
       "disconnectDescription": "Les notes de réunion ne seront plus enregistrées depuis votre Calendrier Apple.",
       "permissionDenied": "Accès au calendrier requis",
-      "permissionDeniedDescription": "OpenHercules a besoin d'accéder au calendrier pour détecter les réunions. Activez OpenHercules dans Réglages Système, sous Confidentialité et sécurité → Calendriers.",
+      "permissionDeniedDescription": "Gristmill a besoin d'accéder au calendrier pour détecter les réunions. Activez Gristmill dans Réglages Système, sous Confidentialité et sécurité → Calendriers.",
       "openSettings": "Ouvrir les Réglages Système",
       "connectFailed": "Échec de la connexion",
-      "connectFailedDescription": "Une erreur s'est produite lors de la connexion à Calendar.app. Redémarrez OpenHercules et réessayez."
+      "connectFailedDescription": "Une erreur s'est produite lors de la connexion à Calendar.app. Redémarrez Gristmill et réessayez."
     },
     "sections": {
       "calendar": "Calendrier"
     },
     "notABot": {
-      "title": "OpenHercules est un enregistreur de réunions, pas un bot",
-      "description": "OpenHercules capture l'audio directement depuis votre système — il ne rejoint jamais vos réunions en tant que participant. Connectez simplement votre calendrier et prenez vos notes normalement."
+      "title": "Gristmill est un enregistreur de réunions, pas un bot",
+      "description": "Gristmill capture l'audio directement depuis votre système — il ne rejoint jamais vos réunions en tant que participant. Connectez simplement votre calendrier et prenez vos notes normalement."
     },
     "status": {
       "notConfigured": "Non configuré"
@@ -2116,7 +2116,7 @@
   },
   "permissionsGate": {
     "title": "Autorisations requises",
-    "description": "OpenHercules a besoin de quelques autorisations pour fonctionner sur cet ordinateur.",
+    "description": "Gristmill a besoin de quelques autorisations pour fonctionner sur cet ordinateur.",
     "continue": "Continuer"
   },
   "embeddedChat": {
@@ -2229,7 +2229,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "Pour les rappels d’enregistrement des réunions.",
-    "accessibilityHelp": "Activez OpenHercules dans les réglages Accessibilité de macOS. S’il n’apparaît pas, cliquez sur + et sélectionnez l’application OpenHercules.app installée.",
+    "accessibilityHelp": "Activez Gristmill dans les réglages Accessibilité de macOS. S’il n’apparaît pas, cliquez sur + et sélectionnez l’application Gristmill.app installée.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },

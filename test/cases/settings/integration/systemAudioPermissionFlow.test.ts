@@ -39,7 +39,7 @@ test("system audio prompts once, then opens Settings and rechecks on return", as
   });
   const container = installHookDom(t);
   const vite = await createRendererServer(t, {
-    cachePrefix: "openhercules-system-audio-permission-",
+    cachePrefix: "gristmill-system-audio-permission-",
     mockModules: {
       "/utils/platform": `export function getCachedPlatform() { return "darwin"; }`,
     },

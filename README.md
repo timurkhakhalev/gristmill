@@ -1,14 +1,20 @@
-# OpenHercules
+<p align="center"><img src="docs/brand/logo-horizontal.svg" alt="Gristmill AI" height="96"></p>
 
-OpenHercules is a macOS Apple Silicon meeting and notes client based on an imported OpenWhispr baseline. Cleanup and the M1–M4 record-then-process implementation are in place in the current task branch; root's final integrated checks and live mic/system hardware smoke remain pending.
+# Gristmill
 
-The product is intended to use OpenWhispr as a one-time source for its Granola-like interface, macOS capture code, calendar integration, and selected provider adapters. OpenHercules is not planned as a long-lived rebrand that continuously merges all upstream OpenWhispr features.
+*Meeting notes, milled fine.*
+
+See [docs/rename-migration.md](docs/rename-migration.md) for moving an existing OpenHercules profile, keychain items and env vars.
+
+Gristmill is a macOS Apple Silicon meeting and notes client based on an imported OpenWhispr baseline. Cleanup and the M1–M4 record-then-process implementation are in place in the current task branch; root's final integrated checks and live mic/system hardware smoke remain pending.
+
+The product is intended to use OpenWhispr as a one-time source for its Granola-like interface, macOS capture code, calendar integration, and selected provider adapters. Gristmill is not planned as a long-lived rebrand that continuously merges all upstream OpenWhispr features.
 
 ## Core promise
 
 The recording is the source of truth. A transcript, diarization result, summary, or chat index is a reproducible artifact that can be regenerated with another provider or model.
 
-OpenHercules must never silently present a meeting as complete when one audio channel is missing or a processing stage handled only part of the recording.
+Gristmill must never silently present a meeting as complete when one audio channel is missing or a processing stage handled only part of the recording.
 
 ## Product shape
 
@@ -64,8 +70,8 @@ shared-resource tests in a sequential phase. Use `pnpm test -- --processes 1`
 for a one-process diagnostic run. Full runs share a lock across Git worktrees.
 Build the macOS arm64 app with `pnpm run build:mac:arm64` (Xcode command-line tools required). For a local install without a Developer ID certificate, use `pnpm run build:mac:arm64:local` to ad-hoc sign the app with its bundle identifier so macOS can register it for Accessibility access.
 An ad-hoc signature changes with each rebuild, so macOS may require microphone, system audio and Accessibility access again after a local update. Sign with a stable Apple certificate to preserve those grants across updates.
-Build a separate unsigned development app with `pnpm run pack:dev`. It appears at `dist-dev/mac-arm64/OpenHercules Dev.app`, uses its own `OpenHercules-development` profile, and includes the Notes Debug menu and orange icons. Debug states are interactive and kept in memory; they do not save notes, record audio, or call providers.
-On its first launch, the development profile takes an additive, one-way snapshot of the production profile. `pnpm dev` and the packaged Dev app share the development database. Existing dev data is kept; `OPENHERCULES_REFRESH_SNAPSHOT=1` copies only missing production files. Reset All App Data in Dev prevents automatic reseeding on later launches. Explicit `--user-data-dir` test profiles never import production data.
+Build a separate unsigned development app with `pnpm run pack:dev`. It appears at `dist-dev/mac-arm64/Gristmill Dev.app`, uses its own `Gristmill-development` profile, and includes the Notes Debug menu and orange icons. Debug states are interactive and kept in memory; they do not save notes, record audio, or call providers.
+On its first launch, the development profile takes an additive, one-way snapshot of the production profile. `pnpm dev` and the packaged Dev app share the development database. Existing dev data is kept; `GRISTMILL_REFRESH_SNAPSHOT=1` copies only missing production files. Reset All App Data in Dev prevents automatic reseeding on later launches. Explicit `--user-data-dir` test profiles never import production data.
 Only the integrator runs tests/build/install, sequentially. `pnpm dev` and
 `pnpm start` probe the Electron binding and repair a mismatch before opening
 the app. Keep dependency installs and packaging rebuilds separate from a
@@ -83,4 +89,4 @@ packaged runtime before creating installers.
 
 ## Working name
 
-The project is named **OpenHercules**. Its core promise remains preserving original meeting audio and producing reproducible transcripts and notes.
+The project is named **Gristmill**. Its core promise remains preserving original meeting audio and producing reproducible transcripts and notes.

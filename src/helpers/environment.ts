@@ -269,7 +269,7 @@ export class EnvironmentManager {
   }
 
   async _writeEnvFile(envPath: string): Promise<void> {
-    let envContent = "# OpenHercules Environment Variables\n";
+    let envContent = "# Gristmill Environment Variables\n";
     for (const key of PERSISTED_KEYS) {
       if (isSecretEnvKey(key)) continue;
       if (process.env[key]) {
@@ -573,7 +573,7 @@ export class EnvironmentManager {
 
   // Removes a single key's line from .env, preserving every other line
   // verbatim. saveAllKeysToEnvFile() would instead regenerate the file from
-  // PERSISTED_KEYS, dropping hand-added lines (e.g. OPENHERCULES_LOG_LEVEL) and
+  // PERSISTED_KEYS, dropping hand-added lines (e.g. GRISTMILL_LOG_LEVEL) and
   // materializing session/shell env values into the file.
   removeKeyFromEnvFile(key: string): Promise<unknown> {
     const envPath = path.join(app.getPath("userData"), ".env");

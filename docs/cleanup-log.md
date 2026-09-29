@@ -1,7 +1,7 @@
 # Cleanup implementation log
 
 Date: 2026-09-14. Branch: `codex/cleanup-openhercules`.
-PR: https://github.com/timurkhakhalev/openhercules/pull/6
+PR: https://github.com/timurkhakhalev/gristmill/pull/6
 
 The agreed scope is [removal-plan.md](removal-plan.md). Baseline `49cd2b3`
 preserves the imported code; removed features can be retrieved from Git,
@@ -12,7 +12,7 @@ not from hidden runtime switches or a legacy directory.
 | Milestone | Integrated result |
 | --- | --- |
 | M0 | Product decisions, provider/tool inventory and ownership recorded. pnpm 10.19 lockfile and integrator-only sequential tests/build/install rules established. |
-| M1 | Independent OpenHercules app/protocol/profile/keychain/cache identity. No old-profile migration or upstream updater. Commit `8635dfd`. |
+| M1 | Independent Gristmill app/protocol/profile/keychain/cache identity. No old-profile migration or upstream updater. Commit `8635dfd`. |
 | M2 | Removed OW auth, account, subscription/paywall, managed policy, cloud sync/sharing/team and hosted service UI/runtime. Local storage requires no account. |
 | M3 | Kept direct BYOK/Local/supported Self-Hosted inference, including direct AWS/Azure/Vertex credentials. Removed managed OW inference/catalog routes. Existing realtime/provider error paths remain. |
 | M4 | Removed dictation/paste/translation, standalone assistant, screen/selection capture, old windows and native paste/text-monitor helpers. Meeting hotkey, tray, notifications and recording pill remain. |

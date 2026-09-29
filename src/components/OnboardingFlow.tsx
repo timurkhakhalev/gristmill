@@ -45,7 +45,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   return (
     <CompactOnboardingFrame>
-      <div className={`onboarding-shell-scroll flex h-full flex-col overflow-y-auto px-6 pb-6 ${step === "profile" ? "pt-45" : "pt-24"}`}>
+      <div className="onboarding-shell-scroll flex h-full flex-col overflow-y-auto px-6 pb-6 pt-45">
         {step === "profile" && (
           <>
             <OnboardingStepHeader title={t("profile.onboardingTitle")} />

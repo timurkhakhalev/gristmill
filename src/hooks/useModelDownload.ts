@@ -18,7 +18,7 @@ const PROGRESS_THROTTLE_MS = 100;
  * (download complete, model deleted), so surfaces that mirror disk truth
  * without owning the download can re-check.
  */
-export const LOCAL_MODELS_CHANGED_EVENT = "openhercules-local-models-changed";
+export const LOCAL_MODELS_CHANGED_EVENT = "gristmill-local-models-changed";
 
 function notifyLocalModelsChanged(): void {
   window.dispatchEvent(new Event(LOCAL_MODELS_CHANGED_EVENT));
@@ -118,8 +118,8 @@ export function useModelDownload({
 
   useEffect(() => {
     const handleModelsCleared = () => onModelsClearedRef.current?.();
-    window.addEventListener("openhercules-models-cleared", handleModelsCleared);
-    return () => window.removeEventListener("openhercules-models-cleared", handleModelsCleared);
+    window.addEventListener("gristmill-models-cleared", handleModelsCleared);
+    return () => window.removeEventListener("gristmill-models-cleared", handleModelsCleared);
   }, []);
 
   const updateDownload = useCallback(

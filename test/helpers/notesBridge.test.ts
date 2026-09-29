@@ -18,7 +18,7 @@ type Handler = (event: unknown, ...args: unknown[]) => unknown;
 type Listener = (event: unknown, data: unknown) => void;
 let activeHandlers: Map<string, Handler> | null = null;
 let dispatchSend: ((channel: string, data: unknown) => void) | null = null;
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-bridge-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-bridge-"));
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -107,7 +107,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
 async function createFixture(t: import("node:test").TestContext) {
   activeHandlers = new Map();
   dispatchSend = null;
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-notes-bridge-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-bridge-"));
   let db;
   try {
     db = new DatabaseManager();

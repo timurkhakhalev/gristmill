@@ -14,7 +14,7 @@ test("saved transcription bypasses an unsupported current meeting route while sn
   const vite = await createRendererServer(t, {
     cachePrefix: "meeting-config-snapshot-review-",
     mockModules: {
-      "/stores/settingsStore.js": `export function getSettings() { return { preferredLanguage: "en", uiLanguage: "en", customDictionary: ["ProjectX"], noteFormattingDisableThinking: false }; }`,
+      "/stores/settingsStore.js": `export function getSettings() { return { profileName: "  Timur  ", preferredLanguage: "en", uiLanguage: "en", customDictionary: ["ProjectX"], noteFormattingDisableThinking: false }; }`,
       "/config/settingsSelectors.js": `export function selectResolvedMeetingTranscription() { globalThis.__meetingSnapshotRouteReads += 1; return { transcriptionMode: "self-hosted" }; } export function selectResolvedNoteFormatting() { return { mode: "providers", provider: "openai", model: "gpt-4o-mini", cloudMode: "chat", cloudBaseUrl: "", remoteUrl: "" }; }`,
       "/config/prompts.js": `export function appendDictionarySuffix(prompt, dictionary) { return dictionary.length ? prompt + " " + dictionary.join(", ") : prompt; }`,
       "/config/secretKeys.js": `export const BYOK_API_KEYS = [];`,
@@ -32,6 +32,7 @@ test("saved transcription bypasses an unsupported current meeting route while sn
   const corrected = snapshotMeetingRecordingConfig(savedTranscription);
   assert.equal(routeGlobals.__meetingSnapshotRouteReads, 0, "summary correction does not resolve the current ASR route");
   assert.equal(corrected.configError, null);
+  assert.equal(corrected.config.selfDisplayName, "Timur");
   assert.deepEqual(corrected.config.transcription, savedTranscription);
   assert.equal(corrected.config.summary.provider, "openai");
   assert.equal(corrected.config.summary.model, "gpt-4o-mini");
@@ -50,7 +51,7 @@ test("meeting summary snapshots the selected bb harness, model and reasoning lev
   const vite = await createRendererServer(t, {
     cachePrefix: "meeting-bb-snapshot-",
     mockModules: {
-      "/stores/settingsStore.js": `export function getSettings() { return { preferredLanguage: "ru", uiLanguage: "ru", customDictionary: [], noteFormattingDisableThinking: false }; }`,
+      "/stores/settingsStore.js": `export function getSettings() { return { profileName: "", preferredLanguage: "ru", uiLanguage: "ru", customDictionary: [], noteFormattingDisableThinking: false }; }`,
       "/config/settingsSelectors.js": `export function selectResolvedMeetingTranscription() { throw new Error("saved transcription should be used"); } export function selectResolvedNoteFormatting() { return { mode: "agent", agentProvider: "codex", agentModel: "gpt-6-luna", agentReasoningLevel: "high" }; }`,
       "/config/prompts.js": `export function appendDictionarySuffix(prompt) { return prompt; }`,
       "/config/secretKeys.js": `export const BYOK_API_KEYS = [];`,
@@ -62,6 +63,7 @@ test("meeting summary snapshots the selected bb harness, model and reasoning lev
     mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "ru",
   });
   assert.equal(result.configError, null);
+  assert.equal(result.config.selfDisplayName, "Вы");
   assert.equal(result.config.summary.reasoningMode, "agent");
   assert.equal(result.config.summary.agentProvider, "codex");
   assert.equal(result.config.summary.model, "gpt-6-luna");

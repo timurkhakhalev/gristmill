@@ -1,3 +1,4 @@
+import { ProfileNameField } from "./settings/ProfileNameField";
 import React from "react";
 import { HotkeyListInput } from "./ui/HotkeyListInput";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
@@ -42,6 +43,7 @@ const UI_LANGUAGE_NAMES: Record<UiLanguage, string> = {
 };
 
 export type SettingsSectionType =
+  | "profile"
   | "general"
   | "notes"
   | "recording"
@@ -60,6 +62,7 @@ interface SettingsPageProps {
 }
 
 const sections: SettingsSectionType[] = [
+  "profile",
   "general",
   "notes",
   "recording",
@@ -549,8 +552,11 @@ export default function SettingsPage({
   activeSection = "general",
   initialSubTab,
 }: SettingsPageProps) {
+  const { t } = useTranslation();
   const section = sections.includes(activeSection) ? activeSection : "general";
   switch (section) {
+    case "profile":
+      return <Section title={t("settingsModal.sections.profile.label")} description={t("settingsModal.sections.profile.description")}><ProfileNameField /></Section>;
     case "general":
       return <GeneralSettings />;
     case "notes":

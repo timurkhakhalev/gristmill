@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Sliders,
+  User,
   NotebookPen,
   Mic,
   Calendar,
@@ -73,6 +74,7 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
       group: t(`settingsModal.groups.${group}`),
     });
     const items = [
+      item("profile", User, "general"),
       item("general", Sliders, "general"),
       item("notes", NotebookPen, "general"),
       item("recording", Mic, "meetings"),

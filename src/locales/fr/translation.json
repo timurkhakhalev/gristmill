@@ -968,6 +968,10 @@
       "advanced": {
         "label": "Avancé",
         "description": "Diagnostic et journalisation de débogage"
+      },
+      "profile": {
+        "label": "Profil",
+        "description": "Votre nom dans les transcriptions de réunions"
       }
     },
     "title": "Paramètres"
@@ -2459,6 +2463,15 @@
       "installing": "Installation…",
       "remove": "Supprimer {{model}}"
     },
-    "chatPrompt": "Instructions du chat"
+    "chatPrompt": "Instructions du chat",
+    "openaiMeetingAudio": "Microphone : Whisper avec horodatages. Audio système : GPT-4o Transcribe Diarize. Deux requêtes parallèles."
+  },
+  "profile": {
+    "name": "Votre nom",
+    "placeholder": "Comment vous appeler ?",
+    "help": "Utilisé pour la parole enregistrée par votre microphone. Facultatif ; sans nom, « Vous » est affiché. Modifiable dans Paramètres → Profil.",
+    "onboardingTitle": "Comment vous appelez-vous ?",
+    "skip": "Passer",
+    "selfLabel": "Vous"
   }
 }

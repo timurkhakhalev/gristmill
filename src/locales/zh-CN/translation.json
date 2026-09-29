@@ -927,6 +927,10 @@
       "advanced": {
         "label": "高级",
         "description": "诊断和调试日志"
+      },
+      "profile": {
+        "label": "个人资料",
+        "description": "会议转录中显示的姓名"
       }
     },
     "title": "设置"
@@ -2459,6 +2463,15 @@
       "installing": "正在安装…",
       "remove": "删除 {{model}}"
     },
-    "chatPrompt": "聊天指令"
+    "chatPrompt": "聊天指令",
+    "openaiMeetingAudio": "麦克风：带时间戳的 Whisper。系统音频：GPT-4o Transcribe Diarize。两个请求并行执行。"
+  },
+  "profile": {
+    "name": "您的姓名",
+    "placeholder": "如何称呼您？",
+    "help": "用于标注麦克风录制的发言。选填；留空时显示“您”。可在设置 → 个人资料中修改。",
+    "onboardingTitle": "您叫什么名字？",
+    "skip": "跳过",
+    "selfLabel": "您"
   }
 }

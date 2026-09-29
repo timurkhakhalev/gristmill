@@ -88,12 +88,16 @@ function longTranscriptResponse(length = 2500, prefix = "") {
   };
 }
 
-function parseSummaryInput(value: string): {
-  meetingTitle: string | null;
-  manualNotes: string;
-  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; text: string }>;
-} {
-  return JSON.parse(value);
+function parseSummaryInput(value: string) {
+  assert.doesNotMatch(value, /"speakerId":|"speakerName":|"id":/);
+  const title = value.split("Meeting title (topic hint):\n")[1].split("\n\nManual notes:")[0];
+  const manualNotes = value.split("Manual notes:\n")[1].split("\n\nTranscript:")[0];
+  const transcriptSegments = value.split("Transcript:\n")[1].split("\n\n---\n\n").map((turn) => {
+    const colon = turn.indexOf(': "');
+    const labels = turn.slice(0, colon).split(" || ");
+    return { speakerId: labels.at(-1), speakerName: labels.length > 1 ? labels[0] : null, text: turn.slice(colon + 3, -1) };
+  });
+  return { meetingTitle: title, manualNotes, transcriptSegments };
 }
 
 function saveTranscriptArtifact(
@@ -115,7 +119,7 @@ function saveTranscriptArtifact(
   assert.equal(db.setMeetingRunArtifact(runId, "transcript").success, true);
 }
 
-function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Partial<MeetingProcessingWorkerDeps> = {}) {
+function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Partial<MeetingProcessingWorkerDeps> = {}, silentMic = true) {
   const deps: MeetingProcessingWorkerDeps = {
     database: db,
     storage,
@@ -136,6 +140,14 @@ function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Pa
     }),
     fileSize: () => 4096,
     ...overrides,
+  };
+  const transcribeRemote = deps.transcribeRemote;
+  deps.transcribeRemote = async (request, saveRaw, signal) => {
+    if (silentMic && !request.diarize) {
+      await saveRaw({ text: "", words: [], segments: [] });
+      return { success: true, text: "" };
+    }
+    return transcribeRemote(request, saveRaw, signal);
   };
   return new MeetingProcessingWorker(deps);
 }
@@ -255,13 +267,13 @@ test("waits for retention and capture to finish, then persists the response, tra
   assert.equal(savedRun.hasRawProviderResponse, true);
   assert.equal(savedRun.hasTranscript, true);
   assert.equal(savedRun.hasSummary, true);
-  assert.equal(storage.readRunArtifact(run.id, "provider-response").text.length, 2500);
+  assert.equal(storage.readRunArtifact(run.id, "provider-response").system.text.length, 2500);
   assert.equal(storage.readRunArtifact(run.id, "transcript").segments[0].text.length, 2500);
   assert.deepEqual(parseSummaryInput(summaryInput), {
     meetingTitle: note.title,
     manualNotes: "  Manual note first.  \n",
     transcriptSegments: [{
-      id: `${run.id}:0`, speakerId: "Speaker 1", speakerName: null, text: "x".repeat(2500),
+      speakerId: "system:Speaker 1", speakerName: null, text: "x".repeat(2500),
     }],
   });
   const summaryArtifact = storage.readRunArtifact(run.id, "summary");
@@ -427,9 +439,9 @@ test("OpenAI meeting route persists diarized raw response and finishes transcrip
   assert.equal(saved.status, "complete", JSON.stringify({ stage: saved.stage, errorCode: saved.errorCode }));
   assert.equal(saved.hasRawProviderResponse, true);
   assert.equal(saved.hasTranscript, true);
-  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), raw);
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response").system, raw);
   assert.deepEqual(storage.readRunArtifact(run.id, "transcript").segments, [
-    { speaker: "A", text: "Hello.", start: 0.1, end: 0.5 },
+    { speaker: "system:A", text: "Hello.", start: 0.1, end: 0.5 },
   ]);
 });
 
@@ -455,8 +467,8 @@ test("OpenAI text without speaker segments remains visible as a failed run", asy
   const saved = db.getMeetingProcessingRun(run.id);
   assert.equal(saved.status, "failed");
   assert.equal(saved.stage, "normalize");
-  assert.equal(saved.errorCode, "provider-diarization-missing");
-  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), raw);
+  assert.equal(saved.errorCode, "provider-timestamps-missing");
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response").system, raw);
 });
 
 test("a bad provider response stays saved and retry re-enters normalize without another ASR request", async (t: import("node:test").TestContext) => {
@@ -478,13 +490,13 @@ test("a bad provider response stays saved and retry re-enters normalize without 
 
   assert.equal(db.getMeetingProcessingRun(run.id).status, "failed");
   assert.equal(db.getMeetingProcessingRun(run.id).stage, "normalize");
-  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), { malformed: true });
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response").system, { malformed: true });
   assert.equal(db.getMeetingProcessingRun(run.id).hasRawProviderResponse, true);
   worker.retry(run.id);
   await worker.waitForIdle();
   assert.equal(transcribeCalls, 1);
   assert.equal(db.getMeetingProcessingRun(run.id).stage, "normalize");
-  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), { malformed: true });
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response").system, { malformed: true });
 });
 
 test("a valid empty transcript completes without generating a summary", async (t: import("node:test").TestContext) => {
@@ -798,7 +810,7 @@ test("automatic Summary uses inclusive duration and spoken-text thresholds", asy
   const responseByRequest = new Map<string, ReturnType<typeof longTranscriptResponse>>();
   const runs = cases.map((item) => {
     const { recording, run } = createFinishedRecording(db, storage, validConfig, "", false, item.duration);
-    responseByRequest.set(`meeting-${run.id}`, longTranscriptResponse(item.characters));
+    responseByRequest.set(`meeting-${run.id}-system`, longTranscriptResponse(item.characters));
     return { ...item, recording, run };
   });
   const summarizedInputs: string[] = [];
@@ -921,8 +933,8 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
     meetingTitle: "Meeting",
     manualNotes: "Manual note evidence.",
     transcriptSegments: [
-      { id: `${sourceRun.id}:0`, speakerId: "speaker_a", speakerName: "User correction", text: "I am Alice and I will check the release." },
-      { id: `${sourceRun.id}:1`, speakerId: "speaker_b", speakerName: null, text: "I agree with Alice." },
+      { speakerId: "speaker_a", speakerName: "User correction", text: "I am Alice and I will check the release." },
+      { speakerId: "speaker_b", speakerName: null, text: "I agree with Alice." },
     ],
   });
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(sourceRun.id), [{
@@ -1023,7 +1035,7 @@ test("validated speaker names persist model provenance and both Summary stages u
 
   assert.equal(namingInputs.length, 1);
   assert.deepEqual(parseSummaryInput(summaryInput).transcriptSegments, [{
-    id: `${sourceRun.id}:0`, speakerId: "speaker_0", speakerName: "Alice", text: "Alice introduces herself.",
+    speakerId: "speaker_0", speakerName: "Alice", text: "Alice introduces herself.",
   }]);
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(sourceRun.id), [{
     speakerId: "speaker_0", profileId: null, displayName: "Alice", source: "model", revision: 1,
@@ -1134,18 +1146,17 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
   worker.onRetentionReady();
   await taskStarted;
 
-  const taskMaterial = JSON.parse(taskInput);
-  assert.deepEqual(Object.keys(taskMaterial).sort(), ["meetingTitle", "manualNotes", "savedSummary", "transcriptSegments"].sort());
-  assert.equal(taskMaterial.meetingTitle, "Meeting");
-  assert.equal(taskMaterial.manualNotes, "Manual notes stay here.");
-  assert.match(taskMaterial.savedSummary, /Initial action item/);
-  assert.equal(taskMaterial.transcriptSegments[0].start, 0.1);
+  assert.match(taskInput, /Meeting title \(topic hint\):\nMeeting/);
+  assert.match(taskInput, /Manual notes:\nManual notes stay here\./);
+  assert.match(taskInput, /Initial action item/);
+  assert.match(taskInput, /\[0:00\]/);
+  assert.doesNotMatch(taskInput, /"id":|"transcriptSegments":/);
   assert.doesNotMatch(taskInput, /alice@example\.com|generationDate|previousTask/i);
 
   const recapResult = await worker.runSummaryAction({ runId: run.id, action: "recap" });
   assert.deepEqual(recapResult, { success: true });
-  const recapMaterial = JSON.parse(recapInput);
-  assert.deepEqual(Object.keys(recapMaterial).sort(), ["meetingTitle", "manualNotes", "summary", "transcriptSegments"].sort());
+  assert.match(recapInput, /Saved summary \(verify against source\):/);
+  assert.match(recapInput, /Transcript:/);
   assert.doesNotMatch(recapInput, /alice@example\.com|generationDate/i);
   const withRecap = storage.readRunArtifact(run.id, "summary");
   assert.match(withRecap.text, /## Recap/);
@@ -1437,7 +1448,7 @@ test("an available raw response recovered after a crash resumes at normalize", a
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const { run } = createFinishedRecording(db, storage, validConfig, "", false, 180);
-  storage.writeRunArtifact(run.id, "provider-response", elevenResponse);
+  storage.writeRunArtifact(run.id, "provider-response", { mic: { text: "", words: [] }, system: elevenResponse });
   assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
   assert.equal(db.claimMeetingProcessingRun(run.id), true);
   db.setMeetingProcessingRunState(run.id, { stage: "asr", status: "running" });
@@ -1463,7 +1474,7 @@ test("a persisted transcript recovered at summary runs only the saved summary st
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const { run } = createFinishedRecording(db, storage, validConfig, "", false, 180);
-  storage.writeRunArtifact(run.id, "provider-response", elevenResponse);
+  storage.writeRunArtifact(run.id, "provider-response", { mic: { text: "", words: [] }, system: elevenResponse });
   assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
   storage.writeRunArtifact(run.id, "transcript", {
     text: `[Speaker 1] 00:00:00 - 00:00:00\n${"s".repeat(2500)}`,
@@ -1511,7 +1522,7 @@ test("a bb summary resumes its saved thread after process restart without repeat
     },
   };
   const { run } = createFinishedRecording(db, storage, config, "", false, 180);
-  storage.writeRunArtifact(run.id, "provider-response", elevenResponse);
+  storage.writeRunArtifact(run.id, "provider-response", { mic: { text: "", words: [] }, system: elevenResponse });
   assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
   storage.writeRunArtifact(run.id, "transcript", {
     text: `[Speaker 1] 00:00:00 - 00:00:00\n${"s".repeat(2500)}`,
@@ -1639,7 +1650,7 @@ test("provider size limits block only that run and another provider keeps its ow
   assert.equal(elevenSavedRun.hasRawProviderResponse, true);
   assert.equal(elevenSavedRun.hasTranscript, true);
   assert.equal(elevenSavedRun.hasSummary, false);
-  assert.deepEqual(storage.readRunArtifact(elevenRun.id, "provider-response"), elevenResponse);
+  assert.deepEqual(storage.readRunArtifact(elevenRun.id, "provider-response").system, elevenResponse);
   assert.ok(storage.readRunArtifact(elevenRun.id, "transcript"));
   assert.equal(storage.readRunArtifact(elevenRun.id, "summary"), null);
   assert.equal(requests, 1);
@@ -1891,6 +1902,22 @@ test("ffmpeg output preserves audible source offsets, a silent gap, and full tim
   for (let frame = 1_500; frame < 3_500; frame += 1) {
     assert.equal(wav.readInt16LE(dataStart + frame * 2), 0, `timeline gap is silent at frame ${frame}`);
   }
+  for (const layout of ["stereo", "mic", "system"] as const) {
+    const prepared = await prepareMeetingAudio(storage, finalized, run.id, db.listMeetingRecordingEpochs(recording.id), { layout, deps: { ffmpegPath: () => ffmpegPath } });
+    const wav = fs.readFileSync(prepared.path);
+    const start = wav.indexOf(Buffer.from("data")) + 8;
+    const channels = layout === "stereo" ? 2 : 1;
+    assert.equal(wav.readUInt32LE(start - 4), 4800 * 2 * channels);
+    const sample = (frame: number, channel = 0) => wav.readInt16LE(start + (frame * channels + channel) * 2);
+    assert.equal(sample(5), layout === "system" ? 0 : 10000);
+    assert.equal(sample(485), layout === "mic" || layout === "stereo" ? 0 : 6000);
+    if (layout === "stereo") {
+      assert.equal(sample(5, 1), 0);
+      assert.equal(sample(485, 1), 6000);
+    }
+    assert.equal(sample(2000), 0);
+    assert.equal((await prepareMeetingAudio(storage, finalized, run.id, db.listMeetingRecordingEpochs(recording.id), { layout, deps: { ffmpegPath: () => ffmpegPath } })).path, prepared.path);
+  }
   for (const epoch of sourceEpochs) {
     assert.deepEqual(
       fs.readFileSync(storage.getEpochFilePath(recording.id, epoch.source, 0)),
@@ -1898,4 +1925,126 @@ test("ffmpeg output preserves audible source offsets, a silent gap, and full tim
       `${epoch.source} raw source remains immutable`
     );
   }
+});
+
+for (const provider of ["elevenlabs", "openai", "gemini"] as const) {
+  test(`${provider}: both source requests run in parallel, keep overlaps and assign the profile name`, async (t) => {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const { run } = createFinishedRecording(db, storage, {
+      ...validConfig, selfDisplayName: "Тимур",
+      transcription: { mode: "providers", provider, language: "ru" },
+    });
+    let release!: () => void;
+    const bothStarted = new Promise<void>((resolve) => { release = resolve; });
+    const requests: import("../../src/contracts/uploadTranscription").RemoteTranscriptionRequest[] = [];
+    const worker = workerFor(db, storage, {
+      transcribeRemote: async (request, saveRaw) => {
+        requests.push(request);
+        if (requests.length === 2) release();
+        await bothStarted;
+        const mic = request.diarize === false;
+        const segments = mic
+          ? [{ text: "My words", start: 0.2, end: 0.7, speaker: "A" }]
+          : [{ text: "Remote one", start: 0.1, end: 0.4, speaker: "A" }, { text: "Remote two", start: 0.5, end: 0.8, speaker: "B" }];
+        const text = segments.map((s) => s.text).join(" ");
+        await saveRaw(provider === "openai" ? { text, segments }
+          : provider === "elevenlabs" ? { text, words: segments.map((s) => ({ ...s, type: "word", speaker_id: s.speaker })) }
+          : { status: "completed", output_text: text, steps: [{ content: [{ annotations: segments.map((s) => ({ type: "word_info", text: s.text, speaker: s.speaker, start_offset: `${s.start}s`, end_offset: `${s.end}s` })) }] }] });
+        return { success: true };
+      },
+    }, false);
+    t.after(() => worker.stop());
+    worker.onRetentionReady();
+    await worker.waitForIdle();
+    assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
+    assert.equal(requests.length, 2);
+    assert.equal(new Set(requests.map((request) => request.requestId)).size, 2);
+    assert.deepEqual(requests.map((request) => request.diarize), [false, true]);
+    assert.ok(requests[0].filePath.endsWith("-mic.wav"));
+    assert.ok(requests[1].filePath.endsWith("-system.wav"));
+    if (provider === "openai") assert.equal(requests[0].model, "whisper-1");
+    const transcript = storage.readRunArtifact(run.id, "transcript");
+    assert.deepEqual(transcript.segments.map((s: { speaker: string; start: number }) => [s.speaker, s.start]), [
+      ["system:A", 0.1], ["mic", 0.2], ["system:B", 0.5],
+    ]);
+    assert.equal(db.getMeetingRunSpeakerCorrections(run.id).find((s: { speakerId: string; displayName: string }) => s.speakerId === "mic")?.displayName, "Тимур");
+  });
+}
+
+test("a successful mic response survives a worker restart and is not sent again", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage);
+  const calls: boolean[] = [];
+  let failSystem = true;
+  const transcribeRemote: MeetingProcessingWorkerDeps["transcribeRemote"] = async (request, saveRaw) => {
+    calls.push(request.diarize === true);
+    if (request.diarize && failSystem) return { success: false, code: "TRANSCRIPTION_FAILED", error: "failed" };
+    await saveRaw(elevenResponse);
+    return { success: true };
+  };
+  const worker = workerFor(db, storage, { transcribeRemote }, false);
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  worker.stop();
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "failed");
+  assert.equal(storage.hasRunArtifact(run.id, "provider-response-mic"), true);
+  assert.equal(storage.hasRunArtifact(run.id, "provider-response"), false);
+  const original = storage.readRunArtifact(run.id, "provider-response-mic");
+  db.setMeetingProcessingRunState(run.id, { stage: "asr", status: "blocked", errorCode: "provider-limit" });
+  assert.equal(worker.updateBlockedRunConfig({ runId: run.id, configError: null, config: { ...validConfig, transcription: { mode: "providers", provider: "deepgram", language: "en" } } }), null, "a cached source fixes the provider for this run");
+  db.setMeetingProcessingRunState(run.id, { stage: "asr", status: "failed", errorCode: "TRANSCRIPTION_FAILED" });
+  failSystem = false;
+  const resumed = workerFor(db, storage, { transcribeRemote }, false);
+  t.after(() => resumed.stop());
+  resumed.retry(run.id);
+  resumed.onRetentionReady();
+  await resumed.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
+  assert.deepEqual(calls, [false, true, true]);
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response-mic"), original);
+  assert.equal(db.getMeetingRunSpeakerCorrections(run.id).find((s: { speakerId: string; displayName: string }) => s.speakerId === "mic")?.displayName, "You");
+});
+
+test("Deepgram uses one stereo request and distinct channel identities", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage, {
+    ...validConfig, selfDisplayName: "Timur",
+    transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "auto" },
+  });
+  let calls = 0;
+  const layouts: unknown[] = [];
+  const worker = workerFor(db, storage, {
+    mixAudio: async (recording, runId, _epochs, _signal, layout) => {
+      layouts.push(layout);
+      return { path: storage.getDerivedAudioPath(recording.id, runId, layout), frameCount: 24000, durationSeconds: 1, sizeBytes: 48044 };
+    },
+    transcribeRemote: async (request, saveRaw) => {
+      calls++;
+      assert.equal(request.multichannel, true);
+      assert.equal(request.diarize, true);
+      assert.ok(request.filePath.endsWith("-stereo.wav"));
+      await saveRaw({ results: {
+        channels: [{ alternatives: [{ transcript: "Me" }] }, { alternatives: [{ transcript: "Them" }] }],
+        utterances: [
+          { channel: 1, speaker: 0, transcript: "Them", start: 0.3, end: 0.7 },
+          { channel: 0, speaker: 0, transcript: "Me", start: 0.1, end: 0.5 },
+        ],
+      } });
+      return { success: true };
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
+  assert.equal(calls, 1);
+  assert.deepEqual(layouts, ["stereo"]);
+  assert.deepEqual(storage.readRunArtifact(run.id, "transcript").segments.map((s: { speaker: string }) => s.speaker), ["mic", "system:Speaker 1"]);
+  assert.equal(db.getMeetingRunSpeakerCorrections(run.id)[0].displayName, "Timur");
 });

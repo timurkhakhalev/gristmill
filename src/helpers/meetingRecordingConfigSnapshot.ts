@@ -1,3 +1,4 @@
+import i18n from "../i18n.js";
 import {
   meetingRecordingConfigInputSchema,
   type MeetingProcessingConfig,
@@ -123,7 +124,7 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
   }
 
   const parsed = meetingRecordingConfigInputSchema.safeParse({
-    config: { transcription, summary },
+    config: { transcription, summary, selfDisplayName: state.profileName.trim() || i18n.t("profile.selfLabel", { lng: state.uiLanguage }) },
     configError: null,
   });
   return parsed.success

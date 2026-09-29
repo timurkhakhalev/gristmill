@@ -8,7 +8,7 @@ import { getFFmpegPath } from "./ffmpegUtils.js";
 
 const SAMPLE_RATE = 24_000;
 const BYTES_PER_FRAME = 2;
-const GAIN_PER_TRACK = 0.5;
+export type MeetingAudioLayout = "mono" | "stereo" | "mic" | "system";
 const WAV_HEADER_LIMIT = 4096;
 
 export interface MeetingAudioMixerDeps {
@@ -31,6 +31,7 @@ export interface PreparedMeetingAudio {
 
 interface EpochInput {
   path: string;
+  source: "mic" | "system";
   startFrame: number;
   frameCount: number;
 }
@@ -77,17 +78,20 @@ export async function prepareMeetingAudio(
   recording: MeetingRecordingDto,
   runId: string,
   epochs: MeetingRecordingEpochDto[],
-  options: { signal?: AbortSignal; deps?: MeetingAudioMixerDeps } = {}
+  options: { signal?: AbortSignal; deps?: MeetingAudioMixerDeps; layout?: MeetingAudioLayout } = {}
 ): Promise<PreparedMeetingAudio> {
   const deps = options.deps ?? {};
+  const layout = options.layout ?? "mono";
+  const channels = layout === "stereo" ? 2 : 1;
   const ffmpegPath = (deps.ffmpegPath ?? getFFmpegPath)();
   if (!ffmpegPath) throw new Error("FFmpeg is unavailable");
   const frameCount = meetingTimelineFrameCount(recording, epochs);
   if (frameCount <= 0) throw new Error("Meeting recording has no audio frames");
 
   const inputs: EpochInput[] = epochs
-    .filter((epoch) => epoch.frameCount > 0)
+    .filter((epoch) => epoch.frameCount > 0 && (layout !== "mic" && layout !== "system" || epoch.source === layout))
     .map((epoch) => ({
+      source: epoch.source,
       path: storage.getEpochFilePath(epoch.recordingId, epoch.source, epoch.epochIndex),
       startFrame: epoch.startFrame,
       frameCount: epoch.frameCount,
@@ -102,20 +106,20 @@ export async function prepareMeetingAudio(
     }
   }
 
-  const finalPath = storage.getDerivedAudioPath(recording.id, runId);
+  const finalPath = storage.getDerivedAudioPath(recording.id, runId, layout);
   if ((deps.exists ?? fs.existsSync)(finalPath)) {
-    const existing = inspectPcmWav(finalPath, frameCount, deps);
+    const existing = inspectPcmWav(finalPath, frameCount, deps, channels);
     return { path: finalPath, frameCount, durationSeconds: frameCount / SAMPLE_RATE, sizeBytes: existing.sizeBytes };
   }
 
-  const tempPath = storage.getDerivedAudioTempPath(recording.id, runId);
-  const estimatedBytes = frameCount * BYTES_PER_FRAME + 44;
+  const tempPath = storage.getDerivedAudioTempPath(recording.id, runId, layout);
+  const estimatedBytes = frameCount * BYTES_PER_FRAME * channels + 4096;
   const availableBytes = (deps.availableBytes ?? getAvailableBytes)(path.dirname(finalPath));
   if (availableBytes < estimatedBytes) throw new Error("Insufficient disk space for meeting audio preparation");
 
   try {
-    await runMixer(ffmpegPath, inputs, frameCount, tempPath, options.signal, deps);
-    const inspected = inspectPcmWav(tempPath, frameCount, deps);
+    await runMixer(ffmpegPath, inputs, frameCount, tempPath, options.signal, deps, layout);
+    const inspected = inspectPcmWav(tempPath, frameCount, deps, channels);
     (deps.rename ?? fs.renameSync)(tempPath, finalPath);
     return { path: finalPath, frameCount, durationSeconds: frameCount / SAMPLE_RATE, sizeBytes: inspected.sizeBytes };
   } catch (error) {
@@ -134,14 +138,24 @@ function runMixer(
   frameCount: number,
   outputPath: string,
   signal: AbortSignal | undefined,
-  deps: MeetingAudioMixerDeps
+  deps: MeetingAudioMixerDeps,
+  layout: MeetingAudioLayout
 ): Promise<void> {
   if (signal?.aborted) return Promise.reject(createAbortError());
   const filters = inputs.map((input, index) =>
-    `[${index}:a]adelay=${input.startFrame}S:all=1,volume=${GAIN_PER_TRACK}[a${index}]`
+    `[${index}:a]adelay=${input.startFrame}S:all=1${layout === "mono" ? ",volume=0.5" : ""}[a${index}]`
   );
-  const labels = inputs.map((_, index) => `[a${index}]`).join("");
-  filters.push(`${labels}amix=inputs=${inputs.length}:duration=longest:dropout_transition=0:normalize=0,apad=whole_len=${frameCount},atrim=end_sample=${frameCount}[out]`);
+  const mix = (indexes: number[], label: string) => {
+    if (!indexes.length) throw new Error("Meeting recording is missing an audio source");
+    filters.push(`${indexes.map((i) => `[a${i}]`).join("")}amix=inputs=${indexes.length}:duration=longest:dropout_transition=0:normalize=0,apad=whole_len=${frameCount},atrim=end_sample=${frameCount}[${label}]`);
+  };
+  if (layout === "stereo") {
+    mix(inputs.flatMap((input, i) => input.source === "mic" ? [i] : []), "mic");
+    mix(inputs.flatMap((input, i) => input.source === "system" ? [i] : []), "system");
+    filters.push("[mic][system]join=inputs=2:channel_layout=stereo:map=0.0-FL|1.0-FR[out]");
+  } else {
+    mix(inputs.map((_, i) => i), "out");
+  }
   const args: string[] = ["-hide_banner", "-loglevel", "error"];
   for (const input of inputs) {
     args.push("-f", "s16le", "-ar", String(SAMPLE_RATE), "-ac", "1", "-i", input.path);
@@ -150,7 +164,7 @@ function runMixer(
     "-filter_complex", filters.join(";"),
     "-map", "[out]",
     "-ar", String(SAMPLE_RATE),
-    "-ac", "1",
+    "-ac", layout === "stereo" ? "2" : "1",
     "-c:a", "pcm_s16le",
     "-y", outputPath
   );
@@ -191,7 +205,8 @@ function runMixer(
 function inspectPcmWav(
   filePath: string,
   expectedFrames: number,
-  deps: MeetingAudioMixerDeps
+  deps: MeetingAudioMixerDeps,
+  channels = 1
 ): { sizeBytes: number } {
   const stats = (deps.stat ?? fs.statSync)(filePath);
   if (!stats.isFile() || stats.size < 44) throw new Error("Meeting audio mixer produced an invalid WAV");
@@ -220,8 +235,8 @@ function inspectPcmWav(
     offset += 8 + chunkSize + (chunkSize % 2);
   }
   if (
-    !format || format.encoding !== 1 || format.channels !== 1 || format.sampleRate !== SAMPLE_RATE ||
-    format.bits !== 16 || dataBytes !== expectedFrames * BYTES_PER_FRAME ||
+    !format || format.encoding !== 1 || format.channels !== channels || format.sampleRate !== SAMPLE_RATE ||
+    format.bits !== 16 || dataBytes !== expectedFrames * BYTES_PER_FRAME * channels ||
     stats.size < dataBytes + 44
   ) {
     throw new Error("Meeting audio mixer produced a WAV with unexpected PCM format or duration");

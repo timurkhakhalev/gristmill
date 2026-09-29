@@ -35,6 +35,7 @@ Milestones run sequentially. Each delivers its contracts and verifies its own be
 | M4 | Integrated journeys and documentation | M3 | Cross-route verification, live capture evidence, current docs |
 | M5 | Reviewer fixes from review-1 | M4 | Close the scoped findings and recheck affected journeys |
 | M6 | Reviewer fixes from review-2 | M5 | Preserve Summary independence and group-specific controls |
+| M7 | Reviewer fixes from review-3 | M6 | Unify the main manual Summary route and empty-transcript control |
 
 ## 5. Milestone details
 
@@ -210,9 +211,29 @@ Depends on: M5.
 
 - Add focused regression coverage for each finding. Root runs affected tests, lint, typecheck and the full suite sequentially, then requests another milestone review. Record isolated live evidence separately from automated results.
 
+### 5.7 M7 — Reviewer fixes from review-3
+
+#### 5.7.1 Depends on
+
+Depends on: M6.
+
+#### 5.7.2 Scope
+
+- Resolve M2-1 and M6-1 in the committed [review-3.md](review-3.md). The main toolbar's manual Summary action must use the same selected-run processing and saved Summary artifact as the Results control. The empty-transcript state must not offer that action. Do not add another Summary store, separate tab, or parallel Action route.
+- Preserve M1–M6's finalized-track gate, selected-run corrected speaker projection, manual notes, frozen prompt/model snapshot, input exclusions, user correction precedence, existing Summary Markdown, tasks/Recap consumers and Chat Follow-up. Preserve previous runs/artifacts and edits. Root records the separate M4-1 live-verification boundary accurately.
+
+#### 5.7.3 Acceptance criteria
+
+- Either visible manual Summary affordance starts the same selected-run Summary operation and persists one run artifact and its note projection. Calendar participants/email and raw/live transcript bypass do not enter this request. Regeneration, run reselection, tasks and Recap observe the saved result.
+- An empty saved transcript, including the `"[]"` projection, exposes no manual Summary action. A short nonempty ready transcript still offers manual Summary, subject to the existing capture/run eligibility rules. Loading, failure and retry states remain coherent.
+
+#### 5.7.4 Verification
+
+- Add focused renderer and processing regressions that exercise the owning toolbar, selected-run request/persistence, and empty versus short nonempty transcript states. Root runs affected tests, lint, typecheck and the full suite sequentially, then requests another milestone review. Record isolated live evidence separately from automated results.
+
 ## 6. Execution order (derived from dependencies)
 
-M1 → verify M1 → M2 contract sync/implementation/verification → M3 contract sync/implementation/verification → M4 contract sync, integrated checks and current docs → M5 reviewer fixes and affected verification → M6 reviewer fixes and affected verification. During Act, root runs expensive checks sequentially and records evidence per milestone. Approval of this plan is required before M1.
+M1 → verify M1 → M2 contract sync/implementation/verification → M3 contract sync/implementation/verification → M4 contract sync, integrated checks and current docs → M5 reviewer fixes and affected verification → M6 reviewer fixes and affected verification → M7 reviewer fixes and affected verification. During Act, root runs expensive checks sequentially and records evidence per milestone. Approval of this plan is required before M1.
 
 ## Orchestration (managed by orchestrator)
 
@@ -224,7 +245,8 @@ M1 → verify M1 → M2 contract sync/implementation/verification → M3 contrac
 | M4 — Integrated journeys and documentation | done | `9a14da5c5`, `52a9d2ba1`, `2f9a8c2f0`, `b113ef8bf`, `16df60571` |
 | M5 — Reviewer fixes from review-1 | done | `51f587d23`, `0d3cca9c2`, `d733f5f39`, `c4b5f9865`, `8e790528e`, `bea026706` |
 | M6 — Reviewer fixes from review-2 | done | `9873d1650`, `71389b117`, `a38587ca5`, `34bbf64dd` |
-| Reviewer | done | `review-1.md`, `review-2.md`, `review-3.md` |
+| M7 — Reviewer fixes from review-3 | in progress | |
+| Reviewer | not started | `review-1.md`, `review-2.md`, `review-3.md` |
 | Code Reviewer | not started | |
 
-Review outcome: blocked. `review-3.md` records one high and two medium findings. M4-1 remained unverified after both M5 and M6 because the isolated process could not be safely selected while another user Electron app was running; the PlanAct reviewer-fix loop is not converging on that finding. M2-1 and M6-1 in `review-3.md` also require a focused code correction before code review.
+Review outcome: resumed at the user's request. M7 addresses the two code findings in `review-3.md`. M4-1 remains an unverified live hardware/provider journey; the prior isolated process startup did not establish that behavior.

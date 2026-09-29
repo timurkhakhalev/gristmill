@@ -5,9 +5,23 @@ const os: typeof import("node:os") = require("node:os");
 const path: typeof import("node:path") = require("node:path");
 const { spawn, spawnSync }: typeof import("node:child_process") = require("node:child_process");
 const http = require("node:http");
-const { spawnBbThread, getBbThreadHistory, watchBbThread, assertBbVersion, clearBbCaches, listBbHarnesses, toBbLogo } = require("../../src/helpers/bbCli.ts");
+const { spawnBbThread, tellBbThread, getBbThreadHistory, watchBbThread, assertBbVersion, clearBbCaches, listBbHarnesses, toBbLogo } = require("../../src/helpers/bbCli.ts");
 const { generateBbSummary }: typeof import("../../src/helpers/bbSummary.ts") = require("../../src/helpers/bbSummary.ts");
 const { ensureBbWorkspace, writeBbConnection }: typeof import("../../src/helpers/bbWorkspace.ts") = require("../../src/helpers/bbWorkspace.ts");
+
+test("bb workspace removes generated Chat instructions and preserves user instructions", (t: import("node:test").TestContext) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-bb-instructions-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const workspace = ensureBbWorkspace(directory);
+  const instructions = path.join(workspace, "AGENTS.md");
+  assert.equal(fs.existsSync(instructions), false);
+  fs.writeFileSync(instructions, "# Gristmill agent\n\nOld generated instructions.");
+  ensureBbWorkspace(directory);
+  assert.equal(fs.existsSync(instructions), false);
+  fs.writeFileSync(instructions, "My workspace instructions.");
+  ensureBbWorkspace(directory);
+  assert.equal(fs.readFileSync(instructions, "utf8"), "My workspace instructions.");
+});
 
 test("bb tool wrapper authenticates allowlisted routes and rejects external URLs", async (t: import("node:test").TestContext) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-bb-workspace-"));
@@ -72,6 +86,7 @@ else if (args[0] === "thread" && args[1] === "spawn") {
   process.stdin.on("data", (chunk) => { prompt += chunk; });
   process.stdin.on("end", () => { fs.writeFileSync(process.env.BB_FAKE_CAPTURE, prompt); out({ id: "thr_test" }); });
 } else if (args[0] === "thread" && args[1] === "tell") {
+  fs.writeFileSync(process.env.BB_FAKE_CAPTURE + ".tell.json", JSON.stringify(args));
   let prompt = "";
   process.stdin.on("data", (chunk) => { prompt += chunk; });
   process.stdin.on("end", () => { fs.appendFileSync(process.env.BB_FAKE_CAPTURE, "\\n" + prompt); out({ ok: true }); });
@@ -109,6 +124,8 @@ else throw new Error("Unexpected bb command: " + args.join(" "));
   const chunks = [];
   for await (const chunk of watchBbThread(id, undefined, 3)) chunks.push(chunk);
   assert.deepEqual(chunks, ["Final"]);
+  await tellBbThread(id, "Continue", undefined, { provider: "codex", model: "next-model", reasoningLevel: "high" });
+  assert.deepEqual(JSON.parse(fs.readFileSync(capture + ".tell.json", "utf8")), ["thread", "tell", id, "--message-file", "-", "--model", "next-model", "--reasoning-level", "high", "--json"]);
   const result = await generateBbSummary({
     prompt: "Summarize", selection: { provider: "codex", model: "gpt-6-luna", reasoningLevel: "low" },
     environment: directory, threadId: id, saveThreadId: () => { throw new Error("Must reuse saved thread"); },

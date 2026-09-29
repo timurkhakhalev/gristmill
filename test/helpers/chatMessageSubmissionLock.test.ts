@@ -52,7 +52,8 @@ test("message sender reports whether the submission lock accepted the send", asy
     setMessages() {},
     async saveUserMessage() {},
   };
-  const streaming = { async sendToAI() {} };
+  let sentOptions: { conversationId?: number } | undefined;
+  const streaming = { async sendToAI(_text: string, _messages: unknown, options: { conversationId?: number }) { sentOptions = options; } };
   let sendMessage: any;
 
   function Harness() {
@@ -72,6 +73,7 @@ test("message sender reports whether the submission lock accepted the send", asy
   assert.equal(await second, false);
   resolveCreate(1);
   assert.equal(await first, true);
+  assert.equal(sentOptions?.conversationId, 1, "the first turn uses the newly saved ID without waiting for a render");
 });
 
 test("an action turn persists a normal Chat user message with one-turn options", async (t: import("node:test").TestContext) => {
@@ -111,5 +113,5 @@ test("an action turn persists a normal Chat user message with one-turn options",
     ["assistant", "old context"],
     ["user", "Draft a follow-up"],
   ]);
-  assert.deepEqual(streamed[0][2], options);
+  assert.deepEqual(streamed[0][2], { ...options, conversationId: 12 });
 });

@@ -76,7 +76,7 @@ export function useChatMessageSender({
             text,
             isFirstMessage: previousMessages.length === 0,
           });
-          await streaming.sendToAI(text, [...previousMessages, userMessage], sendOptions);
+          await streaming.sendToAI(text, [...previousMessages, userMessage], { ...sendOptions, conversationId: convId });
         } finally {
           onSendingChange?.(false);
         }

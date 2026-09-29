@@ -4,7 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const help = {
-  "": "Gristmill Notes CLI\nUsage: gristmill [--profile NAME] [--json] notes <command> | doctor\nCommands: notes list, notes search QUERY, notes show ID, notes content show ID, notes summary show ID, notes transcript show ID, doctor\nInteractive output is readable text. Redirected output is JSON; --json forces JSON in a terminal. Errors use the same output mode on stderr (exit 1); invalid arguments exit 2.\nThe installed launcher defaults to its app channel: production or development. --profile dev is shorthand for development; GRISTMILL_PROFILE also selects a profile. Dates use local calendar days in the selected profile's machine time zone.\nExamples: gristmill notes list; gristmill --profile dev notes search release; gristmill --json notes transcript show 42 --from 00:12:00 --to 00:13:00",
+  "": "Gristmill Notes CLI\nUsage: gristmill [--profile NAME] [--json] notes <command> | doctor\nCommands: notes list, notes search QUERY, notes show ID, notes content show ID, notes summary show ID, notes transcript show ID, doctor\nInteractive output is readable text. Redirected output is JSON; --json forces JSON in a terminal. Errors use the same output mode on stderr (exit 1); invalid arguments exit 2.\nInside a Gristmill BB workspace, commands use the workspace profile. Elsewhere the installed launcher defaults to its app channel: production or development. --profile dev is shorthand for development; GRISTMILL_PROFILE also selects a profile. Dates use local calendar days in the selected profile's machine time zone.\nExamples: gristmill notes list; gristmill --profile dev notes search release; gristmill --json notes transcript show 42 --from 00:12:00 --to 00:13:00",
   notes: "Usage: gristmill notes list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--with-transcript]\n       gristmill notes search QUERY [--note ID] [--from YYYY-MM-DD] [--to YYYY-MM-DD]\n       gristmill notes show ID\n       gristmill notes content show ID\n       gristmill notes summary show ID\n       gristmill notes transcript show ID [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nAdd --json for machine-readable output in a terminal. Redirected output is JSON. No result limit is applied. Empty lists and absent content are successful.",
   transcript: "Usage: gristmill notes transcript show ID [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nTimes use the concatenated Note recording timeline; intentional pauses are excluded. Interval filters include intersecting segments. --plain-text forces text when output is redirected.\nExample: gristmill notes transcript show 42 --from 00:12:00 --speaker speaker_2",
   list: "Usage: gristmill notes list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--with-transcript]\nLists all Notes, newest first. Dates are inclusive local calendar days. Empty archives print No Notes. in a terminal or {\"notes\":[]} as JSON.",
@@ -29,7 +29,9 @@ function parseTime(value) {
 
 function parseArgs(argv) {
   const args = [...argv];
-  let profile = process.env.GRISTMILL_PROFILE || "production";
+  const cwd = process.cwd();
+  const workspaceProfile = path.basename(cwd) === "bb-agent" ? path.dirname(cwd) : null;
+  let profile = process.env.GRISTMILL_PROFILE || workspaceProfile || process.env.GRISTMILL_CLI_DEFAULT_PROFILE || "production";
   const jsonAt = args.indexOf("--json");
   if (jsonAt !== -1) args.splice(jsonAt, 1);
   const at = args.indexOf("--profile");

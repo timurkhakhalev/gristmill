@@ -56,11 +56,13 @@ const EMPTY_RESPONSE_TEXT = JSON.parse(
 
 async function renderChatStreaming(
   t: import("node:test").TestContext,
-  { electronAPI = {}, settings = {}, onStreamComplete, live = false }: {
+  { electronAPI = {}, settings = {}, onStreamComplete, live = false, noteId, noteContext }: {
     electronAPI?: Record<string, unknown>;
     settings?: Record<string, unknown>;
     onStreamComplete?: (id: string, content: string) => void;
     live?: boolean;
+    noteId?: number;
+    noteContext?: string;
   } = {}
 ) {
   installBrowserGlobals(t, { window: { electronAPI } });
@@ -114,6 +116,8 @@ async function renderChatStreaming(
       messages,
       setMessages,
       onStreamComplete,
+      noteId,
+      noteContext,
     });
     return null;
   }
@@ -166,6 +170,31 @@ test("a genuine empty completion still shows the empty-response fallback", async
   assert.equal(message.isStreaming, false);
 });
 
+test("API Chat omits dictionary hints and BB CLI instructions", async (t: import("node:test").TestContext) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let request: { messages: Array<{ role: string; content: string }> } | undefined;
+  globalThis.fetch = async (_input, init) => {
+    request = JSON.parse(String(init?.body));
+    const stop = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
+    return new Response(`${stop}data: [DONE]\n\n`, {
+      status: 200, headers: { "content-type": "text/event-stream" },
+    });
+  };
+  const { captured } = await renderChatStreaming(t, {
+    settings: {
+      customDictionary: ["UniqueDictionaryTerm"],
+      snippets: [{ trigger: "UniqueSnippetTrigger", replacement: "Saved text" }],
+      customPrompts: { cleanup: "", chatAgent: "" },
+    },
+  });
+  await captured.sendToAI("hello", []);
+  assert.ok(request);
+  const system = request.messages.find((message) => message.role === "system");
+  assert.ok(system);
+  assert.doesNotMatch(system.content, /UniqueDictionaryTerm|UniqueSnippetTrigger|Custom Dictionary|Пользовательский словарь|gristmill --help/);
+});
+
 test("one-off action turns use only the current message and cannot invoke tools", async (t: import("node:test").TestContext) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
@@ -192,6 +221,57 @@ test("one-off action turns use only the current message and cannot invoke tools"
     { role: "user", content: "Draft a follow-up" },
   ]);
   assert.equal("tools" in request!, false);
+});
+
+test("bb Chat supplies the Gristmill prompt and CLI discovery without transport instructions", async (t: import("node:test").TestContext) => {
+  let listener: ((part: import("../../src/contracts/bb.ts").BbStreamEnvelope) => void) | undefined;
+  let prompt = "";
+  let initialPrompt = "";
+  let conversationId = 0;
+  const { captured, getMessages } = await renderChatStreaming(t, {
+    noteId: 42,
+    noteContext: "Private full transcript that BB should read on demand",
+    settings: {
+      chatAgentMode: "agent",
+      customDictionary: ["UniqueDictionaryTerm"],
+      snippets: [{ trigger: "UniqueSnippetTrigger", replacement: "Saved text" }],
+      customPrompts: { cleanup: "", chatAgent: "" },
+      bbAgentPreferences: {
+        order: ["codex"], disabled: [], defaultProvider: "codex",
+        defaults: { codex: { model: "gpt-6-luna", reasoningLevel: "low" } },
+      },
+    },
+    electronAPI: {
+      onBbStreamPart: (callback: typeof listener) => {
+        listener = callback;
+        return () => { listener = undefined; };
+      },
+      bbStreamStart: async (request: import("zod").z.infer<typeof import("../../src/contracts/bb.ts").bbStreamStartSchema>) => {
+        prompt = request.prompt;
+        initialPrompt = request.initialPrompt;
+        conversationId = request.conversationId;
+        listener?.({ streamId: request.streamId, text: "Answer" });
+        listener?.({ streamId: request.streamId, done: true });
+      },
+      bbStreamCancel: async () => {},
+    },
+  });
+  await captured.sendToAI("What was agreed?", [
+    { id: "earlier-user", role: "user", content: "Earlier question", isStreaming: false },
+    { id: "earlier-assistant", role: "assistant", content: "Earlier answer", isStreaming: false },
+    { id: "current", role: "user", content: "What was agreed?", isStreaming: false },
+  ], { conversationId: 12 });
+  assert.match(prompt, /You are a helpful assistant in Gristmill app\./);
+  assert.match(prompt, /Use gristmill, a helper client, to retrieve additional information about meetings when needed\./);
+  assert.match(prompt, /Run gristmill --help for usage and options\./);
+  assert.match(prompt, /Current Note ID: 42\./);
+  assert.equal(conversationId, 12);
+  assert.match(initialPrompt, /Earlier question[\s\S]*Earlier answer[\s\S]*What was agreed/);
+  assert.doesNotMatch(prompt, /Earlier question|Earlier answer/);
+  assert.doesNotMatch(prompt, /voice assistant|node |GRISTMILL_PROFILE|--profile|gristmill-tools|AGENTS\.md|Private full transcript/);
+  assert.doesNotMatch(prompt, /UniqueDictionaryTerm|UniqueSnippetTrigger|Custom Dictionary|Пользовательский словарь/);
+  assert.equal(getMessages()[0].content, "Answer");
+  assert.equal(listener, undefined);
 });
 
 test("cancelling before any token arrives never shows the empty-response fallback", async (t: import("node:test").TestContext) => {

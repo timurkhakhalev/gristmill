@@ -7,8 +7,7 @@ import {
   useSettingsStore,
 } from "../../stores/settingsStore";
 import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
-import { appendDictionarySuffix, getAgentSystemPrompt } from "../../config/prompts";
-import { getDictionaryHintWords } from "../../utils/snippets";
+import { getAgentSystemPrompt } from "../../config/prompts";
 import { createToolRegistry } from "../../services/tools";
 import type { ToolRegistry } from "../../services/tools/ToolRegistry";
 import { getAgentToolActivityRemainingMs } from "../../helpers/agentToolPresentation";
@@ -18,6 +17,8 @@ import type { ContainerScope } from "../../types/chat";
 const LOCAL_TOOL_MIN_PARAMS_B = 4;
 
 export interface ChatSendOptions {
+  /** Persisted local conversation, including the very first message's newly created ID. */
+  conversationId?: number;
   /** Complete system prompt for a one-off action in the existing conversation. */
   systemPrompt?: string;
   /** Do not expose application tools to this turn. */
@@ -42,7 +43,7 @@ interface UseChatStreamingOptions {
   searchScope?: ContainerScope;
   onStreamComplete?: (assistantId: string, content: string, toolCalls?: ToolCallInfo[]) => void;
   /** bb's generated title for the thread that answered the latest turn. */
-  onThreadTitle?: (title: string) => void;
+  onThreadTitle?: (title: string, conversationId: number) => void;
 }
 
 export interface ChatStreaming {
@@ -220,16 +221,12 @@ export function useChatStreaming({
 
       if (cancelled() || !mountedRef.current) return;
       const combinedContext = isBbAgent && noteId
-        ? `Current Note ID: ${noteId}. Use the Gristmill read-only CLI when exact Note content or transcript evidence is needed.`
+        ? `Current Note ID: ${noteId}.`
         : noteContextRef.current;
-      // The user's dictionary rides on every conversation so replies use their jargon.
-      let systemPrompt = sendOptions?.systemPrompt ?? appendDictionarySuffix(
-        getAgentSystemPrompt(
-          registry?.getAll().map((t) => t.name),
-          combinedContext || undefined
-        ),
-        getDictionaryHintWords(settings),
-        settings.uiLanguage
+      const systemPrompt = sendOptions?.systemPrompt ?? getAgentSystemPrompt(
+        registry?.getAll().map((t) => t.name),
+        combinedContext || undefined,
+        isBbAgent
       );
 
       const messagesForTurn = sendOptions?.includeConversationHistory === false
@@ -270,7 +267,10 @@ export function useChatStreaming({
                 model: llmConfig.agentModel || "",
                 reasoningLevel: llmConfig.agentReasoningLevel || "",
               },
-              onThreadTitle,
+              agentConversationId: sendOptions?.conversationId,
+              onThreadTitle: onThreadTitle && sendOptions?.conversationId != null
+                ? (title) => onThreadTitle?.(title, sendOptions.conversationId!)
+                : undefined,
             } : {}),
             lanUrl: isLanAgent ? llmConfig.remoteUrl : undefined,
             baseUrl: isCustomAgent ? llmConfig.cloudBaseUrl || undefined : undefined,

@@ -678,7 +678,8 @@ class ReasoningService extends BaseReasoningService {
     tools?: Record<string, import("ai").Tool>
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
     if (config.agentSelection) {
-      yield* this.processBbStreaming(messages, config.agentSelection, config.onThreadTitle);
+      if (!config.agentConversationId) throw new Error("A saved Chat conversation is required for bb");
+      yield* this.processBbStreaming(messages, config.agentSelection, config.agentConversationId, config.onThreadTitle);
       return;
     }
     const route = resolveChatRoute({
@@ -876,6 +877,7 @@ class ReasoningService extends BaseReasoningService {
   private async *processBbStreaming(
     messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>,
     selection: BbSelection,
+    conversationId: number,
     onThreadTitle?: (title: string) => void
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
     const streamId = crypto.randomUUID();
@@ -904,13 +906,17 @@ class ReasoningService extends BaseReasoningService {
     const onAbort = () => { wake?.(); void window.electronAPI.bbStreamCancel(streamId).catch(() => {}); };
     controller.signal.addEventListener("abort", onAbort, { once: true });
     try {
-      const prompt = messages.map((message) => {
+      const formatMessage = (message: typeof messages[number]) => {
         const content = typeof message.content === "string"
           ? message.content
           : message.content.filter((part) => part.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
         return `${message.role.toUpperCase()}:\n${content}`;
-      }).join("\n\n");
-      await window.electronAPI.bbStreamStart({ streamId, prompt, selection });
+      };
+      const initialPrompt = messages.map(formatMessage).join("\n\n");
+      const latestUser = messages.filter((message) => message.role === "user").at(-1);
+      if (!latestUser) throw new Error("A Chat user message is required for bb");
+      const prompt = [...messages.filter((message) => message.role === "system"), latestUser].map(formatMessage).join("\n\n");
+      await window.electronAPI.bbStreamStart({ streamId, conversationId, prompt, initialPrompt, selection });
       while (!controller.signal.aborted) {
         if (queue.length === 0) await new Promise<void>((resolve) => { wake = resolve; });
         wake = null;

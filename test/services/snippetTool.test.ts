@@ -134,4 +134,5 @@ test("the agent prompt tells the model when to fetch a snippet", async () => {
   assert.match(prompt, /Use get_snippet whenever the user names one of their saved snippets/);
   assert.match(prompt, /reproduce the returned text verbatim/);
   assert.doesNotMatch(getAgentSystemPrompt(["copy_to_clipboard"]), /get_snippet/);
+  assert.doesNotMatch(prompt, /gristmill --help/);
 });

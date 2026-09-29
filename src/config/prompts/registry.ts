@@ -3,9 +3,9 @@ import { en as enPrompts, type PromptBundle } from "../../locales/prompts";
 // When changing this text, move its old hash to the retired set in
 // src/config/retiredPrompts.js and update the current-hash snapshot there.
 const DEFAULT_CHAT_AGENT_PROMPT =
-  "You are a helpful voice assistant. Respond concisely and conversationally. " +
-  "Keep answers brief unless the user asks for detail. " +
-  "You may be given a transcription of spoken input, so handle informal phrasing gracefully.";
+  "You are a helpful assistant in Gristmill app. Gristmill is a meeting and notes client " +
+  "that records meetings, creates transcripts and summary and answers on user's questions about meetings. " +
+  "Respond concisely and conversationally. Keep answers brief unless the user asks for detail.";
 
 export const PROMPT_KINDS = {
   cleanup: {

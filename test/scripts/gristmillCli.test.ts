@@ -71,3 +71,46 @@ test("CLI reads a profile-scoped connection and prints one JSON response", async
   assert.equal(stderr, "");
   assert.deepEqual(JSON.parse(stdout), { note_id: 42, content: "saved words" });
 });
+
+test("BB commands use their workspace profile regardless of the installing app channel", async (t: import("node:test").TestContext) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-cli-profiles-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const profiles = ["production", "development", "isolated"].map((name) => path.join(directory, name));
+  const server = http.createServer((request, response) => {
+    assert.equal(request.url, "/v1/notes/42/content");
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ content: request.headers.authorization }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Unexpected server address");
+  for (const [index, profile] of profiles.entries()) {
+    fs.mkdirSync(path.join(profile, "bb-agent"), { recursive: true });
+    fs.writeFileSync(path.join(profile, ".cli-read-connection.json"), JSON.stringify({ port: address.port, token: `test-${index}` }), { mode: 0o600 });
+  }
+  async function run(cwd: string, args: string[] = [], explicitProfile = "") {
+    const child = spawn(process.execPath, [cli, ...args, "notes", "content", "show", "42"], {
+      cwd, env: { ...process.env, GRISTMILL_PROFILE: explicitProfile, GRISTMILL_CLI_DEFAULT_PROFILE: profiles[1] },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    const code = await new Promise<number | null>((resolve, reject) => { child.on("close", resolve); child.on("error", reject); });
+    return { code, stdout, stderr };
+  }
+  for (const [index, profile] of profiles.entries()) {
+    const result = await run(path.join(profile, "bb-agent"));
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { content: `Bearer test-${index}` });
+  }
+  assert.deepEqual(JSON.parse((await run(directory)).stdout), { content: "Bearer test-1" });
+  assert.deepEqual(JSON.parse((await run(path.join(profiles[0]!, "bb-agent"), [], profiles[1])).stdout), { content: "Bearer test-1" });
+  assert.deepEqual(JSON.parse((await run(path.join(profiles[0]!, "bb-agent"), ["--profile", profiles[2]!], profiles[1])).stdout), { content: "Bearer test-2" });
+  fs.rmSync(path.join(profiles[0]!, ".cli-read-connection.json"));
+  const unavailable = await run(path.join(profiles[0]!, "bb-agent"));
+  assert.equal(unavailable.code, 1, "a closed workspace profile must not read another profile");
+  assert.equal(JSON.parse(unavailable.stderr).error.code, "app_unavailable");
+});

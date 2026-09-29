@@ -17,6 +17,7 @@ import { wasLaunchedAtLoginHidden } from "./src/helpers/autoStart.js";
 import { IPCHandlers } from "./src/helpers/ipcHandlers.js";
 import { CliBridge } from "./src/helpers/cliBridge.js";
 import { writeBbConnection, removeBbConnection } from "./src/helpers/bbWorkspace.js";
+import { installAgentCli } from "./src/helpers/installAgentCli.js";
 import { NoteReadService } from "./src/helpers/noteReadService.js";
 import { GlobeKeyManager } from "./src/helpers/globeKeyManager.js";
 import { GoogleCalendarManager } from "./src/helpers/googleCalendarManager.js";
@@ -515,6 +516,14 @@ async function startApp(): Promise<void> {
     cliBridge = null;
   }
 
+  // Isolated smoke profiles must not replace the user's installed command.
+  if (app.isPackaged && !app.commandLine.hasSwitch("user-data-dir")) {
+    try {
+      installAgentCli();
+    } catch (err) {
+      debugLogger.error("Notes CLI launcher could not be installed", { error: (err as Error).message });
+    }
+  }
 
   ipcMain.on("start-minimized-changed", (_event, enabled: boolean) => {
     debugLogger.info("Start minimized changed", { enabled });

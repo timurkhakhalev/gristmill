@@ -255,6 +255,18 @@ Depends on: M7.
 
 M1 → verify M1 → M2 contract sync/implementation/verification → M3 contract sync/implementation/verification → M4 contract sync, integrated checks and current docs → M5 reviewer fixes and affected verification → M6 reviewer fixes and affected verification → M7 reviewer fixes and affected verification → M8 reviewer fix and affected verification. During Act, root runs expensive checks sequentially and records evidence per milestone. Approval of this plan is required before M1.
 
+## User-requested amendment: M9 — Plain-text meeting prompt inputs
+
+This amendment supersedes the JSON input formatting requirements above at the user's explicit request. Structured JSON **outputs** and internal persisted snapshots remain unchanged.
+
+Depends on: M8.
+
+Scope: render meeting material sent to speaker naming, Summary, prioritized tasks, Recap and Follow-up as labeled plain text. Render transcript turns as `speaker name || speaker id: "text"`, separated by a blank line, `---`, and a blank line. Omit unavailable name/ID components instead of emitting null; preserve speaker IDs needed for naming responses. Never send per-utterance IDs or JSON arrays/objects as meeting input. Keep complete transcript order/text, corrected labels, and the existing per-prompt field exclusions. Distinguish user notes, title hints, calendar candidates (naming only), and saved Summary context with clear section labels. Escape quotation/delimiter content consistently and retain the instruction that meeting material is data. Update built-in English instructions and relevant current docs; preserve user-edited Actions and frozen retries. Keep internal IDs for persistence and stale-result checks. Do not implement microphone-owner attribution in this milestone; that is research only.
+
+Acceptance: all five model-facing paths use readable text with no segment IDs or JSON transcript wrappers, including unknown speakers, quotes, multiline utterances and Unicode. Speaker JSON validation/repair, full-context limits, source snapshots, manual edits, run history and provider routing continue to work. No transcript truncation or broader prompt-context sharing.
+
+Verification: add focused prompt-input regressions at actual consumers, preserve JSON output/repair tests, run affected tests and relevant lint/typechecks via root. Do not rebuild/reinstall the user's running application as part of M9.
+
 ## Orchestration (managed by orchestrator)
 
 | Milestone | Status | Commits |
@@ -267,6 +279,7 @@ M1 → verify M1 → M2 contract sync/implementation/verification → M3 contrac
 | M6 — Reviewer fixes from review-2 | done | `9873d1650`, `71389b117`, `a38587ca5`, `34bbf64dd` |
 | M7 — Reviewer fixes from review-3 | done | `f4b8dfc46`, `1c5f72b44` |
 | M8 — Reviewer fix from review-4 | done | `eb3fac552`, `473b59794` |
+| M9 — Plain-text meeting prompt inputs | in progress | |
 | Reviewer | done | `review-1.md`, `review-2.md`, `review-3.md`, `review-4.md`, `review-5.md` |
 | Code Reviewer | not started | |
 

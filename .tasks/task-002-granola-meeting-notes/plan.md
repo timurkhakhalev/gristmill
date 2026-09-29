@@ -266,8 +266,8 @@ M1 → verify M1 → M2 contract sync/implementation/verification → M3 contrac
 | M5 — Reviewer fixes from review-1 | done | `51f587d23`, `0d3cca9c2`, `d733f5f39`, `c4b5f9865`, `8e790528e`, `bea026706` |
 | M6 — Reviewer fixes from review-2 | done | `9873d1650`, `71389b117`, `a38587ca5`, `34bbf64dd` |
 | M7 — Reviewer fixes from review-3 | done | `f4b8dfc46`, `1c5f72b44` |
-| M8 — Reviewer fix from review-4 | in progress | |
-| Reviewer | not started | `review-1.md`, `review-2.md`, `review-3.md`, `review-4.md` |
+| M8 — Reviewer fix from review-4 | done | `eb3fac552`, `473b59794` |
+| Reviewer | in progress | `review-1.md`, `review-2.md`, `review-3.md`, `review-4.md` |
 | Code Reviewer | not started | |
 
-Review outcome: `review-4.md` confirms the two code findings from `review-3.md` are closed. M8 targets its M7-1 Results-menu state. M4-1 remains an unverified live journey; code review has not started.
+Review outcome: `review-4.md` confirms the two code findings from `review-3.md` are closed. M8 addresses its M7-1 Results-menu state; focused tests, lint, typecheck and the full 396-file suite passed after its commits. M4-1 remains an unverified live journey; code review has not started.

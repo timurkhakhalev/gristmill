@@ -225,4 +225,4 @@ Verification run by this agent:
 - `git diff --check` — passed.
 - Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts`, then the affected M1–M4 tests and integrated checks.
 
-Implementation commit: pending.
+Implementation commit: `d733f5f39` (`M5: show short transcript notice in raw view`).

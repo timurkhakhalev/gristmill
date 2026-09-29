@@ -1038,11 +1038,17 @@ export class DatabaseManager {
         insertFolder.run("Videos", 2, spaceId);
       }
 
-      if (this.sql.prepare("SELECT 1 FROM actions LIMIT 1").get() == null) {
-        const insertAction = this.sql.prepare(
-          "INSERT INTO actions (name, description, prompt, icon, is_builtin, sort_order, translation_key) VALUES (?, ?, ?, ?, 1, ?, ?)"
-        );
-        for (const action of BUILTIN_ACTIONS) {
+      const insertAction = this.sql.prepare(
+        "INSERT INTO actions (name, description, prompt, icon, is_builtin, sort_order, translation_key) VALUES (?, ?, ?, ?, 1, ?, ?)"
+      );
+      const reseedBuiltinPrompt = this.sql.prepare(
+        "UPDATE actions SET prompt = ? WHERE id = ? AND prompt = ? AND is_builtin = 1"
+      );
+      for (const action of BUILTIN_ACTIONS) {
+        const existing = this.sql.prepare(
+          "SELECT id, prompt FROM actions WHERE translation_key = ? AND is_builtin = 1"
+        ).get(action.translationKey) as { id: number; prompt: string } | undefined;
+        if (!existing) {
           insertAction.run(
             action.name,
             action.description,
@@ -1051,16 +1057,8 @@ export class DatabaseManager {
             action.sortOrder,
             action.translationKey
           );
+          continue;
         }
-      }
-      const reseedBuiltinPrompt = this.sql.prepare(
-        "UPDATE actions SET prompt = ? WHERE id = ? AND prompt = ? AND is_builtin = 1"
-      );
-      for (const action of BUILTIN_ACTIONS) {
-        const existing = this.sql.prepare(
-          "SELECT id, prompt FROM actions WHERE translation_key = ? AND is_builtin = 1"
-        ).get(action.translationKey) as { id: number; prompt: string } | undefined;
-        if (!existing) continue;
         const previousHash = createHash("sha256").update(existing.prompt, "utf8").digest("hex");
         if (action.previousPrompts.includes(existing.prompt) || action.previousPromptHashes?.includes(previousHash)) {
           reseedBuiltinPrompt.run(action.prompt, existing.id, existing.prompt);
@@ -1740,6 +1738,63 @@ export class DatabaseManager {
       "UPDATE meeting_processing_runs SET llm_source_snapshot_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running' AND stage IN ('normalize', 'summary') AND llm_source_snapshot_json = ?"
     ).run(snapshotJson, runId, expectedSnapshotJson);
     return result.changes === 1;
+  }
+
+  updateMeetingSummaryIfCurrent(input: {
+    recordingId: string;
+    runId: string;
+    sourceRunId: string;
+    expectedSnapshotJson: string;
+    expectedSpeakerCorrectionRevision: number;
+    expectedTitle: string | null;
+    expectedManualNotes: string;
+    expectedTranscript: string | null;
+    expectedProjection: string | null;
+    summary: string;
+  }): boolean {
+    meetingRecordingIdSchema.parse(input.recordingId);
+    meetingRecordingIdSchema.parse(input.runId);
+    meetingRecordingIdSchema.parse(input.sourceRunId);
+    const transaction = this.sql.transaction(() => {
+      const current = this.sql.prepare(`
+        SELECT r.note_id, r.current_run_id, p.kind, p.source_run_id, p.summary_path,
+          p.llm_source_snapshot_json, n.title, n.content, n.transcript, n.enhanced_content
+        FROM meeting_recordings r
+        JOIN meeting_processing_runs p ON p.recording_id = r.id
+        JOIN notes n ON n.id = r.note_id
+        WHERE r.id = ? AND p.id = ? AND p.status = 'complete'
+          AND NOT EXISTS (SELECT 1 FROM meeting_deletion_intents d WHERE d.note_id = r.note_id AND d.kind = 'note')
+      `).get(input.recordingId, input.runId) as {
+        note_id: number;
+        current_run_id: string | null;
+        kind: "initial" | "reprocess" | "summary";
+        source_run_id: string | null;
+        summary_path: string | null;
+        llm_source_snapshot_json: string | null;
+        title: string;
+        content: string;
+        transcript: string | null;
+        enhanced_content: string | null;
+      } | undefined;
+      if (
+        !current || current.current_run_id !== input.runId || !current.summary_path ||
+        (current.kind === "summary" ? current.source_run_id : input.runId) !== input.sourceRunId ||
+        current.llm_source_snapshot_json !== input.expectedSnapshotJson ||
+        current.title !== input.expectedTitle || current.content !== input.expectedManualNotes ||
+        current.transcript !== input.expectedTranscript || current.enhanced_content !== input.expectedProjection
+      ) return false;
+
+      const revision = this.sql.prepare(
+        "SELECT COALESCE(SUM(revision), 0) AS revision FROM meeting_run_speaker_corrections WHERE run_id = ?"
+      ).get(input.sourceRunId) as { revision: number };
+      if (revision.revision !== input.expectedSpeakerCorrectionRevision) return false;
+
+      this.sql.prepare(
+        "UPDATE notes SET enhanced_content = ?, enhanced_at_content_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      ).run(input.summary, noteContentHash(`${current.content}\n${current.transcript ?? ""}`), current.note_id);
+      return true;
+    });
+    return transaction();
   }
 
   setMeetingSpeakerNamingError(runId: string, errorCode: string | null): boolean {

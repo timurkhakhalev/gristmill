@@ -166,6 +166,34 @@ test("a genuine empty completion still shows the empty-response fallback", async
   assert.equal(message.isStreaming, false);
 });
 
+test("one-off action turns use only the current message and cannot invoke tools", async (t: import("node:test").TestContext) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let request: Record<string, any> | undefined;
+  globalThis.fetch = async (_input, init) => {
+    request = JSON.parse(String(init?.body));
+    const finish = `data: ${JSON.stringify(createOpenAiChunk({ content: "Draft ready" }))}\n\n`;
+    const stop = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
+    return new Response(`${finish}${stop}data: [DONE]\n\n`, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+  const { captured } = await renderChatStreaming(t);
+  const actionPrompt = "Editable Follow-up prompt and selected meeting JSON.";
+  await captured.sendToAI("Draft a follow-up", [
+    { id: "old", role: "assistant", content: "Old Chat context", isStreaming: false },
+    { id: "action", role: "user", content: "Draft a follow-up", isStreaming: false },
+  ], { systemPrompt: actionPrompt, disableTools: true, includeConversationHistory: false });
+
+  assert.ok(request);
+  assert.deepEqual(request!.messages, [
+    { role: "system", content: actionPrompt },
+    { role: "user", content: "Draft a follow-up" },
+  ]);
+  assert.equal("tools" in request!, false);
+});
+
 test("cancelling before any token arrives never shows the empty-response fallback", async (t: import("node:test").TestContext) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {

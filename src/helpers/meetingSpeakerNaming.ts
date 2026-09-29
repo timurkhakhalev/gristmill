@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { MeetingTextConversation } from "./meetingSummary.js";
+import { requestMeetingJson } from "./meetingJsonRepair.js";
 
 const participantSchema = z.object({
   name: z.string().nullable(),
@@ -34,19 +35,18 @@ export async function suggestMeetingSpeakerNames(input: unknown, conversation: M
     .filter((segment) => segment.speakerId !== null && segment.speakerName === null)
     .map((segment) => segment.speakerId as string))];
   const allowed = new Set(unknownSpeakerIds);
-  const initial = await conversation.send(JSON.stringify(parsedInput));
-  if (initial.refusal || looksLikeRefusal(initial.text)) throw codedError("speaker-name-refused");
-
-  const first = validateResponse(initial.text, allowed);
-  if (first.success) return first.speakers;
-
-  const repaired = await conversation.send(
-    `Correct your previous response. Previous response:\n${initial.text}\n\nValidation error: ${first.error}\nReturn only a valid JSON object in the requested shape.`
-  );
-  if (repaired.refusal || looksLikeRefusal(repaired.text)) throw codedError("speaker-name-refused");
-  const second = validateResponse(repaired.text, allowed);
-  if (second.success) return second.speakers;
-  throw codedError("speaker-name-json-invalid");
+  return requestMeetingJson({
+    conversation,
+    prompt: JSON.stringify(parsedInput),
+    refusalCode: "speaker-name-refused",
+    invalidCode: "speaker-name-json-invalid",
+    validate: (text) => {
+      const result = validateResponse(text, allowed);
+      return result.success
+        ? { success: true, value: result.speakers }
+        : { success: false, error: result.error };
+    },
+  });
 }
 
 function validateResponse(text: string, allowed: Set<string>):
@@ -72,12 +72,4 @@ function validateResponse(text: string, allowed: Set<string>):
     speakers.push({ speakerId: suggestion.speakerId, name });
   }
   return { success: true, speakers };
-}
-
-function looksLikeRefusal(text: string): boolean {
-  return /^\s*(?:i\s+(?:cannot|can't|won't|am unable to)|sorry,?\s+i\s+(?:cannot|can't|am unable to)|as an ai\b)/i.test(text);
-}
-
-function codedError(code: string): Error & { code: string } {
-  return Object.assign(new Error(code), { code });
 }

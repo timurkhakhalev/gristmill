@@ -17,6 +17,15 @@ import type { ContainerScope } from "../../types/chat";
 
 const LOCAL_TOOL_MIN_PARAMS_B = 4;
 
+export interface ChatSendOptions {
+  /** Complete system prompt for a one-off action in the existing conversation. */
+  systemPrompt?: string;
+  /** Do not expose application tools to this turn. */
+  disableTools?: boolean;
+  /** Omit earlier conversation turns while keeping the new user message. */
+  includeConversationHistory?: boolean;
+}
+
 function estimateModelSizeB(modelId: string): number {
   const match = modelId.match(/-([\d.]+)[bB]/);
   return match ? parseFloat(match[1]) : 0;
@@ -37,7 +46,7 @@ export interface ChatStreaming {
   agentState: AgentState;
   toolStatus: string;
   activeToolName: string;
-  sendToAI: (userText: string, allMessages: Message[]) => Promise<void>;
+  sendToAI: (userText: string, allMessages: Message[], options?: ChatSendOptions) => Promise<void>;
   cancelStream: () => void;
 }
 
@@ -143,7 +152,7 @@ export function useChatStreaming({
   }, [cancelStream]);
 
   const sendToAI = useCallback(
-    async (userText: string, allMessages: Message[]) => {
+    async (userText: string, allMessages: Message[], sendOptions?: ChatSendOptions) => {
       const sendGeneration = ++sendGenerationRef.current;
       const cancelled = () => sendGeneration !== sendGenerationRef.current;
       clearToolActivity();
@@ -173,7 +182,7 @@ export function useChatStreaming({
         ].includes(llmConfig.provider);
       const localModelCanUseTool =
         isLocalProvider && estimateModelSizeB(llmConfig.model) >= LOCAL_TOOL_MIN_PARAMS_B;
-      const supportsTools = !isBbAgent && (!isLocalProvider || localModelCanUseTool);
+      const supportsTools = !sendOptions?.disableTools && !isBbAgent && (!isLocalProvider || localModelCanUseTool);
 
       const scope = searchScopeRef.current;
       let registry: ToolRegistry | null = null;
@@ -207,7 +216,7 @@ export function useChatStreaming({
       if (cancelled() || !mountedRef.current) return;
       const combinedContext = noteContextRef.current;
       // The user's dictionary rides on every conversation so replies use their jargon.
-      let systemPrompt = appendDictionarySuffix(
+      let systemPrompt = sendOptions?.systemPrompt ?? appendDictionarySuffix(
         getAgentSystemPrompt(
           registry?.getAll().map((t) => t.name),
           combinedContext || undefined
@@ -216,7 +225,10 @@ export function useChatStreaming({
         settings.uiLanguage
       );
 
-      const history: HistoryMessage[] = allMessages
+      const messagesForTurn = sendOptions?.includeConversationHistory === false
+        ? allMessages.slice(-1)
+        : allMessages;
+      const history: HistoryMessage[] = messagesForTurn
         .slice(-20)
         .map((m) => ({ role: m.role, content: m.content }));
 

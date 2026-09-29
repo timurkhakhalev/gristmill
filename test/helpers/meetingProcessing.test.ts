@@ -12,6 +12,8 @@ const { meetingTranscriptArtifactSchema }: typeof import("../../src/contracts/me
 const { createMeetingProcessingBridge }: typeof import("../../src/preload/meetingProcessingBridge.ts") = require("../../src/preload/meetingProcessingBridge.ts");
 const { prepareMeetingAudio }: typeof import("../../src/helpers/meetingAudioMixer.ts") = require("../../src/helpers/meetingAudioMixer.ts");
 const { getFFmpegPath }: typeof import("../../src/helpers/ffmpegUtils.ts") = require("../../src/helpers/ffmpegUtils.ts");
+const { RECAP_KEY }: typeof import("../../src/helpers/builtinActions.ts") = require("../../src/helpers/builtinActions.ts");
+const { MEETING_TASKS_INSTRUCTION }: typeof import("../../src/helpers/meetingSummarySections.ts") = require("../../src/helpers/meetingSummarySections.ts");
 import type { MeetingProcessingConfig } from "../../src/contracts/meetingRecording";
 import type { MeetingProcessingWorkerDeps } from "../../src/helpers/meetingProcessing";
 import type { MeetingRecordingStorage as RecordingStorage } from "../../src/helpers/meetingRecordingStorage";
@@ -989,6 +991,107 @@ test("manual Summary keeps the previously saved result visible while it names sp
   assert.equal(storage.readRunArtifact(manual.run.id, "summary").text, "## TLDR\nNew result.");
   assert.equal(db.getNote(note.id).enhanced_content, "## TLDR\nNew result.");
   assert.equal(db.getNote(note.id).content, "Keep this manual note.");
+});
+
+test("prioritized tasks and Recap serialize their edits to the selected Summary", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, recording, run } = createFinishedRecording(db, storage, validConfig, "Manual notes stay here.");
+  db.db.prepare("UPDATE notes SET participants = ? WHERE id = ?")
+    .run(JSON.stringify([{ name: "Calendar Alice", email: "alice@example.com" }]), note.id);
+
+  let resolveTaskStarted!: () => void;
+  const taskStarted = new Promise<void>((resolve) => { resolveTaskStarted = resolve; });
+  let releaseTasks!: () => void;
+  const taskGate = new Promise<void>((resolve) => { releaseTasks = resolve; });
+  let taskInput = "";
+  let recapInput = "";
+  const worker = workerFor(db, storage, {
+    summarize: async () => "## TLDR\nRelease discussion.\n\n## Action Items\n\n- Initial action item.",
+    createActionConversation: async (_config, instruction) => ({
+      send: async (input: string) => {
+        if (instruction === MEETING_TASKS_INSTRUCTION) {
+          taskInput = input;
+          resolveTaskStarted();
+          await taskGate;
+          return { text: JSON.stringify({ HIGH: ["Ship the release"], MEDIUM: [], LOW: [] }), refusal: false };
+        }
+        assert.equal(instruction, "Editable recap prompt");
+        recapInput = input;
+        return { text: JSON.stringify({ title: "Release review", bullets: ["Ship Friday"] }), refusal: false };
+      },
+    }),
+    getActionPrompt: (translationKey) => translationKey === RECAP_KEY ? "Editable recap prompt" : null,
+  });
+  t.after(() => { releaseTasks(); worker.stop(); });
+  worker.onRetentionReady();
+  await taskStarted;
+
+  const taskMaterial = JSON.parse(taskInput);
+  assert.deepEqual(Object.keys(taskMaterial).sort(), ["meetingTitle", "manualNotes", "savedSummary", "transcriptSegments"].sort());
+  assert.equal(taskMaterial.meetingTitle, "Meeting");
+  assert.equal(taskMaterial.manualNotes, "Manual notes stay here.");
+  assert.match(taskMaterial.savedSummary, /Initial action item/);
+  assert.equal(taskMaterial.transcriptSegments[0].start, 0.1);
+  assert.doesNotMatch(taskInput, /alice@example\.com|generationDate|previousTask/i);
+
+  const recapResult = await worker.runSummaryAction({ runId: run.id, action: "recap" });
+  assert.deepEqual(recapResult, { success: true });
+  const recapMaterial = JSON.parse(recapInput);
+  assert.deepEqual(Object.keys(recapMaterial).sort(), ["meetingTitle", "manualNotes", "summary", "transcriptSegments"].sort());
+  assert.doesNotMatch(recapInput, /alice@example\.com|generationDate/i);
+  const withRecap = storage.readRunArtifact(run.id, "summary");
+  assert.match(withRecap.text, /## Recap/);
+  assert.doesNotMatch(withRecap.text, /Ship the release/);
+  assert.equal(withRecap.taskStatus, "running");
+
+  const rawResponse = storage.readRunArtifact(run.id, "provider-response");
+  releaseTasks();
+  await worker.waitForIdle();
+  const finalSummary = storage.readRunArtifact(run.id, "summary");
+  assert.equal(finalSummary.taskStatus, "complete");
+  assert.match(finalSummary.text, /## Action Items[\s\S]*Ship the release[\s\S]*## Recap/);
+  assert.match(finalSummary.text, /Release discussion/);
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), rawResponse);
+  assert.equal(db.getNote(note.id).content, "Manual notes stay here.");
+  assert.equal(db.getNote(note.id).enhanced_content, finalSummary.text);
+  assert.equal(db.getMeetingRecording(recording.id).currentRunId, run.id);
+});
+
+test("task application preserves a concurrent Action Items edit and exposes a retryable conflict", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, run } = createFinishedRecording(db, storage, validConfig, "Manual notes stay here.");
+  let resolveTaskStarted!: () => void;
+  const taskStarted = new Promise<void>((resolve) => { resolveTaskStarted = resolve; });
+  let releaseTasks!: () => void;
+  const taskGate = new Promise<void>((resolve) => { releaseTasks = resolve; });
+  const worker = workerFor(db, storage, {
+    summarize: async () => "## TLDR\nSaved Summary.\n\n## Action Items\n\n- Existing task",
+    createActionConversation: async () => ({
+      send: async () => {
+        resolveTaskStarted();
+        await taskGate;
+        return { text: JSON.stringify({ HIGH: ["New task"], MEDIUM: [], LOW: [] }), refusal: false };
+      },
+    }),
+  });
+  t.after(() => { releaseTasks(); worker.stop(); });
+  worker.onRetentionReady();
+  await taskStarted;
+
+  const humanEdit = "## TLDR\nSaved Summary.\n\n## Action Items\n\n- User's revised task";
+  db.db.prepare("UPDATE notes SET enhanced_content = ? WHERE id = ?").run(humanEdit, note.id);
+  releaseTasks();
+  await worker.waitForIdle();
+
+  const summary = storage.readRunArtifact(run.id, "summary");
+  assert.equal(summary.taskStatus, "conflict");
+  assert.equal(summary.taskErrorCode, "meeting-summary-edit-conflict");
+  assert.equal(db.getNote(note.id).enhanced_content, humanEdit);
+  assert.doesNotMatch(summary.text, /New task/);
 });
 
 test("summary retry preserves the transcript and does not repeat ASR", async (t: import("node:test").TestContext) => {

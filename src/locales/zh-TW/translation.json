@@ -1678,6 +1678,15 @@
         "detailedNotes": {
           "name": "詳細筆記",
           "description": "準確、完整的會議筆記，包含決策和行動項目"
+        },
+        "followUp": {
+          "name": "會後跟進",
+          "description": "在會議聊天中草擬一則跟進訊息",
+          "cta": "草擬跟進訊息"
+        },
+        "recap": {
+          "name": "會議回顧",
+          "description": "將簡短的會議回顧加入摘要"
         }
       },
       "errors": {
@@ -2123,7 +2132,10 @@
       "keyDecisions": "列出關鍵決策",
       "inFlight": "顯示進行中的專案"
     },
-    "homeEmptyState": "詢問關於筆記和會議的任何問題"
+    "homeEmptyState": "詢問關於筆記和會議的任何問題",
+    "followUp": "草擬後續訊息",
+    "followUpUnavailable": "逐字稿準備完成後即可使用",
+    "followUpError": "無法準備後續訊息，請再試一次。"
   },
   "transcriptionPreview": {
     "label": "預覽",

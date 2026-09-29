@@ -8,6 +8,8 @@ import {
   meetingProcessingRunResponseSchema,
   meetingProcessingSpeakerCorrectionRequestSchema,
   meetingProcessingCorrectionResponseSchema,
+  meetingProcessingSummaryActionRequestSchema,
+  meetingProcessingSummaryActionResponseSchema,
   meetingProcessingUpdatedEvent,
   meetingProcessingUpdatedEventSchema,
   meetingRecordingPlaybackRequestSchema,
@@ -62,6 +64,12 @@ export function createMeetingProcessingBridge(ipcRenderer: IpcRendererLike): Mee
       const parsed = meetingProcessingSpeakerCorrectionRequestSchema.parse(input);
       return ipcRenderer.invoke(meetingProcessingChannels.setSpeakerCorrection, parsed).then((raw) =>
         parse(meetingProcessingCorrectionResponseSchema, raw, meetingProcessingChannels.setSpeakerCorrection)
+      );
+    },
+    meetingProcessingRunSummaryAction(input) {
+      const parsed = meetingProcessingSummaryActionRequestSchema.parse(input);
+      return ipcRenderer.invoke(meetingProcessingChannels.runSummaryAction, parsed).then((raw) =>
+        parse(meetingProcessingSummaryActionResponseSchema, raw, meetingProcessingChannels.runSummaryAction)
       );
     },
     meetingRecordingGetPlaybackPath(recordingId, runId) {

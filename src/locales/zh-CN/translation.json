@@ -1678,6 +1678,15 @@
         "detailedNotes": {
           "name": "详细笔记",
           "description": "准确、全面的会议笔记，包含决策和行动项"
+        },
+        "followUp": {
+          "name": "会后跟进",
+          "description": "在会议聊天中起草一条跟进消息",
+          "cta": "起草跟进消息"
+        },
+        "recap": {
+          "name": "会议回顾",
+          "description": "将简短的会议回顾添加到摘要中"
         }
       },
       "errors": {
@@ -2123,7 +2132,10 @@
       "keyDecisions": "列出关键决定",
       "inFlight": "显示进行中的项目"
     },
-    "homeEmptyState": "询问关于笔记和会议的任何问题"
+    "homeEmptyState": "询问关于笔记和会议的任何问题",
+    "followUp": "起草跟进消息",
+    "followUpUnavailable": "转录准备就绪后可用",
+    "followUpError": "无法准备跟进消息，请重试。"
   },
   "transcriptionPreview": {
     "label": "预览",

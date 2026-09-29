@@ -9,6 +9,7 @@ import {
   type MeetingProcessingRunDto,
   type MeetingRecordingDto,
   type MeetingRecordingEpochDto,
+  type MeetingSummaryArtifact,
   type MeetingSpeakerCorrection,
   type MeetingTranscriptArtifact,
   MEETING_ASR_GATE_MS,
@@ -19,6 +20,7 @@ import {
   meetingProcessingListRequestSchema,
   meetingProcessingListResponseSchema,
   meetingProcessingRetryRequestSchema,
+  meetingProcessingSummaryActionRequestSchema,
   meetingProcessingUpdateBlockedRunConfigRequestSchema,
   meetingProcessingRunResponseSchema,
   type MeetingProcessingRecordingResult,
@@ -34,6 +36,18 @@ import { composeMeetingAudioParts, meetingTimelineFrameCount, prepareMeetingAudi
 import { formatSpeakerTranscript, mergeSpeakersWithText } from "./speakerMerge.js";
 import { byokFileSizeLimit } from "./transcriptionRoute.js";
 import { supportedMeetingFileProvider } from "./meetingFileTranscription.js";
+import { RECAP_KEY } from "./builtinActions.js";
+import { requestMeetingJson } from "./meetingJsonRepair.js";
+import {
+  MEETING_TASKS_INSTRUCTION,
+  readMeetingSummarySection,
+  replaceMeetingRecap,
+  replaceMeetingTasks,
+  validateMeetingRecap,
+  validateMeetingTasks,
+  type MeetingRecap,
+  type MeetingTasks,
+} from "./meetingSummarySections.js";
 
 const AUTO_RETRY_LIMIT = 3;
 const RETRY_BASE_SECONDS = 5;
@@ -51,6 +65,8 @@ export interface MeetingProcessingDatabase {
   getNote(id: number): {
     title: string;
     content: string;
+    transcript?: string | null;
+    enhanced_content?: string | null;
     participants: string | null;
     expected_speaker_count?: number | null;
   } | null;
@@ -85,6 +101,18 @@ export interface MeetingProcessingDatabase {
   getMeetingRunLlmSourceSnapshot(runId: string): string | null;
   setMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string): boolean;
   updateMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string, expectedSnapshotJson: string): boolean;
+  updateMeetingSummaryIfCurrent(input: {
+    recordingId: string;
+    runId: string;
+    sourceRunId: string;
+    expectedSnapshotJson: string;
+    expectedSpeakerCorrectionRevision: number;
+    expectedTitle: string | null;
+    expectedManualNotes: string;
+    expectedTranscript: string | null;
+    expectedProjection: string | null;
+    summary: string;
+  }): boolean;
   setMeetingSpeakerNamingError(runId: string, errorCode: string | null): boolean;
   selectMeetingProcessingRun(
     recordingId: string,
@@ -142,6 +170,13 @@ export interface MeetingProcessingWorkerDeps {
     run: MeetingProcessingRunDto,
     signal: AbortSignal
   ) => Promise<Array<{ speakerId: string; name: string }>>;
+  createActionConversation?: (
+    config: NonNullable<MeetingProcessingConfig["summary"]>,
+    instruction: string,
+    run: MeetingProcessingRunDto,
+    signal: AbortSignal
+  ) => Promise<import("./meetingSummary.js").MeetingTextConversation>;
+  getActionPrompt?: (translationKey: string) => string | null;
   mixerDeps?: MeetingAudioMixerDeps;
 }
 
@@ -183,6 +218,20 @@ interface ActiveRun {
   controller: AbortController;
 }
 
+interface MeetingSummaryActionContext {
+  run: MeetingProcessingRunDto;
+  recording: MeetingRecordingDto;
+  note: NonNullable<ReturnType<MeetingProcessingDatabase["getNote"]>>;
+  sourceRunId: string;
+  snapshotJson: string;
+  snapshot: MeetingLlmSourceSnapshot;
+  transcript: MeetingTranscriptArtifact;
+  artifact: MeetingSummaryArtifact;
+  markdown: string;
+  actionItemsSection: string | null;
+  recapSection: string | null;
+}
+
 export class MeetingProcessingWorker {
   private retentionReady = false;
   private captureActive = false;
@@ -191,6 +240,10 @@ export class MeetingProcessingWorker {
   private workRequested = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
+  private readonly activeSummaryActions = new Map<string, Set<AbortController>>();
+  private readonly activeTaskRuns = new Set<string>();
+  private readonly backgroundSummaryActions = new Set<Promise<unknown>>();
+  private readonly summaryMutationTails = new Map<number, Promise<void>>();
   private readonly now: () => Date;
   private readonly setTimer: typeof setTimeout;
   private readonly clearTimer: typeof clearTimeout;
@@ -200,6 +253,7 @@ export class MeetingProcessingWorker {
     this.now = deps.now ?? (() => new Date());
     this.setTimer = deps.setTimeout ?? setTimeout;
     this.clearTimer = deps.clearTimeout ?? clearTimeout;
+    this.recoverInterruptedSummaryTasks();
   }
 
   onRetentionReady(): void {
@@ -243,6 +297,9 @@ export class MeetingProcessingWorker {
     this.stopped = true;
     this.clearRetryTimer();
     this.active?.controller.abort();
+    for (const controllers of this.activeSummaryActions.values()) {
+      for (const controller of controllers) controller.abort();
+    }
   }
 
   cancelRun(runId: string, errorCode = "processing-cancelled"): boolean {
@@ -296,6 +353,12 @@ export class MeetingProcessingWorker {
     }
     this.notify(run);
     return true;
+  }
+
+  async runSummaryAction(input: { runId: string; action: "tasks" | "recap" }): Promise<{ success: boolean; error?: string }> {
+    return input.action === "tasks"
+      ? this.runPrioritizedTasks(input.runId)
+      : this.runRecap(input.runId);
   }
 
   retry(runId: string): MeetingProcessingResultDto | null {
@@ -451,7 +514,12 @@ export class MeetingProcessingWorker {
   }
 
   async waitForIdle(): Promise<void> {
-    await this.work;
+    while (this.work || this.backgroundSummaryActions.size > 0) {
+      const pending = [this.work, ...this.backgroundSummaryActions].filter(
+        (work): work is Promise<unknown> => work !== null
+      );
+      await Promise.all(pending);
+    }
   }
 
   private async drainQueue(): Promise<void> {
@@ -814,6 +882,11 @@ export class MeetingProcessingWorker {
     }
     this.publishCurrentSelection(run.id);
     this.setState(run.id, "summary", "complete", null, null);
+    if (this.deps.createActionConversation) {
+      const work = this.runPrioritizedTasks(run.id);
+      this.backgroundSummaryActions.add(work);
+      void work.finally(() => this.backgroundSummaryActions.delete(work));
+    }
   }
 
   private getOrCreateLlmSourceSnapshot(
@@ -1090,6 +1163,273 @@ export class MeetingProcessingWorker {
     return this.deps.database.getMeetingProcessingRun(run.sourceRunId)?.config?.summary?.instruction ?? null;
   }
 
+  private async runPrioritizedTasks(runId: string): Promise<{ success: boolean; error?: string }> {
+    if (this.activeTaskRuns.has(runId)) return { success: true };
+    this.activeTaskRuns.add(runId);
+    let context: MeetingSummaryActionContext | null = null;
+    try {
+      context = this.getSummaryActionContext(runId);
+      if (["complete", "zero"].includes(context.artifact.taskStatus ?? "")) return { success: true };
+      await this.writeTaskStatus(context, "running", undefined);
+      context = this.getSummaryActionContext(runId);
+
+      const controller = this.beginSummaryAction(runId);
+      try {
+        const input = JSON.stringify({
+          meetingTitle: context.snapshot.meetingTitle,
+          manualNotes: context.snapshot.manualNotes,
+          savedSummary: context.markdown,
+          transcriptSegments: this.correctedSegments(context),
+        });
+        const conversation = await this.createActionConversation(context, MEETING_TASKS_INSTRUCTION, controller.signal);
+        const tasks = await requestMeetingJson<MeetingTasks>({
+          conversation,
+          prompt: input,
+          refusalCode: "meeting-task-refused",
+          invalidCode: "meeting-task-json-invalid",
+          validate: validateMeetingTasks,
+        });
+        const isEmpty = !Object.values(tasks).some((items) => items.length > 0);
+        await this.applySummarySection(
+          context,
+          "Action Items",
+          (markdown) => replaceMeetingTasks(markdown, tasks),
+          isEmpty ? "zero" : "complete"
+        );
+        return { success: true };
+      } finally {
+        this.endSummaryAction(runId, controller);
+      }
+    } catch (error) {
+      const code = actionErrorCode(error);
+      if (context) {
+        const status = code === "meeting-summary-section-invalid"
+          ? "section-error"
+          : code === "meeting-summary-edit-conflict" || code === "meeting-summary-source-changed"
+            ? "conflict"
+            : code === "meeting-task-json-invalid"
+              ? "format-error"
+              : "provider-error";
+        await this.writeTaskStatus(context, status, code).catch(() => {});
+      }
+      return { success: false, error: code };
+    } finally {
+      this.activeTaskRuns.delete(runId);
+    }
+  }
+
+  private async runRecap(runId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const context = this.getSummaryActionContext(runId);
+      const prompt = this.deps.getActionPrompt?.(RECAP_KEY);
+      if (!prompt) throw new MeetingProcessingFailure("meeting-recap-action-missing", "blocked");
+      const controller = this.beginSummaryAction(runId);
+      try {
+        const input = JSON.stringify({
+          meetingTitle: context.snapshot.meetingTitle,
+          manualNotes: context.snapshot.manualNotes,
+          summary: context.markdown,
+          transcriptSegments: this.correctedSegments(context),
+        });
+        const conversation = await this.createActionConversation(context, prompt, controller.signal);
+        const recap = await requestMeetingJson<MeetingRecap>({
+          conversation,
+          prompt: input,
+          refusalCode: "meeting-recap-refused",
+          invalidCode: "meeting-recap-json-invalid",
+          validate: validateMeetingRecap,
+        });
+        await this.applySummarySection(context, "Recap", (markdown) => replaceMeetingRecap(markdown, recap));
+        return { success: true };
+      } finally {
+        this.endSummaryAction(runId, controller);
+      }
+    } catch (error) {
+      return { success: false, error: actionErrorCode(error) };
+    }
+  }
+
+  private getSummaryActionContext(runId: string): MeetingSummaryActionContext {
+    const run = this.deps.database.getMeetingProcessingRun(runId);
+    const recording = run ? this.deps.database.getMeetingRecording(run.recordingId) : null;
+    if (!run || !recording || recording.currentRunId !== run.id || run.status !== "complete" || !run.hasSummary) {
+      throw new MeetingProcessingFailure("meeting-summary-not-selected", "blocked");
+    }
+    const sourceRunId = run.kind === "summary" ? run.sourceRunId : run.id;
+    if (!sourceRunId) throw new MeetingProcessingFailure("meeting-summary-source-missing", "blocked");
+    const snapshotJson = this.deps.database.getMeetingRunLlmSourceSnapshot(run.id);
+    if (!snapshotJson) throw new MeetingProcessingFailure("meeting-summary-source-missing", "blocked");
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(snapshotJson);
+    } catch {
+      throw new MeetingProcessingFailure("meeting-summary-source-invalid", "failed");
+    }
+    const parsedSnapshot = meetingLlmSourceSnapshotSchema.safeParse(decoded);
+    if (!parsedSnapshot.success || parsedSnapshot.data.sourceRunId !== sourceRunId) {
+      throw new MeetingProcessingFailure("meeting-summary-source-invalid", "failed");
+    }
+    const snapshot = parsedSnapshot.data as MeetingLlmSourceSnapshot;
+    const note = this.deps.database.getNote(recording.noteId);
+    const transcript = this.readTranscript(sourceRunId);
+    const artifactValue = this.deps.storage.readRunArtifact(run.id, "summary");
+    if (!note || !transcript || artifactValue === null) {
+      throw new MeetingProcessingFailure("meeting-summary-source-missing", "blocked");
+    }
+    const artifact = meetingSummaryArtifactSchema.parse(artifactValue);
+    if (
+      hashText(note.content) !== snapshot.manualNoteRevision ||
+      this.deps.database.getMeetingRunSpeakerCorrectionRevision(sourceRunId) !== snapshot.speakerCorrectionRevision ||
+      (artifact.manualNoteRevision !== undefined && artifact.manualNoteRevision !== snapshot.manualNoteRevision)
+    ) throw new MeetingProcessingFailure("meeting-summary-source-changed", "failed");
+    const markdown = note.enhanced_content ?? artifact.text;
+    return {
+      run,
+      recording,
+      note,
+      sourceRunId,
+      snapshotJson,
+      snapshot,
+      transcript,
+      artifact,
+      markdown,
+      actionItemsSection: readMeetingSummarySection(markdown, "Action Items"),
+      recapSection: readMeetingSummarySection(markdown, "Recap"),
+    };
+  }
+
+  private correctedSegments(context: MeetingSummaryActionContext): Array<Record<string, unknown>> {
+    const sourceSegments = context.transcript.segments;
+    if (sourceSegments?.length && sourceSegments.length !== context.snapshot.transcriptSegments.length) {
+      throw new MeetingProcessingFailure("meeting-summary-source-invalid", "failed");
+    }
+    return context.snapshot.transcriptSegments.map((segment, index) => {
+      const source = sourceSegments?.[index];
+      return { ...segment, ...(source ? { start: source.start, end: source.end } : {}) };
+    });
+  }
+
+  private async createActionConversation(
+    context: MeetingSummaryActionContext,
+    instruction: string,
+    signal: AbortSignal
+  ): Promise<import("./meetingSummary.js").MeetingTextConversation> {
+    if (!this.deps.createActionConversation) {
+      throw new MeetingProcessingFailure("meeting-summary-action-unavailable", "blocked");
+    }
+    return this.deps.createActionConversation(
+      { ...context.snapshot.promptModel, instruction },
+      instruction,
+      context.run,
+      signal
+    );
+  }
+
+  private async applySummarySection(
+    context: MeetingSummaryActionContext,
+    heading: "Action Items" | "Recap",
+    mutate: (markdown: string) => { success: true; markdown: string } | { success: false; error: string },
+    taskStatus?: "complete" | "zero"
+  ): Promise<void> {
+    await this.withSummaryMutation(context.recording.noteId, () => {
+      const latest = this.getSummaryActionContext(context.run.id);
+      const expectedSection = heading === "Action Items" ? context.actionItemsSection : context.recapSection;
+      const latestSection = heading === "Action Items" ? latest.actionItemsSection : latest.recapSection;
+      if (latest.snapshotJson !== context.snapshotJson || latestSection !== expectedSection) {
+        throw new MeetingProcessingFailure("meeting-summary-edit-conflict", "failed");
+      }
+      const result = mutate(latest.markdown);
+      if (!result.success) throw new MeetingProcessingFailure(result.error, "failed");
+      const updatedArtifact = meetingSummaryArtifactSchema.parse({
+        ...latest.artifact,
+        text: result.markdown,
+        ...(taskStatus ? { taskStatus, taskErrorCode: null } : {}),
+      });
+      this.deps.storage.writeRunArtifact(latest.run.id, "summary", updatedArtifact);
+      const projected = this.deps.database.updateMeetingSummaryIfCurrent({
+        recordingId: latest.recording.id,
+        runId: latest.run.id,
+        sourceRunId: latest.sourceRunId,
+        expectedSnapshotJson: latest.snapshotJson,
+        expectedSpeakerCorrectionRevision: latest.snapshot.speakerCorrectionRevision,
+        expectedTitle: latest.note.title,
+        expectedManualNotes: latest.note.content,
+        expectedTranscript: latest.note.transcript ?? null,
+        expectedProjection: latest.note.enhanced_content ?? null,
+        summary: result.markdown,
+      });
+      if (!projected) {
+        this.deps.storage.writeRunArtifact(latest.run.id, "summary", latest.artifact);
+        throw new MeetingProcessingFailure("meeting-summary-edit-conflict", "failed");
+      }
+      this.deps.onNoteProjectionChanged?.(latest.recording.noteId);
+      this.notify(latest.run);
+    });
+  }
+
+  private async writeTaskStatus(
+    context: MeetingSummaryActionContext,
+    status: NonNullable<MeetingSummaryArtifact["taskStatus"]>,
+    errorCode: string | undefined
+  ): Promise<void> {
+    await this.withSummaryMutation(context.recording.noteId, () => {
+      const latestRun = this.deps.database.getMeetingProcessingRun(context.run.id);
+      const recording = latestRun
+        ? this.deps.database.getMeetingRecording(latestRun.recordingId)
+        : null;
+      if (!latestRun || !recording || recording.currentRunId !== latestRun.id || !latestRun.hasSummary) return;
+      const currentValue = this.deps.storage.readRunArtifact(latestRun.id, "summary");
+      if (currentValue === null) return;
+      const current = meetingSummaryArtifactSchema.parse(currentValue);
+      const artifact = meetingSummaryArtifactSchema.parse({
+        ...current,
+        taskStatus: status,
+        taskErrorCode: errorCode ?? null,
+      });
+      this.deps.storage.writeRunArtifact(latestRun.id, "summary", artifact);
+      this.notify(latestRun);
+    });
+  }
+
+  private withSummaryMutation<T>(noteId: number, operation: () => T): Promise<T> {
+    const previous = this.summaryMutationTails.get(noteId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.summaryMutationTails.set(noteId, current);
+    return previous.catch(() => {}).then(operation).finally(() => {
+      release();
+      if (this.summaryMutationTails.get(noteId) === current) this.summaryMutationTails.delete(noteId);
+    });
+  }
+
+  private beginSummaryAction(runId: string): AbortController {
+    const controller = new AbortController();
+    const controllers = this.activeSummaryActions.get(runId) ?? new Set<AbortController>();
+    controllers.add(controller);
+    this.activeSummaryActions.set(runId, controllers);
+    return controller;
+  }
+
+  private endSummaryAction(runId: string, controller: AbortController): void {
+    const controllers = this.activeSummaryActions.get(runId);
+    controllers?.delete(controller);
+    if (controllers?.size === 0) this.activeSummaryActions.delete(runId);
+  }
+
+  private recoverInterruptedSummaryTasks(): void {
+    for (const run of this.deps.database.listAllMeetingProcessingRuns()) {
+      if (!run.hasSummary) continue;
+      const value = this.deps.storage.readRunArtifact(run.id, "summary");
+      const parsed = meetingSummaryArtifactSchema.safeParse(value);
+      if (!parsed.success || parsed.data.taskStatus !== "running") continue;
+      this.deps.storage.writeRunArtifact(run.id, "summary", {
+        ...parsed.data,
+        taskStatus: "provider-error",
+        taskErrorCode: "meeting-summary-task-interrupted",
+      });
+    }
+  }
+
   private notify(run: MeetingProcessingRunDto): void {
     this.deps.onChanged?.(run.recordingId, run.id);
   }
@@ -1184,6 +1524,11 @@ export function registerMeetingProcessingHandlers(
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
+  ipcMain.handle(meetingProcessingChannels.runSummaryAction, async (_event, ...args) => {
+    const parsed = meetingProcessingSummaryActionRequestSchema.safeParse(args[0]);
+    if (!parsed.success) return { success: false, error: "Invalid meeting summary action request" };
+    return worker.runSummaryAction(parsed.data);
+  });
 }
 
 export function normalizeProviderResponse(provider: "deepgram" | "elevenlabs" | "gemini" | "openai", raw: unknown): RemoteTranscriptionResult {
@@ -1212,7 +1557,7 @@ function serializeTranscriptProjection(
   corrections: MeetingSpeakerCorrection[]
 ): string {
   if (!transcript.segments?.length) {
-    return JSON.stringify(transcript.text ? [{ text: transcript.text, timestamp: 0 }] : []);
+    return JSON.stringify(transcript.text ? [{ text: transcript.text }] : []);
   }
   const correctionsBySpeaker = new Map(corrections.map((correction) => [correction.speakerId, correction]));
     return JSON.stringify(transcript.segments.map((segment) => {
@@ -1392,5 +1737,12 @@ function errorCodeOf(value: unknown): string {
   const code = value && typeof value === "object" && "code" in value && typeof value.code === "string"
     ? value.code
     : "speaker-name-failed";
+  return code.toLowerCase().replace(/[^a-z0-9_.-]/g, "-").slice(0, 128);
+}
+
+function actionErrorCode(value: unknown): string {
+  const code = value && typeof value === "object" && "code" in value && typeof value.code === "string"
+    ? value.code
+    : "meeting-summary-action-failed";
   return code.toLowerCase().replace(/[^a-z0-9_.-]/g, "-").slice(0, 128);
 }

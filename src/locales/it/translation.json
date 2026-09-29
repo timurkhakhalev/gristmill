@@ -1678,6 +1678,15 @@
         "detailedNotes": {
           "name": "Note dettagliate",
           "description": "Note di riunione accurate e complete con decisioni e azioni"
+        },
+        "followUp": {
+          "name": "Messaggio di follow-up",
+          "description": "Scrivi un messaggio di follow-up nella chat della riunione",
+          "cta": "Scrivi un follow-up"
+        },
+        "recap": {
+          "name": "Riepilogo",
+          "description": "Aggiungi un breve riepilogo di questa riunione al suo riassunto"
         }
       },
       "errors": {
@@ -2123,7 +2132,10 @@
       "keyDecisions": "Elenca le decisioni chiave",
       "inFlight": "Mostra i progetti in corso"
     },
-    "homeEmptyState": "Chiedi qualsiasi cosa sulle tue note e riunioni"
+    "homeEmptyState": "Chiedi qualsiasi cosa sulle tue note e riunioni",
+    "followUp": "Prepara un messaggio di follow-up",
+    "followUpUnavailable": "Disponibile quando la trascrizione è pronta",
+    "followUpError": "Impossibile preparare il messaggio. Riprova."
   },
   "transcriptionPreview": {
     "label": "Anteprima",

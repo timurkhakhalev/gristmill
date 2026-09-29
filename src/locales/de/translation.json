@@ -1770,6 +1770,15 @@
         "detailedNotes": {
           "name": "Ausführliche Notizen",
           "description": "Präzise, umfassende Meeting-Notizen mit Entscheidungen und Aufgaben"
+        },
+        "followUp": {
+          "name": "Nachricht nach dem Meeting",
+          "description": "Eine Folgenachricht im Meeting-Chat verfassen",
+          "cta": "Folgenachricht verfassen"
+        },
+        "recap": {
+          "name": "Rückblick",
+          "description": "Einen kurzen Rückblick auf dieses Meeting zur Zusammenfassung hinzufügen"
         }
       },
       "errors": {
@@ -2123,7 +2132,10 @@
       "keyDecisions": "Liste die wichtigsten Entscheidungen auf",
       "inFlight": "Zeig laufende Projekte"
     },
-    "homeEmptyState": "Frag alles zu deinen Notizen und Meetings"
+    "homeEmptyState": "Frag alles zu deinen Notizen und Meetings",
+    "followUp": "Nachricht zum Nachfassen entwerfen",
+    "followUpUnavailable": "Verfügbar, sobald das Transkript bereit ist",
+    "followUpError": "Die Nachricht konnte nicht vorbereitet werden. Bitte versuche es erneut."
   },
   "transcriptionPreview": {
     "label": "Vorschau",

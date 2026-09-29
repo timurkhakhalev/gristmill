@@ -24,6 +24,11 @@ import { composeMockSummary, type MockPipeline } from "./meetingMock";
 
 type ViewMode = "raw" | "enhanced";
 type RunChoice = { kind: "reprocess" | "summary"; partId?: string };
+export interface SummaryActionState {
+  available: boolean;
+  isGenerating: boolean;
+  onGenerate: () => void;
+}
 
 function Choice({ label, value, options, onChange }: {
   label: string; value: string; options: Array<{ id: string; label: string }>; onChange: (value: string) => void;
@@ -93,7 +98,7 @@ function AudioPartSummary({ part, index, count, timeLabel, tr }: {
 export default function MeetingResultsPanel({ noteId, locale, previewRecordings, viewMode, onViewModeChange, manualContent, renderFallbackTranscript, fallbackSummary, fallbackText, actions, notice, capturePhase, mockPipeline }: {
   /** Debug preview only: in-memory stand-in for the delayed-ASR, naming, tasks and Recap pipeline. */
   mockPipeline?: MockPipeline;
-  actions?: ReactNode;
+  actions?: (summaryAction: SummaryActionState) => ReactNode;
   /** Plain text of each view's fallback content, copied when no processing run provides it. */
   fallbackText: Record<ViewMode | "transcript", string>;
   /** Live capture notice rendered under the toolbar, above processing status. */
@@ -106,7 +111,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   onViewModeChange: (mode: ViewMode) => void;
   manualContent: ReactNode;
   renderFallbackTranscript: (scrollRef: RefObject<HTMLDivElement | null>) => ReactNode;
-  fallbackSummary: ReactNode;
+  fallbackSummary: (summaryAction: SummaryActionState) => ReactNode;
 }) {
   const { t } = useTranslation();
   const { dateFormat, timeFormat } = useDateTimePreferences();
@@ -385,6 +390,15 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     selected?.run.status === "complete" && selected.run.stage === "summary" && !selected.summary &&
     !selected.run.hasSummary && Boolean(selected.transcript?.text.trim()) &&
     (selectedTranscriptDuration < 180 || selectedTranscriptCharacters < 2500);
+  const summaryAction: SummaryActionState = {
+    available: Boolean(
+      selected?.transcript?.text.trim() && !selected.summary && !selected.run.hasSummary &&
+      !captureBlocksAsr
+    ),
+    isGenerating: selected?.run.stage === "summary" &&
+      (selected.run.status === "pending" || selected.run.status === "running"),
+    onGenerate: () => openRun("summary"),
+  };
 
   const runTask = async (task: () => Promise<void>) => {
     setBusy(true);
@@ -440,6 +454,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
   /** Starts a run with the settings-selected providers; no per-run picker. */
   const openRun = (kind: "reprocess" | "summary", target: { partId?: string } = {}) => {
+    if (kind === "summary" && !previewRecordings && (!selected?.transcript?.text.trim() || captureBlocksAsr)) return;
     if (kind === "reprocess") {
       const targetGroupIds = target.partId
         ? recordings.filter((part) => part.recording.id === target.partId).map((part) => part.recording.groupId)
@@ -640,7 +655,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </>}
         </Popover.Dialog></Popover.Content>
       </Popover>
-      {actions}
+      {actions?.(summaryAction)}
       </div>
     </div>
 
@@ -719,7 +734,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </Button>
           <Popover.Content placement="bottom start" className="w-fit min-w-0 max-w-[calc(100vw-24px)]"><Popover.Dialog className="p-1">
             <div className="flex flex-col gap-1">
-              <Button size="sm" variant="ghost" className="justify-start gap-2" onPress={() => { setModelOpen(false); openRun("summary"); }}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Button>
+              {selected.transcript?.text.trim() && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={summaryAction.isGenerating} onPress={() => { setModelOpen(false); openRun("summary"); }}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Button>}
               <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={wholeMeetingAsrBlocked || !availableParts.length} onPress={() => { setModelOpen(false); openRun("reprocess"); }}><FileText size={14}/>{t("meetingResults.newAsr")}</Button>
               {mock && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={mock.recap === "running" || !summaryText} onPress={() => { setModelOpen(false); patchMock({ recap: "running" }); mockAfter(1500, { recap: "ok" }); }}><AlignLeft size={14}/>{mock.recap === "ok" ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
               {!mock && selected?.summary && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={busy || recapStatus === "running" || !selected.run.hasSummary} onPress={() => { setModelOpen(false); void runSummaryAction("recap"); }}><AlignLeft size={14}/>{/^## Recap\s*$/m.test(summaryText ?? "") ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
@@ -731,7 +746,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       {mock && summaryText && !summaryIsStale && <MockSummaryNotices mock={mock} onRegenerate={() => { notify("Mock: Summary regenerated with the new names"); patchMock({ summaryStale: false }); }} />}
       {summaryText ? <article className="note-prose"><ReactMarkdown>{summaryText}</ReactMarkdown></article> : <>
         {mock?.autoSummarySkipped && <NoteNotice status="accent" title={tr("autoSummarySkipped", "Automatic Summary skipped")} description={tr("autoSummarySkippedReason", "This meeting is short ({{seconds}} s, {{chars}} characters). Automatic Summary starts after 180 s and 2500 characters. You can create one now.", mock.autoSummarySkipped)} />}
-        {fallbackSummary}
+        {fallbackSummary(summaryAction)}
       </>}
       {mock && summaryText && <MockTaskNotices tasks={mock.tasks} notify={notify} onRetry={() => { patchMock({ tasks: "loading" }); mockAfter(1500, { tasks: "ok" }); }} />}
       {!mock && summaryText && selected?.summary && <SummaryTaskNotice

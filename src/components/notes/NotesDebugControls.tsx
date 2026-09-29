@@ -16,6 +16,7 @@ export type NotesDebugScenario =
   | "blocked"
   | "failed"
   | "summary-failed"
+  | "summary-generating"
   | "incomplete"
   | "audio-deleted"
   | "enhanced-stale"
@@ -28,6 +29,8 @@ export type NotesDebugScenario =
   | "capture-failed"
   | "gate-waiting"
   | "naming"
+  | "audio-playing"
+  | "audio-paused"
   | "short-meeting"
   | "speakers-auto"
   | "summary-tasks-loading"
@@ -75,6 +78,7 @@ const scenarioGroups: { id: string; label: string; items: { id: NotesDebugScenar
       { id: "processing-elapsed-long", label: "Running · 2 min in" },
       { id: "blocked", label: "Blocked" },
       { id: "failed", label: "Transcription failed" },
+      { id: "summary-generating", label: "Summary generating" },
       { id: "summary-failed", label: "Summary failed" },
     ],
   },
@@ -94,6 +98,8 @@ const scenarioGroups: { id: string; label: string; items: { id: NotesDebugScenar
     items: [
       { id: "gate-waiting", label: "15 s wait before transcription" },
       { id: "naming", label: "Identifying speakers" },
+      { id: "audio-playing", label: "Audio part playing" },
+      { id: "audio-paused", label: "Audio part paused" },
       { id: "short-meeting", label: "Short meeting, no auto Summary" },
     ],
   },

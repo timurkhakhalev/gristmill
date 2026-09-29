@@ -875,6 +875,7 @@ export default function NoteEditor({
                 />
               ) : null}
               actions={(summaryAction: SummaryActionState) => {
+                if (summaryAction.isGenerating) return null;
                 const generateSummary = debugPreview ? onGenerateSummary : summaryAction.onGenerate;
                 return <div className="flex flex-wrap items-center gap-1.5">
                   {canEditNote && (
@@ -921,15 +922,16 @@ export default function NoteEditor({
                   disabled={!canEditNote}
                   mentionPeople={mentionPeople}
                 />;
+                if (summaryAction.isGenerating) return null;
                 const generateSummary = debugPreview ? onGenerateSummary : summaryAction.onGenerate;
                 const canGenerateSummary = summaryAction.available && canEditNote && !isRecording && !!generateSummary;
                 return <EmptyStateCard icon={Sparkles} title={t("notes.editor.summaryEmptyTitle")} description={t(canGenerateSummary ? "notes.editor.summaryReadyDescription" : "notes.editor.summaryEmptyDescription")} className="mt-2">
-                  {canGenerateSummary && <Button size="sm" disabled={summaryAction.isGenerating} onClick={() => {
+                  {canGenerateSummary && <Button size="sm" onClick={() => {
                     generateSummary();
                     if (debugPreview) setViewMode("enhanced");
                   }}>
                     <WandSparkles size={16} className="text-accent" />
-                    {summaryAction.isGenerating ? t("notes.editor.generatingSummary") : t("notes.editor.generateSummary")}
+                    {t("notes.editor.generateSummary")}
                   </Button>}
                 </EmptyStateCard>;
               }}

@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState, type Rea
 import ReactMarkdown from "react-markdown";
 import { Button, Dropdown, Label, ListBox, Modal, Popover, Select, Tooltip } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, AlignLeft, ArrowLeft, ArrowRight, AudioLines, Check, ChevronDown, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2, WandSparkles } from "../icons";
+import { AlertTriangle, AlignLeft, AudioLines, Check, ChevronDown, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2, WandSparkles } from "../icons";
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import { MEETING_ASR_GATE_MS } from "../../contracts/meetingRecording";
@@ -134,6 +134,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState("");
+  const [isPlaying, setIsPlaying] = useState(false);
   const [message, setMessage] = useState("");
   const toastApi = useContext(ToastContext);
   // Outcomes of one-off actions go to a toast; the inline line is only a fallback outside ToastProvider.
@@ -146,6 +147,15 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const [recapStatus, setRecapStatus] = useState<"running" | "provider-error" | "format-error" | "conflict" | null>(null);
   const [mock, setMock] = useState(mockPipeline);
   useEffect(() => setMock(mockPipeline), [mockPipeline]);
+  useEffect(() => {
+    const playback = mockPipeline?.audioPlayback;
+    if (!playback || !previewRecordings?.length) return;
+    setPopoverTab("audio");
+    setAudioOpen(true);
+    setPlayingId(previewRecordings[0].recording.id);
+    setPlaybackTime(playback.currentTime);
+    setIsPlaying(playback.playing);
+  }, [mockPipeline, previewRecordings]);
   const patchMock = useCallback((patch: Partial<MockPipeline>) => setMock((current) => current && { ...current, ...patch }), []);
   const mockTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(mockTimer.current), []);
@@ -174,6 +184,30 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const [speakerId, setSpeakerId] = useState<string | null>(null);
   const [speakerName, setSpeakerName] = useState("");
   const [speakerProfileId, setSpeakerProfileId] = useState("none");
+  const [participantEmail, setParticipantEmail] = useState("none");
+  const [calendarParticipants, setCalendarParticipants] = useState<Array<{ email: string; name: string | null }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    setCalendarParticipants([]);
+    if (previewRecordings) return;
+    void (async () => {
+      const note = await window.electronAPI.getNote(noteId);
+      const raw: unknown = note?.participants ? JSON.parse(note.participants) : [];
+      if (!Array.isArray(raw)) throw new Error("Invalid calendar participants");
+      const attendees = new Map<string, string | null>();
+      for (const person of raw) {
+        if (person && typeof person.email === "string" && person.email.trim()) {
+          attendees.set(person.email.trim().toLowerCase(), typeof person.displayName === "string" ? person.displayName : null);
+        }
+      }
+      const contacts = await window.electronAPI.getContactProfiles([...attendees.keys()]);
+      const names = new Map(contacts.map((contact) => [contact.email.toLowerCase(), contact.display_name]));
+      if (!cancelled) setCalendarParticipants([...attendees].map(([email, name]) => ({ email, name: names.get(email) || name })));
+    })().catch(() => {
+      if (!cancelled) notify(t("meetingResults.participantsLoadError", { defaultValue: "Could not load calendar participants." }), "destructive");
+    });
+    return () => { cancelled = true; };
+  }, [noteId, previewRecordings, speakerId, notify, t]);
   const [profiles, setProfiles] = useState<Array<{ id: number; display_name: string }>>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playbackTime, setPlaybackTime] = useState(0);
@@ -187,29 +221,52 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     if (!audio) return;
     const onTime = () => { if (!isSeeking) setPlaybackTime(audio.currentTime); };
     const onMeta = () => setPlaybackDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
-    const onEnd = () => { setPlaybackTime(0); setPlayingId(null); };
+    const onEnd = () => { setPlaybackTime(0); setPlayingId(null); setIsPlaying(false); };
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onMeta);
     audio.addEventListener("durationchange", onMeta);
     audio.addEventListener("ended", onEnd);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
     return () => {
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("loadedmetadata", onMeta);
       audio.removeEventListener("durationchange", onMeta);
       audio.removeEventListener("ended", onEnd);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
     };
   }, [isSeeking]);
+
+  // timeupdate fires only ~4 times a second; drive the thumb per frame while playing.
+  useEffect(() => {
+    if (!isPlaying || isSeeking) return;
+    let frame = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const audio = audioRef.current;
+      if (previewRecordings) setPlaybackTime((value) => value + (now - last) / 1000);
+      else if (audio) setPlaybackTime(audio.currentTime);
+      last = now;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [isPlaying, isSeeking, previewRecordings]);
 
   const playingRecording = useMemo(
     () => recordings.find((item) => item.recording.id === playingId) ?? null,
     [recordings, playingId]
   );
 
+  const totalDuration = playbackDuration > 0 ? playbackDuration : playingRecording?.recording.durationSeconds ?? 0;
   const seekTo = (seconds: number) => {
     const audio = audioRef.current;
     if (!audio) return;
-    const clamped = Math.max(0, Math.min(seconds, Number.isFinite(audio.duration) ? audio.duration : seconds));
-    audio.currentTime = clamped;
+    const clamped = Math.max(0, Math.min(seconds, totalDuration || seconds));
+    if (!previewRecordings) audio.currentTime = clamped;
     setPlaybackTime(clamped);
   };
   const skip = (delta: number) => seekTo(playbackTime + delta);
@@ -221,7 +278,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     const rect = bar.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
     setIsSeeking(true);
-    seekTo(ratio * (Number.isFinite(audio.duration) ? audio.duration : 0));
+    seekTo(ratio * totalDuration);
     bar.setPointerCapture(event.pointerId);
   };
   const onSeekBarPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -231,7 +288,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     if (!bar || !audio) return;
     const rect = bar.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    seekTo(ratio * (Number.isFinite(audio.duration) ? audio.duration : 0));
+    seekTo(ratio * totalDuration);
   };
   const onSeekBarPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
     setIsSeeking(false);
@@ -239,6 +296,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   };
   const togglePlay = () => {
     if (!audioRef.current || !playingId) return;
+    if (previewRecordings) { setIsPlaying((value) => !value); return; }
     if (audioRef.current.paused) {
       void audioRef.current.play().catch(() => notify(t("meetingResults.playbackError"), "destructive"));
     } else {
@@ -442,8 +500,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   };
 
   const startAudio = async (id: string, seek = 0) => {
-    if (playingId === id && audioRef.current && seek === 0) { audioRef.current.pause(); setPlayingId(null); return; }
-    if (previewRecordings) { notify(tr("previewAudio", "Preview audio is unavailable.")); return; }
+    if (playingId === id && audioRef.current && seek === 0) { togglePlay(); return; }
+    if (previewRecordings) { setPlaybackTime(seek); setPlayingId(id); setIsPlaying(true); return; }
     if (!recordings.some((item) => item.recording.id === id && item.recording.audioState === "available")) return;
     const path = await window.electronAPI.meetingRecordingGetPlaybackPath(id);
     if (!path.success || !path.path) { notify(path.error || t("meetingResults.playbackError"), "destructive"); return; }
@@ -522,7 +580,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       title: t("meetingResults.deleteAudioTitle"), description: t("meetingResults.deleteAudioDescription"),
       confirmText: t("meetingResults.deleteAudioConfirm"), variant: "destructive",
       onConfirm: () => void runTask(async () => {
-        audioRef.current?.pause(); setPlayingId(null);
+        audioRef.current?.pause(); setPlayingId(null); setIsPlaying(false);
         if (previewRecordings) { setRecordings((items) => items.map((item) => item.recording.id === id ? { ...item, recording: { ...item.recording, audioState: "deleted" } } : item)); return; }
         const result = await window.electronAPI.meetingRecordingDeleteAudio(id);
         if (!result.success) throw new Error(result.error || t("meetingResults.deleteError"));
@@ -541,6 +599,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     const result = await window.electronAPI.meetingProcessingSetSpeakerCorrection({
       runId: selected.run.kind === "summary" ? selected.run.sourceRunId ?? selected.run.id : selected.run.id,
       speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId),
+      ...(participantEmail !== "none" ? { participantEmail } : {}),
     });
     if (!result.success) throw new Error(result.error || t("meetingResults.speakerError"));
     setSpeakerId(null);
@@ -553,7 +612,24 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     notify(t("meetingResults.exported"), "success");
   });
 
+  const editSpeaker = (id: string) => {
+    const correction = selected?.speakerCorrections.find((item) => item.speakerId === id);
+    setSpeakerId(id);
+    setSpeakerName(correction?.displayName ?? speakerLabel(id));
+    setSpeakerProfileId(String(correction?.profileId ?? "none"));
+    setParticipantEmail("none");
+  };
+  const unlinkedSpeakers = calendarParticipants.length ? selected?.speakerCorrections.filter((speaker) =>
+    speaker.source === "model" && speaker.speakerId !== "mic" &&
+    (calendarParticipants.filter((person) => person.name?.trim().toLowerCase() === speaker.displayName.trim().toLowerCase()).length !== 1 ||
+      selected.speakerCorrections.filter((item) => item.displayName.trim().toLowerCase() === speaker.displayName.trim().toLowerCase()).length > 1)
+  ) ?? [] : [];
+
   const transcriptContent = selected?.transcript ? <div>
+        {unlinkedSpeakers.length > 0 && <div className="mb-3 rounded-lg border border-border p-3">
+          <p className="text-xs text-muted">{tr("linkParticipantsHint", "Remember these names for future meetings by linking them to calendar participants.")}</p>
+          <div className="mt-2 flex flex-wrap gap-2">{unlinkedSpeakers.map((speaker) => <Button key={speaker.speakerId} size="sm" variant="secondary" onPress={() => editSpeaker(speaker.speakerId)}>{speaker.displayName} · {tr("linkParticipant", "Link participant")}</Button>)}</div>
+        </div>}
         {selected.transcript.segments?.length ? (() => {
           // Cumulative offsets per recording part so we can drop a header in
           // front of the first segment of each part beyond the first one.
@@ -597,8 +673,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
                   }
                 }}>{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</button>
                 <div>{segment.speaker && <button className="rounded text-xs font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
-                  const correction = selected.speakerCorrections.find((item) => item.speakerId === segment.speaker);
-                  setSpeakerId(segment.speaker ?? null); setSpeakerName(correction?.displayName ?? (segment.speaker ? speakerLabel(segment.speaker) : "")); setSpeakerProfileId(String(correction?.profileId ?? "none"));
+                  editSpeaker(segment.speaker!);
                 }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}{segment.speaker && (selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.source === "model" || mock?.modelSpeakerIds?.includes(segment.speaker)) && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("autoNameHint", "Suggested from the conversation. Click the name to change it.")}>{tr("autoName", "auto")}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
               </div>
             </div>;
@@ -640,7 +715,12 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </div>
           {popoverTab === "transcript" && <div ref={transcriptScrollRef} className="min-h-0 flex-1 overflow-y-auto">{transcriptContent}</div>}
           {popoverTab === "audio" && <>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto" onKeyDown={(event) => {
+            if (!playingId || !event.currentTarget.contains(event.target as Node)) return;
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            skip(event.key === "ArrowLeft" ? -5 : 5);
+          }}>
           {!audioGroups.length && <p className="mt-2 text-muted">{tr("noAudioParts", "Audio parts appear here after recording.")}</p>}
           {displayedGroups.map((group, groupIndex) => {
             const date = dateLabel(group.parts[0].recording.startedAt, locale, { dateStyle: "medium" }, dateFormat, timeFormat);
@@ -650,8 +730,18 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
             return <section key={group.id} className="mt-2">
             {date !== previousDate && <span className="text-xs font-medium text-muted">{date}</span>}
           {group.parts.map((part, index) => <div className="flex items-center gap-2 border-b border-border py-1.5 last:border-0" key={part.recording.id}>
-            <Button isIconOnly size="sm" variant="ghost" isDisabled={part.recording.audioState !== "available"} aria-label={playingId === part.recording.id ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={() => void startAudio(part.recording.id)}>{playingId === part.recording.id ? <Pause size={16}/> : <Play size={16}/>}</Button>
-            <AudioPartSummary part={part.recording} index={index} count={group.parts.length} timeLabel={(value) => dateLabel(value, locale, { timeStyle: "short" }, dateFormat, timeFormat)} tr={tr} warning={captureWarning} />
+            <Button isIconOnly size="sm" variant="ghost" isDisabled={part.recording.audioState !== "available"} aria-label={playingId === part.recording.id && isPlaying ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={() => void startAudio(part.recording.id)}>{playingId === part.recording.id && isPlaying ? <Pause size={16}/> : <Play size={16}/>}</Button>
+            {playingId === part.recording.id
+              ? <InlineSeek
+                  seekBarRef={seekBarRef}
+                  currentTime={playbackTime}
+                  duration={totalDuration}
+                  onPointerDown={onSeekBarPointerDown}
+                  onPointerMove={onSeekBarPointerMove}
+                  onPointerUp={onSeekBarPointerUp}
+                  label={t("meetingResults.seekAudio", { defaultValue: "Seek audio" })}
+                />
+              : <AudioPartSummary part={part.recording} index={index} count={group.parts.length} timeLabel={(value) => dateLabel(value, locale, { timeStyle: "short" }, dateFormat, timeFormat)} tr={tr} warning={captureWarning} />}
             <Dropdown><Button isIconOnly size="sm" variant="ghost" aria-label={tr("partActions", "Audio part actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("partActions", "Audio part actions")} onAction={(key) => {
               if (key === "asr") openRun("reprocess", { partId: part.recording.id });
               if (key === "export") void exportPart(part.recording.id);
@@ -774,30 +864,15 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     </div>}
     </div>
     {message && <NoteNotice status="default" title={message} />}
-    {playingRecording && (
-      <AudioPlayer
-        audioRef={audioRef}
-        recording={playingRecording.recording}
-        currentTime={playbackTime}
-        duration={playbackDuration}
-        seekBarRef={seekBarRef}
-        onTogglePlay={togglePlay}
-        onSkip={skip}
-        onSeekBarPointerDown={onSeekBarPointerDown}
-        onSeekBarPointerMove={onSeekBarPointerMove}
-        onSeekBarPointerUp={onSeekBarPointerUp}
-        tr={tr}
-        t={t}
-        locale={locale}
-        dateFormat={dateFormat}
-        timeFormat={timeFormat}
-      />
-    )}
-    <audio ref={audioRef} preload="metadata" onEnded={() => { setPlayingId(null); setPlaybackTime(0); }} />
+    <audio ref={audioRef} preload="metadata" />
 
     <Modal isOpen={speakerId !== null} onOpenChange={(open) => { if (!open) setSpeakerId(null); }}><Modal.Backdrop><Modal.Container size="sm"><Modal.Dialog><Modal.CloseTrigger/><Modal.Header><Modal.Heading>{t("meetingResults.saveSpeaker")}</Modal.Heading></Modal.Header><Modal.Body className="flex flex-col gap-4">
       <label className="flex flex-col gap-2 text-xs">{tr("speakerName", "Speaker name")}<input dir="auto" className="h-9 rounded-lg px-3 text-sm" value={speakerName} onChange={(event) => setSpeakerName(event.target.value)} /></label>
-      <Choice label={t("meetingResults.speakerProfile")} value={speakerProfileId} options={[{ id: "none", label: t("meetingResults.noSpeakerProfile") }, ...profiles.map((item) => ({ id: String(item.id), label: item.display_name }))]} onChange={setSpeakerProfileId}/>
+      {calendarParticipants.length > 0 && <>
+        <Choice label={tr("rememberParticipant", "Remember name for calendar participant")} value={participantEmail} options={[{ id: "none", label: tr("onlyThisMeeting", "Only this meeting") }, ...calendarParticipants.map((person) => ({ id: person.email, label: person.name && person.name !== person.email ? `${person.name} — ${person.email}` : person.email }))]} onChange={setParticipantEmail}/>
+        <p className="text-xs text-muted">{tr("rememberParticipantHint", "Choose the person who spoke. This name will be used for their email in future meetings. Google contacts are not changed.")}</p>
+      </>}
+      <Choice label={tr("voiceProfile", "Voice profile")} value={speakerProfileId} options={[{ id: "none", label: t("meetingResults.noSpeakerProfile") }, ...profiles.map((item) => ({ id: String(item.id), label: item.display_name }))]} onChange={setSpeakerProfileId}/>
     </Modal.Body><Modal.Footer><Button variant="tertiary" onPress={() => setSpeakerId(null)}>{tr("cancel", "Cancel")}</Button><Button isDisabled={!speakerName.trim() || busy} onPress={() => void correctSpeaker()}>{t("meetingResults.saveSpeaker")}</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
     <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => !open && hideConfirmDialog()} title={confirmDialog.title} description={confirmDialog.description} confirmText={confirmDialog.confirmText} cancelText={confirmDialog.cancelText} onConfirm={confirmDialog.onConfirm} variant={confirmDialog.variant} />
   </div>;
@@ -859,97 +934,36 @@ function RecapNotice({ status, tr }: {
   return <NoteNotice status="danger" title={tr("recapFailed", "Couldn't create recap")} description={tr(status === "format-error" ? "recapFormatReason" : "recapFailedReason", status === "format-error" ? "The model reply didn't match the expected format. The Summary is unchanged." : "The Summary is unchanged. You can try again.")} />;
 }
 
-function AudioPlayer({
-  audioRef,
-  recording,
-  currentTime,
-  duration,
-  seekBarRef,
-  onTogglePlay,
-  onSkip,
-  onSeekBarPointerDown,
-  onSeekBarPointerMove,
-  onSeekBarPointerUp,
-  tr,
-  t,
-  locale,
-  dateFormat,
-  timeFormat,
-}: {
-  audioRef: React.RefObject<HTMLAudioElement | null>;
-  recording: { id: string; startedAt: string; endedAt: string | null; durationSeconds: number | null };
+function InlineSeek({ seekBarRef, currentTime, duration, onPointerDown, onPointerMove, onPointerUp, label }: {
+  seekBarRef: React.RefObject<HTMLDivElement | null>;
   currentTime: number;
   duration: number;
-  seekBarRef: React.RefObject<HTMLDivElement | null>;
-  onTogglePlay: () => void;
-  onSkip: (delta: number) => void;
-  onSeekBarPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
-  onSeekBarPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
-  onSeekBarPointerUp: (event: React.PointerEvent<HTMLDivElement>) => void;
-  tr: (key: string, fallback: string, values?: Record<string, number>) => string;
-  t: (key: string, options?: { defaultValue?: string }) => string;
-  locale: string;
-  dateFormat: DateFormat;
-  timeFormat: TimeFormat;
+  onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => void;
+  label: string;
 }) {
-  const effectiveDuration = duration > 0 ? duration : recording.durationSeconds ?? 0;
-  const isPlaying = audioRef.current ? !audioRef.current.paused : false;
-  const ratio = effectiveDuration > 0 ? Math.min(1, currentTime / effectiveDuration) : 0;
-  const started = dateLabel(recording.startedAt, locale, { timeStyle: "short" }, dateFormat, timeFormat);
-  return (
-    <div className="sticky bottom-3 left-0 right-0 z-20 mx-auto mt-4 flex w-full max-w-[880px] flex-col gap-2 rounded-2xl border border-border bg-background/95 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <div className="flex items-center gap-2">
-        <IconTooltip label={tr("skipBack", "Back 15 seconds")}>
-          <Button isIconOnly size="sm" variant="ghost" aria-label={tr("skipBack", "Back 15 seconds")} onPress={() => onSkip(-15)}>
-            <span className="relative inline-flex items-center justify-center">
-              <ArrowLeft size={14} />
-              <span className="absolute -bottom-2 text-2xs font-semibold tabular-nums">15</span>
-            </span>
-          </Button>
-        </IconTooltip>
-        <IconTooltip label={isPlaying ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")}>
-          <Button isIconOnly size="sm" variant="secondary" aria-label={isPlaying ? tr("pauseAudio", "Pause audio") : tr("playAudio", "Play audio")} onPress={onTogglePlay}>
-            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
-          </Button>
-        </IconTooltip>
-        <IconTooltip label={tr("skipForward", "Forward 15 seconds")}>
-          <Button isIconOnly size="sm" variant="ghost" aria-label={tr("skipForward", "Forward 15 seconds")} onPress={() => onSkip(15)}>
-            <span className="relative inline-flex items-center justify-center">
-              <ArrowRight size={14} />
-              <span className="absolute -bottom-2 text-2xs font-semibold tabular-nums">15</span>
-            </span>
-          </Button>
-        </IconTooltip>
-        <span className="tabular-nums text-xs text-muted">{formatClock(currentTime)}</span>
-        <div
-          ref={seekBarRef}
-          role="slider"
-          aria-label={t("meetingResults.seekAudio", { defaultValue: "Seek audio" })}
-          aria-valuemin={0}
-          aria-valuemax={Math.round(effectiveDuration)}
-          aria-valuenow={Math.round(currentTime)}
-          tabIndex={0}
-          onPointerDown={onSeekBarPointerDown}
-          onPointerMove={onSeekBarPointerMove}
-          onPointerUp={onSeekBarPointerUp}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowLeft") { event.preventDefault(); onSkip(-5); }
-            if (event.key === "ArrowRight") { event.preventDefault(); onSkip(5); }
-          }}
-          className="relative h-2 flex-1 cursor-pointer touch-none rounded-full bg-default"
-        >
-          <div className="absolute inset-y-0 left-0 rounded-full bg-primary" style={{ width: `${ratio * 100}%` }} />
-          <div
-            aria-hidden="true"
-            className="absolute top-1/2 size-3 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-primary bg-background shadow"
-            style={{ left: `${ratio * 100}%` }}
-          />
-        </div>
-        <span className="tabular-nums text-xs text-muted">{formatClock(effectiveDuration)}</span>
-        <span className="hidden text-2xs text-muted @md:inline">· {started}</span>
-      </div>
+  const ratio = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+  return <div className="flex min-w-0 flex-1 items-center gap-2">
+    <span className="w-9 shrink-0 text-end text-xs tabular-nums text-muted">{formatClock(currentTime)}</span>
+    <div
+      ref={seekBarRef}
+      role="slider"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration)}
+      aria-valuenow={Math.round(currentTime)}
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      className="relative h-2 min-w-0 flex-1 cursor-pointer touch-none rounded-full bg-default"
+    >
+      <div className="absolute inset-y-0 left-0 rounded-full bg-primary" style={{ width: `${ratio * 100}%` }} />
+      <div aria-hidden="true" className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-primary bg-background shadow" style={{ left: `${ratio * 100}%` }} />
     </div>
-  );
+    <span className="w-9 shrink-0 text-xs tabular-nums text-muted">{formatClock(duration)}</span>
+  </div>;
 }
 
 function formatClock(seconds: number): string {

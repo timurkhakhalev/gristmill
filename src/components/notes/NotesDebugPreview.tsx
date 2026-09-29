@@ -57,13 +57,15 @@ const TASK2_SUMMARY_SCENARIOS: NotesDebugScenario[] = [
   "summary-tasks-format", "summary-tasks-conflict", "summary-recap-running", "summary-recap",
 ];
 const TASK2_TRANSCRIPT_SCENARIOS: NotesDebugScenario[] = [
-  ...TASK2_SUMMARY_SCENARIOS, "naming", "short-meeting", "speakers-auto", "chat-follow-up",
+  ...TASK2_SUMMARY_SCENARIOS, "naming", "audio-playing", "audio-paused", "short-meeting", "speakers-auto", "chat-follow-up",
 ];
 
 function makeMockPipeline(scenario: NotesDebugScenario): MockPipeline | undefined {
   switch (scenario) {
     case "gate-waiting": return { waitingSeconds: MOCK_GATE_SECONDS };
     case "naming": return { namingRunning: true };
+    case "audio-playing": return { audioPlayback: { currentTime: 312, playing: true } };
+    case "audio-paused": return { audioPlayback: { currentTime: 312, playing: false } };
     case "short-meeting": return { autoSummarySkipped: { seconds: 130, chars: 1340 } };
     case "speakers-auto": return { modelSpeakerIds: ["speaker-2"], tasks: "ok", recap: "none" };
     case "summary-tasks-loading": return { tasks: "loading", recap: "none" };
@@ -86,6 +88,7 @@ function makePreview(scenario: NotesDebugScenario) {
     "audio-deleted",
     "enhanced-stale",
     "summary-failed",
+    "summary-generating",
   ].includes(scenario);
   const hasSummary =
     TASK2_SUMMARY_SCENARIOS.includes(scenario) || scenario === "speakers-auto" ||
@@ -120,6 +123,7 @@ function makePreview(scenario: NotesDebugScenario) {
     scenario === "queued"
       ? "pending"
       : scenario === "processing" ||
+          scenario === "summary-generating" ||
           scenario === "processing-elapsed-short" ||
           scenario === "processing-elapsed-long"
         ? "running"
@@ -178,6 +182,7 @@ function makePreview(scenario: NotesDebugScenario) {
     "blocked",
     "failed",
     "summary-failed",
+    "summary-generating",
     "incomplete",
     "transcript",
     "ready",
@@ -185,7 +190,7 @@ function makePreview(scenario: NotesDebugScenario) {
     "enhanced-stale",
   ].includes(scenario);
   const isMultiPartTranscript =
-    scenario === "transcript" || scenario === "ready" || scenario === "audio-deleted" || scenario === "enhanced-stale" || scenario === "summary-failed";
+    scenario === "transcript" || scenario === "ready" || scenario === "audio-deleted" || scenario === "enhanced-stale" || scenario === "summary-failed" || scenario === "summary-generating";
   const recordings: MeetingProcessingRecordingResult[] = hasRecording
     ? [
         {
@@ -388,7 +393,7 @@ export default function NotesDebugPreview({
               micStatus: isRecording ? "active" : "inactive",
               systemStatus,
               viewMode:
-                scenario === "ready" || scenario === "enhanced-stale" || scenario === "short-meeting" ||
+                scenario === "ready" || scenario === "enhanced-stale" || scenario === "summary-generating" || scenario === "short-meeting" ||
                 TASK2_SUMMARY_SCENARIOS.includes(scenario)
                   ? "enhanced"
                   : "raw",

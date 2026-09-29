@@ -15,6 +15,8 @@ export interface MockPipeline {
   recap?: MockRecapState;
   /** Auto Summary was skipped because the meeting is short. */
   autoSummarySkipped?: { seconds: number; chars: number };
+  /** Audio tab open with the first part loaded in its inline player. */
+  audioPlayback?: { currentTime: number; playing: boolean };
   /** Speaker ids whose names were assigned by the model, not by a person. */
   modelSpeakerIds?: string[];
   /** Speaker names changed after the Summary was written. */

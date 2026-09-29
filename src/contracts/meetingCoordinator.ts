@@ -8,6 +8,7 @@
 // main.js. sessionId, noteId and detectionId are distinct fields and are never
 // interchangeable.
 import { z } from "zod";
+import { meetingRecordingIdSchema } from "./meetingRecording.js";
 import type { MeetingProcessingConfig, MeetingProcessingConfigError, MeetingSource } from "./meetingRecording.js";
 
 // ---- channels -----------------------------------------------------------------
@@ -145,6 +146,7 @@ export const meetingOptionsSchema = z
   .object({
     sessionId: z.string().optional(),
     noteId: z.number().int().nullable().optional(),
+    groupId: meetingRecordingIdSchema.optional(),
     autoEndEligible: z.boolean().optional(),
     recordingConfig: z.unknown().optional(),
   });

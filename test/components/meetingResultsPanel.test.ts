@@ -313,17 +313,43 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     clickSpeaker(label: string) { return flush(() => (findNode(tree, (node) => typeof node.props?.onClick === "function" && textOf(node.props.children) === label)!.props as { onClick(): void }).onClick()); },
     changeSpeakerName(value: string) { return flush(() => (findNode(tree, (node) => typeof node.props?.onChange === "function" && node.props.className === "h-9 rounded-lg px-3 text-sm")!.props as { onChange(event: { target: { value: string } }): void }).onChange({ target: { value } })); },
     saveSpeaker() { return flush(() => (findNode(tree, (node) => typeof node.props?.onPress === "function" && textOf(node.props.children) === "meetingResults.saveSpeaker")!.props as { onPress(): void }).onPress()); },
+    progressStart() { return findNode(tree, (node) => typeof node.props?.progressStartedAt === "number")?.props?.progressStartedAt; },
+    warningIcons() {
+      const count = (node: typeof container): number =>
+        Number(Boolean(node.attributes.get("aria-label")?.startsWith("notes.editor.capture.incomplete"))) +
+        node.childNodes.reduce((total, child) => total + count(child), 0);
+      return count(container);
+    },
   };
 }
 
-test("manual notes stay primary while an incomplete saved audio part is visible", async (t: TestContext) => {
-  const items = [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", null, "incomplete")];
+for (const timeZone of ["Asia/Tokyo", "America/New_York"]) {
+  test(`processing clock treats SQLite timestamps as UTC in ${timeZone}`, async (t: TestContext) => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = timeZone;
+    t.after(() => { if (previousTz === undefined) delete process.env.TZ; else process.env.TZ = previousTz; });
+    const run = completeRun();
+    run.run.stage = "asr";
+    run.run.status = "running";
+    run.run.createdAt = "2026-09-29 08:24:54";
+    const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)]);
+    assert.equal(ui.progressStart(), Date.parse("2026-09-29T08:24:54Z"));
+  });
+}
+
+test("interrupted audio parts get individual warning icons without a note-wide banner", async (t: TestContext) => {
+  const items = [
+    recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", null, "incomplete"),
+    recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z"),
+    recording(THIRD, THIRD, "2026-09-25T12:00:00.000Z", null, "incomplete"),
+  ];
   const ui = await mountPanel(t, items);
   assert.match(ui.text(), /Manual notes/);
-  assert.match(ui.text(), /notes.editor.capture.incomplete/);
+  assert.equal(ui.warningIcons(), 2);
+  assert.doesNotMatch(ui.text(), /notes.editor.capture.incomplete/);
   assert.match(ui.text(), /Audio/);
   await ui.flush(() => (ui.iconButton("Play audio")!.props as { onPress: () => void }).onPress());
-  assert.deepEqual(ui.calls.playback, [[FIRST]]);
+  assert.deepEqual(ui.calls.playback, [[THIRD]]);
   assert.match(ui.text(), /mixer-failed/);
 });
 
@@ -331,6 +357,7 @@ test("audio count and list include a newly saved recording without reload", asyn
   const first = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z");
   const second = recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z");
   const ui = await mountPanel(t, [first]);
+  assert.equal(ui.warningIcons(), 0);
   assert.ok(ui.label("Transcript and audio 1"));
   await ui.saveRecording([first, second]);
   assert.ok(ui.label("Transcript and audio 2"));

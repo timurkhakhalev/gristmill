@@ -4,18 +4,20 @@ const os = require("node:os");
 const path = require("node:path");
 
 const help = {
-  "": "Gristmill Notes CLI\nUsage: gristmill [--profile NAME] notes <command> | doctor\nCommands: notes list, notes search QUERY, notes show ID, notes content show ID, notes summary show ID, notes transcript show ID, doctor\nAll read commands return one JSON value. Errors return JSON on stderr (exit 1); invalid arguments exit 2.\nProfile defaults to production; --profile or GRISTMILL_PROFILE selects another profile. Dates use local calendar days in the selected profile's machine time zone.\nExamples: gristmill notes list; gristmill notes search release; gristmill notes transcript show 42 --from 00:12:00 --to 00:13:00",
-  notes: "Usage: gristmill notes list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--with-transcript]\n       gristmill notes search QUERY [--note ID] [--from YYYY-MM-DD] [--to YYYY-MM-DD]\n       gristmill notes show ID\n       gristmill notes content show ID\n       gristmill notes summary show ID\n       gristmill notes transcript show ID [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nSuccessful reads print one JSON value. No result limit is applied. Empty lists and absent content are successful.",
-  transcript: "Usage: gristmill notes transcript show ID [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nTimes use the concatenated Note recording timeline; intentional pauses are excluded. Interval filters include intersecting segments. --plain-text formats the same response for reading.\nExample: gristmill notes transcript show 42 --from 00:12:00 --speaker speaker_2",
-  list: "Usage: gristmill notes list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--with-transcript]\nLists all Notes, newest first. Dates are inclusive local calendar days. Empty archive: {\"notes\":[]}.",
-  search: "Usage: gristmill notes search QUERY [--note ID] [--from YYYY-MM-DD] [--to YYYY-MM-DD]\nSearches title, user notes, Summary and every current Note transcript. Returns one JSON object with notes and transcripts arrays.",
+  "": "Gristmill Notes CLI\nUsage: gristmill [--profile NAME] [--json] notes <command> | doctor\nCommands: notes list, notes search QUERY, notes show ID, notes content show ID, notes summary show ID, notes transcript show ID, doctor\nInteractive output is readable text. Redirected output is JSON; --json forces JSON in a terminal. Errors use the same output mode on stderr (exit 1); invalid arguments exit 2.\nThe installed launcher defaults to its app channel: production or development. --profile dev is shorthand for development; GRISTMILL_PROFILE also selects a profile. Dates use local calendar days in the selected profile's machine time zone.\nExamples: gristmill notes list; gristmill --profile dev notes search release; gristmill --json notes transcript show 42 --from 00:12:00 --to 00:13:00",
+  notes: "Usage: gristmill notes list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--with-transcript]\n       gristmill notes search QUERY [--note ID] [--from YYYY-MM-DD] [--to YYYY-MM-DD]\n       gristmill notes show ID\n       gristmill notes content show ID\n       gristmill notes summary show ID\n       gristmill notes transcript show ID [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nAdd --json for machine-readable output in a terminal. Redirected output is JSON. No result limit is applied. Empty lists and absent content are successful.",
+  transcript: "Usage: gristmill notes transcript show ID [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nTimes use the concatenated Note recording timeline; intentional pauses are excluded. Interval filters include intersecting segments. --plain-text forces text when output is redirected.\nExample: gristmill notes transcript show 42 --from 00:12:00 --speaker speaker_2",
+  list: "Usage: gristmill notes list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--with-transcript]\nLists all Notes, newest first. Dates are inclusive local calendar days. Empty archives print No Notes. in a terminal or {\"notes\":[]} as JSON.",
+  search: "Usage: gristmill notes search QUERY [--note ID] [--from YYYY-MM-DD] [--to YYYY-MM-DD]\nSearches title, user notes, Summary and every current Note transcript. JSON output has notes and transcripts arrays.",
   show: "Usage: gristmill notes show ID\nReturns Note metadata, participant names and content availability. Read content, summary and transcript separately.",
   content: "Usage: gristmill notes content show ID\nReturns exact user notes Markdown; an empty Note returns an empty string.",
   summary: "Usage: gristmill notes summary show ID\nReturns saved Summary Markdown or status absent; never generates content.",
 };
 
+const jsonOutput = process.argv.includes("--json") || !process.stdout.isTTY;
+
 function failure(code, message, exitCode = 1) {
-  process.stderr.write(JSON.stringify({ error: { code, message } }) + "\n");
+  process.stderr.write(jsonOutput ? JSON.stringify({ error: { code, message } }) + "\n" : `Error: ${message}\n`);
   process.exitCode = exitCode;
 }
 
@@ -28,12 +30,16 @@ function parseTime(value) {
 function parseArgs(argv) {
   const args = [...argv];
   let profile = process.env.GRISTMILL_PROFILE || "production";
+  const jsonAt = args.indexOf("--json");
+  if (jsonAt !== -1) args.splice(jsonAt, 1);
   const at = args.indexOf("--profile");
   if (at !== -1) {
     if (!args[at + 1]) throw new Error("--profile requires a name");
     profile = args[at + 1];
     args.splice(at, 2);
   }
+  if (/^dev$/i.test(profile) || /^development$/i.test(profile)) profile = "development";
+  else if (/^production$/i.test(profile)) profile = "production";
   if (profile !== "production" && !/^[a-z][a-z0-9-]*$/.test(profile) && !path.isAbsolute(profile)) {
     throw new Error("Invalid profile name");
   }
@@ -84,7 +90,8 @@ function parseArgs(argv) {
   const toMs = url.searchParams.get("to_ms");
   if (fromMs !== null && toMs !== null && Number(fromMs) >= Number(toMs)) throw new Error("--from must be before --to");
   if (url.searchParams.has("from") && url.searchParams.has("to") && url.searchParams.get("from") > url.searchParams.get("to")) throw new Error("--from must be before --to");
-  return { profile, url, plainText };
+  if (plainText && jsonAt !== -1) throw new Error("--json and --plain-text cannot be combined");
+  return { profile, url, plainText, resource };
 }
 
 function profileDir(profile) {
@@ -96,7 +103,16 @@ function connection(profile) {
   const file = path.join(profileDir(profile), ".cli-read-connection.json");
   let stat;
   try { stat = fs.lstatSync(file); }
-  catch { const error = new Error("Gristmill is not running for this profile"); error.code = "app_unavailable"; throw error; }
+  catch {
+    const message = profile === "production"
+      ? "No Notes CLI connection for production. Update or restart Gristmill, or use --profile dev for Gristmill Dev"
+      : profile === "development"
+        ? "No Notes CLI connection for development. Open Gristmill Dev and retry"
+        : "No Notes CLI connection for this profile. Open Gristmill with the selected profile and retry";
+    const error = new Error(message);
+    error.code = "app_unavailable";
+    throw error;
+  }
   if (!stat.isFile() || (stat.mode & 0o077) !== 0) { const error = new Error("Read connection file is not private"); error.code = "read_access_unavailable"; throw error; }
   const value = JSON.parse(fs.readFileSync(file, "utf8"));
   if (!Number.isInteger(value.port) || typeof value.token !== "string") { const error = new Error("Invalid read connection file"); error.code = "read_access_unavailable"; throw error; }
@@ -110,13 +126,60 @@ function time(ms) {
 }
 
 function plain(value, title) {
-  const out = [`Note #${value.note_id} · ${title}`, "Times: concatenated Note recording timeline", ""];
+  const out = [`Note #${value.note_id} · ${title}`, `Transcript: ${value.status}`, "Times: concatenated Note recording timeline"];
+  if (value.diagnostics.length) out.push(`Incomplete: ${value.diagnostics.join(", ")}`);
+  out.push("");
   for (const speaker of value.speakers) out.push(`${speaker.id} — ${speaker.name || "unknown"}${speaker.email ? ` <${speaker.email}>` : ""} · ${speaker.source || "unknown source"}`);
   out.push("");
   const names = new Map(value.speakers.map((speaker) => [speaker.id, speaker.name || speaker.id]));
   if (value.segments) for (const segment of value.segments) out.push(`[${time(segment.start_ms)}–${time(segment.end_ms)}] ${names.get(segment.speaker_id) || "unknown"}\n${segment.text}`);
   else if (value.text) out.push(value.text);
+  if (!value.text) out.push("No transcript text.");
   return out.join("\n") + "\n";
+}
+
+function formatHuman(resource, value, title = "") {
+  if (resource === "list") {
+    if (!value.notes.length) return "No Notes.\n";
+    return value.notes.map((note) => `#${note.id}\t${note.created_at}\t${note.transcript_status}\t${note.title}`).join("\n") + "\n";
+  }
+  if (resource === "search") {
+    const out = [];
+    if (value.notes.length) {
+      out.push("NOTES");
+      for (const hit of value.notes) {
+        out.push(`Note #${hit.note_id} · ${hit.title}`);
+        for (const match of hit.matches) out.push(`  ${match.source}: ${match.snippet}`);
+      }
+    }
+    if (value.transcripts.length) {
+      if (out.length) out.push("");
+      out.push("TRANSCRIPTS");
+      for (const hit of value.transcripts) {
+        out.push(`Note #${hit.note_id} · ${hit.title}`);
+        for (const match of hit.matches) out.push(`  ${match.start_ms === null ? "time unknown" : time(match.start_ms)}${match.speaker_name ? ` · ${match.speaker_name}` : ""}: ${match.snippet}`);
+      }
+    }
+    return out.length ? out.join("\n") + "\n" : "No matches.\n";
+  }
+  if (resource === "show") {
+    const out = [
+      `Note #${value.note_id} · ${value.title}`,
+      `Created: ${value.created_at}`,
+      `User notes: ${value.has_user_notes ? "available" : "absent"}`,
+      `Summary: ${value.has_summary ? "available" : "absent"}`,
+      `Transcript: ${value.transcript_status}`,
+    ];
+    if (value.participants.length) {
+      out.push("Participants:");
+      for (const person of value.participants) out.push(`  ${person.name || "Unknown"}${person.email ? ` <${person.email}>` : ""}`);
+    }
+    return out.join("\n") + "\n";
+  }
+  if (resource === "content") return value.content ? value.content + "\n" : "No user notes.\n";
+  if (resource === "summary") return value.summary ? value.summary + "\n" : "No saved Summary.\n";
+  if (resource === "transcript") return plain(value, title);
+  throw new Error(`Unknown output type: ${resource}`);
 }
 
 async function request(profile, url) {
@@ -139,23 +202,26 @@ async function main() {
   if (parsed.doctor) {
     try {
       await request(parsed.profile, new URL("/v1/health", "http://127.0.0.1"));
-      process.stdout.write(JSON.stringify({ ok: true, profile: parsed.profile, app_reachable: true, read_access: "verified" }) + "\n");
+      const result = { ok: true, profile: parsed.profile, app_reachable: true, read_access: "verified" };
+      process.stdout.write(jsonOutput ? JSON.stringify(result) + "\n" : `Gristmill ${parsed.profile}: connected (read-only)\n`);
     } catch (error) {
       const reachable = error.code === "unauthorized" || error.code === "read_only";
-      process.stdout.write(JSON.stringify({ ok: false, profile: parsed.profile, app_reachable: reachable, read_access: reachable ? "denied" : "unverified", error: { code: reachable ? "read_access_denied" : "app_unavailable", message: reachable ? "Gristmill denied read access" : "Gristmill is unavailable", hint: reachable ? "Restart Gristmill and retry" : "Open Gristmill and retry" } }) + "\n");
+      const result = { ok: false, profile: parsed.profile, app_reachable: reachable, read_access: reachable ? "denied" : "unverified", error: { code: reachable ? "read_access_denied" : "app_unavailable", message: reachable ? "Gristmill denied read access" : error.message, hint: reachable ? "Restart Gristmill and retry" : "Open the selected Gristmill profile and retry" } };
+      process.stdout.write(jsonOutput ? JSON.stringify(result) + "\n" : `Gristmill ${parsed.profile}: ${result.error.message}\n`);
       process.exitCode = 1;
     }
     return;
   }
   try {
     const value = await request(parsed.profile, parsed.url);
-    const title = parsed.plainText
+    const title = (parsed.plainText || (!jsonOutput && parsed.resource === "transcript"))
       ? (await request(parsed.profile, new URL(`/v1/notes/${value.note_id}`, "http://127.0.0.1"))).title
       : "";
-    process.stdout.write(parsed.plainText ? plain(value, title) : JSON.stringify(value) + "\n");
+    process.stdout.write(parsed.plainText ? plain(value, title) : jsonOutput ? JSON.stringify(value) + "\n" : formatHuman(parsed.resource, value, title));
   } catch (error) {
     failure(["note_not_found", "validation_error", "speaker_not_found", "transcript_filter_unavailable", "read_access_unavailable", "app_unavailable", "read_only", "unauthorized"].includes(error.code) ? error.code : "app_unavailable", error.message.includes("token") ? "Gristmill read access is unavailable" : error.message);
   }
 }
 
-void main();
+if (require.main === module) void main();
+module.exports = { formatHuman };

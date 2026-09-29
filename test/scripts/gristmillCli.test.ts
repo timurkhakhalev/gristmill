@@ -7,6 +7,7 @@ const http: typeof import("node:http") = require("node:http");
 const { spawnSync, spawn }: typeof import("node:child_process") = require("node:child_process");
 
 const cli = path.resolve("scripts/gristmill-cli.cjs");
+const { formatHuman }: { formatHuman: (resource: string, value: unknown, title?: string) => string } = require("../../scripts/gristmill-cli.cjs");
 
 test("CLI help and argument errors have distinct output contracts", () => {
   const help = spawnSync(process.execPath, [cli, "notes", "transcript", "show", "--help"], { encoding: "utf8", cwd: os.tmpdir() });
@@ -16,6 +17,34 @@ test("CLI help and argument errors have distinct output contracts", () => {
   assert.equal(invalid.status, 2);
   assert.equal(invalid.stdout, "");
   assert.equal(JSON.parse(invalid.stderr).error.code, "invalid_arguments");
+  const conflict = spawnSync(process.execPath, [cli, "--json", "notes", "transcript", "show", "42", "--plain-text"], { encoding: "utf8", cwd: os.tmpdir() });
+  assert.equal(conflict.status, 2);
+  assert.equal(JSON.parse(conflict.stderr).error.code, "invalid_arguments");
+});
+
+test("CLI recognizes dev profile aliases without opening a real profile", (t: import("node:test").TestContext) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-cli-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  for (const profile of ["dev", "DEV", "development"]) {
+    const child = spawnSync(process.execPath, [cli, "--profile", profile, "doctor"], {
+      encoding: "utf8", cwd: os.tmpdir(), env: { ...process.env, HOME: home },
+    });
+    assert.equal(child.status, 1);
+    assert.equal(JSON.parse(child.stdout).profile, "development");
+    assert.equal(JSON.parse(child.stdout).error.code, "app_unavailable");
+  }
+});
+
+test("CLI formats terminal list, transcript search and missing transcript clearly", () => {
+  assert.equal(formatHuman("list", { notes: [] }), "No Notes.\n");
+  assert.match(formatHuman("list", { notes: [{ id: 42, created_at: "2026-09-29T18:00:00+03:00", transcript_status: "ready", title: "Planning" }] }), /#42.*ready.*Planning/);
+  const search = formatHuman("search", {
+    notes: [],
+    transcripts: [{ note_id: 42, title: "Planning", matches: [{ start_ms: 72000, speaker_name: "Timur", snippet: "release plan" }] }],
+  });
+  assert.match(search, /TRANSCRIPTS[\s\S]*Note #42 · Planning[\s\S]*00:01:12\.000 · Timur: release plan/);
+  const transcript = formatHuman("transcript", { note_id: 42, status: "absent", diagnostics: [], speakers: [], segments: null, text: null }, "Planning");
+  assert.match(transcript, /Transcript: absent[\s\S]*No transcript text\./);
 });
 
 test("CLI reads a profile-scoped connection and prints one JSON response", async (t: import("node:test").TestContext) => {

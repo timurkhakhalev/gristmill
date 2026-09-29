@@ -189,17 +189,19 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   };
 }
 
-test("processing clock treats SQLite timestamps as UTC", async (t: TestContext) => {
-  const previousTz = process.env.TZ;
-  process.env.TZ = "Europe/Moscow";
-  t.after(() => { if (previousTz === undefined) delete process.env.TZ; else process.env.TZ = previousTz; });
-  const run = completeRun();
-  run.run.stage = "asr";
-  run.run.status = "running";
-  run.run.createdAt = "2026-09-29 08:24:54";
-  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)]);
-  assert.equal(ui.progressStart(), Date.parse("2026-09-29T08:24:54Z"));
-});
+for (const timeZone of ["Asia/Tokyo", "America/New_York"]) {
+  test(`processing clock treats SQLite timestamps as UTC in ${timeZone}`, async (t: TestContext) => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = timeZone;
+    t.after(() => { if (previousTz === undefined) delete process.env.TZ; else process.env.TZ = previousTz; });
+    const run = completeRun();
+    run.run.stage = "asr";
+    run.run.status = "running";
+    run.run.createdAt = "2026-09-29 08:24:54";
+    const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)]);
+    assert.equal(ui.progressStart(), Date.parse("2026-09-29T08:24:54Z"));
+  });
+}
 
 test("manual notes stay primary while an incomplete saved audio part is visible", async (t: TestContext) => {
   const items = [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", null, "incomplete")];

@@ -37,7 +37,7 @@ export async function ensureLocalEngine(engine: LocalEngine): Promise<void> {
         env: {
           ...process.env,
           ELECTRON_RUN_AS_NODE: "1",
-          OPENHERCULES_LOCAL_BIN_DIR: binDir,
+          GRISTMILL_LOCAL_BIN_DIR: binDir,
         },
       });
       let stderr = "";

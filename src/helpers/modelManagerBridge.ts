@@ -739,15 +739,6 @@ export class ModelManager {
     });
     if (signal?.aborted) throw Object.assign(new Error("Inference cancelled"), { name: "AbortError" });
 
-    // Ensure server is available
-    if (!this.serverManager.isAvailable()) {
-      debugLogger.logReasoning("INFERENCE_SERVER_NOT_AVAILABLE", {});
-      throw new ModelError(
-        "llama-server binary not found. Please ensure the app is installed correctly.",
-        "LLAMASERVER_NOT_FOUND"
-      );
-    }
-
     const modelInfo = this.findModelById(modelId);
     if (!modelInfo) {
       debugLogger.logReasoning("INFERENCE_MODEL_NOT_FOUND", { modelId });
@@ -978,8 +969,6 @@ export class ModelManager {
 
     const modelPath = path.join(this.modelsDir as string, modelInfo.model.fileName);
     if (!(await this.checkModelValid(modelPath))) return false;
-
-    if (!this.serverManager.isAvailable()) return false;
 
     try {
       await this.serverManager.start(modelPath, await this.serverStartOptions(modelInfo));

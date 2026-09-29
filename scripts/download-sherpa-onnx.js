@@ -47,7 +47,7 @@ const BINARIES = {
   },
 };
 
-const BIN_DIR = path.join(__dirname, "..", "resources", "bin");
+const BIN_DIR = process.env.OPENHERCULES_LOCAL_BIN_DIR || path.join(__dirname, "..", "resources", "bin");
 
 const VERSIONED_LIB_PATTERN = /^(lib.+?)\.(\d+\.\d+\.\d+)\.(dylib|so|dll)$/;
 const REQUIRED_MACOS_ARCHITECTURES = ["x86_64", "arm64"];
@@ -396,5 +396,8 @@ module.exports = {
 
 // Only run main() when executed directly
 if (require.main === module) {
-  main().catch(console.error);
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }

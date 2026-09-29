@@ -28,7 +28,7 @@ const BINARIES = {
   },
 };
 
-const BIN_DIR = path.join(__dirname, "..", "resources", "bin");
+const BIN_DIR = process.env.OPENHERCULES_LOCAL_BIN_DIR || path.join(__dirname, "..", "resources", "bin");
 
 let cachedRelease = null;
 
@@ -195,7 +195,10 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch(console.error);
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }
 
 module.exports = { BINARIES, LLAMA_CPP_TAG };

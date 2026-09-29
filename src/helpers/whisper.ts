@@ -275,10 +275,6 @@ export class WhisperManager {
   }
 
   async startServer(modelName: string, options: Record<string, unknown> = {}): Promise<{ success: boolean; reason?: string; port?: number }> {
-    if (!this.serverManager.isAvailable()) {
-      return { success: false, reason: "whisper-server binary not found" };
-    }
-
     const modelPath = this.getModelPath(modelName);
     if (!fs.existsSync(modelPath)) {
       return { success: false, reason: `Model "${modelName}" not downloaded` };
@@ -363,13 +359,6 @@ export class WhisperManager {
       serverAvailable: this.serverManager.isAvailable(),
       serverReady: this.serverManager.ready,
     });
-
-    // Server mode required
-    if (!this.serverManager.isAvailable()) {
-      throw new Error(
-        "whisper-server binary not found. Please ensure the app is installed correctly."
-      );
-    }
 
     const model = (options.model as string) || "base";
     const language = (options.language as string | undefined) || null;

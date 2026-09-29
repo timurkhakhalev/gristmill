@@ -1338,8 +1338,10 @@ export class MeetingProcessingWorker {
       if (latest.snapshotJson !== context.snapshotJson || latestSection !== expectedSection) {
         throw new MeetingProcessingFailure("meeting-summary-edit-conflict", "failed");
       }
+      const expected = mutate(context.markdown);
+      if (!expected.success) throw new MeetingProcessingFailure(expected.error, "failed");
       const result = mutate(latest.markdown);
-      if (!result.success) throw new MeetingProcessingFailure(result.error, "failed");
+      if (!result.success) throw new MeetingProcessingFailure("meeting-summary-edit-conflict", "failed");
       const updatedArtifact = meetingSummaryArtifactSchema.parse({
         ...latest.artifact,
         text: result.markdown,

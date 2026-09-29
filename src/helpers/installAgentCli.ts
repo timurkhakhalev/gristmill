@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
+import { isDevelopmentChannel } from "./appChannel.js";
 
 const MARKER = "# Gristmill Notes CLI launcher";
 const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
@@ -17,7 +18,9 @@ export function installAgentCli(): string {
   if (fs.existsSync(target) && !fs.readFileSync(target, "utf8").includes(MARKER)) {
     throw new Error(`${target} exists and is not a Gristmill launcher`);
   }
-  const content = `#!/bin/sh\n${MARKER}\nELECTRON_RUN_AS_NODE=1 exec ${quote(process.execPath)} ${quote(script)} "$@"\n`;
+  const defaultProfile = isDevelopmentChannel() ? "development" : "production";
+  const profileExpression = "${GRISTMILL_PROFILE:-" + defaultProfile + "}";
+  const content = `#!/bin/sh\n${MARKER}\nexport GRISTMILL_PROFILE="${profileExpression}"\nELECTRON_RUN_AS_NODE=1 exec ${quote(process.execPath)} ${quote(script)} "$@"\n`;
   const temporary = path.join(directory, `.gristmill-${process.pid}.tmp`);
   try {
     fs.writeFileSync(temporary, content, { mode: 0o755 });

@@ -223,7 +223,7 @@ test("one-off action turns use only the current message and cannot invoke tools"
   assert.equal("tools" in request!, false);
 });
 
-test("bb Chat supplies the Gristmill prompt and CLI discovery without transport instructions", async (t: import("node:test").TestContext) => {
+test("bb Chat seeds instructions once and sends the next user message verbatim", async (t: import("node:test").TestContext) => {
   let listener: ((part: import("../../src/contracts/bb.ts").BbStreamEnvelope) => void) | undefined;
   let prompt = "";
   let initialPrompt = "";
@@ -256,20 +256,22 @@ test("bb Chat supplies the Gristmill prompt and CLI discovery without transport 
       bbStreamCancel: async () => {},
     },
   });
-  await captured.sendToAI("What was agreed?", [
+  const userText = "  хмм ок спасибо\nЧто ещё решили?  ";
+  await captured.sendToAI(userText, [
     { id: "earlier-user", role: "user", content: "Earlier question", isStreaming: false },
     { id: "earlier-assistant", role: "assistant", content: "Earlier answer", isStreaming: false },
-    { id: "current", role: "user", content: "What was agreed?", isStreaming: false },
+    { id: "current", role: "user", content: userText, isStreaming: false },
   ], { conversationId: 12 });
-  assert.match(prompt, /You are a helpful assistant in Gristmill app\./);
-  assert.match(prompt, /Use gristmill, a helper client, to retrieve additional information about meetings when needed\./);
-  assert.match(prompt, /Run gristmill --help for usage and options\./);
-  assert.match(prompt, /Current Note ID: 42\./);
+  assert.match(initialPrompt, /You are a helpful assistant in Gristmill app\./);
+  assert.match(initialPrompt, /Use gristmill, a helper client, to retrieve additional information about meetings when needed\./);
+  assert.match(initialPrompt, /Run gristmill --help for usage and options\./);
+  assert.match(initialPrompt, /Current Note ID: 42\./);
   assert.equal(conversationId, 12);
-  assert.match(initialPrompt, /Earlier question[\s\S]*Earlier answer[\s\S]*What was agreed/);
-  assert.doesNotMatch(prompt, /Earlier question|Earlier answer/);
-  assert.doesNotMatch(prompt, /voice assistant|node |GRISTMILL_PROFILE|--profile|gristmill-tools|AGENTS\.md|Private full transcript/);
-  assert.doesNotMatch(prompt, /UniqueDictionaryTerm|UniqueSnippetTrigger|Custom Dictionary|Пользовательский словарь/);
+  assert.match(initialPrompt, /Earlier question[\s\S]*Earlier answer/);
+  assert.ok(initialPrompt.endsWith(`USER:\n${userText}`));
+  assert.equal(prompt, userText);
+  assert.doesNotMatch(initialPrompt, /voice assistant|node |GRISTMILL_PROFILE|--profile|gristmill-tools|AGENTS\.md|Private full transcript/);
+  assert.doesNotMatch(initialPrompt, /UniqueDictionaryTerm|UniqueSnippetTrigger|Custom Dictionary|Пользовательский словарь/);
   assert.equal(getMessages()[0].content, "Answer");
   assert.equal(listener, undefined);
 });

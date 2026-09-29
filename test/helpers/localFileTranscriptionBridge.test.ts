@@ -251,7 +251,10 @@ test("the shared main registration registers the transcription channel once", as
     });
 
   const target: Record<PropertyKey, unknown> = {
-    databaseManager: { recoverRunningMeetingProcessingRuns: () => 0 },
+    databaseManager: {
+      recoverRunningMeetingProcessingRuns: () => 0,
+      listAllMeetingProcessingRuns: () => [],
+    },
   };
   Ctor.prototype.setupHandlers.call(
     new Proxy(target, {

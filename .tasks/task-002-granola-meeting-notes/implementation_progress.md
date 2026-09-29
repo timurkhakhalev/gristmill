@@ -242,4 +242,4 @@ Verification run by this agent:
 - `git diff --check` — passed.
 - Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts` and the affected M1–M4 tests.
 
-Implementation commit: pending.
+Implementation commit: `8e790528e` (`M5: assert manual summary in its owning control`).

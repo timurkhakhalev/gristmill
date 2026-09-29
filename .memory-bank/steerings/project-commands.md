@@ -78,9 +78,9 @@ The optional leading `--` also works with selectors.
   explicit profile when testing app startup against synthetic data.
 - `pnpm start`: run Electron after the configured preparation steps.
 - `pnpm run pack:dev`: build an unsigned development app. Close the packaged
-  OpenHercules Dev app first. This is not a prerequisite for ordinary unit tests.
+  Gristmill Dev app first. This is not a prerequisite for ordinary unit tests.
 - `pnpm run build:mac:arm64:local`: build the production app with an ad-hoc
-  signature using `com.openhercules.desktop` for local macOS permission prompts.
+  signature using `com.khakhalev.gristmill` for local macOS permission prompts.
   Close the running app before packaging; this is not a Developer ID release.
   macOS can require fresh privacy grants after each ad-hoc signed rebuild.
 

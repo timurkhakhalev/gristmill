@@ -1,7 +1,1 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="1024" height="1024" rx="241" fill="#2056DF"/>
-<circle cx="512" cy="512" r="314" fill="#2056DF" stroke="white" stroke-width="74"/>
-<path d="M512 383V641" stroke="white" stroke-width="74" stroke-linecap="round"/>
-<path d="M627 457V568" stroke="white" stroke-width="74" stroke-linecap="round"/>
-<path d="M397 457V568" stroke="white" stroke-width="74" stroke-linecap="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><defs><path id="grain" d="M0 0 Q50 -28 100 0 Q50 28 0 0 Z"/></defs><rect width="1024" height="1024" fill="#F6EFE1"/><g transform="translate(243.60000000000002 221.64) scale(1.22)"><g fill="#65704C"><path d="M218 58 C110 90 30 190 38 300 C46 410 140 475 250 462 C340 450 400 380 402 290 C402 268 385 262 370 268 C355 275 345 290 340 320 C330 385 285 425 230 428 C150 432 85 375 82 290 C80 200 140 130 218 58 Z"/><path d="M175 300 C210 262 260 232 340 228 C372 226 392 240 396 262 C350 252 300 262 250 282 C220 294 195 300 175 300 Z"/></g><g fill="#C49A62"><use href="#grain" transform="translate(225 112) rotate(-52) scale(1.35)"/><use href="#grain" transform="translate(305 100) rotate(-36) scale(1.3)"/><use href="#grain" transform="translate(392 112) rotate(-12) scale(1.2)"/></g></g></svg>

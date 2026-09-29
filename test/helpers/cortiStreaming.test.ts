@@ -21,14 +21,14 @@ test("Corti URL and config retain tenant, environment, language, rate, and keyte
   assert.deepEqual(
     streaming.buildConfiguration({
       language: "da",
-      keyterms: ["OpenHercules", "Corti"],
+      keyterms: ["Gristmill", "Corti"],
     }),
     {
       primaryLanguage: "da",
       interimResults: true,
       automaticPunctuation: true,
       audioFormat: "audio/pcm; rate=24000; channels=1; bits=16",
-      keyterms: { terms: [{ term: "OpenHercules" }, { term: "Corti" }] },
+      keyterms: { terms: [{ term: "Gristmill" }, { term: "Corti" }] },
     }
   );
 });

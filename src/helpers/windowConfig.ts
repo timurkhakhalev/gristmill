@@ -16,7 +16,7 @@ const ASSISTANT_PANEL_SIZE_LIMITS = {
 // All renderer windows share an app-owned persisted session. The explicit
 // partition prevents Electron from ever reusing a profile created by the
 // imported application when the user runs both apps side by side.
-export const OPENHERCULES_SESSION_PARTITION = "persist:openhercules";
+export const GRISTMILL_SESSION_PARTITION = "persist:gristmill";
 
 export function resolveOverlayWindowType(_input?: {
   role?: string;
@@ -214,10 +214,10 @@ type LegacyWindowConfig = BrowserWindowConstructorOptions & {
 export const MAIN_WINDOW_CONFIG: LegacyWindowConfig = {
   width: WINDOW_SIZES.BASE.width,
   height: WINDOW_SIZES.BASE.height,
-  title: "OpenHercules",
+  title: "Gristmill",
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
-    partition: OPENHERCULES_SESSION_PARTITION,
+    partition: GRISTMILL_SESSION_PARTITION,
     nodeIntegration: false,
     contextIsolation: true,
     sandbox: true,
@@ -262,7 +262,7 @@ export const CONTROL_PANEL_CONFIG: LegacyWindowConfig = {
   backgroundColor: "#00000000",
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
-    partition: OPENHERCULES_SESSION_PARTITION,
+    partition: GRISTMILL_SESSION_PARTITION,
     nodeIntegration: false,
     contextIsolation: true,
     // sandbox: false is required because the preload script bridges IPC
@@ -314,7 +314,7 @@ export const NOTIFICATION_WINDOW_CONFIG: LegacyWindowConfig = {
   acceptFirstMouse: true,
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
-    partition: OPENHERCULES_SESSION_PARTITION,
+    partition: GRISTMILL_SESSION_PARTITION,
     nodeIntegration: false,
     contextIsolation: true,
     sandbox: true,

@@ -74,7 +74,7 @@ void getMeetingConnectionKey({
   mode: "byok",
   environment: "us",
   tenant: "tenant",
-  keyterms: ["OpenHercules"],
+  keyterms: ["Gristmill"],
 });
 void filterMeetingStreamingProviders([
   { id: "openai", models: [{ id: "gpt-4o-mini-transcribe" }] },

@@ -382,7 +382,7 @@ function mapBedrockError(error: unknown, config: Record<string, unknown> = {}): 
   if (kind === "unavailable") {
     return withDetails({
       message:
-        "AWS Bedrock is temporarily unavailable due to high demand. This is an AWS service issue, not an OpenHercules outage. Please try again in a few minutes.",
+        "AWS Bedrock is temporarily unavailable due to high demand. This is an AWS service issue, not an Gristmill outage. Please try again in a few minutes.",
       messageKey: "reasoning.enterprise.errors.bedrock.serviceUnavailable",
       retryable: true,
     });

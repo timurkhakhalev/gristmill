@@ -19,7 +19,7 @@ const MAX_REQUEST_BODY_BYTES = 1 * 1024 * 1024;
 const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 export function getBridgeFilePath(): string {
-  return path.join(os.homedir(), ".openhercules", "cli-bridge.json");
+  return path.join(os.homedir(), ".gristmill", "cli-bridge.json");
 }
 
 async function findPortInRange(): Promise<number> {
@@ -436,13 +436,13 @@ export class CliBridge {
         throw routeError(
           requested
             ? `Unknown model '${requested}'. Available: ${models.map((m) => m.model).join(", ")}`
-            : "No local transcription model is selected. Choose one in OpenHercules under Settings → Transcription, or pass 'model'.",
+            : "No local transcription model is selected. Choose one in Gristmill under Settings → Transcription, or pass 'model'.",
           "VALIDATION"
         );
       }
       if (!match.downloaded) {
         throw routeError(
-          `Model '${match.model}' is not downloaded. Open OpenHercules and download it under Settings → Transcription.`,
+          `Model '${match.model}' is not downloaded. Open Gristmill and download it under Settings → Transcription.`,
           "VALIDATION"
         );
       }

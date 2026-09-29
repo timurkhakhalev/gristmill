@@ -96,10 +96,10 @@ export class OnnxWorkerClient {
     this.spawnPromise = (async () => {
       const env = { ...process.env };
       const logPath = this._logPath();
-      if (logPath) env.OPENHERCULES_ONNX_WORKER_LOG = logPath;
+      if (logPath) env.GRISTMILL_ONNX_WORKER_LOG = logPath;
 
       const child = utilityProcess.fork(WORKER_SCRIPT, [], {
-        serviceName: "openhercules-onnx",
+        serviceName: "gristmill-onnx",
         stdio: "pipe",
         env,
         execArgv: ["--max-old-space-size=512"],

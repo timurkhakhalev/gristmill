@@ -85,7 +85,7 @@ test("type probe files share one serial compiler process without changing select
   assert.deepEqual(calls[0], { prepare: "node" });
   assert.equal(runCall(calls, 1).binary, "pnpm");
   assert.equal(runCall(calls, 2).args.includes("--test-isolation=none"), true);
-  assert.deepEqual(JSON.parse(runCall(calls, 2).env.OPENHERCULES_TYPE_PROBE_GROUPS!), ["actions", "calendar"]);
+  assert.deepEqual(JSON.parse(runCall(calls, 2).env.GRISTMILL_TYPE_PROBE_GROUPS!), ["actions", "calendar"]);
   assert.deepEqual(runCall(calls, 2).args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts")), files.slice(0, 2));
   assert.equal(runCall(calls, 3).args.includes("--test-isolation=none"), false);
   assert.deepEqual(runCall(calls, 3).args.filter((arg) => arg.endsWith(".test.js") || arg.endsWith(".test.ts")), [files[2]]);

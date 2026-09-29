@@ -115,7 +115,7 @@ const removedOwnedModules = [
   "src/types/policy.ts",
 ];
 
-test("M2-owned OpenHercules server modules stay removed", () => {
+test("M2-owned Gristmill server modules stay removed", () => {
   for (const relativePath of removedOwnedModules) {
     assert.equal(fs.existsSync(path.join(root, relativePath)), false, relativePath);
   }

@@ -1,13 +1,13 @@
-# План сокращения OpenWhispr до OpenHercules
+# План сокращения OpenWhispr до Gristmill
 
 Статус: cleanup реализован. Результаты по M0–M9 и границы выполненных
 проверок: [cleanup-log.md](cleanup-log.md). Ниже сохранён согласованный scope.
-Основание: обсуждение OpenHercules и импорт OpenWhispr
+Основание: обсуждение Gristmill и импорт OpenWhispr
 `4335972b96a62caab0c822b3b9549a1a4fdbb351`.
 
 ## Граница продукта
 
-OpenHercules — самостоятельное macOS-приложение для встреч без собственного
+Gristmill — самостоятельное macOS-приложение для встреч без собственного
 backend и без зависимости от backend OpenWhispr. Записи, транскрипты,
 заметки, настройки и история обработки хранятся локально.
 
@@ -60,7 +60,7 @@ upstream, включая зависимость realtime от сети и вре
 ## 1. Отделить приложение от инфраструктуры OpenWhispr
 
 - Изменить app identity, product name, userData, keychain service names,
-  protocol handlers и Electron session partitions на OpenHercules.
+  protocol handlers и Electron session partitions на Gristmill.
 - Удалить автоматическое обнаружение/перенос данных OpenWhispr и account-bound
   очистку данных. Создавать собственную локальную базу без миграции чужого профиля.
 - Удалить upstream auto-update feed, загрузку и установку обновлений OpenWhispr.
@@ -72,7 +72,7 @@ upstream, включая зависимость realtime от сети и вре
 Точки входа: `main.js`, `electron-builder.json`, `src/updater.js`,
 `src/lib/authAccountScope.ts`, `src/components/OnboardingFlow.tsx`.
 
-Готово: запуск использует только профиль OpenHercules и не обращается за
+Готово: запуск использует только профиль Gristmill и не обращается за
 авторизацией или обновлениями к OpenWhispr.
 
 ## 2. Удалить серверный слой продукта
@@ -163,7 +163,7 @@ calendar OAuth, сетевые ошибки и правила audio capture ну
 - Apple Calendar сохранить через EventKit helper.
 - Google/Microsoft сохранить через прямой OAuth и API: текущие реализации
   находятся в `googleCalendarOAuth.js`, `microsoftCalendarOAuth.js` и managers.
-- Для OpenHercules нужны собственные OAuth app registrations и проверенные callback
+- Для Gristmill нужны собственные OAuth app registrations и проверенные callback
   settings. Не опираться на upstream credentials или hosted callback.
 - OAuth registrations добавляются позже и не входят в cleanup.
 - До настройки OAuth явным образом показывать недоступность конкретного
@@ -196,7 +196,7 @@ calendar OAuth, сетевые ошибки и правила audio capture ну
 
 ## Проверка результата
 
-- Сборка и запуск macOS arm64 на чистом профиле OpenHercules без auth/backend env.
+- Сборка и запуск macOS arm64 на чистом профиле Gristmill без auth/backend env.
 - Startup и idle не обращаются к OpenWhispr API/auth/MCP/update endpoints;
   это проверяется наблюдением сетевых запросов, дополнительно к поиску строк.
 - Библиотека и локальные заметки открываются без сети и аккаунта.

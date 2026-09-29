@@ -1,4 +1,4 @@
-// Every PID OpenHercules is currently running under, main process included.
+// Every PID Gristmill is currently running under, main process included.
 //
 // The Windows mic listener reports the PID that opened a capture session, and
 // dictation opens the mic from Chromium's audio service — a child process — so

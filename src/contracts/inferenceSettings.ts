@@ -101,7 +101,7 @@ export interface ChatAgentScopeSettings {
 
 /**
  * App-wide bb harness preferences. Seeded once from bb's own provider order and
- * default, then owned by OpenHercules and never written back to bb.
+ * default, then owned by Gristmill and never written back to bb.
  */
 export interface BbAgentPreferences {
   order: string[];

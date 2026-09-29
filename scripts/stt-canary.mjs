@@ -139,7 +139,7 @@ async function probeGeminiBatch(key, audio, contentType) {
 // A completed Live turn proves the raw-key handshake, the setup message, the
 // audio frame shape and the transcript events — the socket opening proves none
 // of it, and server-side VAD suppresses silence, so the probe has to speak.
-const CANARY_PHRASE = "The quick brown fox. OpenHercules transcription test.";
+const CANARY_PHRASE = "The quick brown fox. Gristmill transcription test.";
 const LIVE_FRAME_MS = 50;
 const LIVE_FRAME_BYTES = 1600; // one 50ms dictation worklet frame at 16kHz s16le
 
@@ -195,7 +195,7 @@ async function probeGeminiLive(key) {
     partials += 1;
   };
   try {
-    await streaming.connect({ token, mode: "byok", keyterms: ["OpenHercules"] });
+    await streaming.connect({ token, mode: "byok", keyterms: ["Gristmill"] });
     // Paced like the mic worklet: the server finalizes relative to real-time
     // ingest, so a burst followed by audioStreamEnd starves the final.
     for (let offset = 0; offset < pcm.length; offset += LIVE_FRAME_BYTES) {
@@ -220,7 +220,7 @@ async function probeOpenAiBatch(key, audio) {
   const body = new FormData();
   body.append("file", new Blob([audio], { type: "audio/wav" }), "audio.wav");
   body.append("model", "gpt-transcribe");
-  body.append("keywords[]", "OpenHercules");
+  body.append("keywords[]", "Gristmill");
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}` },
@@ -267,7 +267,7 @@ const PROBES = [
       });
       const url = new DeepgramStreaming().buildWebSocketUrl({
         sampleRate: 16000,
-        keyterms: ["OpenHercules"],
+        keyterms: ["Gristmill"],
       });
       return probeWebSocket(url, null, {
         authorization: DeepgramStreaming.authorizationHeader("byok", token),

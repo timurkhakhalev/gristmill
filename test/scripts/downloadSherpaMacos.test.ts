@@ -50,7 +50,7 @@ test("rejects a packaged ONNX Runtime library missing a universal architecture s
 });
 
 test("validates the versioned ONNX Runtime library from a packaged app", () => {
-  const appPath = "/tmp/OpenHercules.app";
+  const appPath = "/tmp/Gristmill.app";
   assert.deepEqual(
     sherpaDownloader.verifyPackagedMacosParakeet(appPath, {
       readDirectory: () => ["libonnxruntime.dylib", "libonnxruntime.1.27.0.dylib"],

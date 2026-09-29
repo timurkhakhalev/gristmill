@@ -15,8 +15,8 @@ const { snapshotProductionProfileForDev, suppressDevSnapshotAfterReset, devProfi
 
 function makeProfiles() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "oh-dev-snapshot-"));
-  const production = path.join(root, "OpenHercules");
-  const development = path.join(root, "OpenHercules-development");
+  const production = path.join(root, "Gristmill");
+  const development = path.join(root, "Gristmill-development");
   fs.mkdirSync(path.join(production, "audio", "meetings", "rec-1"), { recursive: true });
   fs.mkdirSync(path.join(production, "meeting-results"), { recursive: true });
   // A minimal real SQLite database: VACUUM INTO requires a valid db and its
@@ -35,7 +35,7 @@ function makeProfiles() {
   prodDb.close();
   fs.writeFileSync(
     path.join(production, ".env"),
-    "KEY=1\nOPENAI_API_KEY=plaintext-provider-key\nOPENHERCULES_PROTOCOL=openhercules"
+    "KEY=1\nOPENAI_API_KEY=plaintext-provider-key\nGRISTMILL_PROTOCOL=gristmill"
   );
   fs.writeFileSync(path.join(production, "audio", "meetings", "rec-1", "audio.pcm"), "pcm");
   fs.writeFileSync(path.join(production, "meeting-results", "run-1.json"), "{}");
@@ -68,7 +68,7 @@ test("snapshots production profile into a fresh dev profile", () => {
   const copiedEnv = fs.readFileSync(path.join(development, ".env"), "utf8");
   assert.ok(copiedEnv.includes('KEY="1"'));
   assert.ok(!copiedEnv.includes("plaintext-provider-key"));
-  assert.ok(!copiedEnv.includes("OPENHERCULES_PROTOCOL"));
+  assert.ok(!copiedEnv.includes("GRISTMILL_PROTOCOL"));
   assert.equal(
     fs.readFileSync(path.join(development, "audio", "meetings", "rec-1", "audio.pcm"), "utf8"),
     "pcm"
@@ -138,11 +138,11 @@ test("reset before the first marker prevents a retry unless refresh is requested
   suppressDevSnapshotAfterReset();
   assert.equal(snapshotProductionProfileForDev(), true);
   assert.equal(fs.existsSync(path.join(development, DEV_DB)), false);
-  process.env.OPENHERCULES_REFRESH_SNAPSHOT = "1";
+  process.env.GRISTMILL_REFRESH_SNAPSHOT = "1";
   try {
     assert.equal(snapshotProductionProfileForDev(), true);
   } finally {
-    delete process.env.OPENHERCULES_REFRESH_SNAPSHOT;
+    delete process.env.GRISTMILL_REFRESH_SNAPSHOT;
   }
   const db = openDevDb(development);
   assert.equal(db.prepare("SELECT title FROM notes").get().title, "prod-note");
@@ -216,11 +216,11 @@ test("refresh re-copies missing files but keeps dev-only ones", () => {
   snapshotProductionProfileForDev();
   fs.rmSync(path.join(development, ".env"));
   fs.writeFileSync(path.join(development, "dev-only.txt"), "keep");
-  process.env.OPENHERCULES_REFRESH_SNAPSHOT = "1";
+  process.env.GRISTMILL_REFRESH_SNAPSHOT = "1";
   try {
     snapshotProductionProfileForDev();
   } finally {
-    delete process.env.OPENHERCULES_REFRESH_SNAPSHOT;
+    delete process.env.GRISTMILL_REFRESH_SNAPSHOT;
   }
   assert.ok(fs.readFileSync(path.join(development, ".env"), "utf8").includes('KEY="1"'));
   assert.equal(fs.readFileSync(path.join(development, "dev-only.txt"), "utf8"), "keep");
@@ -244,7 +244,7 @@ test("refuses to start into a profile nested inside the production profile", () 
   // profile nests inside the production profile through an explicit path.
   const { Database } = makeProfiles();
   const appData = fs.mkdtempSync(path.join(os.tmpdir(), "oh-dev-snapshot-appdata-"));
-  const production = path.join(appData, "OpenHercules");
+  const production = path.join(appData, "Gristmill");
   fs.mkdirSync(production, { recursive: true });
   const db = new Database(path.join(production, "transcriptions.db"));
   db.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT)");
@@ -323,7 +323,7 @@ test("refuses a not-yet-existing profile path inside production", () => {
     profilePathAliasesProduction: (p: string) => boolean;
   };
   // Point the stub's appData at this pair's root so sourceProfileDir matches.
-  setUserDataDir(path.join(root, "OpenHercules-development"));
+  setUserDataDir(path.join(root, "Gristmill-development"));
   const planned = path.join(production, "smoke-inside-prod");
   assert.equal(
     profilePathAliasesProduction(planned),
@@ -406,7 +406,7 @@ test("refuses to start when legacy adoption fails, keeping the retry", () => {
 
 test("no-op without a production profile", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "oh-dev-snapshot-"));
-  const development = path.join(root, "OpenHercules-development");
+  const development = path.join(root, "Gristmill-development");
   setUserDataDir(development);
   snapshotProductionProfileForDev();
   assert.equal(fs.existsSync(development), false);

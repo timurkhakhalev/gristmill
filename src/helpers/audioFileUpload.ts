@@ -18,7 +18,7 @@ export async function postRawAudioFile(
   } = {}
 ): Promise<{ statusCode: number; data: unknown }> {
   if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
-  const boundary = multipart ? `----OpenHercules${crypto.randomUUID()}` : null;
+  const boundary = multipart ? `----Gristmill${crypto.randomUUID()}` : null;
   const header = multipart
     ? Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${multipart.fileName.replace(/[\r\n"]/g, "_")}"\r\nContent-Type: ${contentType}\r\n\r\n`

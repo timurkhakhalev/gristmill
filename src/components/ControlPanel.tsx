@@ -45,7 +45,7 @@ const PersonalNotesView = React.lazy(() => import("./notes/PersonalNotesView"));
 const UploadAudioView = React.lazy(() => import("./notes/UploadAudioView"));
 const CommandSearch = React.lazy(() => import("./CommandSearch"));
 const KeyboardShortcutsDialog = React.lazy(() => import("./KeyboardShortcutsDialog"));
-const NotesDebugPreview = (import.meta.env.DEV || import.meta.env.VITE_OPENHERCULES_DEV_BUILD === "true")
+const NotesDebugPreview = (import.meta.env.DEV || import.meta.env.VITE_GRISTMILL_DEV_BUILD === "true")
   ? React.lazy(() => import("./notes/NotesDebugPreview"))
   : null;
 

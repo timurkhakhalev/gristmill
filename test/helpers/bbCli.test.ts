@@ -10,10 +10,10 @@ const { generateBbSummary }: typeof import("../../src/helpers/bbSummary.ts") = r
 const { ensureBbWorkspace, writeBbConnection }: typeof import("../../src/helpers/bbWorkspace.ts") = require("../../src/helpers/bbWorkspace.ts");
 
 test("bb tool wrapper authenticates allowlisted routes and rejects external URLs", async (t: import("node:test").TestContext) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-bb-workspace-"));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-bb-workspace-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const workspace = ensureBbWorkspace(directory);
-  const script = path.join(workspace, "openhercules-tools.mjs");
+  const script = path.join(workspace, "gristmill-tools.mjs");
   assert.equal(spawnSync(process.execPath, ["--check", script]).status, 0);
   let seenAuthorization = "";
   const server = http.createServer((request: import("node:http").IncomingMessage, response: import("node:http").ServerResponse) => {
@@ -35,12 +35,12 @@ test("bb tool wrapper authenticates allowlisted routes and rejects external URLs
   assert.equal(seenAuthorization, "Bearer test-token");
   const result = spawnSync(process.execPath, [script, "GET", "//example.com/v1/notes/list"], { encoding: "utf8" });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Invalid OpenHercules tool route/);
+  assert.match(result.stderr, /Invalid Gristmill tool route/);
   assert.doesNotMatch(result.stderr, /test-token/);
 });
 
 test("bb CLI creates a profile project and resumes an in-flight summary from its last event", async (t: import("node:test").TestContext) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-bb-test-"));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-bb-test-"));
   const binary = path.join(directory, "bb-fake");
   const capture = path.join(directory, "prompt.txt");
   const previousBinary = process.env.BB_CLI;
@@ -134,7 +134,7 @@ test("bb harness logos are fetched only from bb's loopback logo route and must b
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
 
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-bb-logo-"));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-bb-logo-"));
   const binary = path.join(directory, "bb-fake");
   const previousBinary = process.env.BB_CLI;
   process.env.BB_CLI = binary;

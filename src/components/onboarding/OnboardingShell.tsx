@@ -2,8 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { OnboardingProgressState } from "./flow";
 import { Copy, Minus, Square, Undo2, X } from "../icons";
 import { Button } from "../ui/button";
-import { BRAND_GLASS_SURFACE } from "../ui/gradientCircle";
-import { cn } from "../lib/utils";
+import { GristmillMark } from "../ui/GristmillLogo";
 import { useTranslation } from "react-i18next";
 import { getPlatform } from "../../utils/platform";
 import { useWindowControls } from "../../hooks/useWindowControls";
@@ -346,14 +345,8 @@ export function CompactOnboardingFrame({
     <section className="relative flex h-full min-h-screen w-full flex-col overflow-hidden bg-[var(--onboarding-surface)] text-[var(--onboarding-text-primary)]">
       <div className="onboarding-compact-hero pointer-events-none absolute inset-x-0 top-0 h-33" />
       {showBrandMark && (
-        <div
-          className={cn(
-            "pointer-events-none absolute left-1/2 top-23 z-10 flex size-19 -translate-x-1/2 items-center justify-center rounded-[20px]",
-            BRAND_GLASS_SURFACE,
-            "shadow-(--shadow-brand-tile)"
-          )}
-        >
-          <BrandMark className="size-13" />
+        <div className="pointer-events-none absolute left-1/2 top-23 z-10 flex size-19 -translate-x-1/2 items-center justify-center rounded-[20px] bg-[#F6EFE1] shadow-(--shadow-brand-tile)">
+          <GristmillMark className="size-13" />
         </div>
       )}
 
@@ -366,22 +359,5 @@ export function CompactOnboardingFrame({
       </div>
 
     </section>
-  );
-}
-
-export function BrandMark({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 1024 1024"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <circle cx="512" cy="512" r="314" stroke="currentColor" strokeWidth="74" />
-      <path d="M512 383V641" stroke="currentColor" strokeWidth="74" strokeLinecap="round" />
-      <path d="M627 457V568" stroke="currentColor" strokeWidth="74" strokeLinecap="round" />
-      <path d="M397 457V568" stroke="currentColor" strokeWidth="74" strokeLinecap="round" />
-    </svg>
   );
 }

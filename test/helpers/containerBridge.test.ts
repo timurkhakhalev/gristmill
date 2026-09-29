@@ -17,7 +17,7 @@ const bundledPreload = path.join(root, "dist-main", "preload.js");
 type BridgeHandler = (event: unknown, ...args: unknown[]) => unknown;
 let activeHandlers: Map<string, BridgeHandler> | null = null;
 let dispatchSend: ((channel: string, data: unknown) => void) | null = null;
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-containers-bridge-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-containers-bridge-"));
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -106,7 +106,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
 async function createFixture(t: import("node:test").TestContext) {
   activeHandlers = new Map();
   dispatchSend = null;
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-containers-bridge-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-containers-bridge-"));
   let db: import("../../src/helpers/containerIpcHandlers.js").ContainerHandlerDeps["database"] & { close: () => void; getFolders(): Array<{ id: unknown; name: string }> };
   try {
     db = new DatabaseManager() as unknown as import("../../src/helpers/containerIpcHandlers.js").ContainerHandlerDeps["database"] & { close: () => void; getFolders(): Array<{ id: unknown; name: string }> };

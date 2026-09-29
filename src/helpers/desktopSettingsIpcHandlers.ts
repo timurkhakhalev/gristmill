@@ -658,25 +658,25 @@ export function registerDesktopSettingsHandlers(
       // Parse lines
       const lines = envContent.split("\n");
       const logLevelIndex = lines.findIndex((line) =>
-        line.trim().startsWith("OPENHERCULES_LOG_LEVEL=")
+        line.trim().startsWith("GRISTMILL_LOG_LEVEL=")
       );
 
       if (enabled) {
         // Set to debug
         if (logLevelIndex !== -1) {
-          lines[logLevelIndex] = "OPENHERCULES_LOG_LEVEL=debug";
+          lines[logLevelIndex] = "GRISTMILL_LOG_LEVEL=debug";
         } else {
           // Add new line
           if (lines.length > 0 && lines[lines.length - 1] !== "") {
             lines.push("");
           }
           lines.push("# Debug logging setting");
-          lines.push("OPENHERCULES_LOG_LEVEL=debug");
+          lines.push("GRISTMILL_LOG_LEVEL=debug");
         }
       } else {
         // Remove or set to info
         if (logLevelIndex !== -1) {
-          lines[logLevelIndex] = "OPENHERCULES_LOG_LEVEL=info";
+          lines[logLevelIndex] = "GRISTMILL_LOG_LEVEL=info";
         }
       }
 
@@ -684,7 +684,7 @@ export function registerDesktopSettingsHandlers(
       fs.writeFileSync(envPath, lines.join("\n"), "utf8");
 
       // Update environment variable
-      process.env.OPENHERCULES_LOG_LEVEL = enabled ? "debug" : "info";
+      process.env.GRISTMILL_LOG_LEVEL = enabled ? "debug" : "info";
 
       // Refresh logger state
       debugLogger.refreshLogLevel();
@@ -949,7 +949,7 @@ export function registerDesktopSettingsHandlers(
 
     // These caches are not owned by one account. Remove them only through
     // the explicit device-erasure path, never during normal account deletion.
-    const homeCacheRoot = path.join(os.homedir(), ".cache", "openhercules");
+    const homeCacheRoot = path.join(os.homedir(), ".cache", "gristmill");
     for (const cacheName of []) {
       try {
         fs.rmSync(path.join(homeCacheRoot, cacheName), { recursive: true, force: true });

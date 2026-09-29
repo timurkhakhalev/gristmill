@@ -117,7 +117,7 @@ test("refusal and transport failure do not trigger JSON repair", async () => {
 });
 
 test("bb naming repairs with tell on the original thread", async (t: import("node:test").TestContext) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-bb-speaker-repair-"));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-bb-speaker-repair-"));
   const binary = path.join(directory, "bb-fake");
   const capture = path.join(directory, "calls.jsonl");
   const previousBinary = process.env.BB_CLI;
@@ -186,7 +186,7 @@ else if (args[0] === "thread" && args[1] === "tell") {
 });
 
 test("BB reuses an unchanged transcript across conversation objects and sends changed source text", async (t: import("node:test").TestContext) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-bb-context-"));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-bb-context-"));
   const binary = path.join(directory, "bb-fake");
   const capture = path.join(directory, "calls.jsonl");
   const previousBinary = process.env.BB_CLI;

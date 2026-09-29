@@ -17,7 +17,7 @@ const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 let activeHandlers: Map<string, (...args: unknown[]) => unknown> | null = null;
 let dispatchSend: ((channel: string, data: unknown) => void) | null = null;
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-vocab-bridge-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-vocab-bridge-"));
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -105,7 +105,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
 async function createFixture(t: import("node:test").TestContext) {
   activeHandlers = new Map();
   dispatchSend = null;
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-vocab-bridge-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-vocab-bridge-"));
   let db;
   try {
     db = new DatabaseManager();

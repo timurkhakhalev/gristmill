@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key>
-  <string>com.openhercules.calendar-listener</string>
+  <string>com.khakhalev.gristmill.calendar-listener</string>
   <key>CFBundleName</key>
-  <string>OpenHercules Calendar Listener</string>
+  <string>Gristmill Calendar Listener</string>
   <key>NSCalendarsUsageDescription</key>
-  <string>OpenHercules reads your calendar to detect upcoming meetings and link meeting notes to events.</string>
+  <string>Gristmill reads your calendar to detect upcoming meetings and link meeting notes to events.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
-  <string>OpenHercules reads your calendar to detect upcoming meetings and link meeting notes to events.</string>
+  <string>Gristmill reads your calendar to detect upcoming meetings and link meeting notes to events.</string>
 </dict>
 </plist>

@@ -120,3 +120,14 @@ Verification run by this agent:
 - Tests/builds/dependency installation/native rebuilds were not run; root owns them. Run the M3 plan suite plus the added stateful/action coverage: `pnpm test -- test/helpers/actionsCatalogBehavior.test.ts test/helpers/actionsIpc.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/helpers/retiredPrompts.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/cases/notes/integration/meetingActions.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/helpers/meetingProcessing.test.ts test/helpers/chatMessageSubmissionLock.test.ts test/helpers/useChatStreamingCancellation.test.ts test/helpers/promptsCleanupFormatter.test.ts`. Then run `pnpm run typecheck:main` and `pnpm run typecheck:renderer`. The isolated-profile and controlled Russian model-quality checks were not run here.
 
 Implementation commit: `2e0cdb78a` (`M3: add tasks, Recap, Follow-up and cleanup formatter`).
+
+Root's focused M3 rerun exposed three stale fixture expectations and two task tests that never met the automatic Summary threshold. The Recap renderer fixture now supplies persisted `taskStatus: "zero"`, so it isolates the manual Recap action from the expected automatic task request. The task race fixtures now meet the documented 180-second/2,500-character automatic Summary threshold; short recordings correctly do not start tasks. Updated the Action icon assertion to the existing `wand-sparkles` default and the formatter assertion to the registry's actual `en` language-code fallback.
+
+Verification for this fix:
+
+- `pnpm run typecheck:tests` — passed.
+- Scoped ESLint for the four changed test files — passed.
+- `git diff --check` — passed.
+- Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Root should rerun: `pnpm test -- test/helpers/actionsCatalogBehavior.test.ts test/helpers/actionsIpc.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/helpers/retiredPrompts.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/cases/notes/integration/meetingActions.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/helpers/meetingProcessing.test.ts test/helpers/chatMessageSubmissionLock.test.ts test/helpers/useChatStreamingCancellation.test.ts test/helpers/promptsCleanupFormatter.test.ts`.
+
+M3 focused-rerun fix commit: `353598a08` (`M3: fix focused rerun fixtures`).

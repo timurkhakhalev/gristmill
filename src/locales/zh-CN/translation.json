@@ -1089,6 +1089,7 @@
         "label": "配色方案",
         "description": "强调色与界面底色。",
         "names": {
+          "gristmill": "Gristmill",
           "lavender": "薰衣草",
           "indigo": "靛蓝",
           "amethyst": "紫水晶",

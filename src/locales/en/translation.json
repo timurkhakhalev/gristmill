@@ -1130,6 +1130,7 @@
         "label": "Colour scheme",
         "description": "Accent colour and surface tint.",
         "names": {
+          "gristmill": "Gristmill",
           "lavender": "Lavender",
           "indigo": "Indigo",
           "amethyst": "Amethyst",

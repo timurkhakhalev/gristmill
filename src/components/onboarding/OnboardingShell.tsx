@@ -342,7 +342,7 @@ export function CompactOnboardingFrame({
   showBrandMark = true,
 }: CompactOnboardingFrameProps) {
   return (
-    <section className="relative flex h-full min-h-screen w-full flex-col overflow-hidden bg-[var(--onboarding-surface)] text-[var(--onboarding-text-primary)]">
+    <section className="relative flex h-screen w-full flex-col overflow-hidden bg-[var(--onboarding-surface)] text-[var(--onboarding-text-primary)]">
       <div className="onboarding-compact-hero pointer-events-none absolute inset-x-0 top-0 h-33" />
       {showBrandMark && (
         <div className="pointer-events-none absolute left-1/2 top-23 z-10 flex size-19 -translate-x-1/2 items-center justify-center rounded-[20px] bg-[#F6EFE1] shadow-(--shadow-brand-tile)">
@@ -354,7 +354,7 @@ export function CompactOnboardingFrame({
           deliberately remains square and full-bleed: Electron owns the actual
           window clipping, so a second CSS radius cannot expose dark seams around
           the top or bottom edges. */}
-      <div className="relative z-10 mx-auto flex w-full max-w-[30rem] flex-1 flex-col">
+      <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-[30rem] flex-1 flex-col">
         {children}
       </div>
 

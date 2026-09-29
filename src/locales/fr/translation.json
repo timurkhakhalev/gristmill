@@ -1130,6 +1130,7 @@
         "label": "Palette de couleurs",
         "description": "Couleur d’accent et teinte des surfaces.",
         "names": {
+          "gristmill": "Gristmill",
           "lavender": "Lavande",
           "indigo": "Indigo",
           "amethyst": "Améthyste",

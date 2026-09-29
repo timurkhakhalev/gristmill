@@ -1130,6 +1130,7 @@
         "label": "Farbschema",
         "description": "Akzentfarbe und Flächentönung.",
         "names": {
+          "gristmill": "Gristmill",
           "lavender": "Lavendel",
           "indigo": "Indigo",
           "amethyst": "Amethyst",

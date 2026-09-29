@@ -1089,6 +1089,7 @@
         "label": "Цветовая схема",
         "description": "Акцентный цвет и оттенок фона.",
         "names": {
+          "gristmill": "Gristmill",
           "lavender": "Лаванда",
           "indigo": "Индиго",
           "amethyst": "Аметист",

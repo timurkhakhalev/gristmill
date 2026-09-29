@@ -3,6 +3,7 @@
 // drives the picker and validates the stored value.
 
 export const COLOR_SCHEME_IDS = [
+  "gristmill",
   "lavender",
   "indigo",
   "amethyst",
@@ -23,11 +24,12 @@ export const COLOR_SCHEME_IDS = [
 
 export type ColorSchemeId = (typeof COLOR_SCHEME_IDS)[number];
 
-export const DEFAULT_COLOR_SCHEME: ColorSchemeId = "lavender";
+export const DEFAULT_COLOR_SCHEME: ColorSchemeId = "gristmill";
 
 /** Picker swatch: the scheme's dark background with its accent on top. */
 export const COLOR_SCHEME_SWATCHES: Record<ColorSchemeId, { background: string; accent: string }> =
   {
+    gristmill: { background: "oklch(0.22 0.008 90)", accent: "oklch(0.54 0.085 122)" },
     lavender: { background: "oklch(0.22 0.007 260)", accent: "oklch(0.62 0.17 288)" },
     indigo: { background: "oklch(0.22 0.012 270)", accent: "oklch(0.64 0.16 276)" },
     amethyst: { background: "oklch(0.22 0.013 315)", accent: "oklch(0.72 0.19 305)" },

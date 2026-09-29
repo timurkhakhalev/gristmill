@@ -131,3 +131,15 @@ Verification for this fix:
 - Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Root should rerun: `pnpm test -- test/helpers/actionsCatalogBehavior.test.ts test/helpers/actionsIpc.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/helpers/retiredPrompts.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/cases/notes/integration/meetingActions.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/helpers/meetingProcessing.test.ts test/helpers/chatMessageSubmissionLock.test.ts test/helpers/useChatStreamingCancellation.test.ts test/helpers/promptsCleanupFormatter.test.ts`.
 
 M3 focused-rerun fix commit: `353598a08` (`M3: fix focused rerun fixtures`).
+
+Root's failed-files rerun exposed a section-merge race: adding `## Recap` changed the Action Items snapshot only because `readMeetingSummarySection` included the blank-line separator before the next heading. Section snapshots now exclude trailing Markdown separators, allowing independent task and Recap writes to serialize. A mutation that was invalid in the original Summary still reports a format error; if a previously valid target becomes structurally invalid while generation is in flight, it now reports a conflict. Added coverage for Recap preserving the Action Items snapshot and for a concurrent heading change preserving the human edit and producing a conflict.
+
+Verification for this fix:
+
+- `pnpm run typecheck:main` — passed.
+- `pnpm run typecheck:tests` — passed.
+- Scoped ESLint for the changed main helpers and tests — passed (the root-level invocation ignores the main helpers, so source lint was run from `src` with `--no-ignore`).
+- `git diff --check` — passed.
+- Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Root should rerun `pnpm test -- test/helpers/meetingProcessing.test.ts test/cases/notes/integration/meetingSummarySections.test.ts` and the failed-files M3 command as needed.
+
+M3 concurrent section-merge fix commit: `e0487ce3c` (`M3: serialize independent Summary section edits`).

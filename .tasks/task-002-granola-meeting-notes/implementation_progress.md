@@ -176,3 +176,14 @@ Verification for the locale fix:
 - Static JSON/key-presence audit across all locale `translation.json` files — all 11 complete.
 - `git diff --check` — passed.
 - The root-owned focused locale test and full suite were not run here. Root should run `pnpm test -- test/locales/translationCoverage.test.ts`, then the full integrated `pnpm test` after confirming the locale test passes.
+
+M4 full-suite fixture follow-up: changed the Action bridge expectation to the existing `wand-sparkles` creation default. Completed the local-transcription bridge's shared-registration database mock with `listAllMeetingProcessingRuns: () => []`, which the real worker constructor requires while recovering interrupted Summary tasks. This keeps the production DB contract strict and preserves the other bridge lifecycle assertions.
+
+Verification for this follow-up:
+
+- `pnpm run typecheck:tests` — passed.
+- Scoped ESLint for both changed bridge tests — passed.
+- `git diff --check` — passed.
+- Tests remain root-only. Rerun `pnpm test -- test/helpers/actionsBridge.test.ts test/helpers/localFileTranscriptionBridge.test.ts`, then the full `pnpm test` suite.
+
+Fixture-fix commit: `b113ef8bf` (`M4: align bridge fixtures with current contracts`).

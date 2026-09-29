@@ -187,3 +187,25 @@ Verification for this follow-up:
 - Tests remain root-only. Rerun `pnpm test -- test/helpers/actionsBridge.test.ts test/helpers/localFileTranscriptionBridge.test.ts`, then the full `pnpm test` suite.
 
 Fixture-fix commit: `b113ef8bf` (`M4: align bridge fixtures with current contracts`).
+
+## M5 — Reviewer fixes from review-1
+
+Status: done
+
+Manual ASR now rejects requests during active capture and until 15 seconds after the latest successful Stop; the live per-part, whole-meeting, and result-menu controls are disabled during recording, Pause, and the gate, with a handler guard as well. The live Summary view explains the exact audio-duration and transcript-character threshold when a ready transcript is ineligible, while keeping manual Summary available. Invalid stored participant data now fails visibly instead of becoming an empty invitee list. Naming and task prompts use the exact evidence and priority rules, and the default Detailed Notes prompt omits unstated owners and deadlines.
+
+Preserved raw tracks, manual Notes, prior runs/artifacts, selected provider, current-group gate behavior, user speaker corrections, prompt snapshots, one Summary Markdown, and revision-checked task/Recap writes. Preview state remains in-memory. The short-meeting and participant-error messages are localized in all 11 shipped locales.
+
+Issues: no unresolved code issue. Root owns the M4-1 isolated live journey; mic/system capture, real provider responses, and prompt-quality outputs remain explicitly unverified until root records that evidence.
+
+Verification run by this agent:
+
+- `pnpm run typecheck:main` — passed.
+- `pnpm run typecheck:renderer` — passed.
+- `pnpm run typecheck:tests` — passed.
+- Scoped ESLint for M5 product and test files — 0 errors; the test run reports the existing unused `recording` warning in `test/services/meetingResults.test.ts`, and source ESLint reports the existing `MODULE_TYPELESS_PACKAGE_JSON` warning.
+- Static locale JSON/key audit — all three new `meetingResults` keys are present in all 11 locales.
+- `git diff --check` — passed.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent; root owns them. Run focused regressions and affected journeys first: `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts test/services/meetingResults.test.ts test/stores/meetingRecordingStoreAutoEndStop.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/locales/translationCoverage.test.ts`. Then run `pnpm run lint`, `pnpm run typecheck`, and the required full `pnpm test` sequentially.
+
+Implementation commit: `51f587d23` (`M5: close meeting processing review findings`).

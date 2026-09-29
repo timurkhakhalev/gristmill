@@ -1551,6 +1551,15 @@
         "detailedNotes": {
           "name": "詳細ノート",
           "description": "決定事項とアクションを含む正確で網羅的な会議ノート"
+        },
+        "followUp": {
+          "name": "会議後のメッセージ",
+          "description": "会議チャットに送るフォローアップメッセージを作成",
+          "cta": "フォローアップを作成"
+        },
+        "recap": {
+          "name": "会議の振り返り",
+          "description": "この会議の短い振り返りを概要に追加"
         }
       },
       "errors": {
@@ -2123,7 +2132,10 @@
       "keyDecisions": "重要な決定事項を一覧に",
       "inFlight": "進行中のプロジェクトを表示"
     },
-    "homeEmptyState": "メモやミーティングについて何でも質問できます"
+    "homeEmptyState": "メモやミーティングについて何でも質問できます",
+    "followUp": "フォローアップ文を作成",
+    "followUpUnavailable": "文字起こしの準備後に利用できます",
+    "followUpError": "フォローアップを準備できませんでした。もう一度お試しください。"
   },
   "transcriptionPreview": {
     "label": "プレビュー",

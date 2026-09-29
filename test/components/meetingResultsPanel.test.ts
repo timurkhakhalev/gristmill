@@ -13,6 +13,7 @@ interface MountedCalls {
   delete: string[];
   playback: unknown[][];
   speaker: Array<Record<string, unknown>>;
+  summaryActions: Array<Record<string, unknown>>;
   update: Array<Record<string, unknown>>;
   retry: string[];
 }
@@ -116,13 +117,14 @@ function textOf(value: unknown): string {
   return node?.props ? textOf((node.props as { children?: unknown }).children) : "";
 }
 
-async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline }: {
+async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction }: {
   viewMode?: "raw" | "enhanced";
   playback?: { success: boolean; error?: string };
   preview?: boolean;
   mockPipeline?: { waitingSeconds?: number };
+  summaryAction?: (input: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
 } = {}) {
-  const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], retry: [] };
+  const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], summaryActions: [], retry: [] };
   let listedItems = items;
   let setCapturePhase: (phase: string) => void = () => {};
   const api = {
@@ -168,6 +170,10 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
         }) };
       });
       return { success: true };
+    },
+    meetingProcessingRunSummaryAction: async (input: Record<string, unknown>) => {
+      calls.summaryActions.push(input);
+      return summaryAction ? summaryAction(input) : { success: true };
     },
     meetingProcessingRetryRun: async (id: string) => { calls.retry.push(id); return { success: true }; },
   };
@@ -370,6 +376,34 @@ test("persisted model provenance drives auto badge; user correction removes it a
   await ui.clickRenderedButton(["Regenerate Summary", "meetingResults.regenerateSummary"]);
   assert.equal(ui.calls.create.at(-1)?.kind, "summary");
   assert.equal(ui.calls.create.at(-1)?.sourceRunId, RUN);
+});
+
+test("persisted task status shows a retry without replacing the saved Summary", async (t: TestContext) => {
+  const run = completeRun();
+  run.summary = { text: "## TLDR\nSaved Summary.", taskStatus: "section-error", taskErrorCode: "meeting-summary-section-invalid" };
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)], { viewMode: "enhanced" });
+  assert.match(ui.text(), /Saved Summary/);
+  assert.match(ui.text(), /Action items were found but not added/);
+  await ui.clickRenderedButton(["Retry tasks"]);
+  assert.deepEqual(ui.calls.summaryActions, [{ runId: RUN, action: "tasks" }]);
+  assert.match(ui.text(), /Saved Summary/);
+});
+
+test("Recap is a manual Summary action with a visible retryable error", async (t: TestContext) => {
+  let finishAction!: (result: { success: boolean; error?: string }) => void;
+  const actionResult = new Promise<{ success: boolean; error?: string }>((resolve) => { finishAction = resolve; });
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", completeRun())], {
+    viewMode: "enhanced",
+    summaryAction: async () => actionResult,
+  });
+  await ui.clickRenderedButton(["New recap"]);
+  assert.match(ui.text(), /Creating recap/);
+  assert.match(ui.text(), /Release on Friday/);
+  finishAction({ success: false, error: "meeting-recap-json-invalid" });
+  await ui.flush(() => {});
+  assert.deepEqual(ui.calls.summaryActions, [{ runId: RUN, action: "recap" }]);
+  assert.match(ui.text(), /The model reply didn't match the expected format/);
+  assert.match(ui.text(), /Release on Friday/);
 });
 
 

@@ -7,6 +7,8 @@ const { clearBbCaches } = require("../../../../src/helpers/bbCli.ts");
 const { createBbTextConversation } = require("../../../../src/helpers/bbSummary.ts");
 const { createMeetingTextConversation } = require("../../../../src/helpers/meetingSummary.ts");
 const { suggestMeetingSpeakerNames } = require("../../../../src/helpers/meetingSpeakerNaming.ts");
+const { requestMeetingJson } = require("../../../../src/helpers/meetingJsonRepair.ts");
+const { validateMeetingTasks } = require("../../../../src/helpers/meetingSummarySections.ts");
 
 const summaryConfig = {
   instruction: "Use only the supplied transcript evidence.",
@@ -182,4 +184,81 @@ else if (args[0] === "thread" && args[1] === "tell") {
   assert.match(calls[1].prompt, /^Name unknown speakers only from transcript evidence\.\n\n/);
   assert.match(calls[1].prompt, /speaker ID was not unknown/);
   assert.match(calls[1].prompt, /speaker_else/);
+});
+
+test("bb prioritized-task repair uses tell on the selected run's original thread", async (t: import("node:test").TestContext) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-bb-task-repair-"));
+  const binary = path.join(directory, "bb-fake");
+  const capture = path.join(directory, "calls.jsonl");
+  const previousBinary = process.env.BB_CLI;
+  const previousCapture = process.env.BB_FAKE_CAPTURE;
+  const previousOutputs = process.env.BB_FAKE_OUTPUTS;
+  process.env.BB_CLI = binary;
+  process.env.BB_FAKE_CAPTURE = capture;
+  process.env.BB_FAKE_OUTPUTS = JSON.stringify([
+    '{"HIGH":["Ship"],"MEDIUM":[],"LOW":[],"extra":true}',
+    '{"HIGH":["Ship release"],"MEDIUM":[],"LOW":[]}',
+  ]);
+  t.after(() => {
+    if (previousBinary === undefined) delete process.env.BB_CLI;
+    else process.env.BB_CLI = previousBinary;
+    if (previousCapture === undefined) delete process.env.BB_FAKE_CAPTURE;
+    else process.env.BB_FAKE_CAPTURE = previousCapture;
+    if (previousOutputs === undefined) delete process.env.BB_FAKE_OUTPUTS;
+    else process.env.BB_FAKE_OUTPUTS = previousOutputs;
+    clearBbCaches();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  fs.writeFileSync(binary, `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const out = (value) => process.stdout.write(JSON.stringify(value));
+if (args[0] === "--version") process.stdout.write("0.44.0");
+else if (args[0] === "thread" && args[1] === "tell") {
+  let prompt = "";
+  process.stdin.on("data", (chunk) => { prompt += chunk; });
+  process.stdin.on("end", () => {
+    fs.appendFileSync(process.env.BB_FAKE_CAPTURE, JSON.stringify({ command: args[1], id: args[2], prompt }) + "\\n");
+    out({ ok: true });
+  });
+} else if (args[0] === "thread" && args[1] === "log") {
+  const after = Number(args[args.indexOf("--after-seq") + 1]);
+  out(after === 0
+    ? [{ seq: 1, type: "turn/completed", data: { status: "completed" } }]
+    : [{ seq: 2, type: "item/agentMessage/delta", data: { delta: "reply" } }, { seq: 3, type: "turn/completed", data: { status: "completed" } }]);
+} else if (args[0] === "thread" && args[1] === "output") {
+  const outputs = JSON.parse(process.env.BB_FAKE_OUTPUTS);
+  const calls = fs.readFileSync(process.env.BB_FAKE_CAPTURE, "utf8").trim().split("\\n").filter(Boolean);
+  out({ output: outputs[calls.length - 1] });
+} else throw new Error("Unexpected bb command: " + args.join(" "));
+`, { mode: 0o700 });
+  fs.writeFileSync(capture, "");
+  clearBbCaches();
+
+  const input = JSON.stringify({ meetingTitle: "Release review", transcriptSegments: [{ text: "Ship release" }] });
+  const conversation = await createBbTextConversation({
+    selection: { provider: "codex", model: "gpt-6-luna", reasoningLevel: "low" },
+    environment: directory,
+    threadId: "thr_selected",
+    promptPrefix: "Return only prioritized task JSON.",
+    saveThreadId: () => { throw new Error("Repair must use the selected run thread"); },
+    signal: new AbortController().signal,
+  });
+  const tasks = await requestMeetingJson({
+    conversation,
+    prompt: input,
+    refusalCode: "meeting-task-refused",
+    invalidCode: "meeting-task-json-invalid",
+    validate: validateMeetingTasks,
+  });
+  assert.deepEqual(tasks, { HIGH: ["Ship release"], MEDIUM: [], LOW: [] });
+  const calls = fs.readFileSync(capture, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls.map((call: { command: string; id: string }) => [call.command, call.id]), [
+    ["tell", "thr_selected"], ["tell", "thr_selected"],
+  ]);
+  assert.match(calls[0].prompt, /^Return only prioritized task JSON\.\n\n/);
+  assert.equal(calls[0].prompt.split("\n\n").slice(1).join("\n\n"), input);
+  assert.match(calls[1].prompt, /Correct your previous response/);
+  assert.match(calls[1].prompt, /extra/);
 });

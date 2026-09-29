@@ -1192,6 +1192,36 @@ export class IPCHandlers {
           signal,
         });
       },
+      createActionConversation: async (summaryConfig, instruction, run, signal) => {
+        if (summaryConfig.reasoningMode === "agent") {
+          if (!summaryConfig.agentProvider || !summaryConfig.model || !summaryConfig.agentReasoningLevel) {
+            throw Object.assign(new Error("bb summary settings are incomplete"), { code: "meeting-summary-action-config-invalid" });
+          }
+          return createBbTextConversation({
+            selection: { provider: summaryConfig.agentProvider, model: summaryConfig.model, reasoningLevel: summaryConfig.agentReasoningLevel },
+            environment: ensureBbWorkspace(app.getPath("userData")),
+            threadId: run.bbThreadId,
+            promptPrefix: instruction,
+            saveThreadId: (id) => this.databaseManager.setMeetingRunBbThreadId(run.id, id),
+            signal,
+          });
+        }
+        const providers = await import("./meetingAiProviders.js");
+        return createMeetingTextConversation(summaryConfig, {
+          getAIModel: (provider, model, apiKey, baseUrl, options) =>
+            providers.getMeetingAIModel(provider, model, apiKey, baseUrl, options),
+          generateText: (options) => require("ai").generateText(options),
+          processLocalText: (text, model, options, abortSignal) =>
+            localReasoningBridge.processText(text, model, options, abortSignal),
+          getCredential: getMeetingCredential,
+          getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
+            getEnterpriseAIModel(provider, model, apiKey, enterprise),
+          validateEnterpriseEndpoint,
+          runBedrockRequest: (operation, options) => runBedrockRequest(operation, options),
+        }, signal);
+      },
+      getActionPrompt: (translationKey) => this.databaseManager.getActions()
+        .find((action) => action.is_builtin === 1 && action.translation_key === translationKey)?.prompt ?? null,
       nameSpeakers: async (input, summaryConfig, run, signal) => {
         const namingConfig = { ...summaryConfig, instruction: MEETING_SPEAKER_NAMING_INSTRUCTION };
         if (summaryConfig.reasoningMode === "agent") {

@@ -127,6 +127,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     else setMessage(text);
   }, [toastApi]);
   const [busy, setBusy] = useState(false);
+  const [recapStatus, setRecapStatus] = useState<"running" | "provider-error" | "format-error" | "conflict" | null>(null);
   const [mock, setMock] = useState(mockPipeline);
   useEffect(() => setMock(mockPipeline), [mockPipeline]);
   const patchMock = useCallback((patch: Partial<MockPipeline>) => setMock((current) => current && { ...current, ...patch }), []);
@@ -313,6 +314,17 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     ?? combinedCurrent
     ?? [...allRuns].reverse().find((item) => parts.some((part) => part.recording.currentRunId === item.run.id));
   const availableParts = parts.filter((part) => part.recording.audioState === "available");
+  const autoTaskRuns = useRef(new Set<string>());
+  useEffect(() => {
+    const run = selected?.run;
+    if (
+      previewRecordings || !run || !selected.summary || !run.hasSummary || run.status !== "complete" ||
+      selected.summary.taskStatus !== undefined || autoTaskRuns.current.has(run.id)
+    ) return;
+    autoTaskRuns.current.add(run.id);
+    void window.electronAPI.meetingProcessingRunSummaryAction({ runId: run.id, action: "tasks" }).then(() => refresh());
+  }, [previewRecordings, refresh, selected?.run, selected?.summary]);
+  useEffect(() => setRecapStatus(null), [selectedId]);
   const [countdownNow, setCountdownNow] = useState(Date.now());
   const gateDeadline = !previewRecordings && latestRun?.run.status === "pending" &&
     (latestRun.run.kind === "initial" || latestRun.run.kind === "reprocess") &&
@@ -334,6 +346,27 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     try { await task(); await refresh(); }
     catch (error) { notify(error instanceof Error ? error.message : String(error), "destructive"); }
     finally { setBusy(false); }
+  };
+
+  const runSummaryAction = async (action: "tasks" | "recap") => {
+    if (!selected?.run.hasSummary || previewRecordings) return;
+    setBusy(true);
+    if (action === "recap") setRecapStatus("running");
+    try {
+      const result = await window.electronAPI.meetingProcessingRunSummaryAction({ runId: selected.run.id, action });
+      await refresh();
+      if (action === "recap") {
+        if (result.success) setRecapStatus(null);
+        else if (result.error === "meeting-recap-json-invalid") setRecapStatus("format-error");
+        else if (result.error === "meeting-summary-edit-conflict" || result.error === "meeting-summary-source-changed") setRecapStatus("conflict");
+        else setRecapStatus("provider-error");
+      }
+    } catch (error) {
+      if (action === "recap") setRecapStatus("provider-error");
+      notify(error instanceof Error ? error.message : String(error), "destructive");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const startAudio = async (id: string, seek = 0) => {
@@ -625,6 +658,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
               <Button size="sm" variant="ghost" className="justify-start gap-2" onPress={() => { setModelOpen(false); openRun("summary"); }}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Button>
               <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={!availableParts.length} onPress={() => { setModelOpen(false); openRun("reprocess"); }}><FileText size={14}/>{t("meetingResults.newAsr")}</Button>
               {mock && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={mock.recap === "running" || !summaryText} onPress={() => { setModelOpen(false); patchMock({ recap: "running" }); mockAfter(1500, { recap: "ok" }); }}><AlignLeft size={14}/>{mock.recap === "ok" ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
+              {!mock && selected?.summary && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={busy || recapStatus === "running" || !selected.run.hasSummary} onPress={() => { setModelOpen(false); void runSummaryAction("recap"); }}><AlignLeft size={14}/>{/^## Recap\s*$/m.test(summaryText ?? "") ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
             </div>
           </Popover.Dialog></Popover.Content>
         </Popover>
@@ -636,6 +670,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         {fallbackSummary}
       </>}
       {mock && summaryText && <MockTaskNotices tasks={mock.tasks} notify={notify} onRetry={() => { patchMock({ tasks: "loading" }); mockAfter(1500, { tasks: "ok" }); }} />}
+      {!mock && summaryText && selected?.summary && <SummaryTaskNotice
+        status={selected.summary.taskStatus}
+        onRetry={() => void runSummaryAction("tasks")}
+        disabled={busy || !selected.run.hasSummary}
+        tr={tr}
+      />}
+      {!mock && recapStatus && <RecapNotice status={recapStatus} tr={tr} />}
       {copyText.trim() && <div className="mt-3 flex justify-start">
         <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
           <Button size="sm" variant="ghost" isIconOnly className="size-7 min-h-7 text-muted hover:text-foreground" isDisabled={!copyText.trim()} aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")} onPress={() => void copyView()}>
@@ -706,6 +747,29 @@ function MockTaskNotices({ tasks, notify, onRetry }: { tasks: MockPipeline["task
     <Button size="sm" variant="secondary" onPress={() => notify("Mock: opens the Detailed Notes prompt")}>{tr("editPrompt", "Edit prompt")}</Button>{retry}</>} />;
   if (tasks === "conflict") return <NoteNotice status="warning" title={tr("tasksConflict", "Action items weren't applied")} description={tr("tasksConflictReason", "You edited this section while tasks were being prepared, so your text was kept.")} actions={retry} />;
   return null;
+}
+
+function SummaryTaskNotice({ status, onRetry, disabled, tr }: {
+  status: NonNullable<MeetingProcessingResultDto["summary"]>["taskStatus"];
+  onRetry: () => void;
+  disabled: boolean;
+  tr: (key: string, fallback: string, values?: Record<string, number>) => string;
+}) {
+  if (!status || status === "complete" || status === "zero") return null;
+  const retry = <Button size="sm" variant="secondary" isDisabled={disabled} onPress={onRetry}>{tr("retryTasks", "Retry tasks")}</Button>;
+  if (status === "running") return <NoteNotice status="accent" busy title={`${tr("tasksRunning", "Prioritizing action items")}…`} description={tr("tasksRunningReason", "The Summary above is ready. Tasks will be sorted by priority.")} />;
+  if (status === "section-error") return <NoteNotice status="warning" title={tr("tasksFormat", "Action items were found but not added")} description={tr("tasksFormatReason", "This Summary has no single “## Action Items” section, likely because of a custom prompt. The text is unchanged.")} actions={retry} />;
+  if (status === "conflict") return <NoteNotice status="warning" title={tr("tasksConflict", "Action items weren't applied")} description={tr("tasksConflictReason", "You edited this section while tasks were being prepared, so your text was kept.")} actions={retry} />;
+  return <NoteNotice status="danger" title={tr("tasksFailed", "Couldn't extract action items")} description={tr("tasksFailedReason", "The model reply didn't match the expected format. The Summary is unchanged.")} actions={retry} />;
+}
+
+function RecapNotice({ status, tr }: {
+  status: "running" | "provider-error" | "format-error" | "conflict";
+  tr: (key: string, fallback: string, values?: Record<string, number>) => string;
+}) {
+  if (status === "running") return <NoteNotice status="accent" busy title={`${tr("recapRunning", "Creating recap")}…`} description={tr("recapRunningReason", "The saved Summary remains unchanged while the recap is prepared.")} />;
+  if (status === "conflict") return <NoteNotice status="warning" title={tr("recapConflict", "Recap wasn't applied")} description={tr("recapConflictReason", "The Summary changed while the recap was being prepared. Your edits were kept.")} />;
+  return <NoteNotice status="danger" title={tr("recapFailed", "Couldn't create recap")} description={tr(status === "format-error" ? "recapFormatReason" : "recapFailedReason", status === "format-error" ? "The model reply didn't match the expected format. The Summary is unchanged." : "The Summary is unchanged. You can try again.")} />;
 }
 
 function AudioPlayer({

@@ -15,6 +15,9 @@ import {
 import { RichTextEditor } from "../ui/RichTextEditor";
 import type { Editor } from "@tiptap/react";
 import { calendarDescriptionText } from "../../helpers/calendarDescription";
+import { FOLLOW_UP_KEY } from "../../helpers/builtinActions";
+import { buildMeetingFollowUpSystemPrompt } from "../../helpers/meetingFollowUpPrompt";
+import { initializeActions } from "../../stores/actionStore";
 
 /** Rich-text HTML → the plain text Copy puts on the clipboard. */
 function htmlToPlainText(html: string): string {
@@ -225,7 +228,9 @@ export default function NoteEditor({
     noteContent: note.content,
     noteTranscript: note.transcript ?? undefined,
   });
+  const { sendActionMessage } = embeddedChat;
   const [previewChatMessages, setPreviewChatMessages] = useState<Message[]>([]);
+  const [followUpError, setFollowUpError] = useState("");
   const sendPreviewMessage = useCallback((text: string) => {
     setPreviewChatMessages((messages) => [
       ...messages,
@@ -279,6 +284,40 @@ export default function NoteEditor({
   }, [diarizedSegments, note.transcript]);
 
   const hasChatSegments = displaySegments.length > 0;
+  const runLiveFollowUp = useCallback(async () => {
+    if (debugPreview || isRecording || !hasChatSegments) return;
+    setFollowUpError("");
+    try {
+      const action = (await initializeActions()).find((item) => item.translation_key === FOLLOW_UP_KEY);
+      if (!action) throw new Error("Follow-up Action is unavailable.");
+      const summary = enhancement && !enhancement.isStale
+        ? enhancement.content
+        : null;
+      const meetingMaterial = {
+        meetingTitle: note.title,
+        manualNotes: note.content,
+        transcriptSegments: displaySegments.map((segment) => ({
+          id: segment.id,
+          speakerId: segment.speaker ?? null,
+          speakerName: segment.speaker
+            ? speakerMappings[segment.speaker] ?? segment.speakerName ?? null
+            : null,
+          text: segment.text,
+          ...(typeof segment.timestamp === "number" && Number.isFinite(segment.timestamp)
+            ? { startTimestamp: segment.timestamp }
+            : {}),
+        })),
+        summary,
+      };
+      const systemPrompt = buildMeetingFollowUpSystemPrompt(action.prompt, meetingMaterial);
+      await sendActionMessage(
+        t("notes.actions.builtin.followUp.cta", { defaultValue: "Draft a follow-up" }),
+        systemPrompt
+      );
+    } catch {
+      setFollowUpError(t("embeddedChat.followUpError", { defaultValue: "Couldn't prepare the follow-up. Try again." }));
+    }
+  }, [debugPreview, sendActionMessage, enhancement, hasChatSegments, isRecording, note.content, note.title, displaySegments, speakerMappings, t]);
   // A finished recording with no AI summary yet offers one from the Summary tab.
   const canGenerateSummary =
     !isRecording &&
@@ -650,7 +689,15 @@ export default function NoteEditor({
           disabled: !hasMeetingTranscript,
           title: hasMeetingTranscript ? undefined : t("embeddedChat.followUpUnavailable", { defaultValue: "Available once the transcript is ready" }),
         }
-      : undefined,
+      : {
+          label: t("notes.actions.builtin.followUp.cta", { defaultValue: "Draft a follow-up" }),
+          onPress: runLiveFollowUp,
+          disabled: !hasMeetingTranscript || !hasChatSegments || isRecording,
+          title: hasMeetingTranscript && hasChatSegments && !isRecording
+            ? undefined
+            : t("embeddedChat.followUpUnavailable", { defaultValue: "Available once the transcript is ready" }),
+          error: followUpError || undefined,
+        },
     emptyStateText: t("embeddedChat.emptyState"),
     onOpenNote: debugPreview ? undefined : openChatNote,
     allowSidebar: true,

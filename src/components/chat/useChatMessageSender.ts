@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 import type { ChatPersistence } from "./useChatPersistence";
-import type { ChatStreaming } from "./useChatStreaming";
+import type { ChatSendOptions, ChatStreaming } from "./useChatStreaming";
 import type { Message } from "./types";
 
 interface PersistedMessageContext {
@@ -48,14 +48,14 @@ export function useChatMessageSender({
   onBeforeSend,
   onMessagePersisted,
   onSendingChange,
-}: UseChatMessageSenderOptions): (text: string) => Promise<boolean> {
+}: UseChatMessageSenderOptions): (text: string, sendOptions?: ChatSendOptions) => Promise<boolean> {
   const submissionLockRef = useRef<MessageSubmissionLock | null>(null);
   if (submissionLockRef.current === null) {
     submissionLockRef.current = createMessageSubmissionLock();
   }
 
   return useCallback(
-    async (text: string) => {
+    async (text: string, sendOptions?: ChatSendOptions) => {
       return await submissionLockRef.current!.run(async () => {
         onSendingChange?.(true);
         try {
@@ -76,7 +76,7 @@ export function useChatMessageSender({
             text,
             isFirstMessage: previousMessages.length === 0,
           });
-          await streaming.sendToAI(text, [...previousMessages, userMessage]);
+          await streaming.sendToAI(text, [...previousMessages, userMessage], sendOptions);
         } finally {
           onSendingChange?.(false);
         }

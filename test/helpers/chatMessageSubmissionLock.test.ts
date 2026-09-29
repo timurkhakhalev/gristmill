@@ -73,3 +73,43 @@ test("message sender reports whether the submission lock accepted the send", asy
   resolveCreate(1);
   assert.equal(await first, true);
 });
+
+test("an action turn persists a normal Chat user message with one-turn options", async (t: import("node:test").TestContext) => {
+  installBrowserGlobals(t);
+  const vite = await createRendererServer(t, {
+    cachePrefix: "openwhispr-chat-action-message-test-",
+  });
+  const { useChatMessageSender } = await vite.ssrLoadModule(
+    "/components/chat/useChatMessageSender.ts"
+  );
+  const saved: string[] = [];
+  const streamed: unknown[][] = [];
+  const previousMessage = { id: "prior", role: "assistant", content: "old context", isStreaming: false };
+  const persistence = {
+    messages: [previousMessage],
+    setMessages() {},
+    async saveUserMessage(text: string) { saved.push(text); },
+  };
+  let sendMessage: any;
+  function Harness() {
+    sendMessage = useChatMessageSender({
+      conversationId: 12,
+      persistence,
+      streaming: { async sendToAI(...args: unknown[]) { streamed.push(args); } },
+      createConversation: async () => { throw new Error("an existing note conversation is reused"); },
+    });
+    return null;
+  }
+  renderToStaticMarkup(React.createElement(Harness));
+
+  const options = { systemPrompt: "Editable action prompt and selected meeting JSON", disableTools: true, includeConversationHistory: false };
+  assert.equal(await sendMessage("Draft a follow-up", options), true);
+  assert.deepEqual(saved, ["Draft a follow-up"]);
+  assert.equal(streamed.length, 1);
+  assert.equal(streamed[0][0], "Draft a follow-up");
+  assert.deepEqual((streamed[0][1] as Array<{ role: string; content: string }>).map(({ role, content }) => [role, content]), [
+    ["assistant", "old context"],
+    ["user", "Draft a follow-up"],
+  ]);
+  assert.deepEqual(streamed[0][2], options);
+});

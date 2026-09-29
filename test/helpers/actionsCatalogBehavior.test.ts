@@ -175,3 +175,27 @@ test("reopening the database keeps custom actions and edited builtin prompts", (
   assert.equal(builtin!.prompt, "my custom generate prompt", "seeding does not overwrite edits");
   db.close();
 });
+
+test("reopening a populated legacy catalog adds missing meeting actions without replacing edits", (t: import("node:test").TestContext) => {
+  {
+    const db = createDb(t, "openhercules-actions-missing-meeting-rows-") as import("../../src/helpers/database.js").DatabaseManager;
+    const detailed = db.getActions().find((a: ActionRow) => a.translation_key === "notes.actions.builtin.detailedNotes");
+    assert.ok(detailed);
+    db.updateAction(detailed.id, { prompt: "my edited Detailed Notes prompt" });
+    db.createAction("My action", "Keep this", "custom prompt");
+    db.db.prepare("DELETE FROM actions WHERE translation_key IN (?, ?)")
+      .run("notes.actions.builtin.followUp", "notes.actions.builtin.recap");
+    db.close();
+  }
+
+  const db = new DatabaseManager() as import("../../src/helpers/database.js").DatabaseManager;
+  try {
+    const actions = db.getActions();
+    assert.equal(actions.filter((a) => a.translation_key === "notes.actions.builtin.followUp").length, 1);
+    assert.equal(actions.filter((a) => a.translation_key === "notes.actions.builtin.recap").length, 1);
+    assert.equal(actions.find((a) => a.translation_key === "notes.actions.builtin.detailedNotes")?.prompt, "my edited Detailed Notes prompt");
+    assert.ok(actions.some((a) => a.name === "My action" && a.prompt === "custom prompt"));
+  } finally {
+    db.close();
+  }
+});

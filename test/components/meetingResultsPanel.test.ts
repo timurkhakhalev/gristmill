@@ -517,6 +517,12 @@ test("a newer group's gate blocks its ASR while an older completed group remains
   newerPart.recording.endedAt = new Date().toISOString();
   const ui = await mountPanel(t, [olderPart, newerPart]);
 
+  const wholeMeeting = ui.button("Transcribe");
+  assert.ok(wholeMeeting, "the whole-meeting control stays visible in the audio view");
+  assert.equal(wholeMeeting.props?.isDisabled, true, "whole-meeting reprocessing includes the gated current group");
+  await ui.flush(() => (wholeMeeting.props as { onPress: () => void }).onPress());
+  assert.equal(ui.calls.create.length, 0, "the whole-meeting handler cannot bypass the current group's gate");
+
   const menus = findNodes(ui.tree(), (node) =>
     node.props?.["aria-label"] === "Audio part actions" && typeof node.props?.onAction === "function"
   );
@@ -530,7 +536,6 @@ test("a newer group's gate blocks its ASR while an older completed group remains
   await ui.flush(() => (menus[1].props as { onAction(key: string): void }).onAction("asr"));
   assert.equal(ui.calls.create.at(-1)?.recordingId, FIRST);
   assert.deepEqual(ui.calls.create.at(-1)?.sourceRecordingIds, [FIRST]);
-  assert.equal(ui.button("Transcribe")?.props?.isDisabled, true, "whole-meeting reprocessing includes the gated current group");
 });
 
 test("short live transcript explains automatic Summary ineligibility and keeps manual Summary available", async (t: TestContext) => {
@@ -575,7 +580,7 @@ test("invalid saved calendar participants show a specific live processing error"
 test("calendar participant naming error stays visible with the completed Summary", async (t: TestContext) => {
   const namedWithError = completeRun();
   namedWithError.run.speakerNamingErrorCode = "calendar-participants-invalid";
-  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", namedWithError)]);
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", namedWithError)], { viewMode: "enhanced" });
   assert.match(ui.text(), /Stored calendar participant data is invalid/);
   assert.match(ui.text(), /Automatic speaker naming was skipped/);
   assert.match(ui.text(), /Release on Friday/);

@@ -282,4 +282,4 @@ Verification run by this agent:
 - `git diff --check` — passed.
 - Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts` and then the M6 focused set.
 
-Implementation commit: pending.
+Implementation commit: `a38587ca5` (`M6: assert gate and Summary in owning views`).

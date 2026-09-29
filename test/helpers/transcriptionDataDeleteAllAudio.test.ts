@@ -5,7 +5,7 @@ const os: typeof import("node:os") = require("node:os");
 const path: typeof import("node:path") = require("node:path");
 const Module = require("node:module");
 
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-delete-all-audio-"));
+let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-delete-all-audio-"));
 const originalLoad = Module._load;
 
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -36,7 +36,7 @@ function isNativeBindingUnavailable(error: unknown) {
 }
 
 function setup(t: import("node:test").TestContext) {
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-delete-all-audio-"));
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-delete-all-audio-"));
   let db;
   let audioStorage;
   try {

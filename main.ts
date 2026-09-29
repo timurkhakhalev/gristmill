@@ -59,11 +59,11 @@ try {
 
 const VALID_CHANNELS = new Set(["development", "staging", "production"]);
 const DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL: Record<string, string> = {
-  development: "openhercules-dev",
-  staging: "openhercules-staging",
-  production: "openhercules",
+  development: "gristmill-dev",
+  staging: "gristmill-staging",
+  production: "gristmill",
 };
-const APP_NAME = "OpenHercules";
+const APP_NAME = "Gristmill";
 
 function isElectronBinaryExec(): boolean {
   const execPath = (process.execPath || "").toLowerCase();
@@ -90,8 +90,8 @@ function resolveAppChannel(): string {
     try {
       const metadata = JSON.parse(
         fs.readFileSync(path.join(app.getAppPath(), "package.json"), "utf8")
-      ) as { openherculesChannel?: string };
-      if (metadata.openherculesChannel === "development") return "development";
+      ) as { gristmillChannel?: string };
+      if (metadata.gristmillChannel === "development") return "development";
     } catch (error) {
       debugLogger.warn("Could not read packaged app channel", {
         error: (error as Error).message,
@@ -99,7 +99,7 @@ function resolveAppChannel(): string {
     }
   }
 
-  const rawChannel = (process.env.OPENHERCULES_CHANNEL || process.env.VITE_OPENHERCULES_CHANNEL || "")
+  const rawChannel = (process.env.GRISTMILL_CHANNEL || process.env.VITE_GRISTMILL_CHANNEL || "")
     .trim()
     .toLowerCase();
 
@@ -111,7 +111,7 @@ function resolveAppChannel(): string {
 }
 
 const APP_CHANNEL = resolveAppChannel();
-process.env.OPENHERCULES_CHANNEL = APP_CHANNEL;
+process.env.GRISTMILL_CHANNEL = APP_CHANNEL;
 
 function configureChannelUserDataPath(): void {
   const profileName = APP_CHANNEL === "production" ? APP_NAME : `${APP_NAME}-${APP_CHANNEL}`;
@@ -150,7 +150,7 @@ require("dotenv").config({
 
 
 function getOAuthProtocol(): string {
-  const fromEnv = (process.env.VITE_OPENHERCULES_PROTOCOL || process.env.OPENHERCULES_PROTOCOL || "")
+  const fromEnv = (process.env.VITE_GRISTMILL_PROTOCOL || process.env.GRISTMILL_PROTOCOL || "")
     .trim()
     .toLowerCase();
 
@@ -170,7 +170,7 @@ function shouldRegisterProtocolWithAppArg(): boolean {
 }
 
 // Register custom protocol for OAuth callbacks.
-function registerOpenHerculesProtocol(): boolean {
+function registerGristmillProtocol(): boolean {
   const protocol = OAUTH_PROTOCOL;
 
   let result: boolean;
@@ -184,7 +184,7 @@ function registerOpenHerculesProtocol(): boolean {
   return result;
 }
 
-const protocolRegistered = registerOpenHerculesProtocol();
+const protocolRegistered = registerGristmillProtocol();
 if (!protocolRegistered) {
   console.warn(`[Auth] Failed to register ${OAUTH_PROTOCOL}:// protocol handler`);
 }
@@ -227,7 +227,7 @@ function isLiveWindow(window: BrowserWindow | null): window is BrowserWindow {
 }
 
 // Keep the packaged development app visibly distinct in macOS menus.
-const displayName = app.isPackaged && APP_CHANNEL === "development" ? "OpenHercules Dev" : APP_NAME;
+const displayName = app.isPackaged && APP_CHANNEL === "development" ? "Gristmill Dev" : APP_NAME;
 if (process.platform === "darwin" && app.getName() !== displayName) {
   app.setName(displayName);
 }

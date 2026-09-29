@@ -1,12 +1,12 @@
 {
-  "appId": "com.openhercules.desktop",
+  "appId": "com.khakhalev.gristmill",
   "beforeBuild": "scripts/beforeBuild.js",
   "afterPack": "scripts/afterPack.js",
-  "productName": "OpenHercules",
+  "productName": "Gristmill",
   "protocols": {
-    "name": "OpenHercules Protocol",
+    "name": "Gristmill Protocol",
     "schemes": [
-      "openhercules"
+      "gristmill"
     ]
   },
   "directories": {
@@ -129,16 +129,16 @@
     ],
     "extendInfo": {
       "LSUIElement": false,
-      "CFBundleIconName": "openhercules",
-      "NSMicrophoneUsageDescription": "OpenHercules uses the microphone to capture your voice for transcription.",
-      "NSAudioCaptureUsageDescription": "OpenHercules uses system audio to capture other participants' audio from calls and meetings.",
-      "NSAccessibilityUsageDescription": "OpenHercules uses accessibility access for global meeting shortcuts.",
-      "NSCalendarsUsageDescription": "OpenHercules reads your calendar to detect upcoming meetings and link meeting notes to events.",
-      "NSCalendarsFullAccessUsageDescription": "OpenHercules reads your calendar to detect upcoming meetings and link meeting notes to events."
+      "CFBundleIconName": "gristmill",
+      "NSMicrophoneUsageDescription": "Gristmill uses the microphone to capture your voice for transcription.",
+      "NSAudioCaptureUsageDescription": "Gristmill uses system audio to capture other participants' audio from calls and meetings.",
+      "NSAccessibilityUsageDescription": "Gristmill uses accessibility access for global meeting shortcuts.",
+      "NSCalendarsUsageDescription": "Gristmill reads your calendar to detect upcoming meetings and link meeting notes to events.",
+      "NSCalendarsFullAccessUsageDescription": "Gristmill reads your calendar to detect upcoming meetings and link meeting notes to events."
     }
   },
   "dmg": {
-    "title": "OpenHercules",
+    "title": "Gristmill",
     "icon": "src/assets/icon.icns",
     "window": {
       "width": 540,

@@ -78,7 +78,7 @@ export async function transcribeAudio({
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       encounter: {
-        identifier: `openhercules-${crypto.randomUUID()}`,
+        identifier: `gristmill-${crypto.randomUUID()}`,
         status: "completed",
         type: "consultation",
       },

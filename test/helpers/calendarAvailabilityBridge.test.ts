@@ -14,7 +14,7 @@ const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 type BridgeHandler = (event: unknown, ...args: unknown[]) => unknown;
 let activeHandlers: Map<string, BridgeHandler> | null = null;
-const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-calavail-"));
+const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-calavail-"));
 const originalNodeEnv = process.env.NODE_ENV;
 
 const originalLoad = Module._load;

@@ -7,7 +7,7 @@ import { cn } from "./lib/utils";
 import { getCachedPlatform } from "../utils/platform";
 import type { NotesDebugScenario } from "./notes/NotesDebugControls";
 
-const NotesDebugControls = (import.meta.env.DEV || import.meta.env.VITE_OPENHERCULES_DEV_BUILD === "true")
+const NotesDebugControls = (import.meta.env.DEV || import.meta.env.VITE_GRISTMILL_DEV_BUILD === "true")
   ? React.lazy(() => import("./notes/NotesDebugControls"))
   : null;
 

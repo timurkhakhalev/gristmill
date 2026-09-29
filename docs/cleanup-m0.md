@@ -23,7 +23,7 @@
   semantic search/Qdrant и non-mac-arm64. Direct-provider credentials остаются.
 - Календари Apple/Google/Microsoft остаются. Собственный OAuth позже; G/M до
   настройки показывают понятную недоступность. Manual recording не блокируется.
-- Отдельный чистый профиль OpenHercules; данные/ключи OW не мигрируем.
+- Отдельный чистый профиль Gristmill; данные/ключи OW не мигрируем.
 - Новые модели, durable tracks/queue/revisions/automatic notes — отдельный этап.
 
 ## Home/Insights: доказательства и подтверждённое решение

@@ -14,7 +14,7 @@ const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 let activeHandlers: Map<string, (...args: unknown[]) => unknown> | null = null;
-const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-"));
+const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-transcribe-bridge-"));
 const originalNodeEnv = process.env.NODE_ENV;
 
 const originalLoad = Module._load;
@@ -80,7 +80,7 @@ function loadBundledPreload(invoke: unknown) {
   return api;
 }
 
-const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-transcribe-bridge-")));
+const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-transcribe-bridge-")));
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, "RIFF....");
 

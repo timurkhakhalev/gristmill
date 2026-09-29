@@ -4,7 +4,7 @@
       "sectionTitle": "言語",
       "sectionDescription": "インターフェースと文字起こしの言語を個別に設定",
       "uiLabel": "インターフェース言語",
-      "uiDescription": "OpenHercules のインターフェースで使用する言語を選択",
+      "uiDescription": "Gristmill のインターフェースで使用する言語を選択",
       "transcriptionLabel": "文字起こし言語",
       "transcriptionDescription": "より正確な文字起こしのために話す言語を選択",
       "chineseScriptLabel": "中国語の字体（ディクテーション）",
@@ -60,8 +60,8 @@
   "tray": {
     "openControlPanel": "コントロールパネルを開く",
     "hideControlPanel": "コントロールパネルを非表示",
-    "quit": "OpenHercules を終了",
-    "tooltip": "OpenHercules",
+    "quit": "Gristmill を終了",
+    "tooltip": "Gristmill",
     "recordingStatus": "録音中",
     "stopRecording": "録音を停止",
     "startsIn": "{{time}}後に開始",
@@ -74,8 +74,8 @@
     "now": "今"
   },
   "menu": {
-    "appLabel": "OpenHercules",
-    "quit": "OpenHercules を終了",
+    "appLabel": "Gristmill",
+    "quit": "Gristmill を終了",
     "speech": "スピーチ",
     "settings": "設定...",
     "help": "ヘルプ",
@@ -93,8 +93,8 @@
       "message": "ブラウザでリンクを開けませんでした:\n{{url}}\n\nエラー: {{error}}"
     },
     "loadFailure": {
-      "title": "OpenHercules の読み込みに失敗しました",
-      "message": "OpenHercules の UI を読み込めませんでした。",
+      "title": "Gristmill の読み込みに失敗しました",
+      "message": "Gristmill の UI を読み込めませんでした。",
       "detail": {
         "window": "ウィンドウ: {{windowName}}",
         "error": "エラー {{errorCode}}: {{errorDescription}}",
@@ -107,22 +107,22 @@
       "message": "終了前に録音を停止して保存しますか？",
       "stopAndQuit": "停止して終了",
       "cancel": "キャンセル",
-      "stopFailed": "録音をまだ保存できません。OpenHercules は開いたままです。"
+      "stopFailed": "録音をまだ保存できません。Gristmill は開いたままです。"
     }
   },
   "startup": {
     "error": {
-      "title": "OpenHercules 起動エラー",
+      "title": "Gristmill 起動エラー",
       "message": "アプリケーションの起動に失敗しました:\n\n{{error}}\n\nこの問題を報告してください。"
     },
     "globeHotkey": {
       "title": "Globe ホットキーが使用できません",
-      "message": "OpenHercules は Globe キーのホットキーを有効にできませんでした。",
+      "message": "Gristmill は Globe キーのホットキーを有効にできませんでした。",
       "details": {
         "unknown": "Globe リスナーの起動中に不明なエラーが発生しました。",
         "fallback": "Globe キーのショートカットは無効のままになります。既存のキーボードショートカットは引き続き使用できます。",
         "devHint": "`npm run compile:globe` を実行し、アプリを再ビルドしてリスナーバイナリを再生成してください。",
-        "reinstallHint": "OpenHercules を再インストールするか、問題が解決しない場合はサポートにお問い合わせください。"
+        "reinstallHint": "Gristmill を再インストールするか、問題が解決しない場合はサポートにお問い合わせください。"
       }
     }
   },
@@ -199,7 +199,7 @@
   "onboarding": {
     "rehaul": {
       "permissions": {
-        "title": "3 分で OpenHercules を設定",
+        "title": "3 分で Gristmill を設定",
         "microphoneDescription": "話した内容をテキストにします。録音中のみ有効です。",
         "systemAudioTitle": "システムオーディオ",
         "systemAudioDescription": "会議メモのために、通話相手の音声を録音します。録音中のみ有効です。",
@@ -210,7 +210,7 @@
         "title": "どの言語を話しますか？",
         "titleLineOne": "どの言語を",
         "titleLineTwo": "話しますか？",
-        "description": "当てはまるものをすべて選択してください。OpenHerculesが言語の切り替えをより正確に認識できるようになります。",
+        "description": "当てはまるものをすべて選択してください。Gristmillが言語の切り替えをより正確に認識できるようになります。",
         "selected": "Selected languages"
       },
       "hotkey": {
@@ -220,13 +220,13 @@
         "holding": "押したままにするか、別のキーを押してください"
       },
       "notes": {
-        "title": "ボットなしで会議を録音 — OpenHercules Notes",
+        "title": "ボットなしで会議を録音 — Gristmill Notes",
         "titleLineOne": "ボットなしでミーティングを録音",
-        "titleLineTwoPrefix": "OpenHercules の",
+        "titleLineTwoPrefix": "Gristmill の",
         "titleLineTwoBrand": "Notes",
-        "description": "OpenHercules は会話をわかりやすいノートに変換します。ミーティングボットが通話に参加することはありません。",
+        "description": "Gristmill は会話をわかりやすいノートに変換します。ミーティングボットが通話に参加することはありません。",
         "hero": {
-          "description": "ミーティングを録音すれば、OpenHercules が会話をわかりやすく整理されたノートに変換します。",
+          "description": "ミーティングを録音すれば、Gristmill が会話をわかりやすく整理されたノートに変換します。",
           "chat": "ミーティングノートとチャット",
           "transcript": "全文の文字起こしを確認",
           "speakers": "誰が何を話したかを確認"
@@ -242,8 +242,8 @@
         }
       },
       "setupChoice": {
-        "title": "OpenHercules のセットアップを選択",
-        "titleLineOne": "OpenHercules の",
+        "title": "Gristmill のセットアップを選択",
+        "titleLineOne": "Gristmill の",
         "titleLineTwo": "セットアップを選択",
         "description": "働き方に合った方法を選んでください。",
         "byok": {
@@ -346,12 +346,12 @@
       "recommended": "推奨"
     },
     "useCase": {
-      "title": "OpenHercules をどのように使いますか？",
-      "titleLineOne": "OpenHerculesを",
+      "title": "Gristmill をどのように使いますか？",
+      "titleLineOne": "Gristmillを",
       "titleLineTwo": "どう使いますか？",
       "description": "当てはまるものをすべて選んでください。それに合わせてセットアップします。",
       "noteLabel": "他に伝えておきたいことはありますか？",
-      "notePlaceholder": "OpenHercules の使い方を教えてください（任意）",
+      "notePlaceholder": "Gristmill の使い方を教えてください（任意）",
       "proceedToSetup": "設定に進む",
       "options": {
         "meetings": {
@@ -376,7 +376,7 @@
     "meeting": {
       "title": "会議メモ",
       "description": "会議を記録して要約します",
-      "autoDetect": "OpenHercules は会議中であることを自動的に検出し、メモの開始を提案します。あなたの操作なしに録音されることはありません。",
+      "autoDetect": "Gristmill は会議中であることを自動的に検出し、メモの開始を提案します。あなたの操作なしに録音されることはありません。",
       "hotkeyLabel": "会議ホットキー",
       "hotkeyHint": "任意 — 会議中に押すとすぐにメモを開始できます。"
     },
@@ -492,7 +492,7 @@
           "modelNotFound": "AWS Bedrock はリージョン {{region}} で選択したモデルを見つけられませんでした。モデル ID とそのリージョンでの提供状況を確認してください。",
           "configurationRejected": "AWS Bedrock はリージョン {{region}} のモデル設定を拒否しました。モデル ID、推論プロファイル、リージョンを確認してください。",
           "notConfigured": "AWS Bedrock が正しく設定されていません。リージョンと AWS 認証情報を確認してください。",
-          "serviceUnavailable": "需要が高いため、AWS Bedrock は一時的に利用できません。これは OpenHercules の障害ではなく AWS サービス側の問題です。数分後にもう一度お試しください。",
+          "serviceUnavailable": "需要が高いため、AWS Bedrock は一時的に利用できません。これは Gristmill の障害ではなく AWS サービス側の問題です。数分後にもう一度お試しください。",
           "throttled": "リクエストが多すぎるため、AWS Bedrock は一時的にリクエストを制限しています。少し待ってから再試行してください。続く場合は、AWS 管理者に Bedrock の使用量とクォータの確認を依頼してください。",
           "timeout": "AWS Bedrock が時間内に応答しませんでした。もう一度お試しください。続く場合は、インターネット接続と AWS Bedrock サービスの状態を確認してください。",
           "network": "AWS Bedrock に接続できませんでした。インターネット接続を確認して、もう一度お試しください。",
@@ -640,7 +640,7 @@
       "micErrors": {
         "accessFailed": "マイクへのアクセスに失敗しました。もう一度お試しください。",
         "noMicrophones": "マイクが検出されませんでした。{{settingsPath}} でマイクを接続または選択してください。",
-        "permissionDenied": "権限が拒否されました。{{privacyPath}} を開いて OpenHercules を許可してください。",
+        "permissionDenied": "権限が拒否されました。{{privacyPath}} を開いて Gristmill を許可してください。",
         "couldNotStart": "選択したマイクを開始できませんでした。{{settingsPath}} で入力デバイスを選択してから、テストを再実行してください。",
         "noActiveInput": "アクティブな音声入力が見つかりませんでした。{{settingsPath}} でマイクを選択してください。",
         "unknown": "マイクへのアクセスに失敗しました: {{error}}。別の入力デバイスを選択してもう一度お試しください。",
@@ -832,7 +832,7 @@
       "reset": "リセット",
       "save": "保存"
     },
-    "defaultTestInput": "ねぇ Hercules、今日の天気はどう？",
+    "defaultTestInput": "ねぇ Gristmill、今日の天気はどう？",
     "dialogs": {
       "reset": {
         "description": "プロンプトをデフォルト値にリセットしました。",
@@ -1020,7 +1020,7 @@
       "appearance": {
         "auto": "自動",
         "dark": "ダーク",
-        "description": "OpenHercules の外観を設定",
+        "description": "Gristmill の外観を設定",
         "light": "ライト",
         "theme": "テーマ",
         "themeDescription": "ライト、ダーク、またはシステムに合わせる",
@@ -1051,14 +1051,14 @@
       },
       "startup": {
         "launchAtLogin": "ログイン時に起動",
-        "launchAtLoginDescription": "ログイン時に OpenHercules をバックグラウンドで起動します",
+        "launchAtLoginDescription": "ログイン時に Gristmill をバックグラウンドで起動します",
         "title": "起動設定",
-        "description": "OpenHercules の起動時の動作を制御",
+        "description": "Gristmill の起動時の動作を制御",
         "startMinimized": "最小化で起動",
         "startMinimizedDescription": "コントロールパネルウィンドウを表示せずに起動",
         "needsApproval": {
           "title": "システム設定での許可が必要です",
-          "description": "macOS は OpenHercules をログイン項目として登録しましたが、「ログイン項目」での許可を待っています。",
+          "description": "macOS は Gristmill をログイン項目として登録しましたが、「ログイン項目」での許可を待っています。",
           "action": "ログイン項目を開く"
         }
       },
@@ -1116,11 +1116,11 @@
       "notesGroup": "ノート",
       "meetingCompanion": {
         "label": "録音コンパニオン",
-        "description": "会議の録音中に OpenHercules がバックグラウンドにあるとき、声に反応するドラッグ可能な小さなバブルを表示します。クリックするとメモが開きます。"
+        "description": "会議の録音中に Gristmill がバックグラウンドにあるとき、声に反応するドラッグ可能な小さなバブルを表示します。クリックするとメモが開きます。"
       }
     },
     "permissions": {
-      "description": "OpenHercules の正常動作に必要なシステム権限をテスト・管理",
+      "description": "Gristmill の正常動作に必要なシステム権限をテスト・管理",
       "microphoneDescription": "ディクテーションと文字起こしのためにあなたの声を録音します",
       "microphoneTitle": "マイク",
       "optional": "任意",
@@ -1436,7 +1436,7 @@
     },
     "structureIntro": {
       "title": "ノートの保存場所",
-      "description": "OpenHercules は個人的な考えと共同作業を分け、適切な人だけがノートを見られるようにします。",
+      "description": "Gristmill は個人的な考えと共同作業を分け、適切な人だけがノートを見られるようにします。",
       "personal": {
         "title": "個人スペース",
         "description": "ここのフォルダーとノートは自分だけが見ることができます。"
@@ -1705,7 +1705,7 @@
       },
       "systemAudioStopped": {
         "title": "会議の音声が停止しました",
-        "description": "OpenHercules は他の参加者の音声を取り込めなくなりました。録音を停止してもう一度開始するか、音声出力デバイスを確認してください。"
+        "description": "Gristmill は他の参加者の音声を取り込めなくなりました。録音を停止してもう一度開始するか、音声出力デバイスを確認してください。"
       },
       "systemAudioQuiet": {
         "title": "会議の音声が無音になりました",
@@ -1810,7 +1810,7 @@
     "clearAll": "すべてクリア",
     "clearTitle": "辞書をクリアしますか？",
     "clearDescription": "カスタム辞書のすべての単語が削除されます。この操作は元に戻せません。",
-    "addPlaceholder": "カンマ区切りで単語を追加 — OpenHercules、Supabase、ARR など",
+    "addPlaceholder": "カンマ区切りで単語を追加 — Gristmill、Supabase、ARR など",
     "add": "追加",
     "importWords": "単語をインポート",
     "importPlaceholder": "カンマまたは改行区切りの単語を貼り付け...",
@@ -1840,7 +1840,7 @@
       "duplicate": "このトリガーのスニペットは既に存在します",
       "emptyTitle": "同じことを言うのは",
       "emptyTitleAccent": "一度だけ",
-      "emptyDescription": "トリガーワードを話すと、OpenHerculesが保存した内容に置き換えます。URL、自己紹介、署名、プロンプトなど。",
+      "emptyDescription": "トリガーワードを話すと、Gristmillが保存した内容に置き換えます。URL、自己紹介、署名、プロンプトなど。",
       "new": "新規スニペット",
       "examples": {
         "linkedinTrigger": "私のLinkedIn",
@@ -1902,7 +1902,7 @@
     "submitBug": "バグを報告"
   },
   "postMigration": {
-    "title": "OpenHercules へおかえりなさい",
+    "title": "Gristmill へおかえりなさい",
     "description": "ノートと設定は以前のバージョンから引き継がれています。ただし macOS はこれを新しいアプリとして扱うため、いくつかの権限を改めて付与していただく必要があります。",
     "done": "完了",
     "remindLater": "後で通知"
@@ -1926,8 +1926,8 @@
     "ready": "GPUアクセラレーション準備完了",
     "activating": "GPU を有効化中...",
     "activationFailed": "GPU アクセラレーションを利用できません",
-    "activationFailedDescription": "OpenHercules は CPU 文字起こしに切り替えました。",
-    "reasoningActivationFailedDescription": "OpenHercules は CPU 処理に切り替えました。",
+    "activationFailedDescription": "Gristmill は CPU 文字起こしに切り替えました。",
+    "reasoningActivationFailedDescription": "Gristmill は CPU 処理に切り替えました。",
     "retryActivation": "GPU アクセラレーションを再試行",
     "remove": "削除",
     "dismiss": "後で",
@@ -1947,11 +1947,11 @@
       "undo": "元に戻す",
       "accessibilityMissing": {
         "title": "アクセシビリティの許可が必要です",
-        "description": "OpenHercules がホットキーの検出とテキストの貼り付けを行うには、アクセシビリティの許可が必要です。コントロールパネルで有効にしてください。"
+        "description": "Gristmill がホットキーの検出とテキストの貼り付けを行うには、アクセシビリティの許可が必要です。コントロールパネルで有効にしてください。"
       },
       "gpuFallback": {
         "title": "GPU アクセラレーションを利用できません",
-        "description": "OpenHercules は CPU 文字起こしに切り替えました。",
+        "description": "Gristmill は CPU 文字起こしに切り替えました。",
         "retry": "GPU を再試行"
       },
       "gpuPackMigration": {
@@ -1984,7 +1984,7 @@
       "disconnectConfirm": "{{email}} を切断しますか？",
       "disconnectDescription": "このカレンダーからの会議メモは記録されなくなります。",
       "systemAudioRequired": "システムオーディオの権限が必要です",
-      "systemAudioDescription": "会議を文字起こしするには、OpenHercules に他の参加者の音声を録音するためのシステムオーディオの権限が必要です。画面を録画することはありません。システム設定に移動して有効にします。",
+      "systemAudioDescription": "会議を文字起こしするには、Gristmill に他の参加者の音声を録音するためのシステムオーディオの権限が必要です。画面を録画することはありません。システム設定に移動して有効にします。",
       "openSettings": "システム設定を開く",
       "connectFailed": "接続に失敗しました",
       "connectFailedDescription": "Google Calendar への接続中にエラーが発生しました。もう一度お試しください。",
@@ -2015,17 +2015,17 @@
       "disconnectConfirm": "Apple カレンダーを切断しますか？",
       "disconnectDescription": "Apple カレンダーからの会議メモは記録されなくなります。",
       "permissionDenied": "カレンダーへのアクセスが必要です",
-      "permissionDeniedDescription": "会議を検出するには、OpenHercules にカレンダーへのアクセスが必要です。システム設定の「プライバシーとセキュリティ」→「カレンダー」で OpenHercules を有効にしてください。",
+      "permissionDeniedDescription": "会議を検出するには、Gristmill にカレンダーへのアクセスが必要です。システム設定の「プライバシーとセキュリティ」→「カレンダー」で Gristmill を有効にしてください。",
       "openSettings": "システム設定を開く",
       "connectFailed": "接続に失敗しました",
-      "connectFailedDescription": "Calendar.app への接続中にエラーが発生しました。OpenHercules を再起動してもう一度お試しください。"
+      "connectFailedDescription": "Calendar.app への接続中にエラーが発生しました。Gristmill を再起動してもう一度お試しください。"
     },
     "sections": {
       "calendar": "カレンダー"
     },
     "notABot": {
-      "title": "OpenHercules はミーティング録音ツールであり、ボットではありません",
-      "description": "OpenHercules はシステムから直接オーディオをキャプチャします — 参加者としてミーティングに参加することはありません。カレンダーを接続して、通常通りノートを取るだけです。"
+      "title": "Gristmill はミーティング録音ツールであり、ボットではありません",
+      "description": "Gristmill はシステムから直接オーディオをキャプチャします — 参加者としてミーティングに参加することはありません。カレンダーを接続して、通常通りノートを取るだけです。"
     },
     "status": {
       "notConfigured": "未設定"
@@ -2068,7 +2068,7 @@
     "systemAudioRequired": "他の参加者の音声を録音するには、システムオーディオの権限が必要です。",
     "openSettings": "システム設定を開く",
     "connectCalendar": "カレンダーを接続",
-    "connectCalendarDescription": "OpenHercules を離れずに会議を確認して参加できます。",
+    "connectCalendarDescription": "Gristmill を離れずに会議を確認して参加できます。",
     "connectCalendarButton": "カレンダーを接続",
     "openEventNote": "{{title}} のノートを開く"
   },
@@ -2116,7 +2116,7 @@
   },
   "permissionsGate": {
     "title": "権限が必要です",
-    "description": "OpenHercules がこのコンピュータで動作するために、いくつかの権限が必要です。",
+    "description": "Gristmill がこのコンピュータで動作するために、いくつかの権限が必要です。",
     "continue": "続行"
   },
   "embeddedChat": {
@@ -2229,7 +2229,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "会議の録音リマインダーに使用します。",
-    "accessibilityHelp": "macOSのアクセシビリティ設定でOpenHerculesを有効にしてください。一覧にない場合は「+」をクリックし、インストール済みのOpenHercules.appを選択してください。",
+    "accessibilityHelp": "macOSのアクセシビリティ設定でGristmillを有効にしてください。一覧にない場合は「+」をクリックし、インストール済みのGristmill.appを選択してください。",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },

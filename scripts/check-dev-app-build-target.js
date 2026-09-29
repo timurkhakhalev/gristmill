@@ -7,14 +7,14 @@ if (process.platform === "darwin") {
     "..",
     "dist-dev",
     "mac-arm64",
-    "OpenHercules Dev.app",
+    "Gristmill Dev.app",
     "Contents",
     "MacOS",
-    "OpenHercules Dev"
+    "Gristmill Dev"
   );
   const processes = execFileSync("ps", ["-axo", "command="], { encoding: "utf8" });
   if (processes.split("\n").some((command) => command.startsWith(executable))) {
-    console.error("Close the running OpenHercules Dev.app before rebuilding dist-dev.");
+    console.error("Close the running Gristmill Dev.app before rebuilding dist-dev.");
     process.exit(1);
   }
 }

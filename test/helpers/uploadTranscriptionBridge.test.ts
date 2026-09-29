@@ -14,7 +14,7 @@ const Module = require("node:module");
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
-const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-upload-bridge-")));
+const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-upload-bridge-")));
 const audioFile = path.join(tmpRoot, "audio.wav");
 fs.writeFileSync(audioFile, Buffer.alloc(64));
 

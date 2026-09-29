@@ -297,7 +297,7 @@ export function parseTranscriptToSegments(
  * @returns {string}
  */
 export function deterministicUuid(key: string): string {
-  const hex = createHash("sha256").update(`openhercules-granola:${key}`).digest("hex");
+  const hex = createHash("sha256").update(`gristmill-granola:${key}`).digest("hex");
   const withVersion = `4${hex.slice(13, 16)}`;
   const variantNibble = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
   const withVariant = `${variantNibble}${hex.slice(17, 20)}`;

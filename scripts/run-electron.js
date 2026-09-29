@@ -10,6 +10,7 @@ const { constants } = require("os");
 const path = require("path");
 const { ensureSqliteRuntime } = require("./ensure-sqlite-runtime");
 const { launchMacElectron } = require("./launch-macos-electron");
+const { prepareDevBundle } = require("./dev-electron-bundle");
 
 // Get the app directory (parent of scripts directory)
 const appDir = path.resolve(__dirname, "..");
@@ -48,12 +49,15 @@ async function runElectron({
   platform = process.platform,
 } = {}) {
   await ensureRuntime("electron");
-  const binary = electronPath || resolveElectronPath();
+  let binary = electronPath || resolveElectronPath();
+  if (platform === "darwin" && !electronPath && args.includes("--dev")) {
+    binary = prepareDevBundle(binary);
+  }
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   // Dev-only: expose CDP when requested, while preserving app arguments.
-  const chromiumFlags = env.OPENHERCULES_DEBUG_CDP
-    ? [`--remote-debugging-port=${env.OPENHERCULES_DEBUG_CDP}`]
+  const chromiumFlags = env.GRISTMILL_DEBUG_CDP
+    ? [`--remote-debugging-port=${env.GRISTMILL_DEBUG_CDP}`]
     : [];
   console.log("[run-electron] Starting Electron:", binary, appDir, args);
   if (platform === "darwin") {

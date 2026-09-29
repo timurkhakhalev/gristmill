@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -20 512 500" width="512" height="480">
+  <defs>
+    <path id="grain" d="M0 0 Q50 -28 100 0 Q50 28 0 0 Z"/>
+  </defs>
+  <g fill="#65704C">
+    <path d="M218 58 C110 90 30 190 38 300 C46 410 140 475 250 462 C340 450 400 380 402 290 C402 268 385 262 370 268 C355 275 345 290 340 320 C330 385 285 425 230 428 C150 432 85 375 82 290 C80 200 140 130 218 58 Z"/>
+    <path d="M175 300 C210 262 260 232 340 228 C372 226 392 240 396 262 C350 252 300 262 250 282 C220 294 195 300 175 300 Z"/>
+  </g>
+  <g fill="#C49A62">
+    <use href="#grain" transform="translate(228 108) rotate(-52) scale(1.2)"/>
+    <use href="#grain" transform="translate(300 100) rotate(-38) scale(1.1)"/>
+    <use href="#grain" transform="translate(385 108) rotate(-14)"/>
+    <use href="#grain" transform="translate(190 150) rotate(-8) scale(1.0)"/>
+    <use href="#grain" transform="translate(298 138) rotate(16) scale(1.05)"/>
+  </g>
+</svg>

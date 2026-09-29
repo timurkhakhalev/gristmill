@@ -28,7 +28,7 @@ Cloud processing is useful, but capture must not depend on a stable cloud connec
 
 ## Product statement
 
-OpenHercules is a bot-free meeting recorder for macOS. During a call it records microphone and system audio locally and preserves both sources. After Stop it finalizes the recording, runs ordinary file transcription with diarization, and generates notes from the final transcript. There is no live transcript or draft. See [the agreed flow and validation hypotheses](record-then-process.md).
+Gristmill is a bot-free meeting recorder for macOS. During a call it records microphone and system audio locally and preserves both sources. After Stop it finalizes the recording, runs ordinary file transcription with diarization, and generates notes from the final transcript. There is no live transcript or draft. See [the agreed flow and validation hypotheses](record-then-process.md).
 
 ## Primary user
 
@@ -54,12 +54,12 @@ A technical individual user who:
 
 ## Primary journey
 
-1. A calendar event or active call causes OpenHercules to show a small recording prompt.
+1. A calendar event or active call causes Gristmill to show a small recording prompt.
 2. The user starts recording without adding a bot to the call.
-3. OpenHercules captures microphone and system audio into separate durable local tracks.
+3. Gristmill captures microphone and system audio into separate durable local tracks.
 4. A compact pill shows recording duration and health for both tracks.
-5. If a source stops, OpenHercules shows a persistent warning and records the gap.
-6. During the call, OpenHercules saves both sources and displays recording duration and capture health. No transcript or draft is generated.
+5. If a source stops, Gristmill shows a persistent warning and records the gap.
+6. During the call, Gristmill saves both sources and displays recording duration and capture health. No transcript or draft is generated.
 7. A successful Stop closes both raw source epochs and persists a 15-second not-before deadline before preparation or ASR. Pause does not queue processing; Resume invalidates the pending run for the earlier group. Restart respects the saved deadline.
 8. A single derived mono timeline WAV is processed through the selected supported provider route; the raw provider response is stored before normalization. Speaker names may be suggested from transcript evidence, and user corrections take precedence.
 9. Automatic Summary follows the saved transcript only when both thresholds are met: 180 seconds and 2,500 transcript characters. A user can start Summary manually for any ready transcript. Summary uses corrected full transcript segments and a saved prompt/model snapshot.
@@ -129,7 +129,7 @@ A technical individual user who:
 - General voice assistant or computer-use agent.
 - Team workspaces and collaborative editing.
 - Public web sharing.
-- Hosted OpenHercules sync or subscription accounts.
+- Hosted Gristmill sync or subscription accounts.
 - Enterprise SSO, SCIM, or organization policies.
 - Windows and Linux clients.
 - Cross-meeting semantic search.

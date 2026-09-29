@@ -82,7 +82,7 @@ test("real Bedrock provider maps header-only AWS exception identities", async (t
       requestId: "unavailable-request-123",
       body: { message: "Service unavailable" },
       expectedMessage:
-        "AWS Bedrock is temporarily unavailable due to high demand. This is an AWS service issue, not an OpenHercules outage. Please try again in a few minutes.",
+        "AWS Bedrock is temporarily unavailable due to high demand. This is an AWS service issue, not an Gristmill outage. Please try again in a few minutes.",
       expectedExceptionType: "ServiceUnavailableException",
       expectedRetryable: true,
     },

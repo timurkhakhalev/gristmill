@@ -13,7 +13,7 @@ const validConfig = {
     provider: "elevenlabs",
     model: "scribe_v2",
     language: "ru",
-    vocabularyHints: ["OpenHercules"],
+    vocabularyHints: ["Gristmill"],
     dictionaryHints: ["транскрипция"],
     credentialRef: "ELEVENLABS_API_KEY",
     apiKey: "must-not-be-stored",

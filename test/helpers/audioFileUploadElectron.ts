@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-audio-upload-"));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-audio-upload-"));
 app.setPath("userData", tempDir);
 
 app

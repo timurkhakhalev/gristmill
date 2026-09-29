@@ -127,14 +127,14 @@ export const PROVIDER_DIRECTORY: ProviderEntry[] = [
   {
     id: "tinfoil",
     name: "Tinfoil",
-    consoleUrl: "https://tinfoil.sh/inference?utm_source=referral&utm_campaign=openhercules",
+    consoleUrl: "https://tinfoil.sh/inference?utm_source=referral&utm_campaign=gristmill",
     capabilities: ["speech", "language"],
     fields: [secret("tinfoilApiKey", "speech")],
   },
   {
     id: "corti",
     name: "Corti",
-    consoleUrl: "https://www.corti.ai/?utm_source=referral&utm_content=&utm_campaign=openhercules",
+    consoleUrl: "https://www.corti.ai/?utm_source=referral&utm_content=&utm_campaign=gristmill",
     capabilities: ["speech", "language"],
     noteKey: "reasoning.corti.euOnly",
     fields: [

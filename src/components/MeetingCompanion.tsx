@@ -21,11 +21,21 @@ const barHeight = (level: number, index: number) => {
 /** The app mark from assets/logo.svg, drawn in the current text color. */
 function AppMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 1024 1024" fill="none" aria-hidden="true" className={className}>
-      <g stroke="currentColor" strokeWidth="96" strokeLinecap="round">
-        <circle cx="512" cy="512" r="400" />
-        <path d="M512 360V664M650 450V574M374 450V574" />
-      </g>
+    <svg viewBox="20 -20 500 500" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M218 58 C110 90 30 190 38 300 C46 410 140 475 250 462 C340 450 400 380 402 290 C402 268 385 262 370 268 C355 275 345 290 340 320 C330 385 285 425 230 428 C150 432 85 375 82 290 C80 200 140 130 218 58 Z" />
+      <path d="M175 300 C210 262 260 232 340 228 C372 226 392 240 396 262 C350 252 300 262 250 282 C220 294 195 300 175 300 Z" />
+      <path
+        d="M0 0 Q50 -28 100 0 Q50 28 0 0 Z"
+        transform="translate(225 112) rotate(-52) scale(1.35)"
+      />
+      <path
+        d="M0 0 Q50 -28 100 0 Q50 28 0 0 Z"
+        transform="translate(305 100) rotate(-36) scale(1.3)"
+      />
+      <path
+        d="M0 0 Q50 -28 100 0 Q50 28 0 0 Z"
+        transform="translate(392 112) rotate(-12) scale(1.2)"
+      />
     </svg>
   );
 }

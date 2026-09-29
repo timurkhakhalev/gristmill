@@ -254,7 +254,7 @@ export class IPCHandlers {
     this.meetingDetectionEngine = managers.meetingDetectionEngine;
     this.audioTapManager = managers.audioTapManager;
     this.oauthProtocolRegistered = managers.oauthProtocolRegistered === true;
-    this.oauthProtocol = managers.oauthProtocol || "openhercules";
+    this.oauthProtocol = managers.oauthProtocol || "gristmill";
     this.sessionId = crypto.randomUUID();
     this._uploadCancelRegistry = createUploadCancelRegistry();
     this._enterpriseReasoningRequests = new AgentStreamRequestRegistry();
@@ -693,7 +693,7 @@ export class IPCHandlers {
         }
         const isMixed = parsed.source === "mixed";
         const result = await dialog.showSaveDialog({
-          defaultPath: `OpenHercules-meeting-${parsed.source}.${isMixed ? "mp3" : "wav"}`,
+          defaultPath: `Gristmill-meeting-${parsed.source}.${isMixed ? "mp3" : "wav"}`,
           filters: isMixed ? [{ name: "MP3 audio", extensions: ["mp3"] }] : [{ name: "WAV audio", extensions: ["wav"] }],
         });
         if (result.canceled || !result.filePath) return { success: false };

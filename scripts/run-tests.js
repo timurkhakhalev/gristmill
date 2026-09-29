@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, "..");
 function acquireFullRunLock(file) {
   if (!file) {
     const gitDir = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: root, encoding: "utf8" }).trim();
-    file = path.join(gitDir, "openhercules-full-test.lock");
+    file = path.join(gitDir, "gristmill-full-test.lock");
   }
   const owner = JSON.stringify({ pid: process.pid, token: randomUUID(), startedAt: new Date().toISOString() });
   try {
@@ -28,7 +28,7 @@ function acquireFullRunLock(file) {
 // Each command owns a process group, including children spawned by a test file.
 function runCommand(binary, args, env, verbose = true) {
   return new Promise((resolve, reject) => {
-    const directory = verbose ? null : fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-test-"));
+    const directory = verbose ? null : fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-test-"));
     const outputFile = directory && path.join(directory, "output.log");
     const outputFd = outputFile && fs.openSync(outputFile, "w");
     const child = spawn(binary, args, { cwd: root, env, stdio: verbose ? "inherit" : ["inherit", outputFd, outputFd], detached: process.platform !== "win32" });
@@ -175,7 +175,7 @@ async function runTests(args, {
       if (!phase.tests.length) continue;
       if (interrupted) break;
       const phaseEnv = phase.sharedTypeProgram
-        ? { ...env, OPENHERCULES_TYPE_PROBE_GROUPS: JSON.stringify(phase.tests.map((test) => path.basename(test.file).replace(/\.test\.(js|ts)$/, ""))) }
+        ? { ...env, GRISTMILL_TYPE_PROBE_GROUPS: JSON.stringify(phase.tests.map((test) => path.basename(test.file).replace(/\.test\.(js|ts)$/, ""))) }
         : env;
       const code = await run(binary, ["--import", "tsx", "--test", `--test-concurrency=${phase.concurrency}`,
         ...(phase.sharedTypeProgram ? ["--test-isolation=none"] : []), "--test-timeout=30000",

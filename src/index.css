@@ -996,23 +996,17 @@ body.dark:has(.onboarding-canvas) {
   background-image: none;
 }
 
-/* Compact-frame hero: a brand-blue band that dithers into the page surface.
-   Drawn from --color-primary so it follows the theme; the dot layer fades in
-   as the solid fades out. */
+/* Compact-frame hero: a Gristmill sage band that dithers into
+   the page surface; the dot layer fades in as the solid fades out. */
 .onboarding-compact-hero {
-  background: linear-gradient(
-    color-mix(in srgb, var(--color-primary) 88%, white),
-    var(--color-primary) 70%,
-    transparent
-  );
+  background: linear-gradient(#7d8b5c, #65704c 70%, transparent);
 }
 
 .onboarding-compact-hero::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 2px 2px, var(--color-primary) 1.3px, transparent 1.5px) 0
-    0 / 4px 4px;
+  background: radial-gradient(circle at 2px 2px, #65704c 1.3px, transparent 1.5px) 0 0 / 4px 4px;
   mask-image: linear-gradient(transparent 55%, #000 72%, #000 84%, transparent);
 }
 
@@ -1071,7 +1065,7 @@ body:has(.onboarding-canvas) kbd {
     0 12px 20px color-mix(in oklch, var(--onboarding-keycap-shadow) 8%, transparent);
 }
 
-/* OpenHercules Brand Typography */
+/* Gristmill Brand Typography */
 .brand-heading {
   font-family: var(--font-family-display);
   font-weight: 600;

@@ -234,7 +234,7 @@ summary_failed
 
 A meeting with usable audio is never reduced to a generic failed state. The UI must show which artifacts exist and which stage needs attention.
 
-Recording-processing jobs and completed provider results are persisted. SQLite is the proposed local queue store. On launch, the runner recovers pending work without discarding saved audio or completed artifacts. Request identity, retry/idempotency rules and recovery of interrupted capture still require a design pass. A local desktop queue is enough; OpenHercules does not require Redis or a separate service.
+Recording-processing jobs and completed provider results are persisted. SQLite is the proposed local queue store. On launch, the runner recovers pending work without discarding saved audio or completed artifacts. Request identity, retry/idempotency rules and recovery of interrupted capture still require a design pass. A local desktop queue is enough; Gristmill does not require Redis or a separate service.
 
 ## Provider contracts
 

@@ -216,8 +216,8 @@ Then reinstall.
 
 ## Enable Debug Mode
 
-Set the `OPENHERCULES_LOG_LEVEL` environment variable (for example
-`OPENHERCULES_LOG_LEVEL=debug`) and reproduce the issue; diagnostic
+Set the `GRISTMILL_LOG_LEVEL` environment variable (for example
+`GRISTMILL_LOG_LEVEL=debug`) and reproduce the issue; diagnostic
 output goes to the log locations listed above.
 
 ## Getting Help

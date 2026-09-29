@@ -15,7 +15,7 @@ function createFixture({
   storedKey = null,
   encryptionAvailable = true,
 }: { keychainWorks?: boolean; storedKey?: string | null; encryptionAvailable?: boolean } = {}) {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-secret-"));
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-secret-"));
   const processPath = userData;
   (process as { resourcesPath: string }).resourcesPath = processPath;
 

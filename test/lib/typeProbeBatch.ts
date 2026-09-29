@@ -6,7 +6,7 @@ import ts from "typescript";
 
 const root = path.resolve(__dirname, "../..");
 const fixtureDir = path.join(root, "test/scripts/type-probes");
-const selectedGroups: string[] = JSON.parse(process.env.OPENHERCULES_TYPE_PROBE_GROUPS || "[]");
+const selectedGroups: string[] = JSON.parse(process.env.GRISTMILL_TYPE_PROBE_GROUPS || "[]");
 let results: Map<string, number[]> | undefined;
 
 interface FixtureRecord {

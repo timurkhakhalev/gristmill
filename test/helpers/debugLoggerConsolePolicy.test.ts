@@ -16,14 +16,14 @@ function withRuntime({ platform, argv = [], env = {}, electron }: RuntimeOverrid
   const previousEnvironment = {
     LOG_LEVEL: process.env.LOG_LEVEL,
     NODE_ENV: process.env.NODE_ENV,
-    OPENHERCULES_LOG_LEVEL: process.env.OPENHERCULES_LOG_LEVEL,
+    GRISTMILL_LOG_LEVEL: process.env.GRISTMILL_LOG_LEVEL,
   };
 
   Object.defineProperty(process, "platform", { value: platform, configurable: true });
   process.argv = ["node", "main.js", ...argv];
   delete process.env.LOG_LEVEL;
   delete process.env.NODE_ENV;
-  delete process.env.OPENHERCULES_LOG_LEVEL;
+  delete process.env.GRISTMILL_LOG_LEVEL;
   Object.assign(process.env, env);
 
   Module._load = function loadWithElectronMock(request: string, parent: unknown, isMain: boolean) {
@@ -39,7 +39,7 @@ function withRuntime({ platform, argv = [], env = {}, electron }: RuntimeOverrid
     process.argv = previousArgv;
     delete process.env.LOG_LEVEL;
     delete process.env.NODE_ENV;
-    delete process.env.OPENHERCULES_LOG_LEVEL;
+    delete process.env.GRISTMILL_LOG_LEVEL;
     for (const [name, value] of Object.entries(previousEnvironment)) {
       if (value !== undefined) process.env[name] = value;
     }
@@ -131,12 +131,12 @@ test("log-level settings never opt a packaged Windows build into console logging
   const cases: Array<{ name: string; argv?: string[]; env?: Record<string, string> }> = [
     { name: "--log-level", argv: ["--log-level=debug"] },
     {
-      name: "OPENHERCULES_LOG_LEVEL=debug",
-      env: { OPENHERCULES_LOG_LEVEL: "debug" },
+      name: "GRISTMILL_LOG_LEVEL=debug",
+      env: { GRISTMILL_LOG_LEVEL: "debug" },
     },
     {
-      name: "OPENHERCULES_LOG_LEVEL=info",
-      env: { OPENHERCULES_LOG_LEVEL: "info" },
+      name: "GRISTMILL_LOG_LEVEL=info",
+      env: { GRISTMILL_LOG_LEVEL: "info" },
     },
     { name: "LOG_LEVEL", env: { LOG_LEVEL: "debug" } },
   ];
@@ -194,7 +194,7 @@ test(
     const logger = loadLogger({
       platform: "win32",
       isPackaged: true,
-      env: { OPENHERCULES_LOG_LEVEL: "debug" },
+      env: { GRISTMILL_LOG_LEVEL: "debug" },
       isReady: true,
       userDataPath,
     }) as LoggerUnderTest;
@@ -225,7 +225,7 @@ test(
 );
 
 test("production persists capture errors with a bounded rotated file while debug logging stays off", () => {
-  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-error-log-"));
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-error-log-"));
   const logger = loadLogger({
     platform: "win32",
     isPackaged: true,

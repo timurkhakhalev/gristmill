@@ -88,7 +88,7 @@ test("end to end: cancel aborts a hanging remote transcription and diarization",
   const fs: typeof import("node:fs") = require("node:fs");
   const os: typeof import("node:os") = require("node:os");
   const path: typeof import("node:path") = require("node:path");
-  const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-cancel-e2e-")));
+  const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-cancel-e2e-")));
   const audioFile = path.join(tmpRoot, "audio.wav");
   fs.writeFileSync(audioFile, Buffer.alloc(64));
   t.after(() => fs.rmSync(tmpRoot, { recursive: true, force: true }));

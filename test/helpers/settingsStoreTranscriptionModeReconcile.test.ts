@@ -20,7 +20,7 @@ const COPIES_DONE = { meetingFollowsTranscription: "false", uploadTranscriptionM
 test("startup repairs transcription routing that disagrees with the selected mode", async (t: import("node:test").TestContext) => {
   const { storage } = installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
-    cachePrefix: "openhercules-transcription-mode-reconcile-test-",
+    cachePrefix: "gristmill-transcription-mode-reconcile-test-",
   });
 
   // Migrations run once per module evaluation, so every case re-evaluates the store.

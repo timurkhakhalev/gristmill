@@ -63,7 +63,7 @@ export function buildMultipartBody(
   contentType: string,
   fields: Record<string, unknown> = {}
 ): { body: Buffer; boundary: string } {
-  const boundary = `----OpenHercules${Date.now()}`;
+  const boundary = `----Gristmill${Date.now()}`;
   const parts: Array<string | Buffer> = [];
 
   parts.push(

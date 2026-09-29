@@ -1,6 +1,6 @@
 # Assets Directory
 
-This directory contains app icons and other assets for OpenHercules.
+This directory contains app icons and other assets for Gristmill.
 
 ## Required Icons
 

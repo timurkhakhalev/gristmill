@@ -632,20 +632,6 @@ async function startApp(): Promise<void> {
     });
   }
 
-  // Auto-download diarization models if binary is available
-  const initializedDiarizationManager = diarizationManager as DiarizationManager;
-  if (
-    initializedDiarizationManager.getBinaryPath() &&
-    (!initializedDiarizationManager.isModelDownloaded() ||
-      !initializedDiarizationManager.isVadModelDownloaded())
-  ) {
-    initializedDiarizationManager.downloadModels().catch((err: Error) => {
-      debugLogger.debug("Diarization model auto-download error (non-fatal)", {
-        error: err.message,
-      });
-    });
-  }
-
   const initializedTrayManager = trayManager as TrayManager;
   initializedTrayManager.setWindows(initializedWindowManager.controlPanelWindow);
   initializedTrayManager.setWindowManager(initializedWindowManager);

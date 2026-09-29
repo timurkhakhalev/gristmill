@@ -1,4 +1,3 @@
-const { app } = require("electron");
 const { spawn } = require("child_process");
 const EventEmitter = require("events");
 const fs = require("fs");
@@ -6,9 +5,9 @@ const path = require("path");
 import http from "http";
 const os = require("os");
 const debugLogger = require("./debugLogger.js");
-const { ensureDevBinary } = require("./devAssetInstaller.js");
+const { ensureLocalEngine } = require("./localEngineInstaller.js");
 const { killProcess } = require("../utils/process.js");
-const { isPortAvailable } = require("../utils/serverUtils.js");
+const { isPortAvailable, resolveBinaryPath } = require("../utils/serverUtils.js");
 import { getSafeTempDir } from "./safeTempDir.js";
 const { convertToWav } = require("./ffmpegUtils.js");
 import { createAbortError } from "./abortError.js";
@@ -317,36 +316,9 @@ export class WhisperServerManager extends EventEmitter {
   getServerBinaryPath(): string | null {
     if (this.cachedServerBinaryPath) return this.cachedServerBinaryPath;
 
-    const binaryName = "whisper-server-darwin-arm64";
-    const genericName = "whisper-server";
-
-    const candidates: string[] = [];
-
-    if (process.resourcesPath) {
-      candidates.push(
-        path.join(process.resourcesPath, "bin", binaryName),
-        path.join(process.resourcesPath, "bin", genericName)
-      );
-    }
-
-    candidates.push(
-      path.join(app.getAppPath(), "resources", "bin", binaryName),
-      path.join(app.getAppPath(), "resources", "bin", genericName)
-    );
-
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) {
-        try {
-          fs.statSync(candidate);
-          this.cachedServerBinaryPath = candidate;
-          return candidate;
-        } catch {
-          // Can't access binary
-        }
-      }
-    }
-
-    return null;
+    const resolved = resolveBinaryPath("whisper-server-darwin-arm64");
+    if (resolved) this.cachedServerBinaryPath = resolved;
+    return resolved;
   }
 
   isAvailable(): boolean {
@@ -442,21 +414,17 @@ export class WhisperServerManager extends EventEmitter {
     modelPath: string,
     options: Record<string, unknown> & { threadResolution?: ThreadResolution } = {}
   ): Promise<void> {
+    if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
     this.startGeneration += 1;
     this._stopRequested = false;
     const threadResolution: ThreadResolution =
       options.threadResolution || resolveWhisperThreads(options);
     const serverBinary = this.getServerBinaryPath();
     if (!serverBinary) {
-      // Dev checkouts no longer prefetch binaries at startup; the first local
-      // route use installs the pinned build. Packaged apps ship the binary.
-      await ensureDevBinary("whisper-cpp").catch((error: Error) => {
-        debugLogger.warn("Local-route binary install failed", { error: error.message }, "assets");
-      });
+      await ensureLocalEngine("whisper-cpp");
     }
     const resolvedBinary = serverBinary ?? this.getServerBinaryPath();
     if (!resolvedBinary) throw new Error("whisper-server binary not found");
-    if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
 
     this.port = await this.findAvailablePort();
     this.modelPath = modelPath;

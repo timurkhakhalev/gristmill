@@ -120,7 +120,7 @@ A technical individual user who:
 - User-defined meeting categories, tags, and note templates.
 - ElevenLabs, Deepgram and Gemini are included in the first post-Stop implementation, with explicit provider selection and visible capability/limit errors. Comparative evaluation is performed by Timur after implementation.
 - Provider and model settings for transcription, summary, and chat. Integrated diarization belongs to transcription settings; expose a separate diarization selection only for a supported independent path.
-- Preserve all existing direct cloud, bundled Local and supported Self-Hosted implementations.
+- Preserve all existing direct cloud, on-demand Local and supported Self-Hosted implementations.
 
 ## Initial non-goals
 

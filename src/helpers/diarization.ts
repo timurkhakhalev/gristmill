@@ -3,6 +3,7 @@ const fsPromises = require("fs").promises;
 const path = require("path");
 import { spawn, type ChildProcessByStdio } from "child_process";
 import type { Readable } from "stream";
+import { ensureLocalEngine } from "./localEngineInstaller.js";
 const debugLogger = require("./debugLogger.js");
 const { runSystemTar } = require("./systemTar.js");
 const {
@@ -155,7 +156,7 @@ export class DiarizationManager {
   }
 
   isAvailable(): boolean {
-    return this.getBinaryPath() !== null && this.isModelDownloaded();
+    return this.isModelDownloaded();
   }
 
   getModelsDir(): string {
@@ -197,6 +198,7 @@ export class DiarizationManager {
   }
 
   async downloadModels(progressCallback: DownloadProgressCallback | null = null): Promise<{ success: boolean; path: string }> {
+    if (!this.getBinaryPath()) await ensureLocalEngine("sherpa-onnx");
     const modelsDir = this.getModelsDir();
     await fsPromises.mkdir(modelsDir, { recursive: true });
 
@@ -356,16 +358,14 @@ export class DiarizationManager {
 
     if (signal?.aborted) return [];
 
-    const binaryPath = this.getBinaryPath();
-    if (!binaryPath) {
-      debugLogger.warn("Diarization binary not found");
-      return [];
-    }
-
     if (!this.isModelDownloaded()) {
       debugLogger.warn("Diarization models not downloaded");
       return [];
     }
+
+    if (!this.getBinaryPath()) await ensureLocalEngine("sherpa-onnx");
+    const binaryPath = this.getBinaryPath();
+    if (!binaryPath) throw new Error("sherpa-onnx diarization binary not found");
 
     if (!fs.existsSync(wavPath)) {
       debugLogger.warn("Diarization input file not found", { wavPath });

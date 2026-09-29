@@ -87,17 +87,17 @@
       "from": "resources/bin/",
       "to": "bin/",
       "filter": [
-        "whisper-cpp-*",
-        "whisper-server-*",
-        "llama-server-*",
-        "sherpa-onnx-*",
         "macos-audio-tap",
         "macos-globe-listener",
         "macos-mic-listener",
         "macos-meeting-ax",
-        "macos-calendar-listener",
-        "*.dylib"
+        "macos-calendar-listener"
       ]
+    },
+    {
+      "from": "resources/local-engine-installers/",
+      "to": "local-engine-installers/",
+      "filter": ["*.cjs"]
     }
   ],
   "mac": {

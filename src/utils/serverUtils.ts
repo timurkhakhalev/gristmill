@@ -37,28 +37,20 @@ export async function findAvailablePort(rangeStart: number, rangeEnd: number): P
   throw new Error(`No available ports in range ${rangeStart}-${rangeEnd}`);
 }
 
+export function getLocalEngineBinDir(): string {
+  return app.isPackaged
+    ? path.join(app.getPath("userData"), "local-engines")
+    : path.join(app.getAppPath(), "resources", "bin");
+}
+
 export function resolveBinaryPath(binaryName: string): string | null {
-  const candidates: string[] = [];
-
-  if (process.resourcesPath) {
-    candidates.push(path.join(process.resourcesPath, "bin", binaryName));
+  const candidate = path.join(getLocalEngineBinDir(), binaryName);
+  try {
+    fs.accessSync(candidate, fs.constants.X_OK);
+    return candidate;
+  } catch {
+    return null;
   }
-
-  const projectBinDir = path.resolve(app.getAppPath(), "resources", "bin");
-  candidates.push(path.join(projectBinDir, binaryName));
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      try {
-        fs.statSync(candidate);
-        return candidate;
-      } catch {
-        // Can't access binary
-      }
-    }
-  }
-
-  return null;
 }
 
 export async function gracefulStopProcess(proc: ChildProcess | null): Promise<void> {

@@ -29,12 +29,15 @@ test("M8 package scripts do not download removed products or platform artifacts"
   }
 });
 
-test("M8 keeps required macOS runtime resources in the builder filter", () => {
+test("local inference engines are absent from the package until explicitly selected", () => {
   const builder = readJson("electron-builder.json");
+  const pkg = readJson("package.json");
   const filter = (builder.extraResources as Array<{ from: string; filter: string[] }>).find((entry: { from: string }) => entry.from === "resources/bin/")!.filter;
-  for (const resource of ["whisper-cpp-*", "llama-server-*", "sherpa-onnx-*"]) {
-    assert.ok(filter.includes(resource), resource);
+  for (const resource of ["whisper-cpp-*", "whisper-server-*", "llama-server-*", "sherpa-onnx-*", "*.dylib"]) {
+    assert.ok(!filter.includes(resource), resource);
   }
+  assert.ok((builder.extraResources as Array<{ from: string }>).some((entry) => entry.from === "resources/local-engine-installers/"));
+  assert.doesNotMatch(pkg.scripts["prebuild:mac:arm64"], /download:/);
 });
 
 test("issue #89 keeps model assets out of the packaged resources", () => {

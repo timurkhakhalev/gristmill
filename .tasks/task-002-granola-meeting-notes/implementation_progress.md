@@ -303,3 +303,21 @@ Verification run by this agent:
 - Tests/builds/dependency installation/native rebuilds were not run by this agent; root owns them. Root should run `pnpm test -- test/components/meetingResultsPanel.test.ts test/helpers/meetingProcessing.test.ts`, then required integrated checks sequentially.
 
 Implementation commit: `f4b8dfc46` (`M7: route toolbar Summary through selected run`).
+
+## M8 — Reviewer fix from review-4
+
+Status: done
+
+The Results `New Summary` item now disables during preparing, recording, paused and saving capture, matching the toolbar's capture eligibility while retaining its existing selected-run request path. Added a renderer regression that holds an older transcript selected across each active phase, confirms the Results action is disabled, then returns to idle and verifies that the same selected-run request starts.
+
+Preserved empty-transcript exclusion, the short nonempty path after capture, previous runs/artifacts, Summary Markdown and task/Recap/Chat consumers. The worker capture protection remains in place; no alternate Summary route was added.
+
+Verification run by this agent:
+
+- `pnpm run typecheck` — passed (main, renderer, settings selectors and tests).
+- Scoped ESLint for `test/components/meetingResultsPanel.test.ts` — passed.
+- Scoped renderer ESLint for `src/components/notes/MeetingResultsPanel.tsx` — passed with the existing Node `MODULE_TYPELESS_PACKAGE_JSON` warning.
+- `git diff --check` — passed.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent; root owns them. Root should run `pnpm test -- test/components/meetingResultsPanel.test.ts test/helpers/meetingProcessing.test.ts`, then lint, typecheck and integrated suite sequentially as required.
+
+Implementation commit: `eb3fac552` (`M8: disable Summary during active capture`).

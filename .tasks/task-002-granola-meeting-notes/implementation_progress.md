@@ -266,3 +266,20 @@ Verification run by this agent:
 - Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should first run `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts`, then the M6/M5 affected journey set and, as required by quality steering, the integrated full `pnpm test` run sequentially. Root should record M4-1 live evidence separately.
 
 Implementation commit: `9873d1650` (`M6: preserve summary and group gate behavior`).
+
+### M6 focused-renderer assertion follow-up
+
+Status: done
+
+Adjusted two renderer regressions to inspect the intended live surfaces: the whole-meeting ASR gate is asserted while the audio view is open, before an older part action returns the panel to the transcript tab; the completed Summary is asserted in enhanced view, while the naming error remains visible there. These were test-fixture/view sequencing issues; product behavior is unchanged.
+
+Preserved the current-group gate on both the disabled whole-meeting control and its click handler, plus the existing older-group ASR affordance and the single live Summary presentation.
+
+Verification run by this agent:
+
+- `pnpm run typecheck:tests` — passed.
+- Scoped ESLint for `test/components/meetingResultsPanel.test.ts` — passed.
+- `git diff --check` — passed.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts` and then the M6 focused set.
+
+Implementation commit: pending.

@@ -997,7 +997,7 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
-  const { note, recording, run } = createFinishedRecording(db, storage, validConfig, "Manual notes stay here.");
+  const { note, recording, run } = createFinishedRecording(db, storage, validConfig, "Manual notes stay here.", false, 180);
   db.db.prepare("UPDATE notes SET participants = ? WHERE id = ?")
     .run(JSON.stringify([{ name: "Calendar Alice", email: "alice@example.com" }]), note.id);
 
@@ -1008,6 +1008,10 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
   let taskInput = "";
   let recapInput = "";
   const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => {
+      await saveRaw(longTranscriptResponse());
+      return { success: true };
+    },
     summarize: async () => "## TLDR\nRelease discussion.\n\n## Action Items\n\n- Initial action item.",
     createActionConversation: async (_config, instruction) => ({
       send: async (input: string) => {
@@ -1063,12 +1067,16 @@ test("task application preserves a concurrent Action Items edit and exposes a re
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
-  const { note, run } = createFinishedRecording(db, storage, validConfig, "Manual notes stay here.");
+  const { note, run } = createFinishedRecording(db, storage, validConfig, "Manual notes stay here.", false, 180);
   let resolveTaskStarted!: () => void;
   const taskStarted = new Promise<void>((resolve) => { resolveTaskStarted = resolve; });
   let releaseTasks!: () => void;
   const taskGate = new Promise<void>((resolve) => { releaseTasks = resolve; });
   const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => {
+      await saveRaw(longTranscriptResponse());
+      return { success: true };
+    },
     summarize: async () => "## TLDR\nSaved Summary.\n\n## Action Items\n\n- Existing task",
     createActionConversation: async () => ({
       send: async () => {

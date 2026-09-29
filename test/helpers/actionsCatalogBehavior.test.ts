@@ -79,13 +79,13 @@ test("builtin catalog seeds once and list sorts by sort_order, id", (t: import("
   db.close();
 });
 
-test("create defaults icon to sparkles and keeps plain rows", (t: import("node:test").TestContext) => {
+test("create defaults icon to wand-sparkles and keeps plain rows", (t: import("node:test").TestContext) => {
   const db = createDb(t) as import("../../src/helpers/database.js").DatabaseManager;
   if (!db) return;
   const result = db.createAction("My action", "desc", "prompt text");
   assert.equal(result.success, true);
   const action = result.action as ActionRow;
-  assert.equal(action.icon, "sparkles");
+  assert.equal(action.icon, "wand-sparkles");
   assert.equal(action.is_builtin, 0);
   assert.equal(action.translation_key, null);
   assert.equal(action.name, "My action");

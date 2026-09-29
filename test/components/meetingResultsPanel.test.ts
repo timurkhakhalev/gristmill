@@ -392,7 +392,9 @@ test("persisted task status shows a retry without replacing the saved Summary", 
 test("Recap is a manual Summary action with a visible retryable error", async (t: TestContext) => {
   let finishAction!: (result: { success: boolean; error?: string }) => void;
   const actionResult = new Promise<{ success: boolean; error?: string }>((resolve) => { finishAction = resolve; });
-  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", completeRun())], {
+  const run = completeRun();
+  run.summary = { text: "## Decision\nRelease on Friday.", speakerCorrectionRevision: 1, taskStatus: "zero" };
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)], {
     viewMode: "enhanced",
     summaryAction: async () => actionResult,
   });

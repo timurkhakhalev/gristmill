@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Copy, Check, Search, FileText, ChevronDown, ChevronRight, CircleAlert } from "../icons";
 import { cn } from "../lib/utils";
 import { MarkdownRenderer } from "../ui/MarkdownRenderer";
+import { MessageLoading } from "../ui/MessageLoading";
 import type { ToolCallInfo } from "./types";
 import { extractNoteCards } from "./noteCards";
 import { toolIcons } from "./toolIcons";
@@ -120,6 +121,26 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
   );
 }
 
+function CopyButton({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      aria-label={copied ? t("common.copied") : t("common.copy")}
+      title={copied ? t("common.copied") : t("common.copy")}
+      className={cn(
+        "rounded-md p-1",
+        "text-muted hover:bg-default hover:text-foreground",
+        "opacity-0 transition-opacity duration-150 group-hover/msg:opacity-100 focus-visible:opacity-100",
+        "outline-none focus-visible:ring-2 focus-visible:ring-focus"
+      )}
+    >
+      {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
+    </button>
+  );
+}
+
 function NoteCard({
   noteId,
   title,
@@ -186,9 +207,10 @@ export function ChatMessage({
   if (role === "user") {
     return (
       <div
-        className="flex justify-end"
+        className="group/msg flex items-end justify-end gap-1"
         style={{ animation: "agent-message-in 200ms ease-out both" }}
       >
+        <CopyButton copied={copied} onCopy={handleCopy} />
         <div
           data-chat-bubble
           className={cn(
@@ -246,9 +268,7 @@ export function ChatMessage({
         )}
 
         {isStreaming && !hasContent && !hasToolCalls && (
-          <span className="text-ui font-medium select-none thinking-shimmer-text">
-            {t("agentMode.input.thinking")}...
-          </span>
+          <MessageLoading className="my-2 text-muted" />
         )}
 
         {noteCards.length > 0 && !isStreaming && (
@@ -266,20 +286,7 @@ export function ChatMessage({
 
         {hasContent && !isStreaming && (
           <div className="mt-1 flex justify-start">
-            <button
-              type="button"
-              onClick={handleCopy}
-              aria-label={copied ? t("common.copied") : t("common.copy")}
-              title={copied ? t("common.copied") : t("common.copy")}
-              className={cn(
-                "rounded-md p-1",
-                "text-muted hover:bg-default hover:text-foreground",
-                "opacity-0 transition-opacity duration-150 group-hover/msg:opacity-100 focus-visible:opacity-100",
-                "outline-none focus-visible:ring-2 focus-visible:ring-focus"
-              )}
-            >
-              {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
-            </button>
+            <CopyButton copied={copied} onCopy={handleCopy} />
           </div>
         )}
       </div>

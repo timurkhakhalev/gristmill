@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@heroui/react";
 import { X, PanelRight, PanelRightClose, Sparkles, SquarePen } from "../icons";
@@ -76,6 +76,31 @@ export default function ChatPanel({
   floatingMaxHeight = FLOATING_CHAT_MAX_HEIGHT_CSS,
 }: ChatPanelProps) {
   const { t } = useTranslation();
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // One node, two owners: the click-outside check here and the host's layout observer.
+  const setPanelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      panelRef.current = node;
+      if (typeof floatingPanelRef === "function") return floatingPanelRef(node);
+      if (floatingPanelRef) floatingPanelRef.current = node;
+    },
+    [floatingPanelRef]
+  );
+
+  // Clicking the page behind the card dismisses it. Popovers (model picker, history)
+  // render in portals outside the card, so their clicks are not "outside".
+  useEffect(() => {
+    if (mode !== "floating") return;
+    const onPointerDown = (e: MouseEvent) => {
+      const target = e.target as Element | null;
+      if (!target || panelRef.current?.contains(target)) return;
+      if (target.closest("[data-radix-popper-content-wrapper], [role=menu], [role=listbox], [role=dialog], [data-slot=popover-content], [data-react-aria-top-layer]")) return;
+      onModeChange("hidden");
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [mode, onModeChange]);
 
   useEffect(() => {
     if (mode !== "floating") return;
@@ -193,7 +218,7 @@ export default function ChatPanel({
   if (mode === "floating") {
     return (
       <div
-        ref={floatingPanelRef}
+        ref={setPanelRef}
         style={{ height: `min(36rem, ${floatingMaxHeight})` }}
         className={cn(
           "absolute bottom-4 left-5 right-5 z-20 mx-auto max-w-[680px]",

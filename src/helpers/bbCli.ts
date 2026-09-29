@@ -239,6 +239,13 @@ export async function stopBbThread(threadId: string): Promise<void> {
   await jsonCommand(["thread", "stop", threadId]);
 }
 
+export async function getBbThreadTitle(threadId: string): Promise<string | null> {
+  const result = z.object({ thread: z.object({ title: z.string().nullable().optional() }) }).parse(
+    await jsonCommand(["thread", "show", threadId])
+  );
+  return result.thread.title?.trim() || null;
+}
+
 export async function getBbThreadOutput(threadId: string): Promise<string> {
   const result = z.object({ output: z.string().nullable() }).parse(await jsonCommand(["thread", "output", threadId]));
   return result.output ?? "";

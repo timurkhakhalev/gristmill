@@ -860,7 +860,7 @@ export default function NoteEditor({
         </div>
 
 
-        <div className="flex-1 relative min-h-0 flex flex-col">
+        <div className="flex-1 relative min-h-0 flex flex-col [--floating-inset:5.5rem]">
           <div ref={contentScrollRef} className="flex-1 min-h-0 overflow-y-auto agent-chat-scroll">
             <MeetingResultsPanel
               capturePhase={capturePhase}
@@ -962,12 +962,6 @@ export default function NoteEditor({
             />
           </div>
           <NoteFindBar open={findOpen} onClose={() => setFindOpen(false)} containerRef={contentScrollRef} />
-          <div
-            className="absolute bottom-0 left-0 right-0 h-20 pointer-events-none"
-            style={{
-              background: "linear-gradient(to bottom, transparent, var(--color-background))",
-            }}
-          />
           {!isRecording && selectedSegmentIds.size > 0 && (
             <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
               <SelectionBar

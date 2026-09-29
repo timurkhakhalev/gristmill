@@ -96,16 +96,26 @@ export default function NoteBottomBar({
   return (
     <div
       ref={containerRef}
-      className="shrink-0 px-5 pb-4 pt-3 pointer-events-none"
+      className="absolute inset-x-0 bottom-0 z-10 px-5 pb-4 pt-3 pointer-events-none"
     >
       {callout && !hideInput && (
         <div className="pointer-events-auto mb-3 flex justify-center">{callout}</div>
       )}
-      <div className="flex items-end pointer-events-auto w-full max-w-[600px] mx-auto">
+      <div className="relative flex items-end pointer-events-auto w-full max-w-[600px] mx-auto">
+        {/* Separate from the glass capsule: a shadow on the blurred element itself would
+            flatten its backdrop-filter, and box-shadow never paints under its own box. */}
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-0 rounded-[22px] shadow-[0_10px_36px_rgba(0,0,0,0.28)] dark:shadow-[0_10px_40px_rgba(0,0,0,0.6)]",
+            "transition-opacity duration-200",
+            hideInput && "opacity-0"
+          )}
+        />
         <div
           aria-hidden={hideInput}
           className={cn(
-            "flex-1 min-w-0 flex flex-col justify-center gap-1",
+            "relative flex-1 min-w-0 flex items-center",
             isRecording ? RECORDING_SURFACE : GLASS_SURFACE,
             "border",
             // Only height and opacity tween. A fixed 22px radius is a pill at
@@ -114,15 +124,16 @@ export default function NoteBottomBar({
             // backdrop-filter. The chat panel replaces the bar with a fade
             // rather than the bar collapsing sideways into it.
             "rounded-[22px] border-border ps-4 pe-1.5",
-            "transition-[opacity,height] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]",
+            "transition-[opacity,box-shadow] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]",
             hideInput ? "opacity-0 pointer-events-none" : "opacity-100",
-            isExpanded ? "h-[76px] ring-[3px] ring-primary/8" : "h-11"
+            "h-11",
+            isExpanded && "ring-[3px] ring-primary/8"
           )}
           onClick={(e) => {
             if (e.target === e.currentTarget) inputRef.current?.focus();
           }}
         >
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <input
               dir="auto"
               ref={inputRef}
@@ -140,6 +151,16 @@ export default function NoteBottomBar({
                 "placeholder:text-muted dark:placeholder:text-muted"
               )}
             />
+
+            {isExpanded && !hideInput && (
+              <ChatModelPicker
+                disabled={askDisabled}
+                onOpenChange={(open) => {
+                  setIsModelPickerOpen(open);
+                  if (!open && !hasText) setIsExpanded(false);
+                }}
+              />
+            )}
 
             {hasText ? (
               <button
@@ -159,17 +180,6 @@ export default function NoteBottomBar({
               </button>
             ) : null}
           </div>
-          {isExpanded && !hideInput && (
-            <div className="flex min-w-0 justify-end motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150">
-              <ChatModelPicker
-                disabled={askDisabled}
-                onOpenChange={(open) => {
-                  setIsModelPickerOpen(open);
-                  if (!open && !hasText) setIsExpanded(false);
-                }}
-              />
-            </div>
-          )}
         </div>
       </div>
     </div>

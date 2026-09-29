@@ -618,13 +618,17 @@ test("viewing old transcript leaves a pending current run and Note projection in
   const { note, recording, run: oldRun } = createFinishedRecording(db, storage, validConfig, "Manual note stays.", false, 180);
   let response = longTranscriptResponse(2500, "Old saved transcript ");
   let transcribeCalls = 0;
+  let summaryCalls = 0;
   const worker = workerFor(db, storage, {
     transcribeRemote: async (_request: unknown, saveRaw) => {
       transcribeCalls += 1;
       await saveRaw(response);
       return { success: true, text: "ignored adapter projection" };
     },
-    summarize: async (input) => input.includes("New saved transcript") ? "Summary from new run" : "Summary from old run",
+    summarize: async () => {
+      summaryCalls += 1;
+      return "Summary from old run";
+    },
   });
   t.after(() => worker.stop());
   worker.onRetentionReady();
@@ -678,11 +682,13 @@ test("viewing old transcript leaves a pending current run and Note projection in
   assert.equal(db.getMeetingProcessingRun(pendingRun.id).status, "complete");
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, pendingRun.id);
   assert.match(newProjection.transcript, /New saved transcript/);
-  assert.match(newProjection.enhanced_content, /Summary from new run/);
+  assert.equal(newProjection.enhanced_content, null, "an existing meeting Summary prevents a second automatic Summary");
   assert.equal(newProjection.content, oldProjection.content);
+  assert.equal(summaryCalls, 1);
 
-  assert.equal(db.getMeetingProcessingRun(oldRun.id), null, "a completed run replaces the run it supersedes");
-  assert.equal(storage.hasRunArtifact(oldRun.id, "transcript"), false);
+  assert.ok(db.getMeetingProcessingRun(oldRun.id), "prior processing runs remain available");
+  assert.equal(storage.hasRunArtifact(oldRun.id, "transcript"), true);
+  assert.equal(storage.hasRunArtifact(oldRun.id, "summary"), true);
 });
 
 test("blocked config correction refuses an unindexed raw response file", async (t: import("node:test").TestContext) => {
@@ -821,6 +827,8 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
     { displayName: "Calendar Alice", email: "alice@example.com" },
     { displayName: "bob@example.com", email: "bob@example.com" },
   ]), note.id);
+  storage.writeRunArtifact(sourceRun.id, "provider-response", { text: "Transcript with two speakers." });
+  assert.equal(db.setMeetingRunArtifact(sourceRun.id, "provider-response").success, true);
   storage.writeRunArtifact(sourceRun.id, "transcript", {
     text: "Transcript with two speakers.",
     diarized: true,

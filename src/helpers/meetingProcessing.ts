@@ -86,7 +86,6 @@ export interface MeetingProcessingDatabase {
   setMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string): boolean;
   updateMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string, expectedSnapshotJson: string): boolean;
   setMeetingSpeakerNamingError(runId: string, errorCode: string | null): boolean;
-  deleteMeetingProcessingRun(runId: string): { success: boolean };
   selectMeetingProcessingRun(
     recordingId: string,
     runId: string,
@@ -1016,28 +1015,7 @@ export class MeetingProcessingWorker {
     const updated = this.deps.database.setMeetingProcessingRunState(runId, { stage, status, errorCode, retryAt, retryCount });
     if (!updated.success) return;
     const current = this.deps.database.getMeetingProcessingRun(runId);
-    if (current?.status === "complete" && current.stage === "summary") this.pruneSupersededRuns(current);
     if (current) this.notify(current);
-  }
-
-  /** A finished run replaces the older ones it supersedes; only the latest result is kept. */
-  private pruneSupersededRuns(run: MeetingProcessingRunDto): void {
-    const runs = this.deps.database.listMeetingProcessingRuns(run.recordingId);
-    const index = runs.findIndex((item) => item.id === run.id);
-    if (index < 0) return;
-    const sourceKey = (item: MeetingProcessingRunDto) => [...item.sourceRecordingIds].sort().join(",");
-    const older = runs.slice(0, index);
-    const replaced = new Set(
-      run.kind === "summary"
-        ? older.filter((item) => item.kind === "summary" && item.sourceRunId === run.sourceRunId).map((item) => item.id)
-        : older.filter((item) => item.kind !== "summary" && sourceKey(item) === sourceKey(run)).map((item) => item.id)
-    );
-    if (run.kind !== "summary") {
-      for (const item of older) if (item.kind === "summary" && item.sourceRunId && replaced.has(item.sourceRunId)) replaced.add(item.id);
-    }
-    for (const id of replaced) {
-      if (this.deps.database.deleteMeetingProcessingRun(id).success) this.deps.storage.removeRunFiles(run.recordingId, id);
-    }
   }
 
   private requireConfig(run: MeetingProcessingRunDto): MeetingProcessingConfig {

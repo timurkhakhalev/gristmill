@@ -372,6 +372,7 @@
       "test/helpers/micDeviceSelection.test.ts",
       "test/helpers/micSelectionRecovery.test.ts",
       "test/helpers/microphoneSelection.test.ts",
+      "test/helpers/noteTranscriptReader.test.ts",
       "test/helpers/pcmFixtures.test.ts",
       "test/helpers/speakerAssignmentPolicy.test.ts",
       "test/helpers/speakerCount.test.ts",

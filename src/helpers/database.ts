@@ -831,6 +831,12 @@ export class DatabaseManager {
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS agent_bb_threads (
+          conversation_id INTEGER PRIMARY KEY REFERENCES agent_conversations(id) ON DELETE CASCADE,
+          thread_id TEXT NOT NULL UNIQUE,
+          provider TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS google_calendar_tokens (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           google_email TEXT NOT NULL UNIQUE,
@@ -2697,6 +2703,14 @@ export class DatabaseManager {
       id
     ) as AgentConversationRow | undefined;
     return conversation ? { ...conversation, messages: this.getAgentMessages(Number(id)) } : null;
+  }
+  getAgentBbThread(conversationId: number): { thread_id: string; provider: string } | null {
+    return (this.sql.prepare("SELECT thread_id, provider FROM agent_bb_threads WHERE conversation_id = ?")
+      .get(conversationId) as { thread_id: string; provider: string } | undefined) ?? null;
+  }
+  saveAgentBbThread(conversationId: number, threadId: string, provider: string): void {
+    this.sql.prepare("INSERT INTO agent_bb_threads (conversation_id, thread_id, provider) VALUES (?, ?, ?)")
+      .run(conversationId, threadId, provider);
   }
   getAgentConversations(limit = 50): AgentConversationRow[] {
     return this.sql

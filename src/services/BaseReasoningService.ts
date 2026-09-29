@@ -25,6 +25,7 @@ export interface ReasoningConfig {
   requiresAgent?: boolean;
   inferenceScope?: InferenceScope;
   agentSelection?: BbSelection;
+  agentConversationId?: number;
   /** Called when bb reports a title for the thread that answered this turn. */
   onThreadTitle?: (title: string) => void;
 }

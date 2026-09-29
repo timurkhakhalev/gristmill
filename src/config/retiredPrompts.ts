@@ -14,6 +14,8 @@
 // sides are updated).
 
 export const RETIRED_DEFAULT_PROMPT_HASHES: ReadonlySet<string> = new Set([
+  // Previous voice-assistant Chat default.
+  "ca35b88c4f8a0e1fd0b2b6efea1b066c70b772e6a55033e0fca731b2e74fbf06",
   //    65ch 28ac9b59 ReasoningService.ts DEFAULT_PROMPTS.regular (+24 more)
   "79abaafa51ba1fe06614d5392d6879f458b3ffc1f9e727528d6a9c896c530365",
   //   173ch 88ce1814 promptData.json LEGACY_PROMPTS.regular (+6 more)
@@ -75,7 +77,7 @@ export const CURRENT_DEFAULT_PROMPT_HASHES: Record<string, string> = {
   "ru/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
   "zh-CN/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
   "zh-TW/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
-  chatAgent: "ca35b88c4f8a0e1fd0b2b6efea1b066c70b772e6a55033e0fca731b2e74fbf06",
+  chatAgent: "1099fe25bc3d89a14f80d09c351041a612f708478ce1a7dd9ff49372b05eb92c",
 };
 
 export async function hashPromptText(text: string): Promise<string> {

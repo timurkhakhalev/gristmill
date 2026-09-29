@@ -55,7 +55,9 @@ export const bbChannels = {
 
 export const bbStreamStartSchema = z.object({
   streamId: z.string().uuid(),
+  conversationId: z.number().int().positive(),
   prompt: z.string().min(1).max(500_000),
+  initialPrompt: z.string().min(1).max(500_000),
   selection: bbSelectionSchema,
 });
 export const bbStreamEnvelopeSchema = z.object({

@@ -84,6 +84,32 @@ test("getAgentConversation returns the row plus messages, null when missing", (t
   db.close();
 });
 
+test("BB thread bindings survive database reopen, add to existing chats and cascade with deletion", (t: import("node:test").TestContext) => {
+  let db = createDb(t);
+  if (!db) return;
+  const directory = userDataDir;
+  t.after(() => { db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+  const conversation = db.createAgentConversation("Existing chat");
+  db.addAgentMessage(conversation.id, "user", "Saved history", null);
+  db.db.exec("DROP TABLE agent_bb_threads");
+  db.close();
+  db = new DatabaseManager();
+  assert.equal(db.getAgentBbThread(conversation.id), null);
+  db.saveAgentBbThread(conversation.id, "thr_original", "codex");
+  const separate = db.createAgentConversation("Separate chat");
+  assert.equal(db.getAgentBbThread(separate.id), null);
+  assert.throws(() => db.saveAgentBbThread(separate.id, "thr_original", "codex"), /UNIQUE/);
+  assert.throws(() => db.saveAgentBbThread(conversation.id, "thr_replacement", "codex"), /UNIQUE/);
+  assert.throws(() => db.saveAgentBbThread(987654, "thr_unknown", "codex"), /FOREIGN KEY/);
+  db.close();
+  db = new DatabaseManager();
+  assert.deepEqual(db.getAgentBbThread(conversation.id), { thread_id: "thr_original", provider: "codex" });
+  assert.equal(db.getAgentMessages(conversation.id)[0].content, "Saved history");
+  db.deleteAgentConversation(conversation.id);
+  assert.equal(db.getAgentBbThread(conversation.id), null);
+  assert.ok(db.getAgentConversation(separate.id));
+});
+
 test("getAgentConversations defaults to 50 and excludes archived", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;

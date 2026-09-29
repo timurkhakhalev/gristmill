@@ -42,7 +42,7 @@ const TOOL_INSTRUCTIONS: Record<string, string> = {
   update_snippets:
     "Use update_snippets when the user asks to create, change, or delete a snippet (a spoken trigger that expands into saved text). If the user did not state both the trigger and the full replacement text, ask before saving.",
   update_dictionary:
-    "Use update_dictionary when the user asks to add, remove, or fix the spelling of words in their custom dictionary; the current words are listed under Custom Dictionary. When asked to clean up the dictionary, list the exact removals you propose (duplicates, misspellings, casing variants, ordinary words) and wait for confirmation before removing anything the user did not name.",
+    "Use update_dictionary when the user asks to add, remove, or fix the spelling of words in their custom dictionary. When asked to clean up the dictionary, list the exact removals you propose (duplicates, misspellings, casing variants, ordinary words) and wait for confirmation before removing anything the user did not name.",
   get_calendar_events:
     "Use get_calendar_events to check the user's schedule, upcoming meetings, or calendar events.",
   get_calendar_availability:
@@ -68,8 +68,13 @@ function getLocalCalendarContext(): string {
   return `Current local date and time: ${formatLocalRfc3339(now)}. IANA time zone: ${timeZone}.`;
 }
 
-export function getAgentSystemPrompt(availableTools?: string[], noteContext?: string): string {
+export function getAgentSystemPrompt(availableTools?: string[], noteContext?: string, useGristmillCli = false): string {
   let prompt = resolvePrompt("chatAgent", { agentName: null });
+
+  if (useGristmillCli) {
+    prompt += "\n\nUse gristmill, a helper client, to retrieve additional information about meetings when needed. " +
+      "Run gristmill --help for usage and options.";
+  }
 
   if (availableTools && availableTools.length > 0) {
     const toolLines = availableTools.map((name) => TOOL_INSTRUCTIONS[name]).filter(Boolean);

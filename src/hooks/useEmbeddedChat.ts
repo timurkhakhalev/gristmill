@@ -80,9 +80,8 @@ export function useEmbeddedChat({
     onStreamComplete: (_id, content, toolCalls) => {
       persistence.saveAssistantMessage(content, toolCalls);
     },
-    onThreadTitle: (title) => {
-      const id = untitledConversationRef.current;
-      if (id == null) return;
+    onThreadTitle: (title, id) => {
+      if (untitledConversationRef.current !== id) return;
       untitledConversationRef.current = null;
       void window.electronAPI?.updateAgentConversationTitle?.(id, title).then(() => fetchConversationsRef.current());
     },

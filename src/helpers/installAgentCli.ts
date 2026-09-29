@@ -19,8 +19,7 @@ export function installAgentCli(): string {
     throw new Error(`${target} exists and is not a Gristmill launcher`);
   }
   const defaultProfile = isDevelopmentChannel() ? "development" : "production";
-  const profileExpression = "${GRISTMILL_PROFILE:-" + defaultProfile + "}";
-  const content = `#!/bin/sh\n${MARKER}\nexport GRISTMILL_PROFILE="${profileExpression}"\nELECTRON_RUN_AS_NODE=1 exec ${quote(process.execPath)} ${quote(script)} "$@"\n`;
+  const content = `#!/bin/sh\n${MARKER}\nexport GRISTMILL_CLI_DEFAULT_PROFILE=${quote(defaultProfile)}\nELECTRON_RUN_AS_NODE=1 exec ${quote(process.execPath)} ${quote(script)} "$@"\n`;
   const temporary = path.join(directory, `.gristmill-${process.pid}.tmp`);
   try {
     fs.writeFileSync(temporary, content, { mode: 0o755 });

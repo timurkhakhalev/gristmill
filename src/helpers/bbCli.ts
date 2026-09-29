@@ -231,8 +231,11 @@ export async function spawnBbThread(
   return response.id;
 }
 
-export async function tellBbThread(threadId: string, prompt: string, signal?: AbortSignal): Promise<void> {
-  await jsonCommand(["thread", "tell", threadId, "--message-file", "-"], prompt, signal);
+export async function tellBbThread(threadId: string, prompt: string, signal?: AbortSignal, selection?: BbSelection): Promise<void> {
+  await jsonCommand([
+    "thread", "tell", threadId, "--message-file", "-",
+    ...(selection ? ["--model", selection.model, "--reasoning-level", selection.reasoningLevel] : []),
+  ], prompt, signal);
 }
 
 export async function stopBbThread(threadId: string): Promise<void> {

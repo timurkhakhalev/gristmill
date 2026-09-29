@@ -1381,7 +1381,7 @@ export class IPCHandlers {
       enterpriseStreams: this._enterpriseStreams,
       logError: (message, data) => debugLogger.error(message, data),
     });
-    registerBbHandlers(ipcMain, app.getPath("userData"));
+    registerBbHandlers(ipcMain, app.getPath("userData"), this.databaseManager);
 
     // Provider-neutral availability over the shared calendar cache, in the
     // typed module (validation, computation and wire projection included).

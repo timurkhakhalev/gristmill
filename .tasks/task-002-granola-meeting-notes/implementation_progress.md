@@ -226,3 +226,20 @@ Verification run by this agent:
 - Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts`, then the affected M1–M4 tests and integrated checks.
 
 Implementation commit: `d733f5f39` (`M5: show short transcript notice in raw view`).
+
+### M5 manual Summary consumer assertion follow-up
+
+Status: done
+
+The live manual Summary control is owned by `NoteEditor` through its existing `NoteRecordControl`, not by `MeetingResultsPanel` in raw view. Updated the short-transcript renderer regression to render that existing control through the panel's `actions` slot and verify its callback remains available, without adding a duplicate product button.
+
+Preserved the short-transcript live notice, manual Summary affordance owner, and Debug preview isolation.
+
+Verification run by this agent:
+
+- `pnpm run typecheck:tests` — passed.
+- Scoped ESLint for `test/components/meetingResultsPanel.test.ts` — passed.
+- `git diff --check` — passed.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts` and the affected M1–M4 tests.
+
+Implementation commit: pending.

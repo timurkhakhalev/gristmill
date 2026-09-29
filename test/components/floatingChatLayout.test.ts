@@ -263,3 +263,14 @@ test("upward wheel over chrome outside the scroller keeps following", async () =
 
   harness.cleanup?.();
 });
+
+test("opening the panel does not scroll a reader who is away from the bottom", async () => {
+  const { observeFloatingChatLayout } = await load();
+  const scroller = createElement({ scrollHeight: 1000, scrollTop: 0, clientHeight: 300 });
+  const { scheduledFrames, cleanup } = createLayoutHarness(observeFloatingChatLayout, { scroller });
+
+  assert.equal(scheduledFrames.size, 0, "no pin is scheduled on mount");
+  assert.equal(scroller.scrollTop, 0);
+
+  cleanup?.();
+});

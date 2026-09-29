@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@heroui/react";
 import { X, PanelRight, PanelRightClose, Sparkles, SquarePen } from "../icons";
@@ -11,6 +11,8 @@ import { ConversationPicker } from "./ConversationPicker";
 import type { Message, AgentState } from "./types";
 import type { ConversationRow } from "../../contracts/chatPersistence";
 import { FLOATING_CHAT_MAX_HEIGHT_CSS } from "../notes/floatingChatLayout";
+
+const FLOATING_CLOSE_MS = 160;
 
 export type ChatPanelMode = "hidden" | "floating" | "sidebar";
 
@@ -56,7 +58,7 @@ function HeaderButton({ label, onPress, children }: { label: string; onPress: ()
  * or a docked column where the host has room for it.
  */
 export default function ChatPanel({
-  mode,
+  mode: requestedMode,
   onModeChange,
   messages,
   agentState,
@@ -76,6 +78,19 @@ export default function ChatPanel({
   floatingMaxHeight = FLOATING_CHAT_MAX_HEIGHT_CSS,
 }: ChatPanelProps) {
   const { t } = useTranslation();
+  const mode = requestedMode;
+  // The floating card stays mounted while it plays its exit animation.
+  const [closing, setClosing] = useState(false);
+  const [previousMode, setPreviousMode] = useState(mode);
+  if (mode !== previousMode) {
+    setPreviousMode(mode);
+    setClosing(previousMode === "floating" && mode === "hidden");
+  }
+  useEffect(() => {
+    if (!closing) return;
+    const timer = setTimeout(() => setClosing(false), FLOATING_CLOSE_MS);
+    return () => clearTimeout(timer);
+  }, [closing]);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   // One node, two owners: the click-outside check here and the host's layout observer.
@@ -111,7 +126,7 @@ export default function ChatPanel({
     return () => document.removeEventListener("keydown", onKey);
   }, [mode, onModeChange]);
 
-  if (mode === "hidden") return null;
+  if (mode === "hidden" && !closing) return null;
 
   const header = (
     <div
@@ -215,7 +230,7 @@ export default function ChatPanel({
     </>
   );
 
-  if (mode === "floating") {
+  if (mode === "floating" || closing) {
     return (
       <div
         ref={setPanelRef}
@@ -229,7 +244,9 @@ export default function ChatPanel({
           "rounded-[22px]",
           "shadow-overlay",
           "backdrop-blur-2xl",
-          "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200"
+          closing
+            ? "pointer-events-none motion-safe:animate-out motion-safe:fade-out-0 motion-safe:slide-out-to-bottom-2 motion-safe:duration-150 motion-safe:fill-mode-forwards"
+            : "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200"
         )}
       >
         {content}

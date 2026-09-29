@@ -980,9 +980,11 @@ export default function NoteEditor({
             onInputFocus={handleChatInputFocus}
             hideInput={chatMode !== "hidden"}
           />
-          {chatMode === "floating" && (
-            <ChatPanel mode="floating" floatingPanelRef={floatingChatPanelRef} {...chatPanelProps} />
-          )}
+          <ChatPanel
+            mode={chatMode === "floating" ? "floating" : "hidden"}
+            floatingPanelRef={floatingChatPanelRef}
+            {...chatPanelProps}
+          />
         </div>
       </div>
       {chatMode === "sidebar" && <ChatPanel mode="sidebar" {...chatPanelProps} />}

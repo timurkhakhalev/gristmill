@@ -126,7 +126,9 @@ export function observeFloatingChatLayout(
   contentRoot.addEventListener("touchstart", handleTouchStart, { capture: true, passive: true });
   contentRoot.addEventListener("touchmove", handleTouchMove, { capture: true, passive: true });
   contentRoot.addEventListener("touchend", handleTouchEnd, { capture: true, passive: true });
-  applyInset(true);
+  // Opening the chat must not move the note: start from where the reader actually is.
+  updateFollowState();
+  applyInset();
 
   const observer = createResizeObserver((): void => applyInset());
   observer.observe(panel);

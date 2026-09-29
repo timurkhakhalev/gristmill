@@ -21,10 +21,10 @@ function part(spec: PartSpec) {
 function run(id: string, sources: string[], extra: Record<string, unknown> = {}) {
   return { id, sourceRecordingIds: sources, kind: "reprocess", sourceRunId: null, status: "complete", hasTranscript: true, createdAt: "2026-09-25T12:00:00.000Z", ...extra };
 }
-function deps(parts: unknown[], runs: unknown[], transcripts: Record<string, unknown>, options: { corrections?: Record<string, unknown[]>; projection?: string | null } = {}) {
+function deps(parts: unknown[], runs: unknown[], transcripts: Record<string, unknown>, options: { corrections?: Record<string, unknown[]>; projection?: string | null; epochs?: Record<string, Array<{ startFrame: number; frameCount: number }>> } = {}) {
   return {
     listRecordings: () => parts,
-    listEpochs: () => [],
+    listEpochs: (id: string) => options.epochs?.[id] ?? [],
     getRun: (id: string) => (runs as Array<{ id: string }>).find((item) => item.id === id) ?? null,
     readTranscript: (id: string) => transcripts[id] ?? null,
     getCorrections: (id: string) => options.corrections?.[id] ?? [],
@@ -80,6 +80,19 @@ test("later groups continue after earlier groups", () => {
   }), 42);
   assert.deepEqual(result.segments.map((s: { start_ms: number }) => s.start_ms), [0, 10 * MIN + 2000]);
   assert.equal(result.timeline.duration_ms, 15 * MIN);
+});
+
+test("sub-millisecond capture frames produce integer offsets and total duration", () => {
+  const parts = [
+    part({ id: A, group: G1, startMin: 0, minutes: 0, run: "ra" }),
+    part({ id: B, group: G1, startMin: 1, minutes: 0, run: "rb" }),
+  ];
+  const result = readNoteTranscript(deps(parts, [run("ra", [A]), run("rb", [B])], {
+    ra: { text: "a", segments: [{ text: "a", start: 0, end: 0.001 }] },
+    rb: { text: "b", segments: [{ text: "b", start: 0.001, end: 0.002 }] },
+  }, { epochs: { [A]: [{ startFrame: 0, frameCount: 25 }], [B]: [{ startFrame: 0, frameCount: 25 }] } }), 42);
+  assert.deepEqual(result.segments.map((s: { start_ms: number; end_ms: number }) => [s.start_ms, s.end_ms]), [[0, 1], [2, 3]]);
+  assert.equal(result.timeline.duration_ms, 2);
 });
 
 test("an uncovered part makes the transcript partial, not ready", () => {

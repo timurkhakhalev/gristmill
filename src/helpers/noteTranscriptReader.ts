@@ -74,7 +74,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
     const partOffsets = new Map<string, number>();
     let cursor = 0;
     for (const part of parts) {
-      partOffsets.set(part.id, groupOffsetMs + cursor);
+      partOffsets.set(part.id, Math.round(groupOffsetMs + cursor));
       if (part.captureState === "recording" || part.captureState === "finalizing") {
         pending = true;
         durationKnown = false;
@@ -127,7 +127,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
 
   if (!pieces.length) {
     const status = pending ? "pending" : failed ? "error" : uncovered || !durationKnown ? "partial" : "absent";
-    return { ...absent(noteId, status, diagnostics), timeline: emptyTimeline(durationKnown ? groupOffsetMs : null) };
+    return { ...absent(noteId, status, diagnostics), timeline: emptyTimeline(durationKnown ? Math.round(groupOffsetMs) : null) };
   }
 
   pieces.sort((a, b) => a.offsetMs - b.offsetMs);
@@ -178,7 +178,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
   return {
     note_id: noteId,
     status: pending || failed || uncovered || !durationKnown ? "partial" : "ready",
-    timeline: emptyTimeline(durationKnown ? groupOffsetMs : null),
+    timeline: emptyTimeline(durationKnown ? Math.round(groupOffsetMs) : null),
     speakers,
     text: withSegments ? segments.map((segment) => segment.text).join("\n") : pieces.map((piece) => piece.transcript.text).join("\n"),
     segments: withSegments ? segments : null,

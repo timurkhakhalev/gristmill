@@ -2332,7 +2332,10 @@
     "progress": {
       "pending": "Waiting to start.",
       "running": "This can take a few minutes. You can keep writing notes."
-    }
+    },
+    "autoSummarySkipped": "Automatic Summary skipped",
+    "autoSummarySkippedReason": "Automatic Summary requires at least 180 seconds of recorded audio and 2,500 transcript characters. This meeting has {{seconds}} seconds and {{chars}} characters. You can create a Summary manually now.",
+    "calendarParticipantsInvalid": "Stored calendar participant data is invalid. Correct it before retrying."
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

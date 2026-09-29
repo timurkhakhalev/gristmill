@@ -2368,7 +2368,10 @@
     "progress": {
       "pending": "في انتظار البدء.",
       "running": "قد يستغرق ذلك بضع دقائق. يمكنك متابعة كتابة الملاحظات."
-    }
+    },
+    "autoSummarySkipped": "تم تخطي الملخص التلقائي",
+    "autoSummarySkippedReason": "يتطلب الملخص التلقائي 180 ثانية على الأقل من التسجيل و2500 حرف من التفريغ. مدة هذا الاجتماع {{seconds}} ثانية ويحتوي على {{chars}} حرفًا. يمكنك إنشاء ملخص يدويًا الآن.",
+    "calendarParticipantsInvalid": "بيانات المشاركين المحفوظة في التقويم غير صالحة. صححها قبل إعادة المحاولة."
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

@@ -416,6 +416,9 @@ export class MeetingProcessingWorker {
       throw new Error("Only end-of-meeting transcription can use the processing gate");
     }
     const sourceRecordingIds = parsed.sourceRecordingIds ?? [parsed.recordingId];
+    if (parsed.kind === "reprocess" && !parsed.gateAfterStop && this.isCapturing()) {
+      throw new Error("Transcription starts after the end-of-meeting wait");
+    }
     const sameSources = (run: MeetingProcessingRunDto) =>
       run.sourceRecordingIds.length === sourceRecordingIds.length &&
       run.sourceRecordingIds.every((id, index) => id === sourceRecordingIds[index]);
@@ -431,6 +434,17 @@ export class MeetingProcessingWorker {
     }
     if (activeGate && Date.parse(activeGate.retryAt as string) > this.now().getTime() && !parsed.gateAfterStop) {
       throw new Error("Transcription starts after the end-of-meeting wait");
+    }
+    if (parsed.kind === "reprocess" && !parsed.gateAfterStop) {
+      const latestStop = sourceRecordingIds
+        .map((id) => this.deps.database.getMeetingRecording(id)?.endedAt)
+        .filter((value): value is string => value !== null && value !== undefined)
+        .map(Date.parse)
+        .filter(Number.isFinite)
+        .reduce((latest, value) => Math.max(latest, value), 0);
+      if (latestStop > 0 && this.now().getTime() < latestStop + MEETING_ASR_GATE_MS) {
+        throw new Error("Transcription starts after the end-of-meeting wait");
+      }
     }
     if (parsed.gateAfterStop) {
       const existing = this.deps.database.listMeetingProcessingRuns(parsed.recordingId).find((run) =>
@@ -922,7 +936,7 @@ export class MeetingProcessingWorker {
       sourceRunId,
       sourceRecordingIds: [...run.sourceRecordingIds],
       meetingTitle: note.title || null,
-      participants: availableParticipantCandidates(note.participants),
+      participants: participantCandidates(note.participants),
       manualNotes: note.content,
       manualNoteRevision: hashText(note.content),
       speakerCorrectionRevision: this.deps.database.getMeetingRunSpeakerCorrectionRevision(sourceRunId),
@@ -983,7 +997,7 @@ export class MeetingProcessingWorker {
       if (this.isCapturing()) return;
       if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) return;
       const note = this.deps.database.getNote(recording.noteId);
-      const nowParticipants = note ? availableParticipantCandidates(note.participants) : [];
+      const nowParticipants = note ? participantCandidates(note.participants) : [];
       if (
         !note || note.title !== snapshot.meetingTitle || JSON.stringify(nowParticipants) !== JSON.stringify(snapshot.participants) ||
         this.deps.database.getMeetingRunSpeakerCorrectionRevision(sourceRunId) !== snapshot.speakerCorrectionRevision
@@ -1005,6 +1019,7 @@ export class MeetingProcessingWorker {
       this.deps.database.setMeetingSpeakerNamingError(run.id, null);
     } catch (error) {
       if (signal.aborted || this.isCapturing()) return;
+      if (error instanceof MeetingProcessingFailure && error.code === "calendar-participants-invalid") throw error;
       this.deps.database.setMeetingSpeakerNamingError(run.id, errorCodeOf(error));
     }
   }
@@ -1698,15 +1713,6 @@ function participantCandidates(value: string | null): Array<{ name: string | nul
       email,
     };
   });
-}
-
-function availableParticipantCandidates(value: string | null): Array<{ name: string | null; email: string | null }> {
-  try {
-    return participantCandidates(value);
-  } catch (error) {
-    if (error instanceof MeetingProcessingFailure && error.code === "calendar-participants-invalid") return [];
-    throw error;
-  }
 }
 
 function buildLlmTranscriptSegments(

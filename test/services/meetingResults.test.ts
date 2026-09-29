@@ -199,6 +199,7 @@ test("worker stores post-stop recognition per run and does not infer names from 
   const { note, recording, initialRun } = createFinishedRecording(db, storage, {
     sourceMetadata: { calendarAttendees: [{ name: "Calendar Guess" }], sourceMic: "Computer User" },
   });
+  assert.ok(recording.endedAt);
   const knownProfileId = Number(db.db.prepare(
     "INSERT INTO speaker_profiles (display_name, embedding) VALUES (?, ?)"
   ).run("Known voice", floatBuffer([1, 0])).lastInsertRowid);
@@ -211,6 +212,7 @@ test("worker stores post-stop recognition per run and does not infer names from 
   };
   let recognizeCalls = 0;
   const worker = createWorker(db, storage, {
+    now: () => new Date(Date.parse(recording.endedAt!) + 15_000),
     transcribeRemote: async (_request, saveRaw) => {
       await saveRaw(rawResponse);
       return { success: true, text: rawResponse.text };

@@ -23,7 +23,7 @@ Use the language mainly spoken in the meeting unless the user-written Detailed N
 
 Return only Markdown notes. Start with exactly the heading ## TLDR, followed by a concise summary of the purpose and main outcomes. Then cover substantive topics under descriptive headings that name the relevant project, product, client or subject. Explain who contributed what when the transcript supports attribution, and state factual uncertainty plainly. Preserve important context while removing repetition and filler.
 
-Add an ## Action Items section only when the source contains concrete agreed actions. It must be the last section, with one item per supported task. Include an owner and due date only when stated; otherwise say Owner not specified or Due date not specified. Do not add empty Decisions, Open Questions, Follow-ups or other boilerplate sections. Do not add a title, date, location, attendee list, preamble, table or horizontal rule. Return no content outside the notes.`;
+Add an ## Action Items section only when the source contains concrete agreed actions. It must be the last section, with one item per supported task. Include an owner and due date only when stated; omit each when the source does not state it. Do not add empty Decisions, Open Questions, Follow-ups or other boilerplate sections. Do not add a title, date, location, attendee list, preamble, table or horizontal rule. Return no content outside the notes.`;
 
 const FOLLOW_UP_EMAIL_PROMPT = `You are an expert at writing follow-up emails after meetings. Draft the follow-up email the user ("You") would send to the other participants, based only on the provided meeting material: meeting context, the user's manual notes, and the transcript.
 

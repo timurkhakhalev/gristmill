@@ -25,7 +25,8 @@ function record(value: unknown): Record<string, unknown> | null {
 export function parseDeepgramFileResponse(
   raw: unknown,
   diarize: boolean,
-  multichannel = false
+  multichannel = false,
+  audioDurationSeconds?: number
 ): RemoteTranscriptionResult {
   const results = record(raw)?.results;
   const channels = record(results)?.channels;
@@ -72,6 +73,7 @@ export function parseDeepgramFileResponse(
       !Number.isFinite(item.end) ||
       item.start < 0 ||
       item.end < item.start ||
+      (audioDurationSeconds !== undefined && item.start > audioDurationSeconds) ||
       (diarize && (!Number.isInteger(item.speaker) || (item.speaker as number) < 0))
     ) {
       return {
@@ -84,7 +86,7 @@ export function parseDeepgramFileResponse(
       ...(diarize ? { speaker: multichannel ? (item.channel === 0 ? "mic" : `system:Speaker ${(item.speaker as number) + 1}`) : `Speaker ${(item.speaker as number) + 1}` } : {}),
       text: item.transcript,
       start: item.start,
-      end: item.end,
+      end: audioDurationSeconds === undefined ? item.end : Math.min(item.end, audioDurationSeconds),
     });
   }
 

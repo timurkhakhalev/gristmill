@@ -789,7 +789,7 @@ export class MeetingProcessingWorker {
       const provider = supportedMeetingFileProvider(config.provider, config.model);
       if (!provider) throw new MeetingProcessingFailure("unsupported-provider", "blocked");
       if (provider === "deepgram") {
-        result = parseDeepgramFileResponse(raw, true, true);
+        result = parseDeepgramFileResponse(raw, true, true, recordingDuration);
       } else {
         const sources = z.object({ mic: z.unknown(), system: z.unknown() }).parse(raw);
         const mic = normalizeProviderResponse(provider, sources.mic, false);

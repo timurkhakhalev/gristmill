@@ -2048,3 +2048,36 @@ test("Deepgram uses one stereo request and distinct channel identities", async (
   assert.deepEqual(storage.readRunArtifact(run.id, "transcript").segments.map((s: { speaker: string }) => s.speaker), ["mic", "system:Speaker 1"]);
   assert.equal(db.getMeetingRunSpeakerCorrections(run.id)[0].displayName, "Timur");
 });
+
+test("retry normalizes a saved Deepgram response whose last word ends after the audio", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage, {
+    ...validConfig,
+    transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "auto" },
+  });
+  const raw = { results: {
+    channels: [{ alternatives: [{ transcript: "Me" }] }, { alternatives: [{ transcript: "Them" }] }],
+    utterances: [
+      { channel: 0, speaker: 0, transcript: "Me", start: 0.1, end: 0.5 },
+      { channel: 1, speaker: 0, transcript: "Them", start: 0.7, end: 3 },
+    ],
+  } };
+  storage.writeRunArtifact(run.id, "provider-response", raw);
+  assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
+  assert.equal(db.setMeetingProcessingRunState(run.id, {
+    stage: "normalize", status: "failed", errorCode: "transcript-timing-invalid",
+  }).success, true);
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async () => { throw new Error("Cached response must not trigger ASR"); },
+  });
+  t.after(() => worker.stop());
+  assert.ok(worker.retry(run.id));
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
+  assert.equal(storage.readRunArtifact(run.id, "transcript").segments[1].end, 1);
+  assert.deepEqual(storage.readRunArtifact(run.id, "provider-response"), raw);
+});

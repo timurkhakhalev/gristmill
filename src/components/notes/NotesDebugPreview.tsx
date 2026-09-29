@@ -161,6 +161,7 @@ function makePreview(scenario: NotesDebugScenario) {
           : scenario === "failed" || scenario === "summary-failed"
             ? "provider-timeout"
             : null,
+    speakerNamingErrorCode: null,
     retryAt: null,
     retryCount: 0,
     hasRawProviderResponse: hasTranscript,
@@ -400,4 +401,3 @@ export default function NotesDebugPreview({
     </div>
   );
 }
-

@@ -2344,7 +2344,8 @@
     },
     "autoSummarySkipped": "已跳过自动摘要",
     "autoSummarySkippedReason": "自动摘要需要至少 180 秒录音和 2,500 个转录字符。本次会议为 {{seconds}} 秒、{{chars}} 个字符。你现在可以手动创建摘要。",
-    "calendarParticipantsInvalid": "保存的日历参与者数据无效。请先更正后再重试。"
+    "calendarParticipantsInvalid": "保存的日历参与者数据无效。请先更正后再重试。",
+    "calendarParticipantsNamingSkipped": "已跳过自动识别说话者姓名。转录文本和摘要仍可用。"
   },
   "shortcutsDialog": {
     "title": "键盘快捷键",

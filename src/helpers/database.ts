@@ -200,6 +200,7 @@ interface MeetingProcessingRunDbRow {
   stage: MeetingRunStage;
   status: MeetingRunStatus;
   error_code: string | null;
+  speaker_naming_error_code: string | null;
   retry_at: string | null;
   raw_response_path: string | null;
   transcript_path: string | null;
@@ -551,6 +552,7 @@ function toMeetingRunDto(row: MeetingProcessingRunDbRow): MeetingProcessingRunDt
     stage: row.stage,
     status: row.status,
     errorCode: row.error_code,
+    speakerNamingErrorCode: row.speaker_naming_error_code,
     retryAt: row.retry_at,
     retryCount: row.retry_count,
     hasRawProviderResponse: row.raw_response_path !== null,

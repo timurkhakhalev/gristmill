@@ -243,3 +243,26 @@ Verification run by this agent:
 - Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts` and the affected M1–M4 tests.
 
 Implementation commit: `8e790528e` (`M5: assert manual summary in its owning control`).
+
+## M6 — Reviewer fixes from review-2
+
+Status: done
+
+Malformed optional calendar participants are now recorded as a persisted speaker-naming error and excluded from naming input; ready manual and eligible automatic Summary runs continue. The live Notes panel explains that naming was skipped while Summary remains available. The short-transcript notice now requires nonempty transcript text. ASR gate deadlines are tracked by recording group, so a newer group's wait leaves older completed-group actions available while the whole-note action remains gated if it includes the current group.
+
+Preserved raw tracks, previous run artifacts, manual Notes, corrected-speaker precedence, selected-run projection, the single Summary Markdown, and the M1 end-of-meeting gate. Debug previews remain isolated, and the manual Summary control stays in its existing NoteEditor owner.
+
+Issues: none unresolved. Root owns automated tests, builds, dependency installation, native rebuilds, and M4-1 live evidence; this agent ran none of those.
+
+Verification run by this agent:
+
+- `pnpm run typecheck:main` — passed.
+- `pnpm run typecheck:renderer` — passed.
+- `pnpm run typecheck:tests` — passed.
+- Scoped ESLint for changed main/test files — passed with no warnings.
+- Scoped ESLint for changed renderer files — passed with the existing Node `MODULE_TYPELESS_PACKAGE_JSON` warning.
+- Static JSON/key audit — all 11 shipped locales parse and contain `meetingResults.calendarParticipantsNamingSkipped`.
+- `git diff --check` — passed.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should first run `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts`, then the M6/M5 affected journey set and, as required by quality steering, the integrated full `pnpm test` run sequentially. Root should record M4-1 live evidence separately.
+
+Implementation commit: pending.

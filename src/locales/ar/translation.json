@@ -2371,7 +2371,8 @@
     },
     "autoSummarySkipped": "تم تخطي الملخص التلقائي",
     "autoSummarySkippedReason": "يتطلب الملخص التلقائي 180 ثانية على الأقل من التسجيل و2500 حرف من التفريغ. مدة هذا الاجتماع {{seconds}} ثانية ويحتوي على {{chars}} حرفًا. يمكنك إنشاء ملخص يدويًا الآن.",
-    "calendarParticipantsInvalid": "بيانات المشاركين المحفوظة في التقويم غير صالحة. صححها قبل إعادة المحاولة."
+    "calendarParticipantsInvalid": "بيانات المشاركين المحفوظة في التقويم غير صالحة. صححها قبل إعادة المحاولة.",
+    "calendarParticipantsNamingSkipped": "تم تخطي تعيين أسماء المتحدثين تلقائيًا. يظل النص المكتوب والملخص متاحين."
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

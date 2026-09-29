@@ -41,7 +41,7 @@ export function cloudGroups(task: ModelTask, t: TFunction, tinfoilModels: CloudM
     const groups: CatalogGroup[] = providers.map((provider) => ({
       providerId: provider.id,
       name: provider.name,
-      models: provider.models.map((model) => ({ id: model.id, name: model.name, description: describe(t, model) })),
+      models: provider.models.map((model) => ({ id: model.id, name: model.name, description: task === "meeting" && provider.id === "openai" ? t("modelsSettings.openaiMeetingAudio") : describe(t, model) })),
     }));
     if (task === "upload") {
       groups.push({ providerId: "custom", name: t("modelsSettings.picker.customEndpoint"), models: [], form: "custom" });

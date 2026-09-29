@@ -272,6 +272,13 @@ export function createMeetingCoordinatorBridge(
         meetingSystemAudioSilentEventSchema,
         callback
       ),
+    onMeetingSystemAudioLevel: (callback) =>
+      subscribe(
+        ipcRenderer,
+        meetingCoordinatorEventChannels.meetingSystemAudioLevel,
+        z.number().min(0).max(1),
+        callback
+      ),
     // Legacy listener: no main-side producer today, kept for the renderer
     // subscription contract. No payload.
     onMeetingSystemAudioDegraded: (callback) =>

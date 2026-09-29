@@ -168,10 +168,6 @@ export default function DeveloperSection() {
                   <Copy className="size-3.5 text-muted-foreground" />
                 )}
               </Button>
-              <Button onClick={handleOpenLogsFolder} variant="outline" size="sm">
-                <FolderOpen className="size-3.5" />
-                {t("developerSection.openLogsFolder")}
-              </Button>
             </div>
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
@@ -182,6 +178,12 @@ export default function DeveloperSection() {
           </p>
         </SettingsPanelRow>
       )}
+      <SettingsPanelRow>
+        <Button onClick={handleOpenLogsFolder} variant="outline" size="sm">
+          <FolderOpen className="size-3.5" />
+          {t("developerSection.openLogsFolder")}
+        </Button>
+      </SettingsPanelRow>
     </SettingsCard>
   );
 }

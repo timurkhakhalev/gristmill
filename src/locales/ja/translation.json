@@ -927,6 +927,10 @@
       "advanced": {
         "label": "詳細",
         "description": "診断とデバッグログ"
+      },
+      "profile": {
+        "label": "プロフィール",
+        "description": "会議の文字起こしに表示する名前"
       }
     },
     "title": "設定"
@@ -1470,6 +1474,7 @@
       "startRecording": "録音を開始",
       "record": "録音",
       "generateSummary": "AI要約を生成",
+      "generatingSummary": "要約を生成中…",
       "startWriting": "書き始める...",
       "capture": {
         "preparing": "ローカル録音を準備中…",
@@ -1480,7 +1485,7 @@
         "finishMeeting": "End call",
         "saving": "音声の末尾を保存中…",
         "saved": "音声を保存しました",
-        "incomplete": "音声の一部が欠けた状態で録音を保存しました",
+        "incomplete": "一部の録音が途中で中断されました",
         "failed": "録音を開始できませんでした",
         "mic": "マイク",
         "system": "システム音声",
@@ -1551,6 +1556,15 @@
         "detailedNotes": {
           "name": "詳細ノート",
           "description": "決定事項とアクションを含む正確で網羅的な会議ノート"
+        },
+        "followUp": {
+          "name": "会議後のメッセージ",
+          "description": "会議チャットに送るフォローアップメッセージを作成",
+          "cta": "フォローアップを作成"
+        },
+        "recap": {
+          "name": "会議の振り返り",
+          "description": "この会議の短い振り返りを概要に追加"
         }
       },
       "errors": {
@@ -1680,6 +1694,7 @@
       "noProviderSelected": "ノート録音のプロバイダーが選択されていません。設定を開き、ローカルまたはストリーミング対応プロバイダーを選択してください。",
       "autoEnded": "会議の終了後、録音は自動的に停止しました。",
       "restartFailed": "会議の録音を再開できませんでした。",
+      "captureError": "エラーにより録音が停止しました。ノートに保存された音声を確認してください。",
       "systemAudioSilent": {
         "title": "会議の音声がまだ検出されていません",
         "description": "これまでのところ、音声を拾っているのはマイクのみです。ビデオ会議中の場合は、会議の音声がこのコンピューターで再生されており、ミュートになっていないことを確認してください。対面で録音している場合は、この通知は無視してかまいません。マイクが室内の音を拾います。"
@@ -2122,7 +2137,10 @@
       "keyDecisions": "重要な決定事項を一覧に",
       "inFlight": "進行中のプロジェクトを表示"
     },
-    "homeEmptyState": "メモやミーティングについて何でも質問できます"
+    "homeEmptyState": "メモやミーティングについて何でも質問できます",
+    "followUp": "フォローアップ文を作成",
+    "followUpUnavailable": "文字起こしの準備後に利用できます",
+    "followUpError": "フォローアップを準備できませんでした。もう一度お試しください。"
   },
   "transcriptionPreview": {
     "label": "プレビュー",
@@ -2211,20 +2229,37 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "会議の録音リマインダーに使用します。",
+    "accessibilityHelp": "macOSのアクセシビリティ設定でOpenHerculesを有効にしてください。一覧にない場合は「+」をクリックし、インストール済みのOpenHercules.appを選択してください。",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "participantsLoadError": "カレンダーの参加者を読み込めませんでした。",
+    "linkParticipantsHint": "今後の会議で使用するため、これらの名前をカレンダーの参加者に関連付けてください。",
+    "linkParticipant": "参加者に関連付ける",
+    "rememberParticipant": "カレンダー参加者の名前を記憶する",
+    "onlyThisMeeting": "この会議のみ",
+    "rememberParticipantHint": "発言した人を選択してください。今後の会議では、このメールアドレスに保存した名前が使用されます。Googleの連絡先は変更されません。",
+    "voiceProfile": "音声プロフィール",
     "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}}秒",
+    "durationMinutes": "{{minutes}}分{{seconds}}秒",
+    "durationWholeMinutes": "{{minutes}}分",
+    "durationHours": "{{hours}}時間{{minutes}}分",
+    "recordingNow": "録音中",
+    "savingAudio": "保存中…",
+    "endedEarly": "途中で終了",
+    "partOf": "パート {{index}}/{{count}}",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
+    "seekAudio": "音声の位置に移動",
     "processWholeMeeting": "文字起こし",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
@@ -2259,6 +2294,9 @@
     "recording": "録音",
     "newAsr": "新しい文字起こし",
     "newSummary": "新しい要約",
+    "summaryStale": "話者名が変更されました",
+    "summaryStaleReason": "この要約は以前の名前で作成されており、変更されていません。",
+    "regenerateSummary": "要約を再生成",
     "retry": "再試行",
     "deleteAudio": "音声を削除",
     "retryDelete": "音声削除を再試行",
@@ -2270,7 +2308,7 @@
     "saveSpeaker": "話者を保存",
     "speakerProfile": "話者プロフィール",
     "noSpeakerProfile": "プロフィールなし",
-    "captureIncomplete": "録音が早期に終了しました。保存済み音声と結果は保持されます。",
+    "captureIncomplete": "保存済みの音声は文字起こしできます。再試行しても、中断中に録音されなかった音声は復元できません。",
     "deleteActiveNoteTitle": "録音を停止して削除しますか？",
     "deleteActiveNoteDescription": "文字起こしを開始せず安全に録音を停止し、その後ノート、音声、処理履歴を削除します。",
     "stopBeforeDeleteError": "安全に停止できませんでした。ノートは保持されました。",
@@ -2314,7 +2352,11 @@
     "progress": {
       "pending": "開始を待っています。",
       "running": "数分かかることがあります。その間もノートを書き続けられます。"
-    }
+    },
+    "autoSummarySkipped": "自動要約をスキップしました",
+    "autoSummarySkippedReason": "自動要約には録音時間180秒以上、文字起こし2,500文字以上が必要です。この会議は{{seconds}}秒、{{chars}}文字です。今すぐ手動で要約を作成できます。",
+    "calendarParticipantsInvalid": "保存されたカレンダー参加者データが無効です。再試行する前に修正してください。",
+    "calendarParticipantsNamingSkipped": "話者名の自動設定をスキップしました。文字起こしと要約は引き続き利用できます。"
   },
   "shortcutsDialog": {
     "title": "キーボードショートカット",
@@ -2428,6 +2470,15 @@
       "installing": "インストール中…",
       "remove": "{{model}} を削除"
     },
-    "chatPrompt": "チャットの指示"
+    "chatPrompt": "チャットの指示",
+    "openaiMeetingAudio": "マイク：タイムスタンプ付きWhisper。システム音声：GPT-4o Transcribe Diarize。2つのリクエストを並列実行します。"
+  },
+  "profile": {
+    "name": "名前",
+    "placeholder": "表示する名前を入力",
+    "help": "マイクで録音した発言に使用します。任意項目です。空欄の場合は「あなた」と表示します。設定 → プロフィールで変更できます。",
+    "onboardingTitle": "お名前を教えてください",
+    "skip": "スキップ",
+    "selfLabel": "あなた"
   }
 }

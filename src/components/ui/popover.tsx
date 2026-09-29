@@ -77,7 +77,10 @@ function PopoverContent({
   shouldCloseOnInteractOutside?: (element: Element) => boolean;
 }) {
   const anchorRef = React.useContext(AnchorContext);
-  const placement = (align === "center" ? side : `${side} ${align}`) as React.ComponentProps<typeof HeroPopover.Content>["placement"];
+  // React Aria cross-axis placements are top/bottom beside a left/right popover and start/end above or below one.
+  const beside = side === "left" || side === "right";
+  const crossAlign = beside ? (align === "start" ? "top" : "bottom") : align;
+  const placement = (align === "center" ? side : `${side} ${crossAlign}`) as React.ComponentProps<typeof HeroPopover.Content>["placement"];
   return (
     <HeroPopover.Content
       placement={placement}

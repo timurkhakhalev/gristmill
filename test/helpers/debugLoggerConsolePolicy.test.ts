@@ -224,6 +224,45 @@ test(
   }
 );
 
+test("production persists capture errors with a bounded rotated file while debug logging stays off", () => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "openhercules-error-log-"));
+  const logger = loadLogger({
+    platform: "win32",
+    isPackaged: true,
+    isReady: true,
+    userDataPath,
+  }) as LoggerUnderTest;
+  const active = path.join(userDataPath, "logs", "capture-errors.log");
+  const previous = path.join(userDataPath, "logs", "capture-errors.1.log");
+
+  try {
+    logger.info("Normal activity is not persisted");
+    assert.equal(fs.existsSync(active), false);
+    logger.error("Unrelated error is not persisted");
+    assert.equal(fs.existsSync(active), false);
+    logger.logEntry({ level: "error", message: "capture-queue-overflow", scope: "meeting-capture", source: "renderer" });
+    assert.match(fs.readFileSync(active, "utf8"), /\[ERROR\]\[meeting-capture\]\[renderer\] capture-queue-overflow/);
+    assert.match(fs.readFileSync(active, "utf8"), /9\.9\.9-test/);
+    assert.equal(logger.getLogPath(), null);
+
+    logger.logEntry({ level: "error", message: "x".repeat(2_000_000), scope: "meeting-capture" });
+    assert.ok(fs.statSync(active).size <= 16 * 1024 * 2);
+
+    const payload = "x".repeat(12_000);
+    for (let i = 0; i < 200; i += 1) {
+      logger.logEntry({ level: "error", message: `recording failure ${i} ${payload}`, scope: "meeting-capture" });
+    }
+
+    assert.ok(fs.existsSync(previous));
+    assert.ok(fs.statSync(active).size <= 1024 * 1024);
+    assert.ok(fs.statSync(previous).size <= 1024 * 1024);
+    assert.match(fs.readFileSync(active, "utf8"), /recording failure 199/);
+    assert.doesNotMatch(fs.readFileSync(previous, "utf8"), /capture-queue-overflow/);
+  } finally {
+    fs.rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test("routine window-drag activity obeys the packaged Windows console policy", async () => {
   delete require.cache[loggerPath];
   delete require.cache[dragManagerPath];

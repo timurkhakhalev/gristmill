@@ -171,7 +171,7 @@ test("custom action lifecycle round-trips through the bundled preload", async (t
 
   const created = await api.createAction("Bridge action", "d", "p") as { success: boolean; action: { icon: string; id: unknown } };
   assert.equal(created.success, true);
-  assert.equal(created.action.icon, "sparkles");
+  assert.equal(created.action.icon, "wand-sparkles");
   await flush();
   assert.equal(events.length, 1, "event arrives exactly once");
   assert.equal((events[0] as { action: { id: unknown } }).action.id, created.action.id);

@@ -18,7 +18,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
     recordings: [] as Recording[],
     epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
     recoveries: [] as unknown[],
-    finalizations: [] as { recordingId: string; input: { captureState: string; errorCode?: string | null } }[],
+    finalizations: [] as { recordingId: string; input: { captureState: string; endedAt: string; errorCode?: string | null } }[],
     createMeetingRecording(noteId: number, config: unknown, startedAt: string, id: string) {
       const recording = { id, noteId, config, startedAt, captureState: "recording" };
       this.recordings.push(recording);
@@ -35,7 +35,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
       if (!recording) throw new Error("Recording not found");
       recording.captureState = "finalizing";
     },
-    finalizeMeetingRecording(recordingId: string, input: { captureState: string; errorCode?: string | null }) {
+    finalizeMeetingRecording(recordingId: string, input: { captureState: string; endedAt: string; errorCode?: string | null }) {
       this.finalizations.push({ recordingId, input });
       const recording = this.recordings.find((item) => item.id === recordingId);
       if (!recording) throw new Error("Recording not found");
@@ -175,6 +175,19 @@ test("capture writes source epochs separately and finalizes restart gaps as inco
   assert.equal(database.finalizations.length, 1);
 });
 
+test("owner loss records the last saved audio time instead of a later finalization time", async () => {
+  const { database, storage } = createCaptureFakes();
+  const origin = new Date("2026-09-24T10:00:00.000Z");
+  const capture = MeetingCaptureSession.create(database, storage, 12, null, origin, RECORDING_ID);
+  capture.appendRendererSamples("mic", packet(0, 0, 0, 0), Buffer.alloc(4_800, 1));
+  capture.appendNativeSamples("system", Buffer.alloc(4_800, 2), new Date(origin.getTime() + 250));
+  capture.markCaptureFailure("renderer-lost");
+
+  const result = await capture.stop({ lastSequence: {} });
+  assert.equal(result.captureState, "incomplete");
+  assert.equal(database.finalizations[0].input.endedAt, "2026-09-24T10:00:00.350Z");
+});
+
 test("main-owned native system audio drains without a renderer sequence", async () => {
   const { database, storage } = createCaptureFakes();
   const origin = new Date("2026-09-24T10:00:00.000Z");
@@ -255,6 +268,22 @@ test("write queue waits for delayed disk acknowledgement and rejects late packet
   assert.equal(queue.unacknowledgedFrames, 0);
 });
 
+test("default capture queue preserves audio through a one-second write backlog", async () => {
+  const writeGate = deferred();
+  const failures: string[] = [];
+  const queue = new MeetingCaptureWriteQueue({
+    write: () => writeGate.promise,
+    onFailure: (error: Error) => failures.push(error.message),
+  });
+  const first = queue.write(Buffer.from([1]), 24_000);
+  const second = queue.write(Buffer.from([2]), 24_000);
+  assert.equal(queue.unacknowledgedFrames, 48_000);
+  writeGate.resolve();
+  await Promise.all([first, second, queue.drain()]);
+  assert.equal(queue.unacknowledgedFrames, 0);
+  assert.deepEqual(failures, []);
+});
+
 test("write queue stops at its PCM backlog limit and surfaces delayed writer failure", async () => {
   const writeGate = deferred();
   const failures: unknown[] = [];
@@ -266,8 +295,8 @@ test("write queue stops at its PCM backlog limit and surfaces delayed writer fai
   });
   const first = queue.write(Buffer.from([1]), 2);
   await new Promise(setImmediate);
-  await assert.rejects(queue.write(Buffer.from([2]), 1), /500 ms/);
-  await assert.rejects(first, /500 ms/);
-  await assert.rejects(queue.drain(), /500 ms/);
-  assert.deepEqual(failures, ["Meeting capture exceeded the 500 ms write backlog"]);
+  await assert.rejects(queue.write(Buffer.from([2]), 1), /5000 ms/);
+  await assert.rejects(first, /5000 ms/);
+  await assert.rejects(queue.drain(), /5000 ms/);
+  assert.deepEqual(failures, ["Meeting capture exceeded the 5000 ms write backlog"]);
 });

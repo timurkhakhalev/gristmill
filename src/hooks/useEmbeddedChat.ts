@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useChatPersistence } from "../components/chat/useChatPersistence";
-import { useChatStreaming } from "../components/chat/useChatStreaming";
+import { useChatStreaming, type ChatSendOptions } from "../components/chat/useChatStreaming";
 import { useChatMessageSender } from "../components/chat/useChatMessageSender";
 import type { Message, AgentState } from "../components/chat/types";
 import type { ConversationRow } from "../contracts/chatPersistence";
@@ -18,6 +18,7 @@ interface UseEmbeddedChatReturn {
   messages: Message[];
   agentState: AgentState;
   sendMessage: (text: string) => Promise<void>;
+  sendActionMessage: (text: string, systemPrompt: string) => Promise<void>;
   cancelStream: () => void;
   noteConversations: ConversationRow[];
   activeConversationId: number | null;
@@ -145,11 +146,24 @@ export function useEmbeddedChat({
     },
     [disabled, sendMessageWithResult]
   );
+  const sendActionMessage = useCallback(
+    async (text: string, systemPrompt: string): Promise<void> => {
+      if (disabled) return;
+      const options: ChatSendOptions = {
+        systemPrompt,
+        disableTools: true,
+        includeConversationHistory: false,
+      };
+      await sendMessageWithResult(text, options);
+    },
+    [disabled, sendMessageWithResult]
+  );
 
   return {
     messages: persistence.messages,
     agentState: streaming.agentState,
     sendMessage,
+    sendActionMessage,
     cancelStream: streaming.cancelStream,
     noteConversations,
     activeConversationId: conversationId,

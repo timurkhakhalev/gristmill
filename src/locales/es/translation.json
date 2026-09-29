@@ -927,6 +927,10 @@
       "advanced": {
         "label": "Avanzado",
         "description": "Diagnóstico y registro de depuración"
+      },
+      "profile": {
+        "label": "Perfil",
+        "description": "Tu nombre en las transcripciones de reuniones"
       }
     },
     "title": "Ajustes"
@@ -1489,6 +1493,7 @@
       "startRecording": "Empezar a grabar",
       "record": "Grabar",
       "generateSummary": "Generar resumen con IA",
+      "generatingSummary": "Generando resumen…",
       "startWriting": "Comienza a escribir...",
       "staleIndicator": "El contenido ha cambiado desde la mejora",
       "live": "En vivo",
@@ -1507,7 +1512,7 @@
         "finishMeeting": "End call",
         "saving": "Guardando el tramo final…",
         "saved": "Grabación de audio guardada",
-        "incomplete": "Grabación guardada con audio faltante",
+        "incomplete": "Se interrumpieron algunas partes de audio",
         "failed": "No se pudo iniciar la grabación",
         "mic": "Micrófono",
         "system": "Audio del sistema",
@@ -1615,6 +1620,7 @@
       "noProviderSelected": "No hay ningún proveedor seleccionado para la grabación de notas. Abre Ajustes y elige Local o un proveedor de streaming.",
       "autoEnded": "La grabación se detuvo automáticamente cuando terminó la reunión.",
       "restartFailed": "No se pudo reiniciar la grabación de la reunión.",
+      "captureError": "La grabación se detuvo por un error. Revisa el audio guardado en la nota.",
       "systemAudioSilent": {
         "title": "Aún no se detecta el audio de la reunión",
         "description": "Hasta ahora solo tu micrófono ha captado sonido. ¿Estás en una videollamada? Comprueba que el audio de la reunión se reproduce en este equipo y no está silenciado. ¿Estás grabando en persona? Puedes ignorar este aviso: tu micrófono capta la sala."
@@ -1677,6 +1683,15 @@
         "detailedNotes": {
           "name": "Notas detalladas",
           "description": "Notas de reunión precisas y completas con decisiones y tareas"
+        },
+        "followUp": {
+          "name": "Seguimiento",
+          "description": "Redacta un mensaje de seguimiento en el chat de la reunión",
+          "cta": "Redactar un seguimiento"
+        },
+        "recap": {
+          "name": "Recapitulación",
+          "description": "Añade una breve recapitulación de esta reunión a su resumen"
         }
       },
       "errors": {
@@ -2122,7 +2137,10 @@
       "keyDecisions": "Lista las decisiones clave",
       "inFlight": "Muestra los proyectos en curso"
     },
-    "homeEmptyState": "Pregunta lo que quieras sobre tus notas y reuniones"
+    "homeEmptyState": "Pregunta lo que quieras sobre tus notas y reuniones",
+    "followUp": "Redactar un mensaje de seguimiento",
+    "followUpUnavailable": "Disponible cuando la transcripción esté lista",
+    "followUpError": "No se pudo preparar el mensaje. Inténtalo de nuevo."
   },
   "transcriptionPreview": {
     "label": "Vista previa",
@@ -2211,20 +2229,37 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "Para recordatorios de grabación de reuniones.",
+    "accessibilityHelp": "Activa OpenHercules en Accesibilidad de macOS. Si no aparece en la lista, haz clic en + y selecciona la app OpenHercules.app instalada.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "participantsLoadError": "No se pudieron cargar los participantes del calendario.",
+    "linkParticipantsHint": "Vincula estos nombres con participantes del calendario para usarlos en futuras reuniones.",
+    "linkParticipant": "Vincular participante",
+    "rememberParticipant": "Recordar nombre del participante del calendario",
+    "onlyThisMeeting": "Solo esta reunión",
+    "rememberParticipantHint": "Selecciona quién habló. Este nombre se usará para su correo en futuras reuniones. Los contactos de Google no se modificarán.",
+    "voiceProfile": "Perfil de voz",
     "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}} s",
+    "durationMinutes": "{{minutes}} min {{seconds}} s",
+    "durationWholeMinutes": "{{minutes}} min",
+    "durationHours": "{{hours}} h {{minutes}} min",
+    "recordingNow": "Grabando ahora",
+    "savingAudio": "Guardando…",
+    "endedEarly": "Terminó antes",
+    "partOf": "Parte {{index}} de {{count}}",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
+    "seekAudio": "Ir a un punto del audio",
     "processWholeMeeting": "Transcribir",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
@@ -2259,6 +2294,9 @@
     "recording": "Grabación",
     "newAsr": "Nueva transcripción",
     "newSummary": "Nuevo resumen",
+    "summaryStale": "Han cambiado los nombres de los interlocutores",
+    "summaryStaleReason": "Este resumen se escribió con los nombres anteriores y no ha cambiado.",
+    "regenerateSummary": "Regenerar resumen",
     "retry": "Reintentar",
     "deleteAudio": "Eliminar audio",
     "retryDelete": "Reintentar eliminación de audio",
@@ -2270,7 +2308,7 @@
     "saveSpeaker": "Guardar hablante",
     "speakerProfile": "Perfil de hablante",
     "noSpeakerProfile": "Sin perfil",
-    "captureIncomplete": "La grabación terminó antes; se conservan el audio y los resultados guardados.",
+    "captureIncomplete": "El audio guardado aún se puede transcribir. Reintentar no recuperará el audio perdido durante esas interrupciones.",
     "deleteActiveNoteTitle": "¿Detener y eliminar esta grabación?",
     "deleteActiveNoteDescription": "La grabación se detendrá sin iniciar transcripción; después se eliminarán la nota, el audio y el historial.",
     "stopBeforeDeleteError": "No se pudo detener la grabación de forma segura. Se conservó la nota.",
@@ -2314,7 +2352,11 @@
     "progress": {
       "pending": "Esperando para empezar.",
       "running": "Puede tardar unos minutos. Puedes seguir escribiendo notas."
-    }
+    },
+    "autoSummarySkipped": "Resumen automático omitido",
+    "autoSummarySkippedReason": "El resumen automático requiere al menos 180 segundos de audio grabado y 2.500 caracteres de transcripción. Esta reunión tiene {{seconds}} segundos y {{chars}} caracteres. Ahora puedes crear un resumen manualmente.",
+    "calendarParticipantsInvalid": "Los datos guardados de participantes del calendario no son válidos. Corrígelos antes de volver a intentarlo.",
+    "calendarParticipantsNamingSkipped": "Se omitió la asignación automática de nombres a los hablantes. La transcripción y el resumen siguen disponibles."
   },
   "shortcutsDialog": {
     "title": "Atajos de teclado",
@@ -2428,6 +2470,15 @@
       "installing": "Instalando…",
       "remove": "Eliminar {{model}}"
     },
-    "chatPrompt": "Instrucciones del chat"
+    "chatPrompt": "Instrucciones del chat",
+    "openaiMeetingAudio": "Micrófono: Whisper con marcas de tiempo. Audio del sistema: GPT-4o Transcribe Diarize. Dos solicitudes en paralelo."
+  },
+  "profile": {
+    "name": "Tu nombre",
+    "placeholder": "¿Cómo te llamamos?",
+    "help": "Se usa para la voz grabada por tu micrófono. Opcional; si lo dejas vacío, se muestra «Tú». Puedes cambiarlo en Ajustes → Perfil.",
+    "onboardingTitle": "¿Cómo te llamas?",
+    "skip": "Omitir",
+    "selfLabel": "Tú"
   }
 }

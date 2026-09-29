@@ -8,6 +8,13 @@ Notes projection, playback/export, and configurable audio retention. Final
 integrated verification and live mic/system hardware smoke are still pending;
 see [record-then-process status](record-then-process.md).
 
+After a successful Stop, a durable 15-second gate runs before preparation and
+ASR. A saved transcript can produce one Markdown Summary. Automatic Summary
+requires at least 180 seconds of audio and 2,500 transcript characters; users
+can generate Summary manually for shorter meetings. Prioritized tasks and a
+manual Recap are sections in the same Summary. Follow-up is drafted as an
+assistant message in the existing embedded Chat and is never sent externally.
+
 Preserve Notes (including blank notes and manual text), the embedded chat and
 tools, file/direct URL import, Dictionary/Snippets, calendars, speaker profiles,
 and existing BYOK, Local, Self-Hosted, and direct provider routes. No new
@@ -53,9 +60,12 @@ A technical individual user who:
 4. A compact pill shows recording duration and health for both tracks.
 5. If a source stops, OpenHercules shows a persistent warning and records the gap.
 6. During the call, OpenHercules saves both sources and displays recording duration and capture health. No transcript or draft is generated.
-7. Stop closes the raw source epochs and queues the finalized recording. A single derived mono timeline WAV is processed through the selected existing provider route; the raw provider response is stored before normalization, and summary follows the saved transcript.
-8. Meeting recordings and result history attach to the existing Note. The selected transcript and generated notes project into existing Notes fields; manual content remains separate.
-9. The user can select a completed result version, correct speakers, play/seek and export audio, create an ASR run with another provider/model, or retry summary from a saved transcript.
+7. A successful Stop closes both raw source epochs and persists a 15-second not-before deadline before preparation or ASR. Pause does not queue processing; Resume invalidates the pending run for the earlier group. Restart respects the saved deadline.
+8. A single derived mono timeline WAV is processed through the selected supported provider route; the raw provider response is stored before normalization. Speaker names may be suggested from transcript evidence, and user corrections take precedence.
+9. Automatic Summary follows the saved transcript only when both thresholds are met: 180 seconds and 2,500 transcript characters. A user can start Summary manually for any ready transcript. Summary uses corrected full transcript segments and a saved prompt/model snapshot.
+10. Meeting recordings and result history attach to the existing Note. The selected transcript and the single Summary Markdown artifact project into existing Notes fields; manual content stays separate. Prior runs and raw tracks remain available after retry.
+11. Prioritized tasks fill the Summary's existing `## Action Items` section; zero tasks remove that section. An optional manual Recap uses the same Markdown under revision checks. Follow-up drafts a normal assistant reply in the existing Chat; no message is sent externally.
+12. The user can select a completed result version, correct speakers, play/seek and export audio, create an ASR run with another provider/model, or retry Summary from a saved transcript.
 
 ## Required capabilities
 
@@ -79,6 +89,8 @@ A technical individual user who:
 - Configurable language and vocabulary hints, with Russian as a first-class case.
 - Use the selected route's integrated diarization when available; keep names scoped to a run until corrected or confirmed.
 - Automatic note generation after the final transcript is available.
+- Apply the inclusive 180-second and 2,500-character automatic Summary thresholds; keep manual Summary available for any ready transcript.
+- Keep one Summary Markdown artifact. Tasks update only `## Action Items`; Recap is optional and manual; conflicts preserve user edits and earlier results.
 - Retry transcription and summary independently. Retry diarization separately only where the chosen provider actually exposes an independent operation; an integrated response is one processing result.
 - Processing history containing provider, model, configuration, status, and errors.
 - Multiple transcript and note revisions without overwriting previous results.
@@ -99,6 +111,7 @@ A technical individual user who:
 - Use transcript, manual notes, generated notes, and meeting metadata as context.
 - Link factual answers to transcript timestamps.
 - Keep chat history per meeting.
+- Offer the editable Follow-up Action as a draft in the existing Chat. Store it as a normal assistant message and never send it externally.
 - Preserve explicit local cross-note search and access; do not add a single-note restriction.
 
 ### Integrations and customization
@@ -126,8 +139,8 @@ A technical individual user who:
 ## Required failure scenarios
 
 These are implementation and verification requirements. M1–M3 focused root gates
-passed. M4 and final integration checks remain root-owned; live mic/system
-tail-loss and restart checks remain unverified.
+passed. M4 focused and final integration checks remain root-owned; live
+mic/system tail-loss and restart checks remain unverified.
 
 1. Switching Wi-Fi, hotspot, and VPN during a meeting does not interrupt either local track.
 2. A cloud provider outage leaves the meeting queued and retryable.

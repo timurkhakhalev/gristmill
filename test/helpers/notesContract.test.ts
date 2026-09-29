@@ -107,7 +107,7 @@ test("event payload schemas reject malformed notes", async () => {
   );
   assert.equal(noteAddedUpdatedPayloadSchema.safeParse({ id: 1 }).success, false);
   assert.equal(
-    noteAddedUpdatedPayloadSchema.safeParse({ id: 1, title: "T", content: "", note_type: "personal", created_at: "", updated_at: "", space_id: 1, source_file: null, audio_duration_seconds: null, enhanced_content: null, enhancement_prompt: null, enhanced_at_content_hash: null, folder_id: null, transcript: null, calendar_event_id: null, participants: null, diarization_enabled: null, expected_speaker_count: null }).success,
+    noteAddedUpdatedPayloadSchema.safeParse({ id: 1, title: "T", content: "", note_type: "personal", created_at: "", updated_at: "", space_id: 1, source_file: null, audio_duration_seconds: null, enhanced_content: null, enhancement_prompt: null, enhanced_at_content_hash: null, folder_id: null, folder_ids: [], transcript: null, calendar_event_id: null, participants: null, diarization_enabled: null, expected_speaker_count: null }).success,
     true
   );
   assert.equal(noteDeletedPayloadSchema.safeParse({ id: 3 }).success, true);

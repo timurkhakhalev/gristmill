@@ -6,10 +6,10 @@ import {
   meetingProcessingRetryRequestSchema,
   meetingProcessingUpdateBlockedRunConfigRequestSchema,
   meetingProcessingRunResponseSchema,
-  meetingProcessingSelectRunRequestSchema,
-  meetingProcessingSelectRunResponseSchema,
   meetingProcessingSpeakerCorrectionRequestSchema,
   meetingProcessingCorrectionResponseSchema,
+  meetingProcessingSummaryActionRequestSchema,
+  meetingProcessingSummaryActionResponseSchema,
   meetingProcessingUpdatedEvent,
   meetingProcessingUpdatedEventSchema,
   meetingRecordingPlaybackRequestSchema,
@@ -60,16 +60,16 @@ export function createMeetingProcessingBridge(ipcRenderer: IpcRendererLike): Mee
         parse(meetingProcessingRunResponseSchema, raw, meetingProcessingChannels.updateBlockedRunConfig)
       );
     },
-    meetingProcessingSelectRun(recordingId, runId) {
-      const input = meetingProcessingSelectRunRequestSchema.parse({ recordingId, runId });
-      return ipcRenderer.invoke(meetingProcessingChannels.selectRun, input).then((raw) =>
-        parse(meetingProcessingSelectRunResponseSchema, raw, meetingProcessingChannels.selectRun)
-      );
-    },
     meetingProcessingSetSpeakerCorrection(input) {
       const parsed = meetingProcessingSpeakerCorrectionRequestSchema.parse(input);
       return ipcRenderer.invoke(meetingProcessingChannels.setSpeakerCorrection, parsed).then((raw) =>
         parse(meetingProcessingCorrectionResponseSchema, raw, meetingProcessingChannels.setSpeakerCorrection)
+      );
+    },
+    meetingProcessingRunSummaryAction(input) {
+      const parsed = meetingProcessingSummaryActionRequestSchema.parse(input);
+      return ipcRenderer.invoke(meetingProcessingChannels.runSummaryAction, parsed).then((raw) =>
+        parse(meetingProcessingSummaryActionResponseSchema, raw, meetingProcessingChannels.runSummaryAction)
       );
     },
     meetingRecordingGetPlaybackPath(recordingId, runId) {

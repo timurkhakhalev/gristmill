@@ -18,6 +18,7 @@ interface StopRequest {
 
 interface ProcessingRequest {
   sourceRecordingIds: string[];
+  gateAfterStop?: boolean;
 }
 
 interface RecordingEntry {
@@ -27,7 +28,7 @@ interface RecordingEntry {
 
 interface MeetingElectronAPI {
   checkSystemAudioAccess(): Promise<{ granted: boolean; status: string; mode: string; strategy: string }>;
-  meetingTranscriptionStart(): Promise<{
+  meetingTranscriptionStart(options: { groupId: string }): Promise<{
     success: boolean;
     recordingId: string;
     originAt: string;
@@ -56,6 +57,7 @@ interface MeetingElectronAPI {
 }
 
 interface ElectronAPIHarness {
+  startRequests: Array<{ groupId: string }>;
   stopRequests: StopRequest[];
   noteUpdates: Array<{ id: number; value: Record<string, unknown> }>;
   recordings: RecordingEntry[];
@@ -90,6 +92,7 @@ function createElectronAPI({ stopResult }: { stopResult: () => unknown }) {
   const noopListener = () => () => {};
   const notes = new Map<number, { id: number; transcript: string }>([[11, { id: 11, transcript: "Keep this transcript" }]]);
   const api: ElectronAPIHarness = {
+    startRequests: [],
     stopRequests: [],
     noteUpdates: [],
     recordings: [],
@@ -101,13 +104,16 @@ function createElectronAPI({ stopResult }: { stopResult: () => unknown }) {
         mode: "native",
         strategy: "native",
       }),
-      meetingTranscriptionStart: async () => ({
-        success: true,
-        recordingId: RECORDING_ID,
-        originAt: new Date().toISOString(),
-        systemAudioMode: "native",
-        systemAudioStrategy: "native",
-      }),
+      meetingTranscriptionStart: async (options) => {
+        api.startRequests.push(options);
+        return {
+          success: true,
+          recordingId: RECORDING_ID,
+          originAt: new Date().toISOString(),
+          systemAudioMode: "native",
+          systemAudioStrategy: "native",
+        };
+      },
       meetingTranscriptionSetSystemAudioAvailable: async () => ({ success: true }),
       meetingTranscriptionStop: async (request) => {
         api.stopRequests.push(request);
@@ -178,6 +184,7 @@ test("ending a paused call queues its saved parts once without another ASR reque
   assert.equal(await store.finishMeeting(), true);
   assert.equal(api.stopRequests.length, 1, "paused call has no active capture to stop again");
   assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID]);
+  assert.equal(api.processingRequests[0].gateAfterStop, true);
   await store.queueMeetingGroupProcessing(groupId, START_ARGS.noteId);
   assert.equal(api.processingRequests.length, 1, "a saved transcript does not trigger ASR again");
   assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "saved");
@@ -207,6 +214,7 @@ test("resume adds a second saved part to one whole-meeting processing run", asyn
   api.recordings.push({ recording: { id: SECOND_RECORDING_ID, groupId, audioState: "available", startedAt: "2026-09-25T10:01:00.000Z" }, runs: [{ run: { kind: "initial", errorCode: null, config: null } }] });
   assert.equal(await store.finishMeeting(), true);
   assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID, SECOND_RECORDING_ID]);
+  assert.equal(api.processingRequests[0].gateAfterStop, true);
   assert.deepEqual(api.stopRequests.map((request) => request.suppressProcessing), [true, true]);
   assert.equal(api.processingRequests.length, 1);
 });
@@ -241,6 +249,29 @@ test("a failed main finalization is surfaced as incomplete", async (t: TestConte
   assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "incomplete");
   assert.equal(store.useMeetingRecordingStore.getState().captureErrorCode, "capture-finalize-failed");
   assert.deepEqual(api.noteUpdates, []);
+});
+
+test("restarting the same note after capture failure keeps its group until End call", async (t: TestContext) => {
+  let stops = 0;
+  const api = createElectronAPI({ stopResult: () => finalized(++stops === 1 ? "incomplete" : "ready") });
+  const store = await loadStore(t, api);
+
+  assert.equal(await store.startRecording(START_ARGS), true);
+  const groupId = api.startRequests[0].groupId;
+  assert.equal((await store.stopRecording()).stopped, true);
+  assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "incomplete");
+
+  assert.equal(await store.startRecording(START_ARGS), true);
+  assert.equal(api.startRequests[1].groupId, groupId);
+  assert.equal((await store.stopRecording()).stopped, true);
+  assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "saved");
+
+  assert.equal(await store.startRecording(START_ARGS), true);
+  assert.equal(api.startRequests[2].groupId, groupId);
+  assert.equal(await store.finishMeeting(), true);
+
+  assert.equal(await store.startRecording(START_ARGS), true);
+  assert.notEqual(api.startRequests[3].groupId, groupId);
 });
 
 test("a stale stop and a rejected stop do not claim success", async (t: TestContext) => {

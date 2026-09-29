@@ -11,11 +11,19 @@ OpenHercules uses the installed BB app and the user's provider subscription for 
 
 ## Runtime contract
 
-- Main invokes the BB CLI directly, with prompt text on stdin. It looks for `BB_CLI`, then `~/.local/bin/bb`, then the BB app bundle at `/Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/host-daemon/dist/bb`. It checks `bb --version` before starting a thread and reports a missing or mismatched version as an error.
+- Main invokes the BB CLI script with the app's Node runtime, with prompt text on stdin. It looks for `BB_CLI`, then `~/.local/bin/bb`, then the BB app bundle at `/Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/host-daemon/dist/bb`. This does not depend on a terminal's `PATH` when the app starts from macOS Finder. It checks `bb --version` before starting a thread and reports a missing or mismatched version as an error.
 - OpenHercules creates a separate BB project for each app profile under its `userData/bb-agent` directory and saves the project ID there. This keeps production, development and isolated test profiles separate. BB threads are hidden in BB but remain inspectable there.
 - Main reads `bb thread log --json --after-seq` for chat deltas and reads `bb thread output --json` for the final result. No provider credentials are copied into OpenHercules settings.
 - A profile-local `.bb-connection.json` outside the BB project directory contains the loopback CLI bridge port and token, with owner-only permissions. The agent workspace contains a small allowlisted notes/folders/dictionary/snippets tool wrapper. Main removes the connection file at shutdown and before creating a new bridge on startup. Do not place credentials in the agent prompt or log.
 - The meeting run stores `bb_thread_id` before waiting for a summary. After restart, a run at the summary stage checks that thread's log and output. A completed result is reused; a running turn is watched; a failed or empty turn receives the saved summary prompt again. The transcript and original tracks remain unchanged. A crash between BB accepting a new thread and saving its ID can leave an orphan hidden thread; the meeting run retries visibly.
+
+## Meeting context and JSON repair
+
+The first naming or Summary turn sends a plain-text transcript in `<transcript>` tags. Later turns reuse it when the latest actual transcript in the persisted BB user-message history is byte-for-byte identical. Speaker names are supplied separately as accepted identities; naming, Summary and task requests use the same speaker aliases and timestamps. A new or changed transcript is sent in full. Fictional examples do not count as the actual meeting transcript. Other provider routes still receive the full required context.
+
+Speaker naming and Recap validate strict JSON. Prioritized tasks return Markdown directly (an empty response means no tasks), without JSON repair. A schema-invalid reply gets one correction request in the same conversation; another invalid reply becomes a visible format error. Refusal and transport errors do not start a repair. The BB adapter returns final text and currently has no native refusal metadata, so it reports `refusal: false`; meeting JSON handling can only identify a refusal from recognizable refusal text.
+
+Meeting JSON repair on BB uses `tell` on the run's saved `bb_thread_id`, including repair turns. Task and Recap actions may be requested independently, but their turns on one saved run are serialized: the CLI's default `tell` mode steers an active turn, so overlapping action prompts could replace one another. This serialization does not change other provider routes or Summary Markdown's revision checks.
 
 ## Updating BB
 

@@ -927,6 +927,10 @@
       "advanced": {
         "label": "進階",
         "description": "診斷和除錯記錄"
+      },
+      "profile": {
+        "label": "個人資料",
+        "description": "會議逐字稿中顯示的姓名"
       }
     },
     "title": "設定"
@@ -1489,6 +1493,7 @@
       "startRecording": "開始錄製",
       "record": "錄音",
       "generateSummary": "產生 AI 摘要",
+      "generatingSummary": "正在產生摘要…",
       "startWriting": "開始撰寫...",
       "staleIndicator": "內容在增強後已變更",
       "live": "即時",
@@ -1507,7 +1512,7 @@
         "finishMeeting": "End call",
         "saving": "正在儲存音訊尾段…",
         "saved": "音訊錄製已儲存",
-        "incomplete": "錄音已儲存，但缺少部分音訊",
+        "incomplete": "部分錄音意外中斷",
         "failed": "無法開始錄音",
         "mic": "麥克風",
         "system": "系統音訊",
@@ -1615,6 +1620,7 @@
       "noProviderSelected": "尚未為筆記錄音選擇服務商。請開啟設定，選擇本機或支援串流的服務商。",
       "autoEnded": "會議結束後，錄音已自動停止。",
       "restartFailed": "無法重新開始會議錄音。",
+      "captureError": "錄音因錯誤而停止。請檢查筆記中儲存的音訊。",
       "systemAudioSilent": {
         "title": "尚未偵測到會議音訊",
         "description": "到目前為止，只有您的麥克風收到聲音。正在進行視訊通話？請檢查會議音訊是否正在此電腦上播放且未被靜音。正在進行現場錄音？您可以忽略此提示——您的麥克風會收錄房間內的聲音。"
@@ -1677,6 +1683,15 @@
         "detailedNotes": {
           "name": "詳細筆記",
           "description": "準確、完整的會議筆記，包含決策和行動項目"
+        },
+        "followUp": {
+          "name": "會後跟進",
+          "description": "在會議聊天中草擬一則跟進訊息",
+          "cta": "草擬跟進訊息"
+        },
+        "recap": {
+          "name": "會議回顧",
+          "description": "將簡短的會議回顧加入摘要"
         }
       },
       "errors": {
@@ -2122,7 +2137,10 @@
       "keyDecisions": "列出關鍵決策",
       "inFlight": "顯示進行中的專案"
     },
-    "homeEmptyState": "詢問關於筆記和會議的任何問題"
+    "homeEmptyState": "詢問關於筆記和會議的任何問題",
+    "followUp": "草擬後續訊息",
+    "followUpUnavailable": "逐字稿準備完成後即可使用",
+    "followUpError": "無法準備後續訊息，請再試一次。"
   },
   "transcriptionPreview": {
     "label": "預覽",
@@ -2211,20 +2229,37 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "用於會議錄音提醒。",
+    "accessibilityHelp": "在 macOS 輔助使用設定中啟用 OpenHercules。如果清單中沒有它，請按一下 + 並選擇已安裝的 OpenHercules.app。",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "participantsLoadError": "無法載入日曆參與者。",
+    "linkParticipantsHint": "將這些姓名連結至日曆參與者，以便在之後的會議中使用。",
+    "linkParticipant": "連結參與者",
+    "rememberParticipant": "記住日曆參與者的姓名",
+    "onlyThisMeeting": "僅限本次會議",
+    "rememberParticipantHint": "選擇發言者。之後的會議將為此電子郵件地址使用儲存的姓名。Google 聯絡人不會變更。",
+    "voiceProfile": "聲音檔案",
     "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}} 秒",
+    "durationMinutes": "{{minutes}} 分 {{seconds}} 秒",
+    "durationWholeMinutes": "{{minutes}} 分鐘",
+    "durationHours": "{{hours}} 小時 {{minutes}} 分",
+    "recordingNow": "正在錄音",
+    "savingAudio": "正在儲存…",
+    "endedEarly": "提前結束",
+    "partOf": "第 {{index}} 部分，共 {{count}} 部分",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
+    "seekAudio": "移至音訊位置",
     "processWholeMeeting": "轉錄",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
@@ -2259,6 +2294,9 @@
     "recording": "錄音",
     "newAsr": "新轉錄",
     "newSummary": "新摘要",
+    "summaryStale": "說話者名稱已變更",
+    "summaryStaleReason": "此摘要使用先前的名稱撰寫，內容未變更。",
+    "regenerateSummary": "重新產生摘要",
     "retry": "重試",
     "deleteAudio": "刪除音訊",
     "retryDelete": "重試刪除音訊",
@@ -2270,7 +2308,7 @@
     "saveSpeaker": "儲存說話者",
     "speakerProfile": "說話者設定檔",
     "noSpeakerProfile": "沒有設定檔",
-    "captureIncomplete": "錄音提早結束；已儲存的音訊和結果會保留。",
+    "captureIncomplete": "已儲存的音訊仍可轉錄。重試無法還原中斷期間未錄到的聲音。",
     "deleteActiveNoteTitle": "停止並刪除此錄音？",
     "deleteActiveNoteDescription": "錄音會安全停止且不會開始轉錄，之後會刪除筆記、音訊和處理記錄。",
     "stopBeforeDeleteError": "無法安全停止錄音。筆記已保留。",
@@ -2314,7 +2352,11 @@
     "progress": {
       "pending": "等待開始。",
       "running": "這可能需要幾分鐘。你可以繼續寫筆記。"
-    }
+    },
+    "autoSummarySkipped": "已略過自動摘要",
+    "autoSummarySkippedReason": "自動摘要需要至少 180 秒錄音和 2,500 個轉錄字元。本次會議為 {{seconds}} 秒、{{chars}} 個字元。你現在可以手動建立摘要。",
+    "calendarParticipantsInvalid": "已儲存的日曆參與者資料無效。請先更正後再重試。",
+    "calendarParticipantsNamingSkipped": "已略過自動辨識說話者姓名。逐字稿和摘要仍可使用。"
   },
   "shortcutsDialog": {
     "title": "鍵盤快速鍵",
@@ -2428,6 +2470,15 @@
       "installing": "正在安裝…",
       "remove": "移除 {{model}}"
     },
-    "chatPrompt": "聊天指示"
+    "chatPrompt": "聊天指示",
+    "openaiMeetingAudio": "麥克風：含時間戳記的 Whisper。系統音訊：GPT-4o Transcribe Diarize。兩個請求並行執行。"
+  },
+  "profile": {
+    "name": "您的姓名",
+    "placeholder": "如何稱呼您？",
+    "help": "用於標註麥克風錄製的發言。選填；留空時顯示「您」。可在設定 → 個人資料中修改。",
+    "onboardingTitle": "您叫什麼名字？",
+    "skip": "略過",
+    "selfLabel": "您"
   }
 }

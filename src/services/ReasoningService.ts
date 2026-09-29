@@ -12,7 +12,7 @@ import { withRetry, createApiRetryStrategy, httpError } from "../utils/retry";
 import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, ensureV1Suffix } from "../config/constants.mts";
 import logger from "../utils/logger";
 import { getSettings } from "../stores/settingsStore";
-import { wrapCleanupTranscript } from "../config/prompts";
+import { decodeCleanupTranscriptEntities, wrapCleanupTranscript } from "../config/prompts";
 import { stripThinkingTags } from "../helpers/stripThinking.js";
 import { getLlmRequestTimeoutSeconds } from "../helpers/llmRequestTimeout.js";
 import { streamText, stepCountIs } from "ai";
@@ -388,6 +388,7 @@ class ReasoningService extends BaseReasoningService {
     agentName: string | null = null,
     config: ReasoningConfig = {}
   ): Promise<string> {
+    if (!text.trim() && !config.systemPrompt) return "";
     const trimmedModel = model?.trim?.() || "";
     const settings = getSettings();
     const isImplicitCleanup =
@@ -449,7 +450,7 @@ class ReasoningService extends BaseReasoningService {
         resultLength: result.length,
       });
 
-      return result;
+      return dispatchConfig.systemPrompt ? result : decodeCleanupTranscriptEntities(result);
     } catch (error) {
       logger.logReasoning("PROVIDER_ERROR", {
         provider: providerId,

@@ -927,6 +927,10 @@
       "advanced": {
         "label": "高级",
         "description": "诊断和调试日志"
+      },
+      "profile": {
+        "label": "个人资料",
+        "description": "会议转录中显示的姓名"
       }
     },
     "title": "设置"
@@ -1489,6 +1493,7 @@
       "startRecording": "开始录制",
       "record": "录音",
       "generateSummary": "生成 AI 摘要",
+      "generatingSummary": "正在生成摘要…",
       "startWriting": "开始书写...",
       "staleIndicator": "内容在增强后已更改",
       "live": "实时",
@@ -1507,7 +1512,7 @@
         "finishMeeting": "End call",
         "saving": "正在保存音频末尾…",
         "saved": "音频录制已保存",
-        "incomplete": "录音已保存，但缺少部分音频",
+        "incomplete": "部分录音意外中断",
         "failed": "无法开始录音",
         "mic": "麦克风",
         "system": "系统音频",
@@ -1615,6 +1620,7 @@
       "noProviderSelected": "尚未为笔记录音选择服务商。请打开设置，选择本地或支持流式传输的服务商。",
       "autoEnded": "会议结束后，录音已自动停止。",
       "restartFailed": "无法重新开始会议录音。",
+      "captureError": "录音因错误而停止。请检查笔记中保存的音频。",
       "systemAudioSilent": {
         "title": "尚未检测到会议音频",
         "description": "到目前为止，只有您的麦克风采集到声音。正在进行视频通话？请检查会议音频是否正在此电脑上播放且未被静音。正在进行现场录音？您可以忽略此提示——您的麦克风会采集房间内的声音。"
@@ -1677,6 +1683,15 @@
         "detailedNotes": {
           "name": "详细笔记",
           "description": "准确、全面的会议笔记，包含决策和行动项"
+        },
+        "followUp": {
+          "name": "会后跟进",
+          "description": "在会议聊天中起草一条跟进消息",
+          "cta": "起草跟进消息"
+        },
+        "recap": {
+          "name": "会议回顾",
+          "description": "将简短的会议回顾添加到摘要中"
         }
       },
       "errors": {
@@ -2122,7 +2137,10 @@
       "keyDecisions": "列出关键决定",
       "inFlight": "显示进行中的项目"
     },
-    "homeEmptyState": "询问关于笔记和会议的任何问题"
+    "homeEmptyState": "询问关于笔记和会议的任何问题",
+    "followUp": "起草跟进消息",
+    "followUpUnavailable": "转录准备就绪后可用",
+    "followUpError": "无法准备跟进消息，请重试。"
   },
   "transcriptionPreview": {
     "label": "预览",
@@ -2211,20 +2229,37 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "用于会议录音提醒。",
+    "accessibilityHelp": "在 macOS 辅助功能设置中启用 OpenHercules。如果列表中没有它，请点按 + 并选择已安装的 OpenHercules.app。",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "participantsLoadError": "无法加载日历参与者。",
+    "linkParticipantsHint": "将这些姓名关联到日历参与者，以便在今后的会议中使用。",
+    "linkParticipant": "关联参与者",
+    "rememberParticipant": "记住日历参与者的姓名",
+    "onlyThisMeeting": "仅限本次会议",
+    "rememberParticipantHint": "选择发言者。今后的会议将为此邮箱使用保存的姓名。Google 联系人不会更改。",
+    "voiceProfile": "声音档案",
     "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}} 秒",
+    "durationMinutes": "{{minutes}} 分 {{seconds}} 秒",
+    "durationWholeMinutes": "{{minutes}} 分钟",
+    "durationHours": "{{hours}} 小时 {{minutes}} 分",
+    "recordingNow": "正在录音",
+    "savingAudio": "正在保存…",
+    "endedEarly": "提前结束",
+    "partOf": "第 {{index}} 部分，共 {{count}} 部分",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
+    "seekAudio": "定位到音频位置",
     "processWholeMeeting": "转录",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
@@ -2259,6 +2294,9 @@
     "recording": "录音",
     "newAsr": "新转录",
     "newSummary": "新摘要",
+    "summaryStale": "说话者姓名已更改",
+    "summaryStaleReason": "此摘要使用先前的姓名撰写，内容未更改。",
+    "regenerateSummary": "重新生成摘要",
     "retry": "重试",
     "deleteAudio": "删除音频",
     "retryDelete": "重试删除音频",
@@ -2270,7 +2308,7 @@
     "saveSpeaker": "保存说话人",
     "speakerProfile": "说话人资料",
     "noSpeakerProfile": "无资料",
-    "captureIncomplete": "录音提前结束；已保存的音频和结果会保留。",
+    "captureIncomplete": "已保存的音频仍可转录。重试无法恢复中断期间未录到的声音。",
     "deleteActiveNoteTitle": "停止并删除此录音？",
     "deleteActiveNoteDescription": "录音将安全停止且不会启动转录，然后删除笔记、音频和处理历史记录。",
     "stopBeforeDeleteError": "无法安全停止录音。笔记已保留。",
@@ -2314,7 +2352,11 @@
     "progress": {
       "pending": "等待开始。",
       "running": "这可能需要几分钟。你可以继续写笔记。"
-    }
+    },
+    "autoSummarySkipped": "已跳过自动摘要",
+    "autoSummarySkippedReason": "自动摘要需要至少 180 秒录音和 2,500 个转录字符。本次会议为 {{seconds}} 秒、{{chars}} 个字符。你现在可以手动创建摘要。",
+    "calendarParticipantsInvalid": "保存的日历参与者数据无效。请先更正后再重试。",
+    "calendarParticipantsNamingSkipped": "已跳过自动识别说话者姓名。转录文本和摘要仍可用。"
   },
   "shortcutsDialog": {
     "title": "键盘快捷键",
@@ -2428,6 +2470,15 @@
       "installing": "正在安装…",
       "remove": "删除 {{model}}"
     },
-    "chatPrompt": "聊天指令"
+    "chatPrompt": "聊天指令",
+    "openaiMeetingAudio": "麦克风：带时间戳的 Whisper。系统音频：GPT-4o Transcribe Diarize。两个请求并行执行。"
+  },
+  "profile": {
+    "name": "您的姓名",
+    "placeholder": "如何称呼您？",
+    "help": "用于标注麦克风录制的发言。选填；留空时显示“您”。可在设置 → 个人资料中修改。",
+    "onboardingTitle": "您叫什么名字？",
+    "skip": "跳过",
+    "selfLabel": "您"
   }
 }

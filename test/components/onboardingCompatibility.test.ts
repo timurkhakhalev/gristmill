@@ -61,6 +61,7 @@ function permissions(overrides = {}) {
     micPermissionGranted: false,
     micPermissionError: null,
     accessibilityPermissionGranted: false,
+    accessibilityPromptRequested: false,
     requestMicPermission: asyncNoop,
     requestAccessibilityPermission: asyncNoop,
     openMicPrivacySettings: asyncNoop,
@@ -164,6 +165,16 @@ test("permissions offers Back ahead of Continue and gates Continue on microphone
     "Continue should render after the permission rows"
   );
   assert.match(blocked, /<button[^>]*\bdisabled=""[^>]*>common\.continue<\/button>/);
+
+  const afterAccessibilityPrompt = renderToStaticMarkup(
+    React.createElement(CompactPermissionsStep, {
+      permissions: permissions({ accessibilityPromptRequested: true, accessibilityTroubleshooting: true }),
+      systemAudio,
+      onContinue: noop,
+    })
+  );
+  assert.match(afterAccessibilityPrompt, /cleanupSettings\.accessibilityHelp/);
+  assert.match(afterAccessibilityPrompt, />cleanupSettings\.openSettings<\/button>/);
 
   const ready = render(true, noop);
   assert.match(ready, /<button[^>]*>common\.continue<\/button>/);

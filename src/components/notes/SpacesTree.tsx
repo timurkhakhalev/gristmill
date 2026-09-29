@@ -177,7 +177,9 @@ function MoveDialog({
         <div className="-mx-1 max-h-64 overflow-y-auto">
           {filtered.map((option) => {
             const isCurrent =
-              option.target.folderId === note.folder_id && option.target.spaceId === note.space_id;
+              option.target.folderId === note.folder_id &&
+              option.target.spaceId === note.space_id &&
+              note.folder_ids.length <= 1;
             return (
               <button
                 key={option.key}
@@ -626,7 +628,7 @@ export default function SpacesTree({
     }
     if (note) {
       if (undoToast.current) dismiss(undoToast.current);
-      const previous = { spaceId: note.space_id, folderId: note.folder_id };
+      const previous = { spaceId: note.space_id, folderId: note.folder_id, folderIds: note.folder_ids };
       undoToast.current = toast({
         title: t("notes.spaces.moved", {
           title: note.title || t("notes.list.untitled"),

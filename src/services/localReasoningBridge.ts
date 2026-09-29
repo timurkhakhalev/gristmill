@@ -6,7 +6,6 @@ import debugLogger from "../helpers/debugLogger.js";
 import type { LocalReasoningConfig } from "../contracts/reasoning.js";
 
 interface LocalModelManager {
-  ensureLlamaCpp(): Promise<unknown>;
   getAllModels(): Promise<Array<{ isDownloaded?: boolean }>>;
   runInference(modelId: string, prompt: string, options: Record<string, unknown>): Promise<string>;
 }
@@ -23,7 +22,6 @@ export class LocalReasoningService {
 
   async isAvailable(): Promise<boolean> {
     try {
-      await modelManager.ensureLlamaCpp();
       const models = await modelManager.getAllModels();
       return models.some((model) => model.isDownloaded);
     } catch {

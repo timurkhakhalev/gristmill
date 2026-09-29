@@ -167,3 +167,12 @@ Verification run by this agent:
 - Isolated macOS mic/system capture, Pause/Resume/End, 15-second wait, short and threshold meetings, speaker edit, Chat Follow-up, Recap, and configured provider/BB smokes remain unverified; record only checks actually performed.
 
 Implementation commit: `9a14da5c5` (`M4: serialize BB actions and document journeys`).
+
+M4 locale-coverage fix: added English copy for the stale-Summary notice, regeneration action, and audio seek label; supplied matching translations in every other shipped locale. Added the previously missing `notes.editor.generatingSummary` copy to all non-English locales. A read-only coverage audit now reports all five keys in all 11 locale files.
+
+Verification for the locale fix:
+
+- `pnpm run typecheck` — passed.
+- Static JSON/key-presence audit across all locale `translation.json` files — all 11 complete.
+- `git diff --check` — passed.
+- The root-owned focused locale test and full suite were not run here. Root should run `pnpm test -- test/locales/translationCoverage.test.ts`, then the full integrated `pnpm test` after confirming the locale test passes.

@@ -13,8 +13,8 @@ export const meetingProcessingChannels = {
   createRun: "meeting-processing-create-run",
   retryRun: "meeting-processing-retry-run",
   updateBlockedRunConfig: "meeting-processing-update-blocked-run-config",
-  selectRun: "meeting-processing-select-run",
   setSpeakerCorrection: "meeting-processing-set-speaker-correction",
+  runSummaryAction: "meeting-processing-run-summary-action",
   getPlaybackPath: "meeting-recording-get-playback-path",
   exportAudio: "meeting-recording-export-audio",
   deleteAudio: "meeting-recording-delete-audio",
@@ -32,6 +32,7 @@ export const meetingProcessingCreateRunRequestSchema = z.object({
   recordingId: meetingRecordingIdSchema,
   sourceRecordingIds: z.array(meetingRecordingIdSchema).min(1).max(100).optional(),
   kind: z.enum(["reprocess", "summary"]),
+  gateAfterStop: z.boolean().optional(),
   config: meetingProcessingConfigSchema.nullable(),
   configError: meetingProcessingConfigErrorSchema.nullable().optional(),
   sourceRunId: meetingRecordingIdSchema.nullable().optional(),
@@ -42,15 +43,16 @@ export const meetingProcessingUpdateBlockedRunConfigRequestSchema = z.object({
   config: meetingProcessingConfigSchema.nullable(),
   configError: meetingProcessingConfigErrorSchema.nullable(),
 });
-export const meetingProcessingSelectRunRequestSchema = z.object({
-  recordingId: meetingRecordingIdSchema,
-  runId: meetingRecordingIdSchema,
-});
 export const meetingProcessingSpeakerCorrectionRequestSchema = z.object({
   runId: meetingRecordingIdSchema,
   speakerId: z.string().min(1).max(200),
   profileId: z.number().int().positive().nullable(),
-  displayName: z.string().min(1).max(200),
+  displayName: z.string().trim().min(1).max(200),
+  participantEmail: z.string().trim().email().transform((email) => email.toLowerCase()).optional(),
+});
+export const meetingProcessingSummaryActionRequestSchema = z.object({
+  runId: meetingRecordingIdSchema,
+  action: z.enum(["tasks", "recap"]),
 });
 export const meetingRecordingPlaybackRequestSchema = z.object({
   recordingId: meetingRecordingIdSchema,
@@ -88,8 +90,11 @@ export const meetingProcessingRunResponseSchema = z.object({
   result: meetingProcessingResultDtoSchema.optional(),
   error: z.string().optional(),
 });
-export const meetingProcessingSelectRunResponseSchema = z.object({ success: z.boolean(), error: z.string().optional() });
 export const meetingProcessingCorrectionResponseSchema = z.object({ success: z.boolean(), error: z.string().optional() });
+export const meetingProcessingSummaryActionResponseSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+});
 export const meetingRecordingPlaybackResponseSchema = z.object({
   success: z.boolean(),
   path: z.string().optional(),
@@ -113,8 +118,8 @@ export interface MeetingProcessingApi {
   meetingProcessingCreateRun(input: z.infer<typeof meetingProcessingCreateRunRequestSchema>): Promise<MeetingProcessingRunResponse>;
   meetingProcessingRetryRun(runId: string): Promise<MeetingProcessingRunResponse>;
   meetingProcessingUpdateBlockedRunConfig(input: z.infer<typeof meetingProcessingUpdateBlockedRunConfigRequestSchema>): Promise<MeetingProcessingRunResponse>;
-  meetingProcessingSelectRun(recordingId: string, runId: string): Promise<z.infer<typeof meetingProcessingSelectRunResponseSchema>>;
   meetingProcessingSetSpeakerCorrection(input: z.infer<typeof meetingProcessingSpeakerCorrectionRequestSchema>): Promise<z.infer<typeof meetingProcessingCorrectionResponseSchema>>;
+  meetingProcessingRunSummaryAction(input: z.infer<typeof meetingProcessingSummaryActionRequestSchema>): Promise<z.infer<typeof meetingProcessingSummaryActionResponseSchema>>;
   meetingRecordingGetPlaybackPath(recordingId: string, runId?: string): Promise<z.infer<typeof meetingRecordingPlaybackResponseSchema>>;
   meetingRecordingExportAudio(input: z.infer<typeof meetingRecordingExportRequestSchema>): Promise<z.infer<typeof meetingRecordingExportResponseSchema>>;
   meetingRecordingDeleteAudio(recordingId: string): Promise<z.infer<typeof meetingRecordingAudioOperationResponseSchema>>;

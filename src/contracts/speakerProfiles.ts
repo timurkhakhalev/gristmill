@@ -32,7 +32,7 @@ export const diarizationDownloadProgressEventSchema = z.object({
 });
 export type DiarizationDownloadProgressEvent = z.infer<typeof diarizationDownloadProgressEventSchema>;
 
-/** The best-known name and photo for an email (Google People first, then calendar or typed names). */
+/** The best-known name and photo for an email (locally linked name first, then Google People and calendar names). */
 export interface ContactProfile {
   email: string;
   display_name: string | null;

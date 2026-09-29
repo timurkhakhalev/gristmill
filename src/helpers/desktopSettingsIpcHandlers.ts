@@ -703,6 +703,7 @@ export function registerDesktopSettingsHandlers(
   ipcMain.handle(desktopSettingsChannels.openLogsFolder, async () => {
     try {
       const logsDir = path.join(app.getPath("userData"), "logs");
+      fs.mkdirSync(logsDir, { recursive: true });
       const errMsg = await shellOpenPath(logsDir);
       if (errMsg) return { success: false, error: errMsg };
       return { success: true };
@@ -789,10 +790,9 @@ export function registerDesktopSettingsHandlers(
         });
       }
     } catch {
-      // Falls through to opening System Settings
+      // Report the permission state without opening Settings over the native prompt.
     }
 
-    await openSystemSettings("systemAudio");
     const status = deps.audioTap.getPermissionStatus();
     return buildSystemAudioAccess({
       granted: false,

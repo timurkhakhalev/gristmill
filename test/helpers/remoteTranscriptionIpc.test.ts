@@ -244,8 +244,7 @@ test("ElevenLabs preserves word timestamps without diarization", async () => {
   assert.equal(result.text, "Hello there.");
   assert.equal(result.diarized, false);
   assert.deepEqual(result.segments, [
-    { text: "Hello ", start: 0, end: 0.4 },
-    { text: "there.", start: 0.5, end: 0.9 },
+    { text: "Hello there.", start: 0, end: 0.9 },
   ]);
   assert.equal(transport.calls[0].options.multipart.fields.diarize, "false");
   assert.equal(transport.calls[0].options.multipart.fields.timestamps_granularity, "word");
@@ -753,4 +752,27 @@ test("a transport without a requestId registers nothing and stays cancellable-fr
     transcriptionMode: "providers",
   });
   assert.equal(registry.cancel("never-registered"), 0);
+});
+
+test("Deepgram multichannel reaches the HTTP request and rejects lost channel attribution", async () => {
+  const data = { results: {
+    channels: [{ alternatives: [{ transcript: "Me" }] }, { alternatives: [{ transcript: "Them" }] }],
+    utterances: [
+      { channel: 1, speaker: 0, transcript: "Them", start: 0.2, end: 0.8 },
+      { channel: 0, speaker: 0, transcript: "Me", start: 0.1, end: 0.7 },
+    ],
+  } };
+  const transport = makeTransport({ data });
+  const { call } = setup({ transport });
+  const request = { filePath: audioFile, provider: "deepgram", apiKey: "test", diarize: true, multichannel: true };
+  const result = await call(request);
+  assert.equal(result.success, true);
+  assert.deepEqual(result.segments.map((s: Segment) => s.speaker), ["mic", "system:Speaker 1"]);
+  const url = new URL(transport.calls[0].url);
+  assert.equal(url.searchParams.get("multichannel"), "true");
+  assert.equal(url.searchParams.get("diarize_model"), "latest");
+  data.results.utterances[0].channel = 2;
+  assert.equal((await call(request)).success, false);
+  data.results.channels.pop();
+  assert.equal((await call(request)).code, "DEEPGRAM_CHANNELS_MISSING");
 });

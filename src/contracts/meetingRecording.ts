@@ -137,6 +137,7 @@ const summaryConfigSchema = z.object({
 // never part of the persisted snapshot; credentialRef names a secure-store slot.
 export const meetingProcessingConfigSchema = z.object({
   transcription: transcriptionConfigSchema,
+  selfDisplayName: z.string().trim().max(200).optional(),
   summary: summaryConfigSchema.nullable().optional(),
 });
 export type MeetingProcessingConfig = z.infer<typeof meetingProcessingConfigSchema>;
@@ -200,6 +201,7 @@ export const meetingProcessingRunDtoSchema = z.object({
   stage: meetingRunStageSchema,
   status: meetingRunStatusSchema,
   errorCode: z.string().nullable(),
+  speakerNamingErrorCode: z.string().nullable(),
   retryAt: z.string().nullable(),
   retryCount: z.number().int().nonnegative(),
   hasRawProviderResponse: z.boolean(),
@@ -209,6 +211,8 @@ export const meetingProcessingRunDtoSchema = z.object({
   updatedAt: z.string(),
 });
 export type MeetingProcessingRunDto = z.infer<typeof meetingProcessingRunDtoSchema>;
+
+export const MEETING_ASR_GATE_MS = 15_000;
 
 export const meetingTranscriptArtifactSchema = z.object({
   text: z.string(),
@@ -222,13 +226,22 @@ export const meetingTranscriptArtifactSchema = z.object({
 });
 export type MeetingTranscriptArtifact = z.infer<typeof meetingTranscriptArtifactSchema>;
 
-export const meetingSummaryArtifactSchema = z.object({ text: z.string() });
+export const meetingSummaryArtifactSchema = z.object({
+  text: z.string(),
+  speakerCorrectionRevision: z.number().int().nonnegative().optional(),
+  manualNoteRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  taskStatus: z.enum(["running", "complete", "zero", "provider-error", "format-error", "section-error", "conflict"]).optional(),
+  taskErrorCode: z.string().max(128).nullable().optional(),
+});
 export type MeetingSummaryArtifact = z.infer<typeof meetingSummaryArtifactSchema>;
 
+export const meetingSpeakerCorrectionSourceSchema = z.enum(["voice", "model", "user"]);
 export const meetingSpeakerCorrectionSchema = z.object({
   speakerId: z.string().min(1).max(200),
   profileId: z.number().int().positive().nullable(),
   displayName: z.string().min(1).max(200),
+  source: meetingSpeakerCorrectionSourceSchema,
+  revision: z.number().int().positive(),
 });
 export type MeetingSpeakerCorrection = z.infer<typeof meetingSpeakerCorrectionSchema>;
 

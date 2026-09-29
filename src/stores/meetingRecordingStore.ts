@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import { getSettings } from "./settingsStore";
 import { snapshotMeetingRecordingConfig } from "../helpers/meetingRecordingConfigSnapshot";
-import { MeetingCaptureWriteQueue } from "../helpers/meetingCaptureWriteQueue";
+import {
+  MeetingCaptureWriteQueue,
+  MAX_UNACKNOWLEDGED_CAPTURE_FRAMES,
+  MAX_CAPTURE_ACK_AGE_MS,
+} from "../helpers/meetingCaptureWriteQueue";
 import { frameOffsetFromSessionOrigin } from "../utils/meetingAudioFrameOffset";
 import { followsSystemDefaultMic } from "../helpers/micSelectionRecovery";
 import { resolvePreferredMicrophone } from "../helpers/microphoneSelection";
@@ -97,15 +101,14 @@ interface MeetingRecordingState {
   /** Bumped on every interruption report so a repeated one still re-notifies. */
   systemAudioInterruptedNonce: number;
   systemAudioInterruptedDeliveredNonce: number;
-  currentMicLevel: number;
+  currentAudioLevel: number;
   micCaptureStatus: "inactive" | "active" | "reconnecting" | "unavailable";
   systemCaptureStatus: "inactive" | "active" | "reconnecting" | "unavailable";
   windowWidth: number;
 }
 
 const MEETING_AUDIO_BUFFER_SIZE = 2400;
-const MEETING_CAPTURE_DRAIN_TIMEOUT_MS = 5000;
-const MEETING_CAPTURE_MAX_UNACKNOWLEDGED_FRAMES = 24_000 / 2;
+const MEETING_CAPTURE_DRAIN_TIMEOUT_MS = 15000;
 const MEETING_MIC_PRIMARY_AUDIO_CONSTRAINTS = {
   echoCancellation: false,
   noiseSuppression: false,
@@ -218,7 +221,8 @@ const getMeetingWorkletBlobUrl = (() => {
     const code = `
 const BUFFER_SIZE = ${MEETING_AUDIO_BUFFER_SIZE};
 const SAMPLE_RATE = 24000;
-const MAX_PENDING_FRAMES = ${MEETING_CAPTURE_MAX_UNACKNOWLEDGED_FRAMES};
+const MAX_PENDING_FRAMES = ${MAX_UNACKNOWLEDGED_CAPTURE_FRAMES};
+const MAX_ACK_AGE_FRAMES = SAMPLE_RATE * ${MAX_CAPTURE_ACK_AGE_MS} / 1000;
 class MeetingPCMProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -228,7 +232,6 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
     this._sampleOffset = 0;
     this._pendingFrames = 0;
     this._unacked = new Map();
-    this._flushRequested = false;
     this._stopped = false;
     this.port.onmessage = (event) => {
       const message = event.data;
@@ -239,7 +242,14 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
           this._unacked.delete(message.sequence);
         }
       } else if (message?.type === "flush") {
-        this._flushRequested = true;
+        if (this._stopped) return;
+        if (this._offset > 0) {
+          const partial = this._buffer.slice(0, this._offset);
+          this._offset = 0;
+          if (!this._send(partial)) return;
+        }
+        this._stopped = true;
+        this.port.postMessage({ type: "flush-complete", lastSequence: this._sequence - 1 });
       }
     };
   }
@@ -264,18 +274,8 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
   }
   process(inputs) {
     if (this._stopped) return false;
-    if (this._flushRequested) {
-      if (this._offset > 0) {
-        const partial = this._buffer.slice(0, this._offset);
-        this._offset = 0;
-        if (!this._send(partial)) return false;
-      }
-      this._stopped = true;
-      this.port.postMessage({ type: "flush-complete", lastSequence: this._sequence - 1 });
-      return false;
-    }
     const firstPending = this._unacked.keys().next().value;
-    if (firstPending !== undefined && currentFrame - this._unacked.get(firstPending).frame >= SAMPLE_RATE) {
+    if (firstPending !== undefined && currentFrame - this._unacked.get(firstPending).frame >= MAX_ACK_AGE_FRAMES) {
       this._fail("capture-ack-timeout");
       return false;
     }
@@ -403,6 +403,7 @@ const createAudioPipeline = async ({
 
   let flushSequence: number | null = null;
   let drainPromise: Promise<number> | null = null;
+  let terminalError: Error | null = null;
   let flushReject: ((error: Error) => void) | null = null;
   let resolveDrain: ((sequence: number) => void) | null = null;
   const checkDrain = () => {
@@ -431,6 +432,7 @@ const createAudioPipeline = async ({
       checkDrain();
     } else if (message?.type === "error") {
       const error = new Error(message.code ?? "Meeting capture buffer limit was reached");
+      terminalError = error;
       onFailure(error);
       flushReject?.(error);
     }
@@ -442,6 +444,7 @@ const createAudioPipeline = async ({
 
   processorDrainers.set(processor, () => {
     if (drainPromise) return drainPromise;
+    if (terminalError) return Promise.reject(terminalError);
     let resolvePromise: (sequence: number) => void = () => {};
     let rejectPromise: (error: Error) => void = () => {};
     drainPromise = new Promise<number>((resolve, reject) => {
@@ -498,6 +501,10 @@ let micSource: MediaStreamAudioSourceNode | null = null;
 let micProcessor: AudioWorkletNode | null = null;
 let micStream: MediaStream | null = null;
 let micAnalyser: AnalyserNode | null = null;
+// Native system audio is captured in main, which streams its RMS here.
+let systemAudioLevel = 0;
+let systemAudioLevelAt = 0;
+const SYSTEM_AUDIO_LEVEL_STALE_MS = 250;
 let micRecovery: ActiveMicRecoveryController | null = null;
 let systemContext: AudioContext | null = null;
 let systemSource: MediaStreamAudioSourceNode | null = null;
@@ -555,7 +562,7 @@ export const useMeetingRecordingStore = create<MeetingRecordingState>()(() => ({
   systemAudioInterrupted: null,
   systemAudioInterruptedNonce: 0,
   systemAudioInterruptedDeliveredNonce: 0,
-  currentMicLevel: 0,
+  currentAudioLevel: 0,
   micCaptureStatus: "inactive",
   systemCaptureStatus: "inactive",
   windowWidth: typeof window !== "undefined" ? window.innerWidth : SIDE_PANEL_BREAKPOINT_PX,
@@ -570,6 +577,8 @@ function reportMeetingError(error: string, extra: Partial<MeetingRecordingState>
 }
 
 export const getMicAnalyser = (): AnalyserNode | null => micAnalyser;
+export const getSystemAudioLevel = (): number =>
+  Date.now() - systemAudioLevelAt > SYSTEM_AUDIO_LEVEL_STALE_MS ? 0 : systemAudioLevel;
 
 export const getActiveRecordingSessionId = (): string | null => activeRecordingSessionId;
 
@@ -647,7 +656,7 @@ async function cleanup(): Promise<void> {
   captureLastSequences.mic = micResult.status === "fulfilled" ? micResult.value : -1;
   captureLastSequences.system = systemResult.status === "fulfilled" ? systemResult.value : -1;
   if (micResult.status === "rejected" || systemResult.status === "rejected") {
-    captureDrainErrorCode = "capture-drain-incomplete";
+    captureDrainErrorCode ??= "capture-drain-incomplete";
     reportMeetingError("Meeting audio could not finish saving its last samples.");
   }
   micProcessor = null;
@@ -751,7 +760,13 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
   }
 
   const sessionId = createMeetingRecordingSessionId();
-  const groupId = args.groupId ?? crypto.randomUUID();
+  const previous = useMeetingRecordingStore.getState();
+  const groupId = args.groupId ?? (
+    previous.recordingNoteId === args.noteId &&
+    (previous.capturePhase === "saved" || previous.capturePhase === "incomplete")
+      ? previous.meetingGroupId
+      : null
+  ) ?? crypto.randomUUID();
   let started = false;
   await meetingRecordingStartCoordinator.runStart(sessionId, async (startOperation) => {
     if (isRecordingFlag || isStartingFlag) {
@@ -1081,6 +1096,13 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       });
       if (systemAudioSilentCleanup) ipcCleanups.push(systemAudioSilentCleanup);
 
+      const systemAudioLevelCleanup = window.electronAPI?.onMeetingSystemAudioLevel?.((level) => {
+        if (activeRecordingSessionId !== sessionId) return;
+        systemAudioLevel = level;
+        systemAudioLevelAt = Date.now();
+      });
+      if (systemAudioLevelCleanup) ipcCleanups.push(systemAudioLevelCleanup);
+
       if (!startResult.recordingId || !startResult.originAt) {
         throw new Error("Meeting capture did not return its durable recording origin");
       }
@@ -1106,6 +1128,12 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           },
           onFailure: (error) => {
             captureDrainErrorCode ??= "capture-write-failed";
+            logger.error("Meeting capture failed", {
+              source,
+              reason: error.message,
+              lastAckSequence: captureLastSequences[source],
+              recordingId: useMeetingRecordingStore.getState().recordingId,
+            }, "meeting-capture");
             reportMeetingError(error.message, { captureErrorCode: captureDrainErrorCode });
             if (isRecordingFlag) void stopRecording(sessionId);
           },
@@ -1180,7 +1208,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             if (activeRecordingSessionId !== sessionId) return;
             useMeetingRecordingStore.setState({
               micCaptureStatus: status,
-              ...(status === "active" ? {} : { currentMicLevel: 0 }),
+              ...(status === "active" ? {} : { currentAudioLevel: 0 }),
             });
             if (status === "unavailable") {
               captureDrainErrorCode ??= "mic-source-unavailable";
@@ -1378,7 +1406,7 @@ export async function stopRecording(
       systemPartialSpeakerName: null,
       systemAudioSilentWarning: false,
       systemAudioInterrupted: null,
-      currentMicLevel: 0,
+      currentAudioLevel: 0,
     });
     return { diarizationSessionId: null, stopped: false };
   }
@@ -1452,7 +1480,7 @@ export async function stopRecording(
       systemPartialSpeakerName: null,
       systemAudioSilentWarning: false,
       systemAudioInterrupted: null,
-      currentMicLevel: 0,
+      currentAudioLevel: 0,
     });
     ipcCleanups.forEach((cleanupListener) => cleanupListener());
     ipcCleanups = [];
@@ -1510,6 +1538,7 @@ export async function queueMeetingGroupProcessing(groupId: string, noteId: numbe
   const sourceIds = usable.map((part) => part.recording.id);
   const existing = usable.flatMap((part) => part.runs).find((result) =>
     result.run.kind === "reprocess" && result.run.sourceRecordingIds.length === sourceIds.length &&
+    result.run.status !== "cancelled" &&
     result.run.sourceRecordingIds.every((id, index) => id === sourceIds[index])
   );
   if (existing) return;
@@ -1519,6 +1548,7 @@ export async function queueMeetingGroupProcessing(groupId: string, noteId: numbe
     recordingId: first.recording.id,
     sourceRecordingIds: sourceIds,
     kind: "reprocess",
+    gateAfterStop: true,
     config: initial?.run.config ?? null,
     configError: initial?.run.configError ?? null,
   });

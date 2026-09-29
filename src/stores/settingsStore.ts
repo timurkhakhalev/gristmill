@@ -748,6 +748,8 @@ export interface SettingsState
     PrivacySettings,
     ThemeSettings,
     ChatAgentSettings {
+  profileName: string;
+  setProfileName: (name: string) => void;
   isSignedIn: boolean;
   dateFormat: DateFormat;
   timeFormat: TimeFormat;
@@ -1229,6 +1231,8 @@ function createSecretSetter(
 }
 
 export const useSettingsStore = create<SettingsState>()((set, get) => ({
+  profileName: readString("profileName", ""),
+  setProfileName: createStringSetter("profileName"),
   uiLanguage: normalizeUiLanguage(
     isBrowser ? localStorage.getItem("uiLanguage") || i18n.language : null
   ),

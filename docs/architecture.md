@@ -2,10 +2,10 @@
 
 ## Current implementation (M1–M4)
 
-M1–M4 implement the approved record-then-process flow. The task branch still
-needs the root-owned M4 focused/full verification and integrated application
-smoke. The live mic/system hardware smoke was explicitly deferred and remains
-unverified. Product decisions and remaining hypotheses are in
+M1–M4 implement the approved record-then-process flow. Root owns the M4
+focused/full verification and integrated application smoke. Live mic/system
+recording, tail-loss, and restart recovery still require isolated hardware
+checks and remain unverified. Product decisions and remaining hypotheses are in
 [record-then-process.md](record-then-process.md).
 
 The existing Note remains the product root. The main process owns recording
@@ -34,12 +34,51 @@ Before the first captured frame, main persists the selected configuration.
 Capture performs no ASR or provider request. Stop closes both source epochs,
 recovers their frame counts and gaps, finalizes the recording, and creates its
 initial run. The worker waits for retention settings to sync and pauses while
-capture is active. It creates one mono, full timeline WAV for the run, sends it
-through the selected existing route, persists the raw provider response before
-normalization, then stores transcript and summary separately. Existing provider
-adapters are used for ElevenLabs, Deepgram, and Gemini; the existing Local
-meeting path remains. There is no new Self-Hosted meeting route or automatic
-fallback/splitting.
+capture is active. A successful Stop also persists a 15-second not-before
+deadline in `retry_at`. Preparation and ASR cannot claim the run before that
+deadline, including after restart. Pause does not queue work; Resume invalidates
+pending work for the earlier group version, and the worker rechecks eligibility
+at claim and before ASR.
+
+After the gate, the worker creates one mono, full-timeline WAV for the run,
+sends it through the selected supported route, and persists the raw provider
+response before normalization. Supported file routes are ElevenLabs,
+Deepgram, Gemini, and OpenAI; the existing Local meeting path remains. There is
+no new Self-Hosted meeting route, provider fallback, or hidden audio split.
+Capability and size errors belong to the selected route.
+
+## Run ownership and Summary consumers
+
+Speaker naming uses the saved Summary provider/model configuration and complete
+canonical segments. Calendar people are naming candidates only; a user
+correction wins by revision check. Each processing run stores its source run,
+recording IDs, manual-note revision, speaker-correction revision, corrected
+segment snapshot, and prompt/model snapshot. Summary input uses corrected
+segments, the title hint, and manual notes. Old runs and artifacts remain
+intact.
+
+Automatic Summary requires at least 180 seconds of recording and 2,500
+transcript characters. A manual Summary run can use any ready transcript. The
+per-run `summary.json` contains one Markdown `text` value and processing
+metadata; `notes.enhanced_content` projects the currently selected run's text,
+while `notes.content` remains the user's manual note. Selection changes the
+projection without deleting earlier run artifacts.
+
+After Summary is saved, prioritized tasks fill or remove its existing
+`## Action Items` section. Recap is a manual editable Action that inserts or
+updates `## Recap` in the same Markdown. Both recheck selection, source, and
+revision state, and serialize Summary writes. A concurrent change to the target
+section or its valid boundary becomes a visible conflict. Task status is stored
+with the Summary artifact. Recap progress is a transient UI notice, never
+placeholder Markdown. Follow-up uses the existing embedded Chat, stores a
+normal assistant reply, and has no send operation.
+
+Speaker naming, task extraction, and Recap require strict JSON and allow one
+repair turn in the same selected-provider conversation when the reply is
+invalid. Refusals and transport errors do not trigger repair. BB repairs use
+the saved `bb_thread_id`; the BB adapter exposes final text but no native
+refusal metadata, and its task/Recap turns are serialized on the saved thread
+to avoid steering another in-flight turn.
 
 Completed result selection atomically updates the existing Note transcript and
 generated-content projection while preserving `note.content`. Raw JSON and
@@ -56,11 +95,13 @@ jobs are released; active readers/transports are cancelled and awaited. Audio
 deletion retains transcript/summary artifacts; Note deletion removes its
 recording artifacts while preserving shared speaker profiles.
 
-Preserved consumer surfaces include Notes/manual text/blank Notes, Notes chat
-and tools, import, Dictionary/Snippets, calendars, speaker management, and
+Preserved consumer surfaces include Notes/manual text/blank Notes, full Notes
+chat and tools, import, Dictionary/Snippets, calendars, speaker management, and
 existing Local, Self-Hosted, and direct provider routes on their existing
-surfaces. M4 focused tests and final integration checks are root-owned and have
-not been run by the implementer.
+surfaces. Debug scenario controls are restricted to development builds and
+their synthetic states remain in memory; live UI reads persisted run/Chat
+state. Root owns the M4 focused/full gates; live mic/system hardware behavior
+remains unverified until the isolated smoke is run.
 
 ---
 

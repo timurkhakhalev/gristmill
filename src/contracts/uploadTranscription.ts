@@ -23,6 +23,7 @@ export const remoteTranscriptionRequestSchema = z.object({
   baseUrl: z.string().optional(),
   model: z.string().optional(),
   diarize: z.boolean().optional(),
+  multichannel: z.boolean().optional(),
   timestamps: z.boolean().optional(),
   provider: z.string().optional(),
   language: z.string().optional(),

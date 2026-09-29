@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AudioLines, Loader2, Mic, Play, Square } from "../icons";
+import { ArrowLeft, ArrowRight, AudioLines, Loader2, Mic, Play, Sparkles, Square } from "../icons";
 import { Pause } from "../icons/primitives";
 import { formatMmSs } from "../../utils/formatDuration";
 import { IconTooltip } from "../ui/IconTooltip";
@@ -10,16 +10,34 @@ export function RecordingWave({ className = "" }: { className?: string }) {
   return <AudioLines size={14} className={className} aria-hidden="true" />;
 }
 
-export default function NoteRecordControl({ isRecording, isProcessing, capturePhase, captureStartedAt, disabled = false, onStart, onStop, onPause, onResume }: {
+export default function NoteRecordControl({
+  isRecording,
+  isProcessing,
+  isGeneratingSummary,
+  capturePhase,
+  captureStartedAt,
+  disabled = false,
+  showSummaryAction = false,
+  onStart,
+  onStop,
+  onPause,
+  onResume,
+  onGenerateSummary,
+}: {
   isRecording: boolean;
   isProcessing: boolean;
+  /** True while an AI summary request is in flight; the summary action gets a spinner. */
+  isGeneratingSummary?: boolean;
   capturePhase: "idle" | "preparing" | "recording" | "paused" | "saving" | "saved" | "incomplete" | "failed";
   captureStartedAt: number | null;
   disabled?: boolean;
+  /** Show the "Create summary" pill only when the transcript is ready and no summary exists. */
+  showSummaryAction?: boolean;
   onStart: () => void;
   onStop: () => void;
   onPause?: () => void;
   onResume?: () => void;
+  onGenerateSummary?: () => void;
 }) {
   const { t } = useTranslation();
   const [elapsed, setElapsed] = useState(0);
@@ -40,5 +58,23 @@ export default function NoteRecordControl({ isRecording, isProcessing, capturePh
     <IconTooltip label={pauseLabel}><Button isIconOnly size="sm" variant="ghost" className="size-7 min-h-7" aria-label={pauseLabel} onPress={capturePhase === "paused" ? onResume : onPause}>{capturePhase === "paused" ? <Play size={16} /> : <Pause size={16} />}</Button></IconTooltip>
     <IconTooltip label={stopLabel}><Button isIconOnly size="sm" variant="secondary" className="size-7 min-h-7" aria-label={stopLabel} onPress={onStop}><Square size={13} /></Button></IconTooltip>
   </div>;
-  return <Button size="sm" className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200" isDisabled={disabled || isProcessing} onPress={onStart}><Mic size={16} /><span className="@max-[620px]:sr-only">{t("notes.editor.record", { defaultValue: "Record" })}</span></Button>;
+  return <div className="flex items-center gap-1.5">
+    <Button size="sm" className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200" isDisabled={disabled || isProcessing} onPress={onStart}><Mic size={16} /><span className="@max-[620px]:sr-only">{t("notes.editor.record", { defaultValue: "Record" })}</span></Button>
+    {showSummaryAction && (
+      <Button
+        size="sm"
+        variant="secondary"
+        isPending={Boolean(isGeneratingSummary)}
+        isDisabled={Boolean(isGeneratingSummary)}
+        onPress={() => onGenerateSummary?.()}
+        className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
+        aria-label={t("notes.editor.generateSummary", { defaultValue: "Summary" })}
+      >
+        {!isGeneratingSummary && <Sparkles size={16} className="text-accent" />}
+        <span className="@max-[620px]:sr-only">
+          {t("notes.editor.generateSummary", { defaultValue: "Summary" })}
+        </span>
+      </Button>
+    )}
+  </div>;
 }

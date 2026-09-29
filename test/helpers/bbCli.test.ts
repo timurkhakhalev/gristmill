@@ -46,6 +46,7 @@ test("bb CLI creates a profile project and resumes an in-flight summary from its
   const previousBinary = process.env.BB_CLI;
   const previousCapture = process.env.BB_FAKE_CAPTURE;
   const previousVersion = process.env.BB_FAKE_VERSION;
+  const previousPath = process.env.PATH;
   process.env.BB_CLI = binary;
   process.env.BB_FAKE_CAPTURE = capture;
   t.after(() => {
@@ -55,6 +56,8 @@ test("bb CLI creates a profile project and resumes an in-flight summary from its
     else process.env.BB_FAKE_CAPTURE = previousCapture;
     if (previousVersion === undefined) delete process.env.BB_FAKE_VERSION;
     else process.env.BB_FAKE_VERSION = previousVersion;
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
     fs.rmSync(directory, { recursive: true, force: true });
   });
   fs.writeFileSync(binary, `#!/usr/bin/env node
@@ -68,6 +71,10 @@ else if (args[0] === "thread" && args[1] === "spawn") {
   let prompt = "";
   process.stdin.on("data", (chunk) => { prompt += chunk; });
   process.stdin.on("end", () => { fs.writeFileSync(process.env.BB_FAKE_CAPTURE, prompt); out({ id: "thr_test" }); });
+} else if (args[0] === "thread" && args[1] === "tell") {
+  let prompt = "";
+  process.stdin.on("data", (chunk) => { prompt += chunk; });
+  process.stdin.on("end", () => { fs.appendFileSync(process.env.BB_FAKE_CAPTURE, "\\n" + prompt); out({ ok: true }); });
 } else if (args[0] === "thread" && args[1] === "log") {
   const after = Number(args[args.indexOf("--after-seq") + 1]);
   out(after === 0 ? [
@@ -85,6 +92,7 @@ else throw new Error("Unexpected bb command: " + args.join(" "));
   t.after(() => { delete process.env.BB_FAKE_WORKSPACE; });
 
   clearBbCaches();
+  process.env.PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
   await assertBbVersion();
   process.env.BB_FAKE_VERSION = "0.44.1";
   clearBbCaches();

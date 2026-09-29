@@ -60,13 +60,14 @@ function loadCoordinator() {
 
 function createDatabaseFake(events: string[]) {
   return {
-    recordings: new Map<string, { id: string; noteId: number; config: unknown; startedAt: string; captureState: string; audioState: string; captureErrorCode?: string | null }>(),
+    recordings: new Map<string, { id: string; groupId: string; noteId: number; config: unknown; startedAt: string; captureState: string; audioState: string; captureErrorCode?: string | null }>(),
     epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
     finalized: [] as { recordingId: string; input: { captureState: string; errorCode?: string } }[],
-    createMeetingRecording(noteId: number, input: { config: unknown }, startedAt: string, id: string) {
+    createMeetingRecording(noteId: number, input: { config: unknown }, startedAt: string, id: string, groupId = id) {
       events.push("recording-created");
       const recording = {
         id,
+        groupId,
         noteId,
         config: input.config,
         startedAt,
@@ -230,6 +231,14 @@ test("prepare and start need no credentials or model connection and create durab
   assert.equal(harness.tokenCalls(), 0);
   assert.equal(harness.asrCalls(), 0);
   assert.equal(harness.runtime.isRecording(), true);
+});
+
+test("start preserves the requested meeting group across IPC validation and capture persistence", async () => {
+  const harness = buildHarness();
+  const groupId = "f0f0f0f0-0000-4000-8000-f0f0f0f0f0f0";
+  const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), { ...START, groupId });
+  assert.equal(started.success, true);
+  assert.equal(harness.databaseManager.recordings.get(started.recordingId)?.groupId, groupId);
 });
 
 test("renderer audio is acknowledged only after its raw PCM bytes are written", async () => {

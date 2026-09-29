@@ -968,6 +968,10 @@
       "advanced": {
         "label": "Advanced",
         "description": "Diagnostics and debug logging"
+      },
+      "profile": {
+        "label": "Profile",
+        "description": "Your name in meeting transcripts"
       }
     },
     "title": "Settings"
@@ -1564,7 +1568,8 @@
       "transcriptEmptyDescription": "The transcript will appear here after processing.",
       "startRecording": "Start recording",
       "record": "Record",
-      "generateSummary": "Generate AI Summary",
+      "generateSummary": "Summary",
+      "generatingSummary": "Generating summary…",
       "startWriting": "Start writing...",
       "staleIndicator": "Content has changed since enhancement",
       "live": "Live",
@@ -1583,7 +1588,7 @@
         "finishMeeting": "End call",
         "saving": "Saving audio tail…",
         "saved": "Audio recording saved",
-        "incomplete": "Recording saved with missing audio",
+        "incomplete": "Some audio parts were interrupted",
         "failed": "Recording could not start",
         "mic": "Microphone",
         "system": "System audio",
@@ -1691,6 +1696,7 @@
       "noProviderSelected": "No provider is selected for Note Recording. Open Settings and choose Local or a streaming provider.",
       "autoEnded": "Recording stopped automatically after your meeting ended.",
       "restartFailed": "Couldn't restart the meeting recording.",
+      "captureError": "Recording stopped because of an error. Check the saved audio in the note.",
       "systemAudioSilent": {
         "title": "No meeting audio detected yet",
         "description": "Only your microphone has picked up sound so far. On a video call? Check that the meeting audio is playing on this computer and isn't muted. Recording in person? You can ignore this — your microphone captures the room."
@@ -1769,6 +1775,15 @@
         "detailedNotes": {
           "name": "Detailed Notes",
           "description": "Accurate, comprehensive meeting notes with decisions and action items"
+        },
+        "followUp": {
+          "name": "Follow-up",
+          "description": "Draft a follow-up message in the meeting chat",
+          "cta": "Draft a follow-up"
+        },
+        "recap": {
+          "name": "Recap",
+          "description": "Add a short recap of this meeting to its summary"
         }
       },
       "errors": {
@@ -2109,6 +2124,9 @@
     "send": "Send",
     "title": "Chat",
     "emptyState": "Ask a question about this note",
+    "followUp": "Draft a follow-up",
+    "followUpUnavailable": "Available once the transcript is ready",
+    "followUpError": "Couldn't prepare the follow-up. Try again.",
     "dock": "Dock to sidebar",
     "undock": "Undock from sidebar",
     "close": "Close chat",
@@ -2213,10 +2231,19 @@
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}} s",
+    "durationMinutes": "{{minutes}} min {{seconds}} s",
+    "durationWholeMinutes": "{{minutes}} min",
+    "durationHours": "{{hours}} h {{minutes}} min",
+    "recordingNow": "Recording now",
+    "savingAudio": "Saving…",
+    "endedEarly": "Ended early",
+    "partOf": "Part {{index}} of {{count}}",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
+    "seekAudio": "Seek audio",
     "processWholeMeeting": "Transcribe",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
@@ -2232,6 +2259,13 @@
     "oneRunOnly": "This choice applies to this run. Global defaults stay the same.",
     "createVersion": "Create version",
     "cancel": "Cancel",
+    "participantsLoadError": "Could not load calendar participants.",
+    "linkParticipantsHint": "Remember these names for future meetings by linking them to calendar participants.",
+    "linkParticipant": "Link participant",
+    "rememberParticipant": "Remember name for calendar participant",
+    "onlyThisMeeting": "Only this meeting",
+    "rememberParticipantHint": "Choose the person who spoke. This name will be used for their email in future meetings. Google contacts are not changed.",
+    "voiceProfile": "Voice profile",
     "speakerName": "Speaker name",
     "localProvider": "Local",
     "selfHostedProvider": "Self-hosted",
@@ -2251,6 +2285,9 @@
     "recording": "Recording",
     "newAsr": "New transcription",
     "newSummary": "New summary",
+    "summaryStale": "Speaker names changed",
+    "summaryStaleReason": "This Summary was written with the earlier names and is unchanged.",
+    "regenerateSummary": "Regenerate Summary",
     "retry": "Retry",
     "deleteAudio": "Delete audio",
     "retryDelete": "Retry audio deletion",
@@ -2262,7 +2299,7 @@
     "saveSpeaker": "Save speaker",
     "speakerProfile": "Speaker profile",
     "noSpeakerProfile": "No profile",
-    "captureIncomplete": "Capture ended early; saved audio and results are retained.",
+    "captureIncomplete": "Saved audio can still be transcribed. Retrying cannot recover audio missed during those interruptions.",
     "deleteActiveNoteTitle": "Stop and delete this recording?",
     "deleteActiveNoteDescription": "Recording will stop safely without starting transcription, then the note, audio, and processing history will be deleted.",
     "stopBeforeDeleteError": "Recording could not be stopped safely. The note was kept.",
@@ -2306,13 +2343,18 @@
     "progress": {
       "pending": "Waiting to start.",
       "running": "This can take a few minutes. You can keep writing notes."
-    }
+    },
+    "autoSummarySkipped": "Automatic Summary skipped",
+    "autoSummarySkippedReason": "Automatic Summary requires at least 180 seconds of recorded audio and 2,500 transcript characters. This meeting has {{seconds}} seconds and {{chars}} characters. You can create a Summary manually now.",
+    "calendarParticipantsInvalid": "Stored calendar participant data is invalid. Correct it before retrying.",
+    "calendarParticipantsNamingSkipped": "Automatic speaker naming was skipped. The transcript and Summary remain available."
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "For meeting recording reminders.",
+    "accessibilityHelp": "Turn on OpenHercules in macOS Accessibility. If it is missing, click + and select the installed OpenHercules.app.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
@@ -2428,6 +2470,15 @@
       "installing": "Installing…",
       "remove": "Remove {{model}}"
     },
-    "chatPrompt": "Chat instructions"
+    "chatPrompt": "Chat instructions",
+    "openaiMeetingAudio": "Microphone: Whisper with timestamps. System audio: GPT-4o Transcribe Diarize. Two parallel requests."
+  },
+  "profile": {
+    "name": "Your name",
+    "placeholder": "How should we name you?",
+    "help": "Used for speech recorded by your microphone. Optional; leave blank to show “You”. You can change it in Settings → Profile.",
+    "onboardingTitle": "What should we call you?",
+    "skip": "Skip",
+    "selfLabel": "You"
   }
 }

@@ -1,4 +1,7 @@
+import { formatMeetingMaterial } from "./meetingPromptMaterial.js";
 import fs from "fs";
+import { createHash } from "crypto";
+import { z } from "zod";
 import {
   meetingProcessingConfigSchema,
   meetingProcessingResultDtoSchema,
@@ -7,8 +10,10 @@ import {
   type MeetingProcessingRunDto,
   type MeetingRecordingDto,
   type MeetingRecordingEpochDto,
+  type MeetingSummaryArtifact,
   type MeetingSpeakerCorrection,
   type MeetingTranscriptArtifact,
+  MEETING_ASR_GATE_MS,
 } from "../contracts/meetingRecording.js";
 import {
   meetingProcessingChannels,
@@ -16,6 +21,8 @@ import {
   meetingProcessingListRequestSchema,
   meetingProcessingListResponseSchema,
   meetingProcessingRetryRequestSchema,
+  meetingProcessingSummaryActionRequestSchema,
+  meetingProcessingSpeakerCorrectionRequestSchema,
   meetingProcessingUpdateBlockedRunConfigRequestSchema,
   meetingProcessingRunResponseSchema,
   type MeetingProcessingRecordingResult,
@@ -27,10 +34,21 @@ import { parseGeminiFileResponse } from "./geminiFileTranscription.js";
 import { parseOpenAIFileResponse } from "./remoteTranscriptionIpcHandler.js";
 import { meetingTranscriptArtifactSchema, meetingSummaryArtifactSchema } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
-import { composeMeetingAudioParts, meetingTimelineFrameCount, prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio } from "./meetingAudioMixer.js";
+import { composeMeetingAudioParts, meetingTimelineFrameCount, prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio, type MeetingAudioLayout } from "./meetingAudioMixer.js";
 import { formatSpeakerTranscript, mergeSpeakersWithText } from "./speakerMerge.js";
 import { byokFileSizeLimit } from "./transcriptionRoute.js";
 import { supportedMeetingFileProvider } from "./meetingFileTranscription.js";
+import { RECAP_KEY } from "./builtinActions.js";
+import { requestMeetingJson, looksLikeRefusal } from "./meetingJsonRepair.js";
+import {
+  MEETING_TASKS_INSTRUCTION,
+  readMeetingSummarySection,
+  replaceMeetingRecap,
+  replaceMeetingTasks,
+  validateMeetingRecap,
+  validateMeetingTasks,
+  type MeetingRecap,
+} from "./meetingSummarySections.js";
 
 const AUTO_RETRY_LIMIT = 3;
 const RETRY_BASE_SECONDS = 5;
@@ -45,13 +63,21 @@ export interface MeetingProcessingDatabase {
   getMeetingProcessingRun(id: string): MeetingProcessingRunDto | null;
   getMeetingRecording(id: string): MeetingRecordingDto | null;
   listMeetingRecordingEpochs(id: string): MeetingRecordingEpochDto[];
-  getNote(id: number): { content?: string | null; expected_speaker_count?: number | null } | null;
+  getNote(id: number): {
+    title: string;
+    content: string;
+    transcript?: string | null;
+    enhanced_content?: string | null;
+    participants: string | null;
+    expected_speaker_count?: number | null;
+  } | null;
   createMeetingProcessingRun(recordingId: string, input: {
     kind: "reprocess" | "summary";
     sourceRecordingIds?: string[];
     config: MeetingProcessingConfig | null;
     configError?: { code: string; messageKey?: string } | null;
     sourceRunId?: string | null;
+    retryAt?: string | null;
   }): MeetingProcessingRunDto;
   claimMeetingProcessingRun(id: string, now?: string): boolean;
   setMeetingProcessingRunState(id: string, update: {
@@ -70,7 +96,27 @@ export interface MeetingProcessingDatabase {
   ): MeetingProcessingRunDto | null;
   recoverRunningMeetingProcessingRuns(): number;
   getMeetingRunSpeakerCorrections(runId: string): MeetingSpeakerCorrection[];
-  setMeetingRunSpeakerCorrection(runId: string, speakerId: string, profileId: number | null, displayName: string): { success: boolean };
+  getMeetingRunSpeakerCorrectionRevision(runId: string): number;
+  setMeetingRunSpeakerCorrection(runId: string, speakerId: string, profileId: number | null, displayName: string, source?: "voice" | "model" | "user", participantEmail?: string): { success: boolean };
+  getContactProfiles(emails: string[]): Array<{ email: string; display_name: string | null }>;
+  rememberContactName(email: string, name: string): void;
+  applyAutomaticMeetingSpeakerCorrections(runId: string, expectedCurrentRunId: string, expectedRevision: number, corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>, source: "voice" | "model"): boolean;
+  getMeetingRunLlmSourceSnapshot(runId: string): string | null;
+  setMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string): boolean;
+  updateMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string, expectedSnapshotJson: string): boolean;
+  updateMeetingSummaryIfCurrent(input: {
+    recordingId: string;
+    runId: string;
+    sourceRunId: string;
+    expectedSnapshotJson: string;
+    expectedSpeakerCorrectionRevision: number;
+    expectedTitle: string | null;
+    expectedManualNotes: string;
+    expectedTranscript: string | null;
+    expectedProjection: string | null;
+    summary: string;
+  }): boolean;
+  setMeetingSpeakerNamingError(runId: string, errorCode: string | null): boolean;
   selectMeetingProcessingRun(
     recordingId: string,
     runId: string,
@@ -106,7 +152,8 @@ export interface MeetingProcessingWorkerDeps {
     recording: MeetingRecordingDto,
     runId: string,
     epochs: MeetingRecordingEpochDto[],
-    signal: AbortSignal
+    signal: AbortSignal,
+    layout?: MeetingAudioLayout
   ) => Promise<PreparedMeetingAudio>;
   fileSize?: (path: string) => number;
   now?: () => Date;
@@ -120,15 +167,73 @@ export interface MeetingProcessingWorkerDeps {
     transcript: MeetingTranscriptArtifact,
     audioPath: string,
     signal: AbortSignal
-  ) => Promise<MeetingSpeakerCorrection[]>;
+  ) => Promise<Array<{ speakerId: string; profileId: number | null; displayName: string }>>;
+  nameSpeakers?: (
+    input: unknown,
+    config: NonNullable<MeetingProcessingConfig["summary"]>,
+    run: MeetingProcessingRunDto,
+    signal: AbortSignal
+  ) => Promise<Array<{ speakerId: string; name: string }>>;
+  createActionConversation?: (
+    config: NonNullable<MeetingProcessingConfig["summary"]>,
+    instruction: string,
+    run: MeetingProcessingRunDto,
+    signal: AbortSignal
+  ) => Promise<import("./meetingSummary.js").MeetingTextConversation>;
+  getActionPrompt?: (translationKey: string) => string | null;
   mixerDeps?: MeetingAudioMixerDeps;
 }
+
+interface MeetingLlmSourceSnapshot {
+  version: 1;
+  sourceRunId: string;
+  sourceRecordingIds: string[];
+  meetingTitle: string | null;
+  participants: Array<{ name: string | null; email: string | null }> | null;
+  manualNotes: string;
+  manualNoteRevision: string;
+  speakerCorrectionRevision: number;
+  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; text: string }>;
+  promptModel: NonNullable<MeetingProcessingConfig["summary"]>;
+}
+
+const meetingLlmSourceSnapshotSchema = z.object({
+  version: z.literal(1),
+  sourceRunId: z.string().uuid(),
+  sourceRecordingIds: z.array(z.string().uuid()).min(1),
+  meetingTitle: z.string().nullable(),
+  participants: z.array(z.object({ name: z.string().nullable(), email: z.string().nullable() }).strict()).nullable(),
+  manualNotes: z.string(),
+  manualNoteRevision: z.string().regex(/^[a-f0-9]{64}$/),
+  speakerCorrectionRevision: z.number().int().nonnegative(),
+  transcriptSegments: z.array(z.object({
+    id: z.string().min(1),
+    speakerId: z.string().nullable(),
+    speakerName: z.string().nullable(),
+    text: z.string(),
+  }).strict()).min(1),
+  promptModel: meetingProcessingConfigSchema.shape.summary.unwrap().unwrap(),
+}).strict();
 
 interface ActiveRun {
   runId: string;
   stage: MeetingProcessingRunDto["stage"];
   mode: MeetingProcessingConfig["transcription"]["mode"] | "summary-local" | "summary-remote";
   controller: AbortController;
+}
+
+interface MeetingSummaryActionContext {
+  run: MeetingProcessingRunDto;
+  recording: MeetingRecordingDto;
+  note: NonNullable<ReturnType<MeetingProcessingDatabase["getNote"]>>;
+  sourceRunId: string;
+  snapshotJson: string;
+  snapshot: MeetingLlmSourceSnapshot;
+  transcript: MeetingTranscriptArtifact;
+  artifact: MeetingSummaryArtifact;
+  markdown: string;
+  actionItemsSection: string | null;
+  recapSection: string | null;
 }
 
 export class MeetingProcessingWorker {
@@ -139,6 +244,11 @@ export class MeetingProcessingWorker {
   private workRequested = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
+  private readonly activeSummaryActions = new Map<string, Set<AbortController>>();
+  private readonly activeTaskRuns = new Set<string>();
+  private readonly backgroundSummaryActions = new Set<Promise<unknown>>();
+  private readonly agentThreadActionTails = new Map<string, Promise<void>>();
+  private readonly summaryMutationTails = new Map<number, Promise<void>>();
   private readonly now: () => Date;
   private readonly setTimer: typeof setTimeout;
   private readonly clearTimer: typeof clearTimeout;
@@ -148,6 +258,7 @@ export class MeetingProcessingWorker {
     this.now = deps.now ?? (() => new Date());
     this.setTimer = deps.setTimeout ?? setTimeout;
     this.clearTimer = deps.clearTimeout ?? clearTimeout;
+    this.recoverInterruptedSummaryTasks();
   }
 
   onRetentionReady(): void {
@@ -155,8 +266,22 @@ export class MeetingProcessingWorker {
     this.processPending();
   }
 
-  captureStarted(): void {
+  captureStarted(groupId?: string): void {
     this.captureActive = true;
+    if (groupId) {
+      for (const run of this.deps.database.listAllMeetingProcessingRuns()) {
+        const recording = this.deps.database.getMeetingRecording(run.recordingId);
+        if (
+          recording?.groupId === groupId &&
+          run.kind !== "summary" &&
+          (run.status === "pending" || run.status === "running") &&
+          (run.stage === "prepare" || run.stage === "asr") &&
+          !run.hasRawProviderResponse
+        ) {
+          this.cancelRun(run.id, "meeting-resumed");
+        }
+      }
+    }
     if (
       this.active?.stage === "prepare" ||
       (this.active?.stage === "asr" && this.active.mode === "local") ||
@@ -177,16 +302,19 @@ export class MeetingProcessingWorker {
     this.stopped = true;
     this.clearRetryTimer();
     this.active?.controller.abort();
+    for (const controllers of this.activeSummaryActions.values()) {
+      for (const controller of controllers) controller.abort();
+    }
   }
 
-  cancelRun(runId: string): boolean {
+  cancelRun(runId: string, errorCode = "processing-cancelled"): boolean {
     const run = this.deps.database.getMeetingProcessingRun(runId);
     if (!run || (run.status !== "pending" && run.status !== "running")) return false;
     if (this.active?.runId === runId) this.active.controller.abort();
     return this.deps.database.setMeetingProcessingRunState(runId, {
       stage: this.active?.runId === runId ? this.active.stage : "prepare",
       status: "cancelled",
-      errorCode: "processing-cancelled",
+      errorCode,
       retryAt: null,
     }).success;
   }
@@ -209,37 +337,25 @@ export class MeetingProcessingWorker {
     await this.work;
   }
 
-  async selectRun(recordingId: string, runId: string): Promise<{ success: boolean; noteId?: number }> {
-    const recording = this.deps.database.getMeetingRecording(recordingId);
-    const run = this.deps.database.getMeetingProcessingRun(runId);
-    if (!recording || !run || run.recordingId !== recordingId) return { success: false };
-    const result = this.getResult(run);
-    if (!result.transcript) return { success: false };
-    const projection = result.transcript
-      ? {
-          transcript: serializeTranscriptProjection(result.transcript, result.speakerCorrections),
-          summary: result.summary?.text ?? null,
-          summaryPrompt: run.config?.summary?.instruction ?? null,
-        }
-      : null;
-    const selected = this.deps.database.selectMeetingProcessingRun(recordingId, runId, projection);
-    if (selected.success && selected.noteId !== undefined && projection) {
-      this.deps.onNoteProjectionChanged?.(selected.noteId);
-    }
-    this.notify(run);
-    return selected;
-  }
-
-  setSpeakerCorrection(input: { runId: string; speakerId: string; profileId: number | null; displayName: string }): boolean {
+  setSpeakerCorrection(input: z.infer<typeof meetingProcessingSpeakerCorrectionRequestSchema>): boolean {
     const run = this.deps.database.getMeetingProcessingRun(input.runId);
     if (!run) return false;
     const transcriptRunId = run.kind === "summary" ? run.sourceRunId : run.id;
     if (!transcriptRunId) return false;
+    const transcript = this.readTranscript(transcriptRunId);
+    if (!transcript?.segments?.some((segment) => segment.speaker === input.speakerId)) return false;
+    if (input.participantEmail) {
+      const recording = this.deps.database.getMeetingRecording(run.recordingId);
+      const note = recording && this.deps.database.getNote(recording.noteId);
+      if (!note || !participantCandidates(note.participants).some((person) => person.email?.toLowerCase() === input.participantEmail?.toLowerCase())) return false;
+    }
     const updated = this.deps.database.setMeetingRunSpeakerCorrection(
       transcriptRunId,
       input.speakerId,
       input.profileId,
-      input.displayName
+      input.displayName,
+      "user",
+      input.participantEmail
     );
     if (!updated.success) return false;
     const recording = this.deps.database.getMeetingRecording(run.recordingId);
@@ -250,6 +366,15 @@ export class MeetingProcessingWorker {
     }
     this.notify(run);
     return true;
+  }
+
+  async runSummaryAction(input: { runId: string; action: "tasks" | "recap" }): Promise<{ success: boolean; error?: string }> {
+    const operation = () => input.action === "tasks"
+      ? this.runPrioritizedTasks(input.runId)
+      : this.runRecap(input.runId);
+    const run = this.deps.database.getMeetingProcessingRun(input.runId);
+    const threadKey = run?.config?.summary?.reasoningMode === "agent" ? run.id : null;
+    return threadKey ? this.withAgentThreadAction(threadKey, operation) : operation();
   }
 
   retry(runId: string): MeetingProcessingResultDto | null {
@@ -269,6 +394,8 @@ export class MeetingProcessingWorker {
       !current.hasTranscript &&
       !current.hasSummary &&
       !this.deps.storage.hasRunArtifact(current.id, "provider-response") &&
+      !this.deps.storage.hasRunArtifact(current.id, "provider-response-mic") &&
+      !this.deps.storage.hasRunArtifact(current.id, "provider-response-system") &&
       !this.deps.storage.hasRunArtifact(current.id, "transcript") &&
       !this.deps.storage.hasRunArtifact(current.id, "summary");
     const summaryOnlyCorrection = current &&
@@ -299,12 +426,78 @@ export class MeetingProcessingWorker {
 
   createRun(input: unknown): MeetingProcessingResultDto {
     const parsed = meetingProcessingCreateRunRequestSchema.parse(input);
+    if (parsed.gateAfterStop && parsed.kind !== "reprocess") {
+      throw new Error("Only end-of-meeting transcription can use the processing gate");
+    }
+    const sourceRecordingIds = parsed.sourceRecordingIds ?? [parsed.recordingId];
+    if (parsed.kind === "reprocess" && !parsed.gateAfterStop && this.isCapturing()) {
+      throw new Error("Transcription starts after the end-of-meeting wait");
+    }
+    const sameSources = (run: MeetingProcessingRunDto) =>
+      run.sourceRecordingIds.length === sourceRecordingIds.length &&
+      run.sourceRecordingIds.every((id, index) => id === sourceRecordingIds[index]);
+    const activeGate = this.deps.database.listAllMeetingProcessingRuns().find((run) =>
+      this.isEndOfMeetingGate(run) &&
+      (run.status === "pending" || run.status === "running" || run.status === "blocked") &&
+      run.sourceRecordingIds.some((id) => sourceRecordingIds.includes(id))
+    );
+    if (activeGate && sameSources(activeGate) && (parsed.gateAfterStop || Date.parse(activeGate.retryAt as string) > this.now().getTime())) {
+      const result = this.getResult(activeGate);
+      this.notify(activeGate);
+      return result;
+    }
+    if (activeGate && Date.parse(activeGate.retryAt as string) > this.now().getTime() && !parsed.gateAfterStop) {
+      throw new Error("Transcription starts after the end-of-meeting wait");
+    }
+    if (parsed.kind === "reprocess" && !parsed.gateAfterStop) {
+      const latestStop = sourceRecordingIds
+        .map((id) => this.deps.database.getMeetingRecording(id)?.endedAt)
+        .filter((value): value is string => value !== null && value !== undefined)
+        .map(Date.parse)
+        .filter(Number.isFinite)
+        .reduce((latest, value) => Math.max(latest, value), 0);
+      if (latestStop > 0 && this.now().getTime() < latestStop + MEETING_ASR_GATE_MS) {
+        throw new Error("Transcription starts after the end-of-meeting wait");
+      }
+    }
+    if (parsed.gateAfterStop) {
+      const existing = this.deps.database.listMeetingProcessingRuns(parsed.recordingId).find((run) =>
+        run.kind === "reprocess" &&
+        run.status !== "cancelled" &&
+        sameSources(run)
+      );
+      if (existing) {
+        const result = this.getResult(existing);
+        this.notify(existing);
+        return result;
+      }
+    }
+    if (parsed.kind === "summary" && parsed.sourceRunId) {
+      const autoSummary = this.deps.database.listAllMeetingProcessingRuns().find((run) =>
+        run.recordingId === parsed.recordingId &&
+        run.id === parsed.sourceRunId &&
+        run.kind !== "summary" && run.stage === "summary" &&
+        (run.status === "pending" || run.status === "running")
+      );
+      if (autoSummary) this.cancelRun(autoSummary.id, "manual-summary-requested");
+      const activeSummary = this.deps.database.listAllMeetingProcessingRuns().find((run) =>
+        run.recordingId === parsed.recordingId &&
+        run.kind === "summary" && run.sourceRunId === parsed.sourceRunId &&
+        (run.status === "pending" || run.status === "running")
+      );
+      if (activeSummary) {
+        const result = this.getResult(activeSummary);
+        this.notify(activeSummary);
+        return result;
+      }
+    }
     const run = this.deps.database.createMeetingProcessingRun(parsed.recordingId, {
       kind: parsed.kind,
       sourceRecordingIds: parsed.sourceRecordingIds,
       config: parsed.config,
       configError: parsed.configError ?? null,
       sourceRunId: parsed.sourceRunId ?? null,
+      retryAt: parsed.gateAfterStop ? new Date(this.now().getTime() + MEETING_ASR_GATE_MS).toISOString() : null,
     });
     const result = this.getResult(run);
     this.notify(run);
@@ -353,7 +546,12 @@ export class MeetingProcessingWorker {
   }
 
   async waitForIdle(): Promise<void> {
-    await this.work;
+    while (this.work || this.backgroundSummaryActions.size > 0) {
+      const pending = [this.work, ...this.backgroundSummaryActions].filter(
+        (work): work is Promise<unknown> => work !== null
+      );
+      await Promise.all(pending);
+    }
   }
 
   private async drainQueue(): Promise<void> {
@@ -362,17 +560,32 @@ export class MeetingProcessingWorker {
       const pending = this.deps.database.listAllMeetingProcessingRuns()
         .filter((run) => run.status === "pending" && (!run.retryAt || Date.parse(run.retryAt) <= Date.parse(now)))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-      const run = pending.find((candidate) => this.deps.database.claimMeetingProcessingRun(candidate.id, now));
-      if (!run) return;
-      await this.processClaimedRun(run.id);
+      let claimed: { id: string; endOfMeetingGate: boolean } | null = null;
+      for (const candidate of pending) {
+        const endOfMeetingGate = this.isEndOfMeetingGate(candidate);
+        if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(candidate)) {
+          this.cancelRun(candidate.id, "meeting-group-changed");
+          continue;
+        }
+        if (this.deps.database.claimMeetingProcessingRun(candidate.id, now)) {
+          claimed = { id: candidate.id, endOfMeetingGate };
+          break;
+        }
+      }
+      if (!claimed) return;
+      await this.processClaimedRun(claimed.id, claimed.endOfMeetingGate);
     }
   }
 
-  private async processClaimedRun(runId: string): Promise<void> {
+  private async processClaimedRun(runId: string, endOfMeetingGate: boolean): Promise<void> {
     const run = this.deps.database.getMeetingProcessingRun(runId);
     if (!run || run.status !== "running") return;
     const recording = this.deps.database.getMeetingRecording(run.recordingId);
     if (!recording) return;
+    if (endOfMeetingGate && (!this.isCurrentMeetingGroupVersion(run) || this.isCapturing())) {
+      this.cancelRun(runId, "meeting-group-changed");
+      return;
+    }
     const config = run.config;
     const mode = run.stage === "summary"
       ? config?.summary?.reasoningMode === "local" ? "summary-local" : "summary-remote"
@@ -381,9 +594,9 @@ export class MeetingProcessingWorker {
     this.active = active;
     try {
       if (run.stage === "prepare") {
-        await this.prepare(run, recording, active.controller.signal);
+        await this.prepare(run, recording, active.controller.signal, endOfMeetingGate);
       } else if (run.stage === "asr") {
-        await this.transcribe(run, recording, active.controller.signal);
+        await this.transcribe(run, recording, active.controller.signal, endOfMeetingGate);
       } else if (run.stage === "normalize") {
         await this.normalize(run, recording, active.controller.signal);
       } else {
@@ -398,7 +611,11 @@ export class MeetingProcessingWorker {
     }
   }
 
-  private async prepare(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal): Promise<void> {
+  private async prepare(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal, endOfMeetingGate: boolean): Promise<void> {
+    if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(run)) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
     if (this.isCapturing()) return this.pause(run, "prepare");
     const config = this.requireConfig(run);
     const provider = config.transcription.mode === "local" ? null : supportedMeetingFileProvider(config.transcription.provider, config.transcription.model);
@@ -406,27 +623,36 @@ export class MeetingProcessingWorker {
       throw new MeetingProcessingFailure("unsupported-provider", "blocked");
     }
     const { timeline, epochs } = this.sourceTimeline(run, recording, true);
-    const mixer = this.deps.mixAudio ?? ((recordingValue, runId, epochValues, abortSignal) =>
-      prepareMeetingAudio(this.deps.storage, recordingValue, runId, epochValues, {
-        signal: abortSignal,
-        deps: this.deps.mixerDeps,
-      })
-    );
-    const audio = await mixer(timeline, run.id, epochs, signal);
+    const layouts: MeetingAudioLayout[] = provider === "deepgram" ? ["stereo"] : provider ? ["mic", "system"] : ["mono"];
+    const audios: PreparedMeetingAudio[] = [];
+    for (const layout of layouts) {
+      audios.push(await (this.deps.mixAudio
+        ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout)
+        : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout })));
+    }
+    const audio = audios[0];
     signal.throwIfAborted();
+    if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(run)) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
     if (this.isCapturing()) return this.pause(run, "asr");
-    if (provider && audio.sizeBytes > byokFileSizeLimit(provider)) {
+    if (provider && audios.some((value) => value.sizeBytes > byokFileSizeLimit(provider))) {
       throw new MeetingProcessingFailure("provider-limit", "blocked");
     }
     if (provider === "gemini" && audio.durationSeconds > GEMINI_MAX_SECONDS) {
       throw new MeetingProcessingFailure("gemini-duration-limit", "blocked");
     }
-    this.setState(run.id, "asr", "pending", null, null);
+    this.setState(run.id, "asr", "pending", null, endOfMeetingGate ? run.retryAt : null);
   }
 
-  private async transcribe(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal): Promise<void> {
+  private async transcribe(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal, endOfMeetingGate: boolean): Promise<void> {
     const current = this.requireCurrentRun(run.id);
     if (current.hasRawProviderResponse) return this.setState(run.id, "normalize", "pending", null, null);
+    if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(current)) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
     if (this.isCapturing()) return this.pause(run, "asr");
     if (current.retryCount > AUTO_RETRY_LIMIT) {
       this.setState(run.id, "asr", "failed", current.errorCode ?? "asr-outcome-unknown", null);
@@ -434,7 +660,7 @@ export class MeetingProcessingWorker {
     }
     if (recording.audioState !== "available") throw new MeetingProcessingFailure("audio-unavailable", "blocked");
     const config = this.requireConfig(run).transcription;
-    const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id);
+    const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, config.mode === "local" ? "mono" : config.provider === "deepgram" ? "stereo" : "system");
     const fileSize = (this.deps.fileSize ?? ((filePath) => fs.statSync(filePath).size))(audioPath);
     const requestId = `meeting-${run.id}`;
     if (config.mode === "local") {
@@ -475,11 +701,51 @@ export class MeetingProcessingWorker {
       model: providerModel(config.model, provider),
       language: config.language === "auto" ? undefined : config.language,
       diarize: true,
+      ...(provider === "deepgram" ? { multichannel: true } : {}),
       transcriptionMode: "providers",
       ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       requestId,
     };
-    const result = await this.deps.transcribeRemote(request, async (response) => this.saveRawResponse(run.id, response), signal);
+    if (endOfMeetingGate && (!this.isCurrentMeetingGroupVersion(current) || this.isCapturing())) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
+    let result: RemoteTranscriptionResult;
+    if (provider === "deepgram") {
+      result = await this.deps.transcribeRemote(request, async (response) => this.saveRawResponse(run.id, response), signal);
+    } else {
+      // Each completed source is durable before normalization; retries only pay for the missing source.
+      const outcomes = await Promise.allSettled((["mic", "system"] as const).map(async (source) => {
+        const artifact = source === "mic" ? "provider-response-mic" : "provider-response-system";
+        if (this.deps.storage.hasRunArtifact(run.id, artifact)) return;
+        const filePath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, source);
+        if ((this.deps.fileSize ?? ((p) => fs.statSync(p).size))(filePath) > byokFileSizeLimit(provider)) {
+          throw new MeetingProcessingFailure("provider-limit", "blocked");
+        }
+        const response = await this.deps.transcribeRemote({
+          ...request, filePath, requestId: `${requestId}-${source}`,
+          diarize: source === "system", timestamps: true,
+          // Whisper supplies segment timestamps without diarization; GPT-4o plain ASR does not.
+          model: provider === "openai" && source === "mic" ? "whisper-1" : request.model,
+        }, async (raw) => {
+          signal.throwIfAborted();
+          const current = this.deps.database.getMeetingProcessingRun(run.id);
+          if (current?.status !== "running" || current.stage !== "asr" || this.deps.database.getMeetingRecording(recording.id)?.audioState !== "available") {
+            throw new MeetingProcessingFailure("stale-provider-response", "cancelled");
+          }
+          this.deps.storage.writeRunArtifact(run.id, artifact, raw);
+        }, signal);
+        if (!this.deps.storage.hasRunArtifact(run.id, artifact)) throw providerFailure(response);
+      }));
+      signal.throwIfAborted();
+      const failed = outcomes.find((outcome) => outcome.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+      this.saveRawResponse(run.id, {
+        mic: this.deps.storage.readRunArtifact(run.id, "provider-response-mic"),
+        system: this.deps.storage.readRunArtifact(run.id, "provider-response-system"),
+      });
+      result = { success: true };
+    }
     const after = this.deps.database.getMeetingProcessingRun(run.id);
     if (!after || after.status !== "running") return;
     if (after.hasRawProviderResponse) {
@@ -493,7 +759,7 @@ export class MeetingProcessingWorker {
     const current = this.requireCurrentRun(run.id);
     if (current.hasTranscript) {
       const transcript = this.readTranscript(run.id);
-      if (transcript?.text.trim()) this.setState(run.id, "summary", "pending", null, null);
+      if (transcript?.text.trim()) await this.continueReadyTranscript(run, recording, transcript, signal);
       else this.setState(run.id, "summary", "complete", null, null);
       return;
     }
@@ -532,38 +798,95 @@ export class MeetingProcessingWorker {
     } else {
       const provider = supportedMeetingFileProvider(config.provider, config.model);
       if (!provider) throw new MeetingProcessingFailure("unsupported-provider", "blocked");
-      result = normalizeProviderResponse(provider, raw);
+      if (provider === "deepgram") {
+        result = parseDeepgramFileResponse(raw, true, true, recordingDuration);
+      } else {
+        const sources = z.object({ mic: z.unknown(), system: z.unknown() }).parse(raw);
+        const mic = normalizeProviderResponse(provider, sources.mic, false);
+        const system = normalizeProviderResponse(provider, sources.system, true);
+        for (const source of [mic, system]) {
+          if (!source.success || typeof source.text !== "string" || (source.text.trim() && !source.segments?.length)) {
+            throw new MeetingProcessingFailure(source.code || "provider-timestamps-missing", "failed");
+          }
+        }
+        const segments = [
+          ...(mic.segments ?? []).map((segment) => ({ ...segment, speaker: "mic" })),
+          ...(system.segments ?? []).map((segment) => ({ ...segment, speaker: `system:${segment.speaker}` })),
+        ].sort((a, b) => a.start - b.start);
+        result = { success: true, text: formatSpeakerTranscript(segments), segments, diarized: true };
+      }
     }
     if (!result.success || typeof result.text !== "string") {
       throw new MeetingProcessingFailure(result.code || "provider-response-invalid", "failed", result.error);
     }
     const transcript = validateTranscript(result, recordingDuration, config.mode === "providers" && !!result.text.trim());
+    if (transcript.segments?.some((segment) => segment.speaker === "mic") &&
+        !this.deps.database.getMeetingRunSpeakerCorrections(run.id).some((item) => item.speakerId === "mic")) {
+      const saved = this.deps.database.setMeetingRunSpeakerCorrection(run.id, "mic", null, run.config?.selfDisplayName?.trim() || "You", "user");
+      if (!saved.success) throw new MeetingProcessingFailure("self-name-not-saved", "failed");
+    }
     this.deps.storage.writeRunArtifact(run.id, "transcript", transcript);
     if (!this.deps.database.setMeetingRunArtifact(run.id, "transcript").success) {
       this.deps.storage.removeRunArtifact(run.id, "transcript");
       throw new MeetingProcessingFailure("transcript-state-not-saved", "failed");
     }
     if (this.deps.recognizeSpeakers && recording.audioState === "available" && transcript.segments?.length) {
-      const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id);
-      const corrections = await this.deps.recognizeSpeakers(recording, run, transcript, audioPath, signal);
-      signal.throwIfAborted();
-      for (const correction of corrections) {
-        if (this.deps.database.getMeetingRunSpeakerCorrections(run.id).some((existing) => existing.speakerId === correction.speakerId)) {
-          continue;
-        }
-        this.deps.database.setMeetingRunSpeakerCorrection(
-          run.id,
-          correction.speakerId,
-          correction.profileId,
-          correction.displayName
-        );
+      const layout = config.mode === "local" ? "mono" : "system";
+      const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, layout);
+      if (config.provider === "deepgram") {
+        await (this.deps.mixAudio
+          ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout)
+          : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout }));
       }
-      if (corrections.length) this.deps.onNoteProjectionChanged?.(recording.noteId);
+      const recognitionTranscript = { ...transcript, segments: transcript.segments.filter((segment) => segment.speaker !== "mic") };
+      const recognized = await this.deps.recognizeSpeakers(recording, run, recognitionTranscript, audioPath, signal);
+      signal.throwIfAborted();
+      const assigned = new Set(this.deps.database.getMeetingRunSpeakerCorrections(run.id).map((item) => item.speakerId));
+      const candidates = recognized.filter((item) => {
+        if (assigned.has(item.speakerId)) return false;
+        assigned.add(item.speakerId);
+        return true;
+      });
+      if (candidates.length) {
+        const revision = this.deps.database.getMeetingRunSpeakerCorrectionRevision(run.id);
+        if (this.deps.database.applyAutomaticMeetingSpeakerCorrections(
+          run.id,
+          run.id,
+          revision,
+          candidates.map(({ speakerId, profileId, displayName }) => ({ speakerId, profileId, displayName })),
+          "voice"
+        )) this.publishCurrentSelection(run.id);
+      }
     }
     this.publishCurrentSelection(run.id);
     if (!transcript.text.trim()) this.setState(run.id, "summary", "complete", null, null);
-    else if (this.requireConfig(run).summary) this.setState(run.id, "summary", "pending", null, null);
-    else this.setState(run.id, "summary", "blocked", "missing-summary-config", null);
+    else await this.continueReadyTranscript(run, recording, transcript, signal);
+  }
+
+  private async continueReadyTranscript(
+    run: MeetingProcessingRunDto,
+    recording: MeetingRecordingDto,
+    transcript: MeetingTranscriptArtifact,
+    signal: AbortSignal
+  ): Promise<void> {
+    const current = this.requireCurrentRun(run.id);
+    if (current.hasSummary) return this.setState(run.id, "summary", "complete", null, null);
+    if (this.isCapturing()) return this.pause(run, "summary");
+    const config = this.requireConfig(run);
+    if (!config.summary) return this.setState(run.id, "summary", "blocked", "missing-summary-config", null);
+    const sourceRunId = run.kind === "summary" ? run.sourceRunId : run.id;
+    if (!sourceRunId) throw new MeetingProcessingFailure("summary-transcript-missing", "blocked");
+    if (!this.isSelectedRun(run)) {
+      this.cancelRun(run.id, "processing-run-stale");
+      return;
+    }
+    if (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run)) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
+    this.getOrCreateLlmSourceSnapshot(run, recording, sourceRunId, transcript);
+    if (signal.aborted || this.isCapturing()) return this.pause(run, "summary");
+    this.setState(run.id, "summary", "pending", null, null);
   }
 
   private async summarize(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal): Promise<void> {
@@ -571,24 +894,92 @@ export class MeetingProcessingWorker {
     if (current.hasSummary) return this.setState(run.id, "summary", "complete", null, null);
     if (this.isCapturing()) return this.pause(run, "summary");
     const config = this.requireConfig(run);
-    const transcriptRun = run.kind === "summary" ? run.sourceRunId : run.id;
-    if (!transcriptRun) throw new MeetingProcessingFailure("summary-transcript-missing", "blocked");
-    const transcript = this.readTranscript(transcriptRun);
+    const sourceRunId = run.kind === "summary" ? run.sourceRunId : run.id;
+    if (!sourceRunId) throw new MeetingProcessingFailure("summary-transcript-missing", "blocked");
+    const transcript = this.readTranscript(sourceRunId);
     if (!transcript) throw new MeetingProcessingFailure("summary-transcript-missing", "blocked");
     if (!transcript.text.trim()) return this.setState(run.id, "summary", "complete", null, null);
-    const summaryConfig = config.summary;
-    if (!summaryConfig) throw new MeetingProcessingFailure("missing-summary-config", "blocked");
+    if (!config.summary) throw new MeetingProcessingFailure("missing-summary-config", "blocked");
+    if (!this.isSelectedRun(run)) {
+      this.cancelRun(run.id, "processing-run-stale");
+      return;
+    }
+    if (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run)) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
+
+    let snapshot = this.refreshLlmSnapshotSpeakerState(
+      run.id,
+      sourceRunId,
+      transcript,
+      this.getOrCreateLlmSourceSnapshot(run, recording, sourceRunId, transcript)
+    );
+    await this.nameUnknownSpeakers(run, recording, sourceRunId, transcript, snapshot, signal);
+    if (signal.aborted) return;
+    if (this.isCapturing()) return this.pause(run, "summary");
+    if (!this.isSelectedRun(run)) {
+      this.cancelRun(run.id, "processing-run-stale");
+      return;
+    }
+    if (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run)) {
+      this.cancelRun(run.id, "meeting-group-changed");
+      return;
+    }
+    snapshot = this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
     const note = this.deps.database.getNote(recording.noteId);
-    const manual = note?.content ?? "";
-    const input = [manual.trim() ? `## Manual Notes\n${manual}` : "", `## Transcript\n${transcript.text}`]
-      .filter(Boolean).join("\n\n");
+    if (!note || hashText(note.content) !== snapshot.manualNoteRevision || note.title !== snapshot.meetingTitle) {
+      throw new MeetingProcessingFailure("summary-source-changed", "failed");
+    }
+
+    if (run.kind !== "summary") {
+      const sourceIds = [...run.sourceRecordingIds].sort();
+      const previousRuns = this.deps.database.listAllMeetingProcessingRuns().filter((candidate) =>
+        candidate.id !== run.id && candidate.sourceRecordingIds.length === sourceIds.length &&
+        [...candidate.sourceRecordingIds].sort().every((id, index) => id === sourceIds[index])
+      );
+      // Stop also creates a reprocess run for grouped audio. Only an actual retranscription bypasses the first-Summary threshold.
+      const retranscription = run.kind === "reprocess" && previousRuns.some((candidate) => candidate.hasTranscript);
+      if (!retranscription && !this.isAutoSummaryEligible(run, recording, transcript)) {
+        this.setState(run.id, "summary", "complete", null, null);
+        return;
+      }
+      if (run.kind === "initial" && previousRuns.some((candidate) => candidate.hasSummary ||
+        (candidate.kind === "summary" && (candidate.status === "pending" || candidate.status === "running")))) {
+        this.setState(run.id, "summary", "complete", null, null);
+        return;
+      }
+    }
+
+    const input = formatMeetingMaterial({
+      meetingTitle: snapshot.meetingTitle,
+      manualNotes: snapshot.manualNotes,
+      transcriptSegments: this.promptSegments(snapshot, transcript),
+    });
+    const summaryConfig = snapshot.promptModel;
+    const currentRun = this.deps.database.getMeetingProcessingRun(run.id) ?? run;
     const generated = summaryConfig.reasoningMode === "agent"
-      ? await this.deps.summarizeAgent?.(input, summaryConfig, run, signal)
+      ? await this.deps.summarizeAgent?.(input, summaryConfig, currentRun, signal)
       : await this.deps.summarize(input, summaryConfig, signal);
     if (generated === undefined) throw new MeetingProcessingFailure("bb-unavailable", "blocked");
     signal.throwIfAborted();
     if (!generated.trim()) throw new MeetingProcessingFailure("summary-empty-output", "failed");
-    const summary = meetingSummaryArtifactSchema.parse({ text: generated.trim() });
+    if (this.isCapturing()) return this.pause(run, "summary");
+    if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) {
+      this.cancelRun(run.id, run.kind === "summary" ? "processing-run-stale" : "meeting-group-changed");
+      return;
+    }
+    const latestNote = this.deps.database.getNote(recording.noteId);
+    if (
+      !latestNote || hashText(latestNote.content) !== snapshot.manualNoteRevision || latestNote.title !== snapshot.meetingTitle ||
+      this.deps.database.getMeetingRunSpeakerCorrectionRevision(sourceRunId) !== snapshot.speakerCorrectionRevision
+    ) throw new MeetingProcessingFailure("summary-source-changed", "failed");
+
+    const summary = meetingSummaryArtifactSchema.parse({
+      text: generated.trim(),
+      speakerCorrectionRevision: snapshot.speakerCorrectionRevision,
+      manualNoteRevision: snapshot.manualNoteRevision,
+    });
     this.deps.storage.writeRunArtifact(run.id, "summary", summary);
     if (!this.deps.database.setMeetingRunArtifact(run.id, "summary").success) {
       this.deps.storage.removeRunArtifact(run.id, "summary");
@@ -596,6 +987,182 @@ export class MeetingProcessingWorker {
     }
     this.publishCurrentSelection(run.id);
     this.setState(run.id, "summary", "complete", null, null);
+    if (this.deps.createActionConversation) {
+      const work = this.runSummaryAction({ runId: run.id, action: "tasks" });
+      this.backgroundSummaryActions.add(work);
+      void work.finally(() => this.backgroundSummaryActions.delete(work));
+    }
+  }
+
+  private getOrCreateLlmSourceSnapshot(
+    run: MeetingProcessingRunDto,
+    recording: MeetingRecordingDto,
+    sourceRunId: string,
+    transcript: MeetingTranscriptArtifact
+  ): MeetingLlmSourceSnapshot {
+    const saved = this.deps.database.getMeetingRunLlmSourceSnapshot(run.id);
+    if (saved !== null) {
+      let decoded: unknown;
+      try {
+        decoded = JSON.parse(saved);
+      } catch {
+        throw new MeetingProcessingFailure("llm-source-snapshot-invalid", "failed");
+      }
+      const parsed = meetingLlmSourceSnapshotSchema.safeParse(decoded);
+      if (!parsed.success || parsed.data.sourceRunId !== sourceRunId) {
+        throw new MeetingProcessingFailure("llm-source-snapshot-invalid", "failed");
+      }
+      return parsed.data as MeetingLlmSourceSnapshot;
+    }
+
+    const note = this.deps.database.getNote(recording.noteId);
+    const promptModel = run.config?.summary;
+    if (!note || !promptModel) throw new MeetingProcessingFailure("summary-source-missing", "blocked");
+    let participants: MeetingLlmSourceSnapshot["participants"];
+    try {
+      participants = participantCandidates(note.participants);
+    } catch (error) {
+      if (!(error instanceof MeetingProcessingFailure) || error.code !== "calendar-participants-invalid") throw error;
+      participants = null;
+      this.deps.database.setMeetingSpeakerNamingError(run.id, "calendar-participants-invalid");
+    }
+    const snapshot: MeetingLlmSourceSnapshot = {
+      version: 1,
+      sourceRunId,
+      sourceRecordingIds: [...run.sourceRecordingIds],
+      meetingTitle: note.title || null,
+      participants,
+      manualNotes: note.content,
+      manualNoteRevision: hashText(note.content),
+      speakerCorrectionRevision: this.deps.database.getMeetingRunSpeakerCorrectionRevision(sourceRunId),
+      transcriptSegments: buildLlmTranscriptSegments(sourceRunId, transcript, this.deps.database.getMeetingRunSpeakerCorrections(sourceRunId)),
+      promptModel,
+    };
+    if (!this.deps.database.setMeetingRunLlmSourceSnapshot(run.id, JSON.stringify(snapshot))) {
+      throw new MeetingProcessingFailure("llm-source-snapshot-not-saved", "failed");
+    }
+    return snapshot;
+  }
+
+  private refreshLlmSnapshotSpeakerState(
+    runId: string,
+    sourceRunId: string,
+    transcript: MeetingTranscriptArtifact,
+    snapshot: MeetingLlmSourceSnapshot
+  ): MeetingLlmSourceSnapshot {
+    const oldJson = this.deps.database.getMeetingRunLlmSourceSnapshot(runId);
+    if (oldJson === null) throw new MeetingProcessingFailure("llm-source-snapshot-missing", "failed");
+    const revision = this.deps.database.getMeetingRunSpeakerCorrectionRevision(sourceRunId);
+    const segments = buildLlmTranscriptSegments(sourceRunId, transcript, this.deps.database.getMeetingRunSpeakerCorrections(sourceRunId));
+    if (revision === snapshot.speakerCorrectionRevision && JSON.stringify(segments) === JSON.stringify(snapshot.transcriptSegments)) {
+      return snapshot;
+    }
+    const updated = { ...snapshot, speakerCorrectionRevision: revision, transcriptSegments: segments };
+    if (!this.deps.database.updateMeetingRunLlmSourceSnapshot(runId, JSON.stringify(updated), oldJson)) {
+      throw new MeetingProcessingFailure("llm-source-snapshot-stale", "cancelled");
+    }
+    return updated;
+  }
+
+  private async nameUnknownSpeakers(
+    run: MeetingProcessingRunDto,
+    recording: MeetingRecordingDto,
+    sourceRunId: string,
+    transcript: MeetingTranscriptArtifact,
+    currentSnapshot: MeetingLlmSourceSnapshot,
+    signal: AbortSignal
+  ): Promise<void> {
+    if (!this.deps.nameSpeakers) return;
+    let snapshot = this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, currentSnapshot);
+    const unknownIds = [...new Set(snapshot.transcriptSegments
+      .filter((segment) => segment.speakerId && !segment.speakerName)
+      .map((segment) => segment.speakerId as string))];
+    if (!unknownIds.length) {
+      this.deps.database.setMeetingSpeakerNamingError(
+        run.id,
+        snapshot.participants === null ? "calendar-participants-invalid" : null
+      );
+      return;
+    }
+    if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) return;
+    if (snapshot.participants === null) {
+      this.deps.database.setMeetingSpeakerNamingError(run.id, "calendar-participants-invalid");
+      return;
+    }
+    try {
+      const noteBeforeNaming = this.deps.database.getNote(recording.noteId);
+      if (!noteBeforeNaming) return;
+      const participantsBeforeNaming = participantCandidates(noteBeforeNaming.participants);
+      if (
+        noteBeforeNaming.title !== snapshot.meetingTitle ||
+        JSON.stringify(participantsBeforeNaming) !== JSON.stringify(snapshot.participants)
+      ) {
+        this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
+        return;
+      }
+      const suggestions = await this.deps.nameSpeakers({
+        meetingTitle: snapshot.meetingTitle,
+        participants: this.enrichedParticipants(participantsBeforeNaming),
+        segments: this.promptSegments(snapshot, transcript),
+      }, snapshot.promptModel, run, signal);
+      signal.throwIfAborted();
+      if (this.isCapturing()) return;
+      if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) return;
+      const note = this.deps.database.getNote(recording.noteId);
+      const nowParticipants = note ? participantCandidates(note.participants) : [];
+      if (
+        !note || note.title !== snapshot.meetingTitle || JSON.stringify(nowParticipants) !== JSON.stringify(snapshot.participants) ||
+        this.deps.database.getMeetingRunSpeakerCorrectionRevision(sourceRunId) !== snapshot.speakerCorrectionRevision
+      ) {
+        snapshot = this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
+        return;
+      }
+      validateSpeakerSuggestions(suggestions, unknownIds);
+      if (suggestions.length && this.deps.database.applyAutomaticMeetingSpeakerCorrections(
+        sourceRunId,
+        run.id,
+        snapshot.speakerCorrectionRevision,
+        suggestions.map(({ speakerId, name }) => ({ speakerId, profileId: null, displayName: name })),
+        "model"
+      )) {
+        const candidates = this.enrichedParticipants(participantsBeforeNaming);
+        for (const suggestion of suggestions) {
+          const matches = candidates.filter((person) => person.email && person.name?.normalize("NFC").toLowerCase() === suggestion.name.trim().normalize("NFC").toLowerCase());
+          const emails = [...new Set(matches.map((person) => person.email!))];
+          if (emails.length === 1 && suggestions.filter((item) => item.name.trim().toLowerCase() === suggestion.name.trim().toLowerCase()).length === 1) {
+            this.deps.database.rememberContactName(emails[0], suggestion.name);
+          }
+        }
+        snapshot = this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
+        this.publishCurrentSelection(run.id);
+      }
+      this.deps.database.setMeetingSpeakerNamingError(run.id, null);
+    } catch (error) {
+      if (signal.aborted || this.isCapturing()) return;
+      this.deps.database.setMeetingSpeakerNamingError(run.id, errorCodeOf(error));
+    }
+  }
+
+  private enrichedParticipants(participants: Array<{ name: string | null; email: string | null }>) {
+    const profiles = new Map(this.deps.database.getContactProfiles(participants.flatMap((person) => person.email ? [person.email] : []))
+      .map((profile) => [profile.email.toLowerCase(), profile.display_name]));
+    return participants.map((person) => ({ ...person, name: (person.email && profiles.get(person.email.toLowerCase())) || person.name }));
+  }
+
+  private isAutoSummaryEligible(
+    run: MeetingProcessingRunDto,
+    recording: MeetingRecordingDto,
+    transcript: MeetingTranscriptArtifact
+  ): boolean {
+    const { timeline, epochs } = this.sourceTimeline(run, recording);
+    const transcriptCharacters = transcript.segments?.length
+      ? transcript.segments.reduce((length, segment) => length + segment.text.length, 0)
+      : transcript.text.length;
+    return timelineDuration(timeline, epochs) >= 180 && transcriptCharacters >= 2500;
+  }
+
+  private isSelectedRun(run: MeetingProcessingRunDto): boolean {
+    return this.deps.database.getMeetingRecording(run.recordingId)?.currentRunId === run.id;
   }
 
   private saveRawResponse(runId: string, response: unknown): void {
@@ -667,7 +1234,7 @@ export class MeetingProcessingWorker {
     epochs: MeetingRecordingEpochDto[];
   } {
     const sources = run.sourceRecordingIds.map((id) => this.deps.database.getMeetingRecording(id));
-    if (sources.some((source) => !source || (requireAudio && source.audioState !== "available") || source.noteId !== recording.noteId || source.groupId !== recording.groupId)) {
+    if (sources.some((source) => !source || (requireAudio && source.audioState !== "available") || source.noteId !== recording.noteId)) {
       throw new MeetingProcessingFailure("audio-part-unavailable", "blocked");
     }
     const combined = composeMeetingAudioParts(sources as MeetingRecordingDto[], (id) => this.deps.database.listMeetingRecordingEpochs(id));
@@ -695,7 +1262,14 @@ export class MeetingProcessingWorker {
       ? this.deps.database.getMeetingRunSpeakerCorrections(transcriptRunId)
       : [];
     const transcript = rawTranscript;
-    const summaryValue = run.hasSummary ? this.deps.storage.readRunArtifact(run.id, "summary") : null;
+    const summaryRun = run.hasSummary
+      ? run
+      : run.kind === "summary" && run.sourceRunId
+        ? this.deps.database.getMeetingProcessingRun(run.sourceRunId)
+        : null;
+    const summaryValue = summaryRun?.hasSummary
+      ? this.deps.storage.readRunArtifact(summaryRun.id, "summary")
+      : null;
     const summary = summaryValue === null ? null : meetingSummaryArtifactSchema.parse(summaryValue);
     return meetingProcessingResultDtoSchema.parse({ run, transcript, summary, speakerCorrections });
   }
@@ -709,10 +1283,293 @@ export class MeetingProcessingWorker {
     const projection = this.deps.database.selectMeetingProcessingRun(recording.id, run.id, {
       transcript: serializeTranscriptProjection(result.transcript, result.speakerCorrections),
       summary: result.summary?.text ?? null,
-      summaryPrompt: run.config?.summary?.instruction ?? null,
+      summaryPrompt: this.summaryPromptForResult(run),
     });
     if (projection.success && projection.noteId !== undefined) {
       this.deps.onNoteProjectionChanged?.(projection.noteId);
+    }
+  }
+
+  private summaryPromptForResult(run: MeetingProcessingRunDto): string | null {
+    if (run.hasSummary || run.kind !== "summary" || !run.sourceRunId) return run.config?.summary?.instruction ?? null;
+    return this.deps.database.getMeetingProcessingRun(run.sourceRunId)?.config?.summary?.instruction ?? null;
+  }
+
+  private async runPrioritizedTasks(runId: string): Promise<{ success: boolean; error?: string }> {
+    if (this.activeTaskRuns.has(runId)) return { success: true };
+    this.activeTaskRuns.add(runId);
+    let context: MeetingSummaryActionContext | null = null;
+    try {
+      context = this.getSummaryActionContext(runId);
+      if (["complete", "zero"].includes(context.artifact.taskStatus ?? "")) return { success: true };
+      await this.writeTaskStatus(context, "running", undefined);
+      context = this.getSummaryActionContext(runId);
+
+      const controller = this.beginSummaryAction(runId);
+      try {
+        const input = formatMeetingMaterial({
+          meetingTitle: context.snapshot.meetingTitle,
+          manualNotes: context.snapshot.manualNotes,
+          summary: context.markdown,
+          transcriptSegments: this.promptSegments(context.snapshot, context.transcript),
+        });
+        const conversation = await this.createActionConversation(context, MEETING_TASKS_INSTRUCTION, controller.signal);
+        const response = await conversation.send(input);
+        if (response.refusal || looksLikeRefusal(response.text)) throw new MeetingProcessingFailure("meeting-task-refused", "failed");
+        const validated = validateMeetingTasks(response.text);
+        if (!validated.success) throw new MeetingProcessingFailure("meeting-task-markdown-invalid", "failed");
+        const tasks = validated.value;
+        const isEmpty = tasks.length === 0;
+        await this.applySummarySection(
+          context,
+          "Action Items",
+          (markdown) => replaceMeetingTasks(markdown, tasks),
+          isEmpty ? "zero" : "complete"
+        );
+        return { success: true };
+      } finally {
+        this.endSummaryAction(runId, controller);
+      }
+    } catch (error) {
+      const code = actionErrorCode(error);
+      if (context) {
+        const status = code === "meeting-summary-section-invalid"
+          ? "section-error"
+          : code === "meeting-summary-edit-conflict" || code === "meeting-summary-source-changed"
+            ? "conflict"
+            : code === "meeting-task-markdown-invalid"
+              ? "format-error"
+              : "provider-error";
+        await this.writeTaskStatus(context, status, code).catch(() => {});
+      }
+      return { success: false, error: code };
+    } finally {
+      this.activeTaskRuns.delete(runId);
+    }
+  }
+
+  private async runRecap(runId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const context = this.getSummaryActionContext(runId);
+      const prompt = this.deps.getActionPrompt?.(RECAP_KEY);
+      if (!prompt) throw new MeetingProcessingFailure("meeting-recap-action-missing", "blocked");
+      const controller = this.beginSummaryAction(runId);
+      try {
+        const input = formatMeetingMaterial({
+          meetingTitle: context.snapshot.meetingTitle,
+          manualNotes: context.snapshot.manualNotes,
+          summary: context.markdown,
+          transcriptSegments: this.promptSegments(context.snapshot, context.transcript),
+        });
+        const conversation = await this.createActionConversation(context, prompt, controller.signal);
+        const recap = await requestMeetingJson<MeetingRecap>({
+          conversation,
+          prompt: input,
+          refusalCode: "meeting-recap-refused",
+          invalidCode: "meeting-recap-json-invalid",
+          validate: validateMeetingRecap,
+        });
+        await this.applySummarySection(context, "Recap", (markdown) => replaceMeetingRecap(markdown, recap));
+        return { success: true };
+      } finally {
+        this.endSummaryAction(runId, controller);
+      }
+    } catch (error) {
+      return { success: false, error: actionErrorCode(error) };
+    }
+  }
+
+  private getSummaryActionContext(runId: string): MeetingSummaryActionContext {
+    const run = this.deps.database.getMeetingProcessingRun(runId);
+    const recording = run ? this.deps.database.getMeetingRecording(run.recordingId) : null;
+    if (!run || !recording || recording.currentRunId !== run.id || run.status !== "complete" || !run.hasSummary) {
+      throw new MeetingProcessingFailure("meeting-summary-not-selected", "blocked");
+    }
+    const sourceRunId = run.kind === "summary" ? run.sourceRunId : run.id;
+    if (!sourceRunId) throw new MeetingProcessingFailure("meeting-summary-source-missing", "blocked");
+    const snapshotJson = this.deps.database.getMeetingRunLlmSourceSnapshot(run.id);
+    if (!snapshotJson) throw new MeetingProcessingFailure("meeting-summary-source-missing", "blocked");
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(snapshotJson);
+    } catch {
+      throw new MeetingProcessingFailure("meeting-summary-source-invalid", "failed");
+    }
+    const parsedSnapshot = meetingLlmSourceSnapshotSchema.safeParse(decoded);
+    if (!parsedSnapshot.success || parsedSnapshot.data.sourceRunId !== sourceRunId) {
+      throw new MeetingProcessingFailure("meeting-summary-source-invalid", "failed");
+    }
+    const snapshot = parsedSnapshot.data as MeetingLlmSourceSnapshot;
+    const note = this.deps.database.getNote(recording.noteId);
+    const transcript = this.readTranscript(sourceRunId);
+    const artifactValue = this.deps.storage.readRunArtifact(run.id, "summary");
+    if (!note || !transcript || artifactValue === null) {
+      throw new MeetingProcessingFailure("meeting-summary-source-missing", "blocked");
+    }
+    const artifact = meetingSummaryArtifactSchema.parse(artifactValue);
+    if (
+      hashText(note.content) !== snapshot.manualNoteRevision ||
+      this.deps.database.getMeetingRunSpeakerCorrectionRevision(sourceRunId) !== snapshot.speakerCorrectionRevision ||
+      (artifact.manualNoteRevision !== undefined && artifact.manualNoteRevision !== snapshot.manualNoteRevision)
+    ) throw new MeetingProcessingFailure("meeting-summary-source-changed", "failed");
+    const markdown = note.enhanced_content ?? artifact.text;
+    return {
+      run,
+      recording,
+      note,
+      sourceRunId,
+      snapshotJson,
+      snapshot,
+      transcript,
+      artifact,
+      markdown,
+      actionItemsSection: readMeetingSummarySection(markdown, "Action Items"),
+      recapSection: readMeetingSummarySection(markdown, "Recap"),
+    };
+  }
+
+  private promptSegments(snapshot: MeetingLlmSourceSnapshot, transcript: MeetingTranscriptArtifact) {
+    const sourceSegments = transcript.segments;
+    if (sourceSegments?.length && sourceSegments.length !== snapshot.transcriptSegments.length) {
+      throw new MeetingProcessingFailure("meeting-summary-source-invalid", "failed");
+    }
+    return snapshot.transcriptSegments.map((segment, index) => {
+      const source = sourceSegments?.[index];
+      return { ...segment, ...(source ? { start: source.start } : {}) };
+    });
+  }
+
+  private async createActionConversation(
+    context: MeetingSummaryActionContext,
+    instruction: string,
+    signal: AbortSignal
+  ): Promise<import("./meetingSummary.js").MeetingTextConversation> {
+    if (!this.deps.createActionConversation) {
+      throw new MeetingProcessingFailure("meeting-summary-action-unavailable", "blocked");
+    }
+    return this.deps.createActionConversation(
+      { ...context.snapshot.promptModel, instruction },
+      instruction,
+      context.run,
+      signal
+    );
+  }
+
+  private async applySummarySection(
+    context: MeetingSummaryActionContext,
+    heading: "Action Items" | "Recap",
+    mutate: (markdown: string) => { success: true; markdown: string } | { success: false; error: string },
+    taskStatus?: "complete" | "zero"
+  ): Promise<void> {
+    await this.withSummaryMutation(context.recording.noteId, () => {
+      const latest = this.getSummaryActionContext(context.run.id);
+      const expectedSection = heading === "Action Items" ? context.actionItemsSection : context.recapSection;
+      const latestSection = heading === "Action Items" ? latest.actionItemsSection : latest.recapSection;
+      if (latest.snapshotJson !== context.snapshotJson || latestSection !== expectedSection) {
+        throw new MeetingProcessingFailure("meeting-summary-edit-conflict", "failed");
+      }
+      const expected = mutate(context.markdown);
+      if (!expected.success) throw new MeetingProcessingFailure(expected.error, "failed");
+      const result = mutate(latest.markdown);
+      if (!result.success) throw new MeetingProcessingFailure("meeting-summary-edit-conflict", "failed");
+      const updatedArtifact = meetingSummaryArtifactSchema.parse({
+        ...latest.artifact,
+        text: result.markdown,
+        ...(taskStatus ? { taskStatus, taskErrorCode: null } : {}),
+      });
+      this.deps.storage.writeRunArtifact(latest.run.id, "summary", updatedArtifact);
+      const projected = this.deps.database.updateMeetingSummaryIfCurrent({
+        recordingId: latest.recording.id,
+        runId: latest.run.id,
+        sourceRunId: latest.sourceRunId,
+        expectedSnapshotJson: latest.snapshotJson,
+        expectedSpeakerCorrectionRevision: latest.snapshot.speakerCorrectionRevision,
+        expectedTitle: latest.note.title,
+        expectedManualNotes: latest.note.content,
+        expectedTranscript: latest.note.transcript ?? null,
+        expectedProjection: latest.note.enhanced_content ?? null,
+        summary: result.markdown,
+      });
+      if (!projected) {
+        this.deps.storage.writeRunArtifact(latest.run.id, "summary", latest.artifact);
+        throw new MeetingProcessingFailure("meeting-summary-edit-conflict", "failed");
+      }
+      this.deps.onNoteProjectionChanged?.(latest.recording.noteId);
+      this.notify(latest.run);
+    });
+  }
+
+  private async writeTaskStatus(
+    context: MeetingSummaryActionContext,
+    status: NonNullable<MeetingSummaryArtifact["taskStatus"]>,
+    errorCode: string | undefined
+  ): Promise<void> {
+    await this.withSummaryMutation(context.recording.noteId, () => {
+      const latestRun = this.deps.database.getMeetingProcessingRun(context.run.id);
+      const recording = latestRun
+        ? this.deps.database.getMeetingRecording(latestRun.recordingId)
+        : null;
+      if (!latestRun || !recording || recording.currentRunId !== latestRun.id || !latestRun.hasSummary) return;
+      const currentValue = this.deps.storage.readRunArtifact(latestRun.id, "summary");
+      if (currentValue === null) return;
+      const current = meetingSummaryArtifactSchema.parse(currentValue);
+      const artifact = meetingSummaryArtifactSchema.parse({
+        ...current,
+        taskStatus: status,
+        taskErrorCode: errorCode ?? null,
+      });
+      this.deps.storage.writeRunArtifact(latestRun.id, "summary", artifact);
+      this.notify(latestRun);
+    });
+  }
+
+  private withSummaryMutation<T>(noteId: number, operation: () => T): Promise<T> {
+    const previous = this.summaryMutationTails.get(noteId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.summaryMutationTails.set(noteId, current);
+    return previous.catch(() => {}).then(operation).finally(() => {
+      release();
+      if (this.summaryMutationTails.get(noteId) === current) this.summaryMutationTails.delete(noteId);
+    });
+  }
+
+  private withAgentThreadAction<T>(threadKey: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.agentThreadActionTails.get(threadKey) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.agentThreadActionTails.set(threadKey, current);
+    return previous.catch(() => {}).then(operation).finally(() => {
+      release();
+      if (this.agentThreadActionTails.get(threadKey) === current) this.agentThreadActionTails.delete(threadKey);
+    });
+  }
+
+  private beginSummaryAction(runId: string): AbortController {
+    const controller = new AbortController();
+    const controllers = this.activeSummaryActions.get(runId) ?? new Set<AbortController>();
+    controllers.add(controller);
+    this.activeSummaryActions.set(runId, controllers);
+    return controller;
+  }
+
+  private endSummaryAction(runId: string, controller: AbortController): void {
+    const controllers = this.activeSummaryActions.get(runId);
+    controllers?.delete(controller);
+    if (controllers?.size === 0) this.activeSummaryActions.delete(runId);
+  }
+
+  private recoverInterruptedSummaryTasks(): void {
+    for (const run of this.deps.database.listAllMeetingProcessingRuns()) {
+      if (!run.hasSummary) continue;
+      const value = this.deps.storage.readRunArtifact(run.id, "summary");
+      const parsed = meetingSummaryArtifactSchema.safeParse(value);
+      if (!parsed.success || parsed.data.taskStatus !== "running") continue;
+      this.deps.storage.writeRunArtifact(run.id, "summary", {
+        ...parsed.data,
+        taskStatus: "provider-error",
+        taskErrorCode: "meeting-summary-task-interrupted",
+      });
     }
   }
 
@@ -722,6 +1579,28 @@ export class MeetingProcessingWorker {
 
   private isCapturing(): boolean {
     return this.captureActive || this.deps.isCaptureActive();
+  }
+
+  private isEndOfMeetingGate(run: MeetingProcessingRunDto): boolean {
+    return run.kind !== "summary" &&
+      (run.stage === "prepare" || run.stage === "asr") &&
+      run.retryAt !== null &&
+      run.retryCount === 0 &&
+      !run.hasRawProviderResponse;
+  }
+
+  private isCurrentMeetingGroupVersion(run: MeetingProcessingRunDto): boolean {
+    const recording = this.deps.database.getMeetingRecording(run.recordingId);
+    if (!recording || run.kind === "summary") return false;
+    const group = this.deps.database.listMeetingRecordingsForNote(recording.noteId)
+      .filter((part) => part.groupId === recording.groupId)
+      .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
+    if (group.some((part) =>
+      (part.captureState !== "ready" && part.captureState !== "incomplete") || part.audioState !== "available"
+    )) return false;
+    const currentIds = group.map((part) => part.id).sort();
+    const sourceIds = [...run.sourceRecordingIds].sort();
+    return currentIds.length === sourceIds.length && currentIds.every((id, index) => id === sourceIds[index]);
   }
 
   private scheduleRetryTimer(): void {
@@ -788,13 +1667,28 @@ export function registerMeetingProcessingHandlers(
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
+  ipcMain.handle(meetingProcessingChannels.setSpeakerCorrection, (_event, ...args) => {
+    const parsed = meetingProcessingSpeakerCorrectionRequestSchema.safeParse(args[0]);
+    if (!parsed.success) return { success: false, error: "Invalid speaker correction" };
+    try {
+      const success = worker.setSpeakerCorrection(parsed.data);
+      return success ? { success: true } : { success: false, error: "Speaker or calendar participant is no longer available" };
+    } catch {
+      return { success: false, error: "Could not save speaker identity" };
+    }
+  });
+  ipcMain.handle(meetingProcessingChannels.runSummaryAction, async (_event, ...args) => {
+    const parsed = meetingProcessingSummaryActionRequestSchema.safeParse(args[0]);
+    if (!parsed.success) return { success: false, error: "Invalid meeting summary action request" };
+    return worker.runSummaryAction(parsed.data);
+  });
 }
 
-export function normalizeProviderResponse(provider: "deepgram" | "elevenlabs" | "gemini" | "openai", raw: unknown): RemoteTranscriptionResult {
-  if (provider === "deepgram") return parseDeepgramFileResponse(raw, true);
-  if (provider === "elevenlabs") return parseElevenLabsFileResponse(raw, true);
-  if (provider === "openai") return parseOpenAIFileResponse(raw, true);
-  return parseGeminiFileResponse(raw, true);
+export function normalizeProviderResponse(provider: "deepgram" | "elevenlabs" | "gemini" | "openai", raw: unknown, diarize = true): RemoteTranscriptionResult {
+  if (provider === "deepgram") return parseDeepgramFileResponse(raw, diarize);
+  if (provider === "elevenlabs") return parseElevenLabsFileResponse(raw, diarize);
+  if (provider === "openai") return parseOpenAIFileResponse(raw, diarize, !diarize);
+  return parseGeminiFileResponse(raw, diarize);
 }
 
 class MeetingProcessingFailure extends Error {
@@ -816,7 +1710,7 @@ function serializeTranscriptProjection(
   corrections: MeetingSpeakerCorrection[]
 ): string {
   if (!transcript.segments?.length) {
-    return JSON.stringify(transcript.text ? [{ text: transcript.text, timestamp: 0 }] : []);
+    return JSON.stringify(transcript.text ? [{ text: transcript.text }] : []);
   }
   const correctionsBySpeaker = new Map(corrections.map((correction) => [correction.speakerId, correction]));
     return JSON.stringify(transcript.segments.map((segment) => {
@@ -831,7 +1725,7 @@ function serializeTranscriptProjection(
         speakerIsPlaceholder: false,
         speakerStatus: "locked",
         speakerLocked: true,
-        speakerLockSource: "user",
+        speakerLockSource: correction.source,
       } : segment.speaker ? {
         speakerIsPlaceholder: true,
         speakerStatus: "provisional",
@@ -913,4 +1807,86 @@ function failureFromUnknown(value: unknown): MeetingProcessingFailure {
     return new MeetingProcessingFailure(code, "blocked", error.message);
   }
   return new MeetingProcessingFailure(code, "failed", error.message);
+}
+
+function participantCandidates(value: string | null): Array<{ name: string | null; email: string | null }> {
+  if (!value) return [];
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(value);
+  } catch {
+    throw new MeetingProcessingFailure("calendar-participants-invalid", "failed");
+  }
+  if (!Array.isArray(decoded)) throw new MeetingProcessingFailure("calendar-participants-invalid", "failed");
+  return decoded.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new MeetingProcessingFailure("calendar-participants-invalid", "failed");
+    }
+    const attendee = item as Record<string, unknown>;
+    const email = typeof attendee.email === "string" && attendee.email.trim() ? attendee.email.trim() : null;
+    const displayName = typeof attendee.displayName === "string" && attendee.displayName.trim()
+      ? attendee.displayName.trim()
+      : null;
+    return {
+      name: displayName && !/^[^\s@]+@[^\s@]+$/.test(displayName) && displayName.toLowerCase() !== email?.toLowerCase()
+        ? displayName
+        : null,
+      email,
+    };
+  });
+}
+
+function buildLlmTranscriptSegments(
+  sourceRunId: string,
+  transcript: MeetingTranscriptArtifact,
+  corrections: MeetingSpeakerCorrection[]
+): MeetingLlmSourceSnapshot["transcriptSegments"] {
+  const sourceSegments = transcript.segments?.length
+    ? transcript.segments
+    : transcript.text ? [{ text: transcript.text, start: 0, end: 0 }] : [];
+  const correctionsBySpeaker = new Map(corrections.map((correction) => [correction.speakerId, correction]));
+  return sourceSegments.map((segment, index) => {
+    const speakerId = segment.speaker?.trim() || null;
+    const correction = speakerId ? correctionsBySpeaker.get(speakerId) : undefined;
+    return {
+      id: `${sourceRunId}:${index}`,
+      speakerId,
+      speakerName: correction?.displayName ?? null,
+      text: segment.text,
+    };
+  });
+}
+
+function validateSpeakerSuggestions(
+  suggestions: Array<{ speakerId: string; name: string }>,
+  unknownIds: string[]
+): void {
+  if (!Array.isArray(suggestions)) throw new MeetingProcessingFailure("speaker-name-json-invalid", "failed");
+  const allowed = new Set(unknownIds);
+  const seen = new Set<string>();
+  for (const suggestion of suggestions) {
+    if (
+      !suggestion || typeof suggestion.speakerId !== "string" || !allowed.has(suggestion.speakerId) ||
+      seen.has(suggestion.speakerId) || typeof suggestion.name !== "string" || !suggestion.name.trim()
+    ) throw new MeetingProcessingFailure("speaker-name-json-invalid", "failed");
+    seen.add(suggestion.speakerId);
+  }
+}
+
+function hashText(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function errorCodeOf(value: unknown): string {
+  const code = value && typeof value === "object" && "code" in value && typeof value.code === "string"
+    ? value.code
+    : "speaker-name-failed";
+  return code.toLowerCase().replace(/[^a-z0-9_.-]/g, "-").slice(0, 128);
+}
+
+function actionErrorCode(value: unknown): string {
+  const code = value && typeof value === "object" && "code" in value && typeof value.code === "string"
+    ? value.code
+    : "meeting-summary-action-failed";
+  return code.toLowerCase().replace(/[^a-z0-9_.-]/g, "-").slice(0, 128);
 }

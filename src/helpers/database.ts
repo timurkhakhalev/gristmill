@@ -4,7 +4,7 @@
 // public IPC DTOs: tokens and embedding buffers stay main-only; shared
 // contracts own the renderer-facing projections.
 import path from "path";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { app } from "electron";
 import debugLogger from "./debugLogger.js";
 import { buildNoteSearchQuery } from "./noteSearch.js";
@@ -17,6 +17,7 @@ import * as secretCrypto from "./secretCrypto.js";
 import {
   meetingProcessingConfigSchema,
   meetingProcessingConfigErrorSchema,
+  MEETING_ASR_GATE_MS,
   meetingRecordingIdSchema,
   meetingRecordingConfigInputSchema,
   meetingRunArtifactSchema,
@@ -115,12 +116,26 @@ export interface NoteRow {
   enhancement_prompt: string | null;
   enhanced_at_content_hash: string | null;
   folder_id: number | null;
+  /** Every folder holding the note: the primary folder_id first, then extra folders. */
+  folder_ids: number[];
   space_id: number;
   transcript: string | null;
   calendar_event_id: string | null;
   participants: string | null;
   diarization_enabled: number | null;
   expected_speaker_count: number | null;
+}
+
+type RawNoteRow = Omit<NoteRow, "folder_ids"> & { extra_folder_ids_json: string | null };
+
+// Extra folders live in note_folders; this column rides along with every note read.
+const noteColumns = (alias: string) =>
+  `${alias}.*, (SELECT json_group_array(nf.folder_id) FROM note_folders nf WHERE nf.note_id = ${alias}.id) AS extra_folder_ids_json`;
+
+function hydrateNote(raw: RawNoteRow): NoteRow {
+  const { extra_folder_ids_json, ...note } = raw;
+  const extra = extra_folder_ids_json ? (JSON.parse(extra_folder_ids_json) as number[]) : [];
+  return { ...note, folder_ids: note.folder_id != null ? [note.folder_id, ...extra] : extra };
 }
 
 export interface ActionRow {
@@ -185,6 +200,7 @@ interface MeetingProcessingRunDbRow {
   stage: MeetingRunStage;
   status: MeetingRunStatus;
   error_code: string | null;
+  speaker_naming_error_code: string | null;
   retry_at: string | null;
   raw_response_path: string | null;
   transcript_path: string | null;
@@ -536,6 +552,7 @@ function toMeetingRunDto(row: MeetingProcessingRunDbRow): MeetingProcessingRunDt
     stage: row.stage,
     status: row.status,
     errorCode: row.error_code,
+    speakerNamingErrorCode: row.speaker_naming_error_code,
     retryAt: row.retry_at,
     retryCount: row.retry_count,
     hasRawProviderResponse: row.raw_response_path !== null,
@@ -690,6 +707,13 @@ export class DatabaseManager {
           expected_speaker_count INTEGER
         );
 
+        -- Extra folders a note also appears in; notes.folder_id stays the primary one.
+        CREATE TABLE IF NOT EXISTS note_folders (
+          note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+          folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+          PRIMARY KEY (note_id, folder_id)
+        );
+
         CREATE TABLE IF NOT EXISTS meeting_recordings (
           id TEXT PRIMARY KEY,
           group_id TEXT,
@@ -746,6 +770,8 @@ export class DatabaseManager {
           raw_response_path TEXT,
           transcript_path TEXT,
           summary_path TEXT,
+          llm_source_snapshot_json TEXT,
+          speaker_naming_error_code TEXT,
           retry_count INTEGER NOT NULL DEFAULT 0 CHECK(retry_count >= 0),
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -885,6 +911,7 @@ export class DatabaseManager {
           email TEXT PRIMARY KEY,
           display_name TEXT,
           people_name TEXT,
+          learned_name TEXT,
           photo_url TEXT,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -905,6 +932,8 @@ export class DatabaseManager {
           speaker_id TEXT NOT NULL,
           profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
           display_name TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice', 'model', 'user')),
+          revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
           PRIMARY KEY (run_id, speaker_id)
         );
 
@@ -925,6 +954,7 @@ export class DatabaseManager {
 
         CREATE INDEX IF NOT EXISTS idx_notes_space ON notes(space_id, updated_at);
         CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(folder_id, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_note_folders_folder ON note_folders(folder_id);
         CREATE INDEX IF NOT EXISTS idx_messages_conversation ON agent_messages(conversation_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_conversations_note ON agent_conversations(note_id, updated_at);
 
@@ -960,11 +990,27 @@ export class DatabaseManager {
       if (!runColumns.some((column) => column.name === "source_recording_ids_json")) {
         this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN source_recording_ids_json TEXT");
       }
+      if (!runColumns.some((column) => column.name === "llm_source_snapshot_json")) {
+        this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN llm_source_snapshot_json TEXT");
+      }
+      if (!runColumns.some((column) => column.name === "speaker_naming_error_code")) {
+        this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN speaker_naming_error_code TEXT");
+      }
+      const speakerCorrectionColumns = this.sql.pragma("table_info(meeting_run_speaker_corrections)") as Array<{ name: string }>;
+      if (!speakerCorrectionColumns.some((column) => column.name === "source")) {
+        this.sql.exec("ALTER TABLE meeting_run_speaker_corrections ADD COLUMN source TEXT NOT NULL DEFAULT 'user'");
+      }
+      if (!speakerCorrectionColumns.some((column) => column.name === "revision")) {
+        this.sql.exec("ALTER TABLE meeting_run_speaker_corrections ADD COLUMN revision INTEGER NOT NULL DEFAULT 1");
+      }
       const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{ name: string }>;
       if (!calendarEventColumns.some((column) => column.name === "event_url")) {
         this.sql.exec("ALTER TABLE calendar_events ADD COLUMN event_url TEXT");
       }
       const contactColumns = this.sql.pragma("table_info(contacts)") as Array<{ name: string }>;
+      if (!contactColumns.some((column) => column.name === "learned_name")) {
+        this.sql.exec("ALTER TABLE contacts ADD COLUMN learned_name TEXT");
+      }
       if (!contactColumns.some((column) => column.name === "people_name")) {
         this.sql.exec("ALTER TABLE contacts ADD COLUMN people_name TEXT");
       }
@@ -998,11 +1044,17 @@ export class DatabaseManager {
         insertFolder.run("Videos", 2, spaceId);
       }
 
-      if (this.sql.prepare("SELECT 1 FROM actions LIMIT 1").get() == null) {
-        const insertAction = this.sql.prepare(
-          "INSERT INTO actions (name, description, prompt, icon, is_builtin, sort_order, translation_key) VALUES (?, ?, ?, ?, 1, ?, ?)"
-        );
-        for (const action of BUILTIN_ACTIONS) {
+      const insertAction = this.sql.prepare(
+        "INSERT INTO actions (name, description, prompt, icon, is_builtin, sort_order, translation_key) VALUES (?, ?, ?, ?, 1, ?, ?)"
+      );
+      const reseedBuiltinPrompt = this.sql.prepare(
+        "UPDATE actions SET prompt = ? WHERE id = ? AND prompt = ? AND is_builtin = 1"
+      );
+      for (const action of BUILTIN_ACTIONS) {
+        const existing = this.sql.prepare(
+          "SELECT id, prompt FROM actions WHERE translation_key = ? AND is_builtin = 1"
+        ).get(action.translationKey) as { id: number; prompt: string } | undefined;
+        if (!existing) {
           insertAction.run(
             action.name,
             action.description,
@@ -1011,6 +1063,11 @@ export class DatabaseManager {
             action.sortOrder,
             action.translationKey
           );
+          continue;
+        }
+        const previousHash = createHash("sha256").update(existing.prompt, "utf8").digest("hex");
+        if (action.previousPrompts.includes(existing.prompt) || action.previousPromptHashes?.includes(previousHash)) {
+          reseedBuiltinPrompt.run(action.prompt, existing.id, existing.prompt);
         }
       }
       this._discardPlaintextCalendarTokens();
@@ -1193,6 +1250,7 @@ export class DatabaseManager {
     input: {
       captureState: "ready" | "incomplete";
       endedAt: string;
+      processingNotBefore?: string;
       sourceMetadata?: Record<string, unknown>;
       errorCode?: string | null;
     }
@@ -1200,6 +1258,9 @@ export class DatabaseManager {
     meetingRecordingIdSchema.parse(id);
     if (input.errorCode != null) meetingProcessingConfigErrorSchema.parse({ code: input.errorCode });
     if (!Number.isFinite(new Date(input.endedAt).getTime())) throw new RangeError("Invalid meeting end time");
+    if (input.processingNotBefore !== undefined && !Number.isFinite(Date.parse(input.processingNotBefore))) {
+      throw new RangeError("Invalid meeting processing deadline");
+    }
     const sourceMetadata = JSON.stringify(input.sourceMetadata ?? {});
     const transaction = this.sql.transaction(() => {
       const current = this.sql.prepare("SELECT * FROM meeting_recordings WHERE id = ?").get(id) as
@@ -1244,14 +1305,17 @@ export class DatabaseManager {
       const runId = randomUUID();
       const status = config === null || noAudioError || input.errorCode ? "blocked" : "pending";
       const errorCode = noAudioError ?? input.errorCode ?? configError?.code ?? null;
+      const retryAt = !noAudioError && !input.errorCode
+        ? input.processingNotBefore ?? new Date(Date.now() + MEETING_ASR_GATE_MS).toISOString()
+        : null;
       const transcription = config?.transcription;
       const provider = transcription?.mode === "local" ? transcription.local?.provider ?? null : transcription?.provider ?? null;
       const model = transcription?.mode === "local" ? transcription.local?.model ?? null : transcription?.model ?? null;
       this.sql
         .prepare(
-          "INSERT INTO meeting_processing_runs (id, recording_id, kind, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code) VALUES (?, ?, 'initial', ?, ?, ?, ?, ?, 'prepare', ?, ?)"
+          "INSERT INTO meeting_processing_runs (id, recording_id, kind, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code, retry_at) VALUES (?, ?, 'initial', ?, ?, ?, ?, ?, 'prepare', ?, ?, ?)"
         )
-        .run(runId, id, provider, model, current.config_json, current.config_error_code, current.config_error_message_key, status, errorCode);
+        .run(runId, id, provider, model, current.config_json, current.config_error_code, current.config_error_message_key, status, errorCode, retryAt);
       this.sql
         .prepare(
           "UPDATE meeting_recordings SET current_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
@@ -1272,11 +1336,15 @@ export class DatabaseManager {
       configError?: MeetingProcessingConfigError | null;
       sourceRunId?: string | null;
       sourceRecordingIds?: string[];
+      retryAt?: string | null;
     }
   ): MeetingProcessingRunDto {
     meetingRecordingIdSchema.parse(recordingId);
     if (input.config !== null) meetingProcessingConfigSchema.parse(input.config);
     if (input.configError != null) meetingProcessingConfigErrorSchema.parse(input.configError);
+    if (input.retryAt != null && !Number.isFinite(Date.parse(input.retryAt))) {
+      throw new RangeError("Invalid meeting processing deadline");
+    }
     const transaction = this.sql.transaction(() => {
       const recording = this.getMeetingRecording(recordingId);
       if (!recording) throw new Error("Meeting recording not found");
@@ -1288,7 +1356,7 @@ export class DatabaseManager {
         for (const sourceId of sourceRecordingIds) {
           meetingRecordingIdSchema.parse(sourceId);
           const source = this.getMeetingRecording(sourceId);
-          if (!source || source.noteId !== recording.noteId || source.groupId !== recording.groupId || source.audioState !== "available" || !["ready", "incomplete"].includes(source.captureState)) {
+          if (!source || source.noteId !== recording.noteId || source.audioState !== "available" || !["ready", "incomplete"].includes(source.captureState)) {
             throw new Error("Meeting audio is unavailable for a selected part");
           }
         }
@@ -1325,7 +1393,7 @@ export class DatabaseManager {
       const model = transcription?.mode === "local" ? transcription.local?.model ?? null : transcription?.model ?? null;
       this.sql
         .prepare(
-          "INSERT INTO meeting_processing_runs (id, recording_id, source_recording_ids_json, kind, source_run_id, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          "INSERT INTO meeting_processing_runs (id, recording_id, source_recording_ids_json, kind, source_run_id, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code, retry_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .run(
           runId,
@@ -1340,7 +1408,8 @@ export class DatabaseManager {
           snapshot.error?.messageKey ?? null,
           stage,
           status,
-          snapshot.error?.code ?? (summaryMissing ? "missing-summary-config" : null)
+          snapshot.error?.code ?? (summaryMissing ? "missing-summary-config" : null),
+          input.retryAt ?? null
         );
       this.sql
         .prepare("UPDATE meeting_recordings SET current_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
@@ -1364,7 +1433,7 @@ export class DatabaseManager {
     meetingRecordingIdSchema.parse(id);
     if (!/^thr_[a-z0-9]+$/.test(bbThreadId)) throw new Error("Invalid bb thread id");
     const result = this.sql.prepare(
-      "UPDATE meeting_processing_runs SET bb_thread_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND stage = 'summary' AND status = 'running' AND bb_thread_id IS NULL"
+      "UPDATE meeting_processing_runs SET bb_thread_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND stage IN ('normalize', 'summary') AND status = 'running' AND bb_thread_id IS NULL"
     ).run(bbThreadId, id);
     return result.changes === 1;
   }
@@ -1384,7 +1453,7 @@ export class DatabaseManager {
 
   recoverRunningMeetingProcessingRuns(): number {
     const result = this.sql.prepare(
-      "UPDATE meeting_processing_runs SET status = 'pending', retry_count = CASE WHEN stage = 'asr' AND raw_response_path IS NULL THEN retry_count + 1 ELSE retry_count END, error_code = CASE WHEN stage = 'asr' AND raw_response_path IS NULL THEN 'asr-outcome-unknown' ELSE NULL END, retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'running' AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL)"
+      "UPDATE meeting_processing_runs SET status = 'pending', retry_count = CASE WHEN stage = 'asr' AND raw_response_path IS NULL THEN retry_count + 1 ELSE retry_count END, error_code = CASE WHEN stage = 'asr' AND raw_response_path IS NULL THEN 'asr-outcome-unknown' ELSE NULL END, updated_at = CURRENT_TIMESTAMP WHERE status = 'running' AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL)"
     ).run();
     return result.changes;
   }
@@ -1393,7 +1462,7 @@ export class DatabaseManager {
     meetingRecordingIdSchema.parse(id);
     if (!Number.isFinite(Date.parse(now))) throw new RangeError("Invalid meeting processing claim time");
     const result = this.sql.prepare(
-      "UPDATE meeting_processing_runs SET status = 'running', error_code = NULL, retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending' AND (retry_at IS NULL OR retry_at <= ?) AND NOT EXISTS (SELECT 1 FROM meeting_processing_runs active WHERE active.status = 'running' AND active.id != meeting_processing_runs.id) AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL AND (r.audio_state = 'available' OR meeting_processing_runs.stage IN ('normalize', 'summary')))"
+      "UPDATE meeting_processing_runs SET status = 'running', error_code = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending' AND (retry_at IS NULL OR retry_at <= ?) AND NOT EXISTS (SELECT 1 FROM meeting_processing_runs active WHERE active.status = 'running' AND active.id != meeting_processing_runs.id) AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL AND (r.audio_state = 'available' OR meeting_processing_runs.stage IN ('normalize', 'summary')))"
     ).run(id, now);
     return result.changes > 0;
   }
@@ -1408,9 +1477,12 @@ export class DatabaseManager {
       return null;
     }
     const stage = run.kind === "summary" ? "summary" : run.hasTranscript ? "summary" : run.hasRawProviderResponse ? "normalize" : "prepare";
+    const retryAt = stage === "prepare" && run.retryAt && Date.parse(run.retryAt) > Date.now()
+      ? run.retryAt
+      : null;
     this.sql.prepare(
-      "UPDATE meeting_processing_runs SET stage = ?, status = 'pending', error_code = NULL, retry_at = NULL, retry_count = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('blocked', 'failed', 'cancelled')"
-    ).run(stage, id);
+      "UPDATE meeting_processing_runs SET stage = ?, status = 'pending', error_code = NULL, retry_at = ?, retry_count = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('blocked', 'failed', 'cancelled')"
+    ).run(stage, retryAt, id);
     return this.getMeetingProcessingRun(id);
   }
 
@@ -1536,7 +1608,9 @@ export class DatabaseManager {
     runId: string,
     speakerId: string,
     profileId: number | null,
-    displayName: string
+    displayName: string,
+    source: "voice" | "model" | "user" = "user",
+    participantEmail?: string
   ): { success: boolean } {
     meetingRecordingIdSchema.parse(runId);
     const run = this.getMeetingProcessingRun(runId);
@@ -1548,8 +1622,9 @@ export class DatabaseManager {
         .get(run.recordingId) as { note_id: number; current_run_id: string | null } | undefined;
       if (!recording || this.isMeetingNoteDeletionPending(recording.note_id)) return false;
       this.sql.prepare(
-        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name) VALUES (?, ?, ?, ?) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name"
-      ).run(runId, speakerId, profileId, displayName.trim());
+        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, revision) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, source = excluded.source, revision = meeting_run_speaker_corrections.revision + 1"
+      ).run(runId, speakerId, profileId, displayName.trim(), source);
+      if (participantEmail) this.rememberContactName(participantEmail, displayName);
       if (recording.current_run_id === runId) {
         const note = this.sql
           .prepare("SELECT content, transcript FROM notes WHERE id = ?")
@@ -1564,7 +1639,7 @@ export class DatabaseManager {
               segment.speakerIsPlaceholder = false;
               segment.speakerStatus = "locked";
               segment.speakerLocked = true;
-              segment.speakerLockSource = "user";
+              segment.speakerLockSource = source;
               changed = true;
             }
             if (changed) {
@@ -1583,15 +1658,159 @@ export class DatabaseManager {
     return { success: transaction() };
   }
 
-  getMeetingRunSpeakerCorrections(runId: string): Array<{ speakerId: string; profileId: number | null; displayName: string }> {
+  getMeetingRunSpeakerCorrections(runId: string): Array<{
+    speakerId: string;
+    profileId: number | null;
+    displayName: string;
+    source: "voice" | "model" | "user";
+    revision: number;
+  }> {
     meetingRecordingIdSchema.parse(runId);
     return (this.sql.prepare(
-      "SELECT speaker_id, profile_id, display_name FROM meeting_run_speaker_corrections WHERE run_id = ? ORDER BY speaker_id"
-    ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string }>).map((row) => ({
+      "SELECT speaker_id, profile_id, display_name, source, revision FROM meeting_run_speaker_corrections WHERE run_id = ? ORDER BY speaker_id"
+    ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string; source: "voice" | "model" | "user"; revision: number }>).map((row) => ({
       speakerId: row.speaker_id,
       profileId: row.profile_id,
       displayName: row.display_name,
+      source: row.source,
+      revision: row.revision,
     }));
+  }
+
+  getMeetingRunSpeakerCorrectionRevision(runId: string): number {
+    meetingRecordingIdSchema.parse(runId);
+    const row = this.sql.prepare(
+      "SELECT COALESCE(SUM(revision), 0) AS revision FROM meeting_run_speaker_corrections WHERE run_id = ?"
+    ).get(runId) as { revision: number };
+    return row.revision;
+  }
+
+  applyAutomaticMeetingSpeakerCorrections(
+    runId: string,
+    expectedCurrentRunId: string,
+    expectedRevision: number,
+    corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>,
+    source: "voice" | "model"
+  ): boolean {
+    meetingRecordingIdSchema.parse(runId);
+    meetingRecordingIdSchema.parse(expectedCurrentRunId);
+    const run = this.getMeetingProcessingRun(runId);
+    const currentRun = this.getMeetingProcessingRun(expectedCurrentRunId);
+    if (!run || !currentRun || currentRun.recordingId !== run.recordingId || corrections.some((item) =>
+      !item.speakerId.trim() || !item.displayName.trim() ||
+      (item.profileId !== null && (!Number.isSafeInteger(item.profileId) || item.profileId < 1))
+    )) return false;
+    if (new Set(corrections.map((item) => item.speakerId)).size !== corrections.length) return false;
+    const transaction = this.sql.transaction(() => {
+      const recording = this.sql.prepare(
+        "SELECT note_id, current_run_id FROM meeting_recordings WHERE id = ?"
+      ).get(run.recordingId) as { note_id: number; current_run_id: string | null } | undefined;
+      if (
+        !recording || recording.current_run_id !== expectedCurrentRunId || this.isMeetingNoteDeletionPending(recording.note_id) ||
+        this.getMeetingRunSpeakerCorrectionRevision(runId) !== expectedRevision
+      ) return false;
+      const exists = this.sql.prepare(
+        "SELECT 1 FROM meeting_run_speaker_corrections WHERE run_id = ? AND speaker_id = ?"
+      );
+      if (corrections.some((correction) => exists.get(runId, correction.speakerId))) return false;
+      const insert = this.sql.prepare(
+        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, revision) VALUES (?, ?, ?, ?, ?, 1)"
+      );
+      for (const correction of corrections) {
+        insert.run(runId, correction.speakerId, correction.profileId, correction.displayName.trim(), source);
+      }
+      return true;
+    });
+    return transaction();
+  }
+
+  getMeetingRunLlmSourceSnapshot(runId: string): string | null {
+    meetingRecordingIdSchema.parse(runId);
+    const row = this.sql.prepare(
+      "SELECT llm_source_snapshot_json FROM meeting_processing_runs WHERE id = ?"
+    ).get(runId) as { llm_source_snapshot_json: string | null } | undefined;
+    return row?.llm_source_snapshot_json ?? null;
+  }
+
+  setMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string): boolean {
+    meetingRecordingIdSchema.parse(runId);
+    const result = this.sql.prepare(
+      "UPDATE meeting_processing_runs SET llm_source_snapshot_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running' AND stage IN ('normalize', 'summary')"
+    ).run(snapshotJson, runId);
+    return result.changes === 1;
+  }
+
+  updateMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string, expectedSnapshotJson: string): boolean {
+    meetingRecordingIdSchema.parse(runId);
+    const result = this.sql.prepare(
+      "UPDATE meeting_processing_runs SET llm_source_snapshot_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running' AND stage IN ('normalize', 'summary') AND llm_source_snapshot_json = ?"
+    ).run(snapshotJson, runId, expectedSnapshotJson);
+    return result.changes === 1;
+  }
+
+  updateMeetingSummaryIfCurrent(input: {
+    recordingId: string;
+    runId: string;
+    sourceRunId: string;
+    expectedSnapshotJson: string;
+    expectedSpeakerCorrectionRevision: number;
+    expectedTitle: string | null;
+    expectedManualNotes: string;
+    expectedTranscript: string | null;
+    expectedProjection: string | null;
+    summary: string;
+  }): boolean {
+    meetingRecordingIdSchema.parse(input.recordingId);
+    meetingRecordingIdSchema.parse(input.runId);
+    meetingRecordingIdSchema.parse(input.sourceRunId);
+    const transaction = this.sql.transaction(() => {
+      const current = this.sql.prepare(`
+        SELECT r.note_id, r.current_run_id, p.kind, p.source_run_id, p.summary_path,
+          p.llm_source_snapshot_json, n.title, n.content, n.transcript, n.enhanced_content
+        FROM meeting_recordings r
+        JOIN meeting_processing_runs p ON p.recording_id = r.id
+        JOIN notes n ON n.id = r.note_id
+        WHERE r.id = ? AND p.id = ? AND p.status = 'complete'
+          AND NOT EXISTS (SELECT 1 FROM meeting_deletion_intents d WHERE d.note_id = r.note_id AND d.kind = 'note')
+      `).get(input.recordingId, input.runId) as {
+        note_id: number;
+        current_run_id: string | null;
+        kind: "initial" | "reprocess" | "summary";
+        source_run_id: string | null;
+        summary_path: string | null;
+        llm_source_snapshot_json: string | null;
+        title: string;
+        content: string;
+        transcript: string | null;
+        enhanced_content: string | null;
+      } | undefined;
+      if (
+        !current || current.current_run_id !== input.runId || !current.summary_path ||
+        (current.kind === "summary" ? current.source_run_id : input.runId) !== input.sourceRunId ||
+        current.llm_source_snapshot_json !== input.expectedSnapshotJson ||
+        current.title !== input.expectedTitle || current.content !== input.expectedManualNotes ||
+        current.transcript !== input.expectedTranscript || current.enhanced_content !== input.expectedProjection
+      ) return false;
+
+      const revision = this.sql.prepare(
+        "SELECT COALESCE(SUM(revision), 0) AS revision FROM meeting_run_speaker_corrections WHERE run_id = ?"
+      ).get(input.sourceRunId) as { revision: number };
+      if (revision.revision !== input.expectedSpeakerCorrectionRevision) return false;
+
+      this.sql.prepare(
+        "UPDATE notes SET enhanced_content = ?, enhanced_at_content_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      ).run(input.summary, noteContentHash(`${current.content}\n${current.transcript ?? ""}`), current.note_id);
+      return true;
+    });
+    return transaction();
+  }
+
+  setMeetingSpeakerNamingError(runId: string, errorCode: string | null): boolean {
+    meetingRecordingIdSchema.parse(runId);
+    const result = this.sql.prepare(
+      "UPDATE meeting_processing_runs SET speaker_naming_error_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running' AND stage IN ('normalize', 'summary')"
+    ).run(errorCode, runId);
+    return result.changes === 1;
   }
 
   selectMeetingProcessingRun(
@@ -1870,8 +2089,30 @@ export class DatabaseManager {
   }
 
   deleteFolder(id: number): { success: boolean } {
-    const result = this.sql.prepare("DELETE FROM folders WHERE id = ?").run(id);
+    const result = this.sql.transaction(() => {
+      // A note whose primary folder goes away keeps living in its next folder.
+      this.sql.prepare(`
+        UPDATE notes SET folder_id = (
+          SELECT MIN(nf.folder_id) FROM note_folders nf WHERE nf.note_id = notes.id AND nf.folder_id != ?
+        )
+        WHERE folder_id = ? AND EXISTS (
+          SELECT 1 FROM note_folders nf WHERE nf.note_id = notes.id AND nf.folder_id != ?
+        )
+      `).run(id, id, id);
+      this.pruneNoteFolderLinks();
+      return this.sql.prepare("DELETE FROM folders WHERE id = ?").run(id);
+    })();
     return { success: result.changes > 0 };
+  }
+
+  /** Extra folders must share the note's space and never repeat its primary folder. */
+  private pruneNoteFolderLinks(): void {
+    this.sql.prepare(`
+      DELETE FROM note_folders WHERE EXISTS (
+        SELECT 1 FROM notes n JOIN folders f ON f.id = note_folders.folder_id
+        WHERE n.id = note_folders.note_id AND (f.space_id != n.space_id OR n.folder_id = note_folders.folder_id)
+      )
+    `).run();
   }
 
   moveFolderToSpace(
@@ -1889,7 +2130,10 @@ export class DatabaseManager {
         this.sql
           .prepare("UPDATE notes SET space_id = ?, updated_at = CURRENT_TIMESTAMP WHERE folder_id = ?")
           .run(spaceId, id);
-        const notes = this.sql.prepare("SELECT * FROM notes WHERE folder_id = ?").all(id) as NoteRow[];
+        this.pruneNoteFolderLinks();
+        const notes = (this.sql
+          .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE folder_id = ?`)
+          .all(id) as RawNoteRow[]).map(hydrateNote);
         return { changes: updated.changes, notes };
       })();
       return {
@@ -1906,8 +2150,11 @@ export class DatabaseManager {
 
   getFolderNoteCounts(): FolderNoteCountRow[] {
     return this.sql.prepare(`
-      SELECT folder_id, space_id, COUNT(*) AS count
-      FROM notes GROUP BY folder_id, space_id
+      SELECT folder_id, space_id, COUNT(*) AS count FROM (
+        SELECT folder_id, space_id FROM notes
+        UNION ALL
+        SELECT nf.folder_id, n.space_id FROM note_folders nf JOIN notes n ON n.id = nf.note_id
+      ) GROUP BY folder_id, space_id
     `).all() as FolderNoteCountRow[];
   }
 
@@ -2193,9 +2440,10 @@ export class DatabaseManager {
   }
 
   getNote(id: number | bigint): NoteRow | null {
-    return (
-      (this.sql.prepare("SELECT * FROM notes WHERE id = ?").get(id) as NoteRow | undefined) || null
-    );
+    const raw = this.sql
+      .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE id = ?`)
+      .get(id) as RawNoteRow | undefined;
+    return raw ? hydrateNote(raw) : null;
   }
 
   getNotes(
@@ -2211,8 +2459,8 @@ export class DatabaseManager {
       params.push(noteType);
     }
     if (folderId != null) {
-      conditions.push("folder_id = ?");
-      params.push(folderId);
+      conditions.push("(folder_id = ? OR id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))");
+      params.push(folderId, folderId);
     }
     if (spaceId != null) {
       conditions.push("space_id = ?");
@@ -2220,21 +2468,21 @@ export class DatabaseManager {
       if (folderId == null) conditions.push("folder_id IS NULL");
     }
     const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
-    return this.sql
-      .prepare(`SELECT * FROM notes${where} ORDER BY updated_at DESC LIMIT ?`)
-      .all(...params, limit) as NoteRow[];
+    return (this.sql
+      .prepare(`SELECT ${noteColumns("notes")} FROM notes${where} ORDER BY updated_at DESC LIMIT ?`)
+      .all(...params, limit) as RawNoteRow[]).map(hydrateNote);
   }
 
   getNotesForSpace(spaceId: number, limit = 50): NoteRow[] {
-    return this.sql
-      .prepare("SELECT * FROM notes WHERE space_id = ? ORDER BY updated_at DESC LIMIT ?")
-      .all(spaceId, limit) as NoteRow[];
+    return (this.sql
+      .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE space_id = ? ORDER BY updated_at DESC LIMIT ?`)
+      .all(spaceId, limit) as RawNoteRow[]).map(hydrateNote);
   }
 
   getNoteIdsInFolder(folderId: number): number[] {
     return (this.sql
-      .prepare("SELECT id FROM notes WHERE folder_id = ?")
-      .all(folderId) as Array<{ id: number }>).map((row) => row.id);
+      .prepare("SELECT id FROM notes WHERE (folder_id = ? OR id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))")
+      .all(folderId, folderId) as Array<{ id: number }>).map((row) => row.id);
   }
 
   getNoteIdsInScope(
@@ -2249,8 +2497,8 @@ export class DatabaseManager {
       params.push(spaceId);
     }
     if (folderId != null) {
-      conditions.push("folder_id = ?");
-      params.push(folderId);
+      conditions.push("(folder_id = ? OR id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))");
+      params.push(folderId, folderId);
     }
     if (candidateIds) {
       if (!candidateIds.length) return [];
@@ -2272,6 +2520,8 @@ export class DatabaseManager {
       enhancement_prompt: string | null;
       enhanced_at_content_hash: string | null;
       folder_id: number | null;
+      /** Full folder membership; the current primary stays primary when kept. */
+      folder_ids: number[];
       space_id: number;
       transcript: string | null;
       calendar_event_id: string | null;
@@ -2283,7 +2533,25 @@ export class DatabaseManager {
       note_type: string;
     }>
   ): { success: boolean; error?: string; note?: NoteRow | null } {
-    if (!this.getNote(id)) return { success: false, error: "Note not found" };
+    const current = this.getNote(id);
+    if (!current) return { success: false, error: "Note not found" };
+    let extraFolderIds: number[] | null = null;
+    if (updates.folder_ids !== undefined) {
+      if (updates.folder_id !== undefined) {
+        return { success: false, error: "Pass folder_id or folder_ids, not both" };
+      }
+      const ids = [...new Set(updates.folder_ids)];
+      const known = ids.length
+        ? (this.sql
+            .prepare(`SELECT COUNT(*) AS count FROM folders WHERE id IN (${ids.map(() => "?").join(",")})`)
+            .get(...ids) as { count: number }).count
+        : 0;
+      if (known !== ids.length) return { success: false, error: "Folder not found" };
+      const primary =
+        ids.length === 0 ? null : current.folder_id != null && ids.includes(current.folder_id) ? current.folder_id : ids[0];
+      updates = { ...updates, folder_id: primary };
+      extraFolderIds = ids.filter((folderId) => folderId !== primary);
+    }
     const allowed = [
       "title",
       "content",
@@ -2320,9 +2588,20 @@ export class DatabaseManager {
     }
     if (!fields.length) return { success: false };
     values.push(id);
-    const result = this.sql
-      .prepare(`UPDATE notes SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-      .run(...values);
+    const result = this.sql.transaction(() => {
+      const updated = this.sql
+        .prepare(`UPDATE notes SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        .run(...values);
+      if (extraFolderIds) {
+        this.sql.prepare("DELETE FROM note_folders WHERE note_id = ?").run(id);
+        const link = this.sql.prepare("INSERT INTO note_folders (note_id, folder_id) VALUES (?, ?)");
+        for (const folderId of extraFolderIds) link.run(id, folderId);
+      }
+      if (extraFolderIds || updates.folder_id !== undefined || updates.space_id !== undefined) {
+        this.pruneNoteFolderLinks();
+      }
+      return updated;
+    })();
     return { success: result.changes > 0, note: this.getNote(id) };
   }
 
@@ -2350,7 +2629,7 @@ export class DatabaseManager {
       null
     );
   }
-  createAction(name: string, description: string, prompt: string, icon = "sparkles"): {
+  createAction(name: string, description: string, prompt: string, icon = "wand-sparkles"): {
     success: boolean;
     action: ActionRow | null;
   } {
@@ -2845,13 +3124,14 @@ export class DatabaseManager {
     );
   }
   getNoteByCalendarEventId(eventId: string, excludeNoteId: number | null = null): NoteRow | null {
-    return excludeNoteId == null
-      ? (this.sql
-          .prepare("SELECT * FROM notes WHERE calendar_event_id = ? LIMIT 1")
-          .get(eventId) as NoteRow | undefined) || null
-      : (this.sql
-          .prepare("SELECT * FROM notes WHERE calendar_event_id = ? AND id != ? LIMIT 1")
-          .get(eventId, excludeNoteId) as NoteRow | undefined) || null;
+    const raw = (excludeNoteId == null
+      ? this.sql
+          .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE calendar_event_id = ? LIMIT 1`)
+          .get(eventId)
+      : this.sql
+          .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE calendar_event_id = ? AND id != ? LIMIT 1`)
+          .get(eventId, excludeNoteId)) as RawNoteRow | undefined;
+    return raw ? hydrateNote(raw) : null;
   }
   updateCalendarSyncToken(id: string, token: string, expiresAt: number): { success: boolean } {
     this.sql
@@ -2965,15 +3245,15 @@ export class DatabaseManager {
       params.push(spaceId);
     }
     if (folderId != null) {
-      conditions.push("n.folder_id = ?");
-      params.push(folderId);
+      conditions.push("(n.folder_id = ? OR n.id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))");
+      params.push(folderId, folderId);
     }
     params.push(limit);
-    return this.sql
+    return (this.sql
       .prepare(
-        `SELECT n.* FROM notes n JOIN notes_fts ON notes_fts.rowid = n.id WHERE ${conditions.join(" AND ")} ORDER BY notes_fts.rank LIMIT ?`
+        `SELECT ${noteColumns("n")} FROM notes n JOIN notes_fts ON notes_fts.rowid = n.id WHERE ${conditions.join(" AND ")} ORDER BY notes_fts.rank LIMIT ?`
       )
-      .all(...params) as NoteRow[];
+      .all(...params) as RawNoteRow[]).map(hydrateNote);
   }
 
   upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): {
@@ -3004,12 +3284,17 @@ export class DatabaseManager {
     )(profiles);
     return { success: true };
   }
+  rememberContactName(email: string, name: string): void {
+    this.sql.prepare(
+      "INSERT INTO contacts (email, learned_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET learned_name = excluded.learned_name, updated_at = CURRENT_TIMESTAMP"
+    ).run(email.trim().toLowerCase(), name.trim());
+  }
   getContactProfiles(emails: string[]): ContactProfileRow[] {
     const normalized = [...new Set(emails.map((email) => email.toLowerCase().trim()).filter(Boolean))];
     if (normalized.length === 0) return [];
     return this.sql
       .prepare(
-        `SELECT email, COALESCE(people_name, display_name) AS display_name, photo_url FROM contacts WHERE email IN (${normalized.map(() => "?").join(", ")})`
+        `SELECT email, COALESCE(learned_name, people_name, display_name) AS display_name, photo_url FROM contacts WHERE email IN (${normalized.map(() => "?").join(", ")})`
       )
       .all(...normalized) as ContactProfileRow[];
   }
@@ -3017,9 +3302,9 @@ export class DatabaseManager {
     const pattern = `%${query || ""}%`;
     return this.sql
       .prepare(
-        "SELECT email, COALESCE(people_name, display_name) AS display_name, photo_url, created_at, updated_at FROM contacts WHERE email LIKE ? OR display_name LIKE ? OR people_name LIKE ? ORDER BY COALESCE(people_name, display_name), email LIMIT 20"
+        "SELECT email, COALESCE(learned_name, people_name, display_name) AS display_name, photo_url, created_at, updated_at FROM contacts WHERE email LIKE ? OR display_name LIKE ? OR people_name LIKE ? OR learned_name LIKE ? ORDER BY COALESCE(learned_name, people_name, display_name), email LIMIT 20"
       )
-      .all(pattern, pattern, pattern) as ContactRow[];
+      .all(pattern, pattern, pattern, pattern) as ContactRow[];
   }
   upsertSpeakerProfile(
     name: string,
@@ -3107,11 +3392,11 @@ export class DatabaseManager {
       .all(noteId) as NoteSpeakerEmbeddingRow[];
   }
   getNotesWithUnmappedSpeakers(): NoteRow[] {
-    return this.sql
+    return (this.sql
       .prepare(
-        "SELECT DISTINCT n.* FROM notes n JOIN speaker_mappings m ON m.note_id = n.id WHERE m.profile_id IS NULL ORDER BY n.updated_at DESC"
+        `SELECT ${noteColumns("n")} FROM notes n WHERE EXISTS (SELECT 1 FROM speaker_mappings m WHERE m.note_id = n.id AND m.profile_id IS NULL) ORDER BY n.updated_at DESC`
       )
-      .all() as NoteRow[];
+      .all() as RawNoteRow[]).map(hydrateNote);
   }
 
   cleanup(): void {

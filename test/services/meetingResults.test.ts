@@ -79,6 +79,8 @@ function createFinishedRecording(
   const finalized = db.finalizeMeetingRecording(recording.id, {
     captureState: "ready",
     endedAt,
+    // This suite exercises downstream results after the M1 gate; its timing cases live with the worker tests.
+    processingNotBefore: new Date(0).toISOString(),
     sourceMetadata: options.sourceMetadata ?? {},
   });
   return { note, recording: finalized.recording, initialRun: finalized.initialRun };
@@ -124,7 +126,7 @@ function floatBuffer(values: number[]) {
   return Buffer.from(array.buffer, array.byteOffset, array.byteLength);
 }
 
-test("selected versions update transcript and summary without replacing manual content or speaker history", async (t: import("node:test").TestContext) => {
+test("the current run projects transcript and summary without replacing manual content", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
@@ -137,43 +139,20 @@ test("selected versions update transcript and summary without replacing manual c
   const worker = createWorker(db, storage, { onNoteProjectionChanged: (noteId) => projectedNoteIds.push(noteId) });
   t.after(() => worker.stop());
 
-  assert.equal((await worker.selectRun(recording.id, initialRun.id)).success, true);
-  assert.equal(projectedNoteIds.at(-1), note.id, "selection notifies existing Note consumers");
-  assert.equal(db.getNote(note.id).content, "  Manual note stays.  ");
-  assert.equal(db.getNote(note.id).enhanced_content, "First generated notes");
   assert.equal(worker.setSpeakerCorrection({
     runId: initialRun.id,
     speakerId: "speaker_0",
     profileId: null,
     displayName: "Ada Example",
   }), true);
+  assert.equal(projectedNoteIds.at(-1), note.id, "the projection notifies existing Note consumers");
+  assert.equal(db.getNote(note.id).content, "  Manual note stays.  ");
+  assert.equal(db.getNote(note.id).enhanced_content, "First generated notes");
   const firstProjection = JSON.parse(db.getNote(note.id).transcript!);
   assert.equal(firstProjection[0].source, undefined, "mixed recording results do not claim a source track");
   assert.equal(firstProjection[0].timestamp, 2.5);
   assert.equal(firstProjection[0].endTimestamp, 4.25);
   assert.equal(firstProjection[0].speakerName, "Ada Example");
-
-  const secondRun = db.createMeetingProcessingRun(recording.id, { kind: "reprocess", config });
-  attachArtifacts(db, storage, secondRun.id, {
-    text: "Second transcript",
-    segments: [{ speaker: "speaker_0", text: "Second transcript", start: 1.25, end: 3 }],
-  });
-  assert.equal((await worker.selectRun(recording.id, secondRun.id)).success, true);
-  assert.equal(projectedNoteIds.at(-1), note.id);
-  assert.equal(db.getNote(note.id).content, "  Manual note stays.  ");
-  assert.equal(db.getNote(note.id).enhanced_content, null);
-  const secondProjection = JSON.parse(db.getNote(note.id).transcript!);
-  assert.equal(secondProjection[0].timestamp, 1.25);
-  assert.equal(secondProjection[0].speakerName, undefined, "a correction from the older run must not leak by speaker id");
-  assert.equal(db.getMeetingRunSpeakerCorrections(initialRun.id).length, 1);
-  assert.equal(db.getMeetingRunSpeakerCorrections(secondRun.id).length, 0);
-
-  const plainRun = db.createMeetingProcessingRun(recording.id, { kind: "reprocess", config });
-  attachArtifacts(db, storage, plainRun.id, { text: "Plain transcript without timestamps", segments: [] });
-  assert.equal((await worker.selectRun(recording.id, plainRun.id)).success, true);
-  assert.deepEqual(JSON.parse(db.getNote(note.id).transcript!), [
-    { text: "Plain transcript without timestamps", timestamp: 0 },
-  ]);
 });
 
 test("post-stop embeddings match only a known profile and leave unknown voices unnamed", async () => {
@@ -220,6 +199,7 @@ test("worker stores post-stop recognition per run and does not infer names from 
   const { note, recording, initialRun } = createFinishedRecording(db, storage, {
     sourceMetadata: { calendarAttendees: [{ name: "Calendar Guess" }], sourceMic: "Computer User" },
   });
+  assert.ok(recording.endedAt);
   const knownProfileId = Number(db.db.prepare(
     "INSERT INTO speaker_profiles (display_name, embedding) VALUES (?, ?)"
   ).run("Known voice", floatBuffer([1, 0])).lastInsertRowid);
@@ -232,14 +212,15 @@ test("worker stores post-stop recognition per run and does not infer names from 
   };
   let recognizeCalls = 0;
   const worker = createWorker(db, storage, {
-    transcribeRemote: async (_request, saveRaw) => {
-      await saveRaw(rawResponse);
+    now: () => new Date(Date.parse(recording.endedAt!) + 15_000),
+    transcribeRemote: async (request, saveRaw) => {
+      await saveRaw(request.diarize ? rawResponse : { text: "", words: [] });
       return { success: true, text: rawResponse.text };
     },
     recognizeSpeakers: async (recordingValue, run, transcript, audioPath, signal) => {
       recognizeCalls += 1;
       assert.equal(recordingValue.id, recording.id);
-      assert.equal(audioPath, storage.getDerivedAudioPath(recording.id, run.id));
+      assert.equal(audioPath, storage.getDerivedAudioPath(recording.id, run.id, "system"));
       const attendees = recordingValue.sourceMetadata.calendarAttendees as Array<{ name: string }>;
       assert.equal(attendees[0].name, "Calendar Guess");
       if (run.id !== initialRun.id) return [];
@@ -263,7 +244,7 @@ test("worker stores post-stop recognition per run and does not infer names from 
   await worker.waitForIdle();
   assert.equal(recognizeCalls, 1);
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(initialRun.id), [
-    { speakerId: "Speaker 1", profileId: knownProfileId, displayName: "Known voice" },
+    { speakerId: "system:Speaker 1", profileId: knownProfileId, displayName: "Known voice", source: "voice", revision: 1 },
   ]);
   const recognizedProjection = JSON.parse(db.getNote(note.id).transcript!);
   assert.equal(recognizedProjection[0].speakerName, "Known voice");

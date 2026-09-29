@@ -20,6 +20,7 @@ const note = (id: number, folderId: number | null = 1, spaceId = 1): NoteItem =>
   enhancement_prompt: null,
   enhanced_at_content_hash: null,
   folder_id: folderId,
+  folder_ids: folderId == null ? [] : [folderId],
   space_id: spaceId,
   transcript: null,
   calendar_event_id: null,

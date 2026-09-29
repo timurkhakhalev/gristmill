@@ -8,6 +8,7 @@
 // main.js. sessionId, noteId and detectionId are distinct fields and are never
 // interchangeable.
 import { z } from "zod";
+import { meetingRecordingIdSchema } from "./meetingRecording.js";
 import type { MeetingProcessingConfig, MeetingProcessingConfigError, MeetingSource } from "./meetingRecording.js";
 
 // ---- channels -----------------------------------------------------------------
@@ -48,6 +49,7 @@ export const meetingCoordinatorEventChannels = {
   meetingSessionSpeakerConfigUpdated: "meeting-session-speaker-config-updated",
   meetingDiarizationComplete: "meeting-diarization-complete",
   meetingSystemAudioSilent: "meeting-system-audio-silent",
+  meetingSystemAudioLevel: "meeting-system-audio-level",
   // Legacy listener with no main-side producer; kept because the renderer
   // still subscribes and the bridge contract owns the full event surface.
   meetingSystemAudioDegraded: "meeting-system-audio-degraded",
@@ -144,6 +146,7 @@ export const meetingOptionsSchema = z
   .object({
     sessionId: z.string().optional(),
     noteId: z.number().int().nullable().optional(),
+    groupId: meetingRecordingIdSchema.optional(),
     autoEndEligible: z.boolean().optional(),
     recordingConfig: z.unknown().optional(),
   });
@@ -510,6 +513,8 @@ export interface MeetingCoordinatorApi {
   onMeetingSystemAudioSilent?(
     callback: (data: { systemAudioStrategy: string }) => void
   ): () => void;
+  /** RMS (0..1) of natively captured system audio, throttled by main. */
+  onMeetingSystemAudioLevel?(callback: (level: number) => void): () => void;
   onMeetingSystemAudioDegraded?(callback: () => void): () => void;
   onMeetingSystemAudioInterrupted?(
     callback: (data: MeetingSystemAudioInterruption) => void

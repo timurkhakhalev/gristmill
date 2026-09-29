@@ -33,6 +33,7 @@ interface PermissionRowProps {
   granted: boolean;
   busy: boolean;
   disabled?: boolean;
+  actionLabel?: string;
   iconSrc?: string;
   icon?: ReactNode;
   onRequest: () => Promise<void>;
@@ -45,6 +46,7 @@ function PermissionRow({
   granted,
   busy,
   disabled = false,
+  actionLabel,
   iconSrc,
   icon,
   onRequest,
@@ -100,7 +102,7 @@ function PermissionRow({
           ? t("common.loading")
           : granted
             ? t("onboarding.rehaul.permissions.enabled")
-            : t("onboarding.rehaul.permissions.enable")}
+            : actionLabel ?? t("onboarding.rehaul.permissions.enable")}
       </button>
     </div>
   );
@@ -167,10 +169,15 @@ export default function CompactPermissionsStep({
           <div className="h-px bg-[var(--onboarding-surface-tertiary)]" />
           <PermissionRow
             title={t("hooks.permissions.settingsTitles.accessibility")}
-            description={t("cleanupSettings.accessibilityDetection")}
+            description={t(permissions.accessibilityTroubleshooting
+              ? "cleanupSettings.accessibilityHelp"
+              : "cleanupSettings.accessibilityDetection")}
             badge={t("onboarding.permissions.optional")}
             granted={permissions.accessibilityPermissionGranted}
             busy={busyPermission === "accessibility"}
+            actionLabel={permissions.accessibilityPromptRequested
+              ? t("cleanupSettings.openSettings")
+              : undefined}
             icon={<Eye className="size-10 shrink-0 p-2 text-[var(--onboarding-text-secondary)]" aria-hidden="true" />}
             onRequest={() => request("accessibility", permissions.requestAccessibilityPermission)}
           />

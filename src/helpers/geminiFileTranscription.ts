@@ -124,7 +124,7 @@ export function parseGeminiFileResponse(raw: unknown, diarize: boolean): RemoteT
       const match = /^spk_(\d+)$/.exec(speakerId);
       const speaker = diarize ? (match ? `Speaker ${Number(match[1])}` : speakerId) : undefined;
       const previous = segments.at(-1);
-      if (previous && previous.speaker === speaker) {
+      if (previous && previous.speaker === speaker && start - previous.end < 0.75) {
         previous.text += /^[.,!?;:]/.test(word.text) ? word.text : ` ${word.text}`;
         previous.end = end;
       } else {

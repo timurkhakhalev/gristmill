@@ -6,6 +6,7 @@ const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
+  installMicCaptureGlobals,
 }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 test("macOS accessibility checks follow the onboarding feature gate", async (t: import("node:test").TestContext) => {
@@ -16,15 +17,22 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
 
   let accessibilityChecks = 0;
   const requests: string[] = [];
+  let micStatus = "not-determined";
+  let onFocus: (() => void) | undefined;
   installBrowserGlobals(t, {
     window: {
+      addEventListener: (name: string, listener: () => void) => {
+        if (name === "focus") onFocus = listener;
+      },
       electronAPI: {
         getPlatform: () => "darwin",
         checkAccessibilityPermission: async () => {
           accessibilityChecks += 1;
           return false;
         },
-        checkMicrophoneAccess: async () => ({ granted: false }),
+        checkMicrophoneAccess: async () => ({ granted: micStatus === "granted", status: micStatus }),
+        requestMicrophoneAccess: async () => { requests.push("mic prompt"); return { granted: true }; },
+        openMicrophoneSettings: async () => { requests.push("mic settings"); return { success: true }; },
         promptAccessibilityPermission: async () => { requests.push("prompt"); return false; },
         openAccessibilitySettings: async () => { requests.push("settings"); return { success: true }; },
         checkPasteTools: async () => ({
@@ -38,6 +46,7 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
     },
   });
   const container = installHookDom(t);
+  installMicCaptureGlobals(t);
 
   const originalSetInterval = globalThis.setInterval;
   const originalClearInterval = globalThis.clearInterval;
@@ -87,16 +96,31 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
   await render();
   assert.equal(accessibilityChecks, 0);
   assert.equal(activeIntervals.size, 0);
+  assert.equal(permissions!.accessibilityTroubleshooting, false);
   await React.act(async () => { await permissions!.requestAccessibilityPermission(); });
-  assert.deepEqual(requests, ["prompt", "settings"], "register the app before opening Settings");
+  assert.deepEqual(requests, ["prompt"], "the native prompt opens Settings itself");
+  assert.equal(permissions!.accessibilityTroubleshooting, true);
+  assert.equal(permissions!.accessibilityPromptRequested, true);
+  await React.act(async () => { await permissions!.requestAccessibilityPermission(); });
+  assert.deepEqual(requests, ["prompt", "settings"], "a later click opens Settings directly");
+  assert.equal(permissions!.accessibilityTroubleshooting, true);
+
+  await React.act(async () => { await permissions!.requestMicPermission(); });
+  assert.equal(permissions!.micPermissionGranted, true);
+  assert.deepEqual(requests, ["prompt", "settings", "mic prompt"]);
+  micStatus = "denied";
+  await React.act(async () => { onFocus?.(); await Promise.resolve(); });
+  assert.equal(permissions!.micPermissionGranted, false);
+  await React.act(async () => { await permissions!.requestMicPermission(); });
+  assert.deepEqual(requests, ["prompt", "settings", "mic prompt", "mic settings"]);
 
   macAccessibilityChecksEnabled = true;
   await render();
-  assert.equal(accessibilityChecks, 2);
+  assert.equal(accessibilityChecks, 3);
   assert.equal(activeIntervals.size, 1);
 
   macAccessibilityChecksEnabled = false;
   await render();
-  assert.equal(accessibilityChecks, 2);
+  assert.equal(accessibilityChecks, 3);
   assert.equal(activeIntervals.size, 0);
 });

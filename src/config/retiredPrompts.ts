@@ -46,23 +46,35 @@ export const RETIRED_DEFAULT_PROMPT_HASHES: ReadonlySet<string> = new Set([
   "774da7ce7c876581a95f408e1c0e2d698a3e2f40f3790dd4c190737199835a73",
   //  3040ch bb664542 ru cleanupPrompt
   "91f52cc9967b29ccb69f759adc2591b82105dfb0fd5cd1b47aaed588bf1e4102",
+  // Previous localized cleanup defaults, retired when the English formatter shipped in every locale.
+  "6f62d1802de5e49a38bb0a3dbb6bb18afd2b1cd6a9306519b05507014efcd41f",
+  "89452bfcce253803ae9fd9b0e9fc3f50afbf9c8d89706ad92dfc48d1e29ec4af",
+  "58ed65fbc679a7bac1483ef850c51ac7932a02d17fab9ca688f4d11f6aa9b7e6",
+  "3a977c7d5435d799873a1003d68924b08a51d720386fe8cc9ac16304607df56d",
+  "8e97d2a98decbba356733bfdd7fb4aff2ec157eab177ad4fd06003cecc32aa56",
+  "cdc5472ffa032e9cb508fa8e25acb7f64d29840e0a248e7d97d90f6f6b9fc6f0",
+  "fd8903a8ae80ab6baca57217b7505777378e4a2f7b15f31274deb4b52fcb0b8d",
+  "2de91bc76da3682dc819297616966d1e90ba511ca8fcb5232691710e712da619",
+  "caa4cb470101df0f494a2e323548aabe4bcc28318938ade7487f7d1507f6eb8e",
+  "c38d3f454a576f6d5c3a22294215283cfc04da7b370d7bdb7e1b123d6e89f055",
+  "9b586c6141f09263fdf9d06973b9bb9579fc325b2b6f906a0a7804f9418824be",
 ]);
 
 // Hashes of the defaults currently shipped, keyed by locale/bundle key. Not
 // used by the sweep; the registry test compares these against the live locale
 // bundles so a prompt change cannot land without updating the retired set.
 export const CURRENT_DEFAULT_PROMPT_HASHES: Record<string, string> = {
-  "ar/cleanupPrompt": "6f62d1802de5e49a38bb0a3dbb6bb18afd2b1cd6a9306519b05507014efcd41f",
-  "de/cleanupPrompt": "89452bfcce253803ae9fd9b0e9fc3f50afbf9c8d89706ad92dfc48d1e29ec4af",
-  "en/cleanupPrompt": "58ed65fbc679a7bac1483ef850c51ac7932a02d17fab9ca688f4d11f6aa9b7e6",
-  "es/cleanupPrompt": "3a977c7d5435d799873a1003d68924b08a51d720386fe8cc9ac16304607df56d",
-  "fr/cleanupPrompt": "8e97d2a98decbba356733bfdd7fb4aff2ec157eab177ad4fd06003cecc32aa56",
-  "it/cleanupPrompt": "cdc5472ffa032e9cb508fa8e25acb7f64d29840e0a248e7d97d90f6f6b9fc6f0",
-  "ja/cleanupPrompt": "fd8903a8ae80ab6baca57217b7505777378e4a2f7b15f31274deb4b52fcb0b8d",
-  "pt/cleanupPrompt": "2de91bc76da3682dc819297616966d1e90ba511ca8fcb5232691710e712da619",
-  "ru/cleanupPrompt": "caa4cb470101df0f494a2e323548aabe4bcc28318938ade7487f7d1507f6eb8e",
-  "zh-CN/cleanupPrompt": "c38d3f454a576f6d5c3a22294215283cfc04da7b370d7bdb7e1b123d6e89f055",
-  "zh-TW/cleanupPrompt": "9b586c6141f09263fdf9d06973b9bb9579fc325b2b6f906a0a7804f9418824be",
+  "ar/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
+  "de/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
+  "en/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
+  "es/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
+  "fr/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
+  "it/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
+  "ja/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
+  "pt/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
+  "ru/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
+  "zh-CN/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
+  "zh-TW/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
   chatAgent: "ca35b88c4f8a0e1fd0b2b6efea1b066c70b772e6a55033e0fca731b2e74fbf06",
 };
 

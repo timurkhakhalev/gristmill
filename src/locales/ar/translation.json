@@ -782,6 +782,7 @@
       "startRecording": "بدء التسجيل",
       "record": "تسجيل",
       "generateSummary": "إنشاء ملخص بالذكاء الاصطناعي",
+      "generatingSummary": "جارٍ إنشاء الملخص…",
       "startWriting": "ابدأ الكتابة...",
       "staleIndicator": "تم تغيير المحتوى منذ التحسين",
       "live": "مباشر",
@@ -800,7 +801,7 @@
         "finishMeeting": "End call",
         "saving": "جارٍ حفظ الجزء الأخير من الصوت…",
         "saved": "تم حفظ التسجيل الصوتي",
-        "incomplete": "تم حفظ التسجيل مع صوت ناقص",
+        "incomplete": "انقطعت بعض أجزاء التسجيل الصوتي",
         "failed": "تعذر بدء التسجيل",
         "mic": "الميكروفون",
         "system": "صوت النظام",
@@ -905,6 +906,7 @@
       "back": "رجوع",
       "autoEnded": "توقف التسجيل تلقائيًا بعد انتهاء اجتماعك.",
       "restartFailed": "تعذرت إعادة تشغيل تسجيل الاجتماع.",
+      "captureError": "توقف التسجيل بسبب خطأ. تحقّق من الصوت المحفوظ في الملاحظة.",
       "systemAudioSilent": {
         "title": "لم يتم اكتشاف صوت الاجتماع بعد",
         "description": "لم يلتقط الصوت حتى الآن سوى ميكروفونك. هل أنت في مكالمة فيديو؟ تحقق من أن صوت الاجتماع يُشغَّل على هذا الكمبيوتر وأنه غير مكتوم. هل تسجّل اجتماعًا حضوريًا؟ يمكنك تجاهل هذا — فالميكروفون يلتقط صوت الغرفة."
@@ -992,6 +994,15 @@
         "detailedNotes": {
           "name": "ملاحظات مفصلة",
           "description": "ملاحظات اجتماع دقيقة وشاملة تتضمن القرارات والمهام"
+        },
+        "followUp": {
+          "name": "متابعة الاجتماع",
+          "description": "صياغة رسالة متابعة في دردشة الاجتماع",
+          "cta": "صياغة رسالة متابعة"
+        },
+        "recap": {
+          "name": "خلاصة الاجتماع",
+          "description": "إضافة خلاصة قصيرة لهذا الاجتماع إلى ملخصه"
         }
       },
       "errors": {
@@ -2023,6 +2034,10 @@
       "advanced": {
         "label": "متقدم",
         "description": "التشخيص وسجلات التصحيح"
+      },
+      "profile": {
+        "label": "الملف الشخصي",
+        "description": "اسمك في نصوص الاجتماعات"
       }
     },
     "title": "الإعدادات"
@@ -2158,7 +2173,10 @@
       "keyDecisions": "اذكر القرارات الرئيسية",
       "inFlight": "إظهار المشاريع قيد التنفيذ"
     },
-    "homeEmptyState": "اسأل أي شيء عن ملاحظاتك واجتماعاتك"
+    "homeEmptyState": "اسأل أي شيء عن ملاحظاتك واجتماعاتك",
+    "followUp": "صياغة رسالة متابعة",
+    "followUpUnavailable": "متاح بعد جاهزية النص",
+    "followUpError": "تعذر إعداد رسالة المتابعة. حاول مرة أخرى."
   },
   "transcriptionPreview": {
     "label": "معاينة",
@@ -2243,16 +2261,32 @@
     }
   },
   "meetingResults": {
+    "participantsLoadError": "تعذر تحميل المشاركين من التقويم.",
+    "linkParticipantsHint": "اربط هذه الأسماء بمشاركي التقويم لاستخدامها في الاجتماعات القادمة.",
+    "linkParticipant": "ربط بمشارك",
+    "rememberParticipant": "تذكّر الاسم لمشارك التقويم",
+    "onlyThisMeeting": "هذا الاجتماع فقط",
+    "rememberParticipantHint": "اختر الشخص الذي تحدث. سيُستخدم الاسم المحفوظ لهذا البريد الإلكتروني في الاجتماعات القادمة. لن تتغير جهات اتصال Google.",
+    "voiceProfile": "الملف الصوتي",
     "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",
     "audioParts": "Audio",
     "noAudioParts": "Audio parts appear here after recording.",
     "part": "Part",
+    "durationSeconds": "{{seconds}} ث",
+    "durationMinutes": "{{minutes}} د {{seconds}} ث",
+    "durationWholeMinutes": "{{minutes}} د",
+    "durationHours": "{{hours}} س {{minutes}} د",
+    "recordingNow": "التسجيل جارٍ",
+    "savingAudio": "جارٍ الحفظ…",
+    "endedEarly": "انتهى مبكرًا",
+    "partOf": "الجزء {{index}} من {{count}}",
     "parts": "parts",
     "partActions": "Audio part actions",
     "playAudio": "Play audio",
     "pauseAudio": "Pause audio",
+    "seekAudio": "الانتقال إلى موضع في الصوت",
     "processWholeMeeting": "نسخ",
     "resultActions": "Result actions",
     "copyResult": "Copy text",
@@ -2287,6 +2321,9 @@
     "recording": "التسجيل",
     "newAsr": "تفريغ جديد",
     "newSummary": "ملخص جديد",
+    "summaryStale": "تغيّرت أسماء المتحدثين",
+    "summaryStaleReason": "أُعدّ هذا الملخص باستخدام الأسماء السابقة ولم يتم تغييره.",
+    "regenerateSummary": "إعادة إنشاء الملخص",
     "retry": "إعادة المحاولة",
     "deleteAudio": "حذف الصوت",
     "retryDelete": "إعادة محاولة حذف الصوت",
@@ -2298,7 +2335,7 @@
     "saveSpeaker": "حفظ المتحدث",
     "speakerProfile": "ملف المتحدث",
     "noSpeakerProfile": "لا يوجد ملف",
-    "captureIncomplete": "انتهى التسجيل مبكرًا؛ تم الاحتفاظ بالصوت والنتائج المحفوظة.",
+    "captureIncomplete": "لا يزال بالإمكان نسخ الصوت المحفوظ. لن تؤدي إعادة المحاولة إلى استعادة الصوت الذي لم يُسجَّل أثناء الانقطاع.",
     "deleteActiveNoteTitle": "إيقاف هذا التسجيل وحذفه؟",
     "deleteActiveNoteDescription": "سيتوقف التسجيل بأمان دون بدء التفريغ، ثم تُحذف الملاحظة والصوت وسجل المعالجة.",
     "stopBeforeDeleteError": "تعذر إيقاف التسجيل بأمان. تم الاحتفاظ بالملاحظة.",
@@ -2342,13 +2379,18 @@
     "progress": {
       "pending": "في انتظار البدء.",
       "running": "قد يستغرق ذلك بضع دقائق. يمكنك متابعة كتابة الملاحظات."
-    }
+    },
+    "autoSummarySkipped": "تم تخطي الملخص التلقائي",
+    "autoSummarySkippedReason": "يتطلب الملخص التلقائي 180 ثانية على الأقل من التسجيل و2500 حرف من التفريغ. مدة هذا الاجتماع {{seconds}} ثانية ويحتوي على {{chars}} حرفًا. يمكنك إنشاء ملخص يدويًا الآن.",
+    "calendarParticipantsInvalid": "بيانات المشاركين المحفوظة في التقويم غير صالحة. صححها قبل إعادة المحاولة.",
+    "calendarParticipantsNamingSkipped": "تم تخطي تعيين أسماء المتحدثين تلقائيًا. يظل النص المكتوب والملخص متاحين."
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "للتذكير بتسجيل الاجتماعات.",
+    "accessibilityHelp": "فعّل OpenHercules في إعدادات تسهيلات الاستخدام في macOS. إذا لم يظهر في القائمة، اضغط + واختر تطبيق OpenHercules.app المثبّت.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
@@ -2468,6 +2510,15 @@
       "installing": "جارٍ التثبيت…",
       "remove": "إزالة {{model}}"
     },
-    "chatPrompt": "تعليمات الدردشة"
+    "chatPrompt": "تعليمات الدردشة",
+    "openaiMeetingAudio": "الميكروفون: Whisper مع توقيتات. صوت النظام: GPT-4o Transcribe Diarize. طلبان متوازيان."
+  },
+  "profile": {
+    "name": "اسمك",
+    "placeholder": "كيف نعرض اسمك؟",
+    "help": "يُستخدم للكلام المسجّل عبر الميكروفون. اختياري؛ اتركه فارغًا لعرض «أنت». يمكنك تغييره في الإعدادات ← الملف الشخصي.",
+    "onboardingTitle": "ما اسمك؟",
+    "skip": "تخطي",
+    "selfLabel": "أنت"
   }
 }

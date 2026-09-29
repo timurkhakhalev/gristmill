@@ -289,6 +289,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
       listedItems = nextItems;
       await flush(() => setCapturePhase("saved"));
     },
+    setCapturePhase: (phase: string) => flush(() => setCapturePhase(phase)),
     button(label: string) { return findNode(tree, (node) => typeof node.props?.onPress === "function" && textOf((node.props as { children?: unknown }).children).includes(label)); },
     label(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label); },
     async clickRenderedButton(labels: string[]) {
@@ -540,6 +541,28 @@ test("a newer group's gate blocks its ASR while an older completed group remains
   await ui.flush(() => (menus[1].props as { onAction(key: string): void }).onAction("asr"));
   assert.equal(ui.calls.create.at(-1)?.recordingId, FIRST);
   assert.deepEqual(ui.calls.create.at(-1)?.sourceRecordingIds, [FIRST]);
+});
+
+test("Results Summary action is unavailable during capture and resumes for the selected transcript afterward", async (t: TestContext) => {
+  for (const capturePhase of ["preparing", "recording", "paused", "saving"]) {
+    const olderRun = completeRun();
+    olderRun.run.sourceRecordingIds = [FIRST];
+    const olderPart = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", olderRun);
+    const ui = await mountPanel(t, [olderPart], { viewMode: "enhanced", initialCapturePhase: capturePhase });
+
+    const summaryAction = ui.button("meetingResults.newSummary");
+    assert.ok(summaryAction, `${capturePhase} keeps the selected older transcript visible`);
+    assert.equal(summaryAction.props?.isDisabled, true, `${capturePhase} cannot offer an actionable Summary request`);
+    assert.equal(ui.calls.create.length, 0);
+
+    await ui.setCapturePhase("idle");
+    const eligibleAction = ui.button("meetingResults.newSummary");
+    assert.ok(eligibleAction);
+    assert.equal(eligibleAction.props?.isDisabled, false, "the action is available when capture no longer blocks it");
+    await ui.flush(() => (eligibleAction.props as { onPress: () => void }).onPress());
+    assert.equal(ui.calls.create.at(-1)?.kind, "summary");
+    assert.equal(ui.calls.create.at(-1)?.sourceRunId, RUN, "the action still targets the selected transcript run");
+  }
 });
 
 test("short live transcript keeps the owning toolbar action on the selected run Summary path", async (t: TestContext) => {

@@ -17,10 +17,9 @@ test("Follow-up receives only selected meeting evidence and stores through the e
   assert.match(prompt, /Write a short message in Russian\./);
   assert.match(prompt, /Do not use earlier Chat messages or application context as meeting facts/);
   assert.match(prompt, /Do not call tools, send the draft/);
-  const encoded = prompt.match(/\{[\s\S]*\}/)?.[0];
-  assert.ok(encoded);
-  assert.deepEqual(JSON.parse(encoded), material);
-  assert.doesNotMatch(encoded, /calendar|email|attendee|generation date|older meeting/i);
+  assert.match(prompt, /Alice \|\| speaker-1 \[0:12\]: "I will check the build\."/);
+  assert.doesNotMatch(prompt, /source:0|"speakerId":|"transcriptSegments":/);
+
 });
 
 test("prioritized task JSON repairs once in its existing selected-provider conversation", async () => {

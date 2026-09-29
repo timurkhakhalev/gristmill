@@ -137,6 +137,7 @@ const summaryConfigSchema = z.object({
 // never part of the persisted snapshot; credentialRef names a secure-store slot.
 export const meetingProcessingConfigSchema = z.object({
   transcription: transcriptionConfigSchema,
+  selfDisplayName: z.string().trim().max(200).optional(),
   summary: summaryConfigSchema.nullable().optional(),
 });
 export type MeetingProcessingConfig = z.infer<typeof meetingProcessingConfigSchema>;

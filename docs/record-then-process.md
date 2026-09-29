@@ -6,9 +6,11 @@
 
 - SQLite хранит `meeting_recordings`, `meeting_recording_epochs`, `meeting_processing_runs`, `meeting_deletion_intents` и `meeting_run_speaker_corrections`; managed files содержат source PCM epochs, derived WAV и per-run JSON results. Пути описаны в [architecture.md](architecture.md).
 - Config snapshot сохраняется до первого audio frame. Во время capture нет ASR/provider calls. Только успешный Stop закрывает tracks, создаёт initial run и сохраняет not-before deadline на 15 секунд. Worker учитывает этот deadline после restart; Pause не ставит задание в очередь, а Resume отменяет pending run прежней group version.
-- После gate один mono WAV следует общей timeline и сохраняет gaps; выбранный совместимый file route сохраняет raw provider JSON до normalization. Run/selection проверяются перед claim и ASR. Нет provider fallback или скрытого split.
+- После gate формат зависит от сохранённого провайдера: Deepgram получает stereo WAV (mic=0, system=1) с multichannel и диаризацией; ElevenLabs, Gemini и OpenAI — два параллельных запроса (mic без диаризации, system с диаризацией). OpenAI использует `whisper-1` для временных меток mic и `gpt-4o-transcribe-diarize` для system. Local сохраняет mono route. Все входы следуют общей timeline и сохраняют gaps. Raw JSON каждой дорожки сохраняется до normalization; retry не отправляет успешную дорожку повторно. Run/selection проверяются перед claim и ASR.
 - Transcript и Summary — per-run artifacts; `notes.transcript` и `notes.enhanced_content` показывают выбранный run, а ручной `note.content` остаётся отдельным. Source tracks и прошлые артефакты сохраняются при retry и выборе другой версии.
 - Speaker naming может использовать сохранённый Summary route; user correction wins by revision. Автоматический Summary создаётся при длительности не менее 180 секунд и не менее 2 500 символов transcript; для любого готового transcript доступен ручной Summary.
+- Settings → Profile и онбординг предлагают имя пользователя. Оно сохраняется в config snapshot и назначается mic-репликам; пустое имя даёт «Вы»/«You». Предполагается один человек у микрофона. Эхо и новые образцы голоса не входят в эту доработку.
+- В LLM передаётся plain text: `имя || speaker ID: "реплика"`; для неизвестного имени — только speaker ID. JSON и ID реплик остаются внутренними данными хранения. Это относится к Summary, naming, Tasks, Recap и Follow-up.
 - Summary хранится как один Markdown artifact. После сохранения Tasks заполняют существующий `## Action Items` или удаляют его для zero tasks; Recap вручную добавляет/обновляет `## Recap` в этом же artifact. Follow-up — обычный assistant message в существующем Chat, без отправки наружу.
 - Naming, Tasks и Recap проверяют строгий JSON и допускают один repair turn только в той же selected-provider conversation. Отказ и transport error не вызывают repair. BB repair использует сохранённый thread; его adapter получает только final text, без native refusal metadata.
 - Историческое [chunking research](transcription-chunking-research.md) сохранено как superseded proposal preview/обработки во время встречи; это не текущий pipeline.
@@ -25,6 +27,15 @@ pnpm test
 Root runs these checks sequentially after any focused rerun. Hardware smoke — отдельная изолированная macOS arm64 проверка; её нельзя считать выполненной по этому документу.
 
 ## Согласованная схема
+
+Проверка доработки раздельных источников, 2026-09-29:
+
+- `pnpm test`: полный набор из 397 файлов прошёл. Проверены параллельные запросы, сохранение успешного источника при ошибке второго, восстановление после restart, запрет смены provider при частично сохранённом ответе и назначение имени из Profile.
+- `pnpm run typecheck`, `pnpm run lint`, `pnpm run build:renderer`: успешно; lint содержит существующие предупреждения, без ошибок.
+- Реальный FFmpeg проверен на сигналах с известными отсчётами: stereo сохраняет mic слева и system справа, отдельные WAV сохраняют offsets, gaps и длительность. Исходные PCM не изменяются.
+- Profile и шаг онбординга проверены в изолированном браузере: сохранение имени, восстановление между экранами и пропуск пустого имени.
+- Один и тот же 45-секундный фрагмент сохранённой встречи отправлен в Deepgram Nova-3 в mono и stereo. Новый ответ успешно разобран: 25 слов mic, 88 слов system, два системных спикера, длительность обоих вариантов 44.99994 секунды. Запрос stereo использовал `multichannel=true` и `diarize_model=latest`. Это проверка реального API и разделения источников, не измерение WER или сравнительный benchmark.
+- Живые запросы ElevenLabs/OpenAI/Gemini и новый захват с устройств в этой проверке не выполнялись; их маршруты покрыты тестами с сохранением и разбором provider responses.
 
 ```mermaid
 flowchart TD
@@ -49,8 +60,8 @@ flowchart TD
 - Во время встречи выполняются захват, сохранение и контроль состояния. ASR, диаризации, черновика и автоматических заметок нет. Ручные заметки остаются доступны.
 - Исходные mic/system записываются один раз. Чанки файлов нужны для сохранности и восстановления, а не для отправки отдельных минут в ASR.
 - Только успешный Stop фиксирует завершённый хвост и создаёт run с durable 15-секундным not-before сроком. Pause не ставит обработку в очередь; Resume инвалидирует pending work прежней group version. Run повторно проверяется при claim и перед ASR, включая после restart.
-- После gate один derived mono WAV покрывает полную timeline с сохранением gaps и поступает в совместимый выбранный маршрут. Источники остаются раздельными; независимые track transcripts не склеиваются. Raw provider JSON сохраняется до normalization.
-- Подготовка входа (контейнер, ресемплинг, при необходимости AEC) создаёт производные файлы. Исходники не меняются.
+- После gate готовятся полные WAV выбранного маршрута: stereo для Deepgram, отдельные mic/system для остальных cloud routes. Результаты собираются по временным меткам с сохранением перебиваний. Raw provider JSON сохраняется до normalization.
+- Подготовка входа (контейнер, ресемплинг, выравнивание каналов) создаёт производные файлы. Исходники не меняются.
 - Ошибка Summary не требует повторять ASR. Интегрированную диаризацию нельзя обещать повторять отдельно, если API этого не умеет.
 - Имена speakers предлагаются из transcript evidence; calendar people только кандидаты, а user correction wins по revision.
 - Автоматический Summary требует одновременно не менее 180 секунд и 2500 символов transcript. Для любого ready transcript доступен ручной Summary. Tasks и Recap изменяют отдельные разделы того же Summary Markdown; Follow-up создаёт обычное assistant-сообщение в существующем Chat и ничего не отправляет.
@@ -75,7 +86,7 @@ flowchart TD
 - Согласование номеров спикеров между минутными запросами.
 - Локальная ASR-модель для preview и её нагрузка во время разговора.
 
-Проблема согласования остаётся, если мы сами разделим длинную запись во времени или независимо обработаем источники с одним голосом в обоих. Не вводить такое деление автоматически.
+Разделение по источнику явно задано маршрутом. Длинную запись во времени автоматически не делим. Совпадение голосов между mic и system не устанавливаем.
 
 ## Гипотезы для самостоятельной проверки после реализации
 
@@ -84,7 +95,7 @@ flowchart TD
 | Приоритет | Гипотеза | Как проверить | Критерий и влияние на решение |
 | --- | --- | --- | --- |
 | P0 | Полный derived WAV укладывается в фактические provider limits. | Для ElevenLabs, Deepgram, Gemini и OpenAI проверить запросы на максимальной нужной длительности: входные лимиты, timeouts, полный охват начала/середины/конца. | Provider принимает целевую длительность и возвращает полный результат. Иначе показать capability/limit error; не делать скрытый split, обрезание или fallback. |
-| P0 | Mono mix сохраняет нужную речь, перебивания и временные gaps. | На контрольных mic/system записях сравнить derived WAV с отдельными оригиналами; включить наушники, динамики, одновременную речь, несколько людей у микрофона, restart epoch и тишину между репликами. | Проверить пропуски, эхо-дубли, speaker turns и aligned offsets. Это оценка качества выбранного единого входа; не добавлять независимые track transcripts или второй processing path. |
+| P0 | Раздельные каналы сохраняют речь, перебивания и временные gaps. | На контрольных mic/system записях сравнить derived WAV с отдельными оригиналами; включить одновременную речь, restart epoch и тишину между репликами. | Проверить пропуски, назначение спикеров и временные метки при сборке общего transcript. |
 | P0 | Захват и формат хранения позволяют восстановить обе дорожки после сбоя. | Записать тестовый сигнал/речь, выключить сеть, закрыть renderer, аварийно завершить процесс, сменить устройство, выполнить Stop посреди речи, проверить нехватку места и пропавший system source. | Закрытые файлы читаются; последний файл восстанавливается или его потерянный интервал явно отмечен; Stop сохраняет весь полученный хвост; запись не стартует как полная dual-track при недоступном источнике. Измерить и согласовать допустимое окно потери при аварии; выбрать формат и частоту фиксации. |
 | P1 | ASR и диаризация достаточно точны на наших русских встречах. | Один и тот же набор записей для всех кандидатов: 1:1, 3+ участников, русский с английскими терминами, имена/числа, короткие ответы, тихая речь, шум. Разметить одинаковые отрывки и speaker turns. | Сравнить WER/ошибки имён и чисел, ошибки назначения слов спикерам и скачки speaker ID. Заранее согласовать допустимое качество; не выбирать по демо или одному чистому отрывку. |
 | P1 | Полный проход укладывается в приемлемые время и стоимость после Stop. | Измерить подготовку, upload, ASR/диаризацию и заметки на 30/60/120 мин, плохую сеть и повтор запроса. | Получить фактическую длительность запроса, стоимость встречи и ожидание; затем согласовать бюджет и предел ожидания. |
@@ -99,6 +110,6 @@ flowchart TD
 3. Тимур оценивает качество, speaker attribution, latency и cost на своих записях. 30/60/120 минут — proposal испытаний, не продуктовый лимит.
 4. Лимиты и настройки уточняются по evidence; победитель среди провайдеров не выбран.
 
-В post-Stop реализации используются ElevenLabs, Deepgram, Gemini и OpenAI, а также существующий Local meeting path. OpenAI использует существующий файловый маршрут с `gpt-4o-transcribe-diarize` для speaker segments и сохраняет исходный JSON до нормализации. По документации, проверенной 2026-09-25, [OpenAI](https://platform.openai.com/docs/api-reference/audio/createTranscription) требует `diarized_json` для speaker annotations и `chunking_strategy` для записей длиннее 30 секунд. [Gemini](https://ai.google.dev/gemini-api/docs/transcribe) ограничивает вход с diarization/timestamps 30 минутами; для более длинной записи это должно отображаться как ограничение route. [ElevenLabs](https://elevenlabs.io/docs/overview/capabilities/speech-to-text) описывает стандартный режим до 10 часов; [Deepgram](https://developers.deepgram.com/docs/pre-recorded-audio) — лимит размера файла и времени обработки. Это проверка документации, не тест качества, скорости или полноты результата. Отдельные исходные tracks сохраняются; текущий processing использует один derived mono WAV.
+В post-Stop реализации используются ElevenLabs, Deepgram, Gemini и OpenAI, а также существующий Local meeting path. OpenAI использует существующий файловый маршрут с `gpt-4o-transcribe-diarize` для speaker segments и сохраняет исходный JSON до нормализации. По документации, проверенной 2026-09-25, [OpenAI](https://platform.openai.com/docs/api-reference/audio/createTranscription) требует `diarized_json` для speaker annotations и `chunking_strategy` для записей длиннее 30 секунд. [Gemini](https://ai.google.dev/gemini-api/docs/transcribe) ограничивает вход с diarization/timestamps 30 минутами; для более длинной записи это должно отображаться как ограничение route. [ElevenLabs](https://elevenlabs.io/docs/overview/capabilities/speech-to-text) описывает стандартный режим до 10 часов; [Deepgram](https://developers.deepgram.com/docs/pre-recorded-audio) — лимит размера файла и времени обработки. Это проверка документации, не тест качества, скорости или полноты результата. Derived audio: stereo for Deepgram, separate mic/system WAVs for the other cloud routes, mono for Local.
 
 Источники и прежние альтернативы сохранены в [исследовании репозиториев](transcription-chunking-research.md); предложения о preview и обработке во время встречи там имеют исторический статус.

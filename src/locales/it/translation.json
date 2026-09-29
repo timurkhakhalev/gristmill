@@ -927,6 +927,10 @@
       "advanced": {
         "label": "Avanzate",
         "description": "Diagnostica e log di debug"
+      },
+      "profile": {
+        "label": "Profilo",
+        "description": "Il tuo nome nelle trascrizioni delle riunioni"
       }
     },
     "title": "Impostazioni"
@@ -2459,6 +2463,15 @@
       "installing": "Installazione…",
       "remove": "Rimuovi {{model}}"
     },
-    "chatPrompt": "Istruzioni della chat"
+    "chatPrompt": "Istruzioni della chat",
+    "openaiMeetingAudio": "Microfono: Whisper con timestamp. Audio di sistema: GPT-4o Transcribe Diarize. Due richieste parallele."
+  },
+  "profile": {
+    "name": "Il tuo nome",
+    "placeholder": "Come ti chiamiamo?",
+    "help": "Usato per la voce registrata dal tuo microfono. Facoltativo; senza nome viene mostrato «Tu». Puoi modificarlo in Impostazioni → Profilo.",
+    "onboardingTitle": "Come ti chiami?",
+    "skip": "Salta",
+    "selfLabel": "Tu"
   }
 }

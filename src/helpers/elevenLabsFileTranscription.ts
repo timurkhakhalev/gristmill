@@ -97,7 +97,7 @@ export function parseElevenLabsFileResponse(
         : speakerId
       : undefined;
     const previous = segments.at(-1);
-    if (diarize && previous && previous.speaker === speaker) {
+    if (previous && previous.speaker === speaker && word.start - previous.end < 0.75) {
       previous.text += word.text;
       previous.end = word.end;
     } else {

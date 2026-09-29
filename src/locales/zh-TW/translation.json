@@ -927,6 +927,10 @@
       "advanced": {
         "label": "進階",
         "description": "診斷和除錯記錄"
+      },
+      "profile": {
+        "label": "個人資料",
+        "description": "會議逐字稿中顯示的姓名"
       }
     },
     "title": "設定"
@@ -2459,6 +2463,15 @@
       "installing": "正在安裝…",
       "remove": "移除 {{model}}"
     },
-    "chatPrompt": "聊天指示"
+    "chatPrompt": "聊天指示",
+    "openaiMeetingAudio": "麥克風：含時間戳記的 Whisper。系統音訊：GPT-4o Transcribe Diarize。兩個請求並行執行。"
+  },
+  "profile": {
+    "name": "您的姓名",
+    "placeholder": "如何稱呼您？",
+    "help": "用於標註麥克風錄製的發言。選填；留空時顯示「您」。可在設定 → 個人資料中修改。",
+    "onboardingTitle": "您叫什麼名字？",
+    "skip": "略過",
+    "selfLabel": "您"
   }
 }

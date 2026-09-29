@@ -927,6 +927,10 @@
       "advanced": {
         "label": "詳細",
         "description": "診断とデバッグログ"
+      },
+      "profile": {
+        "label": "プロフィール",
+        "description": "会議の文字起こしに表示する名前"
       }
     },
     "title": "設定"
@@ -2459,6 +2463,15 @@
       "installing": "インストール中…",
       "remove": "{{model}} を削除"
     },
-    "chatPrompt": "チャットの指示"
+    "chatPrompt": "チャットの指示",
+    "openaiMeetingAudio": "マイク：タイムスタンプ付きWhisper。システム音声：GPT-4o Transcribe Diarize。2つのリクエストを並列実行します。"
+  },
+  "profile": {
+    "name": "名前",
+    "placeholder": "表示する名前を入力",
+    "help": "マイクで録音した発言に使用します。任意項目です。空欄の場合は「あなた」と表示します。設定 → プロフィールで変更できます。",
+    "onboardingTitle": "お名前を教えてください",
+    "skip": "スキップ",
+    "selfLabel": "あなた"
   }
 }

@@ -320,7 +320,7 @@ export async function transcribeAudioFileByok(
       }
       const ext = extname(realByok).toLowerCase().replace(".", "");
       const data = await deps.postRawAudioFile(
-        deepgramFileUrl(route.model || "nova-3", route.language, payload.diarize === true),
+        deepgramFileUrl(route.model || "nova-3", route.language, payload.diarize === true, payload.multichannel === true),
         realByok,
         AUDIO_MIME_TYPES[ext] || "application/octet-stream",
         payload.apiKey,
@@ -354,7 +354,7 @@ export async function transcribeAudioFileByok(
         };
       }
       await internal.onRawProviderResponse?.(data.data);
-      return parseResult(parseDeepgramFileResponse(data.data, payload.diarize === true));
+      return parseResult(parseDeepgramFileResponse(data.data, payload.diarize === true, payload.multichannel === true));
     }
 
     if (route.transport === "proxied" && route.provider === "elevenlabs") {

@@ -968,6 +968,10 @@
       "advanced": {
         "label": "Advanced",
         "description": "Diagnostics and debug logging"
+      },
+      "profile": {
+        "label": "Profile",
+        "description": "Your name in meeting transcripts"
       }
     },
     "title": "Settings"
@@ -2459,6 +2463,15 @@
       "installing": "Installing…",
       "remove": "Remove {{model}}"
     },
-    "chatPrompt": "Chat instructions"
+    "chatPrompt": "Chat instructions",
+    "openaiMeetingAudio": "Microphone: Whisper with timestamps. System audio: GPT-4o Transcribe Diarize. Two parallel requests."
+  },
+  "profile": {
+    "name": "Your name",
+    "placeholder": "How should we name you?",
+    "help": "Used for speech recorded by your microphone. Optional; leave blank to show “You”. You can change it in Settings → Profile.",
+    "onboardingTitle": "What should we call you?",
+    "skip": "Skip",
+    "selfLabel": "You"
   }
 }

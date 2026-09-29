@@ -213,14 +213,14 @@ test("worker stores post-stop recognition per run and does not infer names from 
   let recognizeCalls = 0;
   const worker = createWorker(db, storage, {
     now: () => new Date(Date.parse(recording.endedAt!) + 15_000),
-    transcribeRemote: async (_request, saveRaw) => {
-      await saveRaw(rawResponse);
+    transcribeRemote: async (request, saveRaw) => {
+      await saveRaw(request.diarize ? rawResponse : { text: "", words: [] });
       return { success: true, text: rawResponse.text };
     },
     recognizeSpeakers: async (recordingValue, run, transcript, audioPath, signal) => {
       recognizeCalls += 1;
       assert.equal(recordingValue.id, recording.id);
-      assert.equal(audioPath, storage.getDerivedAudioPath(recording.id, run.id));
+      assert.equal(audioPath, storage.getDerivedAudioPath(recording.id, run.id, "system"));
       const attendees = recordingValue.sourceMetadata.calendarAttendees as Array<{ name: string }>;
       assert.equal(attendees[0].name, "Calendar Guess");
       if (run.id !== initialRun.id) return [];
@@ -244,7 +244,7 @@ test("worker stores post-stop recognition per run and does not infer names from 
   await worker.waitForIdle();
   assert.equal(recognizeCalls, 1);
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(initialRun.id), [
-    { speakerId: "Speaker 1", profileId: knownProfileId, displayName: "Known voice", source: "voice", revision: 1 },
+    { speakerId: "system:Speaker 1", profileId: knownProfileId, displayName: "Known voice", source: "voice", revision: 1 },
   ]);
   const recognizedProjection = JSON.parse(db.getNote(note.id).transcript!);
   assert.equal(recognizedProjection[0].speakerName, "Known voice");

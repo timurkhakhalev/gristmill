@@ -1,3 +1,4 @@
+const { formatMeetingMaterial } = require("../../../../src/helpers/meetingPromptMaterial.ts");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs: typeof import("node:fs") = require("node:fs");
 const os: typeof import("node:os") = require("node:os");
@@ -59,13 +60,13 @@ test("selected provider repairs schema-invalid speaker JSON once in the same con
   assert.equal(generated[0].model, generated[1].model);
   assert.equal(generated[0].maxRetries, 0);
   assert.equal(generated[1].maxRetries, 0);
-  assert.deepEqual(JSON.parse(generated[0].messages[0].content), namingInput);
+  assert.deepEqual(generated[0].messages[0].content, formatMeetingMaterial({ ...namingInput, transcriptSegments: namingInput.segments }));
   assert.equal(generated[1].messages.length, 3);
   assert.equal(generated[1].messages[1].content, invalidResponse);
   assert.match(generated[1].messages[2].content, /Previous response:/);
   assert.match(generated[1].messages[2].content, /speaker ID was not unknown/);
   assert.match(generated[1].messages[2].content, /speaker_other/);
-  assert.equal(generated[0].messages[0].content, JSON.stringify(namingInput));
+  assert.equal(generated[0].messages[0].content, formatMeetingMaterial({ ...namingInput, transcriptSegments: namingInput.segments }));
 });
 
 test("speaker JSON schema and domain failures get one repair, then stop", async () => {
@@ -180,7 +181,7 @@ else if (args[0] === "thread" && args[1] === "tell") {
   assert.equal(calls.length, 2);
   assert.deepEqual(calls.map((call) => [call.command, call.id]), [["tell", "thr_original"], ["tell", "thr_original"]]);
   assert.match(calls[0].prompt, /^Name unknown speakers only from transcript evidence\.\n\n/);
-  assert.deepEqual(JSON.parse(calls[0].prompt.split("\n\n").slice(1).join("\n\n")), namingInput);
+  assert.deepEqual(calls[0].prompt.split("\n\n").slice(1).join("\n\n"), formatMeetingMaterial({ ...namingInput, transcriptSegments: namingInput.segments }));
   assert.match(calls[1].prompt, /^Name unknown speakers only from transcript evidence\.\n\n/);
   assert.match(calls[1].prompt, /speaker ID was not unknown/);
   assert.match(calls[1].prompt, /speaker_else/);

@@ -1,3 +1,4 @@
+import { formatMeetingMaterial } from "./meetingPromptMaterial.js";
 import fs from "fs";
 import { createHash } from "crypto";
 import { z } from "zod";
@@ -32,7 +33,7 @@ import { parseGeminiFileResponse } from "./geminiFileTranscription.js";
 import { parseOpenAIFileResponse } from "./remoteTranscriptionIpcHandler.js";
 import { meetingTranscriptArtifactSchema, meetingSummaryArtifactSchema } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
-import { composeMeetingAudioParts, meetingTimelineFrameCount, prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio } from "./meetingAudioMixer.js";
+import { composeMeetingAudioParts, meetingTimelineFrameCount, prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio, type MeetingAudioLayout } from "./meetingAudioMixer.js";
 import { formatSpeakerTranscript, mergeSpeakersWithText } from "./speakerMerge.js";
 import { byokFileSizeLimit } from "./transcriptionRoute.js";
 import { supportedMeetingFileProvider } from "./meetingFileTranscription.js";
@@ -149,7 +150,8 @@ export interface MeetingProcessingWorkerDeps {
     recording: MeetingRecordingDto,
     runId: string,
     epochs: MeetingRecordingEpochDto[],
-    signal: AbortSignal
+    signal: AbortSignal,
+    layout?: MeetingAudioLayout
   ) => Promise<PreparedMeetingAudio>;
   fileSize?: (path: string) => number;
   now?: () => Date;
@@ -382,6 +384,8 @@ export class MeetingProcessingWorker {
       !current.hasTranscript &&
       !current.hasSummary &&
       !this.deps.storage.hasRunArtifact(current.id, "provider-response") &&
+      !this.deps.storage.hasRunArtifact(current.id, "provider-response-mic") &&
+      !this.deps.storage.hasRunArtifact(current.id, "provider-response-system") &&
       !this.deps.storage.hasRunArtifact(current.id, "transcript") &&
       !this.deps.storage.hasRunArtifact(current.id, "summary");
     const summaryOnlyCorrection = current &&
@@ -609,20 +613,21 @@ export class MeetingProcessingWorker {
       throw new MeetingProcessingFailure("unsupported-provider", "blocked");
     }
     const { timeline, epochs } = this.sourceTimeline(run, recording, true);
-    const mixer = this.deps.mixAudio ?? ((recordingValue, runId, epochValues, abortSignal) =>
-      prepareMeetingAudio(this.deps.storage, recordingValue, runId, epochValues, {
-        signal: abortSignal,
-        deps: this.deps.mixerDeps,
-      })
-    );
-    const audio = await mixer(timeline, run.id, epochs, signal);
+    const layouts: MeetingAudioLayout[] = provider === "deepgram" ? ["stereo"] : provider ? ["mic", "system"] : ["mono"];
+    const audios: PreparedMeetingAudio[] = [];
+    for (const layout of layouts) {
+      audios.push(await (this.deps.mixAudio
+        ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout)
+        : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout })));
+    }
+    const audio = audios[0];
     signal.throwIfAborted();
     if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(run)) {
       this.cancelRun(run.id, "meeting-group-changed");
       return;
     }
     if (this.isCapturing()) return this.pause(run, "asr");
-    if (provider && audio.sizeBytes > byokFileSizeLimit(provider)) {
+    if (provider && audios.some((value) => value.sizeBytes > byokFileSizeLimit(provider))) {
       throw new MeetingProcessingFailure("provider-limit", "blocked");
     }
     if (provider === "gemini" && audio.durationSeconds > GEMINI_MAX_SECONDS) {
@@ -645,7 +650,7 @@ export class MeetingProcessingWorker {
     }
     if (recording.audioState !== "available") throw new MeetingProcessingFailure("audio-unavailable", "blocked");
     const config = this.requireConfig(run).transcription;
-    const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id);
+    const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, config.mode === "local" ? "mono" : config.provider === "deepgram" ? "stereo" : "system");
     const fileSize = (this.deps.fileSize ?? ((filePath) => fs.statSync(filePath).size))(audioPath);
     const requestId = `meeting-${run.id}`;
     if (config.mode === "local") {
@@ -686,6 +691,7 @@ export class MeetingProcessingWorker {
       model: providerModel(config.model, provider),
       language: config.language === "auto" ? undefined : config.language,
       diarize: true,
+      ...(provider === "deepgram" ? { multichannel: true } : {}),
       transcriptionMode: "providers",
       ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       requestId,
@@ -694,7 +700,42 @@ export class MeetingProcessingWorker {
       this.cancelRun(run.id, "meeting-group-changed");
       return;
     }
-    const result = await this.deps.transcribeRemote(request, async (response) => this.saveRawResponse(run.id, response), signal);
+    let result: RemoteTranscriptionResult;
+    if (provider === "deepgram") {
+      result = await this.deps.transcribeRemote(request, async (response) => this.saveRawResponse(run.id, response), signal);
+    } else {
+      // Each completed source is durable before normalization; retries only pay for the missing source.
+      const outcomes = await Promise.allSettled((["mic", "system"] as const).map(async (source) => {
+        const artifact = source === "mic" ? "provider-response-mic" : "provider-response-system";
+        if (this.deps.storage.hasRunArtifact(run.id, artifact)) return;
+        const filePath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, source);
+        if ((this.deps.fileSize ?? ((p) => fs.statSync(p).size))(filePath) > byokFileSizeLimit(provider)) {
+          throw new MeetingProcessingFailure("provider-limit", "blocked");
+        }
+        const response = await this.deps.transcribeRemote({
+          ...request, filePath, requestId: `${requestId}-${source}`,
+          diarize: source === "system", timestamps: true,
+          // Whisper supplies segment timestamps without diarization; GPT-4o plain ASR does not.
+          model: provider === "openai" && source === "mic" ? "whisper-1" : request.model,
+        }, async (raw) => {
+          signal.throwIfAborted();
+          const current = this.deps.database.getMeetingProcessingRun(run.id);
+          if (current?.status !== "running" || current.stage !== "asr" || this.deps.database.getMeetingRecording(recording.id)?.audioState !== "available") {
+            throw new MeetingProcessingFailure("stale-provider-response", "cancelled");
+          }
+          this.deps.storage.writeRunArtifact(run.id, artifact, raw);
+        }, signal);
+        if (!this.deps.storage.hasRunArtifact(run.id, artifact)) throw providerFailure(response);
+      }));
+      signal.throwIfAborted();
+      const failed = outcomes.find((outcome) => outcome.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+      this.saveRawResponse(run.id, {
+        mic: this.deps.storage.readRunArtifact(run.id, "provider-response-mic"),
+        system: this.deps.storage.readRunArtifact(run.id, "provider-response-system"),
+      });
+      result = { success: true };
+    }
     const after = this.deps.database.getMeetingProcessingRun(run.id);
     if (!after || after.status !== "running") return;
     if (after.hasRawProviderResponse) {
@@ -747,20 +788,48 @@ export class MeetingProcessingWorker {
     } else {
       const provider = supportedMeetingFileProvider(config.provider, config.model);
       if (!provider) throw new MeetingProcessingFailure("unsupported-provider", "blocked");
-      result = normalizeProviderResponse(provider, raw);
+      if (provider === "deepgram") {
+        result = parseDeepgramFileResponse(raw, true, true);
+      } else {
+        const sources = z.object({ mic: z.unknown(), system: z.unknown() }).parse(raw);
+        const mic = normalizeProviderResponse(provider, sources.mic, false);
+        const system = normalizeProviderResponse(provider, sources.system, true);
+        for (const source of [mic, system]) {
+          if (!source.success || typeof source.text !== "string" || (source.text.trim() && !source.segments?.length)) {
+            throw new MeetingProcessingFailure(source.code || "provider-timestamps-missing", "failed");
+          }
+        }
+        const segments = [
+          ...(mic.segments ?? []).map((segment) => ({ ...segment, speaker: "mic" })),
+          ...(system.segments ?? []).map((segment) => ({ ...segment, speaker: `system:${segment.speaker}` })),
+        ].sort((a, b) => a.start - b.start);
+        result = { success: true, text: formatSpeakerTranscript(segments), segments, diarized: true };
+      }
     }
     if (!result.success || typeof result.text !== "string") {
       throw new MeetingProcessingFailure(result.code || "provider-response-invalid", "failed", result.error);
     }
     const transcript = validateTranscript(result, recordingDuration, config.mode === "providers" && !!result.text.trim());
+    if (transcript.segments?.some((segment) => segment.speaker === "mic") &&
+        !this.deps.database.getMeetingRunSpeakerCorrections(run.id).some((item) => item.speakerId === "mic")) {
+      const saved = this.deps.database.setMeetingRunSpeakerCorrection(run.id, "mic", null, run.config?.selfDisplayName?.trim() || "You", "user");
+      if (!saved.success) throw new MeetingProcessingFailure("self-name-not-saved", "failed");
+    }
     this.deps.storage.writeRunArtifact(run.id, "transcript", transcript);
     if (!this.deps.database.setMeetingRunArtifact(run.id, "transcript").success) {
       this.deps.storage.removeRunArtifact(run.id, "transcript");
       throw new MeetingProcessingFailure("transcript-state-not-saved", "failed");
     }
     if (this.deps.recognizeSpeakers && recording.audioState === "available" && transcript.segments?.length) {
-      const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id);
-      const recognized = await this.deps.recognizeSpeakers(recording, run, transcript, audioPath, signal);
+      const layout = config.mode === "local" ? "mono" : "system";
+      const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, layout);
+      if (config.provider === "deepgram") {
+        await (this.deps.mixAudio
+          ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout)
+          : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout }));
+      }
+      const recognitionTranscript = { ...transcript, segments: transcript.segments.filter((segment) => segment.speaker !== "mic") };
+      const recognized = await this.deps.recognizeSpeakers(recording, run, recognitionTranscript, audioPath, signal);
       signal.throwIfAborted();
       const assigned = new Set(this.deps.database.getMeetingRunSpeakerCorrections(run.id).map((item) => item.speakerId));
       const candidates = recognized.filter((item) => {
@@ -864,7 +933,7 @@ export class MeetingProcessingWorker {
       }
     }
 
-    const input = JSON.stringify({
+    const input = formatMeetingMaterial({
       meetingTitle: snapshot.meetingTitle,
       manualNotes: snapshot.manualNotes,
       transcriptSegments: snapshot.transcriptSegments,
@@ -1218,10 +1287,10 @@ export class MeetingProcessingWorker {
 
       const controller = this.beginSummaryAction(runId);
       try {
-        const input = JSON.stringify({
+        const input = formatMeetingMaterial({
           meetingTitle: context.snapshot.meetingTitle,
           manualNotes: context.snapshot.manualNotes,
-          savedSummary: context.markdown,
+          summary: context.markdown,
           transcriptSegments: this.correctedSegments(context),
         });
         const conversation = await this.createActionConversation(context, MEETING_TASKS_INSTRUCTION, controller.signal);
@@ -1268,7 +1337,7 @@ export class MeetingProcessingWorker {
       if (!prompt) throw new MeetingProcessingFailure("meeting-recap-action-missing", "blocked");
       const controller = this.beginSummaryAction(runId);
       try {
-        const input = JSON.stringify({
+        const input = formatMeetingMaterial({
           meetingTitle: context.snapshot.meetingTitle,
           manualNotes: context.snapshot.manualNotes,
           summary: context.markdown,
@@ -1341,7 +1410,7 @@ export class MeetingProcessingWorker {
     };
   }
 
-  private correctedSegments(context: MeetingSummaryActionContext): Array<Record<string, unknown>> {
+  private correctedSegments(context: MeetingSummaryActionContext) {
     const sourceSegments = context.transcript.segments;
     if (sourceSegments?.length && sourceSegments.length !== context.snapshot.transcriptSegments.length) {
       throw new MeetingProcessingFailure("meeting-summary-source-invalid", "failed");
@@ -1587,11 +1656,11 @@ export function registerMeetingProcessingHandlers(
   });
 }
 
-export function normalizeProviderResponse(provider: "deepgram" | "elevenlabs" | "gemini" | "openai", raw: unknown): RemoteTranscriptionResult {
-  if (provider === "deepgram") return parseDeepgramFileResponse(raw, true);
-  if (provider === "elevenlabs") return parseElevenLabsFileResponse(raw, true);
-  if (provider === "openai") return parseOpenAIFileResponse(raw, true);
-  return parseGeminiFileResponse(raw, true);
+export function normalizeProviderResponse(provider: "deepgram" | "elevenlabs" | "gemini" | "openai", raw: unknown, diarize = true): RemoteTranscriptionResult {
+  if (provider === "deepgram") return parseDeepgramFileResponse(raw, diarize);
+  if (provider === "elevenlabs") return parseElevenLabsFileResponse(raw, diarize);
+  if (provider === "openai") return parseOpenAIFileResponse(raw, diarize, !diarize);
+  return parseGeminiFileResponse(raw, diarize);
 }
 
 class MeetingProcessingFailure extends Error {

@@ -921,6 +921,10 @@
       "advanced": {
         "label": "Avançado",
         "description": "Diagnóstico e registro de depuração"
+      },
+      "profile": {
+        "label": "Perfil",
+        "description": "Seu nome nas transcrições de reuniões"
       }
     },
     "title": "Configurações"
@@ -2459,6 +2463,15 @@
       "installing": "Instalando…",
       "remove": "Remover {{model}}"
     },
-    "chatPrompt": "Instruções do chat"
+    "chatPrompt": "Instruções do chat",
+    "openaiMeetingAudio": "Microfone: Whisper com marcações de tempo. Áudio do sistema: GPT-4o Transcribe Diarize. Duas solicitações paralelas."
+  },
+  "profile": {
+    "name": "Seu nome",
+    "placeholder": "Como devemos chamar você?",
+    "help": "Usado para a fala gravada pelo seu microfone. Opcional; sem nome, mostramos «Você». Altere em Configurações → Perfil.",
+    "onboardingTitle": "Como você se chama?",
+    "skip": "Pular",
+    "selfLabel": "Você"
   }
 }

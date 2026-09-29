@@ -1,3 +1,4 @@
+import { ProfileNameField } from "./settings/ProfileNameField";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePermissions } from "../hooks/usePermissions";
@@ -14,7 +15,7 @@ interface OnboardingFlowProps {
   onComplete: (options?: { openSettings?: boolean }) => void;
 }
 
-type Step = "permissions" | "provider" | "languages" | "calendar";
+type Step = "profile" | "permissions" | "provider" | "languages" | "calendar";
 
 /** Small, product-focused setup flow: recording permissions, one provider,
  * spoken languages, and an optional calendar connection. */
@@ -37,14 +38,22 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       <CompactPermissionsStep
         permissions={permissions}
         systemAudio={systemAudio}
-        onContinue={() => setStep("provider")}
+        onContinue={() => setStep("profile")}
       />
     );
   }
 
   return (
     <CompactOnboardingFrame>
-      <div className="onboarding-shell-scroll flex h-full flex-col overflow-y-auto px-6 pb-6 pt-24">
+      <div className={`onboarding-shell-scroll flex h-full flex-col overflow-y-auto px-6 pb-6 ${step === "profile" ? "pt-45" : "pt-24"}`}>
+        {step === "profile" && (
+          <>
+            <OnboardingStepHeader title={t("profile.onboardingTitle")} />
+            <div className="mt-6"><ProfileNameField /></div>
+            <Footer back={() => setStep("permissions")} onContinue={() => setStep("provider")}
+              continueLabel={store.profileName.trim() ? t("common.continue") : t("profile.skip")} />
+          </>
+        )}
         {step === "provider" && (
           <>
             <OnboardingStepHeader
@@ -60,7 +69,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             </div>
             <Button variant="ghost" onClick={() => setStep("languages")}>{t("cleanupSettings.configureLater")}</Button>
             <Footer
-              back={() => setStep("permissions")}
+              back={() => setStep("profile")}
               continueDisabled={!providerConnected}
               onContinue={() => setStep("languages")}
             />

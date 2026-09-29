@@ -1,3 +1,4 @@
+import type { MeetingAudioLayout } from "./meetingAudioMixer.js";
 import fs from "fs";
 import type { FileHandle } from "fs/promises";
 import path from "path";
@@ -72,6 +73,8 @@ export interface RecoveredEpoch {
   ignoredTrailingBytes: 0 | 1;
   errorCode: string | null;
 }
+
+type StoredMeetingArtifact = MeetingRunArtifact | "provider-response-mic" | "provider-response-system";
 
 export class MeetingRecordingStorage {
   readonly userDataPath: string;
@@ -236,9 +239,9 @@ export class MeetingRecordingStorage {
     }
   }
 
-  writeRunArtifact(runId: string, artifact: MeetingRunArtifact, value: unknown): string {
+  writeRunArtifact(runId: string, artifact: StoredMeetingArtifact, value: unknown): string {
     meetingRecordingIdSchema.parse(runId);
-    meetingRunArtifactSchema.parse(artifact);
+    if (artifact !== "provider-response-mic" && artifact !== "provider-response-system") meetingRunArtifactSchema.parse(artifact);
     const normalizedValue = artifact === "transcript"
       ? meetingTranscriptArtifactSchema.parse(value)
       : artifact === "summary"
@@ -248,7 +251,7 @@ export class MeetingRecordingStorage {
     const directory = this.createRunDirectory(runId);
     const destination = path.join(directory, fileName);
     this.assertSafeFile(destination);
-    if (artifact === "provider-response" && fs.existsSync(destination)) {
+    if (artifact.startsWith("provider-response") && fs.existsSync(destination)) {
       throw new Error("Raw provider response is already stored for this run");
     }
     const serialized = JSON.stringify(normalizedValue);
@@ -279,9 +282,9 @@ export class MeetingRecordingStorage {
     return destination;
   }
 
-  readRunArtifact(runId: string, artifact: MeetingRunArtifact): unknown | null {
+  readRunArtifact(runId: string, artifact: StoredMeetingArtifact): unknown | null {
     meetingRecordingIdSchema.parse(runId);
-    meetingRunArtifactSchema.parse(artifact);
+    if (artifact !== "provider-response-mic" && artifact !== "provider-response-system") meetingRunArtifactSchema.parse(artifact);
     const filePath = path.join(this.resultsRoot, runId, artifactFileName(artifact));
     try {
       this.assertSafeFile(filePath);
@@ -295,9 +298,9 @@ export class MeetingRecordingStorage {
     }
   }
 
-  hasRunArtifact(runId: string, artifact: MeetingRunArtifact): boolean {
+  hasRunArtifact(runId: string, artifact: StoredMeetingArtifact): boolean {
     meetingRecordingIdSchema.parse(runId);
-    meetingRunArtifactSchema.parse(artifact);
+    if (artifact !== "provider-response-mic" && artifact !== "provider-response-system") meetingRunArtifactSchema.parse(artifact);
     const filePath = path.join(this.resultsRoot, runId, artifactFileName(artifact));
     this.assertSafeFile(filePath);
     try {
@@ -309,9 +312,9 @@ export class MeetingRecordingStorage {
     }
   }
 
-  removeRunArtifact(runId: string, artifact: MeetingRunArtifact): void {
+  removeRunArtifact(runId: string, artifact: StoredMeetingArtifact): void {
     meetingRecordingIdSchema.parse(runId);
-    meetingRunArtifactSchema.parse(artifact);
+    if (artifact !== "provider-response-mic" && artifact !== "provider-response-system") meetingRunArtifactSchema.parse(artifact);
     const filePath = path.join(this.resultsRoot, runId, artifactFileName(artifact));
     this.assertSafeFile(filePath);
     fs.rmSync(filePath, { force: true });
@@ -323,22 +326,22 @@ export class MeetingRecordingStorage {
     return filePath;
   }
 
-  getDerivedAudioPath(recordingId: string, runId: string): string {
+  getDerivedAudioPath(recordingId: string, runId: string, layout: MeetingAudioLayout = "mono"): string {
     meetingRecordingIdSchema.parse(recordingId);
     meetingRecordingIdSchema.parse(runId);
     const directory = path.join(this.recordingsRoot, recordingId, "derived");
     this.ensureManagedDirectory(directory);
-    const filePath = path.join(directory, `${runId}.wav`);
+    const filePath = path.join(directory, `${runId}${layout === "mono" ? "" : `-${layout}`}.wav`);
     this.assertSafeFile(filePath);
     return filePath;
   }
 
-  getDerivedAudioTempPath(recordingId: string, runId: string): string {
+  getDerivedAudioTempPath(recordingId: string, runId: string, layout: MeetingAudioLayout = "mono"): string {
     meetingRecordingIdSchema.parse(recordingId);
     meetingRecordingIdSchema.parse(runId);
     const directory = path.join(this.recordingsRoot, recordingId, "derived");
     this.ensureManagedDirectory(directory);
-    const filePath = path.join(directory, `.tmp-${runId}-${randomUUID()}.wav`);
+    const filePath = path.join(directory, `.tmp-${runId}-${layout}-${randomUUID()}.wav`);
     this.assertSafeFile(filePath);
     return filePath;
   }
@@ -353,9 +356,11 @@ export class MeetingRecordingStorage {
     meetingRecordingIdSchema.parse(recordingId);
     meetingRecordingIdSchema.parse(runId);
     this.removeManagedTree(path.join(this.resultsRoot, runId));
-    const derived = path.join(this.recordingsRoot, recordingId, "derived", `${runId}.wav`);
-    this.assertSafeFile(derived);
-    fs.rmSync(derived, { force: true });
+    for (const layout of ["mono", "stereo", "mic", "system"] as const) {
+      const derived = path.join(this.recordingsRoot, recordingId, "derived", `${runId}${layout === "mono" ? "" : `-${layout}`}.wav`);
+      this.assertSafeFile(derived);
+      fs.rmSync(derived, { force: true });
+    }
   }
 
   removeNoteFiles(recordingIds: string[], runIds: string[]): void {
@@ -583,8 +588,8 @@ function writeAllSync(fd: number, buffer: Buffer, writeSync: WriteSync): void {
   }
 }
 
-function artifactFileName(artifact: MeetingRunArtifact): string {
-  if (artifact === "provider-response") return "raw-provider-response.json";
+function artifactFileName(artifact: StoredMeetingArtifact): string {
+  if (artifact.startsWith("provider-response")) return `raw-${artifact}.json`;
   return artifact === "transcript" ? "transcript.json" : "summary.json";
 }
 

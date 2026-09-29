@@ -64,6 +64,7 @@ const EXPECTED_SHARED_FIELD_DIRECTIONS = {
   "src/components/notes/ActionManagerDialog.tsx": ["auto", "auto"],
   "src/components/notes/UploadAudioView.tsx": ["auto"],
   "src/components/onboarding/ProviderSetupStep.tsx": ["ltr", "ltr", "ltr", "ltr"],
+  "src/components/settings/ProfileNameField.tsx": ["auto"],
   "src/components/settings/models/ProviderCredentialsForm.tsx": ["ltr"],
   "src/components/settings/models/TaskModelPicker.tsx": ["ltr", "ltr"],
   "src/components/ui/ApiKeyInput.tsx": ["ltr"],

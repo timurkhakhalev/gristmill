@@ -1,3 +1,4 @@
+import { formatMeetingMaterial } from "./meetingPromptMaterial.js";
 import { z } from "zod";
 import type { MeetingTextConversation } from "./meetingSummary.js";
 import { requestMeetingJson } from "./meetingJsonRepair.js";
@@ -37,7 +38,7 @@ export async function suggestMeetingSpeakerNames(input: unknown, conversation: M
   const allowed = new Set(unknownSpeakerIds);
   return requestMeetingJson({
     conversation,
-    prompt: JSON.stringify(parsedInput),
+    prompt: formatMeetingMaterial({ ...parsedInput, transcriptSegments: parsedInput.segments }),
     refusalCode: "speaker-name-refused",
     invalidCode: "speaker-name-json-invalid",
     validate: (text) => {

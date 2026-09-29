@@ -9,7 +9,7 @@ import type { WindowManager } from "./windowManager.js";
 import type { CalendarEventRow } from "./database.js";
 import { projectCalendarEvent } from "../contracts/calendar.js";
 
-const MENU_REFRESH_MS = 30 * 1000;
+const MENU_REFRESH_MS = 2 * 60 * 1000;
 const TITLE_MAX_CHARS = 16;
 const UPCOMING_WINDOW_MINUTES = 48 * 60;
 
@@ -63,13 +63,13 @@ export class TrayManager {
     return `${fmt.format(new Date(event.start_time))} - ${fmt.format(new Date(event.end_time))}`;
   }
 
-  // Events that have not started yet, soonest first (in-progress ones are skipped).
-  getFutureEvents(now = Date.now()): CalendarEventRow[] {
+  // Keep in-progress events until their calendar end, soonest first.
+  getUpcomingEvents(now = Date.now()): CalendarEventRow[] {
     if (!this.calendarSource) return [];
     try {
       return this.calendarSource
         .getUpcomingEvents(UPCOMING_WINDOW_MINUTES)
-        .filter((event) => new Date(event.start_time).getTime() > now)
+        .filter((event) => new Date(event.end_time).getTime() > now)
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
     } catch (error) {
       debugLogger.error("Failed to read upcoming events", { error: (error as Error).message }, "tray");
@@ -78,7 +78,9 @@ export class TrayManager {
   }
 
   buildMeetingMenuItems(now = Date.now()): MenuItemConstructorOptions[] {
-    const events = this.getFutureEvents(now);
+    const events = this.getUpcomingEvents(now).filter(
+      (event) => new Date(event.start_time).getTime() > now
+    );
     if (!events.length) return [];
 
     const [next, ...rest] = events;
@@ -123,13 +125,17 @@ export class TrayManager {
 
   updateTrayTitle(now = Date.now()): void {
     if (!this.tray || process.platform !== "darwin") return;
-    const next = this.getFutureEvents(now)[0];
+    const next = this.getUpcomingEvents(now)[0];
     if (!next) {
       this.tray.setTitle("");
       return;
     }
     const name = next.summary ?? "";
     const short = name.length > TITLE_MAX_CHARS ? `${name.slice(0, TITLE_MAX_CHARS - 1).trimEnd()}…` : name;
+    if (new Date(next.start_time).getTime() <= now) {
+      this.tray.setTitle(short);
+      return;
+    }
     const time = i18nMain.t("tray.inTime", {
       time: this.formatDuration(new Date(next.start_time).getTime() - now),
     });
@@ -429,7 +435,9 @@ export class TrayManager {
   }
 
   updateTrayMenu(): void {
-    if (!this.tray || this.menuOpen) return;
+    if (!this.tray) return;
+    this.updateTrayTitle();
+    if (this.menuOpen) return;
 
     const contextMenu = Menu.buildFromTemplate(this.buildContextMenuTemplate());
     contextMenu.on("menu-will-show", () => {
@@ -440,7 +448,6 @@ export class TrayManager {
     });
     this.tray.setToolTip(i18nMain.t("tray.tooltip"));
     this.tray.setContextMenu(contextMenu);
-    this.updateTrayTitle();
   }
 
   setupTrayEventHandlers(): void {

@@ -2344,7 +2344,8 @@
     },
     "autoSummarySkipped": "Automatische Zusammenfassung übersprungen",
     "autoSummarySkippedReason": "Eine automatische Zusammenfassung erfordert mindestens 180 Sekunden Audio und 2.500 Transkriptzeichen. Dieses Meeting hat {{seconds}} Sekunden und {{chars}} Zeichen. Du kannst jetzt manuell eine Zusammenfassung erstellen.",
-    "calendarParticipantsInvalid": "Die gespeicherten Kalenderteilnehmerdaten sind ungültig. Korrigiere sie vor dem erneuten Versuch."
+    "calendarParticipantsInvalid": "Die gespeicherten Kalenderteilnehmerdaten sind ungültig. Korrigiere sie vor dem erneuten Versuch.",
+    "calendarParticipantsNamingSkipped": "Die automatische Benennung der Sprecher wurde übersprungen. Transkript und Zusammenfassung bleiben verfügbar."
   },
   "shortcutsDialog": {
     "title": "Tastenkürzel",

@@ -200,6 +200,7 @@ export const meetingProcessingRunDtoSchema = z.object({
   stage: meetingRunStageSchema,
   status: meetingRunStatusSchema,
   errorCode: z.string().nullable(),
+  speakerNamingErrorCode: z.string().nullable(),
   retryAt: z.string().nullable(),
   retryCount: z.number().int().nonnegative(),
   hasRawProviderResponse: z.boolean(),

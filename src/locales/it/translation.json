@@ -2344,7 +2344,8 @@
     },
     "autoSummarySkipped": "Riepilogo automatico ignorato",
     "autoSummarySkippedReason": "Il riepilogo automatico richiede almeno 180 secondi di audio registrato e 2.500 caratteri di trascrizione. Questa riunione dura {{seconds}} secondi e contiene {{chars}} caratteri. Ora puoi creare un riepilogo manualmente.",
-    "calendarParticipantsInvalid": "I dati salvati dei partecipanti del calendario non sono validi. Correggili prima di riprovare."
+    "calendarParticipantsInvalid": "I dati salvati dei partecipanti del calendario non sono validi. Correggili prima di riprovare.",
+    "calendarParticipantsNamingSkipped": "L’assegnazione automatica dei nomi ai parlanti è stata saltata. La trascrizione e il riepilogo restano disponibili."
   },
   "shortcutsDialog": {
     "title": "Scorciatoie da tastiera",

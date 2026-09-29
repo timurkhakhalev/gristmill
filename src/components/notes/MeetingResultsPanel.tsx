@@ -266,6 +266,26 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const displayedGroups = [...audioGroups].reverse();
   const audioCount = audioGroups.reduce((count, group) => count + group.parts.length, 0);
   const latestGroup = groups[groups.length - 1];
+  const groupAsrDeadlines = useMemo(() => {
+    if (previewRecordings) return new Map<string, number>();
+    return new Map(groups.map((group) => {
+      let deadline = 0;
+      for (const part of group.parts) {
+        const endedAt = part.recording.endedAt ? Date.parse(part.recording.endedAt) : Number.NaN;
+        if (Number.isFinite(endedAt)) deadline = Math.max(deadline, endedAt + MEETING_ASR_GATE_MS);
+        for (const { run } of part.runs) {
+          if (
+            (run.kind === "initial" || run.kind === "reprocess") && run.status === "pending" &&
+            run.stage === "prepare" && run.retryCount === 0 && run.errorCode === null && run.retryAt
+          ) {
+            const retryAt = Date.parse(run.retryAt);
+            if (Number.isFinite(retryAt)) deadline = Math.max(deadline, retryAt);
+          }
+        }
+      }
+      return [group.id, deadline] as const;
+    }));
+  }, [groups, previewRecordings]);
   const recordedRuns = recordings.flatMap((part) => part.runs);
   const versions = useMemo(() => recordings.flatMap((part) => part.runs).filter((item) => item.transcript).sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt)), [recordings]);
   const selected = versions.find((item) => item.run.id === runId)
@@ -333,20 +353,24 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     latestRun.run.errorCode === null && latestRun.run.retryAt
     ? Date.parse(latestRun.run.retryAt)
     : null;
-  const latestStopDeadline = recordings.reduce((deadline, item) => {
-    const endedAt = item.recording.endedAt ? Date.parse(item.recording.endedAt) : Number.NaN;
-    return Number.isFinite(endedAt) ? Math.max(deadline, endedAt + MEETING_ASR_GATE_MS) : deadline;
-  }, 0);
+  const nextGroupAsrDeadline = [...groupAsrDeadlines.values()]
+    .filter((deadline) => deadline > countdownNow)
+    .reduce((earliest, deadline) => Math.min(earliest, deadline), Number.POSITIVE_INFINITY);
   useEffect(() => {
-    if (gateDeadline === null && latestStopDeadline <= countdownNow) return;
+    if (!Number.isFinite(nextGroupAsrDeadline)) return;
     const id = window.setTimeout(() => setCountdownNow(Date.now()), 1000);
     return () => window.clearTimeout(id);
-  }, [countdownNow, gateDeadline, latestStopDeadline]);
+  }, [countdownNow, nextGroupAsrDeadline]);
   const liveWaitingSeconds = gateDeadline === null ? 0 : Math.max(0, Math.ceil((gateDeadline - countdownNow) / 1000));
   const gateSeconds = mockGateActive ? mock?.waitingSeconds ?? 0 : liveWaitingSeconds;
   const gateActive = gateSeconds > 0;
-  const manualAsrBlocked = gateActive || latestStopDeadline > countdownNow ||
-    ["preparing", "recording", "paused", "saving"].includes(capturePhase ?? "");
+  const captureBlocksAsr = ["preparing", "recording", "paused", "saving"].includes(capturePhase ?? "");
+  const reprocessGroupIds = [...new Set(recordings
+    .filter((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))
+    .map((part) => part.recording.groupId))];
+  const manualAsrBlockedForGroups = (groupIds: string[]) =>
+    mockGateActive || captureBlocksAsr || groupIds.some((groupId) => (groupAsrDeadlines.get(groupId) ?? 0) > countdownNow);
+  const wholeMeetingAsrBlocked = manualAsrBlockedForGroups(reprocessGroupIds);
   const selectedTranscriptCharacters = selected?.transcript
     ? selected.transcript.segments?.length
       ? selected.transcript.segments.reduce((length, segment) => length + segment.text.length, 0)
@@ -359,7 +383,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     : 0;
   const showShortTranscriptNotice = !previewRecordings && selected?.run.kind !== "summary" &&
     selected?.run.status === "complete" && selected.run.stage === "summary" && !selected.summary &&
-    !selected.run.hasSummary && (selectedTranscriptDuration < 180 || selectedTranscriptCharacters < 2500);
+    !selected.run.hasSummary && Boolean(selected.transcript?.text.trim()) &&
+    (selectedTranscriptDuration < 180 || selectedTranscriptCharacters < 2500);
 
   const runTask = async (task: () => Promise<void>) => {
     setBusy(true);
@@ -415,7 +440,12 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
   /** Starts a run with the settings-selected providers; no per-run picker. */
   const openRun = (kind: "reprocess" | "summary", target: { partId?: string } = {}) => {
-    if (kind === "reprocess" && manualAsrBlocked) return;
+    if (kind === "reprocess") {
+      const targetGroupIds = target.partId
+        ? recordings.filter((part) => part.recording.id === target.partId).map((part) => part.recording.groupId)
+        : reprocessGroupIds;
+      if (manualAsrBlockedForGroups(targetGroupIds)) return;
+    }
     setAudioOpen(false);
     void createRun({ kind, ...target });
   };
@@ -599,14 +629,14 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
               if (key === "export") void exportPart(part.recording.id);
               if (key === "delete") deletePart(part.recording.id);
             }}>
-              <Dropdown.Item id="asr" isDisabled={busy || manualAsrBlocked || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
+              <Dropdown.Item id="asr" isDisabled={busy || manualAsrBlockedForGroups([part.recording.groupId]) || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
               <Dropdown.Item id="export" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
               <Dropdown.Item id="delete" isDisabled={busy || part.recording.audioState === "deleted"} variant="danger" textValue={t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}><Trash2 size={14}/>{t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}</Dropdown.Item>
             </Dropdown.Menu></Dropdown.Popover></Dropdown>
           </div>)}
           </section>})}
           </div>
-          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <Button size="sm" variant="secondary" className="mt-2 w-full shrink-0 gap-1.5" isDisabled={busy || manualAsrBlocked} onPress={() => openRun("reprocess")}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
+          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <Button size="sm" variant="secondary" className="mt-2 w-full shrink-0 gap-1.5" isDisabled={busy || wholeMeetingAsrBlocked} onPress={() => openRun("reprocess")}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
           </>}
         </Popover.Dialog></Popover.Content>
       </Popover>
@@ -615,6 +645,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     </div>
 
     {notice}
+    {!previewRecordings && selected?.run.speakerNamingErrorCode === "calendar-participants-invalid" && <NoteNotice status="warning"
+      title={tr("calendarParticipantsInvalid", "Stored calendar participant data is invalid. Correct it before retrying.")}
+      description={tr("calendarParticipantsNamingSkipped", "Automatic speaker naming was skipped. The transcript and Summary remain available.")}
+    />}
     {showShortTranscriptNotice && !mock && <NoteNotice status="accent"
       title={tr("autoSummarySkipped", "Automatic Summary skipped")}
       description={tr("autoSummarySkippedReason", "Automatic Summary requires at least 180 seconds of recorded audio and 2,500 transcript characters. This meeting has {{seconds}} seconds and {{chars}} characters. You can create a Summary manually now.", {
@@ -686,7 +720,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           <Popover.Content placement="bottom start" className="w-fit min-w-0 max-w-[calc(100vw-24px)]"><Popover.Dialog className="p-1">
             <div className="flex flex-col gap-1">
               <Button size="sm" variant="ghost" className="justify-start gap-2" onPress={() => { setModelOpen(false); openRun("summary"); }}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Button>
-              <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={manualAsrBlocked || !availableParts.length} onPress={() => { setModelOpen(false); openRun("reprocess"); }}><FileText size={14}/>{t("meetingResults.newAsr")}</Button>
+              <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={wholeMeetingAsrBlocked || !availableParts.length} onPress={() => { setModelOpen(false); openRun("reprocess"); }}><FileText size={14}/>{t("meetingResults.newAsr")}</Button>
               {mock && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={mock.recap === "running" || !summaryText} onPress={() => { setModelOpen(false); patchMock({ recap: "running" }); mockAfter(1500, { recap: "ok" }); }}><AlignLeft size={14}/>{mock.recap === "ok" ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
               {!mock && selected?.summary && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={busy || recapStatus === "running" || !selected.run.hasSummary} onPress={() => { setModelOpen(false); void runSummaryAction("recap"); }}><AlignLeft size={14}/>{/^## Recap\s*$/m.test(summaryText ?? "") ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
             </div>

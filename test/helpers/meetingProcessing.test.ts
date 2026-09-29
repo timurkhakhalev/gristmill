@@ -934,13 +934,13 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, manual.run.id);
 });
 
-test("malformed stored calendar participants fail visibly instead of becoming an empty candidate list", async (t: import("node:test").TestContext) => {
+test("malformed calendar participants stay visible while eligible automatic Summary completes", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
-  const { note, recording, run: sourceRun } = createFinishedRecording(db, storage, validConfig);
-  saveTranscriptArtifact(db, storage, sourceRun.id, "A short transcript with an unknown speaker.");
-  db.setMeetingProcessingRunState(sourceRun.id, { stage: "summary", status: "cancelled" });
+  const { note, run } = createFinishedRecording(db, storage, validConfig, "", false, 180);
+  saveTranscriptArtifact(db, storage, run.id, "x".repeat(2500));
+  db.setMeetingProcessingRunState(run.id, { stage: "summary", status: "pending", retryAt: null });
   db.db.prepare("UPDATE notes SET participants = ? WHERE id = ?").run("{", note.id);
   let namingCalls = 0;
   let summaryCalls = 0;
@@ -949,20 +949,21 @@ test("malformed stored calendar participants fail visibly instead of becoming an
     summarize: async () => { summaryCalls += 1; return "## TLDR\nSummary."; },
   });
   t.after(() => worker.stop());
-  const summary = worker.createRun({ recordingId: recording.id, kind: "summary", sourceRunId: sourceRun.id, config: validConfig });
   worker.onRetentionReady();
   await worker.waitForIdle();
 
-  const failed = db.getMeetingProcessingRun(summary.run.id);
-  assert.ok(failed);
-  assert.equal(failed.status, "failed");
-  assert.equal(failed.errorCode, "calendar-participants-invalid");
-  assert.equal(db.getMeetingRunLlmSourceSnapshot(summary.run.id), null);
+  const automatic = db.getMeetingProcessingRun(run.id);
+  assert.ok(automatic);
+  assert.equal(automatic.status, "complete");
+  assert.equal(automatic.errorCode, null);
+  assert.equal(automatic.speakerNamingErrorCode, "calendar-participants-invalid");
+  assert.equal(automatic.hasSummary, true);
+  assert.equal(JSON.parse(db.getMeetingRunLlmSourceSnapshot(run.id) ?? "{}").participants, null);
   assert.equal(namingCalls, 0);
-  assert.equal(summaryCalls, 0);
+  assert.equal(summaryCalls, 1);
 });
 
-test("participant data corrupted during naming fails the run instead of keeping stale candidates", async (t: import("node:test").TestContext) => {
+test("participant data corrupted during naming records the error and keeps manual Summary available", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
@@ -973,7 +974,7 @@ test("participant data corrupted during naming fails the run instead of keeping 
   const worker = workerFor(db, storage, {
     nameSpeakers: async () => {
       db.db.prepare("UPDATE notes SET participants = ? WHERE id = ?").run("{", note.id);
-      return [];
+      return [{ speakerId: "speaker_0", name: "Model suggestion" }];
     },
     summarize: async () => { summaryCalls += 1; return "## TLDR\nSummary."; },
   });
@@ -982,11 +983,14 @@ test("participant data corrupted during naming fails the run instead of keeping 
   worker.onRetentionReady();
   await worker.waitForIdle();
 
-  const failed = db.getMeetingProcessingRun(summary.run.id);
-  assert.ok(failed);
-  assert.equal(failed.status, "failed");
-  assert.equal(failed.errorCode, "calendar-participants-invalid");
-  assert.equal(summaryCalls, 0);
+  const completed = db.getMeetingProcessingRun(summary.run.id);
+  assert.ok(completed);
+  assert.equal(completed.status, "complete");
+  assert.equal(completed.errorCode, null);
+  assert.equal(completed.speakerNamingErrorCode, "calendar-participants-invalid");
+  assert.equal(completed.hasSummary, true);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(sourceRun.id), []);
+  assert.equal(summaryCalls, 1);
 });
 
 test("validated speaker names persist model provenance and both Summary stages use corrected labels", async (t: import("node:test").TestContext) => {

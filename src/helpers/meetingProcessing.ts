@@ -185,7 +185,7 @@ interface MeetingLlmSourceSnapshot {
   sourceRunId: string;
   sourceRecordingIds: string[];
   meetingTitle: string | null;
-  participants: Array<{ name: string | null; email: string | null }>;
+  participants: Array<{ name: string | null; email: string | null }> | null;
   manualNotes: string;
   manualNoteRevision: string;
   speakerCorrectionRevision: number;
@@ -198,7 +198,7 @@ const meetingLlmSourceSnapshotSchema = z.object({
   sourceRunId: z.string().uuid(),
   sourceRecordingIds: z.array(z.string().uuid()).min(1),
   meetingTitle: z.string().nullable(),
-  participants: z.array(z.object({ name: z.string().nullable(), email: z.string().nullable() }).strict()),
+  participants: z.array(z.object({ name: z.string().nullable(), email: z.string().nullable() }).strict()).nullable(),
   manualNotes: z.string(),
   manualNoteRevision: z.string().regex(/^[a-f0-9]{64}$/),
   speakerCorrectionRevision: z.number().int().nonnegative(),
@@ -931,12 +931,20 @@ export class MeetingProcessingWorker {
     const note = this.deps.database.getNote(recording.noteId);
     const promptModel = run.config?.summary;
     if (!note || !promptModel) throw new MeetingProcessingFailure("summary-source-missing", "blocked");
+    let participants: MeetingLlmSourceSnapshot["participants"];
+    try {
+      participants = participantCandidates(note.participants);
+    } catch (error) {
+      if (!(error instanceof MeetingProcessingFailure) || error.code !== "calendar-participants-invalid") throw error;
+      participants = null;
+      this.deps.database.setMeetingSpeakerNamingError(run.id, "calendar-participants-invalid");
+    }
     const snapshot: MeetingLlmSourceSnapshot = {
       version: 1,
       sourceRunId,
       sourceRecordingIds: [...run.sourceRecordingIds],
       meetingTitle: note.title || null,
-      participants: participantCandidates(note.participants),
+      participants,
       manualNotes: note.content,
       manualNoteRevision: hashText(note.content),
       speakerCorrectionRevision: this.deps.database.getMeetingRunSpeakerCorrectionRevision(sourceRunId),
@@ -983,14 +991,31 @@ export class MeetingProcessingWorker {
       .filter((segment) => segment.speakerId && !segment.speakerName)
       .map((segment) => segment.speakerId as string))];
     if (!unknownIds.length) {
-      this.deps.database.setMeetingSpeakerNamingError(run.id, null);
+      this.deps.database.setMeetingSpeakerNamingError(
+        run.id,
+        snapshot.participants === null ? "calendar-participants-invalid" : null
+      );
       return;
     }
     if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) return;
+    if (snapshot.participants === null) {
+      this.deps.database.setMeetingSpeakerNamingError(run.id, "calendar-participants-invalid");
+      return;
+    }
     try {
+      const noteBeforeNaming = this.deps.database.getNote(recording.noteId);
+      if (!noteBeforeNaming) return;
+      const participantsBeforeNaming = participantCandidates(noteBeforeNaming.participants);
+      if (
+        noteBeforeNaming.title !== snapshot.meetingTitle ||
+        JSON.stringify(participantsBeforeNaming) !== JSON.stringify(snapshot.participants)
+      ) {
+        this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
+        return;
+      }
       const suggestions = await this.deps.nameSpeakers({
         meetingTitle: snapshot.meetingTitle,
-        participants: snapshot.participants,
+        participants: participantsBeforeNaming,
         segments: snapshot.transcriptSegments,
       }, snapshot.promptModel, run, signal);
       signal.throwIfAborted();
@@ -1019,7 +1044,6 @@ export class MeetingProcessingWorker {
       this.deps.database.setMeetingSpeakerNamingError(run.id, null);
     } catch (error) {
       if (signal.aborted || this.isCapturing()) return;
-      if (error instanceof MeetingProcessingFailure && error.code === "calendar-participants-invalid") throw error;
       this.deps.database.setMeetingSpeakerNamingError(run.id, errorCodeOf(error));
     }
   }

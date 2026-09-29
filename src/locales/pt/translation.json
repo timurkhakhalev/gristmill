@@ -2344,7 +2344,8 @@
     },
     "autoSummarySkipped": "Resumo automático ignorado",
     "autoSummarySkippedReason": "O resumo automático requer pelo menos 180 segundos de áudio gravado e 2.500 caracteres de transcrição. Esta reunião tem {{seconds}} segundos e {{chars}} caracteres. Pode criar um resumo manualmente agora.",
-    "calendarParticipantsInvalid": "Os dados guardados dos participantes do calendário são inválidos. Corrija-os antes de tentar novamente."
+    "calendarParticipantsInvalid": "Os dados guardados dos participantes do calendário são inválidos. Corrija-os antes de tentar novamente.",
+    "calendarParticipantsNamingSkipped": "A atribuição automática de nomes aos interlocutores foi ignorada. A transcrição e o resumo continuam disponíveis."
   },
   "shortcutsDialog": {
     "title": "Atalhos de teclado",

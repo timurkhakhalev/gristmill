@@ -65,7 +65,7 @@ function completeRun(): RunBundle {
     run: {
       id: RUN, recordingId: FIRST, sourceRecordingIds: [FIRST, SECOND], kind: "reprocess", sourceRunId: null,
       provider: "elevenlabs", model: "scribe_v2", config: CONFIG, configError: null,
-      stage: "summary", status: "complete", errorCode: null, retryAt: null, retryCount: 0,
+      stage: "summary", status: "complete", errorCode: null, speakerNamingErrorCode: null, retryAt: null, retryCount: 0,
       hasRawProviderResponse: true, hasTranscript: true, hasSummary: true,
       createdAt: "2026-09-25T10:02:00.000Z", updatedAt: "2026-09-25T10:03:00.000Z",
     },
@@ -108,6 +108,13 @@ function findNode(tree: unknown, predicate: (node: ReactNodeLike) => boolean): R
   if (predicate(node)) return node;
   // Slot props (e.g. a notice's `actions`) hold elements too, not just children.
   return Object.values(node.props ?? {}).map((value) => findNode(value, predicate)).find(Boolean) ?? null;
+}
+
+function findNodes(tree: unknown, predicate: (node: ReactNodeLike) => boolean): ReactNodeLike[] {
+  if (Array.isArray(tree)) return tree.flatMap((item) => findNodes(item, predicate));
+  if (!tree || typeof tree !== "object") return [];
+  const node = tree as ReactNodeLike;
+  return [ ...(predicate(node) ? [node] : []), ...Object.values(node.props ?? {}).flatMap((value) => findNodes(value, predicate)) ];
 }
 
 function textOf(value: unknown): string {
@@ -486,6 +493,46 @@ test("live manual transcription controls stay disabled while recording or paused
   }
 });
 
+test("a newer group's gate blocks its ASR while an older completed group remains manually reprocessable", async (t: TestContext) => {
+  const olderRun = completeRun();
+  olderRun.run.sourceRecordingIds = [FIRST];
+  const newerGateRun = completeRun();
+  Object.assign(newerGateRun.run, {
+    recordingId: SECOND,
+    sourceRecordingIds: [SECOND],
+    kind: "initial",
+    stage: "prepare",
+    status: "pending",
+    retryAt: new Date(Date.now() + 15_000).toISOString(),
+    retryCount: 0,
+    errorCode: null,
+    hasRawProviderResponse: false,
+    hasTranscript: false,
+    hasSummary: false,
+  });
+  newerGateRun.transcript = undefined;
+  newerGateRun.summary = undefined;
+  const olderPart = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", olderRun);
+  const newerPart = recording(SECOND, SECOND, new Date(Date.now() - 60_000).toISOString(), newerGateRun);
+  newerPart.recording.endedAt = new Date().toISOString();
+  const ui = await mountPanel(t, [olderPart, newerPart]);
+
+  const menus = findNodes(ui.tree(), (node) =>
+    node.props?.["aria-label"] === "Audio part actions" && typeof node.props?.onAction === "function"
+  );
+  assert.equal(menus.length, 2);
+  const asrItems = menus.map((menu) => findNode(menu, (node) => node.props?.id === "asr"));
+  assert.equal(asrItems[0]?.props?.isDisabled, true, "newest group remains gated");
+  assert.equal(asrItems[1]?.props?.isDisabled, false, "older group is no longer blocked by the newer gate");
+
+  await ui.flush(() => (menus[0].props as { onAction(key: string): void }).onAction("asr"));
+  assert.equal(ui.calls.create.length, 0);
+  await ui.flush(() => (menus[1].props as { onAction(key: string): void }).onAction("asr"));
+  assert.equal(ui.calls.create.at(-1)?.recordingId, FIRST);
+  assert.deepEqual(ui.calls.create.at(-1)?.sourceRecordingIds, [FIRST]);
+  assert.equal(ui.button("Transcribe")?.props?.isDisabled, true, "whole-meeting reprocessing includes the gated current group");
+});
+
 test("short live transcript explains automatic Summary ineligibility and keeps manual Summary available", async (t: TestContext) => {
   const short = completeRun();
   short.run.status = "complete";
@@ -504,6 +551,17 @@ test("short live transcript explains automatic Summary ineligibility and keeps m
   assert.equal(summaryRequests, 1, "the NoteEditor toolbar's manual Summary action stays available for short transcripts");
 });
 
+test("an empty live transcript does not promise a manual Summary", async (t: TestContext) => {
+  const empty = completeRun();
+  empty.run.status = "complete";
+  empty.run.stage = "summary";
+  empty.run.hasSummary = false;
+  empty.summary = undefined;
+  empty.transcript = { text: "", segments: [] };
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", empty)]);
+  assert.doesNotMatch(ui.text(), /Automatic Summary skipped|create a Summary manually now/i);
+});
+
 test("invalid saved calendar participants show a specific live processing error", async (t: TestContext) => {
   const failed = completeRun();
   failed.run.status = "failed";
@@ -512,4 +570,13 @@ test("invalid saved calendar participants show a specific live processing error"
   failed.summary = undefined;
   const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed)]);
   assert.match(ui.text(), /Stored calendar participant data is invalid/);
+});
+
+test("calendar participant naming error stays visible with the completed Summary", async (t: TestContext) => {
+  const namedWithError = completeRun();
+  namedWithError.run.speakerNamingErrorCode = "calendar-participants-invalid";
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", namedWithError)]);
+  assert.match(ui.text(), /Stored calendar participant data is invalid/);
+  assert.match(ui.text(), /Automatic speaker naming was skipped/);
+  assert.match(ui.text(), /Release on Friday/);
 });

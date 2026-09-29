@@ -1,13 +1,12 @@
 import { spawn, type ChildProcessByStdio } from "child_process";
 import type { Readable } from "stream";
-const { app } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const debugLogger = require("./debugLogger.js");
-const { ensureDevBinary } = require("./devAssetInstaller.js");
+const { ensureLocalEngine } = require("./localEngineInstaller.js");
 import { killProcess } from "../utils/process.js";
-import { isPortAvailable } from "../utils/serverUtils.js";
+import { isPortAvailable, resolveBinaryPath } from "../utils/serverUtils.js";
 import { getSafeTempDir } from "./safeTempDir.js";
 import * as sidecarPidFile from "./sidecarPidFile.js";
 
@@ -139,30 +138,7 @@ export class LlamaServerManager {
   getServerBinaryPaths(): ServerBinaryPaths {
     if (this.cachedServerBinaryPaths) return this.cachedServerBinaryPaths;
 
-    const platformArch = "darwin-arm64";
-
-    const resolveBinary = (name: string): string | null => {
-      const candidates: string[] = [];
-      if (process.resourcesPath) {
-        candidates.push(path.join(process.resourcesPath, "bin", name));
-      }
-      candidates.push(path.join(app.getAppPath(), "resources", "bin", name));
-
-      for (const candidate of candidates) {
-        try {
-          if (fs.existsSync(candidate)) {
-            fs.statSync(candidate);
-            return candidate;
-          }
-        } catch {
-          // Can't access binary
-        }
-      }
-      return null;
-    };
-
-    const defaultBin =
-      resolveBinary(`llama-server-${platformArch}`) || resolveBinary("llama-server");
+    const defaultBin = resolveBinaryPath("llama-server-darwin-arm64");
     const paths: ServerBinaryPaths = defaultBin ? { default: defaultBin } : { default: "" };
 
     // Only cache hits: a miss may be transient (binary downloaded after
@@ -241,17 +217,13 @@ export class LlamaServerManager {
   }
 
   async _doStart(modelPath: string, options: LlamaServerOptions = {}): Promise<void> {
+    if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
     let binaryPaths = this.getServerBinaryPaths();
     if (!binaryPaths.default) {
-      // Dev checkouts no longer prefetch binaries at startup; the first local
-      // route use installs the pinned build. Packaged apps ship the binary.
-      await ensureDevBinary("llama-server").catch((error: Error) => {
-        debugLogger.warn("Local-route binary install failed", { error: error.message }, "assets");
-      });
+      await ensureLocalEngine("llama-server");
       binaryPaths = this.getServerBinaryPaths();
     }
     if (!binaryPaths.default) throw new Error("llama-server binary not found");
-    if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
 
     this.port = await this.findAvailablePort();
     this.modelPath = modelPath;

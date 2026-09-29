@@ -291,12 +291,6 @@ export class ParakeetManager {
       serverAvailable,
     });
 
-    if (!serverAvailable) {
-      throw new Error(
-        "sherpa-onnx binary not found. Please ensure the app is installed correctly."
-      );
-    }
-
     if (!this.serverManager.isModelDownloaded(model)) {
       throw new Error(
         `Parakeet model "${model}" not downloaded. Please download it from Settings.`

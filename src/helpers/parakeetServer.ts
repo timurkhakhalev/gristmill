@@ -229,10 +229,6 @@ export class ParakeetServerManager {
 
   async startServer(modelName: string, language?: string | null): Promise<{ success: boolean; reason?: string; port?: number }> {
     const runtime = getModelRuntime(modelName);
-    if (!this.wsServer.isAvailable(runtime)) {
-      return { success: false, reason: "parakeet WS server binary not found" };
-    }
-
     const modelDir = path.join(this.getModelsDir(), modelName);
     if (!this.isModelDownloaded(modelName)) {
       return { success: false, reason: `Model "${modelName}" not downloaded` };

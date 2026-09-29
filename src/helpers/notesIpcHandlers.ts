@@ -16,12 +16,15 @@ import {
   noteListResultSchema,
   saveNoteArgsSchema,
   searchNotesArgsSchema,
+  noteSearchHitSchema,
+  transcriptSearchHitSchema,
   updateNoteArgsSchema,
   type NoteItem,
   type NoteMutationResult,
   type NoteUpdate,
 } from "../contracts/notes.js";
 import { sendNoteAdded, sendNoteUpdated } from "./notesEvents.js";
+import { noteTranscriptSchema } from "../contracts/noteRead.js";
 
 export interface NotesHandlerDeps {
   saveNote: (
@@ -49,6 +52,9 @@ export interface NotesHandlerDeps {
     spaceId: number | null,
     folderId: number | null
   ) => unknown;
+  searchNoteContent: (query: string, spaceId: number | null) => unknown;
+  searchNoteTranscripts: (query: string, spaceId: number | null) => unknown;
+  getNoteTranscript: (noteId: number) => unknown;
   asyncMirrorWrite: (note: NoteItem) => void;
   tryAutoLabelOneOnOne: (noteId: number) => void;
   refreshMeetingSpeakerConfigFromNote: (noteId: number, note: NoteItem) => void;
@@ -168,5 +174,17 @@ export function registerNotesHandlers(
   ipcMain.handle("db-search-notes", async (_event, ...args: unknown[]) => {
     const [query, limit, spaceId, folderId] = parseArgs(searchNotesArgsSchema, args);
     return parseNoteList(deps.searchNotes(query, limit, spaceId ?? null, folderId ?? null));
+  });
+  ipcMain.handle("notes-search-content", async (_event, query: unknown, spaceId: unknown) => {
+    if (typeof query !== "string" || (spaceId != null && (!Number.isSafeInteger(spaceId) || (spaceId as number) < 1))) throw new Error("Invalid search arguments");
+    return noteSearchHitSchema.array().parse(deps.searchNoteContent(query, spaceId as number | null));
+  });
+  ipcMain.handle("notes-search-transcripts", async (_event, query: unknown, spaceId: unknown) => {
+    if (typeof query !== "string" || (spaceId != null && (!Number.isSafeInteger(spaceId) || (spaceId as number) < 1))) throw new Error("Invalid search arguments");
+    return transcriptSearchHitSchema.array().parse(deps.searchNoteTranscripts(query, spaceId as number | null));
+  });
+  ipcMain.handle("notes-get-transcript", async (_event, noteId: unknown) => {
+    if (!Number.isSafeInteger(noteId) || (noteId as number) < 1) throw new Error("Invalid Note ID");
+    return noteTranscriptSchema.parse(deps.getNoteTranscript(noteId as number));
   });
 }

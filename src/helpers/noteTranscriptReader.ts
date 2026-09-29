@@ -80,6 +80,10 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
         durationKnown = false;
         continue;
       }
+      if (part.captureState === "incomplete") {
+        uncovered = true;
+        diagnostics.push(`part-capture-incomplete:${part.id}`);
+      }
       try {
         cursor += meetingTimelineFrameCount(part, deps.listEpochs(part.id)) / FRAMES_PER_MS;
       } catch {
@@ -122,7 +126,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
   }
 
   if (!pieces.length) {
-    const status = pending ? "pending" : failed ? "error" : "absent";
+    const status = pending ? "pending" : failed ? "error" : uncovered || !durationKnown ? "partial" : "absent";
     return { ...absent(noteId, status, diagnostics), timeline: emptyTimeline(durationKnown ? groupOffsetMs : null) };
   }
 
@@ -139,14 +143,14 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
       speakers.push({
         id,
         name: correction?.displayName ?? null,
-        email: correction?.profileId ? deps.profileEmail(correction.profileId) : null,
-        source: provider === "mic" ? "microphone" : null,
+        email: correction?.participantEmail ?? (correction?.profileId ? deps.profileEmail(correction.profileId) : null),
+        source: provider === "mic" ? "microphone" : provider.startsWith("system:") ? "system" : null,
       });
     }
     return id;
   };
 
-  const withSegments = pieces.every((piece) => piece.transcript.segments?.length);
+  const withSegments = pieces.every((piece) => piece.transcript.segments !== undefined);
   const ordered: Array<{ segment: NoteTranscriptSegment; order: number }> = [];
   if (withSegments) {
     pieces.forEach((piece, pieceIndex) => {
@@ -173,7 +177,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
 
   return {
     note_id: noteId,
-    status: pending ? "pending" : failed || uncovered ? "partial" : "ready",
+    status: pending || failed || uncovered || !durationKnown ? "partial" : "ready",
     timeline: emptyTimeline(durationKnown ? groupOffsetMs : null),
     speakers,
     text: withSegments ? segments.map((segment) => segment.text).join("\n") : pieces.map((piece) => piece.transcript.text).join("\n"),
@@ -187,12 +191,15 @@ function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscrip
   if (!raw?.trim()) return absent(noteId, "absent");
   let parsed: unknown;
   try {
-    parsed = raw.startsWith("[") ? JSON.parse(raw) : null;
+    parsed = raw.trimStart().startsWith("[") ? JSON.parse(raw) : null;
   } catch {
     return absent(noteId, "error", ["projection-invalid"]);
   }
   if (!Array.isArray(parsed)) {
     return { ...absent(noteId, "ready"), text: raw, diagnostics: [] };
+  }
+  if (parsed.some((item) => !item || typeof item !== "object" || Array.isArray(item))) {
+    return absent(noteId, "error", ["projection-invalid"]);
   }
   const speakers: NoteTranscriptSpeaker[] = [];
   const ids = new Map<string, string>();
@@ -221,7 +228,7 @@ function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscrip
       text: typeof item.text === "string" ? item.text : "",
     };
   });
-  const timed = segments.every((segment) => segment.start_ms !== null);
+  const timed = segments.every((segment) => segment.start_ms !== null && segment.end_ms !== null);
   return {
     note_id: noteId,
     status: "ready",

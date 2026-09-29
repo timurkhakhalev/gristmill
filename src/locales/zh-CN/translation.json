@@ -676,6 +676,9 @@
   },
   "cleanupPrompt": "文本整理",
   "developerSection": {
+    "installCli": "安装笔记命令行工具",
+    "cliInstalled": "命令行工具已安装",
+    "cliInstallFailed": "命令行工具安装失败",
     "currentLogFile": "当前日志文件",
     "debugMode": {
       "disabledDescription": "启用以捕获详细的诊断信息",
@@ -2098,6 +2101,8 @@
     "deleteConfirm": "删除"
   },
   "commandSearch": {
+    "searchError": "搜索失败",
+    "searchingTranscripts": "正在搜索转录文本…",
     "allSpaces": "所有空间",
     "title": "搜索",
     "description": "搜索笔记和转录",
@@ -2235,6 +2240,8 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "partialTranscript": "此笔记的转录文本不完整。",
+    "selectedResultTranscript": "所选结果的转录文本",
     "participantsLoadError": "无法加载日历参与者。",
     "linkParticipantsHint": "将这些姓名关联到日历参与者，以便在今后的会议中使用。",
     "linkParticipant": "关联参与者",

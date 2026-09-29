@@ -33,7 +33,7 @@ function createBridge(models = MODELS) {
       return { success: true, text: "hello from disk" };
     },
   };
-  const bridge = new CliBridge(operations);
+  const bridge = new CliBridge(operations, os.tmpdir());
   return { bridge, calls, operations };
 }
 

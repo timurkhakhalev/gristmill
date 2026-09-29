@@ -141,6 +141,9 @@ async function createFixture(t: import("node:test").TestContext) {
         return result;
       },
       searchNotes: (...args) => db.searchNotes(...args),
+      searchNoteContent: () => [],
+      searchNoteTranscripts: () => [],
+      getNoteTranscript: () => ({ note_id: 1, status: "absent", timeline: { unit: "ms", duration_ms: null, basis: "concatenated_recording_time", intentional_pauses: "excluded" }, speakers: [], text: null, segments: null, diagnostics: [] }),
       asyncMirrorWrite: () => {},
       tryAutoLabelOneOnOne: () => {},
       refreshMeetingSpeakerConfigFromNote: () => {},

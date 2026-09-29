@@ -27,6 +27,7 @@ import { getAutoStartState, setAutoStartEnabled } from "./autoStart.js";
 import { openSystemSettings } from "./systemSettingsLauncher.js";
 import type { HotkeyActivationCallback, HotkeySlot } from "./hotkeyManager.js";
 import { resolveSystemDefaultMicrophone } from "./systemDefaultMicrophone.js";
+import { installAgentCli } from "./installAgentCli.js";
 import { resolveLocalServerNeeds } from "./localServerPolicy.js";
 import { isSherpaLocalProvider } from "./parakeetModelInfo.js";
 import { changeLanguage } from "./i18nMain.js";
@@ -709,6 +710,14 @@ export function registerDesktopSettingsHandlers(
       return { success: true };
     } catch (error) {
       logger.error("Failed to open logs folder:", error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+  ipcMain.handle(desktopSettingsChannels.installAgentCli, () => {
+    try {
+      installAgentCli();
+      return { success: true };
+    } catch (error) {
       return { success: false, error: (error as Error).message };
     }
   });

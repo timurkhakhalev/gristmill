@@ -263,6 +263,7 @@ export const desktopSettingsChannels = {
   getDebugState: "get-debug-state",
   setDebugLogging: "set-debug-logging",
   openLogsFolder: "open-logs-folder",
+  installAgentCli: "install-agent-cli",
   openMicrophoneSettings: "open-microphone-settings",
   openSoundInputSettings: "open-sound-input-settings",
   getSystemDefaultMicrophone: "get-system-default-microphone",
@@ -369,6 +370,7 @@ export interface DesktopSettingsApi extends ByokKeySurface {
   getDebugState(): Promise<DebugStateWire>;
   setDebugLogging(enabled: boolean): Promise<SetDebugLoggingWire>;
   openLogsFolder(): Promise<SystemSettingsWire>;
+  installAgentCli(): Promise<SystemSettingsWire>;
   openMicrophoneSettings(): Promise<SystemSettingsWire>;
   openSoundInputSettings(): Promise<SystemSettingsWire>;
   getSystemDefaultMicrophone(options?: {

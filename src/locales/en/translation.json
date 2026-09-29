@@ -717,6 +717,9 @@
   },
   "cleanupPrompt": "Cleanup",
   "developerSection": {
+    "installCli": "Install Notes CLI",
+    "cliInstalled": "CLI installed",
+    "cliInstallFailed": "CLI installation failed",
     "currentLogFile": "Current log file",
     "debugMode": {
       "disabledDescription": "Enable to capture detailed diagnostic information",
@@ -2098,6 +2101,8 @@
     "deleteConfirm": "Delete"
   },
   "commandSearch": {
+    "searchError": "Search failed",
+    "searchingTranscripts": "Searching transcripts…",
     "allSpaces": "All spaces",
     "title": "Search",
     "description": "Search across notes and transcripts",
@@ -2226,6 +2231,8 @@
     }
   },
   "meetingResults": {
+    "partialTranscript": "This Note transcript is incomplete.",
+    "selectedResultTranscript": "Selected result transcript",
     "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",

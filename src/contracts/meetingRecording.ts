@@ -240,6 +240,7 @@ export const meetingSpeakerCorrectionSchema = z.object({
   speakerId: z.string().min(1).max(200),
   profileId: z.number().int().positive().nullable(),
   displayName: z.string().min(1).max(200),
+  participantEmail: z.string().email().nullable(),
   source: meetingSpeakerCorrectionSourceSchema,
   revision: z.number().int().positive(),
 });

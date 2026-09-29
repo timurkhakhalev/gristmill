@@ -68,6 +68,7 @@ import { registerReasoningHandlers, type EnterpriseStreamModel } from "./reasoni
 import { registerBbHandlers } from "./bbIpcHandlers.js";
 import { createBbTextConversation, generateBbSummary } from "./bbSummary.js";
 import { ensureBbWorkspace } from "./bbWorkspace.js";
+import { NoteReadService } from "./noteReadService.js";
 import { registerFileDiarizationHandlers } from "./fileDiarizationIpcHandlers.js";
 import { registerUploadCancelHandler } from "./uploadCancelIpcHandler.js";
 import { registerTranscriptionExecutionHandlers } from "./transcriptionExecutionIpcHandlers.js";
@@ -1007,6 +1008,7 @@ export class IPCHandlers {
     });
 
     // Notes DB channels live in the typed module; pass only what they need.
+    const noteReader = new NoteReadService(this.databaseManager, this.audioStorageManager.meetingRecordings);
     registerNotesHandlers(ipcMain, {
       saveNote: (title, content, noteType, sourceFile, audioDuration, folderId, spaceId) =>
         this.databaseManager.saveNote(
@@ -1026,6 +1028,17 @@ export class IPCHandlers {
       deleteNoteInternal: (id) => this.deleteNoteInternal(id),
       searchNotes: (query, limit, spaceId, folderId) =>
         this.databaseManager.searchNotes(query, limit, spaceId, folderId),
+      searchNoteContent: (query, spaceId) => noteReader.searchNotes(query)
+        .flatMap((hit) => {
+          const note = this.databaseManager.getNote(hit.note_id);
+          return note && (spaceId === null || note.space_id === spaceId) ? [{ note, matches: hit.matches }] : [];
+        }),
+      searchNoteTranscripts: (query, spaceId) => noteReader.searchTranscripts(query)
+        .flatMap((hit) => {
+          const note = this.databaseManager.getNote(hit.note_id);
+          return note && (spaceId === null || note.space_id === spaceId) ? [{ note, matches: hit.matches }] : [];
+        }),
+      getNoteTranscript: (noteId) => noteReader.transcript(noteId),
       asyncMirrorWrite: (note) => this._asyncMirrorWrite(note),
       tryAutoLabelOneOnOne: (noteId) => this._tryAutoLabelOneOnOne(noteId),
       refreshMeetingSpeakerConfigFromNote: (noteId, note) =>

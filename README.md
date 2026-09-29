@@ -38,6 +38,24 @@ Cleanup was merged in PR #6. The current task adds durable separate audio tracks
 
 ## Documents
 
+### Read-only Notes CLI
+
+In Settings → Developer, choose **Install Notes CLI**. This writes `~/.local/bin/gristmill`; add that directory to `PATH` if your shell does not already include it. The launcher uses the installed app's Node runtime, and the Gristmill app must be running. Run `gristmill doctor` to check the connection.
+
+```sh
+gristmill notes list --from 2026-09-01 --with-transcript
+gristmill notes search "релиз"
+gristmill notes show 42
+gristmill notes content show 42
+gristmill notes summary show 42
+gristmill notes transcript show 42 --from 00:12:00 --to 00:13:00
+gristmill notes transcript show 42 --plain-text
+```
+
+Run `gristmill --help` or a command with `--help` for options. The default profile is production; `--profile development` or `GRISTMILL_PROFILE=development` selects another profile. An absolute profile path is useful for isolated test profiles. Date filters use inclusive local calendar days in the machine's time zone. Successful read commands print one JSON object to stdout, except transcript `--plain-text`; errors print one JSON `error` object to stderr. Exit codes are 0 for success, 1 for execution/access errors, and 2 for invalid arguments. `doctor` always prints JSON to stdout. The CLI reads saved Note data and never starts transcription or Summary generation.
+
+The CLI's profile-local connection file grants read-only access to Note metadata, user notes, saved Summary and transcript. The embedded BB tools retain their existing write access through a separate token. Neither connection exposes raw audio or provider payloads.
+
 Start at the [memory bank](.memory-bank/index.md). The
 [quality steering](.memory-bank/steerings/quality.md) defines which checks to run
 for each change and how to keep test execution within the resource budget.

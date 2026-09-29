@@ -17,6 +17,7 @@
       "test/helpers/sidecarPidFile.test.ts",
       "test/helpers/translationHistory.test.ts",
       "test/scripts/downloadSherpaMacos.test.ts",
+      "test/scripts/gristmillCli.test.ts",
       "test/scripts/runTestsRuntime.test.ts"
     ]
   },
@@ -373,6 +374,7 @@
       "test/helpers/micSelectionRecovery.test.ts",
       "test/helpers/microphoneSelection.test.ts",
       "test/helpers/noteTranscriptReader.test.ts",
+      "test/helpers/noteReadService.test.ts",
       "test/helpers/pcmFixtures.test.ts",
       "test/helpers/speakerAssignmentPolicy.test.ts",
       "test/helpers/speakerCount.test.ts",

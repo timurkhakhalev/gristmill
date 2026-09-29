@@ -25,7 +25,7 @@ const BINARIES = {
   },
 };
 
-const BIN_DIR = process.env.OPENHERCULES_LOCAL_BIN_DIR || path.join(__dirname, "..", "resources", "bin");
+const BIN_DIR = process.env.GRISTMILL_LOCAL_BIN_DIR || path.join(__dirname, "..", "resources", "bin");
 
 // Cache the release info to avoid multiple API calls
 let cachedRelease = null;

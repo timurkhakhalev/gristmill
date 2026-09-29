@@ -911,6 +911,7 @@ export class DatabaseManager {
           email TEXT PRIMARY KEY,
           display_name TEXT,
           people_name TEXT,
+          learned_name TEXT,
           photo_url TEXT,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1007,6 +1008,9 @@ export class DatabaseManager {
         this.sql.exec("ALTER TABLE calendar_events ADD COLUMN event_url TEXT");
       }
       const contactColumns = this.sql.pragma("table_info(contacts)") as Array<{ name: string }>;
+      if (!contactColumns.some((column) => column.name === "learned_name")) {
+        this.sql.exec("ALTER TABLE contacts ADD COLUMN learned_name TEXT");
+      }
       if (!contactColumns.some((column) => column.name === "people_name")) {
         this.sql.exec("ALTER TABLE contacts ADD COLUMN people_name TEXT");
       }
@@ -1605,7 +1609,8 @@ export class DatabaseManager {
     speakerId: string,
     profileId: number | null,
     displayName: string,
-    source: "voice" | "model" | "user" = "user"
+    source: "voice" | "model" | "user" = "user",
+    participantEmail?: string
   ): { success: boolean } {
     meetingRecordingIdSchema.parse(runId);
     const run = this.getMeetingProcessingRun(runId);
@@ -1619,6 +1624,7 @@ export class DatabaseManager {
       this.sql.prepare(
         "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, revision) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, source = excluded.source, revision = meeting_run_speaker_corrections.revision + 1"
       ).run(runId, speakerId, profileId, displayName.trim(), source);
+      if (participantEmail) this.rememberContactName(participantEmail, displayName);
       if (recording.current_run_id === runId) {
         const note = this.sql
           .prepare("SELECT content, transcript FROM notes WHERE id = ?")
@@ -3278,12 +3284,17 @@ export class DatabaseManager {
     )(profiles);
     return { success: true };
   }
+  rememberContactName(email: string, name: string): void {
+    this.sql.prepare(
+      "INSERT INTO contacts (email, learned_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET learned_name = excluded.learned_name, updated_at = CURRENT_TIMESTAMP"
+    ).run(email.trim().toLowerCase(), name.trim());
+  }
   getContactProfiles(emails: string[]): ContactProfileRow[] {
     const normalized = [...new Set(emails.map((email) => email.toLowerCase().trim()).filter(Boolean))];
     if (normalized.length === 0) return [];
     return this.sql
       .prepare(
-        `SELECT email, COALESCE(people_name, display_name) AS display_name, photo_url FROM contacts WHERE email IN (${normalized.map(() => "?").join(", ")})`
+        `SELECT email, COALESCE(learned_name, people_name, display_name) AS display_name, photo_url FROM contacts WHERE email IN (${normalized.map(() => "?").join(", ")})`
       )
       .all(...normalized) as ContactProfileRow[];
   }
@@ -3291,9 +3302,9 @@ export class DatabaseManager {
     const pattern = `%${query || ""}%`;
     return this.sql
       .prepare(
-        "SELECT email, COALESCE(people_name, display_name) AS display_name, photo_url, created_at, updated_at FROM contacts WHERE email LIKE ? OR display_name LIKE ? OR people_name LIKE ? ORDER BY COALESCE(people_name, display_name), email LIMIT 20"
+        "SELECT email, COALESCE(learned_name, people_name, display_name) AS display_name, photo_url, created_at, updated_at FROM contacts WHERE email LIKE ? OR display_name LIKE ? OR people_name LIKE ? OR learned_name LIKE ? ORDER BY COALESCE(learned_name, people_name, display_name), email LIMIT 20"
       )
-      .all(pattern, pattern, pattern) as ContactRow[];
+      .all(pattern, pattern, pattern, pattern) as ContactRow[];
   }
   upsertSpeakerProfile(
     name: string,

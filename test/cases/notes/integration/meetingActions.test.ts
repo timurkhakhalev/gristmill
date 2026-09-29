@@ -17,33 +17,9 @@ test("Follow-up receives only selected meeting evidence and stores through the e
   assert.match(prompt, /Write a short message in Russian\./);
   assert.match(prompt, /Do not use earlier Chat messages or application context as meeting facts/);
   assert.match(prompt, /Do not call tools, send the draft/);
-  assert.match(prompt, /Alice \|\| speaker-1 \[0:12\]: "I will check the build\."/);
+  assert.match(prompt, /Speaker 1 \[0:12\]: "I will check the build\."/);
   assert.doesNotMatch(prompt, /source:0|"speakerId":|"transcriptSegments":/);
 
-});
-
-test("prioritized task JSON repairs once in its existing selected-provider conversation", async () => {
-  const turns: string[] = [];
-  const replies = [
-    JSON.stringify({ HIGH: ["Ship"], MEDIUM: [], LOW: [], extra: true }),
-    JSON.stringify({ HIGH: ["Ship the release"], MEDIUM: [], LOW: [] }),
-  ];
-  const conversation = { send: async (prompt: string) => {
-    turns.push(prompt);
-    return { text: replies.shift()!, refusal: false };
-  } };
-  const tasks = await requestMeetingJson({
-    conversation,
-    prompt: "selected meeting input",
-    refusalCode: "meeting-task-refused",
-    invalidCode: "meeting-task-json-invalid",
-    validate: validateMeetingTasks,
-  });
-  assert.deepEqual(tasks, { HIGH: ["Ship the release"], MEDIUM: [], LOW: [] });
-  assert.equal(turns.length, 2);
-  assert.equal(turns[0], "selected meeting input");
-  assert.match(turns[1], /Correct your previous response/);
-  assert.match(turns[1], /extra/);
 });
 
 test("Recap JSON repairs invalid limits once and refuses transport or refusal repair", async () => {

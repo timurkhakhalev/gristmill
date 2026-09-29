@@ -13,11 +13,20 @@ export async function createBbTextConversation(input: {
   let id = input.threadId;
   return {
     send: async (prompt): Promise<MeetingTextTurn> => {
-      const message = input.promptPrefix ? `${input.promptPrefix}\n\n${prompt}` : prompt;
+      let message = input.promptPrefix ? `${input.promptPrefix}\n\n${prompt}` : prompt;
       let afterSeq = 0;
       if (id) {
         await assertBbVersion();
-        const history = await getBbThreadHistory(id);
+        let previousTranscript: string | undefined;
+        const history = await getBbThreadHistory(id, (text) => {
+          const transcript = [...text.matchAll(/Actual meeting transcript:\n(<transcript>[\s\S]*?<\/transcript>)/g)].at(-1)?.[1];
+          if (transcript) previousTranscript = transcript;
+        });
+        const transcript = [...message.matchAll(/Actual meeting transcript:\n(<transcript>[\s\S]*?<\/transcript>)/g)].at(-1)?.[1];
+        if (transcript && transcript === previousTranscript) {
+          const offset = message.lastIndexOf(transcript);
+          message = message.slice(0, offset) + "Use the unchanged transcript already supplied in this conversation, with the accepted speaker identities above." + message.slice(offset + transcript.length);
+        }
         afterSeq = history.sequence;
         await tellBbThread(id, message, input.signal);
       } else {

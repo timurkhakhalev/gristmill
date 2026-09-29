@@ -1,7 +1,7 @@
 const SAMPLE_RATE = 24_000;
-export const MAX_UNACKNOWLEDGED_CAPTURE_MS = 500;
+export const MAX_UNACKNOWLEDGED_CAPTURE_MS = 5000;
 export const MAX_UNACKNOWLEDGED_CAPTURE_FRAMES = SAMPLE_RATE * MAX_UNACKNOWLEDGED_CAPTURE_MS / 1000;
-export const MAX_CAPTURE_ACK_AGE_MS = 1000;
+export const MAX_CAPTURE_ACK_AGE_MS = 10000;
 
 export interface MeetingCaptureWriteQueueOptions<T> {
   write(packet: T): Promise<unknown>;
@@ -44,7 +44,7 @@ export class MeetingCaptureWriteQueue<T> {
     if (this.failure) return Promise.reject(this.failure);
     if (this.closed) return Promise.reject(new Error("Meeting capture write queue is closed"));
     if (!Number.isSafeInteger(frames) || frames < 1 || this.pendingFrames + frames > this.maxFrames) {
-      const error = new Error("Meeting capture exceeded the 500 ms write backlog");
+      const error = new Error(`Meeting capture exceeded the ${MAX_UNACKNOWLEDGED_CAPTURE_MS} ms write backlog`);
       this.fail(error);
       return Promise.reject(error);
     }
@@ -56,7 +56,7 @@ export class MeetingCaptureWriteQueue<T> {
         frames,
         reject,
         timer: setTimeout(() => {
-          const error = new Error("Meeting capture write acknowledgement exceeded 1 second");
+          const error = new Error(`Meeting capture write acknowledgement exceeded ${this.maxAgeMs} ms`);
           this.fail(error);
         }, this.maxAgeMs),
       };

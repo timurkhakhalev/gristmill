@@ -8,7 +8,8 @@ test("microphone flush writes its final partial packet without another audio cal
   const store = fs.readFileSync(path.join(__dirname, "../../../../src/stores/meetingRecordingStore.ts"), "utf8");
   const worklet = store.match(/const code = `([\s\S]*?)`;/)?.[1]
     .replace("${MEETING_AUDIO_BUFFER_SIZE}", "2400")
-    .replace("${MEETING_CAPTURE_MAX_UNACKNOWLEDGED_FRAMES}", "12000");
+    .replace("${MAX_UNACKNOWLEDGED_CAPTURE_FRAMES}", "120000")
+    .replace("${MAX_CAPTURE_ACK_AGE_MS}", "10000");
   assert.ok(worklet);
 
   type Port = { onmessage: ((event: { data: unknown }) => void) | null; postMessage(message: unknown): void };

@@ -244,10 +244,11 @@ export async function getBbThreadOutput(threadId: string): Promise<string> {
   return result.output ?? "";
 }
 
-export async function getBbThreadHistory(threadId: string): Promise<{ sequence: number; completed: boolean; failed: boolean }> {
+export async function getBbThreadHistory(threadId: string, onUserText?: (text: string) => void): Promise<{ sequence: number; completed: boolean; failed: boolean }> {
   let sequence = 0;
   let completed = false;
   let failed = false;
+  const pendingInputs = new Map<string, string>();
   while (true) {
     const previousSequence = sequence;
     const events = z.array(bbEventSchema).parse(await jsonCommand(
@@ -255,6 +256,16 @@ export async function getBbThreadHistory(threadId: string): Promise<{ sequence: 
     ));
     for (const event of events) {
       sequence = Math.max(sequence, event.seq);
+      if (onUserText && event.type === "client/turn/requested" && typeof event.data?.requestId === "string" && Array.isArray(event.data.input)) {
+        pendingInputs.set(event.data.requestId, event.data.input
+          .filter((item) => item?.type === "text" && typeof item.text === "string")
+          .map((item) => item.text).join("\n\n"));
+      }
+      if (event.type === "turn/input/accepted" && typeof event.data?.clientRequestId === "string") {
+        const text = pendingInputs.get(event.data.clientRequestId);
+        if (text) onUserText?.(text);
+        pendingInputs.delete(event.data.clientRequestId);
+      }
       if (event.type === "client/turn/requested" || event.type === "turn/started") {
         completed = false;
         failed = false;

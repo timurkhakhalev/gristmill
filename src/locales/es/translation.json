@@ -2234,6 +2234,13 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "participantsLoadError": "No se pudieron cargar los participantes del calendario.",
+    "linkParticipantsHint": "Vincula estos nombres con participantes del calendario para usarlos en futuras reuniones.",
+    "linkParticipant": "Vincular participante",
+    "rememberParticipant": "Recordar nombre del participante del calendario",
+    "onlyThisMeeting": "Solo esta reunión",
+    "rememberParticipantHint": "Selecciona quién habló. Este nombre se usará para su correo en futuras reuniones. Los contactos de Google no se modificarán.",
+    "voiceProfile": "Perfil de voz",
     "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",

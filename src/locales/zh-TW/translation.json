@@ -2234,6 +2234,13 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "participantsLoadError": "無法載入日曆參與者。",
+    "linkParticipantsHint": "將這些姓名連結至日曆參與者，以便在之後的會議中使用。",
+    "linkParticipant": "連結參與者",
+    "rememberParticipant": "記住日曆參與者的姓名",
+    "onlyThisMeeting": "僅限本次會議",
+    "rememberParticipantHint": "選擇發言者。之後的會議將為此電子郵件地址使用儲存的姓名。Google 聯絡人不會變更。",
+    "voiceProfile": "聲音檔案",
     "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",

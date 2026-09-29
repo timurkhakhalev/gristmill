@@ -2261,6 +2261,13 @@
     }
   },
   "meetingResults": {
+    "participantsLoadError": "تعذر تحميل المشاركين من التقويم.",
+    "linkParticipantsHint": "اربط هذه الأسماء بمشاركي التقويم لاستخدامها في الاجتماعات القادمة.",
+    "linkParticipant": "ربط بمشارك",
+    "rememberParticipant": "تذكّر الاسم لمشارك التقويم",
+    "onlyThisMeeting": "هذا الاجتماع فقط",
+    "rememberParticipantHint": "اختر الشخص الذي تحدث. سيُستخدم الاسم المحفوظ لهذا البريد الإلكتروني في الاجتماعات القادمة. لن تتغير جهات اتصال Google.",
+    "voiceProfile": "الملف الصوتي",
     "speakerNumber": "Speaker {{number}}",
     "contentTabs": "Meeting content",
     "summaryTab": "Summary",

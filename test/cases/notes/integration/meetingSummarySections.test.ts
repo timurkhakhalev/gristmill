@@ -8,28 +8,17 @@ const {
   validateMeetingTasks,
 }: typeof import("../../../../src/helpers/meetingSummarySections.ts") = require("../../../../src/helpers/meetingSummarySections.ts");
 
-test("prioritized tasks require exact keys, bounded nonempty strings and no duplicates", () => {
-  assert.deepEqual(validateMeetingTasks(JSON.stringify({
-    HIGH: ["Ship release"], MEDIUM: ["Review tests"], LOW: [],
-  })), {
-    success: true,
-    value: { HIGH: ["Ship release"], MEDIUM: ["Review tests"], LOW: [] },
-  });
-  for (const input of [
-    { HIGH: [""], MEDIUM: [], LOW: [] },
-    { HIGH: ["same"], MEDIUM: [" Same "], LOW: [] },
-    { HIGH: ["a", "b", "c", "d"], MEDIUM: [], LOW: [] },
-    { HIGH: [], MEDIUM: [], LOW: [], extra: [] },
-  ]) {
-    assert.equal(validateMeetingTasks(JSON.stringify(input)).success, false);
+test("tasks accept Markdown and empty results, rejecting JSON and replacement headings", () => {
+  assert.deepEqual(validateMeetingTasks("### HIGH\n- **Ship release**"), { success: true, value: "### HIGH\n- **Ship release**" });
+  assert.deepEqual(validateMeetingTasks("  "), { success: true, value: "" });
+  for (const input of ['{"HIGH":[]}', "## TLDR\n- Replace summary", "```markdown\n- Task\n```", "No action items."]) {
+    assert.equal(validateMeetingTasks(input).success, false);
   }
 });
 
 test("task mutation replaces only the final Action Items section and zero tasks remove it", () => {
   const initial = "## TLDR\nKeep this summary.\n\n## Action Items\n\n- Old task\n";
-  const replacement = replaceMeetingTasks(initial, {
-    HIGH: ["Ship the release"], MEDIUM: [], LOW: ["Review the notes"],
-  });
+  const replacement = replaceMeetingTasks(initial, "### HIGH\n\n- Ship the release\n\n### LOW\n\n- Review the notes");
   assert.equal(replacement.success, true);
   if (!replacement.success) return;
   assert.equal(replacement.markdown, "## TLDR\nKeep this summary.\n\n## Action Items\n\n### HIGH\n\n- Ship the release\n\n### LOW\n\n- Review the notes");
@@ -44,7 +33,7 @@ test("task mutation replaces only the final Action Items section and zero tasks 
     readMeetingSummarySection(recap.markdown, "Action Items")
   );
 
-  const zero = replaceMeetingTasks(recap.markdown, { HIGH: [], MEDIUM: [], LOW: [] });
+  const zero = replaceMeetingTasks(recap.markdown, "");
   assert.equal(zero.success, true);
   if (!zero.success) return;
   assert.doesNotMatch(zero.markdown, /## Action Items/);
@@ -52,7 +41,7 @@ test("task mutation replaces only the final Action Items section and zero tasks 
 });
 
 test("nonempty tasks refuse absent, ambiguous, or nonfinal Action Items headings", () => {
-  const tasks = { HIGH: ["Do the task"], MEDIUM: [], LOW: [] };
+  const tasks = "### HIGH\n- Do the task";
   for (const markdown of [
     "## TLDR\nSummary.",
     "## Action Items\n\n- first\n\n## Topic\nText.",

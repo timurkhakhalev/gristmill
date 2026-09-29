@@ -6,6 +6,7 @@ const { createRendererServer, installBrowserGlobals, installHookDom } = require(
 
 type TestContext = import("node:test").TestContext;
 interface ReactNodeLike { props?: Record<string, unknown> & { children?: unknown }; }
+interface SummaryActionState { available: boolean; isGenerating: boolean; onGenerate: () => void; }
 
 interface MountedCalls {
   create: Array<Record<string, unknown>>;
@@ -124,14 +125,12 @@ function textOf(value: unknown): string {
   return node?.props ? textOf((node.props as { children?: unknown }).children) : "";
 }
 
-async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction, manualSummaryAction, initialCapturePhase = "idle" }: {
+async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction, initialCapturePhase = "idle" }: {
   viewMode?: "raw" | "enhanced";
   playback?: { success: boolean; error?: string };
   preview?: boolean;
   mockPipeline?: { waitingSeconds?: number };
   summaryAction?: (input: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
-  /** Exercise the existing NoteEditor toolbar control passed into the results panel. */
-  manualSummaryAction?: () => void;
   initialCapturePhase?: string;
 } = {}) {
   const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], summaryActions: [], retry: [] };
@@ -252,20 +251,18 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   const module = await vite.moduleGraph.getModuleByUrl("/components/notes/MeetingResultsPanel.tsx");
   if (module) vite.moduleGraph.invalidateModule(module);
   const { default: MeetingResultsPanel } = await vite.ssrLoadModule("/components/notes/MeetingResultsPanel.tsx");
-  let actions: unknown;
-  if (manualSummaryAction) {
-    const { default: NoteRecordControl } = await vite.ssrLoadModule("/components/notes/NoteRecordControl.tsx");
-    actions = React.createElement(NoteRecordControl, {
-      isRecording: false,
-      isProcessing: false,
-      capturePhase: "idle",
-      captureStartedAt: null,
-      showSummaryAction: true,
-      onStart: () => {},
-      onStop: () => {},
-      onGenerateSummary: manualSummaryAction,
-    });
-  }
+  const { default: NoteRecordControl } = await vite.ssrLoadModule("/components/notes/NoteRecordControl.tsx");
+  const actions = (selectedSummaryAction: SummaryActionState) => React.createElement(NoteRecordControl, {
+    isRecording: false,
+    isProcessing: false,
+    isGeneratingSummary: selectedSummaryAction.isGenerating,
+    capturePhase: "idle",
+    captureStartedAt: null,
+    showSummaryAction: selectedSummaryAction.available,
+    onStart: () => {},
+    onStop: () => {},
+    onGenerateSummary: selectedSummaryAction.onGenerate,
+  });
   let tree: unknown;
   function Harness() {
     const [mode, setMode] = React.useState(viewMode);
@@ -276,7 +273,8 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
       actions,
       mockPipeline,
       fallbackText: { raw: "Manual notes", enhanced: "No summary", transcript: "No transcript" },
-      manualContent: React.createElement("p", null, "Manual notes"), renderFallbackTranscript: () => React.createElement("p", null, "No transcript"), fallbackSummary: React.createElement("p", null, "No summary") });
+      manualContent: React.createElement("p", null, "Manual notes"), renderFallbackTranscript: () => React.createElement("p", null, "No transcript"),
+      fallbackSummary: (selectedSummaryAction: SummaryActionState) => React.createElement("p", null, selectedSummaryAction.available ? "Summary can be created" : "No summary") });
     return tree;
   }
   root = createRoot(container);
@@ -302,6 +300,12 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
         button.onPress!();
       });
     },
+    async clickRenderedButtonExact(label: string) {
+      const button = [...(mocks.__meetingResultsButtonHandlers ?? [])].reverse().find((item) => item.label === label);
+      assert.ok(button?.onPress, `Expected rendered button exactly matching ${label}`);
+      await flush(() => button.onPress!());
+    },
+    renderedButtonLabels() { return (mocks.__meetingResultsButtonHandlers ?? []).map((item) => item.label); },
     iconButton(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onPress === "function"); },
     menu(label: string) { return findNode(tree, (node) => node.props?.["aria-label"] === label && typeof node.props?.onAction === "function"); },
     showTranscriptTab() { return flush(() => (findNode(tree, (node) => node.props?.ariaLabel === "Transcript and audio" && typeof node.props?.onChange === "function")!.props as { onChange(value: string): void }).onChange("transcript")); },
@@ -538,33 +542,46 @@ test("a newer group's gate blocks its ASR while an older completed group remains
   assert.deepEqual(ui.calls.create.at(-1)?.sourceRecordingIds, [FIRST]);
 });
 
-test("short live transcript explains automatic Summary ineligibility and keeps manual Summary available", async (t: TestContext) => {
+test("short live transcript keeps the owning toolbar action on the selected run Summary path", async (t: TestContext) => {
   const short = completeRun();
   short.run.status = "complete";
   short.run.stage = "summary";
   short.run.hasSummary = false;
   short.summary = undefined;
   short.transcript = { text: "Short transcript", segments: [{ start: 1, end: 2, speaker: "speaker-1", text: "Short transcript" }] };
-  let summaryRequests = 0;
-  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", short)], {
-    viewMode: "raw",
-    manualSummaryAction: () => { summaryRequests += 1; },
-  });
+  short.run.id = FOURTH;
+  short.run.createdAt = "2026-09-25T10:03:00.000Z";
+  short.run.config = { ...CONFIG, transcription: { ...CONFIG.transcription, provider: "deepgram", model: "nova-3" } };
+  const previous = completeRun();
+  previous.run.createdAt = "2026-09-25T10:02:00.000Z";
+  const part = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", short);
+  part.runs = [previous, short];
+  const ui = await mountPanel(t, [part], { viewMode: "raw" });
   assert.match(ui.text(), /Automatic Summary skipped/);
   assert.match(ui.text(), /180 seconds of recorded audio and 2,500 transcript characters/);
-  await ui.clickRenderedButton(["Summary"]);
-  assert.equal(summaryRequests, 1, "the NoteEditor toolbar's manual Summary action stays available for short transcripts");
+  assert.ok(ui.renderedButtonLabels().includes("Summary"), "the owning toolbar exposes manual Summary for a short ready transcript");
+  await ui.clickRenderedButtonExact("Summary");
+  assert.equal(ui.calls.create.length, 1);
+  assert.equal(ui.calls.create[0].kind, "summary");
+  assert.equal(ui.calls.create[0].sourceRunId, FOURTH, "the toolbar uses the current selected transcript run");
+  assert.equal(ui.calls.create[0].recordingId, FIRST);
+  const config = ui.calls.create[0].config as typeof CONFIG;
+  assert.equal(config.transcription.provider, "deepgram", "the selected run supplies its transcript route snapshot");
+  assert.equal(config.summary.instruction, CONFIG.summary.instruction);
+  assert.equal(config.summary.model, CONFIG.summary.model);
 });
 
-test("an empty live transcript does not promise a manual Summary", async (t: TestContext) => {
+test("an empty saved transcript projection exposes no manual Summary action", async (t: TestContext) => {
   const empty = completeRun();
   empty.run.status = "complete";
   empty.run.stage = "summary";
   empty.run.hasSummary = false;
   empty.summary = undefined;
   empty.transcript = { text: "", segments: [] };
-  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", empty)]);
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", empty)], { viewMode: "raw" });
   assert.doesNotMatch(ui.text(), /Automatic Summary skipped|create a Summary manually now/i);
+  assert.ok(!ui.renderedButtonLabels().includes("Summary"), "the main toolbar hides its Summary button for an empty saved transcript");
+  assert.ok(!ui.renderedButtonLabels().includes("meetingResults.newSummary"), "Results hides its manual Summary action for an empty transcript");
 });
 
 test("invalid saved calendar participants show a specific live processing error", async (t: TestContext) => {

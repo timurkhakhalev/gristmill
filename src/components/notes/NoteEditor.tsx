@@ -33,8 +33,6 @@ import { MENU_ITEM_CLASS } from "../ui/surfaceStyles";
 import { cn } from "../lib/utils";
 import type { FolderItem } from "../../contracts/containers";
 import type { NoteItem } from "../../contracts/notes";
-import type { ActionProcessingState } from "../../hooks/useActionProcessing";
-import ActionProcessingOverlay from "./ActionProcessingOverlay";
 import NoteBottomBar from "./NoteBottomBar";
 import NoteRecordControl from "./NoteRecordControl";
 import { CaptureHealthLine, NoteNotice } from "./NoteNotices";
@@ -61,7 +59,7 @@ import NoteFindBar from "./NoteFindBar";
 import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import { observeFloatingChatLayout } from "./floatingChatLayout";
 import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } from "./shared";
-import MeetingResultsPanel from "./MeetingResultsPanel";
+import MeetingResultsPanel, { type SummaryActionState } from "./MeetingResultsPanel";
 import { MOCK_FOLLOW_UP_REPLY, type MockPipeline } from "./meetingMock";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 
@@ -120,10 +118,8 @@ interface NoteEditorProps {
   onPauseRecording?: () => void;
   onResumeRecording?: () => void;
   enhancement?: Enhancement;
-  /** Runs the built-in Generate Notes action; enables the post-recording summary pill. */
+  /** In-memory Summary action for the isolated Debug preview only. */
   onGenerateSummary?: () => void;
-  actionProcessingState?: ActionProcessingState;
-  actionName?: string | null;
   diarizationSessionId?: string | null;
   onLiveSpeakerLock?: (speakerId: string, displayName: string) => void;
   sessionDiarizationEnabled?: boolean;
@@ -165,8 +161,6 @@ export default function NoteEditor({
   onResumeRecording,
   enhancement,
   onGenerateSummary,
-  actionProcessingState,
-  actionName,
   diarizationSessionId,
   onLiveSpeakerLock,
   sessionDiarizationEnabled,
@@ -318,15 +312,6 @@ export default function NoteEditor({
       setFollowUpError(t("embeddedChat.followUpError", { defaultValue: "Couldn't prepare the follow-up. Try again." }));
     }
   }, [debugPreview, sendActionMessage, enhancement, hasChatSegments, isRecording, note.content, note.title, displaySegments, speakerMappings, t]);
-  // A finished recording with no AI summary yet offers one from the Summary tab.
-  const canGenerateSummary =
-    !isRecording &&
-    hasChatSegments &&
-    !enhancement &&
-    canEditNote &&
-    !!onGenerateSummary &&
-    actionProcessingState !== "processing";
-
   const knownSpeakers = useMemo(
     () => buildKnownSpeakers(speakerProfiles, displaySegments, speakerMappings),
     [displaySegments, speakerMappings, speakerProfiles]
@@ -362,18 +347,6 @@ export default function NoteEditor({
       );
     });
   }, [debugPreview]);
-
-  const prevProcessingStateRef = useRef(actionProcessingState);
-  useEffect(() => {
-    let cancelScheduledUpdate: (() => void) | undefined;
-
-    if (prevProcessingStateRef.current === "processing" && actionProcessingState === "success") {
-      cancelScheduledUpdate = scheduleUiUpdate(() => setViewMode("enhanced"));
-    }
-    prevProcessingStateRef.current = actionProcessingState;
-
-    return cancelScheduledUpdate;
-  }, [actionProcessingState, scheduleUiUpdate]);
 
   useEffect(() => {
     if (note.id !== prevNoteIdRef.current) {
@@ -901,27 +874,27 @@ export default function NoteEditor({
                   actions={<HeroButton size="sm" variant="secondary" onPress={() => openSettings("recording")}>{t("meetingResults.openSettings")}</HeroButton>}
                 />
               ) : null}
-              actions={<div className="flex flex-wrap items-center gap-1.5">
-                            {canEditNote && (
-                <NoteRecordControl
-                  isRecording={isRecording}
-                  isProcessing={isProcessing}
-                  isGeneratingSummary={
-                    actionProcessingState === "processing" &&
-                    actionName === t("notes.editor.generateSummary", { defaultValue: "Summary" })
-                  }
-                  showSummaryAction={hasMeetingTranscript && !enhancement && !isRecording}
-                  disabled={!recordingAllowed}
-                  capturePhase={capturePhase}
-                  captureStartedAt={captureStartedAt}
-                  onStart={onStartRecording}
-                  onStop={onStopRecording}
-                  onPause={onPauseRecording}
-                  onResume={onResumeRecording}
-                  onGenerateSummary={onGenerateSummary}
-                />
-              )}
-            </div>}
+              actions={(summaryAction: SummaryActionState) => {
+                const generateSummary = debugPreview ? onGenerateSummary : summaryAction.onGenerate;
+                return <div className="flex flex-wrap items-center gap-1.5">
+                  {canEditNote && (
+                    <NoteRecordControl
+                      isRecording={isRecording}
+                      isProcessing={isProcessing}
+                      isGeneratingSummary={summaryAction.isGenerating}
+                      showSummaryAction={summaryAction.available && !enhancement && !isRecording && !!generateSummary}
+                      disabled={!recordingAllowed}
+                      capturePhase={capturePhase}
+                      captureStartedAt={captureStartedAt}
+                      onStart={onStartRecording}
+                      onStop={onStopRecording}
+                      onPause={onPauseRecording}
+                      onResume={onResumeRecording}
+                      onGenerateSummary={generateSummary}
+                    />
+                  )}
+                </div>;
+              }}
               noteId={note.id}
               locale={locale}
               previewRecordings={debugPreview?.recordings}
@@ -938,23 +911,28 @@ export default function NoteEditor({
                 onChange={handleContentChange}
                 editorRef={editorRef}
                 placeholder={t("notes.editor.startWriting")}
-                disabled={!canEditNote || actionProcessingState === "processing"}
-                mentionPeople={mentionPeople}
-              />}
-              fallbackSummary={enhancement ? <RichTextEditor
-                value={enhancement.content}
-                onChange={handleEnhancedChange}
                 disabled={!canEditNote}
                 mentionPeople={mentionPeople}
-              /> : <EmptyStateCard icon={Sparkles} title={t("notes.editor.summaryEmptyTitle")} description={t(canGenerateSummary ? "notes.editor.summaryReadyDescription" : "notes.editor.summaryEmptyDescription")} className="mt-2">
-                {canGenerateSummary && <Button size="sm" onClick={() => {
-                  onGenerateSummary?.();
-                  if (debugPreview) setViewMode("enhanced");
-                }}>
-                  <WandSparkles size={16} className="text-accent" />
-                  {t("notes.editor.generateSummary")}
-                </Button>}
-              </EmptyStateCard>}
+              />}
+              fallbackSummary={(summaryAction: SummaryActionState) => {
+                if (enhancement) return <RichTextEditor
+                  value={enhancement.content}
+                  onChange={handleEnhancedChange}
+                  disabled={!canEditNote}
+                  mentionPeople={mentionPeople}
+                />;
+                const generateSummary = debugPreview ? onGenerateSummary : summaryAction.onGenerate;
+                const canGenerateSummary = summaryAction.available && canEditNote && !isRecording && !!generateSummary;
+                return <EmptyStateCard icon={Sparkles} title={t("notes.editor.summaryEmptyTitle")} description={t(canGenerateSummary ? "notes.editor.summaryReadyDescription" : "notes.editor.summaryEmptyDescription")} className="mt-2">
+                  {canGenerateSummary && <Button size="sm" disabled={summaryAction.isGenerating} onClick={() => {
+                    generateSummary();
+                    if (debugPreview) setViewMode("enhanced");
+                  }}>
+                    <WandSparkles size={16} className="text-accent" />
+                    {summaryAction.isGenerating ? t("notes.editor.generatingSummary") : t("notes.editor.generateSummary")}
+                  </Button>}
+                </EmptyStateCard>;
+              }}
               renderFallbackTranscript={(transcriptScrollRef) => hasChatSegments && !isRecording ? <MeetingTranscriptChat
                 segments={displaySegments}
                 scrollElementRef={transcriptScrollRef}
@@ -981,10 +959,6 @@ export default function NoteEditor({
               />}
             />
           </div>
-          <ActionProcessingOverlay
-            state={actionProcessingState ?? "idle"}
-            actionName={actionName ?? null}
-          />
           <NoteFindBar open={findOpen} onClose={() => setFindOpen(false)} containerRef={contentScrollRef} />
           <div
             className="absolute bottom-0 left-0 right-0 h-20 pointer-events-none"

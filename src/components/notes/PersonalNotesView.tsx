@@ -7,24 +7,11 @@ import NoteSkeleton from "./NoteSkeleton";
 import { CONTENT_ENTER_CLASS } from "../ui/Skeleton";
 import { cn } from "../lib/utils";
 import AddNotesToFolderDialog from "./AddNotesToFolderDialog";
-import { useActionProcessing } from "../../hooks/useActionProcessing";
-import type { ActionItem } from "../../contracts/actions";
 import type { NoteItem } from "../../contracts/notes";
-import { initializeActions, useActions } from "../../stores/actionStore";
-import { DETAILED_NOTES_KEY } from "../../helpers/builtinActions";
-import { useSettingsStore } from "../../stores/settingsStore";
-import { selectResolvedNoteFormatting } from "../../config/settingsSelectors";
 import logger from "../../utils/logger";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";
 import { isExplicitSpeakerCount, resolveExpectedSpeakerCount } from "../../utils/participants";
-import {
-  buildLlmTranscript,
-  buildMeetingContext,
-  collectKnownPeople,
-  type MeetingIdentity,
-} from "../../utils/llmTranscript";
-import type { MentionPerson } from "../../utils/mentionMarkdown";
-import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
+import type { CalendarEvent } from "../../contracts/calendar";
 import {
   useNotes,
   useFolders,
@@ -47,7 +34,6 @@ import { useNotesOnboarding } from "../../hooks/useNotesOnboarding";
 import { useNotesTreeActions } from "../../hooks/useNotesTreeActions";
 import NotesOnboarding from "./NotesOnboarding";
 import { defaultFolderDisplayName, notesEmptyTitleKey } from "./shared";
-import { isRegenerableNoteTitle } from "../../helpers/regenerableNoteTitle";
 import { isMeetingAutoEndEligible } from "../../helpers/meetingRecordingSession";
 import { handleMeetingRecordingRequest } from "../../helpers/meetingRecordingRequest";
 import {
@@ -62,16 +48,6 @@ import {
 
 function makeContentHash(content: string): string {
   return String(content.length) + "-" + content.slice(0, 50);
-}
-
-function parseNoteParticipants(raw: string | null | undefined): CalendarAttendee[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 
 function draftFromNote(note: NoteItem): NoteEditorDraft {
@@ -188,8 +164,6 @@ export default function PersonalNotesView({
     },
     [commitDraft, persistPendingWrites, takePendingSnapshots]
   );
-  const noteFormatting = useSettingsStore(useShallow(selectResolvedNoteFormatting));
-  const effectiveModelId = noteFormatting.model;
   const { isComplete: isOnboardingComplete, complete: completeOnboarding } = useNotesOnboarding();
   const {
     startRecordingForNote,
@@ -208,8 +182,6 @@ export default function PersonalNotesView({
   const sessionExpectedCount = useMeetingRecordingStore((s) => s.sessionExpectedCount);
   const userTouchedStepper = useMeetingRecordingStore((s) => s.userTouchedStepper);
   const meetingRecordingAllowed = true;
-  const actions = useActions();
-
   const folders = useFolders();
 
   useEffect(() => {
@@ -384,12 +356,6 @@ export default function PersonalNotesView({
     return () => flushPendingSaves("unmount");
   }, [flushPendingSaves]);
 
-  const {
-    state: actionProcessingState,
-    actionName,
-    runAction,
-  } = useActionProcessing(activeNoteId ?? null);
-
   // Boolean flag so actions enable during recording without re-rendering on every transcript update.
   const hasLiveTranscript = useMeetingRecordingStore(
     (s) => s.recordingNoteId === activeNote?.id && !!s.transcript
@@ -466,69 +432,6 @@ export default function PersonalNotesView({
     return <NotesOnboarding onComplete={completeOnboarding} />;
   }
 
-  const runNoteAction = async (action: ActionItem) => {
-    if (!editorNote) return;
-    const { recordingNoteId: liveNoteId, transcript: liveTranscript } =
-      useMeetingRecordingStore.getState();
-    const rawTranscript =
-      (liveNoteId === activeNote?.id ? liveTranscript : "") || activeNoteRawTranscript;
-    const noteContent = editorNote.content;
-    const hasNotes = !!noteContent.trim();
-    if (!hasNotes && !rawTranscript) return;
-
-    let formattedTranscript = "";
-    let meetingContext = "";
-    let isMeetingNote = false;
-    let knownPeople: MentionPerson[] = [];
-    if (rawTranscript) {
-      const segments = parseTranscriptSegments(rawTranscript);
-      if (segments.length > 0) {
-        isMeetingNote = true;
-        const mappingRows =
-          (await window.electronAPI?.getSpeakerMappings?.(editorNote.id).catch(() => [])) || [];
-        const speakerMappings: Record<string, string> = {};
-        for (const m of mappingRows) speakerMappings[m.speaker_id] = m.display_name;
-
-        const identity: MeetingIdentity = {
-          selfName: null,
-          selfEmail: null,
-          participants: parseNoteParticipants(editorNote.participants),
-        };
-        const selfLabel = identity.selfName || t("notes.speaker.you");
-        meetingContext = buildMeetingContext(identity, selfLabel);
-        formattedTranscript = buildLlmTranscript(segments, speakerMappings, selfLabel, t);
-        knownPeople = collectKnownPeople(identity, speakerMappings, segments);
-      }
-      if (!formattedTranscript) {
-        formattedTranscript = rawTranscript;
-      }
-    }
-
-    const parts = [
-      hasNotes ? noteContent : "",
-      meetingContext,
-      formattedTranscript ? `## Meeting Transcript\n${formattedTranscript}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    runAction(action, parts, makeContentHash(`${noteContent}\n${rawTranscript}`), {
-      isCloudMode: false,
-      modelId: effectiveModelId,
-      isMeetingNote,
-      knownPeople,
-      allowTitleGeneration: isRegenerableNoteTitle(
-        editorNote.title,
-        [t("notes.list.untitledNote"), t("notes.list.newNote"), t("notes.sidebar.newNote")],
-        calendarEventName
-      ),
-    });
-  };
-  const generateSummary = async () => {
-    const currentActions = await initializeActions();
-    const action = currentActions.find((a) => a.translation_key === DETAILED_NOTES_KEY);
-    if (action) await runNoteAction(action);
-  };
-
   return (
     <div className="flex h-full">
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
@@ -572,9 +475,6 @@ export default function PersonalNotesView({
               folders={editorFolders}
               onSetFolders={handleSetNoteFolders}
               onCreateFolderAndAdd={handleCreateFolderAndAdd}
-              actionProcessingState={actionProcessingState}
-              actionName={actionName}
-              onGenerateSummary={generateSummary}
             />
           </div>
         ) : showNoteSkeleton ? (

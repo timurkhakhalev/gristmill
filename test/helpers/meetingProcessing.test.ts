@@ -929,8 +929,12 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
     speakerId: "speaker_a", profileId: null, displayName: "User correction", source: "user", revision: 1,
   }]);
   const summary = storage.readRunArtifact(manual.run.id, "summary");
+  assert.equal(manual.run.sourceRunId, sourceRun.id);
   assert.equal(summary.speakerCorrectionRevision, 1);
   assert.doesNotMatch(JSON.stringify(parseSummaryInput(summaryInput)), /@/);
+  assert.deepEqual(JSON.parse(db.getMeetingRunLlmSourceSnapshot(manual.run.id) ?? "{}").promptModel, validConfig.summary);
+  assert.equal(db.getNote(note.id).enhanced_content, summary.text);
+  assert.match(db.getNote(note.id).transcript ?? "", /User correction/);
   assert.equal(db.getMeetingRecording(recording.id).currentRunId, manual.run.id);
 });
 

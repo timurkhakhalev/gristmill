@@ -209,3 +209,20 @@ Verification run by this agent:
 - Tests/builds/dependency installation/native rebuilds were not run by this agent; root owns them. Run focused regressions and affected journeys first: `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts test/services/meetingResults.test.ts test/stores/meetingRecordingStoreAutoEndStop.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/locales/translationCoverage.test.ts`. Then run `pnpm run lint`, `pnpm run typecheck`, and the required full `pnpm test` sequentially.
 
 Implementation commit: `51f587d23` (`M5: close meeting processing review findings`).
+
+### M5 live short-transcript notice placement follow-up
+
+Status: done
+
+Moved the live short-transcript ineligibility notice above the Notes view-mode split, so it is visible in the default/raw view as well as the Summary view. The manual Summary action and the mock-only preview notice remain unchanged.
+
+Preserved the existing eligibility thresholds and selected-run state; no capture or processing behavior changed. Root owns all tests and integration runs.
+
+Verification run by this agent:
+
+- `pnpm run typecheck:renderer` — passed.
+- Scoped ESLint for `src/components/notes/MeetingResultsPanel.tsx` — passed with the existing Node `MODULE_TYPELESS_PACKAGE_JSON` warning.
+- `git diff --check` — passed.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts`, then the affected M1–M4 tests and integrated checks.
+
+Implementation commit: pending.

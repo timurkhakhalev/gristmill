@@ -67,8 +67,8 @@ PCM space is reclaimed only after the owner verifies the migrated library and
 removes this backup directory. Restore requires both the SQLite snapshot and
 the corresponding PCM files while the application is closed.
 
-Development checks use synthetic profiles. The real Gristmill profile has not
-been migrated by this change.
+Development checks use synthetic profiles. The installed 1.10.1 application
+migrated the real Gristmill profile on its first normal startup.
 
 ## Verification, 2026-09-30
 
@@ -95,4 +95,21 @@ been migrated by this change.
 
 The Electron check uses synthetic audio and a fresh profile. It does not verify
 live microphone/system hardware, a crash of the whole app, power loss, or paid
-provider transcription quality. No packaged app has been installed or replaced.
+provider transcription quality.
+
+## Release verification, 1.10.1
+
+- `pnpm run build:mac:arm64:local` produced the arm64 app, DMG and ZIP.
+  `codesign --verify --deep --strict` passed for both the built and installed app.
+- The packaged app passed the same isolated four-check Electron scenario above,
+  using its bundled code and FFmpeg; it exited cleanly afterwards.
+- `/Applications/Gristmill.app` was replaced and launched normally. Its previous
+  bundle was retained in a temporary backup directory.
+- The real profile migrated all 14 epochs: 650,701,264 bytes of PCM became
+  49,773,671 bytes of Opus, preserving all 325,350,632 frames. SQLite comparisons
+  against the pre-migration snapshot found no changed or missing Notes, changed
+  recording rows or changed processing runs. Abandoned derived WAVs were removed.
+- All 14 PCM originals and the SQLite snapshot remain in
+  `meeting-audio-before-opus/`; this backup still occupies the original PCM space.
+- Normal startup subsequently waited inside macOS Keychain access for saved
+  credentials. Full production UI readiness requires answering that system prompt.

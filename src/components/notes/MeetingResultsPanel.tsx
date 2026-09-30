@@ -123,7 +123,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const [runId, setRunId] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
-  const [popoverTab, setPopoverTab] = useState<"transcript" | "audio">("transcript");
+  const [popoverTab, setPopoverTab] = useState<"transcript" | "audio">("audio");
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState("");
@@ -137,6 +137,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     else setMessage(text);
   }, [toastApi]);
   const [busy, setBusy] = useState(false);
+  const [pendingKind, setPendingKind] = useState<RunChoice["kind"] | null>(null);
   const [recapStatus, setRecapStatus] = useState<"running" | "provider-error" | "format-error" | "conflict" | null>(null);
   const [mock, setMock] = useState(mockPipeline);
   useEffect(() => setMock(mockPipeline), [mockPipeline]);
@@ -476,6 +477,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     selected?.run.status === "complete" && selected.run.stage === "summary" && !selected.summary &&
     !selected.run.hasSummary && Boolean(selected.transcript?.text.trim()) &&
     (selectedTranscriptDuration < 180 || selectedTranscriptCharacters < 2500);
+  const runInFlight = Boolean(latestRun && ["pending", "running"].includes(latestRun.run.status)) && !gateActive && !captureBlocksAsr;
+  const transcribeLoading = pendingKind === "reprocess" || (runInFlight && latestRun?.run.stage !== "summary");
+  const summaryLoading = pendingKind === "summary" || (runInFlight && latestRun?.run.stage === "summary");
+  const runBusy = busy || transcribeLoading || summaryLoading;
   const summaryAction: SummaryActionState = {
     available: Boolean(
       selected?.transcript?.text.trim() && !selected.summary && !selected.run.hasSummary &&
@@ -563,11 +568,15 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         : reprocessGroupIds;
       if (manualAsrBlockedForGroups(targetGroupIds)) return;
     }
-    setAudioOpen(false);
     void createRun({ kind, ...target });
   };
 
-  const createRun = (choice: RunChoice) => runTask(async () => {
+  const createRun = async (choice: RunChoice) => {
+    setPendingKind(choice.kind);
+    try { await runTask(() => createRunTask(choice)); } finally { setPendingKind(null); }
+  };
+
+  const createRunTask = async (choice: RunChoice) => {
     if (previewRecordings) { notify("Mock processing queued in memory"); return; }
     const sourceRunIdForKind = choice.kind === "summary"
       ? (selected?.run.kind === "summary" ? selected.run.sourceRunId ?? "" : selectedId)
@@ -602,8 +611,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     if (!result.success || !result.result) throw new Error(result.error || t("meetingResults.createError"));
     setRunId(result.result.run.id);
     if (choice.kind === "summary") onViewModeChange("enhanced");
-    else { setPopoverTab("transcript"); setAudioOpen(true); }
-  });
+  };
 
   const deletePart = (id: string) => {
     setAudioOpen(false);
@@ -656,7 +664,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       selected.speakerCorrections.filter((item) => item.displayName.trim().toLowerCase() === speaker.displayName.trim().toLowerCase()).length > 1)
   ) ?? [] : [];
 
-  const selectedTranscriptContent = selected?.transcript ? <div>
+  const renderSelectedTranscript = () => (selected?.transcript ? <div>
         {unlinkedSpeakers.length > 0 && <div className="mb-3 rounded-lg border border-border p-3">
           <p className="text-xs text-muted">{tr("linkParticipantsHint", "Remember these names for future meetings by linking them to calendar participants.")}</p>
           <div className="mt-2 flex flex-wrap gap-2">{unlinkedSpeakers.map((speaker) => <Button key={speaker.speakerId} size="sm" variant="secondary" onPress={() => editSpeaker(speaker.speakerId)}>{speaker.displayName} · {tr("linkParticipant", "Link participant")}</Button>)}</div>
@@ -711,15 +719,14 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           });
         })() : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{selected.transcript.text}</p>}
 
-  </div> : renderFallbackTranscript(transcriptScrollRef);
+  </div> : renderFallbackTranscript(transcriptScrollRef));
 
-  const hasTranscriptText = Boolean((groups.length > 1 && sharedTranscript ? sharedTranscript : selected?.transcript)?.text?.trim());
-  // With no transcript yet the Transcript tab is only a placeholder, so open on Audio.
+  // The popover always opens on Audio, the primary tab.
   const handleAudioOpenChange = (open: boolean) => {
-    if (open) setPopoverTab(hasTranscriptText ? "transcript" : "audio");
+    if (open) setPopoverTab("audio");
     setAudioOpen(open);
   };
-  const transcriptContent = groups.length > 1 && sharedTranscript ? <div>
+  const renderTranscriptContent = () => (groups.length > 1 && sharedTranscript ? <div>
     {sharedTranscript.segments?.length ? sharedTranscript.segments.map((segment, index) => {
       const speaker = sharedTranscript.speakers.find((item) => item.id === segment.speaker_id);
       const ms = segment.start_ms;
@@ -736,8 +743,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         <div><span className="text-xs font-semibold">{speaker?.name ?? speaker?.id ?? ""}</span><p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
       </div>;
     }) : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{sharedTranscript.text}</p>}
-    <details className="mt-4"><summary className="cursor-pointer text-xs text-muted">{tr("selectedResultTranscript", "Selected result transcript")}</summary>{selectedTranscriptContent}</details>
-  </div> : selectedTranscriptContent;
+    <details className="mt-4"><summary className="cursor-pointer text-xs text-muted">{tr("selectedResultTranscript", "Selected result transcript")}</summary>{renderSelectedTranscript()}</details>
+  </div> : renderSelectedTranscript());
 
   return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">    <div className="sticky top-0 z-10 -mt-4 mb-3 flex items-center justify-between gap-2 bg-background pt-4 pb-3 max-[720px]:flex-wrap">
       <NoteViewSwitch
@@ -760,8 +767,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
               onChange={setPopoverTab}
               ariaLabel={tr("transcriptAndAudio", "Transcript and audio")}
               options={[
-                { id: "transcript", label: t("notes.editor.transcript"), icon: MessageSquareText },
                 { id: "audio", label: tr("audioParts", "Audio"), icon: AudioLines },
+                { id: "transcript", label: t("notes.editor.transcript"), icon: MessageSquareText },
               ]}
             />
             {popoverTab === "transcript" && <IconTooltip label={transcriptCopied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
@@ -770,7 +777,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
               </Button>
             </IconTooltip>}
           </div>
-          {popoverTab === "transcript" && <div ref={transcriptScrollRef} className="min-h-0 flex-1 overflow-y-auto">{transcriptContent}</div>}
+          {popoverTab === "transcript" && <div ref={transcriptScrollRef} className="min-h-0 flex-1 overflow-y-auto">{renderTranscriptContent()}</div>}
           {popoverTab === "audio" && <>
           <div className="min-h-0 flex-1 overflow-y-auto" onKeyDown={(event) => {
             if (!playingId || !event.currentTarget.contains(event.target as Node)) return;
@@ -804,7 +811,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
               if (key === "export") void exportPart(part.recording.id);
               if (key === "delete") deletePart(part.recording.id);
             }}>
-              <Dropdown.Item id="asr" isDisabled={busy || manualAsrBlockedForGroups([part.recording.groupId]) || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
+              <Dropdown.Item id="asr" isDisabled={runBusy || manualAsrBlockedForGroups([part.recording.groupId]) || part.recording.audioState !== "available"} textValue={t("meetingResults.newAsr")}><FileText size={14}/>{t("meetingResults.newAsr")}</Dropdown.Item>
               <Dropdown.Item id="export" isDisabled={busy || part.recording.audioState !== "available"} textValue={t("meetingResults.exportMixed")}><Download size={14}/>{t("meetingResults.exportMixed")}</Dropdown.Item>
               <Dropdown.Item id="delete" isDisabled={busy || part.recording.audioState === "deleted"} variant="danger" textValue={t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}><Trash2 size={14}/>{t(part.recording.audioErrorCode ? "meetingResults.retryDelete" : "meetingResults.deleteAudio")}</Dropdown.Item>
             </Dropdown.Menu></Dropdown.Popover></Dropdown>
@@ -812,8 +819,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </section>})}
           </div>
           {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <div className="mt-2 flex shrink-0 gap-2">
-            <Button size="sm" variant="secondary" className="flex-1 gap-1.5" isDisabled={busy || wholeMeetingAsrBlocked} onPress={() => openRun("reprocess", { generateSummary: !hasSavedSummary })}><MessageSquareText size={13}/>{hasSavedSummary ? tr("processWholeMeeting", "Transcribe") : tr("transcribeAndSummary", "Transcribe & Summary")}</Button>
-            {hasSavedSummary && <Button size="sm" variant="secondary" className="flex-1 gap-1.5" isDisabled={busy || captureBlocksAsr || summaryAction.isGenerating || !selected?.transcript?.text.trim()} onPress={() => openRun("summary")}><WandSparkles size={13}/>{tr("summary", "Summary")}</Button>}
+            <Button size="sm" variant="secondary" className="flex-1 gap-1.5" isPending={transcribeLoading} isDisabled={runBusy || wholeMeetingAsrBlocked} onPress={() => openRun("reprocess", { generateSummary: !hasSavedSummary })}><MessageSquareText size={13}/>{hasSavedSummary ? tr("processWholeMeeting", "Transcribe") : tr("transcribeAndSummary", "Transcribe & Summary")}</Button>
+            {hasSavedSummary && <Button size="sm" variant="secondary" className="flex-1 gap-1.5" isPending={summaryLoading} isDisabled={runBusy || captureBlocksAsr || summaryAction.isGenerating || !selected?.transcript?.text.trim()} onPress={() => openRun("summary")}><WandSparkles size={13}/>{tr("summary", "Summary")}</Button>}
           </div>}
           </>}
         </Popover.Dialog></Popover.Content>
@@ -893,8 +900,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </Button>
           <Popover.Content placement="bottom start" className="w-fit min-w-0 max-w-[calc(100vw-24px)]"><Popover.Dialog className="p-1">
             <div className="flex flex-col gap-1">
-              {selected.transcript?.text.trim() && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={captureBlocksAsr || summaryAction.isGenerating} onPress={() => { setModelOpen(false); openRun("summary"); }}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Button>}
-              <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={wholeMeetingAsrBlocked || !availableParts.length} onPress={() => { setModelOpen(false); openRun("reprocess"); }}><FileText size={14}/>{t("meetingResults.newAsr")}</Button>
+              {selected.transcript?.text.trim() && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={runBusy || captureBlocksAsr || summaryAction.isGenerating} onPress={() => { setModelOpen(false); openRun("summary"); }}><WandSparkles size={14}/>{t("meetingResults.newSummary")}</Button>}
+              <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={runBusy || wholeMeetingAsrBlocked || !availableParts.length} onPress={() => { setModelOpen(false); openRun("reprocess"); }}><FileText size={14}/>{t("meetingResults.newAsr")}</Button>
               {mock && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={mock.recap === "running" || !summaryText} onPress={() => { setModelOpen(false); patchMock({ recap: "running" }); mockAfter(1500, { recap: "ok" }); }}><AlignLeft size={14}/>{mock.recap === "ok" ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
               {!mock && selected?.summary && <Button size="sm" variant="ghost" className="justify-start gap-2" isDisabled={busy || recapStatus === "running" || !selected.run.hasSummary} onPress={() => { setModelOpen(false); void runSummaryAction("recap"); }}><AlignLeft size={14}/>{/^## Recap\s*$/m.test(summaryText ?? "") ? tr("updateRecap", "Update recap") : tr("newRecap", "New recap")}</Button>}
             </div>

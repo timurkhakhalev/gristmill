@@ -712,6 +712,12 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
   </div> : renderFallbackTranscript(transcriptScrollRef);
 
+  const hasTranscriptText = Boolean((groups.length > 1 && sharedTranscript ? sharedTranscript : selected?.transcript)?.text?.trim());
+  // With no transcript yet the Transcript tab is only a placeholder, so open on Audio.
+  const handleAudioOpenChange = (open: boolean) => {
+    if (open) setPopoverTab(hasTranscriptText ? "transcript" : "audio");
+    setAudioOpen(open);
+  };
   const transcriptContent = groups.length > 1 && sharedTranscript ? <div>
     {sharedTranscript.segments?.length ? sharedTranscript.segments.map((segment, index) => {
       const speaker = sharedTranscript.speakers.find((item) => item.id === segment.speaker_id);
@@ -743,7 +749,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         ]}
       />
       <div className="ms-auto flex flex-wrap items-center gap-1.5">
-      <Popover isOpen={audioOpen} onOpenChange={setAudioOpen}>
+      <Popover isOpen={audioOpen} onOpenChange={handleAudioOpenChange}>
         <IconTooltip label={tr("transcriptAndAudio", "Transcript and audio")}><Button size="sm" variant="tertiary" isIconOnly className="relative overflow-visible" aria-label={`${tr("transcriptAndAudio", "Transcript and audio")} ${audioCount}`}><AudioLines size={16}/>{audioCount > 0 && <span key={audioCount} className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">{audioCount}</span>}</Button></IconTooltip>
         <Popover.Content placement="bottom end" className="w-[440px] max-w-[calc(100vw-24px)]"><Popover.Dialog className="flex max-h-[min(520px,calc(100vh-160px))] flex-col p-3">
           <div className="mb-2 flex items-center gap-2">

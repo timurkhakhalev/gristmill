@@ -24,6 +24,8 @@ import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { composeMockSummary, type MockPipeline } from "./meetingMock";
 
 type ViewMode = "raw" | "enhanced";
+const TRANSCRIPT_CHUNK = 60;
+
 type RunChoice = { kind: "reprocess" | "summary"; partId?: string; generateSummary?: boolean };
 export interface SummaryActionState {
   available: boolean;
@@ -383,6 +385,19 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     : groups.find((group) => group.id === currentGroup)?.parts ?? [];
   const speakerLabel = (id: string) => t("meetingResults.speakerNumber", { defaultValue: "Speaker {{number}}", number: [...new Set(selected?.transcript?.segments?.map((segment) => segment.speaker).filter(Boolean))].indexOf(id) + 1 });
   const selectedId = selected?.run.id ?? "";
+  // Long meetings hold thousands of segments; mount a window and extend it as the reader scrolls.
+  const [transcriptLimit, setTranscriptLimit] = useState(TRANSCRIPT_CHUNK);
+  const [transcriptSentinel, setTranscriptSentinel] = useState<HTMLDivElement | null>(null);
+  useEffect(() => setTranscriptLimit(TRANSCRIPT_CHUNK), [audioOpen, popoverTab, selectedId]);
+  useEffect(() => {
+    const root = transcriptScrollRef.current;
+    if (!transcriptSentinel || !root) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setTranscriptLimit((limit) => limit + TRANSCRIPT_CHUNK);
+    }, { root, rootMargin: "600px 0px" });
+    observer.observe(transcriptSentinel);
+    return () => observer.disconnect();
+  }, [transcriptSentinel, transcriptLimit]);
   const summaryProvider = selected?.run.config?.summary?.reasoningMode === "agent"
     ? "bb"
     : selected?.run.config?.summary?.provider ?? "";
@@ -680,7 +695,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
             const part = parts.find((item) => item.recording.id === id);
             cumulative += part?.recording.durationSeconds ?? 0;
           }
-          return selected.transcript.segments!.map((segment, index) => {
+          const allSegments = selected.transcript.segments!;
+          return [...allSegments.slice(0, transcriptLimit).map((segment, index) => {
             const isPartStart = partBoundaries.includes(segment.start);
             const partIndex = isPartStart ? partBoundaries.indexOf(segment.start) : -1;
             const partId = isPartStart ? selected.run.sourceRecordingIds[partIndex + 1] : null;
@@ -716,7 +732,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
                 }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}{segment.speaker && (selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.source === "model" || mock?.modelSpeakerIds?.includes(segment.speaker)) && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("autoNameHint", "Suggested from the conversation. Click the name to change it.")}>{tr("autoName", "auto")}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
               </div>
             </div>;
-          });
+          }), allSegments.length > transcriptLimit && <div key="more" ref={setTranscriptSentinel} className="h-8" aria-hidden="true" />];
         })() : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{selected.transcript.text}</p>}
 
   </div> : renderFallbackTranscript(transcriptScrollRef));
@@ -727,7 +743,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     setAudioOpen(open);
   };
   const renderTranscriptContent = () => (groups.length > 1 && sharedTranscript ? <div>
-    {sharedTranscript.segments?.length ? sharedTranscript.segments.map((segment, index) => {
+    {sharedTranscript.segments?.length ? [...sharedTranscript.segments.slice(0, transcriptLimit).map((segment, index) => {
       const speaker = sharedTranscript.speakers.find((item) => item.id === segment.speaker_id);
       const ms = segment.start_ms;
       return <div key={`${index}-${ms}`} className="mt-3 grid grid-cols-[44px_minmax(0,1fr)] gap-x-3">
@@ -742,7 +758,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         }}>{ms === null ? "--:--" : `${Math.floor(ms / 60_000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`}</button>
         <div><span className="text-xs font-semibold">{speaker?.name ?? speaker?.id ?? ""}</span><p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
       </div>;
-    }) : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{sharedTranscript.text}</p>}
+    }), sharedTranscript.segments.length > transcriptLimit && <div key="more" ref={setTranscriptSentinel} className="h-8" aria-hidden="true" />] : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{sharedTranscript.text}</p>}
     <details className="mt-4"><summary className="cursor-pointer text-xs text-muted">{tr("selectedResultTranscript", "Selected result transcript")}</summary>{renderSelectedTranscript()}</details>
   </div> : renderSelectedTranscript());
 

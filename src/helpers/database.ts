@@ -1315,6 +1315,9 @@ export class DatabaseManager {
         )
         .run(captureState, input.endedAt, sourceMetadata, noAudioError ?? input.errorCode ?? null, id);
 
+      const sourceRecordingIds = this.listMeetingRecordingsForNote(current.note_id)
+        .filter((part) => part.audioState === "available" && ["ready", "incomplete"].includes(part.captureState) && part.captureErrorCode !== "recording-audio-unavailable")
+        .map((part) => part.id);
       const config = parseConfig(current.config_json);
       const configError = configErrorFromRow(current.config_error_code, current.config_error_message_key);
       const runId = randomUUID();
@@ -1328,9 +1331,9 @@ export class DatabaseManager {
       const model = transcription?.mode === "local" ? transcription.local?.model ?? null : transcription?.model ?? null;
       this.sql
         .prepare(
-          "INSERT INTO meeting_processing_runs (id, recording_id, kind, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code, retry_at) VALUES (?, ?, 'initial', ?, ?, ?, ?, ?, 'prepare', ?, ?, ?)"
+          "INSERT INTO meeting_processing_runs (id, recording_id, source_recording_ids_json, kind, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code, retry_at) VALUES (?, ?, ?, 'initial', ?, ?, ?, ?, ?, 'prepare', ?, ?, ?)"
         )
-        .run(runId, id, provider, model, current.config_json, current.config_error_code, current.config_error_message_key, status, errorCode, retryAt);
+        .run(runId, id, JSON.stringify(sourceRecordingIds.length ? sourceRecordingIds : [id]), provider, model, current.config_json, current.config_error_code, current.config_error_message_key, status, errorCode, retryAt);
       this.sql
         .prepare(
           "UPDATE meeting_recordings SET current_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"

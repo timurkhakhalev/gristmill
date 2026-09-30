@@ -19,10 +19,11 @@ interface StopRequest {
 interface ProcessingRequest {
   sourceRecordingIds: string[];
   gateAfterStop?: boolean;
+  config?: { transcription: { provider: string } } | null;
 }
 
 interface RecordingEntry {
-  recording: { id: string; groupId: string | null; audioState: string; startedAt: string };
+  recording: { id: string; groupId: string | null; audioState: string; captureState: string; startedAt: string };
   runs: Array<{ run: Record<string, unknown>; transcript?: { text: string } }>;
 }
 
@@ -175,7 +176,7 @@ test("ending a paused call queues its saved parts once without another ASR reque
   assert.equal(await store.startRecording(START_ARGS), true);
   const groupId = store.useMeetingRecordingStore.getState().meetingGroupId;
   api.recordings = [{
-    recording: { id: RECORDING_ID, groupId, audioState: "available", startedAt: new Date().toISOString() },
+    recording: { id: RECORDING_ID, groupId, audioState: "available", captureState: "ready", startedAt: new Date().toISOString() },
     runs: [{ run: { id: RUN_ID, kind: "initial", errorCode: null, config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } }, configError: null } }],
   }];
   assert.equal(await store.pauseMeeting(), true);
@@ -185,7 +186,7 @@ test("ending a paused call queues its saved parts once without another ASR reque
   assert.equal(api.stopRequests.length, 1, "paused call has no active capture to stop again");
   assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID]);
   assert.equal(api.processingRequests[0].gateAfterStop, true);
-  await store.queueMeetingGroupProcessing(groupId, START_ARGS.noteId);
+  await store.queueMeetingNoteProcessing(START_ARGS.noteId);
   assert.equal(api.processingRequests.length, 1, "a saved transcript does not trigger ASR again");
   assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "saved");
 });
@@ -200,18 +201,32 @@ test("ending a paused call with no saved audio skips processing", async (t: Test
   assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "saved");
 });
 
+test("processing a Note includes older groups in chronological order", async (t: TestContext) => {
+  const api = createElectronAPI({ stopResult: () => finalized() });
+  const store = await loadStore(t, api);
+  const runs = [{ run: { kind: "initial", errorCode: null, config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } } } }];
+  api.recordings = [
+    { recording: { id: SECOND_RECORDING_ID, groupId: "new-group", audioState: "available", captureState: "ready", startedAt: "2026-09-30T10:30:00.000Z" }, runs: [...runs] },
+    { recording: { id: RECORDING_ID, groupId: "old-group", audioState: "available", captureState: "incomplete", startedAt: "2026-09-30T10:07:00.000Z" }, runs: [{ run: { kind: "initial", config: null, errorCode: "detailed-notes-action-missing" } }] },
+  ];
+  await store.queueMeetingNoteProcessing(START_ARGS.noteId);
+  assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID, SECOND_RECORDING_ID]);
+  assert.equal(api.processingRequests[0].gateAfterStop, true);
+  assert.equal(api.processingRequests[0].config?.transcription.provider, "elevenlabs");
+});
+
 test("resume adds a second saved part to one whole-meeting processing run", async (t: TestContext) => {
   let stopCount = 0;
   const api = createElectronAPI({ stopResult: () => ({ ...finalized(), recordingId: ++stopCount === 1 ? RECORDING_ID : SECOND_RECORDING_ID }) });
   const store = await loadStore(t, api);
   assert.equal(await store.startRecording(START_ARGS), true);
   const groupId = store.useMeetingRecordingStore.getState().meetingGroupId;
-  api.recordings = [{ recording: { id: RECORDING_ID, groupId, audioState: "available", startedAt: "2026-09-25T10:00:00.000Z" }, runs: [{ run: { kind: "initial", errorCode: null, config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } } } }] }];
+  api.recordings = [{ recording: { id: RECORDING_ID, groupId, audioState: "available", captureState: "ready", startedAt: "2026-09-25T10:00:00.000Z" }, runs: [{ run: { kind: "initial", errorCode: null, config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } } } }] }];
   assert.equal(await store.pauseMeeting(), true);
   api.api.meetingTranscriptionStart = async () => ({ success: true, recordingId: SECOND_RECORDING_ID, originAt: new Date().toISOString(), systemAudioMode: "native", systemAudioStrategy: "native" });
   assert.equal(await store.resumeMeeting(START_ARGS), true);
   assert.equal(store.useMeetingRecordingStore.getState().meetingGroupId, groupId);
-  api.recordings.push({ recording: { id: SECOND_RECORDING_ID, groupId, audioState: "available", startedAt: "2026-09-25T10:01:00.000Z" }, runs: [{ run: { kind: "initial", errorCode: null, config: null } }] });
+  api.recordings.push({ recording: { id: SECOND_RECORDING_ID, groupId, audioState: "available", captureState: "ready", startedAt: "2026-09-25T10:01:00.000Z" }, runs: [{ run: { kind: "initial", errorCode: null, config: null } }] });
   assert.equal(await store.finishMeeting(), true);
   assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID, SECOND_RECORDING_ID]);
   assert.equal(api.processingRequests[0].gateAfterStop, true);

@@ -374,7 +374,7 @@ test("resume cancels the pending group version and the next end starts a fresh g
   worker.onRetentionReady();
   await worker.waitForIdle();
   assert.equal(db.getMeetingProcessingRun(run.id).status, "pending");
-  worker.captureStarted(recording.groupId);
+  worker.captureStarted(recording.noteId);
   assert.equal(db.getMeetingProcessingRun(run.id).status, "cancelled");
   assert.equal(db.getMeetingProcessingRun(run.id).errorCode, "meeting-resumed");
 

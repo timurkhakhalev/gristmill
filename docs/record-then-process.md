@@ -1,5 +1,12 @@
 # Запись → Stop → обработка
 
+Автообработка после Stop/End call включает все доступные завершённые части аудио
+этой Note независимо от `group_id`, в порядке `startedAt`, затем ID. Main
+сохраняет этот набор до ASR; новый захват отменяет ожидающую обработку той же
+Note. Группы описывают сеансы захвата, а не полноту транскрипта. Сборка аудио
+сама сортирует части. Старые результаты и BB-треды сохраняются; ранее разделённую
+запись нужно транскрибировать заново для полного результата.
+
 Решение Тимура от 2026-09-23. Заменяет предложения о транскрипции фрагментов во время встречи и локальном черновике. M1–M4 код этой схемы реализован; focused и интеграционная проверка остаются за root. Live mic/system hardware smoke отложен и остаётся непроверенным.
 
 Доработка хранения: [Opus capture и миграция](opus-recording.md).
@@ -7,7 +14,7 @@
 ## Текущая реализация и проверка
 
 - SQLite хранит `meeting_recordings`, `meeting_recording_epochs`, `meeting_processing_runs`, `meeting_deletion_intents` и `meeting_run_speaker_corrections`; managed files содержат source Ogg/Opus epochs (32 kbit/s VBR, complexity 0), temporary derived WAV и per-run JSON results. Пути описаны в [architecture.md](architecture.md).
-- Config snapshot сохраняется до первого audio frame. Во время capture нет ASR/provider calls. Только успешный Stop закрывает tracks, создаёт initial run и сохраняет not-before deadline на 15 секунд. Worker учитывает этот deadline после restart; Pause не ставит задание в очередь, а Resume отменяет pending run прежней group version.
+- Config snapshot сохраняется до первого audio frame. Во время capture нет ASR/provider calls. Только успешный Stop закрывает tracks, создаёт initial run и сохраняет not-before deadline на 15 секунд. Worker учитывает этот deadline после restart; Pause не ставит задание в очередь, а Resume отменяет pending run прежней Note audio version.
 - После gate формат зависит от сохранённого провайдера: Deepgram получает stereo WAV (mic=0, system=1) с multichannel и диаризацией; ElevenLabs, Gemini и OpenAI — два параллельных запроса (mic без диаризации, system с диаризацией). OpenAI использует `whisper-1` для временных меток mic и `gpt-4o-transcribe-diarize` для system. Local сохраняет mono route. Все входы следуют общей timeline и сохраняют gaps. Raw JSON каждой дорожки сохраняется до normalization; retry не отправляет успешную дорожку повторно. Run/selection проверяются перед claim и ASR.
 - Transcript и Summary — per-run artifacts; `notes.transcript` и `notes.enhanced_content` показывают выбранный run, а ручной `note.content` остаётся отдельным. Source tracks и прошлые артефакты сохраняются при retry и выборе другой версии.
 - Speaker naming может использовать сохранённый Summary route; user correction wins by revision. Первый автоматический Summary создаётся при длительности не менее 180 секунд и не менее 2 500 символов transcript. Явная повторная транскрипция создаёт новый Summary для непустого transcript независимо от прошлых версий и этих порогов; для готового transcript также доступен ручной Summary.
@@ -62,7 +69,7 @@ flowchart TD
 
 - Во время встречи выполняются захват, сохранение и контроль состояния. ASR, диаризации, черновика и автоматических заметок нет. Ручные заметки остаются доступны.
 - Исходные mic/system записываются один раз. Чанки файлов нужны для сохранности и восстановления, а не для отправки отдельных минут в ASR.
-- Только успешный Stop фиксирует завершённый хвост и создаёт run с durable 15-секундным not-before сроком. Pause не ставит обработку в очередь; Resume инвалидирует pending work прежней group version. Run повторно проверяется при claim и перед ASR, включая после restart.
+- Только успешный Stop фиксирует завершённый хвост и создаёт run с durable 15-секундным not-before сроком. Pause не ставит обработку в очередь; Resume инвалидирует pending work прежней Note audio version. Run повторно проверяется при claim и перед ASR, включая после restart.
 - После gate готовятся полные WAV выбранного маршрута: stereo для Deepgram, отдельные mic/system для остальных cloud routes. Результаты собираются по временным меткам с сохранением перебиваний. Raw provider JSON сохраняется до normalization.
 - Подготовка входа (контейнер, ресемплинг, выравнивание каналов) создаёт производные файлы. Исходники не меняются.
 - Смена микрофона в Settings во время записи переподключает mic capture: старый хвост сохраняется, новый epoch остаётся в той же recording/group. Режим System Default следует за изменениями входа macOS; выбранный конкретный микрофон остаётся закреплённым, пока доступен. При переключении возможен временной gap.

@@ -1570,11 +1570,11 @@ export async function resumeMeeting(args: StartRecordingArgs): Promise<boolean> 
   return started;
 }
 
-export async function queueMeetingGroupProcessing(groupId: string, noteId: number): Promise<void> {
+export async function queueMeetingNoteProcessing(noteId: number): Promise<void> {
   const listed = await window.electronAPI.meetingProcessingListForNote(noteId);
   if (!listed.success) throw new Error(listed.error || "Meeting parts could not be loaded");
   const parts = (listed.recordings ?? [])
-    .filter((item) => item.recording.groupId === groupId && item.recording.audioState === "available")
+    .filter((item) => item.recording.audioState === "available" && ["ready", "incomplete"].includes(item.recording.captureState))
     .sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt));
   const usable = parts.filter((part) => part.runs.some((result) => result.run.errorCode !== "recording-audio-unavailable"));
   if (!usable.length) return;
@@ -1586,7 +1586,7 @@ export async function queueMeetingGroupProcessing(groupId: string, noteId: numbe
   );
   if (existing) return;
   const first = usable[0];
-  const initial = first.runs.find((result) => result.run.kind === "initial");
+  const initial = usable.at(-1)?.runs.find((result) => result.run.kind === "initial");
   const created = await window.electronAPI.meetingProcessingCreateRun({
     recordingId: first.recording.id,
     sourceRecordingIds: sourceIds,
@@ -1606,7 +1606,7 @@ export async function finishMeeting(): Promise<boolean> {
   localStorage.setItem(PAUSED_MEETING_KEY, JSON.stringify({ groupId, noteId }));
   if (state.isRecording && !(await stopRecording(undefined, { suppressProcessing: true })).stopped) return false;
   try {
-    await queueMeetingGroupProcessing(groupId, noteId);
+    await queueMeetingNoteProcessing(noteId);
   } catch (error) {
     localStorage.setItem(PAUSED_MEETING_KEY, JSON.stringify({ groupId, noteId }));
     useMeetingRecordingStore.setState({ capturePhase: "paused", meetingGroupId: groupId, recordingNoteId: noteId });

@@ -82,6 +82,24 @@ test("later groups continue after earlier groups", () => {
   assert.equal(result.timeline.duration_ms, 15 * MIN);
 });
 
+test("a combined initial run across groups replaces the earlier transcript once", () => {
+  const parts = [
+    part({ id: B, group: G2, startMin: 13, minutes: 8, run: "combined" }),
+    part({ id: A, group: G1, startMin: 0, minutes: 10, run: "ra" }),
+  ];
+  const result = readNoteTranscript(deps(parts, [run("ra", [A]), run("combined", [A, B], { kind: "initial" })], {
+    ra: { text: "old", segments: [{ text: "old", start: 1, end: 2 }] },
+    combined: { text: "beginning ending", segments: [
+      { text: "beginning", start: 1, end: 2 },
+      { text: "ending", start: 601, end: 602 },
+    ] },
+  }), 42);
+  assert.equal(result.status, "ready");
+  assert.equal(result.text, "beginning\nending");
+  assert.deepEqual(result.segments.map((segment: { start_ms: number }) => segment.start_ms), [1000, 601000]);
+  assert.equal(result.timeline.duration_ms, 18 * MIN);
+});
+
 test("sub-millisecond capture frames produce integer offsets and total duration", () => {
   const parts = [
     part({ id: A, group: G1, startMin: 0, minutes: 0, run: "ra" }),

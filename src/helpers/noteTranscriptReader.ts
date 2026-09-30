@@ -49,9 +49,9 @@ function absent(noteId: number, status: NoteTranscript["status"], diagnostics: s
 /**
  * Read-only assembly of one shared transcript for a Note.
  *
- * Groups (one per start/stop session) follow each other in start order. Parts inside a group
- * follow each other by recorded audio frames; intentional pauses between parts and groups are
- * excluded. A run's local time is shifted exactly once, by the offset of its first source part.
+ * Parts follow start order across capture groups; intentional pauses are excluded.
+ * A run's local time is shifted exactly once, by the offset of its first source part.
+ * Coverage is shared across the Note so combined runs replace their per-part runs.
  */
 export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): NoteTranscript {
   const recordings = deps.listRecordings(noteId)
@@ -60,74 +60,68 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
   if (!recordings.length) return readProjection(deps, noteId);
 
   const diagnostics: string[] = [];
-  const groups = new Map<string, MeetingRecordingDto[]>();
-  for (const recording of recordings) groups.set(recording.groupId, [...(groups.get(recording.groupId) ?? []), recording]);
 
   const pieces: Piece[] = [];
-  let groupOffsetMs = 0;
+  let durationMs = 0;
   let durationKnown = true;
   let pending = false;
   let failed = false;
   let uncovered = false;
 
-  for (const parts of groups.values()) {
-    const partOffsets = new Map<string, number>();
-    let cursor = 0;
-    for (const part of parts) {
-      partOffsets.set(part.id, Math.round(groupOffsetMs + cursor));
-      if (part.captureState === "recording" || part.captureState === "finalizing") {
-        pending = true;
-        durationKnown = false;
-        continue;
-      }
-      if (part.captureState === "incomplete") {
-        uncovered = true;
-        diagnostics.push(`part-capture-incomplete:${part.id}`);
-      }
-      try {
-        cursor += meetingTimelineFrameCount(part, deps.listEpochs(part.id)) / FRAMES_PER_MS;
-      } catch {
-        durationKnown = false;
-        diagnostics.push(`part-timeline-invalid:${part.id}`);
-      }
+  const partOffsets = new Map<string, number>();
+  for (const part of recordings) {
+    partOffsets.set(part.id, Math.round(durationMs));
+    if (part.captureState === "recording" || part.captureState === "finalizing") {
+      pending = true;
+      durationKnown = false;
+      continue;
     }
+    if (part.captureState === "incomplete") {
+      uncovered = true;
+      diagnostics.push(`part-capture-incomplete:${part.id}`);
+    }
+    try {
+      durationMs += meetingTimelineFrameCount(part, deps.listEpochs(part.id)) / FRAMES_PER_MS;
+    } catch {
+      durationKnown = false;
+      diagnostics.push(`part-timeline-invalid:${part.id}`);
+    }
+  }
 
-    const candidates = new Map<string, MeetingProcessingRunDto>();
-    for (const part of parts) {
-      const current = part.currentRunId ? deps.getRun(part.currentRunId) : null;
-      if (!current) continue;
-      const transcriptRun = current.kind === "summary" && current.sourceRunId ? deps.getRun(current.sourceRunId) : current;
-      if (transcriptRun) candidates.set(transcriptRun.id, transcriptRun);
-    }
-    // Prefer runs covering more parts; never take two runs over the same audio.
-    const covered = new Set<string>();
-    const ordered = [...candidates.values()].sort(
-      (a, b) => b.sourceRecordingIds.length - a.sourceRecordingIds.length || b.createdAt.localeCompare(a.createdAt)
-    );
-    for (const run of ordered) {
-      if (run.sourceRecordingIds.some((id) => covered.has(id))) continue;
-      const transcript = run.hasTranscript ? deps.readTranscript(run.id) : null;
-      if (!transcript) continue;
-      const offset = partOffsets.get(run.sourceRecordingIds[0]);
-      if (offset === undefined) continue;
-      run.sourceRecordingIds.forEach((id) => covered.add(id));
-      pieces.push({ offsetMs: offset, sourceIds: run.sourceRecordingIds, runId: run.id, transcript, corrections: deps.getCorrections(run.id) });
-    }
+  const candidates = new Map<string, MeetingProcessingRunDto>();
+  for (const part of recordings) {
+    const current = part.currentRunId ? deps.getRun(part.currentRunId) : null;
+    if (!current) continue;
+    const transcriptRun = current.kind === "summary" && current.sourceRunId ? deps.getRun(current.sourceRunId) : current;
+    if (transcriptRun) candidates.set(transcriptRun.id, transcriptRun);
+  }
+  // Prefer runs covering more parts; never take two runs over the same audio.
+  const covered = new Set<string>();
+  const orderedRuns = [...candidates.values()].sort(
+    (a, b) => b.sourceRecordingIds.length - a.sourceRecordingIds.length || b.createdAt.localeCompare(a.createdAt)
+  );
+  for (const run of orderedRuns) {
+    if (run.sourceRecordingIds.some((id) => covered.has(id))) continue;
+    const transcript = run.hasTranscript ? deps.readTranscript(run.id) : null;
+    if (!transcript) continue;
+    const offset = partOffsets.get(run.sourceRecordingIds[0]);
+    if (offset === undefined) continue;
+    run.sourceRecordingIds.forEach((id) => covered.add(id));
+    pieces.push({ offsetMs: offset, sourceIds: run.sourceRecordingIds, runId: run.id, transcript, corrections: deps.getCorrections(run.id) });
+  }
 
-    for (const part of parts) {
-      if (covered.has(part.id) || part.captureState === "recording" || part.captureState === "finalizing") continue;
-      const runs = part.currentRunId ? [deps.getRun(part.currentRunId)] : [];
-      if (runs.some((run) => run && (run.status === "pending" || run.status === "running"))) pending = true;
-      else if (runs.some((run) => run && (run.status === "failed" || run.status === "blocked"))) failed = true;
-      else uncovered = true;
-      diagnostics.push(`part-uncovered:${part.id}`);
-    }
-    groupOffsetMs += cursor;
+  for (const part of recordings) {
+    if (covered.has(part.id) || part.captureState === "recording" || part.captureState === "finalizing") continue;
+    const runs = part.currentRunId ? [deps.getRun(part.currentRunId)] : [];
+    if (runs.some((run) => run && (run.status === "pending" || run.status === "running"))) pending = true;
+    else if (runs.some((run) => run && (run.status === "failed" || run.status === "blocked"))) failed = true;
+    else uncovered = true;
+    diagnostics.push(`part-uncovered:${part.id}`);
   }
 
   if (!pieces.length) {
     const status = pending ? "pending" : failed ? "error" : uncovered || !durationKnown ? "partial" : "absent";
-    return { ...absent(noteId, status, diagnostics), timeline: emptyTimeline(durationKnown ? Math.round(groupOffsetMs) : null) };
+    return { ...absent(noteId, status, diagnostics), timeline: emptyTimeline(durationKnown ? Math.round(durationMs) : null) };
   }
 
   pieces.sort((a, b) => a.offsetMs - b.offsetMs);
@@ -178,7 +172,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
   return {
     note_id: noteId,
     status: pending || failed || uncovered || !durationKnown ? "partial" : "ready",
-    timeline: emptyTimeline(durationKnown ? Math.round(groupOffsetMs) : null),
+    timeline: emptyTimeline(durationKnown ? Math.round(durationMs) : null),
     speakers,
     text: withSegments ? segments.map((segment) => segment.text).join("\n") : pieces.map((piece) => piece.transcript.text).join("\n"),
     segments: withSegments ? segments : null,

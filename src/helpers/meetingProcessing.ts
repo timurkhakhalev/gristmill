@@ -266,13 +266,13 @@ export class MeetingProcessingWorker {
     this.processPending();
   }
 
-  captureStarted(groupId?: string): void {
+  captureStarted(noteId?: number): void {
     this.captureActive = true;
-    if (groupId) {
+    if (noteId !== undefined) {
       for (const run of this.deps.database.listAllMeetingProcessingRuns()) {
         const recording = this.deps.database.getMeetingRecording(run.recordingId);
         if (
-          recording?.groupId === groupId &&
+          recording?.noteId === noteId &&
           run.kind !== "summary" &&
           (run.status === "pending" || run.status === "running") &&
           (run.stage === "prepare" || run.stage === "asr") &&
@@ -429,13 +429,24 @@ export class MeetingProcessingWorker {
     if (parsed.gateAfterStop && parsed.kind !== "reprocess") {
       throw new Error("Only end-of-meeting transcription can use the processing gate");
     }
-    const sourceRecordingIds = parsed.sourceRecordingIds ?? [parsed.recordingId];
+    const recording = this.deps.database.getMeetingRecording(parsed.recordingId);
+    if (!recording) throw new Error("Meeting recording not found");
+    const sourceRecordingIds = parsed.gateAfterStop
+      ? this.deps.database.listMeetingRecordingsForNote(recording.noteId)
+        .filter((part) => part.audioState === "available" && ["ready", "incomplete"].includes(part.captureState) && part.captureErrorCode !== "recording-audio-unavailable")
+        .map((part) => part.id)
+      : parsed.sourceRecordingIds ?? [parsed.recordingId];
+    const orderedSourceIds = sourceRecordingIds.map((id) => {
+      const source = this.deps.database.getMeetingRecording(id);
+      if (!source || source.noteId !== recording.noteId) throw new Error("Meeting audio is unavailable for a selected part");
+      return source;
+    }).sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id)).map((part) => part.id);
     if (parsed.kind === "reprocess" && !parsed.gateAfterStop && this.isCapturing()) {
       throw new Error("Transcription starts after the end-of-meeting wait");
     }
     const sameSources = (run: MeetingProcessingRunDto) =>
       run.sourceRecordingIds.length === sourceRecordingIds.length &&
-      run.sourceRecordingIds.every((id, index) => id === sourceRecordingIds[index]);
+      run.sourceRecordingIds.every((id, index) => id === orderedSourceIds[index]);
     const activeGate = this.deps.database.listAllMeetingProcessingRuns().find((run) =>
       this.isEndOfMeetingGate(run) &&
       (run.status === "pending" || run.status === "running" || run.status === "blocked") &&
@@ -491,9 +502,9 @@ export class MeetingProcessingWorker {
         return result;
       }
     }
-    const run = this.deps.database.createMeetingProcessingRun(parsed.recordingId, {
+    const run = this.deps.database.createMeetingProcessingRun(parsed.kind === "reprocess" ? orderedSourceIds[0] : parsed.recordingId, {
       kind: parsed.kind,
-      sourceRecordingIds: parsed.sourceRecordingIds,
+      sourceRecordingIds: orderedSourceIds,
       config: parsed.config,
       configError: parsed.configError ?? null,
       sourceRunId: parsed.sourceRunId ?? null,
@@ -563,8 +574,8 @@ export class MeetingProcessingWorker {
       let claimed: { id: string; endOfMeetingGate: boolean } | null = null;
       for (const candidate of pending) {
         const endOfMeetingGate = this.isEndOfMeetingGate(candidate);
-        if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(candidate)) {
-          this.cancelRun(candidate.id, "meeting-group-changed");
+        if (endOfMeetingGate && !this.isCurrentNoteAudioVersion(candidate)) {
+          this.cancelRun(candidate.id, "meeting-audio-changed");
           continue;
         }
         if (this.deps.database.claimMeetingProcessingRun(candidate.id, now)) {
@@ -582,8 +593,8 @@ export class MeetingProcessingWorker {
     if (!run || run.status !== "running") return;
     const recording = this.deps.database.getMeetingRecording(run.recordingId);
     if (!recording) return;
-    if (endOfMeetingGate && (!this.isCurrentMeetingGroupVersion(run) || this.isCapturing())) {
-      this.cancelRun(runId, "meeting-group-changed");
+    if (endOfMeetingGate && (!this.isCurrentNoteAudioVersion(run) || this.isCapturing())) {
+      this.cancelRun(runId, "meeting-audio-changed");
       return;
     }
     const config = run.config;
@@ -616,8 +627,8 @@ export class MeetingProcessingWorker {
   }
 
   private async prepare(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal, endOfMeetingGate: boolean): Promise<void> {
-    if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(run)) {
-      this.cancelRun(run.id, "meeting-group-changed");
+    if (endOfMeetingGate && !this.isCurrentNoteAudioVersion(run)) {
+      this.cancelRun(run.id, "meeting-audio-changed");
       return;
     }
     if (this.isCapturing()) return this.pause(run, "prepare");
@@ -636,8 +647,8 @@ export class MeetingProcessingWorker {
     }
     const audio = audios[0];
     signal.throwIfAborted();
-    if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(run)) {
-      this.cancelRun(run.id, "meeting-group-changed");
+    if (endOfMeetingGate && !this.isCurrentNoteAudioVersion(run)) {
+      this.cancelRun(run.id, "meeting-audio-changed");
       return;
     }
     if (this.isCapturing()) return this.pause(run, "asr");
@@ -666,8 +677,8 @@ export class MeetingProcessingWorker {
   private async transcribe(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal, endOfMeetingGate: boolean): Promise<void> {
     const current = this.requireCurrentRun(run.id);
     if (current.hasRawProviderResponse) return this.setState(run.id, "normalize", "pending", null, null);
-    if (endOfMeetingGate && !this.isCurrentMeetingGroupVersion(current)) {
-      this.cancelRun(run.id, "meeting-group-changed");
+    if (endOfMeetingGate && !this.isCurrentNoteAudioVersion(current)) {
+      this.cancelRun(run.id, "meeting-audio-changed");
       return;
     }
     if (this.isCapturing()) return this.pause(run, "asr");
@@ -725,8 +736,8 @@ export class MeetingProcessingWorker {
       ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       requestId,
     };
-    if (endOfMeetingGate && (!this.isCurrentMeetingGroupVersion(current) || this.isCapturing())) {
-      this.cancelRun(run.id, "meeting-group-changed");
+    if (endOfMeetingGate && (!this.isCurrentNoteAudioVersion(current) || this.isCapturing())) {
+      this.cancelRun(run.id, "meeting-audio-changed");
       return;
     }
     let result: RemoteTranscriptionResult;
@@ -888,8 +899,8 @@ export class MeetingProcessingWorker {
       this.cancelRun(run.id, "processing-run-stale");
       return;
     }
-    if (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run)) {
-      this.cancelRun(run.id, "meeting-group-changed");
+    if (run.kind === "initial" && !this.isCurrentNoteAudioVersion(run)) {
+      this.cancelRun(run.id, "meeting-audio-changed");
       return;
     }
     this.getOrCreateLlmSourceSnapshot(run, recording, sourceRunId, transcript);
@@ -913,8 +924,8 @@ export class MeetingProcessingWorker {
       this.cancelRun(run.id, "processing-run-stale");
       return;
     }
-    if (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run)) {
-      this.cancelRun(run.id, "meeting-group-changed");
+    if (run.kind === "initial" && !this.isCurrentNoteAudioVersion(run)) {
+      this.cancelRun(run.id, "meeting-audio-changed");
       return;
     }
 
@@ -931,8 +942,8 @@ export class MeetingProcessingWorker {
       this.cancelRun(run.id, "processing-run-stale");
       return;
     }
-    if (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run)) {
-      this.cancelRun(run.id, "meeting-group-changed");
+    if (run.kind === "initial" && !this.isCurrentNoteAudioVersion(run)) {
+      this.cancelRun(run.id, "meeting-audio-changed");
       return;
     }
     snapshot = this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
@@ -974,8 +985,8 @@ export class MeetingProcessingWorker {
     signal.throwIfAborted();
     if (!generated.trim()) throw new MeetingProcessingFailure("summary-empty-output", "failed");
     if (this.isCapturing()) return this.pause(run, "summary");
-    if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) {
-      this.cancelRun(run.id, run.kind === "summary" ? "processing-run-stale" : "meeting-group-changed");
+    if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentNoteAudioVersion(run))) {
+      this.cancelRun(run.id, run.kind === "summary" ? "processing-run-stale" : "meeting-audio-changed");
       return;
     }
     const latestNote = this.deps.database.getNote(recording.noteId);
@@ -1093,7 +1104,7 @@ export class MeetingProcessingWorker {
       );
       return;
     }
-    if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) return;
+    if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentNoteAudioVersion(run))) return;
     if (snapshot.participants === null) {
       this.deps.database.setMeetingSpeakerNamingError(run.id, "calendar-participants-invalid");
       return;
@@ -1116,7 +1127,7 @@ export class MeetingProcessingWorker {
       }, snapshot.promptModel, run, signal);
       signal.throwIfAborted();
       if (this.isCapturing()) return;
-      if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentMeetingGroupVersion(run))) return;
+      if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentNoteAudioVersion(run))) return;
       const note = this.deps.database.getNote(recording.noteId);
       const nowParticipants = note ? participantCandidates(note.participants) : [];
       if (
@@ -1598,16 +1609,16 @@ export class MeetingProcessingWorker {
       !run.hasRawProviderResponse;
   }
 
-  private isCurrentMeetingGroupVersion(run: MeetingProcessingRunDto): boolean {
+  private isCurrentNoteAudioVersion(run: MeetingProcessingRunDto): boolean {
     const recording = this.deps.database.getMeetingRecording(run.recordingId);
     if (!recording || run.kind === "summary") return false;
-    const group = this.deps.database.listMeetingRecordingsForNote(recording.noteId)
-      .filter((part) => part.groupId === recording.groupId)
+    const parts = this.deps.database.listMeetingRecordingsForNote(recording.noteId)
+      .filter((part) => part.audioState === "available" && part.captureErrorCode !== "recording-audio-unavailable")
       .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
-    if (group.some((part) =>
+    if (parts.some((part) =>
       (part.captureState !== "ready" && part.captureState !== "incomplete") || part.audioState !== "available"
     )) return false;
-    const currentIds = group.map((part) => part.id).sort();
+    const currentIds = parts.map((part) => part.id).sort();
     const sourceIds = [...run.sourceRecordingIds].sort();
     return currentIds.length === sourceIds.length && currentIds.every((id, index) => id === sourceIds[index]);
   }

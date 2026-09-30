@@ -718,7 +718,7 @@
   },
   "cleanupPrompt": "Textbereinigung",
   "developerSection": {
-    "installCli": "Notizen-CLI installieren",
+    "installCli": "Gristmill CLI installieren",
     "cliInstalled": "CLI installiert",
     "cliInstallFailed": "CLI-Installation fehlgeschlagen",
     "currentLogFile": "Aktuelle Protokolldatei",
@@ -774,7 +774,9 @@
         "transcriptionPipeline": "Transkriptionspipeline"
       },
       "title": "Was protokolliert wird"
-    }
+    },
+    "cliDescription": "Lass deine KI-Agenten deine Besprechungsnotizen lesen",
+    "cliStatusFailed": "CLI-Installation konnte nicht geprüft werden"
   },
   "dictionarySuffix": "Wörterbuch-Suffix",
   "errorBoundary": {

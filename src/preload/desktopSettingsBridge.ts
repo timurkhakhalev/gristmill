@@ -5,6 +5,7 @@
 // modules, so build-main.js bundles the final preload with esbuild.
 import {
   desktopSettingsChannels,
+  agentCliStatusSchema,
   activationModeSchema,
   hotkeyModeInfoSchema,
   hotkeyListeningResultSchema,
@@ -180,6 +181,8 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
       invokeParse(setDebugLoggingResultSchema, desktopSettingsChannels.setDebugLogging, enabled),
     openLogsFolder: () =>
       invokeParse(systemSettingsResultSchema, desktopSettingsChannels.openLogsFolder),
+    getAgentCliStatus: () =>
+      invokeParse(agentCliStatusSchema, desktopSettingsChannels.getAgentCliStatus),
     installAgentCli: () =>
       invokeParse(systemSettingsResultSchema, desktopSettingsChannels.installAgentCli),
     openMicrophoneSettings: () =>

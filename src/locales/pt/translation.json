@@ -671,7 +671,7 @@
   },
   "cleanupPrompt": "Limpeza",
   "developerSection": {
-    "installCli": "Instalar CLI de notas",
+    "installCli": "Instalar Gristmill CLI",
     "cliInstalled": "CLI instalada",
     "cliInstallFailed": "Falha ao instalar a CLI",
     "currentLogFile": "Arquivo de log atual",
@@ -727,7 +727,9 @@
         "transcriptionPipeline": "Pipeline de transcrição"
       },
       "title": "O que é registrado"
-    }
+    },
+    "cliDescription": "Permita que seus agentes de IA leiam suas notas de reuniões",
+    "cliStatusFailed": "Não foi possível verificar a instalação da CLI"
   },
   "dictionarySuffix": "Sufixo do dicionário",
   "errorBoundary": {

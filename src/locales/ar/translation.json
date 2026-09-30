@@ -570,7 +570,7 @@
     }
   },
   "developerSection": {
-    "installCli": "تثبيت واجهة سطر الأوامر للملاحظات",
+    "installCli": "تثبيت Gristmill CLI",
     "cliInstalled": "تم تثبيت واجهة سطر الأوامر",
     "cliInstallFailed": "فشل تثبيت واجهة سطر الأوامر",
     "currentLogFile": "ملف السجل الحالي",
@@ -626,7 +626,9 @@
         "transcriptionPipeline": "مسار التفريغ الصوتي"
       },
       "title": "ما يتم تسجيله"
-    }
+    },
+    "cliDescription": "اسمح لوكلاء الذكاء الاصطناعي بقراءة ملاحظات اجتماعاتك",
+    "cliStatusFailed": "تعذر التحقق من تثبيت CLI"
   },
   "noteEditor": {
     "saved": "تم الحفظ",

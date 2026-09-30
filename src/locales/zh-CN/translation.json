@@ -677,7 +677,7 @@
   },
   "cleanupPrompt": "文本整理",
   "developerSection": {
-    "installCli": "安装笔记命令行工具",
+    "installCli": "安装 Gristmill CLI",
     "cliInstalled": "命令行工具已安装",
     "cliInstallFailed": "命令行工具安装失败",
     "currentLogFile": "当前日志文件",
@@ -733,7 +733,9 @@
         "transcriptionPipeline": "转录管道"
       },
       "title": "记录的内容"
-    }
+    },
+    "cliDescription": "让你的 AI 智能体读取会议笔记",
+    "cliStatusFailed": "无法检查 CLI 安装状态"
   },
   "dictionarySuffix": "词典后缀",
   "errorBoundary": {

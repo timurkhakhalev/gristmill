@@ -18,7 +18,7 @@ test("installing CLI refreshes owned launchers without overriding an explicit pr
     if (previousElectron) require.cache[electronPath] = previousElectron;
     else delete require.cache[electronPath];
   });
-  const { installAgentCli }: typeof import("../../../../src/helpers/installAgentCli.ts") = require("../../../../src/helpers/installAgentCli.ts");
+  const { installAgentCli, getAgentCliStatus }: typeof import("../../../../src/helpers/installAgentCli.ts") = require("../../../../src/helpers/installAgentCli.ts");
   fs.mkdirSync(path.join(directory, "scripts"));
   fs.writeFileSync(path.join(directory, "scripts", "gristmill-cli.cjs"), 'console.log(JSON.stringify({ defaultProfile: process.env.GRISTMILL_CLI_DEFAULT_PROFILE, profile: process.env.GRISTMILL_PROFILE, args: process.argv.slice(2) }));');
   const channel = process.env.GRISTMILL_CHANNEL;
@@ -26,9 +26,11 @@ test("installing CLI refreshes owned launchers without overriding an explicit pr
     if (channel === undefined) delete process.env.GRISTMILL_CHANNEL;
     else process.env.GRISTMILL_CHANNEL = channel;
   });
+  assert.equal(getAgentCliStatus().installed, false);
   for (const value of ["development", "production"]) {
     process.env.GRISTMILL_CHANNEL = value;
     const target = installAgentCli();
+    assert.deepEqual(getAgentCliStatus(), { installed: true, path: target });
     const result = spawnSync(target, ["notes", "search", "two words"], {
       encoding: "utf8", env: { ...process.env, GRISTMILL_PROFILE: directory },
     });
@@ -37,7 +39,11 @@ test("installing CLI refreshes owned launchers without overriding an explicit pr
     assert.equal(fs.statSync(target).mode & 0o777, 0o755);
   }
   const target = path.join(directory, ".local", "bin", "gristmill");
+  fs.chmodSync(target, 0o600);
+  assert.equal(getAgentCliStatus().installed, false, "a non-executable launcher is not installed");
+  fs.chmodSync(target, 0o755);
   fs.writeFileSync(target, "#!/bin/sh\n# User command\n");
+  assert.equal(getAgentCliStatus().installed, false, "another command is not the Gristmill CLI");
   assert.throws(() => installAgentCli(), /not a Gristmill launcher/);
   assert.equal(fs.readFileSync(target, "utf8"), "#!/bin/sh\n# User command\n");
 });

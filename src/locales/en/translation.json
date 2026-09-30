@@ -718,7 +718,7 @@
   },
   "cleanupPrompt": "Cleanup",
   "developerSection": {
-    "installCli": "Install Notes CLI",
+    "installCli": "Install Gristmill CLI",
     "cliInstalled": "CLI installed",
     "cliInstallFailed": "CLI installation failed",
     "currentLogFile": "Current log file",
@@ -774,7 +774,9 @@
         "transcriptionPipeline": "Transcription pipeline"
       },
       "title": "What gets logged"
-    }
+    },
+    "cliDescription": "Let your AI agents read your meeting notes",
+    "cliStatusFailed": "Could not check CLI installation"
   },
   "dictionarySuffix": "Dictionary Suffix",
   "errorBoundary": {

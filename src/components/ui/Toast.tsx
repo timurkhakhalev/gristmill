@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X, Copy, Check } from "../icons";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
@@ -159,10 +160,12 @@ const ToastViewport: React.FC<{
 }> = ({ toasts, onDismiss, onPauseTimer, onResumeTimer }) => {
   if (toasts.length === 0) return null;
 
-  return (
+  return createPortal(
     <div
+      data-react-aria-top-layer="true"
+      role="status"
       className={cn(
-        "fixed z-[100] flex flex-col gap-1.5 pointer-events-none",
+        "fixed z-(--z-index-toast) flex flex-col gap-1.5 pointer-events-none",
         "bottom-6 end-6"
       )}
     >
@@ -175,7 +178,8 @@ const ToastViewport: React.FC<{
           onResumeTimer={(remaining) => onResumeTimer(toast.id, remaining)}
         />
       ))}
-    </div>
+    </div>,
+    document.body
   );
 };
 

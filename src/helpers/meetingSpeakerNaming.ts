@@ -12,12 +12,15 @@ const segmentSchema = z.object({
   id: z.string().min(1),
   speakerId: z.string().nullable(),
   speakerName: z.string().nullable(),
+  speakerNameSource: z.enum(["user", "model", "voice"]).nullable().optional(),
   text: z.string(),
   start: z.number().nonnegative().optional(),
+  end: z.number().nonnegative().optional(),
 }).strict();
 
 export const meetingSpeakerNamingInputSchema = z.object({
   meetingTitle: z.string().nullable(),
+  transcriptSourceId: z.string().min(1).optional(),
   participants: z.array(participantSchema),
   segments: z.array(segmentSchema).min(1),
 }).strict();
@@ -29,7 +32,11 @@ const responseSchema = z.object({
   }).strict()),
 }).strict();
 
-export const MEETING_SPEAKER_NAMING_INSTRUCTION = `Name an unknown meeting speaker only when the supplied transcript segments show either that the speaker introduces themself by that name, or that another participant addresses that speaker by name and the speaker unambiguously answers that address. An incidental name mention is not evidence: do not use a speaker naming somebody else, a third-party mention, or a name spoken without an addressed-and-answered exchange to identify the unknown speaker. The evidence must uniquely identify that speaker. A calendar participant name is a candidate spelling only; it does not prove that person spoke. Never infer a name from an email address, attendee order, organizer role, or implied identity. Omit ambiguous speaker IDs or names that could refer to more than one person. Return only a JSON object with exactly this shape: {"speakers":[{"speakerId":"...","name":"..."}]}. Do not include Markdown fences or extra fields. Copy speakerId exactly from the allowed output IDs in the actual request. Return only unknown speakers; omit known speakers. If none can be identified, return {"speakers":[]}.
+export const MEETING_SPEAKER_NAMING_INSTRUCTION = `Assign a name only when the conversation establishes that the named person attended and spoke under that speaker label. Calendar invitations and mentions of absent people do not establish attendance. Surname and email may remain unknown. Different speaker IDs may share the same first name; duplicate calendar names are not a reason to reject a supported first name. Calendar candidates supply spellings only. Never infer a name from email, attendee order, organizer role or the mere existence of a calendar contact.
+
+Evidence may be a self-introduction, an address followed by a substantive response, an unambiguous handoff of the floor, or addressed thanks immediately after that speaker's contribution. No separate "yes, that is me" or response to every thanks is required. Third-party mentions alone never identify the speaker. Omit uncertain addressees and conflicting names: do not choose a confident identity when the same label appears to answer different names.
+
+User-confirmed names: preserve, do not override. Model-proposed names: verify against transcript evidence and reconsider contradictions. Include an existing model proposal only if the transcript supports it; omission withdraws that proposal. Voice-recognition names are separate voice matches and must not be overridden by this request. Return only the allowed output IDs (unknown speakers and revisitable model suggestions). Copy speakerId exactly. Return JSON only: {"speakers":[{"speakerId":"...","name":"..."}]}. No fences or extra fields. If evidence is insufficient, return {"speakers":[]}.
 
 The following examples are fictional and independent. Never copy their names into the actual meeting result.
 
@@ -46,7 +53,7 @@ Calendar candidates: Leo Ardent.
 Speaker 2: "Leo, can you prepare the mockups?"
 Speaker 3: "Yes, I will prepare them by Friday."
 </transcript>
-Expected response: {"speakers":[{"speakerId":"Speaker 3","name":"Leo Ardent"}]}
+Expected response: {"speakers":[{"speakerId":"Speaker 3","name":"Leo"}]}
 
 Example 3: mentioning someone does not identify a speaker. Allowed output IDs: Speaker 2, Speaker 3.
 Calendar candidates: Maya Solano.
@@ -61,12 +68,40 @@ Example 4: a known local user must not be returned. Speaker 1 is already identif
 Speaker 1: "I will send the document."
 Speaker 2: "Thank you."
 </transcript>
+Expected response: {"speakers":[]}
+
+Example 5: duplicate first names. Calendar candidates: Max Smith, Max Jones. Allowed output IDs: Speaker 2, Speaker 3.
+Speaker 1: "Max, what did the benchmark show?"
+Speaker 2: "Latency fell by ten percent."
+Speaker 3: "I am also Max, from design."
+Expected response: {"speakers":[{"speakerId":"Speaker 2","name":"Max"},{"speakerId":"Speaker 3","name":"Max"}]}. Do not choose either surname from the calendar.
+
+Example 6: handoff. Allowed output IDs: Speaker 3.
+Speaker 1: "Leo, the floor is yours for the release update."
+Speaker 3: "We shipped the new build yesterday."
+Expected response: {"speakers":[{"speakerId":"Speaker 3","name":"Leo"}]}
+
+Example 7: addressed thanks after speech. Allowed output IDs: Speaker 2.
+Speaker 2: "The migration completed without errors."
+Speaker 1: "Thank you, Maya, for that update."
+Expected response: {"speakers":[{"speakerId":"Speaker 2","name":"Maya"}]}. Maya need not answer the thanks.
+
+Example 8: absent person. Calendar candidates include Nora. Allowed output IDs: Speaker 2, Speaker 3.
+Speaker 2: "Nora could not attend. She sent the mockups."
+Speaker 3: "I reviewed them."
+Expected response: {"speakers":[]}
+
+Example 9: conflicting addresses. Allowed output IDs: Speaker 2.
+Speaker 1: "Max, what changed?"
+Speaker 2: "We fixed the build."
+Speaker 1: "Dan, what happens next?"
+Speaker 2: "We deploy tomorrow."
 Expected response: {"speakers":[]}`;
 
 export async function suggestMeetingSpeakerNames(input: unknown, conversation: MeetingTextConversation): Promise<Array<{ speakerId: string; name: string }>> {
   const parsedInput = meetingSpeakerNamingInputSchema.parse(input);
   const unknownSpeakerIds = [...new Set(parsedInput.segments
-    .filter((segment) => segment.speakerId !== null && segment.speakerName === null)
+    .filter((segment) => segment.speakerId !== null && (segment.speakerName === null || segment.speakerNameSource === "model"))
     .map((segment) => segment.speakerId as string))];
   const ids = meetingPromptSpeakerIds(parsedInput.segments);
   const sourceIds = new Map(unknownSpeakerIds.map((id) => [ids.get(id)!, id]));

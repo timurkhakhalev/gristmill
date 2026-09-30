@@ -63,6 +63,7 @@ export function parseDeepgramFileResponse(
   const segments: NonNullable<RemoteTranscriptionResult["segments"]> = [];
   for (const value of utterances) {
     const item = record(value);
+    const words = diarize && Array.isArray(item?.words) && item.words.length ? item.words : null;
     if (
       !item ||
       (multichannel && item.channel !== 0 && item.channel !== 1) ||
@@ -74,7 +75,7 @@ export function parseDeepgramFileResponse(
       item.start < 0 ||
       item.end < item.start ||
       (audioDurationSeconds !== undefined && item.start > audioDurationSeconds) ||
-      (diarize && (!Number.isInteger(item.speaker) || (item.speaker as number) < 0))
+      (diarize && !words && (!Number.isInteger(item.speaker) || (item.speaker as number) < 0))
     ) {
       return {
         success: false,
@@ -82,8 +83,37 @@ export function parseDeepgramFileResponse(
         code: "DEEPGRAM_INVALID_RESPONSE",
       };
     }
+    const speakerLabel = (speaker: number) => multichannel
+      ? item.channel === 0 ? "mic" : `system:Speaker ${speaker + 1}`
+      : `Speaker ${speaker + 1}`;
+    if (words) {
+      let turn: (typeof segments)[number] | undefined;
+      let previousStart = item.start;
+      for (const value of words) {
+        const word = record(value);
+        const text = word?.punctuated_word ?? word?.word;
+        if (!word || typeof text !== "string" || !text.trim() ||
+          !Number.isInteger(word.speaker) || (word.speaker as number) < 0 ||
+          typeof word.start !== "number" || !Number.isFinite(word.start) || word.start < previousStart ||
+          typeof word.end !== "number" || !Number.isFinite(word.end) || word.end < word.start ||
+          (audioDurationSeconds !== undefined && word.start > audioDurationSeconds)) {
+          return { success: false, code: "DEEPGRAM_INVALID_RESPONSE", error: "Deepgram returned invalid word speaker or timing data" };
+        }
+        previousStart = word.start;
+        const speaker = speakerLabel(word.speaker as number);
+        const end = audioDurationSeconds === undefined ? word.end : Math.min(word.end, audioDurationSeconds);
+        if (turn?.speaker === speaker) {
+          turn.text += ` ${text.trim()}`;
+          turn.end = Math.max(turn.end, end);
+        } else {
+          turn = { speaker, text: text.trim(), start: word.start, end };
+          segments.push(turn);
+        }
+      }
+      continue;
+    }
     segments.push({
-      ...(diarize ? { speaker: multichannel ? (item.channel === 0 ? "mic" : `system:Speaker ${(item.speaker as number) + 1}`) : `Speaker ${(item.speaker as number) + 1}` } : {}),
+      ...(diarize ? { speaker: speakerLabel(item.speaker as number) } : {}),
       text: item.transcript,
       start: item.start,
       end: audioDurationSeconds === undefined ? item.end : Math.min(item.end, audioDurationSeconds),

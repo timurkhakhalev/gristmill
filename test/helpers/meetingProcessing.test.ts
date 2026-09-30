@@ -14,7 +14,7 @@ const { createMeetingProcessingBridge }: typeof import("../../src/preload/meetin
 const { prepareMeetingAudio }: typeof import("../../src/helpers/meetingAudioMixer.ts") = require("../../src/helpers/meetingAudioMixer.ts");
 const { getFFmpegPath }: typeof import("../../src/helpers/ffmpegUtils.ts") = require("../../src/helpers/ffmpegUtils.ts");
 const { BUILTIN_ACTIONS, RECAP_KEY }: typeof import("../../src/helpers/builtinActions.ts") = require("../../src/helpers/builtinActions.ts");
-const { MEETING_SPEAKER_NAMING_INSTRUCTION }: typeof import("../../src/helpers/meetingSpeakerNaming.ts") = require("../../src/helpers/meetingSpeakerNaming.ts");
+const { MEETING_SPEAKER_NAMING_INSTRUCTION, meetingSpeakerNamingInputSchema }: typeof import("../../src/helpers/meetingSpeakerNaming.ts") = require("../../src/helpers/meetingSpeakerNaming.ts");
 const { MEETING_TASKS_INSTRUCTION }: typeof import("../../src/helpers/meetingSummarySections.ts") = require("../../src/helpers/meetingSummarySections.ts");
 import type { MeetingProcessingConfig } from "../../src/contracts/meetingRecording";
 import type { MeetingProcessingWorkerDeps } from "../../src/helpers/meetingProcessing";
@@ -90,7 +90,7 @@ function longTranscriptResponse(length = 2500, prefix = "") {
 function parseSummaryInput(value: string) {
   assert.doesNotMatch(value, /"speakerId":|"speakerName":|"id":/);
   const title = value.split("Meeting title (topic hint):\n")[1].split("\n\nManual notes:")[0];
-  const manualNotes = value.split("Manual notes:\n")[1].split("\n\nAccepted speaker identities")[0];
+  const manualNotes = value.split("Manual notes:\n")[1].split("\n\nTranscript source run:")[0];
   const names = new Map([...value.matchAll(/^(Speaker \d+) = (.*?) \(/gm)].map((match) => [match[1], match[2] === "Unknown name" ? null : match[2]]));
   const transcriptSegments = value.split("<transcript>\n")[1].split("\n</transcript>")[0].split("\n\n---\n\n").map((turn) => {
     const colon = turn.indexOf(': "');
@@ -153,9 +153,9 @@ function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Pa
 }
 
 test("meeting prompts keep naming evidence, absent owner fields, and task priorities narrow", () => {
-  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /introduces themself by that name/);
-  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /addresses that speaker by name and the speaker unambiguously answers/);
-  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /An incidental name mention is not evidence/);
+  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /self-introduction/);
+  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /address followed by a substantive response/);
+  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /Third-party mentions alone never identify/);
   const detailedNotes = BUILTIN_ACTIONS.find((action) => action.translationKey === "notes.actions.builtin.detailedNotes")?.prompt;
   assert.ok(detailedNotes);
   assert.match(detailedNotes, /omit each when the source does not state it/);
@@ -165,6 +165,88 @@ test("meeting prompts keep naming evidence, absent owner fields, and task priori
   assert.match(MEETING_TASKS_INSTRUCTION, /LOW only when the source explicitly says the agreed or requested work is deferred or low-priority/);
   assert.match(MEETING_TASKS_INSTRUCTION, /Never infer priority from impact, general importance, deadline proximity, or today's date/);
   assert.match(MEETING_TASKS_INSTRUCTION, /Preserve relative deadlines as spoken/);
+});
+
+test("automatic naming revises only model names and rejects stale revisions and user edits", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage);
+  const suggestion = (displayName: string) => [{ speakerId: "speaker_a", profileId: null, displayName }];
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 0, suggestion("Max"), "model"), true);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 1, suggestion("Dan"), "model"), true);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(run.id), [{
+    speakerId: "speaker_a", profileId: null, displayName: "Dan", participantEmail: null, source: "model", revision: 2,
+  }]);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 1, suggestion("Stale guess"), "model"), false);
+  assert.equal(db.setMeetingRunSpeakerCorrection(run.id, "speaker_a", null, "User name", "user").success, true);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 2, suggestion("Concurrent guess"), "model"), false);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 3, suggestion("New guess"), "model"), false);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 3, [{ speakerId: "speaker_b", profileId: null, displayName: "Voice" }], "voice"), true);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 4, [{ speakerId: "speaker_b", profileId: null, displayName: "Model" }], "model"), false);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(run.id).map(({ displayName, source }: { displayName: string; source: string }) => ({ displayName, source })), [
+    { displayName: "User name", source: "user" }, { displayName: "Voice", source: "voice" },
+  ]);
+});
+
+test("withdrawing a model proposal preserves increasing revisions and protected names", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage);
+  const proposal = [{ speakerId: "speaker_a", profileId: null, displayName: "Max" }];
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 0, proposal, "model"), true);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 1, [], "model", ["speaker_a"]), true);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(run.id), []);
+  assert.equal(db.getMeetingRunSpeakerCorrectionRevision(run.id), 2);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 0, proposal, "model"), false);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 1, proposal, "model"), false);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 2, proposal, "model"), true);
+  assert.equal(db.getMeetingRunSpeakerCorrections(run.id)[0].revision, 3);
+  assert.equal(db.setMeetingRunSpeakerCorrection(run.id, "speaker_a", null, "User name", "user").success, true);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 3, [], "model", ["speaker_a"]), false);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 4, [], "model", ["speaker_a"]), false);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 4, [{ speakerId: "speaker_b", profileId: null, displayName: "Voice" }], "voice"), true);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 5, [], "model", ["speaker_b"]), false);
+  assert.equal(db.getMeetingRunSpeakerCorrectionRevision(run.id), 5);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(run.id).map(({ displayName }: { displayName: string }) => displayName), ["User name", "Voice"]);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 5, [{ speakerId: "speaker_c", profileId: null, displayName: "Guess" }], "model"), true);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 6, [], "model", ["speaker_c"]), true);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 7, [{ speakerId: "speaker_c", profileId: null, displayName: "New voice match" }], "voice"), true);
+  assert.equal(db.getMeetingRunSpeakerCorrectionRevision(run.id), 8);
+  assert.equal(db.getMeetingRunSpeakerCorrections(run.id)[2].source, "voice", "a withdrawn name does not block voice recognition");
+});
+
+test("repeat naming withdraws a conflicting model identity from the saved correction and Note", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, run } = createFinishedRecording(db, storage);
+  saveTranscriptArtifact(db, storage, run.id, "Max? The build is fixed. Dan? We deploy next.", "speaker_0");
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 0, [{ speakerId: "speaker_0", profileId: null, displayName: "Max" }], "model"), true);
+  db.setMeetingProcessingRunState(run.id, { stage: "normalize", status: "pending", retryAt: null });
+  let namingCalls = 0;
+  const worker = workerFor(db, storage, {
+    nameSpeakers: async (input) => {
+      namingCalls += 1;
+      const parsed = meetingSpeakerNamingInputSchema.parse(input);
+      assert.equal(parsed.segments[0].speakerName, "Max");
+      assert.equal(parsed.segments[0].speakerNameSource, "model");
+      return [];
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(namingCalls, 1);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(run.id), []);
+  assert.equal(db.getMeetingRunSpeakerCorrectionRevision(run.id), 2);
+  const projected = JSON.parse(db.getNote(note.id).transcript ?? "[]");
+  assert.equal(projected.length, 1);
+  assert.equal(projected[0].speaker, "speaker_0");
+  assert.equal(projected[0].speakerIsPlaceholder, true);
+  assert.equal(projected[0].speakerName, undefined);
+  assert.equal(projected[0].speakerLockSource, undefined);
 });
 
 test("audio parts from separate sessions of one note produce one persisted run and one transcription request", async (t: import("node:test").TestContext) => {
@@ -922,13 +1004,14 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
 
   assert.deepEqual(namingInput, {
     meetingTitle: "Meeting",
+    transcriptSourceId: sourceRun.id,
     participants: [
       { name: "Calendar Alice", email: "alice@example.com" },
       { name: null, email: "bob@example.com" },
     ],
     segments: [
-      { id: `${sourceRun.id}:0`, speakerId: "speaker_a", speakerName: null, start: 0, text: "I am Alice and I will check the release." },
-      { id: `${sourceRun.id}:1`, speakerId: "speaker_b", speakerName: null, start: 1, text: "I agree with Alice." },
+      { id: `${sourceRun.id}:0`, speakerId: "speaker_a", speakerName: null, speakerNameSource: null, start: 0, end: 1, text: "I am Alice and I will check the release." },
+      { id: `${sourceRun.id}:1`, speakerId: "speaker_b", speakerName: null, speakerNameSource: null, start: 1, end: 2, text: "I agree with Alice." },
     ],
   });
   assert.deepEqual(parseSummaryInput(summaryInput), {
@@ -1157,7 +1240,7 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
   assert.match(taskInput, /Meeting title \(topic hint\):\nMeeting/);
   assert.match(taskInput, /Manual notes:\nManual notes stay here\./);
   assert.match(taskInput, /Initial action item/);
-  assert.match(taskInput, /\[0:00\]/);
+  assert.match(taskInput, /Speaker 1 \[0:00–0:00\]: "x{2500}"/, "Tasks receives both boundaries and the full original utterance");
   assert.doesNotMatch(taskInput, /"id":|"transcriptSegments":/);
   assert.doesNotMatch(taskInput, /alice@example\.com|generationDate|previousTask/i);
 
@@ -2252,7 +2335,7 @@ test("capture interrupting speaker naming resumes normalization without repeatin
     nameSpeakers: async (input) => {
       namingCalls += 1;
       if (namingCalls === 1) worker.captureStarted();
-      return [{ speakerId: input.segments[0].speakerId!, name: "Alice" }];
+      return [{ speakerId: meetingSpeakerNamingInputSchema.parse(input).segments[0].speakerId!, name: "Alice" }];
     },
     summarize: async () => { assert.fail("Transcribe must not generate Summary"); },
   });

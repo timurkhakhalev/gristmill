@@ -1686,7 +1686,7 @@ export class DatabaseManager {
   }> {
     meetingRecordingIdSchema.parse(runId);
     return (this.sql.prepare(
-      "SELECT speaker_id, profile_id, display_name, participant_email, source, revision FROM meeting_run_speaker_corrections WHERE run_id = ? ORDER BY speaker_id"
+      "SELECT speaker_id, profile_id, display_name, participant_email, source, revision FROM meeting_run_speaker_corrections WHERE run_id = ? AND display_name <> '' ORDER BY speaker_id"
     ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string; participant_email: string | null; source: "voice" | "model" | "user"; revision: number }>).map((row) => ({
       speakerId: row.speaker_id,
       profileId: row.profile_id,
@@ -1710,7 +1710,8 @@ export class DatabaseManager {
     expectedCurrentRunId: string,
     expectedRevision: number,
     corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>,
-    source: "voice" | "model"
+    source: "voice" | "model",
+    rejectedModelSpeakerIds: string[] = []
   ): boolean {
     meetingRecordingIdSchema.parse(runId);
     meetingRecordingIdSchema.parse(expectedCurrentRunId);
@@ -1721,6 +1722,9 @@ export class DatabaseManager {
       (item.profileId !== null && (!Number.isSafeInteger(item.profileId) || item.profileId < 1))
     )) return false;
     if (new Set(corrections.map((item) => item.speakerId)).size !== corrections.length) return false;
+    if (rejectedModelSpeakerIds.length && (source !== "model" ||
+      new Set(rejectedModelSpeakerIds).size !== rejectedModelSpeakerIds.length ||
+      rejectedModelSpeakerIds.some((id) => !id.trim() || corrections.some((item) => item.speakerId === id)))) return false;
     const transaction = this.sql.transaction(() => {
       const recording = this.sql.prepare(
         "SELECT note_id, current_run_id FROM meeting_recordings WHERE id = ?"
@@ -1730,15 +1734,24 @@ export class DatabaseManager {
         this.getMeetingRunSpeakerCorrectionRevision(runId) !== expectedRevision
       ) return false;
       const exists = this.sql.prepare(
-        "SELECT 1 FROM meeting_run_speaker_corrections WHERE run_id = ? AND speaker_id = ?"
+        "SELECT source, display_name FROM meeting_run_speaker_corrections WHERE run_id = ? AND speaker_id = ?"
       );
-      if (corrections.some((correction) => exists.get(runId, correction.speakerId))) return false;
+      if (corrections.some((correction) => {
+        const existing = exists.get(runId, correction.speakerId) as { source: string; display_name: string } | undefined;
+        return existing?.display_name && (source !== "model" || existing.source !== "model");
+      })) return false;
+      if (rejectedModelSpeakerIds.some((id) => (exists.get(runId, id) as { source: string } | undefined)?.source !== "model")) return false;
       const insert = this.sql.prepare(
-        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, revision) VALUES (?, ?, ?, ?, ?, 1)"
+        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, revision) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = NULL, source = excluded.source, revision = meeting_run_speaker_corrections.revision + 1"
       );
       for (const correction of corrections) {
         insert.run(runId, correction.speakerId, correction.profileId, correction.displayName.trim(), source);
       }
+      // Keep a cleared proposal's row so SUM(revision) never returns to an old value.
+      const clear = this.sql.prepare(
+        "UPDATE meeting_run_speaker_corrections SET display_name = '', profile_id = NULL, participant_email = NULL, revision = revision + 1 WHERE run_id = ? AND speaker_id = ? AND source = 'model'"
+      );
+      for (const id of rejectedModelSpeakerIds) clear.run(runId, id);
       return true;
     });
     return transaction();

@@ -8,6 +8,7 @@ const { clearBbCaches } = require("../../../../src/helpers/bbCli.ts");
 const { createBbTextConversation } = require("../../../../src/helpers/bbSummary.ts");
 const { createMeetingTextConversation } = require("../../../../src/helpers/meetingSummary.ts");
 const { suggestMeetingSpeakerNames } = require("../../../../src/helpers/meetingSpeakerNaming.ts");
+const { MEETING_TASKS_INSTRUCTION, replaceMeetingTasks, replaceMeetingRecap }: typeof import("../../../../src/helpers/meetingSummarySections.ts") = require("../../../../src/helpers/meetingSummarySections.ts");
 
 const summaryConfig = {
   instruction: "Use only the supplied transcript evidence.",
@@ -189,6 +190,8 @@ test("BB reuses an unchanged transcript across conversation objects and sends ch
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-bb-context-"));
   const binary = path.join(directory, "bb-fake");
   const capture = path.join(directory, "calls.jsonl");
+  const replyPlan = path.join(directory, "replies.json");
+  const replies: Record<number, { text: string; status?: string; providerThreadId?: string }> = {};
   const previousBinary = process.env.BB_CLI;
   process.env.BB_CLI = binary;
   t.after(() => {
@@ -198,32 +201,40 @@ test("BB reuses an unchanged transcript across conversation objects and sends ch
     fs.rmSync(directory, { recursive: true, force: true });
   });
   fs.writeFileSync(capture, "");
+  fs.writeFileSync(replyPlan, "{}");
   fs.writeFileSync(binary, `#!/usr/bin/env node
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 const capture = ${JSON.stringify(capture)};
 const calls = () => fs.readFileSync(capture, "utf8").trim().split("\\n").filter(Boolean).map(JSON.parse);
+const reply = i => ({ text: "## TLDR\\nDocument", status: "completed", providerThreadId: "provider-original", ...JSON.parse(fs.readFileSync(${JSON.stringify(replyPlan)}, "utf8"))[i] });
 const out = (value) => process.stdout.write(JSON.stringify(value));
 if (args[0] === "--version") process.stdout.write("0.44.0");
-else if (args[1] === "tell") {
+else if (args[0] === "project" && args[1] === "create") out({ id: "proj_test" });
+else if (args[0] === "project" && args[1] === "show") out({ id: "proj_test", sources: [{ path: ${JSON.stringify(directory)} }] });
+else if (args[1] === "tell" || args[1] === "spawn") {
   let prompt = "";
   process.stdin.on("data", chunk => prompt += chunk);
-  process.stdin.on("end", () => { fs.appendFileSync(capture, JSON.stringify(prompt) + "\\n"); out({ ok: true }); });
+  process.stdin.on("end", () => { fs.appendFileSync(capture, JSON.stringify(prompt) + "\\n"); out(args[1] === "spawn" ? { id: "thr_new" } : { ok: true }); });
 } else if (args[1] === "log") {
   const after = Number(args[args.indexOf("--after-seq") + 1]);
   out(calls().flatMap((prompt, i) => [
-    { seq: i * 3 + 1, type: "client/turn/requested", data: { requestId: "request-" + i, input: [{ type: "text", text: prompt }] } },
-    { seq: i * 3 + 2, type: "turn/input/accepted", data: { clientRequestId: "request-" + i } },
-    { seq: i * 3 + 3, type: "turn/completed", data: { status: "completed" } }
+    ...(prompt.includes("Context cleared marker") ? [{ seq: i * 5 + 1, type: "thread/context/cleared", data: {} }] : []),
+    ...(prompt.includes("Compaction marker") ? [{ seq: i * 5 + 1, type: "thread/compacted", data: {} }] : []),
+    { seq: i * 5 + 2, type: "client/turn/requested", data: { requestId: "request-" + i, input: [{ type: "text", text: prompt }] } },
+    { seq: i * 5 + 3, type: "turn/input/accepted", data: { providerThreadId: reply(i).providerThreadId, clientRequestId: "request-" + i } },
+    { seq: i * 5 + 4, type: "item/completed", data: { providerThreadId: reply(i).providerThreadId, item: { type: "agentMessage", text: reply(i).text } } },
+    { seq: i * 5 + 5, type: "turn/completed", data: { providerThreadId: reply(i).providerThreadId, status: reply(i).status } }
   ]).filter(event => event.seq > after));
-} else if (args[1] === "output") out({ output: "done" });
+} else if (args[1] === "output") out({ output: reply(calls().length - 1).text });
 else throw new Error("Unexpected command " + args.join(" "));
 `, { mode: 0o700 });
   clearBbCaches();
-  const send = async (prompt: string) => {
+  const send = async (prompt: string, promptPrefix?: string) => {
     const conversation = await createBbTextConversation({
       selection: { provider: "codex", model: "gpt-6-luna", reasoningLevel: "low" },
       environment: directory, threadId: "thr_shared", signal: new AbortController().signal,
+      promptPrefix,
       saveThreadId: () => { throw new Error("Must reuse thread"); },
     });
     await conversation.send(prompt);
@@ -241,6 +252,89 @@ else throw new Error("Unexpected command " + args.join(" "));
   assert.doesNotMatch(calls[3], /<transcript>/);
   assert.match(calls[3], /Speaker 1 = Nora Vale/);
   assert.match(calls[4], /<transcript>[\s\S]*Updated transcription/);
+
+  const saved = { ...material, manualNotes: "Current notes", summary: "## TLDR\nDocument", transcriptSourceId: "source-a" };
+  await send(formatMeetingMaterial(saved));
+  await send(formatMeetingMaterial(saved));
+  await send(formatMeetingMaterial({ ...saved, summary: "Manually edited Summary", manualNotes: "", meetingTitle: "New title" }));
+  await send(formatMeetingMaterial(saved));
+  await send("Context cleared marker");
+  await send(formatMeetingMaterial(saved));
+  await send("Compaction marker");
+  await send(formatMeetingMaterial(saved));
+  await send(formatMeetingMaterial({ ...saved, transcriptSourceId: "source-b" }));
+  const later = fs.readFileSync(capture, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string).slice(5);
+  assert.match(later[0], /<transcript>/, "a different source run sends full material");
+  assert.doesNotMatch(later[1], /## TLDR\nDocument/);
+  assert.match(later[1], /Use Summary, already created/);
+  assert.doesNotMatch(later[1], /<transcript>/);
+  assert.match(later[2], /Saved summary[^\n]*\nManually edited Summary/);
+  assert.match(later[2], /Manual notes:\n\n/);
+  assert.match(later[2], /New title/);
+  assert.match(later[3], /Manual notes:\nCurrent notes/, "only the latest block version may be reused");
+  assert.match(later[5], /<transcript>[\s\S]*## TLDR|## TLDR[\s\S]*<transcript>/, "clear invalidates historical context");
+  assert.match(later[7], /<transcript>/, "compaction invalidates historical context");
+  assert.match(later[8], /## TLDR\nDocument[\s\S]*<transcript>/, "a changed source run invalidates historical material");
+  await send(formatMeetingMaterial({ ...saved, summary: "", manualNotes: "", transcriptSegments: [{ ...material.transcriptSegments[0], speakerName: null }] }));
+  const fresh = await createBbTextConversation({
+    selection: { provider: "codex", model: "gpt-6-luna", reasoningLevel: "low" },
+    environment: directory, threadId: null, signal: new AbortController().signal,
+    saveThreadId: (id: string) => id === "thr_new",
+  });
+  await fresh.send(formatMeetingMaterial(saved));
+  const final = fs.readFileSync(capture, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string).slice(-2);
+  assert.match(final[0], /discard the previous saved summary/);
+  assert.match(final[0], /Speaker 1 = Unknown name/);
+  assert.match(final[1], /## TLDR\nDocument[\s\S]*<transcript>/, "a new thread sends all material");
+
+  const captured = () => fs.readFileSync(capture, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string);
+  const nextReply = (text: string, options: { status?: string; providerThreadId?: string } = {}) => {
+    replies[captured().length] = { text, ...options };
+    fs.writeFileSync(replyPlan, JSON.stringify(replies));
+  };
+  const base = { ...material, manualNotes: "Source notes", transcriptSourceId: "source-reconstruction" };
+  const summary = "## TLDR\nRelease discussion\n\n## Action Items\n\n- Original task\n\n## Recap\n\nOriginal recap";
+  const tasks = "### HIGH\n- Ship the release";
+  const recap = { title: "Release review", bullets: ["Ship Friday"] };
+  await send("Context cleared marker");
+  nextReply(summary);
+  await send(formatMeetingMaterial(base), "Create Summary");
+  nextReply(tasks);
+  await send(formatMeetingMaterial({ ...base, summary }), MEETING_TASKS_INSTRUCTION);
+  assert.match(captured().at(-1)!, /Use Summary, already created/);
+  assert.doesNotMatch(captured().at(-1)!, /Release discussion|<transcript>/, "completed Summary output is reused after restart");
+  const taskResult = replaceMeetingTasks(summary, tasks);
+  assert.equal(taskResult.success, true);
+  if (!taskResult.success) throw new Error("Invalid synthetic tasks");
+  nextReply(JSON.stringify(recap));
+  await send(formatMeetingMaterial({ ...base, summary: taskResult.markdown }), "Create Recap");
+  assert.match(captured().at(-1)!, /Use Summary, already created/);
+  assert.doesNotMatch(captured().at(-1)!, /Ship the release|<transcript>/, "Tasks output reconstructs the saved Summary");
+  const recapResult = replaceMeetingRecap(taskResult.markdown, recap);
+  assert.equal(recapResult.success, true);
+  if (!recapResult.success) throw new Error("Invalid synthetic recap");
+  nextReply(tasks);
+  await send(formatMeetingMaterial({ ...base, summary: recapResult.markdown }), MEETING_TASKS_INSTRUCTION);
+  assert.match(captured().at(-1)!, /Use Summary, already created/);
+  assert.doesNotMatch(captured().at(-1)!, /Ship Friday|<transcript>/, "Recap output reconstructs the saved Summary before Tasks");
+
+  for (const status of ["failed", "cancelled"]) {
+    await send("Context cleared marker");
+    nextReply(summary, { status });
+    await assert.rejects(send(formatMeetingMaterial(base), "Create Summary"), (error: unknown) => (error as { code?: string }).code === "bb-turn-failed");
+    nextReply(tasks);
+    await send(formatMeetingMaterial({ ...base, summary }), MEETING_TASKS_INSTRUCTION);
+    assert.match(captured().at(-1)!, /Saved summary[^\n]*\n## TLDR\nRelease discussion/, `${status} output cannot establish a generated Summary`);
+  }
+
+  await send("Context cleared marker");
+  nextReply(summary);
+  await send(formatMeetingMaterial(base), "Create Summary");
+  nextReply("A new provider conversation", { providerThreadId: "provider-replacement" });
+  await send("Provider conversation changed");
+  nextReply(tasks, { providerThreadId: "provider-replacement" });
+  await send(formatMeetingMaterial({ ...base, summary }), MEETING_TASKS_INSTRUCTION);
+  assert.match(captured().at(-1)!, /Release discussion[\s\S]*<transcript>/, "provider conversation change invalidates historical Summary and transcript");
 });
 
 test("prompt speaker IDs reserve microphone identity and map accepted names back to source IDs", async () => {
@@ -258,6 +352,6 @@ test("prompt speaker IDs reserve microphone identity and map accepted names back
   assert.deepEqual(result, [{ speakerId: "system:Speaker 1", name: "Maya" }, { speakerId: "system:Speaker 2", name: "Leo" }]);
   assert.match(prompt, /Allowed output IDs: Speaker 2, Speaker 3/);
   assert.match(prompt, /Speaker 1 = Nora Vale \(local user, microphone\)/);
-  assert.match(prompt, /Speaker 1: "Thank you. Please continue."/);
+  assert.match(prompt, /Speaker 1: "Thank you."[\s\S]*Speaker 1: "Please continue."/);
   assert.doesNotMatch(prompt, /system:Speaker|\|\||"id":/);
 });

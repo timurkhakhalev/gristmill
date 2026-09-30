@@ -1,8 +1,8 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import ReactMarkdown from "react-markdown";
-import { Button, Dropdown, Label, ListBox, Modal, Popover, Select, Tooltip } from "@heroui/react";
+import { Button, Dropdown, Label, ListBox, Modal, Popover, Select } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, AlignLeft, AudioLines, Check, ChevronDown, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2, WandSparkles } from "../icons";
+import { AlignLeft, AudioLines, Check, ChevronDown, Copy, Download, FileText, MessageSquareText, MoreHorizontal, Play, Sparkles, Trash2, WandSparkles } from "../icons";
 import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import { MEETING_ASR_GATE_MS } from "../../contracts/meetingRecording";
@@ -68,16 +68,14 @@ function formatDuration(duration: number, tr: (key: string, fallback: string, va
 }
 
 /** Time range plus what the part is: live, saving, its length, and where it sits in the session. */
-function AudioPartSummary({ part, index, count, timeLabel, tr, warning }: {
+function AudioPartSummary({ part, index, count, timeLabel, tr }: {
   part: MeetingProcessingRecordingResult["recording"];
   index: number;
   count: number;
   timeLabel: (value: string) => string;
   tr: (key: string, fallback: string, values?: Record<string, number>) => string;
-  warning: string;
 }) {
   const live = part.captureState === "recording";
-  const interrupted = part.captureState === "incomplete" || Boolean(part.captureErrorCode);
   const ended = part.endedAt && part.endedAt >= part.startedAt ? part.endedAt : null;
   const range = ended ? `${timeLabel(part.startedAt)} – ${timeLabel(ended)}` : timeLabel(part.startedAt);
   const details = [
@@ -91,12 +89,6 @@ function AudioPartSummary({ part, index, count, timeLabel, tr, warning }: {
   return <div className="flex min-w-0 flex-1 flex-col gap-0.5">
     <div className="flex min-w-0 items-center gap-1.5">
       <strong className="truncate text-sm font-medium tabular-nums">{range}</strong>
-      {interrupted && <Tooltip delay={400} closeDelay={0}>
-        <button type="button" aria-label={warning} className="inline-flex size-5 shrink-0 items-center justify-center rounded text-warning focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
-          <AlertTriangle size={14} />
-        </button>
-        <Tooltip.Content className="max-w-72 text-xs">{warning}</Tooltip.Content>
-      </Tooltip>}
     </div>
     <span className={cn("flex min-w-0 items-center gap-1.5 text-xs", live ? "text-danger" : "text-muted")}>
       {live && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-danger motion-safe:animate-pulse" />}
@@ -126,7 +118,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const { t } = useTranslation();
   const { dateFormat, timeFormat } = useDateTimePreferences();
   const tr = (key: string, fallback: string, values?: Record<string, number>) => t(`meetingResults.${key}`, { defaultValue: fallback, ...values });
-  const captureWarning = `${t("notes.editor.capture.incomplete")}. ${t("meetingResults.captureIncomplete")}`;
   const [recordings, setRecordings] = useState(previewRecordings ?? []);
   const [sharedTranscript, setSharedTranscript] = useState<NoteTranscript | null>(null);
   const [runId, setRunId] = useState("");
@@ -722,7 +713,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   </div> : renderFallbackTranscript(transcriptScrollRef);
 
   const transcriptContent = groups.length > 1 && sharedTranscript ? <div>
-    {sharedTranscript.status !== "ready" && <p className="mb-2 text-xs text-warning">{tr("partialTranscript", "This Note transcript is incomplete.")} {sharedTranscript.diagnostics.join(", ")}</p>}
     {sharedTranscript.segments?.length ? sharedTranscript.segments.map((segment, index) => {
       const speaker = sharedTranscript.speakers.find((item) => item.id === segment.speaker_id);
       const ms = segment.start_ms;
@@ -801,7 +791,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
                   onPointerUp={onSeekBarPointerUp}
                   label={t("meetingResults.seekAudio", { defaultValue: "Seek audio" })}
                 />
-              : <AudioPartSummary part={part.recording} index={index} count={group.parts.length} timeLabel={(value) => dateLabel(value, locale, { timeStyle: "short" }, dateFormat, timeFormat)} tr={tr} warning={captureWarning} />}
+              : <AudioPartSummary part={part.recording} index={index} count={group.parts.length} timeLabel={(value) => dateLabel(value, locale, { timeStyle: "short" }, dateFormat, timeFormat)} tr={tr} />}
             <Dropdown><Button isIconOnly size="sm" variant="ghost" aria-label={tr("partActions", "Audio part actions")}><MoreHorizontal size={17}/></Button><Dropdown.Popover><Dropdown.Menu aria-label={tr("partActions", "Audio part actions")} onAction={(key) => {
               if (key === "asr") openRun("reprocess", { partId: part.recording.id });
               if (key === "export") void exportPart(part.recording.id);

@@ -125,13 +125,14 @@ function textOf(value: unknown): string {
   return node?.props ? textOf((node.props as { children?: unknown }).children) : "";
 }
 
-async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction, initialCapturePhase = "idle" }: {
+async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction, initialCapturePhase = "idle", noteTranscript }: {
   viewMode?: "raw" | "enhanced";
   playback?: { success: boolean; error?: string };
   preview?: boolean;
   mockPipeline?: { waitingSeconds?: number };
   summaryAction?: (input: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
   initialCapturePhase?: string;
+  noteTranscript?: import("../../src/contracts/noteRead.js").NoteTranscript;
 } = {}) {
   const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], summaryActions: [], retry: [] };
   let listedItems = items;
@@ -141,6 +142,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     onMeetingProcessingUpdated: () => () => {},
     getSpeakerProfiles: async () => [],
     getNote: async () => ({ participants: JSON.stringify([{ email: "person@example.com" }]) }),
+    getNoteTranscript: async () => noteTranscript ?? null,
     getContactProfiles: async () => [],
     getActions: async () => [{
       id: 1,
@@ -340,20 +342,27 @@ for (const timeZone of ["Asia/Tokyo", "America/New_York"]) {
   });
 }
 
-test("interrupted audio parts get individual warning icons without a note-wide banner", async (t: TestContext) => {
+test("interrupted recordings keep audio and transcript available without capture warnings", async (t: TestContext) => {
   const items = [
     recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", null, "incomplete"),
     recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z"),
     recording(THIRD, THIRD, "2026-09-25T12:00:00.000Z", null, "incomplete"),
   ];
-  const ui = await mountPanel(t, items);
+  const ui = await mountPanel(t, items, { noteTranscript: {
+    note_id: 1, status: "partial", text: "Saved discussion", segments: null, speakers: [],
+    timeline: { unit: "ms", duration_ms: 180000, basis: "concatenated_recording_time", intentional_pauses: "excluded" },
+    diagnostics: [`part-capture-incomplete:${FIRST}`, `part-uncovered:${THIRD}`],
+  } });
   assert.match(ui.text(), /Manual notes/);
-  assert.equal(ui.warningIcons(), 2);
+  assert.equal(ui.warningIcons(), 0);
   assert.doesNotMatch(ui.text(), /notes.editor.capture.incomplete/);
   assert.match(ui.text(), /Audio/);
   await ui.flush(() => (ui.iconButton("Play audio")!.props as { onPress: () => void }).onPress());
   assert.deepEqual(ui.calls.playback, [[THIRD]]);
   assert.match(ui.text(), /mixer-failed/);
+  await ui.showTranscriptTab();
+  assert.match(ui.text(), /Saved discussion/);
+  assert.doesNotMatch(ui.text(), /This Note transcript is incomplete|part-capture-incomplete|part-uncovered/);
 });
 
 test("audio count and list include a newly saved recording without reload", async (t: TestContext) => {

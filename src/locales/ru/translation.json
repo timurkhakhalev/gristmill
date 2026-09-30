@@ -677,7 +677,7 @@
   },
   "cleanupPrompt": "Очистка",
   "developerSection": {
-    "installCli": "Установить CLI для заметок",
+    "installCli": "Установить Gristmill CLI",
     "cliInstalled": "CLI установлен",
     "cliInstallFailed": "Не удалось установить CLI",
     "currentLogFile": "Текущий файл логов",
@@ -733,7 +733,9 @@
         "transcriptionPipeline": "Конвейер транскрипции"
       },
       "title": "Что записывается в логи"
-    }
+    },
+    "cliDescription": "Дайте AI-агентам доступ к чтению ваших заметок встреч",
+    "cliStatusFailed": "Не удалось проверить установку CLI"
   },
   "dictionarySuffix": "Суффикс словаря",
   "errorBoundary": {

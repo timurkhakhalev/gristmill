@@ -677,7 +677,7 @@
   },
   "cleanupPrompt": "クリーンアップ",
   "developerSection": {
-    "installCli": "ノート用CLIをインストール",
+    "installCli": "Gristmill CLIをインストール",
     "cliInstalled": "CLIをインストールしました",
     "cliInstallFailed": "CLIのインストールに失敗しました",
     "currentLogFile": "現在のログファイル",
@@ -733,7 +733,9 @@
         "transcriptionPipeline": "文字起こしパイプライン"
       },
       "title": "記録される内容"
-    }
+    },
+    "cliDescription": "AIエージェントが会議のメモを読めるようにします",
+    "cliStatusFailed": "CLIのインストールを確認できませんでした"
   },
   "dictionarySuffix": "辞書サフィックス",
   "errorBoundary": {

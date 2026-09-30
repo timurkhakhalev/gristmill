@@ -92,6 +92,8 @@ export const setDebugLoggingResultSchema = z.object({
 
 // ---- permissions / system settings -----------------------------------------------
 
+export const agentCliStatusSchema = z.object({ installed: z.boolean(), path: z.string() });
+
 export const systemSettingsResultSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
@@ -265,6 +267,7 @@ export const desktopSettingsChannels = {
   setDebugLogging: "set-debug-logging",
   openLogsFolder: "open-logs-folder",
   installAgentCli: "install-agent-cli",
+  getAgentCliStatus: "get-agent-cli-status",
   openMicrophoneSettings: "open-microphone-settings",
   openSoundInputSettings: "open-sound-input-settings",
   getSystemDefaultMicrophone: "get-system-default-microphone",
@@ -373,6 +376,7 @@ export interface DesktopSettingsApi extends ByokKeySurface {
   setDebugLogging(enabled: boolean): Promise<SetDebugLoggingWire>;
   openLogsFolder(): Promise<SystemSettingsWire>;
   installAgentCli(): Promise<SystemSettingsWire>;
+  getAgentCliStatus(): Promise<z.infer<typeof agentCliStatusSchema>>;
   openMicrophoneSettings(): Promise<SystemSettingsWire>;
   openSoundInputSettings(): Promise<SystemSettingsWire>;
   getSystemDefaultMicrophone(options?: {

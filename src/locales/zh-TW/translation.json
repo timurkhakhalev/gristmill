@@ -677,7 +677,7 @@
   },
   "cleanupPrompt": "文字整理",
   "developerSection": {
-    "installCli": "安裝筆記命令列工具",
+    "installCli": "安裝 Gristmill CLI",
     "cliInstalled": "命令列工具已安裝",
     "cliInstallFailed": "命令列工具安裝失敗",
     "currentLogFile": "目前的記錄檔",
@@ -733,7 +733,9 @@
         "transcriptionPipeline": "轉錄流程"
       },
       "title": "記錄的項目"
-    }
+    },
+    "cliDescription": "讓你的 AI 智慧代理讀取會議筆記",
+    "cliStatusFailed": "無法檢查 CLI 安裝狀態"
   },
   "dictionarySuffix": "字典後綴",
   "errorBoundary": {

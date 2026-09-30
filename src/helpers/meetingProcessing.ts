@@ -100,7 +100,7 @@ export interface MeetingProcessingDatabase {
   setMeetingRunSpeakerCorrection(runId: string, speakerId: string, profileId: number | null, displayName: string, source?: "voice" | "model" | "user", participantEmail?: string): { success: boolean };
   getContactProfiles(emails: string[]): Array<{ email: string; display_name: string | null }>;
   rememberContactName(email: string, name: string): void;
-  applyAutomaticMeetingSpeakerCorrections(runId: string, expectedCurrentRunId: string, expectedRevision: number, corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>, source: "voice" | "model"): boolean;
+  applyAutomaticMeetingSpeakerCorrections(runId: string, expectedCurrentRunId: string, expectedRevision: number, corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>, source: "voice" | "model", rejectedModelSpeakerIds?: string[]): boolean;
   getMeetingRunLlmSourceSnapshot(runId: string): string | null;
   setMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string): boolean;
   updateMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string, expectedSnapshotJson: string): boolean;
@@ -193,7 +193,7 @@ interface MeetingLlmSourceSnapshot {
   manualNotes: string;
   manualNoteRevision: string;
   speakerCorrectionRevision: number;
-  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; text: string }>;
+  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; speakerNameSource?: "user" | "model" | "voice" | null; text: string }>;
   promptModel: NonNullable<MeetingProcessingConfig["summary"]>;
 }
 
@@ -210,6 +210,7 @@ const meetingLlmSourceSnapshotSchema = z.object({
     id: z.string().min(1),
     speakerId: z.string().nullable(),
     speakerName: z.string().nullable(),
+    speakerNameSource: z.enum(["user", "model", "voice"]).nullable().optional(),
     text: z.string(),
   }).strict()).min(1),
   promptModel: meetingProcessingConfigSchema.shape.summary.unwrap().unwrap(),
@@ -970,6 +971,7 @@ export class MeetingProcessingWorker {
       meetingTitle: snapshot.meetingTitle,
       manualNotes: snapshot.manualNotes,
       transcriptSegments: this.promptSegments(snapshot, transcript),
+      transcriptSourceId: snapshot.sourceRunId,
     });
     const summaryConfig = snapshot.promptModel;
     const currentRun = this.deps.database.getMeetingProcessingRun(run.id) ?? run;
@@ -1090,7 +1092,7 @@ export class MeetingProcessingWorker {
     if (!this.deps.nameSpeakers) return;
     let snapshot = this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, currentSnapshot);
     const unknownIds = [...new Set(snapshot.transcriptSegments
-      .filter((segment) => segment.speakerId && !segment.speakerName)
+      .filter((segment) => segment.speakerId && (!segment.speakerName || segment.speakerNameSource === "model"))
       .map((segment) => segment.speakerId as string))];
     if (!unknownIds.length) {
       this.deps.database.setMeetingSpeakerNamingError(
@@ -1117,6 +1119,7 @@ export class MeetingProcessingWorker {
       }
       const suggestions = await this.deps.nameSpeakers({
         meetingTitle: snapshot.meetingTitle,
+        transcriptSourceId: snapshot.sourceRunId,
         participants: this.enrichedParticipants(participantsBeforeNaming),
         segments: this.promptSegments(snapshot, transcript),
       }, snapshot.promptModel, run, signal);
@@ -1133,12 +1136,17 @@ export class MeetingProcessingWorker {
         return;
       }
       validateSpeakerSuggestions(suggestions, unknownIds);
-      if (suggestions.length && this.deps.database.applyAutomaticMeetingSpeakerCorrections(
+      const suggestedIds = new Set(suggestions.map((suggestion) => suggestion.speakerId));
+      const rejectedModelIds = [...new Set(snapshot.transcriptSegments
+        .filter((segment) => segment.speakerId && segment.speakerNameSource === "model" && !suggestedIds.has(segment.speakerId))
+        .map((segment) => segment.speakerId!))];
+      if ((suggestions.length || rejectedModelIds.length) && this.deps.database.applyAutomaticMeetingSpeakerCorrections(
         sourceRunId,
         run.id,
         snapshot.speakerCorrectionRevision,
         suggestions.map(({ speakerId, name }) => ({ speakerId, profileId: null, displayName: name })),
-        "model"
+        "model",
+        rejectedModelIds
       )) {
         const candidates = this.enrichedParticipants(participantsBeforeNaming);
         for (const suggestion of suggestions) {
@@ -1327,6 +1335,7 @@ export class MeetingProcessingWorker {
           manualNotes: context.snapshot.manualNotes,
           summary: context.markdown,
           transcriptSegments: this.promptSegments(context.snapshot, context.transcript),
+          transcriptSourceId: context.snapshot.sourceRunId,
         });
         const conversation = await this.createActionConversation(context, MEETING_TASKS_INSTRUCTION, controller.signal);
         const response = await conversation.send(input);
@@ -1375,6 +1384,7 @@ export class MeetingProcessingWorker {
           manualNotes: context.snapshot.manualNotes,
           summary: context.markdown,
           transcriptSegments: this.promptSegments(context.snapshot, context.transcript),
+          transcriptSourceId: context.snapshot.sourceRunId,
         });
         const conversation = await this.createActionConversation(context, prompt, controller.signal);
         const recap = await requestMeetingJson<MeetingRecap>({
@@ -1450,7 +1460,7 @@ export class MeetingProcessingWorker {
     }
     return snapshot.transcriptSegments.map((segment, index) => {
       const source = sourceSegments?.[index];
-      return { ...segment, ...(source ? { start: source.start } : {}) };
+      return { ...segment, ...(source ? { start: source.start, end: source.end } : {}) };
     });
   }
 
@@ -1867,6 +1877,7 @@ function buildLlmTranscriptSegments(
       id: `${sourceRunId}:${index}`,
       speakerId,
       speakerName: correction?.displayName ?? null,
+      speakerNameSource: correction?.source ?? null,
       text: segment.text,
     };
   });

@@ -254,11 +254,18 @@ export async function getBbThreadOutput(threadId: string): Promise<string> {
   return result.output ?? "";
 }
 
-export async function getBbThreadHistory(threadId: string, onUserText?: (text: string) => void): Promise<{ sequence: number; completed: boolean; failed: boolean }> {
+export async function getBbThreadHistory(
+  threadId: string,
+  onUserText?: (text: string) => void,
+  onAssistantText?: (text: string) => void,
+  onContextReset?: () => void
+): Promise<{ sequence: number; completed: boolean; failed: boolean }> {
   let sequence = 0;
   let completed = false;
   let failed = false;
   const pendingInputs = new Map<string, string>();
+  let assistantText: string | undefined;
+  let providerThreadId: string | undefined;
   while (true) {
     const previousSequence = sequence;
     const events = z.array(bbEventSchema).parse(await jsonCommand(
@@ -266,6 +273,18 @@ export async function getBbThreadHistory(threadId: string, onUserText?: (text: s
     ));
     for (const event of events) {
       sequence = Math.max(sequence, event.seq);
+      const providerId = event.data?.providerThreadId;
+      if (event.type === "thread/context/cleared" || event.type === "thread/compacted" ||
+        (typeof providerId === "string" && providerThreadId !== undefined && providerId !== providerThreadId)) {
+        pendingInputs.clear();
+        assistantText = undefined;
+        onContextReset?.();
+      }
+      if (typeof providerId === "string") providerThreadId = providerId;
+      const parsedItem = z.object({ type: z.string(), text: z.string().optional(), parentToolCallId: z.string().optional() }).safeParse(event.data?.item);
+      const item = parsedItem.success ? parsedItem.data : undefined;
+      if (event.type === "item/completed" && item?.type === "agentMessage" &&
+        !item.parentToolCallId && typeof item.text === "string") assistantText = item.text;
       if (onUserText && event.type === "client/turn/requested" && typeof event.data?.requestId === "string" && Array.isArray(event.data.input)) {
         pendingInputs.set(event.data.requestId, event.data.input
           .filter((item) => item?.type === "text" && typeof item.text === "string")
@@ -277,11 +296,14 @@ export async function getBbThreadHistory(threadId: string, onUserText?: (text: s
         pendingInputs.delete(event.data.clientRequestId);
       }
       if (event.type === "client/turn/requested" || event.type === "turn/started") {
+        assistantText = undefined;
         completed = false;
         failed = false;
       } else if (event.type === "turn/completed") {
         completed = event.data?.status === "completed";
         failed = !completed;
+        if (completed && assistantText !== undefined) onAssistantText?.(assistantText);
+        assistantText = undefined;
       }
     }
     if (events.length < 100) return { sequence, completed, failed };

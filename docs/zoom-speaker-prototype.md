@@ -1,8 +1,8 @@
 # Zoom speaker attribution prototype (#122)
 
-This is a research checkpoint from 30 September 2026, not an implemented naming
-feature. The application capture, database, processing and packaging paths are
-unchanged. No speaker assignments have been applied.
+This document records the research checkpoint from 30 September 2026 and the
+subsequent evidence-path implementation below. Production automatic Zoom names
+remain disabled by missing calibrated evidence; no live assignment is claimed.
 
 ## Probes
 
@@ -228,4 +228,127 @@ Remaining measurements and implementation checks:
 6. Verify installed Dev helper TCC attribution, permission revocation and audio
    independence. Access inherited by a Codex probe does not prove app access.
 7. Only then choose example spacing, uncertainty margins and assignment thresholds
-   from measurements, and integrate `platform` corrections before model naming.
+   from measurements, and enable accepted `platform` corrections in the
+   already integrated path before model naming.
+
+## Implemented evidence path
+
+The branch now includes the production evidence path; the earlier measurements
+above remain research results, not acceptance evidence for automatic names.
+`macos-meeting-ax --collect-zoom <recording UUID>` runs a read-only 2 Hz collector;
+invoking the helper without that flag still performs the bounded call detector
+snapshot. Collection reads all AX windows and direct Video render children,
+parses camera-off/audio status from the right, and records transitions as
+unconfirmed candidates. An explicit example is emitted only after the next
+consistent poll confirms activity. Both observations share one episode ID; a
+long stable turn adds no further independent examples. This polling confirmation
+is a collection guard, not a measured acceptance threshold. Unknown activity,
+a switch or a new call resets confirmation. Unrelated windows with no supported
+children are ignored; genuine AX errors or wrong-shaped children remain incomplete. Names are private recording-owned metadata;
+trees, names and transcripts do not enter diagnostic logs. Repeated reads of one
+active episode do not increase the number of independent examples. New names,
+late tiles and rename revisions continue to be discovered until Stop.
+
+Unknown access, malformed tiles, ambiguous activity, window replacement and
+process changes retire identities. Display names, PID and tile position are
+never participant or meeting identifiers. Availability transitions are persisted
+as unavailable observations. Compact/Pin/Spotlight candidates without an explicit
+marker are never accepted. Unknown intervals conservatively mark the entire
+part's metadata coverage incomplete. This may reject otherwise usable episodes;
+narrower recovery needs measured coverage guarantees first.
+
+The audio helper keeps PCM stdout and emits sparse clock ranges on stderr with a
+helper UUID, converted-frame start/end, host nanoseconds and timebase. A bounded
+metadata queue runs separately from PCM writes. Every range binds to its actual
+source epoch/startFrame and waits until those frames have been delivered. Clock
+reorder never changes PCM order; unknown/unbound ranges cannot be extrapolated.
+Startup shortening and the last pending PCM flush use the actual converted frame
+count. Converter latency remains **uncalibrated**; reported priming data does not
+establish its startup or tail alignment. Raw Opus tracks and the existing audio
+watchdog remain authoritative. SQLite/AX/metadata failures affect evidence only.
+The JSONL reader uses a streaming UTF-8 decoder; incomplete tails reject coverage.
+Failed collectors terminate their owned helper and escalate within 500 ms even
+while recording continues. Evidence capability is required at the composition
+boundary; test doubles implement it explicitly.
+
+`composeMeetingAudioParts` returns the same offset map consumed by ASR preparation
+and the matcher. Internal gaps remain; deliberate pauses between parts disappear.
+Matching runs on normalized system segments after voice recognition and before
+model naming/Summary, including resumed normalization and new provider runs.
+It never assigns `mic`, moves diarization boundaries, creates a voice profile,
+invents email or carries Speaker N across runs. Per-run rejection/acceptance
+records include observation/clock IDs, transcript intervals and the actual
+calibration policy. Accepted corrections and decisions share a guarded transaction.
+SQLite migrates the correction source CHECK to include `platform` while preserving
+old rows. Priority is user > voice > platform > model. Accepted platform names
+have a Zoom provenance badge and reach LLM snapshots/prompts with that source.
+Manual edits retain priority. Incomplete collection is visible in the transcript
+view; it does not mark recorded audio or the transcript failed.
+
+Production currently supplies **no calibrated acceptance policy**. Explicit AX
+activity with usable clocks can produce `uncalibrated-timing` candidates only.
+Self identity, exclusive Zoom audio provenance and one person per AX instance
+also remain unconfirmed. The executable accepted path requires measured timing
+bounds, episode sufficiency and those independent evidence inputs; synthetic
+fixtures provide them explicitly and do not establish live Zoom accuracy.
+No threshold, setting or confidence score was derived from the single spike call.
+
+The audio probe generator has been reconciled with the new timestamp callback.
+It suppresses production sparse clock events only in its generated temporary
+probe, retaining the historical detailed probe format. Neither source helper,
+existing app bundle nor running profile is modified by the generator.
+
+## Integrated verification
+
+Implementation was delegated to GPT-6.1 Sol with medium reasoning, then reviewed
+and verified by the root agent. Review fixes cover model-name revisiting,
+malformed timestamps, unrelated childless AX windows, UTF-8 chunk boundaries,
+stable activity confirmation, metadata failures and bounded helper termination.
+The accepted path uses synthetic measured-policy inputs; production remains
+rejection-only for the reasons above.
+
+- Focused matcher, persistence, collector lifecycle, clocks, multipart audio,
+  processing, recovery, IPC, bridge and type-probe tests passed through
+  `pnpm test`. Final `pnpm test -- --verbose`: 2,939 passed, zero failed,
+  zero skipped, 77,988 ms (2,780 ordinary + 57 serial + 102 native/type tests).
+- Final `pnpm run lint` and `pnpm run typecheck` passed, including renderer
+  and test checks. Existing lint warnings remain.
+- `pnpm run compile:meeting-ax`, the native
+  `--self-test-zoom-collector` and `pnpm run compile:audio-tap` passed.
+  Both temporary clock-probe modes compiled; the prototype parser passed 9
+  checks and the analyzer passed 13, including synthetic multi-speaker replay.
+- `pnpm run pack:dev` passed with bundled-helper and packaged SQLite checks.
+  This is an unsigned Dev package; production was not installed or changed.
+
+The packaged Dev runtime used an isolated, credential-free profile. Existing
+microphone, system audio and Accessibility access worked without a separate AX
+helper permission prompt. Zoom was running without an active call: evidence
+reported `no-call-window` while both audio tracks continued. This establishes
+that unavailable Zoom evidence does not break capture, not live attribution
+accuracy or permission-revocation behavior.
+
+Runtime review also found two existing quit hazards: main shutdown preempted the
+capture confirmation, and a windowless macOS alert blocked capture IPC long
+enough to overflow the mic queue. Shutdown now runs at `will-quit`, after the
+existing `before-quit` guard. Capture joins bounded sidecar shutdown through
+`requestSafeStop()`; the live control-panel confirmation is a window sheet.
+The [Electron implementation](https://github.com/electron/electron/blob/v41.0.0/shell/browser/ui/message_box_mac.mm)
+uses a blocking modal loop for windowless alerts.
+
+The final runtime recording `7238aa58-32e4-4d45-94a5-b767a241219f` remained
+active through more than 8 seconds in the quit sheet, Cancel, and another quit
+attempt. Stop and Quit finalized it as `ready` with no capture error before
+process exit. Its microphone track has 1,174,784 frames and system track
+1,183,992 at 24 kHz. Direct Ogg granule/EOS inspection matches both saved epoch
+counts. All 50 sparse anchors persisted; the last ends exactly at system frame
+1,183,992. Coverage persisted 100 reads and one unavailable observation with
+`no-call-window`, independently of successful audio. No owned native helper
+remained. Earlier failed smoke recordings were preserved.
+
+Known-signal converter calibration, Zoom indicator latency, multiple real remote
+speaker changes, false assignments, hidden/screen-share/compact windows,
+permission denial/revocation and production collector CPU/usable-example
+coverage remain unverified. Synthetic Pause/Resume/restart and provider
+normalization checks do not replace those measurements. Issue #122 remains open;
+the user does not need to organize a new test group for source implementation
+or synthetic verification.

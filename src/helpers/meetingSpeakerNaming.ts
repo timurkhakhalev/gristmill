@@ -12,7 +12,7 @@ const segmentSchema = z.object({
   id: z.string().min(1),
   speakerId: z.string().nullable(),
   speakerName: z.string().nullable(),
-  speakerNameSource: z.enum(["user", "model", "voice"]).nullable().optional(),
+  speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
   text: z.string(),
   start: z.number().nonnegative().optional(),
   end: z.number().nonnegative().optional(),
@@ -37,7 +37,7 @@ export const MEETING_SPEAKER_NAMING_INSTRUCTION = `Assign a name only when the c
 
 Evidence may be a self-introduction, an address followed by a substantive response, an unambiguous handoff of the floor, or addressed thanks immediately after that speaker's contribution. No separate "yes, that is me" or response to every thanks is required. Third-party mentions alone never identify the speaker. Omit uncertain addressees and conflicting names: do not choose a confident identity when the same label appears to answer different names.
 
-User-confirmed names: preserve, do not override. Model-proposed names: verify against transcript evidence and reconsider contradictions. Include an existing model proposal only if the transcript supports it; omission withdraws that proposal. Voice-recognition names are separate voice matches and must not be overridden by this request. Return only the allowed output IDs (unknown speakers and revisitable model suggestions). Copy speakerId exactly. Return JSON only: {"speakers":[{"speakerId":"...","name":"..."}]}. No fences or extra fields. If evidence is insufficient, return {"speakers":[]}.
+User-confirmed names: preserve, do not override. Model-proposed names: verify against transcript evidence and reconsider contradictions. Include an existing model proposal only if the transcript supports it; omission withdraws that proposal. Voice-recognition names are separate voice matches and must not be overridden by this request. Platform names matched from Zoom evidence must also be preserved. Return only the allowed output IDs (unknown speakers and revisitable model suggestions). Copy speakerId exactly. Return JSON only: {"speakers":[{"speakerId":"...","name":"..."}]}. No fences or extra fields. If evidence is insufficient, return {"speakers":[]}.
 
 The following examples are fictional and independent. Never copy their names into the actual meeting result.
 

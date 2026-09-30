@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   meetingCaptureStateSchema,
+  meetingPlatformCoverageSchema,
   meetingProcessingConfigErrorSchema,
   meetingProcessingConfigSchema,
   meetingProcessingResultDtoSchema,
@@ -81,6 +82,7 @@ export const meetingProcessingRecordingResultSchema = z.object({
     startedAt: z.string(),
     endedAt: z.string().nullable(),
     durationSeconds: z.number().nonnegative().nullable(),
+    platformCoverage: meetingPlatformCoverageSchema.nullable().optional(),
   }),
   runs: z.array(meetingProcessingResultDtoSchema),
 });

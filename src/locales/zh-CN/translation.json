@@ -2242,12 +2242,15 @@
     "permissions": "Recording permissions",
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
-    "accessibilityDetection": "用于会议录音提醒。",
+    "accessibilityDetection": "用于检测通话并读取 Zoom 参与者姓名和发言者指示。",
     "accessibilityHelp": "在 macOS 辅助功能设置中启用 Gristmill。如果列表中没有它，请点按 + 并选择已安装的 Gristmill.app。",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "platformName": "Zoom",
+    "platformNameHint": "从 Zoom 匹配的姓名。点击可修改。",
+    "platformEvidenceUnavailable": "Zoom 发言者信息不完整。音频和转录已保留。",
     "partialTranscript": "此笔记的转录文本不完整。",
     "selectedResultTranscript": "所选结果的转录文本",
     "participantsLoadError": "无法加载日历参与者。",

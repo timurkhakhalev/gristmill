@@ -46,6 +46,10 @@ const electronStub = {
 function loadCoordinator() {
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") return electronStub;
+    if (request === "./zoomSpeakerCollector.js") return { ZoomSpeakerCollector: class {
+      start() {} stop() { return Promise.resolve(); } invalidate() {}
+      bindClock() {} recordClock() {} recordDeliveredFrames() {}
+    } };
     if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
       return { broadcastToWindows: () => {} };
     }
@@ -60,6 +64,9 @@ function loadCoordinator() {
 
 function createDatabaseFake(events: string[]) {
   return {
+    saveMeetingZoomObservation() {},
+    saveMeetingAudioClockAnchor() {},
+    setMeetingPlatformCoverage() {},
     recordings: new Map<string, { id: string; groupId: string; noteId: number; config: unknown; startedAt: string; captureState: string; audioState: string; captureErrorCode?: string | null }>(),
     epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
     finalized: [] as { recordingId: string; input: { captureState: string; errorCode?: string } }[],

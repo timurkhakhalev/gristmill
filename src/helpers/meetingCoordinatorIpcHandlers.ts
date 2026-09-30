@@ -45,6 +45,7 @@ import {
   transcriptsLooselyOverlap,
   buildMergedCandidates,
 } from "./transcriptText.js";
+import { ZoomSpeakerCollector, type MeetingPlatformEvidenceDatabase } from "./zoomSpeakerCollector.js";
 import { createMeetingAudioTimeline } from "./meetingAudioTimeline.js";
 import { MeetingCaptureSession, type MeetingCaptureEpochStorage } from "./meetingCaptureSession.js";
 import { meetingRecordingConfigInputSchema } from "../contracts/meetingRecording.js";
@@ -140,7 +141,7 @@ export interface CoordinatorLiveSpeakerIdentifier {
 }
 
 export interface MeetingCoordinatorDeps {
-  databaseManager: DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase;
+  databaseManager: DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase & MeetingPlatformEvidenceDatabase;
   meetingRecordingStorage: MeetingCaptureEpochStorage;
   cancelInitialProcessingRun?: (runId: string) => boolean;
   diarizationManager: import("./meetingDiarizationPublication.js").DiarizationPublicationDiarizationManager;
@@ -275,6 +276,7 @@ export function registerMeetingCoordinatorHandlers(
   let activeRecordingPipeline: string | null = null;
   let activeMeetingNoteId: number | null = null;
   let activeCaptureSession: MeetingCaptureSession | null = null;
+  let platformCollector: ZoomSpeakerCollector | null = null;
   let activeCaptureSessionId: string | null = null;
   let activeCaptureOwner: WebContents | null = null;
   let safeStopPromise: Promise<{ success: boolean; captureState?: "ready" | "incomplete" }> | null = null;
@@ -1746,6 +1748,12 @@ export function registerMeetingCoordinatorHandlers(
     }
 
     activeCaptureSession = capture;
+    platformCollector = new ZoomSpeakerCollector(capture.recordingId, {
+      saveMeetingZoomObservation: (observation) => databaseManager.saveMeetingZoomObservation(observation),
+      saveMeetingAudioClockAnchor: (anchor) => databaseManager.saveMeetingAudioClockAnchor(anchor),
+      setMeetingPlatformCoverage: (id, coverage) => databaseManager.setMeetingPlatformCoverage(id, coverage),
+    });
+    try { platformCollector.start(); } catch { platformCollector.invalidate("ax-helper-start-failed"); }
     activeCaptureSessionId = sessionId;
     activeCaptureOwner = event.sender;
     meetingStartedAt = startedAt.getTime();
@@ -1792,6 +1800,8 @@ export function registerMeetingCoordinatorHandlers(
       };
     } catch (error) {
       capture.markCaptureFailure("capture-start-failed");
+      await platformCollector?.stop();
+      platformCollector = null;
       try {
         await audioTapManager?.stop();
         await capture.stop({ lastSequence: {}, errorCode: "capture-start-failed" });
@@ -1858,15 +1868,23 @@ export function registerMeetingCoordinatorHandlers(
       }
       meetingSystemAudioLevelPeak = 0;
     };
+    let generation: string | undefined;
+    const evidence = platformCollector;
     const startCapture = () =>
       manager.start({
-        onStart: () => {
-          capture.beginSourceEpoch("system", timeline.markRestart(Date.now()));
+        onStart: (message) => {
+          generation = message.generation;
+          const startFrame = timeline.markRestart(Date.now());
+          const epochIndex = capture.beginSourceEpoch("system", startFrame);
+          if (generation) evidence?.bindClock(generation, epochIndex, startFrame);
+          else evidence?.invalidate("clock-generation-missing");
         },
+        onClock: (clock) => evidence?.recordClock(clock),
         onChunk: (chunk) => {
           try {
             timeline.write(chunk, (raw) => {
               capture.appendNativeSamples("system", raw);
+              evidence?.recordDeliveredFrames(generation, raw.length / 2);
               meetingDetectionEngine?.recordMeetingAudioChunk("system", raw);
               const { rms, peak } = computeChunkStats(raw);
               reportLevel(rms);
@@ -1897,6 +1915,9 @@ export function registerMeetingCoordinatorHandlers(
             code: warning.code,
             message: warning.message,
           }, "meeting");
+          if (warning.code === "clock_queue_overflow" || warning.code === "clock_invalid_message") {
+            evidence?.invalidate(warning.code);
+          }
           if (warning.code === "device_invalidated") {
             meetingSystemAudioWatchdog.reportDeviceInvalidated();
           }
@@ -1941,6 +1962,8 @@ export function registerMeetingCoordinatorHandlers(
     clearMeetingSystemAudioSilenceTimer();
     stopMeetingSystemAudioWatchdog();
 
+    const collector = platformCollector;
+    platformCollector = null;
     let stopError: string | null = null;
     try {
       await audioTapManager?.stop();
@@ -1952,6 +1975,7 @@ export function registerMeetingCoordinatorHandlers(
       }, "meeting");
     }
 
+    await collector?.stop();
     try {
       const result = await capture.stop({
         lastSequence: options.lastSequence ?? {},

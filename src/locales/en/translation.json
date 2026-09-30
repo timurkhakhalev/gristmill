@@ -2239,6 +2239,9 @@
     }
   },
   "meetingResults": {
+    "platformName": "Zoom",
+    "platformNameHint": "Name matched from Zoom. Click the name to change it.",
+    "platformEvidenceUnavailable": "Zoom speaker evidence is incomplete. Audio and transcript are preserved.",
     "partialTranscript": "This Note transcript is incomplete.",
     "selectedResultTranscript": "Selected result transcript",
     "speakerNumber": "Speaker {{number}}",
@@ -2375,7 +2378,7 @@
     "permissions": "Recording permissions",
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
-    "accessibilityDetection": "For meeting recording reminders.",
+    "accessibilityDetection": "For detecting calls and reading Zoom participant names and active speaker indicators.",
     "accessibilityHelp": "Turn on Gristmill in macOS Accessibility. If it is missing, click + and select the installed Gristmill.app.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."

@@ -112,3 +112,26 @@ test("failed helper ignoring SIGTERM is killed within the owned cleanup deadline
   await collector.stop();
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
+
+test("collector retains native interval confirmations after an AX gap for production matching", { skip: process.platform !== "darwin" }, async (t) => {
+  const { zoomSpeakerFixture }: typeof import("../../../lib/zoomSpeakerFixture.ts") = require("../../../lib/zoomSpeakerFixture.ts");
+  const { matchZoomSpeakers }: typeof import("../../../../src/helpers/zoomSpeakerMatcher.ts") = require("../../../../src/helpers/zoomSpeakerMatcher.ts");
+  const id = randomUUID();
+  const child = fakeChild();
+  const saved: ZoomSpeakerObservation[] = [];
+  const coverage: MeetingPlatformCoverage[] = [];
+  const collector = new ZoomSpeakerCollector(id, { saveMeetingZoomObservation: (value) => saved.push(value), saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, value) => coverage.push({ ...value }) }, () => child);
+  t.after(() => collector.stop());
+  collector.start();
+  emit(child, { type: "observation", observation: { ...observation(id, randomUUID(), "unavailable"), activity: "unavailable", displayName: "", reason: "ax-incomplete", readStartHostNs: "0", readEndHostNs: "500000000" } });
+  emit(child, { type: "coverage", reads: 1, samples: 1, state: "collecting", reason: "ax-incomplete" });
+  const fixture = zoomSpeakerFixture(id);
+  fixture.observations.forEach((value) => emit(child, { type: "observation", observation: value }));
+  emit(child, { type: "coverage", reads: 28, samples: 16, state: "complete", reason: null });
+  await collector.stop();
+  assert.equal(saved.length, 16);
+  assert.equal(coverage.at(-1)?.state, "incomplete");
+  const decisions = matchZoomSpeakers({ ...fixture, observations: saved, epochs: [{ recordingId: id, source: "system", epochIndex: 0, startFrame: 0, frameCount: 14 * 24_000, state: "finalized" }], partOffsets: [{ recordingId: id, startFrame: 0, frameCount: 14 * 24_000 }] });
+  assert.equal(decisions.filter((d) => d.status === "accepted").length, 3);
+  assert.equal(decisions[0].reason, "ax-incomplete");
+});

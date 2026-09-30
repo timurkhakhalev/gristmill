@@ -902,8 +902,7 @@ export class MeetingProcessingWorker {
       const observations = run.sourceRecordingIds.flatMap((id) => database.listMeetingZoomObservations(id));
       if (!observations.length) return;
       const anchors = run.sourceRecordingIds.flatMap((id) => database.listMeetingAudioClockAnchors(id));
-      const incompleteRecordingIds = run.sourceRecordingIds.filter((id) => database.getMeetingPlatformCoverage(id)?.state !== "complete");
-      const decisions = matchZoomSpeakers({ transcript, observations, anchors, epochs, partOffsets, incompleteRecordingIds });
+      const decisions = matchZoomSpeakers({ transcript, observations, anchors, epochs, partOffsets });
       const revision = database.getMeetingRunSpeakerCorrectionRevision(run.id);
       if (database.applyMeetingPlatformDecisions(run.id, revision, decisions)) this.publishCurrentSelection(run.id);
     } catch {

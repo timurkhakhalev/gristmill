@@ -146,13 +146,25 @@ awaits capture/tap cleanup.
 The shared part-offset map drives both audio concatenation and the normalized
 system-only matcher. Voice recognition runs first, platform matching next, then
 model naming and Summary. Per-run decisions keep evidence IDs, transcript
-intervals and calibration; acceptance and correction are atomic under current-run,
+intervals and the initial timing policy; acceptance and correction are atomic under current-run,
 revision, cancellation and deletion guards. User > voice > platform > model;
 platform never creates a voice profile or email. Old recordings without evidence
 retain their existing pipeline. The UI distinguishes Zoom names from model
 suggestions and reports incomplete platform evidence independently of audio.
 
-Production currently abstains: converter/Zoom latency is uncalibrated, self
-identity is unknown and a system-wide tap does not prove exclusive Zoom speech.
-Synthetic acceptance requires explicit measured-policy/evidence inputs and cannot
-prove live accuracy. See [the implementation and remaining live verification](zoom-speaker-prototype.md#implemented-evidence-path).
+Production suggests Zoom display names after at least three independent activity
+and speech episodes agree with one system ASR cluster. Continued confirmations of
+one long turn count once; recreated tiles or Pause/Resume may contribute later
+episodes without implying a stable participant ID. The initial 500 ms indicator
+lag is a hypothesis from static client inspection, not a Gristmill measurement.
+A 500 ms boundary guard, one second of stable speech per episode, and strict clock
+continuity/rate checks are conservative product rules, not measured accuracy.
+
+Known self labels and overlapping mic speech are excluded. Unknown self does not
+disable naming; simultaneous duplicate display names, competing names/clusters,
+ambiguous speech and unusable clock/AX spans abstain. Gaps remain local: earlier
+and later usable spans still contribute. The matcher never renames mic or repairs
+ASR boundaries. It does not prove exclusive Zoom audio, voice identity or one
+person per device; Zoom badges identify an editable suggestion's source. Known
+signal conversion, real Zoom lag and multi-speaker accuracy remain unverified.
+See [implementation and live verification limits](zoom-speaker-prototype.md#implemented-evidence-path).

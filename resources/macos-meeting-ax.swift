@@ -152,20 +152,49 @@ func validatedZoomChildren(_ status: AXError, _ value: CFTypeRef?) -> [AXUIEleme
     return children
 }
 
+// Only explicit self labels count; an ordinary display name is not self proof.
+func zoomSelfName(_ name: String) -> (name: String, local: Bool) {
+    for suffix in [" (Me)", " (me)", " (You)", " (you)", " (Я)", " (я)"] where name.hasSuffix(suffix) {
+        return (String(name.dropLast(suffix.count)), true)
+    }
+    return (name, false)
+}
+struct ZoomActivityRange {
+    let episode: String
+    let activity: String
+    let start: UInt64
+    let end: UInt64
+}
 struct ZoomActivityConfirmation {
     private var signature: String? = nil
     private var confirmed = false
+    private var explicit = false
+    private var rangeStart: UInt64 = 0
+    private var lastEnd: UInt64 = 0
+    private var continuingReads = 0
     private(set) var episodeId = UUID().uuidString
-    mutating func reset() { signature = nil; confirmed = false; episodeId = UUID().uuidString }
-    mutating func observe(_ next: String, explicit: Bool) -> (emit: Bool, stable: Bool) {
-        if next != signature {
-            signature = next
-            confirmed = false
-            episodeId = UUID().uuidString
-            return (true, false)
+    mutating func close() -> ZoomActivityRange? {
+        let value = confirmed && lastEnd > rangeStart ? ZoomActivityRange(episode: episodeId, activity: "end", start: rangeStart, end: lastEnd) : nil
+        signature = nil; confirmed = false; explicit = false; continuingReads = 0
+        return value
+    }
+    mutating func observe(_ next: String, explicit active: Bool, before: UInt64, after: UInt64) -> (closed: ZoomActivityRange?, sample: ZoomActivityRange?) {
+        if next != signature || explicit != active {
+            let closed = close()
+            signature = next; explicit = active; episodeId = UUID().uuidString
+            rangeStart = after; lastEnd = after
+            return (closed, ZoomActivityRange(episode: episodeId, activity: active ? "candidate" : "clear", start: before, end: after))
         }
-        if explicit && !confirmed { confirmed = true; return (true, true) }
-        return (false, confirmed)
+        lastEnd = after
+        guard active else { return (nil, nil) }
+        continuingReads += 1
+        if !confirmed || continuingReads >= 2 {
+            confirmed = true; continuingReads = 0
+            let sample = before > rangeStart ? ZoomActivityRange(episode: episodeId, activity: "explicit", start: rangeStart, end: before) : nil
+            rangeStart = before
+            return (nil, sample)
+        }
+        return (nil, nil)
     }
 }
 
@@ -177,20 +206,25 @@ if CommandLine.arguments.contains("--self-test-zoom-collector") {
     precondition(validatedZoomChildren(.success, [element] as CFArray)?.count == 1)
     precondition(validatedZoomChildren(.success, "wrong-shape" as CFString) == nil)
     precondition(validatedZoomChildren(.cannotComplete, nil) == nil)
+    precondition(zoomSelfName("Fixture (Me)").local)
+    precondition(zoomSelfName("Fixture (я)").name == "Fixture")
+    precondition(!zoomSelfName("Fixture").local)
     var confirmation = ZoomActivityConfirmation()
-    precondition(confirmation.observe("speaker-a", explicit: true).stable == false)
+    precondition(confirmation.observe("a", explicit: true, before: 0, after: 10).sample?.activity == "candidate")
     let episode = confirmation.episodeId
-    precondition(confirmation.observe("speaker-a", explicit: true).stable == true)
+    let first = confirmation.observe("a", explicit: true, before: 500, after: 510).sample!
+    precondition(first.activity == "explicit" && first.start == 10 && first.end == 500)
     precondition(confirmation.episodeId == episode)
-    precondition(confirmation.observe("speaker-a", explicit: true).emit == false)
-    precondition(confirmation.observe("speaker-b", explicit: true).stable == false)
+    precondition(confirmation.observe("a", explicit: true, before: 1000, after: 1010).sample == nil)
+    precondition(confirmation.observe("a", explicit: true, before: 1500, after: 1510).sample?.episode == episode)
+    let switchRead = confirmation.observe("b", explicit: true, before: 2000, after: 2010)
+    precondition(switchRead.closed?.end == 1510 && switchRead.sample?.activity == "candidate")
     precondition(confirmation.episodeId != episode)
-    confirmation.reset()
-    precondition(confirmation.observe("speaker-b", explicit: true).stable == false)
-    precondition(confirmation.observe("speaker-b", explicit: true).stable == true)
-    precondition(confirmation.observe("candidate", explicit: false).stable == false)
-    precondition(confirmation.observe("candidate", explicit: false).emit == false)
-    print("Zoom collector children and stability checks passed")
+    precondition(confirmation.close() == nil)
+    precondition(confirmation.observe("b", explicit: true, before: 3000, after: 3010).sample?.activity == "candidate")
+    precondition(confirmation.observe("b", explicit: true, before: 3500, after: 3510).sample?.activity == "explicit")
+    precondition(confirmation.close()?.end == 3510)
+    print("Zoom collector children, self labels and activity intervals passed")
     exit(0)
 }
 
@@ -210,6 +244,9 @@ func collectZoom(recordingId: String) -> Never {
     var session = UUID().uuidString
     var tracked: [(element: AXUIElement, key: String, name: String, revision: Int)] = []
     var confirmation = ZoomActivityConfirmation()
+    typealias Tile = (key: String, name: String, revision: Int, active: Bool, mode: String, local: Bool)
+    var previousSelection: [Tile] = []
+    var previousReadEnd: UInt64? = nil
     var reads = 0
     var samples = 0
     var lastAvailability: String? = nil
@@ -218,8 +255,26 @@ func collectZoom(recordingId: String) -> Never {
     func retire() {
         tracked.removeAll()
         previousWindows.removeAll()
-        confirmation.reset()
+        _ = confirmation.close()
+        previousSelection.removeAll()
+        previousReadEnd = nil
         session = UUID().uuidString
+    }
+    func emitRange(_ range: ZoomActivityRange, _ tiles: [Tile]) {
+        for tile in tiles {
+            emitJSON(["type": "observation", "observation": [
+                "id": UUID().uuidString, "recordingId": recordingId, "sessionId": session,
+                "instanceKey": tile.key, "nameRevision": tile.revision, "episodeId": range.episode,
+                "displayName": tile.name, "windowMode": tile.mode, "activity": range.activity,
+                "readStartHostNs": String(range.start), "readEndHostNs": String(range.end),
+                "self": tile.local ? "local" : "unknown", "singleSpeaker": NSNull(), "provenance": "system-wide",
+                "reason": range.activity == "candidate" ? "activity-transition" as Any : NSNull()
+            ]])
+            samples += 1
+        }
+    }
+    func closeActivity() {
+        if let range = confirmation.close() { emitRange(range, previousSelection) }
     }
     func scan() {
         let before = hostNS()
@@ -227,10 +282,10 @@ func collectZoom(recordingId: String) -> Never {
         var reason: String? = nil
         var seen: [AXUIElement] = []
         var videoWindows: [AXUIElement] = []
-        var candidates: [(key: String, name: String, revision: Int, active: Bool, mode: String)] = []
+        var candidates: [Tile] = []
         if !AXIsProcessTrusted() { reason = "accessibility" }
         else if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "us.zoom.xos" }) {
-            if pid != app.processIdentifier { retire(); pid = app.processIdentifier }
+            if pid != app.processIdentifier { closeActivity(); retire(); pid = app.processIdentifier }
             let ax = AXUIElementCreateApplication(app.processIdentifier)
             AXUIElementSetMessagingTimeout(ax, 0.1)
             if let windows = elements(ax, kAXWindowsAttribute), windows.count <= 32 {
@@ -246,19 +301,21 @@ func collectZoom(recordingId: String) -> Never {
                     let mode = string(window, kAXSubroleAttribute) == "AXSystemDialog" ? "compact" : "full"
                     for tile in tiles {
                         AXUIElementSetMessagingTimeout(tile, 0.1)
+                        if seen.contains(where: { CFEqual($0, tile) }) { continue }
                         seen.append(tile)
                         guard let description = string(tile, kAXDescriptionAttribute), let parsed = parseTile(description) else {
                             reason = "tile-unparsed"; continue
                         }
+                        let identity = zoomSelfName(parsed.name)
                         var index = tracked.firstIndex(where: { CFEqual($0.element, tile) })
                         if index == nil {
-                            tracked.append((element: tile, key: UUID().uuidString, name: parsed.name, revision: 1))
+                            tracked.append((element: tile, key: UUID().uuidString, name: identity.name, revision: 1))
                             index = tracked.count - 1
                         }
                         let i = index!
-                        if tracked[i].name != parsed.name { tracked[i].name = parsed.name; tracked[i].revision += 1 }
-                        candidates.append((key: tracked[i].key, name: parsed.name, revision: tracked[i].revision,
-                                           active: parsed.active && parsed.muted == false, mode: mode))
+                        if tracked[i].name != identity.name { tracked[i].name = identity.name; tracked[i].revision += 1 }
+                        candidates.append((key: tracked[i].key, name: identity.name, revision: tracked[i].revision,
+                                           active: parsed.active && parsed.muted == false, mode: mode, local: identity.local))
                     }
                 }
                 if !previousWindows.isEmpty && (videoWindows.count != previousWindows.count ||
@@ -271,14 +328,18 @@ func collectZoom(recordingId: String) -> Never {
         } else { pid = nil; reason = "zoom-not-running" }
         let after = hostNS()
         if after - before > 1_000_000_000 { reason = "ax-read-timeout" }
+        if let previous = previousReadEnd, before > previous && before - previous > 1_000_000_000 { reason = "activity-poll-gap" }
+        previousReadEnd = after
         let active = candidates.filter { $0.active }
         if reason == nil && active.count > 1 { reason = "ambiguous-activity" }
+        if reason == nil, let speaker = active.first, candidates.filter({ $0.name == speaker.name }).count > 1 { reason = "duplicate-display-name" }
         let available = reason ?? "available"
+        if reason != nil { closeActivity() }
         if let reason, available != lastAvailability {
             emitJSON(["type": "observation", "observation": [
                 "id": UUID().uuidString, "recordingId": recordingId, "sessionId": session,
                 "instanceKey": "unavailable", "nameRevision": 1, "episodeId": UUID().uuidString,
-                "displayName": "", "windowMode": "unknown", "activity": "unavailable",
+                "displayName": reason == "duplicate-display-name" ? (active.first?.name ?? "") : "", "windowMode": "unknown", "activity": "unavailable",
                 "readStartHostNs": String(before), "readEndHostNs": String(after),
                 "self": "unknown", "singleSpeaker": NSNull(), "provenance": "unknown", "reason": reason
             ]])
@@ -290,23 +351,11 @@ func collectZoom(recordingId: String) -> Never {
         } else {
             tracked.removeAll { item in !seen.contains(where: { CFEqual($0, item.element) }) }
             let selected = active.isEmpty ? candidates : active
-            let next = selected.map { "\($0.key)/\($0.revision)/\($0.active)" }.sorted().joined(separator: "|")
-            let sample = confirmation.observe(next, explicit: !active.isEmpty)
-            if sample.emit {
-                let episode = confirmation.episodeId
-                for tile in selected {
-                    emitJSON(["type": "observation", "observation": [
-                        "id": UUID().uuidString, "recordingId": recordingId, "sessionId": session,
-                        "instanceKey": tile.key, "nameRevision": tile.revision, "episodeId": episode,
-                        "displayName": tile.name, "windowMode": tile.mode,
-                        "activity": tile.active && sample.stable ? "explicit" : "candidate",
-                        "readStartHostNs": String(before), "readEndHostNs": String(after),
-                        "self": "unknown", "singleSpeaker": NSNull(), "provenance": "system-wide",
-                        "reason": tile.active && sample.stable ? NSNull() as Any : (tile.active ? "activity-transition" : "activity-unconfirmed") as Any
-                    ]])
-                    samples += 1
-                }
-            }
+            let next = selected.map { "\($0.key)/\($0.revision)/\($0.active)/\($0.local)" }.sorted().joined(separator: "|")
+            let sample = confirmation.observe(next, explicit: !active.isEmpty, before: before, after: after)
+            if let closed = sample.closed { emitRange(closed, previousSelection) }
+            if let range = sample.sample { emitRange(range, selected) }
+            previousSelection = selected
         }
         if available != lastAvailability || reads % 10 == 0 {
             emitJSON(["type": "coverage", "reads": reads, "samples": samples,
@@ -319,6 +368,7 @@ func collectZoom(recordingId: String) -> Never {
         signal(value, SIG_IGN)
         let source = DispatchSource.makeSignalSource(signal: value, queue: .main)
         source.setEventHandler {
+            closeActivity()
             emitJSON(["type": "coverage", "reads": reads, "samples": samples,
                       "state": lastAvailability == "available" ? "complete" : "incomplete",
                       "reason": lastAvailability == "available" ? NSNull() as Any : (lastAvailability ?? "no-evidence") as Any])

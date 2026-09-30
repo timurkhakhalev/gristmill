@@ -1,27 +1,30 @@
-import type { MeetingAudioClockAnchor, ZoomSpeakerObservation, ZoomSpeakerDecision } from "../../../../src/contracts/meetingRecording.js";
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { randomUUID }: typeof import("node:crypto") = require("node:crypto");
 const { createDb, DatabaseManager }: typeof import("../../../helpers/harness/db.ts") = require("../../../helpers/harness/db.ts");
 const { ZoomSpeakerCollector }: typeof import("../../../../src/helpers/zoomSpeakerCollector.ts") = require("../../../../src/helpers/zoomSpeakerCollector.ts");
 
+const { matchZoomSpeakers }: typeof import("../../../../src/helpers/zoomSpeakerMatcher.ts") = require("../../../../src/helpers/zoomSpeakerMatcher.ts");
+const { zoomSpeakerFixture }: typeof import("../../../lib/zoomSpeakerFixture.ts") = require("../../../lib/zoomSpeakerFixture.ts");
+const { composeMeetingAudioParts }: typeof import("../../../../src/helpers/meetingAudioMixer.ts") = require("../../../../src/helpers/meetingAudioMixer.ts");
 function evidence(recordingId: string) {
-  const observation: ZoomSpeakerObservation = { id: randomUUID(), recordingId, sessionId: randomUUID(), instanceKey: "fixture-tile", nameRevision: 1, episodeId: randomUUID(), displayName: "Synthetic Guest", windowMode: "full", activity: "explicit", readStartHostNs: "1000000000", readEndHostNs: "1010000000", self: "remote", singleSpeaker: true, provenance: "zoom-only", reason: null };
-  const anchor: MeetingAudioClockAnchor = { id: randomUUID(), recordingId, epochIndex: 0, epochStartFrame: 0, clock: { type: "clock", generation: randomUUID(), startFrame: 0, endFrame: 48_000, hostStartNs: "0", hostEndNs: "2000000000", timebaseNumer: 1, timebaseDenom: 1, conversion: "uncalibrated", reason: null } };
-  const calibration = { measurementId: "synthetic-only", indicatorDelayMinSeconds: 0, indicatorDelayMaxSeconds: 0, conversionErrorSeconds: 0, minimumEpisodeSeconds: 0.5, minimumIndependentEpisodes: 1 };
-  const decision: ZoomSpeakerDecision = { speakerId: "system:fixture", displayName: observation.displayName, status: "accepted", reason: "validated-evidence", observationIds: [observation.id], clockAnchorIds: [anchor.id], intervals: [{ start: 1, end: 1.01 }], measurementId: calibration.measurementId, calibration };
-  return { observation, anchor, decision };
+  const { observations, anchors, transcript } = zoomSpeakerFixture(recordingId);
+  const decisions = matchZoomSpeakers({ observations, anchors, transcript,
+    epochs: [{ recordingId, source: "system", epochIndex: 0, startFrame: 0, frameCount: 14 * 24_000, state: "finalized" }],
+    partOffsets: [{ recordingId, startFrame: 0, frameCount: 14 * 24_000 }] });
+  assert.ok(decisions.every((d) => d.status === "accepted"));
+  return { observations, anchors, observation: observations[0], anchor: anchors[0], decision: decisions[0], decisions, transcript };
 }
-function finished(db: InstanceType<typeof DatabaseManager>) {
-  const note = db.saveNote("Synthetic Zoom", "", "meeting").note!;
-  const recording = db.createMeetingRecording(note.id, { config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } } }, "2026-09-30T10:00:00.000Z");
+function finished(db: InstanceType<typeof DatabaseManager>, noteId?: number, startedAt = "2026-09-30T10:00:00.000Z") {
+  const note = noteId ? db.getNote(noteId)! : db.saveNote("Synthetic Zoom", "", "meeting").note!;
+  const recording = db.createMeetingRecording(note.id, { config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } } }, startedAt);
   for (const source of ["mic", "system"] as const) {
     db.createMeetingRecordingEpoch(recording.id, source, 0, 0);
-    db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, { frameCount: 48_000, ignoredTrailingBytes: 0 });
+    db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, { frameCount: 14 * 24_000, ignoredTrailingBytes: 0 });
   }
   db.markMeetingRecordingFinalizing(recording.id);
-  const { initialRun } = db.finalizeMeetingRecording(recording.id, { captureState: "ready", endedAt: "2026-09-30T10:00:02.000Z", processingNotBefore: "2026-09-30T10:00:02.000Z" });
-  assert.equal(db.claimMeetingProcessingRun(initialRun.id, "2026-09-30T10:00:03.000Z"), true);
+  const { initialRun } = db.finalizeMeetingRecording(recording.id, { captureState: "ready", endedAt: new Date(Date.parse(startedAt) + 14_000).toISOString(), processingNotBefore: startedAt });
+  assert.equal(db.claimMeetingProcessingRun(initialRun.id, new Date(Date.parse(startedAt) + 15_000).toISOString()), true);
   return { note, recording, runId: initialRun.id };
 }
 
@@ -29,9 +32,9 @@ test("evidence, atomic decisions and platform corrections survive reopen; stale/
   const db = createDb(t);
   if (!db) return;
   const { recording, runId } = finished(db);
-  const { observation, anchor, decision } = evidence(recording.id);
-  db.saveMeetingZoomObservation(observation);
-  db.saveMeetingAudioClockAnchor(anchor);
+  const { observations, anchors, decision } = evidence(recording.id);
+  observations.forEach((o) => db.saveMeetingZoomObservation(o));
+  anchors.forEach((a) => db.saveMeetingAudioClockAnchor(a));
   db.setMeetingPlatformCoverage(recording.id, { reads: 30, samples: 1, state: "complete", reason: null });
   assert.equal(db.applyMeetingPlatformDecisions(runId, 0, [decision, { ...decision }]), true);
   assert.equal(db.getMeetingRunSpeakerCorrections(runId)[0].source, "platform");
@@ -50,7 +53,7 @@ test("evidence, atomic decisions and platform corrections survive reopen; stale/
   const reopened = new DatabaseManager();
   t.after(() => reopened.close());
   assert.equal(reopened.listMeetingZoomObservations(recording.id)[0].displayName, "Synthetic Guest");
-  assert.equal(reopened.listMeetingAudioClockAnchors(recording.id).length, 1);
+  assert.equal(reopened.listMeetingAudioClockAnchors(recording.id).length, 14);
   assert.equal(reopened.getMeetingRunSpeakerCorrections(runId)[0].displayName, "Manual");
   assert.equal(reopened.getMeetingPlatformCoverage(recording.id)?.state, "complete");
 });
@@ -97,16 +100,16 @@ test("clock ranges bind by generation/frame count despite delivery reorder; SQLi
   collector.recordClock(anchor.clock);
   collector.bindClock(anchor.clock.generation, 0, 0);
   assert.equal(db.listMeetingAudioClockAnchors(recording.id).length, 0);
-  collector.recordDeliveredFrames(anchor.clock.generation, 48_000);
+  collector.recordDeliveredFrames(anchor.clock.generation, 24_000);
   await collector.stop();
-  assert.equal(db.listMeetingAudioClockAnchors(recording.id)[0].clock.endFrame, 48_000);
+  assert.equal(db.listMeetingAudioClockAnchors(recording.id)[0].clock.endFrame, 24_000);
   const failed = new ZoomSpeakerCollector(recording.id, { ...db,
     saveMeetingZoomObservation: () => { throw new Error("disk"); },
     saveMeetingAudioClockAnchor: () => { throw new Error("disk"); },
     setMeetingPlatformCoverage: (id, coverage) => db.setMeetingPlatformCoverage(id, coverage),
   });
   failed.bindClock(anchor.clock.generation, 0, 0);
-  failed.recordDeliveredFrames(anchor.clock.generation, 48_000);
+  failed.recordDeliveredFrames(anchor.clock.generation, 24_000);
   failed.recordClock(anchor.clock);
   await failed.stop();
   assert.equal(db.getMeetingPlatformCoverage(recording.id)?.reason, "metadata-write-failed");
@@ -138,9 +141,9 @@ test("failed evidence transaction saves neither accepted name nor decisions and 
   const db = createDb(t);
   if (!db) return;
   const { recording, runId } = finished(db);
-  const { observation, anchor, decision } = evidence(recording.id);
-  db.saveMeetingZoomObservation(observation);
-  db.saveMeetingAudioClockAnchor(anchor);
+  const { observations, anchors, decision } = evidence(recording.id);
+  observations.forEach((o) => db.saveMeetingZoomObservation(o));
+  anchors.forEach((a) => db.saveMeetingAudioClockAnchor(a));
   db.db.exec("CREATE TRIGGER reject_platform_decisions BEFORE INSERT ON meeting_run_platform_decisions BEGIN SELECT RAISE(ABORT, 'fixture disk failure'); END;");
   assert.throws(() => db.applyMeetingPlatformDecisions(runId, 0, [decision]), /fixture disk failure/);
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(runId), []);
@@ -176,4 +179,56 @@ test("metadata failure preserves the original mic/system files, not just recordi
   const final = db.finalizeMeetingRecording(recording.id, { captureState: "ready", endedAt: new Date(Date.parse(recording.startedAt) + 100).toISOString() });
   assert.equal(final.recording.captureState, "ready");
   for (let index = 0; index < paths.length; index++) assert.deepEqual(fs.readFileSync(paths[index]), originals[index]);
+});
+
+
+test("Pause/Resume uses the real shared multipart map and retains evidence IDs in atomic corrections", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const first = finished(db);
+  db.setMeetingProcessingRunState(first.runId, { stage: "summary", status: "complete" });
+  const second = finished(db, first.note.id, "2026-09-30T10:01:00.000Z");
+  db.setMeetingProcessingRunState(second.runId, { stage: "summary", status: "complete" });
+  const firstEvidence = zoomSpeakerFixture(first.recording.id);
+  const secondEvidence = zoomSpeakerFixture(second.recording.id);
+  const observations = [
+    ...firstEvidence.observations.filter((o) => BigInt(o.readStartHostNs) < 4000000000n),
+    ...secondEvidence.observations.filter((o) => BigInt(o.readStartHostNs) >= 5000000000n),
+  ];
+  observations.forEach((o) => db.saveMeetingZoomObservation(o));
+  const anchors = [...firstEvidence.anchors, ...secondEvidence.anchors];
+  anchors.forEach((a) => db.saveMeetingAudioClockAnchor(a));
+  const run = db.createMeetingProcessingRun(first.recording.id, { kind: "reprocess", config: db.getMeetingProcessingRun(first.runId)!.config, sourceRecordingIds: [first.recording.id, second.recording.id] });
+  assert.equal(db.claimMeetingProcessingRun(run.id, "2026-09-30T10:02:00.000Z"), true);
+  const { epochs, partOffsets } = composeMeetingAudioParts([db.getMeetingRecording(first.recording.id)!, db.getMeetingRecording(second.recording.id)!], (id) => db.listMeetingRecordingEpochs(id));
+  assert.equal(partOffsets[1].startFrame, 14 * 24_000);
+  const transcript = { text: "Speech", segments: [firstEvidence.transcript.segments[0], ...secondEvidence.transcript.segments.slice(1).map((s) => ({ ...s, start: s.start + 14, end: s.end + 14 }))] };
+  const decisions = matchZoomSpeakers({ observations, anchors, epochs, partOffsets, transcript });
+  assert.ok(decisions.every((d) => d.status === "accepted"));
+  assert.equal(decisions[1].intervals[0].start, 19.01);
+  assert.equal(db.applyMeetingPlatformDecisions(run.id, 0, decisions), true);
+  assert.equal(db.getMeetingRunSpeakerCorrections(run.id)[0].source, "platform");
+  const bad = { ...decisions[0], observationIds: [randomUUID()] };
+  assert.equal(db.applyMeetingPlatformDecisions(run.id, 1, [bad]), false);
+  assert.equal(db.getMeetingRunSpeakerCorrectionRevision(run.id), 1);
+});
+
+test("decision policy cutover preserves previous run evidence without inventing a measurement or heuristic", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const { recording, runId } = finished(db);
+  const { observation, anchor } = evidence(recording.id);
+  const historical = { speakerId: "system:fixture", displayName: "Synthetic Guest", status: "rejected", reason: "uncalibrated-timing", observationIds: [observation.id], clockAnchorIds: [anchor.id], intervals: [{ start: 1, end: 1.01 }], measurementId: null, calibration: null };
+  db.db.prepare("INSERT INTO meeting_run_platform_decisions (run_id, decisions_json) VALUES (?, ?)").run(runId, JSON.stringify([historical]));
+  db.close();
+  const reopened = new DatabaseManager();
+  t.after(() => reopened.close());
+  const decisions = reopened.getMeetingRunPlatformDecisions(runId);
+  assert.equal(decisions[0].reason, "uncalibrated-timing");
+  assert.equal(decisions[0].timingPolicy, null);
+  assert.deepEqual(decisions[0].observationIds, historical.observationIds);
+  const stored = reopened.db.prepare("SELECT decisions_json FROM meeting_run_platform_decisions WHERE run_id = ?").get(runId) as { decisions_json: string };
+  assert.equal(JSON.parse(stored.decisions_json)[0].calibration, null);
+  assert.equal(reopened.applyMeetingPlatformDecisions(runId, 0, [{ ...decisions[0], status: "accepted" }]), false);
+  assert.deepEqual(reopened.getMeetingRunSpeakerCorrections(runId), []);
 });

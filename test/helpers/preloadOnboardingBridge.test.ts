@@ -5,14 +5,14 @@ const test: typeof import("node:test") = require("node:test");
 const vm: typeof import("node:vm") = require("node:vm");
 
 function loadPreloadApi() {
-  let exposedApi: { setOnboardingActive(active: boolean): Promise<unknown>; markMacAccessibilityFeaturesReady?: unknown } | undefined;
+  let exposedApi: { setOnboardingActive(active: boolean): Promise<unknown>; setTimeFormat(format: "locale" | "12h" | "24h"): Promise<unknown>; markMacAccessibilityFeaturesReady?: unknown } | undefined;
   const invocations: unknown[] = [];
   const sends: unknown[] = [];
   const listeners = new Map();
   const ipcRenderer = {
     invoke: async (channel: string, ...args: unknown[]) => {
       invocations.push([channel, ...args]);
-      return true;
+      return channel === "set-time-format" ? { success: true } : true;
     },
     on: (channel: string, listener: unknown) => listeners.set(channel, listener),
     removeListener: (channel: string, listener: unknown) => {
@@ -61,4 +61,17 @@ test("onboarding active bridge invokes only its allowlisted channel", async () =
 test("removed assistant readiness does not expose a dead IPC channel", () => {
   const { api } = loadPreloadApi();
   assert.equal(api.markMacAccessibilityFeaturesReady, undefined);
+});
+
+
+test("time format bridge sends the selected preference to main", async () => {
+  const { api, invocations } = loadPreloadApi();
+  for (const format of ["24h", "12h", "locale"] as const) {
+    await api.setTimeFormat(format);
+  }
+  assert.deepEqual(invocations, [
+    ["set-time-format", "24h"],
+    ["set-time-format", "12h"],
+    ["set-time-format", "locale"],
+  ]);
 });

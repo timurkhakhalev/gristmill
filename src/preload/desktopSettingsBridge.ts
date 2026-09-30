@@ -163,6 +163,7 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
     getUiLanguage: () => getKey(desktopSettingsChannels.getUiLanguage),
     saveUiLanguage: (language) =>
       invokeParse(uiLanguageResultSchema, desktopSettingsChannels.saveUiLanguage, language),
+    setTimeFormat: (format) => invokeParse(simpleSuccessSchema, desktopSettingsChannels.setTimeFormat, format),
     setUiLanguage: (language) =>
       invokeParse(uiLanguageResultSchema, desktopSettingsChannels.setUiLanguage, language),
     getLogLevel: () =>

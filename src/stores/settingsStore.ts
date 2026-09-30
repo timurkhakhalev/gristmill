@@ -1251,6 +1251,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setTimeFormat: (format) => {
     if (isBrowser) localStorage.setItem("timeFormat", format);
     set({ timeFormat: format });
+    if (isBrowser) void window.electronAPI?.setTimeFormat?.(format).catch((error: Error) => {
+      logger.warn("Failed to sync time format", { error: error.message }, "settings");
+    });
   },
   useLocalWhisper: readBoolean("useLocalWhisper", false),
   whisperModel: readString("whisperModel", "base"),
@@ -2403,6 +2406,12 @@ export async function initializeSettings(): Promise<void> {
   const state = useSettingsStore.getState();
 
   if (window.electronAPI) {
+    try {
+      await window.electronAPI.setTimeFormat?.(state.timeFormat);
+    } catch (error) {
+      logger.warn("Failed to sync time format", { error: (error as Error).message }, "settings");
+    }
+
     try {
       const [
         openai,

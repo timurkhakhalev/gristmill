@@ -258,6 +258,7 @@ export const desktopSettingsChannels = {
   getUiLanguage: "get-ui-language",
   saveUiLanguage: "save-ui-language",
   setUiLanguage: "set-ui-language",
+  setTimeFormat: "set-time-format",
   getLogLevel: "get-log-level",
   log: "app-log",
   getDebugState: "get-debug-state",
@@ -358,6 +359,7 @@ export interface DesktopSettingsApi extends ByokKeySurface {
   }): Promise<void>;
   getUiLanguage(): Promise<string>;
   saveUiLanguage(language: string): Promise<UiLanguageWireResult>;
+  setTimeFormat(format: "locale" | "12h" | "24h"): Promise<{ success: boolean }>;
   setUiLanguage(language: string): Promise<UiLanguageWireResult>;
   getLogLevel(): Promise<string>;
   log(entry: {

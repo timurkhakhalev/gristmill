@@ -1603,7 +1603,10 @@
         "inactive": "Non démarré",
         "writingToDisk": "Écriture sur le disque",
         "incompleteReason": "Une partie de l’audio peut manquer. L’audio sauvegardé avant le problème est conservé.",
-        "failedReason": "Vérifiez les autorisations du micro et de l'audio système, puis réessayez."
+        "failedReason": "Vérifiez les autorisations du micro et de l'audio système, puis réessayez.",
+        "details": "Détails de l’enregistrement",
+        "outputDevice": "Sortie audio",
+        "deviceNameUnavailable": "Nom de l’appareil indisponible"
       },
       "summaryEmptyTitle": "Pas encore de résumé",
       "summaryEmptyDescription": "Le résumé apparaîtra ici une fois l'enregistrement transcrit.",
@@ -2365,7 +2368,9 @@
     "autoSummarySkipped": "Résumé automatique ignoré",
     "autoSummarySkippedReason": "Le résumé automatique nécessite au moins 180 secondes d’audio enregistré et 2 500 caractères de transcription. Cette réunion dure {{seconds}} secondes et contient {{chars}} caractères. Vous pouvez créer un résumé manuellement maintenant.",
     "calendarParticipantsInvalid": "Les données enregistrées des participants du calendrier sont invalides. Corrigez-les avant de réessayer.",
-    "calendarParticipantsNamingSkipped": "L’attribution automatique des noms aux intervenants a été ignorée. La transcription et le résumé restent disponibles."
+    "calendarParticipantsNamingSkipped": "L’attribution automatique des noms aux intervenants a été ignorée. La transcription et le résumé restent disponibles.",
+    "transcribeAndSummary": "Transcrire et résumer",
+    "summary": "Résumé"
   },
   "shortcutsDialog": {
     "title": "Raccourcis clavier",

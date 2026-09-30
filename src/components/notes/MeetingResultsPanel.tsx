@@ -24,7 +24,7 @@ import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { composeMockSummary, type MockPipeline } from "./meetingMock";
 
 type ViewMode = "raw" | "enhanced";
-type RunChoice = { kind: "reprocess" | "summary"; partId?: string };
+type RunChoice = { kind: "reprocess" | "summary"; partId?: string; generateSummary?: boolean };
 export interface SummaryActionState {
   available: boolean;
   isGenerating: boolean;
@@ -386,6 +386,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     ? "bb"
     : selected?.run.config?.summary?.provider ?? "";
   const savedSummary = selected?.summary?.text;
+  const hasSavedSummary = Boolean(fallbackText.enhanced.trim()) || recordings.some((part) => part.runs.some((item) => item.run.hasSummary));
   const summaryText = savedSummary && mock ? composeMockSummary(savedSummary, mock.tasks, mock.recap) : savedSummary;
   const speakerCorrectionRevision = selected?.speakerCorrections.reduce((sum, correction) => sum + correction.revision, 0) ?? 0;
   const summaryIsStale = selected?.summary?.speakerCorrectionRevision !== undefined &&
@@ -471,7 +472,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       .filter((item) => selected.run.sourceRecordingIds.includes(item.recording.id))
       .reduce((duration, item) => duration + (item.recording.durationSeconds ?? 0), 0)
     : 0;
-  const showShortTranscriptNotice = !previewRecordings && selected?.run.kind !== "summary" &&
+  const showShortTranscriptNotice = !previewRecordings && selected?.run.config?.generateSummary !== false && selected?.run.kind !== "summary" &&
     selected?.run.status === "complete" && selected.run.stage === "summary" && !selected.summary &&
     !selected.run.hasSummary && Boolean(selected.transcript?.text.trim()) &&
     (selectedTranscriptDuration < 180 || selectedTranscriptCharacters < 2500);
@@ -554,7 +555,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   };
 
   /** Starts a run with the settings-selected providers; no per-run picker. */
-  const openRun = (kind: "reprocess" | "summary", target: { partId?: string } = {}) => {
+  const openRun = (kind: "reprocess" | "summary", target: { partId?: string; generateSummary?: boolean } = {}) => {
     if (kind === "summary" && !previewRecordings && (!selected?.transcript?.text.trim() || captureBlocksAsr)) return;
     if (kind === "reprocess") {
       const targetGroupIds = target.partId
@@ -573,10 +574,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       : "";
     const savedConfig = (choice.kind === "summary" ? versions.find((item) => item.run.id === sourceRunIdForKind) : selected)?.run.config;
     await initializeActions();
-    const snapshot = snapshotMeetingRecordingConfig(choice.kind === "summary" ? savedConfig?.transcription : undefined);
+    const snapshot = snapshotMeetingRecordingConfig(choice.kind === "summary" ? savedConfig?.transcription : undefined, choice.generateSummary);
     const baseConfig = snapshot.config;
     if (!baseConfig) throw new Error(snapshot.configError?.code || "processing-config-missing");
-    const config: MeetingProcessingConfig = { ...baseConfig };
+    const config: MeetingProcessingConfig = { ...baseConfig, ...(choice.generateSummary === undefined ? {} : { generateSummary: choice.generateSummary }) };
     const ids = choice.partId ? [choice.partId] : recordings
       .filter((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))
       .sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt))
@@ -810,7 +811,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
           </div>)}
           </section>})}
           </div>
-          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <Button size="sm" variant="secondary" className="mt-2 w-full shrink-0 gap-1.5" isDisabled={busy || wholeMeetingAsrBlocked} onPress={() => openRun("reprocess")}><MessageSquareText size={13}/>{tr("processWholeMeeting", "Transcribe")}</Button>}
+          {audioGroups.some((group) => group.parts.some((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))) && <div className="mt-2 flex shrink-0 gap-2">
+            <Button size="sm" variant="secondary" className="flex-1 gap-1.5" isDisabled={busy || wholeMeetingAsrBlocked} onPress={() => openRun("reprocess", { generateSummary: !hasSavedSummary })}><MessageSquareText size={13}/>{hasSavedSummary ? tr("processWholeMeeting", "Transcribe") : tr("transcribeAndSummary", "Transcribe & Summary")}</Button>
+            {hasSavedSummary && <Button size="sm" variant="secondary" className="flex-1 gap-1.5" isDisabled={busy || captureBlocksAsr || summaryAction.isGenerating || !selected?.transcript?.text.trim()} onPress={() => openRun("summary")}><WandSparkles size={13}/>{tr("summary", "Summary")}</Button>}
+          </div>}
           </>}
         </Popover.Dialog></Popover.Content>
       </Popover>

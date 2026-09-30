@@ -1500,7 +1500,10 @@
         "inactive": "未開始",
         "writingToDisk": "ディスクに書き込み中",
         "incompleteReason": "音声が一部欠けている可能性があります。問題発生前に保存された音声は保持されます。",
-        "failedReason": "マイクとシステム音声の権限を確認してから、もう一度お試しください。"
+        "failedReason": "マイクとシステム音声の権限を確認してから、もう一度お試しください。",
+        "details": "録音の詳細",
+        "outputDevice": "音声出力",
+        "deviceNameUnavailable": "デバイス名を取得できません"
       },
       "summaryEmptyTitle": "まだ要約はありません",
       "summaryEmptyDescription": "録音の文字起こしが終わると、ここに要約が表示されます。",
@@ -2365,7 +2368,9 @@
     "autoSummarySkipped": "自動要約をスキップしました",
     "autoSummarySkippedReason": "自動要約には録音時間180秒以上、文字起こし2,500文字以上が必要です。この会議は{{seconds}}秒、{{chars}}文字です。今すぐ手動で要約を作成できます。",
     "calendarParticipantsInvalid": "保存されたカレンダー参加者データが無効です。再試行する前に修正してください。",
-    "calendarParticipantsNamingSkipped": "話者名の自動設定をスキップしました。文字起こしと要約は引き続き利用できます。"
+    "calendarParticipantsNamingSkipped": "話者名の自動設定をスキップしました。文字起こしと要約は引き続き利用できます。",
+    "transcribeAndSummary": "文字起こしと要約",
+    "summary": "要約"
   },
   "shortcutsDialog": {
     "title": "キーボードショートカット",

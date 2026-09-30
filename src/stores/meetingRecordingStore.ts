@@ -1366,10 +1366,10 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         }
       };
       void refreshOutputDevice();
-      navigator.mediaDevices.addEventListener?.("devicechange", refreshOutputDevice);
+      navigator.mediaDevices?.addEventListener?.("devicechange", refreshOutputDevice);
       ipcCleanups.push(() => {
         outputLookup += 1;
-        navigator.mediaDevices.removeEventListener?.("devicechange", refreshOutputDevice);
+        navigator.mediaDevices?.removeEventListener?.("devicechange", refreshOutputDevice);
       });
       if (recovery) ipcCleanups.push(useSettingsStore.subscribe((settings, previousSettings) => {
         if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return;

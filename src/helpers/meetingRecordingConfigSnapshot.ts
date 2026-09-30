@@ -17,7 +17,7 @@ const credentialRefForProvider = (provider: string): string | undefined => {
   return BYOK_API_KEYS.find((entry) => entry.base === provider)?.env;
 };
 
-export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingProcessingConfig["transcription"]): {
+export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingProcessingConfig["transcription"], generateSummary?: boolean): {
   config: MeetingProcessingConfig | null;
   configError: MeetingProcessingConfigError | null;
 } {
@@ -60,6 +60,16 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
 
   if (!transcription) {
     return { config: null, configError: { code: "unsupported-transcription-route" } };
+  }
+
+  if (generateSummary === false) {
+    const parsed = meetingRecordingConfigInputSchema.safeParse({
+      config: { transcription, generateSummary, selfDisplayName: state.profileName.trim() || i18n.t("profile.selfLabel", { lng: state.uiLanguage }) },
+      configError: null,
+    });
+    return parsed.success
+      ? { config: parsed.data.config, configError: null }
+      : { config: null, configError: { code: "invalid-processing-config" } };
   }
 
   const formatting = selectResolvedNoteFormatting(state);
@@ -124,7 +134,7 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
   }
 
   const parsed = meetingRecordingConfigInputSchema.safeParse({
-    config: { transcription, summary, selfDisplayName: state.profileName.trim() || i18n.t("profile.selfLabel", { lng: state.uiLanguage }) },
+    config: { transcription, summary, generateSummary, selfDisplayName: state.profileName.trim() || i18n.t("profile.selfLabel", { lng: state.uiLanguage }) },
     configError: null,
   });
   return parsed.success

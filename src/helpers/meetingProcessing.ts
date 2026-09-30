@@ -889,10 +889,8 @@ export class MeetingProcessingWorker {
   ): Promise<void> {
     const current = this.requireCurrentRun(run.id);
     if (current.hasSummary) return this.setState(run.id, "summary", "complete", null, null);
-    if (this.isCapturing()) return this.pause(run, "summary");
+    if (this.isCapturing()) return this.pause(run, "normalize");
     const config = this.requireConfig(run);
-    if (config.generateSummary === false && run.kind !== "summary") return this.setState(run.id, "summary", "complete", null, null);
-    if (!config.summary) return this.setState(run.id, "summary", "blocked", "missing-summary-config", null);
     const sourceRunId = run.kind === "summary" ? run.sourceRunId : run.id;
     if (!sourceRunId) throw new MeetingProcessingFailure("summary-transcript-missing", "blocked");
     if (!this.isSelectedRun(run)) {
@@ -903,8 +901,17 @@ export class MeetingProcessingWorker {
       this.cancelRun(run.id, "meeting-audio-changed");
       return;
     }
-    this.getOrCreateLlmSourceSnapshot(run, recording, sourceRunId, transcript);
-    if (signal.aborted || this.isCapturing()) return this.pause(run, "summary");
+    if (config.summary) {
+      const snapshot = this.getOrCreateLlmSourceSnapshot(run, recording, sourceRunId, transcript);
+      await this.nameUnknownSpeakers(run, recording, sourceRunId, transcript, snapshot, signal);
+    }
+    if (signal.aborted || this.isCapturing()) return this.pause(run, "normalize");
+    if (!this.isSelectedRun(run) || (run.kind === "initial" && !this.isCurrentNoteAudioVersion(run))) {
+      this.cancelRun(run.id, "processing-run-stale");
+      return;
+    }
+    if (config.generateSummary === false) return this.setState(run.id, "summary", "complete", null, null);
+    if (!config.summary) return this.setState(run.id, "summary", "blocked", "missing-summary-config", null);
     this.setState(run.id, "summary", "pending", null, null);
   }
 
@@ -929,24 +936,12 @@ export class MeetingProcessingWorker {
       return;
     }
 
-    let snapshot = this.refreshLlmSnapshotSpeakerState(
+    const snapshot = this.refreshLlmSnapshotSpeakerState(
       run.id,
       sourceRunId,
       transcript,
       this.getOrCreateLlmSourceSnapshot(run, recording, sourceRunId, transcript)
     );
-    await this.nameUnknownSpeakers(run, recording, sourceRunId, transcript, snapshot, signal);
-    if (signal.aborted) return;
-    if (this.isCapturing()) return this.pause(run, "summary");
-    if (!this.isSelectedRun(run)) {
-      this.cancelRun(run.id, "processing-run-stale");
-      return;
-    }
-    if (run.kind === "initial" && !this.isCurrentNoteAudioVersion(run)) {
-      this.cancelRun(run.id, "meeting-audio-changed");
-      return;
-    }
-    snapshot = this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
     const note = this.deps.database.getNote(recording.noteId);
     if (!note || hashText(note.content) !== snapshot.manualNoteRevision || note.title !== snapshot.meetingTitle) {
       throw new MeetingProcessingFailure("summary-source-changed", "failed");

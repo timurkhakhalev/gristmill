@@ -71,12 +71,12 @@ test("meeting summary snapshots the selected bb harness, model and reasoning lev
 });
 
 
-test("transcription-only config does not require a Summary action or provider", async (t: import("node:test").TestContext) => {
+test("transcription-only config includes the naming model without requesting Summary", async (t: import("node:test").TestContext) => {
   const vite = await createRendererServer(t, {
     mockModules: {
       "/stores/settingsStore.js": `export function getSettings() { return { profileName: "Timur", preferredLanguage: "en", uiLanguage: "en" }; }`,
-      "/config/settingsSelectors.js": `export function selectResolvedMeetingTranscription() { throw new Error("use saved route"); } export function selectResolvedNoteFormatting() { throw new Error("Summary route must not be read"); }`,
-      "/stores/actionStore.js": `export function getActions() { throw new Error("Summary actions must not be read"); }`,
+      "/config/settingsSelectors.js": `export function selectResolvedMeetingTranscription() { throw new Error("use saved route"); } export function selectResolvedNoteFormatting() { return { mode: "providers", provider: "openai", model: "gpt-4o-mini" }; }`,
+      "/stores/actionStore.js": `export function getActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Summary instruction" }]; }`,
     },
   });
   const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule("/helpers/meetingRecordingConfigSnapshot.ts");
@@ -84,6 +84,6 @@ test("transcription-only config does not require a Summary action or provider", 
   const result = snapshotMeetingRecordingConfig(transcription, false);
   assert.equal(result.configError, null);
   assert.equal(result.config.generateSummary, false);
-  assert.equal(result.config.summary, undefined);
+  assert.equal(result.config.summary.provider, "openai");
   assert.deepEqual(result.config.transcription, transcription);
 });

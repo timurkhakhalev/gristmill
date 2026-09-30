@@ -894,14 +894,14 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
     ],
   });
   assert.equal(db.setMeetingRunArtifact(sourceRun.id, "transcript").success, true);
-  db.setMeetingProcessingRunState(sourceRun.id, { stage: "summary", status: "cancelled" });
+  db.setMeetingProcessingRunState(sourceRun.id, { stage: "normalize", status: "pending", retryAt: null });
 
   let namingInput: unknown;
   let summaryInput = "";
   const worker = workerFor(db, storage, {
     nameSpeakers: async (input, _config, run) => {
       namingInput = input;
-      assert.equal(run.kind, "summary");
+      assert.equal(run.kind, "initial");
       assert.equal(db.setMeetingRunSpeakerCorrection(sourceRun.id, "speaker_a", null, "User correction", "user").success, true);
       return [
         { speakerId: "speaker_a", name: "Model Alice" },
@@ -914,6 +914,8 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
     },
   });
   t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
   const manual = worker.createRun({ recordingId: recording.id, kind: "summary", sourceRunId: sourceRun.id, config: validConfig });
   worker.onRetentionReady();
   await worker.waitForIdle();
@@ -956,7 +958,7 @@ test("malformed calendar participants stay visible while eligible automatic Summ
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const { note, run } = createFinishedRecording(db, storage, validConfig, "", false, 180);
   saveTranscriptArtifact(db, storage, run.id, "x".repeat(2500));
-  db.setMeetingProcessingRunState(run.id, { stage: "summary", status: "pending", retryAt: null });
+  db.setMeetingProcessingRunState(run.id, { stage: "normalize", status: "pending", retryAt: null });
   db.db.prepare("UPDATE notes SET participants = ? WHERE id = ?").run("{", note.id);
   let namingCalls = 0;
   let summaryCalls = 0;
@@ -985,7 +987,7 @@ test("participant data corrupted during naming records the error and keeps manua
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const { note, recording, run: sourceRun } = createFinishedRecording(db, storage, validConfig);
   saveTranscriptArtifact(db, storage, sourceRun.id, "A short transcript with an unknown speaker.");
-  db.setMeetingProcessingRunState(sourceRun.id, { stage: "summary", status: "cancelled" });
+  db.setMeetingProcessingRunState(sourceRun.id, { stage: "normalize", status: "pending", retryAt: null });
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
     nameSpeakers: async () => {
@@ -995,6 +997,8 @@ test("participant data corrupted during naming records the error and keeps manua
     summarize: async () => { summaryCalls += 1; return "## TLDR\nSummary."; },
   });
   t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
   const summary = worker.createRun({ recordingId: recording.id, kind: "summary", sourceRunId: sourceRun.id, config: validConfig });
   worker.onRetentionReady();
   await worker.waitForIdle();
@@ -1003,7 +1007,7 @@ test("participant data corrupted during naming records the error and keeps manua
   assert.ok(completed);
   assert.equal(completed.status, "complete");
   assert.equal(completed.errorCode, null);
-  assert.equal(completed.speakerNamingErrorCode, "calendar-participants-invalid");
+  assert.equal(db.getMeetingProcessingRun(sourceRun.id).speakerNamingErrorCode, "calendar-participants-invalid");
   assert.equal(completed.hasSummary, true);
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(sourceRun.id), []);
   assert.equal(summaryCalls, 1);
@@ -1015,7 +1019,7 @@ test("validated speaker names persist model provenance and both Summary stages u
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const { note, recording, run: sourceRun } = createFinishedRecording(db, storage, validConfig, "Notes stay here.");
   saveTranscriptArtifact(db, storage, sourceRun.id, "Alice introduces herself.", "speaker_0");
-  db.setMeetingProcessingRunState(sourceRun.id, { stage: "summary", status: "cancelled" });
+  db.setMeetingProcessingRunState(sourceRun.id, { stage: "normalize", status: "pending", retryAt: null });
   const namingInputs: unknown[] = [];
   let summaryInput = "";
   const worker = workerFor(db, storage, {
@@ -1029,6 +1033,8 @@ test("validated speaker names persist model provenance and both Summary stages u
     },
   });
   t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
   const manual = worker.createRun({ recordingId: recording.id, kind: "summary", sourceRunId: sourceRun.id, config: validConfig });
   worker.onRetentionReady();
   await worker.waitForIdle();
@@ -1061,7 +1067,7 @@ test("validated speaker names persist model provenance and both Summary stages u
   }
 });
 
-test("manual Summary keeps the previously saved result visible while it names speakers and generates", async (t: import("node:test").TestContext) => {
+test("manual Summary keeps the previously saved result visible without naming speakers again", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
@@ -1081,8 +1087,9 @@ test("manual Summary keeps the previously saved result visible while it names sp
   const started = new Promise<void>((resolve) => { summaryStarted = resolve; });
   let finishSummary!: () => void;
   const response = new Promise<void>((resolve) => { finishSummary = resolve; });
+  let namingCalls = 0;
   const worker = workerFor(db, storage, {
-    nameSpeakers: async () => [{ speakerId: "speaker_0", name: "Alice" }],
+    nameSpeakers: async () => { namingCalls += 1; return [{ speakerId: "speaker_0", name: "Alice" }]; },
     summarize: async () => {
       summaryStarted();
       await response;
@@ -1098,7 +1105,8 @@ test("manual Summary keeps the previously saved result visible while it names sp
   const inProgress = worker.listForNote(note.id)[0].runs.find((item) => item.run.id === manual.run.id);
   assert.equal(inProgress?.summary?.text, previousSummary);
   assert.equal(db.getNote(note.id).enhanced_content, previousSummary);
-  assert.equal(db.getMeetingRunSpeakerCorrections(sourceRun.id)[0].source, "model");
+  assert.equal(namingCalls, 0);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(sourceRun.id), []);
 
   finishSummary();
   await worker.waitForIdle();
@@ -2185,3 +2193,82 @@ for (const [reply, status] of [["", "zero"], ['{"HIGH":["Task"]}', "format-error
     else assert.match(artifact.text, /Initial task/);
   });
 }
+
+
+test("Transcribe determines speaker names while Summary-only never repeats naming or ASR after restart", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run: initial } = createFinishedRecording(db, storage, validConfig);
+  let asrCalls = 0;
+  let namingCalls = 0;
+  let summaryCalls = 0;
+  const overrides: Partial<MeetingProcessingWorkerDeps> = {
+    now: () => new Date(Date.now() + 300_000),
+    transcribeRemote: async (_request, saveRaw) => { asrCalls += 1; await saveRaw(elevenResponse); return { success: true }; },
+    nameSpeakers: async (_input, _config, run) => {
+      namingCalls += 1;
+      assert.equal(run.kind, "reprocess");
+      assert.equal(db.getMeetingProcessingRun(run.id).hasTranscript, true);
+      return []; // No supported name: later Summary must still not repeat this request.
+    },
+    summarize: async () => { summaryCalls += 1; return "## Summary\nResult."; },
+  };
+  const worker = workerFor(db, storage, overrides);
+  t.after(() => worker.stop());
+  worker.cancelRun(initial.id);
+  const transcribe = worker.createRun({ recordingId: recording.id, kind: "reprocess", config: { ...validConfig, generateSummary: false } });
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(transcribe.run.id).status, "complete");
+  assert.equal(db.getMeetingProcessingRun(transcribe.run.id).hasSummary, false);
+  assert.equal(asrCalls, 1);
+  assert.equal(namingCalls, 1);
+  assert.equal(summaryCalls, 0);
+  worker.stop();
+
+  const restarted = workerFor(db, storage, overrides);
+  t.after(() => restarted.stop());
+  const summary = restarted.createRun({ recordingId: recording.id, kind: "summary", sourceRunId: transcribe.run.id, config: validConfig });
+  restarted.onRetentionReady();
+  await restarted.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(summary.run.id).hasSummary, true);
+  assert.equal(asrCalls, 1);
+  assert.equal(namingCalls, 1);
+  assert.equal(summaryCalls, 1);
+});
+
+
+test("capture interrupting speaker naming resumes normalization without repeating ASR", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run: initial } = createFinishedRecording(db, storage, validConfig);
+  let asrCalls = 0;
+  let namingCalls = 0;
+  const worker = workerFor(db, storage, {
+    now: () => new Date(Date.now() + 300_000),
+    transcribeRemote: async (_request, saveRaw) => { asrCalls += 1; await saveRaw(elevenResponse); return { success: true }; },
+    nameSpeakers: async (input) => {
+      namingCalls += 1;
+      if (namingCalls === 1) worker.captureStarted();
+      return [{ speakerId: input.segments[0].speakerId!, name: "Alice" }];
+    },
+    summarize: async () => { assert.fail("Transcribe must not generate Summary"); },
+  });
+  t.after(() => worker.stop());
+  worker.cancelRun(initial.id);
+  const result = worker.createRun({ recordingId: recording.id, kind: "reprocess", config: { ...validConfig, generateSummary: false } });
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(result.run.id).stage, "normalize");
+  assert.equal(db.getMeetingProcessingRun(result.run.id).status, "pending");
+  assert.equal(db.getMeetingProcessingRun(result.run.id).hasTranscript, true);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(result.run.id), []);
+  worker.captureStopped();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(result.run.id).status, "complete");
+  assert.equal(db.getMeetingRunSpeakerCorrections(result.run.id)[0].displayName, "Alice");
+  assert.equal(namingCalls, 2);
+  assert.equal(asrCalls, 1);
+});

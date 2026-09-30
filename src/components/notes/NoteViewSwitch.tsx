@@ -42,35 +42,45 @@ export default function NoteViewSwitch<T extends string>({
       {options.map((option) => {
         const Icon = option.icon;
         const active = option.id === value;
-        if (!active) {
+        if (!versionMenu?.items.length || !active) {
+          // One stable element per option, so switching animates the label's
+          // width in place instead of remounting and flashing the icon.
           return (
             <button
               key={option.id}
               type="button"
               aria-label={option.label}
-              aria-pressed={false}
+              aria-pressed={active}
               title={option.label}
               onClick={() => onChange(option.id)}
-              className={cn(SEGMENT, "w-8 justify-center text-muted hover:text-foreground")}
+              className={cn(
+                SEGMENT,
+                "overflow-hidden gap-0 transition-[padding,background-color,color,box-shadow] duration-200",
+                active
+                  ? "bg-segment px-2.5 text-segment-foreground shadow-sm"
+                  : "px-[8.5px] text-muted hover:text-foreground"
+              )}
             >
-              <Icon size={15} />
+              <Icon size={15} className={cn("shrink-0", active && "text-primary")} />
+              <span
+                aria-hidden={!active}
+                className={cn(
+                  "grid transition-[grid-template-columns,opacity] duration-200",
+                  active ? "grid-cols-[1fr] opacity-100" : "grid-cols-[0fr] opacity-0"
+                )}
+              >
+                <span className="overflow-hidden whitespace-nowrap ps-1.5">{option.label}</span>
+              </span>
             </button>
           );
         }
         const content = (
           <>
-            <Icon size={15} className="text-primary" />
-            <span className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-left-1">{option.label}</span>
+            <Icon size={15} className="shrink-0 text-primary" />
+            <span>{option.label}</span>
           </>
         );
-        const activeClass = cn(SEGMENT, "bg-segment px-2.5 text-segment-foreground shadow-sm");
-        if (!versionMenu?.items.length) {
-          return (
-            <span key={option.id} aria-current="true" className={activeClass}>
-              {content}
-            </span>
-          );
-        }
+        const activeClass = cn(SEGMENT, "overflow-hidden bg-segment px-2.5 text-segment-foreground shadow-sm");
         return (
           <Dropdown key={option.id}>
             <Button

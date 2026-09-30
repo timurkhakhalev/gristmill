@@ -70,6 +70,8 @@
     "settings": "Réglages",
     "inTime": "dans {{time}}",
     "timeLeft": "reste {{time}}",
+    "openNote": "Ouvrir la note",
+    "skipMeeting": "Ignorer cette réunion",
     "durationHoursMinutes": "{{h}} h {{m}} min",
     "durationMinutes": "{{m}} min",
     "now": "Maintenant"
@@ -1541,9 +1543,9 @@
       "couldNotRename": "Impossible de renommer le dossier",
       "couldNotDelete": "Impossible de supprimer le dossier",
       "deleteTitle": "Supprimer le dossier ?",
-      "deleteDescription": "Cette action supprimera définitivement \"{{name}}\" et ses {{count}} note(s). Cette action est irréversible.",
+      "deleteDescription": "Supprimer « {{name}} » ? Les notes resteront dans leurs autres dossiers ou seront déplacées à la racine de l’espace.",
       "deleteDescriptionEmpty": "Cette action supprimera définitivement \"{{name}}\". Cette action est irréversible.",
-      "deleteConfirm": "Supprimer le dossier et les notes"
+      "deleteConfirm": "Supprimer le dossier"
     },
     "list": {
       "title": "Notes",

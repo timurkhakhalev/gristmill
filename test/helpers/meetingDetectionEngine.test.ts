@@ -245,7 +245,6 @@ function createEngineWithNotes(existingNote: { id: number; folder_id: number | n
       saved.push([title, content]);
       return { note: { id: 42 } };
     },
-    getMeetingsFolder: () => ({ id: 7 }),
     getNoteByCalendarEventId: () => existingNote,
     getCalendarEventById: (id: string) =>
       id === "evt-1" ? { id: "evt-1", summary: "Design review", attendees: "[]" } : null,
@@ -273,7 +272,7 @@ test("an event's note is created only on request, with the user's first input", 
   assert.equal(engine.findCalendarEventNote("evt-1"), null);
   assert.deepEqual(saved, []);
 
-  assert.deepEqual(engine.createCalendarEventNote("evt-1", { content: "First line" }), { noteId: 42, folderId: 7 });
+  assert.deepEqual(engine.createCalendarEventNote("evt-1", { content: "First line" }), { noteId: 42, folderId: null });
   assert.deepEqual(saved, [["Design review", "First line"]]);
   assert.deepEqual(updates, [[42, { calendar_event_id: "evt-1", participants: "[]" }]]);
   // Recording starts only through meeting navigation; creating must not queue it.
@@ -314,7 +313,6 @@ test("an event's note stores attendees under their best-known names", () => {
     { notificationPrefs: {} },
     {
       saveNote: () => ({ note: { id: 1 } }),
-      getMeetingsFolder: () => ({ id: 2 }),
       getNoteByCalendarEventId: () => null,
       getCalendarEventById: () => ({
         id: "evt-1",

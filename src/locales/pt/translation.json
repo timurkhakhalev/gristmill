@@ -70,6 +70,8 @@
     "settings": "Configurações",
     "inTime": "em {{time}}",
     "timeLeft": "resta {{time}}",
+    "openNote": "Abrir nota",
+    "skipMeeting": "Ignorar esta reunião",
     "durationHoursMinutes": "{{h}} h {{m}} min",
     "durationMinutes": "{{m}} min",
     "now": "Agora"
@@ -1465,9 +1467,9 @@
       "couldNotRename": "Não foi possível renomear a pasta",
       "couldNotDelete": "Não foi possível excluir a pasta",
       "deleteTitle": "Excluir pasta?",
-      "deleteDescription": "Isso excluirá permanentemente \"{{name}}\" e suas {{count}} nota(s). Esta ação não pode ser desfeita.",
+      "deleteDescription": "Excluir «{{name}}»? As notas permanecerão nas outras pastas ou serão movidas para a raiz do espaço.",
       "deleteDescriptionEmpty": "Isso excluirá permanentemente \"{{name}}\". Esta ação não pode ser desfeita.",
-      "deleteConfirm": "Excluir pasta e notas"
+      "deleteConfirm": "Excluir pasta"
     },
     "list": {
       "title": "Notas",

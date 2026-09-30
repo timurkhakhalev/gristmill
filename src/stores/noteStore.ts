@@ -181,7 +181,9 @@ function ensureIpcListeners() {
         extra.notes = teardown.notesByContainer[contextContainerKey(fallbackContext)] ?? [];
       }
       useNoteStore.setState({ notesByContainer: teardown.notesByContainer, ...extra });
-      if (fallbackContext) void ensureContainerLoaded(contextContainerKey(fallbackContext));
+      const deletedFolder = state.folders.find((folder) => folder.id === id);
+      const rootSpaceId = deletedFolder?.space_id ?? fallbackContext?.spaceId;
+      if (rootSpaceId != null) void loadContainerNotes(spaceContainerKey(rootSpaceId));
       void loadFolders();
     });
     if (typeof dispose === "function") {
@@ -505,14 +507,12 @@ export async function deleteFolder(id: number): Promise<{ success: boolean; erro
   });
 
   await loadFolders();
+  if (folder) await loadContainerNotes(spaceContainerKey(folder.space_id));
   if (getActiveFolderIdValue() === id && folder) {
-    const { folders } = useNoteStore.getState();
-    const spaceFolders = folders.filter((f) => f.space_id === folder.space_id);
-    const fallback = findDefaultFolder(spaceFolders) ?? spaceFolders[0];
-    setActiveContext(folder.space_id, fallback?.id ?? null);
+    setActiveContext(folder.space_id, null);
     if (getActiveNoteIdValue() == null) {
       const notes = await ensureContainerLoaded(
-        fallback ? folderContainerKey(fallback.id) : spaceContainerKey(folder.space_id)
+        spaceContainerKey(folder.space_id)
       );
       if (notes.length > 0) setActiveNoteId(notes[0].id);
     }

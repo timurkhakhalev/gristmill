@@ -167,10 +167,9 @@ test("getNotes with a space filters to root notes; getNotesForSpace includes fol
   const db = createDb(t);
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
-  const folderId = db.getMeetingsFolder(spaceId).id;
+  const folderId = db.createFolder("Meetings", spaceId).folder.id;
   const folderNote = db.saveNote("InFolder", "", "meeting", null, null, folderId, null).note;
-  // A true space-root note has folder_id NULL; saveNote assigns a default
-  // folder, so clearing it here is the only way to reach that state.
+  // Notes without a folder live at the space root.
   const rootNote = db.saveNote("Root", "", "personal", null, null, null, spaceId).note;
   assert.ok(db.updateNote(rootNote.id, { folder_id: null }).success);
 
@@ -184,17 +183,18 @@ test("getNotes with a space filters to root notes; getNotesForSpace includes fol
   db.close();
 });
 
-test("save assigns the default folder by note type and the passed folder wins over space", (t: import("node:test").TestContext) => {
+test("save keeps notes at the space root unless a folder is passed", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
+  db.createFolder("Meetings", spaceId);
   const folders = Object.fromEntries(db.getFolders(spaceId).map((f: any) => [f.name, f.id]));
 
   const meeting = db.saveNote("M", "", "meeting").note;
   const personal = db.saveNote("P", "", "personal").note;
-  assert.equal(meeting.folder_id, folders.Meetings);
+  assert.equal(meeting.folder_id, null);
   assert.equal(meeting.space_id, spaceId);
-  assert.equal(personal.folder_id, folders.Personal);
+  assert.equal(personal.folder_id, null);
 
   const moved = db.saveNote("X", "", "personal", null, null, folders.Meetings, null).note;
   assert.equal(moved.folder_id, folders.Meetings);
@@ -206,6 +206,7 @@ test("folder-only update derives the space; explicit space_id wins; missing fold
   const db = createDb(t);
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
+  db.createFolder("Meetings", spaceId);
   const folders = Object.fromEntries(db.getFolders(spaceId).map((f: any) => [f.name, f.id]));
   const note = db.saveNote("N", "", "personal").note;
 
@@ -229,9 +230,10 @@ test("a note can sit in several folders: listed, counted and searched in each", 
   const db = createDb(t);
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
+  db.createFolder("Meetings", spaceId);
   const folders = Object.fromEntries(db.getFolders(spaceId).map((f: any) => [f.name, f.id]));
   const extra = db.createFolder("Clients", spaceId).folder.id;
-  const note = db.saveNote("Kickoff call", "", "meeting").note;
+  const note = db.saveNote("Kickoff call", "", "meeting", null, null, folders.Meetings).note;
   assert.deepEqual(note.folder_ids, [folders.Meetings]);
 
   const linked = db.updateNote(note.id, { folder_ids: [extra, folders.Meetings] }).note;
@@ -279,6 +281,7 @@ test("moving the primary folder onto an extra folder does not list the note twic
   const db = createDb(t);
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
+  db.createFolder("Meetings", spaceId);
   const folders = Object.fromEntries(db.getFolders(spaceId).map((f: any) => [f.name, f.id]));
   const note = db.saveNote("N", "", "personal").note;
   db.updateNote(note.id, { folder_ids: [folders.Personal, folders.Meetings] });
@@ -304,8 +307,9 @@ test("searchNotes returns [] for an empty query and keeps space/folder filters",
   assert.deepEqual(db.searchNotes("   "), []);
 
   const spaceId = db.getPrivateSpaceId();
+  db.createFolder("Meetings", spaceId);
   const folders = Object.fromEntries(db.getFolders(spaceId).map((f: any) => [f.name, f.id]));
-  const hit = db.saveNote("Quarterly Roadmap", "unique_zebra_content").note;
+  const hit = db.saveNote("Quarterly Roadmap", "unique_zebra_content", "personal", null, null, folders.Personal).note;
   db.saveNote("Unrelated", "nothing to see");
 
   assert.ok(db.searchNotes("zebra").some((n: NoteItem) => n.id === hit.id));

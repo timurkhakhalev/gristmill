@@ -13,7 +13,7 @@ test("menubar keeps the current calendar meeting until its end, then shows the n
       if (request === "./debugLogger.js") return { error: () => {} };
       if (request === "./dockManager.js") return {};
       if (request === "./menuManager.js") return { MenuManager: {} };
-      if (request === "./i18nMain.js") return { i18nMain: { language: "en", t: (key: string, args: { time?: string; m?: number }) =>
+      if (request === "./i18nMain.js") return { i18nMain: { language: "en", t: (key: string, args: { time?: string; m?: number } = {}) =>
         key === "tray.inTime" ? `in ${args.time}` : key === "tray.timeLeft" ? `${args.time} left` : `${args.m}m` } };
     }
     return originalLoad.call(this, request, parent, isMain);
@@ -77,6 +77,24 @@ test("menubar keeps the current calendar meeting until its end, then shows the n
     manager.calendarSource = { getUpcomingEvents: () => [] };
     manager.updateTrayMenu();
     assert.equal(title, "");
+    const withId = (item: CalendarEventRow, id: string): CalendarEventRow => ({ ...item, provider: "google", id });
+    const nowEvent = withId(event("Now", start, end), "now");
+    manager.calendarSource = { getUpcomingEvents: () => [nowEvent, withId(event("Later", end + 10 * 60000, end + 40 * 60000), "later")] };
+    manager.menuOpen = false;
+    manager.meetingCaptureActive = false;
+    const currentItem = manager.buildCurrentMeetingItem(start + 60000);
+    assert.equal(currentItem?.label, "Now");
+    assert.equal(Array.isArray(currentItem?.submenu) && currentItem.submenu.length, 2);
+    manager.meetingCaptureActive = true;
+    assert.equal(manager.buildCurrentMeetingItem(start + 60000)?.submenu, undefined);
+    manager.meetingCaptureActive = false;
+    manager.tray = { setTitle: (value: string) => { title = value; } } as never;
+    manager.updateTrayMenu = () => {};
+    manager.skipEvent(nowEvent);
+    assert.equal(manager.buildCurrentMeetingItem(start + 60000), null);
+    manager.updateTrayTitle(start + 60000);
+    assert.equal(title, "Later • in 39m");
+    manager.skippedEvents.clear();
     let popups = 0;
     manager.tray = { popUpContextMenu: () => { popups++; } } as never;
     manager.contextMenu = {} as never;

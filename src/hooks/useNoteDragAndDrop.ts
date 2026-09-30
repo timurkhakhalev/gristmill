@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { MEETINGS_FOLDER_NAME } from "../components/notes/shared";
 import { folderContainerKey, spaceContainerKey } from "../stores/noteStore";
 
 export interface NoteMoveTarget {
@@ -17,8 +16,6 @@ export interface DraggedNoteInfo {
 }
 
 interface DropTargetInfo extends NoteMoveTarget {
-  folderName?: string;
-  isDefaultFolder?: boolean;
 }
 
 interface DragState {
@@ -161,12 +158,7 @@ export function useNoteDragAndDrop({
             : note.folderId == null && note.spaceId === target.spaceId;
         if (isSameContainer) return false;
         if (crossSpaceVetoed(note)) return false;
-        // The default Meetings folder of the note's own space stays a non-target.
-        const isOwnMeetings =
-          !!targetInfo.isDefaultFolder &&
-          targetInfo.folderName === MEETINGS_FOLDER_NAME &&
-          targetInfo.spaceId === note.spaceId;
-        return !isOwnMeetings;
+        return true;
       };
 
       return {

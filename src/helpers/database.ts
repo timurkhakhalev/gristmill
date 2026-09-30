@@ -1053,8 +1053,6 @@ export class DatabaseManager {
           "INSERT INTO folders (name, is_default, sort_order, space_id) VALUES (?, 1, ?, ?)"
         );
         insertFolder.run("Personal", 0, spaceId);
-        insertFolder.run("Meetings", 1, spaceId);
-        insertFolder.run("Videos", 2, spaceId);
       }
 
       const insertAction = this.sql.prepare(
@@ -2205,15 +2203,6 @@ export class DatabaseManager {
     `).all() as FolderNoteCountRow[];
   }
 
-  getMeetingsFolder(spaceId: number | null = null): FolderRow | null {
-    spaceId ??= this._privateSpaceId();
-    return (
-      (this.sql
-        .prepare("SELECT * FROM folders WHERE space_id = ? AND name = 'Meetings' LIMIT 1")
-        .get(spaceId) as FolderRow | undefined) || null
-    );
-  }
-
   saveTranscription(
     text: string,
     rawText: string | null = null,
@@ -2423,13 +2412,6 @@ export class DatabaseManager {
         | undefined)?.space_id ?? null;
     }
     if (!spaceId || !this.getSpace(spaceId)) throw new Error("Space not found");
-    if (folderId == null) {
-      const folderName = noteType === "meeting" ? "Meetings" : "Personal";
-      folderId =
-        (this.sql
-          .prepare("SELECT id FROM folders WHERE space_id = ? AND name = ? LIMIT 1")
-          .get(spaceId, folderName) as { id: number } | undefined)?.id ?? null;
-    }
     const result = this.sql
       .prepare(
         "INSERT INTO notes (title, content, note_type, source_file, audio_duration_seconds, folder_id, space_id) VALUES (?, ?, ?, ?, ?, ?, ?)"

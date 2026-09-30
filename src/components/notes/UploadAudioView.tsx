@@ -20,10 +20,8 @@ import { Input } from "../ui/input";
 import type { FolderItem } from "../../contracts/containers";
 import {
   findDefaultFolder,
-  findVideosFolder,
   DOWNLOAD_ERROR_KEYS,
   transcriptionErrorKey,
-  MEETINGS_FOLDER_NAME,
 } from "./shared";
 import { useSettings } from "../../hooks/useSettings";
 import {
@@ -318,9 +316,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   }, []);
 
   useEffect(() => {
-    // Uploads and URL downloads are a personal flow: scope the folder list
-    // (and the by-name "Videos" destination lookup) to the private space so a
-    // same-named team folder can never capture them.
+    // Keep upload destinations scoped to the private space.
     let cancelled = false;
     const loadFolders = async () => {
       try {
@@ -805,8 +801,6 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         fromUrl: true,
         durationSeconds: res.durationSeconds,
       });
-      const videosFolder = findVideosFolder(folders);
-      if (videosFolder) setSelectedFolderId(String(videosFolder.id));
       setState("selected");
     } catch (e) {
       setError(e instanceof Error ? e.message : t("notes.upload.urlDownloadFailed"));
@@ -838,11 +832,6 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     const { valid, skipped } = parseBatchUrls(urlInput);
     if (valid.length > 0) {
       batch.addUrls(valid);
-      // Same default the single-URL flow applies; the selector stays editable.
-      if (!batchFolderId) {
-        const videosFolder = findVideosFolder(folders);
-        if (videosFolder) setBatchFolderId(String(videosFolder.id));
-      }
       setUrlInput("");
       setUrlExpanded(false);
     }
@@ -1625,21 +1614,14 @@ function FolderSelect({
     <div className={cn("flex items-center justify-center gap-2", className)}>
       <FolderOpen size={12} className="text-muted shrink-0" />
       <SelectField
-        value={value}
-        onChange={onChange}
+        value={value || "__root__"}
+        onChange={(id) => onChange(id === "__root__" ? "" : id)}
         ariaLabel={t("notes.upload.selectFolder")}
         placeholder={t("notes.upload.selectFolder")}
         size="sm"
         options={[
-          ...folders.map((f) => {
-            const isMeetings = f.name === MEETINGS_FOLDER_NAME && !!f.is_default;
-            return {
-              id: String(f.id),
-              label: f.name,
-              disabled: isMeetings,
-              hint: isMeetings ? t("notes.folders.soon") : undefined,
-            };
-          }),
+          { id: "__root__", label: t("notes.editor.noFolder") },
+          ...folders.map((f) => ({ id: String(f.id), label: f.name })),
           ...(includeCreateNew
             ? [{ id: "__create_new__", label: t("notes.upload.newFolder"), icon: <Plus size={12} className="text-primary" />, separated: true }]
             : []),

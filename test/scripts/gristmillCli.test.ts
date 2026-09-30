@@ -72,6 +72,32 @@ test("CLI reads a profile-scoped connection and prints one JSON response", async
   assert.deepEqual(JSON.parse(stdout), { note_id: 42, content: "saved words" });
 });
 
+test("CLI exits quietly when head closes the transcript pipe early", { timeout: 10000 }, async (t: import("node:test").TestContext) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-cli-pipe-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const server = http.createServer((_request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ note_id: 42, text: "x".repeat(4 * 1024 * 1024) }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Unexpected server address");
+  fs.writeFileSync(path.join(directory, ".cli-read-connection.json"), JSON.stringify({ port: address.port, token: "test-token" }), { mode: 0o600 });
+  const child = spawn("/bin/bash", ["-o", "pipefail", "-c", '"$1" "$2" --profile "$3" notes transcript show 42 | head -c 20000', "cli-pipe", process.execPath, cli, directory], {
+    stdio: ["ignore", "pipe", "pipe"], cwd: os.tmpdir(),
+  });
+  t.after(() => child.kill());
+  let bytes = 0;
+  let stderr = "";
+  child.stdout.on("data", (chunk: Buffer) => { bytes += chunk.length; });
+  child.stderr.on("data", (chunk: Buffer) => { stderr += chunk; });
+  const code = await new Promise<number | null>((resolve, reject) => { child.on("close", resolve); child.on("error", reject); });
+  assert.equal(stderr, "");
+  assert.equal(code, 0);
+  assert.equal(bytes, 20000);
+});
+
 test("BB commands use their workspace profile regardless of the installing app channel", async (t: import("node:test").TestContext) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-cli-profiles-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

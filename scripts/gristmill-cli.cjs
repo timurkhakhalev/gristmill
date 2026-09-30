@@ -225,5 +225,11 @@ async function main() {
   }
 }
 
-if (require.main === module) void main();
+if (require.main === module) {
+  process.stdout.on("error", (error) => {
+    if (error.code === "EPIPE") process.exit(0);
+    throw error;
+  });
+  void main();
+}
 module.exports = { formatHuman };

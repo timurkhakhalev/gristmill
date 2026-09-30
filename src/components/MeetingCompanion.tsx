@@ -121,19 +121,19 @@ export default function MeetingCompanion() {
         onPointerCancel={resetPress}
         onLostPointerCapture={resetPress}
         className={cn(
-          "flex h-[88px] w-10 cursor-grab flex-col items-center justify-center gap-3 rounded-full outline-none active:cursor-grabbing",
+          "flex h-16 w-8 cursor-grab flex-col items-center justify-center gap-2.5 rounded-full outline-none active:cursor-grabbing",
           "border bg-surface-2/95 shadow-elevated backdrop-blur-xl",
           warning ? "border-warning/40" : "border-border",
           "focus-visible:ring-2 focus-visible:ring-focus"
         )}
       >
-        <AppMark className="size-5 text-foreground/85" />
-        <span className="flex h-4 items-center gap-0.75" aria-hidden="true">
+        <AppMark className="size-4 text-foreground/85" />
+        <span className="flex h-3 items-center gap-0.5" aria-hidden="true">
           {Array.from({ length: BAR_COUNT }, (_, i) => (
             <span
               key={i}
               className={cn(
-                "w-0.75 rounded-full transition-[height] duration-75",
+                "w-0.5 rounded-full transition-[height] duration-75",
                 warning ? "bg-warning" : "bg-primary"
               )}
               style={{ height: warning ? `${BAR_FLOOR}%` : barHeight(level, i) }}

@@ -327,7 +327,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     return unsubscribe;
   }, [previewRecordings, refresh]);
   useEffect(() => {
-    if (capturePhase === "saved" || capturePhase === "incomplete") void refresh();
+    if (capturePhase === "recording" || capturePhase === "saved" || capturePhase === "incomplete") void refresh();
   }, [capturePhase, refresh]);
   useEffect(() => {
     if (previewRecordings) return;
@@ -453,8 +453,8 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   }, [countdownNow, nextGroupAsrDeadline]);
   const liveWaitingSeconds = gateDeadline === null ? 0 : Math.max(0, Math.ceil((gateDeadline - countdownNow) / 1000));
   const gateSeconds = mockGateActive ? mock?.waitingSeconds ?? 0 : liveWaitingSeconds;
-  const gateActive = gateSeconds > 0;
   const captureBlocksAsr = ["preparing", "recording", "paused", "saving"].includes(capturePhase ?? "");
+  const gateActive = gateSeconds > 0 && !captureBlocksAsr;
   const reprocessGroupIds = [...new Set(recordings
     .filter((part) => part.recording.audioState === "available" && ["ready", "incomplete"].includes(part.recording.captureState))
     .map((part) => part.recording.groupId))];
@@ -839,8 +839,9 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     />}
     {mock?.asrRunning && !gateActive && <NoteNotice status="accent" busy title={`${tr("transcribing", "Transcribing audio")}…`} description={tr("transcribingReason", "The finalized recording is being transcribed.")} />}
     {mock?.namingRunning && !gateActive && <NoteNotice status="accent" busy title={`${tr("namingSpeakers", "Identifying speakers")}…`} description={tr("namingSpeakersReason", "Speaker names are proposed from the conversation. You can correct them afterwards.")} />}
-    {latestRun?.run.status === "cancelled" && latestRun.run.errorCode === "meeting-resumed" && <NoteNotice status="default" title={tr("gateCancelled", "Transcription delayed again")} description={tr("gateCancelledReason", "The meeting resumed. Transcription will start 15 seconds after its next successful Stop.")} />}
-    {latestRun && !["complete", "cancelled"].includes(latestRun.run.status) && (() => {
+    {!captureBlocksAsr && latestRun?.run.status === "cancelled" && latestRun.run.errorCode === "meeting-resumed" && <NoteNotice status="default" title={tr("gateCancelled", "Transcription delayed again")} description={tr("gateCancelledReason", "The meeting resumed. Transcription will start 15 seconds after its next successful Stop.")} />}
+    {latestRun && !["complete", "cancelled"].includes(latestRun.run.status) &&
+      !(latestRun.run.status === "pending" && (captureBlocksAsr || gateActive)) && (() => {
       const { status, stage, errorCode } = latestRun.run;
       const stageKey = stage === "asr" || stage === "summary" ? stage : "other";
       const needsConfig = status === "blocked" && Boolean(latestRun.run.configError || !latestRun.run.config || errorCode === "missing-summary-config");

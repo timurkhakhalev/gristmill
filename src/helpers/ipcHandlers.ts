@@ -98,7 +98,7 @@ import {
 import { composeMeetingAudioParts, prepareMeetingAudio } from "./meetingAudioMixer.js";
 import { recognizeMeetingSpeakers } from "./meetingSpeakerRecognition.js";
 import { createMeetingTextConversation, generateMeetingSummary } from "./meetingSummary.js";
-import { MEETING_SPEAKER_NAMING_INSTRUCTION, suggestMeetingSpeakerNames } from "./meetingSpeakerNaming.js";
+import { meetingNamingInstruction, suggestMeetingSpeakerNames } from "./meetingSpeakerNaming.js";
 import { BYOK_API_KEYS } from "../config/secretKeys.js";
 import { registerDesktopSettingsHandlers } from "./desktopSettingsIpcHandlers.js";
 import { listLocalTranscriptionModels } from "./localTranscriptionModels.js";
@@ -1255,7 +1255,8 @@ export class IPCHandlers {
       getActionPrompt: (translationKey) => this.databaseManager.getActions()
         .find((action) => action.is_builtin === 1 && action.translation_key === translationKey)?.prompt ?? null,
       nameSpeakers: async (input, summaryConfig, run, signal) => {
-        const namingConfig = { ...summaryConfig, instruction: MEETING_SPEAKER_NAMING_INSTRUCTION };
+        const instruction = meetingNamingInstruction(input);
+        const namingConfig = { ...summaryConfig, instruction };
         if (summaryConfig.reasoningMode === "agent") {
           if (!summaryConfig.agentProvider || !summaryConfig.model || !summaryConfig.agentReasoningLevel) {
             throw new Error("bb speaker naming settings are incomplete");
@@ -1264,7 +1265,7 @@ export class IPCHandlers {
             selection: { provider: summaryConfig.agentProvider, model: summaryConfig.model, reasoningLevel: summaryConfig.agentReasoningLevel },
             environment: ensureBbWorkspace(app.getPath("userData")),
             threadId: run.bbThreadId,
-            promptPrefix: MEETING_SPEAKER_NAMING_INSTRUCTION,
+            promptPrefix: instruction,
             saveThreadId: (id) => this.databaseManager.setMeetingRunBbThreadId(run.id, id),
             signal,
           });

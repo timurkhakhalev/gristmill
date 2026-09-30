@@ -140,6 +140,7 @@ export const meetingProcessingConfigSchema = z.object({
   selfDisplayName: z.string().trim().max(200).optional(),
   summary: summaryConfigSchema.nullable().optional(),
   generateSummary: z.boolean().optional(),
+  generateTitle: z.boolean().optional(),
 });
 export type MeetingProcessingConfig = z.infer<typeof meetingProcessingConfigSchema>;
 

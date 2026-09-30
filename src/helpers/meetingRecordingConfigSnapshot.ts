@@ -62,16 +62,6 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
     return { config: null, configError: { code: "unsupported-transcription-route" } };
   }
 
-  if (generateSummary === false) {
-    const parsed = meetingRecordingConfigInputSchema.safeParse({
-      config: { transcription, generateSummary, selfDisplayName: state.profileName.trim() || i18n.t("profile.selfLabel", { lng: state.uiLanguage }) },
-      configError: null,
-    });
-    return parsed.success
-      ? { config: parsed.data.config, configError: null }
-      : { config: null, configError: { code: "invalid-processing-config" } };
-  }
-
   const formatting = selectResolvedNoteFormatting(state);
   const detailedNotes = getActions().find((action) => action.translation_key === DETAILED_NOTES_KEY);
   if (!detailedNotes) return { config: null, configError: { code: "detailed-notes-action-missing" } };

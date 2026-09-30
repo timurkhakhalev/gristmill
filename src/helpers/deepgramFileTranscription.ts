@@ -88,22 +88,21 @@ export function parseDeepgramFileResponse(
       : `Speaker ${speaker + 1}`;
     if (words) {
       let turn: (typeof segments)[number] | undefined;
-      let previousStart = item.start;
       for (const value of words) {
         const word = record(value);
         const text = word?.punctuated_word ?? word?.word;
         if (!word || typeof text !== "string" || !text.trim() ||
           !Number.isInteger(word.speaker) || (word.speaker as number) < 0 ||
-          typeof word.start !== "number" || !Number.isFinite(word.start) || word.start < previousStart ||
+          typeof word.start !== "number" || !Number.isFinite(word.start) || word.start < 0 ||
           typeof word.end !== "number" || !Number.isFinite(word.end) || word.end < word.start ||
           (audioDurationSeconds !== undefined && word.start > audioDurationSeconds)) {
           return { success: false, code: "DEEPGRAM_INVALID_RESPONSE", error: "Deepgram returned invalid word speaker or timing data" };
         }
-        previousStart = word.start;
         const speaker = speakerLabel(word.speaker as number);
         const end = audioDurationSeconds === undefined ? word.end : Math.min(word.end, audioDurationSeconds);
         if (turn?.speaker === speaker) {
           turn.text += ` ${text.trim()}`;
+          turn.start = Math.min(turn.start, word.start);
           turn.end = Math.max(turn.end, end);
         } else {
           turn = { speaker, text: text.trim(), start: word.start, end };

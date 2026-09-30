@@ -52,7 +52,7 @@ test("selected provider repairs schema-invalid speaker JSON once in the same con
   }, new AbortController().signal);
 
   const result = await suggestMeetingSpeakerNames(namingInput, conversation);
-  assert.deepEqual(result, [{ speakerId: "speaker_0", name: "Alice" }]);
+  assert.deepEqual(result.speakers, [{ speakerId: "speaker_0", name: "Alice" }]);
   assert.equal(built.length, 1);
   assert.deepEqual(built[0], ["openai", "gpt-4o-mini", "test-credential", undefined, { disableThinking: undefined }]);
   assert.equal(generated.length, 2);
@@ -82,7 +82,7 @@ test("speaker JSON schema and domain failures get one repair, then stop", async 
     const repaired = await suggestMeetingSpeakerNames(namingInput, {
       send: async () => ({ text: turns++ === 0 ? invalid : '{"speakers":[]}', refusal: false }),
     });
-    assert.deepEqual(repaired, [], `repair should accept a valid omission after ${invalid}`);
+    assert.deepEqual(repaired.speakers, [], `repair should accept a valid omission after ${invalid}`);
     assert.equal(turns, 2, "a malformed reply gets exactly one repair turn");
 
     let failedTurns = 0;
@@ -175,7 +175,7 @@ else if (args[0] === "thread" && args[1] === "tell") {
     signal: new AbortController().signal,
   });
   const result = await suggestMeetingSpeakerNames(namingInput, conversation);
-  assert.deepEqual(result, [{ speakerId: "speaker_0", name: "Alice" }]);
+  assert.deepEqual(result.speakers, [{ speakerId: "speaker_0", name: "Alice" }]);
   const calls = fs.readFileSync(capture, "utf8").trim().split("\n").map((line) => JSON.parse(line));
   assert.equal(calls.length, 2);
   assert.deepEqual(calls.map((call) => [call.command, call.id]), [["tell", "thr_original"], ["tell", "thr_original"]]);
@@ -349,7 +349,7 @@ test("prompt speaker IDs reserve microphone identity and map accepted names back
     prompt = text;
     return { text: '{"speakers":[{"speakerId":"Speaker 2","name":"Maya"},{"speakerId":"Speaker 3","name":"Leo"}]}', refusal: false };
   } });
-  assert.deepEqual(result, [{ speakerId: "system:Speaker 1", name: "Maya" }, { speakerId: "system:Speaker 2", name: "Leo" }]);
+  assert.deepEqual(result.speakers, [{ speakerId: "system:Speaker 1", name: "Maya" }, { speakerId: "system:Speaker 2", name: "Leo" }]);
   assert.match(prompt, /Allowed output IDs: Speaker 2, Speaker 3/);
   assert.match(prompt, /Speaker 1 = Nora Vale \(local user, microphone\)/);
   assert.match(prompt, /Speaker 1: "Thank you."[\s\S]*Speaker 1: "Please continue."/);

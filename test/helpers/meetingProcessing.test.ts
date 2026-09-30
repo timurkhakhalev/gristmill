@@ -232,7 +232,7 @@ test("repeat naming withdraws a conflicting model identity from the saved correc
       const parsed = meetingSpeakerNamingInputSchema.parse(input);
       assert.equal(parsed.segments[0].speakerName, "Max");
       assert.equal(parsed.segments[0].speakerNameSource, "model");
-      return [];
+      return { speakers: [] };
     },
   });
   t.after(() => worker.stop());
@@ -985,10 +985,10 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
       namingInput = input;
       assert.equal(run.kind, "initial");
       assert.equal(db.setMeetingRunSpeakerCorrection(sourceRun.id, "speaker_a", null, "User correction", "user").success, true);
-      return [
+      return { speakers: [
         { speakerId: "speaker_a", name: "Model Alice" },
         { speakerId: "speaker_b", name: "Model Bob" },
-      ];
+      ] };
     },
     summarize: async (input) => {
       summaryInput = input;
@@ -1003,6 +1003,7 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
   await worker.waitForIdle();
 
   assert.deepEqual(namingInput, {
+    generateTitle: false,
     meetingTitle: "Meeting",
     transcriptSourceId: sourceRun.id,
     participants: [
@@ -1046,7 +1047,7 @@ test("malformed calendar participants stay visible while eligible automatic Summ
   let namingCalls = 0;
   let summaryCalls = 0;
   const worker = workerFor(db, storage, {
-    nameSpeakers: async () => { namingCalls += 1; return []; },
+    nameSpeakers: async () => { namingCalls += 1; return { speakers: [] }; },
     summarize: async () => { summaryCalls += 1; return "## TLDR\nSummary."; },
   });
   t.after(() => worker.stop());
@@ -1075,7 +1076,7 @@ test("participant data corrupted during naming records the error and keeps manua
   const worker = workerFor(db, storage, {
     nameSpeakers: async () => {
       db.db.prepare("UPDATE notes SET participants = ? WHERE id = ?").run("{", note.id);
-      return [{ speakerId: "speaker_0", name: "Model suggestion" }];
+      return { speakers: [{ speakerId: "speaker_0", name: "Model suggestion" }] };
     },
     summarize: async () => { summaryCalls += 1; return "## TLDR\nSummary."; },
   });
@@ -1108,7 +1109,7 @@ test("validated speaker names persist model provenance and both Summary stages u
   const worker = workerFor(db, storage, {
     nameSpeakers: async (input) => {
       namingInputs.push(input);
-      return [{ speakerId: "speaker_0", name: "Alice" }];
+      return { speakers: [{ speakerId: "speaker_0", name: "Alice" }] };
     },
     summarize: async (input) => {
       summaryInput = input;
@@ -1172,7 +1173,7 @@ test("manual Summary keeps the previously saved result visible without naming sp
   const response = new Promise<void>((resolve) => { finishSummary = resolve; });
   let namingCalls = 0;
   const worker = workerFor(db, storage, {
-    nameSpeakers: async () => { namingCalls += 1; return [{ speakerId: "speaker_0", name: "Alice" }]; },
+    nameSpeakers: async () => { namingCalls += 1; return { speakers: [{ speakerId: "speaker_0", name: "Alice" }] }; },
     summarize: async () => {
       summaryStarted();
       await response;
@@ -2198,7 +2199,7 @@ test("speaker-to-calendar linking crosses IPC, survives restart and enriches onl
   worker.stop();
   // A new transcript has new speaker IDs: the stored name is a candidate, never an automatic voice match.
   let input: unknown;
-  const nextWorker = workerFor(db, storage, { now: () => new Date(Date.now() + 300_000), nameSpeakers: async (value) => { input = value; return []; } });
+  const nextWorker = workerFor(db, storage, { now: () => new Date(Date.now() + 300_000), nameSpeakers: async (value) => { input = value; return { speakers: [] }; } });
   t.after(() => nextWorker.stop());
   const next = nextWorker.createRun({ recordingId: recording.id, kind: "reprocess", config: validConfig });
   nextWorker.onRetentionReady();
@@ -2293,7 +2294,7 @@ test("Transcribe determines speaker names while Summary-only never repeats namin
       namingCalls += 1;
       assert.equal(run.kind, "reprocess");
       assert.equal(db.getMeetingProcessingRun(run.id).hasTranscript, true);
-      return []; // No supported name: later Summary must still not repeat this request.
+      return { speakers: [] }; // No supported name: later Summary must still not repeat this request.
     },
     summarize: async () => { summaryCalls += 1; return "## Summary\nResult."; },
   };
@@ -2335,7 +2336,7 @@ test("capture interrupting speaker naming resumes normalization without repeatin
     nameSpeakers: async (input) => {
       namingCalls += 1;
       if (namingCalls === 1) worker.captureStarted();
-      return [{ speakerId: meetingSpeakerNamingInputSchema.parse(input).segments[0].speakerId!, name: "Alice" }];
+      return { speakers: [{ speakerId: meetingSpeakerNamingInputSchema.parse(input).segments[0].speakerId!, name: "Alice" }] };
     },
     summarize: async () => { assert.fail("Transcribe must not generate Summary"); },
   });
@@ -2388,4 +2389,39 @@ test("cancel IPC persists the stopped gate and preserves source audio", async (t
   assert.equal(db.getMeetingProcessingRun(run.id)?.retryAt, null);
   assert.equal(db.getMeetingRecording(recording.id)?.audioState, "available");
   assert.deepEqual(fs.readFileSync(audioPath), before);
+});
+
+
+test("meeting title generation works with known speakers and preserves concurrent rename", async (t) => {
+  for (const renamed of [false, true]) {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const config = { ...validConfig, generateTitle: true, generateSummary: true };
+    const { note, run } = createFinishedRecording(db, storage, config);
+    db.updateNote(note.id, { title: "Заметка без названия" });
+    saveTranscriptArtifact(db, storage, run.id, "Обсуждаем запуск курса.", "speaker_0");
+    db.setMeetingRunSpeakerCorrection(run.id, "speaker_0", null, "Timur", "user");
+    db.setMeetingProcessingRunState(run.id, { stage: "normalize", status: "pending", retryAt: null });
+    let calls = 0;
+    const worker = workerFor(db, storage, {
+      nameSpeakers: async (input) => {
+        calls += 1;
+        assert.equal(meetingSpeakerNamingInputSchema.parse(input).generateTitle, true);
+        if (renamed) db.updateNote(note.id, { title: "Моё название" });
+        return { speakers: [], title: "План запуска курса" };
+      },
+      summarize: async () => "## Summary\nЗапускаем курс.",
+    });
+    t.after(() => worker.stop());
+    worker.onRetentionReady();
+    await worker.waitForIdle();
+    worker.stop();
+    assert.equal(calls, 1);
+    assert.equal(db.getNote(note.id).title, renamed ? "Моё название" : "План запуска курса");
+    if (!renamed) {
+      assert.equal(JSON.parse(db.getMeetingRunLlmSourceSnapshot(run.id)).meetingTitle, "План запуска курса");
+      assert.equal(db.getMeetingProcessingRun(run.id).hasSummary, true);
+    }
+  }
 });

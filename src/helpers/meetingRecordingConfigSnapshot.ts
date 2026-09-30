@@ -124,7 +124,7 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
   }
 
   const parsed = meetingRecordingConfigInputSchema.safeParse({
-    config: { transcription, summary, generateSummary, selfDisplayName: state.profileName.trim() || i18n.t("profile.selfLabel", { lng: state.uiLanguage }) },
+    config: { transcription, summary, generateSummary, generateTitle: state.autoGenerateNoteTitle, selfDisplayName: state.profileName.trim() || i18n.t("profile.selfLabel", { lng: state.uiLanguage }) },
     configError: null,
   });
   return parsed.success

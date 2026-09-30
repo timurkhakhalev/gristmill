@@ -1781,6 +1781,20 @@ export class DatabaseManager {
     return result.changes === 1;
   }
 
+  applyMeetingGeneratedTitle(runId: string, noteId: number, expectedTitle: string | null, title: string, expectedSnapshotJson: string): boolean {
+    return this.sql.transaction(() => {
+      const run = this.getMeetingProcessingRun(runId);
+      if (!run || run.status !== "running" || this.getMeetingRunLlmSourceSnapshot(runId) !== expectedSnapshotJson) return false;
+      const recording = this.getMeetingRecording(run.recordingId);
+      if (!recording || recording.noteId !== noteId || recording.currentRunId !== runId) return false;
+      const snapshot: Record<string, unknown> = JSON.parse(expectedSnapshotJson);
+      const changed = this.sql.prepare("UPDATE notes SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND title IS ?").run(title, noteId, expectedTitle);
+      if (changed.changes !== 1) return false;
+      if (!this.updateMeetingRunLlmSourceSnapshot(runId, JSON.stringify({ ...snapshot, meetingTitle: title }), expectedSnapshotJson)) throw new Error("Meeting title snapshot was not saved");
+      return true;
+    })();
+  }
+
   updateMeetingSummaryIfCurrent(input: {
     recordingId: string;
     runId: string;

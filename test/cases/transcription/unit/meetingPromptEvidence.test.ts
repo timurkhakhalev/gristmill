@@ -84,7 +84,7 @@ test("naming retains separate same-speaker turns, both times and correction orig
     prompt = text;
     return { text: '{"speakers":[{"speakerId":"Speaker 2","name":"Max"}]}', refusal: false };
   } });
-  assert.deepEqual(names, [{ speakerId: "a", name: "Max" }]);
+  assert.deepEqual(names.speakers, [{ speakerId: "a", name: "Max" }]);
   assert.match(prompt, /Allowed output IDs: Speaker 2\./);
   assert.match(prompt, /name source=user/);
   assert.match(prompt, /name source=model/);
@@ -98,4 +98,25 @@ test("naming retains separate same-speaker turns, both times and correction orig
   const empty = formatMeetingMaterial({ meetingTitle: null, manualNotes: "", summary: "", transcriptSegments: [] });
   assert.match(empty, /discard the previous saved summary/);
   assert.match(empty, /No speaker identities available/);
+});
+
+
+test("meeting naming includes only requested instructions and response fields", async () => {
+  const { meetingNamingInstruction } = require("../../../../src/helpers/meetingSpeakerNaming.ts");
+  for (const [generateTitle, unknown, response] of [
+    [false, true, { speakers: [] }],
+    [true, false, { title: "План запуска курса" }],
+    [true, true, { title: "План запуска курса", speakers: [] }],
+  ] as const) {
+    const input = { generateTitle, meetingTitle: null, participants: [], segments: [{ id: "1", speakerId: "mic", speakerName: unknown ? null : "Timur", speakerNameSource: unknown ? null : "user", text: "Обсудим запуск курса." }] };
+    const instruction = meetingNamingInstruction(input);
+    assert.equal(instruction.includes("Generate a concise"), generateTitle);
+    assert.equal(instruction.includes("Assign a name"), unknown);
+    const result = await suggestMeetingSpeakerNames(input, { send: async (prompt) => {
+      if (!unknown) assert.ok(!prompt.includes("User-confirmed names:"));
+      return { text: JSON.stringify(response), refusal: false };
+    } });
+    assert.deepEqual(result.speakers, []);
+    assert.equal(result.title, generateTitle ? "План запуска курса" : undefined);
+  }
 });

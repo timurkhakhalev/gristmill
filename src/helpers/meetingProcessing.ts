@@ -1,3 +1,5 @@
+import { isRegenerableNoteTitle } from "./regenerableNoteTitle.js";
+import { TRANSLATIONS_BY_LOCALE } from "../locales/translations.js";
 import { formatMeetingMaterial } from "./meetingPromptMaterial.js";
 import fs from "fs";
 import { createHash } from "crypto";
@@ -104,6 +106,7 @@ export interface MeetingProcessingDatabase {
   applyAutomaticMeetingSpeakerCorrections(runId: string, expectedCurrentRunId: string, expectedRevision: number, corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>, source: "voice" | "model", rejectedModelSpeakerIds?: string[]): boolean;
   getMeetingRunLlmSourceSnapshot(runId: string): string | null;
   setMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string): boolean;
+  applyMeetingGeneratedTitle(runId: string, noteId: number, expectedTitle: string | null, title: string, expectedSnapshotJson: string): boolean;
   updateMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string, expectedSnapshotJson: string): boolean;
   updateMeetingSummaryIfCurrent(input: {
     recordingId: string;
@@ -174,7 +177,7 @@ export interface MeetingProcessingWorkerDeps {
     config: NonNullable<MeetingProcessingConfig["summary"]>,
     run: MeetingProcessingRunDto,
     signal: AbortSignal
-  ) => Promise<Array<{ speakerId: string; name: string }>>;
+  ) => Promise<{ speakers: Array<{ speakerId: string; name: string }>; title?: string | null }>;
   createActionConversation?: (
     config: NonNullable<MeetingProcessingConfig["summary"]>,
     instruction: string,
@@ -1048,7 +1051,7 @@ export class MeetingProcessingWorker {
       version: 1,
       sourceRunId,
       sourceRecordingIds: [...run.sourceRecordingIds],
-      meetingTitle: note.title || null,
+      meetingTitle: note.title,
       participants,
       manualNotes: note.content,
       manualNoteRevision: hashText(note.content),
@@ -1095,7 +1098,8 @@ export class MeetingProcessingWorker {
     const unknownIds = [...new Set(snapshot.transcriptSegments
       .filter((segment) => segment.speakerId && (!segment.speakerName || segment.speakerNameSource === "model"))
       .map((segment) => segment.speakerId as string))];
-    if (!unknownIds.length) {
+    const generateTitle = run.config?.generateTitle === true && isRegenerableNoteTitle(snapshot.meetingTitle, Object.values(TRANSLATIONS_BY_LOCALE).map((locale) => locale.notes.list.untitledNote));
+    if (!unknownIds.length && !generateTitle) {
       this.deps.database.setMeetingSpeakerNamingError(
         run.id,
         snapshot.participants === null ? "calendar-participants-invalid" : null
@@ -1118,7 +1122,8 @@ export class MeetingProcessingWorker {
         this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
         return;
       }
-      const suggestions = await this.deps.nameSpeakers({
+      const result = await this.deps.nameSpeakers({
+        generateTitle,
         meetingTitle: snapshot.meetingTitle,
         transcriptSourceId: snapshot.sourceRunId,
         participants: this.enrichedParticipants(participantsBeforeNaming),
@@ -1136,6 +1141,7 @@ export class MeetingProcessingWorker {
         snapshot = this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
         return;
       }
+      const suggestions = result.speakers;
       validateSpeakerSuggestions(suggestions, unknownIds);
       const suggestedIds = new Set(suggestions.map((suggestion) => suggestion.speakerId));
       const rejectedModelIds = [...new Set(snapshot.transcriptSegments
@@ -1159,6 +1165,12 @@ export class MeetingProcessingWorker {
         }
         snapshot = this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
         this.publishCurrentSelection(run.id);
+      }
+      if (generateTitle && result.title?.trim()) {
+        const expectedJson = this.deps.database.getMeetingRunLlmSourceSnapshot(run.id);
+        if (expectedJson && this.deps.database.applyMeetingGeneratedTitle(run.id, recording.noteId, snapshot.meetingTitle, result.title.trim(), expectedJson)) {
+          this.deps.onNoteProjectionChanged?.(recording.noteId);
+        }
       }
       this.deps.database.setMeetingSpeakerNamingError(run.id, null);
     } catch (error) {

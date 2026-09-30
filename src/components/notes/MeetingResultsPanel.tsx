@@ -834,7 +834,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       status="accent"
       busy
       title={tr("gateWaiting", "Transcription starts in {{seconds}} s", { seconds: gateSeconds })}
-      description={tr("gateWaitingReason", "The recording is saved. Resume it to continue the meeting; transcription starts automatically when the wait ends.")}
+      description={tr("gateWaitingReason", "The recording is saved. Transcription starts automatically when the wait ends.")}
       actions={mock ? <Button size="sm" variant="secondary" onPress={() => { patchMock({ waitingSeconds: undefined }); notify("Mock: recording resumed, pending transcription cancelled"); }}>{tr("resumeRecording", "Resume recording")}</Button> : undefined}
     />}
     {mock?.asrRunning && !gateActive && <NoteNotice status="accent" busy title={`${tr("transcribing", "Transcribing audio")}…`} description={tr("transcribingReason", "The finalized recording is being transcribed.")} />}

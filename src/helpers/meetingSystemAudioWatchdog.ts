@@ -4,9 +4,11 @@ export const STALL_MS = 6_000;
 // Chunks still arriving but silent for this long, after the call was audible at
 // least once. Warning only: a genuinely quiet call looks exactly the same.
 export const GONE_QUIET_MS = 180_000;
-// Enough to ride out a route change and its aftershocks without looping if the
-// device is simply gone.
+// Consecutive attempts without recovered delivery, not a lifetime meeting limit.
 export const MAX_RESTARTS = 3;
+// If all quick attempts fail, keep checking without depending on a device
+// notification from a helper that may have exited.
+export const RECOVERY_RETRY_MS = 30_000;
 // A tick gap longer than this means the machine slept or the main process
 // blocked. Delivery evidence from before the gap says nothing about now, and
 // node runs the timers phase before the poll phase, so the tick after a block
@@ -41,6 +43,8 @@ interface MeetingSystemAudioWatchdogSession {
   pendingDeviceInvalidation: boolean;
   recoveryFailed: boolean;
   quietReported: boolean;
+  interruptionReported: boolean;
+  retryAt: number;
 }
 
 export interface MeetingSystemAudioWatchdogOptions {
@@ -56,6 +60,7 @@ export interface MeetingSystemAudioWatchdog {
   detachCapture(): void;
   recordChunk(audible?: boolean): void;
   reportDeviceInvalidated(): void;
+  reportCaptureFailed(): void;
   tick(): void;
 }
 
@@ -135,8 +140,14 @@ export const createMeetingSystemAudioWatchdog = ({
   };
 
   const requestRestart = (reason: Exclude<SystemAudioInterruptionReason, "gone_quiet">): void => {
-    if (!session || session.recoveryFailed) {
+    if (!session) {
       return;
+    }
+    if (session.recoveryFailed) {
+      if (now() < session.retryAt) return;
+      // One slow attempt, keeping the existing failure notice until PCM returns.
+      session.restarts = MAX_RESTARTS - 1;
+      session.retryAt = now() + RECOVERY_RETRY_MS;
     }
     if (session.restartInFlight) {
       // Ignore the retiring helper, but retain a warning from its replacement:
@@ -148,11 +159,11 @@ export const createMeetingSystemAudioWatchdog = ({
     }
 
     if (session.restarts >= MAX_RESTARTS) {
-      // Latched, so a later device event cannot restart the count at zero and
-      // hand out another three attempts. The give-up report supersedes the
-      // quiet one, which would otherwise arrive later saying less.
+      // After the quick attempts, retry slowly even if the helper has exited
+      // and can no longer report that the route changed.
       session.recoveryFailed = true;
       session.quietReported = true;
+      session.retryAt = now() + RECOVERY_RETRY_MS;
       notify(session, reason, false);
       return;
     }
@@ -160,7 +171,8 @@ export const createMeetingSystemAudioWatchdog = ({
     const active = session;
     active.restarts += 1;
     active.restartInFlight = true;
-    notify(active, reason, true);
+    active.interruptionReported = true;
+    if (!active.recoveryFailed) notify(active, reason, true);
 
     Promise.resolve()
       .then(() => runRestart(active))
@@ -205,6 +217,8 @@ export const createMeetingSystemAudioWatchdog = ({
       pendingDeviceInvalidation: false,
       recoveryFailed: false,
       quietReported: false,
+      interruptionReported: false,
+      retryAt: 0,
     };
   };
 
@@ -220,6 +234,17 @@ export const createMeetingSystemAudioWatchdog = ({
     }
     const at = now();
     session.lastChunkAt = at;
+    // stop() flushes the retiring helper's tail. Only delivery after the
+    // replacement has started proves that recovery worked.
+    if (!session.restartInFlight) {
+      session.restarts = 0;
+      session.recoveryFailed = false;
+      if (session.interruptionReported) {
+        session.interruptionReported = false;
+        session.quietReported = false;
+        onResumed?.();
+      }
+    }
     if (audible) {
       session.lastAudibleAt = at;
       if (session.quietReported && !session.recoveryFailed) {
@@ -230,6 +255,10 @@ export const createMeetingSystemAudioWatchdog = ({
   };
 
   const reportDeviceInvalidated = () => {
+    if (session?.recoveryFailed) {
+      session.recoveryFailed = false;
+      session.restarts = 0;
+    }
     requestRestart("device_invalidated");
   };
 
@@ -282,6 +311,7 @@ export const createMeetingSystemAudioWatchdog = ({
     detachCapture,
     recordChunk,
     reportDeviceInvalidated,
+    reportCaptureFailed: () => requestRestart("no_audio_delivered"),
     tick,
   };
 };
@@ -291,4 +321,5 @@ module.exports.createMeetingSystemAudioWatchdog = createMeetingSystemAudioWatchd
 module.exports.STALL_MS = STALL_MS;
 module.exports.GONE_QUIET_MS = GONE_QUIET_MS;
 module.exports.MAX_RESTARTS = MAX_RESTARTS;
+module.exports.RECOVERY_RETRY_MS = RECOVERY_RETRY_MS;
 module.exports.TICK_GAP_MS = TICK_GAP_MS;

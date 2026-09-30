@@ -271,6 +271,16 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     return promise;
   }
 
+  async changeSelection(followDefault: boolean): Promise<boolean> {
+    this.followDefault = followDefault;
+    const generation = this.generation;
+    // A selection made while reconnecting must apply after that attempt,
+    // rather than being discarded by recover()'s in-flight deduplication.
+    if (this.recoveryPromise) await this.recoveryPromise;
+    if (!this.started || generation !== this.generation) return false;
+    return this.recover("selection-change");
+  }
+
   private scheduleRetry(): void {
     if (!this.started || this.retryTimer) return;
     this.retryTimer = setTimeout(() => {

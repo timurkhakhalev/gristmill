@@ -1603,7 +1603,10 @@
         "inactive": "Not started",
         "writingToDisk": "Writing to disk",
         "incompleteReason": "Some audio may be missing. The recording keeps the audio saved before the issue.",
-        "failedReason": "Check microphone and system audio permissions, then try again."
+        "failedReason": "Check microphone and system audio permissions, then try again.",
+        "details": "Recording details",
+        "outputDevice": "Output",
+        "deviceNameUnavailable": "Device name unavailable"
       },
       "summaryEmptyTitle": "No summary yet",
       "summaryEmptyDescription": "The summary appears here after the recording is transcribed.",

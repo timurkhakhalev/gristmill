@@ -529,11 +529,26 @@ test("the live waiting state and debug preview never offer a manual gate bypass"
   waiting.run.hasSummary = false;
   const live = await mountPanel(t, [recording(FIRST, FIRST, new Date().toISOString(), waiting)]);
   assert.match(live.text(), /transcription starts automatically when the wait ends/i);
+  assert.doesNotMatch(live.text(), /Preparing audio|meetingResults.stage.prepare/);
   assert.doesNotMatch(live.text(), /Transcribe now/);
   const waitingTranscribe = live.button("Transcribe")!;
   assert.equal(waitingTranscribe.props?.isDisabled, true);
   await live.flush(() => (waitingTranscribe.props as { onPress: () => void }).onPress());
   assert.deepEqual(live.calls.create, []);
+
+  for (const phase of ["preparing", "recording", "paused", "saving"]) {
+    await live.setCapturePhase(phase);
+    assert.doesNotMatch(live.text(), /transcription starts automatically|The recording is saved|Preparing audio|Waiting to start|meetingResults.stage.prepare|meetingResults.progress.pending/i, phase);
+  }
+  await live.setCapturePhase("saved");
+  assert.match(live.text(), /transcription starts automatically when the wait ends/i);
+
+  // Once the gate expires, pending work still waits for the active capture.
+  const queued = { ...waiting, run: { ...waiting.run, retryAt: new Date(Date.now() - 1_000).toISOString() } };
+  const active = await mountPanel(t, [recording(FIRST, FIRST, new Date(Date.now() - 60_000).toISOString(), queued)], { initialCapturePhase: "recording" });
+  assert.doesNotMatch(active.text(), /Preparing audio|Waiting to start|meetingResults.stage.prepare|meetingResults.progress.pending/i);
+  await active.setCapturePhase("saved");
+  assert.match(active.text(), /meetingResults.stage.prepare/i);
 
   const preview = await mountPanel(t, [], { preview: true, mockPipeline: { waitingSeconds: 15 } });
   assert.match(preview.text(), /transcription starts automatically when the wait ends/i);

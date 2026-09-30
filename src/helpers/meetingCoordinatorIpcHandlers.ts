@@ -1887,9 +1887,10 @@ export function registerMeetingCoordinatorHandlers(
         },
         onError: (error) => {
           capture.markSourceUnavailable("system", "system-audio-interrupted");
-          if (win && !win.isDestroyed()) {
-            win.webContents.send("meeting-transcription-error", error.message);
-          }
+          debugLogger.warn("Meeting system audio helper failed; attempting recovery", {
+            error: error.message,
+          }, "meeting");
+          meetingSystemAudioWatchdog.reportCaptureFailed();
         },
         onWarning: (warning) => {
           debugLogger.warn("macOS system audio tap warning", {

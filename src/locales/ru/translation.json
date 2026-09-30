@@ -69,6 +69,7 @@
     "newNote": "Новая заметка",
     "settings": "Настройки",
     "inTime": "через {{time}}",
+    "timeLeft": "осталось {{time}}",
     "durationHoursMinutes": "{{h}} ч {{m}} мин",
     "durationMinutes": "{{m}} мин",
     "now": "Сейчас"

@@ -69,6 +69,7 @@
     "newNote": "New Note",
     "settings": "Settings",
     "inTime": "in {{time}}",
+    "timeLeft": "{{time}} left",
     "durationHoursMinutes": "{{h}}h {{m}}m",
     "durationMinutes": "{{m}}m",
     "now": "Now"

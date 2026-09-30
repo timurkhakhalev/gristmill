@@ -11,7 +11,10 @@ test("formatMmSs formats valid positive seconds", async () => {
   assert.equal(formatMmSs(0), "00:00");
   assert.equal(formatMmSs(5), "00:05");
   assert.equal(formatMmSs(65), "01:05");
-  assert.equal(formatMmSs(3605), "60:05");
+  assert.equal(formatMmSs(3599), "59:59");
+  assert.equal(formatMmSs(3605), "1:00:05");
+  assert.equal(formatMmSs(4252), "1:10:52");
+  assert.equal(formatMmSs(36000), "10:00:00");
 });
 
 test("formatMmSs handles sub-zero, non-finite, NaN, and nullish inputs safely", async () => {

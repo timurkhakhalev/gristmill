@@ -3,7 +3,9 @@ export function formatMmSs(totalSeconds: number): string {
     return "00:00";
   }
   const whole = Math.floor(totalSeconds);
-  const minutes = Math.floor(whole / 60);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
   const seconds = whole % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  const mmss = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return hours > 0 ? `${hours}:${mmss}` : mmss;
 }

@@ -108,8 +108,8 @@ export class ZoomSpeakerCollector {
           const coverage = meetingPlatformCoverageSchema.parse(message);
           this.coverageGap ??= coverage.reason;
           this.coverage = { ...coverage, samples: this.savedSamples };
-          // Unknown coverage is sticky for this recording; later recovery does
-          // not erase a missing interval. Its new session still collects samples.
+          // The aggregate warning remembers a gap; closed activity ranges before
+          // and after it remain usable. The matcher does not gate on this summary.
           if (this.coverageGap) this.coverage.reason = this.coverageGap;
           this.enqueue(() => this.database.setMeetingPlatformCoverage(this.recordingId, { ...coverage, samples: this.savedSamples,
             state: this.failure || this.coverageGap ? "incomplete" : coverage.state, reason: this.failure ?? this.coverageGap ?? coverage.reason }));

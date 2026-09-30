@@ -2453,3 +2453,71 @@ for (const failure of ["observation-lookup", "part-map"] as const) {
     assert.match(storage.readRunArtifact(run.id, "transcript").text, /Synthetic speaker/);
   });
 }
+
+test("native-shaped Zoom intervals resume through production naming into the Note/CLI transcript and new runs", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const { zoomSpeakerFixture }: typeof import("../lib/zoomSpeakerFixture.ts") = require("../lib/zoomSpeakerFixture.ts");
+  const { readNoteTranscript }: typeof import("../../src/helpers/noteTranscriptReader.ts") = require("../../src/helpers/noteTranscriptReader.ts");
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const note = db.saveNote("Zoom fixture", "", "meeting").note!;
+  const recording = db.createMeetingRecording(note.id, { config: { ...validConfig, generateSummary: false } });
+  for (const source of ["mic", "system"] as const) {
+    db.createMeetingRecordingEpoch(recording.id, source, 0, 0);
+    savePcmEpoch(storage, recording.id, source, 0, Buffer.alloc(14 * 24_000 * 2));
+    db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, storage.recoverEpoch(recording.id, source, 0));
+  }
+  db.markMeetingRecordingFinalizing(recording.id);
+  const { initialRun } = db.finalizeMeetingRecording(recording.id, { captureState: "ready", endedAt: new Date(Date.parse(recording.startedAt) + 14_000).toISOString() });
+  const fixture = zoomSpeakerFixture(recording.id);
+  fixture.observations.forEach((o) => db.saveMeetingZoomObservation(o));
+  fixture.anchors.forEach((a) => db.saveMeetingAudioClockAnchor(a));
+  // An earlier AX gap does not disable the usable episodes that follow.
+  db.setMeetingPlatformCoverage(recording.id, { reads: 28, samples: fixture.observations.length, state: "incomplete", reason: "accessibility" });
+  const transcripts = new Map<string, import("../../src/contracts/meetingRecording.ts").MeetingTranscriptArtifact>();
+  let namingCalls = 0;
+  const worker = workerFor(db, storage, {
+    nameSpeakers: async () => {
+      namingCalls += 1;
+      const run = db.getMeetingRecording(recording.id).currentRunId;
+      assert.equal(db.getMeetingRunSpeakerCorrections(run)[0].source, "platform");
+      return { speakers: [] };
+    },
+  });
+  t.after(() => worker.stop());
+  for (const [index, run] of [initialRun, null].entries()) {
+    const current = run ?? db.createMeetingProcessingRun(recording.id, { kind: "reprocess", config: { ...validConfig, generateSummary: false } });
+    const transcript = { ...fixture.transcript, segments: [
+      ...fixture.transcript.segments.map((s) => ({ ...s, speaker: `system:run-${index}` })),
+      { speaker: "mic", text: "Local later", start: 13, end: 14 },
+    ] };
+    transcripts.set(current.id, transcript);
+    storage.writeRunArtifact(current.id, "provider-response", { text: transcript.text });
+    db.setMeetingRunArtifact(current.id, "provider-response");
+    storage.writeRunArtifact(current.id, "transcript", transcript);
+    db.setMeetingRunArtifact(current.id, "transcript");
+    db.setMeetingProcessingRunState(current.id, { stage: "normalize", status: "pending", retryAt: null });
+    worker.onRetentionReady();
+    await worker.waitForIdle();
+    assert.equal(db.getMeetingProcessingRun(current.id).status, "complete");
+    const corrections = db.getMeetingRunSpeakerCorrections(current.id);
+    assert.equal(corrections.length, 1);
+    assert.equal(corrections[0].speakerId, `system:run-${index}`);
+    assert.equal(corrections[0].displayName, "Synthetic Guest");
+    const projection = JSON.parse(db.getNote(note.id).transcript ?? "[]");
+    assert.equal(projection[0].speakerName, "Synthetic Guest");
+    assert.equal(projection[0].speakerLockSource, "platform");
+    assert.ok(db.getMeetingRunPlatformDecisions(current.id).every((d: import("../../src/contracts/meetingRecording.ts").ZoomSpeakerDecision) => d.status === "accepted"));
+    const view = readNoteTranscript({
+      listRecordings: (id) => db.listMeetingRecordingsForNote(id), listEpochs: (id) => db.listMeetingRecordingEpochs(id),
+      getRun: (id) => db.getMeetingProcessingRun(id), readTranscript: (id) => transcripts.get(id) ?? null,
+      getCorrections: (id) => db.getMeetingRunSpeakerCorrections(id), profileEmail: () => null, getProjection: () => null,
+    }, note.id);
+    assert.equal(view.speakers.find((s) => s.source === "system")?.name, "Synthetic Guest");
+    assert.equal(view.speakers.find((s) => s.source === "system")?.name_source, "platform");
+    assert.equal(view.speakers.find((s) => s.source === "microphone")?.name, null);
+  }
+  assert.equal(namingCalls, 2);
+  assert.ok(storage.readRunArtifact(initialRun.id, "transcript"));
+  assert.equal(db.listMeetingAudioClockAnchors(recording.id).length, 14);
+});

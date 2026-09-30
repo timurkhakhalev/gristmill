@@ -278,7 +278,9 @@ export const zoomSpeakerObservationSchema = z.object({
   sessionId: z.string().uuid(), instanceKey: z.string().min(1).max(100), nameRevision: z.number().int().positive(),
   episodeId: z.string().uuid(), displayName: z.string().max(200),
   windowMode: z.enum(["full", "compact", "unknown"]),
-  activity: z.enum(["explicit", "candidate", "ambiguous", "unavailable"]),
+  activity: z.enum(["explicit", "end", "clear", "candidate", "ambiguous", "unavailable"]),
+  // Explicit/end cover bounded, continued read confirmations of one episode;
+  // other states cover the actual transition read. Never hold beyond this end.
   readStartHostNs: hostNsSchema, readEndHostNs: hostNsSchema,
   self: z.enum(["remote", "local", "unknown"]),
   singleSpeaker: z.boolean().nullable(),
@@ -301,21 +303,25 @@ export const meetingAudioClockAnchorSchema = z.object({
   epochStartFrame: z.number().int().nonnegative().safe(), clock: meetingAudioClockMessageSchema,
 });
 export type MeetingAudioClockAnchor = z.infer<typeof meetingAudioClockAnchorSchema>;
-// Acceptance policy must reference actual measurements. Production collects evidence
-// but supplies no calibration until conversion and Zoom indicator latency are measured.
-export const zoomSpeakerCalibrationSchema = z.object({
-  measurementId: z.string().min(1), indicatorDelayMinSeconds: z.number().finite(),
-  indicatorDelayMaxSeconds: z.number().finite(), conversionErrorSeconds: z.number().finite().nonnegative(),
-  minimumEpisodeSeconds: z.number().finite().positive(), minimumIndependentEpisodes: z.number().int().positive(),
-}).refine((v) => v.indicatorDelayMaxSeconds >= v.indicatorDelayMinSeconds);
-export type ZoomSpeakerCalibration = z.infer<typeof zoomSpeakerCalibrationSchema>;
+// A fixed initial heuristic, not a measured calibration or a verified identity.
+export const zoomSpeakerTimingPolicySchema = z.object({
+  version: z.literal("zoom-activity-v1"),
+  origin: z.literal("initial-lag-hypothesis"),
+  indicatorDelaySeconds: z.literal(0.5),
+  boundaryGuardSeconds: z.literal(0.5),
+  clockContinuitySeconds: z.literal(0.001),
+  clockRateToleranceSeconds: z.literal(0.002),
+  minimumSpeechSeconds: z.literal(1),
+  minimumIndependentEpisodes: z.literal(3),
+});
+export type ZoomSpeakerTimingPolicy = z.infer<typeof zoomSpeakerTimingPolicySchema>;
 export const zoomSpeakerDecisionSchema = z.object({
   speakerId: z.string().nullable(), displayName: z.string().nullable(),
   status: z.enum(["accepted", "rejected"]), reason: z.string().min(1).max(100),
   observationIds: z.array(z.string().uuid()), clockAnchorIds: z.array(z.string().uuid()),
-  intervals: z.array(z.object({ start: z.number().finite(), end: z.number().finite() })),
-  measurementId: z.string().nullable(),
-  calibration: zoomSpeakerCalibrationSchema.nullable(),
+  intervals: z.array(z.object({ start: z.number().finite(), end: z.number().finite() }).refine((v) => v.end > v.start)),
+  // Null only for preserved decisions made before this policy existed.
+  timingPolicy: zoomSpeakerTimingPolicySchema.nullable(),
 });
 export type ZoomSpeakerDecision = z.infer<typeof zoomSpeakerDecisionSchema>;
 export const meetingPlatformCoverageSchema = z.object({

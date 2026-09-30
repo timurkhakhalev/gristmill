@@ -233,17 +233,18 @@ Remaining measurements and implementation checks:
 
 ## Implemented evidence path
 
-The branch now includes the production evidence path; the earlier measurements
-above remain research results, not acceptance evidence for automatic names.
+The branch now includes production display-name suggestions; the earlier
+measurements above remain research results, not measured attribution accuracy.
 `macos-meeting-ax --collect-zoom <recording UUID>` runs a read-only 2 Hz collector;
 invoking the helper without that flag still performs the bounded call detector
 snapshot. Collection reads all AX windows and direct Video render children,
 parses camera-off/audio status from the right, and records transitions as
-unconfirmed candidates. An explicit example is emitted only after the next
-consistent poll confirms activity. Both observations share one episode ID; a
-long stable turn adds no further independent examples. This polling confirmation
-is a collection guard, not a measured acceptance threshold. Unknown activity,
-a switch or a new call resets confirmation. Unrelated windows with no supported
+unconfirmed candidates. The second consistent read starts an explicit interval;
+continued confirmation ranges follow every two polls. Switch, clear, Stop or
+unknown availability closes the interval at the last confirmed read. All ranges
+of one uninterrupted turn share one episode ID; a long turn supplies one example.
+A poll gap over one second retires activity. These are collection guards, not
+measured acceptance thresholds. Unrelated windows with no supported
 children are ignored; genuine AX errors or wrong-shaped children remain incomplete. Names are private recording-owned metadata;
 trees, names and transcripts do not enter diagnostic logs. Repeated reads of one
 active episode do not increase the number of independent examples. New names,
@@ -253,9 +254,11 @@ Unknown access, malformed tiles, ambiguous activity, window replacement and
 process changes retire identities. Display names, PID and tile position are
 never participant or meeting identifiers. Availability transitions are persisted
 as unavailable observations. Compact/Pin/Spotlight candidates without an explicit
-marker are never accepted. Unknown intervals conservatively mark the entire
-part's metadata coverage incomplete. This may reject otherwise usable episodes;
-narrower recovery needs measured coverage guarantees first.
+marker are never accepted. Coverage reports gaps without disabling the part's
+usable intervals. Self is known only with explicit `(Me)`/`(You)` or Russian
+`(я)` name suffixes; other names remain unknown self. No clicks, layout changes
+or OCR occur. Simultaneous duplicate display names abstain. AX objects and names
+remain evidence strings, not stable participant identities.
 
 The audio helper keeps PCM stdout and emits sparse clock ranges on stderr with a
 helper UUID, converted-frame start/end, host nanoseconds and timebase. A bounded
@@ -277,35 +280,105 @@ Matching runs on normalized system segments after voice recognition and before
 model naming/Summary, including resumed normalization and new provider runs.
 It never assigns `mic`, moves diarization boundaries, creates a voice profile,
 invents email or carries Speaker N across runs. Per-run rejection/acceptance
-records include observation/clock IDs, transcript intervals and the actual
-calibration policy. Accepted corrections and decisions share a guarded transaction.
+records include observation/clock IDs, transcript intervals and the initial
+timing policy with its origin. Accepted corrections and decisions share a guarded transaction.
 SQLite migrates the correction source CHECK to include `platform` while preserving
 old rows. Priority is user > voice > platform > model. Accepted platform names
 have a Zoom provenance badge and reach LLM snapshots/prompts with that source.
 Manual edits retain priority. Incomplete collection is visible in the transcript
 view; it does not mark recorded audio or the transcript failed.
 
-Production currently supplies **no calibrated acceptance policy**. Explicit AX
-activity with usable clocks can produce `uncalibrated-timing` candidates only.
-Self identity, exclusive Zoom audio provenance and one person per AX instance
-also remain unconfirmed. The executable accepted path requires measured timing
-bounds, episode sufficiency and those independent evidence inputs; synthetic
-fixtures provide them explicitly and do not establish live Zoom accuracy.
-No threshold, setting or confidence score was derived from the single spike call.
+Production uses the fixed `zoom-activity-v1` policy. The 500 ms initial Zoom lag
+is a hypothesis motivated by read-only static inspection of an installed client,
+not our live latency measurement. We implement the matcher independently without
+copying proprietary code. A 500 ms turn-boundary guard, one second of stable
+speech, and three independent activity and speech episodes are conservative
+product rules, not measured accuracy. Heartbeats or recreated tiles within one
+continuous ASR speech bout cannot supply extra independent examples. Decisions
+store the policy and evidence IDs without a fictitious measurement ID.
+Earlier run decisions retain their original stored evidence and are migrated with
+a null timing policy; the new heuristic is never claimed for historical results.
+
+Intervals map through actual clock anchor ranges inside one finalized epoch.
+Adjacent ranges require frame and host continuity; rate checks use 1 ms boundary
+and 2 ms range-duration tolerances. The shared multipart map removes intentional
+pauses. The matcher never extrapolates beyond startup/tail or across missing
+clocks. Unknown spans reject intersecting ranges locally. It trims turn boundaries,
+shifts by the lag hypothesis, then rejects mic overlap or competing system speech
+and known self names. Several separate episodes must agree before naming the
+whole run-local system cluster. Sequential tile recreation or Pause/Resume may
+agree; simultaneous same-name tiles, conflicting names or one name mapping to
+competing clusters abstain. Unknown self is allowed. Exclusive Zoom audio and
+one person per tile are unavailable proofs and are no longer acceptance gates.
+A Zoom label is an editable display-name suggestion, not a verified identity;
+other system audio can still cause errors.
+
+New synthetic fixtures use the actual native candidate/confirmation/continued/end
+shape with unknown self, system-wide provenance and uncalibrated clocks. They
+exercise production matching, atomic corrections, reprocessing and the shared
+Note/CLI transcript reader. Their acceptance does not establish live accuracy.
+Known-signal conversion, real indicator lag and multi-speaker accuracy remain open.
 
 The audio probe generator has been reconciled with the new timestamp callback.
 It suppresses production sparse clock events only in its generated temporary
 probe, retaining the historical detailed probe format. Neither source helper,
 existing app bundle nor running profile is modified by the generator.
 
-## Integrated verification
+## Working-label verification — 1 October 2026
+
+Implementation used GPT-6.1 Sol with medium reasoning. Root reviewed the native
+interval/self output, clock mapping, matcher aggregation, historical-decision
+migration and production processing/Note/CLI consumers. The multipart fixture
+initially failed because it tried to claim two concurrent runs; root corrected
+its setup to complete each earlier run under the existing single-worker guard.
+No outstanding defects were found in the final reviewed diff.
+
+- Focused matcher, persistence, lifecycle and processing checks passed after the
+  fixture correction. The production worker fixture assigns platform names,
+  publishes the Note projection, exposes CLI provenance, and re-matches new IDs
+  on another run. Provider-normalization fixtures cover Deepgram, ElevenLabs
+  and Gemini. These are synthetic inputs, not provider network calls.
+- `pnpm run lint` and `pnpm run typecheck` passed, including strict renderer and
+  test programs; existing lint warnings remain.
+- `pnpm test -- --verbose`: **2945 passed, 0 failed, 0 skipped**, 73,288 ms:
+  2785 ordinary, 57 serial, 103 native/type checks.
+- `pnpm run compile:meeting-ax` and the permission-free native collector self-test
+  passed. `pnpm run pack:dev` passed, including bundled helper and packaged
+  Electron SQLite validation. The Dev bundle is unsigned.
+- An isolated packaged Dev profile received a synthetic Note via the actual
+  production worker's resumed normalization path, without provider credentials
+  or external requests. The UI showed `Synthetic Guest` and Zoom badges for the
+  whole cluster. Editing the name in the UI updated all turns, removed the badge
+  and changed CLI `name_source` from `platform` to `user`. JSON and plain-text
+  CLI exports both used the assigned name. Reopening the app preserved it.
+- A fresh 87.351-second hardware recording finalized as ready with no capture
+  error. Mic/system Opus EOS and granules matched persisted frame counts
+  (2,079,104 / 2,088,440). All 87 system clock anchors were saved; the last ended
+  exactly at the saved system frame count. The quit sheet remained open more
+  than eight seconds without stopping capture; Cancel continued recording and
+  Stop and Quit saved it. No owned native helpers remained. Existing mic,
+  system-audio and Accessibility grants worked without a password.
+- Zoom had no active meeting. The collector recorded 175 reads and an unavailable
+  observation with `no-call-window`; this did not affect audio readiness. The
+  packaged native collector also exited cleanly after a bounded direct probe.
+- A temporary timing probe mapped 899 native-shaped confirmation ranges over a
+  synthetic 15-minute recording in about 350 ms. It is a spot measurement, not
+  a performance guarantee for longer recordings.
+
+**Still unverified:** live multi-speaker name accuracy and usable-example coverage,
+self-suffix availability across Zoom versions/locales, actual converter/indicator
+latency, hidden/screen-share/compact/Pin/Spotlight regimes and denied/revoked TCC.
+Synthetic UI acceptance and successful audio capture do not establish these.
+
+## Verified baseline before the working-label policy
 
 Implementation was delegated to GPT-6.1 Sol with medium reasoning, then reviewed
 and verified by the root agent. Review fixes cover model-name revisiting,
 malformed timestamps, unrelated childless AX windows, UTF-8 chunk boundaries,
 stable activity confirmation, metadata failures and bounded helper termination.
-The accepted path uses synthetic measured-policy inputs; production remains
-rejection-only for the reasons above.
+At that baseline the accepted path used synthetic measured-policy inputs and
+production was rejection-only. The working-label policy above changes that
+behavior; the checks below do not verify the new implementation.
 
 - Focused matcher, persistence, collector lifecycle, clocks, multipart audio,
   processing, recovery, IPC, bridge and type-probe tests passed through

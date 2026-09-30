@@ -1,104 +1,119 @@
-import type { MeetingAudioClockAnchor, MeetingRecordingEpochDto, ZoomSpeakerObservation, ZoomSpeakerCalibration } from "../../../../src/contracts/meetingRecording.js";
+import type { MeetingAudioClockAnchor, MeetingRecordingEpochDto, ZoomSpeakerObservation } from "../../../../src/contracts/meetingRecording.js";
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { randomUUID }: typeof import("node:crypto") = require("node:crypto");
 const { matchZoomSpeakers }: typeof import("../../../../src/helpers/zoomSpeakerMatcher.ts") = require("../../../../src/helpers/zoomSpeakerMatcher.ts");
-
 const recordingId = randomUUID();
 const sessionId = randomUUID();
 const generation = randomUUID();
-const calibration: ZoomSpeakerCalibration = { measurementId: "synthetic-fixture-only", indicatorDelayMinSeconds: 0.1, indicatorDelayMaxSeconds: 0.2, conversionErrorSeconds: 0.01, minimumEpisodeSeconds: 0.5, minimumIndependentEpisodes: 2 };
 function observation(seconds: number, overrides: Partial<ZoomSpeakerObservation> = {}): ZoomSpeakerObservation {
-  return { id: randomUUID(), recordingId, sessionId, instanceKey: "tile-1", nameRevision: 1, episodeId: randomUUID(), displayName: "Synthetic Remote", windowMode: "full", activity: "explicit", readStartHostNs: String(seconds * 1e9), readEndHostNs: String(seconds * 1e9 + 1e7), self: "remote", singleSpeaker: true, provenance: "zoom-only", reason: null, ...overrides };
+  return { id: randomUUID(), recordingId, sessionId, instanceKey: "tile-1", nameRevision: 1, episodeId: randomUUID(), displayName: "Synthetic Remote", windowMode: "full", activity: "explicit", readStartHostNs: String(seconds * 1e9), readEndHostNs: String((seconds + 3) * 1e9), self: "unknown", singleSpeaker: null, provenance: "system-wide", reason: null, ...overrides };
 }
 function anchor(start: number, end: number, overrides: Partial<MeetingAudioClockAnchor> = {}): MeetingAudioClockAnchor {
   return { id: randomUUID(), recordingId, epochIndex: 0, epochStartFrame: 0, clock: { type: "clock", generation, startFrame: start * 24_000, endFrame: end * 24_000, hostStartNs: String(start * 1e9), hostEndNs: String(end * 1e9), timebaseNumer: 1, timebaseDenom: 1, conversion: "uncalibrated", reason: null }, ...overrides };
 }
 function fixture() {
-  return { transcript: { text: "Synthetic speech", segments: [{ start: 0, end: 3, speaker: "system:provider-a", text: "One" }, { start: 4, end: 7, speaker: "system:provider-a", text: "Two" }, { start: 0, end: 8, speaker: "mic", text: "Local" }] }, observations: [observation(1), observation(5)], anchors: [anchor(0, 3), anchor(4, 7)], epochs: [{ recordingId, source: "system", epochIndex: 0, startFrame: 0, frameCount: 8 * 24_000, state: "finalized" } satisfies Pick<MeetingRecordingEpochDto, "recordingId" | "source" | "epochIndex" | "startFrame" | "frameCount" | "state">], partOffsets: [{ recordingId, startFrame: 0, frameCount: 8 * 24_000 }], calibration };
+  return { transcript: { text: "Synthetic speech", segments: [1, 5, 9].map((start) => ({ start: start - 0.5, end: start + 2.5, speaker: "system:provider-a", text: "Speech" })) }, observations: [observation(1), observation(5), observation(9)], anchors: Array.from({ length: 14 }, (_, i) => anchor(i, i + 1)), epochs: [{ recordingId, source: "system", epochIndex: 0, startFrame: 0, frameCount: 14 * 24_000, state: "finalized" } satisfies Pick<MeetingRecordingEpochDto, "recordingId" | "source" | "epochIndex" | "startFrame" | "frameCount" | "state">], partOffsets: [{ recordingId, startFrame: 0, frameCount: 14 * 24_000 }] };
 }
 
-test("validated independent episodes assign only run-local system IDs and keep transcript unchanged", () => {
-  for (const providerId of ["eleven-id", "deepgram-id", "gemini-id"]) {
+test("production policy accepts repeated unknown-self remote activity, names only system and preserves ASR", () => {
+  const input = fixture();
+  input.transcript.segments.push({ start: 13, end: 14, speaker: "mic", text: "Local later" });
+  const before = JSON.stringify(input.transcript);
+  const decisions = matchZoomSpeakers(input);
+  assert.ok(decisions.every((d) => d.status === "accepted" && d.speakerId === "system:provider-a"));
+  assert.equal(decisions[0].timingPolicy?.origin, "initial-lag-hypothesis");
+  assert.equal(decisions[0].clockAnchorIds.length, 3);
+  assert.equal(JSON.stringify(input.transcript), before);
+});
+
+test("own participant, local overlap, simultaneous speech and short activity cannot name", () => {
+  for (const local of [false, true]) {
     const input = fixture();
-    input.transcript.segments[0].speaker = input.transcript.segments[1].speaker = `system:${providerId}`;
-    const before = JSON.stringify(input.transcript);
+    if (local) input.observations.forEach((o) => { o.self = "local"; });
+    else input.transcript.segments.push({ start: 1.5, end: 2, speaker: "mic", text: "Own speech" });
     const decisions = matchZoomSpeakers(input);
-    assert.equal(decisions.length, 2);
-    assert.ok(decisions.every((item) => item.status === "accepted" && item.speakerId === `system:${providerId}`));
-    assert.equal(JSON.stringify(input.transcript), before);
+    assert.ok(decisions.every((d) => d.status === "rejected"));
+    assert.equal(decisions[0].reason, local ? "local-participant" : "local-speech-overlap");
   }
-});
-
-test("uncalibrated capture produces candidates, never names; silence and mic are not Zoom speech", () => {
   const input = fixture();
-  assert.ok(matchZoomSpeakers({ ...input, calibration: undefined }).every((item) => item.reason === "uncalibrated-timing" && item.status === "rejected"));
-  assert.ok(matchZoomSpeakers({ ...input, transcript: { text: "Local", segments: input.transcript.segments.filter((item) => item.speaker === "mic") } }).every((item) => item.reason === "no-system-speech"));
-});
-
-test("self/source/compact/metadata ambiguity remains an explicit rejection", () => {
-  for (const [override, reason] of [
-    [{ self: "unknown" }, "unknown-self"], [{ self: "local" }, "local-participant"],
-    [{ provenance: "system-wide" }, "unproven-system-source"], [{ singleSpeaker: null }, "unproven-single-speaker"],
-    [{ activity: "candidate", windowMode: "compact", reason: "activity-unconfirmed" }, "activity-unconfirmed"],
-  ] as Array<[Partial<ZoomSpeakerObservation>, string]>) {
-    const input = fixture();
-    input.observations = input.observations.map((item) => ({ ...item, ...override }));
-    assert.ok(matchZoomSpeakers(input).every((item) => item.reason === reason));
-  }
-  assert.ok(matchZoomSpeakers({ ...fixture(), incompleteRecordingIds: [recordingId] }).every((item) => item.reason === "metadata-incomplete"));
-});
-
-test("read window across ASR transition, missing clocks and shifted uncertainty cannot assign", () => {
-  const input = fixture();
-  input.transcript.segments.push({ start: 0.8, end: 1.2, speaker: "system:other", text: "Overlap" });
+  input.transcript.segments.push({ start: 1.2, end: 2, speaker: "system:other", text: "Overlap" });
   assert.equal(matchZoomSpeakers(input)[0].reason, "ambiguous-asr-window");
-  assert.ok(matchZoomSpeakers({ ...fixture(), anchors: [] }).every((item) => item.reason === "clock-coverage-gap"));
-  const shifted = fixture();
-  shifted.calibration = { ...calibration, indicatorDelayMaxSeconds: 2 };
-  assert.equal(matchZoomSpeakers(shifted)[0].reason, "unstable-timing-window");
+  input.observations = input.observations.map((o) => ({ ...o, readEndHostNs: String(BigInt(o.readStartHostNs) + 500000000n) }));
+  assert.ok(matchZoomSpeakers(input).every((d) => d.status === "rejected"));
+  assert.ok(matchZoomSpeakers({ ...fixture(), transcript: { text: "Silence", segments: [] } }).every((d) => d.reason === "no-system-speech"));
 });
 
-test("same name never merges instances; rename or several ASR clusters rejects entire cluster", () => {
-  for (const overrides of [{ displayName: "Renamed", nameRevision: 2 }, { instanceKey: "tile-2" }, { sessionId: randomUUID() }]) {
-    const input = fixture();
-    Object.assign(input.observations[1], overrides);
-    assert.ok(matchZoomSpeakers(input).every((item) => item.status === "rejected" && item.reason.startsWith("conflicting")));
-  }
+test("AX unknown span and missing clocks remain local; later episodes and late speaker still work", () => {
   const input = fixture();
-  input.transcript.segments[1].speaker = "system:second-person-at-device";
-  assert.ok(matchZoomSpeakers(input).every((item) => item.reason === "instance-multiple-clusters"));
+  input.observations.unshift(observation(0, { activity: "unavailable", displayName: "", reason: "accessibility", readEndHostNs: "500000000" }));
+  input.observations.push(...[14, 18, 22].map((s) => observation(s, { instanceKey: "late-tile", displayName: "Late Guest" })));
+  input.transcript.segments.push(...[14, 18, 22].map((start) => ({ start: start - 0.5, end: start + 2.5, speaker: "system:late", text: "Late" })));
+  input.anchors.push(...Array.from({ length: 12 }, (_, i) => anchor(14 + i, 15 + i)));
+  input.epochs[0].frameCount = input.partOffsets[0].frameCount = 26 * 24_000;
+  const decisions = matchZoomSpeakers(input);
+  assert.equal(decisions[0].status, "rejected");
+  assert.equal(decisions.filter((d) => d.status === "accepted").length, 6);
+  assert.equal(matchZoomSpeakers({ ...input, anchors: [] })[1].reason, "clock-coverage-gap");
 });
 
-test("duplicate reads are one episode, later parts use the exact mixer offset", () => {
+test("recreated instances and sessions may agree; names or clusters in conflict cannot", () => {
   const input = fixture();
-  input.observations[1].episodeId = input.observations[0].episodeId;
-  assert.ok(matchZoomSpeakers(input).every((item) => item.reason === "insufficient-independent-episodes"));
+  input.observations[1].instanceKey = "recreated";
+  input.observations[2].sessionId = randomUUID();
+  assert.ok(matchZoomSpeakers(input).every((d) => d.status === "accepted"));
+  input.observations[1].displayName = "Other Name";
+  assert.ok(matchZoomSpeakers(input).every((d) => d.reason === "conflicting-names"));
+  const differentCluster = fixture();
+  differentCluster.transcript.segments[1].speaker = "system:other";
+  assert.ok(matchZoomSpeakers(differentCluster).every((d) => d.reason === "name-multiple-clusters"));
+});
+
+test("simultaneous duplicate display names abstain while sequential recreation does not", () => {
+  const input = fixture();
+  input.observations.push(observation(1.5, { instanceKey: "different-tile", activity: "clear", readEndHostNs: "1510000000" }));
+  assert.ok(matchZoomSpeakers(input).filter((d) => d.speakerId).every((d) => d.reason === "duplicate-display-name"));
+});
+
+test("continued confirmations are one episode and clock gaps/invalid ranges cannot count", () => {
+  const input = fixture();
+  input.observations.forEach((o) => { o.episodeId = input.observations[0].episodeId; });
+  assert.ok(matchZoomSpeakers(input).every((d) => d.reason === "insufficient-independent-episodes"));
+  const missing = fixture();
+  missing.anchors = missing.anchors.filter((a) => a.clock.startFrame !== 2 * 24_000);
+  assert.equal(matchZoomSpeakers(missing)[0].reason, "clock-coverage-gap");
+  const outside = fixture();
+  outside.epochs[0].frameCount = 24_000;
+  assert.ok(matchZoomSpeakers(outside).every((d) => d.reason === "clock-outside-audio"));
+  const wrongRate = fixture();
+  wrongRate.anchors[1].clock.endFrame += 1000;
+  assert.equal(matchZoomSpeakers(wrongRate)[0].reason, "clock-rate-mismatch");
+  const restarted = fixture();
+  restarted.anchors[2].clock.generation = randomUUID();
+  assert.equal(matchZoomSpeakers(restarted)[0].reason, "clock-discontinuity");
+});
+
+test("shared multipart offsets and provider-normalized IDs use the production matcher", () => {
   const shifted = fixture();
-  shifted.partOffsets[0].startFrame = 60 * 24_000;
-  shifted.epochs[0].startFrame = 60 * 24_000;
-  shifted.transcript.segments = shifted.transcript.segments.map((item) => ({ ...item, start: item.start + 60, end: item.end + 60 }));
-  assert.ok(matchZoomSpeakers(shifted).every((item) => item.status === "accepted"));
+  shifted.partOffsets[0].startFrame = shifted.epochs[0].startFrame = 60 * 24_000;
+  shifted.transcript.segments = shifted.transcript.segments.map((s) => ({ ...s, start: s.start + 60, end: s.end + 60 }));
+  assert.ok(matchZoomSpeakers(shifted).every((d) => d.status === "accepted"));
   assert.equal(matchZoomSpeakers(shifted)[0].intervals[0].start, 61);
-  assert.ok(matchZoomSpeakers({ ...shifted, anchors: [...shifted.anchors].reverse() }).every((item) => item.status === "accepted"));
-});
-
-test("normalized ElevenLabs, Deepgram and Gemini responses share the matcher and reprocessing changes IDs", () => {
   const { parseElevenLabsFileResponse }: typeof import("../../../../src/helpers/elevenLabsFileTranscription.ts") = require("../../../../src/helpers/elevenLabsFileTranscription.ts");
   const { parseDeepgramFileResponse }: typeof import("../../../../src/helpers/deepgramFileTranscription.ts") = require("../../../../src/helpers/deepgramFileTranscription.ts");
   const { parseGeminiFileResponse }: typeof import("../../../../src/helpers/geminiFileTranscription.ts") = require("../../../../src/helpers/geminiFileTranscription.ts");
+  const starts = [0.5, 4.5, 8.5];
   const replies = [
-    parseElevenLabsFileResponse({ text: "One Two", words: [{ type: "word", text: "One", start: 0, end: 3, speaker_id: "fixture_7" }, { type: "word", text: "Two", start: 4, end: 7, speaker_id: "fixture_7" }] }, true),
-    parseDeepgramFileResponse({ results: { channels: [{ alternatives: [{ transcript: "One Two" }] }], utterances: [{ transcript: "One", start: 0, end: 3, speaker: 11 }, { transcript: "Two", start: 4, end: 7, speaker: 11 }] } }, true),
-    parseGeminiFileResponse({ status: "completed", output_text: "One Two", steps: [{ content: [{ type: "text", text: "One Two", annotations: [{ type: "word_info", text: "One", start_offset: "0s", end_offset: "3s", speaker: "spk_4" }, { type: "word_info", text: "Two", start_offset: "4s", end_offset: "7s", speaker: "spk_4" }] }] }] }, true),
+    parseElevenLabsFileResponse({ text: "One Two Three", words: starts.map((start) => ({ type: "word", text: "Speech", start, end: start + 3, speaker_id: "fixture_7" })) }, true),
+    parseDeepgramFileResponse({ results: { channels: [{ alternatives: [{ transcript: "Speech" }] }], utterances: starts.map((start) => ({ transcript: "Speech", start, end: start + 3, speaker: 11 })) } }, true),
+    parseGeminiFileResponse({ status: "completed", output_text: "Speech", steps: [{ content: [{ type: "text", text: "Speech", annotations: starts.map((start) => ({ type: "word_info", text: "Speech", start_offset: `${start}s`, end_offset: `${start + 3}s`, speaker: "spk_4" })) }] }] }, true),
   ];
   const ids = new Set<string>();
-  for (const result of replies) {
-    assert.equal(result.success, true);
-    assert.ok(result.segments?.length);
-    const segments = result.segments.map((segment) => ({ ...segment, speaker: `system:${segment.speaker}` }));
-    const decisions = matchZoomSpeakers({ ...fixture(), transcript: { text: result.text!, segments } });
-    assert.ok(decisions.every((item) => item.status === "accepted"));
+  for (const reply of replies) {
+    assert.equal(reply.success, true);
+    assert.ok(reply.segments?.length);
+    const decisions = matchZoomSpeakers({ ...fixture(), transcript: { text: reply.text!, segments: reply.segments.map((s) => ({ ...s, speaker: `system:${s.speaker}` })) } });
+    assert.ok(decisions.every((d) => d.status === "accepted"));
     ids.add(decisions[0].speakerId!);
   }
   assert.equal(ids.size, 3);
@@ -129,13 +144,6 @@ test("clock protocol rejects malformed ranges and unsafe timestamps without chan
 });
 
 
-test("clock ranges extending past saved raw frames cannot attribute speech", () => {
-  const input = fixture();
-  input.epochs[0].frameCount = 24_000;
-  assert.ok(matchZoomSpeakers(input).every((item) => item.reason === "clock-outside-audio"));
-});
-
-
 test("invalid observation clocks and nullable clock pairs fail validation without throwing", () => {
   const { zoomSpeakerObservationSchema, meetingAudioClockMessageSchema }: typeof import("../../../../src/contracts/meetingRecording.ts") = require("../../../../src/contracts/meetingRecording.ts");
   for (const invalid of [
@@ -146,4 +154,36 @@ test("invalid observation clocks and nullable clock pairs fail validation withou
   assert.equal(meetingAudioClockMessageSchema.safeParse({ ...valid, hostStartNs: null, hostEndNs: null }).success, true);
   assert.equal(meetingAudioClockMessageSchema.safeParse({ ...valid, hostStartNs: null }).success, false);
   assert.equal(meetingAudioClockMessageSchema.safeParse({ ...valid, hostEndNs: "NaN" }).success, false);
+});
+
+test("a recreated tile inside continuous ASR speech is not another independent speech episode", () => {
+  const input = fixture();
+  input.observations[1].instanceKey = "new-tile";
+  input.observations[2].sessionId = randomUUID();
+  input.transcript.segments = [{ start: 0.5, end: 11.5, speaker: "system:provider-a", text: "One long speech bout" }];
+  assert.ok(matchZoomSpeakers(input).every((d) => d.reason === "insufficient-independent-episodes"));
+});
+
+test("a known local candidate excludes its own name even when later activity says unknown self", () => {
+  const input = fixture();
+  input.observations.unshift(observation(0, { activity: "clear", self: "local", readEndHostNs: "10000000" }));
+  assert.ok(matchZoomSpeakers(input).filter((d) => d.speakerId).every((d) => d.reason === "local-participant"));
+  const compact = fixture();
+  compact.observations.forEach((o) => { o.activity = "candidate"; o.windowMode = "compact"; o.reason = "activity-unconfirmed"; });
+  assert.ok(matchZoomSpeakers(compact).every((d) => d.reason === "activity-unconfirmed"));
+});
+
+test("unknown or missing clock inside one turn cannot poison three usable later episodes", () => {
+  for (const gap of ["ax", "clock"] as const) {
+    const input = fixture();
+    input.observations.push(observation(13));
+    input.transcript.segments.push({ start: 12.5, end: 15.5, speaker: "system:provider-a", text: "Fourth" });
+    input.anchors.push(...Array.from({ length: 4 }, (_, i) => anchor(14 + i, 15 + i)));
+    input.epochs[0].frameCount = input.partOffsets[0].frameCount = 18 * 24_000;
+    if (gap === "clock") input.anchors = input.anchors.filter((a) => a.clock.startFrame !== 2 * 24_000);
+    else input.observations.push(observation(2, { activity: "unavailable", displayName: "", readEndHostNs: "2500000000", reason: "ax-incomplete" }));
+    const decisions = matchZoomSpeakers(input);
+    assert.equal(decisions[0].reason, gap === "clock" ? "clock-coverage-gap" : "activity-coverage-gap");
+    assert.equal(decisions.filter((d) => d.status === "accepted").length, 3);
+  }
 });

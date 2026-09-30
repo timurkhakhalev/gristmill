@@ -1051,6 +1051,19 @@ export class DatabaseManager {
           run_id TEXT PRIMARY KEY REFERENCES meeting_processing_runs(id) ON DELETE CASCADE, decisions_json TEXT NOT NULL
         );
       `);
+      // Cut over stored decisions without claiming the new heuristic was used
+      // for historical results. Keep their original evidence/policy fields.
+      this.sql.exec(`
+        UPDATE meeting_run_platform_decisions
+        SET decisions_json = (
+          SELECT json_group_array(json_set(value, '$.timingPolicy', json('null')))
+          FROM json_each(meeting_run_platform_decisions.decisions_json)
+        )
+        WHERE EXISTS (
+          SELECT 1 FROM json_each(meeting_run_platform_decisions.decisions_json)
+          WHERE json_type(value, '$.timingPolicy') IS NULL
+        );
+      `);
       this.recoverMeetingPlatformCoverage();
       const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{ name: string }>;
       if (!calendarEventColumns.some((column) => column.name === "event_url")) {
@@ -1850,7 +1863,7 @@ export class DatabaseManager {
       const accepted: Array<{ speakerId: string; profileId: null; displayName: string }> = [];
       for (const decision of decisions) {
         if (decision.status !== "accepted" || !decision.speakerId || !decision.displayName) continue;
-        if (!decision.speakerId.startsWith("system:") || !decision.measurementId || decision.calibration?.measurementId !== decision.measurementId || !decision.observationIds.length || !decision.clockAnchorIds.length) return false;
+        if (!decision.speakerId.startsWith("system:") || !decision.timingPolicy || !decision.observationIds.length || !decision.clockAnchorIds.length) return false;
         const observations = run.sourceRecordingIds.flatMap((id) => this.listMeetingZoomObservations(id));
         const anchors = run.sourceRecordingIds.flatMap((id) => this.listMeetingAudioClockAnchors(id));
         if (decision.observationIds.some((id) => !observations.some((item) => item.id === id)) ||

@@ -174,8 +174,8 @@ test("the full bundled preload chain round-trips folders and spaces", async (t: 
   assert.ok(listed.some((f: any) => f.id === created.folder.id));
 
   const scoped = await api.getFolders(spaceId);
-  // The seeded private space ships with Personal/Meetings/Videos plus ours.
-  assert.equal(scoped.length, 4);
+  // The seeded private space ships with Personal plus ours.
+  assert.equal(scoped.length, 2);
   assert.ok(scoped.some((f: any) => f.id === created.folder.id));
 
   const renamed = await api.renameFolder(created.folder.id, "Renamed");
@@ -184,7 +184,7 @@ test("the full bundled preload chain round-trips folders and spaces", async (t: 
 
   // Renaming to an existing folder name in the same space hits the UNIQUE
   // constraint on folders (space_id, name).
-  const duplicate = await api.renameFolder(created.folder.id, "Meetings");
+  const duplicate = await api.renameFolder(created.folder.id, "Personal");
   assert.equal(duplicate.success, false);
   assert.match(duplicate.error, /already exists/);
 

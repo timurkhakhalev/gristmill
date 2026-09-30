@@ -261,6 +261,7 @@ test("folder-only update via IPC matches the DB baseline cases", async (t: impor
   if (!ctx) return;
   const { call, db, flush } = ctx;
   const spaceId = db.getPrivateSpaceId();
+  db.createFolder("Meetings", spaceId);
   const folders = Object.fromEntries(db.getFolders(spaceId).map((f: ReturnType<Database["getFolders"]>[number]) => [f.name, f.id]));
   const note = db.saveNote("N", "").note;
 

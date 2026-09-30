@@ -70,6 +70,8 @@
     "settings": "Settings",
     "inTime": "in {{time}}",
     "timeLeft": "{{time}} left",
+    "openNote": "Open note",
+    "skipMeeting": "Skip this meeting",
     "durationHoursMinutes": "{{h}}h {{m}}m",
     "durationMinutes": "{{m}}m",
     "now": "Now"
@@ -1541,9 +1543,9 @@
       "couldNotRename": "Couldn't rename folder",
       "couldNotDelete": "Couldn't delete folder",
       "deleteTitle": "Delete folder?",
-      "deleteDescription": "This will permanently delete \"{{name}}\" and its {{count}} note(s). This cannot be undone.",
+      "deleteDescription": "Delete \"{{name}}\"? Notes will stay in their other folders or move to the space root.",
       "deleteDescriptionEmpty": "This will permanently delete \"{{name}}\". This cannot be undone.",
-      "deleteConfirm": "Delete folder and notes"
+      "deleteConfirm": "Delete folder"
     },
     "list": {
       "title": "Notes",

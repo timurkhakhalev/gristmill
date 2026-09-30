@@ -433,65 +433,59 @@ function FolderRow({
         >
           <Plus size={12} />
         </Button>
-        {(!folder.is_default || noteFilesEnabled) && (
-          <RowMenu
-            label={t("common.actions")}
-            onAction={(key) => {
-              if (key === "show") window.electronAPI?.showFolderInExplorer?.(folder.name);
-              else if (key === "rename") onRename();
-              else if (key === "delete") onDelete();
-              else if (key.startsWith("space:")) {
-                const space = spaces.find((item) => `space:${item.id}` === key);
-                if (space) onMove(space);
-              }
-            }}
-          >
-            {noteFilesEnabled && (
-              <Dropdown.Item id="show" textValue={t("notes.context.showInFileManager", { manager: managerName() })}>
-                <ExternalLink size={14} className="shrink-0 text-muted" />
-                <Label>{t("notes.context.showInFileManager", { manager: managerName() })}</Label>
+        <RowMenu
+          label={t("common.actions")}
+          onAction={(key) => {
+            if (key === "show") window.electronAPI?.showFolderInExplorer?.(folder.name);
+            else if (key === "rename") onRename();
+            else if (key === "delete") onDelete();
+            else if (key.startsWith("space:")) {
+              const space = spaces.find((item) => `space:${item.id}` === key);
+              if (space) onMove(space);
+            }
+          }}
+        >
+          {noteFilesEnabled && (
+            <Dropdown.Item id="show" textValue={t("notes.context.showInFileManager", { manager: managerName() })}>
+              <ExternalLink size={14} className="shrink-0 text-muted" />
+              <Label>{t("notes.context.showInFileManager", { manager: managerName() })}</Label>
+            </Dropdown.Item>
+          )}
+          <Dropdown.Item id="rename" textValue={t("notes.context.rename")}>
+              <Pencil size={14} className="shrink-0 text-muted" />
+              <Label>{t("notes.context.rename")}</Label>
+            </Dropdown.Item>
+          {spaces.length > 1 && (
+            <Dropdown.SubmenuTrigger>
+              <Dropdown.Item id="move-space" textValue={t("notes.spaces.moveToSpace")}>
+                <FolderOpen size={14} className="shrink-0 text-muted" />
+                <Label>{t("notes.spaces.moveToSpace")}</Label>
+                <Dropdown.SubmenuIndicator />
               </Dropdown.Item>
-            )}
-            {!folder.is_default && (
-              <Dropdown.Item id="rename" textValue={t("notes.context.rename")}>
-                <Pencil size={14} className="shrink-0 text-muted" />
-                <Label>{t("notes.context.rename")}</Label>
-              </Dropdown.Item>
-            )}
-            {!folder.is_default && spaces.length > 1 && (
-              <Dropdown.SubmenuTrigger>
-                <Dropdown.Item id="move-space" textValue={t("notes.spaces.moveToSpace")}>
-                  <FolderOpen size={14} className="shrink-0 text-muted" />
-                  <Label>{t("notes.spaces.moveToSpace")}</Label>
-                  <Dropdown.SubmenuIndicator />
-                </Dropdown.Item>
-                <Dropdown.Popover className="min-w-40">
-                  <Dropdown.Menu
-                    aria-label={t("notes.spaces.moveToSpace")}
-                    disabledKeys={[`space:${folder.space_id}`]}
-                    onAction={(key) => {
-                      const space = spaces.find((item) => `space:${item.id}` === key);
-                      if (space) onMove(space);
-                    }}
-                  >
-                    {spaces.map((space) => (
-                      <Dropdown.Item key={space.id} id={`space:${space.id}`} textValue={space.name}>
-                        <Label dir="auto">{space.name}</Label>
-                      </Dropdown.Item>
-                    ))}
-                  </Dropdown.Menu>
-                </Dropdown.Popover>
-              </Dropdown.SubmenuTrigger>
-            )}
-            {!folder.is_default && <Separator className="my-1" />}
-            {!folder.is_default && (
-              <Dropdown.Item id="delete" variant="danger" textValue={t("notes.context.delete")}>
-                <Trash2 size={14} className="shrink-0" />
-                <Label>{t("notes.context.delete")}</Label>
-              </Dropdown.Item>
-            )}
-          </RowMenu>
-        )}
+              <Dropdown.Popover className="min-w-40">
+                <Dropdown.Menu
+                  aria-label={t("notes.spaces.moveToSpace")}
+                  disabledKeys={[`space:${folder.space_id}`]}
+                  onAction={(key) => {
+                    const space = spaces.find((item) => `space:${item.id}` === key);
+                    if (space) onMove(space);
+                  }}
+                >
+                  {spaces.map((space) => (
+                    <Dropdown.Item key={space.id} id={`space:${space.id}`} textValue={space.name}>
+                      <Label dir="auto">{space.name}</Label>
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown.SubmenuTrigger>
+          )}
+          <Separator className="my-1" />
+          <Dropdown.Item id="delete" variant="danger" textValue={t("notes.context.delete")}>
+              <Trash2 size={14} className="shrink-0" />
+              <Label>{t("notes.context.delete")}</Label>
+            </Dropdown.Item>
+        </RowMenu>
       </div>
       <div
         className={cn(
@@ -789,8 +783,6 @@ export default function SpacesTree({
         dropHandlers={dropTargetHandlers({
           spaceId: space.id,
           folderId: folder.id,
-          folderName: folder.name,
-          isDefaultFolder: !!folder.is_default,
         })}
         level={1}
         count={folderCounts[folder.id] ?? 0}

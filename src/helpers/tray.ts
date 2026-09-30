@@ -11,6 +11,8 @@ import { formatTime, type TimeFormat } from "../utils/dateFormatting.js";
 import { projectCalendarEvent } from "../contracts/calendar.js";
 
 const MENU_REFRESH_MS = 1000;
+const skipKey = (event: CalendarEventRow): string => `${event.provider}:${event.id}`;
+
 const TITLE_MAX_CHARS = 16;
 // Shorter name when a countdown follows, so the time is never what gets clipped.
 const TITLE_WITH_TIME_MAX_CHARS = 12;
@@ -45,6 +47,8 @@ export class TrayManager {
   refreshTimer: NodeJS.Timeout | null = null;
   // Replacing the menu while it is open dismisses it, so refreshes wait.
   menuOpen = false;
+  // In-memory: a skipped meeting is hidden from the menubar until the app restarts.
+  skippedEvents = new Set<string>();
   contextMenu: Menu | null = null;
   menuClosedAt = 0;
   timeFormat: TimeFormat = "locale";
@@ -76,7 +80,7 @@ export class TrayManager {
     try {
       return this.calendarSource
         .getUpcomingEvents(UPCOMING_WINDOW_MINUTES)
-        .filter((event) => new Date(event.end_time).getTime() > now)
+        .filter((event) => new Date(event.end_time).getTime() > now && !this.skippedEvents.has(skipKey(event)))
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
     } catch (error) {
       debugLogger.error("Failed to read upcoming events", { error: (error as Error).message }, "tray");
@@ -84,14 +88,49 @@ export class TrayManager {
     }
   }
 
+  buildCurrentMeetingItem(now = Date.now()): MenuItemConstructorOptions | null {
+    const current = this.getUpcomingEvents(now).find((event) => new Date(event.start_time).getTime() <= now);
+    if (!current) return null;
+    const open = (): void => {
+      const projected = projectCalendarEvent(current);
+      if (projected) void this.windowManager?.requestOpenCalendarEvent(projected);
+      else void this.showControlPanelFromTray();
+    };
+    const item: MenuItemConstructorOptions = {
+      label: current.summary || "—",
+      sublabel: `${this.formatTimeRange(current)} · ${i18nMain.t("tray.timeLeft", {
+        time: this.formatDuration(new Date(current.end_time).getTime() - now),
+      })}`,
+      click: open,
+    };
+    // Skipping only makes sense while nothing is being recorded; native menu rows
+    // cannot hold a button, so the row opens a submenu with both actions.
+    if (this.meetingCaptureActive) return item;
+    return {
+      label: item.label,
+      sublabel: item.sublabel,
+      submenu: [
+        { label: i18nMain.t("tray.openNote"), click: open },
+        { label: i18nMain.t("tray.skipMeeting"), click: () => this.skipEvent(current) },
+      ],
+    };
+  }
+
+  skipEvent(event: CalendarEventRow): void {
+    this.skippedEvents.add(skipKey(event));
+    this.updateTrayMenu();
+  }
+
   buildMeetingMenuItems(now = Date.now()): MenuItemConstructorOptions[] {
     const events = this.getUpcomingEvents(now).filter(
       (event) => new Date(event.start_time).getTime() > now
     );
-    if (!events.length) return [];
+    const currentItem = this.buildCurrentMeetingItem(now);
+    if (!events.length) return currentItem ? [currentItem, { type: "separator" }] : [];
 
     const [next, ...rest] = events;
     const items: MenuItemConstructorOptions[] = [
+      ...(currentItem ? [currentItem, { type: "separator" } as MenuItemConstructorOptions] : []),
       {
         label: i18nMain.t("tray.startsIn", {
           time: this.formatDuration(new Date(next.start_time).getTime() - now),

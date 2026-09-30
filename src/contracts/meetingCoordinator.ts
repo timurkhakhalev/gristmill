@@ -328,7 +328,7 @@ export const meetingNotificationRespondResultSchema = z
 export const pendingMeetingNoteNavigationSchema = z
   .object({
     noteId: z.number(),
-    folderId: z.number(),
+    folderId: z.number().nullable(),
     event: z.unknown().optional(),
     trigger: z.string().optional(),
   })

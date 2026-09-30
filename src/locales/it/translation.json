@@ -70,6 +70,8 @@
     "settings": "Impostazioni",
     "inTime": "tra {{time}}",
     "timeLeft": "resta {{time}}",
+    "openNote": "Apri nota",
+    "skipMeeting": "Salta questa riunione",
     "durationHoursMinutes": "{{h}} h {{m}} min",
     "durationMinutes": "{{m}} min",
     "now": "Ora"
@@ -1465,9 +1467,9 @@
       "couldNotRename": "Impossibile rinominare la cartella",
       "couldNotDelete": "Impossibile eliminare la cartella",
       "deleteTitle": "Eliminare la cartella?",
-      "deleteDescription": "Questa azione eliminerà definitivamente \"{{name}}\" e le sue {{count}} nota/e. Questa operazione non può essere annullata.",
+      "deleteDescription": "Eliminare «{{name}}»? Le note resteranno nelle altre cartelle o verranno spostate nella radice dello spazio.",
       "deleteDescriptionEmpty": "Questa azione eliminerà definitivamente \"{{name}}\". Questa operazione non può essere annullata.",
-      "deleteConfirm": "Elimina cartella e note"
+      "deleteConfirm": "Elimina cartella"
     },
     "list": {
       "title": "Note",

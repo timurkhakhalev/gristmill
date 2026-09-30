@@ -160,8 +160,7 @@ export interface MeetingDetectionDatabase {
     title: string,
     content: string,
     noteType: string
-  ): { note?: { id: number } | null } | null | undefined;
-  getMeetingsFolder?(): { id: number } | null | undefined;
+  ): { note?: { id: number; folder_id?: number | null } | null } | null | undefined;
   getNoteByCalendarEventId?(
     eventId: string
   ): { id: number; folder_id?: number | null } | null | undefined;
@@ -894,12 +893,11 @@ export class MeetingDetectionEngine {
         }
 
         const noteResult = this.databaseManager.saveNote(eventSummary, "", "meeting");
-        const meetingsFolder = this.databaseManager.getMeetingsFolder?.();
 
-        if (!noteResult?.note?.id || !meetingsFolder?.id) {
+        if (!noteResult?.note?.id) {
           debugLogger.error(
             "Meeting note creation failed",
-            { noteId: noteResult?.note?.id, folderId: meetingsFolder?.id },
+            { noteId: noteResult?.note?.id },
             "meeting"
           );
           return;
@@ -923,7 +921,7 @@ export class MeetingDetectionEngine {
 
         await this.windowManager.queueMeetingNoteNavigation?.({
           noteId: noteResult.note.id,
-          folderId: meetingsFolder.id,
+          folderId: noteResult.note.folder_id ?? null,
           event: detectionEvent,
           trigger: "calendar-join",
         });
@@ -962,12 +960,11 @@ export class MeetingDetectionEngine {
     const event = placeholderEvent("__manual__");
 
     const noteResult = this.databaseManager.saveNote(event.summary ?? "New note", "", "meeting");
-    const meetingsFolder = this.databaseManager.getMeetingsFolder?.();
 
-    if (!noteResult?.note?.id || !meetingsFolder?.id) {
+    if (!noteResult?.note?.id) {
       debugLogger.error(
-        "Manual meeting failed — missing note or folder",
-        { noteId: noteResult?.note?.id, folderId: meetingsFolder?.id },
+        "Manual meeting failed — missing note",
+        { noteId: noteResult?.note?.id },
         "meeting"
       );
       this._meetingModeActive = false;
@@ -978,7 +975,7 @@ export class MeetingDetectionEngine {
 
     await this.windowManager.queueMeetingNoteNavigation?.({
       noteId: noteResult.note.id,
-      folderId: meetingsFolder.id,
+      folderId: noteResult.note.folder_id ?? null,
       event,
       trigger: "hotkey",
     });
@@ -998,7 +995,7 @@ export class MeetingDetectionEngine {
     );
     await this.windowManager.queueMeetingNoteNavigation?.({
       noteId: existingNote.id,
-      folderId: existingNote.folder_id ?? this.databaseManager.getMeetingsFolder?.()?.id,
+      folderId: existingNote.folder_id ?? null,
       event,
       trigger,
     });
@@ -1096,18 +1093,17 @@ export class MeetingDetectionEngine {
   _createEventNote(
     calEvent: DetectionCalendarEvent & { attendees?: unknown },
     initial: { title?: string; content?: string } = {}
-  ): { noteId: number; folderId: number } | null {
+  ): { noteId: number; folderId: number | null } | null {
     const noteResult = this.databaseManager.saveNote(
       initial.title?.trim() || calEvent.summary || "New note",
       initial.content ?? "",
       "meeting"
     );
-    const meetingsFolder = this.databaseManager.getMeetingsFolder?.();
 
-    if (!noteResult?.note?.id || !meetingsFolder?.id) {
+    if (!noteResult?.note?.id) {
       debugLogger.error(
-        "Calendar event note creation failed — missing note or folder",
-        { noteId: noteResult?.note?.id, folderId: meetingsFolder?.id },
+        "Calendar event note creation failed — missing note",
+        { noteId: noteResult?.note?.id },
         "meeting"
       );
       return null;
@@ -1120,7 +1116,7 @@ export class MeetingDetectionEngine {
     const updateResult = this.databaseManager.updateNote?.(noteResult.note.id, updates);
 
     sendNoteAdded(updateResult?.note || noteResult.note);
-    return { noteId: noteResult.note.id, folderId: meetingsFolder.id };
+    return { noteId: noteResult.note.id, folderId: noteResult.note.folder_id ?? null };
   }
 
   // A card can vanish without a response — a compositor kill, a load failure,

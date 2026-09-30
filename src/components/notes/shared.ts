@@ -38,12 +38,6 @@ export function findDefaultFolder(folders: FolderItem[]): FolderItem | undefined
   return folders.find((f) => f.name === DEFAULT_FOLDER_NAME && f.is_default);
 }
 
-// URL downloads route to "Videos" by name: an existing user-created folder with
-// that name is used as-is.
-export function findVideosFolder(folders: FolderItem[]): FolderItem | undefined {
-  return folders.find((f) => f.name === VIDEOS_FOLDER_NAME);
-}
-
 // URL-download error codes → notes.upload.* i18n keys.
 export const DOWNLOAD_ERROR_KEYS: Record<string, string> = {
   INVALID_URL: "urlInvalid",

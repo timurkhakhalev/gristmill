@@ -752,9 +752,9 @@
       "couldNotRename": "تعذر إعادة تسمية المجلد",
       "couldNotDelete": "تعذر حذف المجلد",
       "deleteTitle": "حذف المجلد؟",
-      "deleteDescription": "سيؤدي هذا إلى حذف \"{{name}}\" وملاحظاتها البالغ عددها {{count}} بشكل دائم. لا يمكن التراجع عن هذا.",
+      "deleteDescription": "هل تريد حذف «{{name}}»؟ ستبقى الملاحظات في مجلداتها الأخرى أو تنتقل إلى جذر المساحة.",
       "deleteDescriptionEmpty": "سيؤدي هذا إلى حذف \"{{name}}\" بشكل دائم. لا يمكن التراجع عن هذا.",
-      "deleteConfirm": "حذف المجلد والملاحظات"
+      "deleteConfirm": "حذف المجلد"
     },
     "list": {
       "title": "الملاحظات",
@@ -1749,6 +1749,8 @@
     "settings": "الإعدادات",
     "inTime": "خلال {{time}}",
     "timeLeft": "متبقي {{time}}",
+    "openNote": "فتح الملاحظة",
+    "skipMeeting": "تخطي هذا الاجتماع",
     "durationHoursMinutes": "{{h}} س {{m}} د",
     "durationMinutes": "{{m}} د",
     "now": "الآن"

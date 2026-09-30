@@ -70,6 +70,8 @@
     "settings": "设置",
     "inTime": "{{time}}后",
     "timeLeft": "剩余{{time}}",
+    "openNote": "打开笔记",
+    "skipMeeting": "跳过此会议",
     "durationHoursMinutes": "{{h}}小时{{m}}分钟",
     "durationMinutes": "{{m}}分钟",
     "now": "现在"
@@ -1465,9 +1467,9 @@
       "couldNotRename": "无法重命名文件夹",
       "couldNotDelete": "无法删除文件夹",
       "deleteTitle": "删除文件夹？",
-      "deleteDescription": "这将永久删除「{{name}}」及其 {{count}} 条笔记。此操作无法撤销。",
+      "deleteDescription": "删除“{{name}}”？笔记将保留在其他文件夹中，或移到空间根目录。",
       "deleteDescriptionEmpty": "这将永久删除「{{name}}」。此操作无法撤销。",
-      "deleteConfirm": "删除文件夹和笔记"
+      "deleteConfirm": "删除文件夹"
     },
     "list": {
       "title": "笔记",

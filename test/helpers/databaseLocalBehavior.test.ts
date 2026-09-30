@@ -39,7 +39,7 @@ test("clean profile seeds one private space and local folders", (t: import("node
   const db = createDb(t);
   if (!db) return;
   assert.deepEqual(db.getSpaces().map((space: any) => space.kind), ["private"]);
-  assert.deepEqual(db.getFolders().map((folder: any) => folder.name), ["Personal", "Meetings", "Videos"]);
+  assert.deepEqual(db.getFolders().map((folder: any) => folder.name), ["Personal"]);
   db.close();
 });
 
@@ -47,7 +47,7 @@ test("notes and embedded chat remain local and scoped to containers", (t: import
   const db = createDb(t);
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
-  const folderId = db.getMeetingsFolder(spaceId).id;
+  const folderId = db.createFolder("Meetings", spaceId).folder.id;
   const note = db.saveNote("Meeting", "body", "meeting", null, null, folderId, spaceId).note;
   assert.equal(db.getNotesForSpace(spaceId)[0].id, note.id);
   const conversation = db.createAgentConversation("Questions", note.id, spaceId, folderId);
@@ -67,4 +67,21 @@ test("dictionary and snippets persist as local rows", (t: import("node:test").Te
   assert.equal(tables.includes("analytics_events"), false);
   assert.equal(tables.includes("space_accounts"), false);
   db.close();
+});
+
+
+test("Personal can be renamed and deleted without deleting notes or reseeding folders", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const folder = db.getFolders()[0];
+  const note = db.saveNote("Keep me", "body", "personal", null, null, folder.id).note;
+  assert.equal(db.renameFolder(folder.id, "My notes").success, true);
+  assert.equal(db.deleteFolder(folder.id).success, true);
+  assert.equal(db.getNote(note.id).folder_id, null);
+  assert.equal(db.getNote(note.id).content, "body");
+  db.close();
+  const reopened = new DatabaseManager();
+  assert.deepEqual(reopened.getFolders(), []);
+  assert.equal(reopened.saveNote("Root", "").note.folder_id, null);
+  reopened.close();
 });

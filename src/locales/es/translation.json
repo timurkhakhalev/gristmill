@@ -70,6 +70,8 @@
     "settings": "Ajustes",
     "inTime": "en {{time}}",
     "timeLeft": "quedan {{time}}",
+    "openNote": "Abrir nota",
+    "skipMeeting": "Omitir esta reunión",
     "durationHoursMinutes": "{{h}} h {{m}} min",
     "durationMinutes": "{{m}} min",
     "now": "Ahora"
@@ -1465,9 +1467,9 @@
       "couldNotRename": "No se pudo renombrar la carpeta",
       "couldNotDelete": "No se pudo eliminar la carpeta",
       "deleteTitle": "¿Eliminar carpeta?",
-      "deleteDescription": "Esto eliminará permanentemente \"{{name}}\" y sus {{count}} nota(s). Esta acción no se puede deshacer.",
+      "deleteDescription": "¿Eliminar «{{name}}»? Las notas permanecerán en sus otras carpetas o pasarán a la raíz del espacio.",
       "deleteDescriptionEmpty": "Esto eliminará permanentemente \"{{name}}\". Esta acción no se puede deshacer.",
-      "deleteConfirm": "Eliminar carpeta y notas"
+      "deleteConfirm": "Eliminar carpeta"
     },
     "list": {
       "title": "Notas",

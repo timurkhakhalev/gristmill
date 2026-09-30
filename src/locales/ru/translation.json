@@ -70,6 +70,8 @@
     "settings": "Настройки",
     "inTime": "через {{time}}",
     "timeLeft": "осталось {{time}}",
+    "openNote": "Открыть заметку",
+    "skipMeeting": "Пропустить этот созвон",
     "durationHoursMinutes": "{{h}} ч {{m}} мин",
     "durationMinutes": "{{m}} мин",
     "now": "Сейчас"
@@ -1467,9 +1469,9 @@
       "couldNotRename": "Не удалось переименовать папку",
       "couldNotDelete": "Не удалось удалить папку",
       "deleteTitle": "Удалить папку?",
-      "deleteDescription": "Это навсегда удалит «{{name}}» и {{count}} заметок в ней. Это действие нельзя отменить.",
+      "deleteDescription": "Удалить «{{name}}»? Заметки останутся в других папках или перейдут в корень пространства.",
       "deleteDescriptionEmpty": "Это навсегда удалит «{{name}}». Это действие нельзя отменить.",
-      "deleteConfirm": "Удалить папку и заметки"
+      "deleteConfirm": "Удалить папку"
     },
     "list": {
       "title": "Заметки",

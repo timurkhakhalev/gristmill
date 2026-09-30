@@ -70,6 +70,8 @@
     "settings": "設定",
     "inTime": "{{time}}後",
     "timeLeft": "剩餘{{time}}",
+    "openNote": "開啟筆記",
+    "skipMeeting": "略過此會議",
     "durationHoursMinutes": "{{h}}小時{{m}}分鐘",
     "durationMinutes": "{{m}}分鐘",
     "now": "現在"
@@ -1465,9 +1467,9 @@
       "couldNotRename": "無法重新命名資料夾",
       "couldNotDelete": "無法刪除資料夾",
       "deleteTitle": "刪除資料夾？",
-      "deleteDescription": "這將永久刪除「{{name}}」及其 {{count}} 則筆記。此操作無法復原。",
+      "deleteDescription": "刪除「{{name}}」？筆記將保留在其他資料夾中，或移至空間根目錄。",
       "deleteDescriptionEmpty": "這將永久刪除「{{name}}」。此操作無法復原。",
-      "deleteConfirm": "刪除資料夾和筆記"
+      "deleteConfirm": "刪除資料夾"
     },
     "list": {
       "title": "筆記",

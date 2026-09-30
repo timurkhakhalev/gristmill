@@ -70,6 +70,8 @@
     "settings": "Einstellungen",
     "inTime": "in {{time}}",
     "timeLeft": "noch {{time}}",
+    "openNote": "Notiz öffnen",
+    "skipMeeting": "Dieses Meeting überspringen",
     "durationHoursMinutes": "{{h}} Std. {{m}} Min.",
     "durationMinutes": "{{m}} Min.",
     "now": "Jetzt"
@@ -1541,9 +1543,9 @@
       "couldNotRename": "Ordner konnte nicht umbenannt werden",
       "couldNotDelete": "Ordner konnte nicht gelöscht werden",
       "deleteTitle": "Ordner löschen?",
-      "deleteDescription": "Dadurch werden \"{{name}}\" und {{count}} enthaltene Notiz(en) dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "deleteDescription": "„{{name}}“ löschen? Notizen bleiben in ihren anderen Ordnern oder werden in die oberste Ebene des Bereichs verschoben.",
       "deleteDescriptionEmpty": "Dadurch wird \"{{name}}\" dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
-      "deleteConfirm": "Ordner und Notizen löschen"
+      "deleteConfirm": "Ordner löschen"
     },
     "list": {
       "title": "Notizen",

@@ -76,7 +76,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const [notesDebugScenario, setNotesDebugScenario] = useState<NotesDebugScenario | null>(null);
   const [meetingRecordingRequest, setMeetingRecordingRequest] = useState<{
     noteId: number;
-    folderId: number;
+    folderId: number | null;
     event: any;
   } | null>(null);
   const isMeetingMode = useIsMeetingMode();

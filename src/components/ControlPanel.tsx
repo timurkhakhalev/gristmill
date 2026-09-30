@@ -349,6 +349,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
               sidebarOpen={drawerOpen}
               onToggleSidebar={toggleSidebar}
               onOpenSearch={() => setShowSearch(true)}
+              onNewNote={() => void handleNewNote()}
               isSidePanelLayout={isSidePanelLayout}
               insetTrafficLights={!sidebarInline}
               onExitSidePanel={handleExitSidePanel}

@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronLeft, PanelLeftClose, Search } from "./icons";
+import { ChevronLeft, PanelLeftClose, Plus, Search } from "./icons";
 import { Button } from "./ui/button";
 import WindowControls from "./WindowControls";
 import { cn } from "./lib/utils";
@@ -25,6 +25,7 @@ interface ControlPanelTopBarProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onOpenSearch: () => void;
+  onNewNote: () => void;
   /** Meeting mode or a narrow window with an open note: sidebar hidden, back button shown. */
   isSidePanelLayout: boolean;
   /** Shift leading controls past macOS traffic lights when the sidebar column is gone. */
@@ -43,6 +44,7 @@ export default function ControlPanelTopBar({
   sidebarOpen,
   onToggleSidebar,
   onOpenSearch,
+  onNewNote,
   isSidePanelLayout,
   insetTrafficLights,
   onExitSidePanel,
@@ -127,6 +129,17 @@ export default function ControlPanelTopBar({
 
       <div className="flex min-w-0 items-center gap-2 justify-self-end">
         {trailing}
+        <button
+          type="button"
+          onClick={onNewNote}
+          data-no-window-drag=""
+          style={noDragStyle}
+          aria-label={t("notes.list.newNote")}
+          className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border px-3 text-ui font-medium text-foreground outline-none transition-colors duration-150 hover:bg-default focus-visible:ring-1 focus-visible:ring-primary/30 dark:border-white/10 dark:hover:bg-white/5 @max-[560px]:w-8 @max-[560px]:justify-center @max-[560px]:px-0"
+        >
+          <Plus size={14} className="shrink-0 text-muted" />
+          <span className="@max-[560px]:hidden">{t("notes.list.newNote")}</span>
+        </button>
         {showNotesDebug && NotesDebugControls && (
           <div data-no-window-drag="" style={noDragStyle}>
             <React.Suspense fallback={null}>

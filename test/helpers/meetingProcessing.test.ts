@@ -2355,3 +2355,37 @@ test("capture interrupting speaker naming resumes normalization without repeatin
   assert.equal(namingCalls, 2);
   assert.equal(asrCalls, 1);
 });
+
+
+test("cancel IPC persists the stopped gate and preserves source audio", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run } = createFinishedRecording(db, storage, validConfig, "", true);
+  const deadline = Date.parse(run.retryAt!);
+  let now = deadline - 1;
+  let calls = 0;
+  const worker = workerFor(db, storage, {
+    now: () => new Date(now),
+    transcribeRemote: async () => { calls += 1; return { success: true, text: "Hello." }; },
+  });
+  t.after(() => worker.stop());
+  const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+  registerMeetingProcessingHandlers({ handle: (channel, handler) => handlers.set(channel, handler) }, worker);
+  const bridge = createMeetingProcessingBridge({ invoke: async (channel, ...args) => handlers.get(channel)!(null, ...args), on: () => {}, removeListener: () => {} });
+  const audioPath = storage.getEpochFilePath(recording.id, "mic", 0);
+  const before = fs.readFileSync(audioPath);
+  assert.equal((await bridge.meetingProcessingCancelRun(run.id)).success, true);
+  assert.equal((await bridge.meetingProcessingCancelRun(run.id)).success, false);
+  assert.deepEqual(await handlers.get(meetingProcessingChannels.cancelRun)!(null, { runId: "invalid" }), {
+    success: false, error: "Invalid meeting processing cancellation request",
+  });
+  now = deadline + 1;
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(calls, 0);
+  assert.equal(db.getMeetingProcessingRun(run.id)?.status, "cancelled");
+  assert.equal(db.getMeetingProcessingRun(run.id)?.retryAt, null);
+  assert.equal(db.getMeetingRecording(recording.id)?.audioState, "available");
+  assert.deepEqual(fs.readFileSync(audioPath), before);
+});

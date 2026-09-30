@@ -21,6 +21,7 @@ import {
   meetingProcessingListRequestSchema,
   meetingProcessingListResponseSchema,
   meetingProcessingRetryRequestSchema,
+  meetingProcessingCancelRequestSchema,
   meetingProcessingSummaryActionRequestSchema,
   meetingProcessingSpeakerCorrectionRequestSchema,
   meetingProcessingUpdateBlockedRunConfigRequestSchema,
@@ -1676,6 +1677,17 @@ export function registerMeetingProcessingHandlers(
       return result
         ? meetingProcessingRunResponseSchema.parse({ success: true, result })
         : { success: false, error: "Meeting processing run cannot be retried" };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle(meetingProcessingChannels.cancelRun, (_event, ...args) => {
+    const parsed = meetingProcessingCancelRequestSchema.safeParse(args[0]);
+    if (!parsed.success) return { success: false, error: "Invalid meeting processing cancellation request" };
+    try {
+      return worker.cancelRun(parsed.data.runId)
+        ? { success: true }
+        : { success: false, error: "Meeting processing run cannot be cancelled" };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }

@@ -12,6 +12,7 @@ export const meetingProcessingChannels = {
   listForNote: "meeting-processing-list-for-note",
   createRun: "meeting-processing-create-run",
   retryRun: "meeting-processing-retry-run",
+  cancelRun: "meeting-processing-cancel-run",
   updateBlockedRunConfig: "meeting-processing-update-blocked-run-config",
   setSpeakerCorrection: "meeting-processing-set-speaker-correction",
   runSummaryAction: "meeting-processing-run-summary-action",
@@ -39,6 +40,7 @@ export const meetingProcessingCreateRunRequestSchema = z.object({
   sourceRunId: meetingRecordingIdSchema.nullable().optional(),
 });
 export const meetingProcessingRetryRequestSchema = z.object({ runId: meetingRecordingIdSchema });
+export const meetingProcessingCancelRequestSchema = z.object({ runId: meetingRecordingIdSchema });
 export const meetingProcessingUpdateBlockedRunConfigRequestSchema = z.object({
   runId: meetingRecordingIdSchema,
   config: meetingProcessingConfigSchema.nullable(),
@@ -120,6 +122,7 @@ export interface MeetingProcessingApi {
   meetingProcessingListForNote(noteId: number): Promise<MeetingProcessingListResponse>;
   meetingProcessingCreateRun(input: z.infer<typeof meetingProcessingCreateRunRequestSchema>): Promise<MeetingProcessingRunResponse>;
   meetingProcessingRetryRun(runId: string): Promise<MeetingProcessingRunResponse>;
+  meetingProcessingCancelRun(runId: string): Promise<MeetingProcessingRunResponse>;
   meetingProcessingUpdateBlockedRunConfig(input: z.infer<typeof meetingProcessingUpdateBlockedRunConfigRequestSchema>): Promise<MeetingProcessingRunResponse>;
   meetingProcessingSetSpeakerCorrection(input: z.infer<typeof meetingProcessingSpeakerCorrectionRequestSchema>): Promise<z.infer<typeof meetingProcessingCorrectionResponseSchema>>;
   meetingProcessingRunSummaryAction(input: z.infer<typeof meetingProcessingSummaryActionRequestSchema>): Promise<z.infer<typeof meetingProcessingSummaryActionResponseSchema>>;

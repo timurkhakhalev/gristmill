@@ -17,6 +17,7 @@ interface MountedCalls {
   summaryActions: Array<Record<string, unknown>>;
   update: Array<Record<string, unknown>>;
   retry: string[];
+  cancel: string[];
 }
 
 function submittedSection(call: Record<string, unknown>, section: "transcription" | "summary"): Record<string, unknown> {
@@ -134,7 +135,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   initialCapturePhase?: string;
   noteTranscript?: import("../../src/contracts/noteRead.js").NoteTranscript;
 } = {}) {
-  const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], summaryActions: [], retry: [] };
+  const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], summaryActions: [], retry: [], cancel: [] };
   let listedItems = items;
   let setCapturePhase: (phase: string) => void = () => {};
   const api = {
@@ -190,6 +191,16 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
       return summaryAction ? summaryAction(input) : { success: true };
     },
     meetingProcessingRetryRun: async (id: string) => { calls.retry.push(id); return { success: true }; },
+    meetingProcessingCancelRun: async (id: string) => {
+      calls.cancel.push(id);
+      listedItems = listedItems.map((item) => {
+        const part = item as ReturnType<typeof recording> & { runs: RunBundle[] };
+        return { ...part, runs: part.runs.map((bundle) => bundle.run.id === id
+          ? { ...bundle, run: { ...bundle.run, status: "cancelled", errorCode: "processing-cancelled", retryAt: null } }
+          : bundle) };
+      });
+      return { success: true };
+    },
   };
   let root: ReturnType<typeof createRoot> | undefined;
   installBrowserGlobals(t, {
@@ -733,4 +744,27 @@ test("saved Summary separates transcription-only from Summary-only actions", asy
   assert.equal(ui.calls.create[1].kind, "summary");
   assert.equal(ui.calls.create[1].sourceRunId, RUN);
   assert.equal(ui.calls.create[1].sourceRecordingIds, undefined);
+});
+
+
+test("processing can be cancelled during the countdown and after ASR starts", async (t) => {
+  for (const status of ["pending", "running"]) {
+    const run = completeRun();
+    run.run.status = status;
+    run.run.stage = status === "pending" ? "prepare" : "asr";
+    run.run.kind = "initial";
+    run.run.retryAt = status === "pending" ? new Date(Date.now() + 15_000).toISOString() : null;
+    run.run.retryCount = 0;
+    run.run.errorCode = null;
+    const panel = await mountPanel(t, [recording(FIRST, FIRST, new Date().toISOString(), run)], { viewMode: "enhanced" });
+    const cancel = panel.button("Cancel processing");
+    assert.ok(cancel, status);
+    assert.equal(cancel.props?.isDisabled, false);
+    await panel.flush(() => (cancel.props as { onPress: () => void }).onPress());
+    assert.deepEqual(panel.calls.cancel, [run.run.id]);
+    assert.match(panel.text(), /Processing cancelled/);
+    assert.doesNotMatch(panel.text(), /Transcription starts in/);
+    assert.equal(panel.label("Play audio")?.props?.isDisabled, false, "saved audio remains available");
+    assert.match(panel.text(), /Release on Friday/, "existing summary remains available");
+  }
 });

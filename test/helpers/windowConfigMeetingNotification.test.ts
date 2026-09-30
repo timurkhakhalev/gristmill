@@ -18,7 +18,7 @@ test("auto-end uses a larger positioned window while detection keeps its existin
   const autoEndSize = getMeetingNotificationWindowSize({ kind: "auto-end" });
   const display = { workArea: { x: 100, y: 50, width: 1400, height: 900 } };
 
-  assert.deepEqual(detectionSize, { width: 360, height: 64 });
+  assert.deepEqual(detectionSize, { width: 420, height: 80 });
   assert.deepEqual(autoEndSize, AUTO_END_NOTIFICATION_WINDOW_SIZE);
   // Wider than a detection prompt because of the countdown copy and the Restart
   // action, but not so wide that a single line runs the width of the screen.

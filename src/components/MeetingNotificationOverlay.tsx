@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -177,6 +178,11 @@ export default function MeetingNotificationOverlay(): ReactElement {
       ? () => void respondToAutoEnd("restart")
       : () => respond(presentation.action);
 
+  const countdownMs = useMemo(
+    () => (data?.kind === "auto-end" ? Math.max(0, data.expiresAt - Date.now()) : undefined),
+    [data]
+  );
+
   const isDragging = dragX !== null;
   const motionStyle: CSSProperties = isDragging
     ? {
@@ -210,10 +216,10 @@ export default function MeetingNotificationOverlay(): ReactElement {
           title={title as string}
           body={body}
           startLabel={t(presentation.actionKey)}
-          icon={presentation.action}
           onStart={handleAction}
           onDismiss={presentation.dismissible ? dismiss : undefined}
           allowTitleWrap={presentation.allowTitleWrap}
+          countdownMs={countdownMs}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         />

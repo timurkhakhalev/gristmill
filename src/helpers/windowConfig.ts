@@ -297,8 +297,8 @@ export const CONTROL_PANEL_CONFIG: LegacyWindowConfig = {
   type: "normal",
 };
 
-const NOTIFICATION_WINDOW_WIDTH = 360;
-const NOTIFICATION_WINDOW_HEIGHT = 64;
+const NOTIFICATION_WINDOW_WIDTH = 420;
+const NOTIFICATION_WINDOW_HEIGHT = 80;
 
 export const NOTIFICATION_WINDOW_CONFIG: LegacyWindowConfig = {
   width: NOTIFICATION_WINDOW_WIDTH,

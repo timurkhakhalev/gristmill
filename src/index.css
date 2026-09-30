@@ -1370,6 +1370,19 @@ a:hover {
   }
 }
 
+@keyframes meeting-notification-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.meeting-notification-countdown {
+  animation: meeting-notification-countdown linear forwards;
+}
+
 @keyframes toast-progress {
   from {
     width: 100%;

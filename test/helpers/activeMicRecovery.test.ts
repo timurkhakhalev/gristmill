@@ -73,6 +73,54 @@ const speaker = (deviceId: string) => ({
 });
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+test("explicit selection waits for an in-flight recovery and then acquires the new selection", async (t) => {
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
+  const mediaDevices = new FakeMediaDevices([mic("mic-1"), mic("mic-2"), mic("mic-3")]);
+  let resolveFirst!: (stream: FakeStream) => void;
+  const replacements: FakeStream[] = [];
+  const reasons: string[] = [];
+  const controller = new ActiveMicRecoveryController<FakeStream>({
+    mediaDevices,
+    acquire: async (reason) => {
+      reasons.push(reason);
+      if (reasons.length === 1) return new Promise((resolve) => { resolveFirst = resolve; });
+      return new FakeStream(new FakeTrack({ deviceId: "mic-3" }));
+    },
+    onRecovered: async (stream) => { replacements.push(stream); },
+  });
+  t.after(() => controller.stop());
+  await controller.start(new FakeStream(new FakeTrack()));
+  const recovery = controller.recover("ended");
+  const selection = controller.changeSelection(false);
+  resolveFirst(new FakeStream(new FakeTrack({ deviceId: "mic-2" })));
+  await recovery;
+  assert.equal(await selection, true);
+  assert.deepEqual(reasons, ["ended", "selection-change"]);
+  assert.equal(replacements.at(-1)?.track?.settings.deviceId, "mic-3");
+});
+
+test("stop cancels a selection waiting for an older recovery", async (t) => {
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
+  let resolveFirst!: (stream: FakeStream) => void;
+  let acquired = 0;
+  const controller = new ActiveMicRecoveryController<FakeStream>({
+    mediaDevices: new FakeMediaDevices([mic("mic-1")]),
+    acquire: () => { acquired += 1; return new Promise((resolve) => { resolveFirst = resolve; }); },
+    onRecovered: async () => {},
+  });
+  t.after(() => controller.stop());
+  await controller.start(new FakeStream(new FakeTrack()));
+  const recovery = controller.recover("ended");
+  const selection = controller.changeSelection(false);
+  controller.stop();
+  const late = new FakeStream(new FakeTrack());
+  resolveFirst(late);
+  await recovery;
+  assert.equal(await selection, false);
+  assert.equal(acquired, 1);
+  assert.equal(late.track?.stopped, true);
+});
+
 test("filters output-only changes and keeps a healthy pinned microphone", async () => {
   const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   const mediaDevices = new FakeMediaDevices([mic("mic-1")]);

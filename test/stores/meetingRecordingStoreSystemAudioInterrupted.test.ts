@@ -206,15 +206,12 @@ test("resumed audio discards a quiet warning buffered during microphone setup", 
   assert.equal((await store.stopRecording()).stopped, true);
 });
 
-test("resumed audio preserves a capture-loss warning buffered during microphone setup", async (t: TestContext) => {
+test("resumed audio discards a recovered capture warning buffered during microphone setup", async (t: TestContext) => {
   const { listeners, store, finishStart } = await startWithPendingMicrophone(t);
   listeners.systemAudioInterrupted?.(stoppedCapture);
   listeners.systemAudioResumed?.();
   await finishStart();
-  assert.deepEqual(store.useMeetingRecordingStore.getState().systemAudioInterrupted, {
-    recovering: false,
-    reason: "no_audio_delivered",
-  });
+  assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterrupted, null);
   assert.equal((await store.stopRecording()).stopped, true);
 });
 
@@ -279,7 +276,7 @@ test("stopping during microphone setup discards buffered warnings and early list
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterruptedNonce, 0);
 });
 
-test("resumed audio clears only quiet warnings without creating another interruption", async (t: TestContext) => {
+test("resumed audio clears live warnings without creating another interruption", async (t: TestContext) => {
   let store!: MeetingStoreModule;
   t.after(async () => {
     if (store) await stopStoreAndAssertOutcome(store);
@@ -300,10 +297,7 @@ test("resumed audio clears only quiet warnings without creating another interrup
   for (const recovering of [true, false]) {
     listeners.systemAudioInterrupted!({ ...stoppedCapture, recovering });
     listeners.systemAudioResumed?.();
-    assert.deepEqual(store.useMeetingRecordingStore.getState().systemAudioInterrupted, {
-      reason: "no_audio_delivered",
-      recovering,
-    });
+    assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterrupted, null);
   }
 
   const lateResumed = listeners.systemAudioResumed;

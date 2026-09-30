@@ -156,7 +156,10 @@ function createEngineFake() {
   };
 }
 
-function buildHarness({ failWrite = false } = {}) {
+function buildHarness({ failWrite = false, audioTapManager = null }: {
+  failWrite?: boolean;
+  audioTapManager?: import("../../src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoordinatorDeps["audioTapManager"];
+} = {}) {
   currentWindow = fakeWindow();
   const handlers = new Map();
   const listeners = new Map();
@@ -183,7 +186,7 @@ function buildHarness({ failWrite = false } = {}) {
         mergeWithTranscript: (segments: unknown) => segments,
       },
       meetingDetectionEngine: engine,
-      audioTapManager: null,
+      audioTapManager,
       whisperManager: { transcribeLocalWhisper: async () => { asrCalls += 1; return { success: true, text: "" }; } },
       parakeetManager: { transcribeLocalParakeet: async () => { asrCalls += 1; return { success: true, text: "" }; } },
       liveSpeakerIdentifier: {
@@ -217,6 +220,33 @@ const START = {
   autoEndEligible: false,
 };
 const START_EVENT = () => ({ sender: currentWindow.webContents });
+
+test("a native helper failure reconnects system audio without ending the meeting or exposing its raw error", async () => {
+  let callbacks: import("../../src/helpers/audioTapManager.js").AudioTapStartOptions = {};
+  let starts = 0;
+  const harness = buildHarness({ audioTapManager: {
+    isSupported: () => true,
+    start: async (options = {}) => { starts += 1; callbacks = options; options.onStart?.({ type: "start" }); },
+    stop: async () => {},
+  } });
+  const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  try {
+    assert.equal(started.success, true);
+    assert.equal(starts, 1);
+    callbacks.onError?.(new Error("audio device disappeared"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(starts, 2);
+    assert.equal(harness.runtime.isRecording(), true);
+    assert.equal(harness.databaseManager.recordings.size, 1);
+    callbacks.onChunk?.(Buffer.alloc(4800));
+    assert.ok(currentWindow.messages.some((message: { channel: string }) => message.channel === "meeting-system-audio-resumed"));
+    assert.ok(!currentWindow.messages.some((message: { channel: string }) => message.channel === "meeting-transcription-error"));
+    assert.equal(harness.databaseManager.finalized.length, 0);
+  } finally {
+    const stopped = await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: START.sessionId, lastSequence: {} });
+    assert.equal(stopped.success, true);
+  }
+});
 
 test("prepare and start need no credentials or model connection and create durable recording first", async () => {
   const harness = buildHarness();

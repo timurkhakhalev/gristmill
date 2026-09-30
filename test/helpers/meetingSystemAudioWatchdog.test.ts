@@ -4,6 +4,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const createMeetingSystemAudioWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog.ts");
 
 const { STALL_MS, GONE_QUIET_MS, MAX_RESTARTS, TICK_GAP_MS } = createMeetingSystemAudioWatchdog;
+const { RECOVERY_RETRY_MS } = createMeetingSystemAudioWatchdog;
 
 const START_TIME = 1_000_000;
 const TICK_MS = 2_000;
@@ -154,7 +155,7 @@ test("giving up suppresses the later quiet report rather than piling on", async 
   assert.equal(h.interruptions.filter((entry) => entry.reason === "gone_quiet").length, 0);
 });
 
-test("a device event after the cap is exhausted cannot hand out more attempts", async () => {
+test("reconnecting a device after exhausted recovery starts a fresh attempt", async () => {
   const h = createHarness();
   startNative(h);
 
@@ -163,8 +164,22 @@ test("a device event after the cap is exhausted cannot hand out more attempts", 
 
   h.watchdog.reportDeviceInvalidated();
   await flush();
-  assert.equal(h.restarts(), MAX_RESTARTS);
+  assert.equal(h.restarts(), MAX_RESTARTS + 1);
   assert.equal(h.interruptions.filter((entry) => entry.recovering === false).length, 1);
+});
+
+test("an exited helper can recover later without another device notification", async () => {
+  const h = createHarness();
+  startNative(h);
+  await h.advance((STALL_MS + TICK_MS) * (MAX_RESTARTS + 1));
+  assert.equal(h.restarts(), MAX_RESTARTS);
+  await h.advance(RECOVERY_RETRY_MS - TICK_MS);
+  assert.equal(h.restarts(), MAX_RESTARTS);
+  await h.advance(TICK_MS);
+  assert.equal(h.restarts(), MAX_RESTARTS + 1);
+  h.deliver(false);
+  assert.equal(h.resumed.length, 1);
+  assert.equal(h.interruptions.filter((entry) => !entry.recovering).length, 1);
 });
 
 test("a device invalidation restarts without waiting for the stall window", async () => {
@@ -359,7 +374,7 @@ test("audible audio reports resumption once for each quiet warning", async () =>
   }
 });
 
-test("resumption does not clear historical capture interruptions", async () => {
+test("resumption dismisses the live interruption after capture returns", async () => {
   const h = createHarness();
   startNative(h);
   h.watchdog.reportDeviceInvalidated();
@@ -367,15 +382,18 @@ test("resumption does not clear historical capture interruptions", async () => {
   h.deliver(true);
 
   assert.equal(h.interruptions.length, 1);
-  assert.deepEqual(h.resumed, []);
+  assert.equal(h.resumed.length, 1);
 });
 
-test("audible audio after exhausted recovery does not rearm the weaker quiet warning", async () => {
+test("actual delivery after exhausted recovery clears the failure and rearms monitoring", async () => {
   const h = createHarness();
   startNative(h);
   await h.advance((STALL_MS + TICK_MS) * (MAX_RESTARTS + 1));
 
   h.deliver(true);
+  assert.equal(h.resumed.length, 1);
+  h.deliver(true);
+  assert.equal(h.resumed.length, 1, "only the first recovered chunk dismisses the interruption");
   for (let elapsed = 0; elapsed <= GONE_QUIET_MS + TICK_MS; elapsed += TICK_MS) {
     h.deliver(false);
     await h.advance(TICK_MS);
@@ -383,10 +401,40 @@ test("audible audio after exhausted recovery does not rearm the weaker quiet war
   h.watchdog.reportDeviceInvalidated();
   await flush();
 
-  assert.equal(h.restarts(), MAX_RESTARTS);
-  assert.equal(h.interruptions.filter((entry) => !entry.recovering).length, 1);
-  assert.equal(h.interruptions.filter((entry) => entry.reason === "gone_quiet").length, 0);
-  assert.deepEqual(h.resumed, [], "audible capture cannot dismiss exhausted recovery");
+  assert.equal(h.restarts(), MAX_RESTARTS + 1);
+  assert.equal(h.interruptions.filter((entry) => entry.reason === "gone_quiet").length, 1);
+});
+
+test("successful route changes do not exhaust the recording's recovery budget", async () => {
+  const h = createHarness();
+  startNative(h);
+  for (let change = 0; change < MAX_RESTARTS + 3; change += 1) {
+    h.watchdog.reportDeviceInvalidated();
+    await flush();
+    h.deliver(false); // Silent PCM still proves that the tap is delivering.
+  }
+  assert.equal(h.restarts(), MAX_RESTARTS + 3);
+  assert.equal(h.resumed.length, MAX_RESTARTS + 3);
+  assert.equal(h.interruptions.filter((entry) => !entry.recovering).length, 0);
+});
+
+test("flushing the retiring helper's tail cannot report recovery", async () => {
+  const h = createHarness({ stopImpl: () => h.deliver(true) });
+  startNative(h);
+  h.watchdog.reportDeviceInvalidated();
+  await flush();
+  assert.deepEqual(h.resumed, []);
+  h.deliver(false);
+  assert.equal(h.resumed.length, 1);
+});
+
+test("a helper failure restarts immediately instead of waiting for missing chunks", async () => {
+  const h = createHarness();
+  startNative(h);
+  h.watchdog.reportCaptureFailed();
+  await flush();
+  assert.deepEqual(h.calls, ["stop", "start"]);
+  assert.equal(h.interruptions[0].recovering, true);
 });
 
 test("stop ends the session and a late restart cannot resurrect it", async () => {

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getSettings } from "./settingsStore";
+import { getSettings, useSettingsStore } from "./settingsStore";
 import { snapshotMeetingRecordingConfig } from "../helpers/meetingRecordingConfigSnapshot";
 import {
   MeetingCaptureWriteQueue,
@@ -79,6 +79,8 @@ interface MeetingRecordingState {
   recordingNoteId: number | null;
   recordingNoteTitle: string | null;
   recordingFolderId: number | null;
+  micCaptureDeviceLabel: string | null;
+  systemAudioOutputDeviceLabel: string | null;
   segments: TranscriptSegment[];
   transcript: string;
   micPartial: string;
@@ -544,6 +546,8 @@ export const useMeetingRecordingStore = create<MeetingRecordingState>()(() => ({
   recordingNoteId: pausedMeeting?.noteId ?? null,
   recordingNoteTitle: null,
   recordingFolderId: null,
+  micCaptureDeviceLabel: null,
+  systemAudioOutputDeviceLabel: null,
   segments: [],
   transcript: "",
   micPartial: "",
@@ -805,6 +809,8 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       recordingNoteId: args.noteId,
       recordingNoteTitle: args.noteTitle,
       recordingFolderId: args.folderId,
+      micCaptureDeviceLabel: null,
+      systemAudioOutputDeviceLabel: null,
       sessionDiarizationEnabled: initialEnabled,
       sessionExpectedCount: initialCount,
       userTouchedStepper: resolveInitialSpeakerCountOverride(
@@ -904,12 +910,8 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       const resumedCleanup = window.electronAPI?.onMeetingSystemAudioResumed?.(() => {
         if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return;
         useMeetingRecordingStore.setState({ systemCaptureStatus: "active" });
-        if (pendingSystemAudioInterruption?.reason === "gone_quiet") {
-          pendingSystemAudioInterruption = null;
-        }
-        if (useMeetingRecordingStore.getState().systemAudioInterrupted?.reason === "gone_quiet") {
-          useMeetingRecordingStore.setState({ systemAudioInterrupted: null });
-        }
+        pendingSystemAudioInterruption = null;
+        useMeetingRecordingStore.setState({ systemAudioInterrupted: null });
       });
       ipcCleanups.push(() => {
         pendingSystemAudioInterruption = null;
@@ -1172,6 +1174,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           micAnalyser = analyser;
 
           const micTrack = micResult.getAudioTracks()[0];
+          useMeetingRecordingStore.setState({ micCaptureDeviceLabel: micTrack?.label?.trim() || null });
           logger.info(
             "Mic capture started for meeting transcription",
             {
@@ -1225,16 +1228,26 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
               throw new Error("Meeting recording is no longer active");
             }
             const previousProcessor = micProcessor;
+            const context = micContext;
             const lastSequence = await flushAndDisconnectProcessor(previousProcessor);
+            if (!isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
+              throw new Error("Meeting recording stopped while switching microphones");
+            }
             captureLastSequences.mic = lastSequence;
             micSource?.disconnect();
-            const nextPipeline = await createCapturePipeline(replacement, micContext, "mic");
+            const nextPipeline = await createCapturePipeline(replacement, context, "mic");
+            if (!isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
+              nextPipeline.source.disconnect();
+              await flushAndDisconnectProcessor(nextPipeline.processor);
+              throw new Error("Meeting recording stopped while switching microphones");
+            }
             const nextSource = nextPipeline.source;
             micProcessor = nextPipeline.processor;
             if (micAnalyser) nextSource.connect(micAnalyser);
             previous?.getTracks().forEach((track) => track.stop());
             micSource = nextSource;
             micStream = replacement;
+            useMeetingRecordingStore.setState({ micCaptureDeviceLabel: replacement.getAudioTracks()[0]?.label?.trim() || null });
             logger.info("Meeting microphone capture recovered", {}, "meeting");
           },
         });
@@ -1337,6 +1350,36 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       startOperation.markCommitted();
       started = true;
       isStartingFlag = false;
+      const recovery = micRecovery;
+      let outputLookup = 0;
+      const refreshOutputDevice = async () => {
+        const lookup = ++outputLookup;
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          if (activeRecordingSessionId !== sessionId || !isRecordingFlag || lookup !== outputLookup) return;
+          const output = devices.find((device) => device.kind === "audiooutput" && device.deviceId === "default");
+          useMeetingRecordingStore.setState({ systemAudioOutputDeviceLabel: output?.label?.trim() || null });
+        } catch {
+          if (activeRecordingSessionId === sessionId && lookup === outputLookup) {
+            useMeetingRecordingStore.setState({ systemAudioOutputDeviceLabel: null });
+          }
+        }
+      };
+      void refreshOutputDevice();
+      navigator.mediaDevices.addEventListener?.("devicechange", refreshOutputDevice);
+      ipcCleanups.push(() => {
+        outputLookup += 1;
+        navigator.mediaDevices.removeEventListener?.("devicechange", refreshOutputDevice);
+      });
+      if (recovery) ipcCleanups.push(useSettingsStore.subscribe((settings, previousSettings) => {
+        if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return;
+        if (
+          settings.microphoneSelectionMode === previousSettings.microphoneSelectionMode &&
+          settings.selectedMicDeviceId === previousSettings.selectedMicDeviceId &&
+          settings.preferBuiltInMic === previousSettings.preferBuiltInMic
+        ) return;
+        void recovery.changeSelection(followsSystemDefaultMic(settings));
+      }));
       useMeetingRecordingStore.setState({
         isRecording: true,
         isTranscribing: false,

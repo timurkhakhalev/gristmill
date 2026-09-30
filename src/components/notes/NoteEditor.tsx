@@ -35,7 +35,7 @@ import type { FolderItem } from "../../contracts/containers";
 import type { NoteItem } from "../../contracts/notes";
 import NoteBottomBar from "./NoteBottomBar";
 import NoteRecordControl from "./NoteRecordControl";
-import { CaptureHealthLine, NoteNotice } from "./NoteNotices";
+import { CaptureDetails, NoteNotice } from "./NoteNotices";
 import { Button as HeroButton } from "@heroui/react";
 import { openSettings } from "../../utils/openSettings";
 import EmptyStateCard from "../ui/EmptyStateCard";
@@ -193,7 +193,8 @@ export default function NoteEditor({
   );
   const micCaptureStatus = debugPreview?.micStatus ?? liveMicCaptureStatus;
   const systemCaptureStatus = debugPreview?.systemStatus ?? liveSystemCaptureStatus;
-  const captureLive = capturePhase === "recording";
+  const micDeviceLabel = useMeetingRecordingStore((s) => s.recordingNoteId === note.id ? s.micCaptureDeviceLabel : null);
+  const outputDeviceLabel = useMeetingRecordingStore((s) => s.recordingNoteId === note.id ? s.systemAudioOutputDeviceLabel : null);
   const [viewMode, setViewMode] = useState<MeetingViewMode>(
     debugPreview?.viewMode ?? initialMeetingViewMode(note)
   );
@@ -864,9 +865,7 @@ export default function NoteEditor({
           <div ref={contentScrollRef} className="flex-1 min-h-0 overflow-y-auto agent-chat-scroll">
             <MeetingResultsPanel
               capturePhase={capturePhase}
-              notice={captureLive ? (
-                <CaptureHealthLine micStatus={micCaptureStatus} systemStatus={systemCaptureStatus} />
-              ) : capturePhase === "failed" ? (
+              notice={capturePhase === "failed" ? (
                 <NoteNotice
                   status="danger"
                   title={t("notes.editor.capture.failed")}
@@ -887,6 +886,7 @@ export default function NoteEditor({
                       disabled={!recordingAllowed}
                       capturePhase={capturePhase}
                       captureStartedAt={captureStartedAt}
+                      captureDetails={<CaptureDetails micStatus={micCaptureStatus} systemStatus={systemCaptureStatus} micDeviceLabel={micDeviceLabel} outputDeviceLabel={outputDeviceLabel} capturePhase={capturePhase} />}
                       onStart={onStartRecording}
                       onStop={onStopRecording}
                       onPause={onPauseRecording}

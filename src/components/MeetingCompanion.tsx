@@ -11,11 +11,11 @@ const BAR_FLOOR = 25;
 // Movement past this many px turns a press into a drag instead of a click.
 const DRAG_THRESHOLD_PX = 3;
 
-// Same curve as the in-app recording pill: sqrt lifts speech-level RMS into view,
-// the per-bar phase keeps the bars from moving in lockstep.
+// Add speech movement above the resting height so quiet system audio isn't
+// hidden below a hard floor. This changes the display, never the recorded signal.
 const barHeight = (level: number, index: number) => {
   const phase = 0.7 + 0.3 * Math.sin(index * 1.7);
-  return `${Math.max(BAR_FLOOR, Math.min(100, Math.sqrt(level) * 180 * phase))}%`;
+  return `${Math.min(100, BAR_FLOOR + Math.sqrt(level) * 180 * phase)}%`;
 };
 
 /** The app mark from assets/logo.svg, drawn in the current text color. */

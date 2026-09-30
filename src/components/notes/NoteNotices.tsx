@@ -96,39 +96,44 @@ function ElapsedClock({ since }: { since: number }) {
 
 type SourceStatus = "active" | "reconnecting" | "unavailable" | "inactive";
 
-/** Compact live-capture health line: one dot per audio source. */
-export function CaptureHealthLine({
+/** Live capture details shown on the recording indicator's hover/focus. */
+export function CaptureDetails({
   micStatus,
   systemStatus,
+  micDeviceLabel,
+  outputDeviceLabel,
+  capturePhase,
 }: {
   micStatus: SourceStatus;
   systemStatus: SourceStatus;
+  micDeviceLabel: string | null;
+  outputDeviceLabel: string | null;
+  capturePhase: string;
 }) {
   const { t } = useTranslation();
   const sources = [
-    ["mic", micStatus],
-    ["system", systemStatus],
+    ["mic", micStatus, micDeviceLabel],
+    ["system", systemStatus, outputDeviceLabel],
   ] as const;
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg bg-subtle px-3 py-2 text-xs text-muted motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-top-1" role="status">
-      {sources.map(([source, status]) => (
-        <span key={source} className="inline-flex items-center gap-1.5">
-          <span
-            aria-hidden="true"
-            className={cn(
-              "size-1.5 rounded-full",
-              status === "active" ? "bg-success" : status === "reconnecting" ? "bg-warning" : "bg-danger"
-            )}
-          />
-          <span className="text-foreground">{t(`notes.editor.capture.${source}`)}</span>
-          {status !== "active" && (
-            <span className={status === "reconnecting" ? "text-warning" : "text-danger"}>
-              {t(`notes.editor.capture.${status}`)}
-            </span>
-          )}
-        </span>
+    <div className="min-w-48 space-y-3 text-xs">
+      {sources.map(([source, status, deviceLabel]) => (
+        <div key={source}>
+          <div className="flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-1.5 rounded-full",
+                status === "active" ? "bg-success" : status === "reconnecting" ? "bg-warning" : "bg-danger"
+              )}
+            />
+            <span className="font-medium">{t(`notes.editor.capture.${source}`)}</span>
+            <span className="ms-auto opacity-70">{t(`notes.editor.capture.${status}`, { defaultValue: status === "active" ? "Recording" : status })}</span>
+          </div>
+          <div className="mt-1 ps-3 opacity-70">{source === "system" && <span>{t("notes.editor.capture.outputDevice", { defaultValue: "Output" })}: </span>}{deviceLabel || t("notes.editor.capture.deviceNameUnavailable", { defaultValue: "Device name unavailable" })}</div>
+        </div>
       ))}
-      <span className="ms-auto">{t("notes.editor.capture.writingToDisk")}</span>
+      <div className="border-t border-current/10 pt-2 opacity-70">{t(`notes.editor.capture.${capturePhase === "recording" ? "writingToDisk" : capturePhase}`)}</div>
     </div>
   );
 }

@@ -62,13 +62,14 @@ export function composeMeetingAudioParts(
 ): { recording: MeetingRecordingDto; epochs: MeetingRecordingEpochDto[] } {
   if (!parts.length) throw new Error("Meeting has no audio parts");
   let offset = 0;
-  const epochs = parts.flatMap((part) => {
+  const ordered = [...parts].sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
+  const epochs = ordered.flatMap((part) => {
     const own = listEpochs(part.id);
     const shifted = own.map((epoch) => ({ ...epoch, startFrame: epoch.startFrame + offset }));
     offset += meetingTimelineFrameCount(part, own);
     return shifted;
   });
-  const first = parts[0];
+  const first = ordered[0];
   return {
     recording: { ...first, endedAt: new Date(Date.parse(first.startedAt) + offset / 24).toISOString() },
     epochs,

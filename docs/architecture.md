@@ -42,7 +42,7 @@ initial run. The worker waits for retention settings to sync and pauses while
 capture is active. A successful Stop also persists a 15-second not-before
 deadline in `retry_at`. Preparation and ASR cannot claim the run before that
 deadline, including after restart. Pause does not queue work; Resume invalidates
-pending work for the earlier group version, and the worker rechecks eligibility
+pending work for the earlier Note audio version, and the worker rechecks eligibility
 at claim and before ASR.
 
 After the gate, the worker creates the selected route’s full-timeline WAV input

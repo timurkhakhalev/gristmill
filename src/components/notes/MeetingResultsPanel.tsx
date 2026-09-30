@@ -513,6 +513,17 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     finally { setBusy(false); }
   };
 
+  const cancelProcessingButton = <Button size="sm" variant="secondary" isDisabled={busy} isPending={busy} onPress={() => void runTask(async () => {
+    if (previewRecordings) {
+      patchMock({ waitingSeconds: undefined, asrRunning: false, namingRunning: false });
+      notify(tr("processingCancelledReason", "The recording is saved. You can transcribe it later."));
+      return;
+    }
+    if (!latestRun) return;
+    const result = await window.electronAPI.meetingProcessingCancelRun(latestRun.run.id);
+    if (!result.success) throw new Error(result.error || tr("cancelProcessingError", "Could not cancel processing."));
+  })}>{tr("cancelProcessing", "Cancel processing")}</Button>;
+
   const runSummaryAction = async (action: "tasks" | "recap") => {
     if (!selected?.run.hasSummary || previewRecordings) return;
     setBusy(true);
@@ -862,11 +873,12 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       busy
       title={tr("gateWaiting", "Transcription starts in {{seconds}} s", { seconds: gateSeconds })}
       description={tr("gateWaitingReason", "The recording is saved. Transcription starts automatically when the wait ends.")}
-      actions={mock ? <Button size="sm" variant="secondary" onPress={() => { patchMock({ waitingSeconds: undefined }); notify("Mock: recording resumed, pending transcription cancelled"); }}>{tr("resumeRecording", "Resume recording")}</Button> : undefined}
+      actions={<>{cancelProcessingButton}{mock && <Button size="sm" variant="secondary" onPress={() => { patchMock({ waitingSeconds: undefined }); notify("Mock: recording resumed, pending transcription cancelled"); }}>{tr("resumeRecording", "Resume recording")}</Button>}</>}
     />}
     {mock?.asrRunning && !gateActive && <NoteNotice status="accent" busy title={`${tr("transcribing", "Transcribing audio")}…`} description={tr("transcribingReason", "The finalized recording is being transcribed.")} />}
     {mock?.namingRunning && !gateActive && <NoteNotice status="accent" busy title={`${tr("namingSpeakers", "Identifying speakers")}…`} description={tr("namingSpeakersReason", "Speaker names are proposed from the conversation. You can correct them afterwards.")} />}
     {!captureBlocksAsr && latestRun?.run.status === "cancelled" && latestRun.run.errorCode === "meeting-resumed" && <NoteNotice status="default" title={tr("gateCancelled", "Transcription delayed again")} description={tr("gateCancelledReason", "The meeting resumed. Transcription will start 15 seconds after its next successful Stop.")} />}
+    {!captureBlocksAsr && latestRun?.run.status === "cancelled" && latestRun.run.errorCode === "processing-cancelled" && <NoteNotice status="default" title={tr("processingCancelled", "Processing cancelled")} description={tr("processingCancelledReason", "The recording is saved. You can transcribe it later.")} />}
     {latestRun && !["complete", "cancelled"].includes(latestRun.run.status) &&
       !(latestRun.run.status === "pending" && (captureBlocksAsr || gateActive)) && (() => {
       const { status, stage, errorCode } = latestRun.run;
@@ -893,7 +905,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         ? tr("calendarParticipantsInvalid", "Stored calendar participant data is invalid. Correct it before retrying.")
         : t("meetingResults.failedReason")} actions={actions} />;
       const startedAt = latestRun.run.createdAt ? normalizeDbDate(latestRun.run.createdAt).getTime() : undefined;
-      return <NoteNotice status="accent" busy progressStartedAt={startedAt} title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} />;
+      return <NoteNotice status="accent" busy progressStartedAt={startedAt} title={`${t(`meetingResults.stage.${stage}`)}…`} description={t(status === "pending" ? "meetingResults.progress.pending" : "meetingResults.progress.running")} actions={cancelProcessingButton} />;
     })()}
 
     <div key={viewMode} className="[&_.rich-text-editor-content]:pb-2! motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-bottom-1">

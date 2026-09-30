@@ -12,6 +12,10 @@ import { projectCalendarEvent } from "../contracts/calendar.js";
 
 const MENU_REFRESH_MS = 1000;
 const TITLE_MAX_CHARS = 16;
+// Shorter name when a countdown follows, so the time is never what gets clipped.
+const TITLE_WITH_TIME_MAX_CHARS = 12;
+// A click that dismisses the open menu is also delivered as a tray click.
+const MENU_REOPEN_GUARD_MS = 300;
 const UPCOMING_WINDOW_MINUTES = 48 * 60;
 
 export interface TrayCalendarSource {
@@ -41,6 +45,8 @@ export class TrayManager {
   refreshTimer: NodeJS.Timeout | null = null;
   // Replacing the menu while it is open dismisses it, so refreshes wait.
   menuOpen = false;
+  contextMenu: Menu | null = null;
+  menuClosedAt = 0;
   timeFormat: TimeFormat = "locale";
 
   setCalendarSource(source: TrayCalendarSource): void {
@@ -132,14 +138,15 @@ export class TrayManager {
       return;
     }
     const name = next.summary ?? "";
-    const short = name.length > TITLE_MAX_CHARS ? `${name.slice(0, TITLE_MAX_CHARS - 1).trimEnd()}…` : name;
-    if (new Date(next.start_time).getTime() <= now) {
-      this.tray.setTitle(short);
-      return;
-    }
-    const time = i18nMain.t("tray.inTime", {
-      time: this.formatDuration(new Date(next.start_time).getTime() - now),
-    });
+    const startsAt = new Date(next.start_time).getTime();
+    const started = startsAt <= now;
+    const time = started
+      ? i18nMain.t("tray.timeLeft", {
+          time: this.formatDuration(new Date(next.end_time).getTime() - now),
+        })
+      : i18nMain.t("tray.inTime", { time: this.formatDuration(startsAt - now) });
+    const max = name && time ? TITLE_WITH_TIME_MAX_CHARS : TITLE_MAX_CHARS;
+    const short = name.length > max ? `${name.slice(0, max - 1).trimEnd()}…` : name;
     this.tray.setTitle(short ? `${short} • ${time}` : time);
   }
 
@@ -446,9 +453,22 @@ export class TrayManager {
     });
     contextMenu.on("menu-will-close", () => {
       this.menuOpen = false;
+      this.menuClosedAt = Date.now();
     });
     this.tray.setToolTip(i18nMain.t("tray.tooltip"));
-    this.tray.setContextMenu(contextMenu);
+    if (process.platform === "darwin") {
+      // Shown from the click handler instead of setContextMenu so a second
+      // click on the icon can close the open menu rather than reopen it.
+      this.contextMenu = contextMenu;
+    } else {
+      this.tray.setContextMenu(contextMenu);
+    }
+  }
+
+  showTrayMenu(now = Date.now()): void {
+    if (!this.tray || !this.contextMenu) return;
+    if (this.menuOpen || now - this.menuClosedAt < MENU_REOPEN_GUARD_MS) return;
+    this.tray.popUpContextMenu(this.contextMenu);
   }
 
   setupTrayEventHandlers(): void {
@@ -460,6 +480,10 @@ export class TrayManager {
       this.tray.on("click", () => {
         void this.toggleControlPanelFromTray();
       });
+    } else {
+      const showMenu = () => this.showTrayMenu();
+      this.tray.on("click", showMenu);
+      this.tray.on("right-click", showMenu);
     }
 
     // Electron emits "destroyed" from its EventEmitter base but doesn't declare it.

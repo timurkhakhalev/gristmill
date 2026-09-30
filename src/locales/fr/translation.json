@@ -69,6 +69,7 @@
     "newNote": "Nouvelle note",
     "settings": "Réglages",
     "inTime": "dans {{time}}",
+    "timeLeft": "reste {{time}}",
     "durationHoursMinutes": "{{h}} h {{m}} min",
     "durationMinutes": "{{m}} min",
     "now": "Maintenant"

@@ -1743,6 +1743,7 @@
     "newNote": "ملاحظة جديدة",
     "settings": "الإعدادات",
     "inTime": "خلال {{time}}",
+    "timeLeft": "متبقي {{time}}",
     "durationHoursMinutes": "{{h}} س {{m}} د",
     "durationMinutes": "{{m}} د",
     "now": "الآن"

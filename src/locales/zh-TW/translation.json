@@ -69,6 +69,7 @@
     "newNote": "新增筆記",
     "settings": "設定",
     "inTime": "{{time}}後",
+    "timeLeft": "剩餘{{time}}",
     "durationHoursMinutes": "{{h}}小時{{m}}分鐘",
     "durationMinutes": "{{m}}分鐘",
     "now": "現在"

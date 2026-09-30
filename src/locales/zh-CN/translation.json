@@ -69,6 +69,7 @@
     "newNote": "新建笔记",
     "settings": "设置",
     "inTime": "{{time}}后",
+    "timeLeft": "剩余{{time}}",
     "durationHoursMinutes": "{{h}}小时{{m}}分钟",
     "durationMinutes": "{{m}}分钟",
     "now": "现在"

@@ -14,7 +14,7 @@ test("menubar keeps the current calendar meeting until its end, then shows the n
       if (request === "./dockManager.js") return {};
       if (request === "./menuManager.js") return { MenuManager: {} };
       if (request === "./i18nMain.js") return { i18nMain: { language: "en", t: (key: string, args: { time?: string; m?: number }) =>
-        key === "tray.inTime" ? `in ${args.time}` : `${args.m}m` } };
+        key === "tray.inTime" ? `in ${args.time}` : key === "tray.timeLeft" ? `${args.time} left` : `${args.m}m` } };
     }
     return originalLoad.call(this, request, parent, isMain);
   };
@@ -63,20 +63,36 @@ test("menubar keeps the current calendar meeting until its end, then shows the n
     manager.updateTrayTitle(start - 60000);
     assert.equal(title, "Current • in 1m");
     manager.updateTrayTitle(start);
-    assert.equal(title, "Current");
+    assert.equal(title, "Current • 30m left");
     manager.updateTrayTitle(end - 1);
-    assert.equal(title, "Current");
+    assert.equal(title, "Current • 1m left");
     manager.updateTrayTitle(end);
     assert.equal(title, "Next • in 10m");
     manager.updateTrayTitle(end + 40 * 60000);
     assert.equal(title, "");
     manager.calendarSource = { getUpcomingEvents: () => [event("A long meeting title", start, end)] };
     manager.updateTrayTitle(start);
-    assert.equal(title, "A long meeting…");
+    assert.equal(title, "A long meet… • 30m left");
     manager.menuOpen = true;
     manager.calendarSource = { getUpcomingEvents: () => [] };
     manager.updateTrayMenu();
     assert.equal(title, "");
+    let popups = 0;
+    manager.tray = { popUpContextMenu: () => { popups++; } } as never;
+    manager.contextMenu = {} as never;
+    manager.menuOpen = false;
+    manager.menuClosedAt = 0;
+    manager.showTrayMenu(1000);
+    assert.equal(popups, 1);
+    manager.menuOpen = true;
+    manager.showTrayMenu(1000);
+    assert.equal(popups, 1);
+    manager.menuOpen = false;
+    manager.menuClosedAt = 1000;
+    manager.showTrayMenu(1100);
+    assert.equal(popups, 1);
+    manager.showTrayMenu(1400);
+    assert.equal(popups, 2);
   } finally {
     Module._load = originalLoad;
     Object.defineProperty(process, "platform", platform);

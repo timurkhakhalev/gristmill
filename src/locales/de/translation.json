@@ -69,6 +69,7 @@
     "newNote": "Neue Notiz",
     "settings": "Einstellungen",
     "inTime": "in {{time}}",
+    "timeLeft": "noch {{time}}",
     "durationHoursMinutes": "{{h}} Std. {{m}} Min.",
     "durationMinutes": "{{m}} Min.",
     "now": "Jetzt"

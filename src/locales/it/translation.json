@@ -69,6 +69,7 @@
     "newNote": "Nuova nota",
     "settings": "Impostazioni",
     "inTime": "tra {{time}}",
+    "timeLeft": "resta {{time}}",
     "durationHoursMinutes": "{{h}} h {{m}} min",
     "durationMinutes": "{{m}} min",
     "now": "Ora"

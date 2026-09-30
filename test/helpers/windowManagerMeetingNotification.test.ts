@@ -19,6 +19,7 @@ const hotkeyManagers: any[] = [];
 let appQuitCount = 0;
 let dialogResponse = 1;
 const dialogCalls: any[] = [];
+const dialogParents: unknown[] = [];
 let devServerWaitPromise: Promise<void> = Promise.resolve();
 
 class FakeBrowserWindow extends EventEmitter {
@@ -66,6 +67,10 @@ class FakeBrowserWindow extends EventEmitter {
     this.showCount += 1;
   }
 
+  show() {
+    this.showCount += 1;
+  }
+
   isVisible() {
     return this.showCount > 0 && !this.destroyed;
   }
@@ -98,8 +103,9 @@ const appStub = {
   quit: () => { appQuitCount += 1; },
 };
 const dialogStub = {
-  showMessageBox: async (options: unknown) => {
-    dialogCalls.push(options);
+  showMessageBox: async (windowOrOptions: unknown, options?: unknown) => {
+    dialogCalls.push(options ?? windowOrOptions);
+    dialogParents.push(options ? windowOrOptions : null);
     return { response: dialogResponse };
   },
 };
@@ -223,6 +229,19 @@ test.beforeEach(() => {
   appQuitCount = 0;
   dialogResponse = 1;
   dialogCalls.length = 0;
+  dialogParents.length = 0;
+});
+
+test("quit confirmation uses the capture window's asynchronous sheet", async () => {
+  const manager = createNormalWindowManager();
+  const parent = new FakeBrowserWindow({});
+  manager.controlPanelWindow = parent;
+  manager.setMeetingCaptureQuitGuard({ isRecording: () => true, stop: async () => ({ success: true }) });
+  appListeners.get("before-quit")({ preventDefault() {} });
+  await manager._quitConfirmationPromise;
+  assert.equal(dialogParents[0], parent);
+  assert.equal(parent.showCount, 1);
+  assert.equal(manager.isQuitting, false);
 });
 
 test("canceling quit during capture preserves capture and hotkeys", async () => {

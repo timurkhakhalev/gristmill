@@ -12,7 +12,7 @@ const createMeetingSystemAudioWatchdog: typeof import("../../src/helpers/meeting
 const managerModulePath = require.resolve("../../src/helpers/audioTapManager.ts");
 const originalLoad = Module._load;
 
-type FakeChildLike = { stderr: { emit: (e: string, data: unknown) => void } };
+type FakeChildLike = { stdout: { emit: (e: string, data: unknown) => void }; stderr: { emit: (e: string, data: unknown) => void } };
 let lastChild: FakeChildLike | null = null;
 
 function createFakeChild() {
@@ -191,4 +191,52 @@ test("a device warning beside the replacement start acknowledgement triggers ano
   assert.ok(
     interruptions.every((entry: { reason: string; recovering: boolean }) => entry.reason === "device_invalidated" && entry.recovering)
   );
+});
+
+
+test("PCM arriving before start waits for its epoch; clock messages never reorder or replace PCM", async (t: import("node:test").TestContext) => {
+  const manager = createManager();
+  t.after(() => manager.stop());
+  const order: string[] = [];
+  const chunks: Buffer[] = [];
+  const clocks: unknown[] = [];
+  const generation = "11111111-1111-4111-8111-111111111111";
+  const started = manager.start({
+    onStart: () => order.push("epoch"),
+    onChunk: (chunk: Buffer) => { order.push("pcm"); chunks.push(chunk); },
+    onClock: (clock: unknown) => clocks.push(clock),
+  });
+  const child = lastChild!;
+  child.stdout.emit("data", Buffer.from([1, 2]));
+  child.stdout.emit("data", Buffer.from([3, 4]));
+  emitLine(child, { type: "clock", generation, startFrame: 0, endFrame: 2,
+    hostStartNs: "100", hostEndNs: "200", timebaseNumer: 1, timebaseDenom: 1,
+    conversion: "uncalibrated", reason: null });
+  assert.deepEqual(chunks, []);
+  assert.equal(clocks.length, 1);
+  emitLine(child, { type: "start", generation, sampleRate: 24_000, channels: 1, bitsPerChannel: 16 });
+  await started;
+  assert.deepEqual(order, ["epoch", "pcm", "pcm"]);
+  assert.deepEqual(Buffer.concat(chunks), Buffer.from([1, 2, 3, 4]));
+});
+
+test("malformed clock metadata reports coverage warning but preserves PCM and ignores retired helper messages", async (t: import("node:test").TestContext) => {
+  const manager = createManager();
+  t.after(() => manager.stop());
+  const warnings: Array<{ code?: string }> = [];
+  const chunks: Buffer[] = [];
+  const started = manager.start({ onChunk: (chunk: Buffer) => chunks.push(chunk), onWarning: (warning: { code?: string }) => warnings.push(warning) });
+  const retired = lastChild!;
+  emitLine(retired, { type: "start" });
+  await started;
+  emitLine(retired, { type: "clock", startFrame: 10, endFrame: 0 });
+  retired.stdout.emit("data", Buffer.from([1, 2]));
+  assert.equal(warnings[0].code, "clock_invalid_message");
+  assert.equal(chunks.length, 1);
+  await manager.stop();
+  const restarted = manager.start({ onChunk: (chunk: Buffer) => chunks.push(chunk) });
+  emitLine(lastChild!, { type: "start" });
+  await restarted;
+  retired.stdout.emit("data", Buffer.from([3, 4]));
+  assert.equal(chunks.length, 1);
 });

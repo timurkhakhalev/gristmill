@@ -405,6 +405,13 @@ function initializeCoreManagers(): void {
 }
 
 function registerSidecars(): void {
+  registerSidecar("meeting-capture", async () => {
+    try {
+      await ipcHandlers?._meetingCoordinator?.requestSafeStop(true);
+    } finally {
+      await audioTapManager?.stop();
+    }
+  });
   if (whisperManager) {
     const manager = whisperManager;
     registerSidecar("whisper", () => manager.stopServer());
@@ -725,7 +732,7 @@ if (gotSingleInstanceLock) {
   });
 
   let isShuttingDown = false;
-  app.on("before-quit", (event) => {
+  app.on("will-quit", (event) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
     event.preventDefault();
@@ -755,5 +762,4 @@ function performSyncTeardown(): void {
   if (microsoftCalendarManager) microsoftCalendarManager.stop();
   if (appleCalendarManager) appleCalendarManager.stop();
   if (calendarReminderScheduler) calendarReminderScheduler.stop();
-  if (audioTapManager) audioTapManager.stop().catch(() => {});
 }

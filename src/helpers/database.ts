@@ -16,6 +16,8 @@ import { noteContentHash } from "../utils/noteContentHash.js";
 import { isDevelopmentChannel } from "./appChannel.js";
 import * as secretCrypto from "./secretCrypto.js";
 import {
+  zoomSpeakerObservationSchema, meetingAudioClockAnchorSchema, zoomSpeakerDecisionSchema, meetingPlatformCoverageSchema,
+  type ZoomSpeakerObservation, type MeetingAudioClockAnchor, type ZoomSpeakerDecision, type MeetingPlatformCoverage,
   meetingProcessingConfigSchema,
   meetingProcessingConfigErrorSchema,
   MEETING_ASR_GATE_MS,
@@ -940,7 +942,7 @@ export class DatabaseManager {
           profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
           display_name TEXT NOT NULL,
           participant_email TEXT,
-          source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice', 'model', 'user')),
+          source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice', 'platform', 'model', 'user')),
           revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
           PRIMARY KEY (run_id, speaker_id)
         );
@@ -1016,6 +1018,40 @@ export class DatabaseManager {
       if (!speakerCorrectionColumns.some((column) => column.name === "participant_email")) {
         this.sql.exec("ALTER TABLE meeting_run_speaker_corrections ADD COLUMN participant_email TEXT");
       }
+      const correctionSql = this.sql.prepare("SELECT sql FROM sqlite_master WHERE name = 'meeting_run_speaker_corrections'").get() as { sql: string };
+      if (!correctionSql.sql.includes("'platform'")) {
+        this.sql.transaction(() => {
+          this.sql.exec(`
+            CREATE TABLE meeting_run_speaker_corrections_next (
+              run_id TEXT NOT NULL REFERENCES meeting_processing_runs(id) ON DELETE CASCADE,
+              speaker_id TEXT NOT NULL, profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
+              display_name TEXT NOT NULL, participant_email TEXT,
+              source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice', 'platform', 'model', 'user')),
+              revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0), PRIMARY KEY (run_id, speaker_id)
+            );
+            INSERT INTO meeting_run_speaker_corrections_next SELECT run_id, speaker_id, profile_id, display_name, participant_email, source, revision FROM meeting_run_speaker_corrections;
+            DROP TABLE meeting_run_speaker_corrections;
+            ALTER TABLE meeting_run_speaker_corrections_next RENAME TO meeting_run_speaker_corrections;
+          `);
+        })();
+      }
+      this.sql.exec(`
+        CREATE TABLE IF NOT EXISTS meeting_zoom_observations (
+          id TEXT PRIMARY KEY, recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE, evidence_json TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS meeting_zoom_observations_recording ON meeting_zoom_observations(recording_id);
+        CREATE TABLE IF NOT EXISTS meeting_audio_clock_anchors (
+          id TEXT PRIMARY KEY, recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE, evidence_json TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS meeting_audio_clock_anchors_recording ON meeting_audio_clock_anchors(recording_id);
+        CREATE TABLE IF NOT EXISTS meeting_platform_coverage (
+          recording_id TEXT PRIMARY KEY REFERENCES meeting_recordings(id) ON DELETE CASCADE, coverage_json TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS meeting_run_platform_decisions (
+          run_id TEXT PRIMARY KEY REFERENCES meeting_processing_runs(id) ON DELETE CASCADE, decisions_json TEXT NOT NULL
+        );
+      `);
+      this.recoverMeetingPlatformCoverage();
       const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{ name: string }>;
       if (!calendarEventColumns.some((column) => column.name === "event_url")) {
         this.sql.exec("ALTER TABLE calendar_events ADD COLUMN event_url TEXT");
@@ -1134,20 +1170,20 @@ export class DatabaseManager {
   listOpenMeetingRecordings(): MeetingRecordingDto[] {
     return (this.sql
       .prepare("SELECT * FROM meeting_recordings WHERE capture_state IN ('recording', 'finalizing') ORDER BY started_at, id")
-      .all() as MeetingRecordingDbRow[]).map(toMeetingRecordingDto);
+      .all() as MeetingRecordingDbRow[]).map((row) => toMeetingRecordingDto(row));
   }
 
   listMeetingRecordingsForNote(noteId: number): MeetingRecordingDto[] {
     if (!Number.isSafeInteger(noteId) || noteId < 1) return [];
     return (this.sql
       .prepare("SELECT * FROM meeting_recordings WHERE note_id = ? ORDER BY started_at, id")
-      .all(noteId) as MeetingRecordingDbRow[]).map(toMeetingRecordingDto);
+      .all(noteId) as MeetingRecordingDbRow[]).map((row) => toMeetingRecordingDto(row));
   }
 
   listAllMeetingRecordings(): MeetingRecordingDto[] {
     return (this.sql
       .prepare("SELECT * FROM meeting_recordings ORDER BY started_at, id")
-      .all() as MeetingRecordingDbRow[]).map(toMeetingRecordingDto);
+      .all() as MeetingRecordingDbRow[]).map((row) => toMeetingRecordingDto(row));
   }
 
   createMeetingRecordingEpoch(
@@ -1625,7 +1661,7 @@ export class DatabaseManager {
     speakerId: string,
     profileId: number | null,
     displayName: string,
-    source: "voice" | "model" | "user" = "user",
+    source: "voice" | "platform" | "model" | "user" = "user",
     participantEmail?: string
   ): { success: boolean } {
     meetingRecordingIdSchema.parse(runId);
@@ -1679,13 +1715,13 @@ export class DatabaseManager {
     profileId: number | null;
     displayName: string;
     participantEmail: string | null;
-    source: "voice" | "model" | "user";
+    source: "voice" | "platform" | "model" | "user";
     revision: number;
   }> {
     meetingRecordingIdSchema.parse(runId);
     return (this.sql.prepare(
       "SELECT speaker_id, profile_id, display_name, participant_email, source, revision FROM meeting_run_speaker_corrections WHERE run_id = ? AND display_name <> '' ORDER BY speaker_id"
-    ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string; participant_email: string | null; source: "voice" | "model" | "user"; revision: number }>).map((row) => ({
+    ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string; participant_email: string | null; source: "voice" | "platform" | "model" | "user"; revision: number }>).map((row) => ({
       speakerId: row.speaker_id,
       profileId: row.profile_id,
       displayName: row.display_name,
@@ -1708,7 +1744,7 @@ export class DatabaseManager {
     expectedCurrentRunId: string,
     expectedRevision: number,
     corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>,
-    source: "voice" | "model",
+    source: "voice" | "platform" | "model",
     rejectedModelSpeakerIds: string[] = []
   ): boolean {
     meetingRecordingIdSchema.parse(runId);
@@ -1736,7 +1772,8 @@ export class DatabaseManager {
       );
       if (corrections.some((correction) => {
         const existing = exists.get(runId, correction.speakerId) as { source: string; display_name: string } | undefined;
-        return existing?.display_name && (source !== "model" || existing.source !== "model");
+        const priority: Record<string, number> = { model: 0, platform: 1, voice: 2, user: 3 };
+        return !!existing?.display_name && (priority[existing.source] > priority[source] || existing.source === source && source !== "model");
       })) return false;
       if (rejectedModelSpeakerIds.some((id) => (exists.get(runId, id) as { source: string } | undefined)?.source !== "model")) return false;
       const insert = this.sql.prepare(
@@ -1753,6 +1790,85 @@ export class DatabaseManager {
       return true;
     });
     return transaction();
+  }
+
+  recoverMeetingPlatformCoverage(): void {
+    this.sql.exec("UPDATE meeting_platform_coverage SET coverage_json = json_set(coverage_json, '$.state', 'incomplete', '$.reason', 'app-restarted') WHERE json_extract(coverage_json, '$.state') = 'collecting'");
+  }
+
+  saveMeetingZoomObservation(input: ZoomSpeakerObservation): void {
+    const observation = zoomSpeakerObservationSchema.parse(input);
+    this.sql.prepare("INSERT INTO meeting_zoom_observations (id, recording_id, evidence_json) VALUES (?, ?, ?)").run(observation.id, observation.recordingId, JSON.stringify(observation));
+  }
+
+  listMeetingZoomObservations(recordingId: string): ZoomSpeakerObservation[] {
+    meetingRecordingIdSchema.parse(recordingId);
+    return (this.sql.prepare("SELECT evidence_json FROM meeting_zoom_observations WHERE recording_id = ? ORDER BY rowid").all(recordingId) as Array<{ evidence_json: string }>).map((row) => zoomSpeakerObservationSchema.parse(JSON.parse(row.evidence_json)));
+  }
+
+  saveMeetingAudioClockAnchor(input: MeetingAudioClockAnchor): void {
+    const anchor = meetingAudioClockAnchorSchema.parse(input);
+    const epoch = this.listMeetingRecordingEpochs(anchor.recordingId).find((item) => item.source === "system" && item.epochIndex === anchor.epochIndex);
+    if (!epoch || epoch.startFrame !== anchor.epochStartFrame) throw new Error("Clock anchor epoch does not match captured audio");
+    this.sql.prepare("INSERT INTO meeting_audio_clock_anchors (id, recording_id, evidence_json) VALUES (?, ?, ?)").run(anchor.id, anchor.recordingId, JSON.stringify(anchor));
+  }
+
+  listMeetingAudioClockAnchors(recordingId: string): MeetingAudioClockAnchor[] {
+    meetingRecordingIdSchema.parse(recordingId);
+    return (this.sql.prepare("SELECT evidence_json FROM meeting_audio_clock_anchors WHERE recording_id = ? ORDER BY rowid").all(recordingId) as Array<{ evidence_json: string }>).map((row) => meetingAudioClockAnchorSchema.parse(JSON.parse(row.evidence_json)));
+  }
+
+  setMeetingPlatformCoverage(recordingId: string, input: MeetingPlatformCoverage): void {
+    meetingRecordingIdSchema.parse(recordingId);
+    const coverage = meetingPlatformCoverageSchema.parse(input);
+    this.sql.prepare("INSERT INTO meeting_platform_coverage (recording_id, coverage_json) VALUES (?, ?) ON CONFLICT(recording_id) DO UPDATE SET coverage_json = excluded.coverage_json").run(recordingId, JSON.stringify(coverage));
+  }
+
+  getMeetingPlatformCoverage(recordingId: string): MeetingPlatformCoverage | null {
+    meetingRecordingIdSchema.parse(recordingId);
+    const row = this.sql.prepare("SELECT coverage_json FROM meeting_platform_coverage WHERE recording_id = ?").get(recordingId) as { coverage_json: string } | undefined;
+    return row ? meetingPlatformCoverageSchema.parse(JSON.parse(row.coverage_json)) : null;
+  }
+
+  getMeetingRunPlatformDecisions(runId: string): ZoomSpeakerDecision[] {
+    meetingRecordingIdSchema.parse(runId);
+    const row = this.sql.prepare("SELECT decisions_json FROM meeting_run_platform_decisions WHERE run_id = ?").get(runId) as { decisions_json: string } | undefined;
+    return row ? (JSON.parse(row.decisions_json) as unknown[]).map((item) => zoomSpeakerDecisionSchema.parse(item)) : [];
+  }
+
+  // Same transaction owns accepted corrections and evidence; guards also protect
+  // rejection-only results from stale selection, cancellation and manual edits.
+  applyMeetingPlatformDecisions(runId: string, expectedRevision: number, inputs: ZoomSpeakerDecision[]): boolean {
+    const decisions = inputs.map((input) => zoomSpeakerDecisionSchema.parse(input));
+    return this.sql.transaction(() => {
+      const run = this.getMeetingProcessingRun(runId);
+      if (!run || run.status !== "running") return false;
+      const recording = this.getMeetingRecording(run.recordingId);
+      if (!recording || recording.currentRunId !== runId || this.isMeetingNoteDeletionPending(recording.noteId) ||
+          this.getMeetingRunSpeakerCorrectionRevision(runId) !== expectedRevision) return false;
+      const corrections = this.getMeetingRunSpeakerCorrections(runId);
+      const accepted: Array<{ speakerId: string; profileId: null; displayName: string }> = [];
+      for (const decision of decisions) {
+        if (decision.status !== "accepted" || !decision.speakerId || !decision.displayName) continue;
+        if (!decision.speakerId.startsWith("system:") || !decision.measurementId || decision.calibration?.measurementId !== decision.measurementId || !decision.observationIds.length || !decision.clockAnchorIds.length) return false;
+        const observations = run.sourceRecordingIds.flatMap((id) => this.listMeetingZoomObservations(id));
+        const anchors = run.sourceRecordingIds.flatMap((id) => this.listMeetingAudioClockAnchors(id));
+        if (decision.observationIds.some((id) => !observations.some((item) => item.id === id)) ||
+            decision.clockAnchorIds.some((id) => !anchors.some((item) => item.id === id))) return false;
+        const existing = corrections.find((item) => item.speakerId === decision.speakerId);
+        if (existing?.source === "user" || existing?.source === "voice") {
+          decision.status = "rejected";
+          decision.reason = existing.source + "-precedence";
+        } else if (!(existing?.source === "platform" && existing.displayName === decision.displayName)) {
+          const duplicate = accepted.find((item) => item.speakerId === decision.speakerId);
+          if (duplicate && duplicate.displayName !== decision.displayName) return false;
+          if (!duplicate) accepted.push({ speakerId: decision.speakerId, profileId: null, displayName: decision.displayName });
+        }
+      }
+      if (accepted.length && !this.applyAutomaticMeetingSpeakerCorrections(runId, runId, expectedRevision, accepted, "platform")) return false;
+      this.sql.prepare("INSERT INTO meeting_run_platform_decisions (run_id, decisions_json) VALUES (?, ?) ON CONFLICT(run_id) DO UPDATE SET decisions_json = excluded.decisions_json").run(runId, JSON.stringify(decisions));
+      return true;
+    })();
   }
 
   getMeetingRunLlmSourceSnapshot(runId: string): string | null {

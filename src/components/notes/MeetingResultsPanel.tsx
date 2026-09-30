@@ -690,7 +690,11 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       selected.speakerCorrections.filter((item) => item.displayName.trim().toLowerCase() === speaker.displayName.trim().toLowerCase()).length > 1)
   ) ?? [] : [];
 
+  const platformEvidenceIncomplete = recordings.some((item) => selected?.run.sourceRecordingIds.includes(item.recording.id) &&
+    item.recording.platformCoverage?.state === "incomplete");
+  const platformEvidenceNotice = platformEvidenceIncomplete ? <p className="mb-3 text-xs text-muted">{tr("platformEvidenceUnavailable", "Zoom speaker evidence is incomplete. Audio and transcript are preserved.")}</p> : null;
   const renderSelectedTranscript = () => (selected?.transcript ? <div>
+        {platformEvidenceNotice}
         {unlinkedSpeakers.length > 0 && <div className="mb-3 rounded-lg border border-border p-3">
           <p className="text-xs text-muted">{tr("linkParticipantsHint", "Remember these names for future meetings by linking them to calendar participants.")}</p>
           <div className="mt-2 flex flex-wrap gap-2">{unlinkedSpeakers.map((speaker) => <Button key={speaker.speakerId} size="sm" variant="secondary" onPress={() => editSpeaker(speaker.speakerId)}>{speaker.displayName} · {tr("linkParticipant", "Link participant")}</Button>)}</div>
@@ -740,7 +744,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
                 }}>{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</button>
                 <div>{segment.speaker && <button className="rounded text-xs font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
                   editSpeaker(segment.speaker!);
-                }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}{segment.speaker && (selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.source === "model" || mock?.modelSpeakerIds?.includes(segment.speaker)) && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("autoNameHint", "Suggested from the conversation. Click the name to change it.")}>{tr("autoName", "auto")}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
+                }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}{segment.speaker && (selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.source === "model" || mock?.modelSpeakerIds?.includes(segment.speaker)) && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("autoNameHint", "Suggested from the conversation. Click the name to change it.")}>{tr("autoName", "auto")}</span>}{segment.speaker && selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.source === "platform" && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("platformNameHint", "Name matched from Zoom. Click the name to change it.")}>{tr("platformName", "Zoom")}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
               </div>
             </div>;
           }), allSegments.length > transcriptLimit && <div key="more" ref={setTranscriptSentinel} className="h-8" aria-hidden="true" />];
@@ -754,6 +758,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     setAudioOpen(open);
   };
   const renderTranscriptContent = () => (groups.length > 1 && sharedTranscript ? <div>
+    {platformEvidenceNotice}
     {sharedTranscript.segments?.length ? [...sharedTranscript.segments.slice(0, transcriptLimit).map((segment, index) => {
       const speaker = sharedTranscript.speakers.find((item) => item.id === segment.speaker_id);
       const ms = segment.start_ms;
@@ -767,7 +772,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
             remaining -= duration;
           }
         }}>{ms === null ? "--:--" : `${Math.floor(ms / 60_000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`}</button>
-        <div><span className="text-xs font-semibold">{speaker?.name ?? speaker?.id ?? ""}</span><p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
+        <div><span className="text-xs font-semibold">{speaker?.name ?? speaker?.id ?? ""}</span>{speaker?.name_source === "platform" && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary">{tr("platformName", "Zoom")}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
       </div>;
     }), sharedTranscript.segments.length > transcriptLimit && <div key="more" ref={setTranscriptSentinel} className="h-8" aria-hidden="true" />] : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{sharedTranscript.text}</p>}
     <details className="mt-4"><summary className="cursor-pointer text-xs text-muted">{tr("selectedResultTranscript", "Selected result transcript")}</summary>{renderSelectedTranscript()}</details>

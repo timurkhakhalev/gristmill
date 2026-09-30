@@ -7,6 +7,7 @@ export type NoteTranscriptStatus = "ready" | "absent" | "pending" | "error" | "p
 export interface NoteTranscriptSpeaker {
   id: string;
   name: string | null;
+  name_source?: "user" | "voice" | "platform" | "model";
   email: string | null;
   source: "microphone" | "system" | null;
 }
@@ -43,6 +44,7 @@ export const noteTranscriptSchema: z.ZodType<NoteTranscript> = z.object({
   }),
   speakers: z.array(z.object({
     id: z.string(), name: z.string().nullable(), email: z.string().nullable(),
+    name_source: z.enum(["user", "voice", "platform", "model"]).optional(),
     source: z.enum(["microphone", "system"]).nullable(),
   })),
   text: z.string().nullable(),

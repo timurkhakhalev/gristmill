@@ -59,20 +59,24 @@ export function meetingTimelineFrameCount(
 export function composeMeetingAudioParts(
   parts: MeetingRecordingDto[],
   listEpochs: (recordingId: string) => MeetingRecordingEpochDto[]
-): { recording: MeetingRecordingDto; epochs: MeetingRecordingEpochDto[] } {
+): { recording: MeetingRecordingDto; epochs: MeetingRecordingEpochDto[]; partOffsets: Array<{ recordingId: string; startFrame: number; frameCount: number }> } {
   if (!parts.length) throw new Error("Meeting has no audio parts");
   let offset = 0;
   const ordered = [...parts].sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
+  const partOffsets: Array<{ recordingId: string; startFrame: number; frameCount: number }> = [];
   const epochs = ordered.flatMap((part) => {
     const own = listEpochs(part.id);
     const shifted = own.map((epoch) => ({ ...epoch, startFrame: epoch.startFrame + offset }));
-    offset += meetingTimelineFrameCount(part, own);
+    const frameCount = meetingTimelineFrameCount(part, own);
+    partOffsets.push({ recordingId: part.id, startFrame: offset, frameCount });
+    offset += frameCount;
     return shifted;
   });
   const first = ordered[0];
   return {
     recording: { ...first, endedAt: new Date(Date.parse(first.startedAt) + offset / 24).toISOString() },
     epochs,
+    partOffsets,
   };
 }
 

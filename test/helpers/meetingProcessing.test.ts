@@ -2425,3 +2425,31 @@ test("meeting title generation works with known speakers and preserves concurren
     }
   }
 });
+
+for (const failure of ["observation-lookup", "part-map"] as const) {
+  test(`platform ${failure} failure preserves a saved transcript and continues naming`, async (t: import("node:test").TestContext) => {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const { run } = createFinishedRecording(db, storage, { ...validConfig, generateSummary: false });
+    saveTranscriptArtifact(db, storage, run.id, "Synthetic speaker introduces herself.", "system:fixture");
+    db.setMeetingProcessingRunState(run.id, { stage: "normalize", status: "pending", retryAt: null });
+    const originalObservations = db.listMeetingZoomObservations;
+    const originalEpochs = db.listMeetingRecordingEpochs;
+    t.after(() => { db.listMeetingZoomObservations = originalObservations; db.listMeetingRecordingEpochs = originalEpochs; });
+    const failLookup = () => { throw new Error("Synthetic metadata unavailable"); };
+    if (failure === "observation-lookup") db.listMeetingZoomObservations = failLookup;
+    else db.listMeetingRecordingEpochs = failLookup;
+    let namingCalls = 0;
+    const worker = workerFor(db, storage, {
+      nameSpeakers: async () => { namingCalls += 1; return { speakers: [] }; },
+    });
+    t.after(() => worker.stop());
+    worker.onRetentionReady();
+    await worker.waitForIdle();
+    assert.equal(namingCalls, 1);
+    assert.equal(db.getMeetingProcessingRun(run.id)?.status, "complete");
+    assert.equal(db.getMeetingProcessingRun(run.id)?.hasTranscript, true);
+    assert.match(storage.readRunArtifact(run.id, "transcript").text, /Synthetic speaker/);
+  });
+}

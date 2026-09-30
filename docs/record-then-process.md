@@ -131,3 +131,28 @@ flowchart TD
 Источники и прежние альтернативы сохранены в [исследовании репозиториев](transcription-chunking-research.md); предложения о preview и обработке во время встречи там имеют исторический статус.
 
 После сохранения транскрипта запрос определения спикеров также предлагает название, если включена автогенерация и Note имеет пустое или стандартное название. Используется сохранённая модель Summary. Инструкции и JSON-поля включаются только для нужных задач: speakers, title или оба; при известных спикерах запрос содержит только задачу названия. Пользовательские и календарные названия сохраняются. Новое название и LLM snapshot обновляются атомарно; переименование во время запроса имеет приоритет. Ошибка этого шага не блокирует Summary.
+
+## Zoom speaker evidence (#122)
+
+Capture optionally collects read-only Zoom AX activity and sparse CoreAudio clock
+ranges using the existing Accessibility permission. Recording-owned evidence and
+coverage survive restart/reprocessing and cascade with recording/Note deletion.
+AX/SQLite/metadata failure never changes successful mic/system audio into failed
+capture. Recovered collecting coverage is marked incomplete after restart.
+Quit confirmation finishes capture before general shutdown; a macOS window
+sheet keeps capture IPC running while the user decides. Bounded sidecar teardown
+awaits capture/tap cleanup.
+
+The shared part-offset map drives both audio concatenation and the normalized
+system-only matcher. Voice recognition runs first, platform matching next, then
+model naming and Summary. Per-run decisions keep evidence IDs, transcript
+intervals and calibration; acceptance and correction are atomic under current-run,
+revision, cancellation and deletion guards. User > voice > platform > model;
+platform never creates a voice profile or email. Old recordings without evidence
+retain their existing pipeline. The UI distinguishes Zoom names from model
+suggestions and reports incomplete platform evidence independently of audio.
+
+Production currently abstains: converter/Zoom latency is uncalibrated, self
+identity is unknown and a system-wide tap does not prove exclusive Zoom speech.
+Synthetic acceptance requires explicit measured-policy/evidence inputs and cannot
+prove live accuracy. See [the implementation and remaining live verification](zoom-speaker-prototype.md#implemented-evidence-path).

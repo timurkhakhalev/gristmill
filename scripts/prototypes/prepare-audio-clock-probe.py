@@ -58,18 +58,25 @@ replace(
     "    private var pendingPCM = Data()\n    private var probeFrames: UInt64 = 0",
 )
 replace(
-    "{ [weak self] _, inputData, _, _, _ in",
+    "{ [weak self] _, inputData, inputTime, _, _ in",
     "{ [weak self] now, inputData, inputTime, _, _ in",
 )
 replace(
-    "self.processInput(inputData, sourceFormat: sourceFormat, converter: converter)",
+    "self.processInput(inputData, inputTime: inputTime.pointee, sourceFormat: sourceFormat, converter: converter)",
     "self.processInput(inputData, timestamp: inputTime.pointee, now: now.pointee, "
     "sourceFormat: sourceFormat, converter: converter)",
 )
 replace(
-    "        _ inputData: UnsafePointer<AudioBufferList>,\n        sourceFormat:",
+    "        _ inputData: UnsafePointer<AudioBufferList>,\n        inputTime: AudioTimeStamp,\n        sourceFormat:",
     "        _ inputData: UnsafePointer<AudioBufferList>,\n"
     "        timestamp: AudioTimeStamp,\n        now: AudioTimeStamp,\n        sourceFormat:",
+)
+# The probe writes the detailed historical clock format to its own destination.
+# Do not mix production sparse anchors into the probe's JSONL stream.
+replace(
+    "        recordClock(inputTime: inputTime, sourceFrames: sourceBuffer.frameLength,\n"
+    "                    sourceRate: sourceRate, outputFrames: outputBuffer.frameLength)\n",
+    "",
 )
 clock_start = """        var timebase = mach_timebase_info_data_t()
         mach_timebase_info(&timebase)

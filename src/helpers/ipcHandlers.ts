@@ -1530,7 +1530,7 @@ export class IPCHandlers {
     // only wires its dependencies. The meeting-state callbacks the notes and
     // speaker verticals need come from its runtime handle.
     this._meetingCoordinator = registerMeetingCoordinatorHandlers(ipcMain, {
-      databaseManager: this.databaseManager as unknown as DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase,
+      databaseManager: this.databaseManager as unknown as DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase & import("./zoomSpeakerCollector.js").MeetingPlatformEvidenceDatabase,
       meetingRecordingStorage: this.audioStorageManager.meetingRecordings,
       cancelInitialProcessingRun: (runId) => this._meetingProcessing?.cancelRun(runId) ?? false,
       diarizationManager: this

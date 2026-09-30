@@ -2359,7 +2359,9 @@
     "autoSummarySkipped": "Automatic Summary skipped",
     "autoSummarySkippedReason": "Automatic Summary requires at least 180 seconds of recorded audio and 2,500 transcript characters. This meeting has {{seconds}} seconds and {{chars}} characters. You can create a Summary manually now.",
     "calendarParticipantsInvalid": "Stored calendar participant data is invalid. Correct it before retrying.",
-    "calendarParticipantsNamingSkipped": "Automatic speaker naming was skipped. The transcript and Summary remain available."
+    "calendarParticipantsNamingSkipped": "Automatic speaker naming was skipped. The transcript and Summary remain available.",
+    "transcribeAndSummary": "Transcribe & Summary",
+    "summary": "Summary"
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

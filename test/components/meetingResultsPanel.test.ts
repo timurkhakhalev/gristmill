@@ -277,7 +277,7 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
       capturePhase,
       actions,
       mockPipeline,
-      fallbackText: { raw: "Manual notes", enhanced: "No summary", transcript: "No transcript" },
+      fallbackText: { raw: "Manual notes", enhanced: "", transcript: "No transcript" },
       manualContent: React.createElement("p", null, "Manual notes"), renderFallbackTranscript: () => React.createElement("p", null, "No transcript"),
       fallbackSummary: (selectedSummaryAction: SummaryActionState) => React.createElement("p", null, selectedSummaryAction.available ? "Summary can be created" : "No summary") });
     return tree;
@@ -399,15 +399,16 @@ test("audio part actions export a mixed MP3 and confirm deletion without a trans
   assert.equal(ui.iconButton("Play audio"), null);
 });
 
-test("Transcribe includes every saved audio part in the note across groups", async (t: TestContext) => {
+test("Transcribe & Summary includes every saved audio part in the note across groups", async (t: TestContext) => {
   const ui = await mountPanel(t, [
     recording(FOURTH, FOURTH, "2026-09-25T10:15:00.000Z"),
     recording(SECOND, SECOND, "2026-09-25T10:05:00.000Z", null, "incomplete"),
     recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z"),
     recording(THIRD, THIRD, "2026-09-25T10:10:00.000Z"),
   ]);
-  await ui.flush(() => (ui.button("Transcribe")!.props as { onPress: () => void }).onPress());
+  await ui.flush(() => (ui.button("Transcribe & Summary")!.props as { onPress: () => void }).onPress());
   assert.equal(ui.calls.create.length, 1);
+  assert.equal((ui.calls.create[0].config as Record<string, unknown>).generateSummary, true);
   assert.deepEqual((ui.calls.create[0] as Record<string, unknown>).sourceRecordingIds, [FIRST, SECOND, THIRD, FOURTH]);
   assert.equal((ui.calls.create[0] as Record<string, unknown>).recordingId, FIRST);
   assert.equal(submittedSection(ui.calls.create[0], "transcription").provider, CONFIG.transcription.provider);
@@ -531,7 +532,7 @@ test("the live waiting state and debug preview never offer a manual gate bypass"
   assert.match(live.text(), /transcription starts automatically when the wait ends/i);
   assert.doesNotMatch(live.text(), /Preparing audio|meetingResults.stage.prepare/);
   assert.doesNotMatch(live.text(), /Transcribe now/);
-  const waitingTranscribe = live.button("Transcribe")!;
+  const waitingTranscribe = live.button("Transcribe & Summary")!;
   assert.equal(waitingTranscribe.props?.isDisabled, true);
   await live.flush(() => (waitingTranscribe.props as { onPress: () => void }).onPress());
   assert.deepEqual(live.calls.create, []);
@@ -561,7 +562,7 @@ test("the live waiting state and debug preview never offer a manual gate bypass"
 test("live manual transcription controls stay disabled while recording or paused", async (t: TestContext) => {
   for (const capturePhase of ["recording", "paused"]) {
     const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z")], { initialCapturePhase: capturePhase });
-    const wholeMeeting = ui.button("Transcribe");
+    const wholeMeeting = ui.button("Transcribe & Summary");
     assert.ok(wholeMeeting, `${capturePhase} keeps the whole-meeting control visible`);
     assert.equal(wholeMeeting.props?.isDisabled, true);
     await ui.flush(() => (wholeMeeting.props as { onPress: () => void }).onPress());
@@ -717,4 +718,19 @@ test("a recognized speaker can be linked to an email-only calendar participant f
   await ui.flush(() => (choice.props as { onChange(value: string): void }).onChange("person@example.com"));
   await ui.saveSpeaker();
   assert.deepEqual(ui.calls.speaker, [{ runId: RUN, speakerId: "speaker-1", displayName: "Alice", profileId: null, participantEmail: "person@example.com" }]);
+});
+
+
+test("saved Summary separates transcription-only from Summary-only actions", async (t: TestContext) => {
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", completeRun())]);
+  assert.equal(ui.button("Transcribe & Summary"), null);
+  assert.ok(ui.button("Summary"));
+  await ui.flush(() => (ui.button("Transcribe")!.props as { onPress: () => void }).onPress());
+  assert.equal(ui.calls.create[0].kind, "reprocess");
+  assert.equal((ui.calls.create[0].config as Record<string, unknown>).generateSummary, false);
+  await ui.flush(() => (findNode(ui.tree(), (node) => node.props?.ariaLabel === "Transcript and audio")!.props as { onChange: (tab: string) => void }).onChange("audio"));
+  await ui.flush(() => (ui.button("Summary")!.props as { onPress: () => void }).onPress());
+  assert.equal(ui.calls.create[1].kind, "summary");
+  assert.equal(ui.calls.create[1].sourceRunId, RUN);
+  assert.equal(ui.calls.create[1].sourceRecordingIds, undefined);
 });

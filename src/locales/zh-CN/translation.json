@@ -1527,7 +1527,10 @@
         "inactive": "尚未开始",
         "writingToDisk": "正在写入磁盘",
         "incompleteReason": "部分音频可能缺失。问题发生前保存的音频会保留。",
-        "failedReason": "请检查麦克风和系统音频权限，然后重试。"
+        "failedReason": "请检查麦克风和系统音频权限，然后重试。",
+        "details": "录音详情",
+        "outputDevice": "音频输出",
+        "deviceNameUnavailable": "设备名称不可用"
       },
       "summaryEmptyTitle": "暂无摘要",
       "summaryEmptyDescription": "录音转写完成后，摘要会显示在这里。",
@@ -2365,7 +2368,9 @@
     "autoSummarySkipped": "已跳过自动摘要",
     "autoSummarySkippedReason": "自动摘要需要至少 180 秒录音和 2,500 个转录字符。本次会议为 {{seconds}} 秒、{{chars}} 个字符。你现在可以手动创建摘要。",
     "calendarParticipantsInvalid": "保存的日历参与者数据无效。请先更正后再重试。",
-    "calendarParticipantsNamingSkipped": "已跳过自动识别说话者姓名。转录文本和摘要仍可用。"
+    "calendarParticipantsNamingSkipped": "已跳过自动识别说话者姓名。转录文本和摘要仍可用。",
+    "transcribeAndSummary": "转录并总结",
+    "summary": "总结"
   },
   "shortcutsDialog": {
     "title": "键盘快捷键",

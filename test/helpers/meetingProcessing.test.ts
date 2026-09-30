@@ -804,10 +804,12 @@ test("automatic Summary uses inclusive duration and spoken-text thresholds", asy
     { duration: 179, characters: 2500, eligible: false },
     { duration: 180, characters: 2499, eligible: false },
     { duration: 180, characters: 2500, eligible: true },
+    { duration: 180, characters: 2500, eligible: false, generateSummary: false },
+    { duration: 10, characters: 100, eligible: true, generateSummary: true },
   ];
   const responseByRequest = new Map<string, ReturnType<typeof longTranscriptResponse>>();
   const runs = cases.map((item) => {
-    const { recording, run } = createFinishedRecording(db, storage, validConfig, "", false, item.duration);
+    const { recording, run } = createFinishedRecording(db, storage, { ...validConfig, generateSummary: "generateSummary" in item ? item.generateSummary : undefined }, "", false, item.duration);
     responseByRequest.set(`meeting-${run.id}-system`, longTranscriptResponse(item.characters));
     return { ...item, recording, run };
   });
@@ -829,8 +831,8 @@ test("automatic Summary uses inclusive duration and spoken-text thresholds", asy
   worker.onRetentionReady();
   await worker.waitForIdle();
 
-  assert.deepEqual(runs.map(({ run }) => db.getMeetingProcessingRun(run.id).hasSummary), [false, false, true]);
-  assert.deepEqual(summarizedInputs.map((input) => parseSummaryInput(input).transcriptSegments[0].text.length), [2500]);
+  assert.deepEqual(runs.map(({ run }) => db.getMeetingProcessingRun(run.id).hasSummary), [false, false, true, false, true]);
+  assert.deepEqual(summarizedInputs.map((input) => parseSummaryInput(input).transcriptSegments[0].text.length).sort((a, b) => a - b), [100, 2500]);
   assert.ok(runs.every(({ run }) => db.getMeetingProcessingRun(run.id).status === "complete"));
 });
 

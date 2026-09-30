@@ -880,6 +880,7 @@ export class MeetingProcessingWorker {
     if (current.hasSummary) return this.setState(run.id, "summary", "complete", null, null);
     if (this.isCapturing()) return this.pause(run, "summary");
     const config = this.requireConfig(run);
+    if (config.generateSummary === false && run.kind !== "summary") return this.setState(run.id, "summary", "complete", null, null);
     if (!config.summary) return this.setState(run.id, "summary", "blocked", "missing-summary-config", null);
     const sourceRunId = run.kind === "summary" ? run.sourceRunId : run.id;
     if (!sourceRunId) throw new MeetingProcessingFailure("summary-transcript-missing", "blocked");
@@ -906,6 +907,7 @@ export class MeetingProcessingWorker {
     const transcript = this.readTranscript(sourceRunId);
     if (!transcript) throw new MeetingProcessingFailure("summary-transcript-missing", "blocked");
     if (!transcript.text.trim()) return this.setState(run.id, "summary", "complete", null, null);
+    if (config.generateSummary === false && run.kind !== "summary") return this.setState(run.id, "summary", "complete", null, null);
     if (!config.summary) throw new MeetingProcessingFailure("missing-summary-config", "blocked");
     if (!this.isSelectedRun(run)) {
       this.cancelRun(run.id, "processing-run-stale");
@@ -947,7 +949,7 @@ export class MeetingProcessingWorker {
       );
       // Stop also creates a reprocess run for grouped audio. Only an actual retranscription bypasses the first-Summary threshold.
       const retranscription = run.kind === "reprocess" && previousRuns.some((candidate) => candidate.hasTranscript);
-      if (!retranscription && !this.isAutoSummaryEligible(run, recording, transcript)) {
+      if (config.generateSummary !== true && !retranscription && !this.isAutoSummaryEligible(run, recording, transcript)) {
         this.setState(run.id, "summary", "complete", null, null);
         return;
       }

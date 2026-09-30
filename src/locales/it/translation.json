@@ -1527,7 +1527,10 @@
         "inactive": "Non avviato",
         "writingToDisk": "Scrittura su disco",
         "incompleteReason": "Potrebbe mancare parte dell’audio. Quello salvato prima del problema viene conservato.",
-        "failedReason": "Controlla i permessi del microfono e dell'audio di sistema, poi riprova."
+        "failedReason": "Controlla i permessi del microfono e dell'audio di sistema, poi riprova.",
+        "details": "Dettagli registrazione",
+        "outputDevice": "Uscita audio",
+        "deviceNameUnavailable": "Nome dispositivo non disponibile"
       },
       "summaryEmptyTitle": "Nessun riepilogo per ora",
       "summaryEmptyDescription": "Il riepilogo apparirà qui dopo la trascrizione della registrazione.",
@@ -2365,7 +2368,9 @@
     "autoSummarySkipped": "Riepilogo automatico ignorato",
     "autoSummarySkippedReason": "Il riepilogo automatico richiede almeno 180 secondi di audio registrato e 2.500 caratteri di trascrizione. Questa riunione dura {{seconds}} secondi e contiene {{chars}} caratteri. Ora puoi creare un riepilogo manualmente.",
     "calendarParticipantsInvalid": "I dati salvati dei partecipanti del calendario non sono validi. Correggili prima di riprovare.",
-    "calendarParticipantsNamingSkipped": "L’assegnazione automatica dei nomi ai parlanti è stata saltata. La trascrizione e il riepilogo restano disponibili."
+    "calendarParticipantsNamingSkipped": "L’assegnazione automatica dei nomi ai parlanti è stata saltata. La trascrizione e il riepilogo restano disponibili.",
+    "transcribeAndSummary": "Trascrivi e riassumi",
+    "summary": "Riepilogo"
   },
   "shortcutsDialog": {
     "title": "Scorciatoie da tastiera",

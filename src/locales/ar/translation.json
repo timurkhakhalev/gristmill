@@ -814,7 +814,10 @@
         "inactive": "لم يبدأ",
         "writingToDisk": "جارٍ الكتابة إلى القرص",
         "incompleteReason": "قد يكون بعض الصوت مفقودًا. يحتفظ التسجيل بالصوت الذي حُفظ قبل حدوث المشكلة.",
-        "failedReason": "تحقق من أذونات الميكروفون وصوت النظام، ثم حاول مرة أخرى."
+        "failedReason": "تحقق من أذونات الميكروفون وصوت النظام، ثم حاول مرة أخرى.",
+        "details": "تفاصيل التسجيل",
+        "outputDevice": "إخراج الصوت",
+        "deviceNameUnavailable": "اسم الجهاز غير متاح"
       },
       "summaryEmptyTitle": "لا يوجد ملخص بعد",
       "summaryEmptyDescription": "سيظهر الملخص هنا بعد تفريغ التسجيل.",
@@ -2392,7 +2395,9 @@
     "autoSummarySkipped": "تم تخطي الملخص التلقائي",
     "autoSummarySkippedReason": "يتطلب الملخص التلقائي 180 ثانية على الأقل من التسجيل و2500 حرف من التفريغ. مدة هذا الاجتماع {{seconds}} ثانية ويحتوي على {{chars}} حرفًا. يمكنك إنشاء ملخص يدويًا الآن.",
     "calendarParticipantsInvalid": "بيانات المشاركين المحفوظة في التقويم غير صالحة. صححها قبل إعادة المحاولة.",
-    "calendarParticipantsNamingSkipped": "تم تخطي تعيين أسماء المتحدثين تلقائيًا. يظل النص المكتوب والملخص متاحين."
+    "calendarParticipantsNamingSkipped": "تم تخطي تعيين أسماء المتحدثين تلقائيًا. يظل النص المكتوب والملخص متاحين.",
+    "transcribeAndSummary": "تفريغ وتلخيص",
+    "summary": "ملخص"
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

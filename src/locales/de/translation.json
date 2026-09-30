@@ -1603,7 +1603,10 @@
         "inactive": "Nicht gestartet",
         "writingToDisk": "Wird auf Datenträger geschrieben",
         "incompleteReason": "Audio kann fehlen. Vor dem Problem gespeichertes Audio bleibt erhalten.",
-        "failedReason": "Prüfe die Berechtigungen für Mikrofon und Systemaudio und versuche es erneut."
+        "failedReason": "Prüfe die Berechtigungen für Mikrofon und Systemaudio und versuche es erneut.",
+        "details": "Aufnahmedetails",
+        "outputDevice": "Audioausgabe",
+        "deviceNameUnavailable": "Gerätename nicht verfügbar"
       },
       "summaryEmptyTitle": "Noch keine Zusammenfassung",
       "summaryEmptyDescription": "Die Zusammenfassung erscheint hier, sobald die Aufnahme transkribiert ist.",
@@ -2365,7 +2368,9 @@
     "autoSummarySkipped": "Automatische Zusammenfassung übersprungen",
     "autoSummarySkippedReason": "Eine automatische Zusammenfassung erfordert mindestens 180 Sekunden Audio und 2.500 Transkriptzeichen. Dieses Meeting hat {{seconds}} Sekunden und {{chars}} Zeichen. Du kannst jetzt manuell eine Zusammenfassung erstellen.",
     "calendarParticipantsInvalid": "Die gespeicherten Kalenderteilnehmerdaten sind ungültig. Korrigiere sie vor dem erneuten Versuch.",
-    "calendarParticipantsNamingSkipped": "Die automatische Benennung der Sprecher wurde übersprungen. Transkript und Zusammenfassung bleiben verfügbar."
+    "calendarParticipantsNamingSkipped": "Die automatische Benennung der Sprecher wurde übersprungen. Transkript und Zusammenfassung bleiben verfügbar.",
+    "transcribeAndSummary": "Transkribieren & Zusammenfassen",
+    "summary": "Zusammenfassung"
   },
   "shortcutsDialog": {
     "title": "Tastenkürzel",

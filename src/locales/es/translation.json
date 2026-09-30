@@ -1527,7 +1527,10 @@
         "inactive": "Sin iniciar",
         "writingToDisk": "Escribiendo en el disco",
         "incompleteReason": "Puede faltar audio. Se conserva el audio guardado antes del problema.",
-        "failedReason": "Revisa los permisos del micrófono y del audio del sistema y vuelve a intentarlo."
+        "failedReason": "Revisa los permisos del micrófono y del audio del sistema y vuelve a intentarlo.",
+        "details": "Detalles de grabación",
+        "outputDevice": "Salida de audio",
+        "deviceNameUnavailable": "Nombre del dispositivo no disponible"
       },
       "summaryEmptyTitle": "Aún no hay resumen",
       "summaryEmptyDescription": "El resumen aparecerá aquí cuando se transcriba la grabación.",
@@ -2365,7 +2368,9 @@
     "autoSummarySkipped": "Resumen automático omitido",
     "autoSummarySkippedReason": "El resumen automático requiere al menos 180 segundos de audio grabado y 2.500 caracteres de transcripción. Esta reunión tiene {{seconds}} segundos y {{chars}} caracteres. Ahora puedes crear un resumen manualmente.",
     "calendarParticipantsInvalid": "Los datos guardados de participantes del calendario no son válidos. Corrígelos antes de volver a intentarlo.",
-    "calendarParticipantsNamingSkipped": "Se omitió la asignación automática de nombres a los hablantes. La transcripción y el resumen siguen disponibles."
+    "calendarParticipantsNamingSkipped": "Se omitió la asignación automática de nombres a los hablantes. La transcripción y el resumen siguen disponibles.",
+    "transcribeAndSummary": "Transcribir y resumir",
+    "summary": "Resumen"
   },
   "shortcutsDialog": {
     "title": "Atajos de teclado",

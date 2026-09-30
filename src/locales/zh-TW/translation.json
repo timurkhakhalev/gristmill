@@ -1527,7 +1527,10 @@
         "inactive": "尚未開始",
         "writingToDisk": "正在寫入磁碟",
         "incompleteReason": "部分音訊可能遺失。問題發生前已儲存的音訊會保留。",
-        "failedReason": "請檢查麥克風與系統音訊權限，然後重試。"
+        "failedReason": "請檢查麥克風與系統音訊權限，然後重試。",
+        "details": "錄音詳細資訊",
+        "outputDevice": "音訊輸出",
+        "deviceNameUnavailable": "裝置名稱無法取得"
       },
       "summaryEmptyTitle": "尚無摘要",
       "summaryEmptyDescription": "錄音轉寫完成後，摘要會顯示在這裡。",
@@ -2365,7 +2368,9 @@
     "autoSummarySkipped": "已略過自動摘要",
     "autoSummarySkippedReason": "自動摘要需要至少 180 秒錄音和 2,500 個轉錄字元。本次會議為 {{seconds}} 秒、{{chars}} 個字元。你現在可以手動建立摘要。",
     "calendarParticipantsInvalid": "已儲存的日曆參與者資料無效。請先更正後再重試。",
-    "calendarParticipantsNamingSkipped": "已略過自動辨識說話者姓名。逐字稿和摘要仍可使用。"
+    "calendarParticipantsNamingSkipped": "已略過自動辨識說話者姓名。逐字稿和摘要仍可使用。",
+    "transcribeAndSummary": "轉錄並摘要",
+    "summary": "摘要"
   },
   "shortcutsDialog": {
     "title": "鍵盤快速鍵",

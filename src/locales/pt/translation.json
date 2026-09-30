@@ -1527,7 +1527,10 @@
         "inactive": "Não iniciado",
         "writingToDisk": "Gravando no disco",
         "incompleteReason": "Pode faltar áudio. O áudio salvo antes do problema foi mantido.",
-        "failedReason": "Verifique as permissões do microfone e do áudio do sistema e tente novamente."
+        "failedReason": "Verifique as permissões do microfone e do áudio do sistema e tente novamente.",
+        "details": "Detalhes da gravação",
+        "outputDevice": "Saída de áudio",
+        "deviceNameUnavailable": "Nome do dispositivo indisponível"
       },
       "summaryEmptyTitle": "Ainda não há resumo",
       "summaryEmptyDescription": "O resumo aparece aqui depois que a gravação for transcrita.",
@@ -2365,7 +2368,9 @@
     "autoSummarySkipped": "Resumo automático ignorado",
     "autoSummarySkippedReason": "O resumo automático requer pelo menos 180 segundos de áudio gravado e 2.500 caracteres de transcrição. Esta reunião tem {{seconds}} segundos e {{chars}} caracteres. Pode criar um resumo manualmente agora.",
     "calendarParticipantsInvalid": "Os dados guardados dos participantes do calendário são inválidos. Corrija-os antes de tentar novamente.",
-    "calendarParticipantsNamingSkipped": "A atribuição automática de nomes aos interlocutores foi ignorada. A transcrição e o resumo continuam disponíveis."
+    "calendarParticipantsNamingSkipped": "A atribuição automática de nomes aos interlocutores foi ignorada. A transcrição e o resumo continuam disponíveis.",
+    "transcribeAndSummary": "Transcrever e resumir",
+    "summary": "Resumo"
   },
   "shortcutsDialog": {
     "title": "Atalhos de teclado",

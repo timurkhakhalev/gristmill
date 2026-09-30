@@ -7,9 +7,10 @@ import { i18nMain } from "./i18nMain.js";
 import { MenuManager } from "./menuManager.js";
 import type { WindowManager } from "./windowManager.js";
 import type { CalendarEventRow } from "./database.js";
+import { formatTime, type TimeFormat } from "../utils/dateFormatting.js";
 import { projectCalendarEvent } from "../contracts/calendar.js";
 
-const MENU_REFRESH_MS = 2 * 60 * 1000;
+const MENU_REFRESH_MS = 1000;
 const TITLE_MAX_CHARS = 16;
 const UPCOMING_WINDOW_MINUTES = 48 * 60;
 
@@ -40,6 +41,7 @@ export class TrayManager {
   refreshTimer: NodeJS.Timeout | null = null;
   // Replacing the menu while it is open dismisses it, so refreshes wait.
   menuOpen = false;
+  timeFormat: TimeFormat = "locale";
 
   setCalendarSource(source: TrayCalendarSource): void {
     this.calendarSource = source;
@@ -56,11 +58,10 @@ export class TrayManager {
   }
 
   formatTimeRange(event: CalendarEventRow): string {
-    const fmt = new Intl.DateTimeFormat(i18nMain.language ?? undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    return `${fmt.format(new Date(event.start_time))} - ${fmt.format(new Date(event.end_time))}`;
+    const time = (value: string) => formatTime(new Date(value), i18nMain.language ?? undefined, {
+      hour: "numeric", minute: "2-digit",
+    }, this.timeFormat);
+    return `${time(event.start_time)} - ${time(event.end_time)}`;
   }
 
   // Keep in-progress events until their calendar end, soonest first.

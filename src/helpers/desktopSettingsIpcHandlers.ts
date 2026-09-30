@@ -144,7 +144,7 @@ export interface DesktopSettingsDeps {
   };
   oauthProtocolRegistered: boolean;
   oauthProtocol: string;
-  getTrayManager: () => { updateTrayMenu?: () => void } | null | undefined;
+  getTrayManager: () => { timeFormat?: "locale" | "12h" | "24h"; updateTrayMenu?: () => void } | null | undefined;
   sendToMainWindow: (channel: string) => void;
   // Local sidecar seams for startup preference switches.
   stopWhisperServer: () => Promise<void>;
@@ -599,6 +599,16 @@ export function registerDesktopSettingsHandlers(
   });
 
   // ---- language ---------------------------------------------------------------------------
+
+  ipcMain.handle(desktopSettingsChannels.setTimeFormat, (_event, format: unknown) => {
+    if (format !== "locale" && format !== "12h" && format !== "24h") return { success: false };
+    const tray = deps.getTrayManager();
+    if (tray) {
+      tray.timeFormat = format;
+      tray.updateTrayMenu?.();
+    }
+    return { success: true };
+  });
 
   ipcMain.handle(desktopSettingsChannels.getUiLanguage, () => environment.getUiLanguage());
 

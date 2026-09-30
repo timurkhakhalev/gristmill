@@ -13,7 +13,7 @@ test("menubar keeps the current calendar meeting until its end, then shows the n
       if (request === "./debugLogger.js") return { error: () => {} };
       if (request === "./dockManager.js") return {};
       if (request === "./menuManager.js") return { MenuManager: {} };
-      if (request === "./i18nMain.js") return { i18nMain: { t: (key: string, args: { time?: string; m?: number }) =>
+      if (request === "./i18nMain.js") return { i18nMain: { language: "en", t: (key: string, args: { time?: string; m?: number }) =>
         key === "tray.inTime" ? `in ${args.time}` : `${args.m}m` } };
     }
     return originalLoad.call(this, request, parent, isMain);
@@ -23,6 +23,31 @@ test("menubar keeps the current calendar meeting until its end, then shows the n
     delete require.cache[modulePath];
     const { TrayManager }: typeof import("../../../../../src/helpers/tray.js") = require(modulePath);
     const manager = new TrayManager();
+    const rangeEvent = { start_time: "2026-09-29T10:00:00Z", end_time: "2026-09-29T11:30:00Z" } as CalendarEventRow;
+    manager.timeFormat = "24h";
+    const clock24 = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", hourCycle: "h23" });
+    assert.equal(manager.formatTimeRange(rangeEvent), `${clock24.format(new Date(rangeEvent.start_time))} - ${clock24.format(new Date(rangeEvent.end_time))}`);
+    manager.timeFormat = "12h";
+    assert.match(manager.formatTimeRange(rangeEvent), /AM|PM/);
+    let refresh: (() => void) | undefined;
+    const originalInterval = global.setInterval;
+    try {
+      global.setInterval = ((callback: () => void, delay: number) => {
+        assert.equal(delay, 1000);
+        refresh = callback;
+        return { unref() {} };
+      }) as unknown as typeof setInterval;
+      manager.startRefreshTimer();
+    } finally {
+      global.setInterval = originalInterval;
+      manager.refreshTimer = null;
+    }
+    let updates = 0;
+    const originalUpdate = manager.updateTrayMenu;
+    manager.updateTrayMenu = () => { updates++; };
+    refresh!();
+    assert.equal(updates, 1);
+    manager.updateTrayMenu = originalUpdate;
     let title = "";
     manager.tray = { setTitle: (value: string) => { title = value; } } as never;
     const start = Date.parse("2026-09-29T10:00:00Z");

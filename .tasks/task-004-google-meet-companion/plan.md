@@ -1,6 +1,6 @@
 # task-004 — Google Meet Companion (Implementation Plan)
 
-Дата: 2026-10-01. Статус: план для review; Act не начат.
+Дата: 2026-10-01. Статус: Act начат; M1 требует исправления capture clock path.
 Ветка: `task-004-google-meet-companion`, base/PR target: `develop`.
 По прямому решению Тимура `develop` создан из текущего `main` — `8d4e19422`.
 Approved draft: [draft.md](draft.md), commit `e96d1523b`.
@@ -99,8 +99,9 @@ Beta/Canary/другие channels не входят в обязательную 
 10. Clock probe проходит до настоящего capture helper с nonce и native receive/
     send host timestamps. Не подменять его HTTP spike/Node clock. Пробы при
     Start/Resume и периодически, сброс при document/helper changes. RTT,
-    drift/stale sync, seq loss, throttling и отсутствующие anchors дают gaps,
-    без extrapolation. Meet lag 300 ms — исходная гипотеза отдельно от clock
+    drift/stale sync, seq loss, throttling и отсутствующие anchors дают gaps
+    в evidence; активность спикера через gaps не экстраполируется. Для непрерывной
+    записи между пробами действует уточнённый контракт §5.1.7. Meet lag 300 ms — исходная гипотеза отдельно от clock
     uncertainty; сохранить Zoom policy, измерить финальные bounds. Spike 5 ms
     не production threshold; converter calibration проверяется отдельно.
 11. Один platform pipeline: recording-owned evidence, run-owned decisions.
@@ -322,6 +323,151 @@ Manual/platform gate reasons показываются раздельно. Failed
 даёт честную incomplete/error state; stale acquisition закрывается. Empty mic
 intentional → source skipped, system processed; unavailable без намерения →
 ошибка. Clock uncalibrated/stale → unknown evidence, audio продолжается.
+
+#### 5.1.7 Clock contract clarification — 2026-10-01
+
+Тимур поручил самостоятельно разрешить blocker, обнаруженный в `task-004 act`.
+Это решение дополняет M1 до перехода к M2; не означает, что исправление уже
+реализовано или проверено. При расхождении формулировок clock/capture в плане
+этот раздел имеет приоритет. Остальные fixed decisions сохраняются.
+
+**Причина.** `MeetingClockSync.mappingAt` принимает только timestamps внутри
+уже прошедших probes. Обычный следующий chunk оказывается вне них, а
+`meetingRecordingStore` превращает отсутствие mapping в capture failure/Stop.
+Кроме того, новое преобразование каждого chunk по меняющейся rate/offset
+может нарушить требование `meetingCaptureSession.appendSamples`:
+`frameStart === epoch.startFrame + epoch.frameCount`. Простое снятие проверки
+`requested > last.sourceEndNs` не устраняет второй дефект и stale/startup cases.
+
+**Решение и contracts produced/changed.**
+
+- Сохранение raw audio и точность cross-source alignment независимы. Один
+  canonical capture contract хранит source generation, actual source frame
+  range и alignment metadata. Не создавать второй recorder, PCM spool,
+  очередь ожидания следующей clock-пробы или альтернативный provider route.
+- Внутри source generation счётчик worklet/native frames задаёт порядок и
+  длительность. Muted frames входят в непрерывную позицию, encoded frames —
+  отдельный счётчик. Чанки одного encoded epoch строго непрерывны по реально
+  произведённым samples; повторная clock calibration не сдвигает уже принятые
+  chunks, не дублирует/обрезает samples и не открывает epoch на каждый probe.
+  Render-rate → stored-rate conversion использует согласованный actual-frame
+  mapping с resampler, включая его дробный остаток; не округлять каждый chunk
+  независимо. Gate boundaries остаются в той же source generation/frame domain.
+- Cross-source mapping — affine relation от source-frame anchors к native
+  recording timeline с generation, calibration interval, rate, uncertainty и
+  freshness. Между probes разрешено ограниченное продолжение свежей модели.
+  Его uncertainty растёт с расстоянием от anchors и допустимой ошибкой rate.
+  Начальная policy выбрана ниже; это проверяемый engineering envelope, а не
+  утверждение о точности hardware до M6. Один probe не доказывает нулевой drift.
+  Без finite bound mapping unknown.
+- Initial alignment policy (все времена в monotonic ns; расчёты относительно
+  anchor, без потери точности от absolute ns → Number):
+  1. Сохранять последние 8 валидных probes одной непрерывной generation.
+     Нужны минимум две пробы с расстоянием midpoint ≥250 ms. Freshness и
+     расстояние query за пределами sampled interval — каждое ≤5 s; ровно
+     граница допускается. Это продолжает существующий five-second age limit.
+  2. Модель `helper = a * source + b`, начальный допустимый rate range
+     `0.999 ≤ a ≤ 1.001` (±1000 ppm). Каждая nonce-validated round trip
+     `(s0, h1, h2, s3)` задаёт causality constraints:
+     `h2 - a*s3 ≤ b ≤ h1 - a*s0`. Использовать пересечение этих ограничений
+     всех сохранённых probes и rate range. Пустое пересечение — incompatible
+     probe/model, а не разрешение расширить rate bound. Отрицательные RTT,
+     reversed times и несовпавшие generation/nonce отклоняются до модели.
+  3. Для valid intersection взять midpoint допустимого диапазона `a`, затем
+     midpoint допустимого `b` при выбранном `a`: это одна affine estimate.
+     В query `q` вычислить minimum/maximum `a*q+b` по тому же пересечению;
+     uncertainty — максимальное расстояние estimate до этих двух границ.
+     Таким образом uncertainty включает RTT asymmetry и rate ambiguity и
+     расширяется при выходе за sampled interval; residual нельзя игнорировать.
+     Не вводить отдельный guessed drift=0 или RTT-only uncertainty.
+  4. Для prepare допустим upper uncertainty ≤25 ms на обоих концах каждого
+     используемого continuous mapping segment. Проверить age/coverage segment
+     по времени capture, а не по времени обработки после Stop. Persist estimate,
+     bounds, frame anchors и coverage; после reopen они не «протухают» от того,
+     что обработка началась позже. Неизвестная uncertainty даёт отказ.
+     M4 вправе требовать меньшую uncertainty для speaker attribution.
+  5. Rejected probe не входит в окно и не обновляет freshness. Пока предыдущая
+     модель valid, она остаётся usable; после пяти секунд без принятой пробы —
+     unknown. При длительном gap новая пара probes создаёт новую calibration
+     segment без inherited coverage; старые интервалы не склеиваются с ней.
+  6. Поздние probes могут разрешить unknown interval только в той же continuous
+     source/helper generation: обе границы interval входят в sampled span либо
+     в разрешённое ≤5 s continuation, модель удовлетворяет constraints и
+     uncertainty ≤25 ms на обоих концах. Нельзя переносить такую модель через
+     suspend/discontinuity или скрывать исходную причину unknown. Finite
+     coverage сохраняется вместе с результатом; retry сам не придумывает anchors.
+  7. M6 измеряет drift/RTT/actual alignment error на поддержанных устройствах
+     и проверяет envelope. Параметры ±1000 ppm, 250 ms и 25 ms предварительные;
+     несовместимые measurements требуют явного обновления этой policy и её
+     regression expectations до завершения M6, не автоматического widening
+     в runtime. 5 s также нельзя молча увеличивать. Speaker indicator lag
+     и прежний spike budget 5 ms не определяют audio alignment tolerance.
+- Истечение bounds, отсутствие начальной калибровки/AudioContext timestamp,
+  непригодная новая проба или смена clock generation не останавливают приём,
+  Opus encoding, сохранение и drain здоровых источников. Raw epochs и mute
+  intervals сохраняют source-frame coordinates и явное unknown alignment.
+  Нельзя подставлять zero/arrival-time/Date.now offset или выдавать source-local
+  zero за начало общей timeline. Если рабочая модель ещё valid, плохая проба
+  не отменяет её раньше limits. При expiration сохраняется unknown, а не
+  бесконечно «свежая» старая модель.
+- Переподключение helper/document/context и настоящий suspend/discontinuity
+  разделяют generations; новая калибровка не склеивает их по численно похожим
+  frame counters. Свежие anchors той же непрерывной generation могут разрешить
+  сохранённый unknown interval только с доказанными bounds/coverage. Raw audio
+  и старые опубликованные artifacts неизменяемы. Известные historical offsets
+  старых записей не переклассифицировать и не пересчитывать.
+- Persist alignment state/bounds и source-relative frame ranges вместе с
+  текущими recording/epoch/intentional-interval metadata; согласованно изменить
+  schemas, IPC validation, capture session, storage/reopen и mixer. Uncertainty
+  не должна исчезать при renderer→main переходе. `startFrame` общей timeline
+  не может одновременно означать local position и подтверждённый global offset.
+  Cutover без deprecated aliases/shims. M2/M4 используют этот M1 контракт.
+- Prepare/composition размещает источники по valid bounded mapping, сохраняя
+  mute gaps и корректно учитывая rate; raw chunks не перекладывает. Если после
+  Stop хотя бы нужный interval остаётся unaligned, raw Stop считается успешным,
+  а prepare возвращает явную typed `audio-alignment-unavailable` через текущий
+  processing error/retry flow. Не отправлять выдуманную смесь, не терять один
+  источник и не показывать complete transcript. Retry без новых пригодных
+  данных сохраняет ту же честную ошибку; новый UI для ручной синхронизации и
+  отдельная система repair/backfill не входят в задачу. Сохранённые bounds
+  переживают restart, ранее полученные artifacts сохраняются.
+- Speaker evidence имеет самостоятельные более строгие guards: только
+  подтверждённые bounded observed intervals; no held active speaker across
+  gaps. Допустимая оценка позиции raw audio не означает достаточную точность
+  для имени. Unknown/high uncertainty оставляет alias и reason. Реальные
+  write/drain/device errors сохраняют существующую failure semantics.
+
+**Required regression evidence до завершения M1.** Расширить существующие
+`meetingClockSync.test.ts`, `meetingMicGate.test.ts`,
+`meetingPcmProcessor.test.ts`, `meetingRecordingSession.test.ts`,
+`meetingAudioTimeline.test.ts`, `meetingAudioParts.test.ts` и
+`meetingProcessing.test.ts`; использовать уже заданную выборку §5.1.4.
+
+1. Несколько chunks после последней пробы и между периодическими probes:
+   raw сохраняется полностью, Stop не вызывается, sequences и samples contiguous.
+   Изменение offset/rate и округление на один sample не ломают append contract.
+2. Нет sync с самого Start, probes отклоняются дольше freshness window,
+   invalid output timestamp: оба здоровых raw источника сохраняются/drain,
+   unknown metadata переживает reopen; prepare явно отказывает без silent mix.
+3. Mute/unmute при valid и unknown mapping: muted PCM не передаётся,
+   source-frame interval включает discarded frames; ack/Stop не ждут probe.
+4. Истечение bounds, худший RTT/rate uncertainty, helper/context generation
+   change и suspend: никакого ложного global offset или evidence coverage.
+   Recalibration внутри valid continuous generation разрешает только доказанный
+   interval, не двигает raw/прошлые artifacts и не создаёт дубликатов.
+   Boundary cases: один probe или span 249 ms → unknown; span 250 ms и
+   feasible model → eligible; age/continuation 5 s и uncertainty 25 ms →
+   accepted, +1 ns → rejected. Bad probe не продлевает deadline. Empty
+   feasible intersection и query вне finite coverage → unknown. После Stop
+   сохранённый valid segment остаётся пригодным независимо от Date.now.
+5. Derived alignment с известными offset/rate/gap, включая границу resampler,
+   даёт ожидаемое размещение; unaligned input не попадает ни в один provider.
+   Позитивные существующие provider/intentional-empty cases продолжают работать.
+
+Обновить `docs/record-then-process.md` и `docs/architecture.md` при реализации:
+source continuity, bounded alignment, unknown capture и processing error.
+M6 проверяет настоящий uninterrupted mic+system capture с периодическими probes
+и краткой потерей sync; unit/probe pass сам по себе этот сценарий не доказывает.
 
 ### 5.2 M2 — Общий platform evidence и provenance
 
@@ -986,10 +1132,10 @@ temporary profiles/.planact/visual output никогда не commit.
 | Reviewer | not started | |
 | Code Reviewer | not started | |
 
-M1 execution is blocked pending the user decision on continuous renderer/native
-frame alignment between clock probes. Strict measured-only mapping currently
-turns a newer renderer frame into capture failure; PCM continuity and truthful
-alignment must both be preserved. Do not advance to M2 or mark M1 done.
+Clock decision resolved in §5.1.7 under the user’s explicit delegation.
+M1 remains in progress pending implementation and regression verification of
+that contract. No further product decision is pending; do not mark M1 done or
+advance to M2 merely because the decision is recorded.
 Root verification: 20-file M1/direct-consumer selection passed 202 tests
 (201 ordinary + 1 real native helper), 0 failures/skips, 10.186 s. This selected
 pass does not prove the unresolved live clock path or M6 hardware acceptance.

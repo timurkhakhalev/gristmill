@@ -2509,7 +2509,7 @@
   },
   "meetIntegration": {
     "title": "Gristmill Companion",
-    "setupDescription": "Chrome Stable · 开发版扩展。启用集成后，在 chrome://extensions 中通过“加载已解压的扩展程序”选择扩展文件夹。静音时丢弃麦克风音频，系统音频继续录制。",
+    "setupDescription": "Chrome Stable. 启用集成后，在 chrome://extensions 中通过“加载已解压的扩展程序”选择扩展文件夹。静音时丢弃麦克风音频，系统音频继续录制。",
     "enabled": "已启用",
     "disabled": "已禁用",
     "loading": "加载中…",

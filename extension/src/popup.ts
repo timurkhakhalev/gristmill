@@ -1,11 +1,17 @@
 import type { ChromeApi } from "./chrome.js";
-import { describePopup, popupStatusSchema } from "./popupState.js";
+import { describePopup, popupDiagnostics, popupStatusSchema } from "./popupState.js";
 declare const chrome: ChromeApi;
+declare const COMPANION_DEV: boolean;
+declare const COMPANION_VERSION: string;
+const appName = COMPANION_DEV ? "Gristmill Dev" : "Gristmill";
+document.querySelector<HTMLElement>("#channel")!.hidden = !COMPANION_DEV;
+document.querySelector<HTMLElement>("#version")!.textContent = `v${COMPANION_VERSION}`;
 const status = document.querySelector<HTMLElement>("#status")!;
-const rows = document.querySelector<HTMLElement>("#rows")!;
 const notice = document.querySelector<HTMLElement>("#notice")!;
 const mute = document.querySelector<HTMLButtonElement>("#mute")!;
 const error = document.querySelector<HTMLElement>("#error")!;
+const connection = document.querySelector<HTMLElement>("#connection")!;
+const connectionLabel = document.querySelector<HTMLElement>("#connection-label")!;
 let current: ReturnType<typeof describePopup> | null = null;
 let busy = false;
 mute.addEventListener("click", () => {
@@ -19,23 +25,32 @@ mute.addEventListener("click", () => {
 });
 function render(view: ReturnType<typeof describePopup>) {
   current = view;
-  status.textContent = view.title; status.dataset.tone = view.tone;
-  rows.replaceChildren(...view.rows.flatMap(([label, value]) => {
+  status.textContent = view.connected ? view.title : `Open ${appName} to connect`;
+  connection.dataset.connected = String(view.connected);
+  connectionLabel.textContent = view.connected ? `Connected to ${appName}` : `${appName} is offline`;
+  notice.textContent = view.notice;
+  mute.hidden = !view.canMute; mute.disabled = busy;
+  mute.textContent = view.manualMuted ? "Unmute my microphone" : "Mute my microphone";
+  mute.setAttribute("aria-pressed", String(view.manualMuted));
+}
+function renderDiagnostics(rows: Array<[string, string]>) {
+  document.querySelector<HTMLElement>("#rows")!.replaceChildren(...rows.flatMap(([label, value]) => {
     const term = document.createElement("dt"); term.textContent = label;
     const detail = document.createElement("dd"); detail.textContent = value;
     return [term, detail];
   }));
-  notice.textContent = view.notice;
-  mute.hidden = !view.canMute; mute.disabled = busy;
-  mute.textContent = view.manualMuted ? "Remove manual mute" : "Mute recorded microphone";
-  mute.setAttribute("aria-pressed", String(view.manualMuted));
 }
 async function refresh() {
   try {
     const [reply, tabs] = await Promise.all([chrome.runtime.sendMessage({ type: "status" }), chrome.tabs.query({ active: true, currentWindow: true })]);
-    render(describePopup(popupStatusSchema.parse(reply), tabs[0]?.id, Date.now()));
+    const value = popupStatusSchema.parse(reply);
+    const now = Date.now();
+    render(describePopup(value, tabs[0]?.id, now));
+    if (COMPANION_DEV) renderDiagnostics(popupDiagnostics(value, tabs[0]?.id, now));
   } catch {
-    render(describePopup({ connected: false, snapshot: null, error: "unavailable", contexts: [], canControlMic: false }, undefined, Date.now()));
+    const unavailable = { connected: false, snapshot: null, error: "unavailable", contexts: [], canControlMic: false };
+    render(describePopup(unavailable, undefined, Date.now()));
+    if (COMPANION_DEV) renderDiagnostics(popupDiagnostics(unavailable, undefined, Date.now()));
   }
 }
 void refresh();

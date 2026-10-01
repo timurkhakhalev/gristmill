@@ -106,8 +106,8 @@
       "to": "cli/gristmill-cli.cjs"
     },
     {
-      "from": "build/companion-dev",
-      "to": "companion-dev",
+      "from": "build/companion",
+      "to": "companion",
       "filter": [
         "**/*"
       ]

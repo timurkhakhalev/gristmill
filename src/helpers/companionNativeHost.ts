@@ -1,14 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
-import identity from "../../extension/identity.json";
+import identities from "../../extension/identity.json";
 import { companionBrowserMessageSchema, companionDesktopMessageSchema } from "../contracts/companion.js";
 import { CompanionFrameDecoder, writeCompanionFrame } from "./companionFrames.js";
 
 /** Chrome launches this entry with Electron's bundled Node runtime. Stdout is protocol-only. */
 export function runCompanionNativeHost(args: string[]): void {
-  const [profilePath, origin] = args;
-  if (args.length !== 2 || !path.isAbsolute(profilePath) || origin !== `chrome-extension://${identity.extensionId}/`) {
+  const [profilePath, channel, origin] = args;
+  if (args.length !== 3 || !path.isAbsolute(profilePath) ||
+      (channel !== "development" && channel !== "production") ||
+      origin !== `chrome-extension://${identities[channel].extensionId}/`) {
     process.exitCode = 1;
     return;
   }

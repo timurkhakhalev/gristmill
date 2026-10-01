@@ -1,4 +1,5 @@
 import os from "node:os";
+import { isDevelopmentChannel } from "./appChannel.js";
 import { installCompanionHost, uninstallCompanionHost, companionHostInstalled, refreshCompanionHost } from "./installCompanionHost.js";
 import { app, BrowserWindow, dialog, ipcMain, net, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
 import path from "path";
@@ -1536,6 +1537,7 @@ export class IPCHandlers {
     let companionEnabled = fs.existsSync(companionPreference);
     const companionIsolated = app.commandLine?.hasSwitch("user-data-dir") === true;
     const companionInstallation = {
+      channel: isDevelopmentChannel() ? "development" as const : "production" as const,
       chromeRoot: companionIsolated ? path.join(app.getPath("userData"), "chrome-test") : path.join(os.homedir(), "Library", "Application Support", "Google", "Chrome"),
       profilePath: app.getPath("userData"), runtimePath: process.execPath,
       hostScriptPath: path.join(__dirname, "companionNativeHost.js"),
@@ -1544,8 +1546,9 @@ export class IPCHandlers {
       try { refreshCompanionHost(companionInstallation); }
       catch (error) { debugLogger.warn("Meet host registration could not be refreshed", { error: String(error) }, "meeting"); }
     }
-    const companionExtensionPath = app.isPackaged ? path.join(process.resourcesPath, "companion-dev") : path.join(app.getAppPath(), "build", "companion-dev");
-    ipcMain.handle("meet-integration-setup", () => ({ enabled: companionEnabled, installed: companionHostInstalled(companionInstallation), extensionPath: companionExtensionPath }));
+    const companionFolder = companionInstallation.channel === "development" ? "companion-dev" : "companion";
+    const companionExtensionPath = app.isPackaged ? path.join(process.resourcesPath, companionFolder) : path.join(app.getAppPath(), "build", companionFolder);
+    ipcMain.handle("meet-integration-setup", () => ({ enabled: companionEnabled, installed: companionHostInstalled(companionInstallation), extensionPath: companionExtensionPath, channel: companionInstallation.channel }));
     ipcMain.handle("meet-integration-configure", async (event, action: unknown) => {
       if (event.sender !== this.windowManager.controlPanelWindow?.webContents) return { success: false, error: "Unauthorized window" };
       try {

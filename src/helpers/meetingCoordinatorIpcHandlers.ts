@@ -2,6 +2,7 @@ import { MeetingClockSync, type MeetingClockProbeReply } from "./meetingClockSyn
 import { MeetSpeakerEvidence } from "./meetSpeakerEvidence.js";
 import { CompanionCoordinator } from "./companionCoordinator.js";
 import { CompanionServer } from "./companionServer.js";
+import { isDevelopmentChannel } from "./appChannel.js";
 import { companionSelectionSchema, companionRecordingScopeSchema } from "../contracts/companion.js";
 // The main-process meeting coordinator owns capture preparation, recording
 // start/stop, durable raw audio writes, source availability, detection and
@@ -350,6 +351,7 @@ export function registerMeetingCoordinatorHandlers(
     },
   });
   const companionServer = deps.companionProfilePath ? new CompanionServer({
+    channel: isDevelopmentChannel() ? "development" : "production",
     profilePath: deps.companionProfilePath,
     snapshot: () => ({ recordingState: activeCaptureSession ? "recording" : pausedRecording ? "paused" : "idle",
       recordingId: activeCaptureSession?.recordingId ?? pausedRecording?.recordingId ?? null, binding: companion.status().binding?.ref ?? null,

@@ -66,5 +66,5 @@ export type CompanionStatus = z.infer<typeof companionStatusSchema>;
 export const companionSelectionSchema = z.object({ expected: companionRecordingScopeSchema, candidate: companionCandidateKeySchema }).strict();
 export const companionPlatformMuteSchema = companionRecordingScopeSchema.extend({ muted: z.boolean() });
 
-export const companionSetupSchema = z.object({ enabled: z.boolean(), installed: z.boolean(), extensionPath: z.string() }).strict();
+export const companionSetupSchema = z.object({ enabled: z.boolean(), installed: z.boolean(), extensionPath: z.string(), channel: z.enum(["development", "production"]) }).strict();
 export type CompanionSetup = z.infer<typeof companionSetupSchema>;

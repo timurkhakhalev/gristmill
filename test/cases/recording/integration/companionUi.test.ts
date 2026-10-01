@@ -61,7 +61,7 @@ test("late call selection does nothing before click and rejects stale confirmati
 
 test("setup failure stays visible and does not report integration enabled", async (t) => {
   const actions: unknown[] = [];
-  const ui = await mount(t, "/components/settings/MeetIntegrationSettings.tsx", { getMeetIntegrationSetup: async () => ({ enabled: false, installed: false, extensionPath: "/isolated/extension" }),
+  const ui = await mount(t, "/components/settings/MeetIntegrationSettings.tsx", { getMeetIntegrationSetup: async () => ({ enabled: false, installed: false, extensionPath: "/isolated/extension", channel: "development" }),
     configureMeetIntegration: async (action: unknown) => { actions.push(action); return { success: false, error: "Owned profile mismatch" }; } });
   await ui.click(ui.node((node) => node.props?.children === "meetIntegration.enable"));
   assert.deepEqual(actions, ["enable"]);

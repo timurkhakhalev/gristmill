@@ -37,7 +37,7 @@ export function MeetIntegrationSettings() {
   };
   return (
     <div className="space-y-3 p-4">
-      <h3 className="text-sm font-medium">{t("meetIntegration.title")}</h3>
+      <h3 className="text-sm font-medium">{t("meetIntegration.title")}{setup?.channel === "development" ? " · Dev" : ""}</h3>
       <p className="text-xs text-muted-foreground">{t("meetIntegration.setupDescription")}</p>
       <p className="text-xs">
         {setup

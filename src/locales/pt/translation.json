@@ -2508,7 +2508,7 @@
     "selfLabel": "Você"
   },
   "meetIntegration": {
-    "title": "Integração com Google Meet",
+    "title": "Gristmill Companion",
     "setupDescription": "Chrome Stable · Extensão Dev. Ative a integração e carregue a pasta com «Carregar sem compactação» em chrome://extensions. O áudio do microfone silenciado é descartado; o áudio do sistema continua.",
     "enabled": "Ativada",
     "disabled": "Desativada",

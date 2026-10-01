@@ -12,8 +12,8 @@ for (const entry of ["worker", "popup", "content"]) {
 }
 fs.copyFileSync(path.join(root, "extension", "popup.html"), path.join(output, "popup.html"));
 fs.writeFileSync(path.join(output, "manifest.json"), JSON.stringify({
-  manifest_version: 3, name: "Gristmill for Google Meet (Dev)", version: "0.1.0", minimum_chrome_version: "121",
-  description: "Link a Google Meet call to a local Gristmill recording.", key: identity.publicKey,
+  manifest_version: 3, name: "Gristmill Companion (Dev)", version: "0.1.0", minimum_chrome_version: "121",
+  description: "Browser companion for local Gristmill recordings. Currently supports Google Meet.", key: identity.publicKey,
   permissions: ["nativeMessaging", "storage", "alarms"], host_permissions: ["https://meet.google.com/*"],
   content_scripts: [{ matches: ["https://meet.google.com/*"], js: ["content.js"], run_at: "document_idle" }],
   background: { service_worker: "worker.js" }, action: { default_popup: "popup.html" },

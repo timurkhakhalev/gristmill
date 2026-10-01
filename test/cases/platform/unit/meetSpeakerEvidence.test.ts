@@ -7,7 +7,7 @@ import type { MeetingClockMapping } from "../../../../src/helpers/meetingClockSy
 import type { CompanionBinding, CompanionContext } from "../../../../src/contracts/companion.ts";
 const generation = randomUUID();
 const binding: CompanionBinding = { id: randomUUID(), generation: 0, recordingId: randomUUID(), sessionId: randomUUID(), connectionId: randomUUID(),
-  ref: { platform: "google-meet", installationId: randomUUID(), sessionId: randomUUID(), tabId: 1, documentId: randomUUID(), callId: "abc-defg-hij" } };
+  ref: { platform: "google-meet", installationId: randomUUID(), sessionId: randomUUID(), tabId: 1, documentId: randomUUID().replaceAll("-", "").toUpperCase(), callId: "abc-defg-hij" } };
 const context = (seconds: number, active = ["alice"]): CompanionContext => ({ sourceNs: String(seconds * 1e9), presence: "in-call", health: "recognized", reason: null,
   mode: "standard", micMuted: false, rosterComplete: false, confirmedLeave: false, activeParticipantIds: active,
   participants: [{ id: "alice", name: "Alice", self: "remote" }, { id: "bob", name: "Bob", self: "remote" }] });

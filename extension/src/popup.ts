@@ -1,47 +1,41 @@
 import type { ChromeApi } from "./chrome.js";
-import { companionDesktopMessageSchema } from "../../src/contracts/companion.js";
+import { describePopup, popupStatusSchema } from "./popupState.js";
 declare const chrome: ChromeApi;
 const status = document.querySelector<HTMLElement>("#status")!;
-const detail = document.querySelector<HTMLElement>("#detail")!;
-const health = document.querySelector<HTMLElement>("#health")!;
+const rows = document.querySelector<HTMLElement>("#rows")!;
+const notice = document.querySelector<HTMLElement>("#notice")!;
 const mute = document.querySelector<HTMLButtonElement>("#mute")!;
 const error = document.querySelector<HTMLElement>("#error")!;
-let current: Extract<import("../../src/contracts/companion.js").CompanionDesktopMessage, { type: "snapshot" }> | null = null;
+let current: ReturnType<typeof describePopup> | null = null;
 let busy = false;
 mute.addEventListener("click", () => {
   const value = current;
-  if (!value?.recordingId || busy) return;
+  if (!value?.recordingId || !value.canMute || busy) return;
   busy = true; mute.disabled = true; error.textContent = "";
   void chrome.runtime.sendMessage({ type: "manual-mute", recordingId: value.recordingId, muted: !value.manualMuted })
     .then((reply) => { if (!(reply as { accepted?: boolean })?.accepted) error.textContent = "Recording changed. Try again in Gristmill."; })
     .catch(() => { error.textContent = "Could not change the microphone. Try again in Gristmill."; })
     .finally(() => { busy = false; void refresh(); });
 });
+function render(view: ReturnType<typeof describePopup>) {
+  current = view;
+  status.textContent = view.title; status.dataset.tone = view.tone;
+  rows.replaceChildren(...view.rows.flatMap(([label, value]) => {
+    const term = document.createElement("dt"); term.textContent = label;
+    const detail = document.createElement("dd"); detail.textContent = value;
+    return [term, detail];
+  }));
+  notice.textContent = view.notice;
+  mute.hidden = !view.canMute; mute.disabled = busy;
+  mute.textContent = view.manualMuted ? "Remove manual mute" : "Mute recorded microphone";
+  mute.setAttribute("aria-pressed", String(view.manualMuted));
+}
 async function refresh() {
   try {
-    const reply = await chrome.runtime.sendMessage({ type: "status" }) as { snapshot?: unknown };
-    const parsed = companionDesktopMessageSchema.safeParse(reply?.snapshot);
-    if (!parsed.success || parsed.data.type !== "snapshot") {
-      current = null; mute.hidden = true; health.textContent = "";
-      status.textContent = "Gristmill is not connected";
-      detail.textContent = "Open Gristmill and install its Google Meet integration in Settings.";
-      return;
-    }
-    const value = parsed.data;
-    current = value;
-    mute.hidden = value.recordingState !== "recording" || !value.binding || value.contextState === "disabled";
-    mute.disabled = busy;
-    mute.textContent = value.manualMuted ? "Unmute microphone" : "Mute microphone";
-    mute.setAttribute("aria-pressed", String(value.manualMuted));
-    health.textContent = value.contextState === "unavailable" ? "Meet context unavailable. Recording continues; check the microphone in Gristmill."
-      : value.contextState === "disabled" ? "Meet integration disabled."
-      : value.contextState === "recognized" ? "Meet context is current." : "Link a call in the recording Note.";
-    status.textContent = value.recordingState === "recording" ? "Recording" : value.recordingState === "paused" ? "Recording paused" : "Connected to Gristmill";
-    detail.textContent = value.binding ? `Google Meet · ${value.binding.callId}${value.manualMuted || value.platformMuted ? " · Microphone muted" : ""}` : "No call is linked to a recording.";
+    const [reply, tabs] = await Promise.all([chrome.runtime.sendMessage({ type: "status" }), chrome.tabs.query({ active: true, currentWindow: true })]);
+    render(describePopup(popupStatusSchema.parse(reply), tabs[0]?.id, Date.now()));
   } catch {
-    current = null; mute.hidden = true; health.textContent = "";
-    status.textContent = "Gristmill is not connected";
-    detail.textContent = "Open Gristmill to reconnect.";
+    render(describePopup({ connected: false, snapshot: null, error: "unavailable", contexts: [], canControlMic: false }, undefined, Date.now()));
   }
 }
 void refresh();

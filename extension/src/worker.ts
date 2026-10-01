@@ -1,6 +1,6 @@
 import { z } from "zod";
 import identity from "../identity.json";
-import { COMPANION_MAX_MESSAGE_BYTES, companionContextSchema, companionDesktopMessageSchema, type CompanionCallRef, type CompanionDesktopMessage } from "../../src/contracts/companion.js";
+import { COMPANION_MAX_MESSAGE_BYTES, companionContextSchema, companionDesktopMessageSchema, companionDocumentIdSchema, type CompanionCallRef, type CompanionDesktopMessage, type CompanionContext } from "../../src/contracts/companion.js";
 import type { ChromeApi, ChromePort, ChromeSender } from "./chrome.js";
 
 const uuid = z.string().uuid();
@@ -20,9 +20,10 @@ export function startCompanionWorker(api: ChromeApi): void {
   let snapshot: Extract<CompanionDesktopMessage, { type: "snapshot" }> | null = null;
   let error = "disconnected";
   let updatePending = false;
+  const contexts = new Map<number, { ref: CompanionCallRef; context: CompanionContext; receivedAt: number }>();
   const probes = new Map<string, { tabId: number; documentId: string }>();
   const refFor = (sender: ChromeSender): CompanionCallRef | null => {
-    if (sender.id !== api.runtime.id || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) || !uuid.safeParse(sender.documentId).success) return null;
+    if (sender.id !== api.runtime.id || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) || !companionDocumentIdSchema.safeParse(sender.documentId).success) return null;
     try {
       const url = new URL(sender.url ?? "");
       const match = url.pathname.match(/^\/([a-z]{3}-[a-z]{4}-[a-z]{3})\/?$/);
@@ -72,7 +73,9 @@ export function startCompanionWorker(api: ChromeApi): void {
   api.runtime.onMessage.addListener((value, sender, respond) => {
     if (sender.id === api.runtime.id && !sender.tab && sender.url === api.runtime.getURL("popup.html") &&
         value && typeof value === "object" && "type" in value && value.type === "status") {
-      respond({ connected: snapshot !== null, snapshot, error });
+      respond({ connected: snapshot !== null, snapshot, error, contexts: [...contexts.values()],
+        canControlMic: !!snapshot?.binding && snapshot.recordingState === "recording" && snapshot.contextState !== "disabled" &&
+          snapshot.binding.installationId === installationId && snapshot.binding.sessionId === sessionId });
       return;
     }
     if (sender.id === api.runtime.id && !sender.tab && sender.url === api.runtime.getURL("popup.html")) {
@@ -89,10 +92,15 @@ export function startCompanionWorker(api: ChromeApi): void {
       return;
     }
     const parsed = contentMessage.safeParse(value);
-    if (!parsed.success || !port || !snapshot) { respond({ accepted: false }); return; }
+    if (!parsed.success || !installationId || !sessionId) { respond({ accepted: false }); return; }
     const ref = refFor(sender);
     if (!ref) { respond({ accepted: false }); return; }
     const message = parsed.data;
+    if (message.type === "context") {
+      if (contexts.size >= 32 && !contexts.has(ref.tabId)) contexts.delete(contexts.keys().next().value!);
+      contexts.set(ref.tabId, { ref, context: message.context, receivedAt: Date.now() });
+    }
+    if (!port || !snapshot) { respond({ accepted: false }); return; }
     if (message.type === "clock-probe") {
       if (probes.size >= 16) probes.delete(probes.keys().next().value!);
       probes.set(message.nonce, { tabId: ref.tabId, documentId: ref.documentId });

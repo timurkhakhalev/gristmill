@@ -21,10 +21,14 @@ try {
 const run=async(html,leave=false)=>{await win.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(html)); return win.webContents.executeJavaScript(${JSON.stringify(adapter)}+'; adapter.readMeetContext([document], "1000", '+leave+')');};
 const en=await run(${JSON.stringify(fixtures[0])}); assert.equal(en.presence,'in-call'); assert.equal(en.micMuted,false); assert.deepEqual(en.activeParticipantIds,['alice']); assert.equal(en.participants[1].self,'local'); assert.equal(en.rosterComplete,false);
 const ru=await run(${JSON.stringify(fixtures[1])}); assert.equal(ru.micMuted,true); assert.deepEqual(ru.activeParticipantIds,['alice','bob']);
-const companion=await run('<button aria-label="Leave call"></button><p>Companion mode</p>'); assert.equal(companion.mode,'companion'); assert.equal(companion.micMuted,null);
+const liveRu=await run('<button jsname="CQylAd" aria-label="任意"></button><button jsname="hw0c9" data-is-muted="false" aria-label="अन्य"></button>'); assert.equal(liveRu.presence,'in-call'); assert.equal(liveRu.micMuted,false);
+const liveMuted=await run('<button jsname="CQylAd"></button><button jsname="hw0c9" data-is-muted="true"></button><button jsname="psRWwc" data-is-muted="false"></button>'); assert.equal(liveMuted.micMuted,true);
+const click=await win.webContents.executeJavaScript(${JSON.stringify(adapter)}+'; adapter.isMeetLeaveControl(document.querySelector("button"))'); assert.equal(click,true);
+const companion=await run('<button jsname="CQylAd"></button><p>Companion mode</p>'); assert.equal(companion.mode,'unknown'); assert.equal(companion.micMuted,null);
 const unknown=await run('<h1>Moving to another room</h1>',true); assert.equal(unknown.health,'unrecognized'); assert.equal(unknown.confirmedLeave,false); assert.equal(unknown.micMuted,null);
-const left=await run('<h1>You left the meeting</h1>',true); assert.equal(left.confirmedLeave,true); assert.equal(left.presence,'not-in-call');
-const disconnected=await run('<h1>You left the meeting</h1>'); assert.equal(disconnected.confirmedLeave,false);
+const left=await run('<h1 jsname="r4nke">任意</h1><button jsname="W6suGc">任意</button>',true); assert.equal(left.confirmedLeave,true); assert.equal(left.presence,'not-in-call');
+const labelsOnly=await run('<button aria-label="Leave call"></button><button aria-label="Turn off microphone"></button><h1>You left the meeting</h1>',true); assert.equal(labelsOnly.health,'unrecognized'); assert.equal(labelsOnly.confirmedLeave,false);
+const disconnected=await run('<h1 jsname="r4nke">任意</h1><button jsname="W6suGc">任意</button>'); assert.equal(disconnected.confirmedLeave,false);
 const duplicate=await run(${JSON.stringify(fixtures[0])}+'<section data-participant-id="other" data-participant-name="Alice"></section>'); assert.equal(duplicate.participants.filter(p=>p.name==='Alice').length,2);
 console.log('meet DOM fixtures passed');
 } finally {win.destroy(); app.quit();}}).catch(error=>{console.error(error);app.exit(1);});`);

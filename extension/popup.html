@@ -1,4 +1,8 @@
 <!doctype html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gristmill for Google Meet</title>
-<style>body{font:14px system-ui;margin:0;padding:20px;width:280px;color:#202421;background:#fafbf8}h1{font-size:16px;margin:0 0 16px}#status{font-weight:600}#detail{color:#59615c;line-height:1.5}</style></head>
-<body><h1>Gristmill for Google Meet</h1><p id="status" role="status">Connecting…</p><p id="detail"></p><p id="health"></p><button id="mute" type="button" hidden>Mute microphone</button><p id="error" role="alert"></p><script src="popup.js"></script></body></html>
+<style>
+body{font:13px system-ui;margin:0;padding:20px;width:340px;color:#202421;background:#fafbf8}
+h1{font-size:15px;margin:0 0 14px}#status{font-size:15px;font-weight:650;border-radius:8px;padding:10px 12px;background:#e8f1e8}#status[data-tone=warning]{background:#fff0cc;color:#684800}
+dl{display:grid;grid-template-columns:130px 1fr;gap:10px 12px;margin:18px 0}dt{color:#59615c}dd{margin:0;font-weight:550;overflow-wrap:anywhere}#notice{border-top:1px solid #dfe4db;padding-top:14px;line-height:1.5;color:#465143}button{font:inherit;padding:9px 12px;border:1px solid #b7c3ae;border-radius:7px;background:#e8f1e8;color:#202421;cursor:pointer}button:disabled{opacity:.6}button[hidden]{display:none}#error{color:#a12222;line-height:1.4}#error:empty{display:none}
+</style></head>
+<body><h1>Gristmill for Google Meet</h1><p id="status" role="status">Connecting…</p><dl id="rows"></dl><p id="notice"></p><button id="mute" type="button" hidden>Mute recorded microphone</button><p id="error" role="alert"></p><script src="popup.js"></script></body></html>

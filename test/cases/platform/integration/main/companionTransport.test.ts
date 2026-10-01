@@ -54,7 +54,7 @@ test("real native hosts isolate Chrome connections and invalidate identity on EO
   if (a.type !== "snapshot" || b.type !== "snapshot") throw new Error("Missing snapshot");
   assert.notEqual(a.connectionId, b.connectionId);
   const ref = { platform: "google-meet", installationId: first.installationId, sessionId: first.sessionId,
-    tabId: 1, documentId: randomUUID(), callId: "abc-defg-hij" };
+    tabId: 1, documentId: randomUUID().replaceAll("-", "").toUpperCase(), callId: "abc-defg-hij" };
   const message = { version: 1, type: "context", sequence: 0, ref,
     context: { sourceNs: "1000000000", presence: "in-call", health: "recognized", reason: null, micMuted: false,
       mode: "standard", participants: [], activeParticipantIds: [], rosterComplete: false, confirmedLeave: false } };

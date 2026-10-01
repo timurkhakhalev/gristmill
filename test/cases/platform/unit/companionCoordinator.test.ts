@@ -5,7 +5,7 @@ import { CompanionCoordinator, COMPANION_REMINDER_MS } from "../../../../src/hel
 import type { CompanionCandidateKey, CompanionContext, CompanionRecordingScope } from "../../../../src/contracts/companion.ts";
 
 const candidate = (): CompanionCandidateKey => ({ connectionId: randomUUID(), ref: { platform: "google-meet",
-  installationId: randomUUID(), sessionId: randomUUID(), tabId: 1, documentId: randomUUID(), callId: "abc-defg-hij" } });
+  installationId: randomUUID(), sessionId: randomUUID(), tabId: 1, documentId: randomUUID().replaceAll("-", "").toUpperCase(), callId: "abc-defg-hij" } });
 let sourceTime = 1000;
 const context = (patch: Partial<CompanionContext> = {}): CompanionContext => ({ sourceNs: String(sourceTime++), presence: "in-call",
   health: "recognized", reason: null, micMuted: false, mode: "standard", participants: [], activeParticipantIds: [],
@@ -85,7 +85,7 @@ test("multiple Chrome profiles and Meet Companion tabs are separate; Restart can
 
 test("reload accepts fresh same-call document once; retired document and other room cannot act", () => {
   const s = setup(); const key = candidate(); s.coordinator.receive(key, context()); s.coordinator.start(s.scope);
-  const reload = { ...key, ref: { ...key.ref, documentId: randomUUID() } };
+  const reload = { ...key, ref: { ...key.ref, documentId: randomUUID().replaceAll("-", "").toUpperCase() } };
   s.coordinator.receive(reload, context({ micMuted: true }));
   assert.equal(s.coordinator.status().binding?.ref.documentId, reload.ref.documentId);
   s.effects.length = 0;

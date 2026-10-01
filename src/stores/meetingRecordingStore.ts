@@ -129,7 +129,9 @@ const getMeetingRecordingConfig = () => snapshotMeetingRecordingConfig();
 
 const stopMediaStream = (stream: MediaStream | null) => {
   try {
-    stream?.getTracks().forEach((track) => track.stop());
+    stream?.getTracks().forEach((track) => {
+      if (track.readyState !== "ended") track.stop();
+    });
   } catch {}
 };
 

@@ -3,8 +3,8 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const { composeMeetingAudioParts } = require("../../src/helpers/meetingAudioMixer.ts");
 
 test("combined ASR timeline keeps source gaps and excludes the intentional pause", () => {
-  const first = { id: "first", startedAt: "2026-09-25T10:00:00.000Z", endedAt: "2026-09-25T10:00:02.000Z" };
-  const second = { id: "second", startedAt: "2026-09-25T10:05:00.000Z", endedAt: "2026-09-25T10:05:01.000Z" };
+  const first = { id: "first", startedAt: "2026-09-25T10:00:00.000Z", endedAt: "2026-09-25T10:00:02.000Z", sourceMetadata: {} };
+  const second = { id: "second", startedAt: "2026-09-25T10:05:00.000Z", endedAt: "2026-09-25T10:05:01.000Z", sourceMetadata: {} };
   const tracks = {
     first: [
       { recordingId: "first", source: "mic", startFrame: 0, frameCount: 24_000 },

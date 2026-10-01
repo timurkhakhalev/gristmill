@@ -184,7 +184,7 @@ export class MeetingCaptureSession {
     this.captureError ??= errorCode;
   }
 
-  setMicIntent(input: {
+  async setMicIntent(input: {
     sequence: number;
     sourceGeneration: number;
     manualMuted: boolean;
@@ -193,8 +193,12 @@ export class MeetingCaptureSession {
   }): Promise<{ sequence: number; sourceGeneration: number; effectiveMuted: boolean; boundaryFrame: number }> {
     if (this.stopPromise) throw new Error("Meeting capture is stopping");
     const operation = this.micIntentQueue.then(() => this.applyMicIntent(input));
-    this.micIntentQueue = operation.then(() => undefined, () => {
-      this.captureError ??= "mic-intent-transition-failed";
+    this.micIntentQueue = operation.then(() => undefined, (error: unknown) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message !== "Stale microphone intent transition" &&
+          message !== "Microphone intent boundary precedes captured audio") {
+        this.captureError ??= "mic-intent-transition-failed";
+      }
     });
     return operation;
   }
@@ -206,7 +210,6 @@ export class MeetingCaptureSession {
     platformMuted: boolean;
     boundaryFrame: number;
   }): Promise<{ sequence: number; sourceGeneration: number; effectiveMuted: boolean; boundaryFrame: number }> {
-    if (this.stopPromise) throw new Error("Meeting capture is stopping");
     if (input.sequence !== this.micControlSequence + 1 ||
         (input.sourceGeneration !== this.micSourceGeneration && input.sourceGeneration !== this.micSourceGeneration + 1) ||
         !Number.isSafeInteger(input.boundaryFrame) || input.boundaryFrame < 0) {
@@ -276,6 +279,11 @@ export class MeetingCaptureSession {
 
   appendRendererSamples(source: MeetingSource, packet: MeetingCapturePacket, samples: Buffer): void {
     if (this.stopPromise) throw new Error("Meeting capture is stopping");
+    if (source === "mic" && (
+      packet.sourceGeneration !== this.micSourceGeneration || this.micManualMuted || this.micPlatformMuted
+    )) {
+      throw new Error("Microphone samples do not match the active intent generation");
+    }
     try {
       if (samples.length === 0 || samples.length % 2 !== 0) {
         throw new Error("Invalid PCM16LE sample packet");
@@ -294,9 +302,6 @@ export class MeetingCaptureSession {
           throw new Error("Invalid meeting capture epoch offset");
         }
         if (source === "mic") {
-          if (packet.sourceGeneration !== this.micSourceGeneration || (this.micManualMuted || this.micPlatformMuted)) {
-            throw new Error("Microphone samples do not match the active intent generation");
-          }
           if (epoch && !this.allowIntentionalMicEpoch) this.sourceErrors.set(source, "source-restarted");
           this.allowIntentionalMicEpoch = false;
         } else if (epoch) this.sourceErrors.set(source, "source-restarted");
@@ -311,8 +316,7 @@ export class MeetingCaptureSession {
         !Number.isSafeInteger(packet.sampleOffset) ||
         packet.sampleOffset !== epoch.frameCount ||
         !Number.isSafeInteger(packet.frameStart) ||
-        packet.frameStart !== epoch.startFrame + epoch.frameCount ||
-        (source === "mic" && packet.sourceGeneration !== this.micSourceGeneration)
+        packet.frameStart !== epoch.startFrame + epoch.frameCount
       ) {
         throw new Error("Meeting capture packet is out of order");
       }

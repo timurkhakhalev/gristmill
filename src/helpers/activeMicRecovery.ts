@@ -56,6 +56,12 @@ export interface ActiveMicRecoveryOptions<Stream extends RecoverableAudioStream 
 const deviceKey = (device?: AudioInputDevice | null): string =>
   [device?.deviceId || "", device?.groupId || "", device?.label || ""].join("\u0000");
 
+const stopStream = (stream: RecoverableAudioStream): void => {
+  for (const track of stream.getTracks?.() ?? stream.getAudioTracks?.() ?? []) {
+    if (track.readyState !== "ended") track.stop();
+  }
+};
+
 export const describeAudioInputs = (devices: readonly AudioInputDevice[] = []): AudioInputSnapshot => {
   const inputs = devices.filter((device) => device.kind === "audioinput");
   return {
@@ -258,12 +264,12 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
         replacement = await this.acquire(reason);
         if (!replacement?.getAudioTracks?.()[0]) throw new Error("No audio track returned");
         if (!this.started || generation !== this.generation) {
-          replacement.getTracks?.().forEach((track) => track.stop());
+          stopStream(replacement);
           return false;
         }
         await this.onRecovered(replacement, oldStream, reason);
         if (!this.started || generation !== this.generation) {
-          replacement.getTracks?.().forEach((track) => track.stop());
+          stopStream(replacement);
           return false;
         }
         this.attachStream(replacement);
@@ -272,7 +278,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
         return true;
       } catch {
         if (replacement && replacement !== this.stream) {
-          replacement.getTracks?.().forEach((track) => track.stop());
+          stopStream(replacement);
         }
         if (this.started && generation === this.generation) {
           this.setStatus("unavailable");

@@ -78,18 +78,17 @@ export class MeetingClockSync {
     this.samples.push({ sourceStartNs: sourceStart, sourceEndNs: sourceEnd, sourceNs, helperNs, uncertaintyNs });
     this.samples.sort((left, right) => left.sourceNs < right.sourceNs ? -1 : left.sourceNs > right.sourceNs ? 1 : 0);
     if (this.samples.length > MAX_PENDING_PROBES) this.samples.shift();
-    return this.mappingAt(sourceNs.toString());
+    return this.mappingAt(sourceNs.toString(), sourceEnd.toString());
   }
 
-  mappingAt(sourceNs: string, freshnessSourceNs = sourceNs): MeetingClockMapping | null {
+  mappingAt(sourceNs: string, freshnessSourceNs: string): MeetingClockMapping | null {
     const requested = parseNs(sourceNs);
-    const freshness = parseNs(freshnessSourceNs);
-    if (requested === null || freshness === null || !this.generation || this.samples.length === 0) return null;
+    if (requested === null || !this.generation || this.samples.length === 0) return null;
     const first = this.samples[0];
     const last = this.samples[this.samples.length - 1];
-    if (freshness < last.sourceEndNs || freshness - last.sourceEndNs > MAX_MAPPING_AGE_NS ||
-        requested + MAX_MAPPING_AGE_NS < first.sourceStartNs ||
-        requested > last.sourceEndNs + MAX_MAPPING_AGE_NS) return null;
+    const freshness = parseNs(freshnessSourceNs);
+    if (freshness === null || freshness < last.sourceEndNs || freshness - last.sourceEndNs > MAX_MAPPING_AGE_NS ||
+        requested < first.sourceStartNs || requested > last.sourceEndNs) return null;
 
     let rate = 1;
     if (this.samples.length > 1) {
@@ -100,7 +99,15 @@ export class MeetingClockSync {
       if (!Number.isFinite(rate) || rate <= 0) return null;
     }
     const helperAtRequested = last.helperNs + BigInt(Math.round(Number(requested - last.sourceNs) * rate));
-    const uncertainty = this.samples.reduce((max, sample) => sample.uncertaintyNs > max ? sample.uncertaintyNs : max, 0n);
+    const anchor = this.samples[0];
+    const uncertainty = this.samples.reduce((max, sample) => {
+      const predictedHelperNs = anchor.helperNs + BigInt(Math.round(Number(sample.sourceNs - anchor.sourceNs) * rate));
+      const residual = sample.helperNs >= predictedHelperNs
+        ? sample.helperNs - predictedHelperNs
+        : predictedHelperNs - sample.helperNs;
+      const bound = sample.uncertaintyNs + residual;
+      return bound > max ? bound : max;
+    }, 0n);
     const offset = helperAtRequested - requested;
     const offsetNs = Number(offset);
     const uncertaintyNs = Number(uncertainty);
@@ -114,7 +121,7 @@ export class MeetingClockSync {
     };
   }
 
-  helperNsAt(sourceNs: string, freshnessSourceNs = sourceNs): string | null {
+  helperNsAt(sourceNs: string, freshnessSourceNs: string): string | null {
     const mapping = this.mappingAt(sourceNs, freshnessSourceNs);
     const source = parseNs(sourceNs);
     if (!mapping || source === null) return null;
@@ -126,8 +133,8 @@ export class MeetingClockSync {
     sourceNs: string,
     originHelperNs: string,
     sampleRate: number,
-    originFrame = 0,
-    freshnessSourceNs = sourceNs
+    originFrame: number,
+    freshnessSourceNs: string
   ): number | null {
     const helperNs = this.helperNsAt(sourceNs, freshnessSourceNs);
     const origin = parseNs(originHelperNs);

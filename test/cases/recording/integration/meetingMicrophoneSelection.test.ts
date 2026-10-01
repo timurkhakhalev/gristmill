@@ -11,6 +11,13 @@ test("settings switch the live microphone without stopping or replacing the reco
     meetingTranscriptionStart: async () => { starts += 1; return { success: true, recordingId: "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1", originAt: new Date().toISOString(), systemAudioMode: "native", systemAudioStrategy: "native" }; },
     meetingTranscriptionStop: async () => { stops += 1; return { success: true, captureState: "ready" }; },
     meetingTranscriptionSetSystemAudioAvailable: async () => ({ success: true }),
+    meetingTranscriptionSetMicIntent: async (request: { sequence: number; sourceGeneration: number; manualMuted: boolean; platformMuted: boolean; boundaryFrame: number }) => ({
+      success: true,
+      sequence: request.sequence,
+      sourceGeneration: request.sourceGeneration,
+      effectiveMuted: request.manualMuted || request.platformMuted,
+      boundaryFrame: request.boundaryFrame,
+    }),
     onMeetingTranscriptionError: noopListener,
     onMeetingTranscriptionFatalError: noopListener,
     onMeetingSystemAudioSilent: noopListener,

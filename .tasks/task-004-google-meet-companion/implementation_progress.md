@@ -160,3 +160,42 @@ capture-clock behavior and user clock-domain decision logged above remain
 unresolved and no clock architecture was changed.
 
 Correction code commit: `761c58238` (`M1: correct epoch and mono fixture assertions`).
+
+## M1 expanded-consumer fixture corrections
+
+Root ran the expanded 20-file M1 selection recorded in
+`/tmp/gristmill-task004-m1-verification.log`: 201 ordinary tests, 197 passed and
+4 failed; the genuine native probe passed 1/1; total 10.344 s. The two failures
+in `audioTapManagerWarnings.test.ts` sent raw stdout bytes without the paired
+typed `pcm` frame metadata now required by `AudioTapManager`; without metadata,
+the manager correctly retains bytes until their frame ranges are known. The two
+failures in `meetingCoordinatorIpc.test.ts` sent packets without required
+`frameStart` and `sourceGeneration`; schema validation correctly rejected these
+before storage, so the disk-full test never reached its failing writer.
+
+The audio-tap fixtures now pair each two-byte mono PCM sample with a one-frame
+metadata message, assert the resulting frame starts and byte order, and verify a
+malformed clock warning does not prevent correctly framed PCM delivery or
+produce an error. The IPC fixtures now provide valid generation-1 frame anchors;
+the raw-write acknowledgement and disk-full rejection assertions remain intact.
+No production code or clock behavior changed.
+
+Root should first rerun the failed files:
+
+```sh
+pnpm test -- test/helpers/audioTapManagerWarnings.test.ts
+pnpm test -- test/helpers/meetingCoordinatorIpc.test.ts
+```
+
+Then rerun the full M1 consumer selection:
+
+```sh
+pnpm test -- --verbose test/helpers/activeMicRecovery.test.ts test/helpers/meetingAudioTimeline.test.ts test/helpers/meetingCaptureRecovery.test.ts test/helpers/meetingAudioParts.test.ts test/helpers/meetingProcessing.test.ts test/helpers/meetingRecordingSession.test.ts test/helpers/meetingAudioActivityMonitor.test.ts test/helpers/meetingAutoEndController.test.ts test/cases/recording/unit/meetingPcmProcessor.test.ts test/cases/recording/integration/meetingMicrophoneSelection.test.ts test/stores/meetingRecordingStoreAutoEndStop.test.ts test/cases/recording/unit/meetingClockSync.test.ts test/cases/recording/integration/meetingMicGate.test.ts test/cases/recording/integration/meetingIntentionalIntervals.test.ts test/cases/recording/native/audioTapClockProbe.test.ts test/helpers/meetingCoordinatorIpc.test.ts test/helpers/meetingStreamingWiring.test.ts test/helpers/audioTapManagerWarnings.test.ts test/helpers/meetingCoordinatorBridge.test.ts test/cases/recording/integration/meetingOpus.test.ts
+```
+
+Scoped `pnpm run typecheck:tests`, ESLint on both changed files, and
+`git diff --check` passed for this correction. This implementer did not run
+tests, builds, installs, or native commands. M1 remains in progress and blocked
+on the user clock-domain decision documented above; do not start M2.
+
+Correction code commit: `5c75a8594` (`M1: update audio packet fixtures`).

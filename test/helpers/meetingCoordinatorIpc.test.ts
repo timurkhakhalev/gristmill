@@ -85,9 +85,11 @@ function createDatabaseFake(events: string[]) {
       this.recordings.set(id, recording);
       return recording;
     },
-    createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, startFrame: number) {
+    createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, sourceGeneration: number, startFrame: number) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },
+    addMeetingRecordingEpochAlignment() {},
+    markMeetingRecordingEpochAlignmentUnknown() {},
     updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: unknown) {
       const epoch = this.epochs.find((item) => item.recordingId === recordingId && item.source === source && item.epochIndex === epochIndex);
       if (!epoch) throw new Error("Recording epoch not found");
@@ -106,12 +108,12 @@ function createDatabaseFake(events: string[]) {
       recording.captureErrorCode = input.errorCode ?? null;
       return { recording, initialRun: { id: RUN_ID } };
     },
-    openMeetingIntentionalInterval(recordingId: string, source: string, startFrame: number, reason: string) {
+    openMeetingIntentionalInterval(recordingId: string, source: string, sourceGeneration: number, startFrame: number, reason: string) {
       const interval = { id: `${recordingId}:${source}:${reason}:${startFrame}`, recordingId, source, startFrame, endFrame: null, reason };
       this.intentionalIntervals.push(interval);
       return interval;
     },
-    closeMeetingIntentionalInterval(recordingId: string, source: string, endFrame: number, reason: string) {
+    closeMeetingIntentionalInterval(recordingId: string, source: string, sourceGeneration: number, endFrame: number, reason: string) {
       const interval = [...this.intentionalIntervals].reverse().find((item) => item.recordingId === recordingId && item.source === source && item.reason === reason && item.endFrame === null);
       if (!interval) return null;
       interval.endFrame = endFrame;
@@ -332,7 +334,7 @@ test("renderer audio is acknowledged only after its raw PCM bytes are written", 
     raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
     "mic",
     START.sessionId,
-    { epochIndex: 0, epochStartFrame: 100, frameStart: 100, sourceGeneration: 1, sequence: 0, sampleOffset: 0 }
+    { epochIndex: 0, epochSourceStartFrame: 100, sourceFrameStart: 100, alignment: null, alignmentErrorCode: "clock-unavailable", sourceGeneration: 1, sequence: 0, sampleOffset: 0 }
   );
 
   assert.deepEqual(response, { success: true, sequence: 0 });
@@ -356,7 +358,7 @@ test("disk errors reject acknowledgement and finalize incomplete", async () => {
       raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
       "mic",
       START.sessionId,
-      { epochIndex: 0, epochStartFrame: 0, frameStart: 0, sourceGeneration: 1, sequence: 0, sampleOffset: 0 }
+      { epochIndex: 0, epochSourceStartFrame: 0, sourceFrameStart: 0, alignment: null, alignmentErrorCode: "clock-unavailable", sourceGeneration: 1, sequence: 0, sampleOffset: 0 }
     ),
     /disk full/
   );
@@ -401,7 +403,7 @@ test("capture packet validation rejects unknown sources", async () => {
       new ArrayBuffer(4_800),
       "fallback",
       START.sessionId,
-      { epochIndex: 0, epochStartFrame: 0, sequence: 0, sampleOffset: 0 }
+      { epochIndex: 0, epochSourceStartFrame: 0, sequence: 0, sampleOffset: 0 }
     ),
     /source is invalid/
   );

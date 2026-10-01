@@ -12,7 +12,7 @@ export interface ZoomMatcherInput {
   transcript: MeetingTranscriptArtifact;
   observations: ZoomSpeakerObservation[];
   anchors: MeetingAudioClockAnchor[];
-  epochs: Array<Pick<MeetingRecordingEpochDto, "recordingId" | "source" | "epochIndex" | "startFrame" | "frameCount" | "state">>;
+  epochs: Array<Pick<MeetingRecordingEpochDto, "recordingId" | "source" | "epochIndex" | "timelineStartFrame" | "frameCount" | "state">>;
   partOffsets: Array<{ recordingId: string; startFrame: number; frameCount: number }>;
 }
 type Interval = { start: number; end: number };
@@ -47,7 +47,7 @@ function mapInterval(input: ZoomMatcherInput, observation: ZoomSpeakerObservatio
     const a = matching[0];
     const c = a.clock;
     const epoch = input.epochs.find((e) => e.recordingId === a.recordingId && e.source === "system" && e.epochIndex === a.epochIndex);
-    if (!epoch || epoch.state === "open" || epoch.startFrame !== part.startFrame + a.epochStartFrame || c.endFrame > epoch.frameCount || a.epochStartFrame + c.endFrame > part.frameCount) return "clock-outside-audio";
+    if (!epoch || epoch.state === "open" || epoch.timelineStartFrame !== part.startFrame + a.epochStartFrame || c.endFrame > epoch.frameCount || a.epochStartFrame + c.endFrame > part.frameCount) return "clock-outside-audio";
     const hostStart = BigInt(c.hostStartNs!);
     const hostEnd = BigInt(c.hostEndNs!);
     const duration = Number(hostEnd - hostStart) / 1e9;

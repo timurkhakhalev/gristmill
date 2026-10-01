@@ -131,7 +131,7 @@ test("collector retains native interval confirmations after an AX gap for produc
   await collector.stop();
   assert.equal(saved.length, 16);
   assert.equal(coverage.at(-1)?.state, "incomplete");
-  const decisions = matchZoomSpeakers({ ...fixture, observations: saved, epochs: [{ recordingId: id, source: "system", epochIndex: 0, startFrame: 0, frameCount: 14 * 24_000, state: "finalized" }], partOffsets: [{ recordingId: id, startFrame: 0, frameCount: 14 * 24_000 }] });
+  const decisions = matchZoomSpeakers({ ...fixture, observations: saved, epochs: [{  recordingId: id, source: "system", epochIndex: 0, timelineStartFrame: 0, frameCount: 14 * 24_000, state: "finalized" }], partOffsets: [{ recordingId: id, startFrame: 0, frameCount: 14 * 24_000 }] });
   assert.equal(decisions.filter((d) => d.status === "accepted").length, 3);
   assert.equal(decisions[0].reason, "ax-incomplete");
 });

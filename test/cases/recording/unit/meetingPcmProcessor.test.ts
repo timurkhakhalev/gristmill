@@ -73,6 +73,8 @@ test("microphone gate counts muted render frames without sending, then sends at 
 
   currentFrame = 12000;
   assert.equal(processor.process([[new Float32Array([0.25])]], [[new Float32Array(1)]]), true);
+  processor.port.onmessage?.({ data: { type: "set-gate", commandId: "already-open", sequence: 3, effectiveMuted: false, epochIndex: 1, sourceGeneration: 2 } });
+  assert.equal(sent.at(-1)!.lastSequence, 0, "repeated open preserves the packet sequence and buffered tail");
   processor.port.onmessage?.({ data: { type: "flush" } });
 
   assert.deepEqual(sent.slice(-2).map(({ type }) => type), ["chunk", "flush-complete"]);

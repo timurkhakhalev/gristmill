@@ -238,3 +238,38 @@ This is a documentation/decision correction only: application code was not fixed
 or tested in this planning turn. The previously recorded 202-test pass does not
 prove these new cases. Keep M1 in progress; implement §5.1.7 and pass its required
 verification before proceeding to M2.
+
+## 2026-10-01 — direct implementation of the clock correction
+
+User superseded the PlanAct execution workflow: root writes code and runs checks
+in this thread; no delegation or repeated draft/plan review gates.
+
+Implemented source-local packet continuity independently of persisted bounded
+alignment. Renderer capture continues with unknown alignment. Main saves raw
+Opus and alignment segments separately; prepare rejects uncovered/high-uncertainty
+ranges with `audio-alignment-unavailable` before provider calls, including retry.
+Late calibration can cover prior frames within the same continuous generation.
+The solver enforces two probes/250 ms, a finite feasible rate/offset region,
+five-second freshness/continuation, and no freshness renewal from rejected probes.
+
+Mute intervals retain source-generation coordinates even without alignment.
+Mute held for an entire capture has an explicit main-owned intentional-empty
+proof; a partial recording cannot inherit another part's mute proof. Repeated
+open-gate commands no longer reset packet sequence or drop a buffered tail.
+Recovery preserves nullable alignment; old persisted timeline offsets survive
+schema migration. Raw source audio and previous artifacts are not rewritten.
+
+Verification (root, sequential canonical runner):
+- `pnpm test --domain recording --kind unit --kind integration`: 117 files passed,
+  26.6 s including main build. Earlier failures were repaired and rerun focused.
+- `pnpm test --domain recording --kind types`: one stale positive dependency
+  fixture failed; repaired and `pnpm test test/scripts/type-probes/meeting-coordinator.test.ts test/helpers/meetingProcessing.test.ts` passed.
+- `pnpm run typecheck`: passed main, renderer, settings selectors and tests.
+- `pnpm run lint`: passed with existing warnings, no errors.
+- Added real SQLite/Opus reopen, late/absent alignment, historical migration,
+  uncertainty bounds, provider refusal/retry and gate-tail regressions.
+- After nullable recovery metadata cleanup, storage/persistence/alignment focused
+  checks passed again. Full suite and hardware/packaged verification remain M6.
+
+Next: common platform evidence/provenance (M2), then browser transport, binding,
+controls and integrated verification. No claim of real Meet/hardware validation.

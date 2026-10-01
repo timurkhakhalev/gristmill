@@ -174,11 +174,58 @@ export const meetingRecordingDtoSchema = z.object({
 });
 export type MeetingRecordingDto = z.infer<typeof meetingRecordingDtoSchema>;
 
+export const meetingFrameAlignmentSegmentSchema = z.object({
+  sourceGeneration: z.number().int().positive(),
+  sourceStartFrame: z.number().int().nonnegative().safe(),
+  sourceEndFrame: z.number().int().positive().safe(),
+  timelineStartFrame: z.number().int().nonnegative().safe(),
+  rate: z.number().finite().min(0.999).max(1.001),
+  uncertaintyStartFrames: z.number().int().nonnegative().safe(),
+  uncertaintyEndFrames: z.number().int().nonnegative().safe(),
+  helperGeneration: meetingRecordingIdSchema,
+  sourceStartNs: z.string().regex(/^\d{1,20}$/),
+  sourceEndNs: z.string().regex(/^\d{1,20}$/),
+  helperStartNs: z.string().regex(/^\d{1,20}$/),
+  helperEndNs: z.string().regex(/^\d{1,20}$/),
+  sampledSourceStartNs: z.string().regex(/^\d{1,20}$/),
+  sampledSourceEndNs: z.string().regex(/^\d{1,20}$/),
+  freshnessSourceNs: z.string().regex(/^\d{1,20}$/),
+}).superRefine((segment, context) => {
+  if (segment.sourceEndFrame <= segment.sourceStartFrame ||
+      BigInt(segment.sourceEndNs) < BigInt(segment.sourceStartNs) ||
+      BigInt(segment.helperEndNs) < BigInt(segment.helperStartNs) ||
+      BigInt(segment.sampledSourceEndNs) < BigInt(segment.sampledSourceStartNs)) {
+    context.addIssue({ code: "custom", path: ["sourceEndFrame"], message: "Invalid audio alignment segment range" });
+  }
+});
+export type MeetingFrameAlignmentSegment = z.infer<typeof meetingFrameAlignmentSegmentSchema>;
+
+export const meetingFrameAlignmentPointSchema = z.object({
+  sourceGeneration: z.number().int().positive(),
+  sourceFrame: z.number().int().nonnegative().safe(),
+  timelineFrame: z.number().int().nonnegative().safe(),
+  rate: z.number().finite().min(0.999).max(1.001),
+  uncertaintyFrames: z.number().int().nonnegative().safe(),
+  helperGeneration: meetingRecordingIdSchema,
+  sourceNs: z.string().regex(/^\d{1,20}$/),
+  helperNs: z.string().regex(/^\d{1,20}$/),
+  sampledSourceStartNs: z.string().regex(/^\d{1,20}$/),
+  sampledSourceEndNs: z.string().regex(/^\d{1,20}$/),
+  freshnessSourceNs: z.string().regex(/^\d{1,20}$/),
+});
+export type MeetingFrameAlignmentPoint = z.infer<typeof meetingFrameAlignmentPointSchema>;
+
 export const meetingRecordingEpochDtoSchema = z.object({
   recordingId: meetingRecordingIdSchema,
   source: meetingSourceSchema,
   epochIndex: z.number().int().nonnegative(),
-  startFrame: z.number().int().nonnegative(),
+  /** Position in the common timeline; null when new capture alignment is unknown. */
+  timelineStartFrame: z.number().int().nonnegative().nullable(),
+  /** Actual frame position in this source generation; null for historical rows. */
+  sourceStartFrame: z.number().int().nonnegative().nullable(),
+  sourceGeneration: z.number().int().positive().nullable(),
+  alignmentSegments: z.array(meetingFrameAlignmentSegmentSchema),
+  alignmentErrorCode: z.string().nullable(),
   sampleRate: z.literal(24_000),
   channels: z.literal(1),
   encoding: z.literal("opus"),
@@ -193,12 +240,20 @@ export const meetingIntentionalIntervalSchema = z.object({
   id: z.string().uuid(),
   recordingId: meetingRecordingIdSchema,
   source: meetingSourceSchema,
-  startFrame: z.number().int().nonnegative(),
-  endFrame: z.number().int().nonnegative().nullable(),
+  sourceGeneration: z.number().int().positive().nullable(),
+  timelineStartFrame: z.number().int().nonnegative().nullable(),
+  timelineEndFrame: z.number().int().nonnegative().nullable(),
+  sourceStartFrame: z.number().int().nonnegative().nullable(),
+  sourceEndFrame: z.number().int().nonnegative().nullable(),
+  startAlignment: meetingFrameAlignmentPointSchema.nullable(),
+  endAlignment: meetingFrameAlignmentPointSchema.nullable(),
   reason: z.enum(["manual-muted", "platform-muted"]),
 }).superRefine((interval, context) => {
-  if (interval.endFrame !== null && interval.endFrame < interval.startFrame) {
-    context.addIssue({ code: "custom", path: ["endFrame"], message: "Interval end precedes its start" });
+  if (interval.sourceEndFrame !== null && interval.sourceStartFrame !== null && interval.sourceEndFrame < interval.sourceStartFrame) {
+    context.addIssue({ code: "custom", path: ["sourceEndFrame"], message: "Interval end precedes its start" });
+  }
+  if (interval.timelineEndFrame !== null && interval.timelineStartFrame !== null && interval.timelineEndFrame < interval.timelineStartFrame) {
+    context.addIssue({ code: "custom", path: ["timelineEndFrame"], message: "Aligned interval end precedes its start" });
   }
 });
 export type MeetingIntentionalInterval = z.infer<typeof meetingIntentionalIntervalSchema>;

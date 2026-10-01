@@ -10,6 +10,7 @@ import { followsSystemDefaultMic } from "../helpers/micSelectionRecovery";
 import { resolvePreferredMicrophone } from "../helpers/microphoneSelection";
 import { ActiveMicRecoveryController } from "../helpers/activeMicRecovery";
 import { MeetingClockSync } from "../helpers/meetingClockSync";
+import type { MeetingFrameAlignmentPoint, MeetingFrameAlignmentSegment } from "../contracts/meetingRecording";
 import {
   resolveInitialSpeakerCountOverride,
   resolveParticipantSpeakerCountSync,
@@ -260,7 +261,7 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
           if (!this._send(partial)) return;
         }
         this._stopped = true;
-        this.port.postMessage({ type: "flush-complete", lastSequence: this._sequence - 1 });
+        this.port.postMessage({ type: "flush-complete", lastSequence: this._sequence - 1, boundaryRenderFrame: currentFrame });
       } else if (message?.type === "set-gate") {
         if (this._stopped) return;
         if (message.effectiveMuted && !this._gateClosed && this._offset > 0) {
@@ -268,8 +269,9 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
           this._offset = 0;
           if (!this._send(partial)) return;
         }
+        const wasClosed = this._gateClosed;
         this._gateClosed = message.effectiveMuted === true;
-        if (!this._gateClosed) {
+        if (wasClosed && !this._gateClosed) {
           this._epochIndex = message.epochIndex;
           this._sourceGeneration = message.sourceGeneration;
           this._sequence = 0;
@@ -412,10 +414,10 @@ interface AudioPipelineOptions {
   source: "mic" | "system";
   sessionId: string;
   epochIndex: number;
-  epochStartFrame: number;
+  renderOriginFrame: number;
   sourceGeneration: number;
   gateClosed?: boolean;
-  frameAtRenderFrame?: (frame: number) => number;
+  alignmentAtRenderFrame?: (frame: number) => MeetingFrameAlignmentPoint | null;
   reserveEpoch?: () => number;
   onAck: (sequence: number) => void;
   onFailure: (error: Error) => void;
@@ -425,6 +427,7 @@ const processorDrainers = new WeakMap<AudioWorkletNode, () => Promise<number>>()
 interface MeetingMicGateAck {
   boundaryRenderFrame: number;
   boundaryFrame: number;
+  boundaryAlignment: MeetingFrameAlignmentPoint | null;
   sourceGeneration: number;
   effectiveMuted: boolean;
   lastSequence: number;
@@ -440,10 +443,10 @@ const createAudioPipeline = async ({
   source,
   sessionId,
   epochIndex,
-  epochStartFrame,
+  renderOriginFrame,
   sourceGeneration,
   gateClosed = false,
-  frameAtRenderFrame = (frame) => epochStartFrame + frame,
+  alignmentAtRenderFrame = () => null,
   reserveEpoch = () => epochIndex + 1,
   onAck,
   onFailure,
@@ -457,11 +460,12 @@ const createAudioPipeline = async ({
   });
   const silentGain = context.createGain();
   silentGain.gain.value = 0;
+  let pipelineGateClosed = gateClosed;
   let gateOpening: Promise<void> | null = null;
   let releaseGateOpening: (() => void) | null = null;
   const queue = new MeetingCaptureWriteQueue<{
     buffer: ArrayBuffer;
-    packet: { epochIndex: number; epochStartFrame: number; frameStart: number; sourceGeneration: number; sequence: number; sampleOffset: number };
+    packet: { epochIndex: number; epochSourceStartFrame: number; sourceFrameStart: number; sourceGeneration: number; sequence: number; sampleOffset: number; alignment: MeetingFrameAlignmentSegment | null; alignmentErrorCode: string };
   }>({
     write: async ({ buffer, packet }) => {
       if (gateOpening) await gateOpening;
@@ -502,53 +506,62 @@ const createAudioPipeline = async ({
   };
 
   processor.port.onmessage = (event) => {
-    const message = event.data as MeetingCapturePacketMessage | { type: "flush-complete"; lastSequence: number } | { type: "gate-ack"; commandId: string; sourceGeneration: number; effectiveMuted: boolean; boundaryRenderFrame: number; lastSequence: number } | { type: "error"; code?: string };
+    const message = event.data as MeetingCapturePacketMessage | { type: "flush-complete"; lastSequence: number; boundaryRenderFrame: number } | { type: "gate-ack"; commandId: string; sourceGeneration: number; effectiveMuted: boolean; boundaryRenderFrame: number; lastSequence: number } | { type: "error"; code?: string };
     if (message?.type === "chunk") {
       const frames = message.buffer.byteLength / 2;
       if (!Number.isSafeInteger(message.renderStartFrame) || message.sourceGeneration !== activeSourceGeneration || message.epochIndex !== activeEpochIndex) {
         onFailure(new Error("Meeting capture frame anchor is stale"));
         return;
       }
-      let frameStart: number;
-      try {
-        frameStart = frameAtRenderFrame(message.renderStartFrame);
-      } catch (error) {
-        const failure = error instanceof Error ? error : new Error(String(error));
-        terminalError = failure;
-        onFailure(failure);
-        return;
-      }
-      const packetEpochStartFrame = epochStarts.get(message.epochIndex) ?? frameStart;
-      epochStarts.set(message.epochIndex, packetEpochStartFrame);
+      const sourceFrameStart = message.renderStartFrame - renderOriginFrame;
+      const packetEpochSourceStartFrame = epochStarts.get(message.epochIndex) ?? sourceFrameStart;
+      epochStarts.set(message.epochIndex, packetEpochSourceStartFrame);
+      const coverageStart = Math.max(packetEpochSourceStartFrame, sourceFrameStart - 4 * 24_000);
+      const start = alignmentAtRenderFrame(renderOriginFrame + coverageStart);
+      const end = alignmentAtRenderFrame(message.renderStartFrame + frames);
+      const alignment: MeetingFrameAlignmentSegment | null = start && end && start.helperGeneration === end.helperGeneration ? {
+        sourceGeneration, sourceStartFrame: coverageStart, sourceEndFrame: sourceFrameStart + frames,
+        timelineStartFrame: start.timelineFrame,
+        rate: start.rate,
+        uncertaintyStartFrames: start.uncertaintyFrames, uncertaintyEndFrames: end.uncertaintyFrames,
+        helperGeneration: start.helperGeneration,
+        sourceStartNs: start.sourceNs, sourceEndNs: end.sourceNs,
+        helperStartNs: start.helperNs, helperEndNs: end.helperNs,
+        sampledSourceStartNs: start.sampledSourceStartNs, sampledSourceEndNs: start.sampledSourceEndNs,
+        freshnessSourceNs: start.freshnessSourceNs,
+      } : null;
       const packet = {
         epochIndex: message.epochIndex,
-        epochStartFrame: packetEpochStartFrame,
-        frameStart,
-        sourceGeneration: message.sourceGeneration,
-        sequence: message.sequence,
-        sampleOffset: message.sampleOffset,
+        epochSourceStartFrame: packetEpochSourceStartFrame,
+        sourceFrameStart, sourceGeneration: message.sourceGeneration,
+        sequence: message.sequence, sampleOffset: message.sampleOffset, alignment,
+        alignmentErrorCode: alignment ? "alignment-confirmed" : "clock-unavailable",
       };
       hasSentInEpoch = true;
       void queue.write({ buffer: message.buffer, packet }, frames).catch(() => {});
     } else if (message?.type === "flush-complete") {
       flushSequence = message.lastSequence;
+      if (source === "mic") captureMicrophoneBoundary = {
+        sourceGeneration, sourceFrame: message.boundaryRenderFrame - renderOriginFrame,
+        alignment: alignmentAtRenderFrame(message.boundaryRenderFrame),
+      };
       checkDrain();
     } else if (message?.type === "gate-ack") {
       const waiter = gateWaiters.get(message.commandId);
       if (!waiter || message.sourceGeneration !== activeSourceGeneration) return;
       gateWaiters.delete(message.commandId);
       try {
+        const boundaryAlignment = alignmentAtRenderFrame(message.boundaryRenderFrame);
         waiter.resolve({
           boundaryRenderFrame: message.boundaryRenderFrame,
-          boundaryFrame: frameAtRenderFrame(message.boundaryRenderFrame),
+          boundaryFrame: message.boundaryRenderFrame - renderOriginFrame,
+          boundaryAlignment,
           sourceGeneration: message.sourceGeneration,
           effectiveMuted: message.effectiveMuted,
           lastSequence: message.lastSequence,
         });
       } catch (error) {
-        const failure = error instanceof Error ? error : new Error(String(error));
-        waiter.reject(failure);
-        onFailure(failure);
+        waiter.reject(error instanceof Error ? error : new Error(String(error)));
       }
     } else if (message?.type === "error") {
       const error = new Error(message.code ?? "Meeting capture buffer limit was reached");
@@ -584,15 +597,15 @@ const createAudioPipeline = async ({
       () => window.clearTimeout(timeout)
     );
     processor.port.postMessage({ type: "flush" });
-    return drainPromise.then(async (sequence) => {
+    return drainPromise.then(async (result) => {
       await queue.drain();
-      return sequence;
+      return result;
     });
   });
 
   processorGateControls.set(processor, async (effectiveMuted, sequence) => {
     const commandId = crypto.randomUUID();
-    if (!effectiveMuted) {
+    if (!effectiveMuted && pipelineGateClosed) {
       gateOpening = new Promise<void>((resolve) => { releaseGateOpening = resolve; });
       if (hasSentInEpoch) activeEpochIndex = reserveEpoch();
       activeSourceGeneration = sourceGeneration;
@@ -619,6 +632,7 @@ const createAudioPipeline = async ({
       epochIndex: activeEpochIndex, sourceGeneration: activeSourceGeneration,
     });
     const ack = await acknowledgement;
+    pipelineGateClosed = effectiveMuted;
     if (effectiveMuted) await queue.drain();
     return {
       ack,
@@ -710,6 +724,7 @@ function readPausedMeeting(): { groupId: string; noteId: number; manualMicMuted:
   } catch { return null; }
 }
 const pausedMeeting = typeof window === "undefined" ? null : readPausedMeeting();
+let captureMicrophoneBoundary: { sourceGeneration: number; sourceFrame: number; alignment: MeetingFrameAlignmentPoint | null } | undefined;
 let captureClockSync: MeetingClockSync | null = null;
 let captureClockOriginNs: string | null = null;
 let captureClockGeneration: string | null = null;
@@ -825,6 +840,7 @@ function queueMicIntent(manualMuted: boolean, platformMuted: boolean): Promise<b
         manualMuted,
         platformMuted,
         boundaryFrame: gate.ack.boundaryFrame,
+        boundaryAlignment: gate.ack.boundaryAlignment,
       });
       if (!response?.success || response.sequence !== sequence || response.sourceGeneration !== captureSourceGenerations.mic || response.effectiveMuted !== effectiveMuted) {
         throw new Error(response?.error || "Microphone intent was not acknowledged");
@@ -1111,6 +1127,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
 
     isRecordingFlag = true;
     captureLastSequences = { mic: -1, system: -1 };
+    captureMicrophoneBoundary = undefined;
     captureDrainErrorCode = null;
     captureEpochIndices = { mic: 0, system: 0 };
     captureSourceGenerations = { mic: 1, system: 1 };
@@ -1144,6 +1161,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         const result = await window.electronAPI?.meetingTranscriptionStop?.({
           sessionId,
           lastSequence: captureLastSequences,
+        microphoneBoundary: captureMicrophoneBoundary,
           incomplete: true,
           errorCode: captureDrainErrorCode ?? "capture-start-canceled",
           suppressProcessing: suppressInitialProcessingForStop,
@@ -1422,50 +1440,42 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         const clockSync = captureClockSync;
         const clockOriginNs = captureClockOriginNs;
         let renderOrigin = captureRendererOrigins[source];
-        if (renderOrigin && renderOrigin.context !== context) {
-          throw new Error("Meeting renderer audio context changed without a native clock anchor");
-        }
+        if (renderOrigin && renderOrigin.context !== context) renderOrigin = undefined;
         if (!renderOrigin) {
           renderOrigin = { context, frame: Math.round(context.currentTime * context.sampleRate) };
           captureRendererOrigins[source] = renderOrigin;
         }
         const localOriginFrame = renderOrigin.frame;
+        const sourceGeneration = captureSourceGenerations[source];
         return createAudioPipeline({
           stream,
           context,
           source,
           sessionId,
           epochIndex: nextEpoch(source),
-          epochStartFrame: 0,
-          sourceGeneration: captureSourceGenerations[source],
+          renderOriginFrame: localOriginFrame,
+          sourceGeneration,
           gateClosed: source === "mic" && (holdMicGate || useMeetingRecordingStore.getState().manualMicMuted || useMeetingRecordingStore.getState().platformMicMuted),
-          frameAtRenderFrame: (() => {
-            return (frame: number) => {
-              if (!clockSync || !clockOriginNs) {
-                const mappedFrame = frame - localOriginFrame;
-                if (!Number.isSafeInteger(mappedFrame) || mappedFrame < 0) {
-                  throw new Error("Meeting renderer frame precedes its capture origin");
-                }
-                return mappedFrame;
-              }
+          alignmentAtRenderFrame: (frame) => {
+            if (!clockSync || !clockOriginNs) return null;
+            try {
               const anchor = context.getOutputTimestamp();
-              const contextTime = anchor.contextTime ?? Number.NaN;
-              const performanceTime = anchor.performanceTime ?? Number.NaN;
-              if (!Number.isFinite(contextTime) || !Number.isFinite(performanceTime)) {
-                throw new Error("Meeting audio clock anchor is unavailable");
-              }
-              const sourceNs = Math.round((performanceTime + (frame / context.sampleRate - contextTime) * 1000) * 1_000_000).toString();
-              const mappedFrame = clockSync.frameAt(
-                sourceNs,
-                clockOriginNs,
-                24_000,
-                0,
-                performanceNs()
-              );
-              if (mappedFrame === null) throw new Error("Meeting audio clock mapping is stale or unavailable");
-              return mappedFrame;
-            };
-          })(),
+              if (anchor.contextTime === undefined || anchor.performanceTime === undefined || !Number.isFinite(anchor.contextTime) || !Number.isFinite(anchor.performanceTime) ||
+                  anchor.performanceTime <= 0 || context.state !== "running") return null;
+              const sourceNs = Math.round((anchor.performanceTime + (frame / context.sampleRate - anchor.contextTime) * 1000) * 1_000_000).toString();
+              const freshness = performanceNs();
+              const position = clockSync.frameMappingAt(sourceNs, clockOriginNs, 24_000, freshness);
+              if (!position || position.uncertaintyFrames > 600) return null;
+              const mapping = position.mapping;
+              return {
+                sourceGeneration, sourceFrame: frame - localOriginFrame,
+                timelineFrame: position.frame, rate: mapping.rate, uncertaintyFrames: position.uncertaintyFrames,
+                helperGeneration: mapping.generation, sourceNs, helperNs: mapping.helperEstimateNs,
+                sampledSourceStartNs: mapping.sourceStartNs, sampledSourceEndNs: mapping.sourceEndNs,
+                freshnessSourceNs: freshness,
+              };
+            } catch { return null; }
+          },
           reserveEpoch: () => nextEpoch(source),
           onAck: (sequence) => {
             captureLastSequences[source] = sequence;
@@ -1857,6 +1867,7 @@ export async function stopRecording(
       const result = await window.electronAPI?.meetingTranscriptionStop?.({
         sessionId,
         lastSequence: captureLastSequences,
+        microphoneBoundary: captureMicrophoneBoundary,
         incomplete: finalErrorCode !== null,
         suppressProcessing: options.suppressProcessing === true,
         ...(finalErrorCode ? { errorCode: finalErrorCode } : {}),

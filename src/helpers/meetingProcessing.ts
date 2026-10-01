@@ -1318,14 +1318,28 @@ export class MeetingProcessingWorker {
     if (sources.some((source) => !source || (requireAudio && source.audioState !== "available") || source.noteId !== recording.noteId)) {
       throw new MeetingProcessingFailure("audio-part-unavailable", "blocked");
     }
-    const combined = composeMeetingAudioParts(sources as MeetingRecordingDto[], (id) => this.deps.database.listMeetingRecordingEpochs(id));
+    const parts = sources as MeetingRecordingDto[];
+    if (requireAudio) {
+      for (const part of parts) {
+        this.intentionalEmptySources(part, this.deps.database.listMeetingRecordingEpochs(part.id), this.deps.database.listMeetingIntentionalIntervals(part.id));
+      }
+    }
+    const combined = composeMeetingAudioParts(parts, (id) => this.deps.database.listMeetingRecordingEpochs(id));
+    for (const source of ["mic", "system"] as const) {
+      const metadata = combined.recording.sourceMetadata[source];
+      combined.recording.sourceMetadata[source] = {
+        ...(metadata && typeof metadata === "object" ? metadata : {}),
+        intentionallyEmpty: parts.every((part) => meetingSourceIntentionallyEmpty(part,
+          this.deps.database.listMeetingRecordingEpochs(part.id), this.deps.database.listMeetingIntentionalIntervals(part.id), source)),
+      };
+    }
     const offsets = new Map(combined.partOffsets.map((part) => [part.recordingId, part.startFrame]));
     const intentionalIntervals = (sources as MeetingRecordingDto[]).flatMap((part) => {
       const offset = offsets.get(part.id) ?? 0;
       return this.deps.database.listMeetingIntentionalIntervals(part.id).map((interval) => ({
         ...interval,
-        startFrame: interval.startFrame + offset,
-        endFrame: interval.endFrame === null ? null : interval.endFrame + offset,
+        timelineStartFrame: interval.timelineStartFrame === null ? null : interval.timelineStartFrame + offset,
+        timelineEndFrame: interval.timelineEndFrame === null ? null : interval.timelineEndFrame + offset,
       }));
     });
     return {

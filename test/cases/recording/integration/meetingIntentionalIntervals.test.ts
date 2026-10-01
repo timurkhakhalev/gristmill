@@ -16,8 +16,8 @@ test("intentional mute coverage and raw system Opus survive database reopen", as
   const capture = MeetingCaptureSession.create(db, storage, note.id, null, new Date("2026-10-01T10:00:00.000Z"), undefined, undefined, true);
   capture.setMonotonicOriginNs("1000000000000000");
   const original = Buffer.alloc(48_000, 7);
-  capture.appendNativeSamples("system", original, 0);
-  const stopped = await capture.stop({ lastSequence: { system: -1 } });
+  capture.appendNativeSamples("system", 1, original, 0, 0);
+  const stopped = await capture.stop({ lastSequence: { system: -1 }, microphoneBoundary: { sourceGeneration: 1, sourceFrame: 24_000, alignment: null } });
   assert.equal(stopped.captureState, "ready");
 
   const recordingId = capture.recordingId;
@@ -25,7 +25,7 @@ test("intentional mute coverage and raw system Opus survive database reopen", as
   const rawBefore = fs.readFileSync(rawPath);
   assert.ok(rawBefore.length > 0);
   const intervalsBefore = db.listMeetingIntentionalIntervals(recordingId);
-  assert.deepEqual(intervalsBefore.map(({ source, startFrame, endFrame, reason }) => [source, startFrame, endFrame, reason]), [
+  assert.deepEqual(intervalsBefore.map(({ source, sourceStartFrame: startFrame, sourceEndFrame: endFrame, reason }) => [source, startFrame, endFrame, reason]), [
     ["mic", 0, 24_000, "manual-muted"],
   ]);
   const recordingBefore = db.getMeetingRecording(recordingId);
@@ -73,7 +73,7 @@ test("intentional mute coverage and raw system Opus survive database reopen", as
     const intervals = reopened.listMeetingIntentionalIntervals(recordingId);
     assert.equal(recording.captureState, "ready");
     assert.equal(recording.sourceMetadata.captureEndFrame, 24_000);
-    assert.equal(epochs[0].startFrame, 0);
+    assert.equal(epochs[0].timelineStartFrame, 0);
     assert.equal(epochs[0].frameCount, 24_000);
     assert.deepEqual(intervals, intervalsBefore);
     assert.equal(meetingSourceIntentionallyEmpty(recording, epochs, intervals, "mic"), true);
@@ -90,8 +90,8 @@ test("historical recordings continue to derive duration from their stored UTC bo
     endedAt: "2026-09-01T10:00:02.000Z",
     sourceMetadata: {},
   } as any;
-  const oldEpoch = {
-    recordingId: oldRecording.id, source: "system", epochIndex: 0, startFrame: 12_000,
+  const oldEpoch = { sourceGeneration: null, sourceStartFrame: null, alignmentSegments: [], alignmentErrorCode: null,
+    recordingId: oldRecording.id, source: "system", epochIndex: 0, timelineStartFrame: 12_000,
     sampleRate: 24_000, channels: 1, encoding: "opus", relativePath: "system/epoch-000000.opus",
     state: "finalized", frameCount: 1_200, ignoredTrailingBytes: 0, errorCode: null,
   } as any;

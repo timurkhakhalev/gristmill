@@ -38,6 +38,13 @@ const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoor
     createMeetingRecording: () => ({} as import("./src/contracts/meetingRecording.js").MeetingRecordingDto),
     createMeetingRecordingEpoch: () => undefined,
     updateMeetingRecordingEpochRecovery: () => undefined,
+    addMeetingRecordingEpochAlignment: () => undefined,
+    markMeetingRecordingEpochAlignmentUnknown: () => undefined,
+    openMeetingIntentionalInterval: () => ({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", recordingId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", source: "mic", sourceGeneration: 1,
+      sourceStartFrame: 0, sourceEndFrame: null, timelineStartFrame: null, timelineEndFrame: null,
+      startAlignment: null, endAlignment: null, reason: "manual-muted" }),
+    closeMeetingIntentionalInterval: () => null,
+    listMeetingIntentionalIntervals: () => [],
     markMeetingRecordingFinalizing: () => undefined,
     finalizeMeetingRecording: () => ({
       recording: {} as import("./src/contracts/meetingRecording.js").MeetingRecordingDto,
@@ -113,7 +120,11 @@ async function usage(): Promise<void> {
   }
   api.meetingTranscriptionSend?.(new ArrayBuffer(4), "mic", "meeting-1", {
     epochIndex: 0,
-    epochStartFrame: 0,
+    epochSourceStartFrame: 0,
+    sourceFrameStart: 0,
+    sourceGeneration: 1,
+    alignment: null,
+    alignmentErrorCode: "clock-unavailable",
     sequence: 0,
     sampleOffset: 0,
   });

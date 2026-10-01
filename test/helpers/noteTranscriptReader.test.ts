@@ -12,6 +12,7 @@ function part(spec: PartSpec) {
     id: spec.id,
     groupId: spec.group,
     noteId: 42,
+    sourceMetadata: {},
     captureState: spec.state ?? "ready",
     startedAt: iso(spec.startMin * MIN),
     endedAt: spec.state === "recording" ? null : iso((spec.startMin + spec.minutes) * MIN),
@@ -24,7 +25,7 @@ function run(id: string, sources: string[], extra: Record<string, unknown> = {})
 function deps(parts: unknown[], runs: unknown[], transcripts: Record<string, unknown>, options: { corrections?: Record<string, unknown[]>; projection?: string | null; epochs?: Record<string, Array<{ startFrame: number; frameCount: number }>> } = {}) {
   return {
     listRecordings: () => parts,
-    listEpochs: (id: string) => options.epochs?.[id] ?? [],
+    listEpochs: (id: string) => (options.epochs?.[id] ?? []).map(({ startFrame, frameCount }) => ({ timelineStartFrame: startFrame, frameCount, sourceGeneration: null, sourceStartFrame: null, alignmentSegments: [], alignmentErrorCode: null })),
     getRun: (id: string) => (runs as Array<{ id: string }>).find((item) => item.id === id) ?? null,
     readTranscript: (id: string) => transcripts[id] ?? null,
     getCorrections: (id: string) => options.corrections?.[id] ?? [],

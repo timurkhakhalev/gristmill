@@ -14,7 +14,7 @@ the renderer requests operations through typed IPC. No replacement dashboard,
 second sweeper, or compatibility path was added.
 
 SQLite stores `meeting_recordings`, `meeting_recording_epochs`,
-`meeting_recording_intentional_intervals`, `meeting_processing_runs`, `meeting_deletion_intents`, and
+`meeting_recording_intentional_intervals`, `meeting_recording_epoch_alignments`, `meeting_processing_runs`, `meeting_deletion_intents`, and
 `meeting_run_speaker_corrections`. The recording row holds the pre-capture
 configuration snapshot, capture/audio states, end time, and selected run.
 Epoch rows store source, sample offset, byte/frame recovery information, and
@@ -26,8 +26,9 @@ Intentional intervals store the source, start/end frame, and `manual-muted` or
 `platform-muted` reason. An open interval has a null end frame and closes at the
 acknowledged render-frame boundary on unmute or at Stop. The first accepted mic
 packet is checked against that boundary; a missing tail remains incomplete. A
-mic recording with no epochs is considered intentional empty only when closed
-intervals cover the full recording timeline.
+mic recording with no epochs is intentionally empty when aligned intervals cover
+the whole recording, or main retained mute intent throughout capture. The latter
+proof does not require inventing a clock offset for a source that produced no audio.
 
 Under Electron `userData`, original mono Ogg/Opus is stored at
 `audio/meetings/{recordingId}/{mic|system}/epoch-000000.opus` (32 kbit/s VBR,
@@ -61,7 +62,16 @@ New source positions come from actual frame anchors: the renderer uses the
 AudioWorklet render-frame counter and a shared renderer/native clock mapping;
 the native helper answers bounded stdin clock probes and keeps raw PCM on
 stdout. The mapping records rate, uncertainty, helper generation, and
-freshness. IPC receipt time and `Date.now()` are not exact audio positions.
+freshness. Raw source frames stay continuous independently of calibration, including
+frames discarded while muted. Source-generation coordinates and nullable timeline
+coordinates are stored separately. Late valid calibration can cover earlier frames
+in the same continuous generation without changing the source audio. Unknown
+alignment never stops healthy capture; prepare fails with
+`audio-alignment-unavailable` if any required frames lack bounded alignment.
+The solver uses up to eight probes, at least 250 ms span, rate bounds 0.999–1.001,
+and at most five seconds of freshness/continuation. Prepare accepts at most
+25 ms endpoint uncertainty. Persisted capture-time bounds do not expire at
+processing time. IPC receipt time and `Date.now()` are not exact audio positions.
 Gaps remain between epochs, and older recordings without the anchor metadata
 keep their stored offsets and UTC-derived duration.
 

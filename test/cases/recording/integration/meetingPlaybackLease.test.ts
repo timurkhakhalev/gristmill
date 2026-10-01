@@ -15,7 +15,7 @@ test("playback leases isolate processing files and release only their owner's te
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const note = db.saveNote("Playback", "", "meeting").note!;
   const recording = db.createMeetingRecording(note.id, { config: null }, "2026-09-30T10:00:00.000Z");
-  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
   savePcmEpoch(storage, recording.id, "mic", 0, Buffer.alloc(48000, 5));
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, storage.recoverEpoch(recording.id, "mic", 0));
   const run = db.finalizeMeetingRecording(recording.id, { captureState: "incomplete", endedAt: "2026-09-30T10:00:01.000Z" }).initialRun;

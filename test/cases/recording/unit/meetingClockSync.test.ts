@@ -17,12 +17,12 @@ test("clock sync accepts bounded probes and estimates clock rate without wall-cl
   const first = sync.createProbe("1000000000", "11111111-1111-4111-8111-111111111111");
   const firstReply = reply(first.nonce, 1_000_000_000n, 1_000_004_000n, 1_000_000n);
   const firstMapping = sync.accept(firstReply, "1000004000");
-  assert.equal(firstMapping?.offsetNs, 1_000_000);
-  assert.equal(firstMapping?.uncertaintyNs, 1_000);
+  assert.equal(firstMapping, null, "one probe cannot establish a rate");
 
   const second = sync.createProbe("2000000000", "22222222-2222-4222-8222-222222222222");
   const secondMapping = sync.accept(reply(second.nonce, 2_000_000_000n, 2_000_004_000n, 1_002_000n), "2000004000");
-  assert.equal(secondMapping?.rate, 1.000002);
+  assert.ok(secondMapping);
+  assert.ok(Math.abs(secondMapping.rate - 1.000002) < 1e-8);
   const mappedFrame = sync.frameAt("1500002000", "1001000000", 24_000, 0, "2000004000");
   assert.equal(mappedFrame, 12_000);
   const originalDateNow = Date.now;
@@ -48,28 +48,31 @@ test("clock sync rejects asymmetric bounds, stale generations, malformed times, 
 
   const current = sync.createProbe("3000000000", "55555555-5555-4555-8555-555555555555");
   const accepted = sync.accept(reply(current.nonce, 3_000_000_000n, 3_000_004_000n, 1_000_000n, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"), "3000004000");
-  assert.ok(accepted);
-  assert.equal(sync.mappingAt("3000000000", "9000000000"), null);
-  assert.equal(sync.mappingAt("3005000000", "3005000000"), null, "mapping cannot extrapolate past the last native clock anchor");
+  assert.equal(accepted, null);
+  const next = sync.createProbe("3300000000");
+  assert.ok(sync.accept(reply(next.nonce, 3_300_000_000n, 3_300_004_000n, 1_000_000n, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"), "3300004000"));
+  assert.equal(sync.mappingAt("3300000000", "9000000000"), null);
+  assert.ok(sync.mappingAt("3305000000", "3305000000"), "bounded continuation supports the next live chunk");
+  assert.equal(sync.mappingAt("9300000000", "3300004000"), null, "query continuation is bounded independently of model freshness");
   assert.equal(sync.mappingAt("not-nanoseconds", "3000004000"), null);
 });
 
-test("clock mapping uncertainty includes fitted-rate residuals", () => {
+test("inconsistent probes do not renew freshness or enlarge a feasible model", () => {
   const sync = new MeetingClockSync();
   sync.reset("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-  const probes = [
-    ["66666666-6666-4666-8666-666666666666", 1_000_000_000n, 1_000_000n],
-    ["77777777-7777-4777-8777-777777777777", 2_000_000_000n, 1_002_000n],
-    ["88888888-8888-4888-8888-888888888888", 3_000_000_000n, 1_010_000n],
-  ] as const;
-  let mapping: ReturnType<typeof sync.accept> = null;
-  for (const [nonce, sourceSendNs, offsetNs] of probes) {
-    const pending = sync.createProbe(sourceSendNs.toString(), nonce);
-    mapping = sync.accept(reply(pending.nonce, sourceSendNs, sourceSendNs + 4_000n, offsetNs), (sourceSendNs + 4_000n).toString());
-    assert.ok(mapping);
+  for (const time of [1_000_000_000n, 2_000_000_000n]) {
+    const probe = sync.createProbe(time.toString());
+    sync.accept(reply(probe.nonce, time, time + 4_000n, 1_000_000n), (time + 4_000n).toString());
   }
-  assert.ok(mapping);
-  assert.ok(mapping.uncertaintyNs >= 4_000, "sample RTT uncertainty is enlarged by the observed rate-fit residual");
+  const baseline = sync.mappingAt("2000004000", "2000004000");
+  assert.ok(baseline);
+  const invalid = sync.createProbe("3000000000");
+  assert.equal(sync.accept(reply(invalid.nonce, 3_000_000_000n, 3_000_004_000n, 10_000_000n), "3000004000"), null);
+  assert.deepEqual(sync.mappingAt("2000004000", "2000004000"), baseline);
+  assert.equal(sync.mappingAt("7000005000", "7000005000"), null, "rejected probe does not extend TTL");
+  const continuation = sync.mappingAt("6000000000", "6000000000");
+  assert.ok(continuation);
+  assert.ok(continuation.uncertaintyNs > baseline.uncertaintyNs, "continuation uncertainty includes rate bounds");
 });
 
 test("clock sync bounds pending nonces and never accepts an unrequested reply", () => {
@@ -81,4 +84,24 @@ test("clock sync bounds pending nonces and never accepts an unrequested reply", 
   ));
   assert.equal(sync.accept(reply(probes[0].nonce, 1_000_000_000n, 1_000_004_000n, 1_000_000n), "1000004000"), null);
   assert.equal(sync.accept(reply("missing", 1_000_000_000n, 1_000_004_000n, 1_000_000n), "1000004000"), null);
+});
+
+test("calibration enforces the exact minimum span and five-second continuation bound", () => {
+  const sync = new MeetingClockSync();
+  sync.reset("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  const probeAt = (time: bigint) => {
+    const probe = sync.createProbe(time.toString());
+    return sync.accept(reply(probe.nonce, time, time + 4_000n, 1_000_000n), (time + 4_000n).toString());
+  };
+  assert.equal(probeAt(1_000_000_000n), null);
+  assert.equal(probeAt(1_249_000_000n), null);
+  assert.ok(probeAt(1_250_000_000n));
+  assert.ok(sync.mappingAt("6250004000", "6250004000"));
+  assert.equal(sync.mappingAt("6250004001", "6250004001"), null);
+  assert.equal(sync.mappingAt("6250004001", "1250004000"), null);
+  // A sleep-sized discontinuity starts a new calibration, never extends the old fit.
+  assert.equal(probeAt(10_000_000_000n), null);
+  assert.equal(sync.mappingAt("10000004000", "10000004000"), null);
+  assert.ok(probeAt(10_250_000_000n));
+  assert.equal(sync.mappingAt("1250004000", "10250004000"), null);
 });

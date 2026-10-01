@@ -44,7 +44,7 @@ test("native system PCM is persisted, watched for interruption, and drained befo
 
   const nativeStart = section("const startManagedMeetingSystemAudio", 'ipcMain.handle(\n    "meeting-transcription-send"');
   assert.match(nativeStart, /timeline\.write\(chunk, frameStart, \(raw, anchoredFrameStart\) => \{/);
-  assert.match(nativeStart, /capture\.appendNativeSamples\("system", raw, anchoredFrameStart\)/);
+  assert.match(nativeStart, /capture\.appendNativeSamples\("system", sourceGeneration, raw, sourceFrameStart, anchoredFrameStart\)/);
   assert.match(nativeStart, /meetingSystemAudioWatchdog\.recordChunk\(/);
   assert.match(nativeStart, /meetingSystemAudioWatchdog\.reportDeviceInvalidated\(\)/);
   assert.match(nativeStart, /stop: \(\) => manager\.stop\(\)/);

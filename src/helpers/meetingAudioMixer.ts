@@ -7,6 +7,8 @@ import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { createAbortError } from "./abortError.js";
 import { getFFmpegPath } from "./ffmpegUtils.js";
 
+import { alignedAudioRanges } from "./meetingAudioAlignment.js";
+
 const SAMPLE_RATE = 24_000;
 const BYTES_PER_FRAME = 2;
 export type MeetingAudioLayout = "mono" | "stereo" | "mic" | "system";
@@ -36,16 +38,17 @@ interface EpochInput {
   source: "mic" | "system";
   startFrame: number;
   frameCount: number;
+  fileStartFrame: number;
+  epochFrameCount: number;
+  rate: number;
 }
 
 export function meetingTimelineFrameCount(
   recording: Pick<MeetingRecordingDto, "startedAt" | "endedAt" | "sourceMetadata">,
   epochs: MeetingRecordingEpochDto[]
 ): number {
-  const latestEpochEnd = epochs.reduce(
-    (latest, epoch) => Math.max(latest, epoch.startFrame + epoch.frameCount),
-    0
-  );
+  const latestEpochEnd = epochs.flatMap(alignedAudioRanges).reduce(
+    (latest, range) => Math.max(latest, range.timelineStartFrame + Math.round(range.frameCount * range.rate)), 0);
   const anchoredEnd = recording.sourceMetadata.captureEndFrame;
   if (Number.isSafeInteger(anchoredEnd) && (anchoredEnd as number) >= 0) {
     return Math.max(latestEpochEnd, anchoredEnd as number);
@@ -65,12 +68,16 @@ export function meetingSourceIntentionallyEmpty(
   source: MeetingSource
 ): boolean {
   if (epochs.some((epoch) => epoch.source === source && epoch.frameCount > 0)) return false;
+  // An intent held for the entire capture proves silence without a clock mapping.
+  // Partial mute intervals still require aligned coverage below.
+  const metadata = recording.sourceMetadata[source];
+  if (metadata && typeof metadata === "object" && "intentionallyEmpty" in metadata && metadata.intentionallyEmpty === true) return true;
   const frameCount = meetingTimelineFrameCount(recording, epochs);
   if (frameCount <= 0) return false;
   let coveredThrough = 0;
-  for (const interval of intervals.filter((value) => value.source === source).sort((a, b) => a.startFrame - b.startFrame)) {
-    if (interval.endFrame === null || interval.startFrame > coveredThrough) return false;
-    coveredThrough = Math.max(coveredThrough, interval.endFrame);
+  for (const interval of intervals.filter((value) => value.source === source).sort((a, b) => (a.timelineStartFrame ?? Infinity) - (b.timelineStartFrame ?? Infinity))) {
+    if (interval.timelineEndFrame === null || interval.timelineStartFrame === null || interval.timelineStartFrame > coveredThrough) return false;
+    coveredThrough = Math.max(coveredThrough, interval.timelineEndFrame);
     if (coveredThrough >= frameCount) return true;
   }
   return false;
@@ -87,7 +94,10 @@ export function composeMeetingAudioParts(
   const partOffsets: Array<{ recordingId: string; startFrame: number; frameCount: number }> = [];
   const epochs = ordered.flatMap((part) => {
     const own = listEpochs(part.id);
-    const shifted = own.map((epoch) => ({ ...epoch, startFrame: epoch.startFrame + offset }));
+    const shifted = own.map((epoch) => ({ ...epoch,
+      timelineStartFrame: epoch.timelineStartFrame === null ? null : epoch.timelineStartFrame + offset,
+      alignmentSegments: epoch.alignmentSegments.map((segment) => ({ ...segment, timelineStartFrame: segment.timelineStartFrame + offset })),
+    }));
     const frameCount = meetingTimelineFrameCount(part, own);
     partOffsets.push({ recordingId: part.id, startFrame: offset, frameCount });
     offset += frameCount;
@@ -98,7 +108,12 @@ export function composeMeetingAudioParts(
     recording: {
       ...first,
       endedAt: new Date(Date.parse(first.startedAt) + offset / 24).toISOString(),
-      sourceMetadata: { ...first.sourceMetadata, captureEndFrame: offset },
+      sourceMetadata: { ...first.sourceMetadata, captureEndFrame: offset,
+        mic: { intentionallyEmpty: ordered.every((part) => {
+          const mic = part.sourceMetadata.mic;
+          return mic && typeof mic === "object" && "intentionallyEmpty" in mic && mic.intentionallyEmpty === true;
+        }) },
+      },
     },
     epochs,
     partOffsets,
@@ -122,12 +137,12 @@ export async function prepareMeetingAudio(
 
   const inputs: EpochInput[] = epochs
     .filter((epoch) => epoch.frameCount > 0 && (layout !== "mic" && layout !== "system" || epoch.source === layout))
-    .map((epoch) => ({
+    .flatMap((epoch) => alignedAudioRanges(epoch).map((range) => ({
       source: epoch.source,
       path: storage.getEpochFilePath(epoch.recordingId, epoch.source, epoch.epochIndex),
-      startFrame: epoch.startFrame,
-      frameCount: epoch.frameCount,
-    }));
+      startFrame: range.timelineStartFrame, frameCount: range.frameCount,
+      fileStartFrame: range.fileStartFrame, epochFrameCount: epoch.frameCount, rate: range.rate,
+    })));
   const intentionalEmptySources = new Set(options.intentionalEmptySources ?? []);
   if (!inputs.length && !((layout === "mic" && intentionalEmptySources.has("mic")) || (layout === "system" && intentionalEmptySources.has("system")))) {
     throw new Error("Meeting recording has no usable audio epochs");
@@ -135,8 +150,11 @@ export async function prepareMeetingAudio(
   for (const epoch of epochs) {
     if (epoch.state === "open") throw new Error("Meeting recording has an unfinalized audio epoch");
   }
+  const inspectedPaths = new Set<string>();
   for (const input of inputs) {
-    if ((deps.inspectEpoch ?? inspectMeetingOpus)(input.path).frameCount !== input.frameCount) {
+    if (inspectedPaths.has(input.path)) continue;
+    inspectedPaths.add(input.path);
+    if ((deps.inspectEpoch ?? inspectMeetingOpus)(input.path).frameCount !== input.epochFrameCount) {
       throw new Error("Meeting recording audio epoch duration does not match its saved timeline");
     }
   }
@@ -178,9 +196,22 @@ function runMixer(
   intentionalEmptySources: Set<MeetingSource>
 ): Promise<void> {
   if (signal?.aborted) return Promise.reject(createAbortError());
-  const filters = inputs.map((input, index) =>
-    `[${index}:a]aresample=${SAMPLE_RATE},atrim=end_sample=${input.frameCount},adelay=${input.startFrame}S:all=1${layout === "mono" ? ",volume=0.5" : ""}[a${index}]`
-  );
+  const paths = [...new Set(inputs.map((input) => input.path))];
+  const filters: string[] = [];
+  const labels = new Map<number, string>();
+  paths.forEach((file, fileIndex) => {
+    const indexes = inputs.flatMap((input, index) => input.path === file ? [index] : []);
+    if (indexes.length === 1) labels.set(indexes[0], `${fileIndex}:a`);
+    else {
+      const names = indexes.map((index) => `src${index}`);
+      filters.push(`[${fileIndex}:a]asplit=${names.length}${names.map((name) => `[${name}]`).join("")}`);
+      indexes.forEach((index, i) => labels.set(index, names[i]));
+    }
+  });
+  inputs.forEach((input, index) => {
+    const outputFrames = Math.round(input.frameCount * input.rate);
+    filters.push(`[${labels.get(index)}]aresample=${SAMPLE_RATE},atrim=start_sample=${input.fileStartFrame}:end_sample=${input.fileStartFrame + input.frameCount},asetpts=PTS-STARTPTS${input.rate === 1 ? "" : `,atempo=${1 / input.rate}`},apad=whole_len=${outputFrames},atrim=end_sample=${outputFrames},adelay=${input.startFrame}S:all=1${layout === "mono" ? ",volume=0.5" : ""}[a${index}]`);
+  });
   const mix = (indexes: number[], label: string) => {
     if (!indexes.length) {
       const source: MeetingSource | null = label === "mic" || layout === "mic" ? "mic" : label === "system" || layout === "system" ? "system" : null;
@@ -198,8 +229,8 @@ function runMixer(
     mix(inputs.map((_, i) => i), "out");
   }
   const args: string[] = ["-hide_banner", "-loglevel", "error"];
-  for (const input of inputs) {
-    args.push("-i", input.path);
+  for (const file of paths) {
+    args.push("-i", file);
   }
   args.push(
     "-filter_complex", filters.join(";"),

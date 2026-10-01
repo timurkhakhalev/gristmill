@@ -2,7 +2,7 @@
 
 ## M1 — Audio clock and mic lifecycle
 
-Status: in progress; the first root verification failed and focused M1 corrections are committed below; root rerun is pending.
+Status: in progress. The clock decision is resolved in plan.md §5.1.7; its implementation and regression verification remain pending. Earlier entries below are historical evidence, not the current decision state.
 
 Implemented bounded renderer/native monotonic clock calibration and actual frame anchors, serialized boundary-acknowledged manual/platform mic gating, persisted intentional-mute intervals, and route-specific handling of proven empty mic audio. Updated current capture/processing documentation and added clock, worklet, IPC/store, persistence, provider-route, and native-helper coverage.
 
@@ -214,3 +214,27 @@ M1 remains in progress and blocked pending the clock-domain decision described
 above. Passing tests do not cover continuous native-backed mic capture between
 strict clock probe bounds. M2-M6 and milestone/code review have not started.
 The root requested the user decision before changing that contract.
+
+
+## Clock contract resolution — 2026-10-01
+
+The user asked the planning thread to inspect `task-004 act` and resolve the
+contract independently. The planner traced `MeetingClockSync.mappingAt`,
+`meetingRecordingStore.createCapturePipeline`/`createAudioPipeline` and
+`meetingCaptureSession.appendSamples`. Two defects are identified: timestamps
+past the last probe stop capture, and per-chunk recalibration can violate exact
+sample continuity even when a clock mapping is available.
+
+Decision: plan.md §5.1.7 is the binding M1 correction contract. Raw source-frame
+continuity does not depend on cross-source calibration. Fresh bounded alignment
+is allowed between probes; unknown alignment remains durable and does not stop
+capture. Prepare refuses unresolved alignment through its existing error/retry
+flow. The section includes the deterministic initial envelope, affected contracts,
+regression cases and M6 measurement requirements. No additional user clock choice
+is pending. The previous entries asking for that choice are superseded.
+
+Plan Simplification and Planning Artifact Review passed the revised contract.
+This is a documentation/decision correction only: application code was not fixed
+or tested in this planning turn. The previously recorded 202-test pass does not
+prove these new cases. Keep M1 in progress; implement §5.1.7 and pass its required
+verification before proceeding to M2.

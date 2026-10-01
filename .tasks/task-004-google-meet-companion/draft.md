@@ -163,6 +163,14 @@ production rollout — отдельная задача. Beta/Canary и друг�
     и freshness; обновление при Start/Resume и периодически, сброс после
     смены документа/helper. RTT, stale sync, потеря seq, missing anchors и
     throttling создают gaps/unknown. Активность через gaps не экстраполируется.
+    Уточнение 2026-10-01 по поручению Тимура самостоятельно решить clock blocker:
+    raw capture сохраняет непрерывные source-frame coordinates независимо от
+    cross-source calibration. Между probes допустима bounded свежая оценка с
+    растущей uncertainty; неизвестное alignment сохраняется явно и не вызывает
+    Stop. При невозможности доказать выравнивание после Stop processing сообщает
+    `audio-alignment-unavailable`, сохраняя оба raw источника и previous artifacts;
+    выдуманная смесь и silent source fallback запрещены. Нового ручного alignment
+    UI нет. Конкретный контракт и verification находятся в plan.md §5.1.7.
 15. Meet indicator delay отдельно от clock error. Начальная Meet policy
     использует гипотезу 300 ms с консервативными guards; Zoom policy сохраняет
     свои значения. Финальные bounds подтверждаются измерением packaged path

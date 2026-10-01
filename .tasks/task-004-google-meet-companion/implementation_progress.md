@@ -199,3 +199,18 @@ tests, builds, installs, or native commands. M1 remains in progress and blocked
 on the user clock-domain decision documented above; do not start M2.
 
 Correction code commit: `5c75a8594` (`M1: update audio packet fixtures`).
+
+## Root verification after consumer corrections
+
+The final 20-file M1/direct-consumer command recorded above passed: 201 ordinary
+tests plus 1 genuine native helper test, 0 failures, 0 skips. Total wall time
+10.186 s (prepare 59 ms, main build 755 ms, ordinary 8.949 s, native 422 ms).
+Failing-only reruns passed before this combined selection. The latest Swift
+helper compiled successfully on arm64 with `pnpm run compile:audio-tap`.
+Root reran `pnpm run typecheck` successfully (all four targets).
+No full-suite/package/Meet/hardware acceptance is claimed.
+
+M1 remains in progress and blocked pending the clock-domain decision described
+above. Passing tests do not cover continuous native-backed mic capture between
+strict clock probe bounds. M2-M6 and milestone/code review have not started.
+The root requested the user decision before changing that contract.

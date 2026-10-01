@@ -977,7 +977,7 @@ temporary profiles/.planact/visual output никогда не commit.
 
 | Milestone | Status | Commits |
 | --- | --- | --- |
-| M1 — Audio clock и mic lifecycle | in progress | |
+| M1 — Audio clock и mic lifecycle | in progress | `700e64c22`, `4a01f579b`, `b07e44776`, `49dbbad28`, `28bb54247`, `ac5338fd5`, `761c58238`, `6576488c3`, `5c75a8594`, `268a26514` |
 | M2 — Общий platform evidence и provenance | not started | |
 | M3 — Companion protocol и local transport | not started | |
 | M4 — Meet adapter, clock sync и bound actions | not started | |
@@ -985,3 +985,12 @@ temporary profiles/.planact/visual output никогда не commit.
 | M6 — Integrated verification и Dev verification report | not started | |
 | Reviewer | not started | |
 | Code Reviewer | not started | |
+
+M1 execution is blocked pending the user decision on continuous renderer/native
+frame alignment between clock probes. Strict measured-only mapping currently
+turns a newer renderer frame into capture failure; PCM continuity and truthful
+alignment must both be preserved. Do not advance to M2 or mark M1 done.
+Root verification: 20-file M1/direct-consumer selection passed 202 tests
+(201 ordinary + 1 real native helper), 0 failures/skips, 10.186 s. This selected
+pass does not prove the unresolved live clock path or M6 hardware acceptance.
+See [implementation_progress.md](implementation_progress.md) for evidence.

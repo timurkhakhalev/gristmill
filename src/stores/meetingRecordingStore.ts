@@ -946,9 +946,7 @@ async function cleanup(): Promise<void> {
   micAnalyser?.disconnect();
   micAnalyser = null;
 
-  try {
-    micStream?.getTracks().forEach((t) => t.stop());
-  } catch {}
+  stopMediaStream(micStream);
   micStream = null;
 
   try {

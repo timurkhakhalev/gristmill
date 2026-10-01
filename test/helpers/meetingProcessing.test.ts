@@ -16,7 +16,7 @@ const { getFFmpegPath }: typeof import("../../src/helpers/ffmpegUtils.ts") = req
 const { BUILTIN_ACTIONS, RECAP_KEY }: typeof import("../../src/helpers/builtinActions.ts") = require("../../src/helpers/builtinActions.ts");
 const { MEETING_SPEAKER_NAMING_INSTRUCTION, meetingSpeakerNamingInputSchema }: typeof import("../../src/helpers/meetingSpeakerNaming.ts") = require("../../src/helpers/meetingSpeakerNaming.ts");
 const { MEETING_TASKS_INSTRUCTION }: typeof import("../../src/helpers/meetingSummarySections.ts") = require("../../src/helpers/meetingSummarySections.ts");
-import type { MeetingProcessingConfig } from "../../src/contracts/meetingRecording";
+import type { MeetingIntentionalInterval, MeetingProcessingConfig, MeetingRecordingEpochDto } from "../../src/contracts/meetingRecording";
 import type { MeetingProcessingWorkerDeps } from "../../src/helpers/meetingProcessing";
 import type { MeetingRecordingStorage as RecordingStorage } from "../../src/helpers/meetingRecordingStorage";
 import type { DatabaseManager } from "./harness/db";
@@ -321,7 +321,8 @@ test("local mono preparation retains system audio when mic is intentionally empt
   t.after(() => worker.stop());
   worker.onRetentionReady();
   await worker.waitForIdle();
-  assert.equal(db.getMeetingProcessingRun(run.id)?.status, "complete");
+  const localRun = db.getMeetingProcessingRun(run.id);
+  assert.equal(localRun?.status, "complete", `local intentional-empty run failed at ${localRun?.stage}: ${localRun?.errorCode}`);
   assert.equal(localCalls, 1);
   assert.deepEqual(layouts, ["mono"]);
 });
@@ -487,8 +488,11 @@ test("audio parts from separate sessions of one note produce one persisted run a
   assert.deepEqual(mixed.epochs.map(({ recordingId, source }) => ({ recordingId, source })), [
     { recordingId: first.recording.id, source: "mic" },
     { recordingId: first.recording.id, source: "system" },
-    { recordingId: second.id, source: "mic" },
     { recordingId: second.id, source: "system" },
+  ]);
+  assert.deepEqual(db.listMeetingRecordingEpochs(second.id).map(({ source }: MeetingRecordingEpochDto) => source), ["system"]);
+  assert.deepEqual(db.listMeetingIntentionalIntervals(second.id).map(({ source, reason, startFrame, endFrame }: MeetingIntentionalInterval) => ({ source, reason, startFrame, endFrame })), [
+    { source: "mic", reason: "manual-muted", startFrame: 0, endFrame: 24_000 },
   ]);
   assert.equal(db.getNote(first.note.id).content, "Manual notes stay here.");
   assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");

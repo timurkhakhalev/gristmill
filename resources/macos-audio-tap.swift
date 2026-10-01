@@ -599,10 +599,18 @@ func readProbeRequests(_ capture: AudioTapCapture) {
     let maxLineBytes = 1024
     var line = Data()
     var discardingLine = false
+    var buffer = [UInt8](repeating: 0, count: 256)
     while true {
-        let chunk = FileHandle.standardInput.readData(ofLength: 256)
-        if chunk.isEmpty { return }
-        for byte in chunk {
+        let byteCount = buffer.withUnsafeMutableBytes { rawBuffer -> Int in
+            guard let baseAddress = rawBuffer.baseAddress else { return 0 }
+            return Darwin.read(STDIN_FILENO, baseAddress, rawBuffer.count)
+        }
+        if byteCount == 0 { return }
+        if byteCount < 0 {
+            if errno == EINTR { continue }
+            return
+        }
+        for byte in buffer.prefix(byteCount) {
             if byte == 0x0a {
                 if discardingLine {
                     emit(event: ["type": "warning", "code": "probe_request_too_large"])

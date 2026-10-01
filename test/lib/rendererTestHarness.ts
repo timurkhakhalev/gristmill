@@ -337,6 +337,7 @@ export function installMicCaptureGlobals(t: TestContext): void {
   });
   class FakeAudioContext {
     state = "running";
+    currentTime = 0;
     sampleRate: number;
     audioWorklet = { addModule: async () => {} };
     destination = {};
@@ -357,14 +358,33 @@ export function installMicCaptureGlobals(t: TestContext): void {
   }
   class FakeAudioWorkletNode {
     port: { onmessage: ((event: { data: unknown }) => void) | null; postMessage: (message: unknown) => void };
-    constructor() {
+    constructor(
+      _context?: unknown,
+      _name?: string,
+      options?: { processorOptions?: { sourceGeneration?: number } }
+    ) {
       this.port = {
         onmessage: null,
         postMessage: (message) => {
-          if ((message as { type?: string })?.type === "flush") {
+          const request = message as {
+            type?: string;
+            commandId?: string;
+            sourceGeneration?: number;
+            effectiveMuted?: boolean;
+          };
+          if (request?.type === "flush") {
             queueMicrotask(() =>
               this.port.onmessage?.({ data: { type: "flush-complete", lastSequence: -1 } })
             );
+          } else if (request?.type === "set-gate") {
+            queueMicrotask(() => this.port.onmessage?.({ data: {
+              type: "gate-ack",
+              commandId: request.commandId,
+              sourceGeneration: request.sourceGeneration ?? options?.processorOptions?.sourceGeneration ?? 1,
+              effectiveMuted: request.effectiveMuted,
+              boundaryRenderFrame: 0,
+              lastSequence: -1,
+            } }));
           }
         },
       };

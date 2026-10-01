@@ -113,6 +113,9 @@ function createSystemOnlyIntentionalRecording(
     endedAt: new Date(Date.parse(recording.startedAt) + 1_000).toISOString(),
     sourceMetadata: { captureEndFrame: endFrame },
   });
+  db.setMeetingProcessingRunState(finalized.initialRun.id, {
+    stage: "prepare", status: "pending", retryAt: null,
+  });
   return { recording: finalized.recording, run: finalized.initialRun };
 }
 
@@ -481,7 +484,12 @@ test("audio parts from separate sessions of one note produce one persisted run a
   assert.equal(asrCalls, 1);
   assert.ok(mixed);
   assert.equal(mixed.recording.endedAt, new Date(Date.parse(first.recording.startedAt) + 2000).toISOString());
-  assert.deepEqual(mixed.epochs.map((epoch) => epoch.recordingId), [first.recording.id, second.id]);
+  assert.deepEqual(mixed.epochs.map(({ recordingId, source }) => ({ recordingId, source })), [
+    { recordingId: first.recording.id, source: "mic" },
+    { recordingId: first.recording.id, source: "system" },
+    { recordingId: second.id, source: "mic" },
+    { recordingId: second.id, source: "system" },
+  ]);
   assert.equal(db.getNote(first.note.id).content, "Manual notes stay here.");
   assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
 });

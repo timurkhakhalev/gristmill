@@ -1,6 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { randomUUID } = require("node:crypto");
+const { execFileSync }: typeof import("node:child_process") = require("node:child_process");
 const { installElectronStub }: typeof import("../../../helpers/harness/electronStub.ts") = require("../../../helpers/harness/electronStub.ts");
 installElectronStub();
 const { AudioTapManager }: typeof import("../../../../src/helpers/audioTapManager.js") = require("../../../../src/helpers/audioTapManager.ts");
@@ -10,6 +11,20 @@ test("native audio tap answers bounded clock probes while stdout remains PCM", a
     t.skip("requires the macOS system-audio tap and its live host clock");
     return;
   }
+  const systemVersionProcess = process as typeof process & { getSystemVersion?: () => string };
+  const versionDescriptor = Object.getOwnPropertyDescriptor(systemVersionProcess, "getSystemVersion");
+  if (typeof systemVersionProcess.getSystemVersion !== "function") {
+    const systemVersion = execFileSync("/usr/bin/sw_vers", ["-productVersion"], { encoding: "utf8" }).trim();
+    if (!/^\d+(?:\.\d+)*$/.test(systemVersion)) throw new Error("Could not read the macOS product version");
+    Object.defineProperty(systemVersionProcess, "getSystemVersion", {
+      configurable: true,
+      value: () => systemVersion,
+    });
+  }
+  t.after(() => {
+    if (versionDescriptor) Object.defineProperty(systemVersionProcess, "getSystemVersion", versionDescriptor);
+    else Reflect.deleteProperty(systemVersionProcess, "getSystemVersion");
+  });
   const manager = new AudioTapManager();
   if (!manager.isAvailable()) throw new Error("Compile the macOS audio tap before this native verification");
   const chunks: Array<{ bytes: number; frameStart: number }> = [];

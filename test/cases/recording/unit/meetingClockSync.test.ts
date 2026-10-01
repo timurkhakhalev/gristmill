@@ -23,14 +23,14 @@ test("clock sync accepts bounded probes and estimates clock rate without wall-cl
   const second = sync.createProbe("2000000000", "22222222-2222-4222-8222-222222222222");
   const secondMapping = sync.accept(reply(second.nonce, 2_000_000_000n, 2_000_004_000n, 1_002_000n), "2000004000");
   assert.equal(secondMapping?.rate, 1.000002);
-  const mappedFrame = sync.frameAt("1500002000", "1001000000", 24_000);
+  const mappedFrame = sync.frameAt("1500002000", "1001000000", 24_000, 0, "2000004000");
   assert.equal(mappedFrame, 12_000);
   const originalDateNow = Date.now;
   try {
     Date.now = () => 0;
-    assert.equal(sync.frameAt("1500002000", "1001000000", 24_000), mappedFrame);
+    assert.equal(sync.frameAt("1500002000", "1001000000", 24_000, 0, "2000004000"), mappedFrame);
     Date.now = () => Number.MAX_SAFE_INTEGER;
-    assert.equal(sync.frameAt("1500002000", "1001000000", 24_000), mappedFrame);
+    assert.equal(sync.frameAt("1500002000", "1001000000", 24_000, 0, "2000004000"), mappedFrame);
   } finally {
     Date.now = originalDateNow;
   }
@@ -50,7 +50,26 @@ test("clock sync rejects asymmetric bounds, stale generations, malformed times, 
   const accepted = sync.accept(reply(current.nonce, 3_000_000_000n, 3_000_004_000n, 1_000_000n, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"), "3000004000");
   assert.ok(accepted);
   assert.equal(sync.mappingAt("3000000000", "9000000000"), null);
-  assert.equal(sync.mappingAt("not-nanoseconds"), null);
+  assert.equal(sync.mappingAt("3005000000", "3005000000"), null, "mapping cannot extrapolate past the last native clock anchor");
+  assert.equal(sync.mappingAt("not-nanoseconds", "3000004000"), null);
+});
+
+test("clock mapping uncertainty includes fitted-rate residuals", () => {
+  const sync = new MeetingClockSync();
+  sync.reset("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  const probes = [
+    ["66666666-6666-4666-8666-666666666666", 1_000_000_000n, 1_000_000n],
+    ["77777777-7777-4777-8777-777777777777", 2_000_000_000n, 1_002_000n],
+    ["88888888-8888-4888-8888-888888888888", 3_000_000_000n, 1_010_000n],
+  ] as const;
+  let mapping: ReturnType<typeof sync.accept> = null;
+  for (const [nonce, sourceSendNs, offsetNs] of probes) {
+    const pending = sync.createProbe(sourceSendNs.toString(), nonce);
+    mapping = sync.accept(reply(pending.nonce, sourceSendNs, sourceSendNs + 4_000n, offsetNs), (sourceSendNs + 4_000n).toString());
+    assert.ok(mapping);
+  }
+  assert.ok(mapping);
+  assert.ok(mapping.uncertaintyNs >= 4_000, "sample RTT uncertainty is enlarged by the observed rate-fit residual");
 });
 
 test("clock sync bounds pending nonces and never accepts an unrequested reply", () => {

@@ -13,7 +13,10 @@ test("microphone gate counts muted render frames without sending, then sends at 
   assert.ok(worklet);
 
   type Port = { onmessage: ((event: { data: unknown }) => void) | null; postMessage(message: unknown): void };
-  type Processor = new () => { port: Port; process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean };
+  type Processor = new (options: { processorOptions: { gateClosed: boolean; epochIndex: number; sourceGeneration: number } }) => {
+    port: Port;
+    process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean;
+  };
   const sent: Array<Record<string, any>> = [];
   const registered: { processor?: Processor } = {};
   let currentFrame = 0;
@@ -25,7 +28,7 @@ test("microphone gate counts muted render frames without sending, then sends at 
     registerProcessor: (_name: string, processor: Processor) => { registered.processor = processor; },
   });
   assert.ok(registered.processor);
-  const processor = new registered.processor();
+  const processor = new registered.processor({ processorOptions: { gateClosed: false, epochIndex: 0, sourceGeneration: 1 } });
   const loud = new Float32Array(2400).fill(0.5);
   const audibleOutput = new Float32Array(2400);
   assert.equal(processor.process([[loud]], [[audibleOutput]]), true);

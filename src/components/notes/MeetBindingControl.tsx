@@ -57,7 +57,7 @@ export function MeetBindingControl() {
       candidate.ref.callId !== status.binding.ref.callId
   );
   return (
-    <div className="w-full space-y-1 text-xs text-muted-foreground">
+    <div className="mb-3 min-w-0 space-y-1 break-words text-xs text-muted-foreground">
       {status.binding ? (
         <p>
           {t(

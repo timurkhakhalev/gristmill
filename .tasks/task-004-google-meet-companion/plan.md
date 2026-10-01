@@ -710,8 +710,8 @@ selection; не повторять full suite для comment-only corrections.
 
 Shared commands: pnpm test через canonical runner (≤2 ordinary processes,
 compiler/native/shared resources sequential); exact .test.ts paths либо domain
-selectors, не combined. New tests TypeScript в test/cases/<domain>/<kind>/,
-compiled-main tests под main/, shared resources под serial/; special/multi-domain
+selectors, не combined. New tests TypeScript в `test/cases/<domain>/<kind>/`,
+compiled-main tests под `main/`, shared resources под `serial/`; special/multi-domain
 membership — test/test-groups.json. При изменении paths обновить commands и
 registry вместе. Scoped lint existing root/src config, без unrelated autofix.
 Plan stage documentation-only: local links/commands accuracy и git diff --check;

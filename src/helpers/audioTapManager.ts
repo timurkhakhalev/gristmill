@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessByStdio } from "child_process";
 import { app } from "electron";
 import fs from "fs";
+import { meetingAudioClockMessageSchema, meetingRecordingIdSchema, type MeetingAudioClockMessage } from "../contracts/meetingRecording.js";
 import path from "path";
 import type { Readable } from "stream";
 const debugLogger = require("./debugLogger");
@@ -30,6 +31,7 @@ export interface AudioTapAccessResult {
 
 export interface AudioTapStartMessage {
   type: "start";
+  generation?: string;
   sampleRate?: number;
   channels?: number;
   bitsPerChannel?: number;
@@ -51,6 +53,7 @@ export interface AudioTapErrorMessage {
 }
 
 export type AudioTapMessage =
+  | MeetingAudioClockMessage
   | AudioTapStartMessage
   | AudioTapWarningMessage
   | AudioTapErrorMessage;
@@ -63,6 +66,7 @@ export interface AudioTapProcessError extends Error {
 
 export interface AudioTapStartOptions {
   onStart?: (message: AudioTapStartMessage) => void;
+  onClock?: (message: MeetingAudioClockMessage) => void;
   onChunk?: (chunk: Buffer) => void;
   onError?: (error: Error) => void;
   onWarning?: (warning: AudioTapWarningMessage) => void;
@@ -73,8 +77,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 export function parseAudioTapMessage(value: unknown): AudioTapMessage | null {
   if (!isRecord(value)) return null;
+  if (value.type === "clock") {
+    const parsed = meetingAudioClockMessageSchema.safeParse(value);
+    return parsed.success ? parsed.data : null;
+  }
   if (value.type === "start") {
     if (
+      ("generation" in value && (!meetingRecordingIdSchema.safeParse(value.generation).success)) ||
       ("sampleRate" in value && typeof value.sampleRate !== "number") ||
       ("channels" in value && typeof value.channels !== "number") ||
       ("bitsPerChannel" in value && typeof value.bitsPerChannel !== "number")
@@ -83,6 +92,7 @@ export function parseAudioTapMessage(value: unknown): AudioTapMessage | null {
     }
     return {
       type: "start",
+      generation: typeof value.generation === "string" ? value.generation : undefined,
       sampleRate: typeof value.sampleRate === "number" ? value.sampleRate : undefined,
       channels: typeof value.channels === "number" ? value.channels : undefined,
       bitsPerChannel:
@@ -131,6 +141,7 @@ export class AudioTapManager {
   onError: ((error: Error) => void) | null;
   onWarning: ((warning: AudioTapWarningMessage) => void) | null;
   onStart: ((message: AudioTapStartMessage) => void) | null;
+  private onClock: ((message: MeetingAudioClockMessage) => void) | null = null;
   isStopping: boolean;
   permissionStatus: AudioTapPermissionStatus;
   private _requestPromise: Promise<AudioTapAccessResult> | null;
@@ -142,6 +153,7 @@ export class AudioTapManager {
     this.onError = null;
     this.onWarning = null;
     this.onStart = null;
+    this.onClock = null;
     this.isStopping = false;
     this.permissionStatus = this._loadPermissionStatus();
     this._requestPromise = null;
@@ -233,7 +245,7 @@ export class AudioTapManager {
     return requestPromise;
   }
 
-  async start({ onStart, onChunk, onError, onWarning }: AudioTapStartOptions = {}): Promise<void> {
+  async start({ onStart, onChunk, onError, onWarning, onClock }: AudioTapStartOptions = {}): Promise<void> {
     if (!this.isSupported()) {
       throw new Error("macOS 14.2 or later is required for native system audio capture.");
     }
@@ -242,6 +254,7 @@ export class AudioTapManager {
       this.onError = onError || null;
       this.onWarning = onWarning || null;
       this.onStart = onStart || null;
+    this.onClock = onClock || null;
       return;
     }
     if (this._requestPromise) {
@@ -253,6 +266,7 @@ export class AudioTapManager {
     this.onError = onError || null;
     this.onWarning = onWarning || null;
     this.onStart = onStart || null;
+    this.onClock = onClock || null;
     this.isStopping = false;
     this.stderrBuffer = "";
 
@@ -264,6 +278,9 @@ export class AudioTapManager {
     this.process = child;
 
     await new Promise<void>((resolve, reject) => {
+      let started = false;
+      const startupPCM: Buffer[] = [];
+      let startupBytes = 0;
       let settled = false;
       const timeout = setTimeout(() => {
         if (!settle()) return;
@@ -282,6 +299,17 @@ export class AudioTapManager {
         if (this.process !== child) {
           return;
         }
+        if (!started) {
+          startupPCM.push(chunk);
+          startupBytes += chunk.length;
+          // stdout/stderr can arrive in either order. Open the real source epoch
+          // from start before delivering any PCM, without changing frame order.
+          if (startupBytes > DEFAULT_SAMPLE_RATE * 2 * START_TIMEOUT_MS / 1000) {
+            if (settle()) reject(new Error("Audio tap did not provide its start contract before PCM"));
+            void this.stop();
+          }
+          return;
+        }
         this.onChunk?.(chunk);
       });
 
@@ -290,10 +318,14 @@ export class AudioTapManager {
           return;
         }
         this._consumeStderr(chunk, (message) => {
+          if (message.type === "clock") { this.onClock?.(message); return; }
           if (message.type === "start") {
             this._persistPermissionStatus("granted");
             try {
               this.onStart?.(message);
+              started = true;
+              for (const chunk of startupPCM) this.onChunk?.(chunk);
+              startupPCM.length = 0;
             } catch (error) {
               if (settle()) reject(error);
               void this.stop();
@@ -399,6 +431,7 @@ export class AudioTapManager {
     this.onError = null;
     this.onWarning = null;
     this.onStart = null;
+    this.onClock = null;
     this.isStopping = false;
   }
 
@@ -546,6 +579,11 @@ export class AudioTapManager {
     onMessage: (message: AudioTapMessage) => void
   ): void {
     this.stderrBuffer += chunk.toString();
+    if (this.stderrBuffer.length > 64 * 1024) {
+      this.stderrBuffer = "";
+      onMessage({ type: "warning", code: "clock_invalid_message" });
+      return;
+    }
     let newlineIndex = this.stderrBuffer.indexOf("\n");
 
     while (newlineIndex !== -1) {
@@ -554,8 +592,10 @@ export class AudioTapManager {
 
       if (line) {
         try {
-          const message = parseAudioTapMessage(JSON.parse(line));
+          const value: unknown = JSON.parse(line);
+          const message = parseAudioTapMessage(value);
           if (message) onMessage(message);
+          else if (isRecord(value) && value.type === "clock") onMessage({ type: "warning", code: "clock_invalid_message" });
           else debugLogger.warn("[AudioTapManager] Invalid stderr message", { line }, "meeting");
         } catch {
           debugLogger.warn("[AudioTapManager] Non-JSON stderr output", { line }, "meeting");

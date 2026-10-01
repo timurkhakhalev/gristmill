@@ -24,6 +24,17 @@ final class AudioTapCapture {
     private var sourceFormat: AVAudioFormat?
     private var pendingPCM = Data()
     private var stopping = false
+    private let generation = UUID().uuidString
+    private var convertedFrames: Int64 = 0
+    private var clockStartFrame: Int64 = 0
+    private var clockHostStart: UInt64?
+    private var clockHostEnd: UInt64?
+    private var clockReason: String?
+    private var clockTimebase = mach_timebase_info_data_t()
+    private let metadataQueue = DispatchQueue(label: "com.khakhalev.gristmill.audio-tap.clock")
+    private let metadataSlots = DispatchSemaphore(value: 32)
+    private var clockOverflowReported = false
+
 
     private typealias Listener = (
         object: AudioObjectID,
@@ -36,6 +47,7 @@ final class AudioTapCapture {
 
     init(config: Config) {
         self.config = config
+        mach_timebase_info(&clockTimebase)
         self.targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: config.sampleRate,
@@ -78,6 +90,7 @@ final class AudioTapCapture {
 
         emit(event: [
             "type": "start",
+            "generation": generation,
             "sampleRate": Int(config.sampleRate),
             "channels": 1,
             "bitsPerChannel": 16,
@@ -107,7 +120,11 @@ final class AudioTapCapture {
             tapID = 0
         }
 
-        flushPendingPCM()
+        ioQueue.sync {
+            flushPendingPCM()
+            flushClock()
+        }
+        metadataQueue.sync {}
         emit(event: ["type": "stop"])
     }
 
@@ -294,11 +311,11 @@ final class AudioTapCapture {
             &procID,
             aggregateDeviceID,
             ioQueue
-        ) { [weak self] _, inputData, _, _, _ in
+        ) { [weak self] _, inputData, inputTime, _, _ in
             guard let self, !self.stopping else {
                 return
             }
-            self.processInput(inputData, sourceFormat: sourceFormat, converter: converter)
+            self.processInput(inputData, inputTime: inputTime.pointee, sourceFormat: sourceFormat, converter: converter)
         }
 
         guard status == noErr, let procID else {
@@ -310,6 +327,7 @@ final class AudioTapCapture {
 
     private func processInput(
         _ inputData: UnsafePointer<AudioBufferList>,
+        inputTime: AudioTimeStamp,
         sourceFormat: AVAudioFormat,
         converter: AVAudioConverter
     ) {
@@ -368,8 +386,65 @@ final class AudioTapCapture {
             return
         }
 
+        recordClock(inputTime: inputTime, sourceFrames: sourceBuffer.frameLength,
+                    sourceRate: sourceRate, outputFrames: outputBuffer.frameLength)
         pendingPCM.append(data.assumingMemoryBound(to: UInt8.self), count: Int(audioBuffer.mDataByteSize))
         flushFullChunks()
+    }
+
+    private func hostNS(_ ticks: UInt64) -> UInt64 {
+        let numer = UInt64(clockTimebase.numer)
+        let denom = UInt64(clockTimebase.denom)
+        return ticks / denom * numer + ticks % denom * numer / denom
+    }
+
+    private func recordClock(inputTime: AudioTimeStamp, sourceFrames: AVAudioFrameCount,
+                             sourceRate: Double, outputFrames: AVAudioFrameCount) {
+        let valid = inputTime.mFlags.contains(.hostTimeValid) && inputTime.mHostTime > 0
+        let hostStart = valid ? hostNS(inputTime.mHostTime) : nil
+        let hostEnd = hostStart.map { $0 + UInt64(Double(sourceFrames) / sourceRate * 1e9) }
+        // A gap or invalid timestamp closes a range; no interpolation across it.
+        // The tolerance is one input sample of timestamp rounding, not a measured
+        // converter/Zoom latency budget. Those remain uncalibrated.
+        let gap = clockHostEnd != nil && hostStart != nil &&
+            abs(Double(hostStart!) - Double(clockHostEnd!)) > 1e9 / sourceRate
+        if gap || (clockHostStart == nil) != (hostStart == nil) { flushClock() }
+        if convertedFrames == clockStartFrame {
+            clockHostStart = hostStart
+            clockReason = valid ? nil : "invalid-host-time"
+        }
+        clockHostEnd = hostEnd
+        convertedFrames += Int64(outputFrames)
+        if convertedFrames - clockStartFrame >= Int64(config.sampleRate) { flushClock() }
+    }
+
+    private func flushClock() {
+        guard convertedFrames > clockStartFrame else { return }
+        let event: [String: Any] = [
+            "type": "clock", "generation": generation,
+            "startFrame": clockStartFrame, "endFrame": convertedFrames,
+            "hostStartNs": clockHostStart.map { String($0) } as Any? ?? NSNull(),
+            "hostEndNs": clockHostEnd.map { String($0) } as Any? ?? NSNull(),
+            "timebaseNumer": clockTimebase.numer, "timebaseDenom": clockTimebase.denom,
+            "conversion": "uncalibrated", "reason": clockReason as Any? ?? NSNull(),
+        ]
+        clockStartFrame = convertedFrames
+        clockHostStart = nil
+        clockHostEnd = nil
+        clockReason = nil
+        guard metadataSlots.wait(timeout: .now()) == .success else {
+            if !clockOverflowReported {
+                clockOverflowReported = true
+                metadataQueue.async {
+                    emit(event: ["type": "warning", "code": "clock_queue_overflow"])
+                }
+            }
+            return
+        }
+        metadataQueue.async { [self] in
+            emit(event: event)
+            metadataSlots.signal()
+        }
     }
 
     private func flushFullChunks() {

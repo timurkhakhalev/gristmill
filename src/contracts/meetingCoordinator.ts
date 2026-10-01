@@ -393,7 +393,7 @@ export const meetingTranscriptSegmentSchema = z
     suggestedProfileId: z.number().optional(),
     speakerStatus: z.enum(["provisional", "confirmed", "suggested", "locked"]).optional(),
     speakerLocked: z.boolean().optional(),
-    speakerLockSource: z.enum(["user", "diarization", "suggestion"]).optional(),
+    speakerLockSource: z.enum(["user", "diarization", "suggestion", "voice", "platform", "model"]).optional(),
   })
   .passthrough();
 export type MeetingTranscriptSegment = z.infer<typeof meetingTranscriptSegmentSchema>;

@@ -16,6 +16,7 @@ test("combined ASR timeline keeps source gaps and excludes the intentional pause
     ],
   };
   const combined = composeMeetingAudioParts([first, second], (id: keyof typeof tracks) => tracks[id]);
+  assert.deepEqual(combined.partOffsets, [{ recordingId: "first", startFrame: 0, frameCount: 48_000 }, { recordingId: "second", startFrame: 48_000, frameCount: 24_000 }]);
   assert.equal(combined.recording.startedAt, first.startedAt);
   assert.equal(combined.recording.endedAt, "2026-09-25T10:00:03.000Z");
   assert.deepEqual(combined.epochs.map(({ recordingId, source, startFrame }: { recordingId: string; source: string; startFrame: number }) => ({ recordingId, source, startFrame })), [

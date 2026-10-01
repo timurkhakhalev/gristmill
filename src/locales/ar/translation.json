@@ -2275,6 +2275,9 @@
     }
   },
   "meetingResults": {
+    "platformName": "Zoom",
+    "platformNameHint": "تمت مطابقة الاسم من Zoom. انقر لتغييره.",
+    "platformEvidenceUnavailable": "بيانات المتحدثين في Zoom غير مكتملة. تم الاحتفاظ بالصوت والنص.",
     "partialTranscript": "النص المفرغ لهذه الملاحظة غير مكتمل.",
     "selectedResultTranscript": "النص المفرغ للنتيجة المحددة",
     "participantsLoadError": "تعذر تحميل المشاركين من التقويم.",
@@ -2411,7 +2414,7 @@
     "permissions": "Recording permissions",
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
-    "accessibilityDetection": "للتذكير بتسجيل الاجتماعات.",
+    "accessibilityDetection": "لاكتشاف المكالمات وقراءة أسماء المشاركين ومؤشرات المتحدث في Zoom.",
     "accessibilityHelp": "فعّل Gristmill في إعدادات تسهيلات الاستخدام في macOS. إذا لم يظهر في القائمة، اضغط + واختر تطبيق Gristmill.app المثبّت.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."

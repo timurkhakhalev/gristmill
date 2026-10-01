@@ -139,6 +139,9 @@ async function createFixture({ responses = {}, engine }: {
 
   const handlers: Map<string, (...args: unknown[]) => unknown> = registerRealHandlers({
     databaseManager: {
+      saveMeetingZoomObservation() {},
+      saveMeetingAudioClockAnchor() {},
+      setMeetingPlatformCoverage() {},
       getGoogleAccounts: () => [],
       getNote: () => null,
       getSpeakerMappings: () => [],

@@ -1,6 +1,8 @@
-# Gristmill for Google Meet
+# Gristmill Companion — Google Meet adapter
 
-This integration connects one Google Meet tab to a local recording. It is distinct
+Gristmill Companion is the browser extension for Gristmill. Google Meet is its first
+adapter; additional call services will use the same extension. The current adapter
+connects one Google Meet tab to a local recording. It is distinct
 from Google's own Companion mode. Chrome Stable is the supported browser channel.
 Production extension identity and Chrome Web Store verification are a separate task.
 

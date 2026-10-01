@@ -2508,7 +2508,7 @@
     "selfLabel": "You"
   },
   "meetIntegration": {
-    "title": "Google Meet integration",
+    "title": "Gristmill Companion",
     "setupDescription": "Chrome Stable · Dev extension. Enable integration, then load the extension folder via Load unpacked in chrome://extensions. Muted microphone audio is discarded; system audio continues.",
     "enabled": "Enabled",
     "disabled": "Disabled",

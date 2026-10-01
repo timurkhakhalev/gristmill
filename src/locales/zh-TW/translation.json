@@ -2508,7 +2508,7 @@
     "selfLabel": "您"
   },
   "meetIntegration": {
-    "title": "Google Meet 整合",
+    "title": "Gristmill Companion",
     "setupDescription": "Chrome Stable · 開發版擴充功能。啟用整合後，在 chrome://extensions 中透過「載入未封裝項目」選擇擴充功能資料夾。靜音時捨棄麥克風音訊，系統音訊繼續錄製。",
     "enabled": "已啟用",
     "disabled": "已停用",

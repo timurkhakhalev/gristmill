@@ -36,9 +36,9 @@ Meeting transcription uses the selected supported ElevenLabs, Deepgram, Gemini, 
 
 Cleanup was merged in PR #6. The current task adds durable separate audio tracks, post-Stop processing, run history, selected-version Notes projection, playback/export, and audio retention/deletion. Existing Notes, blank/manual content, full embedded chat/tools, imports, Dictionary/Snippets, calendars, speakers, and existing provider modes remain. There is no meeting-only dashboard or new results tab. The live mic/system hardware smoke is still unverified and is reserved for final integration. See the [record-then-process implementation and verification status](docs/record-then-process.md), [milestones](docs/delivery-plan.md), [cleanup scope](docs/removal-plan.md), and [baseline](docs/cleanup-m0.md).
 
-## Google Meet integration (development)
+## Gristmill Companion (development)
 
-Settings → Recording → Google Meet integration installs the Dev native host for
+Settings → Recording → Gristmill Companion installs the Dev native host for
 Chrome Stable. Open the extension folder and load it unpacked in
 `chrome://extensions`. One fresh call links at Start; calls discovered later need
 an explicit Link action in the recording Note. Manual mic mute is available in

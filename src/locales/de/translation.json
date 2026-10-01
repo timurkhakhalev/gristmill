@@ -2508,7 +2508,7 @@
     "selfLabel": "Du"
   },
   "meetIntegration": {
-    "title": "Google Meet-Integration",
+    "title": "Gristmill Companion",
     "setupDescription": "Chrome Stable · Dev-Erweiterung. Integration aktivieren und den Ordner über „Entpackte Erweiterung laden“ in chrome://extensions laden. Stummes Mikrofonaudio wird verworfen; Systemaudio läuft weiter.",
     "enabled": "Aktiviert",
     "disabled": "Deaktiviert",

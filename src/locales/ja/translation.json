@@ -2508,7 +2508,7 @@
     "selfLabel": "あなた"
   },
   "meetIntegration": {
-    "title": "Google Meet 連携",
+    "title": "Gristmill Companion",
     "setupDescription": "Chrome Stable · 開発版拡張機能。連携を有効にし、chrome://extensions の「パッケージ化されていない拡張機能を読み込む」でフォルダーを選択してください。ミュート中のマイク音声は破棄され、システム音声の録音は続きます。",
     "enabled": "有効",
     "disabled": "無効",

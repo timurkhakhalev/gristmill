@@ -187,4 +187,10 @@ Verification:
   remained unavailable: the main-thread sample showed a synchronous macOS
   Keychain read waiting inside `SecKeychainFindGenericPassword`. The user was
   asked to handle the system prompt; the UI tool denies access to SecurityAgent.
-  A successful post-restart connection is not yet claimed in this entry.
+  After the user handled that prompt, the installed popup showed Connected to
+  Gristmill Dev with recording stopped. Dev diagnostics were checked closed by
+  default, opened and closed again. Live screenshot:
+  `/tmp/gristmill-companion-dev-installed.png`.
+  Chrome still reported the loaded manifest as 0.1.0: its popup reads the rebuilt
+  files and displays 0.2.0, but that does not confirm extension Reload. The new
+  toolbar icon and loaded manifest version remain pending the user's Reload.

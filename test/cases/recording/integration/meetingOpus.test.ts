@@ -23,7 +23,10 @@ test("live packets reach separate Opus files before Stop, then Stop flushes thei
   const started = performance.now();
   for (let sequence = 0; sequence < 22; sequence++) {
     for (const source of ["mic", "system"] as const) {
-      capture.appendRendererSamples(source, { epochIndex: 0, epochStartFrame: 0, sequence, sampleOffset: sequence * 2400 }, packet);
+      capture.appendRendererSamples(source, {
+        epochIndex: 0, epochStartFrame: 0, frameStart: sequence * 2400,
+        sourceGeneration: 1, sequence, sampleOffset: sequence * 2400,
+      }, packet);
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

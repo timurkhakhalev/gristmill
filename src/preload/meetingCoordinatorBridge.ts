@@ -12,6 +12,8 @@ import {
   meetingStopResultSchema,
   meetingCancelResultSchema,
   meetingCaptureAckSchema,
+  meetingMicIntentResultSchema,
+  meetingClockProbeResultSchema,
   meetingSetSystemAudioAvailableResultSchema,
   recordingLockResultSchema,
   meetingDetectionGetPreferencesResultSchema,
@@ -106,6 +108,18 @@ export function createMeetingCoordinatorBridge(
         source,
         sessionId,
         packet
+      ),
+    meetingTranscriptionSetMicIntent: (request) =>
+      invokeParse(
+        meetingMicIntentResultSchema,
+        meetingCoordinatorChannels.meetingTranscriptionSetMicIntent,
+        request
+      ),
+    meetingTranscriptionProbeClock: (request) =>
+      invokeParse(
+        meetingClockProbeResultSchema,
+        meetingCoordinatorChannels.meetingTranscriptionProbeClock,
+        request
       ),
     meetingTranscriptionStop: (request) =>
       invokeParse(

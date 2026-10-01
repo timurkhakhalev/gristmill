@@ -56,6 +56,7 @@ function createFinishedRecording(
   noteText = "",
   keepGate = false,
   durationSeconds = 1,
+  includeSystemSource = true,
 ) {
   const note = db.saveNote("Meeting", noteText, "meeting").note;
   assert.ok(note);
@@ -64,6 +65,14 @@ function createFinishedRecording(
   savePcmEpoch(storage, recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
   const recovered = storage.recoverEpoch(recording.id, "mic", 0);
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, recovered);
+  if (includeSystemSource) {
+    db.createMeetingRecordingEpoch(recording.id, "system", 0, 0);
+    savePcmEpoch(storage, recording.id, "system", 0, Buffer.alloc(4));
+    db.updateMeetingRecordingEpochRecovery(recording.id, "system", 0, {
+      frameCount: 2,
+      ignoredTrailingBytes: 0,
+    });
+  }
   db.markMeetingRecordingFinalizing(recording.id);
   const finalized = db.finalizeMeetingRecording(recording.id, {
     captureState: "ready",
@@ -77,6 +86,34 @@ function createFinishedRecording(
     recording: finalized.recording,
     run: db.getMeetingProcessingRun(finalized.initialRun.id) as NonNullable<ReturnType<DatabaseManager["getMeetingProcessingRun"]>>,
   };
+}
+
+function createSystemOnlyIntentionalRecording(
+  db: DatabaseManager,
+  storage: RecordingStorage,
+  config: MeetingProcessingConfig
+) {
+  const note = db.saveNote("Muted microphone", "", "meeting").note;
+  assert.ok(note);
+  const recording = db.createMeetingRecording(note.id, { config });
+  const endFrame = 24_000;
+  db.openMeetingIntentionalInterval(recording.id, "mic", 0, "manual-muted");
+  db.closeMeetingIntentionalInterval(recording.id, "mic", endFrame, "manual-muted");
+  db.createMeetingRecordingEpoch(recording.id, "system", 0, 0);
+  const pcm = Buffer.alloc(endFrame * 2);
+  for (let frame = 0; frame < endFrame; frame += 1) pcm.writeInt16LE(1_000, frame * 2);
+  savePcmEpoch(storage, recording.id, "system", 0, pcm);
+  db.updateMeetingRecordingEpochRecovery(recording.id, "system", 0, {
+    frameCount: endFrame,
+    ignoredTrailingBytes: 0,
+  });
+  db.markMeetingRecordingFinalizing(recording.id);
+  const finalized = db.finalizeMeetingRecording(recording.id, {
+    captureState: "ready",
+    endedAt: new Date(Date.parse(recording.startedAt) + 1_000).toISOString(),
+    sourceMetadata: { captureEndFrame: endFrame },
+  });
+  return { recording: finalized.recording, run: finalized.initialRun };
 }
 
 function longTranscriptResponse(length = 2500, prefix = "") {
@@ -151,6 +188,158 @@ function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Pa
   };
   return new MeetingProcessingWorker(deps);
 }
+
+for (const provider of ["elevenlabs", "openai", "gemini"] as const) {
+  test(`${provider} records an intentional-empty mic stage without sending an empty-mic request`, async (t: import("node:test").TestContext) => {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const config: MeetingProcessingConfig = {
+      ...validConfig,
+      transcription: { mode: "providers", provider, language: "en" },
+    };
+    const { recording, run } = createSystemOnlyIntentionalRecording(db, storage, config);
+    const requests: import("../../src/contracts/uploadTranscription").RemoteTranscriptionRequest[] = [];
+    const mixLayouts: string[] = [];
+    const systemResponse = provider === "openai"
+      ? { text: "System speech", segments: [{ text: "System speech", start: 0.1, end: 0.5, speaker: "speaker_0" }] }
+      : provider === "elevenlabs"
+        ? elevenResponse
+        : { status: "completed", output_text: "System speech", steps: [{ content: [{ annotations: [
+          { type: "word_info", text: "System speech", speaker: "speaker_0", start_offset: "0.1s", end_offset: "0.5s" },
+        ] }] }] };
+    const worker = workerFor(db, storage, {
+      mixAudio: async (timeline, runId, epochs, _signal, layout, intentionalEmptySources) => {
+        const selectedLayout = layout ?? "mono";
+        mixLayouts.push(selectedLayout);
+        assert.equal(timeline.id, recording.id);
+        assert.deepEqual(epochs.map((epoch) => epoch.source), ["system"]);
+        assert.deepEqual(intentionalEmptySources, ["mic"]);
+        return {
+          path: storage.getDerivedAudioPath(recording.id, runId, selectedLayout),
+          frameCount: 24_000,
+          durationSeconds: 1,
+          sizeBytes: 1,
+        };
+      },
+      fileSize: () => 1,
+      transcribeRemote: async (request, saveRaw) => {
+        requests.push(request);
+        assert.ok(request.filePath.endsWith("-system.wav"));
+        await saveRaw(systemResponse);
+        return { success: true };
+      },
+    }, false);
+    t.after(() => worker.stop());
+    worker.onRetentionReady();
+    await worker.waitForIdle();
+
+    assert.equal(db.getMeetingProcessingRun(run.id)?.status, "complete");
+    assert.deepEqual(requests.map((request) => request.diarize), [true]);
+    assert.ok(mixLayouts.includes("mic"));
+    assert.ok(mixLayouts.includes("system"));
+    assert.equal(storage.hasRunArtifact(run.id, "provider-response-mic"), false);
+    assert.deepEqual(storage.readRunArtifact(run.id, "provider-response")?.mic, {
+      type: "intentional-empty", source: "mic",
+    });
+    const transcript = storage.readRunArtifact(run.id, "transcript");
+    assert.ok(transcript.segments?.length);
+    assert.ok(transcript.segments.every((segment: { speaker: string }) => segment.speaker.startsWith("system:")));
+  });
+}
+
+test("Deepgram prepares an intentional-empty microphone as stereo silence beside system audio", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const config: MeetingProcessingConfig = {
+    ...validConfig,
+    transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "en" },
+  };
+  const { recording, run } = createSystemOnlyIntentionalRecording(db, storage, config);
+  const layouts: string[] = [];
+  let requestCount = 0;
+  const worker = workerFor(db, storage, {
+    mixAudio: async (_timeline, runId, epochs, _signal, layout, intentionalEmptySources) => {
+      const selectedLayout = layout ?? "mono";
+      layouts.push(selectedLayout);
+      assert.deepEqual(epochs.map((epoch) => epoch.source), ["system"]);
+      assert.deepEqual(intentionalEmptySources, ["mic"]);
+      return { path: storage.getDerivedAudioPath(recording.id, runId, selectedLayout), frameCount: 24_000, durationSeconds: 1, sizeBytes: 1 };
+    },
+    fileSize: () => 1,
+    transcribeRemote: async (request, saveRaw) => {
+      requestCount += 1;
+      assert.equal(request.multichannel, true);
+      assert.ok(request.filePath.endsWith("-stereo.wav"));
+      await saveRaw({ results: {
+        channels: [{ alternatives: [{ transcript: "" }] }, { alternatives: [{ transcript: "System speech" }] }],
+        utterances: [{ channel: 1, speaker: 0, transcript: "System speech", start: 0.1, end: 0.5 }],
+      } });
+      return { success: true };
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id)?.status, "complete");
+  assert.equal(requestCount, 1);
+  assert.deepEqual(layouts, ["stereo"]);
+  assert.equal(storage.readRunArtifact(run.id, "transcript")?.segments?.[0]?.speaker, "system:Speaker 1");
+});
+
+test("local mono preparation retains system audio when mic is intentionally empty", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const config: MeetingProcessingConfig = {
+    transcription: { mode: "local", language: "en", local: { provider: "whisper", model: "base", options: { diarize: false } } },
+    summary: validConfig.summary,
+  };
+  const { recording, run } = createSystemOnlyIntentionalRecording(db, storage, config);
+  const layouts: string[] = [];
+  let localCalls = 0;
+  const worker = workerFor(db, storage, {
+    mixAudio: async (_timeline, runId, epochs, _signal, layout, intentionalEmptySources) => {
+      const selectedLayout = layout ?? "mono";
+      layouts.push(selectedLayout);
+      assert.equal(selectedLayout, "mono");
+      assert.deepEqual(epochs.map((epoch) => epoch.source), ["system"]);
+      assert.deepEqual(intentionalEmptySources, ["mic"]);
+      return { path: storage.getDerivedAudioPath(recording.id, runId, selectedLayout), frameCount: 24_000, durationSeconds: 1, sizeBytes: 1 };
+    },
+    fileSize: () => 1,
+    transcribeLocal: async (filePath) => {
+      localCalls += 1;
+      assert.ok(filePath.endsWith("-mono.wav"));
+      return { success: true, text: "System speech" };
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id)?.status, "complete");
+  assert.equal(localCalls, 1);
+  assert.deepEqual(layouts, ["mono"]);
+});
+
+test("a missing system source without persisted intentional coverage stays blocked", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage, validConfig, "", false, 1, false);
+  let requests = 0;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async () => { requests += 1; return { success: true }; },
+  }, false);
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  const saved = db.getMeetingProcessingRun(run.id);
+  assert.equal(saved?.status, "blocked");
+  assert.equal(saved?.errorCode, "system-source-unavailable");
+  assert.equal(requests, 0);
+});
 
 test("meeting prompts keep naming evidence, absent owner fields, and task priorities narrow", () => {
   assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /self-introduction/);
@@ -258,6 +447,8 @@ test("audio parts from separate sessions of one note produce one persisted run a
   const second = db.createMeetingRecording(first.note.id, { config: validConfig },
     new Date(Date.parse(first.recording.endedAt) + 5 * 60_000).toISOString());
   assert.notEqual(second.groupId, first.recording.groupId);
+  db.openMeetingIntentionalInterval(second.id, "mic", 0, "manual-muted");
+  db.closeMeetingIntentionalInterval(second.id, "mic", 24_000, "manual-muted");
   db.createMeetingRecordingEpoch(second.id, "system", 0, 0);
   savePcmEpoch(storage, second.id, "system", 0, Buffer.from([1, 2, 3, 4]));
   db.updateMeetingRecordingEpochRecovery(second.id, "system", 0, storage.recoverEpoch(second.id, "system", 0));

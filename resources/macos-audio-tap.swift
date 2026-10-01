@@ -1,6 +1,7 @@
 import AVFoundation
 import AudioToolbox
 import CoreAudio
+import Darwin
 import Foundation
 
 @available(macOS 14.2, *)
@@ -26,6 +27,10 @@ final class AudioTapCapture {
     private var stopping = false
     private let generation = UUID().uuidString
     private var convertedFrames: Int64 = 0
+    private var pendingPCMStartFrame: Int64 = 0
+    private var hasPendingPCMStartFrame = false
+    private var monotonicOriginNs: UInt64?
+    private var startMessageSent = false
     private var clockStartFrame: Int64 = 0
     private var clockHostStart: UInt64?
     private var clockHostEnd: UInt64?
@@ -88,12 +93,20 @@ final class AudioTapCapture {
 
         installInvalidationListeners()
 
+    }
+
+    func handleProbe(nonce: String) {
+        guard !nonce.isEmpty, nonce.count <= 64 else { return }
+        let receiveNs = machAbsoluteNowNs()
+        let frame = ioQueue.sync { convertedFrames }
+        let sendNs = machAbsoluteNowNs()
         emit(event: [
-            "type": "start",
-            "generation": generation,
-            "sampleRate": Int(config.sampleRate),
-            "channels": 1,
-            "bitsPerChannel": 16,
+            "type": "probe",
+            "nonce": nonce,
+            "helperReceiveNs": String(receiveNs),
+            "helperSendNs": String(sendNs),
+            "helperGeneration": generation,
+            "helperFrame": max(0, frame),
         ])
     }
 
@@ -386,6 +399,10 @@ final class AudioTapCapture {
             return
         }
 
+        if !hasPendingPCMStartFrame {
+            pendingPCMStartFrame = convertedFrames
+            hasPendingPCMStartFrame = true
+        }
         recordClock(inputTime: inputTime, sourceFrames: sourceBuffer.frameLength,
                     sourceRate: sourceRate, outputFrames: outputBuffer.frameLength)
         pendingPCM.append(data.assumingMemoryBound(to: UInt8.self), count: Int(audioBuffer.mDataByteSize))
@@ -412,6 +429,19 @@ final class AudioTapCapture {
         if convertedFrames == clockStartFrame {
             clockHostStart = hostStart
             clockReason = valid ? nil : "invalid-host-time"
+        }
+        if !startMessageSent, let hostStart {
+            monotonicOriginNs = hostStart
+            startMessageSent = true
+            emit(event: [
+                "type": "start",
+                "generation": generation,
+                "sampleRate": Int(config.sampleRate),
+                "channels": 1,
+                "bitsPerChannel": 16,
+                "monotonicOriginNs": String(hostStart),
+                "originFrame": convertedFrames,
+            ])
         }
         clockHostEnd = hostEnd
         convertedFrames += Int64(outputFrames)
@@ -450,6 +480,12 @@ final class AudioTapCapture {
     private func flushFullChunks() {
         while pendingPCM.count >= chunkBytes {
             let chunk = pendingPCM.prefix(chunkBytes)
+            let frameCount = chunkBytes / 2
+            emit(event: [
+                "type": "pcm",
+                "frameStart": pendingPCMStartFrame,
+                "frameCount": frameCount,
+            ])
             chunk.withUnsafeBytes { rawBuffer in
                 guard let baseAddress = rawBuffer.baseAddress else {
                     return
@@ -457,6 +493,8 @@ final class AudioTapCapture {
                 writeAll(fd: STDOUT_FILENO, buffer: baseAddress, count: rawBuffer.count)
             }
             pendingPCM.removeFirst(chunkBytes)
+            pendingPCMStartFrame += Int64(frameCount)
+            hasPendingPCMStartFrame = !pendingPCM.isEmpty
         }
     }
 
@@ -465,6 +503,13 @@ final class AudioTapCapture {
             return
         }
 
+        let frameCount = pendingPCM.count / 2
+        emit(event: [
+            "type": "pcm",
+            "frameStart": pendingPCMStartFrame,
+            "frameCount": frameCount,
+        ])
+
         pendingPCM.withUnsafeBytes { rawBuffer in
             guard let baseAddress = rawBuffer.baseAddress else {
                 return
@@ -472,6 +517,7 @@ final class AudioTapCapture {
             writeAll(fd: STDOUT_FILENO, buffer: baseAddress, count: rawBuffer.count)
         }
         pendingPCM.removeAll(keepingCapacity: false)
+        hasPendingPCMStartFrame = false
     }
 
     private func getTapUID() throws -> String {
@@ -540,6 +586,55 @@ func emit(event: [String: Any]) {
     }
 }
 
+func machAbsoluteNowNs() -> UInt64 {
+    var timebase = mach_timebase_info_data_t()
+    mach_timebase_info(&timebase)
+    let ticks = mach_absolute_time()
+    let numer = UInt64(timebase.numer)
+    let denom = UInt64(timebase.denom)
+    return ticks / denom * numer + ticks % denom * numer / denom
+}
+
+func readProbeRequests(_ capture: AudioTapCapture) {
+    let maxLineBytes = 1024
+    var line = Data()
+    var discardingLine = false
+    while true {
+        let chunk = FileHandle.standardInput.readData(ofLength: 256)
+        if chunk.isEmpty { return }
+        for byte in chunk {
+            if byte == 0x0a {
+                if discardingLine {
+                    emit(event: ["type": "warning", "code": "probe_request_too_large"])
+                } else if !line.isEmpty {
+                    guard
+                        let object = try? JSONSerialization.jsonObject(with: line),
+                        let request = object as? [String: Any],
+                        request.count == 2,
+                        request["type"] as? String == "probe",
+                        let nonce = request["nonce"] as? String,
+                        UUID(uuidString: nonce) != nil
+                    else {
+                        emit(event: ["type": "warning", "code": "probe_invalid_request"])
+                        line.removeAll(keepingCapacity: true)
+                        continue
+                    }
+                    capture.handleProbe(nonce: nonce)
+                }
+                line.removeAll(keepingCapacity: true)
+                discardingLine = false
+            } else if !discardingLine {
+                if line.count >= maxLineBytes {
+                    line.removeAll(keepingCapacity: false)
+                    discardingLine = true
+                } else {
+                    line.append(byte)
+                }
+            }
+        }
+    }
+}
+
 func writeAll(fd: Int32, buffer: UnsafeRawPointer, count: Int) {
     var written = 0
     while written < count {
@@ -577,6 +672,7 @@ func inferErrorCode(status: OSStatus?, operation: String) -> String {
 
 if #available(macOS 14.2, *) {
     let capture = AudioTapCapture(config: parseConfig())
+    DispatchQueue.global(qos: .utility).async { readProbeRequests(capture) }
     var signalSources: [DispatchSourceSignal] = []
 
     func stopAndExit(_ code: Int32) -> Never {

@@ -17,6 +17,8 @@ export const meetingCoordinatorChannels = {
   meetingTranscriptionPrepare: "meeting-transcription-prepare",
   meetingTranscriptionStart: "meeting-transcription-start",
   meetingTranscriptionSend: "meeting-transcription-send",
+  meetingTranscriptionSetMicIntent: "meeting-transcription-set-mic-intent",
+  meetingTranscriptionProbeClock: "meeting-transcription-probe-clock",
   meetingTranscriptionStop: "meeting-transcription-stop",
   meetingTranscriptionCancel: "meeting-transcription-cancel",
   meetingTranscriptionSetSystemAudioAvailable: "meeting-transcription-set-system-audio-available",
@@ -148,6 +150,7 @@ export const meetingOptionsSchema = z
     noteId: z.number().int().nullable().optional(),
     groupId: meetingRecordingIdSchema.optional(),
     autoEndEligible: z.boolean().optional(),
+    manualMicMuted: z.boolean().optional(),
     recordingConfig: z.unknown().optional(),
   });
 
@@ -160,6 +163,7 @@ export interface MeetingTranscriptionStartOptions {
   sessionId: string;
   groupId?: string;
   autoEndEligible: boolean;
+  manualMicMuted?: boolean;
   recordingConfig?: {
     config: MeetingProcessingConfig | null;
     configError?: MeetingProcessingConfigError | null;
@@ -169,6 +173,8 @@ export interface MeetingTranscriptionStartOptions {
 export interface MeetingCapturePacket {
   epochIndex: number;
   epochStartFrame: number;
+  frameStart: number;
+  sourceGeneration: number;
   sequence: number;
   sampleOffset: number;
 }
@@ -176,8 +182,64 @@ export interface MeetingCapturePacket {
 export const meetingCapturePacketSchema = z.object({
   epochIndex: z.number().int().nonnegative(),
   epochStartFrame: z.number().int().nonnegative(),
+  frameStart: z.number().int().nonnegative(),
+  sourceGeneration: z.number().int().positive(),
   sequence: z.number().int().nonnegative(),
   sampleOffset: z.number().int().nonnegative(),
+});
+
+export interface MeetingMicIntentRequest {
+  sessionId: string;
+  recordingId: string;
+  sequence: number;
+  sourceGeneration: number;
+  manualMuted: boolean;
+  platformMuted: boolean;
+  boundaryFrame: number;
+}
+
+export const meetingMicIntentRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  recordingId: meetingRecordingIdSchema,
+  sequence: z.number().int().positive(),
+  sourceGeneration: z.number().int().positive(),
+  manualMuted: z.boolean(),
+  platformMuted: z.boolean(),
+  boundaryFrame: z.number().int().nonnegative(),
+});
+
+export const meetingMicIntentResultSchema = z.object({
+  success: z.boolean(),
+  sequence: z.number().int().positive().optional(),
+  sourceGeneration: z.number().int().positive().optional(),
+  effectiveMuted: z.boolean().optional(),
+  boundaryFrame: z.number().int().nonnegative().optional(),
+  error: z.string().optional(),
+});
+export type MeetingMicIntentResult = z.infer<typeof meetingMicIntentResultSchema>;
+
+export interface MeetingClockProbeRequest {
+  sessionId: string;
+  recordingId: string;
+  nonce: string;
+  sourceSendNs: string;
+}
+
+export const meetingClockProbeRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  recordingId: meetingRecordingIdSchema,
+  nonce: z.string().uuid(),
+  sourceSendNs: z.string().regex(/^\d{1,20}$/),
+});
+
+export const meetingClockProbeResultSchema = z.object({
+  success: z.boolean(),
+  nonce: z.string().uuid().optional(),
+  helperReceiveNs: z.string().regex(/^\d{1,20}$/).optional(),
+  helperSendNs: z.string().regex(/^\d{1,20}$/).optional(),
+  helperGeneration: meetingRecordingIdSchema.optional(),
+  helperFrame: z.number().int().nonnegative().optional(),
+  error: z.string().optional(),
 });
 
 export interface MeetingCaptureStopRequest {
@@ -212,6 +274,8 @@ export const meetingStartResultSchema = failureMetadataSchema.extend({
   sessionId: z.string().optional(),
   recordingId: z.string().uuid().optional(),
   originAt: z.string().optional(),
+  monotonicOriginNs: z.string().regex(/^\d{1,20}$/).nullable().optional(),
+  helperGeneration: meetingRecordingIdSchema.optional(),
   systemAudioMode: z.enum(["native", "loopback", "portal", "unsupported"]).optional(),
   systemAudioStrategy: z
     .enum(["native", "loopback", "pipewire-loopback", "wasapi-loopback", "unsupported"])
@@ -457,6 +521,8 @@ export interface MeetingCoordinatorApi {
     sessionId: string,
     packet: MeetingCapturePacket
   ): Promise<MeetingCaptureAck>;
+  meetingTranscriptionSetMicIntent?(request: MeetingMicIntentRequest): Promise<MeetingMicIntentResult>;
+  meetingTranscriptionProbeClock?(request: MeetingClockProbeRequest): Promise<z.infer<typeof meetingClockProbeResultSchema>>;
   meetingTranscriptionStop?(request?: MeetingCaptureStopRequest): Promise<MeetingStopResult>;
   meetingTranscriptionCancel?(): Promise<MeetingCancelResult>;
   meetingTranscriptionSetSystemAudioAvailable?(

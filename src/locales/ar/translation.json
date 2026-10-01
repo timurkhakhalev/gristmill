@@ -2276,8 +2276,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "تمت مطابقة الاسم من Zoom. انقر لتغييره.",
-    "platformEvidenceUnavailable": "بيانات المتحدثين في Zoom غير مكتملة. تم الاحتفاظ بالصوت والنص.",
+    "platformNameHint": "تمت مطابقة الاسم من {{platform}}. انقر لتغييره.",
+    "platformEvidenceUnavailable": "بيانات المتحدثين في Zoom / Google Meet غير مكتملة. تم الاحتفاظ بالصوت والنص.",
     "partialTranscript": "النص المفرغ لهذه الملاحظة غير مكتمل.",
     "selectedResultTranscript": "النص المفرغ للنتيجة المحددة",
     "participantsLoadError": "تعذر تحميل المشاركين من التقويم.",

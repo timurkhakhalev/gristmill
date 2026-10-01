@@ -2644,11 +2644,11 @@ for (const failure of ["observation-lookup", "part-map"] as const) {
     const { run } = createFinishedRecording(db, storage, { ...validConfig, generateSummary: false });
     saveTranscriptArtifact(db, storage, run.id, "Synthetic speaker introduces herself.", "system:fixture");
     db.setMeetingProcessingRunState(run.id, { stage: "normalize", status: "pending", retryAt: null });
-    const originalObservations = db.listMeetingZoomObservations;
+    const originalObservations = db.listMeetingPlatformObservations;
     const originalEpochs = db.listMeetingRecordingEpochs;
-    t.after(() => { db.listMeetingZoomObservations = originalObservations; db.listMeetingRecordingEpochs = originalEpochs; });
+    t.after(() => { db.listMeetingPlatformObservations = originalObservations; db.listMeetingRecordingEpochs = originalEpochs; });
     const failLookup = () => { throw new Error("Synthetic metadata unavailable"); };
-    if (failure === "observation-lookup") db.listMeetingZoomObservations = failLookup;
+    if (failure === "observation-lookup") db.listMeetingPlatformObservations = failLookup;
     else db.listMeetingRecordingEpochs = failLookup;
     let namingCalls = 0;
     const worker = workerFor(db, storage, {
@@ -2680,7 +2680,7 @@ test("native-shaped Zoom intervals resume through production naming into the Not
   db.markMeetingRecordingFinalizing(recording.id);
   const { initialRun } = db.finalizeMeetingRecording(recording.id, { captureState: "ready", endedAt: new Date(Date.parse(recording.startedAt) + 14_000).toISOString() });
   const fixture = zoomSpeakerFixture(recording.id);
-  fixture.observations.forEach((o) => db.saveMeetingZoomObservation(o));
+  fixture.observations.forEach((o) => db.saveMeetingPlatformObservation(o));
   fixture.anchors.forEach((a) => db.saveMeetingAudioClockAnchor(a));
   // An earlier AX gap does not disable the usable episodes that follow.
   db.setMeetingPlatformCoverage(recording.id, { reads: 28, samples: fixture.observations.length, state: "incomplete", reason: "accessibility" });
@@ -2717,7 +2717,7 @@ test("native-shaped Zoom intervals resume through production naming into the Not
     const projection = JSON.parse(db.getNote(note.id).transcript ?? "[]");
     assert.equal(projection[0].speakerName, "Synthetic Guest");
     assert.equal(projection[0].speakerLockSource, "platform");
-    assert.ok(db.getMeetingRunPlatformDecisions(current.id).every((d: import("../../src/contracts/meetingRecording.ts").ZoomSpeakerDecision) => d.status === "accepted"));
+    assert.ok(db.getMeetingRunPlatformDecisions(current.id).every((d: import("../../src/contracts/meetingRecording.ts").MeetingPlatformDecision) => d.status === "accepted"));
     const view = readNoteTranscript({
       listRecordings: (id) => db.listMeetingRecordingsForNote(id), listEpochs: (id) => db.listMeetingRecordingEpochs(id),
       getRun: (id) => db.getMeetingProcessingRun(id), readTranscript: (id) => transcripts.get(id) ?? null,

@@ -1752,7 +1752,7 @@ export function registerMeetingCoordinatorHandlers(
 
     activeCaptureSession = capture;
     platformCollector = new ZoomSpeakerCollector(capture.recordingId, {
-      saveMeetingZoomObservation: (observation) => databaseManager.saveMeetingZoomObservation(observation),
+      saveMeetingPlatformObservation: (observation) => databaseManager.saveMeetingPlatformObservation(observation),
       saveMeetingAudioClockAnchor: (anchor) => databaseManager.saveMeetingAudioClockAnchor(anchor),
       setMeetingPlatformCoverage: (id, coverage) => databaseManager.setMeetingPlatformCoverage(id, coverage),
     });

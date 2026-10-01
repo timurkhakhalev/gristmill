@@ -2,10 +2,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import { StringDecoder } from "string_decoder";
 import { randomUUID } from "crypto";
 import { resolveBundledBinary } from "./binaryResolver.js";
-import { meetingPlatformCoverageSchema, zoomSpeakerObservationSchema, type MeetingAudioClockMessage, type MeetingAudioClockAnchor, type MeetingPlatformCoverage, type ZoomSpeakerObservation } from "../contracts/meetingRecording.js";
+import { meetingPlatformCoverageSchema, meetingPlatformObservationSchema, type MeetingAudioClockMessage, type MeetingAudioClockAnchor, type MeetingPlatformCoverage, type MeetingPlatformObservation } from "../contracts/meetingRecording.js";
 
 export interface MeetingPlatformEvidenceDatabase {
-  saveMeetingZoomObservation(observation: ZoomSpeakerObservation): void;
+  saveMeetingPlatformObservation(observation: MeetingPlatformObservation): void;
   saveMeetingAudioClockAnchor(anchor: MeetingAudioClockAnchor): void;
   setMeetingPlatformCoverage(recordingId: string, coverage: MeetingPlatformCoverage): void;
 }
@@ -101,9 +101,13 @@ export class ZoomSpeakerCollector {
         const message: unknown = JSON.parse(line);
         if (!message || typeof message !== "object") throw new Error();
         if ("type" in message && message.type === "observation" && "observation" in message) {
-          const observation = zoomSpeakerObservationSchema.parse(message.observation);
+          const raw = message.observation;
+          if (!raw || typeof raw !== "object" || !("sessionId" in raw) || !("instanceKey" in raw) || !("activity" in raw)) throw new Error();
+          const observation = meetingPlatformObservationSchema.parse({ ...raw, platform: "zoom", bindingId: raw.sessionId,
+            activeParticipantIds: raw.activity === "explicit" || raw.activity === "end" ? [raw.instanceKey] : [],
+            clockGeneration: null, clockUncertaintyNs: "0" });
           if (observation.recordingId !== this.recordingId) throw new Error();
-          this.enqueue(() => { this.database.saveMeetingZoomObservation(observation); this.savedSamples += 1; this.coverage.samples = this.savedSamples; });
+          this.enqueue(() => { this.database.saveMeetingPlatformObservation(observation); this.savedSamples += 1; this.coverage.samples = this.savedSamples; });
         } else if ("type" in message && message.type === "coverage") {
           const coverage = meetingPlatformCoverageSchema.parse(message);
           this.coverageGap ??= coverage.reason;

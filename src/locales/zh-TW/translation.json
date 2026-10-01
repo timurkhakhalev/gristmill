@@ -2249,8 +2249,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "從 Zoom 比對的姓名。點擊可修改。",
-    "platformEvidenceUnavailable": "Zoom 發言者資訊不完整。音訊和轉錄已保留。",
+    "platformNameHint": "從 {{platform}} 比對的姓名。點擊可修改。",
+    "platformEvidenceUnavailable": "Zoom / Google Meet 發言者資訊不完整。音訊和轉錄已保留。",
     "partialTranscript": "這則筆記的逐字稿不完整。",
     "selectedResultTranscript": "所選結果的逐字稿",
     "participantsLoadError": "無法載入日曆參與者。",

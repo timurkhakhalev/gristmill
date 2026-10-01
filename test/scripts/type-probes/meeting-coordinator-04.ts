@@ -32,7 +32,7 @@ async function fetchRealtimeToken(
 
 const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoordinatorDeps = {
   databaseManager: {
-      saveMeetingZoomObservation() {},
+      saveMeetingPlatformObservation() {},
       saveMeetingAudioClockAnchor() {},
       setMeetingPlatformCoverage() {},
     createMeetingRecording: () => ({} as import("./src/contracts/meetingRecording.js").MeetingRecordingDto),

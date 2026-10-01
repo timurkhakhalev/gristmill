@@ -2249,8 +2249,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "Nom identifié dans Zoom. Cliquez pour le modifier.",
-    "platformEvidenceUnavailable": "Les données des locuteurs Zoom sont incomplètes. L’audio et la transcription sont conservés.",
+    "platformNameHint": "Nom identifié dans {{platform}}. Cliquez pour le modifier.",
+    "platformEvidenceUnavailable": "Les données des locuteurs Zoom / Google Meet sont incomplètes. L’audio et la transcription sont conservés.",
     "partialTranscript": "La transcription de cette note est incomplète.",
     "selectedResultTranscript": "Transcription du résultat sélectionné",
     "participantsLoadError": "Impossible de charger les participants du calendrier.",

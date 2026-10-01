@@ -64,7 +64,7 @@ function loadCoordinator() {
 
 function createDatabaseFake(events: string[]) {
   return {
-    saveMeetingZoomObservation() {},
+    saveMeetingPlatformObservation() {},
     saveMeetingAudioClockAnchor() {},
     setMeetingPlatformCoverage() {},
     recordings: new Map<string, { id: string; groupId: string; noteId: number; config: unknown; startedAt: string; captureState: string; audioState: string; captureErrorCode?: string | null }>(),

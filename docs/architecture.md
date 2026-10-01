@@ -385,3 +385,22 @@ The revision and processing-run model makes evaluation a natural extension:
 - attach a manually corrected reference transcript;
 - calculate WER/CER for Russian and mixed Russian/English speech;
 - evaluate speaker attribution and summary facts separately.
+
+## Meeting platform evidence
+
+`meeting_platform_observations` stores a platform discriminator, recording/binding/
+participant identity, full active set, bounded host-time interval and uncertainty.
+Zoom AX and Google Meet observations share `meetingPlatformMatcher.ts`; each
+platform keeps its explicit timing policy (initial indicator delay: Zoom 0.5 s,
+Meet 0.3 s). These values are hypotheses, not measured identity guarantees.
+The matcher requires three independent speech episodes of at least one second,
+system-only speech, bounded clocks and unambiguous participants. Missing or
+contradictory evidence leaves the transcript alias intact.
+
+The one-way metadata migration preserves Zoom IDs, decisions and revisions in a
+transaction. Corrections include the concrete platform; user and voice matches
+win over platform suggestions. Audio retention keeps names and evidence; deleting
+the Note removes them. Exports use final names, without raw roster data. Before
+upgrading an isolated develop profile, close the app and copy the profile. To
+roll back the application version, restore that copy; do not open the migrated
+profile with the older binary.

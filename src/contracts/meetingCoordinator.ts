@@ -466,6 +466,7 @@ export const meetingTranscriptSegmentSchema = z
     speakerStatus: z.enum(["provisional", "confirmed", "suggested", "locked"]).optional(),
     speakerLocked: z.boolean().optional(),
     speakerLockSource: z.enum(["user", "diarization", "suggestion", "voice", "platform", "model"]).optional(),
+    speakerPlatform: z.enum(["zoom", "google-meet"]).optional(),
   })
   .passthrough();
 export type MeetingTranscriptSegment = z.infer<typeof meetingTranscriptSegmentSchema>;

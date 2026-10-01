@@ -65,6 +65,7 @@ export interface TranscriptSegment {
   speakerStatus?: TranscriptSpeakerStatus;
   speakerLocked?: boolean;
   speakerLockSource?: TranscriptSpeakerLockSource;
+  speakerPlatform?: "zoom" | "google-meet";
 }
 
 export const SIDE_PANEL_BREAKPOINT_PX = 1024;

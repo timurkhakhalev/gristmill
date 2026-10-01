@@ -29,6 +29,7 @@ test("microphone gate counts muted render frames without sending, then sends at 
   });
   assert.ok(registered.processor);
   const processor = new registered.processor({ processorOptions: { gateClosed: false, epochIndex: 0, sourceGeneration: 1 } });
+  const chunks = () => sent.filter((message) => message.type === "chunk");
   const loud = new Float32Array(2400).fill(0.5);
   const audibleOutput = new Float32Array(2400);
   assert.equal(processor.process([[loud]], [[audibleOutput]]), true);
@@ -50,7 +51,7 @@ test("microphone gate counts muted render frames without sending, then sends at 
   const mutedOutput = new Float32Array(2400).fill(1);
   assert.equal(processor.process([[loud]], [[mutedOutput]]), true);
   assert.equal(mutedOutput.every((sample) => sample === 0), true);
-  assert.equal(sent.filter((message) => message.type === "chunk").length, 1);
+  assert.equal(chunks().length, 1);
 
   currentFrame = 9600;
   processor.port.onmessage?.({ data: { type: "set-gate", commandId: "unmute-2", sequence: 2, effectiveMuted: false, epochIndex: 1, sourceGeneration: 2 } });
@@ -63,11 +64,11 @@ test("microphone gate counts muted render frames without sending, then sends at 
   assert.equal(unmuteAck.lastSequence, -1);
   const resumedOutput = new Float32Array(2400);
   assert.equal(processor.process([[loud]], [[resumedOutput]]), true);
-  assert.equal(sent.filter((message) => message.type === "chunk").length, 2);
-  assert.equal(sent[1].renderStartFrame, 9600);
-  assert.equal(sent[1].epochIndex, 1);
-  assert.equal(sent[1].sourceGeneration, 2);
-  assert.equal(sent[1].sampleOffset, 0);
+  assert.equal(chunks().length, 2);
+  assert.equal(chunks()[1].renderStartFrame, 9600);
+  assert.equal(chunks()[1].epochIndex, 1);
+  assert.equal(chunks()[1].sourceGeneration, 2);
+  assert.equal(chunks()[1].sampleOffset, 0);
   assert.equal(resumedOutput[0], 0.5);
 
   currentFrame = 12000;

@@ -16,6 +16,7 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
   });
 
   let accessibilityChecks = 0;
+  let accessibilityGranted = false;
   const requests: string[] = [];
   let micStatus = "not-determined";
   let onFocus: (() => void) | undefined;
@@ -28,7 +29,7 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
         getPlatform: () => "darwin",
         checkAccessibilityPermission: async () => {
           accessibilityChecks += 1;
-          return false;
+          return accessibilityGranted;
         },
         checkMicrophoneAccess: async () => ({ granted: micStatus === "granted", status: micStatus }),
         requestMicrophoneAccess: async () => { requests.push("mic prompt"); return { granted: true }; },
@@ -50,11 +51,11 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
 
   const originalSetInterval = globalThis.setInterval;
   const originalClearInterval = globalThis.clearInterval;
-  const activeIntervals = new Set<number>();
+  const activeIntervals = new Map<number, () => void>();
   let nextIntervalId = 1;
   globalThis.setInterval = ((_handler: Parameters<typeof globalThis.setInterval>[0]) => {
     const id = nextIntervalId++;
-    activeIntervals.add(id);
+    if (typeof _handler === "function") activeIntervals.set(id, _handler as () => void);
     return id;
   }) as typeof globalThis.setInterval;
   globalThis.clearInterval = ((id?: number) => {
@@ -119,8 +120,21 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
   assert.equal(accessibilityChecks, 3);
   assert.equal(activeIntervals.size, 1);
 
+  // Granting in macOS Settings must update the onboarding row without another
+  // prompt or a restart, and stop polling once the permission is confirmed.
+  accessibilityGranted = true;
+  await React.act(async () => {
+    activeIntervals.values().next().value!();
+    await Promise.resolve();
+  });
+  assert.equal(permissions!.accessibilityPermissionGranted, true);
+  assert.equal(permissions!.accessibilityTroubleshooting, false);
+  assert.equal(activeIntervals.size, 0);
+  assert.equal(accessibilityChecks, 4);
+  assert.equal(requests.filter((request) => request === "prompt").length, 1);
+
   macAccessibilityChecksEnabled = false;
   await render();
-  assert.equal(accessibilityChecks, 3);
+  assert.equal(accessibilityChecks, 4);
   assert.equal(activeIntervals.size, 0);
 });

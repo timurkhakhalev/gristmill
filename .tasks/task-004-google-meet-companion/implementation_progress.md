@@ -26,4 +26,4 @@ Also run `pnpm run typecheck` and `pnpm run compile:audio-tap` at the root. Nati
 
 Issues encountered: TypeScript and ESLint findings in the new test fixtures were corrected. No unresolved implementation blockers.
 
-Commits: pending.
+Commits: `700e64c22` — M1 implementation. The implementation entry is in this follow-up progress-log commit; both hashes are recorded in the completion report.

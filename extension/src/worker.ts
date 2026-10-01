@@ -1,0 +1,105 @@
+import { z } from "zod";
+import identity from "../identity.json";
+import { COMPANION_MAX_MESSAGE_BYTES, companionContextSchema, companionDesktopMessageSchema, type CompanionCallRef, type CompanionDesktopMessage } from "../../src/contracts/companion.js";
+import type { ChromeApi, ChromePort, ChromeSender } from "./chrome.js";
+
+const uuid = z.string().uuid();
+const contentMessage = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("context"), context: companionContextSchema }).strict(),
+  z.object({ type: z.literal("clock-probe"), nonce: uuid, sourceSendNs: z.string().regex(/^\d{1,20}$/) }).strict(),
+  z.object({ type: z.literal("clock-confirm"), nonce: uuid, sourceReceiveNs: z.string().regex(/^\d{1,20}$/) }).strict(),
+]);
+
+/** Native connection and main snapshots are authoritative; storage carries identifiers only. */
+export function startCompanionWorker(api: ChromeApi): void {
+  let port: ChromePort | null = null;
+  let connecting = false;
+  let sequence = 0;
+  let installationId: string;
+  let sessionId: string;
+  let snapshot: Extract<CompanionDesktopMessage, { type: "snapshot" }> | null = null;
+  let error = "disconnected";
+  let updatePending = false;
+  const probes = new Map<string, { tabId: number; documentId: string }>();
+  const refFor = (sender: ChromeSender): CompanionCallRef | null => {
+    if (sender.id !== api.runtime.id || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) || !uuid.safeParse(sender.documentId).success) return null;
+    try {
+      const url = new URL(sender.url ?? "");
+      const match = url.pathname.match(/^\/([a-z]{3}-[a-z]{4}-[a-z]{3})\/?$/);
+      if (url.origin !== "https://meet.google.com" || !match) return null;
+      return { platform: "google-meet", installationId, sessionId, tabId: sender.tab!.id!, documentId: sender.documentId!, callId: match[1] };
+    } catch { return null; }
+  };
+  const connect = async () => {
+    if (port || connecting) return;
+    connecting = true;
+    try {
+      const savedInstallation = (await api.storage.local.get("installationId")).installationId;
+      installationId = uuid.safeParse(savedInstallation).success ? String(savedInstallation) : crypto.randomUUID();
+      await api.storage.local.set({ installationId });
+      const savedSession = (await api.storage.session.get("sessionId")).sessionId;
+      sessionId = uuid.safeParse(savedSession).success ? String(savedSession) : crypto.randomUUID();
+      await api.storage.session.set({ sessionId });
+      const current = api.runtime.connectNative(identity.hostName);
+      port = current;
+      sequence = 0;
+      current.onMessage.addListener((value) => {
+        if (port !== current) return;
+        const parsed = companionDesktopMessageSchema.safeParse(value);
+        if (!parsed.success) { error = "version-mismatch"; current.disconnect(); return; }
+        const message = parsed.data;
+        if (message.type === "snapshot") {
+          snapshot = message;
+          error = "";
+          if (updatePending && message.recordingState === "idle") { current.disconnect(); api.runtime.reload(); }
+        } else if (message.type === "unavailable") {
+          snapshot = null; error = message.reason;
+        } else {
+          const target = probes.get(message.nonce);
+          probes.delete(message.nonce);
+          if (target) void api.tabs.sendMessage(target.tabId, message, { documentId: target.documentId }).catch(() => {});
+        }
+      });
+      current.onDisconnect.addListener(() => {
+        void api.runtime.lastError;
+        if (port !== current) return;
+        port = null; snapshot = null; probes.clear(); error ||= "app-unavailable";
+      });
+      current.postMessage({ version: 1, type: "hello", installationId, sessionId });
+    } catch { port = null; snapshot = null; error = "app-unavailable"; }
+    finally { connecting = false; }
+  };
+  api.runtime.onMessage.addListener((value, sender, respond) => {
+    if (sender.id === api.runtime.id && !sender.tab && sender.url === api.runtime.getURL("popup.html") &&
+        value && typeof value === "object" && "type" in value && value.type === "status") {
+      respond({ connected: snapshot !== null, snapshot, error });
+      return;
+    }
+    const parsed = contentMessage.safeParse(value);
+    if (!parsed.success || !port || !snapshot) { respond({ accepted: false }); return; }
+    const ref = refFor(sender);
+    if (!ref) { respond({ accepted: false }); return; }
+    const message = parsed.data;
+    if (message.type === "clock-probe") {
+      if (probes.size >= 16) probes.delete(probes.keys().next().value!);
+      probes.set(message.nonce, { tabId: ref.tabId, documentId: ref.documentId });
+    }
+    try {
+      const outgoing = { version: 1, sequence, ref, ...message };
+      if (new TextEncoder().encode(JSON.stringify(outgoing)).length > COMPANION_MAX_MESSAGE_BYTES) { respond({ accepted: false }); return; }
+      port.postMessage(outgoing);
+      sequence++;
+      respond({ accepted: true });
+    } catch { port.disconnect(); respond({ accepted: false }); }
+  });
+  api.runtime.onUpdateAvailable.addListener(() => {
+    updatePending = true;
+    if (snapshot?.recordingState === "idle") { port?.disconnect(); api.runtime.reload(); }
+  });
+  api.alarms.onAlarm.addListener((alarm) => { if (alarm.name === "gristmill-connect") void connect(); });
+  void api.alarms.create("gristmill-connect", { periodInMinutes: 0.5 });
+  void connect();
+}
+
+declare const chrome: ChromeApi;
+if (typeof chrome !== "undefined") startCompanionWorker(chrome);

@@ -296,3 +296,18 @@ manual rename. `pnpm run typecheck` and `pnpm run lint` passed; lint retains
 existing warnings. Real browser/hardware quality is still unverified.
 
 Next: M3 bounded Native Messaging transport and Dev-only extension/installer.
+
+## 2026-10-01 — Dev browser transport (M3)
+
+Implemented strict 64 KiB framing, a bundled native host, private per-profile
+socket authentication and main-assigned connection identities. The MV3 worker
+accepts only top-frame Meet documents, derives identities from Chrome metadata,
+rejects stale connections and defers updates while recording. Dev installer
+validates ownership before changing manifests and handles quoted/relocated paths.
+Production identity remains out of scope.
+
+Verification: five transport/worker/installer test files passed (2.6 s, including
+main build); full typecheck and lint passed (existing warnings only).
+`pnpm run build:companion` produced the Dev extension. Native-host tests execute
+real subprocess/socket framing against temporary profiles; no user's Chrome
+registration was changed. Application wiring and real Meet remain next.

@@ -36,10 +36,10 @@ Meeting transcription uses the selected supported ElevenLabs, Deepgram, Gemini, 
 
 Cleanup was merged in PR #6. The current task adds durable separate audio tracks, post-Stop processing, run history, selected-version Notes projection, playback/export, and audio retention/deletion. Existing Notes, blank/manual content, full embedded chat/tools, imports, Dictionary/Snippets, calendars, speakers, and existing provider modes remain. There is no meeting-only dashboard or new results tab. The live mic/system hardware smoke is still unverified and is reserved for final integration. See the [record-then-process implementation and verification status](docs/record-then-process.md), [milestones](docs/delivery-plan.md), [cleanup scope](docs/removal-plan.md), and [baseline](docs/cleanup-m0.md).
 
-## Gristmill Companion (development)
+## Gristmill Companion
 
-Settings → Recording → Gristmill Companion installs the Dev native host for
-Chrome Stable. Open the extension folder and load it unpacked in
+Settings → Recording → Gristmill Companion installs its app channel's native host
+for Chrome Stable. Open the matching extension folder and load it unpacked in
 `chrome://extensions`. One fresh call links at Start; calls discovered later need
 an explicit Link action in the recording Note. Manual mic mute is available in
 the Note and recording pill even without the extension. Muting discards microphone
@@ -48,7 +48,10 @@ stops the linked recording and offers Restart. Losing the browser connection
 keeps recording and shows a reminder after five minutes.
 
 See [setup, lifecycle and verification limits](docs/google-meet-companion.md).
-Production extension identity and Chrome Web Store delivery are separate work.
+`pnpm run build:companion` creates separate production and Dev extensions, with
+distinct icons, IDs and native hosts. Dev connects only to Gristmill Dev (including
+`pnpm dev`); production connects only to Gristmill. Technical popup diagnostics
+are available by disclosure only in Dev. Chrome Web Store delivery is separate work.
 
 ## Documents
 

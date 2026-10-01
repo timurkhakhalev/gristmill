@@ -150,3 +150,41 @@ changed the popup to Not in call. No recording or Note was created for this
 follow-up, so it does not repeat the earlier binding/gate/Stop check. The test call
 was left and its agent-created tab closed. Screenshot:
 `/tmp/gristmill-granola-adapter-live.png`.
+
+## Compact popup and separate channels — 2026-10-02
+
+The popup now uses the existing Gristmill brand assets, compact recording guidance
+and an explicit app-connection footer. Dev diagnostics are closed by default;
+production HTML and JavaScript exclude the diagnostics section and renderer.
+Both manifests carry native toolbar/action icons at 16/32/48/128 px and version
+0.2.0. The existing Dev extension ID is unchanged. A separate pinned public key
+provides a local unpacked production identity; this is not a Web Store item.
+
+`build:companion` creates `build/companion-dev` and `build/companion`. Main selects
+its channel using the existing app-channel resolver, registers only that native
+host and reveals/packages its matching extension. Native launchers include the
+channel; both the host and app socket reject an origin from the other channel.
+Neither worker tries the other channel when its app is closed. Production and Dev
+registrations can coexist, and removing one preserves the other.
+
+Verification:
+
+- Six focused popup/worker/installer/native-host/UI/locale files passed in 2.997 s.
+- Full `pnpm test`: all 427 files passed, 84.706 s, normal sequential native/type
+  phases. Full `pnpm run typecheck` and `pnpm run lint` passed (existing warnings).
+- `pnpm run build:companion` passed for both channels. Emitted manifest keys,
+  icons, exact host constants, absence of production diagnostics and both
+  electron-builder resource mappings were inspected. No macOS package rebuild
+  or Web Store installation is claimed for this change.
+- CUA Chrome preview used the real built HTML/JS with a clearly labeled simulated
+  desktop connection: both idle channels, Dev diagnostic disclosure, recording,
+  manual mute, and disconnected production. Production has no diagnostic
+  section; muted audio state changes without disturbing the closed disclosure.
+  Screenshot: `/tmp/gristmill-companion-redesign.png`.
+- The idle real `pnpm dev` app was quit and restarted through the project command.
+  Native compilation/main build passed and startup refreshed the Dev launcher
+  with the new channel argument. At the first installed-popup check, connection
+  remained unavailable: the main-thread sample showed a synchronous macOS
+  Keychain read waiting inside `SecKeychainFindGenericPassword`. The user was
+  asked to handle the system prompt; the UI tool denies access to SecurityAgent.
+  A successful post-restart connection is not yet claimed in this entry.

@@ -2509,7 +2509,7 @@
   },
   "meetIntegration": {
     "title": "Gristmill Companion",
-    "setupDescription": "Chrome Stable · Estensione Dev. Attiva l’integrazione, poi carica la cartella con «Carica estensione non pacchettizzata» in chrome://extensions. L’audio del microfono disattivato viene scartato; l’audio di sistema continua.",
+    "setupDescription": "Chrome Stable. Attiva l’integrazione, poi carica la cartella con «Carica estensione non pacchettizzata» in chrome://extensions. L’audio del microfono disattivato viene scartato; l’audio di sistema continua.",
     "enabled": "Attiva",
     "disabled": "Disattivata",
     "loading": "Caricamento…",

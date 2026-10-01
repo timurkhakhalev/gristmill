@@ -9,7 +9,7 @@ export const popupStatusSchema = z.object({
 export type PopupStatus = z.infer<typeof popupStatusSchema>;
 
 /** Browser observations explain detection; only main snapshots authorize recording controls. */
-export function describePopup(reply: PopupStatus, activeTabId: number | undefined, now: number) {
+function readPopupState(reply: PopupStatus, activeTabId: number | undefined, now: number) {
   const snapshot = reply.snapshot?.type === "snapshot" && reply.connected ? reply.snapshot : null;
   const observed = reply.contexts.find(value => value.ref.tabId === activeTabId);
   const fresh = observed && now - observed.receivedAt <= 5_000 && now >= observed.receivedAt;
@@ -20,6 +20,11 @@ export function describePopup(reply: PopupStatus, activeTabId: number | undefine
     binding.documentId === observed.ref.documentId && binding.callId === observed.ref.callId;
   const recording = snapshot?.recordingState === "recording";
   const linked = !!binding;
+  return { snapshot, observed, context, binding, thisCall, recording, linked };
+}
+
+export function popupDiagnostics(reply: PopupStatus, activeTabId: number | undefined, now: number) {
+  const { snapshot, observed, context, binding, thisCall, recording } = readPopupState(reply, activeTabId, now);
   const rows: Array<[string, string]> = [
     ["App connection", snapshot ? "Connected" : "Disconnected"],
     ["Recording", !snapshot ? "Unknown" : recording ? "Recording" : snapshot.recordingState === "paused" ? "Paused" : "Stopped"],
@@ -32,18 +37,29 @@ export function describePopup(reply: PopupStatus, activeTabId: number | undefine
       snapshot.manualMuted && snapshot.platformMuted ? "Muted manually and by platform" :
       snapshot.manualMuted ? "Muted manually" : snapshot.platformMuted ? "Muted by platform" : "Recording"],
   ];
+  return rows;
+}
+
+export function describePopup(reply: PopupStatus, activeTabId: number | undefined, now: number) {
+  const { snapshot, context, thisCall, recording, linked } = readPopupState(reply, activeTabId, now);
   let notice: string;
-  if (!snapshot) notice = "Open Gristmill and enable Gristmill Companion in Settings → Recording for the app you want to use.";
-  else if (snapshot.contextState === "disabled") notice = "Meet integration is disabled in Gristmill Settings.";
+  if (!snapshot) notice = "Open the app and enable Companion in Settings → Recording.";
+  else if (snapshot.contextState === "disabled") notice = "Enable Companion in Gristmill Settings → Recording.";
   else if (recording && !linked && context?.health === "recognized" && context.presence === "in-call")
-    notice = "Choose Link in the recording Note. Until then, Meet mute and Leave do not control this recording.";
-  else if (recording && !linked) notice = "Recording continues independently. Meet mute and Leave do not control it. Keep the Meet tab visible; if controls stay unrecognized, report this state.";
-  else if (snapshot.contextState === "unavailable") notice = "Meet context was lost. Recording continues and the last microphone gate is kept.";
-  else if (recording && thisCall) notice = "Meet mute controls the recorded microphone. System audio continues. Confirmed Leave ends recording and offers Restart.";
-  else if (recording && linked) notice = "This tab does not control the recording. Its linked call is shown above.";
-  else notice = "Join a Meet call, then start recording in Gristmill.";
-  return { title: recording ? linked ? "Recording · linked" : "Recording · not linked" : snapshot ? snapshot.recordingState === "paused" ? "Recording paused" : "Ready" : "App disconnected",
+    notice = "Link this call in your recording Note to follow its mute and Leave controls.";
+  else if (recording && !linked) notice = "Recording continues independently. Link a call in your Note when you’re ready.";
+  else if (snapshot.contextState === "unavailable") notice = "Call connection lost. Your recording continues in Gristmill.";
+  else if (recording && thisCall) notice = snapshot.manualMuted || snapshot.platformMuted
+    ? "Microphone muted. Call audio is still being recorded."
+    : "Your microphone and call audio are being recorded.";
+  else if (recording && linked) notice = "Open the linked call to use its recording controls.";
+  else if (snapshot.recordingState === "paused") notice = "Resume your recording in Gristmill when you’re ready.";
+  else notice = "Start a recording in Gristmill to connect your call.";
+  return { title: !snapshot ? "Open Gristmill to connect" : snapshot.contextState === "disabled" ? "Companion is turned off" :
+      recording ? !linked ? "Recording in Gristmill" : snapshot.contextState === "unavailable" ? "Call connection lost" : thisCall ? "Recording this call" : "Recording another call" :
+      snapshot.recordingState === "paused" ? "Recording paused" : "Ready for your next call",
+    connected: !!snapshot,
     tone: !snapshot || (recording && (!linked || snapshot.contextState === "unavailable")) ? "warning" : "ready",
-    rows, notice, canMute: recording && thisCall && reply.canControlMic,
+    notice, canMute: recording && thisCall && reply.canControlMic,
     manualMuted: snapshot?.manualMuted ?? false, recordingId: snapshot?.recordingId ?? null };
 }

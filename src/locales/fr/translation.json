@@ -2509,7 +2509,7 @@
   },
   "meetIntegration": {
     "title": "Gristmill Companion",
-    "setupDescription": "Chrome Stable · Extension Dev. Activez l’intégration, puis chargez le dossier via « Charger l’extension non empaquetée » dans chrome://extensions. Le son du micro coupé est ignoré ; le son système continue.",
+    "setupDescription": "Chrome Stable. Activez l’intégration, puis chargez le dossier via « Charger l’extension non empaquetée » dans chrome://extensions. Le son du micro coupé est ignoré ; le son système continue.",
     "enabled": "Activée",
     "disabled": "Désactivée",
     "loading": "Chargement…",

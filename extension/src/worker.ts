@@ -1,5 +1,4 @@
 import { z } from "zod";
-import identity from "../identity.json";
 import { COMPANION_MAX_MESSAGE_BYTES, companionContextSchema, companionDesktopMessageSchema, companionDocumentIdSchema, type CompanionCallRef, type CompanionDesktopMessage, type CompanionContext } from "../../src/contracts/companion.js";
 import type { ChromeApi, ChromePort, ChromeSender } from "./chrome.js";
 
@@ -11,7 +10,7 @@ const contentMessage = z.discriminatedUnion("type", [
 ]);
 
 /** Native connection and main snapshots are authoritative; storage carries identifiers only. */
-export function startCompanionWorker(api: ChromeApi): void {
+export function startCompanionWorker(api: ChromeApi, hostName: string): void {
   let port: ChromePort | null = null;
   let connecting = false;
   let sequence = 0;
@@ -41,7 +40,7 @@ export function startCompanionWorker(api: ChromeApi): void {
       const savedSession = (await api.storage.session.get("sessionId")).sessionId;
       sessionId = uuid.safeParse(savedSession).success ? String(savedSession) : crypto.randomUUID();
       await api.storage.session.set({ sessionId });
-      const current = api.runtime.connectNative(identity.hostName);
+      const current = api.runtime.connectNative(hostName);
       port = current;
       sequence = 0;
       current.onMessage.addListener((value) => {
@@ -123,4 +122,5 @@ export function startCompanionWorker(api: ChromeApi): void {
 }
 
 declare const chrome: ChromeApi;
-if (typeof chrome !== "undefined") startCompanionWorker(chrome);
+declare const COMPANION_HOST_NAME: string;
+if (typeof chrome !== "undefined") startCompanionWorker(chrome, COMPANION_HOST_NAME);

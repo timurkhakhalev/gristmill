@@ -4,29 +4,43 @@ Gristmill Companion is the browser extension for Gristmill. Google Meet is its f
 adapter; additional call services will use the same extension. The current adapter
 connects one Google Meet tab to a local recording. It is distinct
 from Google's own Companion mode. Chrome Stable is the supported browser channel.
-Production extension identity and Chrome Web Store verification are a separate task.
+Chrome Web Store identity and publication remain a separate task.
 
-## Development build and identity
+## Builds and app channels
 
-Run `pnpm run build:companion`, then load `build/companion-dev` unpacked from
-`chrome://extensions`. The public manifest key is pinned in
-`extension/identity.json`; no private signing key is stored or shipped.
+Run `pnpm run build:companion`. It creates two unpacked extensions:
+
+- `build/companion-dev`: Gristmill Companion (Dev), dark/gold icon, DEV label,
+  connects to `pnpm dev` or the packaged Gristmill Dev app.
+- `build/companion`: Gristmill Companion, cream/green icon, connects to the
+  production-channel Gristmill app. No diagnostics section or diagnostic-rendering
+  code is shipped in its popup.
+
+Load the matching folder unpacked from `chrome://extensions`. Both can coexist.
+Each has its own pinned public key/extension ID in `extension/identity.json`,
+native host, launcher and app-profile socket. No private signing key is stored
+or shipped. These are local unpacked identities, not verified Web Store items.
 Dev extension ID: `dpnegebmhlbkdeahjmefpfohabdihohc`.
 Native host: `com.khakhalev.gristmill.companion.dev`.
+Production host: `com.khakhalev.gristmill.companion`.
 
 The app packages the built extension and the compiled native-host entry. Its
 managed shell launcher uses the bundled Electron runtime with
-`ELECTRON_RUN_AS_NODE=1`, the absolute host script and the selected app profile.
+`ELECTRON_RUN_AS_NODE=1`, the absolute host script, selected app profile and channel.
 The registration belongs under Chrome Stable's user-data root
 `NativeMessagingHosts`, once for all its profiles. Tests use a temporary root;
 they never change the real browser registration. Foreign files and symlinks are
 not overwritten. Reinstall refreshes the owned launcher after app relocation.
 
-Chrome has one registration for this host name. Enabling integration in an app
-selects that app's runtime and profile; it does not discover whichever Gristmill
-process is running. To use `pnpm dev`, enable integration in that app's
-Settings → Recording. Starting another app does not take over a different
-profile's registration. The selected app must stay running to serve its socket.
+Chrome has one registration per host name. Enabling integration in either app
+registers only its channel and reveals only its matching extension folder.
+Both apps can run together; neither extension tries the other channel when its
+app is unavailable. Within the Dev channel, `pnpm dev` and packaged Dev share
+the development profile. The selected app must stay running to serve its socket.
+
+The compact popup shows recording guidance, supported functions and the exact
+app connection. Dev has a closed-by-default Diagnostics disclosure for tab,
+binding and microphone state. Production has no diagnostic controls.
 
 ## Trust and lifecycle
 

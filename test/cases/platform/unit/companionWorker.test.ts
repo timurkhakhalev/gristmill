@@ -6,7 +6,8 @@ import type { ChromeApi, ChromePort, ChromeSender } from "../../../../extension/
 import { popupStatusSchema } from "../../../../extension/src/popupState.ts";
 
 function workerEvent<F>() { const listeners: F[] = []; return { listeners, addListener: (listener: F) => { listeners.push(listener); } }; }
-function harness() {
+function harness(hostName = "com.khakhalev.gristmill.companion.dev") {
+  const connectedHosts: string[] = [];
   const incoming = workerEvent<(value: unknown, sender: ChromeSender, respond: (value: unknown) => void) => boolean | void>();
   const update = workerEvent<() => void>();
   const alarm = workerEvent<(value: { name: string }) => void>();
@@ -18,7 +19,8 @@ function harness() {
   const ready = new Promise<void>((resolve) => { connected = resolve; });
   const api: ChromeApi = {
     runtime: { id: "test-extension", onMessage: incoming, onUpdateAvailable: update,
-      connectNative: () => {
+      connectNative: (name) => {
+        connectedHosts.push(name);
         const onMessage = workerEvent<(value: unknown) => void>();
         const onDisconnect = workerEvent<() => void>();
         const messages: unknown[] = [];
@@ -38,8 +40,8 @@ function harness() {
     incoming.listeners[0](value, sender, (result) => { response = result; });
     return response;
   };
-  startCompanionWorker(api);
-  return { api, ports, ready, request, update, alarm, reloads: () => reloads };
+  startCompanionWorker(api, hostName);
+  return { api, ports, ready, request, update, alarm, connectedHosts, reloads: () => reloads };
 }
 
 const snapshot = (recordingState: "idle" | "recording") => ({ version: 1, type: "snapshot", connectionId: randomUUID(), recordingState,
@@ -119,4 +121,14 @@ test("popup mute is scoped to its own bound recording and cannot be sent by page
   assert.deepEqual(h.request(command, popup), { accepted: false });
   port.disconnect();
   assert.deepEqual(h.request(command, popup), { accepted: false });
+});
+
+test("each build connects only to its selected native host, including reconnect", async () => {
+  for (const hostName of ["com.khakhalev.gristmill.companion.dev", "com.khakhalev.gristmill.companion"]) {
+    const h = harness(hostName); await h.ready;
+    assert.deepEqual(h.connectedHosts, [hostName]);
+    h.ports[0].disconnect(); h.alarm.listeners[0]({ name: "gristmill-connect" });
+    for (let turn = 0; turn < 8; turn++) await Promise.resolve();
+    assert.deepEqual(h.connectedHosts, [hostName, hostName]);
+  }
 });

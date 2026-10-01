@@ -6,15 +6,17 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
-import identity from "../../../../../extension/identity.json";
+import identities from "../../../../../extension/identity.json";
 import { CompanionServer } from "../../../../../src/helpers/companionServer.ts";
 import { CompanionFrameDecoder, writeCompanionFrame } from "../../../../../src/helpers/companionFrames.ts";
 import type { CompanionDesktopMessage } from "../../../../../src/contracts/companion.ts";
 
+const identity = identities.development;
+
 const entry = path.resolve(__dirname, "../../../../../dist-main/src/helpers/companionNativeHost.js");
 const extensionOriginValue = `chrome-extension://${identity.extensionId}/`;
-function client(profile: string, extensionOrigin = extensionOriginValue) {
-  const child = spawn(process.execPath, [entry, profile, extensionOrigin], { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdio: "pipe" });
+function client(profile: string, extensionOrigin = extensionOriginValue, channel = "development") {
+  const child = spawn(process.execPath, [entry, profile, channel, extensionOrigin], { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdio: "pipe" });
   const exited = once(child, "exit");
   const waiting: Array<(value: CompanionDesktopMessage) => void> = [];
   const messages: CompanionDesktopMessage[] = [];
@@ -36,7 +38,7 @@ test("real native hosts isolate Chrome connections and invalidate identity on EO
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-companion-test-"));
   const received: string[] = [];
   const disconnected: string[] = [];
-  const server = new CompanionServer({ profilePath: profile,
+  const server = new CompanionServer({ channel: "development", profilePath: profile,
     snapshot: () => ({ recordingState: "idle", recordingId: null, binding: null, contextState: "unbound", manualMuted: false, platformMuted: false }),
     onMessage: (connection) => { received.push(connection.id); },
     onDisconnect: (connection) => { disconnected.push(connection.id); },
@@ -85,7 +87,7 @@ test("native host rejects wrong origin and unavailable profiles without leaking 
 test("app socket rejects wrong credentials, versions and oversized frames without dispatch", async (t) => {
   const net: typeof import("node:net") = require("node:net");
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-companion-auth-"));
-  const server = new CompanionServer({ profilePath: profile,
+  const server = new CompanionServer({ channel: "development", profilePath: profile,
     snapshot: () => ({ recordingState: "idle", recordingId: null, binding: null, contextState: "unbound", manualMuted: false, platformMuted: false }),
     onMessage: () => assert.fail("invalid connection must never dispatch"),
   });
@@ -100,6 +102,31 @@ test("app socket rejects wrong credentials, versions and oversized frames withou
     if (scenario === "oversize") { const frame = Buffer.alloc(4); frame.writeUInt32LE(65537); socket.write(frame); }
     else writeCompanionFrame(socket, { version: scenario === "version" ? 2 : 1, type: "authenticate", origin: extensionOriginValue,
       credential: scenario === "credential" ? "0".repeat(64) : saved.credential });
+    await closed;
+  }
+});
+
+
+test("production and Dev hosts authenticate only their own extension, even with a valid profile credential", async (t) => {
+  const net: typeof import("node:net") = require("node:net");
+  for (const channel of ["development", "production"] as const) {
+    const profile = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-companion-channel-"));
+    const server = new CompanionServer({ channel, profilePath: profile,
+      snapshot: () => ({ recordingState: "idle", recordingId: null, binding: null, contextState: "unbound", manualMuted: false, platformMuted: false }),
+      onMessage: () => assert.fail("unexpected browser command"),
+    });
+    t.after(async () => { await server.stop(); fs.rmSync(profile, { recursive: true, force: true }); });
+    await server.start();
+    const origin = `chrome-extension://${identities[channel].extensionId}/`;
+    const peer = client(profile, origin, channel); t.after(() => peer.child.kill());
+    assert.equal((await peer.next()).type, "snapshot"); peer.child.stdin.end(); await peer.exited;
+    const foreignOrigin = `chrome-extension://${identities[channel === "production" ? "development" : "production"].extensionId}/`;
+    const wrong = client(profile, foreignOrigin, channel); t.after(() => wrong.child.kill());
+    assert.equal((await wrong.exited)[0], 1);
+    const socket = net.connect(server.socketPath); socket.on("error", () => {});
+    const closed = once(socket, "close"); await once(socket, "connect");
+    const saved = JSON.parse(fs.readFileSync(server.connectionFile, "utf8")) as { credential: string };
+    writeCompanionFrame(socket, { version: 1, type: "authenticate", origin: foreignOrigin, credential: saved.credential });
     await closed;
   }
 });

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import identity from "../../extension/identity.json";
+import identities from "../../extension/identity.json";
 import { companionAuthenticationSchema, companionBrowserMessageSchema, companionDesktopMessageSchema,
   type CompanionBrowserMessage, type CompanionDesktopMessage } from "../contracts/companion.js";
 import { CompanionFrameDecoder, writeCompanionFrame } from "./companionFrames.js";
@@ -11,6 +11,7 @@ export interface CompanionConnectionFile { socketPath: string; credential: strin
 export interface CompanionConnection { id: string; installationId: string; sessionId: string }
 type Snapshot = Omit<Extract<CompanionDesktopMessage, { type: "snapshot" }>, "version" | "type" | "connectionId">;
 export interface CompanionServerOptions {
+  channel: keyof typeof identities;
   profilePath: string;
   snapshot(): Snapshot;
   onMessage(connection: CompanionConnection, message: Exclude<CompanionBrowserMessage, { type: "hello" }>, send: (message: CompanionDesktopMessage) => void): void;
@@ -99,7 +100,7 @@ export class CompanionServer {
     const decoder = new CompanionFrameDecoder((value) => {
       if (!authenticated) {
         const auth = companionAuthenticationSchema.parse(value);
-        if (auth.origin !== `chrome-extension://${identity.extensionId}/` || !timingSafeEqual(Buffer.from(auth.credential), Buffer.from(this.credential))) throw new Error("Companion authentication rejected");
+        if (auth.origin !== `chrome-extension://${identities[this.options.channel].extensionId}/` || !timingSafeEqual(Buffer.from(auth.credential), Buffer.from(this.credential))) throw new Error("Companion authentication rejected");
         authenticated = true;
         return;
       }

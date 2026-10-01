@@ -977,7 +977,7 @@ temporary profiles/.planact/visual output никогда не commit.
 
 | Milestone | Status | Commits |
 | --- | --- | --- |
-| M1 — Audio clock и mic lifecycle | not started | |
+| M1 — Audio clock и mic lifecycle | in progress | |
 | M2 — Общий platform evidence и provenance | not started | |
 | M3 — Companion protocol и local transport | not started | |
 | M4 — Meet adapter, clock sync и bound actions | not started | |

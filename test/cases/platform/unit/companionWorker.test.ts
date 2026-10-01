@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { startCompanionWorker } from "../../../../extension/src/worker.ts";
 import type { ChromeApi, ChromePort, ChromeSender } from "../../../../extension/src/chrome.ts";
+import { popupStatusSchema } from "../../../../extension/src/popupState.ts";
 
 function workerEvent<F>() { const listeners: F[] = []; return { listeners, addListener: (listener: F) => { listeners.push(listener); } }; }
 function harness() {
@@ -30,7 +31,7 @@ function harness() {
     },
     storage: { local: { get: async () => local, set: async (value) => { Object.assign(local, value); } },
       session: { get: async () => session, set: async (value) => { Object.assign(session, value); } } },
-    alarms: { create: async () => {}, onAlarm: alarm }, tabs: { sendMessage: async () => null },
+    alarms: { create: async () => {}, onAlarm: alarm }, tabs: { query: async () => [{ id: 7 }], sendMessage: async () => null },
   };
   const request = (value: unknown, sender: ChromeSender) => {
     let response: unknown;
@@ -47,14 +48,15 @@ const snapshot = (recordingState: "idle" | "recording") => ({ version: 1, type: 
 test("worker trusts validated main state and top-frame Meet senders only; updates wait for Stop", async () => {
   const h = harness(); await h.ready;
   const popup = { id: h.api.runtime.id, url: h.api.runtime.getURL("popup.html") };
-  assert.deepEqual(h.request({ type: "status" }, popup), { connected: false, snapshot: null, error: "disconnected" });
+  assert.deepEqual(h.request({ type: "status" }, popup), { connected: false, snapshot: null, error: "disconnected", contexts: [], canControlMic: false });
   const first = h.ports[0];
   assert.equal(first.messages.length, 1, "only hello is sent before main acknowledges");
   first.receive(snapshot("recording"));
-  const sender = { id: h.api.runtime.id, frameId: 0, documentId: randomUUID(), tab: { id: 7 }, url: "https://meet.google.com/abc-defg-hij" };
+  const sender = { id: h.api.runtime.id, frameId: 0, documentId: randomUUID().replaceAll("-", "").toUpperCase(), tab: { id: 7 }, url: "https://meet.google.com/abc-defg-hij" };
   const context = { type: "context", context: { sourceNs: "100", presence: "in-call", health: "recognized", reason: null,
     micMuted: true, mode: "standard", participants: [], activeParticipantIds: [], rosterComplete: false, confirmedLeave: false } };
-  for (const bad of [{ ...sender, frameId: 1 }, { ...sender, url: "https://evil.example/abc-defg-hij" }, { ...sender, id: "other-extension" }]) {
+  for (const bad of [{ ...sender, frameId: 1 }, { ...sender, url: "https://evil.example/abc-defg-hij" }, { ...sender, id: "other-extension" },
+    { ...sender, documentId: randomUUID() }, { ...sender, documentId: "0".repeat(32) }]) {
     assert.deepEqual(h.request(context, bad), { accepted: false });
   }
   assert.deepEqual(h.request({ ...context, ref: { tabId: 999 } }, sender), { accepted: false });
@@ -62,8 +64,23 @@ test("worker trusts validated main state and top-frame Meet senders only; update
   assert.equal(first.messages.length, 2);
   const sent = first.messages[1] as { ref: { tabId: number; documentId: string }; sequence: number };
   assert.equal(sent.ref.tabId, 7); assert.equal(sent.ref.documentId, sender.documentId); assert.equal(sent.sequence, 0);
+  const visible = popupStatusSchema.parse(h.request({ type: "status" }, popup));
+  assert.equal(visible.contexts.length, 1);
+  assert.equal(visible.contexts[0].ref.documentId, sender.documentId);
+  assert.equal(visible.contexts[0].context.micMuted, true);
+  first.disconnect();
+  const replacement = { ...sender, documentId: randomUUID().replaceAll("-", "").toUpperCase() };
+  assert.deepEqual(h.request(context, replacement), { accepted: false });
+  const disconnected = popupStatusSchema.parse(h.request({ type: "status" }, popup));
+  assert.equal(disconnected.connected, false);
+  assert.equal(disconnected.contexts.length, 1);
+  assert.equal(disconnected.contexts[0].ref.documentId, replacement.documentId);
+  // Reconnect for the update lifecycle assertions below.
+  h.alarm.listeners[0]({ name: "gristmill-connect" });
+  for (let turn = 0; turn < 8; turn++) await Promise.resolve();
+  h.ports[1].receive(snapshot("recording"));
   h.update.listeners[0](); assert.equal(h.reloads(), 0);
-  first.receive(snapshot("idle")); assert.equal(h.reloads(), 1);
+  h.ports[1].receive(snapshot("idle")); assert.equal(h.reloads(), 1);
   assert.deepEqual(h.request(context, sender), { accepted: false });
 });
 
@@ -86,7 +103,7 @@ test("popup mute is scoped to its own bound recording and cannot be sent by page
   const h = harness(); await h.ready;
   const port = h.ports[0];
   const hello = port.messages[0] as { installationId: string; sessionId: string };
-  const ref = { platform: "google-meet", ...hello, tabId: 7, documentId: randomUUID(), callId: "abc-defg-hij" };
+  const ref = { platform: "google-meet", ...hello, tabId: 7, documentId: randomUUID().replaceAll("-", "").toUpperCase(), callId: "abc-defg-hij" };
   const binding = { platform: ref.platform, installationId: hello.installationId, sessionId: hello.sessionId,
     tabId: ref.tabId, documentId: ref.documentId, callId: ref.callId };
   const state = { ...snapshot("recording"), binding, contextState: "recognized" };

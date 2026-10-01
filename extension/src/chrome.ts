@@ -22,5 +22,5 @@ export interface ChromeApi {
     session: { get(key: string): Promise<Record<string, unknown>>; set(value: Record<string, unknown>): Promise<void> };
   };
   alarms: { create(name: string, options: { periodInMinutes: number }): Promise<void>; onAlarm: ChromeEvent<(alarm: { name: string }) => void> };
-  tabs: { sendMessage(tabId: number, value: unknown, options: { documentId: string }): Promise<unknown> };
+  tabs: { query(options: { active: boolean; currentWindow: boolean }): Promise<Array<{ id?: number }>>; sendMessage(tabId: number, value: unknown, options: { documentId: string }): Promise<unknown> };
 }

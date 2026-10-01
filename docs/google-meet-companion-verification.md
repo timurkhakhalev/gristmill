@@ -1,4 +1,4 @@
-# Google Meet integration verification — 2026-10-01
+# Google Meet integration verification — 2026-10-02
 
 Implementation branch: `task-004-google-meet-companion`, targeting `develop`.
 Production extension identity and Chrome Web Store release are excluded.
@@ -68,11 +68,55 @@ installation or real Meet recognition.
 
 ## Still unverified
 
-The real Chrome extension/content-script path, current production Meet selectors,
-live participant indicator/name accuracy, hidden-tab/PiP behavior and speech-onset
+Live participant indicator/name accuracy, hidden-tab/PiP behavior and speech-onset
 loss on actual devices remain unverified. Built-in, wired and Bluetooth/AirPods,
 rapid push-to-talk, sleep/wake and device switching need the hardware matrix.
 Onset loss is a measurement without a numerical pass/fail threshold; no zero-loss
 claim follows from worklet or synthetic-microphone tests.
 
 This report does not mark issue #125 or the hardware acceptance complete.
+
+## Live Chrome controls and popup — 2026-10-02
+
+The unpacked Dev extension was updated in the user's Chrome Stable profile. Its
+native host points to the separately packaged `Gristmill Meet Dev.app`, using an
+explicit `Gristmill Meet Dev` profile. The regular app/profile was not replaced.
+The one-person test call used disabled Meet microphone and camera.
+
+Two causes of the earlier unrecognized/unbound state were fixed:
+
+- Localized Leave/mic/exit text determined the adapter's control state. The current
+  adapter instead uses live-observed `jsname` controls and `data-is-muted`.
+  Technical exit markers require a prior trusted Leave click; missing controls
+  never imply Leave. Synthetic regression fixtures use arbitrary button/heading
+  text and opposite camera/mic states.
+- Chrome sends a 32-digit hexadecimal document token. The worker and shared
+  protocol had incorrectly required a hyphenated UUID. The strict shared contract
+  now accepts the actual token unchanged; worker and real native-host tests use
+  Chrome-shaped IDs. Hyphenated UUIDs, zero tokens and foreign/top-frame failures
+  remain rejected. Chromium's implementation is
+  [ExtensionApiFrameIdMap::DocumentIdFromString](https://github.com/chromium/chromium/blob/main/extensions/browser/extension_api_frame_id_map.cc).
+
+Observed through the installed browser/app path:
+
+- Idle popup: Connected, In call, Meet microphone Muted, recording Stopped.
+- Start in a separate test Note: automatic binding to the single fresh call;
+  Note displayed Linked to Meet, with the microphone gate held by platform mute.
+- Popup during capture: Recording · linked, Linked to this call, Meet microphone
+  Muted, Recorded microphone Muted by platform. Local DOM detection and app-owned
+  recording/binding/gate state are displayed separately.
+- Clicking Leave reached the technical exit screen, ended capture and showed the
+  saved recording's 15-second processing countdown. Without provider credentials,
+  processing then waited for settings. No successful ASR result is claimed.
+
+The live participant tiles had participant IDs and visible names in `span.notranslate`,
+but did not expose the explicit name/self/speaking attributes consumed by the
+current adapter. This check therefore does **not** establish working live speaker
+name attribution; the current live name/activity extraction still needs work.
+
+Follow-up verification: focused eight-file adapter/content/worker/popup/coordinator/
+transport/evidence/UI selection passed; `pnpm run typecheck` passed; `pnpm run lint`
+passed with 31 existing root-config warnings and three renderer warnings (no errors).
+`pnpm test` passed all 427 files in 86.852 seconds. `pnpm run pack` passed, including
+packaged SQLite verification, and that app plus its rebuilt extension were installed
+for the live check. Reload invalidation cleanup has a dedicated content-script test.

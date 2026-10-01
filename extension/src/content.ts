@@ -11,6 +11,24 @@ let scheduled = false;
 let leaveRequestedUntil = 0;
 let lastProbe = -Infinity;
 const observed = new Map<Document, MutationObserver>();
+function stop(): void {
+  stopped = true;
+  clearInterval(timer);
+  for (const [doc, observer] of observed) {
+    observer.disconnect();
+    doc.removeEventListener("click", onClick, true);
+  }
+  observed.clear();
+}
+function send(value: unknown): void {
+  if (stopped) return;
+  try {
+    void chrome.runtime.sendMessage(value).catch(() => {});
+  } catch {
+    // Reloading the extension invalidates the old content script synchronously.
+    stop();
+  }
+}
 const onClick = (event: Event) => {
   if (event.isTrusted && event.target instanceof Element && isMeetLeaveControl(event.target))
     leaveRequestedUntil = performance.now() + 10_000;
@@ -46,12 +64,10 @@ function scan(): void {
     sourceNs(),
     performance.now() <= leaveRequestedUntil && leaveRequestedUntil > 0
   );
-  void chrome.runtime.sendMessage({ type: "context", context }).catch(() => {});
+  send({ type: "context", context });
   if (performance.now() - lastProbe >= 1000) {
     lastProbe = performance.now();
-    void chrome.runtime
-      .sendMessage({ type: "clock-probe", nonce: crypto.randomUUID(), sourceSendNs: sourceNs() })
-      .catch(() => {});
+    send({ type: "clock-probe", nonce: crypto.randomUUID(), sourceSendNs: sourceNs() });
   }
 }
 function schedule(): void {
@@ -64,9 +80,7 @@ chrome.runtime.onMessage.addListener((value) => {
   const received = sourceNs();
   const parsed = companionDesktopMessageSchema.safeParse(value);
   if (parsed.success && parsed.data.type === "clock-reply") {
-    void chrome.runtime
-      .sendMessage({ type: "clock-confirm", nonce: parsed.data.nonce, sourceReceiveNs: received })
-      .catch(() => {});
+    send({ type: "clock-confirm", nonce: parsed.data.nonce, sourceReceiveNs: received });
   }
 });
 let timer = setInterval(scan, 1000);
@@ -74,18 +88,6 @@ document.addEventListener("visibilitychange", schedule);
 window.addEventListener("pageshow", (event) => {
   if (event.persisted && stopped) { stopped = false; timer = setInterval(scan, 1000); scan(); }
 });
-window.addEventListener(
-  "pagehide",
-  () => {
-    stopped = true;
-    clearInterval(timer);
-    for (const [doc, observer] of observed) {
-      observer.disconnect();
-      doc.removeEventListener("click", onClick, true);
-    }
-    observed.clear();
-  },
-  { once: true }
-);
+window.addEventListener("pagehide", stop);
 (window as PiPWindow).documentPictureInPicture?.addEventListener("enter", schedule);
 scan();

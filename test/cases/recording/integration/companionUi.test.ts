@@ -47,7 +47,7 @@ test("manual mic button works without Meet API and does not promise unmute while
 test("late call selection does nothing before click and rejects stale confirmation visibly", async (t) => {
   const calls: unknown[] = [];
   const status: CompanionStatus = { enabled: true, binding: null, contextUnavailableSince: null, contextReason: null, reminderShown: false,
-    candidates: [{ connectionId: UUID, ref: { platform: "google-meet", installationId: UUID, sessionId: UUID, tabId: 1, documentId: UUID, callId: "abc-defg-hij" }, receivedAt: 0,
+    candidates: [{ connectionId: UUID, ref: { platform: "google-meet", installationId: UUID, sessionId: UUID, tabId: 1, documentId: UUID.replaceAll("-", "").toUpperCase(), callId: "abc-defg-hij" }, receivedAt: 0,
       context: { sourceNs: "1000", presence: "in-call", health: "recognized", reason: null, micMuted: true, mode: "standard", participants: [], activeParticipantIds: [], rosterComplete: false, confirmedLeave: false } }] };
   const ui = await mount(t, "/components/notes/MeetBindingControl.tsx", { getMeetCompanionStatus: async () => status,
     onMeetCompanionStatus: () => () => {}, confirmMeetCompanionBinding: async (request: unknown) => { calls.push(request); return { success: false }; } });

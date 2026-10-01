@@ -39,7 +39,9 @@ installation IDs and tab IDs alone never authorize recording actions.
 The worker accepts content messages only from the extension's own top-frame
 Google Meet document. It derives tab, document and call identity from Chrome's
 sender rather than accepting those fields from the page. Main snapshots own
-recording/binding status. Cached storage carries identifiers only. Reconnect
+recording/binding status. Chrome's document ID is the original 32-digit hexadecimal
+token, kept unchanged for document-scoped replies; it is not a hyphenated UUID.
+Cached storage carries identifiers only. Reconnect
 clears Connected and all old-port authority. Extension updates are deferred until
 an authoritative idle snapshot; missing app/host stays visibly disconnected.
 
@@ -84,9 +86,22 @@ reminder with a manually chosen, recording-scoped Stop action.
 `extension/src/meetAdapter.ts` is adapter version 1. Sanitized RU/EN DOM fixtures
 live under `test/fixtures/meet/v1`; an isolated Electron renderer exercises the
 actual DOM API against them. These are adapter contract fixtures, not evidence
-that Google's current production UI still exposes every selector. Unknown UI is
-reported explicitly. No camera, layout or PiP-opening actions are performed.
+that Google's current production UI still exposes every selector. A live Chrome
+check on 2026-10-02 observed Leave `jsname="CQylAd"`, microphone `jsname="hw0c9"`
+with `data-is-muted`, and the exit screen's `h1[jsname="r4nke"]` together with
+rejoin `button[jsname="W6suGc"]`. The adapter uses these technical attributes;
+translated labels never determine presence, mute, mode or confirmed Leave.
+Camera's separate `data-is-muted` is excluded. Missing or conflicting technical
+controls stay unknown and never authorize Stop or unmute. Unknown UI is reported
+explicitly. No layout or PiP-opening actions are performed by the extension.
 Already-open document PiP is read alongside the main document.
+
+The popup distinguishes the active tab's fresh browser observation from the
+app's authoritative recording, binding and microphone gate. An unbound recording
+explicitly says that Meet mute and Leave have no effect and directs the user to
+Link in its Note. Browser observations remain explanatory when the app disconnects;
+they cannot authorize recording controls. Reload invalidates and disposes the old
+content observer/timer; reload the Meet page to load the replacement script.
 
 Browser performance-clock probes reach the real native audio helper and return
 nonce-correlated four-timestamp samples. Only the bound document probes the

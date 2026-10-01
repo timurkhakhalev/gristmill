@@ -2,11 +2,13 @@ import { z } from "zod";
 
 export const COMPANION_MAX_MESSAGE_BYTES = 64 * 1024;
 const uuid = z.string().uuid();
+// Chrome documentId is an UnguessableToken serialized as 32 hexadecimal digits.
+export const companionDocumentIdSchema = z.string().regex(/^[A-Fa-f0-9]{32}$/).refine(value => !/^0{32}$/.test(value));
 const ns = z.string().regex(/^\d{1,20}$/);
 const sequence = z.number().int().nonnegative().safe();
 export const companionCallRefSchema = z.object({
   platform: z.literal("google-meet"), installationId: uuid, sessionId: uuid,
-  tabId: z.number().int().nonnegative(), documentId: uuid,
+  tabId: z.number().int().nonnegative(), documentId: companionDocumentIdSchema,
   callId: z.string().regex(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/),
 }).strict();
 export type CompanionCallRef = z.infer<typeof companionCallRefSchema>;

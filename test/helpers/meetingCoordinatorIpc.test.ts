@@ -332,7 +332,7 @@ test("renderer audio is acknowledged only after its raw PCM bytes are written", 
     raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
     "mic",
     START.sessionId,
-    { epochIndex: 0, epochStartFrame: 100, sequence: 0, sampleOffset: 0 }
+    { epochIndex: 0, epochStartFrame: 100, frameStart: 100, sourceGeneration: 1, sequence: 0, sampleOffset: 0 }
   );
 
   assert.deepEqual(response, { success: true, sequence: 0 });
@@ -356,7 +356,7 @@ test("disk errors reject acknowledgement and finalize incomplete", async () => {
       raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
       "mic",
       START.sessionId,
-      { epochIndex: 0, epochStartFrame: 0, sequence: 0, sampleOffset: 0 }
+      { epochIndex: 0, epochStartFrame: 0, frameStart: 0, sourceGeneration: 1, sequence: 0, sampleOffset: 0 }
     ),
     /disk full/
   );

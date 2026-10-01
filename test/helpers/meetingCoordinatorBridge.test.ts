@@ -152,6 +152,9 @@ async function createFixture({ responses = {}, engine }: {
       createMeetingRecording: unused,
       createMeetingRecordingEpoch: unused,
       updateMeetingRecordingEpochRecovery: unused,
+      openMeetingIntentionalInterval: () => ({ id: "interval-1", recordingId: "recording-1", source: "mic", startFrame: 0, endFrame: null, reason: "manual-muted" }),
+      closeMeetingIntentionalInterval: () => null,
+      listMeetingIntentionalIntervals: () => [],
       markMeetingRecordingFinalizing: unused,
       finalizeMeetingRecording: unused,
     },
@@ -278,7 +281,7 @@ test("capture send crosses with source and sequencing metadata and returns its w
   });
   const buffer = new ArrayBuffer(8);
   const sessionId = "capture-session";
-  const packet = { epochIndex: 1, epochStartFrame: 24_000, sequence: 3, sampleOffset: 120 };
+  const packet = { epochIndex: 1, epochStartFrame: 24_000, frameStart: 24_120, sourceGeneration: 1, sequence: 3, sampleOffset: 120 };
 
   assert.deepEqual(plain(await api.meetingTranscriptionSend(buffer, "mic", sessionId, packet)), {
     success: true,

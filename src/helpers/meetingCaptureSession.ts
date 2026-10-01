@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type {
   MeetingRecordingDto,
+  MeetingIntentionalInterval,
   MeetingSource,
 } from "../contracts/meetingRecording.js";
 import { MEETING_ASR_GATE_MS } from "../contracts/meetingRecording.js";
@@ -39,6 +40,9 @@ export interface MeetingCaptureDatabase {
       errorCode?: string | null;
     }
   ): { recording: MeetingRecordingDto; initialRun: { id: string } };
+  openMeetingIntentionalInterval(recordingId: string, source: MeetingSource, startFrame: number, reason: MeetingIntentionalInterval["reason"]): MeetingIntentionalInterval;
+  closeMeetingIntentionalInterval(recordingId: string, source: MeetingSource, endFrame: number, reason: MeetingIntentionalInterval["reason"]): MeetingIntentionalInterval | null;
+  listMeetingIntentionalIntervals(recordingId: string): MeetingIntentionalInterval[];
 }
 
 export interface MeetingCaptureEpochStorage {
@@ -60,6 +64,8 @@ export interface MeetingCaptureEpochStorage {
 export interface MeetingCapturePacket {
   epochIndex: number;
   epochStartFrame: number;
+  frameStart: number;
+  sourceGeneration: number;
   sequence: number;
   sampleOffset: number;
 }
@@ -94,6 +100,14 @@ export class MeetingCaptureSession {
   private readonly epochs = new Map<MeetingSource, CaptureEpoch>();
   private readonly sourceErrors = new Map<MeetingSource, string>();
   private readonly mainOwnedSources = new Set<MeetingSource>();
+  private micManualMuted = false;
+  private micPlatformMuted = false;
+  private micSourceGeneration = 1;
+  private micControlSequence = 0;
+  private allowIntentionalMicEpoch = false;
+  private micUnmuteBoundaryFrame: number | null = null;
+  private monotonicOriginNs: string | null = null;
+  private micIntentQueue: Promise<void> = Promise.resolve();
   private stopPromise: Promise<MeetingCaptureStopResult> | null = null;
   private captureError: string | null = null;
   private readonly closingEpochs: Promise<void>[] = [];
@@ -105,7 +119,8 @@ export class MeetingCaptureSession {
     config: { config: unknown | null; configError?: unknown } | null,
     startedAt: Date,
     recordingId: string = randomUUID(),
-    groupId: string = recordingId
+    groupId: string = recordingId,
+    manualMicMuted = false
   ) {
     this.recordingId = recordingId;
     this.groupId = groupId;
@@ -117,6 +132,8 @@ export class MeetingCaptureSession {
       recordingId,
       groupId
     );
+    this.micManualMuted = manualMicMuted;
+    if (manualMicMuted) this.database.openMeetingIntentionalInterval(recordingId, "mic", 0, "manual-muted");
   }
 
   static create(
@@ -126,9 +143,10 @@ export class MeetingCaptureSession {
     config: { config: unknown | null; configError?: unknown } | null,
     startedAt = new Date(),
     recordingId?: string,
-    groupId?: string
+    groupId?: string,
+    manualMicMuted = false
   ): MeetingCaptureSession {
-    return new MeetingCaptureSession(database, storage, noteId, config, startedAt, recordingId, groupId);
+    return new MeetingCaptureSession(database, storage, noteId, config, startedAt, recordingId, groupId, manualMicMuted);
   }
 
   get isStopping(): boolean {
@@ -139,6 +157,24 @@ export class MeetingCaptureSession {
     return this.captureError;
   }
 
+  getMonotonicOriginNs(): string | null {
+    return this.monotonicOriginNs;
+  }
+
+  setMonotonicOriginNs(value: string): void {
+    if (!/^\d{1,20}$/.test(value) || this.monotonicOriginNs !== null) {
+      throw new Error("Invalid or repeated meeting clock origin");
+    }
+    this.monotonicOriginNs = value;
+  }
+
+  frameForMonotonicNs(value: string): number | null {
+    if (!this.monotonicOriginNs || !/^\d{1,20}$/.test(value)) return null;
+    const delta = BigInt(value) - BigInt(this.monotonicOriginNs);
+    const frame = Number(delta) * SAMPLE_RATE / 1e9;
+    return Number.isSafeInteger(Math.round(frame)) && frame >= 0 ? Math.round(frame) : null;
+  }
+
   markSourceUnavailable(source: MeetingSource, errorCode: string): void {
     if (this.stopPromise) return;
     this.sourceErrors.set(source, errorCode);
@@ -146,6 +182,80 @@ export class MeetingCaptureSession {
 
   markCaptureFailure(errorCode: string): void {
     this.captureError ??= errorCode;
+  }
+
+  setMicIntent(input: {
+    sequence: number;
+    sourceGeneration: number;
+    manualMuted: boolean;
+    platformMuted: boolean;
+    boundaryFrame: number;
+  }): Promise<{ sequence: number; sourceGeneration: number; effectiveMuted: boolean; boundaryFrame: number }> {
+    if (this.stopPromise) throw new Error("Meeting capture is stopping");
+    const operation = this.micIntentQueue.then(() => this.applyMicIntent(input));
+    this.micIntentQueue = operation.then(() => undefined, () => {
+      this.captureError ??= "mic-intent-transition-failed";
+    });
+    return operation;
+  }
+
+  private async applyMicIntent(input: {
+    sequence: number;
+    sourceGeneration: number;
+    manualMuted: boolean;
+    platformMuted: boolean;
+    boundaryFrame: number;
+  }): Promise<{ sequence: number; sourceGeneration: number; effectiveMuted: boolean; boundaryFrame: number }> {
+    if (this.stopPromise) throw new Error("Meeting capture is stopping");
+    if (input.sequence !== this.micControlSequence + 1 ||
+        (input.sourceGeneration !== this.micSourceGeneration && input.sourceGeneration !== this.micSourceGeneration + 1) ||
+        !Number.isSafeInteger(input.boundaryFrame) || input.boundaryFrame < 0) {
+      throw new Error("Stale microphone intent transition");
+    }
+    const previous = { manualMuted: this.micManualMuted, platformMuted: this.micPlatformMuted };
+    const current = { manualMuted: input.manualMuted, platformMuted: input.platformMuted };
+    const wasMuted = previous.manualMuted || previous.platformMuted;
+    const isMuted = current.manualMuted || current.platformMuted;
+    const epoch = this.epochs.get("mic");
+    const epochEnd = epoch ? epoch.startFrame + epoch.frameCount : 0;
+    if (input.boundaryFrame < epochEnd) throw new Error("Microphone intent boundary precedes captured audio");
+
+    if (input.sourceGeneration !== this.micSourceGeneration) {
+      if (epoch) this.sourceErrors.set("mic", "source-restarted");
+      this.micSourceGeneration = input.sourceGeneration;
+    }
+    if (!wasMuted && isMuted && this.micUnmuteBoundaryFrame !== null) {
+      this.sourceErrors.set("mic", "mic-source-unavailable");
+      this.micUnmuteBoundaryFrame = null;
+    }
+    if (wasMuted !== isMuted && isMuted && epoch) {
+      await this.closeEpoch("mic", epoch);
+      this.allowIntentionalMicEpoch = true;
+    }
+    for (const [reason, before, after] of [
+      ["manual-muted", previous.manualMuted, current.manualMuted],
+      ["platform-muted", previous.platformMuted, current.platformMuted],
+    ] as const) {
+      if (before === after) continue;
+      if (after) {
+        this.database.openMeetingIntentionalInterval(this.recordingId, "mic", input.boundaryFrame, reason);
+      } else {
+        this.database.closeMeetingIntentionalInterval(this.recordingId, "mic", input.boundaryFrame, reason);
+      }
+    }
+    if (wasMuted && !isMuted) {
+      this.allowIntentionalMicEpoch = true;
+      this.micUnmuteBoundaryFrame = input.boundaryFrame;
+    }
+    this.micManualMuted = current.manualMuted;
+    this.micPlatformMuted = current.platformMuted;
+    this.micControlSequence = input.sequence;
+    return {
+      sequence: input.sequence,
+      sourceGeneration: input.sourceGeneration,
+      effectiveMuted: isMuted,
+      boundaryFrame: input.boundaryFrame,
+    };
   }
 
   beginSourceEpoch(source: MeetingSource, startFrame: number): number {
@@ -180,10 +290,16 @@ export class MeetingCaptureSession {
         if (epoch) this.closeEpoch(source, epoch);
         const nextStart = packet.epochStartFrame;
         const minimumStart = epoch ? epoch.startFrame + epoch.frameCount : 0;
-        if (!Number.isSafeInteger(nextStart) || nextStart < minimumStart) {
+        if (!Number.isSafeInteger(nextStart) || nextStart < minimumStart || packet.frameStart !== nextStart) {
           throw new Error("Invalid meeting capture epoch offset");
         }
-        if (epoch) this.sourceErrors.set(source, "source-restarted");
+        if (source === "mic") {
+          if (packet.sourceGeneration !== this.micSourceGeneration || (this.micManualMuted || this.micPlatformMuted)) {
+            throw new Error("Microphone samples do not match the active intent generation");
+          }
+          if (epoch && !this.allowIntentionalMicEpoch) this.sourceErrors.set(source, "source-restarted");
+          this.allowIntentionalMicEpoch = false;
+        } else if (epoch) this.sourceErrors.set(source, "source-restarted");
         epoch = this.openEpoch(source, packet.epochIndex, nextStart);
       } else if (packet.epochStartFrame !== epoch.startFrame) {
         throw new Error("Meeting capture epoch offset changed");
@@ -193,9 +309,21 @@ export class MeetingCaptureSession {
         !Number.isSafeInteger(packet.sequence) ||
         packet.sequence !== epoch.nextSequence ||
         !Number.isSafeInteger(packet.sampleOffset) ||
-        packet.sampleOffset !== epoch.frameCount
+        packet.sampleOffset !== epoch.frameCount ||
+        !Number.isSafeInteger(packet.frameStart) ||
+        packet.frameStart !== epoch.startFrame + epoch.frameCount ||
+        (source === "mic" && packet.sourceGeneration !== this.micSourceGeneration)
       ) {
         throw new Error("Meeting capture packet is out of order");
+      }
+      if (source === "mic" && this.micUnmuteBoundaryFrame !== null) {
+        if (packet.frameStart < this.micUnmuteBoundaryFrame) {
+          throw new Error("Microphone samples precede the acknowledged unmute boundary");
+        }
+        if (packet.frameStart > this.micUnmuteBoundaryFrame) {
+          this.sourceErrors.set("mic", "mic-source-unavailable");
+        }
+        this.micUnmuteBoundaryFrame = null;
       }
       this.storage.appendEpochSamples(this.recordingId, source, epoch.index, samples);
       epoch.frameCount += frameCount;
@@ -207,18 +335,23 @@ export class MeetingCaptureSession {
     }
   }
 
-  appendNativeSamples(source: MeetingSource, samples: Buffer, startedAt = new Date()): void {
+  appendNativeSamples(source: MeetingSource, samples: Buffer, frameStart: number): void {
     if (this.stopPromise) return;
     this.mainOwnedSources.add(source);
     if (samples.length === 0 || samples.length % 2 !== 0) {
       this.markCaptureFailure("audio-write-failed");
       throw new Error("Invalid PCM16LE sample packet");
     }
+    if (!Number.isSafeInteger(frameStart) || frameStart < 0) throw new Error("Invalid native audio frame anchor");
     let epoch = this.epochs.get(source);
     if (!epoch) {
-      const index = this.beginSourceEpoch(source, this.toFrame(startedAt));
+      const index = this.beginSourceEpoch(source, frameStart);
       epoch = this.epochs.get(source);
       if (!epoch || epoch.index !== index) throw new Error("Meeting capture epoch was not opened");
+    } else if (frameStart !== epoch.startFrame + epoch.frameCount) {
+      this.beginSourceEpoch(source, frameStart);
+      epoch = this.epochs.get(source);
+      if (!epoch) throw new Error("Meeting capture epoch was not opened");
     }
     try {
       const maxChunkBytes = MAX_PACKET_FRAMES * 2;
@@ -226,6 +359,8 @@ export class MeetingCaptureSession {
         const packet = {
           epochIndex: epoch.index,
           epochStartFrame: epoch.startFrame,
+          frameStart: epoch.startFrame + epoch.frameCount,
+          sourceGeneration: 1,
           sequence: epoch.nextSequence,
           sampleOffset: epoch.frameCount,
         };
@@ -239,7 +374,7 @@ export class MeetingCaptureSession {
 
   async stop(input: MeetingCaptureStopInput): Promise<MeetingCaptureStopResult> {
     if (this.stopPromise) return this.stopPromise;
-    this.stopPromise = this.finish(input);
+    this.stopPromise = this.micIntentQueue.then(() => this.finish(input));
     return this.stopPromise;
   }
 
@@ -247,6 +382,9 @@ export class MeetingCaptureSession {
     let errorCode = this.captureError ?? input.errorCode ?? null;
     let latestSavedFrame = 0;
     for (const source of ["mic", "system"] as const) {
+      if (source === "mic" && this.micUnmuteBoundaryFrame !== null) {
+        this.sourceErrors.set("mic", "mic-source-unavailable");
+      }
       const epoch = this.epochs.get(source);
       const receivedLastSequence = input.lastSequence[source];
       if (
@@ -258,7 +396,10 @@ export class MeetingCaptureSession {
         this.sourceErrors.set(source, "capture-drain-incomplete");
       }
       if (!epoch || epoch.frameCount === 0) {
-        this.sourceErrors.set(source, this.sourceErrors.get(source) ?? "source-unavailable");
+        const intervals = this.database.listMeetingIntentionalIntervals(this.recordingId).filter((item) => item.source === source);
+        const intentionallyCovered = source === "mic" && (this.micManualMuted || this.micPlatformMuted) &&
+          intervals.some((item) => item.startFrame === 0 && item.endFrame === null);
+        if (!intentionallyCovered) this.sourceErrors.set(source, this.sourceErrors.get(source) ?? "source-unavailable");
       }
       if (epoch) {
         try {
@@ -282,6 +423,13 @@ export class MeetingCaptureSession {
     }
 
     await Promise.all(this.closingEpochs);
+    latestSavedFrame = Math.max(latestSavedFrame, ...this.database.listMeetingIntentionalIntervals(this.recordingId)
+      .map((interval) => interval.endFrame ?? interval.startFrame));
+    for (const reason of ["manual-muted", "platform-muted"] as const) {
+      this.database.closeMeetingIntentionalInterval(this.recordingId, "mic", latestSavedFrame, reason);
+    }
+    const captureEndFrame = Math.max(latestSavedFrame, ...this.database.listMeetingIntentionalIntervals(this.recordingId)
+      .map((interval) => interval.endFrame ?? interval.startFrame));
     errorCode ??= this.captureError;
     if (this.sourceErrors.size > 0) errorCode ??= this.sourceErrors.values().next().value ?? null;
     this.database.markMeetingRecordingFinalizing(this.recordingId);
@@ -292,6 +440,8 @@ export class MeetingCaptureSession {
         : new Date().toISOString()),
       processingNotBefore: new Date(Date.now() + MEETING_ASR_GATE_MS).toISOString(),
       sourceMetadata: {
+        captureEndFrame,
+        monotonicOriginNs: this.monotonicOriginNs,
         mic: { errorCode: this.sourceErrors.get("mic") ?? null },
         system: { errorCode: this.sourceErrors.get("system") ?? null },
       },
@@ -337,7 +487,4 @@ export class MeetingCaptureSession {
     return closing;
   }
 
-  private toFrame(at: Date): number {
-    return Math.max(0, Math.round((at.getTime() - Date.parse(this.originAt)) * SAMPLE_RATE / 1000));
-  }
 }

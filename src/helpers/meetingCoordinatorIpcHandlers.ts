@@ -52,6 +52,8 @@ import { meetingRecordingConfigInputSchema } from "../contracts/meetingRecording
 import {
   meetingCapturePacketSchema,
   meetingCaptureStopRequestSchema,
+  meetingMicIntentRequestSchema,
+  meetingClockProbeRequestSchema,
   meetingOptionsSchema,
 } from "../contracts/meetingCoordinator.js";
 import { createMeetingTranscriptionLifecycle } from "./meetingTranscriptionLifecycle.js";
@@ -150,7 +152,7 @@ export interface MeetingCoordinatorDeps {
     "recordMeetingAudioChunk" | "setRecordingSystemAudioAvailable" | "setMicWarmHold" |
     "getPreferences" | "setPreferences" | "handleNotificationResponse" |
     "joinCalendarMeeting" | "findCalendarEventNote" | "createCalendarEventNote"> & MeetingAutoEndEngineLike) | null;
-  audioTapManager: Pick<AudioTapManager, "isSupported" | "start" | "stop"> | null;
+  audioTapManager: Pick<AudioTapManager, "isSupported" | "start" | "stop" | "probeClock" | "getClockOrigin"> | null;
   whisperManager: {
     transcribeLocalWhisper(
       audio: Buffer,
@@ -1740,7 +1742,8 @@ export function registerMeetingCoordinatorHandlers(
         recordingConfig,
         startedAt,
         undefined,
-        typeof options.groupId === "string" ? options.groupId : undefined
+        typeof options.groupId === "string" ? options.groupId : undefined,
+        options.manualMicMuted === true
       );
     } catch (error) {
       meetingTranscriptionStartInProgress = false;
@@ -1795,6 +1798,8 @@ export function registerMeetingCoordinatorHandlers(
         sessionId,
         recordingId: capture.recordingId,
         originAt: capture.originAt,
+        monotonicOriginNs: capture.getMonotonicOriginNs(),
+        helperGeneration: audioTapManager?.getClockOrigin()?.helperGeneration,
         systemAudioMode,
         systemAudioStrategy,
       };
@@ -1854,7 +1859,7 @@ export function registerMeetingCoordinatorHandlers(
     manager: NonNullable<MeetingCoordinatorDeps["audioTapManager"]>
   ): Promise<void> => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    const timeline = createMeetingAudioTimeline({ originAt: Date.parse(capture.originAt) });
+    const timeline = createMeetingAudioTimeline();
     const reportLevel = (rms: number) => {
       meetingSystemAudioLevelPeak = Math.max(meetingSystemAudioLevelPeak, rms);
       const now = Date.now();
@@ -1869,21 +1874,30 @@ export function registerMeetingCoordinatorHandlers(
       meetingSystemAudioLevelPeak = 0;
     };
     let generation: string | undefined;
+    let generationFrameOrigin = 0;
     const evidence = platformCollector;
     const startCapture = () =>
       manager.start({
         onStart: (message) => {
           generation = message.generation;
-          const startFrame = timeline.markRestart(Date.now());
+          if (!message.generation || !message.monotonicOriginNs || message.originFrame !== 0) {
+            capture.markSourceUnavailable("system", "audio-clock-unavailable");
+            throw new Error("Native audio tap did not provide its actual frame clock");
+          }
+          if (capture.getMonotonicOriginNs() === null) capture.setMonotonicOriginNs(message.monotonicOriginNs);
+          const startFrame = capture.frameForMonotonicNs(message.monotonicOriginNs);
+          if (startFrame === null) throw new Error("Native audio tap clock cannot be mapped to the recording origin");
+          generationFrameOrigin = startFrame;
           const epochIndex = capture.beginSourceEpoch("system", startFrame);
           if (generation) evidence?.bindClock(generation, epochIndex, startFrame);
           else evidence?.invalidate("clock-generation-missing");
         },
         onClock: (clock) => evidence?.recordClock(clock),
-        onChunk: (chunk) => {
+        onChunk: (chunk, sourceFrameStart) => {
           try {
-            timeline.write(chunk, (raw) => {
-              capture.appendNativeSamples("system", raw);
+            const frameStart = generationFrameOrigin + sourceFrameStart;
+            timeline.write(chunk, frameStart, (raw, anchoredFrameStart) => {
+              capture.appendNativeSamples("system", raw, anchoredFrameStart);
               evidence?.recordDeliveredFrames(generation, raw.length / 2);
               meetingDetectionEngine?.recordMeetingAudioChunk("system", raw);
               const { rms, peak } = computeChunkStats(raw);
@@ -1942,6 +1956,37 @@ export function registerMeetingCoordinatorHandlers(
         sampleOffset: number;
       })
   );
+
+  ipcMain.handle("meeting-transcription-set-mic-intent", async (event, request: unknown) => {
+    const parsed = meetingMicIntentRequestSchema.safeParse(request);
+    if (!parsed.success) return { success: false, error: "Microphone intent request is invalid" };
+    const capture = activeCaptureSession;
+    if (!capture || event.sender !== activeCaptureOwner ||
+        parsed.data.sessionId !== activeCaptureSessionId || parsed.data.recordingId !== capture.recordingId) {
+      return { success: false, error: "Microphone intent belongs to a stale recording" };
+    }
+    try {
+      const result = await capture.setMicIntent(parsed.data);
+      return { success: true, ...result };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Microphone intent was rejected" };
+    }
+  });
+
+  ipcMain.handle("meeting-transcription-probe-clock", async (event, request: unknown) => {
+    const parsed = meetingClockProbeRequestSchema.safeParse(request);
+    const capture = activeCaptureSession;
+    if (!parsed.success || !audioTapManager || !capture || event.sender !== activeCaptureOwner ||
+        parsed.data.sessionId !== activeCaptureSessionId || parsed.data.recordingId !== capture.recordingId) {
+      return { success: false, error: "Clock probe belongs to a stale recording" };
+    }
+    try {
+      const reply = await audioTapManager.probeClock(parsed.data.nonce);
+      return { success: true, ...reply };
+    } catch (error) {
+      return { success: false, nonce: parsed.data.nonce, error: error instanceof Error ? error.message : "Clock probe failed" };
+    }
+  });
 
   const stopMeetingTranscription = async (
     expectedSessionId: string,

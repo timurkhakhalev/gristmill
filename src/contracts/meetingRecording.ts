@@ -189,6 +189,20 @@ export const meetingRecordingEpochDtoSchema = z.object({
 });
 export type MeetingRecordingEpochDto = z.infer<typeof meetingRecordingEpochDtoSchema>;
 
+export const meetingIntentionalIntervalSchema = z.object({
+  id: z.string().uuid(),
+  recordingId: meetingRecordingIdSchema,
+  source: meetingSourceSchema,
+  startFrame: z.number().int().nonnegative(),
+  endFrame: z.number().int().nonnegative().nullable(),
+  reason: z.enum(["manual-muted", "platform-muted"]),
+}).superRefine((interval, context) => {
+  if (interval.endFrame !== null && interval.endFrame < interval.startFrame) {
+    context.addIssue({ code: "custom", path: ["endFrame"], message: "Interval end precedes its start" });
+  }
+});
+export type MeetingIntentionalInterval = z.infer<typeof meetingIntentionalIntervalSchema>;
+
 export const meetingProcessingRunDtoSchema = z.object({
   id: meetingRecordingIdSchema,
   recordingId: meetingRecordingIdSchema,

@@ -25,6 +25,7 @@ import {
   meetingRecordingConfigInputSchema,
   meetingRunArtifactSchema,
   meetingSourceSchema,
+  meetingIntentionalIntervalSchema,
   type MeetingAudioState,
   type MeetingCaptureState,
   type MeetingDeletionIntentDto,
@@ -33,6 +34,7 @@ import {
   type MeetingProcessingRunDto,
   type MeetingRecordingDto,
   type MeetingRecordingEpochDto,
+  type MeetingIntentionalInterval,
   type MeetingRunArtifact,
   type MeetingRunStage,
   type MeetingRunStatus,
@@ -754,6 +756,20 @@ export class DatabaseManager {
           PRIMARY KEY (recording_id, source, epoch_index)
         );
 
+        CREATE TABLE IF NOT EXISTS meeting_recording_intentional_intervals (
+          id TEXT PRIMARY KEY,
+          recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE,
+          source TEXT NOT NULL CHECK(source IN ('mic', 'system')),
+          start_frame INTEGER NOT NULL CHECK(start_frame >= 0),
+          end_frame INTEGER CHECK(end_frame IS NULL OR end_frame >= start_frame),
+          reason TEXT NOT NULL CHECK(reason IN ('manual-muted', 'platform-muted')),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_meeting_open_intentional_interval
+          ON meeting_recording_intentional_intervals(recording_id, source, reason) WHERE end_frame IS NULL;
+        CREATE INDEX IF NOT EXISTS idx_meeting_intentional_intervals_range
+          ON meeting_recording_intentional_intervals(recording_id, source, start_frame, end_frame);
+
         CREATE TABLE IF NOT EXISTS meeting_processing_runs (
           id TEXT PRIMARY KEY,
           recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE,
@@ -1263,6 +1279,64 @@ export class DatabaseManager {
       }
       return toMeetingEpochDto(row);
     });
+  }
+
+  openMeetingIntentionalInterval(
+    recordingId: string,
+    source: MeetingSource,
+    startFrame: number,
+    reason: MeetingIntentionalInterval["reason"]
+  ): MeetingIntentionalInterval {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingSourceSchema.parse(source);
+    if (!Number.isSafeInteger(startFrame) || startFrame < 0) throw new RangeError("Invalid intentional interval start");
+    const existing = this.sql.prepare(
+      "SELECT * FROM meeting_recording_intentional_intervals WHERE recording_id = ? AND source = ? AND reason = ? AND end_frame IS NULL"
+    ).get(recordingId, source, reason) as { id: string; recording_id: string; source: MeetingSource; start_frame: number; end_frame: null; reason: MeetingIntentionalInterval["reason"] } | undefined;
+    if (existing) return meetingIntentionalIntervalSchema.parse({
+      id: existing.id, recordingId: existing.recording_id, source: existing.source,
+      startFrame: existing.start_frame, endFrame: null, reason: existing.reason,
+    });
+    const interval = meetingIntentionalIntervalSchema.parse({
+      id: randomUUID(), recordingId, source, startFrame, endFrame: null, reason,
+    });
+    this.sql.prepare(
+      "INSERT INTO meeting_recording_intentional_intervals (id, recording_id, source, start_frame, reason) VALUES (?, ?, ?, ?, ?)"
+    ).run(interval.id, recordingId, source, startFrame, reason);
+    return interval;
+  }
+
+  closeMeetingIntentionalInterval(
+    recordingId: string,
+    source: MeetingSource,
+    endFrame: number,
+    reason: MeetingIntentionalInterval["reason"]
+  ): MeetingIntentionalInterval | null {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingSourceSchema.parse(source);
+    if (!Number.isSafeInteger(endFrame) || endFrame < 0) throw new RangeError("Invalid intentional interval end");
+    const row = this.sql.prepare(
+      "SELECT * FROM meeting_recording_intentional_intervals WHERE recording_id = ? AND source = ? AND reason = ? AND end_frame IS NULL"
+    ).get(recordingId, source, reason) as { id: string; recording_id: string; source: MeetingSource; start_frame: number; end_frame: null; reason: MeetingIntentionalInterval["reason"] } | undefined;
+    if (!row) return null;
+    if (endFrame < row.start_frame) throw new RangeError("Intentional interval end precedes its start");
+    this.sql.prepare(
+      "UPDATE meeting_recording_intentional_intervals SET end_frame = ? WHERE id = ? AND end_frame IS NULL"
+    ).run(endFrame, row.id);
+    return meetingIntentionalIntervalSchema.parse({
+      id: row.id, recordingId: row.recording_id, source: row.source,
+      startFrame: row.start_frame, endFrame, reason: row.reason,
+    });
+  }
+
+  listMeetingIntentionalIntervals(recordingId: string): MeetingIntentionalInterval[] {
+    meetingRecordingIdSchema.parse(recordingId);
+    return (this.sql.prepare(
+      "SELECT id, recording_id, source, start_frame, end_frame, reason FROM meeting_recording_intentional_intervals WHERE recording_id = ? ORDER BY start_frame, id"
+    ).all(recordingId) as Array<{ id: string; recording_id: string; source: MeetingSource; start_frame: number; end_frame: number | null; reason: MeetingIntentionalInterval["reason"] }>).map((row) => meetingIntentionalIntervalSchema.parse({
+      id: row.id, recordingId: row.recording_id, source: row.source,
+      startFrame: row.start_frame, endFrame: row.end_frame, reason: row.reason,
+    }));
   }
 
   updateMeetingRecordingEpochRecovery(

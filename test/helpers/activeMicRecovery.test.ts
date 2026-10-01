@@ -73,6 +73,65 @@ const speaker = (deviceId: string) => ({
 });
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+test("stopping before a track mute grace expires cannot reacquire the microphone", async (t) => {
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const track = new FakeTrack();
+  let acquired = 0;
+  const controller = new ActiveMicRecoveryController<FakeStream>({
+    mediaDevices: new FakeMediaDevices([mic("mic-1")]),
+    acquire: async () => { acquired += 1; return new FakeStream(new FakeTrack()); },
+    onRecovered: async () => {},
+  });
+  t.after(() => controller.stop());
+  await controller.start(new FakeStream(track));
+  track.muted = true;
+  track.dispatchEvent(new Event("mute"));
+  controller.stop();
+  t.mock.timers.tick(2000);
+  await Promise.resolve();
+  assert.equal(acquired, 0);
+  assert.equal(await controller.recover("ended"), false);
+});
+
+test("stopping an unavailable microphone cancels its scheduled acquisition retry", async (t) => {
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let acquired = 0;
+  const controller = new ActiveMicRecoveryController<FakeStream>({
+    mediaDevices: new FakeMediaDevices([mic("mic-1")]),
+    acquire: async () => { acquired += 1; throw new Error("Synthetic unavailable device"); },
+    onRecovered: async () => {},
+  });
+  t.after(() => controller.stop());
+  await controller.start(new FakeStream(new FakeTrack()));
+  assert.equal(await controller.recover("ended"), false);
+  controller.stop();
+  t.mock.timers.tick(5000);
+  await Promise.resolve();
+  assert.equal(acquired, 1);
+});
+
+test("intentional mic gate mute does not schedule track recovery", async (t) => {
+  const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const track = new FakeTrack();
+  let acquired = 0;
+  const controller = new ActiveMicRecoveryController<FakeStream>({
+    mediaDevices: new FakeMediaDevices([mic("mic-1")]),
+    acquire: async () => { acquired += 1; return new FakeStream(new FakeTrack()); },
+    onRecovered: async () => {},
+  });
+  t.after(() => controller.stop());
+  await controller.start(new FakeStream(track));
+  controller.setIntentionalMute(true);
+  track.muted = true;
+  track.dispatchEvent(new Event("mute"));
+  t.mock.timers.tick(2000);
+  await Promise.resolve();
+  assert.equal(acquired, 0);
+});
+
 test("explicit selection waits for an in-flight recovery and then acquires the new selection", async (t) => {
   const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   const mediaDevices = new FakeMediaDevices([mic("mic-1"), mic("mic-2"), mic("mic-3")]);

@@ -47,6 +47,7 @@ export interface ActiveMicRecoveryOptions<Stream extends RecoverableAudioStream 
     reason: string
   ): Promise<void>;
   onStatusChange?: (status: ActiveMicRecoveryStatus) => void;
+  onPlatformMuteChange?: (muted: boolean) => void;
   debounceMs?: number;
   muteGraceMs?: number;
   retryMs?: number;
@@ -87,6 +88,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
   private acquire: ActiveMicRecoveryOptions<Stream>["acquire"];
   private onRecovered: ActiveMicRecoveryOptions<Stream>["onRecovered"];
   private onStatusChange?: ActiveMicRecoveryOptions<Stream>["onStatusChange"];
+  private onPlatformMuteChange?: ActiveMicRecoveryOptions<Stream>["onPlatformMuteChange"];
   private debounceMs: number;
   private muteGraceMs: number;
   private retryMs: number;
@@ -101,6 +103,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
   private muteTimer: ReturnType<typeof setTimeout> | undefined;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private started: boolean;
+  private intentionalMute: boolean;
   private readonly onDeviceChange: () => void;
   private readonly onTrackEnded: () => void;
   private readonly onTrackMute: () => void;
@@ -111,6 +114,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     acquire,
     onRecovered,
     onStatusChange,
+    onPlatformMuteChange,
     debounceMs = DEFAULT_DEBOUNCE_MS,
     muteGraceMs = DEFAULT_MUTE_GRACE_MS,
     retryMs = DEFAULT_RETRY_MS,
@@ -119,6 +123,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     this.acquire = acquire;
     this.onRecovered = onRecovered;
     this.onStatusChange = onStatusChange;
+    this.onPlatformMuteChange = onPlatformMuteChange;
     this.debounceMs = debounceMs;
     this.muteGraceMs = muteGraceMs;
     this.retryMs = retryMs;
@@ -133,15 +138,29 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     this.muteTimer = undefined;
     this.retryTimer = undefined;
     this.started = false;
+    this.intentionalMute = false;
     this.onDeviceChange = () => this.scheduleEvaluation();
     this.onTrackEnded = () => this.recover("ended");
     this.onTrackMute = () => {
+      this.onPlatformMuteChange?.(true);
+      if (this.intentionalMute) return;
       clearTimeout(this.muteTimer);
       this.muteTimer = setTimeout(() => {
         if (this.track?.muted) this.recover("muted");
       }, this.muteGraceMs);
     };
-    this.onTrackUnmute = () => clearTimeout(this.muteTimer);
+    this.onTrackUnmute = () => {
+      clearTimeout(this.muteTimer);
+      this.onPlatformMuteChange?.(false);
+    };
+  }
+
+  setIntentionalMute(muted: boolean): void {
+    this.intentionalMute = muted;
+    if (muted) {
+      clearTimeout(this.muteTimer);
+      this.muteTimer = undefined;
+    }
   }
 
   private setStatus(status: ActiveMicRecoveryStatus): void {

@@ -2,7 +2,7 @@ import { spawn as spawnChild, type ChildProcess } from "child_process";
 import fs from "fs";
 import { inspectMeetingOpus } from "./meetingOpus.js";
 import path from "path";
-import type { MeetingRecordingDto, MeetingRecordingEpochDto } from "../contracts/meetingRecording.js";
+import type { MeetingRecordingDto, MeetingRecordingEpochDto, MeetingIntentionalInterval, MeetingSource } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { createAbortError } from "./abortError.js";
 import { getFFmpegPath } from "./ffmpegUtils.js";
@@ -39,20 +39,41 @@ interface EpochInput {
 }
 
 export function meetingTimelineFrameCount(
-  recording: Pick<MeetingRecordingDto, "startedAt" | "endedAt">,
+  recording: Pick<MeetingRecordingDto, "startedAt" | "endedAt" | "sourceMetadata">,
   epochs: MeetingRecordingEpochDto[]
 ): number {
   const latestEpochEnd = epochs.reduce(
     (latest, epoch) => Math.max(latest, epoch.startFrame + epoch.frameCount),
     0
   );
+  const anchoredEnd = recording.sourceMetadata.captureEndFrame;
+  if (Number.isSafeInteger(anchoredEnd) && (anchoredEnd as number) >= 0) {
+    return Math.max(latestEpochEnd, anchoredEnd as number);
+  }
+  // Historical recordings retain the duration saved in their UTC timestamps.
   const startedAt = Date.parse(recording.startedAt);
   const endedAt = recording.endedAt ? Date.parse(recording.endedAt) : NaN;
-  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt < startedAt) {
-    throw new Error("Meeting recording timeline is invalid");
-  }
+  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt < startedAt) throw new Error("Meeting recording timeline is invalid");
   const captureEnd = Math.max(0, Math.round((endedAt - startedAt) * SAMPLE_RATE / 1000));
   return Math.max(latestEpochEnd, captureEnd);
+}
+
+export function meetingSourceIntentionallyEmpty(
+  recording: MeetingRecordingDto,
+  epochs: MeetingRecordingEpochDto[],
+  intervals: MeetingIntentionalInterval[],
+  source: MeetingSource
+): boolean {
+  if (epochs.some((epoch) => epoch.source === source && epoch.frameCount > 0)) return false;
+  const frameCount = meetingTimelineFrameCount(recording, epochs);
+  if (frameCount <= 0) return false;
+  let coveredThrough = 0;
+  for (const interval of intervals.filter((value) => value.source === source).sort((a, b) => a.startFrame - b.startFrame)) {
+    if (interval.endFrame === null || interval.startFrame > coveredThrough) return false;
+    coveredThrough = Math.max(coveredThrough, interval.endFrame);
+    if (coveredThrough >= frameCount) return true;
+  }
+  return false;
 }
 
 /** Concatenate saved parts for one ASR pass. Gaps inside each part stay in its timeline; intentional pauses do not become silence. */
@@ -74,7 +95,11 @@ export function composeMeetingAudioParts(
   });
   const first = ordered[0];
   return {
-    recording: { ...first, endedAt: new Date(Date.parse(first.startedAt) + offset / 24).toISOString() },
+    recording: {
+      ...first,
+      endedAt: new Date(Date.parse(first.startedAt) + offset / 24).toISOString(),
+      sourceMetadata: { ...first.sourceMetadata, captureEndFrame: offset },
+    },
     epochs,
     partOffsets,
   };
@@ -85,7 +110,7 @@ export async function prepareMeetingAudio(
   recording: MeetingRecordingDto,
   runId: string,
   epochs: MeetingRecordingEpochDto[],
-  options: { signal?: AbortSignal; deps?: MeetingAudioMixerDeps; layout?: MeetingAudioLayout } = {}
+  options: { signal?: AbortSignal; deps?: MeetingAudioMixerDeps; layout?: MeetingAudioLayout; intentionalEmptySources?: MeetingSource[] } = {}
 ): Promise<PreparedMeetingAudio> {
   const deps = options.deps ?? {};
   const layout = options.layout ?? "mono";
@@ -103,7 +128,10 @@ export async function prepareMeetingAudio(
       startFrame: epoch.startFrame,
       frameCount: epoch.frameCount,
     }));
-  if (!inputs.length) throw new Error("Meeting recording has no usable audio epochs");
+  const intentionalEmptySources = new Set(options.intentionalEmptySources ?? []);
+  if (!inputs.length && !((layout === "mic" && intentionalEmptySources.has("mic")) || (layout === "system" && intentionalEmptySources.has("system")))) {
+    throw new Error("Meeting recording has no usable audio epochs");
+  }
   for (const epoch of epochs) {
     if (epoch.state === "open") throw new Error("Meeting recording has an unfinalized audio epoch");
   }
@@ -125,7 +153,7 @@ export async function prepareMeetingAudio(
   if (availableBytes < estimatedBytes) throw new Error("Insufficient disk space for meeting audio preparation");
 
   try {
-    await runMixer(ffmpegPath, inputs, frameCount, tempPath, options.signal, deps, layout);
+    await runMixer(ffmpegPath, inputs, frameCount, tempPath, options.signal, deps, layout, intentionalEmptySources);
     const inspected = inspectPcmWav(tempPath, frameCount, deps, channels);
     (deps.rename ?? fs.renameSync)(tempPath, finalPath);
     return { path: finalPath, frameCount, durationSeconds: frameCount / SAMPLE_RATE, sizeBytes: inspected.sizeBytes };
@@ -146,14 +174,20 @@ function runMixer(
   outputPath: string,
   signal: AbortSignal | undefined,
   deps: MeetingAudioMixerDeps,
-  layout: MeetingAudioLayout
+  layout: MeetingAudioLayout,
+  intentionalEmptySources: Set<MeetingSource>
 ): Promise<void> {
   if (signal?.aborted) return Promise.reject(createAbortError());
   const filters = inputs.map((input, index) =>
     `[${index}:a]aresample=${SAMPLE_RATE},atrim=end_sample=${input.frameCount},adelay=${input.startFrame}S:all=1${layout === "mono" ? ",volume=0.5" : ""}[a${index}]`
   );
   const mix = (indexes: number[], label: string) => {
-    if (!indexes.length) throw new Error("Meeting recording is missing an audio source");
+    if (!indexes.length) {
+      const source: MeetingSource | null = label === "mic" || layout === "mic" ? "mic" : label === "system" || layout === "system" ? "system" : null;
+      if (!source || !intentionalEmptySources.has(source)) throw new Error("Meeting recording is missing an audio source");
+      filters.push(`anullsrc=r=${SAMPLE_RATE}:cl=mono,atrim=end_sample=${frameCount},asetpts=PTS-STARTPTS[${label}]`);
+      return;
+    }
     filters.push(`${indexes.map((i) => `[a${i}]`).join("")}amix=inputs=${indexes.length}:duration=longest:dropout_transition=0:normalize=0,apad=whole_len=${frameCount},atrim=end_sample=${frameCount}[${label}]`);
   };
   if (layout === "stereo") {

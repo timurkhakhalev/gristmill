@@ -9,17 +9,19 @@ function captureHarness(delayMicClose = false) {
   const database = {
     createMeetingRecording: () => ({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }),
     createMeetingRecordingEpoch() {},
+    addMeetingRecordingEpochAlignment() {},
+    markMeetingRecordingEpochAlignmentUnknown() {},
     updateMeetingRecordingEpochRecovery() {},
     markMeetingRecordingFinalizing() {},
     finalizeMeetingRecording: (_id: string, input: { captureState: "ready" | "incomplete" }) => ({
       recording: { captureState: input.captureState }, initialRun: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
     }),
-    openMeetingIntentionalInterval: (recordingId: string, source: string, startFrame: number, reason: string) => {
+    openMeetingIntentionalInterval: (recordingId: string, source: string, sourceGeneration: number, startFrame: number, reason: string) => {
       const interval = { recordingId, source, startFrame, endFrame: null, reason };
       intervals.push(interval);
       return interval;
     },
-    closeMeetingIntentionalInterval: (recordingId: string, source: string, endFrame: number, reason: string) => {
+    closeMeetingIntentionalInterval: (recordingId: string, source: string, sourceGeneration: number, endFrame: number, reason: string) => {
       const interval = [...intervals].reverse().find((item) => item.recordingId === recordingId && item.source === source && item.reason === reason && item.endFrame === null);
       if (!interval) return null;
       interval.endFrame = endFrame;
@@ -44,25 +46,25 @@ function captureHarness(delayMicClose = false) {
 }
 
 const packet = (epochIndex: number, epochStartFrame: number, frameStart: number, sequence: number, sampleOffset: number, sourceGeneration = 1) => ({
-  epochIndex, epochStartFrame, frameStart, sourceGeneration, sequence, sampleOffset,
+  epochIndex, epochSourceStartFrame: epochStartFrame, sourceFrameStart: frameStart, sourceGeneration, sequence, sampleOffset, alignment: null, alignmentErrorCode: "clock-unavailable",
 });
 
 test("manual and platform mute intent persist exact frame boundaries and reject stale writes", async () => {
   const { capture, intervals, writes } = captureHarness();
   capture.appendRendererSamples("mic", packet(0, 0, 0, 0, 0), Buffer.alloc(4_800));
-  capture.appendNativeSamples("system", Buffer.alloc(4_800), 0);
+  capture.appendNativeSamples("system", 1, Buffer.alloc(4_800), 0, 0);
 
-  assert.deepEqual(await capture.setMicIntent({ sequence: 1, sourceGeneration: 1, manualMuted: true, platformMuted: false, boundaryFrame: 2_400 }), {
+  assert.deepEqual(await capture.setMicIntent({ boundaryAlignment: null, sequence: 1, sourceGeneration: 1, manualMuted: true, platformMuted: false, boundaryFrame: 2_400 }), {
     sequence: 1, sourceGeneration: 1, effectiveMuted: true, boundaryFrame: 2_400,
   });
-  await assert.rejects(capture.setMicIntent({ sequence: 1, sourceGeneration: 1, manualMuted: false, platformMuted: false, boundaryFrame: 2_400 }), /Stale/);
+  await assert.rejects(capture.setMicIntent({ boundaryAlignment: null, sequence: 1, sourceGeneration: 1, manualMuted: false, platformMuted: false, boundaryFrame: 2_400 }), /Stale/);
   assert.throws(() => capture.appendRendererSamples("mic", packet(1, 2_400, 2_400, 0, 0), Buffer.alloc(4_800)), /active intent generation/);
 
-  await capture.setMicIntent({ sequence: 2, sourceGeneration: 1, manualMuted: true, platformMuted: true, boundaryFrame: 2_400 });
-  await capture.setMicIntent({ sequence: 3, sourceGeneration: 1, manualMuted: false, platformMuted: true, boundaryFrame: 4_800 });
-  await capture.setMicIntent({ sequence: 4, sourceGeneration: 1, manualMuted: false, platformMuted: false, boundaryFrame: 4_800 });
+  await capture.setMicIntent({ boundaryAlignment: null, sequence: 2, sourceGeneration: 1, manualMuted: true, platformMuted: true, boundaryFrame: 2_400 });
+  await capture.setMicIntent({ boundaryAlignment: null, sequence: 3, sourceGeneration: 1, manualMuted: false, platformMuted: true, boundaryFrame: 4_800 });
+  await capture.setMicIntent({ boundaryAlignment: null, sequence: 4, sourceGeneration: 1, manualMuted: false, platformMuted: false, boundaryFrame: 4_800 });
   capture.appendRendererSamples("mic", packet(1, 4_800, 4_800, 0, 0), Buffer.alloc(4_800));
-  capture.appendNativeSamples("system", Buffer.alloc(9_600), 2_400);
+  capture.appendNativeSamples("system", 1, Buffer.alloc(9_600), 2_400, 2_400);
 
   assert.deepEqual(intervals.map(({ reason, startFrame, endFrame }) => [reason, startFrame, endFrame]), [
     ["manual-muted", 2_400, 4_800],
@@ -75,13 +77,13 @@ test("manual and platform mute intent persist exact frame boundaries and reject 
 test("Stop waits for an in-flight mic boundary commit and rejects later controls", async () => {
   const { capture, waitForClose, releaseClose, intervals } = captureHarness(true);
   capture.appendRendererSamples("mic", packet(0, 0, 0, 0, 0), Buffer.alloc(4_800));
-  capture.appendNativeSamples("system", Buffer.alloc(4_800), 0);
-  const transition = capture.setMicIntent({ sequence: 1, sourceGeneration: 1, manualMuted: true, platformMuted: false, boundaryFrame: 2_400 });
+  capture.appendNativeSamples("system", 1, Buffer.alloc(4_800), 0, 0);
+  const transition = capture.setMicIntent({ boundaryAlignment: null, sequence: 1, sourceGeneration: 1, manualMuted: true, platformMuted: false, boundaryFrame: 2_400 });
   await waitForClose();
   const stopping = capture.stop({ lastSequence: { mic: 0 } });
   releaseClose();
   await transition;
-  await assert.rejects(capture.setMicIntent({ sequence: 2, sourceGeneration: 1, manualMuted: false, platformMuted: false, boundaryFrame: 2_400 }), /stopping/);
+  await assert.rejects(capture.setMicIntent({ boundaryAlignment: null, sequence: 2, sourceGeneration: 1, manualMuted: false, platformMuted: false, boundaryFrame: 2_400 }), /stopping/);
   const result = await stopping;
   assert.equal(result.captureState, "ready");
   assert.equal(intervals[0].endFrame, 2_400);
@@ -148,7 +150,7 @@ test("renderer gate holds the healthy device and keeps frame origin across recov
             type: "gate-ack", commandId: request.commandId, sourceGeneration: request.sourceGeneration,
             effectiveMuted: request.effectiveMuted, boundaryRenderFrame: currentRenderFrame, lastSequence: -1,
           } }));
-          if (request.type === "flush") queueMicrotask(() => this.port.onmessage?.({ data: { type: "flush-complete", lastSequence: -1 } }));
+          if (request.type === "flush") queueMicrotask(() => this.port.onmessage?.({ data: { type: "flush-complete", lastSequence: -1, boundaryRenderFrame: currentRenderFrame } }));
         },
       };
     }

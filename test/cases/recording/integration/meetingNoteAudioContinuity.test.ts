@@ -20,11 +20,11 @@ test("Note processing includes earlier groups after restart and orders audio bef
   const note = db.saveNote("Meeting", "Keep manual notes", "meeting").note!;
   function finish(start: string, seconds: number) {
     const recording = db!.createMeetingRecording(note.id, { config }, start);
-    db!.createMeetingRecordingEpoch(recording.id, "system", 0, 0);
+    db!.createMeetingRecordingEpoch(recording.id, "system", 0, 1, 0, 0);
     savePcmEpoch(storage, recording.id, "system", 0, Buffer.from([1, 2, 3, 4]));
     db!.updateMeetingRecordingEpochRecovery(recording.id, "system", 0, storage.recoverEpoch(recording.id, "system", 0));
     db!.markMeetingRecordingFinalizing(recording.id);
-    return db!.finalizeMeetingRecording(recording.id, { captureState: "ready", endedAt: new Date(Date.parse(start) + seconds * 1000).toISOString() });
+    return db!.finalizeMeetingRecording(recording.id, { captureState: "ready", sourceMetadata: { mic: { intentionallyEmpty: true } }, endedAt: new Date(Date.parse(start) + seconds * 1000).toISOString() });
   }
   const first = finish("2026-09-30T07:07:00.000Z", 100);
   db.close();
@@ -35,7 +35,7 @@ test("Note processing includes earlier groups after restart and orders audio bef
   assert.deepEqual(second.initialRun.sourceRecordingIds, [first.recording.id, second.recording.id]);
   const combined = composeMeetingAudioParts([second.recording, first.recording], (id) => db!.listMeetingRecordingEpochs(id));
   assert.deepEqual(combined.epochs.map((epoch) => epoch.recordingId), [first.recording.id, second.recording.id]);
-  assert.equal(combined.epochs[1].startFrame, 100 * 24_000);
+  assert.equal(combined.epochs[1].timelineStartFrame, 100 * 24_000);
   assert.equal(combined.recording.startedAt, first.recording.startedAt);
 
   let material = "";

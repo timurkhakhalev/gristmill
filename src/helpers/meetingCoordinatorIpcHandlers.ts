@@ -1875,6 +1875,7 @@ export function registerMeetingCoordinatorHandlers(
     };
     let generation: string | undefined;
     let generationFrameOrigin = 0;
+    let sourceGeneration = 0;
     const evidence = platformCollector;
     const startCapture = () =>
       manager.start({
@@ -1888,7 +1889,7 @@ export function registerMeetingCoordinatorHandlers(
           const startFrame = capture.frameForMonotonicNs(message.monotonicOriginNs);
           if (startFrame === null) throw new Error("Native audio tap clock cannot be mapped to the recording origin");
           generationFrameOrigin = startFrame;
-          const epochIndex = capture.beginSourceEpoch("system", startFrame);
+          const epochIndex = capture.beginSourceEpoch("system", ++sourceGeneration, 0, startFrame);
           if (generation) evidence?.bindClock(generation, epochIndex, startFrame);
           else evidence?.invalidate("clock-generation-missing");
         },
@@ -1897,7 +1898,7 @@ export function registerMeetingCoordinatorHandlers(
           try {
             const frameStart = generationFrameOrigin + sourceFrameStart;
             timeline.write(chunk, frameStart, (raw, anchoredFrameStart) => {
-              capture.appendNativeSamples("system", raw, anchoredFrameStart);
+              capture.appendNativeSamples("system", sourceGeneration, raw, sourceFrameStart, anchoredFrameStart);
               evidence?.recordDeliveredFrames(generation, raw.length / 2);
               meetingDetectionEngine?.recordMeetingAudioChunk("system", raw);
               const { rms, peak } = computeChunkStats(raw);
@@ -1993,6 +1994,7 @@ export function registerMeetingCoordinatorHandlers(
     options: {
       incomplete?: boolean;
       lastSequence?: Partial<Record<MeetingAudioSource, number>>;
+      microphoneBoundary?: import("../contracts/meetingCoordinator.js").MeetingCaptureStopRequest["microphoneBoundary"];
       errorCode?: string;
       suppressProcessing?: boolean;
     } = {}
@@ -2024,6 +2026,7 @@ export function registerMeetingCoordinatorHandlers(
     try {
       const result = await capture.stop({
         lastSequence: options.lastSequence ?? {},
+        microphoneBoundary: options.microphoneBoundary,
         errorCode: stopError,
       });
       if (options.suppressProcessing) deps.cancelInitialProcessingRun?.(result.initialRunId);

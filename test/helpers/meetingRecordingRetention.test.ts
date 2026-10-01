@@ -22,7 +22,7 @@ function createFinishedRecording(db: Database, storage: RecordingStorage, anchor
   assert.ok(note);
   const startedAt = new Date(anchor - (ageDays + 1) * DAY).toISOString();
   const recording = db.createMeetingRecording(note.id, { config }, startedAt);
-  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
   savePcmEpoch(storage, recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, storage.recoverEpoch(recording.id, "mic", 0));
   db.markMeetingRecordingFinalizing(recording.id);

@@ -24,8 +24,8 @@ test("live packets reach separate Opus files before Stop, then Stop flushes thei
   for (let sequence = 0; sequence < 22; sequence++) {
     for (const source of ["mic", "system"] as const) {
       capture.appendRendererSamples(source, {
-        epochIndex: 0, epochStartFrame: 0, frameStart: sequence * 2400,
-        sourceGeneration: 1, sequence, sampleOffset: sequence * 2400,
+        epochIndex: 0, epochSourceStartFrame: 0, sourceFrameStart: sequence * 2400,
+        sourceGeneration: 1, alignment: null, alignmentErrorCode: "clock-unavailable", sequence, sampleOffset: sequence * 2400,
       }, packet);
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -53,7 +53,7 @@ test("resumed ASR rebuilds missing WAV inputs, reuses saved responses and remove
   const recording = db.createMeetingRecording(note.id, { config }, startedAt);
   const originals: Buffer[] = [];
   for (const source of ["mic", "system"] as const) {
-    db.createMeetingRecordingEpoch(recording.id, source, 0, 0);
+    db.createMeetingRecordingEpoch(recording.id, source, 0, 1, 0, 0);
     savePcmEpoch(storage, recording.id, source, 0, Buffer.alloc(48000, 1));
     db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, storage.recoverEpoch(recording.id, source, 0));
     originals.push(fs.readFileSync(storage.getEpochFilePath(recording.id, source, 0)));
@@ -111,7 +111,10 @@ test("migration resumes after a failed cutover and preserves notes, results and 
   const artifactBytes = fs.readFileSync(artifact);
   const schema = db.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'meeting_recording_epochs'").get() as { sql: string };
   db.db.exec("DROP TABLE meeting_recording_epochs");
-  db.db.exec(schema.sql.replace("'opus'", "'pcm_s16le'").replace("ignored_trailing_bytes >= 0", "ignored_trailing_bytes BETWEEN 0 AND 1"));
+  db.db.exec(schema.sql
+    .replace(/ {10}(source_start_frame|source_generation|alignment_error_code)[^\n]*\n/g, "")
+    .replace(/timeline_start_frame INTEGER[^,]*,/, "start_frame INTEGER NOT NULL CHECK(start_frame >= 0),")
+    .replace("'opus'", "'pcm_s16le'").replace("ignored_trailing_bytes >= 0", "ignored_trailing_bytes BETWEEN 0 AND 1"));
   const original = path.join(storage.createRecordingDirectory(recording.id), "mic", "epoch-000000.pcm");
   fs.mkdirSync(path.dirname(original), { recursive: true });
   const pcm = Buffer.alloc(96000, 7);

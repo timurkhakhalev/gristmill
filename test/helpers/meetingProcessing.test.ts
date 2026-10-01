@@ -61,12 +61,12 @@ function createFinishedRecording(
   const note = db.saveNote("Meeting", noteText, "meeting").note;
   assert.ok(note);
   const recording = db.createMeetingRecording(note.id, { config });
-  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
   savePcmEpoch(storage, recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
   const recovered = storage.recoverEpoch(recording.id, "mic", 0);
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, recovered);
   if (includeSystemSource) {
-    db.createMeetingRecordingEpoch(recording.id, "system", 0, 0);
+    db.createMeetingRecordingEpoch(recording.id, "system", 0, 1, 0, 0);
     savePcmEpoch(storage, recording.id, "system", 0, Buffer.alloc(4));
     db.updateMeetingRecordingEpochRecovery(recording.id, "system", 0, {
       frameCount: 2,
@@ -88,6 +88,13 @@ function createFinishedRecording(
   };
 }
 
+function muteAlignment(frame: number): import("../../src/contracts/meetingRecording.ts").MeetingFrameAlignmentPoint {
+  return { sourceGeneration: 1, sourceFrame: frame, timelineFrame: frame, rate: 1, uncertaintyFrames: 1,
+    helperGeneration: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", sourceNs: String(1_000_000_000 + Math.round(frame / 24_000 * 1e9)),
+    helperNs: String(1_000_000_000 + Math.round(frame / 24_000 * 1e9)), sampledSourceStartNs: "1000000000",
+    sampledSourceEndNs: "2000000000", freshnessSourceNs: "2000000000" };
+}
+
 function createSystemOnlyIntentionalRecording(
   db: DatabaseManager,
   storage: RecordingStorage,
@@ -97,9 +104,9 @@ function createSystemOnlyIntentionalRecording(
   assert.ok(note);
   const recording = db.createMeetingRecording(note.id, { config });
   const endFrame = 24_000;
-  db.openMeetingIntentionalInterval(recording.id, "mic", 0, "manual-muted");
-  db.closeMeetingIntentionalInterval(recording.id, "mic", endFrame, "manual-muted");
-  db.createMeetingRecordingEpoch(recording.id, "system", 0, 0);
+  db.openMeetingIntentionalInterval(recording.id, "mic", 1, 0, "manual-muted", muteAlignment(0));
+  db.closeMeetingIntentionalInterval(recording.id, "mic", 1, endFrame, "manual-muted", muteAlignment(endFrame));
+  db.createMeetingRecordingEpoch(recording.id, "system", 0, 1, 0, 0);
   const pcm = Buffer.alloc(endFrame * 2);
   for (let frame = 0; frame < endFrame; frame += 1) pcm.writeInt16LE(1_000, frame * 2);
   savePcmEpoch(storage, recording.id, "system", 0, pcm);
@@ -451,9 +458,9 @@ test("audio parts from separate sessions of one note produce one persisted run a
   const second = db.createMeetingRecording(first.note.id, { config: validConfig },
     new Date(Date.parse(first.recording.endedAt) + 5 * 60_000).toISOString());
   assert.notEqual(second.groupId, first.recording.groupId);
-  db.openMeetingIntentionalInterval(second.id, "mic", 0, "manual-muted");
-  db.closeMeetingIntentionalInterval(second.id, "mic", 24_000, "manual-muted");
-  db.createMeetingRecordingEpoch(second.id, "system", 0, 0);
+  db.openMeetingIntentionalInterval(second.id, "mic", 1, 0, "manual-muted", muteAlignment(0));
+  db.closeMeetingIntentionalInterval(second.id, "mic", 1, 24_000, "manual-muted", muteAlignment(24_000));
+  db.createMeetingRecordingEpoch(second.id, "system", 0, 1, 0, 0);
   savePcmEpoch(storage, second.id, "system", 0, Buffer.from([1, 2, 3, 4]));
   db.updateMeetingRecordingEpochRecovery(second.id, "system", 0, storage.recoverEpoch(second.id, "system", 0));
   db.markMeetingRecordingFinalizing(second.id);
@@ -491,8 +498,8 @@ test("audio parts from separate sessions of one note produce one persisted run a
     { recordingId: second.id, source: "system" },
   ]);
   assert.deepEqual(db.listMeetingRecordingEpochs(second.id).map(({ source }: MeetingRecordingEpochDto) => source), ["system"]);
-  assert.deepEqual(db.listMeetingIntentionalIntervals(second.id).map(({ source, reason, startFrame, endFrame }: MeetingIntentionalInterval) => ({ source, reason, startFrame, endFrame })), [
-    { source: "mic", reason: "manual-muted", startFrame: 0, endFrame: 24_000 },
+  assert.deepEqual(db.listMeetingIntentionalIntervals(second.id).map(({ source, reason, timelineStartFrame, timelineEndFrame }: MeetingIntentionalInterval) => ({ source, reason, timelineStartFrame, timelineEndFrame })), [
+    { source: "mic", reason: "manual-muted", timelineStartFrame: 0, timelineEndFrame: 24_000 },
   ]);
   assert.equal(db.getNote(first.note.id).content, "Manual notes stay here.");
   assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
@@ -2081,7 +2088,7 @@ test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration",
     { source: "mic", index: 1, offset: 6, bytes: Buffer.from([5, 0, 6, 0]) },
   ];
   for (const epoch of epochs) {
-    db.createMeetingRecordingEpoch(recording.id, epoch.source, epoch.index, epoch.offset);
+    db.createMeetingRecordingEpoch(recording.id, epoch.source, epoch.index, 1, epoch.offset, epoch.offset);
     savePcmEpoch(storage, recording.id, epoch.source, epoch.index, epoch.bytes);
     db.updateMeetingRecordingEpochRecovery(recording.id, epoch.source, epoch.index, {
       frameCount: epoch.bytes.length / 2,
@@ -2160,7 +2167,7 @@ test("ffmpeg output preserves audible source offsets, a silent gap, and full tim
     { source: "system", offset: 480, values: [[5, 6_000], [6, 6_000]] },
   ];
   for (const [index, epoch] of sourceEpochs.entries()) {
-    db.createMeetingRecordingEpoch(recording.id, epoch.source, 0, epoch.offset);
+    db.createMeetingRecordingEpoch(recording.id, epoch.source, 0, 1, epoch.offset, epoch.offset);
     const raw = Buffer.alloc(960 * 2);
     for (const [frame, sample] of epoch.values) raw.writeInt16LE(sample, frame * 2);
     savePcmEpoch(storage, recording.id, epoch.source as "mic" | "system", 0, raw);
@@ -2666,7 +2673,7 @@ test("native-shaped Zoom intervals resume through production naming into the Not
   const note = db.saveNote("Zoom fixture", "", "meeting").note!;
   const recording = db.createMeetingRecording(note.id, { config: { ...validConfig, generateSummary: false } });
   for (const source of ["mic", "system"] as const) {
-    db.createMeetingRecordingEpoch(recording.id, source, 0, 0);
+    db.createMeetingRecordingEpoch(recording.id, source, 0, 1, 0, 0);
     savePcmEpoch(storage, recording.id, source, 0, Buffer.alloc(14 * 24_000 * 2));
     db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, storage.recoverEpoch(recording.id, source, 0));
   }
@@ -2723,4 +2730,29 @@ test("native-shaped Zoom intervals resume through production naming into the Not
   assert.equal(namingCalls, 2);
   assert.ok(storage.readRunArtifact(initialRun.id, "transcript"));
   assert.equal(db.listMeetingAudioClockAnchors(recording.id).length, 14);
+});
+
+test("unresolved alignment fails prepare before providers and preserves raw audio on retry", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run } = createFinishedRecording(db, storage, validConfig);
+  db.db.prepare("UPDATE meeting_recording_epochs SET timeline_start_frame = NULL WHERE recording_id = ? AND source = 'mic'").run(recording.id);
+  const rawPath = storage.getEpochFilePath(recording.id, "mic", 0);
+  const original = fs.readFileSync(rawPath);
+  let requests = 0;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async () => { requests++; throw new Error("must not reach provider"); },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id)?.stage, "prepare");
+  assert.equal(db.getMeetingProcessingRun(run.id)?.errorCode, "audio-alignment-unavailable");
+  assert.equal(db.getMeetingRecording(recording.id)?.captureState, "ready");
+  worker.retry(run.id);
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id)?.errorCode, "audio-alignment-unavailable");
+  assert.equal(requests, 0);
+  assert.deepEqual(fs.readFileSync(rawPath), original);
 });

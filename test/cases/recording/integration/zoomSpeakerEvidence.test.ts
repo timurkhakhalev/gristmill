@@ -10,7 +10,7 @@ const { composeMeetingAudioParts }: typeof import("../../../../src/helpers/meeti
 function evidence(recordingId: string) {
   const { observations, anchors, transcript } = zoomSpeakerFixture(recordingId);
   const decisions = matchZoomSpeakers({ observations, anchors, transcript,
-    epochs: [{ recordingId, source: "system", epochIndex: 0, startFrame: 0, frameCount: 14 * 24_000, state: "finalized" }],
+    epochs: [{  recordingId, source: "system", epochIndex: 0, timelineStartFrame: 0, frameCount: 14 * 24_000, state: "finalized" }],
     partOffsets: [{ recordingId, startFrame: 0, frameCount: 14 * 24_000 }] });
   assert.ok(decisions.every((d) => d.status === "accepted"));
   return { observations, anchors, observation: observations[0], anchor: anchors[0], decision: decisions[0], decisions, transcript };
@@ -19,7 +19,7 @@ function finished(db: InstanceType<typeof DatabaseManager>, noteId?: number, sta
   const note = noteId ? db.getNote(noteId)! : db.saveNote("Synthetic Zoom", "", "meeting").note!;
   const recording = db.createMeetingRecording(note.id, { config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } } }, startedAt);
   for (const source of ["mic", "system"] as const) {
-    db.createMeetingRecordingEpoch(recording.id, source, 0, 0);
+    db.createMeetingRecordingEpoch(recording.id, source, 0, 1, 0, 0);
     db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, { frameCount: 14 * 24_000, ignoredTrailingBytes: 0 });
   }
   db.markMeetingRecordingFinalizing(recording.id);
@@ -166,7 +166,7 @@ test("metadata failure preserves the original mic/system files, not just recordi
   const recording = db.createMeetingRecording(note.id, { config: null });
   const paths: string[] = [];
   for (const source of ["mic", "system"] as const) {
-    db.createMeetingRecordingEpoch(recording.id, source, 0, 0);
+    db.createMeetingRecordingEpoch(recording.id, source, 0, 1, 0, 0);
     savePcmEpoch(storage, recording.id, source, 0, Buffer.alloc(4_800, 1));
     db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, storage.recoverEpoch(recording.id, source, 0));
     paths.push(storage.getEpochFilePath(recording.id, source, 0));

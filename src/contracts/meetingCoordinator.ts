@@ -8,7 +8,7 @@
 // main.js. sessionId, noteId and detectionId are distinct fields and are never
 // interchangeable.
 import { z } from "zod";
-import { meetingRecordingIdSchema } from "./meetingRecording.js";
+import { meetingFrameAlignmentPointSchema, meetingFrameAlignmentSegmentSchema, meetingRecordingIdSchema } from "./meetingRecording.js";
 import type { MeetingProcessingConfig, MeetingProcessingConfigError, MeetingSource } from "./meetingRecording.js";
 
 // ---- channels -----------------------------------------------------------------
@@ -172,20 +172,24 @@ export interface MeetingTranscriptionStartOptions {
 
 export interface MeetingCapturePacket {
   epochIndex: number;
-  epochStartFrame: number;
-  frameStart: number;
+  epochSourceStartFrame: number;
+  sourceFrameStart: number;
   sourceGeneration: number;
   sequence: number;
   sampleOffset: number;
+  alignment: z.infer<typeof meetingFrameAlignmentSegmentSchema> | null;
+  alignmentErrorCode: string;
 }
 
 export const meetingCapturePacketSchema = z.object({
   epochIndex: z.number().int().nonnegative(),
-  epochStartFrame: z.number().int().nonnegative(),
-  frameStart: z.number().int().nonnegative(),
+  epochSourceStartFrame: z.number().int().nonnegative(),
+  sourceFrameStart: z.number().int().nonnegative(),
   sourceGeneration: z.number().int().positive(),
   sequence: z.number().int().nonnegative(),
   sampleOffset: z.number().int().nonnegative(),
+  alignment: meetingFrameAlignmentSegmentSchema.nullable(),
+  alignmentErrorCode: z.string().regex(/^[a-z0-9-]{1,80}$/),
 });
 
 export interface MeetingMicIntentRequest {
@@ -196,6 +200,7 @@ export interface MeetingMicIntentRequest {
   manualMuted: boolean;
   platformMuted: boolean;
   boundaryFrame: number;
+  boundaryAlignment: z.infer<typeof meetingFrameAlignmentPointSchema> | null;
 }
 
 export const meetingMicIntentRequestSchema = z.object({
@@ -206,6 +211,7 @@ export const meetingMicIntentRequestSchema = z.object({
   manualMuted: z.boolean(),
   platformMuted: z.boolean(),
   boundaryFrame: z.number().int().nonnegative(),
+  boundaryAlignment: meetingFrameAlignmentPointSchema.nullable(),
 });
 
 export const meetingMicIntentResultSchema = z.object({
@@ -245,6 +251,7 @@ export const meetingClockProbeResultSchema = z.object({
 export interface MeetingCaptureStopRequest {
   sessionId: string;
   lastSequence: Partial<Record<MeetingSource, number>>;
+  microphoneBoundary?: { sourceGeneration: number; sourceFrame: number; alignment: z.infer<typeof meetingFrameAlignmentPointSchema> | null };
   incomplete?: boolean;
   errorCode?: string;
   suppressProcessing?: boolean;
@@ -256,6 +263,7 @@ export const meetingCaptureStopRequestSchema = z.object({
     mic: z.number().int().optional(),
     system: z.number().int().optional(),
   }),
+  microphoneBoundary: z.object({ sourceGeneration: z.number().int().positive(), sourceFrame: z.number().int().nonnegative().safe(), alignment: meetingFrameAlignmentPointSchema.nullable() }).optional(),
   incomplete: z.boolean().optional(),
   errorCode: z.string().optional(),
   suppressProcessing: z.boolean().optional(),

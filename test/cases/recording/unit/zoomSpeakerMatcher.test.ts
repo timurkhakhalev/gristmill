@@ -13,7 +13,7 @@ function anchor(start: number, end: number, overrides: Partial<MeetingAudioClock
   return { id: randomUUID(), recordingId, epochIndex: 0, epochStartFrame: 0, clock: { type: "clock", generation, startFrame: start * 24_000, endFrame: end * 24_000, hostStartNs: String(start * 1e9), hostEndNs: String(end * 1e9), timebaseNumer: 1, timebaseDenom: 1, conversion: "uncalibrated", reason: null }, ...overrides };
 }
 function fixture() {
-  return { transcript: { text: "Synthetic speech", segments: [1, 5, 9].map((start) => ({ start: start - 0.5, end: start + 2.5, speaker: "system:provider-a", text: "Speech" })) }, observations: [observation(1), observation(5), observation(9)], anchors: Array.from({ length: 14 }, (_, i) => anchor(i, i + 1)), epochs: [{ recordingId, source: "system", epochIndex: 0, startFrame: 0, frameCount: 14 * 24_000, state: "finalized" } satisfies Pick<MeetingRecordingEpochDto, "recordingId" | "source" | "epochIndex" | "startFrame" | "frameCount" | "state">], partOffsets: [{ recordingId, startFrame: 0, frameCount: 14 * 24_000 }] };
+  return { transcript: { text: "Synthetic speech", segments: [1, 5, 9].map((start) => ({ start: start - 0.5, end: start + 2.5, speaker: "system:provider-a", text: "Speech" })) }, observations: [observation(1), observation(5), observation(9)], anchors: Array.from({ length: 14 }, (_, i) => anchor(i, i + 1)), epochs: [{  recordingId, source: "system", epochIndex: 0, timelineStartFrame: 0, frameCount: 14 * 24_000, state: "finalized" } satisfies Pick<MeetingRecordingEpochDto, "recordingId" | "source" | "epochIndex" | "timelineStartFrame" | "frameCount" | "state">], partOffsets: [{ recordingId, startFrame: 0, frameCount: 14 * 24_000 }] };
 }
 
 test("production policy accepts repeated unknown-self remote activity, names only system and preserves ASR", () => {
@@ -95,7 +95,7 @@ test("continued confirmations are one episode and clock gaps/invalid ranges cann
 
 test("shared multipart offsets and provider-normalized IDs use the production matcher", () => {
   const shifted = fixture();
-  shifted.partOffsets[0].startFrame = shifted.epochs[0].startFrame = 60 * 24_000;
+  shifted.partOffsets[0].startFrame = shifted.epochs[0].timelineStartFrame = 60 * 24_000;
   shifted.transcript.segments = shifted.transcript.segments.map((s) => ({ ...s, start: s.start + 60, end: s.end + 60 }));
   assert.ok(matchZoomSpeakers(shifted).every((d) => d.status === "accepted"));
   assert.equal(matchZoomSpeakers(shifted)[0].intervals[0].start, 61);

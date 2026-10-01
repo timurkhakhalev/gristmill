@@ -94,11 +94,24 @@ reminder with a manually chosen, recording-scoped Stop action.
 `extension/src/meetAdapter.ts` is adapter version 1. Sanitized RU/EN DOM fixtures
 live under `test/fixtures/meet/v1`; an isolated Electron renderer exercises the
 actual DOM API against them. These are adapter contract fixtures, not evidence
-that Google's current production UI still exposes every selector. A live Chrome
-check on 2026-10-02 observed Leave `jsname="CQylAd"`, microphone `jsname="hw0c9"`
-with `data-is-muted`, and the exit screen's `h1[jsname="r4nke"]` together with
-rejoin `button[jsname="W6suGc"]`. The adapter uses these technical attributes;
-translated labels never determine presence, mute, mode or confirmed Leave.
+that Google's current production UI still exposes every selector. Following
+inspection of the installed Granola Companion 0.4.18, participant IDs and names
+are read from tiles and `span.notranslate`; visual colored borders/outlines and
+narrow activity bars supply activity hints. Local effects/reframe tools and
+mirrored video identify local tiles without an English “(you)” match. Ambiguous
+names, hidden indicators, focused outlines and control-button decorations cannot
+produce an accepted activity observation. All simultaneous active IDs are kept.
+These visual hints require measured indicator delay and multi-speaker verification;
+they are not proof of voice identity. See [reference inspection](granola-companion-adapter.md).
+
+A live Chrome check on 2026-10-02 observed semantic icon tokens `call_end`, `mic`
+and `mic_off` in `i.google-symbols`. These identify Leave and microphone controls;
+`data-is-muted` supplies the state. Generated `jsname` and class IDs no longer
+identify these controls. The exit screen still requires the observed internal
+`h1[jsname="r4nke"]` together with rejoin `button[jsname="W6suGc"]`: that screen
+exposed no semantic rejoin attribute. These two version-dependent markers are
+kept as a positive exit check rather than interpreting absence as Leave.
+Translated labels never determine presence, mute, mode or confirmed Leave.
 Camera's separate `data-is-muted` is excluded. Missing or conflicting technical
 controls stay unknown and never authorize Stop or unmute. Unknown UI is reported
 explicitly. No layout or PiP-opening actions are performed by the extension.

@@ -2,6 +2,7 @@ import { isRegenerableNoteTitle } from "./regenerableNoteTitle.js";
 import { TRANSLATIONS_BY_LOCALE } from "../locales/translations.js";
 import { formatMeetingMaterial } from "./meetingPromptMaterial.js";
 import fs from "fs";
+import debugLogger from "./debugLogger.js";
 import { createHash } from "crypto";
 import { z } from "zod";
 import {
@@ -37,6 +38,7 @@ import { parseGeminiFileResponse } from "./geminiFileTranscription.js";
 import { parseOpenAIFileResponse } from "./remoteTranscriptionIpcHandler.js";
 import { meetingTranscriptArtifactSchema, meetingSummaryArtifactSchema } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
+import { matchZoomSpeakers } from "./zoomSpeakerMatcher.js";
 import { composeMeetingAudioParts, meetingTimelineFrameCount, prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio, type MeetingAudioLayout } from "./meetingAudioMixer.js";
 import { formatSpeakerTranscript, mergeSpeakersWithText } from "./speakerMerge.js";
 import { byokFileSizeLimit } from "./transcriptionRoute.js";
@@ -100,10 +102,14 @@ export interface MeetingProcessingDatabase {
   recoverRunningMeetingProcessingRuns(): number;
   getMeetingRunSpeakerCorrections(runId: string): MeetingSpeakerCorrection[];
   getMeetingRunSpeakerCorrectionRevision(runId: string): number;
-  setMeetingRunSpeakerCorrection(runId: string, speakerId: string, profileId: number | null, displayName: string, source?: "voice" | "model" | "user", participantEmail?: string): { success: boolean };
+  listMeetingZoomObservations: import("./database.js").DatabaseManager["listMeetingZoomObservations"];
+  listMeetingAudioClockAnchors: import("./database.js").DatabaseManager["listMeetingAudioClockAnchors"];
+  getMeetingPlatformCoverage: import("./database.js").DatabaseManager["getMeetingPlatformCoverage"];
+  applyMeetingPlatformDecisions: import("./database.js").DatabaseManager["applyMeetingPlatformDecisions"];
+  setMeetingRunSpeakerCorrection(runId: string, speakerId: string, profileId: number | null, displayName: string, source?: "voice" | "platform" | "model" | "user", participantEmail?: string): { success: boolean };
   getContactProfiles(emails: string[]): Array<{ email: string; display_name: string | null }>;
   rememberContactName(email: string, name: string): void;
-  applyAutomaticMeetingSpeakerCorrections(runId: string, expectedCurrentRunId: string, expectedRevision: number, corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>, source: "voice" | "model", rejectedModelSpeakerIds?: string[]): boolean;
+  applyAutomaticMeetingSpeakerCorrections(runId: string, expectedCurrentRunId: string, expectedRevision: number, corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>, source: "voice" | "platform" | "model", rejectedModelSpeakerIds?: string[]): boolean;
   getMeetingRunLlmSourceSnapshot(runId: string): string | null;
   setMeetingRunLlmSourceSnapshot(runId: string, snapshotJson: string): boolean;
   applyMeetingGeneratedTitle(runId: string, noteId: number, expectedTitle: string | null, title: string, expectedSnapshotJson: string): boolean;
@@ -197,7 +203,7 @@ interface MeetingLlmSourceSnapshot {
   manualNotes: string;
   manualNoteRevision: string;
   speakerCorrectionRevision: number;
-  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; speakerNameSource?: "user" | "model" | "voice" | null; text: string }>;
+  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; speakerNameSource?: "user" | "model" | "voice" | "platform" | null; text: string }>;
   promptModel: NonNullable<MeetingProcessingConfig["summary"]>;
 }
 
@@ -214,7 +220,7 @@ const meetingLlmSourceSnapshotSchema = z.object({
     id: z.string().min(1),
     speakerId: z.string().nullable(),
     speakerName: z.string().nullable(),
-    speakerNameSource: z.enum(["user", "model", "voice"]).nullable().optional(),
+    speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
     text: z.string(),
   }).strict()).min(1),
   promptModel: meetingProcessingConfigSchema.shape.summary.unwrap().unwrap(),
@@ -531,6 +537,7 @@ export class MeetingProcessingWorker {
           groupId: recording.groupId,
           captureState: recording.captureState,
           captureErrorCode: recording.captureErrorCode,
+          platformCoverage: this.deps.database.getMeetingPlatformCoverage(recording.id) ?? null,
           audioState: recording.audioState,
           audioErrorCode: recording.audioErrorCode,
           currentRunId: recording.currentRunId,
@@ -886,6 +893,25 @@ export class MeetingProcessingWorker {
     else await this.continueReadyTranscript(run, recording, transcript, signal);
   }
 
+  private applyPlatformNames(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, transcript: MeetingTranscriptArtifact): void {
+    const database = this.deps.database;
+    try {
+      const parts = run.sourceRecordingIds.map((id) => database.getMeetingRecording(id)).filter((part): part is MeetingRecordingDto => !!part);
+      if (parts.length !== run.sourceRecordingIds.length) return;
+      const { partOffsets, epochs } = composeMeetingAudioParts(parts, (id) => database.listMeetingRecordingEpochs(id));
+      const observations = run.sourceRecordingIds.flatMap((id) => database.listMeetingZoomObservations(id));
+      if (!observations.length) return;
+      const anchors = run.sourceRecordingIds.flatMap((id) => database.listMeetingAudioClockAnchors(id));
+      const decisions = matchZoomSpeakers({ transcript, observations, anchors, epochs, partOffsets });
+      const revision = database.getMeetingRunSpeakerCorrectionRevision(run.id);
+      if (database.applyMeetingPlatformDecisions(run.id, revision, decisions)) this.publishCurrentSelection(run.id);
+    } catch {
+      // Evidence is optional. Its failure cannot discard a saved transcript or
+      // block voice recognition/model naming/Summary; never log names here.
+      debugLogger.warn("Meeting platform evidence unavailable", { recordingId: recording.id }, "meeting");
+    }
+  }
+
   private async continueReadyTranscript(
     run: MeetingProcessingRunDto,
     recording: MeetingRecordingDto,
@@ -906,6 +932,7 @@ export class MeetingProcessingWorker {
       this.cancelRun(run.id, "meeting-audio-changed");
       return;
     }
+    if (run.kind !== "summary") this.applyPlatformNames(run, recording, transcript);
     if (config.summary) {
       const snapshot = this.getOrCreateLlmSourceSnapshot(run, recording, sourceRunId, transcript);
       await this.nameUnknownSpeakers(run, recording, sourceRunId, transcript, snapshot, signal);

@@ -131,3 +131,40 @@ flowchart TD
 Источники и прежние альтернативы сохранены в [исследовании репозиториев](transcription-chunking-research.md); предложения о preview и обработке во время встречи там имеют исторический статус.
 
 После сохранения транскрипта запрос определения спикеров также предлагает название, если включена автогенерация и Note имеет пустое или стандартное название. Используется сохранённая модель Summary. Инструкции и JSON-поля включаются только для нужных задач: speakers, title или оба; при известных спикерах запрос содержит только задачу названия. Пользовательские и календарные названия сохраняются. Новое название и LLM snapshot обновляются атомарно; переименование во время запроса имеет приоритет. Ошибка этого шага не блокирует Summary.
+
+## Zoom speaker evidence (#122)
+
+Capture optionally collects read-only Zoom AX activity and sparse CoreAudio clock
+ranges using the existing Accessibility permission. Recording-owned evidence and
+coverage survive restart/reprocessing and cascade with recording/Note deletion.
+AX/SQLite/metadata failure never changes successful mic/system audio into failed
+capture. Recovered collecting coverage is marked incomplete after restart.
+Quit confirmation finishes capture before general shutdown; a macOS window
+sheet keeps capture IPC running while the user decides. Bounded sidecar teardown
+awaits capture/tap cleanup.
+
+The shared part-offset map drives both audio concatenation and the normalized
+system-only matcher. Voice recognition runs first, platform matching next, then
+model naming and Summary. Per-run decisions keep evidence IDs, transcript
+intervals and the initial timing policy; acceptance and correction are atomic under current-run,
+revision, cancellation and deletion guards. User > voice > platform > model;
+platform never creates a voice profile or email. Old recordings without evidence
+retain their existing pipeline. The UI distinguishes Zoom names from model
+suggestions and reports incomplete platform evidence independently of audio.
+
+Production suggests Zoom display names after at least three independent activity
+and speech episodes agree with one system ASR cluster. Continued confirmations of
+one long turn count once; recreated tiles or Pause/Resume may contribute later
+episodes without implying a stable participant ID. The initial 500 ms indicator
+lag is a hypothesis from static client inspection, not a Gristmill measurement.
+A 500 ms boundary guard, one second of stable speech per episode, and strict clock
+continuity/rate checks are conservative product rules, not measured accuracy.
+
+Known self labels and overlapping mic speech are excluded. Unknown self does not
+disable naming; simultaneous duplicate display names, competing names/clusters,
+ambiguous speech and unusable clock/AX spans abstain. Gaps remain local: earlier
+and later usable spans still contribute. The matcher never renames mic or repairs
+ASR boundaries. It does not prove exclusive Zoom audio, voice identity or one
+person per device; Zoom badges identify an editable suggestion's source. Known
+signal conversion, real Zoom lag and multi-speaker accuracy remain unverified.
+See [implementation and live verification limits](zoom-speaker-prototype.md#implemented-evidence-path).

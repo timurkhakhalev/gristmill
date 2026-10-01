@@ -136,7 +136,7 @@
       "CFBundleIconName": "gristmill",
       "NSMicrophoneUsageDescription": "Gristmill uses the microphone to capture your voice for transcription.",
       "NSAudioCaptureUsageDescription": "Gristmill uses system audio to capture other participants' audio from calls and meetings.",
-      "NSAccessibilityUsageDescription": "Gristmill uses accessibility access for global meeting shortcuts.",
+      "NSAccessibilityUsageDescription": "Gristmill uses accessibility access to detect calls and read Zoom participant names and active speaker indicators.",
       "NSCalendarsUsageDescription": "Gristmill reads your calendar to detect upcoming meetings and link meeting notes to events.",
       "NSCalendarsFullAccessUsageDescription": "Gristmill reads your calendar to detect upcoming meetings and link meeting notes to events."
     }

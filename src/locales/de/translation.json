@@ -2242,12 +2242,15 @@
     "permissions": "Recording permissions",
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
-    "accessibilityDetection": "Für Erinnerungen zur Aufzeichnung von Meetings.",
+    "accessibilityDetection": "Zum Erkennen von Anrufen und Lesen von Teilnehmernamen und Sprecheranzeigen in Zoom.",
     "accessibilityHelp": "Aktiviere Gristmill in den macOS-Bedienungshilfen. Fehlt es in der Liste, klicke auf + und wähle die installierte Gristmill.app.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "platformName": "Zoom",
+    "platformNameHint": "Name aus Zoom zugeordnet. Zum Ändern auf den Namen klicken.",
+    "platformEvidenceUnavailable": "Zoom-Sprecherdaten sind unvollständig. Audio und Transkript bleiben erhalten.",
     "partialTranscript": "Das Transkript dieser Notiz ist unvollständig.",
     "selectedResultTranscript": "Transkript des ausgewählten Ergebnisses",
     "participantsLoadError": "Kalenderteilnehmer konnten nicht geladen werden.",

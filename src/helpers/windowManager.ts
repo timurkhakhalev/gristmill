@@ -1,4 +1,4 @@
-import { app, screen, BrowserWindow, dialog, type WebContents } from "electron";
+import { app, screen, BrowserWindow, dialog, type WebContents, type MessageBoxOptions } from "electron";
 import debugLogger from "./debugLogger.js";
 // Aliased: this class has an openExternalUrl method wrapping the helper.
 import { openExternalUrl as openUrlInExternalBrowser } from "./externalUrlOpener.js";
@@ -124,14 +124,20 @@ export class WindowManager {
       if (this._quitConfirmationPromise) return;
       const guard = this.meetingCaptureQuitGuard;
       this._quitConfirmationPromise = (async () => {
-        const decision = await dialog.showMessageBox({
+        const options: MessageBoxOptions = {
           type: "warning",
           title: i18nMain.t("dialog.meetingQuit.title"),
           message: i18nMain.t("dialog.meetingQuit.message"),
           buttons: [i18nMain.t("dialog.meetingQuit.stopAndQuit"), i18nMain.t("dialog.meetingQuit.cancel")],
           defaultId: 1,
           cancelId: 1,
-        });
+        };
+        const parent = this.controlPanelWindow;
+        // A windowless macOS alert runs a blocking modal loop, starving capture IPC.
+        if (parent && !parent.isDestroyed()) parent.show();
+        const decision = parent && !parent.isDestroyed()
+          ? await dialog.showMessageBox(parent, options)
+          : await dialog.showMessageBox(options);
         if (decision.response !== 0) return;
 
         const stopped = await guard.stop();

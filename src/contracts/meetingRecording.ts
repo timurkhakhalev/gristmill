@@ -237,7 +237,7 @@ export const meetingSummaryArtifactSchema = z.object({
 });
 export type MeetingSummaryArtifact = z.infer<typeof meetingSummaryArtifactSchema>;
 
-export const meetingSpeakerCorrectionSourceSchema = z.enum(["voice", "model", "user"]);
+export const meetingSpeakerCorrectionSourceSchema = z.enum(["voice", "platform", "model", "user"]);
 export const meetingSpeakerCorrectionSchema = z.object({
   speakerId: z.string().min(1).max(200),
   profileId: z.number().int().positive().nullable(),
@@ -269,3 +269,63 @@ export type MeetingDeletionIntentDto = z.infer<typeof meetingDeletionIntentDtoSc
 
 export const meetingRunArtifactSchema = z.enum(["provider-response", "transcript", "summary"]);
 export type MeetingRunArtifact = z.infer<typeof meetingRunArtifactSchema>;
+
+// Host time is decimal nanoseconds from mach_absolute_time, never delivery time.
+const validHostNs = (value: string): boolean => /^\d{1,20}$/.test(value);
+const hostNsSchema = z.string().regex(/^\d{1,20}$/);
+export const zoomSpeakerObservationSchema = z.object({
+  id: z.string().uuid(), recordingId: meetingRecordingIdSchema,
+  sessionId: z.string().uuid(), instanceKey: z.string().min(1).max(100), nameRevision: z.number().int().positive(),
+  episodeId: z.string().uuid(), displayName: z.string().max(200),
+  windowMode: z.enum(["full", "compact", "unknown"]),
+  activity: z.enum(["explicit", "end", "clear", "candidate", "ambiguous", "unavailable"]),
+  // Explicit/end cover bounded, continued read confirmations of one episode;
+  // other states cover the actual transition read. Never hold beyond this end.
+  readStartHostNs: hostNsSchema, readEndHostNs: hostNsSchema,
+  self: z.enum(["remote", "local", "unknown"]),
+  singleSpeaker: z.boolean().nullable(),
+  provenance: z.enum(["zoom-only", "system-wide", "unknown"]),
+  reason: z.string().max(100).nullable(),
+}).refine((value) => validHostNs(value.readStartHostNs) && validHostNs(value.readEndHostNs) && BigInt(value.readEndHostNs) >= BigInt(value.readStartHostNs));
+export type ZoomSpeakerObservation = z.infer<typeof zoomSpeakerObservationSchema>;
+export const meetingAudioClockMessageSchema = z.object({
+  type: z.literal("clock"), generation: z.string().uuid(),
+  startFrame: z.number().int().nonnegative().safe(), endFrame: z.number().int().positive().safe(),
+  hostStartNs: hostNsSchema.nullable(), hostEndNs: hostNsSchema.nullable(),
+  timebaseNumer: z.number().int().positive(), timebaseDenom: z.number().int().positive(),
+  conversion: z.literal("uncalibrated"), reason: z.string().max(100).nullable(),
+}).refine((value) => value.endFrame > value.startFrame &&
+  ((value.hostStartNs === null && value.hostEndNs === null) ||
+    value.hostStartNs !== null && value.hostEndNs !== null && validHostNs(value.hostStartNs) && validHostNs(value.hostEndNs) && BigInt(value.hostEndNs) > BigInt(value.hostStartNs)));
+export type MeetingAudioClockMessage = z.infer<typeof meetingAudioClockMessageSchema>;
+export const meetingAudioClockAnchorSchema = z.object({
+  id: z.string().uuid(), recordingId: meetingRecordingIdSchema, epochIndex: z.number().int().nonnegative(),
+  epochStartFrame: z.number().int().nonnegative().safe(), clock: meetingAudioClockMessageSchema,
+});
+export type MeetingAudioClockAnchor = z.infer<typeof meetingAudioClockAnchorSchema>;
+// A fixed initial heuristic, not a measured calibration or a verified identity.
+export const zoomSpeakerTimingPolicySchema = z.object({
+  version: z.literal("zoom-activity-v1"),
+  origin: z.literal("initial-lag-hypothesis"),
+  indicatorDelaySeconds: z.literal(0.5),
+  boundaryGuardSeconds: z.literal(0.5),
+  clockContinuitySeconds: z.literal(0.001),
+  clockRateToleranceSeconds: z.literal(0.002),
+  minimumSpeechSeconds: z.literal(1),
+  minimumIndependentEpisodes: z.literal(3),
+});
+export type ZoomSpeakerTimingPolicy = z.infer<typeof zoomSpeakerTimingPolicySchema>;
+export const zoomSpeakerDecisionSchema = z.object({
+  speakerId: z.string().nullable(), displayName: z.string().nullable(),
+  status: z.enum(["accepted", "rejected"]), reason: z.string().min(1).max(100),
+  observationIds: z.array(z.string().uuid()), clockAnchorIds: z.array(z.string().uuid()),
+  intervals: z.array(z.object({ start: z.number().finite(), end: z.number().finite() }).refine((v) => v.end > v.start)),
+  // Null only for preserved decisions made before this policy existed.
+  timingPolicy: zoomSpeakerTimingPolicySchema.nullable(),
+});
+export type ZoomSpeakerDecision = z.infer<typeof zoomSpeakerDecisionSchema>;
+export const meetingPlatformCoverageSchema = z.object({
+  reads: z.number().int().nonnegative(), samples: z.number().int().nonnegative(),
+  state: z.enum(["collecting", "complete", "incomplete"]), reason: z.string().max(100).nullable(),
+});
+export type MeetingPlatformCoverage = z.infer<typeof meetingPlatformCoverageSchema>;

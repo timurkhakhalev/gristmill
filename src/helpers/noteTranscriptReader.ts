@@ -137,6 +137,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
       speakers.push({
         id,
         name: correction?.displayName ?? null,
+        ...(correction ? { name_source: correction.source } : {}),
         email: correction?.participantEmail ?? (correction?.profileId ? deps.profileEmail(correction.profileId) : null),
         source: provider === "mic" ? "microphone" : provider.startsWith("system:") ? "system" : null,
       });

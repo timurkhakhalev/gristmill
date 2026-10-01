@@ -778,7 +778,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     <details className="mt-4"><summary className="cursor-pointer text-xs text-muted">{tr("selectedResultTranscript", "Selected result transcript")}</summary>{renderSelectedTranscript()}</details>
   </div> : renderSelectedTranscript());
 
-  return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">    <div className="sticky top-0 z-10 -mt-4 mb-3 flex items-center justify-between gap-2 bg-background pt-4 pb-3 max-[720px]:flex-wrap">
+  return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">    <div className="sticky top-0 z-10 -mt-4 mb-3 flex flex-wrap items-center justify-between gap-2 bg-background pt-4 pb-3">
       <NoteViewSwitch
         value={viewMode}
         onChange={onViewModeChange}

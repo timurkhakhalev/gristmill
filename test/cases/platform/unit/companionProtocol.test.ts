@@ -22,7 +22,7 @@ test("protocol accepts only the current bounded metadata shape", () => {
     assert.equal(companionBrowserMessageSchema.safeParse({ ...hello, ...extra }).success, false);
   }
   const snapshot = { version: 1, type: "snapshot", connectionId: randomUUID(), recordingState: "idle", recordingId: null,
-    binding: null, manualMuted: false, platformMuted: false };
+    binding: null, contextState: "unbound", manualMuted: false, platformMuted: false };
   assert.equal(companionDesktopMessageSchema.safeParse(snapshot).success, true);
   assert.equal(companionDesktopMessageSchema.safeParse({ ...snapshot, noteTitle: "Private" }).success, false);
 });

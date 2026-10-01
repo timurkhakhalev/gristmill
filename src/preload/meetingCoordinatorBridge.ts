@@ -1,3 +1,4 @@
+import { companionSetupSchema, companionStatusSchema, companionPlatformMuteSchema } from "../contracts/companion.js";
 // Renderer-facing meeting coordinator bridge. Moved out of preload.js so the
 // recording/detection/auto-end/notification operations and their events have
 // one typed implementation backed by the shared contract. Invoke results are
@@ -88,6 +89,16 @@ export function createMeetingCoordinatorBridge(
     ipcRenderer.invoke(channel, ...args).then((raw) => parseResult(schema, raw, channel));
 
   return {
+    finishPausedMeetRecording: (recordingId) => invokeParse(simpleSuccessResultSchema, "meet-recording-finish-paused", recordingId),
+    getMeetIntegrationSetup: () => invokeParse(companionSetupSchema, "meet-integration-setup"),
+    configureMeetIntegration: (action) => invokeParse(simpleSuccessResultSchema, "meet-integration-configure", action),
+    respondMeetContextReminder: (request) => invokeParse(simpleSuccessResultSchema, "meet-context-reminder-respond", request),
+    claimMeetingAutoEnd: (sessionId) => invokeParse(simpleSuccessResultSchema, "meeting-auto-end-claim", sessionId),
+    getMeetCompanionStatus: () => invokeParse(companionStatusSchema, "meet-companion-status"),
+    confirmMeetCompanionBinding: (request) => invokeParse(simpleSuccessResultSchema, "meet-companion-select", request),
+    onMeetCompanionStatus: (callback) => subscribe(ipcRenderer, "meet-companion-status", companionStatusSchema, callback),
+    onMeetManualMute: (callback) => subscribe(ipcRenderer, "meet-manual-mute", companionPlatformMuteSchema, callback),
+    onMeetPlatformMute: (callback) => subscribe(ipcRenderer, "meet-platform-mute", companionPlatformMuteSchema, callback),
     meetingTranscriptionPrepare: (options) =>
       invokeParse(
         meetingPrepareResultSchema,

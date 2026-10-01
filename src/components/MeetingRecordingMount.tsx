@@ -73,6 +73,7 @@ export default function MeetingRecordingMount(): null {
 
   useEffect(() => {
     const unsubscribe = window.electronAPI?.onMeetingTranscriptionStopRequested?.((request) => {
+      if (request.reason === "platform-leave") return;
       void stopRecording(request.sessionId, { suppressProcessing: request.suppressProcessing === true }).catch((error) => {
         logger.error(
           "Meeting capture could not drain before quit",
@@ -85,7 +86,18 @@ export default function MeetingRecordingMount(): null {
   }, []);
 
   useEffect(() => {
-    const unsubscribeStop = window.electronAPI?.onMeetingAutoEndRequested?.((request) => {
+    const handleAutoEnd = async (request: { sessionId: string }, platformLeave = false) => {
+      if (!platformLeave) {
+        try {
+          if (!(await window.electronAPI?.claimMeetingAutoEnd?.(request.sessionId))?.success) return;
+        } catch (error) {
+          logger.error("Meeting auto-end claim failed; recording is still running", {
+            error: error instanceof Error ? error.message : String(error),
+            sessionId: request.sessionId,
+          }, "meeting");
+          return;
+        }
+      }
       const restartContext = createMeetingAutoEndRestartContext(
         request.sessionId,
         getActiveRecordingSessionId(),
@@ -95,7 +107,10 @@ export default function MeetingRecordingMount(): null {
 
       requestMeetingRecordingAutoEnd(
         request,
-        (sessionId) => stopRecording(sessionId),
+        async (sessionId) => {
+          const result = await stopRecording(sessionId);
+          return { stopped: result.stopped && useMeetingRecordingStore.getState().capturePhase === "saved" };
+        },
         (sessionId, stopped) => {
           // Every path that ends the recording without offering a restart card
           // has to say so, or the recording just disappears.
@@ -134,6 +149,10 @@ export default function MeetingRecordingMount(): null {
           );
         }
       );
+    };
+    const unsubscribeStop = window.electronAPI?.onMeetingAutoEndRequested?.((request) => handleAutoEnd(request));
+    const unsubscribeLeave = window.electronAPI?.onMeetingTranscriptionStopRequested?.((request) => {
+      if (request.reason === "platform-leave") handleAutoEnd(request, true);
     });
 
     const unsubscribeRestart = window.electronAPI?.onMeetingAutoEndRestartRequested?.((request) => {
@@ -170,6 +189,7 @@ export default function MeetingRecordingMount(): null {
 
     return () => {
       unsubscribeStop?.();
+      unsubscribeLeave?.();
       unsubscribeRestart?.();
     };
   }, []);

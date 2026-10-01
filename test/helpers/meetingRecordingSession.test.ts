@@ -130,6 +130,7 @@ test("restart context preserves note identity and session speaker settings", asy
         expectedCountIsExplicit: true,
         manualMicMuted: false,
         autoEndEligible: true,
+        restartSessionId: "meeting-2",
       },
     }
   );

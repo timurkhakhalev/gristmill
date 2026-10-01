@@ -63,3 +63,17 @@ export function uninstallCompanionHost(options: CompanionHostInstallation): void
   fs.rmSync(target.manifest, { force: true });
   fs.rmSync(target.launcher, { force: true });
 }
+
+/** Startup may refresh only this profile's existing registration. */
+export function refreshCompanionHost(options: CompanionHostInstallation): boolean {
+  const target = files(options);
+  try {
+    const contents = fs.readFileSync(target.manifest, "utf8");
+    if (!ownsManifest(contents) || JSON.parse(contents).path !== target.launcher) return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+  installCompanionHost(options);
+  return true;
+}

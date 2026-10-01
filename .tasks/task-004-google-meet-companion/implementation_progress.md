@@ -2,7 +2,7 @@
 
 ## M1 — Audio clock and mic lifecycle
 
-Status: in progress. The clock decision is resolved in plan.md §5.1.7; its implementation and regression verification remain pending. Earlier entries below are historical evidence, not the current decision state.
+Historical M1 handoff follows. Root subsequently completed the clock correction and M2/M3; current implementation and verification entries are appended below.
 
 Implemented bounded renderer/native monotonic clock calibration and actual frame anchors, serialized boundary-acknowledged manual/platform mic gating, persisted intentional-mute intervals, and route-specific handling of proven empty mic audio. Updated current capture/processing documentation and added clock, worklet, IPC/store, persistence, provider-route, and native-helper coverage.
 
@@ -311,3 +311,49 @@ main build); full typecheck and lint passed (existing warnings only).
 `pnpm run build:companion` produced the Dev extension. Native-host tests execute
 real subprocess/socket framing against temporary profiles; no user's Chrome
 registration was changed. Application wiring and real Meet remain next.
+
+
+## 2026-10-01 — Meet binding and recording UI integrated directly (M4/M5)
+
+Root implemented the content adapter, scoped main binding, native clock probes,
+continued speaker evidence, initial mic gate, explicit late selection, sticky
+heuristic suppression, positive Leave/Restart, five-minute reminder and settings.
+Added universal manual mute in Note and pill, Pause/Resume/Restart intent,
+Dev setup/removal and all 11 desktop locales. The integration preference is owned
+and persisted once in main, exposed through the typed bridge to its Settings
+control; no independently persisted renderer flag is introduced.
+
+Fixed additional consumer defects discovered during integration: lifecycle had
+omitted the final microphone boundary; Zoom Accessibility failure discarded
+native clock anchors; device unmute could cancel Meet mute. Native tail anchors
+now drain before optional evidence shuts down. Restart cards require successful
+ready capture, not an incomplete drain. Native snapshots preserve paused state.
+
+Focused checks passed: scoped Stop/lifecycle, binding/reload/profile isolation,
+clock evidence, auto-end arbitration, metadata persistence and locale coverage.
+A real isolated Electron renderer passed sanitized RU/EN DOM fixtures, including
+unknown UI, multi-active, Companion mode and positive Leave. Full typecheck and
+lint passed, and the extension build passed. Initial recording-domain run exposed
+two metadata error-code regressions; their focused retry passed after preserving
+specific write/overflow/tail diagnostics.
+
+Full-suite and package/runtime verification are running next. No live Meet or
+hardware accuracy claim is made from synthetic DOM, clock or device tests.
+
+
+## 2026-10-01 — Integrated checks and packaged smoke
+
+Continued implementation directly in this thread, without PlanAct delegation.
+Added scoped popup manual mute and context health, rejected page/profile/stale
+commands, cleared binding after failed Start and caught auto-end claim failures.
+
+Final `pnpm test`: all 425 files passed in 79.700 s. Full typecheck and lint passed
+(three existing lint warnings). `pnpm run pack` passed and produced the unsigned
+local arm64 app. Isolated packaged smoke passed manual mute, Pause/Resume, raw
+system continuity, native-host handshake, synthetic binding/mute, confirmed
+Leave/Restart and explicit late rebind. Captures finalized ready; processing
+reached ASR and reported missing credentials accurately.
+
+See `docs/google-meet-companion-verification.md` for evidence and limits. Actual
+Chrome/Meet DOM, speaker indicator accuracy, hardware matrix and onset measurement
+remain unverified. Do not treat automated/package checks as full issue acceptance.

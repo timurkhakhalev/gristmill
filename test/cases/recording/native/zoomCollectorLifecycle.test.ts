@@ -135,3 +135,15 @@ test("collector retains native interval confirmations after an AX gap for produc
   assert.equal(decisions.filter((d) => d.status === "accepted").length, 3);
   assert.equal(decisions[0].reason, "ax-incomplete");
 });
+
+test("AX failure cannot discard native audio clock anchors required by Meet", async () => {
+  const anchors: import("../../../../src/contracts/meetingRecording.js").MeetingAudioClockAnchor[] = [];
+  const collector = new ZoomSpeakerCollector(randomUUID(), { saveMeetingPlatformObservation() {}, saveMeetingAudioClockAnchor: (anchor) => anchors.push(anchor), setMeetingPlatformCoverage() {} });
+  collector.invalidate("accessibility-denied");
+  const generation = randomUUID();
+  collector.bindClock(generation, 0, 0);
+  collector.recordDeliveredFrames(generation, 24_000);
+  collector.recordClock({ type: "clock", generation, startFrame: 0, endFrame: 24_000, hostStartNs: "1000000000", hostEndNs: "2000000000", timebaseNumer: 1, timebaseDenom: 1, conversion: "uncalibrated", reason: null });
+  await collector.stop();
+  assert.equal(anchors.length, 1);
+});

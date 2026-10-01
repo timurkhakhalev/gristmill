@@ -42,7 +42,7 @@ function harness() {
 }
 
 const snapshot = (recordingState: "idle" | "recording") => ({ version: 1, type: "snapshot", connectionId: randomUUID(), recordingState,
-  recordingId: recordingState === "recording" ? randomUUID() : null, binding: null, manualMuted: false, platformMuted: false });
+  recordingId: recordingState === "recording" ? randomUUID() : null, binding: null, contextState: "unbound", manualMuted: false, platformMuted: false });
 
 test("worker trusts validated main state and top-frame Meet senders only; updates wait for Stop", async () => {
   const h = harness(); await h.ready;
@@ -80,4 +80,26 @@ test("worker reconnect does not reuse cached Connected or stale port authority",
   assert.equal((h.request({ type: "status" }, popup) as { connected: boolean }).connected, false);
   h.ports[1].receive(snapshot("idle"));
   assert.equal((h.request({ type: "status" }, popup) as { connected: boolean }).connected, true);
+});
+
+test("popup mute is scoped to its own bound recording and cannot be sent by page content", async () => {
+  const h = harness(); await h.ready;
+  const port = h.ports[0];
+  const hello = port.messages[0] as { installationId: string; sessionId: string };
+  const ref = { platform: "google-meet", ...hello, tabId: 7, documentId: randomUUID(), callId: "abc-defg-hij" };
+  const binding = { platform: ref.platform, installationId: hello.installationId, sessionId: hello.sessionId,
+    tabId: ref.tabId, documentId: ref.documentId, callId: ref.callId };
+  const state = { ...snapshot("recording"), binding, contextState: "recognized" };
+  port.receive(state);
+  const popup = { id: h.api.runtime.id, url: h.api.runtime.getURL("popup.html") };
+  const command = { type: "manual-mute", recordingId: state.recordingId, muted: true };
+  const page = { id: h.api.runtime.id, frameId: 0, tab: { id: 7 }, documentId: ref.documentId, url: "https://meet.google.com/abc-defg-hij" };
+  assert.deepEqual(h.request(command, page), { accepted: false });
+  assert.deepEqual(h.request({ ...command, recordingId: randomUUID() }, popup), { accepted: false });
+  assert.deepEqual(h.request(command, popup), { accepted: true });
+  assert.deepEqual(port.messages[1], { version: 1, sequence: 0, ref: binding, ...command });
+  port.receive({ ...state, binding: { ...binding, installationId: randomUUID() } });
+  assert.deepEqual(h.request(command, popup), { accepted: false });
+  port.disconnect();
+  assert.deepEqual(h.request(command, popup), { accepted: false });
 });

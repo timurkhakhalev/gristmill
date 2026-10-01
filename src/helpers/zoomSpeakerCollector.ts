@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import { StringDecoder } from "string_decoder";
-import { randomUUID } from "crypto";
+import { MeetingAudioClockCollector } from "./meetingAudioClockCollector.js";
 import { resolveBundledBinary } from "./binaryResolver.js";
 import { meetingPlatformCoverageSchema, meetingPlatformObservationSchema, type MeetingAudioClockMessage, type MeetingAudioClockAnchor, type MeetingPlatformCoverage, type MeetingPlatformObservation } from "../contracts/meetingRecording.js";
 
@@ -25,13 +25,14 @@ export class ZoomSpeakerCollector {
   private savedSamples = 0;
   private readonly queue: Array<() => void> = [];
   private draining: NodeJS.Immediate | null = null;
-  private readonly bindings = new Map<string, { epochIndex: number; epochStartFrame: number; deliveredFrames: number }>();
-  private pendingClocks: MeetingAudioClockMessage[] = [];
+  private readonly audioClocks: MeetingAudioClockCollector;
   private lastMessageAt = Date.now();
   private watchdog: NodeJS.Timeout | null = null;
 
   constructor(private readonly recordingId: string, private readonly database: MeetingPlatformEvidenceDatabase,
-    private readonly launch: (binary: string, args: string[]) => ChildProcessWithoutNullStreams = (binary, args) => spawn(binary, args, { stdio: "pipe" })) {}
+    private readonly launch: (binary: string, args: string[]) => ChildProcessWithoutNullStreams = (binary, args) => spawn(binary, args, { stdio: "pipe" })) {
+    this.audioClocks = new MeetingAudioClockCollector(recordingId, (anchor) => database.saveMeetingAudioClockAnchor(anchor));
+  }
 
   start(): void {
     if (this.stopping || this.failure || this.child || process.platform !== "darwin") return;
@@ -56,38 +57,15 @@ export class ZoomSpeakerCollector {
   }
 
   bindClock(generation: string, epochIndex: number, epochStartFrame: number): void {
-    this.bindings.set(generation, { epochIndex, epochStartFrame, deliveredFrames: 0 });
-    this.flushClocks();
+    this.audioClocks.bindClock(generation, epochIndex, epochStartFrame);
   }
-
   recordDeliveredFrames(generation: string | undefined, frames: number): void {
-    if (!generation) return;
-    const binding = this.bindings.get(generation);
-    if (!binding) { this.fail("clock-generation-unbound"); return; }
-    binding.deliveredFrames += frames;
-    this.flushClocks();
+    this.audioClocks.recordDeliveredFrames(generation, frames);
   }
-
   recordClock(clock: MeetingAudioClockMessage): void {
-    if (this.failure || this.stopping) return;
-    if (this.pendingClocks.length >= 128) { this.fail("clock-queue-overflow"); return; }
-    this.pendingClocks.push(clock);
-    this.flushClocks();
+    if (!this.stopping) this.audioClocks.recordClock(clock);
   }
-
   invalidate(reason: string): void { this.fail(reason); }
-
-  private flushClocks(): void {
-    const waiting: MeetingAudioClockMessage[] = [];
-    for (const clock of this.pendingClocks) {
-      const binding = this.bindings.get(clock.generation);
-      if (!binding || clock.endFrame > binding.deliveredFrames) { waiting.push(clock); continue; }
-      const anchor: MeetingAudioClockAnchor = { id: randomUUID(), recordingId: this.recordingId,
-        epochIndex: binding.epochIndex, epochStartFrame: binding.epochStartFrame, clock };
-      this.enqueue(() => this.database.saveMeetingAudioClockAnchor(anchor));
-    }
-    this.pendingClocks = waiting;
-  }
 
   private consume(chunk: Buffer): void {
     if (this.failure) return;
@@ -140,7 +118,6 @@ export class ZoomSpeakerCollector {
   private fail(reason: string): void {
     this.failure ??= reason;
     this.queue.length = 0;
-    this.pendingClocks = [];
     void this.closeHelper(false);
     if (this.watchdog) clearInterval(this.watchdog);
     this.watchdog = null;
@@ -178,12 +155,12 @@ export class ZoomSpeakerCollector {
     await this.closeHelper(true);
     const decoderTail = this.decoder.end();
     if (decoderTail) this.failure ??= "metadata-tail-incomplete";
-    this.flushClocks();
-    if (this.pendingClocks.length || this.buffer.trim()) this.failure ??= "metadata-tail-incomplete";
+    const clockError = this.audioClocks.stop();
+    this.failure ??= clockError;
+    if (this.buffer.trim()) this.failure ??= "metadata-tail-incomplete";
     if (this.draining) clearImmediate(this.draining);
     this.drain();
     try { this.database.setMeetingPlatformCoverage(this.recordingId, { ...this.coverage,
       state: this.failure || this.coverage.reason ? "incomplete" : "complete", reason: this.failure ?? this.coverage.reason }); } catch { this.fail("metadata-write-failed"); }
-    this.bindings.clear();
   }
 }

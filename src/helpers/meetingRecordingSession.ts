@@ -70,6 +70,7 @@ export function createMeetingAutoEndRestartContext(
       expectedCountIsExplicit: state.userTouchedStepper,
       manualMicMuted: state.manualMicMuted,
       autoEndEligible: true,
+      restartSessionId: sessionId,
     },
   };
 }

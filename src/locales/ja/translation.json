@@ -2187,7 +2187,8 @@
       "body": {
         "micReleased": "ほかのアプリがマイクを使用していないため、録音を自動停止しました。{{seconds}}秒以内に再開できます。",
         "silence": "音声が検出されなかったため、録音を自動停止しました。{{seconds}}秒以内に再開できます。",
-        "processExit": "会議アプリが終了したため、録音を自動停止しました。{{seconds}}秒以内に再開できます。"
+        "processExit": "会議アプリが終了したため、録音を自動停止しました。{{seconds}}秒以内に再開できます。",
+        "platformLeave": "Meet から退出しました。{{seconds}} 秒以内に録音を再開できます。"
       },
       "restart": "録音を再開"
     }
@@ -2505,5 +2506,29 @@
     "onboardingTitle": "お名前を教えてください",
     "skip": "スキップ",
     "selfLabel": "あなた"
+  },
+  "meetIntegration": {
+    "title": "Google Meet 連携",
+    "setupDescription": "Chrome Stable · 開発版拡張機能。連携を有効にし、chrome://extensions の「パッケージ化されていない拡張機能を読み込む」でフォルダーを選択してください。ミュート中のマイク音声は破棄され、システム音声の録音は続きます。",
+    "enabled": "有効",
+    "disabled": "無効",
+    "loading": "読み込み中…",
+    "disable": "無効にする",
+    "enable": "有効にする",
+    "openExtension": "拡張機能フォルダーを開く",
+    "remove": "登録を削除",
+    "setupFailed": "設定に失敗しました",
+    "mute": "マイクをミュート",
+    "unmute": "マイクのミュートを解除",
+    "platformMuted": "Meet またはデバイスがマイクをミュートしています",
+    "muteFailed": "マイクの状態を変更できませんでした",
+    "contextLost": "Meet との接続が失われました。録音は続いています。",
+    "bound": "Meet {{call}} に連携中",
+    "confirmDescription": "録音を通話に連携しますか？通話のミュートと退出がこの録音を制御します。",
+    "noCall": "認識された通話はありません。録音は独立して続きます。",
+    "bind": "{{call}} に連携",
+    "companionMode": "Meet コンパニオン モード",
+    "staleSelection": "通話または録音が変わりました。現在の通話を選択してください。",
+    "uiUnrecognized": "Meet の画面を認識できません。録音は続いています。"
   }
 }

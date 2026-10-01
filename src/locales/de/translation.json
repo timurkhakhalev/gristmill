@@ -2187,7 +2187,8 @@
       "body": {
         "micReleased": "Keine andere App nutzt Ihr Mikrofon, daher wurde die Aufnahme automatisch beendet. Neustart innerhalb von {{seconds}} s.",
         "silence": "Es wurde kein Ton erkannt, daher wurde die Aufnahme automatisch beendet. Neustart innerhalb von {{seconds}} s.",
-        "processExit": "Ihre Meeting-App wurde geschlossen, daher wurde die Aufnahme automatisch beendet. Neustart innerhalb von {{seconds}} s."
+        "processExit": "Ihre Meeting-App wurde geschlossen, daher wurde die Aufnahme automatisch beendet. Neustart innerhalb von {{seconds}} s.",
+        "platformLeave": "Meet verlassen. Aufnahme innerhalb von {{seconds}} s neu starten."
       },
       "restart": "Aufnahme neu starten"
     }
@@ -2505,5 +2506,29 @@
     "onboardingTitle": "Wie heißt du?",
     "skip": "Überspringen",
     "selfLabel": "Du"
+  },
+  "meetIntegration": {
+    "title": "Google Meet-Integration",
+    "setupDescription": "Chrome Stable · Dev-Erweiterung. Integration aktivieren und den Ordner über „Entpackte Erweiterung laden“ in chrome://extensions laden. Stummes Mikrofonaudio wird verworfen; Systemaudio läuft weiter.",
+    "enabled": "Aktiviert",
+    "disabled": "Deaktiviert",
+    "loading": "Laden…",
+    "disable": "Deaktivieren",
+    "enable": "Aktivieren",
+    "openExtension": "Erweiterungsordner öffnen",
+    "remove": "Registrierung entfernen",
+    "setupFailed": "Einrichtung fehlgeschlagen",
+    "mute": "Mikrofon stummschalten",
+    "unmute": "Mikrofon einschalten",
+    "platformMuted": "Mikrofon durch Meet oder Gerät stummgeschaltet",
+    "muteFailed": "Mikrofonstatus konnte nicht geändert werden",
+    "contextLost": "Verbindung zu Meet verloren. Aufnahme läuft weiter.",
+    "bound": "Mit Meet {{call}} verbunden",
+    "confirmDescription": "Aufnahme mit einem Anruf verknüpfen? Stummschalten und Verlassen steuern diese Aufnahme.",
+    "noCall": "Kein erkannter Anruf. Aufnahme läuft unabhängig weiter.",
+    "bind": "{{call}} verknüpfen",
+    "companionMode": "Meet-Begleitmodus",
+    "staleSelection": "Anruf oder Aufnahme geändert. Aktuellen Anruf auswählen.",
+    "uiUnrecognized": "Meet-Oberfläche nicht erkannt. Aufnahme läuft weiter."
   }
 }

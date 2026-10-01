@@ -2249,8 +2249,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "Zoomから照合した名前です。クリックして変更できます。",
-    "platformEvidenceUnavailable": "Zoomの発言者情報が不完全です。音声と文字起こしは保存されています。",
+    "platformNameHint": "{{platform}}から照合した名前です。クリックして変更できます。",
+    "platformEvidenceUnavailable": "Zoom / Google Meetの発言者情報が不完全です。音声と文字起こしは保存されています。",
     "partialTranscript": "このノートの文字起こしは不完全です。",
     "selectedResultTranscript": "選択した結果の文字起こし",
     "participantsLoadError": "カレンダーの参加者を読み込めませんでした。",

@@ -2249,8 +2249,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "Nome associato da Zoom. Fai clic per modificarlo.",
-    "platformEvidenceUnavailable": "I dati dei relatori Zoom sono incompleti. Audio e trascrizione sono conservati.",
+    "platformNameHint": "Nome associato da {{platform}}. Fai clic per modificarlo.",
+    "platformEvidenceUnavailable": "I dati dei relatori Zoom / Google Meet sono incompleti. Audio e trascrizione sono conservati.",
     "partialTranscript": "La trascrizione di questa nota è incompleta.",
     "selectedResultTranscript": "Trascrizione del risultato selezionato",
     "participantsLoadError": "Impossibile caricare i partecipanti dal calendario.",

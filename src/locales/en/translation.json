@@ -2240,8 +2240,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "Name matched from Zoom. Click the name to change it.",
-    "platformEvidenceUnavailable": "Zoom speaker evidence is incomplete. Audio and transcript are preserved.",
+    "platformNameHint": "Name matched from {{platform}}. Click the name to change it.",
+    "platformEvidenceUnavailable": "Zoom / Google Meet speaker evidence is incomplete. Audio and transcript are preserved.",
     "partialTranscript": "This Note transcript is incomplete.",
     "selectedResultTranscript": "Selected result transcript",
     "speakerNumber": "Speaker {{number}}",

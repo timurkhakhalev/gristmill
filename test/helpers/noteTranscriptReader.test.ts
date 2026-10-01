@@ -189,9 +189,10 @@ test("shared Note transcript preserves platform provenance without creating prof
   const parts = [part({ id: A, group: G1, startMin: 0, minutes: 10, run: "ra" })];
   const result = readNoteTranscript(deps(parts, [run("ra", [A])], {
     ra: { text: "Fixture", segments: [{ speaker: "system:fixture", text: "Fixture", start: 1, end: 2 }] },
-  }, { corrections: { ra: [{ speakerId: "system:fixture", profileId: null, participantEmail: null, displayName: "Synthetic Guest", source: "platform", revision: 1 }] } }), 42);
+  }, { corrections: { ra: [{ speakerId: "system:fixture", profileId: null, participantEmail: null, displayName: "Synthetic Guest", source: "platform", platform: "google-meet", revision: 1 }] } }), 42);
   assert.equal(result.speakers[0].name, "Synthetic Guest");
   assert.equal(result.speakers[0].name_source, "platform");
+  assert.equal(result.speakers[0].name_platform, "google-meet");
   assert.equal(result.speakers[0].email, null);
   assert.equal(result.speakers[0].source, "system");
 });

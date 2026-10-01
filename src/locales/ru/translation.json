@@ -2246,8 +2246,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "Имя сопоставлено с Zoom. Нажмите на имя, чтобы изменить его.",
-    "platformEvidenceUnavailable": "Данные о говорящих в Zoom неполные. Аудио и транскрипт сохранены.",
+    "platformNameHint": "Имя сопоставлено с {{platform}}. Нажмите на имя, чтобы изменить его.",
+    "platformEvidenceUnavailable": "Данные о говорящих в Zoom / Google Meet неполные. Аудио и транскрипт сохранены.",
     "partialTranscript": "Транскрипт заметки неполный.",
     "selectedResultTranscript": "Транскрипт выбранного результата",
     "speakerNumber": "Спикер {{number}}",

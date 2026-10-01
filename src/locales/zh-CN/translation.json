@@ -2249,8 +2249,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "从 Zoom 匹配的姓名。点击可修改。",
-    "platformEvidenceUnavailable": "Zoom 发言者信息不完整。音频和转录已保留。",
+    "platformNameHint": "从 {{platform}} 匹配的姓名。点击可修改。",
+    "platformEvidenceUnavailable": "Zoom / Google Meet 发言者信息不完整。音频和转录已保留。",
     "partialTranscript": "此笔记的转录文本不完整。",
     "selectedResultTranscript": "所选结果的转录文本",
     "participantsLoadError": "无法加载日历参与者。",

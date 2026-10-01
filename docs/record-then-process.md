@@ -172,3 +172,13 @@ ASR boundaries. It does not prove exclusive Zoom audio, voice identity or one
 person per device; Zoom badges identify an editable suggestion's source. Known
 signal conversion, real Zoom lag and multi-speaker accuracy remain unverified.
 See [implementation and live verification limits](zoom-speaker-prototype.md#implemented-evidence-path).
+
+### Общий слой evidence для Zoom и Google Meet
+
+Наблюдения и matcher теперь общие: `meeting_platform_observations` и
+`meetingPlatformMatcher.ts`. Имена содержат конкретную платформу в Results,
+Note transcript, CLI и LLM-контексте. Ручное переименование снимает platform badge;
+user/voice corrections имеют приоритет. Миграция сохраняет прежние Zoom decisions
+и revisions атомарно; runtime aliases старого Zoom persistence API отсутствуют.
+Удаление audio по retention сохраняет metadata и имена, удаление Note удаляет их.
+Synthetic tests проверяют обе платформы; real Meet attribution пока не проверен.

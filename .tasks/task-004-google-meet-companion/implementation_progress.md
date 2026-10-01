@@ -273,3 +273,26 @@ Verification (root, sequential canonical runner):
 
 Next: common platform evidence/provenance (M2), then browser transport, binding,
 controls and integrated verification. No claim of real Meet/hardware validation.
+
+## 2026-10-01 — common platform evidence implemented directly (M2)
+
+Replaced Zoom-specific observation/decision persistence and matcher APIs with a
+single platform path. Zoom AX remains its adapter; Meet uses the same matcher
+with a 0.3 s initial indicator delay, explicit active-set and bounded-clock guards.
+Atomic migration preserves historical Zoom identities, decisions and correction
+revisions; injected failure rolls back the table rename and payload changes.
+
+Corrections, saved projections, Note transcript, Results badges/tooltips, CLI and
+LLM material carry the concrete platform. User/voice precedence is unchanged;
+manual rename removes platform provenance. Audio expiry preserves names and
+observations; Note deletion cascades them. Profile backup/restore requirements
+for develop downgrade are documented without adding a backup subsystem.
+
+Verification: the 12-file M2 selection in plan §5.2.4 passed in 7.7 s, including
+native collector lifecycle tests (fake helper, not live Zoom/Meet). New Meet
+matching, migration rollback/reopen, retention, Note/CLI/LLM and Results tests
+passed. Results were additionally checked in both raw and enhanced view after
+manual rename. `pnpm run typecheck` and `pnpm run lint` passed; lint retains
+existing warnings. Real browser/hardware quality is still unverified.
+
+Next: M3 bounded Native Messaging transport and Dev-only extension/installer.

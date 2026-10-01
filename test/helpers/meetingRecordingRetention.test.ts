@@ -285,3 +285,28 @@ test("reopened SQLite preserves a failed deletion intent for the next startup sw
     reopened.close();
   }
 });
+
+test("audio retention keeps platform names and observations; Note deletion removes them", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const anchor = Date.parse("2026-10-01T00:00:00Z");
+  withClock(t, anchor);
+  const { note, recording, initialRun } = createFinishedRecording(db, storage, anchor, 10);
+  const { zoomSpeakerFixture }: typeof import("../lib/zoomSpeakerFixture.ts") = require("../lib/zoomSpeakerFixture.ts");
+  const fixture = zoomSpeakerFixture(recording.id);
+  const observation = { ...fixture.observations[0], platform: "google-meet" as const, clockGeneration: fixture.anchors[0].clock.generation };
+  db.saveMeetingPlatformObservation(observation);
+  assert.equal(db.setMeetingRunSpeakerCorrection(initialRun.id, "system:guest", null, "Guest", "platform", undefined, "google-meet").success, true);
+  storeTranscript(db, storage, initialRun, "Saved words");
+  await runCleanup(db, storage, {});
+  assert.equal(db.getMeetingRecording(recording.id)?.audioState, "deleted");
+  assert.deepEqual(db.listMeetingPlatformObservations(recording.id), [observation]);
+  assert.equal(db.getMeetingRunSpeakerCorrections(initialRun.id)[0].platform, "google-meet");
+  assert.equal(db.getNote(note.id)?.content, "Manual note stays");
+  db.beginMeetingNoteDeletion(note.id);
+  await runCleanup(db, storage, {}, { _asyncMirrorDelete: () => {} });
+  assert.equal(db.getNote(note.id), null);
+  assert.deepEqual(db.listMeetingPlatformObservations(recording.id), []);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(initialRun.id), []);
+});

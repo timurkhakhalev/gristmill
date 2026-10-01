@@ -40,7 +40,7 @@ import { parseGeminiFileResponse } from "./geminiFileTranscription.js";
 import { parseOpenAIFileResponse } from "./remoteTranscriptionIpcHandler.js";
 import { meetingTranscriptArtifactSchema, meetingSummaryArtifactSchema } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
-import { matchZoomSpeakers } from "./zoomSpeakerMatcher.js";
+import { matchMeetingPlatformSpeakers } from "./meetingPlatformMatcher.js";
 import { composeMeetingAudioParts, meetingTimelineFrameCount, meetingSourceIntentionallyEmpty, prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio, type MeetingAudioLayout } from "./meetingAudioMixer.js";
 import { formatSpeakerTranscript, mergeSpeakersWithText } from "./speakerMerge.js";
 import { byokFileSizeLimit } from "./transcriptionRoute.js";
@@ -105,7 +105,7 @@ export interface MeetingProcessingDatabase {
   recoverRunningMeetingProcessingRuns(): number;
   getMeetingRunSpeakerCorrections(runId: string): MeetingSpeakerCorrection[];
   getMeetingRunSpeakerCorrectionRevision(runId: string): number;
-  listMeetingZoomObservations: import("./database.js").DatabaseManager["listMeetingZoomObservations"];
+  listMeetingPlatformObservations: import("./database.js").DatabaseManager["listMeetingPlatformObservations"];
   listMeetingAudioClockAnchors: import("./database.js").DatabaseManager["listMeetingAudioClockAnchors"];
   getMeetingPlatformCoverage: import("./database.js").DatabaseManager["getMeetingPlatformCoverage"];
   applyMeetingPlatformDecisions: import("./database.js").DatabaseManager["applyMeetingPlatformDecisions"];
@@ -207,7 +207,7 @@ interface MeetingLlmSourceSnapshot {
   manualNotes: string;
   manualNoteRevision: string;
   speakerCorrectionRevision: number;
-  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; speakerNameSource?: "user" | "model" | "voice" | "platform" | null; text: string }>;
+  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; speakerNameSource?: "user" | "model" | "voice" | "platform" | null; speakerNamePlatform?: "zoom" | "google-meet"; text: string }>;
   promptModel: NonNullable<MeetingProcessingConfig["summary"]>;
 }
 
@@ -225,6 +225,7 @@ const meetingLlmSourceSnapshotSchema = z.object({
     speakerId: z.string().nullable(),
     speakerName: z.string().nullable(),
     speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
+    speakerNamePlatform: z.enum(["zoom", "google-meet"]).optional(),
     text: z.string(),
   }).strict()).min(1),
   promptModel: meetingProcessingConfigSchema.shape.summary.unwrap().unwrap(),
@@ -916,10 +917,10 @@ export class MeetingProcessingWorker {
       const parts = run.sourceRecordingIds.map((id) => database.getMeetingRecording(id)).filter((part): part is MeetingRecordingDto => !!part);
       if (parts.length !== run.sourceRecordingIds.length) return;
       const { partOffsets, epochs } = composeMeetingAudioParts(parts, (id) => database.listMeetingRecordingEpochs(id));
-      const observations = run.sourceRecordingIds.flatMap((id) => database.listMeetingZoomObservations(id));
+      const observations = run.sourceRecordingIds.flatMap((id) => database.listMeetingPlatformObservations(id));
       if (!observations.length) return;
       const anchors = run.sourceRecordingIds.flatMap((id) => database.listMeetingAudioClockAnchors(id));
-      const decisions = matchZoomSpeakers({ transcript, observations, anchors, epochs, partOffsets });
+      const decisions = matchMeetingPlatformSpeakers({ transcript, observations, anchors, epochs, partOffsets });
       const revision = database.getMeetingRunSpeakerCorrectionRevision(run.id);
       if (database.applyMeetingPlatformDecisions(run.id, revision, decisions)) this.publishCurrentSelection(run.id);
     } catch {
@@ -1868,6 +1869,7 @@ function serializeTranscriptProjection(
         speakerStatus: "locked",
         speakerLocked: true,
         speakerLockSource: correction.source,
+        ...(correction.platform ? { speakerPlatform: correction.platform } : {}),
       } : segment.speaker ? {
         speakerIsPlaceholder: true,
         speakerStatus: "provisional",
@@ -1991,6 +1993,7 @@ function buildLlmTranscriptSegments(
       speakerId,
       speakerName: correction?.displayName ?? null,
       speakerNameSource: correction?.source ?? null,
+      ...(correction?.platform ? { speakerNamePlatform: correction.platform } : {}),
       text: segment.text,
     };
   });

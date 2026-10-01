@@ -1,22 +1,26 @@
-import type { MeetingAudioClockAnchor, MeetingRecordingEpochDto, MeetingTranscriptArtifact, ZoomSpeakerDecision, ZoomSpeakerObservation, ZoomSpeakerTimingPolicy } from "../contracts/meetingRecording.js";
+import type { MeetingAudioClockAnchor, MeetingRecordingEpochDto, MeetingTranscriptArtifact, MeetingPlatformDecision, MeetingPlatformObservation, MeetingPlatformTimingPolicy } from "../contracts/meetingRecording.js";
 
 /** Initial policy: the 500 ms Zoom lag is a hypothesis from static client
  * inspection, not our measurement. Guards and three episodes are conservative
  * product rules, not an accuracy estimate. Labels remain editable suggestions. */
-export const ZOOM_SPEAKER_TIMING_POLICY: ZoomSpeakerTimingPolicy = {
+export const ZOOM_SPEAKER_TIMING_POLICY: MeetingPlatformTimingPolicy = {
   version: "zoom-activity-v1", origin: "initial-lag-hypothesis", indicatorDelaySeconds: 0.5,
   boundaryGuardSeconds: 0.5, clockContinuitySeconds: 0.001, clockRateToleranceSeconds: 0.002,
   minimumSpeechSeconds: 1, minimumIndependentEpisodes: 3,
 };
-export interface ZoomMatcherInput {
+export const MEET_SPEAKER_TIMING_POLICY: MeetingPlatformTimingPolicy = {
+  ...ZOOM_SPEAKER_TIMING_POLICY, version: "google-meet-activity-v1", indicatorDelaySeconds: 0.3,
+};
+const policyFor = (platform: MeetingPlatformObservation["platform"]) => platform === "zoom" ? ZOOM_SPEAKER_TIMING_POLICY : MEET_SPEAKER_TIMING_POLICY;
+
+export interface MeetingPlatformMatcherInput {
   transcript: MeetingTranscriptArtifact;
-  observations: ZoomSpeakerObservation[];
+  observations: MeetingPlatformObservation[];
   anchors: MeetingAudioClockAnchor[];
   epochs: Array<Pick<MeetingRecordingEpochDto, "recordingId" | "source" | "epochIndex" | "timelineStartFrame" | "frameCount" | "state">>;
   partOffsets: Array<{ recordingId: string; startFrame: number; frameCount: number }>;
 }
 type Interval = { start: number; end: number };
-const policy = ZOOM_SPEAKER_TIMING_POLICY;
 const overlaps = (a: Interval, b: Interval) => a.start < b.end && a.end > b.start;
 function union(intervals: Interval[]): Interval[] {
   const result: Interval[] = [];
@@ -30,12 +34,15 @@ function union(intervals: Interval[]): Interval[] {
 
 /** Map only through contiguous actual frame ranges in one saved source epoch.
  * Independent anchors may join only when both frame and host boundaries agree. */
-function mapInterval(input: ZoomMatcherInput, observation: ZoomSpeakerObservation): { interval: Interval; ids: string[]; binding: string } | string {
+function mapInterval(input: MeetingPlatformMatcherInput, observation: MeetingPlatformObservation): { interval: Interval; ids: string[]; binding: string } | string {
+  const policy = policyFor(observation.platform);
+  if (BigInt(observation.clockUncertaintyNs) > 25_000_000n) return "clock-uncertainty";
+  if (observation.platform === "google-meet" && !observation.clockGeneration) return "clock-generation-missing";
   const part = input.partOffsets.find((item) => item.recordingId === observation.recordingId);
   if (!part) return "clock-outside-audio";
   let cursor = BigInt(observation.readStartHostNs);
   const end = BigInt(observation.readEndHostNs);
-  const anchors = input.anchors.filter((a) => a.recordingId === observation.recordingId && a.clock.reason === null && a.clock.hostStartNs !== null && a.clock.hostEndNs !== null)
+  const anchors = input.anchors.filter((a) => a.recordingId === observation.recordingId && (!observation.clockGeneration || a.clock.generation === observation.clockGeneration) && a.clock.reason === null && a.clock.hostStartNs !== null && a.clock.hostEndNs !== null)
     .sort((a, b) => BigInt(a.clock.hostStartNs!) < BigInt(b.clock.hostStartNs!) ? -1 : 1);
   let previous: MeetingAudioClockAnchor | undefined;
   let startSeconds: number | undefined;
@@ -66,24 +73,34 @@ function mapInterval(input: ZoomMatcherInput, observation: ZoomSpeakerObservatio
 }
 
 /** Run-local agreement names clusters; tile/name strings never become voice IDs. */
-export function matchZoomSpeakers(input: ZoomMatcherInput): ZoomSpeakerDecision[] {
+export function matchMeetingPlatformSpeakers(input: MeetingPlatformMatcherInput): MeetingPlatformDecision[] {
   const segments = (input.transcript.segments ?? []).filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start);
   const system = segments.filter((s) => s.speaker?.startsWith("system:"));
   const local = segments.filter((s) => s.speaker === "mic" || s.speaker?.startsWith("mic:"));
   const localNames = new Set(input.observations.filter((o) => o.self === "local").map((o) => o.displayName));
-  const episodes = new Map<string, ZoomSpeakerObservation[]>();
+  const episodes = new Map<string, MeetingPlatformObservation[]>();
   for (const o of input.observations) {
-    const key = `${o.recordingId}/${o.sessionId}/${o.episodeId}/${o.instanceKey}/${o.nameRevision}`;
+    const key = `${o.recordingId}/${o.platform}/${o.bindingId}/${o.sessionId}/${o.episodeId}/${o.instanceKey}/${o.nameRevision}`;
     episodes.set(key, [...(episodes.get(key) ?? []), o]);
   }
-  const decisions = [...episodes.values()].map((observations): ZoomSpeakerDecision => {
+  const decisions = [...episodes.values()].map((observations): MeetingPlatformDecision => {
     const o = observations[0];
-    const decision: ZoomSpeakerDecision = { speakerId: null, displayName: o.displayName || null, status: "rejected", reason: o.reason ?? "activity-unconfirmed", observationIds: observations.map((v) => v.id), clockAnchorIds: [], intervals: [], timingPolicy: { ...policy } };
+    const policy = policyFor(o.platform);
+    const decision: MeetingPlatformDecision = { platform: o.platform, speakerId: null, displayName: o.displayName || null, status: "rejected", reason: o.reason ?? "activity-unconfirmed", observationIds: observations.map((v) => v.id), clockAnchorIds: [], intervals: [], timingPolicy: { ...policy } };
     const explicit = observations.filter((v) => v.activity === "explicit" || v.activity === "end");
     if (!explicit.length) return decision;
+    if (explicit.some((sample) => sample.activeParticipantIds.length !== 1 || sample.activeParticipantIds[0] !== sample.instanceKey)) {
+      return { ...decision, reason: "multiple-active-participants" };
+    }
     let clockReason = "clock-coverage-gap";
     const rangesByBinding = new Map<string, Interval[]>();
     for (const sample of explicit) {
+      if (input.observations.some((other) => other.platform === sample.platform && other.bindingId === sample.bindingId &&
+        other.instanceKey !== sample.instanceKey && (other.activity === "explicit" || other.activity === "end") &&
+        BigInt(other.readStartHostNs) < BigInt(sample.readEndHostNs) && BigInt(other.readEndHostNs) > BigInt(sample.readStartHostNs))) {
+        clockReason = "multiple-active-participants";
+        continue;
+      }
       if (input.observations.some((unknown) => unknown.recordingId === sample.recordingId &&
         (unknown.activity === "unavailable" || unknown.activity === "ambiguous") &&
         BigInt(unknown.readStartHostNs) < BigInt(sample.readEndHostNs) && BigInt(unknown.readEndHostNs) > BigInt(sample.readStartHostNs))) {
@@ -116,6 +133,7 @@ export function matchZoomSpeakers(input: ZoomMatcherInput): ZoomSpeakerDecision[
     return { ...decision, status: "accepted", reason: "repeated-activity-agreement" };
   });
   for (const decision of decisions) {
+    const policy = policyFor(decision.platform);
     if (!decision.speakerId) continue;
     const sameSpeaker = decisions.filter((d) => d.speakerId === decision.speakerId);
     const names = new Set(sameSpeaker.map((d) => d.displayName));

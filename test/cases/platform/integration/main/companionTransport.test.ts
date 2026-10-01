@@ -37,7 +37,7 @@ test("real native hosts isolate Chrome connections and invalidate identity on EO
   const received: string[] = [];
   const disconnected: string[] = [];
   const server = new CompanionServer({ profilePath: profile,
-    snapshot: () => ({ recordingState: "idle", recordingId: null, binding: null, manualMuted: false, platformMuted: false }),
+    snapshot: () => ({ recordingState: "idle", recordingId: null, binding: null, contextState: "unbound", manualMuted: false, platformMuted: false }),
     onMessage: (connection) => { received.push(connection.id); },
     onDisconnect: (connection) => { disconnected.push(connection.id); },
   });
@@ -86,7 +86,7 @@ test("app socket rejects wrong credentials, versions and oversized frames withou
   const net: typeof import("node:net") = require("node:net");
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-companion-auth-"));
   const server = new CompanionServer({ profilePath: profile,
-    snapshot: () => ({ recordingState: "idle", recordingId: null, binding: null, manualMuted: false, platformMuted: false }),
+    snapshot: () => ({ recordingState: "idle", recordingId: null, binding: null, contextState: "unbound", manualMuted: false, platformMuted: false }),
     onMessage: () => assert.fail("invalid connection must never dispatch"),
   });
   t.after(async () => { await server.stop(); fs.rmSync(profile, { recursive: true, force: true }); });

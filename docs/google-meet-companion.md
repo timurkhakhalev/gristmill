@@ -46,5 +46,60 @@ an authoritative idle snapshot; missing app/host stays visibly disconnected.
 Messages carry bounded call context, participants, activity, mute/leave and clock
 probes. They never carry audio, Note contents, transcripts, model credentials or
 profile secrets. Optional transport failure must not stop ordinary recording.
-Real Chrome/Meet and packaged-app verification remain required separately from
-protocol, subprocess and synthetic DOM tests.
+Real Chrome/Meet verification remains required separately from protocol,
+subprocess, packaged-app and synthetic DOM tests.
+
+## Recording behavior
+
+At an independent Start, exactly one fresh recognized call can bind automatically.
+If a call appears later, or several calls are present, the user chooses **Link**
+in the recording Note. Selection is rechecked against the current recording,
+connection, tab, document and call. Browser profiles and Meet Companion-mode tabs
+are distinct candidates. A replacement document in the same selected tab/call
+starts a new evidence generation; retired documents cannot send Leave or mute.
+Changing rooms without positive Leave keeps recording and needs a fresh selection
+when the call identity changes.
+
+A bound session suppresses heuristic auto-end until that capture session ends,
+including connection loss and explicit integration disable. Recognized mute
+controls the microphone gate; unknown UI never opens it. The microphone stays
+open and counts frames while muted; discarded PCM is neither transferred nor
+encoded and system audio continues. Manual mute is available in the Note and
+recording pill, survives Pause/Resume and Restart, and resets on independent Start.
+Device mute and Meet mute cannot cancel each other. The extension popup shows
+connection and context health, and can change manual mute for its own active bound
+recording. Main rechecks the recording and binding before forwarding the request
+to the same capture gate used by the desktop controls.
+
+Only a positively observed Leave followed by the exit screen requests scoped safe
+Stop. Successful finalization reuses the 30-second Restart card and processing
+gate. Restart is a new recording part; only a fresh former call may rebind. Without
+it, recording is independent and ordinary auto-end/restart grace applies. Later
+rejoining requires confirmation. Tab close, browser failure, hidden UI and missing
+selectors never imply Leave. Five continuous minutes without context show one
+reminder with a manually chosen, recording-scoped Stop action.
+
+## Adapter and evidence limits
+
+`extension/src/meetAdapter.ts` is adapter version 1. Sanitized RU/EN DOM fixtures
+live under `test/fixtures/meet/v1`; an isolated Electron renderer exercises the
+actual DOM API against them. These are adapter contract fixtures, not evidence
+that Google's current production UI still exposes every selector. Unknown UI is
+reported explicitly. No camera, layout or PiP-opening actions are performed.
+Already-open document PiP is read alongside the main document.
+
+Browser performance-clock probes reach the real native audio helper and return
+nonce-correlated four-timestamp samples. Only the bound document probes the
+helper. Shared clock fitting requires bounded uncertainty; adjacent continued
+observations cover only their calibrated range. A gap, changed generation,
+multiple active participants, duplicate names or inadequate speech prevents a
+name assignment. Native audio anchors remain independent of Zoom Accessibility
+failure. Platform evidence failures never stop raw capture.
+
+## Verification still requiring the real environment
+
+Production Meet DOM/indicator accuracy, built-in/wired/Bluetooth microphone
+behavior, push-to-talk, sleep/wake and system device changes need live checks.
+Measure speech-onset loss on unmute and report the result; AC4 defines no numeric
+pass/fail threshold. Synthetic fixtures and clock/worklet tests do not establish
+real hardware quality. Production extension ID/store validation is a separate task.

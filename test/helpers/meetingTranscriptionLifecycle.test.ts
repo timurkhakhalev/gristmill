@@ -243,3 +243,12 @@ test("a replacement start waits for a deferred accepted stop to finish", async (
   assert.deepEqual(stops, ["meeting-1"]);
   assert.equal(activeCaptureSessionId, "meeting-2");
 });
+
+test("Stop carries the drained microphone boundary and pause intent through the serialized lifecycle", async () => {
+  let received: unknown;
+  const lifecycle = createMeetingTranscriptionLifecycle({ start: async () => ({ success: true }), stop: async (_id, options) => { received = options; return { success: true }; } });
+  await lifecycle.startSession({ sessionId: "mic-boundary", ownerWebContents: null, options: {} });
+  const microphoneBoundary = { sourceGeneration: 2, sourceFrame: 48_000, alignment: null };
+  await lifecycle.stopSession("mic-boundary", { microphoneBoundary, pause: true, suppressProcessing: true });
+  assert.deepEqual(received, { incomplete: false, lastSequence: undefined, microphoneBoundary, pause: true, errorCode: undefined, suppressProcessing: true });
+});

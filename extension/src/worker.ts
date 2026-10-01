@@ -53,7 +53,7 @@ export function startCompanionWorker(api: ChromeApi): void {
           error = "";
           if (updatePending && message.recordingState === "idle") { current.disconnect(); api.runtime.reload(); }
         } else if (message.type === "unavailable") {
-          snapshot = null; error = message.reason;
+          if (message.reason !== "clock-unavailable") { snapshot = null; error = message.reason; }
         } else {
           const target = probes.get(message.nonce);
           probes.delete(message.nonce);
@@ -73,6 +73,19 @@ export function startCompanionWorker(api: ChromeApi): void {
     if (sender.id === api.runtime.id && !sender.tab && sender.url === api.runtime.getURL("popup.html") &&
         value && typeof value === "object" && "type" in value && value.type === "status") {
       respond({ connected: snapshot !== null, snapshot, error });
+      return;
+    }
+    if (sender.id === api.runtime.id && !sender.tab && sender.url === api.runtime.getURL("popup.html")) {
+      const command = z.object({ type: z.literal("manual-mute"), recordingId: uuid, muted: z.boolean() }).strict().safeParse(value);
+      if (!command.success || !port || !snapshot?.binding || snapshot.recordingState !== "recording" ||
+          snapshot.recordingId !== command.data.recordingId || snapshot.binding.installationId !== installationId ||
+          snapshot.binding.sessionId !== sessionId || snapshot.contextState === "disabled") {
+        respond({ accepted: false }); return;
+      }
+      try {
+        port.postMessage({ version: 1, sequence, ref: snapshot.binding, ...command.data });
+        sequence++; respond({ accepted: true });
+      } catch { port.disconnect(); respond({ accepted: false }); }
       return;
     }
     const parsed = contentMessage.safeParse(value);

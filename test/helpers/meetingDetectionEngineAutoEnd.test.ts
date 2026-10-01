@@ -1084,3 +1084,21 @@ test("a restart that cannot reach its renderer releases the detections it was ho
   assert.equal(harness.shownNotifications[0].detectionId, "calendar:calendar-next");
   harness.engine.stop();
 });
+
+test("bound Meet suppresses heuristic stops and prepares exactly the existing Leave restart offer", async () => {
+  const harness = createEngine();
+  const messages: SentMessage[] = [];
+  const owner = harness.owner(messages);
+  await harness.engine.beginRecordingSession({ sessionId: "meet-bound", autoEndEligible: true, ownerWebContents: owner, systemAudioAvailable: true });
+  harness.engine.suppressAutoEndForPlatform("meet-bound");
+  harness.clock.advance(SILENCE_WINDOW_MS * 3);
+  harness.engine._requestRecordingStop("meet-bound", "silence");
+  assert.equal(messages.length, 0);
+  assert.equal(harness.engine.preparePlatformLeave("stale"), false);
+  assert.equal(harness.engine.preparePlatformLeave("meet-bound"), true);
+  harness.engine.endRecordingSession("meet-bound");
+  assert.equal(await harness.engine.completeAutoEndSession("meet-bound", owner), true);
+  assert.equal(await harness.engine.completeAutoEndSession("meet-bound", owner), false);
+  assert.equal(harness.autoEndNotifications.length, 1);
+  assert.equal((harness.autoEndNotifications[0] as { reason: string }).reason, "platform-leave");
+});

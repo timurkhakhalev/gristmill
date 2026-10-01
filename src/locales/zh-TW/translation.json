@@ -2187,7 +2187,8 @@
       "body": {
         "micReleased": "沒有其他應用程式在使用麥克風，因此錄音已自動停止。請在 {{seconds}} 秒內重新開始錄音。",
         "silence": "未偵測到音訊，因此錄音已自動停止。請在 {{seconds}} 秒內重新開始錄音。",
-        "processExit": "會議應用程式已關閉，因此錄音已自動停止。請在 {{seconds}} 秒內重新開始錄音。"
+        "processExit": "會議應用程式已關閉，因此錄音已自動停止。請在 {{seconds}} 秒內重新開始錄音。",
+        "platformLeave": "你已離開 Meet。可在 {{seconds}} 秒內重新開始錄音。"
       },
       "restart": "重新開始錄音"
     }
@@ -2505,5 +2506,29 @@
     "onboardingTitle": "您叫什麼名字？",
     "skip": "略過",
     "selfLabel": "您"
+  },
+  "meetIntegration": {
+    "title": "Google Meet 整合",
+    "setupDescription": "Chrome Stable · 開發版擴充功能。啟用整合後，在 chrome://extensions 中透過「載入未封裝項目」選擇擴充功能資料夾。靜音時捨棄麥克風音訊，系統音訊繼續錄製。",
+    "enabled": "已啟用",
+    "disabled": "已停用",
+    "loading": "載入中…",
+    "disable": "停用",
+    "enable": "啟用",
+    "openExtension": "開啟擴充功能資料夾",
+    "remove": "移除註冊",
+    "setupFailed": "設定失敗",
+    "mute": "麥克風靜音",
+    "unmute": "取消麥克風靜音",
+    "platformMuted": "Meet 或裝置已將麥克風靜音",
+    "muteFailed": "無法變更麥克風狀態",
+    "contextLost": "與 Meet 的連線已中斷，錄音繼續。",
+    "bound": "已連結 Meet {{call}}",
+    "confirmDescription": "將錄音連結至通話？通話的靜音和離開操作將控制此錄音。",
+    "noCall": "未辨識到通話。錄音獨立繼續。",
+    "bind": "連結 {{call}}",
+    "companionMode": "Meet 協作模式",
+    "staleSelection": "通話或錄音已變更。請選擇目前的通話。",
+    "uiUnrecognized": "無法辨識 Meet 介面。錄音繼續。"
   }
 }

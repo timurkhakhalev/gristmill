@@ -121,8 +121,9 @@ test("delete-all safely stops active capture, waits for processing, and removes 
   const context = {
     _meetingCoordinator: {
       isRecording: () => true,
-      requestSafeStop: async (suppressProcessing: unknown) => {
-        assert.equal(suppressProcessing, true);
+      currentRecordingScope: () => ({ recordingId: recording.id, sessionId: "active" }),
+      requestSafeStop: async (options: unknown) => {
+        assert.deepEqual(options, { expected: { recordingId: recording.id, sessionId: "active" }, reason: "delete-audio", suppressProcessing: true });
         safeStop = true;
         return { success: true };
       },

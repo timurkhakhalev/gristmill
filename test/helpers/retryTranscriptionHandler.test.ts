@@ -37,6 +37,7 @@ let fetchResponse: (url: string, init: unknown) => {
 
 const electronStub = {
   app: {
+    getAppPath: () => process.cwd(),
     getPath: () => "/tmp",
     getName: () => "test",
     getVersion: () => "0.0.0",

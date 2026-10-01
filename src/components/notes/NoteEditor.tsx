@@ -1,3 +1,5 @@
+import { MeetingMicButton } from "./MeetingMicButton";
+import { MeetBindingControl } from "./MeetBindingControl";
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../../hooks/useUiLocale";
@@ -894,6 +896,7 @@ export default function NoteEditor({
                       onGenerateSummary={generateSummary}
                     />
                   )}
+                  {(isRecording || capturePhase === "paused") && <><MeetingMicButton /><MeetBindingControl /></>}
                 </div>;
               }}
               noteId={note.id}

@@ -6,7 +6,7 @@ import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import identity from "../../../../extension/identity.json";
-import { installCompanionHost, companionHostInstalled, uninstallCompanionHost } from "../../../../src/helpers/installCompanionHost.ts";
+import { installCompanionHost, companionHostInstalled, uninstallCompanionHost, refreshCompanionHost } from "../../../../src/helpers/installCompanionHost.ts";
 
 test("Dev registration uses one Chrome root and a quoted bundled-runtime launcher", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-host-install-"));
@@ -14,6 +14,7 @@ test("Dev registration uses one Chrome root and a quoted bundled-runtime launche
   const hostScriptPath = path.join(root, "host's entry.cjs");
   fs.writeFileSync(hostScriptPath, "process.stdout.write(JSON.stringify(process.argv.slice(2)))");
   const options = { chromeRoot: path.join(root, "Chrome User Data"), profilePath: path.join(root, "App's profile"), runtimePath: process.execPath, hostScriptPath };
+  assert.equal(refreshCompanionHost(options), false);
   const manifestPath = installCompanionHost(options);
   assert.equal(path.relative(options.chromeRoot, manifestPath), `NativeMessagingHosts/${identity.hostName}.json`);
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
@@ -25,7 +26,8 @@ test("Dev registration uses one Chrome root and a quoted bundled-runtime launche
   assert.equal(companionHostInstalled(options), true);
   const relocated = { ...options, hostScriptPath: path.join(root, "relocated.cjs") };
   fs.copyFileSync(hostScriptPath, relocated.hostScriptPath);
-  installCompanionHost(relocated);
+  assert.equal(refreshCompanionHost({ ...relocated, profilePath: path.join(root, "other-profile") }), false);
+  assert.equal(refreshCompanionHost(relocated), true);
   assert.equal(companionHostInstalled(relocated), true);
   assert.equal(companionHostInstalled(options), false);
   uninstallCompanionHost(relocated);

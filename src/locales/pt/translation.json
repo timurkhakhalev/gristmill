@@ -2187,7 +2187,8 @@
       "body": {
         "micReleased": "Nenhum outro app está usando o microfone, então a gravação parou automaticamente. Reinicie em até {{seconds}} s.",
         "silence": "Nenhum áudio foi detectado, então a gravação parou automaticamente. Reinicie em até {{seconds}} s.",
-        "processExit": "Seu app de reunião foi fechado, então a gravação parou automaticamente. Reinicie em até {{seconds}} s."
+        "processExit": "Seu app de reunião foi fechado, então a gravação parou automaticamente. Reinicie em até {{seconds}} s.",
+        "platformLeave": "Você saiu do Meet. Reinicie a gravação em {{seconds}} s."
       },
       "restart": "Reiniciar gravação"
     }
@@ -2505,5 +2506,29 @@
     "onboardingTitle": "Como você se chama?",
     "skip": "Pular",
     "selfLabel": "Você"
+  },
+  "meetIntegration": {
+    "title": "Integração com Google Meet",
+    "setupDescription": "Chrome Stable · Extensão Dev. Ative a integração e carregue a pasta com «Carregar sem compactação» em chrome://extensions. O áudio do microfone silenciado é descartado; o áudio do sistema continua.",
+    "enabled": "Ativada",
+    "disabled": "Desativada",
+    "loading": "Carregando…",
+    "disable": "Desativar",
+    "enable": "Ativar",
+    "openExtension": "Abrir pasta da extensão",
+    "remove": "Remover registro",
+    "setupFailed": "Falha na configuração",
+    "mute": "Silenciar microfone",
+    "unmute": "Ativar microfone",
+    "platformMuted": "Microfone silenciado pelo Meet ou dispositivo",
+    "muteFailed": "Não foi possível alterar o estado do microfone",
+    "contextLost": "Conexão com o Meet perdida. A gravação continua.",
+    "bound": "Vinculada ao Meet {{call}}",
+    "confirmDescription": "Vincular esta gravação a uma chamada? Os controles de microfone e saída controlarão esta gravação.",
+    "noCall": "Nenhuma chamada reconhecida. A gravação continua de forma independente.",
+    "bind": "Vincular {{call}}",
+    "companionMode": "Modo Companion do Meet",
+    "staleSelection": "A chamada ou gravação mudou. Selecione uma chamada atual.",
+    "uiUnrecognized": "Interface do Meet não reconhecida. A gravação continua."
   }
 }

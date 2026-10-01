@@ -163,6 +163,17 @@ export class MeetingCaptureSession {
     return new MeetingCaptureSession(database, storage, noteId, config, startedAt, recordingId, groupId, manualMicMuted);
   }
 
+  getMicIntent(): { manualMuted: boolean; platformMuted: boolean } {
+    return { manualMuted: this.micManualMuted, platformMuted: this.micPlatformMuted };
+  }
+
+  initializePlatformMute(muted: boolean): void {
+    if (this.epochs.size || this.micControlSequence || this.stopPromise) throw new Error("Capture already started");
+    this.micPlatformMuted = muted;
+    this.micAlwaysMuted = this.micManualMuted || muted;
+    if (muted) this.database.openMeetingIntentionalInterval(this.recordingId, "mic", 1, 0, "platform-muted", null);
+  }
+
   get isStopping(): boolean {
     return this.stopPromise !== null;
   }

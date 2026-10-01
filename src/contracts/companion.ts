@@ -28,6 +28,7 @@ export const companionContextSchema = z.object({
 export type CompanionContext = z.infer<typeof companionContextSchema>;
 export const companionBrowserMessageSchema = z.discriminatedUnion("type", [
   z.object({ version: z.literal(1), type: z.literal("hello"), installationId: uuid, sessionId: uuid }).strict(),
+  z.object({ version: z.literal(1), type: z.literal("manual-mute"), sequence, ref: companionCallRefSchema, recordingId: uuid, muted: z.boolean() }).strict(),
   z.object({ version: z.literal(1), type: z.literal("context"), sequence, ref: companionCallRefSchema, context: companionContextSchema }).strict(),
   z.object({ version: z.literal(1), type: z.literal("clock-probe"), sequence, ref: companionCallRefSchema, nonce: uuid, sourceSendNs: ns }).strict(),
   z.object({ version: z.literal(1), type: z.literal("clock-confirm"), sequence, ref: companionCallRefSchema, nonce: uuid, sourceReceiveNs: ns }).strict(),
@@ -36,6 +37,7 @@ export type CompanionBrowserMessage = z.infer<typeof companionBrowserMessageSche
 export const companionDesktopMessageSchema = z.discriminatedUnion("type", [
   z.object({ version: z.literal(1), type: z.literal("snapshot"), connectionId: uuid,
     recordingState: z.enum(["idle", "recording", "paused"]), recordingId: uuid.nullable(),
+    contextState: z.enum(["disabled", "unbound", "recognized", "unavailable"]),
     binding: companionCallRefSchema.nullable(), manualMuted: z.boolean(), platformMuted: z.boolean(),
   }).strict(),
   z.object({ version: z.literal(1), type: z.literal("clock-reply"), nonce: uuid,
@@ -47,3 +49,20 @@ export type CompanionDesktopMessage = z.infer<typeof companionDesktopMessageSche
 export const companionAuthenticationSchema = z.object({ version: z.literal(1), type: z.literal("authenticate"),
   credential: z.string().regex(/^[a-f0-9]{64}$/), origin: z.string().max(128),
 }).strict();
+
+export const companionCandidateKeySchema = z.object({ connectionId: uuid, ref: companionCallRefSchema }).strict();
+export type CompanionCandidateKey = z.infer<typeof companionCandidateKeySchema>;
+export const companionRecordingScopeSchema = z.object({ recordingId: uuid, sessionId: uuid }).strict();
+export type CompanionRecordingScope = z.infer<typeof companionRecordingScopeSchema>;
+export const companionCandidateSchema = companionCandidateKeySchema.extend({ context: companionContextSchema, receivedAt: z.number() });
+export type CompanionCandidate = z.infer<typeof companionCandidateSchema>;
+export const companionBindingSchema = companionCandidateKeySchema.extend({ recordingId: uuid, sessionId: uuid, id: uuid, generation: sequence });
+export type CompanionBinding = z.infer<typeof companionBindingSchema>;
+export const companionStatusSchema = z.object({ enabled: z.boolean(), candidates: z.array(companionCandidateSchema).max(128),
+  binding: companionBindingSchema.nullable(), contextUnavailableSince: z.number().nullable(), contextReason: z.string().nullable(), reminderShown: z.boolean() }).strict();
+export type CompanionStatus = z.infer<typeof companionStatusSchema>;
+export const companionSelectionSchema = z.object({ expected: companionRecordingScopeSchema, candidate: companionCandidateKeySchema }).strict();
+export const companionPlatformMuteSchema = companionRecordingScopeSchema.extend({ muted: z.boolean() });
+
+export const companionSetupSchema = z.object({ enabled: z.boolean(), installed: z.boolean(), extensionPath: z.string() }).strict();
+export type CompanionSetup = z.infer<typeof companionSetupSchema>;

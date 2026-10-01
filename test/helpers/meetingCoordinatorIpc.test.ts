@@ -10,6 +10,7 @@ const fakeWindow = () => {
   const win = new EventEmitter();
   win.isDestroyed = () => false;
   win.webContents = new EventEmitter();
+  win.webContents.isDestroyed = () => false;
   win.webContents.messages = [];
   win.webContents.send = (channel: string, payload: unknown) => win.webContents.messages.push({ channel, payload });
   win.messages = win.webContents.messages;
@@ -422,4 +423,20 @@ test("renderer crash finalizes available capture state as incomplete", async () 
   assert.equal(harness.databaseManager.finalized[0].input.captureState, "incomplete");
   assert.equal(harness.databaseManager.finalized[0].input.errorCode, "renderer-lost");
   assert.equal(harness.runtime.isRecording(), false);
+});
+
+test("safe Stop rejects a stale recording scope and cannot reuse another session's pending stop", async () => {
+  const harness = buildHarness();
+  const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  const expected = { recordingId: started.recordingId, sessionId: START.sessionId };
+  assert.deepEqual(harness.runtime.currentRecordingScope(), expected);
+  assert.deepEqual(await harness.runtime.requestSafeStop({ expected: { ...expected, recordingId: RUN_ID }, reason: "platform-leave" }), { success: false });
+  const stopping = harness.runtime.requestSafeStop({ expected, reason: "quit" });
+  assert.deepEqual(await harness.runtime.requestSafeStop({ expected: { ...expected, sessionId: "other" }, reason: "context-reminder" }), { success: false });
+  const requests = currentWindow.messages.filter((item: { channel: string }) => item.channel === "meeting-transcription-stop-requested");
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0].payload, { ...expected, reason: "quit", suppressProcessing: false });
+  await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: START.sessionId, lastSequence: {} });
+  assert.equal((await stopping).success, true);
+  assert.equal(harness.runtime.currentRecordingScope(), null);
 });

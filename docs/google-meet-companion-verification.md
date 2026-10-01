@@ -85,8 +85,9 @@ The one-person test call used disabled Meet microphone and camera.
 
 Two causes of the earlier unrecognized/unbound state were fixed:
 
-- Localized Leave/mic/exit text determined the adapter's control state. The current
-  adapter instead uses live-observed `jsname` controls and `data-is-muted`.
+- Localized Leave/mic/exit text determined the adapter's control state. That
+  revision switched to live-observed `jsname` controls and `data-is-muted`;
+  the later Granola follow-up below replaces mic/Leave IDs with semantic icons.
   Technical exit markers require a prior trusted Leave click; missing controls
   never imply Leave. Synthetic regression fixtures use arbitrary button/heading
   text and opposite camera/mic states.
@@ -110,9 +111,9 @@ Observed through the installed browser/app path:
   processing then waited for settings. No successful ASR result is claimed.
 
 The live participant tiles had participant IDs and visible names in `span.notranslate`,
-but did not expose the explicit name/self/speaking attributes consumed by the
-current adapter. This check therefore does **not** establish working live speaker
-name attribution; the current live name/activity extraction still needs work.
+but did not expose the explicit name/self/speaking attributes consumed by that
+revision's adapter. This check therefore did **not** establish working live speaker
+name attribution; the extraction was subsequently replaced as described below.
 
 Follow-up verification: focused eight-file adapter/content/worker/popup/coordinator/
 transport/evidence/UI selection passed; `pnpm run typecheck` passed; `pnpm run lint`
@@ -120,3 +121,32 @@ passed with 31 existing root-config warnings and three renderer warnings (no err
 `pnpm test` passed all 427 files in 86.852 seconds. `pnpm run pack` passed, including
 packaged SQLite verification, and that app plus its rebuilt extension were installed
 for the live check. Reload invalidation cleanup has a dedicated content-script test.
+
+## Granola reference and adapter replacement — 2026-10-02
+
+Inspected the installed Granola Companion 0.4.18 distribution. The adapter now
+reads actual tile name markup and adopts its colored ring/bar activity approach,
+with explicit exclusions for hidden indicators, focus outlines, button decoration
+and local tiles. All active IDs remain available for conservative overlap rejection.
+The old synthetic participant-name/self/speaking attributes have been removed.
+Mic and Leave use live-observed semantic icon identifiers rather than generated
+`jsname` values; only the two positive exit-screen markers remain version-dependent.
+See [inspection details and limitations](granola-companion-adapter.md).
+
+Focused verification: adapter DOM, content lifecycle, speaker evidence, coordinator
+and worker — five files passed in 2.562 s. Companion/test typechecks and scoped
+ESLint passed; `pnpm run build:companion` passed. This is a focused follow-up,
+not a new full-suite or packaged-app pass. One-person Chrome inspection confirmed
+the input markup, not remote speaker accuracy. The rebuilt unpacked extension
+was reloaded by the user after the browser tool blocked opening Chrome's internal
+extension-management page. Hardware/onset measurements and multi-speaker
+attribution remain outstanding.
+
+After Reload, the installed Dev popup was checked against a separate one-person
+call with the real `pnpm dev` app running: Connected, Recording Stopped, In call,
+Meet microphone Muted. Turning on only the microphone changed the popup to On
+while the camera remained off. A trusted Leave click reached the exit screen and
+changed the popup to Not in call. No recording or Note was created for this
+follow-up, so it does not repeat the earlier binding/gate/Stop check. The test call
+was left and its agent-created tab closed. Screenshot:
+`/tmp/gristmill-granola-adapter-live.png`.

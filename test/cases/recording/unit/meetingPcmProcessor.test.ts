@@ -79,7 +79,11 @@ test("microphone gate counts muted render frames without sending, then sends at 
   const tail = sent.at(-2)!;
   const flushed = sent.at(-1)!;
   assert.equal(tail.renderStartFrame, 12000);
+  assert.equal(tail.epochIndex, 1);
+  assert.equal(tail.sourceGeneration, 2);
+  assert.equal(tail.sequence, 1);
+  assert.equal(tail.sampleOffset, 2400);
   assert.equal(tail.buffer.byteLength, 2);
-  assert.equal(flushed.lastSequence, 2);
+  assert.equal(flushed.lastSequence, 1);
   assert.equal(processor.process([[]], [[]]), false);
 });

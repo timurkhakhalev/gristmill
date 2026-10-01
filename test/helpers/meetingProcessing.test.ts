@@ -314,7 +314,7 @@ test("local mono preparation retains system audio when mic is intentionally empt
     fileSize: () => 1,
     transcribeLocal: async (filePath) => {
       localCalls += 1;
-      assert.ok(filePath.endsWith("-mono.wav"));
+      assert.equal(filePath, storage.getDerivedAudioPath(recording.id, run.id, "mono"));
       return { success: true, text: "System speech" };
     },
   });

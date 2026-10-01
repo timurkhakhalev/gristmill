@@ -131,3 +131,32 @@ implementer. The Local route's stage/error code and all four ordinary failures
 remain for root verification after these focused corrections.
 
 Correction code commit: `28bb54247` (`M1: fix probe reader and capture fixtures`).
+
+## M1 root correction rerun — two fixture assertions corrected
+
+Root rebuilt the Swift helper successfully and reran the selected correction
+set. `/tmp/gristmill-task004-m1-correction.log` records 78 ordinary tests with
+76 passing and 2 failing, the genuine direct native probe passing 1/1 (1.270 s
+native phase), and 7.610 s total. The command was:
+
+```sh
+pnpm test -- test/cases/recording/integration/meetingMicGate.test.ts test/cases/recording/integration/meetingMicrophoneSelection.test.ts test/cases/recording/unit/meetingClockSync.test.ts test/cases/recording/unit/meetingPcmProcessor.test.ts test/helpers/meetingAudioParts.test.ts test/helpers/meetingProcessing.test.ts test/cases/recording/native/audioTapClockProbe.test.ts
+```
+
+The worklet resets its chunk sequence when unmute starts a new encoded epoch
+(`meetingRecordingStore.ts`, `_sequence = 0` in the `set-gate` handler). The
+tail is sequence 1 in epoch 1, so the test now asserts the flush tail's epoch,
+generation, sequence, sample offset, frame anchor and payload size, and expects
+`flush-complete.lastSequence` to be 1. This keeps the tail assertions while
+matching the per-epoch sequence contract. Local mono paths use the canonical
+`${runId}.wav` name (no `-mono` suffix); the fixture now compares the transcriber
+input to `getDerivedAudioPath(recording.id, run.id, "mono")` directly.
+
+Only these two test files changed for the correction. Scoped `pnpm run
+typecheck:tests` and ESLint on both changed tests passed; no tests, builds,
+installs, or native commands were run by this implementer. Root must rerun the
+selection above and the full §5.1.4 M1 verification. M1 stays in progress: the
+capture-clock behavior and user clock-domain decision logged above remain
+unresolved and no clock architecture was changed.
+
+Correction code commit: `761c58238` (`M1: correct epoch and mono fixture assertions`).

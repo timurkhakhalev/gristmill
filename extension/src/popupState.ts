@@ -33,7 +33,7 @@ export function describePopup(reply: PopupStatus, activeTabId: number | undefine
       snapshot.manualMuted ? "Muted manually" : snapshot.platformMuted ? "Muted by platform" : "Recording"],
   ];
   let notice: string;
-  if (!snapshot) notice = "Open the Gristmill Meet Dev app to reconnect.";
+  if (!snapshot) notice = "Open Gristmill and enable Google Meet integration in Settings → Recording for the app you want to use.";
   else if (snapshot.contextState === "disabled") notice = "Meet integration is disabled in Gristmill Settings.";
   else if (recording && !linked && context?.health === "recognized" && context.presence === "in-call")
     notice = "Choose Link in the recording Note. Until then, Meet mute and Leave do not control this recording.";

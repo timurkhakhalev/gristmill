@@ -20,6 +20,12 @@ The registration belongs under Chrome Stable's user-data root
 they never change the real browser registration. Foreign files and symlinks are
 not overwritten. Reinstall refreshes the owned launcher after app relocation.
 
+Chrome has one registration for this host name. Enabling integration in an app
+selects that app's runtime and profile; it does not discover whichever Gristmill
+process is running. To use `pnpm dev`, enable integration in that app's
+Settings → Recording. Starting another app does not take over a different
+profile's registration. The selected app must stay running to serve its socket.
+
 ## Trust and lifecycle
 
 Browser/native and host/app messages are versioned strict schemas. Frames use a

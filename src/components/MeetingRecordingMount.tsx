@@ -1,11 +1,11 @@
 import { createElement, useEffect, useRef } from "react";
+import { primeMeetingWorklet } from "../helpers/meetingAudioPipeline";
 import { useTranslation } from "react-i18next";
 import { useToast } from "./ui/useToast";
 import {
   getActiveRecordingSessionId,
   getMicAnalyser,
   getSystemAudioLevel,
-  primeMeetingWorklet,
   startRecording,
   stopRecording,
   useMeetingRecordingStore,

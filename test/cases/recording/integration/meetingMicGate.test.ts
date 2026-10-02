@@ -172,6 +172,7 @@ test("renderer gate holds the healthy device and keeps frame origin across recov
   });
 
   const sentSequences: number[] = [];
+  let stopBoundary: import("../../../../src/contracts/meetingCoordinator.ts").MeetingCaptureStopRequest["microphoneBoundary"];
   const intentRequests: Array<{ sequence: number; boundaryFrame: number; sourceGeneration: number; effectiveMuted: boolean }> = [];
   let resolveRecoveryIntent: (() => void) | null = null;
   const recoveryIntent = new Promise<void>((resolve) => { resolveRecoveryIntent = resolve; });
@@ -193,7 +194,10 @@ test("renderer gate holds the healthy device and keeps frame origin across recov
       sentSequences.push(packet.sequence);
       return { success: true, sequence: packet.sequence };
     },
-    meetingTranscriptionStop: async () => ({ success: true, captureState: "incomplete" }),
+    meetingTranscriptionStop: async (request: import("../../../../src/contracts/meetingCoordinator.ts").MeetingCaptureStopRequest) => {
+      stopBoundary = request.microphoneBoundary;
+      return { success: true, captureState: "incomplete" };
+    },
     onMeetingTranscriptionError: noopListener,
     onMeetingTranscriptionFatalError: noopListener,
     onMeetingSystemAudioSilent: noopListener,
@@ -243,6 +247,7 @@ test("renderer gate holds the healthy device and keeps frame origin across recov
     assert.equal(tracks[0].stopCount, 1, "old device stops only after its replacement graph is attached");
 
     await store.stopRecording();
+    assert.deepEqual(stopBoundary, { sourceGeneration: 2, sourceFrame: 192_000, alignment: null }, "Stop persists the recovered microphone's flush boundary");
     assert.equal(tracks[1].stopCount, 1, "Stop releases the healthy replacement device");
   } finally {
     await store.stopRecording();

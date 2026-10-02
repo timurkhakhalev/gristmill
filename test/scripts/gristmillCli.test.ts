@@ -140,3 +140,10 @@ test("BB commands use their workspace profile regardless of the installing app c
   assert.equal(unavailable.code, 1, "a closed workspace profile must not read another profile");
   assert.equal(JSON.parse(unavailable.stderr).error.code, "app_unavailable");
 });
+
+test("CLI transcript human output identifies the concrete platform behind a name", () => {
+  const text = formatHuman("transcript", { note_id: 42, status: "ready", diagnostics: [],
+    speakers: [{ id: "system:guest", name: "Guest", email: null, source: "system", name_source: "platform", name_platform: "google-meet" }],
+    segments: [], text: "Hello" }, "Meeting");
+  assert.match(text, /Guest.*system.*Google Meet/);
+});

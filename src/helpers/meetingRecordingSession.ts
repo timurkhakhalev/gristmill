@@ -41,6 +41,7 @@ interface MeetingAutoEndRestartState {
   sessionDiarizationEnabled: boolean;
   sessionExpectedCount: number;
   userTouchedStepper: boolean;
+  manualMicMuted: boolean;
   segments: TranscriptSegment[];
 }
 
@@ -67,7 +68,9 @@ export function createMeetingAutoEndRestartContext(
       diarizationEnabled: state.sessionDiarizationEnabled,
       expectedCount: state.sessionExpectedCount,
       expectedCountIsExplicit: state.userTouchedStepper,
+      manualMicMuted: state.manualMicMuted,
       autoEndEligible: true,
+      restartSessionId: sessionId,
     },
   };
 }

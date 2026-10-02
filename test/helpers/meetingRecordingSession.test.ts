@@ -115,6 +115,7 @@ test("restart context preserves note identity and session speaker settings", asy
       sessionDiarizationEnabled: false,
       sessionExpectedCount: 5,
       userTouchedStepper: true,
+      manualMicMuted: false,
       segments: seedSegments,
     }),
     {
@@ -127,7 +128,9 @@ test("restart context preserves note identity and session speaker settings", asy
         diarizationEnabled: false,
         expectedCount: 5,
         expectedCountIsExplicit: true,
+        manualMicMuted: false,
         autoEndEligible: true,
+        restartSessionId: "meeting-2",
       },
     }
   );
@@ -139,6 +142,7 @@ test("restart context preserves note identity and session speaker settings", asy
     sessionDiarizationEnabled: false,
     sessionExpectedCount: 5,
     userTouchedStepper: true,
+    manualMicMuted: false,
     segments: seedSegments,
   })?.args.groupId, "saved-meeting-group");
   assert.equal(
@@ -149,10 +153,26 @@ test("restart context preserves note identity and session speaker settings", asy
       sessionDiarizationEnabled: true,
       sessionExpectedCount: 2,
       userTouchedStepper: false,
+      manualMicMuted: false,
       segments: [],
     }),
     null
   );
+});
+
+test("restart context preserves an active manual microphone mute", async () => {
+  const { createMeetingAutoEndRestartContext } = await load();
+  const context = createMeetingAutoEndRestartContext("meeting-2", "meeting-2", {
+    recordingNoteId: 42,
+    recordingNoteTitle: "Planning",
+    recordingFolderId: 8,
+    sessionDiarizationEnabled: true,
+    sessionExpectedCount: 2,
+    userTouchedStepper: false,
+    manualMicMuted: true,
+    segments: [],
+  });
+  assert.equal(context?.args.manualMicMuted, true);
 });
 
 test("only meeting notes are eligible for automatic ending", async () => {

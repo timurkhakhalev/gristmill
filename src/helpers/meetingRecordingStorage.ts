@@ -69,7 +69,7 @@ export interface RecoveredEpoch {
   recordingId: string;
   source: MeetingSource;
   epochIndex: number;
-  startFrame: number;
+  timelineStartFrame: number | null;
   frameCount: number;
   ignoredTrailingBytes: number;
   errorCode: string | null;
@@ -188,7 +188,7 @@ export class MeetingRecordingStorage {
     recordingId: string,
     source: MeetingSource,
     epochIndex: number
-  ): Omit<RecoveredEpoch, "recordingId" | "source" | "epochIndex" | "startFrame"> {
+  ): Omit<RecoveredEpoch, "recordingId" | "source" | "epochIndex" | "timelineStartFrame"> {
     meetingRecordingIdSchema.parse(recordingId);
     meetingSourceSchema.parse(source);
     this.validateEpochIndex(epochIndex);
@@ -384,13 +384,13 @@ export class MeetingRecordingStorage {
           recordingId: recording.id,
           source: epoch.source,
           epochIndex: epoch.epochIndex,
-          startFrame: epoch.startFrame,
+          timelineStartFrame: epoch.timelineStartFrame,
           ...recoveredEpoch,
         });
       }
       const totalFrames = recovered.reduce((total, epoch) => total + epoch.frameCount, 0);
       const latestEndFrame = recovered.reduce(
-        (latest, epoch) => Math.max(latest, epoch.startFrame + epoch.frameCount),
+        (latest, epoch) => epoch.timelineStartFrame === null ? latest : Math.max(latest, epoch.timelineStartFrame + epoch.frameCount),
         0
       );
       const startTime = Date.parse(recording.startedAt);
@@ -398,10 +398,10 @@ export class MeetingRecordingStorage {
       const sourceMetadata = {
         ...recording.sourceMetadata,
         recovered: true,
-        epochs: recovered.map(({ source, epochIndex, startFrame, frameCount, ignoredTrailingBytes, errorCode }) => ({
+        epochs: recovered.map(({ source, epochIndex, timelineStartFrame, frameCount, ignoredTrailingBytes, errorCode }) => ({
           source,
           epochIndex,
-          startFrame,
+          timelineStartFrame,
           frameCount,
           ignoredTrailingBytes,
           errorCode,

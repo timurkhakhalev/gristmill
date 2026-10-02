@@ -18,7 +18,7 @@ const TITLE_MAX_CHARS = 16;
 const TITLE_WITH_TIME_MAX_CHARS = 12;
 // A click that dismisses the open menu is also delivered as a tray click.
 const MENU_REOPEN_GUARD_MS = 300;
-const UPCOMING_WINDOW_MINUTES = 48 * 60;
+const UPCOMING_WINDOW_MINUTES = 6 * 60;
 
 export interface TrayCalendarSource {
   getUpcomingEvents(windowMinutes?: number): CalendarEventRow[];

@@ -174,11 +174,58 @@ export const meetingRecordingDtoSchema = z.object({
 });
 export type MeetingRecordingDto = z.infer<typeof meetingRecordingDtoSchema>;
 
+export const meetingFrameAlignmentSegmentSchema = z.object({
+  sourceGeneration: z.number().int().positive(),
+  sourceStartFrame: z.number().int().nonnegative().safe(),
+  sourceEndFrame: z.number().int().positive().safe(),
+  timelineStartFrame: z.number().int().nonnegative().safe(),
+  rate: z.number().finite().min(0.999).max(1.001),
+  uncertaintyStartFrames: z.number().int().nonnegative().safe(),
+  uncertaintyEndFrames: z.number().int().nonnegative().safe(),
+  helperGeneration: meetingRecordingIdSchema,
+  sourceStartNs: z.string().regex(/^\d{1,20}$/),
+  sourceEndNs: z.string().regex(/^\d{1,20}$/),
+  helperStartNs: z.string().regex(/^\d{1,20}$/),
+  helperEndNs: z.string().regex(/^\d{1,20}$/),
+  sampledSourceStartNs: z.string().regex(/^\d{1,20}$/),
+  sampledSourceEndNs: z.string().regex(/^\d{1,20}$/),
+  freshnessSourceNs: z.string().regex(/^\d{1,20}$/),
+}).superRefine((segment, context) => {
+  if (segment.sourceEndFrame <= segment.sourceStartFrame ||
+      BigInt(segment.sourceEndNs) < BigInt(segment.sourceStartNs) ||
+      BigInt(segment.helperEndNs) < BigInt(segment.helperStartNs) ||
+      BigInt(segment.sampledSourceEndNs) < BigInt(segment.sampledSourceStartNs)) {
+    context.addIssue({ code: "custom", path: ["sourceEndFrame"], message: "Invalid audio alignment segment range" });
+  }
+});
+export type MeetingFrameAlignmentSegment = z.infer<typeof meetingFrameAlignmentSegmentSchema>;
+
+export const meetingFrameAlignmentPointSchema = z.object({
+  sourceGeneration: z.number().int().positive(),
+  sourceFrame: z.number().int().nonnegative().safe(),
+  timelineFrame: z.number().int().nonnegative().safe(),
+  rate: z.number().finite().min(0.999).max(1.001),
+  uncertaintyFrames: z.number().int().nonnegative().safe(),
+  helperGeneration: meetingRecordingIdSchema,
+  sourceNs: z.string().regex(/^\d{1,20}$/),
+  helperNs: z.string().regex(/^\d{1,20}$/),
+  sampledSourceStartNs: z.string().regex(/^\d{1,20}$/),
+  sampledSourceEndNs: z.string().regex(/^\d{1,20}$/),
+  freshnessSourceNs: z.string().regex(/^\d{1,20}$/),
+});
+export type MeetingFrameAlignmentPoint = z.infer<typeof meetingFrameAlignmentPointSchema>;
+
 export const meetingRecordingEpochDtoSchema = z.object({
   recordingId: meetingRecordingIdSchema,
   source: meetingSourceSchema,
   epochIndex: z.number().int().nonnegative(),
-  startFrame: z.number().int().nonnegative(),
+  /** Position in the common timeline; null when new capture alignment is unknown. */
+  timelineStartFrame: z.number().int().nonnegative().nullable(),
+  /** Actual frame position in this source generation; null for historical rows. */
+  sourceStartFrame: z.number().int().nonnegative().nullable(),
+  sourceGeneration: z.number().int().positive().nullable(),
+  alignmentSegments: z.array(meetingFrameAlignmentSegmentSchema),
+  alignmentErrorCode: z.string().nullable(),
   sampleRate: z.literal(24_000),
   channels: z.literal(1),
   encoding: z.literal("opus"),
@@ -188,6 +235,28 @@ export const meetingRecordingEpochDtoSchema = z.object({
   errorCode: z.string().nullable(),
 });
 export type MeetingRecordingEpochDto = z.infer<typeof meetingRecordingEpochDtoSchema>;
+
+export const meetingIntentionalIntervalSchema = z.object({
+  id: z.string().uuid(),
+  recordingId: meetingRecordingIdSchema,
+  source: meetingSourceSchema,
+  sourceGeneration: z.number().int().positive().nullable(),
+  timelineStartFrame: z.number().int().nonnegative().nullable(),
+  timelineEndFrame: z.number().int().nonnegative().nullable(),
+  sourceStartFrame: z.number().int().nonnegative().nullable(),
+  sourceEndFrame: z.number().int().nonnegative().nullable(),
+  startAlignment: meetingFrameAlignmentPointSchema.nullable(),
+  endAlignment: meetingFrameAlignmentPointSchema.nullable(),
+  reason: z.enum(["manual-muted", "platform-muted"]),
+}).superRefine((interval, context) => {
+  if (interval.sourceEndFrame !== null && interval.sourceStartFrame !== null && interval.sourceEndFrame < interval.sourceStartFrame) {
+    context.addIssue({ code: "custom", path: ["sourceEndFrame"], message: "Interval end precedes its start" });
+  }
+  if (interval.timelineEndFrame !== null && interval.timelineStartFrame !== null && interval.timelineEndFrame < interval.timelineStartFrame) {
+    context.addIssue({ code: "custom", path: ["timelineEndFrame"], message: "Aligned interval end precedes its start" });
+  }
+});
+export type MeetingIntentionalInterval = z.infer<typeof meetingIntentionalIntervalSchema>;
 
 export const meetingProcessingRunDtoSchema = z.object({
   id: meetingRecordingIdSchema,
@@ -237,6 +306,9 @@ export const meetingSummaryArtifactSchema = z.object({
 });
 export type MeetingSummaryArtifact = z.infer<typeof meetingSummaryArtifactSchema>;
 
+export const meetingPlatformSchema = z.enum(["zoom", "google-meet"]);
+export type MeetingPlatform = z.infer<typeof meetingPlatformSchema>;
+
 export const meetingSpeakerCorrectionSourceSchema = z.enum(["voice", "platform", "model", "user"]);
 export const meetingSpeakerCorrectionSchema = z.object({
   speakerId: z.string().min(1).max(200),
@@ -244,8 +316,9 @@ export const meetingSpeakerCorrectionSchema = z.object({
   displayName: z.string().min(1).max(200),
   participantEmail: z.string().email().nullable(),
   source: meetingSpeakerCorrectionSourceSchema,
+  platform: meetingPlatformSchema.optional(),
   revision: z.number().int().positive(),
-});
+}).refine((value) => value.source !== "platform" || value.platform !== undefined, "Platform correction requires its source platform");
 export type MeetingSpeakerCorrection = z.infer<typeof meetingSpeakerCorrectionSchema>;
 
 export const meetingProcessingResultDtoSchema = z.object({
@@ -273,7 +346,12 @@ export type MeetingRunArtifact = z.infer<typeof meetingRunArtifactSchema>;
 // Host time is decimal nanoseconds from mach_absolute_time, never delivery time.
 const validHostNs = (value: string): boolean => /^\d{1,20}$/.test(value);
 const hostNsSchema = z.string().regex(/^\d{1,20}$/);
-export const zoomSpeakerObservationSchema = z.object({
+export const meetingPlatformObservationSchema = z.object({
+  platform: meetingPlatformSchema,
+  bindingId: z.string().uuid(),
+  activeParticipantIds: z.array(z.string().min(1).max(100)).max(100),
+  clockGeneration: z.string().uuid().nullable(),
+  clockUncertaintyNs: hostNsSchema,
   id: z.string().uuid(), recordingId: meetingRecordingIdSchema,
   sessionId: z.string().uuid(), instanceKey: z.string().min(1).max(100), nameRevision: z.number().int().positive(),
   episodeId: z.string().uuid(), displayName: z.string().max(200),
@@ -287,7 +365,7 @@ export const zoomSpeakerObservationSchema = z.object({
   provenance: z.enum(["zoom-only", "system-wide", "unknown"]),
   reason: z.string().max(100).nullable(),
 }).refine((value) => validHostNs(value.readStartHostNs) && validHostNs(value.readEndHostNs) && BigInt(value.readEndHostNs) >= BigInt(value.readStartHostNs));
-export type ZoomSpeakerObservation = z.infer<typeof zoomSpeakerObservationSchema>;
+export type MeetingPlatformObservation = z.infer<typeof meetingPlatformObservationSchema>;
 export const meetingAudioClockMessageSchema = z.object({
   type: z.literal("clock"), generation: z.string().uuid(),
   startFrame: z.number().int().nonnegative().safe(), endFrame: z.number().int().positive().safe(),
@@ -304,26 +382,27 @@ export const meetingAudioClockAnchorSchema = z.object({
 });
 export type MeetingAudioClockAnchor = z.infer<typeof meetingAudioClockAnchorSchema>;
 // A fixed initial heuristic, not a measured calibration or a verified identity.
-export const zoomSpeakerTimingPolicySchema = z.object({
-  version: z.literal("zoom-activity-v1"),
+export const meetingPlatformTimingPolicySchema = z.object({
+  version: z.enum(["zoom-activity-v1", "google-meet-activity-v1"]),
   origin: z.literal("initial-lag-hypothesis"),
-  indicatorDelaySeconds: z.literal(0.5),
+  indicatorDelaySeconds: z.union([z.literal(0.5), z.literal(0.3)]),
   boundaryGuardSeconds: z.literal(0.5),
   clockContinuitySeconds: z.literal(0.001),
   clockRateToleranceSeconds: z.literal(0.002),
   minimumSpeechSeconds: z.literal(1),
   minimumIndependentEpisodes: z.literal(3),
-});
-export type ZoomSpeakerTimingPolicy = z.infer<typeof zoomSpeakerTimingPolicySchema>;
-export const zoomSpeakerDecisionSchema = z.object({
+}).refine((value) => value.indicatorDelaySeconds === (value.version === "zoom-activity-v1" ? 0.5 : 0.3), "Invalid platform timing policy");
+export type MeetingPlatformTimingPolicy = z.infer<typeof meetingPlatformTimingPolicySchema>;
+export const meetingPlatformDecisionSchema = z.object({
+  platform: meetingPlatformSchema,
   speakerId: z.string().nullable(), displayName: z.string().nullable(),
   status: z.enum(["accepted", "rejected"]), reason: z.string().min(1).max(100),
   observationIds: z.array(z.string().uuid()), clockAnchorIds: z.array(z.string().uuid()),
   intervals: z.array(z.object({ start: z.number().finite(), end: z.number().finite() }).refine((v) => v.end > v.start)),
   // Null only for preserved decisions made before this policy existed.
-  timingPolicy: zoomSpeakerTimingPolicySchema.nullable(),
-});
-export type ZoomSpeakerDecision = z.infer<typeof zoomSpeakerDecisionSchema>;
+  timingPolicy: meetingPlatformTimingPolicySchema.nullable(),
+}).refine((value) => !value.timingPolicy || value.timingPolicy.version === `${value.platform}-activity-v1`, "Decision policy belongs to another platform");
+export type MeetingPlatformDecision = z.infer<typeof meetingPlatformDecisionSchema>;
 export const meetingPlatformCoverageSchema = z.object({
   reads: z.number().int().nonnegative(), samples: z.number().int().nonnegative(),
   state: z.enum(["collecting", "complete", "incomplete"]), reason: z.string().max(100).nullable(),

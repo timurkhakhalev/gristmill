@@ -1,3 +1,9 @@
+import { MeetingClockSync, type MeetingClockProbeReply } from "./meetingClockSync.js";
+import { MeetSpeakerEvidence } from "./meetSpeakerEvidence.js";
+import { CompanionCoordinator } from "./companionCoordinator.js";
+import { CompanionServer } from "./companionServer.js";
+import { isDevelopmentChannel } from "./appChannel.js";
+import { companionSelectionSchema, companionRecordingScopeSchema } from "../contracts/companion.js";
 // The main-process meeting coordinator owns capture preparation, recording
 // start/stop, durable raw audio writes, source availability, detection and
 // auto-end IPC, recording locks, mic warm hold, notifications, and speaker
@@ -52,6 +58,8 @@ import { meetingRecordingConfigInputSchema } from "../contracts/meetingRecording
 import {
   meetingCapturePacketSchema,
   meetingCaptureStopRequestSchema,
+  meetingMicIntentRequestSchema,
+  meetingClockProbeRequestSchema,
   meetingOptionsSchema,
 } from "../contracts/meetingCoordinator.js";
 import { createMeetingTranscriptionLifecycle } from "./meetingTranscriptionLifecycle.js";
@@ -141,6 +149,10 @@ export interface CoordinatorLiveSpeakerIdentifier {
 }
 
 export interface MeetingCoordinatorDeps {
+  companionProfilePath?: string;
+  companionEnabled?: boolean;
+  showCompanionReminder?(scope: MeetingRecordingScope): void;
+  dismissCompanionReminder?(scope: MeetingRecordingScope, sender?: WebContents): boolean;
   databaseManager: DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase & MeetingPlatformEvidenceDatabase;
   meetingRecordingStorage: MeetingCaptureEpochStorage;
   cancelInitialProcessingRun?: (runId: string) => boolean;
@@ -150,7 +162,9 @@ export interface MeetingCoordinatorDeps {
     "recordMeetingAudioChunk" | "setRecordingSystemAudioAvailable" | "setMicWarmHold" |
     "getPreferences" | "setPreferences" | "handleNotificationResponse" |
     "joinCalendarMeeting" | "findCalendarEventNote" | "createCalendarEventNote"> & MeetingAutoEndEngineLike) | null;
-  audioTapManager: Pick<AudioTapManager, "isSupported" | "start" | "stop"> | null;
+  suppressPlatformAutoEnd?(sessionId: string): void;
+  preparePlatformLeave?(sessionId: string): boolean;
+  audioTapManager: Pick<AudioTapManager, "isSupported" | "start" | "stop" | "probeClock" | "getClockOrigin"> | null;
   whisperManager: {
     transcribeLocalWhisper(
       audio: Buffer,
@@ -217,9 +231,20 @@ export type IpcMainLike = {
   on(channel: string, listener: (event: IpcMainEvent, ...args: any[]) => void): unknown;
 };
 
+export interface MeetingRecordingScope { recordingId: string; sessionId: string }
+export interface MeetingSafeStopOptions {
+  expected: MeetingRecordingScope;
+  reason: "quit" | "delete-audio" | "platform-leave" | "context-reminder";
+  suppressProcessing?: boolean;
+}
+
 export interface MeetingCoordinatorRuntime {
   isRecording(): boolean;
-  requestSafeStop(suppressProcessing?: boolean): Promise<{ success: boolean; captureState?: "ready" | "incomplete" }>;
+  startCompanion(): Promise<void>;
+  disposeCompanion(): Promise<void>;
+  setCompanionEnabled(enabled: boolean): void;
+  currentRecordingScope(): MeetingRecordingScope | null;
+  requestSafeStop(options: MeetingSafeStopOptions): Promise<{ success: boolean; captureState?: "ready" | "incomplete" }>;
   // Recording start links the live session to its note; the notes vertical's
   // roster refresh only applies while that link is current.
   linkRecordingSessionToNote(noteId: number | null): void;
@@ -277,11 +302,130 @@ export function registerMeetingCoordinatorHandlers(
   let activeMeetingNoteId: number | null = null;
   let activeCaptureSession: MeetingCaptureSession | null = null;
   let platformCollector: ZoomSpeakerCollector | null = null;
+  let captureDraining = false;
+  let platformMuted = false;
+  let pausedRecording: { recordingId: string; manualMuted: boolean } | null = null;
+  let lastStoppedBinding: { sessionId: string; candidate: import("../contracts/companion.js").CompanionCandidateKey | null } | null = null;
   let activeCaptureSessionId: string | null = null;
   let activeCaptureOwner: WebContents | null = null;
+  let safeStopScope: MeetingRecordingScope | null = null;
   let safeStopPromise: Promise<{ success: boolean; captureState?: "ready" | "incomplete" }> | null = null;
   let resolveSafeStop: ((result: { success: boolean; captureState?: "ready" | "incomplete" }) => void) | null = null;
   const micHoldSenders = new Map<number, () => void>();
+  const browserClocks = new Map<string, { sync: MeetingClockSync; generation: string; replies: Map<string, MeetingClockProbeReply> }>();
+  const browserClockKey = (connectionId: string, ref: import("../contracts/companion.js").CompanionCallRef) => `${connectionId}/${ref.documentId}/${ref.callId}`;
+  let meetCoverage: { reads: number; samples: number; reason: string | null } | null = null;
+  const meetEvidence = new MeetSpeakerEvidence((observation) => {
+    databaseManager.saveMeetingPlatformObservation(observation);
+    if (meetCoverage) meetCoverage.samples++;
+  });
+  const companion = new CompanionCoordinator({
+    now: Date.now,
+    currentScope: () => currentRecordingScope(),
+    canBind: () => !captureDraining && !safeStopPromise,
+    suppressAutoEnd: (scope) => {
+      deps.suppressPlatformAutoEnd?.(scope.sessionId);
+      meetCoverage ??= { reads: 0, samples: 0, reason: null };
+      platformCollector?.invalidate("meet-bound");
+    },
+    setPlatformMuted: (scope, muted) => {
+      platformMuted = muted;
+      if (activeCaptureOwner && !activeCaptureOwner.isDestroyed()) activeCaptureOwner.send("meet-platform-mute", { ...scope, muted });
+    },
+    leave: (binding) => {
+      deps.preparePlatformLeave?.(binding.sessionId);
+      void requestSafeStop({ expected: binding, reason: "platform-leave" });
+    },
+    remind: (scope) => deps.showCompanionReminder?.(scope),
+    observe: (binding, context) => {
+      if (meetCoverage) meetCoverage.reads++;
+      const clock = browserClocks.get(browserClockKey(binding.connectionId, binding.ref));
+      try { meetEvidence.observe(binding, context, clock?.sync.mappingAt(context.sourceNs, context.sourceNs) ?? null); }
+      catch { meetEvidence.reset(); if (meetCoverage) meetCoverage.reason = "metadata-write-failed"; }
+    },
+    changed: (status) => {
+      if (meetCoverage && status.binding && status.contextUnavailableSince !== null) meetCoverage.reason ??= "meet-context-unavailable";
+      if (status.binding && status.contextUnavailableSince === null) deps.dismissCompanionReminder?.(status.binding);
+      broadcastToWindows("meet-companion-status", status);
+      companionServer?.broadcastSnapshot();
+    },
+  });
+  const companionServer = deps.companionProfilePath ? new CompanionServer({
+    channel: isDevelopmentChannel() ? "development" : "production",
+    profilePath: deps.companionProfilePath,
+    snapshot: () => ({ recordingState: activeCaptureSession ? "recording" : pausedRecording ? "paused" : "idle",
+      recordingId: activeCaptureSession?.recordingId ?? pausedRecording?.recordingId ?? null, binding: companion.status().binding?.ref ?? null,
+      contextState: !companion.status().enabled ? "disabled" : !companion.status().binding ? "unbound" : companion.status().contextUnavailableSince !== null ? "unavailable" : "recognized",
+      manualMuted: activeCaptureSession?.getMicIntent().manualMuted ?? pausedRecording?.manualMuted ?? false, platformMuted }),
+    onMessage: (connection, message, send) => {
+      if (message.type === "context") { companion.receive({ connectionId: connection.id, ref: message.ref }, message.context); return; }
+      const binding = companion.status().binding;
+      if (!companion.status().enabled || !binding || binding.connectionId !== connection.id || binding.ref.documentId !== message.ref.documentId || binding.ref.callId !== message.ref.callId) return;
+      if (message.type === "manual-mute") {
+        const scope = currentRecordingScope();
+        if (!scope || scope.recordingId !== message.recordingId || captureDraining || safeStopPromise) return;
+        if (activeCaptureOwner && !activeCaptureOwner.isDestroyed()) activeCaptureOwner.send("meet-manual-mute", { ...scope, muted: message.muted });
+        return;
+      }
+      const key = browserClockKey(connection.id, message.ref);
+      if (message.type === "clock-confirm") {
+        const clock = browserClocks.get(key);
+        const reply = clock?.replies.get(message.nonce);
+        clock?.replies.delete(message.nonce);
+        if (clock && reply) clock.sync.accept(reply, message.sourceReceiveNs);
+        return;
+      }
+      const origin = audioTapManager?.getClockOrigin();
+      if (!audioTapManager || !origin || !activeCaptureSession || captureDraining) {
+        send({ version: 1, type: "unavailable", reason: "clock-unavailable" }); return;
+      }
+      let clock = browserClocks.get(key);
+      if (!clock || clock.generation !== origin.helperGeneration) {
+        if (browserClocks.size >= 128) browserClocks.delete(browserClocks.keys().next().value!);
+        const sync = new MeetingClockSync(); sync.reset(origin.helperGeneration);
+        clock = { sync, generation: origin.helperGeneration, replies: new Map() }; browserClocks.set(key, clock);
+      }
+      try { clock.sync.createProbe(message.sourceSendNs, message.nonce); } catch { return; }
+      const pendingClock = clock;
+      void audioTapManager.probeClock(message.nonce).then((reply) => {
+        if (browserClocks.get(key) !== pendingClock) return;
+        if (pendingClock.replies.size >= 8) pendingClock.replies.delete(pendingClock.replies.keys().next().value!);
+        pendingClock.replies.set(message.nonce, reply);
+        send({ version: 1, type: "clock-reply", nonce: reply.nonce, helperReceiveNs: reply.helperReceiveNs,
+          helperSendNs: reply.helperSendNs, helperGeneration: reply.helperGeneration, helperFrame: reply.helperFrame });
+      }).catch(() => {});
+    },
+    onDisconnect: (connection) => {
+      for (const key of browserClocks.keys()) if (key.startsWith(`${connection.id}/`)) browserClocks.delete(key);
+      companion.disconnect(connection.id); meetEvidence.reset();
+    },
+  }) : null;
+  if (deps.companionEnabled === false) companion.setEnabled(false);
+  let companionStarted: Promise<void> | null = null;
+  let companionTicker: NodeJS.Timeout | null = null;
+  ipcMain.handle("meet-recording-finish-paused", (event, recordingId: unknown) => {
+    if (event.sender !== deps.getControlPanelWindow?.()?.webContents || recordingId !== pausedRecording?.recordingId) return { success: false };
+    pausedRecording = null; companionServer?.broadcastSnapshot(); return { success: true };
+  });
+  ipcMain.handle("meet-context-reminder-respond", async (event, request: unknown) => {
+    if (!request || typeof request !== "object" || !("action" in request) || (request.action !== "stop" && request.action !== "dismiss")) return { success: false };
+    const { action, ...scope } = request;
+    const parsed = companionRecordingScopeSchema.safeParse(scope);
+    if (!parsed.success || !deps.dismissCompanionReminder?.(parsed.data, event.sender)) return { success: false };
+    if (action === "dismiss") return { success: true };
+    return requestSafeStop({ expected: parsed.data, reason: "context-reminder" });
+  });
+  ipcMain.handle("meeting-auto-end-claim", (event, sessionId: unknown) => {
+    if (event.sender !== activeCaptureOwner || sessionId !== activeCaptureSessionId || !activeCaptureSession || companion.status().binding || captureDraining || safeStopPromise) return { success: false };
+    captureDraining = true;
+    return { success: true };
+  });
+  ipcMain.handle("meet-companion-status", () => companion.status());
+  ipcMain.handle("meet-companion-select", (event, request: unknown) => {
+    const parsed = companionSelectionSchema.safeParse(request);
+    return { success: parsed.success && event.sender === activeCaptureOwner && companion.confirm(parsed.data.expected, parsed.data.candidate) };
+  });
+
 
   const publicationDeps = {
     databaseManager,
@@ -1740,16 +1884,21 @@ export function registerMeetingCoordinatorHandlers(
         recordingConfig,
         startedAt,
         undefined,
-        typeof options.groupId === "string" ? options.groupId : undefined
+        typeof options.groupId === "string" ? options.groupId : undefined,
+        options.manualMicMuted === true
       );
     } catch (error) {
       meetingTranscriptionStartInProgress = false;
       return meetingFailure(error);
     }
 
+    captureDraining = false;
+    pausedRecording = null;
+    platformMuted = false;
+    browserClocks.clear(); meetEvidence.reset(); meetCoverage = null;
     activeCaptureSession = capture;
     platformCollector = new ZoomSpeakerCollector(capture.recordingId, {
-      saveMeetingZoomObservation: (observation) => databaseManager.saveMeetingZoomObservation(observation),
+      saveMeetingPlatformObservation: (observation) => databaseManager.saveMeetingPlatformObservation(observation),
       saveMeetingAudioClockAnchor: (anchor) => databaseManager.saveMeetingAudioClockAnchor(anchor),
       setMeetingPlatformCoverage: (id, coverage) => databaseManager.setMeetingPlatformCoverage(id, coverage),
     });
@@ -1775,6 +1924,11 @@ export function registerMeetingCoordinatorHandlers(
         systemAudioAvailable: false,
       });
 
+      const restartCandidate = typeof options.restartSessionId === "string"
+        ? lastStoppedBinding?.sessionId === options.restartSessionId ? lastStoppedBinding.candidate : null : undefined;
+      companion.start({ recordingId: capture.recordingId, sessionId }, restartCandidate);
+      capture.initializePlatformMute(platformMuted);
+
       if (plan.mode === "native" && audioTapManager) {
         try {
           await startManagedMeetingSystemAudio(event, capture, audioTapManager);
@@ -1795,6 +1949,9 @@ export function registerMeetingCoordinatorHandlers(
         sessionId,
         recordingId: capture.recordingId,
         originAt: capture.originAt,
+        monotonicOriginNs: capture.getMonotonicOriginNs(),
+        helperGeneration: audioTapManager?.getClockOrigin()?.helperGeneration,
+        platformMicMuted: platformMuted,
         systemAudioMode,
         systemAudioStrategy,
       };
@@ -1811,9 +1968,12 @@ export function registerMeetingCoordinatorHandlers(
           recordingId: capture.recordingId,
         }, "meeting");
       }
+      companion.stop({ recordingId: capture.recordingId, sessionId });
       activeCaptureSession = null;
       activeCaptureSessionId = null;
       activeCaptureOwner = null;
+      platformMuted = false;
+      companionServer?.broadcastSnapshot();
       deps.onCaptureStopped?.();
       deps.setMeetingCaptureState?.(false);
       meetingDetectionEngine?.endRecordingSession(sessionId);
@@ -1854,7 +2014,7 @@ export function registerMeetingCoordinatorHandlers(
     manager: NonNullable<MeetingCoordinatorDeps["audioTapManager"]>
   ): Promise<void> => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    const timeline = createMeetingAudioTimeline({ originAt: Date.parse(capture.originAt) });
+    const timeline = createMeetingAudioTimeline();
     const reportLevel = (rms: number) => {
       meetingSystemAudioLevelPeak = Math.max(meetingSystemAudioLevelPeak, rms);
       const now = Date.now();
@@ -1869,21 +2029,31 @@ export function registerMeetingCoordinatorHandlers(
       meetingSystemAudioLevelPeak = 0;
     };
     let generation: string | undefined;
+    let generationFrameOrigin = 0;
+    let sourceGeneration = 0;
     const evidence = platformCollector;
     const startCapture = () =>
       manager.start({
         onStart: (message) => {
           generation = message.generation;
-          const startFrame = timeline.markRestart(Date.now());
-          const epochIndex = capture.beginSourceEpoch("system", startFrame);
+          if (!message.generation || !message.monotonicOriginNs || message.originFrame !== 0) {
+            capture.markSourceUnavailable("system", "audio-clock-unavailable");
+            throw new Error("Native audio tap did not provide its actual frame clock");
+          }
+          if (capture.getMonotonicOriginNs() === null) capture.setMonotonicOriginNs(message.monotonicOriginNs);
+          const startFrame = capture.frameForMonotonicNs(message.monotonicOriginNs);
+          if (startFrame === null) throw new Error("Native audio tap clock cannot be mapped to the recording origin");
+          generationFrameOrigin = startFrame;
+          const epochIndex = capture.beginSourceEpoch("system", ++sourceGeneration, 0, startFrame);
           if (generation) evidence?.bindClock(generation, epochIndex, startFrame);
           else evidence?.invalidate("clock-generation-missing");
         },
         onClock: (clock) => evidence?.recordClock(clock),
-        onChunk: (chunk) => {
+        onChunk: (chunk, sourceFrameStart) => {
           try {
-            timeline.write(chunk, (raw) => {
-              capture.appendNativeSamples("system", raw);
+            const frameStart = generationFrameOrigin + sourceFrameStart;
+            timeline.write(chunk, frameStart, (raw, anchoredFrameStart) => {
+              capture.appendNativeSamples("system", sourceGeneration, raw, sourceFrameStart, anchoredFrameStart);
               evidence?.recordDeliveredFrames(generation, raw.length / 2);
               meetingDetectionEngine?.recordMeetingAudioChunk("system", raw);
               const { rms, peak } = computeChunkStats(raw);
@@ -1943,19 +2113,57 @@ export function registerMeetingCoordinatorHandlers(
       })
   );
 
+  ipcMain.handle("meeting-transcription-set-mic-intent", async (event, request: unknown) => {
+    const parsed = meetingMicIntentRequestSchema.safeParse(request);
+    if (!parsed.success) return { success: false, error: "Microphone intent request is invalid" };
+    const capture = activeCaptureSession;
+    if (!capture || event.sender !== activeCaptureOwner ||
+        parsed.data.sessionId !== activeCaptureSessionId || parsed.data.recordingId !== capture.recordingId) {
+      return { success: false, error: "Microphone intent belongs to a stale recording" };
+    }
+    try {
+      const result = await capture.setMicIntent(parsed.data);
+      companionServer?.broadcastSnapshot();
+      return { success: true, ...result };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Microphone intent was rejected" };
+    }
+  });
+
+  ipcMain.handle("meeting-transcription-probe-clock", async (event, request: unknown) => {
+    const parsed = meetingClockProbeRequestSchema.safeParse(request);
+    const capture = activeCaptureSession;
+    if (!parsed.success || !audioTapManager || !capture || event.sender !== activeCaptureOwner ||
+        parsed.data.sessionId !== activeCaptureSessionId || parsed.data.recordingId !== capture.recordingId) {
+      return { success: false, error: "Clock probe belongs to a stale recording" };
+    }
+    try {
+      const reply = await audioTapManager.probeClock(parsed.data.nonce);
+      return { success: true, ...reply };
+    } catch (error) {
+      return { success: false, nonce: parsed.data.nonce, error: error instanceof Error ? error.message : "Clock probe failed" };
+    }
+  });
+
   const stopMeetingTranscription = async (
     expectedSessionId: string,
     options: {
       incomplete?: boolean;
       lastSequence?: Partial<Record<MeetingAudioSource, number>>;
+      microphoneBoundary?: import("../contracts/meetingCoordinator.js").MeetingCaptureStopRequest["microphoneBoundary"];
       errorCode?: string;
       suppressProcessing?: boolean;
+      pause?: boolean;
     } = {}
   ) => {
     const capture = activeCaptureSession;
     if (!capture || expectedSessionId !== activeCaptureSessionId) {
       return { success: false, reason: "stale-session" };
     }
+    captureDraining = true;
+    deps.dismissCompanionReminder?.({ recordingId: capture.recordingId, sessionId: expectedSessionId });
+    lastStoppedBinding = { sessionId: expectedSessionId, candidate: companion.status().binding };
+    companion.stop({ recordingId: capture.recordingId, sessionId: expectedSessionId });
     if (options.incomplete) capture.markCaptureFailure(options.errorCode ?? "renderer-lost");
     meetingDetectionEngine?.endRecordingSession(expectedSessionId);
     meetingDetectionEngine?.setUserRecording(false);
@@ -1963,7 +2171,6 @@ export function registerMeetingCoordinatorHandlers(
     stopMeetingSystemAudioWatchdog();
 
     const collector = platformCollector;
-    platformCollector = null;
     let stopError: string | null = null;
     try {
       await audioTapManager?.stop();
@@ -1975,17 +2182,25 @@ export function registerMeetingCoordinatorHandlers(
       }, "meeting");
     }
 
+    platformCollector = null;
     await collector?.stop();
+    if (meetCoverage) {
+      const reason = meetCoverage.reason ?? (meetCoverage.samples ? null : "no-calibrated-meet-evidence");
+      try { databaseManager.setMeetingPlatformCoverage(capture.recordingId, { ...meetCoverage, reason, state: reason ? "incomplete" : "complete" }); } catch { /* Optional metadata never prevents raw audio finalization. */ }
+    }
     try {
       const result = await capture.stop({
         lastSequence: options.lastSequence ?? {},
+        microphoneBoundary: options.microphoneBoundary,
         errorCode: stopError,
       });
       if (options.suppressProcessing) deps.cancelInitialProcessingRun?.(result.initialRunId);
+      pausedRecording = options.pause && result.captureState === "ready" ? { recordingId: capture.recordingId, manualMuted: capture.getMicIntent().manualMuted } : null;
       activeCaptureSession = null;
       activeCaptureSessionId = null;
       activeCaptureOwner = null;
       deps.onCaptureStopped?.();
+      companionServer?.broadcastSnapshot();
       linkRecordingSessionToNote(null);
       deps.setMeetingCaptureState?.(false);
       resolveSafeStop?.({ success: true, captureState: result.captureState });
@@ -2005,6 +2220,7 @@ export function registerMeetingCoordinatorHandlers(
       activeCaptureSessionId = null;
       activeCaptureOwner = null;
       deps.onCaptureStopped?.();
+      companionServer?.broadcastSnapshot();
       linkRecordingSessionToNote(null);
       deps.setMeetingCaptureState?.(false);
       resolveSafeStop?.({ success: false });
@@ -2031,14 +2247,21 @@ export function registerMeetingCoordinatorHandlers(
     },
   });
 
-  const requestSafeStop = (suppressProcessing = false): Promise<{
+  const currentRecordingScope = (): MeetingRecordingScope | null =>
+    activeCaptureSession && activeCaptureSessionId
+      ? { recordingId: activeCaptureSession.recordingId, sessionId: activeCaptureSessionId } : null;
+
+  const requestSafeStop = ({ expected, reason, suppressProcessing = false }: MeetingSafeStopOptions): Promise<{
     success: boolean;
     captureState?: "ready" | "incomplete";
   }> => {
-    if (!activeCaptureSessionId || !activeCaptureSession) {
-      return Promise.resolve({ success: true });
+    if (!activeCaptureSessionId || !activeCaptureSession ||
+        activeCaptureSessionId !== expected.sessionId || activeCaptureSession.recordingId !== expected.recordingId) {
+      return Promise.resolve({ success: false });
     }
-    if (safeStopPromise) return safeStopPromise;
+    if (safeStopPromise) return safeStopScope?.sessionId === expected.sessionId && safeStopScope.recordingId === expected.recordingId
+      ? safeStopPromise : Promise.resolve({ success: false });
+    safeStopScope = expected;
 
     const sessionId = activeCaptureSessionId;
     const pendingSafeStop = new Promise<{
@@ -2066,9 +2289,10 @@ export function registerMeetingCoordinatorHandlers(
           .stopSession(sessionId, { incomplete: true, suppressProcessing })
           .then((result) => settle({ success: result.success, captureState: result.captureState }));
       }, 5000);
-      owner.send("meeting-transcription-stop-requested", { sessionId, suppressProcessing });
+      owner.send("meeting-transcription-stop-requested", { sessionId, recordingId: expected.recordingId, reason, suppressProcessing });
     }).finally(() => {
       safeStopPromise = null;
+      safeStopScope = null;
       resolveSafeStop = null;
     });
     safeStopPromise = pendingSafeStop;
@@ -2097,6 +2321,8 @@ export function registerMeetingCoordinatorHandlers(
       return meetingTranscriptionLifecycle.stopSession(parsed.data.sessionId, {
         incomplete: parsed.data.incomplete === true,
         lastSequence: parsed.data.lastSequence,
+        microphoneBoundary: parsed.data.microphoneBoundary,
+        pause: parsed.data.pause,
         errorCode: parsed.data.errorCode,
         suppressProcessing: parsed.data.suppressProcessing,
       });
@@ -2254,7 +2480,17 @@ export function registerMeetingCoordinatorHandlers(
 
   return {
     isRecording: () => activeCaptureSession !== null,
+    startCompanion: () => {
+      companionStarted ??= (async () => {
+        await companionServer?.start();
+        if (companionServer) { companionTicker = setInterval(() => companion.tick(), 1000); companionTicker.unref(); }
+      })();
+      return companionStarted;
+    },
+    setCompanionEnabled: (enabled) => companion.setEnabled(enabled),
+    disposeCompanion: async () => { if (companionTicker) clearInterval(companionTicker); await companionStarted?.catch(() => {}); if (companionTicker) clearInterval(companionTicker); await companionServer?.stop(); },
     requestSafeStop,
+    currentRecordingScope,
     linkRecordingSessionToNote,
     refreshMeetingSpeakerConfigFromNote(noteId, note) {
       const config = activeMeetingSpeakerConfig;

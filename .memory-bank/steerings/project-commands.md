@@ -51,7 +51,7 @@ The optional leading `--` also works with selectors.
 - `pnpm run typecheck:main`, `pnpm run typecheck:renderer`,
   `pnpm run typecheck:settings-selectors` and `pnpm run typecheck:tests` select
   compiler targets with the native TypeScript 7 `tsc`. `pnpm run typecheck`
-  runs all four sequentially. `pnpm run build:main` uses the same native
+  runs those targets and `typecheck:companion` sequentially. `pnpm run build:main` uses the same native
   compiler for emitted Electron code. The `typescript` dependency aliases
   TypeScript 6 for compiler-API consumers (test probes and ESLint); its
   executable is `tsc6`. Keep the CLI and API packages distinct until
@@ -67,6 +67,16 @@ The optional leading `--` also works with selectors.
   different configs. Do not use auto-fix across unrelated dirty files.
 - `pnpm run build:renderer` checks renderer bundling. Packaging is a separate,
   heavier check; do it when package output/native integration is relevant.
+
+## Google Meet extension
+
+- `pnpm run build:companion` typechecks and bundles the MV3 browser code into
+  `build/companion-dev`; load that directory unpacked in Chrome Stable.
+- `pnpm run typecheck:companion` checks the DOM-only extension graph. Browser
+  entries must not import Node/Electron code. The native host is a separate
+  entry in `build:main` and runs with the bundled Electron Node runtime.
+- Packaging commands build and copy the Dev extension to `companion-dev` in app
+  resources. No production extension ID or Web Store registration is supplied.
 
 ## Setup and application verification
 

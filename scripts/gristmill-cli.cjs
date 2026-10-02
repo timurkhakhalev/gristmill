@@ -131,7 +131,7 @@ function plain(value, title) {
   const out = [`Note #${value.note_id} · ${title}`, `Transcript: ${value.status}`, "Times: concatenated Note recording timeline"];
   if (value.diagnostics.length) out.push(`Incomplete: ${value.diagnostics.join(", ")}`);
   out.push("");
-  for (const speaker of value.speakers) out.push(`${speaker.id} — ${speaker.name || "unknown"}${speaker.email ? ` <${speaker.email}>` : ""} · ${speaker.source || "unknown source"}`);
+  for (const speaker of value.speakers) out.push(`${speaker.id} — ${speaker.name || "unknown"}${speaker.email ? ` <${speaker.email}>` : ""} · ${speaker.source || "unknown source"}${speaker.name_platform ? ` · ${speaker.name_platform === "google-meet" ? "Google Meet" : "Zoom"}` : ""}`);
   out.push("");
   const names = new Map(value.speakers.map((speaker) => [speaker.id, speaker.name || speaker.id]));
   if (value.segments) for (const segment of value.segments) out.push(`[${time(segment.start_ms)}–${time(segment.end_ms)}] ${names.get(segment.speaker_id) || "unknown"}\n${segment.text}`);

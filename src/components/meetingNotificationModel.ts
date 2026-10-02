@@ -3,11 +3,13 @@ import type { MeetingAutoEndReason, MeetingNotificationData } from "../contracts
 type AutoEndBodyKey =
   | "meetingNotification.autoEnd.body.micReleased"
   | "meetingNotification.autoEnd.body.silence"
+  | "meetingNotification.autoEnd.body.platformLeave"
   | "meetingNotification.autoEnd.body.processExit";
 
 const AUTO_END_BODY_KEYS: Record<MeetingAutoEndReason, AutoEndBodyKey> = {
   "mic-released": "meetingNotification.autoEnd.body.micReleased",
   silence: "meetingNotification.autoEnd.body.silence",
+  "platform-leave": "meetingNotification.autoEnd.body.platformLeave",
   "process-exit": "meetingNotification.autoEnd.body.processExit",
 };
 
@@ -34,7 +36,15 @@ interface DetectionPresentation {
   allowTitleWrap: false;
 }
 
-export type MeetingNotificationPresentation = AutoEndPresentation | DetectionPresentation;
+interface MeetContextPresentation {
+  titleKey: "meetIntegration.title";
+  bodyKey: "meetIntegration.contextLost";
+  actionKey: "notes.editor.stop";
+  action: "stop";
+  dismissible: true;
+  allowTitleWrap: true;
+}
+export type MeetingNotificationPresentation = AutoEndPresentation | DetectionPresentation | MeetContextPresentation;
 
 const MEETING_NOTIFICATION_SWIPE_DISTANCE_PX = 80;
 
@@ -49,6 +59,7 @@ export function getMeetingNotificationPresentation(
   data: MeetingNotificationData | null,
   secondsRemaining: number
 ): MeetingNotificationPresentation {
+  if (data?.kind === "meet-context-lost") return { titleKey: "meetIntegration.title", bodyKey: "meetIntegration.contextLost", actionKey: "notes.editor.stop", action: "stop", dismissible: true, allowTitleWrap: true };
   if (data?.kind === "auto-end") {
     return {
       titleKey: "meetingNotification.autoEnd.title",

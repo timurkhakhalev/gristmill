@@ -88,10 +88,20 @@ export default function MeetingNotificationOverlay(): ReactElement {
     [data]
   );
 
+  const respondToContext = useCallback(async (action: "stop" | "dismiss") => {
+    if (data?.kind !== "meet-context-lost") return;
+    setIsVisible(false);
+    try {
+      const result = await window.electronAPI?.respondMeetContextReminder?.({ recordingId: data.recordingId, sessionId: data.sessionId, action });
+      if (!result?.success) setIsVisible(true);
+    } catch { setIsVisible(true); }
+  }, [data]);
+
   const dismiss = useCallback((): void => {
-    if (data?.kind === "auto-end") void respondToAutoEnd("dismiss");
+    if (data?.kind === "meet-context-lost") void respondToContext("dismiss");
+    else if (data?.kind === "auto-end") void respondToAutoEnd("dismiss");
     else void respond("dismiss");
-  }, [data, respond, respondToAutoEnd]);
+  }, [data, respond, respondToAutoEnd, respondToContext]);
 
   const handleMouseEnter = useCallback((): void => {
     setIsHovered(true);
@@ -174,7 +184,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
       ? t(presentation.bodyKey, presentation.bodyValues)
       : t(presentation.bodyKey);
   const handleAction =
-    presentation.action === "restart"
+    presentation.action === "stop" ? () => void respondToContext("stop") : presentation.action === "restart"
       ? () => void respondToAutoEnd("restart")
       : () => respond(presentation.action);
 

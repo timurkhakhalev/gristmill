@@ -13,7 +13,11 @@ Note. Группы описывают сеансы захвата, а не по�
 
 ## Текущая реализация и проверка
 
-- SQLite хранит `meeting_recordings`, `meeting_recording_epochs`, `meeting_processing_runs`, `meeting_deletion_intents` и `meeting_run_speaker_corrections`; managed files содержат source Ogg/Opus epochs (32 kbit/s VBR, complexity 0), temporary derived WAV и per-run JSON results. Пути описаны в [architecture.md](architecture.md).
+- SQLite хранит `meeting_recordings`, `meeting_recording_epochs`, `meeting_recording_intentional_intervals`, `meeting_processing_runs`, `meeting_deletion_intents` и `meeting_run_speaker_corrections`; managed files содержат source Ogg/Opus epochs (32 kbit/s VBR, complexity 0), temporary derived WAV и per-run JSON results. Intentional intervals сохраняют source, half-open frame range и причину `manual-muted` или `platform-muted`; `sourceEndFrame = null` означает открытый интервал. Пути описаны в [architecture.md](architecture.md).
+- Mic mute закрывает вход Worklet до PCM conversion/encoding, отправки, analyser и activity detection. Сам поток, AudioContext и Worklet остаются открыты; system audio продолжает писаться. Stop и Pause завершают mic/system устройства. Manual mute сохраняется в Pause/Resume, reopen и Restart; независимый Start очищает прежнее намерение. На unmute интервал закрывается по подтверждённой render-frame boundary; первый принятый пакет проверяется относительно неё, потерянный tail остаётся incomplete. На Stop интервалы закрываются по source-frame boundary; общие timeline coordinates сохраняются только при доказанном alignment.
+- Новые offsets задаются frame anchors: AudioWorklet передаёт render-frame count, native helper — frame count и CoreAudio host-time probes через ограниченный stdin protocol. Shared clock solver сохраняет rate, uncertainty, helper generation и freshness; receipt time и `Date.now()` не служат точной позицией. Пропуски остаются gaps между epochs. Старые recording offsets/durations без нового anchor продолжают читаться по сохранённым UTC bounds.
+- Пустой mic считается намеренным, когда main сохранял mute на протяжении всей записи либо aligned manual/platform intervals покрывают всю запись; mic epochs должны отсутствовать. Deepgram всё равно получает stereo с тихим mic channel и системной речью; ElevenLabs, Gemini и OpenAI сохраняют явный canonical `intentional-empty` результат и пропускают mic запрос; Local по-прежнему использует system audio. Отсутствующий источник без полного доказанного mute остаётся ошибкой.
+- Source frames и общий audio timeline хранятся отдельно. Неизвестное выравнивание не останавливает захват: raw сохраняется, а prepare возвращает `audio-alignment-unavailable`, если нужный диапазон так и не получил bounded alignment. Поздняя калибровка одной непрерывной generation не меняет raw. Модель использует до 8 probes со span ≥250 ms, rate 0.999–1.001, freshness/continuation ≤5 s; prepare допускает uncertainty ≤25 ms на концах сегмента. Сохранённые bounds оцениваются на момент capture, не по времени последующей обработки.
 - Config snapshot сохраняется до первого audio frame. Во время capture нет ASR/provider calls. Только успешный Stop закрывает tracks, создаёт initial run и сохраняет not-before deadline на 15 секунд. Worker учитывает этот deadline после restart; Pause не ставит задание в очередь, а Resume отменяет pending run прежней Note audio version.
 - После gate формат зависит от сохранённого провайдера: Deepgram получает stereo WAV (mic=0, system=1) с multichannel и диаризацией; ElevenLabs, Gemini и OpenAI — два параллельных запроса (mic без диаризации, system с диаризацией). OpenAI использует `whisper-1` для временных меток mic и `gpt-4o-transcribe-diarize` для system. Local сохраняет mono route. Все входы следуют общей timeline и сохраняют gaps. Raw JSON каждой дорожки сохраняется до normalization; retry не отправляет успешную дорожку повторно. Run/selection проверяются перед claim и ASR.
 - Transcript и Summary — per-run artifacts; `notes.transcript` и `notes.enhanced_content` показывают выбранный run, а ручной `note.content` остаётся отдельным. Source tracks и прошлые артефакты сохраняются при retry и выборе другой версии.
@@ -168,3 +172,13 @@ ASR boundaries. It does not prove exclusive Zoom audio, voice identity or one
 person per device; Zoom badges identify an editable suggestion's source. Known
 signal conversion, real Zoom lag and multi-speaker accuracy remain unverified.
 See [implementation and live verification limits](zoom-speaker-prototype.md#implemented-evidence-path).
+
+### Общий слой evidence для Zoom и Google Meet
+
+Наблюдения и matcher теперь общие: `meeting_platform_observations` и
+`meetingPlatformMatcher.ts`. Имена содержат конкретную платформу в Results,
+Note transcript, CLI и LLM-контексте. Ручное переименование снимает platform badge;
+user/voice corrections имеют приоритет. Миграция сохраняет прежние Zoom decisions
+и revisions атомарно; runtime aliases старого Zoom persistence API отсутствуют.
+Удаление audio по retention сохраняет metadata и имена, удаление Note удаляет их.
+Synthetic tests проверяют обе платформы; real Meet attribution пока не проверен.

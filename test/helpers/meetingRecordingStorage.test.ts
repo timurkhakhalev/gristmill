@@ -27,7 +27,7 @@ test("recording epochs append complete Opus pages through short writes", async (
   if (!db) return;
   const root = getUserDataDir();
   const recording = createRecording(db);
-  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
   let writes = 0;
   const storage = new MeetingRecordingStorage({
     userDataPath: root,
@@ -52,7 +52,7 @@ test("write failure leaves a partial Ogg page that recovery ignores without rewr
   if (!db) return;
   const root = getUserDataDir();
   const recording = createRecording(db);
-  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
   let calls = 0;
   const storage = new MeetingRecordingStorage({
     userDataPath: root,
@@ -79,9 +79,9 @@ test("recovery finalizes both source epochs, keeps timeline gaps, and creates on
   if (!db) return;
   const root = getUserDataDir();
   const recording = createRecording(db);
-  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
-  db.createMeetingRecordingEpoch(recording.id, "mic", 1, 8);
-  db.createMeetingRecordingEpoch(recording.id, "system", 0, 0);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 1, 1, 8, 8);
+  db.createMeetingRecordingEpoch(recording.id, "system", 0, 1, 0, 0);
   const storage = new MeetingRecordingStorage({ userDataPath: root });
   storage.openEpochWriter(recording.id, "mic", 0);
   storage.appendEpochSamples(recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
@@ -102,17 +102,17 @@ test("recovery finalizes both source epochs, keeps timeline gaps, and creates on
   assert.equal(runs[0].status, "pending");
   assert.equal(runs[0].config.transcription.provider, "deepgram");
   assert.deepEqual(
-    db.listMeetingRecordingEpochs(recording.id).map(({ source, epochIndex, startFrame, frameCount, ignoredTrailingBytes }: import("../../src/contracts/meetingRecording.ts").MeetingRecordingEpochDto) => ({
+    db.listMeetingRecordingEpochs(recording.id).map(({ source, epochIndex, timelineStartFrame, frameCount, ignoredTrailingBytes }: import("../../src/contracts/meetingRecording.ts").MeetingRecordingEpochDto) => ({ sourceGeneration: null, sourceStartFrame: null, alignmentSegments: [], alignmentErrorCode: null,
       source,
       epochIndex,
-      startFrame,
+      timelineStartFrame,
       frameCount,
       ignoredTrailingBytes,
     })),
     [
-      { source: "mic", epochIndex: 0, startFrame: 0, frameCount: 2, ignoredTrailingBytes: 0 },
-      { source: "system", epochIndex: 0, startFrame: 0, frameCount: 2, ignoredTrailingBytes: 0 },
-      { source: "mic", epochIndex: 1, startFrame: 8, frameCount: 2, ignoredTrailingBytes: 0 },
+      { sourceGeneration: null, sourceStartFrame: null, alignmentSegments: [], alignmentErrorCode: null, source: "mic", epochIndex: 0, timelineStartFrame: 0, frameCount: 2, ignoredTrailingBytes: 0 },
+      { sourceGeneration: null, sourceStartFrame: null, alignmentSegments: [], alignmentErrorCode: null, source: "system", epochIndex: 0, timelineStartFrame: 0, frameCount: 2, ignoredTrailingBytes: 0 },
+      { sourceGeneration: null, sourceStartFrame: null, alignmentSegments: [], alignmentErrorCode: null, source: "mic", epochIndex: 1, timelineStartFrame: 8, frameCount: 2, ignoredTrailingBytes: 0 },
     ]
   );
   const bytesBeforeSecondRecovery = fs.statSync(

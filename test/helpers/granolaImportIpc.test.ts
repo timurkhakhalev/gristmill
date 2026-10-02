@@ -21,6 +21,7 @@ let selectedCsvPaths = csvPaths;
 
 const electronStub = {
   app: {
+    getAppPath: () => process.cwd(),
     getPath: () => importDir,
     getName: () => "test",
     getVersion: () => "0.0.0",

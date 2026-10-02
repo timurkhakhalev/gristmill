@@ -13,6 +13,7 @@ const segmentSchema = z.object({
   speakerId: z.string().nullable(),
   speakerName: z.string().nullable(),
   speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
+    speakerNamePlatform: z.enum(["zoom", "google-meet"]).optional(),
   text: z.string(),
   start: z.number().nonnegative().optional(),
   end: z.number().nonnegative().optional(),

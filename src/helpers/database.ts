@@ -4,6 +4,7 @@
 // public IPC DTOs: tokens and embedding buffers stay main-only; shared
 // contracts own the renderer-facing projections.
 import path from "path";
+import { migrateMeetingPlatformEvidence } from "./meetingPlatformMigration.js";
 import { migrateMeetingAudio } from "./meetingAudioMigration.js";
 import { createHash, randomUUID } from "crypto";
 import { app } from "electron";
@@ -16,8 +17,8 @@ import { noteContentHash } from "../utils/noteContentHash.js";
 import { isDevelopmentChannel } from "./appChannel.js";
 import * as secretCrypto from "./secretCrypto.js";
 import {
-  zoomSpeakerObservationSchema, meetingAudioClockAnchorSchema, zoomSpeakerDecisionSchema, meetingPlatformCoverageSchema,
-  type ZoomSpeakerObservation, type MeetingAudioClockAnchor, type ZoomSpeakerDecision, type MeetingPlatformCoverage,
+  meetingPlatformObservationSchema, meetingAudioClockAnchorSchema, meetingPlatformDecisionSchema, meetingPlatformCoverageSchema,
+  type MeetingPlatform, type MeetingPlatformObservation, type MeetingAudioClockAnchor, type MeetingPlatformDecision, type MeetingPlatformCoverage,
   meetingProcessingConfigSchema,
   meetingProcessingConfigErrorSchema,
   MEETING_ASR_GATE_MS,
@@ -25,6 +26,8 @@ import {
   meetingRecordingConfigInputSchema,
   meetingRunArtifactSchema,
   meetingSourceSchema,
+  meetingIntentionalIntervalSchema,
+  meetingFrameAlignmentSegmentSchema,
   type MeetingAudioState,
   type MeetingCaptureState,
   type MeetingDeletionIntentDto,
@@ -33,6 +36,9 @@ import {
   type MeetingProcessingRunDto,
   type MeetingRecordingDto,
   type MeetingRecordingEpochDto,
+  type MeetingFrameAlignmentSegment,
+  type MeetingFrameAlignmentPoint,
+  type MeetingIntentionalInterval,
   type MeetingRunArtifact,
   type MeetingRunStage,
   type MeetingRunStatus,
@@ -177,7 +183,10 @@ interface MeetingRecordingEpochDbRow {
   recording_id: string;
   source: MeetingSource;
   epoch_index: number;
-  start_frame: number;
+  timeline_start_frame: number | null;
+  source_start_frame: number | null;
+  source_generation: number | null;
+  alignment_error_code: string | null;
   sample_rate: 24_000;
   channels: 1;
   encoding: "opus";
@@ -524,12 +533,16 @@ function toMeetingRecordingDto(row: MeetingRecordingDbRow): MeetingRecordingDto 
   };
 }
 
-function toMeetingEpochDto(row: MeetingRecordingEpochDbRow): MeetingRecordingEpochDto {
+function toMeetingEpochDto(row: MeetingRecordingEpochDbRow, alignmentSegments: MeetingFrameAlignmentSegment[]): MeetingRecordingEpochDto {
   return {
     recordingId: row.recording_id,
     source: row.source,
     epochIndex: row.epoch_index,
-    startFrame: row.start_frame,
+    timelineStartFrame: row.timeline_start_frame,
+    sourceStartFrame: row.source_start_frame,
+    sourceGeneration: row.source_generation,
+    alignmentSegments,
+    alignmentErrorCode: row.alignment_error_code,
     sampleRate: row.sample_rate,
     channels: row.channels,
     encoding: row.encoding,
@@ -740,7 +753,10 @@ export class DatabaseManager {
           recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE,
           source TEXT NOT NULL CHECK(source IN ('mic', 'system')),
           epoch_index INTEGER NOT NULL CHECK(epoch_index >= 0),
-          start_frame INTEGER NOT NULL CHECK(start_frame >= 0),
+          timeline_start_frame INTEGER CHECK(timeline_start_frame IS NULL OR timeline_start_frame >= 0),
+          source_start_frame INTEGER CHECK(source_start_frame IS NULL OR source_start_frame >= 0),
+          source_generation INTEGER CHECK(source_generation IS NULL OR source_generation > 0),
+          alignment_error_code TEXT,
           sample_rate INTEGER NOT NULL CHECK(sample_rate = 24000),
           channels INTEGER NOT NULL CHECK(channels = 1),
           encoding TEXT NOT NULL CHECK(encoding = 'opus'),
@@ -752,6 +768,45 @@ export class DatabaseManager {
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (recording_id, source, epoch_index)
+        );
+
+        CREATE TABLE IF NOT EXISTS meeting_recording_intentional_intervals (
+          id TEXT PRIMARY KEY,
+          recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE,
+          source TEXT NOT NULL CHECK(source IN ('mic', 'system')),
+          source_generation INTEGER CHECK(source_generation IS NULL OR source_generation > 0),
+          timeline_start_frame INTEGER CHECK(timeline_start_frame IS NULL OR timeline_start_frame >= 0),
+          timeline_end_frame INTEGER CHECK(timeline_end_frame IS NULL OR timeline_end_frame >= 0),
+          source_start_frame INTEGER CHECK(source_start_frame IS NULL OR source_start_frame >= 0),
+          source_end_frame INTEGER CHECK(source_end_frame IS NULL OR source_end_frame >= 0),
+          start_alignment_json TEXT,
+          end_alignment_json TEXT,
+          reason TEXT NOT NULL CHECK(reason IN ('manual-muted', 'platform-muted')),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS meeting_recording_epoch_alignments (
+          recording_id TEXT NOT NULL,
+          source TEXT NOT NULL CHECK(source IN ('mic', 'system')),
+          epoch_index INTEGER NOT NULL CHECK(epoch_index >= 0),
+          segment_index INTEGER NOT NULL CHECK(segment_index >= 0),
+          source_generation INTEGER NOT NULL CHECK(source_generation > 0),
+          source_start_frame INTEGER NOT NULL CHECK(source_start_frame >= 0),
+          source_end_frame INTEGER NOT NULL CHECK(source_end_frame > source_start_frame),
+          timeline_start_frame INTEGER NOT NULL CHECK(timeline_start_frame >= 0),
+          rate REAL NOT NULL CHECK(rate BETWEEN 0.999 AND 1.001),
+          uncertainty_start_frames INTEGER NOT NULL CHECK(uncertainty_start_frames >= 0),
+          uncertainty_end_frames INTEGER NOT NULL CHECK(uncertainty_end_frames >= 0),
+          helper_generation TEXT NOT NULL,
+          source_start_ns TEXT NOT NULL,
+          source_end_ns TEXT NOT NULL,
+          helper_start_ns TEXT NOT NULL,
+          helper_end_ns TEXT NOT NULL,
+          sampled_source_start_ns TEXT NOT NULL,
+          sampled_source_end_ns TEXT NOT NULL,
+          freshness_source_ns TEXT NOT NULL,
+          FOREIGN KEY (recording_id, source, epoch_index)
+            REFERENCES meeting_recording_epochs(recording_id, source, epoch_index) ON DELETE CASCADE,
+          PRIMARY KEY (recording_id, source, epoch_index, segment_index)
         );
 
         CREATE TABLE IF NOT EXISTS meeting_processing_runs (
@@ -991,6 +1046,61 @@ export class DatabaseManager {
 
       migrateMeetingAudio(this.sql, app.getPath("userData"));
 
+      this.sql.pragma("foreign_keys = OFF");
+      try {
+        this.sql.transaction(() => {
+          const epochColumns = this.sql.pragma("table_info(meeting_recording_epochs)") as Array<{ name: string }>;
+          if (epochColumns.some((column) => column.name === "start_frame") &&
+              !epochColumns.some((column) => column.name === "timeline_start_frame")) {
+            this.sql.exec("ALTER TABLE meeting_recording_epochs RENAME COLUMN start_frame TO timeline_start_frame");
+          }
+          const currentEpochColumns = this.sql.pragma("table_info(meeting_recording_epochs)") as Array<{ name: string }>;
+          if (!currentEpochColumns.some((column) => column.name === "source_start_frame")) {
+            this.sql.exec("ALTER TABLE meeting_recording_epochs ADD COLUMN source_start_frame INTEGER");
+          }
+          if (!currentEpochColumns.some((column) => column.name === "source_generation")) {
+            this.sql.exec("ALTER TABLE meeting_recording_epochs ADD COLUMN source_generation INTEGER");
+          }
+          if (!currentEpochColumns.some((column) => column.name === "alignment_error_code")) {
+            this.sql.exec("ALTER TABLE meeting_recording_epochs ADD COLUMN alignment_error_code TEXT");
+          }
+          const intervalColumns = this.sql.pragma("table_info(meeting_recording_intentional_intervals)") as Array<{ name: string }>;
+          if (intervalColumns.some((column) => column.name === "start_frame") &&
+              !intervalColumns.some((column) => column.name === "timeline_start_frame")) {
+            this.sql.exec("ALTER TABLE meeting_recording_intentional_intervals RENAME COLUMN start_frame TO timeline_start_frame");
+          }
+          const currentIntervalColumns = this.sql.pragma("table_info(meeting_recording_intentional_intervals)") as Array<{ name: string }>;
+          if (currentIntervalColumns.some((column) => column.name === "end_frame") &&
+              !currentIntervalColumns.some((column) => column.name === "timeline_end_frame")) {
+            this.sql.exec("ALTER TABLE meeting_recording_intentional_intervals RENAME COLUMN end_frame TO timeline_end_frame");
+          }
+          for (const [name, definition] of [
+            ["source_generation", "INTEGER"], ["timeline_start_frame", "INTEGER"], ["timeline_end_frame", "INTEGER"],
+            ["source_start_frame", "INTEGER"], ["source_end_frame", "INTEGER"], ["start_alignment_json", "TEXT"], ["end_alignment_json", "TEXT"],
+          ] as const) {
+            const columns = this.sql.pragma("table_info(meeting_recording_intentional_intervals)") as Array<{ name: string }>;
+            if (!columns.some((column) => column.name === name)) this.sql.exec(`ALTER TABLE meeting_recording_intentional_intervals ADD COLUMN ${name} ${definition}`);
+          }
+          // Renaming a NOT NULL column does not make unknown alignment nullable.
+          for (const table of ["meeting_recording_epochs", "meeting_recording_intentional_intervals"]) {
+            const row = this.sql.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) as { sql: string };
+            const nullable = row.sql.replace(/(\"?timeline_start_frame\"?\s+INTEGER)\s+NOT NULL/gi, "$1");
+            if (nullable === row.sql) continue;
+            this.sql.exec(nullable.replace(table, `${table}_aligned`));
+            this.sql.exec(`INSERT INTO ${table}_aligned SELECT * FROM ${table}; DROP TABLE ${table}; ALTER TABLE ${table}_aligned RENAME TO ${table}`);
+          }
+        })();
+      } finally { this.sql.pragma("foreign_keys = ON"); }
+
+      this.sql.exec(`
+        DROP INDEX IF EXISTS idx_meeting_open_intentional_interval;
+        DROP INDEX IF EXISTS idx_meeting_intentional_intervals_range;
+        CREATE UNIQUE INDEX idx_meeting_open_intentional_interval
+          ON meeting_recording_intentional_intervals(recording_id, source, source_generation, reason) WHERE source_end_frame IS NULL;
+        CREATE INDEX idx_meeting_intentional_intervals_range
+          ON meeting_recording_intentional_intervals(recording_id, source, source_generation, source_start_frame, source_end_frame);
+      `);
+
       const recordingColumns = this.sql.pragma("table_info(meeting_recordings)") as Array<{ name: string }>;
       if (!recordingColumns.some((column) => column.name === "group_id")) {
         this.sql.exec("ALTER TABLE meeting_recordings ADD COLUMN group_id TEXT");
@@ -1036,10 +1146,6 @@ export class DatabaseManager {
         })();
       }
       this.sql.exec(`
-        CREATE TABLE IF NOT EXISTS meeting_zoom_observations (
-          id TEXT PRIMARY KEY, recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE, evidence_json TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS meeting_zoom_observations_recording ON meeting_zoom_observations(recording_id);
         CREATE TABLE IF NOT EXISTS meeting_audio_clock_anchors (
           id TEXT PRIMARY KEY, recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE, evidence_json TEXT NOT NULL
         );
@@ -1064,6 +1170,7 @@ export class DatabaseManager {
           WHERE json_type(value, '$.timingPolicy') IS NULL
         );
       `);
+      migrateMeetingPlatformEvidence(this.sql);
       this.recoverMeetingPlatformCoverage();
       const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{ name: string }>;
       if (!calendarEventColumns.some((column) => column.name === "event_url")) {
@@ -1203,7 +1310,9 @@ export class DatabaseManager {
     recordingId: string,
     source: MeetingSource,
     epochIndex: number,
-    startFrame: number
+    sourceGeneration: number,
+    sourceStartFrame: number,
+    timelineStartFrame: number | null = null
   ): MeetingRecordingEpochDto {
     meetingRecordingIdSchema.parse(recordingId);
     meetingSourceSchema.parse(source);
@@ -1211,8 +1320,11 @@ export class DatabaseManager {
       !Number.isSafeInteger(epochIndex) ||
       epochIndex < 0 ||
       epochIndex > 999_999 ||
-      !Number.isSafeInteger(startFrame) ||
-      startFrame < 0
+      !Number.isSafeInteger(sourceGeneration) ||
+      sourceGeneration < 1 ||
+      !Number.isSafeInteger(sourceStartFrame) ||
+      sourceStartFrame < 0 ||
+      timelineStartFrame !== null && (!Number.isSafeInteger(timelineStartFrame) || timelineStartFrame < 0)
     ) {
       throw new RangeError("Invalid recording epoch position");
     }
@@ -1226,10 +1338,89 @@ export class DatabaseManager {
     const relativePath = relativeEpochPath(source, epochIndex);
     this.sql
       .prepare(
-        "INSERT INTO meeting_recording_epochs (recording_id, source, epoch_index, start_frame, sample_rate, channels, encoding, relative_path) VALUES (?, ?, ?, ?, 24000, 1, 'opus', ?)"
+        "INSERT INTO meeting_recording_epochs (recording_id, source, epoch_index, timeline_start_frame, source_start_frame, source_generation, sample_rate, channels, encoding, relative_path) VALUES (?, ?, ?, ?, ?, ?, 24000, 1, 'opus', ?)"
       )
-      .run(recordingId, source, epochIndex, startFrame, relativePath);
+      .run(recordingId, source, epochIndex, timelineStartFrame, sourceStartFrame, sourceGeneration, relativePath);
     return this.getMeetingRecordingEpoch(recordingId, source, epochIndex) as MeetingRecordingEpochDto;
+  }
+
+  addMeetingRecordingEpochAlignment(
+    recordingId: string,
+    source: MeetingSource,
+    epochIndex: number,
+    input: MeetingFrameAlignmentSegment
+  ): MeetingRecordingEpochDto {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingSourceSchema.parse(source);
+    const segment = meetingFrameAlignmentSegmentSchema.parse(input);
+    const epoch = this.getMeetingRecordingEpoch(recordingId, source, epochIndex);
+    if (!epoch || epoch.sourceGeneration === null || epoch.sourceGeneration <= 0 ||
+        epoch.sourceStartFrame === null || segment.sourceStartFrame < epoch.sourceStartFrame ||
+        epoch.sourceGeneration !== segment.sourceGeneration) {
+      throw new Error("Audio alignment segment does not match its source epoch");
+    }
+    this.sql.prepare(`DELETE FROM meeting_recording_epoch_alignments
+      WHERE recording_id = ? AND source = ? AND epoch_index = ?
+      AND helper_generation = ? AND source_start_frame >= ? AND source_end_frame <= ?`)
+      .run(recordingId, source, epochIndex, segment.helperGeneration, segment.sourceStartFrame, segment.sourceEndFrame);
+    const nextIndex = (this.sql.prepare(
+      "SELECT COALESCE(MAX(segment_index), -1) + 1 AS next FROM meeting_recording_epoch_alignments WHERE recording_id = ? AND source = ? AND epoch_index = ?"
+    ).get(recordingId, source, epochIndex) as { next: number }).next;
+    this.sql.prepare(`
+      INSERT INTO meeting_recording_epoch_alignments (
+        recording_id, source, epoch_index, segment_index, source_generation, source_start_frame, source_end_frame,
+        timeline_start_frame, rate, uncertainty_start_frames, uncertainty_end_frames,
+        helper_generation, source_start_ns, source_end_ns, helper_start_ns, helper_end_ns,
+        sampled_source_start_ns, sampled_source_end_ns, freshness_source_ns
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      recordingId, source, epochIndex, nextIndex, segment.sourceGeneration, segment.sourceStartFrame, segment.sourceEndFrame,
+      segment.timelineStartFrame, segment.rate, segment.uncertaintyStartFrames, segment.uncertaintyEndFrames,
+      segment.helperGeneration, segment.sourceStartNs, segment.sourceEndNs, segment.helperStartNs,
+      segment.helperEndNs, segment.sampledSourceStartNs, segment.sampledSourceEndNs, segment.freshnessSourceNs
+    );
+    return this.getMeetingRecordingEpoch(recordingId, source, epochIndex) as MeetingRecordingEpochDto;
+  }
+
+  markMeetingRecordingEpochAlignmentUnknown(recordingId: string, source: MeetingSource, epochIndex: number, errorCode: string): void {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingSourceSchema.parse(source);
+    if (!/^[a-z0-9-]{1,80}$/.test(errorCode)) throw new RangeError("Invalid audio alignment reason");
+    this.sql.prepare(
+      "UPDATE meeting_recording_epochs SET alignment_error_code = COALESCE(alignment_error_code, ?) WHERE recording_id = ? AND source = ? AND epoch_index = ?"
+    ).run(errorCode, recordingId, source, epochIndex);
+  }
+
+  private listMeetingRecordingEpochAlignments(recordingId: string, source: MeetingSource, epochIndex: number): MeetingFrameAlignmentSegment[] {
+    return (this.sql.prepare(`
+      SELECT source_generation, source_start_frame, source_end_frame, timeline_start_frame, rate,
+        uncertainty_start_frames, uncertainty_end_frames, helper_generation,
+        source_start_ns, source_end_ns, helper_start_ns, helper_end_ns,
+        sampled_source_start_ns, sampled_source_end_ns, freshness_source_ns
+      FROM meeting_recording_epoch_alignments
+      WHERE recording_id = ? AND source = ? AND epoch_index = ? ORDER BY source_start_frame, segment_index
+    `).all(recordingId, source, epochIndex) as Array<{
+      source_generation: number; source_start_frame: number; source_end_frame: number; timeline_start_frame: number; rate: number;
+      uncertainty_start_frames: number; uncertainty_end_frames: number; helper_generation: string;
+      source_start_ns: string; source_end_ns: string; helper_start_ns: string; helper_end_ns: string;
+      sampled_source_start_ns: string; sampled_source_end_ns: string; freshness_source_ns: string;
+    }>).map((row) => meetingFrameAlignmentSegmentSchema.parse({
+      sourceGeneration: row.source_generation,
+      sourceStartFrame: row.source_start_frame,
+      sourceEndFrame: row.source_end_frame,
+      timelineStartFrame: row.timeline_start_frame,
+      rate: row.rate,
+      uncertaintyStartFrames: row.uncertainty_start_frames,
+      uncertaintyEndFrames: row.uncertainty_end_frames,
+      helperGeneration: row.helper_generation,
+      sourceStartNs: row.source_start_ns,
+      sourceEndNs: row.source_end_ns,
+      helperStartNs: row.helper_start_ns,
+      helperEndNs: row.helper_end_ns,
+      sampledSourceStartNs: row.sampled_source_start_ns,
+      sampledSourceEndNs: row.sampled_source_end_ns,
+      freshnessSourceNs: row.freshness_source_ns,
+    }));
   }
 
   getMeetingRecordingEpoch(
@@ -1241,28 +1432,82 @@ export class DatabaseManager {
     meetingSourceSchema.parse(source);
     const row = this.sql
       .prepare(
-        "SELECT recording_id, source, epoch_index, start_frame, sample_rate, channels, encoding, relative_path, state, frame_count, ignored_trailing_bytes, error_code FROM meeting_recording_epochs WHERE recording_id = ? AND source = ? AND epoch_index = ?"
+        "SELECT recording_id, source, epoch_index, timeline_start_frame, source_start_frame, source_generation, alignment_error_code, sample_rate, channels, encoding, relative_path, state, frame_count, ignored_trailing_bytes, error_code FROM meeting_recording_epochs WHERE recording_id = ? AND source = ? AND epoch_index = ?"
       )
       .get(recordingId, source, epochIndex) as MeetingRecordingEpochDbRow | undefined;
     if (!row) return null;
     if (row.relative_path !== relativeEpochPath(row.source, row.epoch_index)) {
       throw new Error("Invalid meeting recording epoch path");
     }
-    return toMeetingEpochDto(row);
+    return toMeetingEpochDto(row, this.listMeetingRecordingEpochAlignments(recordingId, source, epochIndex));
   }
 
   listMeetingRecordingEpochs(recordingId: string): MeetingRecordingEpochDto[] {
     meetingRecordingIdSchema.parse(recordingId);
     return (this.sql
       .prepare(
-        "SELECT recording_id, source, epoch_index, start_frame, sample_rate, channels, encoding, relative_path, state, frame_count, ignored_trailing_bytes, error_code FROM meeting_recording_epochs WHERE recording_id = ? ORDER BY start_frame, source, epoch_index"
+        "SELECT recording_id, source, epoch_index, timeline_start_frame, source_start_frame, source_generation, alignment_error_code, sample_rate, channels, encoding, relative_path, state, frame_count, ignored_trailing_bytes, error_code FROM meeting_recording_epochs WHERE recording_id = ? ORDER BY COALESCE(timeline_start_frame, source_start_frame, 0), source, epoch_index"
       )
       .all(recordingId) as MeetingRecordingEpochDbRow[]).map((row) => {
       if (row.relative_path !== relativeEpochPath(row.source, row.epoch_index)) {
         throw new Error("Invalid meeting recording epoch path");
       }
-      return toMeetingEpochDto(row);
+      return toMeetingEpochDto(row, this.listMeetingRecordingEpochAlignments(recordingId, row.source, row.epoch_index));
     });
+  }
+
+  openMeetingIntentionalInterval(
+    recordingId: string, source: MeetingSource, sourceGeneration: number,
+    startFrame: number, reason: MeetingIntentionalInterval["reason"],
+    alignment: MeetingFrameAlignmentPoint | null = null
+  ): MeetingIntentionalInterval {
+    const existing = this.listMeetingIntentionalIntervals(recordingId).find((item) =>
+      item.source === source && item.sourceGeneration === sourceGeneration && item.reason === reason && item.sourceEndFrame === null);
+    if (existing) return existing;
+    const interval = meetingIntentionalIntervalSchema.parse({
+      id: randomUUID(), recordingId, source, sourceGeneration, reason,
+      sourceStartFrame: startFrame, sourceEndFrame: null,
+      timelineStartFrame: alignment?.timelineFrame ?? null, timelineEndFrame: null,
+      startAlignment: alignment, endAlignment: null,
+    });
+    this.sql.prepare(`INSERT INTO meeting_recording_intentional_intervals
+      (id, recording_id, source, source_generation, source_start_frame, timeline_start_frame, start_alignment_json, reason)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(interval.id, recordingId, source, sourceGeneration,
+        startFrame, interval.timelineStartFrame, alignment ? JSON.stringify(alignment) : null, reason);
+    return interval;
+  }
+
+  closeMeetingIntentionalInterval(
+    recordingId: string, source: MeetingSource, sourceGeneration: number,
+    endFrame: number, reason: MeetingIntentionalInterval["reason"],
+    alignment: MeetingFrameAlignmentPoint | null = null
+  ): MeetingIntentionalInterval | null {
+    const interval = this.listMeetingIntentionalIntervals(recordingId).find((item) =>
+      item.source === source && item.sourceGeneration === sourceGeneration && item.reason === reason && item.sourceEndFrame === null);
+    if (!interval) return null;
+    const closed = meetingIntentionalIntervalSchema.parse({ ...interval,
+      sourceEndFrame: endFrame, timelineEndFrame: alignment?.timelineFrame ?? null, endAlignment: alignment });
+    this.sql.prepare(`UPDATE meeting_recording_intentional_intervals
+      SET source_end_frame = ?, timeline_end_frame = ?, end_alignment_json = ? WHERE id = ? AND source_end_frame IS NULL`)
+      .run(endFrame, closed.timelineEndFrame, alignment ? JSON.stringify(alignment) : null, interval.id);
+    return closed;
+  }
+
+  listMeetingIntentionalIntervals(recordingId: string): MeetingIntentionalInterval[] {
+    meetingRecordingIdSchema.parse(recordingId);
+    return (this.sql.prepare(`SELECT * FROM meeting_recording_intentional_intervals
+      WHERE recording_id = ? ORDER BY COALESCE(source_start_frame, timeline_start_frame), id`).all(recordingId) as Array<{
+        id: string; source: MeetingSource; source_generation: number | null; reason: MeetingIntentionalInterval["reason"];
+        source_start_frame: number | null; source_end_frame: number | null;
+        timeline_start_frame: number | null; timeline_end_frame: number | null;
+        start_alignment_json: string | null; end_alignment_json: string | null;
+      }>).map((row) => meetingIntentionalIntervalSchema.parse({
+        id: row.id, recordingId, source: row.source, reason: row.reason, sourceGeneration: row.source_generation,
+        sourceStartFrame: row.source_start_frame, sourceEndFrame: row.source_end_frame,
+        timelineStartFrame: row.timeline_start_frame, timelineEndFrame: row.timeline_end_frame,
+        startAlignment: row.start_alignment_json ? JSON.parse(row.start_alignment_json) : null,
+        endAlignment: row.end_alignment_json ? JSON.parse(row.end_alignment_json) : null,
+      }));
   }
 
   updateMeetingRecordingEpochRecovery(
@@ -1675,10 +1920,12 @@ export class DatabaseManager {
     profileId: number | null,
     displayName: string,
     source: "voice" | "platform" | "model" | "user" = "user",
-    participantEmail?: string
+    participantEmail?: string,
+    platform?: MeetingPlatform
   ): { success: boolean } {
     meetingRecordingIdSchema.parse(runId);
     const run = this.getMeetingProcessingRun(runId);
+    if (source === "platform" && !platform) return { success: false };
     if (!run || !speakerId.trim() || !displayName.trim()) return { success: false };
     if (profileId !== null && (!Number.isSafeInteger(profileId) || profileId < 1)) return { success: false };
     const transaction = this.sql.transaction(() => {
@@ -1687,8 +1934,8 @@ export class DatabaseManager {
         .get(run.recordingId) as { note_id: number; current_run_id: string | null } | undefined;
       if (!recording || this.isMeetingNoteDeletionPending(recording.note_id)) return false;
       this.sql.prepare(
-        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, participant_email, source, revision) VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = excluded.participant_email, source = excluded.source, revision = meeting_run_speaker_corrections.revision + 1"
-      ).run(runId, speakerId, profileId, displayName.trim(), participantEmail?.toLowerCase() ?? null, source);
+        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, participant_email, source, platform, revision) VALUES (?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = excluded.participant_email, source = excluded.source, platform = excluded.platform, revision = meeting_run_speaker_corrections.revision + 1"
+      ).run(runId, speakerId, profileId, displayName.trim(), participantEmail?.toLowerCase() ?? null, source, source === "platform" ? platform : null);
       if (participantEmail) this.rememberContactName(participantEmail, displayName);
       if (recording.current_run_id === runId) {
         const note = this.sql
@@ -1705,6 +1952,8 @@ export class DatabaseManager {
               segment.speakerStatus = "locked";
               segment.speakerLocked = true;
               segment.speakerLockSource = source;
+              if (source === "platform") segment.speakerPlatform = platform;
+              else delete segment.speakerPlatform;
               changed = true;
             }
             if (changed) {
@@ -1729,17 +1978,19 @@ export class DatabaseManager {
     displayName: string;
     participantEmail: string | null;
     source: "voice" | "platform" | "model" | "user";
+    platform?: MeetingPlatform;
     revision: number;
   }> {
     meetingRecordingIdSchema.parse(runId);
     return (this.sql.prepare(
-      "SELECT speaker_id, profile_id, display_name, participant_email, source, revision FROM meeting_run_speaker_corrections WHERE run_id = ? AND display_name <> '' ORDER BY speaker_id"
-    ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string; participant_email: string | null; source: "voice" | "platform" | "model" | "user"; revision: number }>).map((row) => ({
+      "SELECT speaker_id, profile_id, display_name, participant_email, source, platform, revision FROM meeting_run_speaker_corrections WHERE run_id = ? AND display_name <> '' ORDER BY speaker_id"
+    ).all(runId) as Array<{ speaker_id: string; profile_id: number | null; display_name: string; participant_email: string | null; source: "voice" | "platform" | "model" | "user"; platform: MeetingPlatform | null; revision: number }>).map((row) => ({
       speakerId: row.speaker_id,
       profileId: row.profile_id,
       displayName: row.display_name,
       participantEmail: row.participant_email,
       source: row.source,
+      ...(row.source === "platform" && row.platform ? { platform: row.platform } : {}),
       revision: row.revision,
     }));
   }
@@ -1756,7 +2007,7 @@ export class DatabaseManager {
     runId: string,
     expectedCurrentRunId: string,
     expectedRevision: number,
-    corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>,
+    corrections: Array<{ speakerId: string; profileId: number | null; displayName: string; platform?: MeetingPlatform }>,
     source: "voice" | "platform" | "model",
     rejectedModelSpeakerIds: string[] = []
   ): boolean {
@@ -1765,7 +2016,7 @@ export class DatabaseManager {
     const run = this.getMeetingProcessingRun(runId);
     const currentRun = this.getMeetingProcessingRun(expectedCurrentRunId);
     if (!run || !currentRun || currentRun.recordingId !== run.recordingId || corrections.some((item) =>
-      !item.speakerId.trim() || !item.displayName.trim() ||
+      !item.speakerId.trim() || !item.displayName.trim() || source === "platform" && !item.platform ||
       (item.profileId !== null && (!Number.isSafeInteger(item.profileId) || item.profileId < 1))
     )) return false;
     if (new Set(corrections.map((item) => item.speakerId)).size !== corrections.length) return false;
@@ -1790,10 +2041,10 @@ export class DatabaseManager {
       })) return false;
       if (rejectedModelSpeakerIds.some((id) => (exists.get(runId, id) as { source: string } | undefined)?.source !== "model")) return false;
       const insert = this.sql.prepare(
-        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, revision) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = NULL, source = excluded.source, revision = meeting_run_speaker_corrections.revision + 1"
+        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, platform, revision) VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = NULL, source = excluded.source, platform = excluded.platform, revision = meeting_run_speaker_corrections.revision + 1"
       );
       for (const correction of corrections) {
-        insert.run(runId, correction.speakerId, correction.profileId, correction.displayName.trim(), source);
+        insert.run(runId, correction.speakerId, correction.profileId, correction.displayName.trim(), source, source === "platform" ? correction.platform : null);
       }
       // Keep a cleared proposal's row so SUM(revision) never returns to an old value.
       const clear = this.sql.prepare(
@@ -1809,20 +2060,20 @@ export class DatabaseManager {
     this.sql.exec("UPDATE meeting_platform_coverage SET coverage_json = json_set(coverage_json, '$.state', 'incomplete', '$.reason', 'app-restarted') WHERE json_extract(coverage_json, '$.state') = 'collecting'");
   }
 
-  saveMeetingZoomObservation(input: ZoomSpeakerObservation): void {
-    const observation = zoomSpeakerObservationSchema.parse(input);
-    this.sql.prepare("INSERT INTO meeting_zoom_observations (id, recording_id, evidence_json) VALUES (?, ?, ?)").run(observation.id, observation.recordingId, JSON.stringify(observation));
+  saveMeetingPlatformObservation(input: MeetingPlatformObservation): void {
+    const observation = meetingPlatformObservationSchema.parse(input);
+    this.sql.prepare("INSERT INTO meeting_platform_observations (id, recording_id, evidence_json) VALUES (?, ?, ?)").run(observation.id, observation.recordingId, JSON.stringify(observation));
   }
 
-  listMeetingZoomObservations(recordingId: string): ZoomSpeakerObservation[] {
+  listMeetingPlatformObservations(recordingId: string): MeetingPlatformObservation[] {
     meetingRecordingIdSchema.parse(recordingId);
-    return (this.sql.prepare("SELECT evidence_json FROM meeting_zoom_observations WHERE recording_id = ? ORDER BY rowid").all(recordingId) as Array<{ evidence_json: string }>).map((row) => zoomSpeakerObservationSchema.parse(JSON.parse(row.evidence_json)));
+    return (this.sql.prepare("SELECT evidence_json FROM meeting_platform_observations WHERE recording_id = ? ORDER BY rowid").all(recordingId) as Array<{ evidence_json: string }>).map((row) => meetingPlatformObservationSchema.parse(JSON.parse(row.evidence_json)));
   }
 
   saveMeetingAudioClockAnchor(input: MeetingAudioClockAnchor): void {
     const anchor = meetingAudioClockAnchorSchema.parse(input);
     const epoch = this.listMeetingRecordingEpochs(anchor.recordingId).find((item) => item.source === "system" && item.epochIndex === anchor.epochIndex);
-    if (!epoch || epoch.startFrame !== anchor.epochStartFrame) throw new Error("Clock anchor epoch does not match captured audio");
+    if (!epoch || epoch.timelineStartFrame !== anchor.epochStartFrame) throw new Error("Clock anchor epoch does not match captured audio");
     this.sql.prepare("INSERT INTO meeting_audio_clock_anchors (id, recording_id, evidence_json) VALUES (?, ?, ?)").run(anchor.id, anchor.recordingId, JSON.stringify(anchor));
   }
 
@@ -1843,16 +2094,16 @@ export class DatabaseManager {
     return row ? meetingPlatformCoverageSchema.parse(JSON.parse(row.coverage_json)) : null;
   }
 
-  getMeetingRunPlatformDecisions(runId: string): ZoomSpeakerDecision[] {
+  getMeetingRunPlatformDecisions(runId: string): MeetingPlatformDecision[] {
     meetingRecordingIdSchema.parse(runId);
     const row = this.sql.prepare("SELECT decisions_json FROM meeting_run_platform_decisions WHERE run_id = ?").get(runId) as { decisions_json: string } | undefined;
-    return row ? (JSON.parse(row.decisions_json) as unknown[]).map((item) => zoomSpeakerDecisionSchema.parse(item)) : [];
+    return row ? (JSON.parse(row.decisions_json) as unknown[]).map((item) => meetingPlatformDecisionSchema.parse(item)) : [];
   }
 
   // Same transaction owns accepted corrections and evidence; guards also protect
   // rejection-only results from stale selection, cancellation and manual edits.
-  applyMeetingPlatformDecisions(runId: string, expectedRevision: number, inputs: ZoomSpeakerDecision[]): boolean {
-    const decisions = inputs.map((input) => zoomSpeakerDecisionSchema.parse(input));
+  applyMeetingPlatformDecisions(runId: string, expectedRevision: number, inputs: MeetingPlatformDecision[]): boolean {
+    const decisions = inputs.map((input) => meetingPlatformDecisionSchema.parse(input));
     return this.sql.transaction(() => {
       const run = this.getMeetingProcessingRun(runId);
       if (!run || run.status !== "running") return false;
@@ -1860,13 +2111,13 @@ export class DatabaseManager {
       if (!recording || recording.currentRunId !== runId || this.isMeetingNoteDeletionPending(recording.noteId) ||
           this.getMeetingRunSpeakerCorrectionRevision(runId) !== expectedRevision) return false;
       const corrections = this.getMeetingRunSpeakerCorrections(runId);
-      const accepted: Array<{ speakerId: string; profileId: null; displayName: string }> = [];
+      const accepted: Array<{ speakerId: string; profileId: null; displayName: string; platform: MeetingPlatform }> = [];
       for (const decision of decisions) {
         if (decision.status !== "accepted" || !decision.speakerId || !decision.displayName) continue;
         if (!decision.speakerId.startsWith("system:") || !decision.timingPolicy || !decision.observationIds.length || !decision.clockAnchorIds.length) return false;
-        const observations = run.sourceRecordingIds.flatMap((id) => this.listMeetingZoomObservations(id));
+        const observations = run.sourceRecordingIds.flatMap((id) => this.listMeetingPlatformObservations(id));
         const anchors = run.sourceRecordingIds.flatMap((id) => this.listMeetingAudioClockAnchors(id));
-        if (decision.observationIds.some((id) => !observations.some((item) => item.id === id)) ||
+        if (decision.observationIds.some((id) => !observations.some((item) => item.id === id && item.platform === decision.platform)) ||
             decision.clockAnchorIds.some((id) => !anchors.some((item) => item.id === id))) return false;
         const existing = corrections.find((item) => item.speakerId === decision.speakerId);
         if (existing?.source === "user" || existing?.source === "voice") {
@@ -1875,7 +2126,7 @@ export class DatabaseManager {
         } else if (!(existing?.source === "platform" && existing.displayName === decision.displayName)) {
           const duplicate = accepted.find((item) => item.speakerId === decision.speakerId);
           if (duplicate && duplicate.displayName !== decision.displayName) return false;
-          if (!duplicate) accepted.push({ speakerId: decision.speakerId, profileId: null, displayName: decision.displayName });
+          if (!duplicate) accepted.push({ speakerId: decision.speakerId, profileId: null, displayName: decision.displayName, platform: decision.platform });
         }
       }
       if (accepted.length && !this.applyAutomaticMeetingSpeakerCorrections(runId, runId, expectedRevision, accepted, "platform")) return false;

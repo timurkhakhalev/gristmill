@@ -4,13 +4,13 @@ const { randomUUID }: typeof import("node:crypto") = require("node:crypto");
 const { createDb, DatabaseManager }: typeof import("../../../helpers/harness/db.ts") = require("../../../helpers/harness/db.ts");
 const { ZoomSpeakerCollector }: typeof import("../../../../src/helpers/zoomSpeakerCollector.ts") = require("../../../../src/helpers/zoomSpeakerCollector.ts");
 
-const { matchZoomSpeakers }: typeof import("../../../../src/helpers/zoomSpeakerMatcher.ts") = require("../../../../src/helpers/zoomSpeakerMatcher.ts");
+const { matchMeetingPlatformSpeakers }: typeof import("../../../../src/helpers/meetingPlatformMatcher.ts") = require("../../../../src/helpers/meetingPlatformMatcher.ts");
 const { zoomSpeakerFixture }: typeof import("../../../lib/zoomSpeakerFixture.ts") = require("../../../lib/zoomSpeakerFixture.ts");
 const { composeMeetingAudioParts }: typeof import("../../../../src/helpers/meetingAudioMixer.ts") = require("../../../../src/helpers/meetingAudioMixer.ts");
 function evidence(recordingId: string) {
   const { observations, anchors, transcript } = zoomSpeakerFixture(recordingId);
-  const decisions = matchZoomSpeakers({ observations, anchors, transcript,
-    epochs: [{ recordingId, source: "system", epochIndex: 0, startFrame: 0, frameCount: 14 * 24_000, state: "finalized" }],
+  const decisions = matchMeetingPlatformSpeakers({ observations, anchors, transcript,
+    epochs: [{  recordingId, source: "system", epochIndex: 0, timelineStartFrame: 0, frameCount: 14 * 24_000, state: "finalized" }],
     partOffsets: [{ recordingId, startFrame: 0, frameCount: 14 * 24_000 }] });
   assert.ok(decisions.every((d) => d.status === "accepted"));
   return { observations, anchors, observation: observations[0], anchor: anchors[0], decision: decisions[0], decisions, transcript };
@@ -19,7 +19,7 @@ function finished(db: InstanceType<typeof DatabaseManager>, noteId?: number, sta
   const note = noteId ? db.getNote(noteId)! : db.saveNote("Synthetic Zoom", "", "meeting").note!;
   const recording = db.createMeetingRecording(note.id, { config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } } }, startedAt);
   for (const source of ["mic", "system"] as const) {
-    db.createMeetingRecordingEpoch(recording.id, source, 0, 0);
+    db.createMeetingRecordingEpoch(recording.id, source, 0, 1, 0, 0);
     db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, { frameCount: 14 * 24_000, ignoredTrailingBytes: 0 });
   }
   db.markMeetingRecordingFinalizing(recording.id);
@@ -33,7 +33,7 @@ test("evidence, atomic decisions and platform corrections survive reopen; stale/
   if (!db) return;
   const { recording, runId } = finished(db);
   const { observations, anchors, decision } = evidence(recording.id);
-  observations.forEach((o) => db.saveMeetingZoomObservation(o));
+  observations.forEach((o) => db.saveMeetingPlatformObservation(o));
   anchors.forEach((a) => db.saveMeetingAudioClockAnchor(a));
   db.setMeetingPlatformCoverage(recording.id, { reads: 30, samples: 1, state: "complete", reason: null });
   assert.equal(db.applyMeetingPlatformDecisions(runId, 0, [decision, { ...decision }]), true);
@@ -52,7 +52,7 @@ test("evidence, atomic decisions and platform corrections survive reopen; stale/
   db.close();
   const reopened = new DatabaseManager();
   t.after(() => reopened.close());
-  assert.equal(reopened.listMeetingZoomObservations(recording.id)[0].displayName, "Synthetic Guest");
+  assert.equal(reopened.listMeetingPlatformObservations(recording.id)[0].displayName, "Synthetic Guest");
   assert.equal(reopened.listMeetingAudioClockAnchors(recording.id).length, 14);
   assert.equal(reopened.getMeetingRunSpeakerCorrections(runId)[0].displayName, "Manual");
   assert.equal(reopened.getMeetingPlatformCoverage(recording.id)?.state, "complete");
@@ -70,22 +70,22 @@ test("old CHECK migration preserves source/revision and cascade deletes recordin
     display_name TEXT NOT NULL, participant_email TEXT,
     source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice','model','user')),
     revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0), PRIMARY KEY(run_id,speaker_id));
-    INSERT INTO old_corrections SELECT * FROM meeting_run_speaker_corrections;
+    INSERT INTO old_corrections SELECT run_id, speaker_id, profile_id, display_name, participant_email, source, revision FROM meeting_run_speaker_corrections;
     DROP TABLE meeting_run_speaker_corrections;
     ALTER TABLE old_corrections RENAME TO meeting_run_speaker_corrections;`);
   db.close();
   const reopened = new DatabaseManager();
   t.after(() => reopened.close());
   assert.equal(reopened.getMeetingRunSpeakerCorrections(runId)[0].revision, 1);
-  assert.equal(reopened.setMeetingRunSpeakerCorrection(runId, "system:second", null, "Zoom", "platform").success, true);
+  assert.equal(reopened.setMeetingRunSpeakerCorrection(runId, "system:second", null, "Zoom", "platform", undefined, "zoom").success, true);
   const { observation, anchor } = evidence(recording.id);
-  reopened.saveMeetingZoomObservation(observation);
+  reopened.saveMeetingPlatformObservation(observation);
   reopened.saveMeetingAudioClockAnchor(anchor);
   reopened.setMeetingPlatformCoverage(recording.id, { reads: 1, samples: 1, state: "collecting", reason: null });
   reopened.recoverMeetingPlatformCoverage();
   assert.equal(reopened.getMeetingPlatformCoverage(recording.id)?.reason, "app-restarted");
   reopened.db!.prepare("DELETE FROM meeting_recordings WHERE id = ?").run(recording.id);
-  assert.deepEqual(reopened.listMeetingZoomObservations(recording.id), []);
+  assert.deepEqual(reopened.listMeetingPlatformObservations(recording.id), []);
   assert.deepEqual(reopened.listMeetingAudioClockAnchors(recording.id), []);
   assert.equal(reopened.getMeetingPlatformCoverage(recording.id), null);
   assert.deepEqual(reopened.getMeetingRunPlatformDecisions(runId), []);
@@ -104,7 +104,7 @@ test("clock ranges bind by generation/frame count despite delivery reorder; SQLi
   await collector.stop();
   assert.equal(db.listMeetingAudioClockAnchors(recording.id)[0].clock.endFrame, 24_000);
   const failed = new ZoomSpeakerCollector(recording.id, { ...db,
-    saveMeetingZoomObservation: () => { throw new Error("disk"); },
+    saveMeetingPlatformObservation: () => { throw new Error("disk"); },
     saveMeetingAudioClockAnchor: () => { throw new Error("disk"); },
     setMeetingPlatformCoverage: (id, coverage) => db.setMeetingPlatformCoverage(id, coverage),
   });
@@ -142,7 +142,7 @@ test("failed evidence transaction saves neither accepted name nor decisions and 
   if (!db) return;
   const { recording, runId } = finished(db);
   const { observations, anchors, decision } = evidence(recording.id);
-  observations.forEach((o) => db.saveMeetingZoomObservation(o));
+  observations.forEach((o) => db.saveMeetingPlatformObservation(o));
   anchors.forEach((a) => db.saveMeetingAudioClockAnchor(a));
   db.db.exec("CREATE TRIGGER reject_platform_decisions BEFORE INSERT ON meeting_run_platform_decisions BEGIN SELECT RAISE(ABORT, 'fixture disk failure'); END;");
   assert.throws(() => db.applyMeetingPlatformDecisions(runId, 0, [decision]), /fixture disk failure/);
@@ -166,7 +166,7 @@ test("metadata failure preserves the original mic/system files, not just recordi
   const recording = db.createMeetingRecording(note.id, { config: null });
   const paths: string[] = [];
   for (const source of ["mic", "system"] as const) {
-    db.createMeetingRecordingEpoch(recording.id, source, 0, 0);
+    db.createMeetingRecordingEpoch(recording.id, source, 0, 1, 0, 0);
     savePcmEpoch(storage, recording.id, source, 0, Buffer.alloc(4_800, 1));
     db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, storage.recoverEpoch(recording.id, source, 0));
     paths.push(storage.getEpochFilePath(recording.id, source, 0));
@@ -195,7 +195,7 @@ test("Pause/Resume uses the real shared multipart map and retains evidence IDs i
     ...firstEvidence.observations.filter((o) => BigInt(o.readStartHostNs) < 4000000000n),
     ...secondEvidence.observations.filter((o) => BigInt(o.readStartHostNs) >= 5000000000n),
   ];
-  observations.forEach((o) => db.saveMeetingZoomObservation(o));
+  observations.forEach((o) => db.saveMeetingPlatformObservation(o));
   const anchors = [...firstEvidence.anchors, ...secondEvidence.anchors];
   anchors.forEach((a) => db.saveMeetingAudioClockAnchor(a));
   const run = db.createMeetingProcessingRun(first.recording.id, { kind: "reprocess", config: db.getMeetingProcessingRun(first.runId)!.config, sourceRecordingIds: [first.recording.id, second.recording.id] });
@@ -203,7 +203,7 @@ test("Pause/Resume uses the real shared multipart map and retains evidence IDs i
   const { epochs, partOffsets } = composeMeetingAudioParts([db.getMeetingRecording(first.recording.id)!, db.getMeetingRecording(second.recording.id)!], (id) => db.listMeetingRecordingEpochs(id));
   assert.equal(partOffsets[1].startFrame, 14 * 24_000);
   const transcript = { text: "Speech", segments: [firstEvidence.transcript.segments[0], ...secondEvidence.transcript.segments.slice(1).map((s) => ({ ...s, start: s.start + 14, end: s.end + 14 }))] };
-  const decisions = matchZoomSpeakers({ observations, anchors, epochs, partOffsets, transcript });
+  const decisions = matchMeetingPlatformSpeakers({ observations, anchors, epochs, partOffsets, transcript });
   assert.ok(decisions.every((d) => d.status === "accepted"));
   assert.equal(decisions[1].intervals[0].start, 19.01);
   assert.equal(db.applyMeetingPlatformDecisions(run.id, 0, decisions), true);
@@ -231,4 +231,44 @@ test("decision policy cutover preserves previous run evidence without inventing 
   assert.equal(JSON.parse(stored.decisions_json)[0].calibration, null);
   assert.equal(reopened.applyMeetingPlatformDecisions(runId, 0, [{ ...decisions[0], status: "accepted" }]), false);
   assert.deepEqual(reopened.getMeetingRunSpeakerCorrections(runId), []);
+});
+
+test("platform metadata cutover rolls back atomically and preserves historical Zoom decisions on reopen", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const { migrateMeetingPlatformEvidence }: typeof import("../../../../src/helpers/meetingPlatformMigration.ts") = require("../../../../src/helpers/meetingPlatformMigration.ts");
+  const { recording, runId } = finished(db);
+  const { observations, anchors, decisions } = evidence(recording.id);
+  for (const observation of observations) db.saveMeetingPlatformObservation(observation);
+  for (const anchor of anchors) db.saveMeetingAudioClockAnchor(anchor);
+  assert.equal(db.applyMeetingPlatformDecisions(runId, 0, decisions), true);
+  const before = db.getMeetingRunSpeakerCorrections(runId);
+  db.db.exec(`
+    ALTER TABLE meeting_platform_observations RENAME TO meeting_zoom_observations;
+    UPDATE meeting_zoom_observations SET evidence_json = json_remove(evidence_json,
+      '$.platform', '$.bindingId', '$.activeParticipantIds', '$.clockGeneration', '$.clockUncertaintyNs');
+    UPDATE meeting_run_platform_decisions SET decisions_json = (
+      SELECT json_group_array(json_remove(value, '$.platform')) FROM json_each(meeting_run_platform_decisions.decisions_json));
+    ALTER TABLE meeting_run_speaker_corrections DROP COLUMN platform;
+  `);
+  const sql = db.db;
+  assert.throws(() => migrateMeetingPlatformEvidence({
+    pragma: sql.pragma.bind(sql), prepare: sql.prepare.bind(sql), close: sql.close.bind(sql), transaction: sql.transaction.bind(sql),
+    exec: (statement: string) => {
+      if (statement.includes("UPDATE meeting_platform_observations")) throw new Error("injected metadata failure");
+      return sql.exec(statement);
+    },
+  }), /injected metadata failure/);
+  assert.ok(sql.prepare("SELECT 1 FROM sqlite_master WHERE name = 'meeting_zoom_observations'").get());
+  assert.equal(sql.prepare("SELECT 1 FROM sqlite_master WHERE name = 'meeting_platform_observations'").get(), undefined);
+  db.close();
+  const reopened = new DatabaseManager();
+  try {
+    assert.deepEqual(reopened.listMeetingPlatformObservations(recording.id), observations);
+    assert.deepEqual(reopened.getMeetingRunPlatformDecisions(runId), decisions);
+    assert.deepEqual(reopened.getMeetingRunSpeakerCorrections(runId), before);
+    assert.equal(reopened.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'meeting_zoom_observations'").get(), undefined);
+    migrateMeetingPlatformEvidence(reopened.db);
+    assert.deepEqual(reopened.getMeetingRunSpeakerCorrections(runId), before, "second migration does not change revisions");
+  } finally { reopened.close(); }
 });

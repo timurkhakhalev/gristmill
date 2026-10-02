@@ -1555,7 +1555,12 @@
       "timeNow": "maintenant",
       "minutesAgo": "il y a {{count}}m",
       "hoursAgo": "il y a {{count}}h",
-      "daysAgo": "il y a {{count}}j"
+      "daysAgo": "il y a {{count}}j",
+      "ago": {
+        "seconds": "il y a {{count}} s",
+        "minutes": "il y a {{count}} min",
+        "hours": "il y a {{count}} h"
+      }
     },
     "editor": {
       "untitled": "Sans titre",
@@ -1753,7 +1758,16 @@
       "searchFolders": "Rechercher des dossiers...",
       "noResults": "Aucun dossier trouvé",
       "newFolder": "Nouveau dossier",
-      "showInFileManager": "Afficher dans {{manager}}"
+      "showInFileManager": "Afficher dans {{manager}}",
+      "folderColor": "Couleur du dossier",
+      "newNoteInFolder": "Nouvelle note dans ce dossier",
+      "addFolder": "Ajouter un dossier",
+      "collapseAll": "Tout réduire",
+      "expandAll": "Tout développer",
+      "meetingNote": "Réunion",
+      "plainNote": "Note",
+      "changeIcon": "Changer l’icône",
+      "removeIcon": "Supprimer l’icône"
     },
     "actions": {
       "done": "Terminé",
@@ -2154,7 +2168,8 @@
     "homeEmptyState": "Posez une question sur vos notes et réunions",
     "followUp": "Rédiger un message de suivi",
     "followUpUnavailable": "Disponible lorsque la transcription est prête",
-    "followUpError": "Impossible de préparer le message. Réessayez."
+    "followUpError": "Impossible de préparer le message. Réessayez.",
+    "resize": "Redimensionner le chat"
   },
   "transcriptionPreview": {
     "label": "Aperçu",

@@ -1421,8 +1421,18 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
   const taskStarted = new Promise<void>((resolve) => { resolveTaskStarted = resolve; });
   let releaseTasks!: () => void;
   const taskGate = new Promise<void>((resolve) => { releaseTasks = resolve; });
+  let taskCalls = 0;
   let taskInput = "";
   let recapInput = "";
+  const writeArtifact = storage.writeRunArtifact.bind(storage);
+  const savedTaskStatuses: string[] = [];
+  storage.writeRunArtifact = (...args: Parameters<RecordingStorage["writeRunArtifact"]>) => {
+    const [id, kind, value] = args;
+    if (id === run.id && kind === "summary" && typeof value === "object" && value !== null && "taskStatus" in value) {
+      savedTaskStatuses.push(String(value.taskStatus));
+    }
+    writeArtifact(id, kind, value);
+  };
   const worker = workerFor(db, storage, {
     transcribeRemote: async (_request, saveRaw) => {
       await saveRaw(longTranscriptResponse());
@@ -1432,6 +1442,7 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
     createActionConversation: async (_config, instruction) => ({
       send: async (input: string) => {
         if (instruction === MEETING_TASKS_INSTRUCTION) {
+          taskCalls++;
           taskInput = input;
           resolveTaskStarted();
           await taskGate;
@@ -1447,6 +1458,10 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
   t.after(() => { releaseTasks(); worker.stop(); });
   worker.onRetentionReady();
   await taskStarted;
+  assert.deepEqual(savedTaskStatuses.slice(0, 2), ["pending", "running"], "new Summary persists task intent before provider work");
+  worker.processPending();
+  assert.deepEqual(await worker.runSummaryAction({ runId: run.id, action: "tasks" }), { success: true });
+  assert.equal(taskCalls, 1, "automatic and explicit scheduling deduplicate in-flight tasks");
 
   assert.match(taskInput, /Meeting title \(topic hint\):\nMeeting/);
   assert.match(taskInput, /Manual notes:\nManual notes stay here\./);
@@ -2756,3 +2771,79 @@ test("unresolved alignment fails prepare before providers and preserves raw audi
   assert.equal(requests, 0);
   assert.deepEqual(fs.readFileSync(rawPath), original);
 });
+
+for (const scenario of [
+  { name: "saved pending tasks", status: "pending", calls: 1 },
+  { name: "restart before the Summary run completes", status: "pending", runInterrupted: true, calls: 1 },
+  { name: "capture postpones pending tasks", status: "pending", capturing: true, calls: 1 },
+  { name: "unselected pending tasks", status: "pending", unselected: true, calls: 0 },
+  { name: "interrupted running tasks", status: "running", calls: 0, retry: true },
+  { name: "old Summary without task status", status: undefined, calls: 0, retry: true },
+  { name: "completed tasks", status: "complete", calls: 0 },
+  { name: "completed empty tasks", status: "zero", calls: 0 },
+  { name: "failed tasks", status: "provider-error", calls: 0 },
+] as const) {
+  test(`main task recovery: ${scenario.name}`, async (t) => {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const { recording, run } = createFinishedRecording(db, storage, validConfig, "Manual notes", false, 180);
+    const initial = workerFor(db, storage, {
+      transcribeRemote: async (_request, saveRaw) => {
+        await saveRaw(longTranscriptResponse());
+        return { success: true };
+      },
+      summarize: async () => "## Summary\nSaved result.\n\n## Action Items\n- Ship release",
+    });
+    t.after(() => initial.stop());
+    initial.onRetentionReady();
+    await initial.waitForIdle();
+    initial.stop();
+    const artifact = storage.readRunArtifact(run.id, "summary");
+    storage.writeRunArtifact(run.id, "summary", { ...artifact, taskStatus: scenario.status });
+    if ("runInterrupted" in scenario) db.setMeetingProcessingRunState(run.id, {
+      stage: "summary", status: "running", errorCode: null, retryAt: null,
+    });
+    if ("unselected" in scenario) db.createMeetingProcessingRun(recording.id, {
+      kind: "summary", sourceRunId: run.id, config: validConfig,
+    });
+    db.db.close();
+    const reopened = new DatabaseManagerClass();
+    t.after(() => reopened.db.close());
+    let calls = 0;
+    const restarted = workerFor(reopened, storage, {
+      transcribeRemote: async () => { throw new Error("Recovery must reuse the saved transcript"); },
+      summarize: async () => { throw new Error("Recovery must reuse the saved Summary"); },
+      createActionConversation: async () => ({ send: async () => {
+        calls++;
+        return { text: "### HIGH\n- Ship release", refusal: false };
+      } }),
+    });
+    t.after(() => restarted.stop());
+    assert.equal(calls, 0, "constructor never starts provider work");
+    if ("capturing" in scenario) restarted.captureStarted();
+    restarted.onRetentionReady();
+    await restarted.waitForIdle();
+    if ("capturing" in scenario) {
+      assert.equal(calls, 0, "capture keeps pending tasks deferred");
+      restarted.captureStopped();
+      await restarted.waitForIdle();
+    }
+    assert.equal(calls, scenario.calls);
+    const result = storage.readRunArtifact(run.id, "summary");
+    if (scenario.calls) assert.equal(result.taskStatus, "complete");
+    if (scenario.status === "running") {
+      assert.equal(result.taskStatus, "provider-error");
+      assert.equal(result.taskErrorCode, "meeting-summary-task-interrupted");
+    }
+    restarted.processPending();
+    await restarted.waitForIdle();
+    assert.equal(calls, scenario.calls, "repeat scheduling never repeats provider work");
+    if ("retry" in scenario) {
+      assert.deepEqual(await restarted.runSummaryAction({ runId: run.id, action: "tasks" }), { success: true });
+      assert.equal(calls, 1, "manual tasks remain available for old and interrupted Summaries");
+      assert.equal(storage.readRunArtifact(run.id, "summary").taskStatus, "complete");
+    }
+    assert.equal(reopened.getNote(recording.noteId)?.content, "Manual notes");
+  });
+}

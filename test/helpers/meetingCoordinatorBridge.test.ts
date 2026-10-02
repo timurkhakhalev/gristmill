@@ -10,8 +10,6 @@ const path: typeof import("node:path") = require("node:path");
 const vm: typeof import("node:vm") = require("node:vm");
 const Module = require("node:module");
 import type { MeetingCoordinatorDeps } from "../../src/helpers/meetingCoordinatorIpcHandlers.ts";
-import type { MeetingConnectionOptions } from "../../src/helpers/meetingStreamingProviders.ts";
-import type { WebContents } from "electron";
 import type { MeetingAutoEndRequest, MeetingCoordinatorApi, MeetingSegmentEvent } from "../../src/contracts/meetingCoordinator.ts";
 
 const root = path.resolve(__dirname, "../..");
@@ -38,12 +36,6 @@ const electronStub = {
 const originalLoad = Module._load;
 
 function unused(): never { throw new Error("Unexpected coordinator dependency call"); }
-
-function fetchRealtimeToken(_event: { sender: WebContents }, _options: MeetingConnectionOptions): Promise<string>;
-function fetchRealtimeToken(_event: { sender: WebContents }, _options: MeetingConnectionOptions, _extra: { streams: 2 }): Promise<[string, string]>;
-async function fetchRealtimeToken(_event: { sender: WebContents }, _options: MeetingConnectionOptions, extra?: { streams: 2 }): Promise<string | [string, string]> {
-  return extra ? ["token", "token"] : "token";
-}
 
 function registerRealHandlers(deps: MeetingCoordinatorDeps) {
   Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -144,11 +136,6 @@ async function createFixture({ responses = {}, engine }: {
       setMeetingPlatformCoverage() {},
       getGoogleAccounts: () => [],
       getNote: () => null,
-      getSpeakerMappings: () => [],
-      setSpeakerMapping: () => {},
-      removeSpeakerMapping: () => {},
-      getSpeakerProfiles: () => [],
-      upsertSpeakerProfile: () => ({ id: 1 }),
       createMeetingRecording: unused,
       createMeetingRecordingEpoch: unused,
       updateMeetingRecordingEpochRecovery: unused,
@@ -166,36 +153,12 @@ async function createFixture({ responses = {}, engine }: {
       closeEpochWriter: unused,
       recoverEpoch: unused,
     },
-    diarizationManager: {
-      isAvailable: () => false,
-      convertRawPcmToWav: unused,
-      diarize: unused,
-      capSpeakerClusters: unused,
-      mergeWithTranscript: unused,
-    },
     meetingDetectionEngine: engineFake,
     audioTapManager: null,
-    whisperManager: { transcribeLocalWhisper: async () => ({}) },
-    parakeetManager: { transcribeLocalParakeet: async () => ({}) },
     liveSpeakerIdentifier: {
-      isAvailable: () => false,
-      start: async () => false,
-      stop: async () => ({}),
-      feedAudio: async () => undefined,
-      recluster: async () => [],
       setEnabled() {},
       setMaxSpeakers() {},
-      getSpeakerEmbedding: () => null,
-      mapSpeaker() {},
     },
-    fetchRealtimeToken,
-    resolveWhisperVadOptions: () => ({}),
-    speakerEmbeddings: () => ({
-      isAvailable: () => false,
-      extractEmbedding: unused,
-      computeCentroid: unused,
-      cosineSimilarity: () => 0.9,
-    }),
     getControlPanelWindow: () => null,
     getMeetingNotificationData: () => ({ kind: "auto-end", sessionId: "meeting-1", expiresAt: 1 }),
     consumePendingMeetingNoteNavigation: () => ({

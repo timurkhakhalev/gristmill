@@ -39,7 +39,7 @@ test("renderer PCM is validated and acknowledged only after the raw write", () =
 });
 
 test("native system PCM is persisted, watched for interruption, and drained before finalization", () => {
-  const watchdog = section("const meetingSystemAudioWatchdog:", "let meetingStartedAt");
+  const watchdog = section("const meetingSystemAudioWatchdog:", "const clearMeetingSystemAudioTicker");
   assert.match(watchdog, /send\("meeting-system-audio-interrupted", payload\)/);
 
   const nativeStart = section("const startManagedMeetingSystemAudio", 'ipcMain.handle(\n    "meeting-transcription-send"');

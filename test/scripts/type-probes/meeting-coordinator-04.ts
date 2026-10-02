@@ -12,23 +12,9 @@ declare const ipcRendererLike: {
   removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
 };
 
-
-async function fetchRealtimeToken(
-  event: { sender: import("electron").WebContents },
-  options: import("./src/helpers/meetingStreamingProviders.js").MeetingConnectionOptions
-): Promise<string>;
-async function fetchRealtimeToken(
-  event: { sender: import("electron").WebContents },
-  options: import("./src/helpers/meetingStreamingProviders.js").MeetingConnectionOptions,
-  extra: { streams: 2 }
-): Promise<[string, string]>;
-async function fetchRealtimeToken(
-  event: { sender: import("electron").WebContents },
-  options: import("./src/helpers/meetingStreamingProviders.js").MeetingConnectionOptions,
-  extra?: { streams: 2 }
-): Promise<string | [string, string]> {
-  return extra?.streams === 2 ? ["a", "b"] : "a";
-}
+declare const productionDatabase: import("./src/helpers/database.js").DatabaseManager;
+const checkedDatabase: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoordinatorDeps["databaseManager"] = productionDatabase;
+void checkedDatabase;
 
 const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoordinatorDeps = {
   databaseManager: {
@@ -50,13 +36,8 @@ const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoor
       recording: {} as import("./src/contracts/meetingRecording.js").MeetingRecordingDto,
       initialRun: { id: "run-1" },
     }),
-    getSpeakerProfiles: () => [],
-    getSpeakerMappings: () => [],
-    setSpeakerMapping: () => undefined,
-    removeSpeakerMapping: () => undefined,
     getNote: () => null,
     getGoogleAccounts: () => [],
-    upsertSpeakerProfile: () => ({ id: 1 }),
   },
   meetingRecordingStorage: {
     openEpochWriter: () => undefined,
@@ -64,38 +45,13 @@ const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoor
     closeEpochWriter: () => undefined,
     recoverEpoch: () => ({ frameCount: 0, ignoredTrailingBytes: 0, errorCode: null }),
   },
-  diarizationManager: {
-    isAvailable: () => false,
-    convertRawPcmToWav: async () => "/tmp/x.wav",
-    diarize: async () => [],
-    capSpeakerClusters: (segments) => segments,
-    mergeWithTranscript: (segments) => segments,
-  },
   meetingDetectionEngine: null,
   audioTapManager: null,
-  whisperManager: { transcribeLocalWhisper: async () => ({ success: true, text: "" }) },
-  parakeetManager: { transcribeLocalParakeet: async () => ({ success: true, text: "" }) },
   liveSpeakerIdentifier: {
-    isAvailable: () => false,
-    start: async () => false,
-    stop: async () => ({}),
-    feedAudio: async () => undefined,
-    recluster: async () => [],
     setEnabled: () => undefined,
     setMaxSpeakers: () => undefined,
-    getSpeakerEmbedding: () => null,
-    mapSpeaker: () => undefined,
   },
-  fetchRealtimeToken,
-  resolveWhisperVadOptions: () => ({}),
-  speakerEmbeddings: () => ({
-    isAvailable: () => false,
-    extractEmbedding: async () => null,
-    computeCentroid: (embeddings) => embeddings[0] ?? new Float32Array(),
-    cosineSimilarity: () => 0,
-  }),
 };
-
 
 const runtime = registerMeetingCoordinatorHandlers(ipcMain, deps);
 runtime.linkRecordingSessionToNote(42);

@@ -60,6 +60,7 @@ interface ViewCallbacks {
   handleFolderChange(val: string): void;
   selectedFolderId(): string;
   folderMoveError(): string | null;
+  setFailFolderWrites(value: boolean): void;
 }
 
 // Extracts handleFolderChange and showFolderMoveFailure from the component
@@ -69,7 +70,11 @@ interface ViewCallbacks {
 // exactly like the preload does.
 function buildCallbacks(
   db: NonNullable<ReturnType<typeof createDb>>,
-  { failFolderWrites = false, noteId }: { failFolderWrites?: boolean; noteId: number }
+  {
+    failFolderWrites = false,
+    initialSelection = "",
+    noteId,
+  }: { failFolderWrites?: boolean; initialSelection?: string; noteId: number }
 ): ViewCallbacks {
   const source = fs.readFileSync(
     path.join(__dirname, "../../../../src/components/notes/UploadAudioView.tsx"),
@@ -98,9 +103,10 @@ function buildCallbacks(
   }
 
   const state: { selectedFolderId: string; folderMoveError: string | null } = {
-    selectedFolderId: "",
+    selectedFolderId: initialSelection,
     folderMoveError: null,
   };
+  let failingWrites = failFolderWrites;
   const sandbox: Record<string, unknown> = {
     noteId,
     // The extracted callbacks read the closure variable directly; the getter
@@ -120,7 +126,7 @@ function buildCallbacks(
         updateNote: async (id: number, updates: NoteUpdate) => {
           const parsed = updateNoteArgsSchema.safeParse([id, updates]);
           if (!parsed.success) throw new Error("Invalid arguments for a Notes IPC call");
-          if (failFolderWrites) return { success: false, error: "Folder not found" };
+          if (failingWrites) return { success: false, error: "Folder not found" };
           const result = db.updateNote(parsed.data[0], parsed.data[1]);
           return result.success ? { success: true } : { success: false, error: result.error };
         },
@@ -138,6 +144,9 @@ function buildCallbacks(
     handleFolderChange: sandbox.handleFolderChange as ViewCallbacks["handleFolderChange"],
     selectedFolderId: () => state.selectedFolderId,
     folderMoveError: () => state.folderMoveError,
+    setFailFolderWrites: (value: boolean) => {
+      failingWrites = value;
+    },
   };
 }
 
@@ -172,7 +181,11 @@ test("a failed folder move reports the failure and rolls the selection back", as
   const meetingsId = db.createFolder("Meetings", spaceId).folder!.id;
   const noteId = db.saveNote("Uploaded", "", "upload", null, null, null, null).note!.id;
   db.updateNote(noteId, { folder_id: meetingsId });
-  const callbacks = buildCallbacks(db, { failFolderWrites: true, noteId });
+  const callbacks = buildCallbacks(db, {
+    failFolderWrites: true,
+    initialSelection: String(meetingsId),
+    noteId,
+  });
 
   // The optimistic selection flips to "" before the write; the failure must
   // restore the confirmed value instead of leaving the root lie on screen.
@@ -184,9 +197,11 @@ test("a failed folder move reports the failure and rolls the selection back", as
 
   // A later successful change clears the stale failure message.
   const videoId = db.createFolder("Videos", spaceId).folder!.id;
+  callbacks.setFailFolderWrites(false);
   callbacks.handleFolderChange(String(videoId));
   await tick();
   assert.equal(callbacks.folderMoveError(), null, "success clears the failure message");
+  assert.equal(db.getNote(noteId)!.folder_id, videoId);
 });
 
 test("a rejected folder_id 0 patch never reaches the database", async (t) => {
@@ -195,7 +210,11 @@ test("a rejected folder_id 0 patch never reaches the database", async (t) => {
   const spaceId = db.getPrivateSpaceId();
   const meetingsId = db.createFolder("Meetings", spaceId).folder!.id;
   const noteId = db.saveNote("Uploaded", "", "upload", null, null, meetingsId, null).note!.id;
-  const callbacks = buildCallbacks(db, { failFolderWrites: true, noteId });
+  const callbacks = buildCallbacks(db, {
+    failFolderWrites: true,
+    initialSelection: String(meetingsId),
+    noteId,
+  });
 
   // The pre-fix regression: "" through Number() reached the DB as 0 and the
   // failure was never shown. With the failure surfaced, the selection rolls

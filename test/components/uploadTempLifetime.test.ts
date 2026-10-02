@@ -128,6 +128,7 @@ function buildSandbox({ deletes }: { deletes: string[] }) {
     setDownloadProgress: () => {},
     setBatchUrlNotice: () => {},
     setSelectedFolderId: () => {},
+    setFolderMoveError: () => {},
     // view dependencies
     window: { electronAPI: { deleteTempFile: (p) => deletes.push(p) } },
     crypto: require("node:crypto"),
